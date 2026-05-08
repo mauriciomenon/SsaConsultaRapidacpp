@@ -1,0 +1,17 @@
+build*/
+.cache/
+.DS_Store
+*.user
+*.log
+*.db
+*.sqlite
+*.sqlite3
+*.dSYM/
+*.app/
+*.zip
+compile_commands.json
+CMakeUserPresets.json
+out/
+dist/
+coverage/
+

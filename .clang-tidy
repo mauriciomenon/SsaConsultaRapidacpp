@@ -1,0 +1,30 @@
+Checks: >
+  bugprone-*,
+  -bugprone-exception-escape,
+  -bugprone-throwing-static-initialization,
+  clang-analyzer-*,
+  modernize-*,
+  -modernize-raw-string-literal,
+  -modernize-use-ranges,
+  -modernize-use-designated-initializers,
+  -modernize-use-nodiscard,
+  -modernize-use-trailing-return-type,
+  performance-*,
+  -performance-enum-size,
+  portability-*,
+  -portability-avoid-pragma-once,
+  readability-braces-around-statements,
+  readability-container-size-empty,
+  readability-duplicate-include,
+  readability-inconsistent-declaration-parameter-name,
+  readability-misleading-indentation,
+  readability-redundant-control-flow,
+  readability-redundant-declaration,
+  readability-redundant-string-cstr,
+  readability-simplify-boolean-expr,
+  readability-use-anyofallof
+WarningsAsErrors: ''
+HeaderFilterRegex: 'src/.*|app/.*|tests/.*'
+CheckOptions:
+  - key: modernize-use-nullptr.NullMacros
+    value: 'NULL'
