@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ports/IUserPreferencesStore.h"
+#include "presentation/ColumnSettingsModel.h"
 #include "presentation/CommandViewModel.h"
 #include "presentation/DetailsViewModel.h"
 #include "presentation/FilterPanelViewModel.h"
@@ -11,7 +12,9 @@
 
 #include <QObject>
 
+#include <map>
 #include <memory>
+#include <vector>
 
 namespace ssa::presentation {
 
@@ -22,7 +25,9 @@ namespace ssa::presentation {
         Q_PROPERTY(DetailsViewModel* details READ details CONSTANT)
         Q_PROPERTY(StatusViewModel* status READ status CONSTANT)
         Q_PROPERTY(CommandViewModel* commands READ commands CONSTANT)
+        Q_PROPERTY(ColumnSettingsModel* columns READ columns CONSTANT)
         Q_PROPERTY(SsaTableModel* tableModel READ tableModel CONSTANT)
+        Q_PROPERTY(QString theme READ theme WRITE setTheme NOTIFY preferencesChanged)
         Q_PROPERTY(int pageIndex READ pageIndex NOTIFY pageChanged)
         Q_PROPERTY(int pageCount READ pageCount NOTIFY pageChanged)
         Q_PROPERTY(int totalRows READ totalRows NOTIFY pageChanged)
@@ -41,7 +46,10 @@ namespace ssa::presentation {
         [[nodiscard]] DetailsViewModel* details();
         [[nodiscard]] StatusViewModel* status();
         [[nodiscard]] CommandViewModel* commands();
+        [[nodiscard]] ColumnSettingsModel* columns();
         [[nodiscard]] SsaTableModel* tableModel();
+        [[nodiscard]] QString theme() const;
+        void setTheme(const QString& value);
         [[nodiscard]] int pageIndex() const;
         [[nodiscard]] int pageCount() const;
         [[nodiscard]] int totalRows() const;
@@ -53,6 +61,7 @@ namespace ssa::presentation {
       signals:
         void pageChanged();
         void sortChanged();
+        void preferencesChanged();
 
       public slots:
         void load();
@@ -62,6 +71,9 @@ namespace ssa::presentation {
         void previousPage();
         void selectRow(int row);
         void sortByColumn(int column);
+        void applyColumnSettings();
+        void resetColumnSettings();
+        void discardColumnSettings();
         void openSelectedSsa();
         void cancelCurrentRequest();
 
@@ -74,11 +86,14 @@ namespace ssa::presentation {
         std::shared_ptr<query::SsaQueryService> queryService_;
         std::shared_ptr<ports::IUserPreferencesStore> preferencesStore_;
         std::vector<std::string> visibleColumns_;
+        std::map<std::string, int> columnWidths_;
+        QString theme_{"system"};
         SearchViewModel search_;
         FilterPanelViewModel filters_;
         DetailsViewModel details_;
         StatusViewModel status_;
         CommandViewModel commands_;
+        ColumnSettingsModel columns_;
         SsaTableModel tableModel_;
         domain::SortSpec sort_;
         std::size_t pageIndex_{0};

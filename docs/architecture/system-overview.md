@@ -25,6 +25,15 @@ architecture.
 5. `SqliteSsaRepository` uses `SqlQueryBuilder` and returns domain records.
 6. `SsaTableModel` exposes the current page, column labels, and widths to QML.
 
+## Presentation Ownership
+
+- `MainViewModel` coordinates page requests, cancellation generation, preferences, and child view
+  models.
+- `ColumnSettingsModel` owns the editable presentation state for visible columns and widths.
+- `SsaTableModel` owns only the current page and column metadata exposed to QML.
+- QML components bind to view models and do not parse search text, access SQLite, or normalize
+  business terms.
+
 ## Non Goals In First Cycle
 
 - Import/rescan implementation.

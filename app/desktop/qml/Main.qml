@@ -17,6 +17,12 @@ ApplicationWindow {
     color: Theme.window
     font.family: Theme.fontFamily
 
+    Binding {
+        target: Theme
+        property: "dark"
+        value: root.vm.theme === "dark"
+    }
+
     Component.onCompleted: root.vm.load()
 
     ColumnLayout {
@@ -46,6 +52,7 @@ ApplicationWindow {
                 }
                 ActionButton { text: "SAM"; onClicked: root.vm.commands.openSamHome() }
                 ActionButton { text: "Atualizar"; onClicked: root.vm.load() }
+                ActionButton { text: "Preferencias"; onClicked: preferencesDialog.open() }
                 ActionButton { text: "Cancelar"; onClicked: root.vm.cancelCurrentRequest() }
             }
         }
@@ -90,5 +97,10 @@ ApplicationWindow {
             Layout.fillWidth: true
             status: root.vm.status
         }
+    }
+
+    PreferencesDialog {
+        id: preferencesDialog
+        viewModel: root.vm
     }
 }

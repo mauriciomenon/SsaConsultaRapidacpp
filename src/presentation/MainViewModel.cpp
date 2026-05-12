@@ -18,7 +18,7 @@ namespace ssa::presentation {
           preferencesStore_(std::move(preferencesStore)),
           visibleColumns_(domain::ColumnCatalog::defaultVisibleKeys()), search_(this),
           filters_(this), details_(this), status_(this), commands_(std::move(commandPort), this),
-          tableModel_(this) {
+          columns_(this), tableModel_(this) {
         if (!queryService_) {
             throw std::invalid_argument("query service is required");
         }
@@ -48,8 +48,25 @@ namespace ssa::presentation {
         return &commands_;
     }
 
+    ColumnSettingsModel* MainViewModel::columns() {
+        return &columns_;
+    }
+
     SsaTableModel* MainViewModel::tableModel() {
         return &tableModel_;
+    }
+
+    QString MainViewModel::theme() const {
+        return theme_;
+    }
+
+    void MainViewModel::setTheme(const QString& value) {
+        if (theme_ == value) {
+            return;
+        }
+        theme_ = value;
+        savePreferences();
+        emit preferencesChanged();
     }
 
     int MainViewModel::pageIndex() const {
@@ -144,6 +161,24 @@ namespace ssa::presentation {
         load();
     }
 
+    void MainViewModel::applyColumnSettings() {
+        visibleColumns_ = columns_.visibleKeys();
+        columnWidths_ = columns_.columnWidths();
+        tableModel_.setColumnWidths(columnWidths_);
+        pageIndex_ = 0;
+        savePreferences();
+        load();
+    }
+
+    void MainViewModel::resetColumnSettings() {
+        columns_.resetDefaults();
+        applyColumnSettings();
+    }
+
+    void MainViewModel::discardColumnSettings() {
+        columns_.applyPreferences(visibleColumns_, columnWidths_);
+    }
+
     void MainViewModel::openSelectedSsa() {
         const auto selected = details_.selectedSsa();
         if (!selected.isEmpty()) {
@@ -186,6 +221,7 @@ namespace ssa::presentation {
                         }
                         totalRows_ = result.totalRows;
                         pageIndex_ = result.pageIndex;
+                        tableModel_.setColumnWidths(columnWidths_);
                         tableModel_.setPage(std::move(result), request.visibleColumns);
                         details_.setRecord(tableModel_.recordAt(0));
                         status_.setMessage(QString("%1 registros, pagina %2 de %3")
@@ -216,6 +252,11 @@ namespace ssa::presentation {
         if (!snapshot.visibleColumns.empty()) {
             visibleColumns_ = snapshot.visibleColumns;
         }
+        theme_ = QString::fromStdString(snapshot.theme);
+        columns_.applyPreferences(visibleColumns_, snapshot.columnWidths);
+        visibleColumns_ = columns_.visibleKeys();
+        columnWidths_ = columns_.columnWidths();
+        tableModel_.setColumnWidths(columnWidths_);
         filters_.setQuickSector(QString::fromStdString(snapshot.quickSector));
         filters_.setExcludeClosedStatuses(snapshot.excludeClosedStatuses);
         filters_.setColumnFilters(snapshot.columnFilters);
@@ -227,7 +268,9 @@ namespace ssa::presentation {
         }
         ports::UserPreferencesSnapshot snapshot;
         snapshot.visibleColumns = visibleColumns_;
+        snapshot.columnWidths = columnWidths_;
         snapshot.pageSize = static_cast<int>(pageSize_);
+        snapshot.theme = theme_.toStdString();
         snapshot.quickSector = filters_.quickSector().trimmed().toStdString();
         snapshot.excludeClosedStatuses = filters_.excludeClosedStatuses();
         snapshot.columnFilters = filters_.columnFilters();

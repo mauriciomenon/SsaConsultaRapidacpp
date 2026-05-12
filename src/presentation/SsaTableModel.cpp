@@ -51,6 +51,13 @@ namespace ssa::presentation {
         emit columnsChanged();
     }
 
+    void SsaTableModel::setColumnWidths(std::map<std::string, int> widths) {
+        columnWidths_ = std::move(widths);
+        if (!columns_.empty()) {
+            emit columnsChanged();
+        }
+    }
+
     int SsaTableModel::visibleColumnCount() const {
         return static_cast<int>(columns_.size());
     }
@@ -85,6 +92,10 @@ namespace ssa::presentation {
         const auto columnIndex = static_cast<std::size_t>(column);
         if (columnIndex >= columns_.size()) {
             return 132;
+        }
+        const auto customWidth = columnWidths_.find(columns_[columnIndex]);
+        if (customWidth != columnWidths_.end()) {
+            return customWidth->second;
         }
         const auto definition = domain::ColumnCatalog::find(columns_[columnIndex]);
         return definition ? definition->defaultWidth : 132;

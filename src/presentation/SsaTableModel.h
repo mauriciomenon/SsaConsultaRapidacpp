@@ -5,6 +5,8 @@
 #include <QAbstractTableModel>
 #include <QStringList>
 
+#include <map>
+
 namespace ssa::presentation {
 
     class SsaTableModel final : public QAbstractTableModel {
@@ -21,6 +23,7 @@ namespace ssa::presentation {
                                           int role) const override;
 
         void setPage(domain::SsaPageResult page, std::vector<std::string> columns);
+        void setColumnWidths(std::map<std::string, int> widths);
         Q_INVOKABLE [[nodiscard]] int visibleColumnCount() const;
         Q_INVOKABLE [[nodiscard]] QString columnKey(int column) const;
         Q_INVOKABLE [[nodiscard]] QString columnLabel(int column) const;
@@ -34,6 +37,7 @@ namespace ssa::presentation {
       private:
         std::vector<domain::SsaRecord> rows_;
         std::vector<std::string> columns_;
+        std::map<std::string, int> columnWidths_;
     };
 
 } // namespace ssa::presentation

@@ -8,7 +8,7 @@
 
 #include <QCommandLineOption>
 #include <QCommandLineParser>
-#include <QFontDatabase>
+#include <QFont>
 #include <QGuiApplication>
 #include <QImage>
 #include <QQmlApplicationEngine>
@@ -24,7 +24,9 @@ int main(int argc, char* argv[]) {
     QGuiApplication app(argc, argv);
     QGuiApplication::setApplicationName("SSA Consulta Rapida");
     QGuiApplication::setOrganizationName("Menon");
-    QGuiApplication::setFont(QFontDatabase::systemFont(QFontDatabase::GeneralFont));
+    QFont uiFont;
+    uiFont.setFamilies({"Arial", "Helvetica Neue", "DejaVu Sans", "Noto Sans", "Liberation Sans"});
+    QGuiApplication::setFont(uiFont);
     QQuickStyle::setStyle("Fusion");
 
     QCommandLineParser parser;

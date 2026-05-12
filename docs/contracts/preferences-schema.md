@@ -20,4 +20,7 @@ Current fields:
 - Code defaults are the source of fallback.
 - Runtime preferences override defaults only when valid.
 - Invalid files must fail clearly at the persistence boundary.
+- Column widths are clamped by the presentation model to the supported UI range.
+- Visible column preferences must be reconciled against `ColumnCatalog`.
+- `system` theme is persisted as a stable value even while the POC maps it to the light token set.
 - Future migrations require an ADR.

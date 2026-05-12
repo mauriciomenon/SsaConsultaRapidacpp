@@ -65,6 +65,33 @@ namespace {
                             const std::map<std::string, std::string>&) override {}
     };
 
+    class FakePreferences final : public ssa::ports::IUserPreferencesStore {
+      public:
+        explicit FakePreferences(ssa::ports::UserPreferencesSnapshot initial = {})
+            : snapshot_(std::move(initial)) {}
+
+        ssa::ports::UserPreferencesSnapshot load() const override {
+            return snapshot_;
+        }
+
+        void save(const ssa::ports::UserPreferencesSnapshot& snapshot) const override {
+            snapshot_ = snapshot;
+            ++saveCount_;
+        }
+
+        [[nodiscard]] ssa::ports::UserPreferencesSnapshot snapshot() const {
+            return snapshot_;
+        }
+
+        [[nodiscard]] int saveCount() const {
+            return saveCount_;
+        }
+
+      private:
+        mutable ssa::ports::UserPreferencesSnapshot snapshot_;
+        mutable int saveCount_{0};
+    };
+
     class PresentationSmokeTest final : public QObject {
         Q_OBJECT
 
@@ -118,6 +145,66 @@ namespace {
             QTest::qWait(160);
             QCOMPARE(model.tableModel()->rowCount(), 0);
             QCOMPARE(model.status()->message(), QString("Consulta cancelada"));
+        }
+
+        void column_settings_update_visible_columns_and_preferences() {
+            ssa::ports::UserPreferencesSnapshot initial;
+            initial.visibleColumns = {"numero_ssa", "situacao"};
+            initial.columnWidths = {{"numero_ssa", 140}, {"situacao", 160}};
+
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            auto preferences = std::make_shared<FakePreferences>(initial);
+            ssa::presentation::MainViewModel model(service, commands, preferences);
+
+            model.columns()->setColumnVisible(2, false);
+            model.columns()->setColumnWidth("numero_ssa", 180);
+            model.applyColumnSettings();
+
+            QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{1}, 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(model.tableModel()->rowCount(), 1, 1000);
+            const auto request = repository->requests().back();
+            QCOMPARE(request.visibleColumns.size(), std::size_t{1});
+            QCOMPARE(QString::fromStdString(request.visibleColumns.front()), QString("numero_ssa"));
+            QCOMPARE(preferences->snapshot().columnWidths.at("numero_ssa"), 180);
+            QCOMPARE(model.tableModel()->columnWidth(0), 180);
+        }
+
+        void theme_preference_is_saved() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            auto preferences = std::make_shared<FakePreferences>();
+            ssa::presentation::MainViewModel model(service, commands, preferences);
+
+            model.setTheme("dark");
+
+            QCOMPARE(model.theme(), QString("dark"));
+            QCOMPARE(QString::fromStdString(preferences->snapshot().theme), QString("dark"));
+            QCOMPARE(preferences->saveCount(), 1);
+        }
+
+        void column_settings_discard_restores_applied_preferences() {
+            ssa::ports::UserPreferencesSnapshot initial;
+            initial.visibleColumns = {"numero_ssa", "situacao"};
+            initial.columnWidths = {{"numero_ssa", 140}, {"situacao", 160}};
+
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            auto preferences = std::make_shared<FakePreferences>(initial);
+            ssa::presentation::MainViewModel model(service, commands, preferences);
+
+            model.columns()->setColumnVisible(2, false);
+            model.columns()->setColumnWidth("numero_ssa", 220);
+            model.discardColumnSettings();
+            model.applyColumnSettings();
+
+            QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{1}, 1000);
+            const auto request = repository->requests().back();
+            QCOMPARE(request.visibleColumns.size(), std::size_t{2});
+            QCOMPARE(preferences->snapshot().columnWidths.at("numero_ssa"), 140);
         }
     };
 

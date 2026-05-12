@@ -39,6 +39,7 @@ add_library(ssa_presentation STATIC
     src/platform/AppPaths.cpp
     src/platform/StartupOptions.cpp
     src/presentation/SsaTableModel.cpp
+    src/presentation/ColumnSettingsModel.cpp
     src/presentation/SearchViewModel.cpp
     src/presentation/FilterPanelViewModel.cpp
     src/presentation/DetailsViewModel.cpp
@@ -73,6 +74,7 @@ qt_add_qml_module(ssa_consulta_rapida
         app/desktop/qml/components/ActionButton.qml
         app/desktop/qml/components/DetailsPanel.qml
         app/desktop/qml/components/FilterPanel.qml
+        app/desktop/qml/components/PreferencesDialog.qml
         app/desktop/qml/components/SearchAndPager.qml
         app/desktop/qml/components/SsaTable.qml
         app/desktop/qml/components/StatusPill.qml
