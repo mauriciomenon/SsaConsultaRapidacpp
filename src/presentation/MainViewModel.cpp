@@ -1,7 +1,9 @@
 #include "presentation/MainViewModel.h"
 
 #include "domain/ColumnCatalog.h"
+#include "domain/SsaTypes.h"
 
+#include <QFutureWatcher>
 #include <QtConcurrent>
 
 #include <algorithm>
@@ -23,6 +25,9 @@ namespace ssa::presentation {
             throw std::invalid_argument("query service is required");
         }
         loadPreferences();
+        preferencesSaveTimer_.setSingleShot(true);
+        preferencesSaveTimer_.setInterval(250);
+        connect(&preferencesSaveTimer_, &QTimer::timeout, this, &MainViewModel::savePreferences);
         connect(&search_, &SearchViewModel::applyRequested, this, &MainViewModel::apply);
         connect(&search_, &SearchViewModel::clearRequested, this, &MainViewModel::clearSearch);
         connect(&filters_, &FilterPanelViewModel::applyRequested, this, &MainViewModel::apply);
@@ -65,7 +70,7 @@ namespace ssa::presentation {
             return;
         }
         theme_ = value;
-        savePreferences();
+        scheduleSavePreferences();
         emit preferencesChanged();
     }
 
@@ -73,16 +78,20 @@ namespace ssa::presentation {
         return density_;
     }
 
-    void MainViewModel::setDensity(const QString& value) {
-        if (value != "compact" && value != "normal" && value != "comfortable") {
+void MainViewModel::setDensity(const QString& value) {
+        if (!isDensityValid(value)) {
             return;
         }
         if (density_ == value) {
             return;
         }
         density_ = value;
-        savePreferences();
+        scheduleSavePreferences();
         emit preferencesChanged();
+    }
+
+    bool MainViewModel::isDensityValid(const QString& value) const {
+        return value == "compact" || value == "normal" || value == "comfortable";
     }
 
     bool MainViewModel::detailsVisible() const {
@@ -94,7 +103,21 @@ namespace ssa::presentation {
             return;
         }
         detailsVisible_ = value;
-        savePreferences();
+        scheduleSavePreferences();
+        emit preferencesChanged();
+    }
+
+    int MainViewModel::detailsPanelWidth() const {
+        return detailsPanelWidth_;
+    }
+
+    void MainViewModel::setDetailsPanelWidth(const int value) {
+        const int bounded = domain::clampDetailsPanelWidth(value);
+        if (detailsPanelWidth_ == bounded) {
+            return;
+        }
+        detailsPanelWidth_ = bounded;
+        scheduleSavePreferences();
         emit preferencesChanged();
     }
 
@@ -121,14 +144,14 @@ namespace ssa::presentation {
     }
 
     void MainViewModel::setPageSize(const int value) {
-        const int bounded = std::clamp(value, 10, 500);
+        const int bounded = domain::clampPageSize(value);
         const auto boundedSize = static_cast<std::size_t>(bounded);
         if (pageSize_ == boundedSize) {
             return;
         }
         pageSize_ = boundedSize;
         pageIndex_ = 0;
-        savePreferences();
+        scheduleSavePreferences();
         load();
     }
 
@@ -193,7 +216,7 @@ namespace ssa::presentation {
             sort_.columnKey = nextKey;
             sort_.ascending = true;
         }
-        sort_.statusLast = sort_.columnKey == "numero_ssa";
+        sort_.statusLast = domain::requiresStatusLastSort(sort_.columnKey);
         pageIndex_ = 0;
         emit sortChanged();
         load();
@@ -204,16 +227,15 @@ namespace ssa::presentation {
         visibleColumns_ = columns_.visibleKeys();
         columnWidths_ = columns_.columnWidths();
         tableModel_.setColumnWidths(columnWidths_);
-        pageIndex_ = 0;
         savePreferences();
         if (visibleColumns_ != previousVisibleColumns) {
+            pageIndex_ = 0;
             load();
         }
     }
 
     void MainViewModel::resetColumnSettings() {
         columns_.resetDefaults();
-        applyColumnSettings();
     }
 
     void MainViewModel::discardColumnSettings() {
@@ -283,8 +305,15 @@ namespace ssa::presentation {
                     status_.setLoading(false);
                     emit pageChanged();
                 });
+        const std::weak_ptr<query::SsaQueryService> queryService = queryService_;
         watcher->setFuture(QtConcurrent::run(
-            [service = queryService_, request] { return service->search(request); }));
+            [queryService, request] {
+                const auto service = queryService.lock();
+                if (!service) {
+                    throw std::runtime_error("query service no longer available");
+                }
+                return service->search(request);
+            }));
     }
 
     void MainViewModel::loadPreferences() {
@@ -292,16 +321,17 @@ namespace ssa::presentation {
             return;
         }
         const auto snapshot = preferencesStore_->load();
-        pageSize_ = static_cast<std::size_t>(std::clamp(snapshot.pageSize, 10, 500));
+        pageSize_ = static_cast<std::size_t>(domain::clampPageSize(snapshot.pageSize));
         if (!snapshot.visibleColumns.empty()) {
             visibleColumns_ = snapshot.visibleColumns;
         }
         theme_ = QString::fromStdString(snapshot.theme);
         const QString density = QString::fromStdString(snapshot.density);
-        if (density == "compact" || density == "normal" || density == "comfortable") {
+        if (isDensityValid(density)) {
             density_ = density;
         }
         detailsVisible_ = snapshot.detailsVisible;
+        detailsPanelWidth_ = domain::clampDetailsPanelWidth(snapshot.detailsPanelWidth);
         columns_.applyPreferences(visibleColumns_, snapshot.columnWidths);
         visibleColumns_ = columns_.visibleKeys();
         columnWidths_ = columns_.columnWidths();
@@ -311,10 +341,23 @@ namespace ssa::presentation {
         filters_.setColumnFilters(snapshot.columnFilters);
     }
 
+    void MainViewModel::scheduleSavePreferences() {
+        if (!preferencesStore_) {
+            return;
+        }
+        preferencesSaveTimer_.start();
+    }
+
     void MainViewModel::savePreferences() {
         if (!preferencesStore_) {
             return;
         }
+        if (preferencesSaveInProgress_) {
+            pendingPreferencesSave_ = true;
+            return;
+        }
+        preferencesSaveTimer_.stop();
+        preferencesSaveInProgress_ = true;
         ports::UserPreferencesSnapshot snapshot;
         snapshot.visibleColumns = visibleColumns_;
         snapshot.columnWidths = columnWidths_;
@@ -322,14 +365,33 @@ namespace ssa::presentation {
         snapshot.theme = theme_.toStdString();
         snapshot.density = density_.toStdString();
         snapshot.detailsVisible = detailsVisible_;
+        snapshot.detailsPanelWidth = detailsPanelWidth_;
         snapshot.quickSector = filters_.quickSector().trimmed().toStdString();
         snapshot.excludeScaSesSte = filters_.excludeScaSesSte();
         snapshot.columnFilters = filters_.columnFilters();
-        try {
-            preferencesStore_->save(snapshot);
-        } catch (const std::exception& exc) {
-            status_.setError(QString::fromUtf8(exc.what()));
-        }
+        const auto store = preferencesStore_;
+        auto* watcher = new QFutureWatcher<bool>(this);
+        connect(watcher, &QFutureWatcher<bool>::finished, this, [this, watcher] {
+            try {
+                watcher->result();
+            } catch (const std::exception& exc) {
+                status_.setError(QString::fromUtf8(exc.what()));
+                status_.setMessage("Falha ao salvar preferencias");
+            }
+            preferencesSaveInProgress_ = false;
+            watcher->deleteLater();
+            if (pendingPreferencesSave_) {
+                pendingPreferencesSave_ = false;
+                savePreferences();
+            }
+        });
+        watcher->setFuture(QtConcurrent::run([store, snapshot] {
+            if (!store) {
+                return false;
+            }
+            store->save(snapshot);
+            return true;
+        }));
     }
 
 } // namespace ssa::presentation

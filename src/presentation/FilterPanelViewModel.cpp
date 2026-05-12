@@ -4,6 +4,7 @@
 #include "domain/SsaTypes.h"
 
 #include <utility>
+#include <vector>
 
 namespace ssa::presentation {
 
@@ -12,9 +13,11 @@ namespace ssa::presentation {
             filterColumnKeys_.push_back(QString::fromStdString(key));
         }
         columnKey_ = QString::fromStdString(domain::ColumnCatalog::defaultFilterColumnKey());
+        markActiveFiltersDirty();
     }
 
     QString FilterPanelViewModel::quickSector() const {
+        ensureActiveFiltersUpToDate();
         return quickSector_;
     }
 
@@ -23,6 +26,7 @@ namespace ssa::presentation {
             return;
         }
         quickSector_ = value;
+        markActiveFiltersDirty();
         emit changed();
     }
 
@@ -35,6 +39,7 @@ namespace ssa::presentation {
             return;
         }
         excludeScaSesSte_ = value;
+        markActiveFiltersDirty();
         emit changed();
     }
 
@@ -67,21 +72,13 @@ namespace ssa::presentation {
     }
 
     QStringList FilterPanelViewModel::activeFilters() const {
-        QStringList filters;
-        if (!quickSector_.trimmed().isEmpty()) {
-            filters.push_back("setor_executor:" + quickSector_.trimmed());
-        }
-        if (excludeScaSesSte_) {
-            filters.push_back(QString::fromUtf8(domain::kScaSesSteExclusionSummary.data(),
-                                                domain::kScaSesSteExclusionSummary.size()));
-        }
-        for (const auto& [key, value] : columnFilters_) {
-            QString filter = QString::fromStdString(key);
-            filter += ":";
-            filter += QString::fromStdString(value);
-            filters.push_back(filter);
-        }
-        return filters;
+        ensureActiveFiltersUpToDate();
+        return activeFilters_;
+    }
+
+    QString FilterPanelViewModel::activeFilterSummary() const {
+        ensureActiveFiltersUpToDate();
+        return activeFilterSummary_;
     }
 
     std::map<std::string, std::string> FilterPanelViewModel::columnFilters() const {
@@ -93,6 +90,7 @@ namespace ssa::presentation {
             return;
         }
         columnFilters_ = std::move(filters);
+        markActiveFiltersDirty();
         emit changed();
     }
 
@@ -102,6 +100,7 @@ namespace ssa::presentation {
         if (!key.isEmpty() && !value.isEmpty()) {
             columnFilters_[key.toStdString()] = value.toStdString();
             columnValue_.clear();
+            markActiveFiltersDirty();
             emit changed();
             emit applyRequested();
         }
@@ -112,9 +111,34 @@ namespace ssa::presentation {
         columnKey_ = QString::fromStdString(domain::ColumnCatalog::defaultFilterColumnKey());
         columnValue_.clear();
         columnFilters_.clear();
-        excludeScaSesSte_ = true;
+        excludeScaSesSte_ = domain::kDefaultExcludeScaSesSte;
+        markActiveFiltersDirty();
         emit changed();
         emit applyRequested();
+    }
+
+    void FilterPanelViewModel::rebuildActiveFilters() {
+        const auto activeParts =
+            domain::filterSummaryParts(quickSector_.trimmed().toStdString(), excludeScaSesSte_,
+                                      columnFilters_);
+        activeFilters_.clear();
+        activeFilters_.reserve(static_cast<int>(activeParts.size()));
+        for (const auto& filter : activeParts) {
+            activeFilters_.push_back(QString::fromStdString(filter));
+        }
+        activeFilterSummary_ = QString::fromStdString(domain::joinFilterSummary(activeParts));
+    }
+
+    void FilterPanelViewModel::markActiveFiltersDirty() {
+        activeFiltersStale_ = true;
+    }
+
+    void FilterPanelViewModel::ensureActiveFiltersUpToDate() const {
+        if (!activeFiltersStale_) {
+            return;
+        }
+        const_cast<FilterPanelViewModel*>(this)->rebuildActiveFilters();
+        activeFiltersStale_ = false;
     }
 
 } // namespace ssa::presentation

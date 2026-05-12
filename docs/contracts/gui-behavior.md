@@ -8,10 +8,11 @@
 - Table with the current SQL page only.
 - Table header labels and widths come from `ColumnCatalog`.
 - Header click sorts by that column and toggles ascending/descending on repeated click.
+- Sorting by column `numero_ssa` applies secondary status ordering after primary SSA sort by design.
 - Details panel for the selected SSA.
 - Preferences dialog with theme selection, visual density, visible column selection, column width
-  editing, select all, defaults reset, detail panel visibility, local column filtering, apply, and
-  close actions.
+  editing, select all, defaults reset, detail panel visibility, detail panel width, local column
+  filtering, apply, and close actions.
 - Status bar with loading, error, and row/page information.
 
 ## Preserved Behavior
@@ -23,8 +24,8 @@
 - The GUI reports errors visibly instead of silently self-healing.
 - Queries run outside the GUI thread. Cancel invalidates the active request and prevents stale
   results from replacing the current screen state.
-- Column visibility, column widths, page size, filters, detail panel visibility, density, and theme
-  are persisted through `IUserPreferencesStore`.
+- Column visibility, column widths, page size, filters, detail panel visibility, detail panel
+  width, density, and theme are persisted through `IUserPreferencesStore`.
 - The table must keep the main screen useful on a desktop viewport: toolbar and search stay
   visible, the table owns the central area, and details stay on the right.
 
@@ -42,6 +43,7 @@
   edits.
 - Detail panel visibility is applied immediately because it is a screen layout preference, not a
   query preference.
+- Detail panel width is applied immediately and does not trigger a query reload.
 
 ## Not Preserved
 

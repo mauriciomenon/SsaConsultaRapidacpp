@@ -5,6 +5,7 @@
 
 #include <map>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace ssa::presentation {
@@ -36,6 +37,7 @@ namespace ssa::presentation {
         Q_INVOKABLE void setColumnWidth(const QString& columnKey, int width);
         Q_INVOKABLE void resetDefaults();
         Q_INVOKABLE void selectAll();
+        Q_INVOKABLE void setFilterText(const QString& filterText);
 
         void applyPreferences(const std::vector<std::string>& visibleColumns,
                               const std::map<std::string, int>& columnWidths);
@@ -49,6 +51,8 @@ namespace ssa::presentation {
         struct ColumnItem {
             std::string key;
             std::string label;
+            std::string keyLower;
+            std::string labelLower;
             bool defaultVisible{false};
             bool visible{false};
             int defaultWidth{132};
@@ -56,10 +60,20 @@ namespace ssa::presentation {
         };
 
         [[nodiscard]] int visibleCount() const;
+        [[nodiscard]] std::vector<ColumnItem>::iterator findColumn(std::string_view key);
+        [[nodiscard]] std::vector<ColumnItem>::const_iterator findColumn(std::string_view key) const;
+        [[nodiscard]] bool setColumnVisibleBySourceRow(std::size_t row, bool visible);
+        [[nodiscard]] bool matchesFilter(const ColumnItem& column) const;
+        [[nodiscard]] int sourceRowFromModelRow(int modelRow) const;
+        [[nodiscard]] int modelRowFromSourceRow(std::size_t sourceRow) const;
+        void rebuildFilteredRows();
         void emitRowChanged(int row);
 
         std::vector<ColumnItem> columns_;
+        std::vector<int> filteredRows_;
+        std::vector<int> sourceToModelRow_;
         int visibleCount_{0};
+        std::string filterTextLower_{};
     };
 
 } // namespace ssa::presentation

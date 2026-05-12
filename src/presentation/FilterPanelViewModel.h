@@ -1,5 +1,7 @@
 #pragma once
 
+#include "domain/SsaTypes.h"
+
 #include <QObject>
 #include <QString>
 #include <QStringList>
@@ -18,6 +20,7 @@ namespace ssa::presentation {
         Q_PROPERTY(QString columnKey READ columnKey WRITE setColumnKey NOTIFY changed)
         Q_PROPERTY(QString columnValue READ columnValue WRITE setColumnValue NOTIFY changed)
         Q_PROPERTY(QStringList activeFilters READ activeFilters NOTIFY changed)
+        Q_PROPERTY(QString activeFilterSummary READ activeFilterSummary NOTIFY changed)
 
       public:
         explicit FilterPanelViewModel(QObject* parent = nullptr);
@@ -32,6 +35,7 @@ namespace ssa::presentation {
         [[nodiscard]] QString columnValue() const;
         void setColumnValue(const QString& value);
         [[nodiscard]] QStringList activeFilters() const;
+        [[nodiscard]] QString activeFilterSummary() const;
         [[nodiscard]] std::map<std::string, std::string> columnFilters() const;
         void setColumnFilters(std::map<std::string, std::string> filters);
 
@@ -44,12 +48,19 @@ namespace ssa::presentation {
         void resetFilters();
 
       private:
+        void rebuildActiveFilters();
+        void markActiveFiltersDirty();
+        void ensureActiveFiltersUpToDate() const;
+
         QString quickSector_;
-        bool excludeScaSesSte_{true};
+        bool excludeScaSesSte_{domain::kDefaultExcludeScaSesSte};
         QStringList filterColumnKeys_;
         QString columnKey_;
         QString columnValue_;
         std::map<std::string, std::string> columnFilters_;
+        mutable QStringList activeFilters_;
+        mutable QString activeFilterSummary_;
+        mutable bool activeFiltersStale_{true};
     };
 
 } // namespace ssa::presentation

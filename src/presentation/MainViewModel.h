@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ports/IUserPreferencesStore.h"
+#include "domain/SsaTypes.h"
 #include "presentation/ColumnSettingsModel.h"
 #include "presentation/CommandViewModel.h"
 #include "presentation/DetailsViewModel.h"
@@ -11,6 +12,7 @@
 #include "query/SsaQueryService.h"
 
 #include <QObject>
+#include <QTimer>
 
 #include <map>
 #include <memory>
@@ -30,6 +32,8 @@ namespace ssa::presentation {
         Q_PROPERTY(QString theme READ theme WRITE setTheme NOTIFY preferencesChanged)
         Q_PROPERTY(QString density READ density WRITE setDensity NOTIFY preferencesChanged)
         Q_PROPERTY(bool detailsVisible READ detailsVisible WRITE setDetailsVisible NOTIFY
+                       preferencesChanged)
+        Q_PROPERTY(int detailsPanelWidth READ detailsPanelWidth WRITE setDetailsPanelWidth NOTIFY
                        preferencesChanged)
         Q_PROPERTY(int pageNumber READ pageNumber NOTIFY pageChanged)
         Q_PROPERTY(int pageCount READ pageCount NOTIFY pageChanged)
@@ -57,6 +61,8 @@ namespace ssa::presentation {
         void setDensity(const QString& value);
         [[nodiscard]] bool detailsVisible() const;
         void setDetailsVisible(bool value);
+        [[nodiscard]] int detailsPanelWidth() const;
+        void setDetailsPanelWidth(int value);
         [[nodiscard]] int pageNumber() const;
         [[nodiscard]] int pageCount() const;
         [[nodiscard]] int totalRows() const;
@@ -88,7 +94,9 @@ namespace ssa::presentation {
         [[nodiscard]] domain::SsaPageRequest buildRequest() const;
         void runRequest(const domain::SsaPageRequest& request);
         void loadPreferences();
+        void scheduleSavePreferences();
         void savePreferences();
+        [[nodiscard]] bool isDensityValid(const QString& value) const;
 
         std::shared_ptr<query::SsaQueryService> queryService_;
         std::shared_ptr<ports::IUserPreferencesStore> preferencesStore_;
@@ -97,6 +105,7 @@ namespace ssa::presentation {
         QString theme_{"system"};
         QString density_{"normal"};
         bool detailsVisible_{true};
+        int detailsPanelWidth_{domain::kDefaultDetailsPanelWidth};
         SearchViewModel search_;
         FilterPanelViewModel filters_;
         DetailsViewModel details_;
@@ -104,9 +113,12 @@ namespace ssa::presentation {
         CommandViewModel commands_;
         ColumnSettingsModel columns_;
         SsaTableModel tableModel_;
+        QTimer preferencesSaveTimer_;
+        bool preferencesSaveInProgress_{false};
+        bool pendingPreferencesSave_{false};
         domain::SortSpec sort_;
         std::size_t pageIndex_{0};
-        std::size_t pageSize_{100};
+        std::size_t pageSize_{domain::kDefaultPageSize};
         std::size_t totalRows_{0};
         int requestGeneration_{0};
     };

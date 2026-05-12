@@ -75,11 +75,45 @@ Dialog {
             onToggled: root.viewModel.detailsVisible = checked
         }
 
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Theme.gap
+
+            Label {
+                text: "Largura detalhes"
+                color: Theme.text
+                Layout.preferredWidth: 160
+            }
+            SpinBox {
+                from: 280
+                to: 680
+                stepSize: 20
+                value: root.viewModel.detailsPanelWidth
+                onValueModified: root.viewModel.detailsPanelWidth = value
+            }
+            Label {
+                Layout.fillWidth: true
+                text: "pixels"
+                color: Theme.mutedText
+                elide: Text.ElideRight
+            }
+        }
+
         TextField {
             id: columnSearch
             Layout.fillWidth: true
             placeholderText: "Filtrar colunas por nome ou chave"
             selectByMouse: true
+            Timer {
+                id: columnFilterTimer
+                interval: 120
+                repeat: false
+                onTriggered: root.viewModel.columns.setFilterText(columnSearch.text)
+            }
+            onTextChanged: {
+                columnFilterTimer.stop()
+                columnFilterTimer.start()
+            }
         }
 
         Rectangle {
@@ -91,12 +125,11 @@ Dialog {
             clip: true
 
             ListView {
-                id: columnList
-                readonly property string filterText: columnSearch.text.toLowerCase()
-                anchors.fill: parent
-                anchors.margins: 1
-                model: root.viewModel.columns
-                clip: true
+            id: columnList
+            anchors.fill: parent
+            anchors.margins: 1
+            model: root.viewModel.columns
+            clip: true
 
                 delegate: Rectangle {
                     id: columnDelegate
@@ -106,13 +139,9 @@ Dialog {
                     required property bool columnVisible
                     required property bool columnToggleEnabled
                     required property int columnWidth
-                    readonly property bool matchesFilter: columnList.filterText.length === 0 ||
-                        columnKey.toLowerCase().indexOf(columnList.filterText) >= 0 ||
-                        columnLabel.toLowerCase().indexOf(columnList.filterText) >= 0
 
                     width: columnList.width
-                    height: matchesFilter ? 38 : 0
-                    visible: matchesFilter
+                    height: 38
                     color: Theme.panel
 
                     RowLayout {

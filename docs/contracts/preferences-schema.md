@@ -11,6 +11,7 @@ Current fields:
 - `theme`: `system`, `light`, or `dark`.
 - `density`: `compact`, `normal`, or `comfortable`.
 - `details_visible`: boolean controlling the right details panel.
+- `details_panel_width`: integer from 280 to 680.
 - `visible_columns`: ordered list of column keys.
 - `column_widths`: object keyed by column key with integer widths.
 - `quick_sector`: string used by the executor shortcut filter.
@@ -27,4 +28,5 @@ Current fields:
 - `system` theme is persisted as a stable value and follows the platform color scheme when Qt
   exposes it.
 - Density changes table row height, table header height, and detail panel text sizing only.
+- Detail panel width is clamped by a shared policy in `domain` and enforced by both persistence load and presentation.
 - Future migrations require an ADR.

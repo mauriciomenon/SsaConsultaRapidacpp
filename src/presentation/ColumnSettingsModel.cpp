@@ -3,38 +3,53 @@
 #include "domain/ColumnCatalog.h"
 
 #include <algorithm>
+#include <cctype>
 #include <set>
 
 namespace ssa::presentation {
     namespace {
         constexpr int kMinColumnWidth = 80;
         constexpr int kMaxColumnWidth = 520;
+
+        [[nodiscard]] std::string toLower(std::string text) {
+            for (auto& c : text) {
+                const int lowered = std::tolower(static_cast<unsigned char>(c));
+                if (lowered == EOF) {
+                    continue;
+                }
+                c = static_cast<char>(lowered);
+            }
+            return text;
+        }
+
     } // namespace
 
     ColumnSettingsModel::ColumnSettingsModel(QObject* parent) : QAbstractListModel(parent) {
         for (const auto& column : domain::ColumnCatalog::all()) {
-            columns_.push_back(ColumnItem{column.key, column.label, column.defaultVisible,
+            columns_.push_back(ColumnItem{column.key, column.label, toLower(column.key),
+                                          toLower(column.label), column.defaultVisible,
                                           column.defaultVisible, column.defaultWidth,
                                           column.defaultWidth});
             if (column.defaultVisible) {
                 ++visibleCount_;
             }
         }
+        rebuildFilteredRows();
     }
 
     int ColumnSettingsModel::rowCount(const QModelIndex& parent) const {
-        return parent.isValid() ? 0 : static_cast<int>(columns_.size());
+        return parent.isValid() ? 0 : static_cast<int>(filteredRows_.size());
     }
 
     QVariant ColumnSettingsModel::data(const QModelIndex& index, const int role) const {
         if (!index.isValid() || index.row() < 0) {
             return {};
         }
-        const auto row = static_cast<std::size_t>(index.row());
-        if (row >= columns_.size()) {
+        const auto row = sourceRowFromModelRow(index.row());
+        if (row < 0) {
             return {};
         }
-        const auto& column = columns_[row];
+        const auto& column = columns_[static_cast<std::size_t>(row)];
         switch (role) {
         case KeyRole:
             return QString::fromStdString(column.key);
@@ -45,7 +60,7 @@ namespace ssa::presentation {
         case WidthRole:
             return column.width;
         case ToggleEnabledRole:
-            return !column.visible || visibleCount() != 1;
+            return !column.visible || visibleCount() > 1;
         default:
             return {};
         }
@@ -71,41 +86,67 @@ namespace ssa::presentation {
         if (row < 0) {
             return false;
         }
-        const auto index = static_cast<std::size_t>(row);
-        if (index >= columns_.size()) {
+        const auto sourceRow = sourceRowFromModelRow(row);
+        if (sourceRow < 0) {
             return false;
         }
-        if (columns_[index].visible == visible) {
+        return setColumnVisibleBySourceRow(static_cast<std::size_t>(sourceRow), visible);
+    }
+
+    bool ColumnSettingsModel::setColumnVisibleBySourceRow(const std::size_t sourceRow,
+                                                        const bool visible) {
+        if (sourceRow >= columns_.size()) {
+            return false;
+        }
+        auto& column = columns_[sourceRow];
+        if (column.visible == visible) {
             return true;
         }
         const int previousVisibleCount = visibleCount();
         if (!visible && previousVisibleCount == 1) {
             return false;
         }
-        columns_[index].visible = visible;
+        column.visible = visible;
         visibleCount_ += visible ? 1 : -1;
-        emit dataChanged(this->index(row), this->index(row), {VisibleRole, ToggleEnabledRole});
-        if ((previousVisibleCount <= 1) != (visibleCount() <= 1)) {
+        const auto modelRow = modelRowFromSourceRow(sourceRow);
+        if (modelRow >= 0) {
+            emit dataChanged(this->index(modelRow), this->index(modelRow),
+                             {VisibleRole, ToggleEnabledRole});
+        }
+        if ((previousVisibleCount <= 1) != (visibleCount() <= 1) && rowCount() > 0) {
             emit dataChanged(this->index(0), this->index(rowCount() - 1), {ToggleEnabledRole});
         }
         emit changed();
         return true;
     }
 
+    std::vector<ColumnSettingsModel::ColumnItem>::iterator
+    ColumnSettingsModel::findColumn(const std::string_view key) {
+        return std::ranges::find_if(columns_, [&key](const ColumnItem& column) {
+            return column.key == key;
+        });
+    }
+
+    std::vector<ColumnSettingsModel::ColumnItem>::const_iterator
+    ColumnSettingsModel::findColumn(const std::string_view key) const {
+        return std::ranges::find_if(columns_, [&key](const ColumnItem& column) {
+            return column.key == key;
+        });
+    }
+
     bool ColumnSettingsModel::setColumnVisibleByKey(const QString& columnKey, const bool visible) {
         const auto key = columnKey.toStdString();
-        const auto item = std::ranges::find_if(
-            columns_, [&key](const ColumnItem& column) { return column.key == key; });
+        const auto item = findColumn(key);
         if (item == columns_.end()) {
             return false;
         }
-        return setColumnVisible(static_cast<int>(std::distance(columns_.begin(), item)), visible);
+        return setColumnVisibleBySourceRow(
+            static_cast<std::size_t>(std::distance(columns_.begin(), item)), visible);
     }
 
     void ColumnSettingsModel::setColumnWidth(const QString& columnKey, const int width) {
         const auto key = columnKey.toStdString();
-        const auto item = std::ranges::find_if(
-            columns_, [&key](const ColumnItem& column) { return column.key == key; });
+        const auto item = findColumn(key);
         if (item == columns_.end()) {
             return;
         }
@@ -118,7 +159,19 @@ namespace ssa::presentation {
         emit changed();
     }
 
+    void ColumnSettingsModel::setFilterText(const QString& filterText) {
+        const auto normalized = filterText.toLower().toStdString();
+        if (normalized == filterTextLower_) {
+            return;
+        }
+        beginResetModel();
+        filterTextLower_ = normalized;
+        rebuildFilteredRows();
+        endResetModel();
+    }
+
     void ColumnSettingsModel::resetDefaults() {
+        beginResetModel();
         visibleCount_ = 0;
         for (auto& column : columns_) {
             column.visible = column.defaultVisible;
@@ -127,17 +180,19 @@ namespace ssa::presentation {
                 ++visibleCount_;
             }
         }
-        emit dataChanged(index(0), index(rowCount() - 1),
-                         {VisibleRole, WidthRole, ToggleEnabledRole});
+        rebuildFilteredRows();
+        endResetModel();
         emit changed();
     }
 
     void ColumnSettingsModel::selectAll() {
+        beginResetModel();
         for (auto& column : columns_) {
             column.visible = true;
         }
         visibleCount_ = static_cast<int>(columns_.size());
-        emit dataChanged(index(0), index(rowCount() - 1), {VisibleRole, ToggleEnabledRole});
+        rebuildFilteredRows();
+        endResetModel();
         emit changed();
     }
 
@@ -167,8 +222,10 @@ namespace ssa::presentation {
             columns_.front().visible = true;
             visibleCount_ = 1;
         }
-        emit dataChanged(index(0), index(rowCount() - 1),
-                         {VisibleRole, WidthRole, ToggleEnabledRole});
+        if (rowCount() > 0) {
+            emit dataChanged(index(0), index(rowCount() - 1),
+                             {VisibleRole, WidthRole, ToggleEnabledRole});
+        }
         emit changed();
     }
 
@@ -194,8 +251,50 @@ namespace ssa::presentation {
         return visibleCount_;
     }
 
+    bool ColumnSettingsModel::matchesFilter(const ColumnItem& column) const {
+        if (filterTextLower_.empty()) {
+            return true;
+        }
+        return column.keyLower.find(filterTextLower_) != std::string::npos ||
+               column.labelLower.find(filterTextLower_) != std::string::npos;
+    }
+
+    int ColumnSettingsModel::sourceRowFromModelRow(const int modelRow) const {
+        if (modelRow < 0 || modelRow >= static_cast<int>(filteredRows_.size())) {
+            return -1;
+        }
+        return filteredRows_[static_cast<std::size_t>(modelRow)];
+    }
+
+    int ColumnSettingsModel::modelRowFromSourceRow(const std::size_t sourceRow) const {
+        if (sourceRow >= columns_.size()) {
+            return -1;
+        }
+        const int modelRow = sourceToModelRow_[sourceRow];
+        if (modelRow < 0) {
+            return -1;
+        }
+        return modelRow;
+    }
+
+    void ColumnSettingsModel::rebuildFilteredRows() {
+        filteredRows_.clear();
+        filteredRows_.reserve(columns_.size());
+        sourceToModelRow_.assign(columns_.size(), -1);
+        for (std::size_t idx = 0; idx < columns_.size(); ++idx) {
+            if (matchesFilter(columns_[idx])) {
+                sourceToModelRow_[idx] = static_cast<int>(filteredRows_.size());
+                filteredRows_.push_back(static_cast<int>(idx));
+            }
+        }
+    }
+
     void ColumnSettingsModel::emitRowChanged(const int row) {
-        const QModelIndex itemIndex = index(row);
+        const int modelRow = modelRowFromSourceRow(static_cast<std::size_t>(row));
+        if (modelRow < 0) {
+            return;
+        }
+        const QModelIndex itemIndex = index(modelRow);
         emit dataChanged(itemIndex, itemIndex, {WidthRole});
     }
 

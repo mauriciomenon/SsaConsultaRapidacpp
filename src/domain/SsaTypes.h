@@ -8,10 +8,61 @@
 #include <string>
 #include <string_view>
 #include <vector>
+#include <algorithm>
 
 namespace ssa::domain {
 
     inline constexpr std::string_view kScaSesSteExclusionSummary = "sem SCA/SES/STE";
+    inline constexpr int kMinPageSize = 10;
+    inline constexpr int kMaxPageSize = 500;
+    inline constexpr int kDefaultPageSize = 100;
+    inline constexpr int kMinDetailsPanelWidth = 280;
+    inline constexpr int kMaxDetailsPanelWidth = 680;
+    inline constexpr int kDefaultDetailsPanelWidth = 360;
+    inline constexpr std::string_view kStatusLastSortColumn = "numero_ssa";
+    inline constexpr bool kDefaultExcludeScaSesSte = true;
+
+    [[nodiscard]] inline int clampPageSize(const int value) {
+        return std::clamp(value, kMinPageSize, kMaxPageSize);
+    }
+
+    [[nodiscard]] inline int clampDetailsPanelWidth(const int value) {
+        return std::clamp(value, kMinDetailsPanelWidth, kMaxDetailsPanelWidth);
+    }
+
+    [[nodiscard]] inline bool requiresStatusLastSort(const std::string_view columnKey) {
+        return columnKey == kStatusLastSortColumn;
+    }
+
+    [[nodiscard]] inline std::vector<std::string> filterSummaryParts(
+        const std::string_view quickSector,
+        const bool excludeScaSesSte,
+        const std::map<std::string, std::string>& columnFilters) {
+        std::vector<std::string> parts;
+        if (!quickSector.empty()) {
+            parts.push_back(std::string("setor_executor:") + std::string(quickSector));
+        }
+        if (excludeScaSesSte) {
+            parts.push_back(std::string(kScaSesSteExclusionSummary));
+        }
+        for (const auto& [key, value] : columnFilters) {
+            parts.push_back(key + ":" + value);
+        }
+        return parts;
+    }
+
+    [[nodiscard]] inline std::string joinFilterSummary(
+        const std::vector<std::string>& parts,
+        const std::string_view separator = "  | ") {
+        std::string summary;
+        for (std::size_t i = 0; i < parts.size(); ++i) {
+            if (i > 0) {
+                summary += separator;
+            }
+            summary += parts[i];
+        }
+        return summary;
+    }
 
     class SsaId final {
       public:

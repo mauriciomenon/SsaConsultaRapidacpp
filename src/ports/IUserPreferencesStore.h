@@ -1,5 +1,7 @@
 #pragma once
 
+#include "domain/SsaTypes.h"
+
 #include <map>
 #include <string>
 #include <vector>
@@ -10,10 +12,11 @@ namespace ssa::ports {
         int schemaVersion{1};
         std::vector<std::string> visibleColumns;
         std::map<std::string, int> columnWidths;
-        int pageSize{100};
+        int pageSize{domain::kDefaultPageSize};
         std::string theme{"system"};
         std::string density{"normal"};
         bool detailsVisible{true};
+        int detailsPanelWidth{domain::kDefaultDetailsPanelWidth};
         std::string quickSector;
         bool excludeScaSesSte{true};
         std::map<std::string, std::string> columnFilters;

@@ -75,25 +75,30 @@ namespace {
             : snapshot_(std::move(initial)) {}
 
         ssa::ports::UserPreferencesSnapshot load() const override {
+            const std::scoped_lock lock(mutex_);
             return snapshot_;
         }
 
         void save(const ssa::ports::UserPreferencesSnapshot& snapshot) const override {
+            const std::scoped_lock lock(mutex_);
             snapshot_ = snapshot;
             ++saveCount_;
         }
 
         [[nodiscard]] ssa::ports::UserPreferencesSnapshot snapshot() const {
+            const std::scoped_lock lock(mutex_);
             return snapshot_;
         }
 
         [[nodiscard]] int saveCount() const {
+            const std::scoped_lock lock(mutex_);
             return saveCount_;
         }
 
       private:
         mutable ssa::ports::UserPreferencesSnapshot snapshot_;
         mutable int saveCount_{0};
+        mutable std::mutex mutex_;
     };
 
     class PresentationSmokeTest final : public QObject {
@@ -224,6 +229,7 @@ namespace {
             filters.addColumnFilter();
 
             QCOMPARE(filters.activeFilters().contains("situacao:APV"), true);
+            QCOMPARE(filters.activeFilterSummary().contains("situacao:APV"), true);
         }
 
         void reset_filters_restores_default_sca_ses_ste_exclusion() {
@@ -249,9 +255,9 @@ namespace {
 
             model.setTheme("dark");
 
+            QTRY_COMPARE_WITH_TIMEOUT(preferences->saveCount(), 1, 1000);
             QCOMPARE(model.theme(), QString("dark"));
             QCOMPARE(QString::fromStdString(preferences->snapshot().theme), QString("dark"));
-            QCOMPARE(preferences->saveCount(), 1);
         }
 
         void details_visibility_preference_is_saved() {
@@ -263,9 +269,24 @@ namespace {
 
             model.setDetailsVisible(false);
 
+            QTRY_COMPARE_WITH_TIMEOUT(preferences->saveCount(), 1, 1000);
             QCOMPARE(model.detailsVisible(), false);
             QCOMPARE(preferences->snapshot().detailsVisible, false);
-            QCOMPARE(preferences->saveCount(), 1);
+        }
+
+        void details_panel_width_preference_is_saved_and_clamped() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            auto preferences = std::make_shared<FakePreferences>();
+            ssa::presentation::MainViewModel model(service, commands, preferences);
+
+            model.setDetailsPanelWidth(620);
+            model.setDetailsPanelWidth(900);
+
+            QTRY_COMPARE_WITH_TIMEOUT(preferences->saveCount(), 1, 1000);
+            QCOMPARE(model.detailsPanelWidth(), 680);
+            QCOMPARE(preferences->snapshot().detailsPanelWidth, 680);
         }
 
         void density_preference_is_saved() {
@@ -277,10 +298,10 @@ namespace {
 
             model.setDensity("comfortable");
 
+            QTRY_COMPARE_WITH_TIMEOUT(preferences->saveCount(), 1, 1000);
             QCOMPARE(model.density(), QString("comfortable"));
             QCOMPARE(QString::fromStdString(preferences->snapshot().density),
                      QString("comfortable"));
-            QCOMPARE(preferences->saveCount(), 1);
         }
 
         void invalid_density_is_ignored() {

@@ -6,9 +6,10 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <QFile>
+#include <QDir>
 #include <QTemporaryDir>
+#include <QTemporaryFile>
 
-#include <chrono>
 #include <filesystem>
 #include <sqlite3.h>
 #include <string>
@@ -16,11 +17,12 @@
 namespace {
 
     std::filesystem::path createFixture() {
-        const auto suffix =
-            std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
-        const auto path =
-            std::filesystem::temp_directory_path() / ("ssa_cpp_fixture_" + suffix + ".sqlite");
-        std::filesystem::remove(path);
+        QTemporaryFile dbFile(
+            QDir::tempPath() + QStringLiteral("/ssa_cpp_fixture_XXXXXX.sqlite"));
+        dbFile.setAutoRemove(false);
+        REQUIRE(dbFile.open());
+        const auto path = std::filesystem::path(dbFile.fileName().toStdString());
+        dbFile.close();
 
         sqlite3* db = nullptr;
         REQUIRE(sqlite3_open(path.string().c_str(), &db) == SQLITE_OK);
@@ -124,6 +126,7 @@ TEST_CASE("json preferences store saves user preference snapshot") {
     snapshot.theme = "dark";
     snapshot.density = "compact";
     snapshot.detailsVisible = false;
+    snapshot.detailsPanelWidth = 520;
     snapshot.visibleColumns = {"numero_ssa", "situacao"};
     snapshot.columnWidths = {{"numero_ssa", 140}};
     snapshot.quickSector = "IEE3";
@@ -137,6 +140,7 @@ TEST_CASE("json preferences store saves user preference snapshot") {
     REQUIRE(loaded.theme == "dark");
     REQUIRE(loaded.density == "compact");
     REQUIRE_FALSE(loaded.detailsVisible);
+    REQUIRE(loaded.detailsPanelWidth == 520);
     REQUIRE(loaded.visibleColumns == std::vector<std::string>{"numero_ssa", "situacao"});
     REQUIRE(loaded.columnWidths.at("numero_ssa") == 140);
     REQUIRE(loaded.quickSector == "IEE3");

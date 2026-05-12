@@ -81,12 +81,13 @@ ApplicationWindow {
 
             ColumnLayout {
                 SplitView.minimumWidth: 720
-                SplitView.preferredWidth: 1040
+                SplitView.fillWidth: true
                 spacing: Theme.gap
 
                 FilterPanel {
                     Layout.fillWidth: true
-                    viewModel: root.vm
+                    filterViewModel: root.vm.filters
+                    onApplyRequested: root.vm.apply()
                 }
 
                 SsaTable {
@@ -98,8 +99,8 @@ ApplicationWindow {
 
             Loader {
                 SplitView.minimumWidth: root.vm.detailsVisible ? 280 : 0
-                SplitView.preferredWidth: root.vm.detailsVisible ? 360 : 0
-                SplitView.maximumWidth: root.vm.detailsVisible ? 520 : 0
+                SplitView.preferredWidth: root.vm.detailsVisible ? root.vm.detailsPanelWidth : 0
+                SplitView.maximumWidth: root.vm.detailsVisible ? 680 : 0
                 active: root.vm.detailsVisible
                 visible: root.vm.detailsVisible
 
