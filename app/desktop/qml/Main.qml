@@ -10,6 +10,8 @@ ApplicationWindow {
 
     width: 1420
     height: 860
+    minimumWidth: 1100
+    minimumHeight: 720
     visible: true
     title: "SSA Consulta Rapida"
     color: Theme.window
@@ -35,12 +37,13 @@ ApplicationWindow {
                 spacing: Theme.gap
 
                 Label {
+                    Layout.fillWidth: true
                     text: "SSA Consulta Rapida"
                     font.pixelSize: 18
                     font.bold: true
                     color: Theme.text
+                    elide: Text.ElideRight
                 }
-                Item { Layout.fillWidth: true }
                 ActionButton { text: "SAM"; onClicked: root.vm.commands.openSamHome() }
                 ActionButton { text: "Atualizar"; onClicked: root.vm.load() }
                 ActionButton { text: "Cancelar"; onClicked: root.vm.cancelCurrentRequest() }
@@ -58,6 +61,7 @@ ApplicationWindow {
             orientation: Qt.Horizontal
 
             ColumnLayout {
+                SplitView.minimumWidth: 720
                 SplitView.preferredWidth: 1040
                 spacing: Theme.gap
 
@@ -74,7 +78,9 @@ ApplicationWindow {
             }
 
             DetailsPanel {
+                SplitView.minimumWidth: 280
                 SplitView.preferredWidth: 360
+                SplitView.maximumWidth: 520
                 viewModel: root.vm.details
                 onOpenRequested: root.vm.openSelectedSsa()
             }

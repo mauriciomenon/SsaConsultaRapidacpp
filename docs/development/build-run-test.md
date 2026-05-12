@@ -52,5 +52,6 @@ ditto -c -k --sequesterRsrc --keepParent \
 QT_QPA_PLATFORM=offscreen \
   build/dev/ssa_consulta_rapida.app/Contents/MacOS/ssa_consulta_rapida \
   --db /Users/menon/git/SSA_Consulta_Rapida/data/ssas.db \
+  --screenshot /tmp/ssa-cpp-smoke.png \
   --smoke-exit-ms 1500
 ```

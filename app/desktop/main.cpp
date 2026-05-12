@@ -10,8 +10,10 @@
 #include <QCommandLineParser>
 #include <QFontDatabase>
 #include <QGuiApplication>
+#include <QImage>
 #include <QQmlApplicationEngine>
 #include <QQuickStyle>
+#include <QQuickWindow>
 #include <QTimer>
 #include <QVariant>
 
@@ -35,6 +37,8 @@ int main(int argc, char* argv[]) {
         QCommandLineOption(QStringList{"config-dir"}, "Configuration directory.", "path"));
     parser.addOption(QCommandLineOption(QStringList{"smoke-exit-ms"},
                                         "Exit automatically after N milliseconds.", "ms"));
+    parser.addOption(QCommandLineOption(QStringList{"screenshot"},
+                                        "Write the startup window screenshot and exit.", "path"));
     parser.process(app);
 
     const auto options = ssa::platform::StartupOptions::fromParser(parser);
@@ -53,6 +57,26 @@ int main(int argc, char* argv[]) {
         &engine, &QQmlApplicationEngine::objectCreationFailed, &app,
         [] { QCoreApplication::exit(1); }, Qt::QueuedConnection);
     engine.loadFromModule("SsaConsultaRapida", "Main");
+    if (parser.isSet("screenshot")) {
+        const QString screenshotPath = parser.value("screenshot");
+        QTimer::singleShot(1200, &app, [&engine, screenshotPath] {
+            if (engine.rootObjects().isEmpty()) {
+                QCoreApplication::exit(2);
+                return;
+            }
+            auto* window = qobject_cast<QQuickWindow*>(engine.rootObjects().first());
+            if (window == nullptr) {
+                QCoreApplication::exit(2);
+                return;
+            }
+            const QImage image = window->grabWindow();
+            if (image.isNull() || !image.save(screenshotPath)) {
+                QCoreApplication::exit(2);
+                return;
+            }
+            QCoreApplication::quit();
+        });
+    }
     if (parser.isSet("smoke-exit-ms")) {
         bool ok = false;
         const int delayMs = parser.value("smoke-exit-ms").toInt(&ok);

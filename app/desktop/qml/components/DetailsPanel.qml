@@ -34,6 +34,7 @@ Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true
+            visible: root.viewModel.fields.length > 0
 
             Column {
                 width: parent.width
@@ -60,6 +61,17 @@ Rectangle {
                     }
                 }
             }
+        }
+
+        Label {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            visible: root.viewModel.fields.length === 0
+            text: "Selecione uma SSA na tabela"
+            color: Theme.mutedText
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+            wrapMode: Text.Wrap
         }
     }
 }

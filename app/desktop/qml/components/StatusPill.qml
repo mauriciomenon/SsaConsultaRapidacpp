@@ -7,7 +7,7 @@ Rectangle {
     id: root
     required property var status
 
-    height: 32
+    Layout.preferredHeight: 32
     color: Theme.panel
     border.color: root.status.error.length > 0 ? Theme.danger : Theme.border
     radius: Theme.radius

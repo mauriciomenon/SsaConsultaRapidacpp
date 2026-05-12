@@ -7,7 +7,7 @@ Rectangle {
     id: root
     required property var viewModel
 
-    Layout.preferredHeight: 86
+    Layout.preferredHeight: 94
     color: Theme.panel
     border.color: Theme.border
     radius: Theme.radius
@@ -22,13 +22,14 @@ Rectangle {
             spacing: Theme.gap
 
             CheckBox {
+                Layout.preferredWidth: 170
                 text: "Excluir SCA/SES/STE"
                 checked: root.viewModel.filters.excludeClosedStatuses
                 onToggled: root.viewModel.filters.excludeClosedStatuses = checked
             }
             Label { text: "Executor:"; color: Theme.text }
             TextField {
-                Layout.preferredWidth: 120
+                Layout.preferredWidth: 130
                 implicitHeight: Theme.controlHeight
                 text: root.viewModel.filters.quickSector
                 onTextChanged: root.viewModel.filters.quickSector = text
@@ -37,7 +38,7 @@ Rectangle {
             Label { text: "Coluna:"; color: Theme.text }
             ComboBox {
                 id: columnBox
-                Layout.preferredWidth: 170
+                Layout.preferredWidth: 190
                 model: ["situacao", "setor_executor", "setor_emissor", "localizacao_codigo", "descricao_ssa", "derivada_de"]
                 onActivated: root.viewModel.filters.columnKey = currentText
             }
@@ -55,6 +56,7 @@ Rectangle {
 
         Label {
             Layout.fillWidth: true
+            Layout.preferredHeight: 20
             text: root.viewModel.filters.activeFilters.join("  |  ")
             color: Theme.mutedText
             elide: Text.ElideRight
