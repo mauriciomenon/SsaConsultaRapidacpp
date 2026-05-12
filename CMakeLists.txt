@@ -12,6 +12,19 @@ option(SSA_BUILD_TESTS "Build tests" ON)
 find_package(Qt6 6.6 REQUIRED COMPONENTS Concurrent Core Gui Qml Quick QuickControls2 Sql Test)
 find_package(SQLite3 REQUIRED)
 
+if(TARGET SQLite3::SQLite3)
+    set(SSA_SQLITE_TARGET SQLite3::SQLite3)
+elseif(TARGET SQLite::SQLite3)
+    set(SSA_SQLITE_TARGET SQLite::SQLite3)
+else()
+    add_library(ssa_sqlite3 UNKNOWN IMPORTED)
+    set_target_properties(ssa_sqlite3 PROPERTIES
+        IMPORTED_LOCATION "${SQLite3_LIBRARIES}"
+        INTERFACE_INCLUDE_DIRECTORIES "${SQLite3_INCLUDE_DIRS}"
+    )
+    set(SSA_SQLITE_TARGET ssa_sqlite3)
+endif()
+
 include(cmake/Dependencies.cmake)
 
 qt_standard_project_setup(REQUIRES 6.6)
@@ -32,7 +45,7 @@ add_library(ssa_infra STATIC
     src/infra/preferences/JsonUserPreferencesStore.cpp
 )
 target_include_directories(ssa_infra PUBLIC src)
-target_link_libraries(ssa_infra PUBLIC ssa_core SQLite3::SQLite3 Qt6::Core)
+target_link_libraries(ssa_infra PUBLIC ssa_core ${SSA_SQLITE_TARGET} Qt6::Core)
 
 add_library(ssa_presentation STATIC
     src/platform/DesktopExternalCommandPort.cpp
