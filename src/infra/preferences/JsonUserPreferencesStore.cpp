@@ -39,6 +39,7 @@ namespace ssa::infra::preferences {
         snapshot.pageSize = root.value("page_size").toInt(snapshot.pageSize);
         snapshot.theme =
             root.value("theme").toString(QString::fromStdString(snapshot.theme)).toStdString();
+        snapshot.detailsVisible = root.value("details_visible").toBool(snapshot.detailsVisible);
         snapshot.quickSector = root.value("quick_sector")
                                    .toString(QString::fromStdString(snapshot.quickSector))
                                    .toStdString();
@@ -91,6 +92,7 @@ namespace ssa::infra::preferences {
         root.insert("schema_version", snapshot.schemaVersion);
         root.insert("page_size", snapshot.pageSize);
         root.insert("theme", QString::fromStdString(snapshot.theme));
+        root.insert("details_visible", snapshot.detailsVisible);
         root.insert("visible_columns", visibleColumns);
         root.insert("column_widths", columnWidths);
         root.insert("quick_sector", QString::fromStdString(snapshot.quickSector));

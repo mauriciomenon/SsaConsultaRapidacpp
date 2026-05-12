@@ -108,6 +108,7 @@ TEST_CASE("json preferences store saves versioned gui state") {
     ssa::ports::UserPreferencesSnapshot snapshot;
     snapshot.pageSize = 50;
     snapshot.theme = "dark";
+    snapshot.detailsVisible = false;
     snapshot.visibleColumns = {"numero_ssa", "situacao"};
     snapshot.columnWidths = {{"numero_ssa", 140}};
     snapshot.quickSector = "IEE3";
@@ -119,6 +120,7 @@ TEST_CASE("json preferences store saves versioned gui state") {
 
     REQUIRE(loaded.pageSize == 50);
     REQUIRE(loaded.theme == "dark");
+    REQUIRE_FALSE(loaded.detailsVisible);
     REQUIRE(loaded.visibleColumns == std::vector<std::string>{"numero_ssa", "situacao"});
     REQUIRE(loaded.columnWidths.at("numero_ssa") == 140);
     REQUIRE(loaded.quickSector == "IEE3");

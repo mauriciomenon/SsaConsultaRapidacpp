@@ -1,3 +1,5 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -20,10 +22,16 @@ ApplicationWindow {
     Binding {
         target: Theme
         property: "dark"
-        value: root.vm.theme === "dark"
+        value: root.vm.theme === "dark" ||
+               (root.vm.theme === "system" &&
+                Application.styleHints.colorScheme === Qt.ColorScheme.Dark)
     }
 
     Component.onCompleted: root.vm.load()
+
+    function openPreferencesForSmoke() {
+        preferencesDialog.open()
+    }
 
     ColumnLayout {
         anchors.fill: parent
@@ -84,12 +92,17 @@ ApplicationWindow {
                 }
             }
 
-            DetailsPanel {
-                SplitView.minimumWidth: 280
-                SplitView.preferredWidth: 360
-                SplitView.maximumWidth: 520
-                viewModel: root.vm.details
-                onOpenRequested: root.vm.openSelectedSsa()
+            Loader {
+                SplitView.minimumWidth: root.vm.detailsVisible ? 280 : 0
+                SplitView.preferredWidth: root.vm.detailsVisible ? 360 : 0
+                SplitView.maximumWidth: root.vm.detailsVisible ? 520 : 0
+                active: root.vm.detailsVisible
+                visible: root.vm.detailsVisible
+
+                sourceComponent: DetailsPanel {
+                    viewModel: root.vm.details
+                    onOpenRequested: root.vm.openSelectedSsa()
+                }
             }
         }
 

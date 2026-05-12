@@ -158,7 +158,7 @@ namespace {
             auto preferences = std::make_shared<FakePreferences>(initial);
             ssa::presentation::MainViewModel model(service, commands, preferences);
 
-            model.columns()->setColumnVisible(2, false);
+            model.columns()->setColumnVisibleByKey("situacao", false);
             model.columns()->setColumnWidth("numero_ssa", 180);
             model.applyColumnSettings();
 
@@ -185,6 +185,20 @@ namespace {
             QCOMPARE(preferences->saveCount(), 1);
         }
 
+        void details_visibility_preference_is_saved() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            auto preferences = std::make_shared<FakePreferences>();
+            ssa::presentation::MainViewModel model(service, commands, preferences);
+
+            model.setDetailsVisible(false);
+
+            QCOMPARE(model.detailsVisible(), false);
+            QCOMPARE(preferences->snapshot().detailsVisible, false);
+            QCOMPARE(preferences->saveCount(), 1);
+        }
+
         void column_settings_discard_restores_applied_preferences() {
             ssa::ports::UserPreferencesSnapshot initial;
             initial.visibleColumns = {"numero_ssa", "situacao"};
@@ -196,7 +210,7 @@ namespace {
             auto preferences = std::make_shared<FakePreferences>(initial);
             ssa::presentation::MainViewModel model(service, commands, preferences);
 
-            model.columns()->setColumnVisible(2, false);
+            model.columns()->setColumnVisibleByKey("situacao", false);
             model.columns()->setColumnWidth("numero_ssa", 220);
             model.discardColumnSettings();
             model.applyColumnSettings();

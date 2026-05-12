@@ -31,6 +31,8 @@ architecture.
   models.
 - `ColumnSettingsModel` owns the editable presentation state for visible columns and widths.
 - `SsaTableModel` owns only the current page and column metadata exposed to QML.
+- Layout preferences such as detail panel visibility stay in presentation state and are persisted
+  through `IUserPreferencesStore`.
 - QML components bind to view models and do not parse search text, access SQLite, or normalize
   business terms.
 

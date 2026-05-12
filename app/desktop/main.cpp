@@ -41,6 +41,8 @@ int main(int argc, char* argv[]) {
                                         "Exit automatically after N milliseconds.", "ms"));
     parser.addOption(QCommandLineOption(QStringList{"screenshot"},
                                         "Write the startup window screenshot and exit.", "path"));
+    parser.addOption(QCommandLineOption(QStringList{"open-preferences"},
+                                        "Open preferences before screenshot smoke capture."));
     parser.process(app);
 
     const auto options = ssa::platform::StartupOptions::fromParser(parser);
@@ -61,7 +63,8 @@ int main(int argc, char* argv[]) {
     engine.loadFromModule("SsaConsultaRapida", "Main");
     if (parser.isSet("screenshot")) {
         const QString screenshotPath = parser.value("screenshot");
-        QTimer::singleShot(1200, &app, [&engine, screenshotPath] {
+        const bool openPreferences = parser.isSet("open-preferences");
+        QTimer::singleShot(1200, &app, [&engine, screenshotPath, openPreferences] {
             if (engine.rootObjects().isEmpty()) {
                 QCoreApplication::exit(2);
                 return;
@@ -70,6 +73,9 @@ int main(int argc, char* argv[]) {
             if (window == nullptr) {
                 QCoreApplication::exit(2);
                 return;
+            }
+            if (openPreferences) {
+                QMetaObject::invokeMethod(window, "openPreferencesForSmoke");
             }
             const QImage image = window->grabWindow();
             if (image.isNull() || !image.save(screenshotPath)) {

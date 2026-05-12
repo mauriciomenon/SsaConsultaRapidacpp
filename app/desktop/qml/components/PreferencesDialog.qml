@@ -8,14 +8,17 @@ import SsaConsultaRapida
 Dialog {
     id: root
     required property var viewModel
+    readonly property int hostAvailableWidth: ApplicationWindow.window ? ApplicationWindow.window.width : 1420
+    readonly property int hostAvailableHeight: ApplicationWindow.window ? ApplicationWindow.window.height : 860
 
     modal: true
     title: "Preferencias"
-    width: Math.min(680, ApplicationWindow.window.width - 80)
-    height: Math.min(620, ApplicationWindow.window.height - 80)
+    width: Math.max(560, Math.min(760, hostAvailableWidth - 80))
+    height: Math.max(460, Math.min(660, hostAvailableHeight - 80))
+    x: Math.round((hostAvailableWidth - width) / 2)
+    y: Math.round((hostAvailableHeight - height) / 2)
+    closePolicy: Popup.NoAutoClose
     standardButtons: Dialog.NoButton
-    onOpened: root.viewModel.discardColumnSettings()
-    onClosed: root.viewModel.discardColumnSettings()
 
     background: Rectangle {
         color: Theme.panel
@@ -37,18 +40,33 @@ Dialog {
                 Layout.preferredWidth: 90
             }
             ComboBox {
+                readonly property var themeOptions: ["system", "light", "dark"]
+
                 Layout.preferredWidth: 160
-                model: ["system", "light", "dark"]
-                currentIndex: root.viewModel.theme === "dark" ? 2 :
-                              root.viewModel.theme === "light" ? 1 : 0
+                model: themeOptions
+                currentIndex: Math.max(0, themeOptions.indexOf(root.viewModel.theme))
                 onActivated: root.viewModel.theme = currentText
             }
             Label {
                 Layout.fillWidth: true
-                text: "Colunas visiveis e larguras"
+                text: "Aparencia e exibicao"
                 color: Theme.mutedText
                 elide: Text.ElideRight
             }
+        }
+
+        CheckBox {
+            Layout.fillWidth: true
+            text: "Mostrar painel de detalhes"
+            checked: root.viewModel.detailsVisible
+            onToggled: root.viewModel.detailsVisible = checked
+        }
+
+        TextField {
+            id: columnSearch
+            Layout.fillWidth: true
+            placeholderText: "Filtrar colunas por nome ou chave"
+            selectByMouse: true
         }
 
         Rectangle {
@@ -61,6 +79,7 @@ Dialog {
 
             ListView {
                 id: columnList
+                readonly property string filterText: columnSearch.text.toLowerCase()
                 anchors.fill: parent
                 anchors.margins: 1
                 model: root.viewModel.columns
@@ -72,11 +91,16 @@ Dialog {
                     required property string columnKey
                     required property string columnLabel
                     required property bool columnVisible
+                    required property bool columnToggleEnabled
                     required property int columnWidth
+                    readonly property bool matchesFilter: columnList.filterText.length === 0 ||
+                        columnKey.toLowerCase().indexOf(columnList.filterText) >= 0 ||
+                        columnLabel.toLowerCase().indexOf(columnList.filterText) >= 0
 
                     width: columnList.width
-                    height: 38
-                    color: index % 2 === 0 ? Theme.panel : Theme.rowAlt
+                    height: matchesFilter ? 38 : 0
+                    visible: matchesFilter
+                    color: Theme.panel
 
                     RowLayout {
                         anchors.fill: parent
@@ -86,7 +110,9 @@ Dialog {
 
                         CheckBox {
                             checked: columnDelegate.columnVisible
-                            onToggled: root.viewModel.columns.setColumnVisible(columnDelegate.index, checked)
+                            enabled: columnDelegate.columnToggleEnabled
+                            onToggled: root.viewModel.columns.setColumnVisibleByKey(
+                                columnDelegate.columnKey, checked)
                         }
                         Label {
                             Layout.preferredWidth: 210
@@ -101,8 +127,9 @@ Dialog {
                             elide: Text.ElideRight
                         }
                         SpinBox {
-                            from: 80
-                            to: 520
+                            id: widthSpin
+                            from: root.viewModel.columns.minColumnWidth
+                            to: root.viewModel.columns.maxColumnWidth
                             stepSize: 10
                             value: columnDelegate.columnWidth
                             onValueModified: root.viewModel.columns.setColumnWidth(columnDelegate.columnKey, value)
@@ -116,17 +143,23 @@ Dialog {
             Layout.fillWidth: true
             spacing: Theme.gap
 
-            ActionButton { text: "Todas"; onClicked: root.viewModel.columns.selectAll() }
-            ActionButton { text: "Padrao"; onClicked: root.viewModel.resetColumnSettings() }
+            ActionButton { text: "Selecionar tudo"; onClicked: root.viewModel.columns.selectAll() }
+            ActionButton { text: "Restaurar colunas"; onClicked: root.viewModel.resetColumnSettings() }
             Item { Layout.fillWidth: true }
             ActionButton {
-                text: "Aplicar"
+                text: "Salvar colunas"
                 onClicked: {
                     root.viewModel.applyColumnSettings()
                     root.close()
                 }
             }
-            ActionButton { text: "Fechar"; onClicked: root.close() }
+            ActionButton {
+                text: "Descartar colunas"
+                onClicked: {
+                    root.viewModel.discardColumnSettings()
+                    root.close()
+                }
+            }
         }
     }
 }

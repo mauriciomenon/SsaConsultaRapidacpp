@@ -69,6 +69,19 @@ namespace ssa::presentation {
         emit preferencesChanged();
     }
 
+    bool MainViewModel::detailsVisible() const {
+        return detailsVisible_;
+    }
+
+    void MainViewModel::setDetailsVisible(const bool value) {
+        if (detailsVisible_ == value) {
+            return;
+        }
+        detailsVisible_ = value;
+        savePreferences();
+        emit preferencesChanged();
+    }
+
     int MainViewModel::pageIndex() const {
         return static_cast<int>(pageIndex_ + 1);
     }
@@ -253,6 +266,7 @@ namespace ssa::presentation {
             visibleColumns_ = snapshot.visibleColumns;
         }
         theme_ = QString::fromStdString(snapshot.theme);
+        detailsVisible_ = snapshot.detailsVisible;
         columns_.applyPreferences(visibleColumns_, snapshot.columnWidths);
         visibleColumns_ = columns_.visibleKeys();
         columnWidths_ = columns_.columnWidths();
@@ -271,6 +285,7 @@ namespace ssa::presentation {
         snapshot.columnWidths = columnWidths_;
         snapshot.pageSize = static_cast<int>(pageSize_);
         snapshot.theme = theme_.toStdString();
+        snapshot.detailsVisible = detailsVisible_;
         snapshot.quickSector = filters_.quickSector().trimmed().toStdString();
         snapshot.excludeClosedStatuses = filters_.excludeClosedStatuses();
         snapshot.columnFilters = filters_.columnFilters();

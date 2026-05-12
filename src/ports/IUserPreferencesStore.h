@@ -12,6 +12,7 @@ namespace ssa::ports {
         std::map<std::string, int> columnWidths;
         int pageSize{100};
         std::string theme{"system"};
+        bool detailsVisible{true};
         std::string quickSector;
         bool excludeClosedStatuses{true};
         std::map<std::string, std::string> columnFilters;

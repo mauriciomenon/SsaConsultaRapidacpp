@@ -11,6 +11,8 @@ namespace ssa::presentation {
 
     class ColumnSettingsModel final : public QAbstractListModel {
         Q_OBJECT
+        Q_PROPERTY(int minColumnWidth READ minColumnWidth CONSTANT)
+        Q_PROPERTY(int maxColumnWidth READ maxColumnWidth CONSTANT)
 
       public:
         enum Role {
@@ -18,6 +20,7 @@ namespace ssa::presentation {
             LabelRole,
             VisibleRole,
             WidthRole,
+            ToggleEnabledRole,
         };
 
         explicit ColumnSettingsModel(QObject* parent = nullptr);
@@ -25,8 +28,11 @@ namespace ssa::presentation {
         [[nodiscard]] int rowCount(const QModelIndex& parent = QModelIndex()) const override;
         [[nodiscard]] QVariant data(const QModelIndex& index, int role) const override;
         [[nodiscard]] QHash<int, QByteArray> roleNames() const override;
+        [[nodiscard]] int minColumnWidth() const;
+        [[nodiscard]] int maxColumnWidth() const;
 
-        Q_INVOKABLE void setColumnVisible(int row, bool visible);
+        Q_INVOKABLE bool setColumnVisible(int row, bool visible);
+        Q_INVOKABLE bool setColumnVisibleByKey(const QString& columnKey, bool visible);
         Q_INVOKABLE void setColumnWidth(const QString& columnKey, int width);
         Q_INVOKABLE void resetDefaults();
         Q_INVOKABLE void selectAll();
@@ -53,6 +59,7 @@ namespace ssa::presentation {
         void emitRowChanged(int row);
 
         std::vector<ColumnItem> columns_;
+        int visibleCount_{0};
     };
 
 } // namespace ssa::presentation

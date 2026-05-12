@@ -6,12 +6,19 @@
 #include <set>
 
 namespace ssa::presentation {
+    namespace {
+        constexpr int kMinColumnWidth = 80;
+        constexpr int kMaxColumnWidth = 520;
+    } // namespace
 
     ColumnSettingsModel::ColumnSettingsModel(QObject* parent) : QAbstractListModel(parent) {
         for (const auto& column : domain::ColumnCatalog::all()) {
             columns_.push_back(ColumnItem{column.key, column.label, column.defaultVisible,
                                           column.defaultVisible, column.defaultWidth,
                                           column.defaultWidth});
+            if (column.defaultVisible) {
+                ++visibleCount_;
+            }
         }
     }
 
@@ -37,6 +44,8 @@ namespace ssa::presentation {
             return column.visible;
         case WidthRole:
             return column.width;
+        case ToggleEnabledRole:
+            return !column.visible || visibleCount() != 1;
         default:
             return {};
         }
@@ -46,23 +55,51 @@ namespace ssa::presentation {
         return {{KeyRole, "columnKey"},
                 {LabelRole, "columnLabel"},
                 {VisibleRole, "columnVisible"},
-                {WidthRole, "columnWidth"}};
+                {WidthRole, "columnWidth"},
+                {ToggleEnabledRole, "columnToggleEnabled"}};
     }
 
-    void ColumnSettingsModel::setColumnVisible(const int row, const bool visible) {
+    int ColumnSettingsModel::minColumnWidth() const {
+        return kMinColumnWidth;
+    }
+
+    int ColumnSettingsModel::maxColumnWidth() const {
+        return kMaxColumnWidth;
+    }
+
+    bool ColumnSettingsModel::setColumnVisible(const int row, const bool visible) {
         if (row < 0) {
-            return;
+            return false;
         }
         const auto index = static_cast<std::size_t>(row);
-        if (index >= columns_.size() || columns_[index].visible == visible) {
-            return;
+        if (index >= columns_.size()) {
+            return false;
         }
-        if (!visible && visibleCount() == 1) {
-            return;
+        if (columns_[index].visible == visible) {
+            return true;
+        }
+        const int previousVisibleCount = visibleCount();
+        if (!visible && previousVisibleCount == 1) {
+            return false;
         }
         columns_[index].visible = visible;
-        emitRowChanged(row);
+        visibleCount_ += visible ? 1 : -1;
+        emit dataChanged(this->index(row), this->index(row), {VisibleRole, ToggleEnabledRole});
+        if ((previousVisibleCount <= 1) != (visibleCount() <= 1)) {
+            emit dataChanged(this->index(0), this->index(rowCount() - 1), {ToggleEnabledRole});
+        }
         emit changed();
+        return true;
+    }
+
+    bool ColumnSettingsModel::setColumnVisibleByKey(const QString& columnKey, const bool visible) {
+        const auto key = columnKey.toStdString();
+        const auto item = std::ranges::find_if(
+            columns_, [&key](const ColumnItem& column) { return column.key == key; });
+        if (item == columns_.end()) {
+            return false;
+        }
+        return setColumnVisible(static_cast<int>(std::distance(columns_.begin(), item)), visible);
     }
 
     void ColumnSettingsModel::setColumnWidth(const QString& columnKey, const int width) {
@@ -72,7 +109,7 @@ namespace ssa::presentation {
         if (item == columns_.end()) {
             return;
         }
-        const int bounded = std::clamp(width, 80, 520);
+        const int bounded = std::clamp(width, kMinColumnWidth, kMaxColumnWidth);
         if (item->width == bounded) {
             return;
         }
@@ -82,11 +119,16 @@ namespace ssa::presentation {
     }
 
     void ColumnSettingsModel::resetDefaults() {
+        visibleCount_ = 0;
         for (auto& column : columns_) {
             column.visible = column.defaultVisible;
             column.width = column.defaultWidth;
+            if (column.visible) {
+                ++visibleCount_;
+            }
         }
-        emit dataChanged(index(0), index(rowCount() - 1));
+        emit dataChanged(index(0), index(rowCount() - 1),
+                         {VisibleRole, WidthRole, ToggleEnabledRole});
         emit changed();
     }
 
@@ -94,7 +136,8 @@ namespace ssa::presentation {
         for (auto& column : columns_) {
             column.visible = true;
         }
-        emit dataChanged(index(0), index(rowCount() - 1), {VisibleRole});
+        visibleCount_ = static_cast<int>(columns_.size());
+        emit dataChanged(index(0), index(rowCount() - 1), {VisibleRole, ToggleEnabledRole});
         emit changed();
     }
 
@@ -109,13 +152,23 @@ namespace ssa::presentation {
             }
         }
 
+        visibleCount_ = 0;
         for (auto& column : columns_) {
             column.visible = visible.contains(column.key);
+            if (column.visible) {
+                ++visibleCount_;
+            }
             const auto width = columnWidths.find(column.key);
-            column.width = width == columnWidths.end() ? column.defaultWidth
-                                                       : std::clamp(width->second, 80, 520);
+            column.width = width == columnWidths.end()
+                               ? column.defaultWidth
+                               : std::clamp(width->second, kMinColumnWidth, kMaxColumnWidth);
         }
-        emit dataChanged(index(0), index(rowCount() - 1));
+        if (visibleCount() == 0 && !columns_.empty()) {
+            columns_.front().visible = true;
+            visibleCount_ = 1;
+        }
+        emit dataChanged(index(0), index(rowCount() - 1),
+                         {VisibleRole, WidthRole, ToggleEnabledRole});
         emit changed();
     }
 
@@ -138,13 +191,12 @@ namespace ssa::presentation {
     }
 
     int ColumnSettingsModel::visibleCount() const {
-        return static_cast<int>(std::ranges::count_if(
-            columns_, [](const ColumnItem& column) { return column.visible; }));
+        return visibleCount_;
     }
 
     void ColumnSettingsModel::emitRowChanged(const int row) {
         const QModelIndex itemIndex = index(row);
-        emit dataChanged(itemIndex, itemIndex);
+        emit dataChanged(itemIndex, itemIndex, {WidthRole});
     }
 
 } // namespace ssa::presentation

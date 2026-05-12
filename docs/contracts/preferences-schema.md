@@ -9,6 +9,7 @@ Current fields:
 - `schema_version`: integer.
 - `page_size`: integer from 10 to 500.
 - `theme`: `system`, `light`, or `dark`.
+- `details_visible`: boolean controlling the right details panel.
 - `visible_columns`: ordered list of column keys.
 - `column_widths`: object keyed by column key with integer widths.
 - `quick_sector`: string used by the executor shortcut filter.
@@ -22,5 +23,6 @@ Current fields:
 - Invalid files must fail clearly at the persistence boundary.
 - Column widths are clamped by the presentation model to the supported UI range.
 - Visible column preferences must be reconciled against `ColumnCatalog`.
-- `system` theme is persisted as a stable value even while the POC maps it to the light token set.
+- `system` theme is persisted as a stable value and follows the platform color scheme when Qt
+  exposes it.
 - Future migrations require an ADR.
