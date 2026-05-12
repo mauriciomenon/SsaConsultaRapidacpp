@@ -1,3 +1,5 @@
+#include "domain/SsaTypes.h"
+#include "presentation/FilterPanelViewModel.h"
 #include "presentation/MainViewModel.h"
 
 #include <QSignalSpy>
@@ -12,8 +14,9 @@ namespace {
 
     class FakeRepository final : public ssa::ports::ISsaRepository {
       public:
-        explicit FakeRepository(std::chrono::milliseconds delay = std::chrono::milliseconds{0})
-            : delay_(delay) {}
+        explicit FakeRepository(std::chrono::milliseconds delay = std::chrono::milliseconds{0},
+                                std::size_t totalRows = 1)
+            : delay_(delay), totalRows_(totalRows) {}
 
         ssa::domain::SsaPageResult page(const ssa::domain::SsaPageRequest& request) const override {
             if (delay_.count() > 0) {
@@ -28,7 +31,7 @@ namespace {
             record.values["situacao"] = "APV";
             record.values["descricao_ssa"] =
                 request.searchText.empty() ? "Inicial" : request.searchText;
-            return {{record}, 1, request.pageIndex, request.pageSize};
+            return {{record}, totalRows_, request.pageIndex, request.pageSize};
         }
 
         std::size_t count(const ssa::domain::SsaPageRequest&) const override {
@@ -51,6 +54,7 @@ namespace {
 
       private:
         std::chrono::milliseconds delay_;
+        std::size_t totalRows_;
         mutable std::mutex mutex_;
         mutable std::vector<ssa::domain::SsaPageRequest> requests_;
     };
@@ -132,6 +136,26 @@ namespace {
             QCOMPARE(model.sortColumnKey(), QString("situacao"));
         }
 
+        void next_page_reaches_final_page() {
+            auto repository =
+                std::make_shared<FakeRepository>(std::chrono::milliseconds{0}, std::size_t{21});
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            ssa::presentation::MainViewModel model(service, commands);
+
+            model.setPageSize(10);
+            QTRY_COMPARE_WITH_TIMEOUT(model.pageCount(), 3, 1000);
+            model.nextPage();
+            QTRY_COMPARE_WITH_TIMEOUT(model.pageNumber(), 2, 1000);
+            model.nextPage();
+            QTRY_COMPARE_WITH_TIMEOUT(model.pageNumber(), 3, 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{3}, 1000);
+
+            QCOMPARE(model.pageNumber(), 3);
+            QCOMPARE(model.pageCount(), 3);
+            QCOMPARE(repository->requests().back().pageIndex, std::size_t{2});
+        }
+
         void cancel_marks_current_request_as_stale() {
             auto repository = std::make_shared<FakeRepository>(std::chrono::milliseconds{80});
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
@@ -171,6 +195,51 @@ namespace {
             QCOMPARE(model.tableModel()->columnWidth(0), 180);
         }
 
+        void column_width_update_does_not_reload_query() {
+            ssa::ports::UserPreferencesSnapshot initial;
+            initial.visibleColumns = {"numero_ssa", "situacao"};
+            initial.columnWidths = {{"numero_ssa", 140}, {"situacao", 160}};
+
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            auto preferences = std::make_shared<FakePreferences>(initial);
+            ssa::presentation::MainViewModel model(service, commands, preferences);
+
+            model.load();
+            QTRY_COMPARE_WITH_TIMEOUT(model.tableModel()->rowCount(), 1, 1000);
+            model.columns()->setColumnWidth("numero_ssa", 220);
+            model.applyColumnSettings();
+
+            QCOMPARE(repository->requests().size(), std::size_t{1});
+            QCOMPARE(model.tableModel()->columnWidth(0), 220);
+            QCOMPARE(preferences->snapshot().columnWidths.at("numero_ssa"), 220);
+        }
+
+        void column_filter_summary_uses_contains_marker() {
+            ssa::presentation::FilterPanelViewModel filters;
+
+            filters.setColumnKey("situacao");
+            filters.setColumnValue("APV");
+            filters.addColumnFilter();
+
+            QCOMPARE(filters.activeFilters().contains("situacao:APV"), true);
+        }
+
+        void reset_filters_restores_default_sca_ses_ste_exclusion() {
+            ssa::presentation::FilterPanelViewModel filters;
+
+            filters.setColumnKey("setor_executor");
+            filters.resetFilters();
+
+            QCOMPARE(filters.columnKey(), QString("situacao"));
+            QCOMPARE(filters.excludeScaSesSte(), true);
+            QCOMPARE(filters.activeFilters().contains(
+                         QString::fromUtf8(ssa::domain::kScaSesSteExclusionSummary.data(),
+                                           ssa::domain::kScaSesSteExclusionSummary.size())),
+                     true);
+        }
+
         void theme_preference_is_saved() {
             auto repository = std::make_shared<FakeRepository>();
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
@@ -199,6 +268,34 @@ namespace {
             QCOMPARE(preferences->saveCount(), 1);
         }
 
+        void density_preference_is_saved() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            auto preferences = std::make_shared<FakePreferences>();
+            ssa::presentation::MainViewModel model(service, commands, preferences);
+
+            model.setDensity("comfortable");
+
+            QCOMPARE(model.density(), QString("comfortable"));
+            QCOMPARE(QString::fromStdString(preferences->snapshot().density),
+                     QString("comfortable"));
+            QCOMPARE(preferences->saveCount(), 1);
+        }
+
+        void invalid_density_is_ignored() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            auto preferences = std::make_shared<FakePreferences>();
+            ssa::presentation::MainViewModel model(service, commands, preferences);
+
+            model.setDensity("wide");
+
+            QCOMPARE(model.density(), QString("normal"));
+            QCOMPARE(preferences->saveCount(), 0);
+        }
+
         void column_settings_discard_restores_applied_preferences() {
             ssa::ports::UserPreferencesSnapshot initial;
             initial.visibleColumns = {"numero_ssa", "situacao"};
@@ -215,9 +312,7 @@ namespace {
             model.discardColumnSettings();
             model.applyColumnSettings();
 
-            QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{1}, 1000);
-            const auto request = repository->requests().back();
-            QCOMPARE(request.visibleColumns.size(), std::size_t{2});
+            QCOMPARE(repository->requests().size(), std::size_t{0});
             QCOMPARE(preferences->snapshot().columnWidths.at("numero_ssa"), 140);
         }
     };

@@ -39,20 +39,25 @@ namespace ssa::infra::preferences {
         snapshot.pageSize = root.value("page_size").toInt(snapshot.pageSize);
         snapshot.theme =
             root.value("theme").toString(QString::fromStdString(snapshot.theme)).toStdString();
+        snapshot.density =
+            root.value("density").toString(QString::fromStdString(snapshot.density)).toStdString();
         snapshot.detailsVisible = root.value("details_visible").toBool(snapshot.detailsVisible);
         snapshot.quickSector = root.value("quick_sector")
                                    .toString(QString::fromStdString(snapshot.quickSector))
                                    .toStdString();
-        snapshot.excludeClosedStatuses =
-            root.value("exclude_closed_statuses").toBool(snapshot.excludeClosedStatuses);
+        snapshot.excludeScaSesSte =
+            root.value("exclude_sca_ses_ste").toBool(snapshot.excludeScaSesSte);
 
         const QJsonArray visibleColumns = root.value("visible_columns").toArray();
         if (!visibleColumns.isEmpty()) {
-            snapshot.visibleColumns.clear();
+            std::vector<std::string> parsedColumns;
             for (const auto& value : visibleColumns) {
                 if (value.isString()) {
-                    snapshot.visibleColumns.push_back(value.toString().toStdString());
+                    parsedColumns.push_back(value.toString().toStdString());
                 }
+            }
+            if (!parsedColumns.empty()) {
+                snapshot.visibleColumns = std::move(parsedColumns);
             }
         }
 
@@ -92,11 +97,12 @@ namespace ssa::infra::preferences {
         root.insert("schema_version", snapshot.schemaVersion);
         root.insert("page_size", snapshot.pageSize);
         root.insert("theme", QString::fromStdString(snapshot.theme));
+        root.insert("density", QString::fromStdString(snapshot.density));
         root.insert("details_visible", snapshot.detailsVisible);
         root.insert("visible_columns", visibleColumns);
         root.insert("column_widths", columnWidths);
         root.insert("quick_sector", QString::fromStdString(snapshot.quickSector));
-        root.insert("exclude_closed_statuses", snapshot.excludeClosedStatuses);
+        root.insert("exclude_sca_ses_ste", snapshot.excludeScaSesSte);
         root.insert("column_filters", columnFilters);
 
         QFile output(QString::fromStdString(path_.string()));

@@ -129,6 +129,23 @@ namespace ssa::domain {
         return result;
     }
 
+    std::vector<std::string> ColumnCatalog::filterColumnKeys() {
+        constexpr std::array<std::string_view, 6> candidates{"situacao",      "setor_executor",
+                                                             "setor_emissor", "localizacao_codigo",
+                                                             "descricao_ssa", "derivada_de"};
+        std::vector<std::string> result;
+        for (const auto key : candidates) {
+            if (contains(key)) {
+                result.emplace_back(key);
+            }
+        }
+        return result;
+    }
+
+    std::string ColumnCatalog::defaultFilterColumnKey() {
+        return "situacao";
+    }
+
     std::optional<ColumnDef> ColumnCatalog::find(const std::string_view key) {
         const auto it = std::ranges::find_if(
             kColumns, [key](const ColumnDef& column) { return column.key == key; });

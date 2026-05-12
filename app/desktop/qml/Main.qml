@@ -61,7 +61,11 @@ ApplicationWindow {
                 ActionButton { text: "SAM"; onClicked: root.vm.commands.openSamHome() }
                 ActionButton { text: "Atualizar"; onClicked: root.vm.load() }
                 ActionButton { text: "Preferencias"; onClicked: preferencesDialog.open() }
-                ActionButton { text: "Cancelar"; onClicked: root.vm.cancelCurrentRequest() }
+                ActionButton {
+                    text: "Cancelar"
+                    enabled: root.vm.status.loading
+                    onClicked: root.vm.cancelCurrentRequest()
+                }
             }
         }
 
@@ -101,6 +105,7 @@ ApplicationWindow {
 
                 sourceComponent: DetailsPanel {
                     viewModel: root.vm.details
+                    density: root.vm.density
                     onOpenRequested: root.vm.openSelectedSsa()
                 }
             }

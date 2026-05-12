@@ -28,9 +28,10 @@ namespace ssa::presentation {
         Q_PROPERTY(ColumnSettingsModel* columns READ columns CONSTANT)
         Q_PROPERTY(SsaTableModel* tableModel READ tableModel CONSTANT)
         Q_PROPERTY(QString theme READ theme WRITE setTheme NOTIFY preferencesChanged)
+        Q_PROPERTY(QString density READ density WRITE setDensity NOTIFY preferencesChanged)
         Q_PROPERTY(bool detailsVisible READ detailsVisible WRITE setDetailsVisible NOTIFY
                        preferencesChanged)
-        Q_PROPERTY(int pageIndex READ pageIndex NOTIFY pageChanged)
+        Q_PROPERTY(int pageNumber READ pageNumber NOTIFY pageChanged)
         Q_PROPERTY(int pageCount READ pageCount NOTIFY pageChanged)
         Q_PROPERTY(int totalRows READ totalRows NOTIFY pageChanged)
         Q_PROPERTY(int pageSize READ pageSize WRITE setPageSize NOTIFY pageChanged)
@@ -52,9 +53,11 @@ namespace ssa::presentation {
         [[nodiscard]] SsaTableModel* tableModel();
         [[nodiscard]] QString theme() const;
         void setTheme(const QString& value);
+        [[nodiscard]] QString density() const;
+        void setDensity(const QString& value);
         [[nodiscard]] bool detailsVisible() const;
         void setDetailsVisible(bool value);
-        [[nodiscard]] int pageIndex() const;
+        [[nodiscard]] int pageNumber() const;
         [[nodiscard]] int pageCount() const;
         [[nodiscard]] int totalRows() const;
         [[nodiscard]] int pageSize() const;
@@ -92,6 +95,7 @@ namespace ssa::presentation {
         std::vector<std::string> visibleColumns_;
         std::map<std::string, int> columnWidths_;
         QString theme_{"system"};
+        QString density_{"normal"};
         bool detailsVisible_{true};
         SearchViewModel search_;
         FilterPanelViewModel filters_;

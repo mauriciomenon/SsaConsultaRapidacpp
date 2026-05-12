@@ -144,7 +144,7 @@ namespace ssa::query {
                 appendColumnTerms(where, bindings, "setor_executor", {term}, hasWhere);
             }
 
-            if (request.excludeClosedStatuses) {
+            if (request.excludeScaSesSte) {
                 where << (hasWhere ? " AND " : " WHERE ");
                 where << "UPPER(COALESCE(\"situacao\", '')) NOT IN ('SCA', 'SES', 'STE')";
             }

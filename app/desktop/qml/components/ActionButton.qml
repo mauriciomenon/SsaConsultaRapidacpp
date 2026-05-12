@@ -8,13 +8,13 @@ Button {
     padding: 8
 
     background: Rectangle {
-        color: control.down ? "#174f86" : Theme.accent
+        color: !control.enabled ? Theme.border : (control.down ? "#174f86" : Theme.accent)
         radius: Theme.radius
     }
 
     contentItem: Text {
         text: control.text
-        color: Theme.accentText
+        color: control.enabled ? Theme.accentText : Theme.mutedText
         horizontalAlignment: Text.AlignHCenter
         verticalAlignment: Text.AlignVCenter
         elide: Text.ElideRight

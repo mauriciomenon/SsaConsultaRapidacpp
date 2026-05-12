@@ -7,6 +7,11 @@ import SsaConsultaRapida
 Rectangle {
     id: root
     required property var viewModel
+    readonly property bool compactDensity: root.viewModel.density === "compact"
+    readonly property bool comfortableDensity: root.viewModel.density === "comfortable"
+    readonly property int headerHeight: compactDensity ? 28 : (comfortableDensity ? 38 : 32)
+    readonly property int rowHeight: compactDensity ? 24 : (comfortableDensity ? 36 : 30)
+    readonly property int textSize: compactDensity ? 11 : (comfortableDensity ? 13 : 12)
 
     color: Theme.panel
     border.color: Theme.border
@@ -21,7 +26,7 @@ Rectangle {
         Flickable {
             id: header
             Layout.fillWidth: true
-            Layout.preferredHeight: 32
+            Layout.preferredHeight: root.headerHeight
             contentWidth: headerRow.width
             clip: true
             interactive: false
@@ -51,7 +56,7 @@ Rectangle {
                                    : "")
                             color: Theme.text
                             font.bold: true
-                            font.pixelSize: 12
+                            font.pixelSize: root.textSize
                             verticalAlignment: Text.AlignVCenter
                             elide: Text.ElideRight
                         }
@@ -82,7 +87,7 @@ Rectangle {
                 required property string display
 
                 implicitWidth: root.viewModel.tableModel.columnWidth(column)
-                implicitHeight: 30
+                implicitHeight: root.rowHeight
                 color: row % 2 === 0 ? Theme.panel : Theme.rowAlt
                 border.color: "#dde4ec"
 
@@ -94,7 +99,7 @@ Rectangle {
                     color: Theme.text
                     verticalAlignment: Text.AlignVCenter
                     elide: Text.ElideRight
-                    font.pixelSize: 12
+                    font.pixelSize: root.textSize
                 }
 
                 MouseArea {

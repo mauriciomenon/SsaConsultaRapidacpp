@@ -1,3 +1,5 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -6,6 +8,12 @@ import SsaConsultaRapida
 Rectangle {
     id: root
     required property var viewModel
+    property string density: "normal"
+    readonly property bool compactDensity: density === "compact"
+    readonly property bool comfortableDensity: density === "comfortable"
+    readonly property int titleTextSize: compactDensity ? 14 : (comfortableDensity ? 18 : 16)
+    readonly property int labelTextSize: compactDensity ? 10 : (comfortableDensity ? 12 : 11)
+    readonly property int valueTextSize: compactDensity ? 11 : (comfortableDensity ? 14 : 12)
     signal openRequested()
 
     color: Theme.panel
@@ -15,7 +23,7 @@ Rectangle {
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: Theme.gap
-        spacing: Theme.gap
+        spacing: root.compactDensity ? 6 : Theme.gap
 
         RowLayout {
             Layout.fillWidth: true
@@ -24,7 +32,7 @@ Rectangle {
                 text: root.viewModel.title
                 color: Theme.text
                 font.bold: true
-                font.pixelSize: 16
+                font.pixelSize: root.titleTextSize
                 elide: Text.ElideRight
             }
             ActionButton { text: "Abrir"; onClicked: root.openRequested() }
@@ -38,7 +46,7 @@ Rectangle {
 
             Column {
                 width: parent.width
-                spacing: 6
+                spacing: root.compactDensity ? 4 : (root.comfortableDensity ? 8 : 6)
                 Repeater {
                     model: root.viewModel.fields
                     delegate: Column {
@@ -49,14 +57,14 @@ Rectangle {
                         Label {
                             text: fieldDelegate.modelData.label
                             color: Theme.mutedText
-                            font.pixelSize: 11
+                            font.pixelSize: root.labelTextSize
                         }
                         Text {
                             width: parent.width
                             text: fieldDelegate.modelData.value
                             color: Theme.text
                             wrapMode: Text.Wrap
-                            font.pixelSize: 12
+                            font.pixelSize: root.valueTextSize
                         }
                     }
                 }

@@ -44,7 +44,7 @@ Rectangle {
 
             Label {
                 Layout.fillWidth: true
-                text: "Pagina " + root.viewModel.pageIndex + " de " + root.viewModel.pageCount +
+                text: "Pagina " + root.viewModel.pageNumber + " de " + root.viewModel.pageCount +
                       "    Linhas por pagina"
                 color: Theme.mutedText
                 elide: Text.ElideRight

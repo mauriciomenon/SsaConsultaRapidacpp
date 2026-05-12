@@ -21,11 +21,11 @@ Rectangle {
             Layout.fillWidth: true
             spacing: Theme.gap
 
-            CheckBox {
+            AppCheckBox {
                 Layout.preferredWidth: 170
                 text: "Excluir SCA/SES/STE"
-                checked: root.viewModel.filters.excludeClosedStatuses
-                onToggled: root.viewModel.filters.excludeClosedStatuses = checked
+                checked: root.viewModel.filters.excludeScaSesSte
+                onToggled: root.viewModel.filters.excludeScaSesSte = checked
             }
             Label { text: "Executor:"; color: Theme.text }
             TextField {
@@ -38,8 +38,10 @@ Rectangle {
             Label { text: "Coluna:"; color: Theme.text }
             ComboBox {
                 id: columnBox
+
                 Layout.preferredWidth: 190
-                model: ["situacao", "setor_executor", "setor_emissor", "localizacao_codigo", "descricao_ssa", "derivada_de"]
+                model: root.viewModel.filters.filterColumnKeys
+                currentIndex: Math.max(0, root.viewModel.filters.filterColumnKeys.indexOf(root.viewModel.filters.columnKey))
                 onActivated: root.viewModel.filters.columnKey = currentText
             }
             TextField {
@@ -51,7 +53,7 @@ Rectangle {
                 onAccepted: root.viewModel.filters.addColumnFilter()
             }
             ActionButton { text: "Adicionar"; onClicked: root.viewModel.filters.addColumnFilter() }
-            ActionButton { text: "Limpar"; onClicked: root.viewModel.filters.clearFilters() }
+            ActionButton { text: "Padrao"; onClicked: root.viewModel.filters.resetFilters() }
         }
 
         Label {

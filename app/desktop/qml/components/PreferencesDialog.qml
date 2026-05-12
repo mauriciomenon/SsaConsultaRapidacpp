@@ -48,6 +48,19 @@ Dialog {
                 onActivated: root.viewModel.theme = currentText
             }
             Label {
+                text: "Densidade"
+                color: Theme.text
+                Layout.preferredWidth: 82
+            }
+            ComboBox {
+                readonly property var densityOptions: ["compact", "normal", "comfortable"]
+
+                Layout.preferredWidth: 150
+                model: densityOptions
+                currentIndex: Math.max(0, densityOptions.indexOf(root.viewModel.density))
+                onActivated: root.viewModel.density = currentText
+            }
+            Label {
                 Layout.fillWidth: true
                 text: "Aparencia e exibicao"
                 color: Theme.mutedText
@@ -55,7 +68,7 @@ Dialog {
             }
         }
 
-        CheckBox {
+        AppCheckBox {
             Layout.fillWidth: true
             text: "Mostrar painel de detalhes"
             checked: root.viewModel.detailsVisible

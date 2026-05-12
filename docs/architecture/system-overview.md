@@ -28,7 +28,7 @@ architecture.
 ## Presentation Ownership
 
 - `MainViewModel` coordinates page requests, cancellation generation, preferences, and child view
-  models.
+  models, including visual density state for QML.
 - `ColumnSettingsModel` owns the editable presentation state for visible columns and widths.
 - `SsaTableModel` owns only the current page and column metadata exposed to QML.
 - Layout preferences such as detail panel visibility stay in presentation state and are persisted

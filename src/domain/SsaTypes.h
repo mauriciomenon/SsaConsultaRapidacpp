@@ -6,9 +6,12 @@
 #include <map>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace ssa::domain {
+
+    inline constexpr std::string_view kScaSesSteExclusionSummary = "sem SCA/SES/STE";
 
     class SsaId final {
       public:
@@ -43,7 +46,7 @@ namespace ssa::domain {
         std::vector<FilterTerm> generalTerms;
         std::map<std::string, std::vector<FilterTerm>> columnTerms;
         std::optional<std::string> quickSector;
-        bool excludeClosedStatuses{true};
+        bool excludeScaSesSte{true};
     };
 
     struct SsaRecord {
@@ -67,7 +70,7 @@ namespace ssa::domain {
         std::string searchText;
         std::map<std::string, std::string> columnFilters;
         std::string quickSector;
-        bool excludeClosedStatuses{true};
+        bool excludeScaSesSte{true};
         SortSpec sort;
         std::vector<std::string> visibleColumns;
     };

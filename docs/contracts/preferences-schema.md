@@ -9,11 +9,12 @@ Current fields:
 - `schema_version`: integer.
 - `page_size`: integer from 10 to 500.
 - `theme`: `system`, `light`, or `dark`.
+- `density`: `compact`, `normal`, or `comfortable`.
 - `details_visible`: boolean controlling the right details panel.
 - `visible_columns`: ordered list of column keys.
 - `column_widths`: object keyed by column key with integer widths.
 - `quick_sector`: string used by the executor shortcut filter.
-- `exclude_closed_statuses`: boolean for the `SCA/SES/STE` exclusion.
+- `exclude_sca_ses_ste`: boolean for the `SCA/SES/STE` exclusion.
 - `column_filters`: object keyed by column key with filter text.
 
 ## Rules
@@ -25,4 +26,5 @@ Current fields:
 - Visible column preferences must be reconciled against `ColumnCatalog`.
 - `system` theme is persisted as a stable value and follows the platform color scheme when Qt
   exposes it.
+- Density changes table row height, table header height, and detail panel text sizing only.
 - Future migrations require an ADR.

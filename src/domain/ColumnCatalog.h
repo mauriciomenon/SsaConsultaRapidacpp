@@ -29,6 +29,8 @@ namespace ssa::domain {
         [[nodiscard]] static std::vector<ColumnDef> defaultVisible();
         [[nodiscard]] static std::vector<std::string> defaultVisibleKeys();
         [[nodiscard]] static std::vector<std::string> generalSearchKeys();
+        [[nodiscard]] static std::vector<std::string> filterColumnKeys();
+        [[nodiscard]] static std::string defaultFilterColumnKey();
         [[nodiscard]] static std::optional<ColumnDef> find(std::string_view key);
         [[nodiscard]] static bool contains(std::string_view key);
     };

@@ -69,6 +69,22 @@ namespace ssa::presentation {
         emit preferencesChanged();
     }
 
+    QString MainViewModel::density() const {
+        return density_;
+    }
+
+    void MainViewModel::setDensity(const QString& value) {
+        if (value != "compact" && value != "normal" && value != "comfortable") {
+            return;
+        }
+        if (density_ == value) {
+            return;
+        }
+        density_ = value;
+        savePreferences();
+        emit preferencesChanged();
+    }
+
     bool MainViewModel::detailsVisible() const {
         return detailsVisible_;
     }
@@ -82,13 +98,16 @@ namespace ssa::presentation {
         emit preferencesChanged();
     }
 
-    int MainViewModel::pageIndex() const {
+    int MainViewModel::pageNumber() const {
+        if (totalRows_ == 0) {
+            return 0;
+        }
         return static_cast<int>(pageIndex_ + 1);
     }
 
     int MainViewModel::pageCount() const {
         if (totalRows_ == 0) {
-            return 1;
+            return 0;
         }
         return static_cast<int>((totalRows_ + pageSize_ - 1) / pageSize_);
     }
@@ -133,11 +152,13 @@ namespace ssa::presentation {
 
     void MainViewModel::clearSearch() {
         pageIndex_ = 0;
+        search_.setText({});
         load();
     }
 
     void MainViewModel::nextPage() {
-        if (pageIndex() >= pageCount()) {
+        const auto pages = static_cast<std::size_t>(pageCount());
+        if (pages == 0 || pageIndex_ + 1 >= pages) {
             return;
         }
         ++pageIndex_;
@@ -153,6 +174,10 @@ namespace ssa::presentation {
     }
 
     void MainViewModel::selectRow(const int row) {
+        if (row < 0 || row >= tableModel_.rowCount()) {
+            details_.setRecord(nullptr);
+            return;
+        }
         details_.setRecord(tableModel_.recordAt(row));
     }
 
@@ -175,12 +200,15 @@ namespace ssa::presentation {
     }
 
     void MainViewModel::applyColumnSettings() {
+        const auto previousVisibleColumns = visibleColumns_;
         visibleColumns_ = columns_.visibleKeys();
         columnWidths_ = columns_.columnWidths();
         tableModel_.setColumnWidths(columnWidths_);
         pageIndex_ = 0;
         savePreferences();
-        load();
+        if (visibleColumns_ != previousVisibleColumns) {
+            load();
+        }
     }
 
     void MainViewModel::resetColumnSettings() {
@@ -212,7 +240,7 @@ namespace ssa::presentation {
         request.searchText = search_.text().toStdString();
         request.columnFilters = filters_.columnFilters();
         request.quickSector = filters_.quickSector().trimmed().toStdString();
-        request.excludeClosedStatuses = filters_.excludeClosedStatuses();
+        request.excludeScaSesSte = filters_.excludeScaSesSte();
         request.sort = sort_;
         request.visibleColumns = visibleColumns_;
         return request;
@@ -234,12 +262,15 @@ namespace ssa::presentation {
                         }
                         totalRows_ = result.totalRows;
                         pageIndex_ = result.pageIndex;
-                        tableModel_.setColumnWidths(columnWidths_);
                         tableModel_.setPage(std::move(result), request.visibleColumns);
-                        details_.setRecord(tableModel_.recordAt(0));
+                        if (tableModel_.rowCount() > 0) {
+                            details_.setRecord(tableModel_.recordAt(0));
+                        } else {
+                            details_.setRecord(nullptr);
+                        }
                         status_.setMessage(QString("%1 registros, pagina %2 de %3")
                                                .arg(totalRows())
-                                               .arg(pageIndex())
+                                               .arg(pageNumber())
                                                .arg(pageCount()));
                     } catch (const std::exception& exc) {
                         watcher->deleteLater();
@@ -266,13 +297,17 @@ namespace ssa::presentation {
             visibleColumns_ = snapshot.visibleColumns;
         }
         theme_ = QString::fromStdString(snapshot.theme);
+        const QString density = QString::fromStdString(snapshot.density);
+        if (density == "compact" || density == "normal" || density == "comfortable") {
+            density_ = density;
+        }
         detailsVisible_ = snapshot.detailsVisible;
         columns_.applyPreferences(visibleColumns_, snapshot.columnWidths);
         visibleColumns_ = columns_.visibleKeys();
         columnWidths_ = columns_.columnWidths();
         tableModel_.setColumnWidths(columnWidths_);
         filters_.setQuickSector(QString::fromStdString(snapshot.quickSector));
-        filters_.setExcludeClosedStatuses(snapshot.excludeClosedStatuses);
+        filters_.setExcludeScaSesSte(snapshot.excludeScaSesSte);
         filters_.setColumnFilters(snapshot.columnFilters);
     }
 
@@ -285,9 +320,10 @@ namespace ssa::presentation {
         snapshot.columnWidths = columnWidths_;
         snapshot.pageSize = static_cast<int>(pageSize_);
         snapshot.theme = theme_.toStdString();
+        snapshot.density = density_.toStdString();
         snapshot.detailsVisible = detailsVisible_;
         snapshot.quickSector = filters_.quickSector().trimmed().toStdString();
-        snapshot.excludeClosedStatuses = filters_.excludeClosedStatuses();
+        snapshot.excludeScaSesSte = filters_.excludeScaSesSte();
         snapshot.columnFilters = filters_.columnFilters();
         try {
             preferencesStore_->save(snapshot);

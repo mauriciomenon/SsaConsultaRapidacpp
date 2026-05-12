@@ -12,8 +12,9 @@ namespace ssa::presentation {
     class FilterPanelViewModel final : public QObject {
         Q_OBJECT
         Q_PROPERTY(QString quickSector READ quickSector WRITE setQuickSector NOTIFY changed)
-        Q_PROPERTY(bool excludeClosedStatuses READ excludeClosedStatuses WRITE
-                       setExcludeClosedStatuses NOTIFY changed)
+        Q_PROPERTY(
+            bool excludeScaSesSte READ excludeScaSesSte WRITE setExcludeScaSesSte NOTIFY changed)
+        Q_PROPERTY(QStringList filterColumnKeys READ filterColumnKeys CONSTANT)
         Q_PROPERTY(QString columnKey READ columnKey WRITE setColumnKey NOTIFY changed)
         Q_PROPERTY(QString columnValue READ columnValue WRITE setColumnValue NOTIFY changed)
         Q_PROPERTY(QStringList activeFilters READ activeFilters NOTIFY changed)
@@ -23,8 +24,9 @@ namespace ssa::presentation {
 
         [[nodiscard]] QString quickSector() const;
         void setQuickSector(const QString& value);
-        [[nodiscard]] bool excludeClosedStatuses() const;
-        void setExcludeClosedStatuses(bool value);
+        [[nodiscard]] bool excludeScaSesSte() const;
+        void setExcludeScaSesSte(bool value);
+        [[nodiscard]] QStringList filterColumnKeys() const;
         [[nodiscard]] QString columnKey() const;
         void setColumnKey(const QString& value);
         [[nodiscard]] QString columnValue() const;
@@ -39,12 +41,13 @@ namespace ssa::presentation {
 
       public slots:
         void addColumnFilter();
-        void clearFilters();
+        void resetFilters();
 
       private:
         QString quickSector_;
-        bool excludeClosedStatuses_{true};
-        QString columnKey_{"situacao"};
+        bool excludeScaSesSte_{true};
+        QStringList filterColumnKeys_;
+        QString columnKey_;
         QString columnValue_;
         std::map<std::string, std::string> columnFilters_;
     };
