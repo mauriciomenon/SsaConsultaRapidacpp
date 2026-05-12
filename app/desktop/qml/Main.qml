@@ -13,6 +13,7 @@ ApplicationWindow {
     visible: true
     title: "SSA Consulta Rapida"
     color: Theme.window
+    font.family: Theme.fontFamily
 
     Component.onCompleted: root.vm.load()
 

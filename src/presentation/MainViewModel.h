@@ -27,6 +27,8 @@ namespace ssa::presentation {
         Q_PROPERTY(int pageCount READ pageCount NOTIFY pageChanged)
         Q_PROPERTY(int totalRows READ totalRows NOTIFY pageChanged)
         Q_PROPERTY(int pageSize READ pageSize WRITE setPageSize NOTIFY pageChanged)
+        Q_PROPERTY(QString sortColumnKey READ sortColumnKey NOTIFY sortChanged)
+        Q_PROPERTY(bool sortAscending READ sortAscending NOTIFY sortChanged)
 
       public:
         MainViewModel(std::shared_ptr<query::SsaQueryService> queryService,
@@ -45,9 +47,12 @@ namespace ssa::presentation {
         [[nodiscard]] int totalRows() const;
         [[nodiscard]] int pageSize() const;
         void setPageSize(int value);
+        [[nodiscard]] QString sortColumnKey() const;
+        [[nodiscard]] bool sortAscending() const;
 
       signals:
         void pageChanged();
+        void sortChanged();
 
       public slots:
         void load();
@@ -56,6 +61,7 @@ namespace ssa::presentation {
         void nextPage();
         void previousPage();
         void selectRow(int row);
+        void sortByColumn(int column);
         void openSelectedSsa();
         void cancelCurrentRequest();
 
@@ -74,6 +80,7 @@ namespace ssa::presentation {
         StatusViewModel status_;
         CommandViewModel commands_;
         SsaTableModel tableModel_;
+        domain::SortSpec sort_;
         std::size_t pageIndex_{0};
         std::size_t pageSize_{100};
         std::size_t totalRows_{0};

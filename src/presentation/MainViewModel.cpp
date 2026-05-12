@@ -2,6 +2,8 @@
 
 #include "domain/ColumnCatalog.h"
 
+#include <QtConcurrent>
+
 #include <algorithm>
 #include <stdexcept>
 #include <utility>
@@ -81,6 +83,14 @@ namespace ssa::presentation {
         load();
     }
 
+    QString MainViewModel::sortColumnKey() const {
+        return QString::fromStdString(sort_.columnKey);
+    }
+
+    bool MainViewModel::sortAscending() const {
+        return sort_.ascending;
+    }
+
     void MainViewModel::load() {
         runRequest(buildRequest());
     }
@@ -116,6 +126,24 @@ namespace ssa::presentation {
         details_.setRecord(tableModel_.recordAt(row));
     }
 
+    void MainViewModel::sortByColumn(const int column) {
+        const QString key = tableModel_.columnKey(column);
+        if (key.isEmpty()) {
+            return;
+        }
+        const auto nextKey = key.toStdString();
+        if (sort_.columnKey == nextKey) {
+            sort_.ascending = !sort_.ascending;
+        } else {
+            sort_.columnKey = nextKey;
+            sort_.ascending = true;
+        }
+        sort_.statusLast = sort_.columnKey == "numero_ssa";
+        pageIndex_ = 0;
+        emit sortChanged();
+        load();
+    }
+
     void MainViewModel::openSelectedSsa() {
         const auto selected = details_.selectedSsa();
         if (!selected.isEmpty()) {
@@ -137,6 +165,7 @@ namespace ssa::presentation {
         request.columnFilters = filters_.columnFilters();
         request.quickSector = filters_.quickSector().trimmed().toStdString();
         request.excludeClosedStatuses = filters_.excludeClosedStatuses();
+        request.sort = sort_;
         request.visibleColumns = visibleColumns_;
         return request;
     }
@@ -145,25 +174,37 @@ namespace ssa::presentation {
         const int generation = ++requestGeneration_;
         status_.setLoading(true);
         status_.setError({});
-        try {
-            auto result = queryService_->search(request);
-            if (generation != requestGeneration_) {
-                return;
-            }
-            totalRows_ = result.totalRows;
-            pageIndex_ = result.pageIndex;
-            tableModel_.setPage(std::move(result), request.visibleColumns);
-            details_.setRecord(tableModel_.recordAt(0));
-            status_.setMessage(QString("%1 registros, pagina %2 de %3")
-                                   .arg(totalRows())
-                                   .arg(pageIndex())
-                                   .arg(pageCount()));
-        } catch (const std::exception& exc) {
-            status_.setError(QString::fromUtf8(exc.what()));
-            status_.setMessage("Falha ao consultar dados");
-        }
-        status_.setLoading(false);
-        emit pageChanged();
+        status_.setMessage("Consultando dados...");
+        auto* watcher = new QFutureWatcher<domain::SsaPageResult>(this);
+        connect(watcher, &QFutureWatcher<domain::SsaPageResult>::finished, this,
+                [this, watcher, request, generation] {
+                    try {
+                        auto result = watcher->result();
+                        watcher->deleteLater();
+                        if (generation != requestGeneration_) {
+                            return;
+                        }
+                        totalRows_ = result.totalRows;
+                        pageIndex_ = result.pageIndex;
+                        tableModel_.setPage(std::move(result), request.visibleColumns);
+                        details_.setRecord(tableModel_.recordAt(0));
+                        status_.setMessage(QString("%1 registros, pagina %2 de %3")
+                                               .arg(totalRows())
+                                               .arg(pageIndex())
+                                               .arg(pageCount()));
+                    } catch (const std::exception& exc) {
+                        watcher->deleteLater();
+                        if (generation != requestGeneration_) {
+                            return;
+                        }
+                        status_.setError(QString::fromUtf8(exc.what()));
+                        status_.setMessage("Falha ao consultar dados");
+                    }
+                    status_.setLoading(false);
+                    emit pageChanged();
+                });
+        watcher->setFuture(QtConcurrent::run(
+            [service = queryService_, request] { return service->search(request); }));
     }
 
     void MainViewModel::loadPreferences() {

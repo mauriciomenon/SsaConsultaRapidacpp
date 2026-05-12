@@ -9,7 +9,7 @@ set(CMAKE_AUTOMOC ON)
 
 option(SSA_BUILD_TESTS "Build tests" ON)
 
-find_package(Qt6 6.6 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 Sql Test)
+find_package(Qt6 6.6 REQUIRED COMPONENTS Concurrent Core Gui Qml Quick QuickControls2 Sql Test)
 find_package(SQLite3 REQUIRED)
 
 include(cmake/Dependencies.cmake)
@@ -50,6 +50,7 @@ target_include_directories(ssa_presentation PUBLIC src)
 target_link_libraries(ssa_presentation PUBLIC
     ssa_core
     ssa_infra
+    Qt6::Concurrent
     Qt6::Core
     Qt6::Gui
 )

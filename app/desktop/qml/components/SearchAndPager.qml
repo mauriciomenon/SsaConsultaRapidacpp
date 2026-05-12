@@ -7,7 +7,7 @@ Rectangle {
     id: root
     required property var viewModel
 
-    height: 48
+    Layout.preferredHeight: 48
     color: Theme.panel
     border.color: Theme.border
     radius: Theme.radius

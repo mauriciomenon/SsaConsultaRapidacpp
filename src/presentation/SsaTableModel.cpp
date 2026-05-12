@@ -48,6 +48,46 @@ namespace ssa::presentation {
         rows_ = std::move(page.rows);
         columns_ = std::move(columns);
         endResetModel();
+        emit columnsChanged();
+    }
+
+    int SsaTableModel::visibleColumnCount() const {
+        return static_cast<int>(columns_.size());
+    }
+
+    QString SsaTableModel::columnKey(const int column) const {
+        if (column < 0) {
+            return {};
+        }
+        const auto columnIndex = static_cast<std::size_t>(column);
+        if (columnIndex >= columns_.size()) {
+            return {};
+        }
+        return QString::fromStdString(columns_[columnIndex]);
+    }
+
+    QString SsaTableModel::columnLabel(const int column) const {
+        if (column < 0) {
+            return {};
+        }
+        const auto columnIndex = static_cast<std::size_t>(column);
+        if (columnIndex >= columns_.size()) {
+            return {};
+        }
+        const auto definition = domain::ColumnCatalog::find(columns_[columnIndex]);
+        return QString::fromStdString(definition ? definition->label : columns_[columnIndex]);
+    }
+
+    int SsaTableModel::columnWidth(const int column) const {
+        if (column < 0) {
+            return 132;
+        }
+        const auto columnIndex = static_cast<std::size_t>(column);
+        if (columnIndex >= columns_.size()) {
+            return 132;
+        }
+        const auto definition = domain::ColumnCatalog::find(columns_[columnIndex]);
+        return definition ? definition->defaultWidth : 132;
     }
 
     const domain::SsaRecord* SsaTableModel::recordAt(const int row) const {

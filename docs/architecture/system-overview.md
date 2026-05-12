@@ -20,9 +20,10 @@ architecture.
 
 1. QML calls `MainViewModel`.
 2. `MainViewModel` builds `SsaPageRequest`.
-3. `SsaQueryService` calls `ISsaRepository`.
-4. `SqliteSsaRepository` uses `SqlQueryBuilder` and returns domain records.
-5. `SsaTableModel` exposes the current page to QML.
+3. `MainViewModel` runs the query in Qt Concurrent and keeps a request generation number.
+4. `SsaQueryService` calls `ISsaRepository`.
+5. `SqliteSsaRepository` uses `SqlQueryBuilder` and returns domain records.
+6. `SsaTableModel` exposes the current page, column labels, and widths to QML.
 
 ## Non Goals In First Cycle
 
