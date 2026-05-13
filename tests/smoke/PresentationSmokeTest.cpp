@@ -178,10 +178,13 @@ namespace {
             model.browse()->setPageSize(10);
             QTRY_COMPARE_WITH_TIMEOUT(model.browse()->pageCount(), 3, 1000);
             model.browse()->nextPage();
+            QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{2}, 3000);
+            QCOMPARE(repository->requests().back().pageIndex, std::size_t{1});
             QTRY_COMPARE_WITH_TIMEOUT(model.browse()->pageNumber(), 2, 1000);
             model.browse()->nextPage();
+            QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{3}, 3000);
+            QCOMPARE(repository->requests().back().pageIndex, std::size_t{2});
             QTRY_COMPARE_WITH_TIMEOUT(model.browse()->pageNumber(), 3, 1000);
-            QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{3}, 1000);
 
             QCOMPARE(model.browse()->pageNumber(), 3);
             QCOMPARE(model.browse()->pageCount(), 3);
