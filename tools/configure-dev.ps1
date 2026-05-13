@@ -55,7 +55,7 @@ function Find-QtFromKnownPath {
     param([string[]]$Paths)
     foreach ($path in $Paths) {
         if ($path -and (Test-QtPrefix $path)) {
-            return (Resolve-Path $path).Path
+            return (Resolve-Path -LiteralPath $path).Path
         }
     }
     return $null
@@ -71,15 +71,15 @@ function Find-QtFromEnvironment {
 
 function Find-QtUnderDefaultRoot {
     if (Test-Path "C:\Qt") {
-        $candidates = Get-ChildItem "C:\Qt" -Directory -ErrorAction SilentlyContinue |
+        $candidates = @(Get-ChildItem "C:\Qt" -Directory -ErrorAction SilentlyContinue |
             ForEach-Object {
                 Join-Path $_.FullName $DetectConfig.WINDOWS_QT_SUBDIR
             } |
             Where-Object { Test-QtPrefix $_ } |
-            Sort-Object -Descending
+            Sort-Object -Descending)
 
         if ($candidates.Count -gt 0) {
-            return (Resolve-Path $candidates[0]).Path
+            return (Resolve-Path -LiteralPath $candidates[0]).Path
         }
     }
 
