@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
     [string]$QtDir,
+    [string]$SQLiteRoot,
     [string]$Preset = "dev"
 )
 
@@ -27,6 +28,11 @@ function Read-QtDetectConfig {
 }
 
 $DetectConfig = Read-QtDetectConfig
+foreach ($requiredKey in @("QT_VERSION", "WINDOWS_QT_SUBDIR")) {
+    if (-not $DetectConfig.ContainsKey($requiredKey) -or -not $DetectConfig[$requiredKey]) {
+        throw "Missing required key in Qt detection config: $requiredKey"
+    }
+}
 
 function Test-Command {
     param([string]$Name)
@@ -51,22 +57,30 @@ function Test-QtPrefix {
     return Test-Path (Join-Path $Path "lib\cmake\Qt6\Qt6Config.cmake")
 }
 
-function Find-QtFromKnownPath {
-    param([string[]]$Paths)
+function Find-FirstValidPrefix {
+    param(
+        [string[]]$Paths,
+        [scriptblock]$IsValid
+    )
     foreach ($path in $Paths) {
-        if ($path -and (Test-QtPrefix $path)) {
+        if ($path -and (& $IsValid $path)) {
             return (Resolve-Path -LiteralPath $path).Path
         }
     }
     return $null
 }
 
+function Find-QtFromKnownPath {
+    param([string[]]$Paths)
+    return Find-FirstValidPrefix -Paths $Paths -IsValid { param([string]$Path) Test-QtPrefix $Path }
+}
+
 function Find-QtFromEnvironment {
-    $prefixPath = $null
+    $paths = @($env:QT_DIR)
     if ($env:CMAKE_PREFIX_PATH) {
-        $prefixPath = ($env:CMAKE_PREFIX_PATH -split ';')[0]
+        $paths += $env:CMAKE_PREFIX_PATH -split ';'
     }
-    return Find-QtFromKnownPath @($env:QT_DIR, $prefixPath)
+    return Find-QtFromKnownPath $paths
 }
 
 function Find-QtUnderDefaultRoot {
@@ -89,12 +103,57 @@ function Find-QtUnderDefaultRoot {
 function Find-QtDir {
     param([string]$ExplicitQtDir)
 
-    $preferred = "C:\Qt\$($DetectConfig.QT_VERSION)\$($DetectConfig.WINDOWS_QT_SUBDIR)"
+    $defaultInstallPath = "C:\Qt\$($DetectConfig.QT_VERSION)\$($DetectConfig.WINDOWS_QT_SUBDIR)"
     return Find-QtFromKnownPath @(
         $ExplicitQtDir,
-        $preferred,
+        $defaultInstallPath,
         (Find-QtUnderDefaultRoot),
         (Find-QtFromEnvironment)
+    )
+}
+
+function Test-SqlitePrefix {
+    param([string]$Path)
+    if (-not $Path) {
+        return $false
+    }
+    return (Test-Path (Join-Path $Path "include\sqlite3.h")) -and
+        (Test-Path (Join-Path $Path "lib\sqlite3.lib"))
+}
+
+function Find-SqliteFromKnownPath {
+    param([string[]]$Paths)
+    return Find-FirstValidPrefix -Paths $Paths -IsValid { param([string]$Path) Test-SqlitePrefix $Path }
+}
+
+function Get-DefaultVcpkgTriplet {
+    if ($env:VCPKG_DEFAULT_TRIPLET) {
+        return $env:VCPKG_DEFAULT_TRIPLET
+    }
+    if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") {
+        return "arm64-windows"
+    }
+    return "x64-windows"
+}
+
+function Find-SqliteFromVcpkg {
+    $triplet = Get-DefaultVcpkgTriplet
+    $paths = @()
+    if ($env:VCPKG_ROOT) {
+        $paths += Join-Path $env:VCPKG_ROOT "installed\$triplet"
+    }
+    $paths += "C:\vcpkg\installed\$triplet"
+    return Find-SqliteFromKnownPath $paths
+}
+
+function Find-SqliteRoot {
+    param([string]$ExplicitSQLiteRoot)
+
+    return Find-SqliteFromKnownPath @(
+        $ExplicitSQLiteRoot,
+        $env:SQLite3_ROOT,
+        $env:SQLITE_ROOT,
+        (Find-SqliteFromVcpkg)
     )
 }
 
@@ -123,4 +182,22 @@ You can run:
 Write-Output "Using Qt prefix: $detectedQtDir"
 $env:QT_DIR = $detectedQtDir
 
-cmake --preset $Preset -DCMAKE_PREFIX_PATH="$detectedQtDir"
+$cmakeArgs = @(
+    "--preset", $Preset,
+    "-DCMAKE_PREFIX_PATH=$detectedQtDir"
+)
+
+$detectedSQLiteRoot = Find-SqliteRoot -ExplicitSQLiteRoot $SQLiteRoot
+if ($detectedSQLiteRoot) {
+    Write-Output "Using SQLite prefix: $detectedSQLiteRoot"
+    $cmakeArgs += "-DSQLite3_INCLUDE_DIR=$(Join-Path $detectedSQLiteRoot "include")"
+    $cmakeArgs += "-DSQLite3_LIBRARY=$(Join-Path $detectedSQLiteRoot "lib\sqlite3.lib")"
+} else {
+    Write-Output "SQLite development files were not detected automatically."
+    Write-Output "If CMake fails with 'Could NOT find SQLite3', install with:"
+    Write-Output "  vcpkg install sqlite3:$(Get-DefaultVcpkgTriplet)"
+    Write-Output "Then rerun this script with VCPKG_ROOT set, or pass:"
+    Write-Output "  .\tools\configure-dev.ps1 -SQLiteRoot `"C:\vcpkg\installed\$(Get-DefaultVcpkgTriplet)`""
+}
+
+cmake @cmakeArgs
