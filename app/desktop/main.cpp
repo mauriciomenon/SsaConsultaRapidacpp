@@ -1,3 +1,4 @@
+#include "DesktopSmokeCapture.h"
 #include "application/SsaWorkflowService.h"
 #include "application/UnavailableWorkflowPort.h"
 #include "infra/export/CsvExportPort.h"
@@ -13,10 +14,8 @@
 #include <QCommandLineParser>
 #include <QFont>
 #include <QGuiApplication>
-#include <QImage>
 #include <QQmlApplicationEngine>
 #include <QQuickStyle>
-#include <QQuickWindow>
 #include <QTimer>
 #include <QVariant>
 
@@ -68,12 +67,7 @@ int main(int argc, char* argv[]) {
     const auto repository = std::make_shared<ssa::infra::sqlite::SqliteSsaRepository>(
         std::filesystem::path{options.databasePath.toStdString()});
     const auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
-    // Query and export can run on different background threads. Keep separate repository
-    // instances until SqliteSsaRepository has an explicit shared-thread contract.
-    const auto exportRepository = std::make_shared<ssa::infra::sqlite::SqliteSsaRepository>(
-        std::filesystem::path{options.databasePath.toStdString()});
-    const auto exportPort =
-        std::make_shared<ssa::infra::exporting::CsvExportPort>(exportRepository);
+    const auto exportPort = std::make_shared<ssa::infra::exporting::CsvExportPort>(repository);
     const auto unavailableWorkflow = std::make_shared<ssa::application::UnavailableWorkflowPort>();
     const auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(
         unavailableWorkflow, exportPort, unavailableWorkflow, unavailableWorkflow);
@@ -88,38 +82,17 @@ int main(int argc, char* argv[]) {
     const auto preferences = std::make_shared<ssa::infra::preferences::JsonUserPreferencesStore>(
         std::filesystem::path{paths.preferencesFile().toStdString()});
     ssa::presentation::MainViewModel mainViewModel(service, commands, preferences, workflows);
+    ssa::app::desktop::DesktopSmokeController smokeController;
 
     QQmlApplicationEngine engine;
-    engine.setInitialProperties({{"mainViewModel", QVariant::fromValue(&mainViewModel)}});
+    engine.setInitialProperties({{"mainViewModel", QVariant::fromValue(&mainViewModel)},
+                                 {"smokeController", QVariant::fromValue(&smokeController)}});
     QObject::connect(
         &engine, &QQmlApplicationEngine::objectCreationFailed, &app,
         [] { QCoreApplication::exit(1); }, Qt::QueuedConnection);
     engine.loadFromModule("SsaConsultaRapida", "Main");
-    if (parser.isSet("screenshot")) {
-        const QString screenshotPath = parser.value("screenshot");
-        const bool openPreferences = parser.isSet("open-preferences");
-        QTimer::singleShot(1200, &app, [&engine, screenshotPath, openPreferences] {
-            if (engine.rootObjects().isEmpty()) {
-                QCoreApplication::exit(2);
-                return;
-            }
-            auto* window = qobject_cast<QQuickWindow*>(engine.rootObjects().first());
-            if (window == nullptr) {
-                QCoreApplication::exit(2);
-                return;
-            }
-            if (openPreferences) {
-                QMetaObject::invokeMethod(window, "openPreferencesForSmoke");
-            }
-            const QImage image = window->grabWindow();
-            if (image.isNull() || !image.save(screenshotPath)) {
-                QCoreApplication::exit(2);
-                return;
-            }
-            QCoreApplication::quit();
-        });
-    }
-    if (!parser.isSet("screenshot") && parser.isSet("smoke-exit-ms")) {
+    ssa::app::desktop::DesktopSmokeCapture::installIfRequested(parser, engine, smokeController);
+    if (parser.isSet("smoke-exit-ms")) {
         bool ok = false;
         const int delayMs = parser.value("smoke-exit-ms").toInt(&ok);
         if (ok && delayMs > 0) {

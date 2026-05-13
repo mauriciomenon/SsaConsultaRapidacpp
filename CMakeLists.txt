@@ -33,10 +33,12 @@ qt_policy(SET QTP0004 NEW)
 add_library(ssa_core STATIC
     src/domain/ColumnCatalog.cpp
     src/query/SearchParser.cpp
+    src/query/AdvancedFilterSqlCompiler.cpp
     src/query/SqlPredicateBuilder.cpp
     src/query/SqlQueryBuilder.cpp
     src/query/SqlQueryText.cpp
     src/query/SsaQueryService.cpp
+    src/query/TextFilterSqlCompiler.cpp
 )
 target_include_directories(ssa_core PUBLIC src)
 
@@ -55,6 +57,7 @@ add_library(ssa_infra STATIC
     src/infra/sqlite/SqliteSsaRepository.cpp
     src/infra/sqlite/SqliteSchemaInspector.cpp
     src/infra/preferences/JsonUserPreferencesStore.cpp
+    src/infra/preferences/UserPreferencesJsonCodec.cpp
 )
 target_include_directories(ssa_infra PUBLIC src)
 target_link_libraries(ssa_infra PUBLIC ssa_core ${SSA_SQLITE_TARGET} Qt6::Core)
@@ -99,6 +102,7 @@ target_link_libraries(ssa_presentation PUBLIC
 )
 
 qt_add_executable(ssa_consulta_rapida
+    app/desktop/DesktopSmokeCapture.cpp
     app/desktop/main.cpp
 )
 

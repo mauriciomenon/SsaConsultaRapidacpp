@@ -1,0 +1,119 @@
+#include "query/AdvancedFilterSqlCompiler.h"
+
+#include "domain/ColumnCatalog.h"
+#include "query/SqlQueryText.h"
+
+#include <sstream>
+#include <stdexcept>
+
+namespace ssa::query {
+
+    namespace {
+
+        std::string numericValueExpression(const std::string& key) {
+            const auto column = quoteColumnIdentifier(key);
+            const auto text = "TRIM(COALESCE(" + column + ", ''))";
+            return "CAST(CASE WHEN " + text + " <> '' AND " + text + " NOT GLOB '*[^0-9]*' THEN " +
+                   text + " ELSE NULL END AS INTEGER)";
+        }
+
+        std::vector<std::string> buildReprogrammingNumericExpressions() {
+            std::vector<std::string> expressions;
+            const auto columns = domain::ColumnCatalog::reprogrammingColumnKeys();
+            expressions.reserve(columns.size());
+            for (const auto column : columns) {
+                expressions.push_back(numericValueExpression(std::string{column}));
+            }
+            return expressions;
+        }
+
+        const std::vector<std::string>& reprogrammingNumericExpressions() {
+            static const std::vector<std::string> expressions =
+                buildReprogrammingNumericExpressions();
+            return expressions;
+        }
+
+        void appendAdvancedWeekFilter(std::ostringstream& where, std::vector<std::string>& bindings,
+                                      const domain::AdvancedFilterSpec& advanced,
+                                      bool& hasCondition) {
+            if (!advanced.year.has_value() && !advanced.week.has_value()) {
+                return;
+            }
+            if (!domain::ColumnCatalog::contains(advanced.weekColumnKey)) {
+                throw std::invalid_argument("unknown week column: " + advanced.weekColumnKey);
+            }
+            const auto numericColumn = numericValueExpression(advanced.weekColumnKey);
+            appendSqlAndSeparator(where, hasCondition);
+            if (const auto exact = advanced.exactYearWeek(); exact.has_value()) {
+                where << numericColumn << " = ?";
+                bindings.push_back(std::to_string(*exact));
+            } else if (advanced.year.has_value()) {
+                const auto startWeek = advanced.yearStartWeek();
+                const auto endWeek = advanced.yearEndWeek();
+                if (!startWeek.has_value() || !endWeek.has_value()) {
+                    throw std::invalid_argument("invalid advanced year filter");
+                }
+                where << numericColumn << " BETWEEN ? AND ?";
+                bindings.push_back(std::to_string(startWeek.value()));
+                bindings.push_back(std::to_string(endWeek.value()));
+            } else if (advanced.week.has_value()) {
+                where << "(" << numericColumn << " % 100) = ?";
+                bindings.push_back(std::to_string(*advanced.week));
+            } else {
+                throw std::invalid_argument("invalid advanced week filter");
+            }
+            hasCondition = true;
+        }
+
+        void appendDerivationFilter(std::ostringstream& where,
+                                    const domain::AdvancedFilterSpec& advanced,
+                                    bool& hasCondition) {
+            if (advanced.derivationMode == domain::DerivationFilterMode::All) {
+                return;
+            }
+            const auto column =
+                quoteColumnIdentifier(std::string{domain::ColumnCatalog::derivationColumnKey()});
+            appendSqlAndSeparator(where, hasCondition);
+            if (advanced.derivationMode == domain::DerivationFilterMode::RootOnly) {
+                where << "(" << column << " IS NULL OR " << column << " = '')";
+            } else if (advanced.derivationMode == domain::DerivationFilterMode::DerivedOnly) {
+                where << "(" << column << " IS NOT NULL AND " << column << " <> '')";
+            } else {
+                throw std::invalid_argument("unknown derivation filter mode");
+            }
+            hasCondition = true;
+        }
+
+        void appendReprogrammingFilter(std::ostringstream& where,
+                                       const domain::AdvancedFilterSpec& advanced,
+                                       bool& hasCondition) {
+            if (!advanced.onlyReprogrammed) {
+                return;
+            }
+            const auto& expressions = reprogrammingNumericExpressions();
+            if (expressions.empty()) {
+                return;
+            }
+            appendSqlAndSeparator(where, hasCondition);
+            where << "(";
+            for (std::size_t index = 0; index < expressions.size(); ++index) {
+                if (index > 0) {
+                    where << " OR ";
+                }
+                where << expressions[index] << " > 0";
+            }
+            where << ")";
+            hasCondition = true;
+        }
+
+    } // namespace
+
+    void AdvancedFilterSqlCompiler::appendAdvancedFilters(
+        std::ostringstream& where, std::vector<std::string>& bindings,
+        const domain::AdvancedFilterSpec& advanced, bool& hasCondition) const {
+        appendAdvancedWeekFilter(where, bindings, advanced, hasCondition);
+        appendDerivationFilter(where, advanced, hasCondition);
+        appendReprogrammingFilter(where, advanced, hasCondition);
+    }
+
+} // namespace ssa::query

@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <sstream>
 #include <stdexcept>
 
 namespace ssa::query {
@@ -20,11 +21,16 @@ namespace ssa::query {
     }
 
     std::string uppercaseCopy(const std::string_view value) {
-        std::string upper{value};
-        std::ranges::transform(upper, upper.begin(), [](const unsigned char ch) {
+        std::string upper;
+        upper.resize(value.size());
+        std::ranges::transform(value, upper.begin(), [](const unsigned char ch) {
             return static_cast<char>(std::toupper(ch));
         });
         return upper;
+    }
+
+    void appendSqlAndSeparator(std::ostringstream& stream, const bool hasCondition) {
+        stream << (hasCondition ? " AND " : "");
     }
 
 } // namespace ssa::query

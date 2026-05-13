@@ -9,6 +9,7 @@ import SsaConsultaRapida
 ApplicationWindow {
     id: root
     required property var mainViewModel
+    required property var smokeController
     property var vm: mainViewModel
 
     width: 1420
@@ -30,8 +31,12 @@ ApplicationWindow {
 
     Component.onCompleted: root.vm.browse.load()
 
-    function openPreferencesForSmoke() {
-        preferencesDialog.open()
+    Connections {
+        target: root.smokeController
+
+        function onOpenPreferencesRequested() {
+            preferencesDialog.open()
+        }
     }
 
     ColumnLayout {

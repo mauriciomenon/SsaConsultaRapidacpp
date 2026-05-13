@@ -1,5 +1,7 @@
 #include "presentation/UserPreferencesCoordinator.h"
 
+#include <QDebug>
+#include <QThread>
 #include <QtConcurrent>
 
 #include <utility>
@@ -23,13 +25,18 @@ namespace ssa::presentation {
             hasPendingSnapshot_ = false;
             return;
         }
-        while (pendingSnapshotProvider_ || hasPendingSnapshot_ || watcher_.isRunning()) {
-            if (watcher_.isRunning()) {
-                watcher_.waitForFinished();
-                continue;
+        if (watcher_.isRunning()) {
+            watcher_.waitForFinished();
+            try {
+                watcher_.result();
+            } catch (const std::exception& exc) {
+                qWarning() << "Failed to save preferences during shutdown:" << exc.what();
+            } catch (...) {
+                qWarning() << "Failed to save preferences during shutdown";
             }
-            flushPendingSave();
         }
+        pendingSnapshotProvider_ = nullptr;
+        hasPendingSnapshot_ = false;
     }
 
     ports::UserPreferencesSnapshot UserPreferencesCoordinator::loadInitial() const {
@@ -41,6 +48,7 @@ namespace ssa::presentation {
 
     void UserPreferencesCoordinator::scheduleSave(
         std::function<ports::UserPreferencesSnapshot()> snapshotProvider) {
+        Q_ASSERT(thread() == QThread::currentThread());
         if (!preferencesStore_) {
             return;
         }
@@ -49,6 +57,7 @@ namespace ssa::presentation {
     }
 
     void UserPreferencesCoordinator::saveNowOrSchedule(ports::UserPreferencesSnapshot snapshot) {
+        Q_ASSERT(thread() == QThread::currentThread());
         if (!preferencesStore_) {
             emit saved();
             return;
@@ -57,9 +66,6 @@ namespace ssa::presentation {
         hasPendingSnapshot_ = true;
         pendingSnapshotProvider_ = nullptr;
         if (watcher_.isRunning()) {
-            if (!saveTimer_.isActive()) {
-                saveTimer_.start();
-            }
             return;
         }
         saveTimer_.stop();
@@ -67,6 +73,7 @@ namespace ssa::presentation {
     }
 
     void UserPreferencesCoordinator::flushPendingSave() {
+        Q_ASSERT(thread() == QThread::currentThread());
         if (!preferencesStore_ || watcher_.isRunning()) {
             return;
         }
@@ -76,6 +83,9 @@ namespace ssa::presentation {
             hasPendingSnapshot_ = true;
         }
         if (!hasPendingSnapshot_) {
+            return;
+        }
+        if (watcher_.isRunning()) {
             return;
         }
 
@@ -90,6 +100,7 @@ namespace ssa::presentation {
     }
 
     void UserPreferencesCoordinator::finishSave() {
+        Q_ASSERT(thread() == QThread::currentThread());
         try {
             watcher_.result();
             emit saved();
