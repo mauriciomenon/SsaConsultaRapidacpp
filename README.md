@@ -4,6 +4,73 @@ Versao C++20 + Qt 6/QML da interface grafica do SSA Consulta Rapida.
 
 Esta base nao e um port linha-a-linha da GUI Python. Ela preserva contratos de uso e aparencia geral, mas separa dominio, consulta, infraestrutura e apresentacao.
 
+## Comandos rapidos
+
+### macOS
+
+```bash
+brew install qt cmake ninja sqlite
+./tools/configure-dev.sh
+cmake --build --preset dev
+ctest --preset dev --output-on-failure
+
+./build/dev/ssa_consulta_rapida.app/Contents/MacOS/ssa_consulta_rapida \
+  --db /caminho/para/ssas.db
+```
+
+Se o Qt nao for detectado automaticamente:
+
+```bash
+QT_DIR=/opt/homebrew/opt/qt ./tools/configure-dev.sh
+```
+
+### Debian ou Ubuntu
+
+```bash
+sudo apt update
+sudo apt install -y \
+  build-essential cmake ninja-build libsqlite3-dev \
+  qt6-base-dev qt6-base-dev-tools \
+  qt6-declarative-dev qt6-tools-dev-tools \
+  qml6-module-qtquick qml6-module-qtquick-controls
+
+./tools/configure-dev.sh
+cmake --build --preset dev
+ctest --preset dev --output-on-failure
+
+./build/dev/ssa_consulta_rapida \
+  --db /caminho/para/ssas.db \
+  --config-dir "$HOME/.config/ssa-consulta-rapida-cpp"
+```
+
+### Windows 11
+
+Rode no "Developer PowerShell for VS 2022".
+
+```powershell
+.\tools\configure-dev.ps1
+cmake --build --preset dev
+ctest --preset dev --output-on-failure
+
+$env:Path = "$env:QT_DIR\bin;$env:Path"
+.\build\dev\ssa_consulta_rapida.exe `
+  --db C:\caminho\para\ssas.db `
+  --config-dir "$env:LOCALAPPDATA\SSA_Consulta_Rapida_Cpp"
+```
+
+O script tenta detectar Qt nesta ordem:
+
+- `-QtDir` informado na linha de comando.
+- `C:\Qt\6.11.0\msvc2022_64`.
+- `C:\Qt\*\msvc2022_64`.
+- `QT_DIR` ou `CMAKE_PREFIX_PATH`.
+
+Se a versao ou o caminho mudar:
+
+```powershell
+.\tools\configure-dev.ps1 -QtDir "D:\Qt\6.11.0\msvc2022_64"
+```
+
 ## Requisitos
 
 - CMake 3.24+
