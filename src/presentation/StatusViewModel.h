@@ -18,6 +18,7 @@ namespace ssa::presentation {
         [[nodiscard]] QString error() const;
         [[nodiscard]] bool loading() const;
         void setMessage(const QString& value);
+        void setQueryComplete(qlonglong totalRows, int pageNumber, int pageCount);
         void setError(const QString& value);
         void setLoading(bool value);
 

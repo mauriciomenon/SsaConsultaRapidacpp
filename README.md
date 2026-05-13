@@ -12,13 +12,79 @@ Esta base nao e um port linha-a-linha da GUI Python. Ela preserva contratos de u
 - SQLite3
 - Compilador C++20
 
-No macOS com Homebrew:
+Versao local usada no desenvolvimento atual:
+
+- Qt 6.11.0
+- macOS arm64 com Homebrew
+- Windows 11 com Visual Studio 2022 Build Tools
+- Debian/Ubuntu com pacotes Qt 6 do sistema
+
+## Configuracao rapida
+
+Use os scripts abaixo para detectar Qt e configurar o preset `dev`.
+
+macOS ou Debian:
+
+```bash
+./tools/configure-dev.sh
+cmake --build --preset dev
+ctest --preset dev --output-on-failure
+```
+
+Windows 11 PowerShell:
+
+```powershell
+.\tools\configure-dev.ps1
+cmake --build --preset dev
+ctest --preset dev --output-on-failure
+```
+
+Os scripts tentam detectar:
+
+- `QT_DIR`
+- `CMAKE_PREFIX_PATH`
+- Qt instalado em caminhos comuns
+- `cmake`
+- `ninja`
+- compilador C++ disponivel
+
+Se a deteccao falhar, o script imprime o caminho esperado e uma sugestao de instalacao.
+
+A versao alvo e caminhos padrao ficam centralizados em:
+
+```text
+tools/qt-detect.conf
+```
+
+## Instalacao de dependencias
+
+### macOS
+
+Com Homebrew:
 
 ```bash
 brew install qt cmake ninja sqlite
 ```
 
-No Debian:
+Se o Homebrew estiver em caminho padrao, o script usa:
+
+```bash
+/opt/homebrew/opt/qt
+```
+
+Em Macs Intel, o caminho comum e:
+
+```bash
+/usr/local/opt/qt
+```
+
+Tambem e possivel informar explicitamente:
+
+```bash
+QT_DIR=/opt/homebrew/opt/qt ./tools/configure-dev.sh
+```
+
+### Debian ou Ubuntu
 
 ```bash
 sudo apt update
@@ -29,14 +95,58 @@ sudo apt install -y \
   qml6-module-qtquick qml6-module-qtquick-controls
 ```
 
-No Windows 11:
+Depois:
+
+```bash
+./tools/configure-dev.sh
+cmake --build --preset dev
+ctest --preset dev --output-on-failure
+```
+
+### Windows 11
 
 - Instale Visual Studio 2022 Build Tools com "Desktop development with C++".
-- Instale Qt 6 para MSVC 2022 64-bit.
+- Instale Qt 6.11.0 para MSVC 2022 64-bit.
 - Instale CMake e Ninja.
 - Rode os comandos no "Developer PowerShell for VS 2022".
 
-## Build
+Seu caminho esperado hoje:
+
+```powershell
+C:\Qt\6.11.0\msvc2022_64
+```
+
+Build direto:
+
+```powershell
+$env:QT_DIR = "C:\Qt\6.11.0\msvc2022_64"
+$env:Path = "$env:QT_DIR\bin;$env:Path"
+cmake --preset dev -DCMAKE_PREFIX_PATH="$env:QT_DIR"
+cmake --build --preset dev
+ctest --preset dev --output-on-failure
+```
+
+Build com deteccao:
+
+```powershell
+.\tools\configure-dev.ps1
+cmake --build --preset dev
+ctest --preset dev --output-on-failure
+```
+
+Se o Qt mudar de versao, o script procura automaticamente por:
+
+```powershell
+C:\Qt\*\msvc2022_64
+```
+
+Tambem e possivel passar o caminho:
+
+```powershell
+.\tools\configure-dev.ps1 -QtDir "D:\Qt\6.11.0\msvc2022_64"
+```
+
+## Build manual
 
 macOS:
 
@@ -57,11 +167,33 @@ ctest --preset dev --output-on-failure
 Windows 11 PowerShell:
 
 ```powershell
-$env:QT_DIR = "C:\Qt\6.8.3\msvc2022_64"
+$env:QT_DIR = "C:\Qt\6.11.0\msvc2022_64"
 $env:Path = "$env:QT_DIR\bin;$env:Path"
 cmake --preset dev -DCMAKE_PREFIX_PATH="$env:QT_DIR"
 cmake --build --preset dev
 ctest --preset dev --output-on-failure
+```
+
+## Validacao local
+
+Depois de configurar e compilar, rode:
+
+```bash
+cmake --build --preset dev
+ctest --preset dev --output-on-failure
+qmllint -I build/dev app/desktop/qml/Main.qml app/desktop/qml/Theme.qml app/desktop/qml/components/*.qml
+```
+
+O `-I build/dev` e necessario porque o modulo QML `SsaConsultaRapida`
+e o `qmldir` sao gerados pelo CMake dentro do diretorio de build.
+Sem esse import path, o qmllint reporta falsos warnings de import e singleton.
+
+No Windows PowerShell:
+
+```powershell
+cmake --build --preset dev
+ctest --preset dev --output-on-failure
+& "$env:QT_DIR\bin\qmllint.exe" -I build/dev app/desktop/qml/Main.qml app/desktop/qml/Theme.qml app/desktop/qml/components/*.qml
 ```
 
 ## Execucao
@@ -84,7 +216,7 @@ Debian:
 Windows 11 PowerShell:
 
 ```powershell
-$env:QT_DIR = "C:\Qt\6.8.3\msvc2022_64"
+$env:QT_DIR = "C:\Qt\6.11.0\msvc2022_64"
 $env:Path = "$env:QT_DIR\bin;$env:Path"
 .\build\dev\ssa_consulta_rapida.exe `
   --db C:\caminho\para\ssas.db `
@@ -92,6 +224,14 @@ $env:Path = "$env:QT_DIR\bin;$env:Path"
 ```
 
 Para gerar uma pasta executavel fora do ambiente de build no Windows:
+
+```powershell
+& "$env:QT_DIR\bin\windeployqt.exe" .\build\dev\ssa_consulta_rapida.exe
+```
+
+Se voce usou `tools\configure-dev.ps1`, `QT_DIR` fica definido na sessao atual,
+mas o script nao altera `Path` globalmente. Para executar ferramentas Qt
+manualmente, chame o caminho completo:
 
 ```powershell
 & "$env:QT_DIR\bin\windeployqt.exe" .\build\dev\ssa_consulta_rapida.exe

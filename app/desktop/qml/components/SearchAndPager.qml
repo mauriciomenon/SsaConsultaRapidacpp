@@ -44,7 +44,9 @@ Rectangle {
 
             Label {
                 Layout.fillWidth: true
-                text: "Pagina " + root.viewModel.pageNumber + " de " + root.viewModel.pageCount +
+                text: (root.viewModel.totalRows === 0
+                       ? "Sem resultados"
+                       : "Pagina " + root.viewModel.pageNumber + " de " + root.viewModel.pageCount) +
                       "    Linhas por pagina"
                 color: Theme.mutedText
                 elide: Text.ElideRight
@@ -56,8 +58,16 @@ Rectangle {
                 value: root.viewModel.pageSize
                 onValueModified: root.viewModel.pageSize = value
             }
-            ActionButton { text: "<"; onClicked: root.viewModel.previousPage() }
-            ActionButton { text: ">"; onClicked: root.viewModel.nextPage() }
+            ActionButton {
+                text: "<"
+                enabled: root.viewModel.totalRows > 0
+                onClicked: root.viewModel.previousPage()
+            }
+            ActionButton {
+                text: ">"
+                enabled: root.viewModel.totalRows > 0
+                onClicked: root.viewModel.nextPage()
+            }
         }
     }
 }

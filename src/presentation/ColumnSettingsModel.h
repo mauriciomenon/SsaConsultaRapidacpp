@@ -61,7 +61,8 @@ namespace ssa::presentation {
 
         [[nodiscard]] int visibleCount() const;
         [[nodiscard]] std::vector<ColumnItem>::iterator findColumn(std::string_view key);
-        [[nodiscard]] std::vector<ColumnItem>::const_iterator findColumn(std::string_view key) const;
+        [[nodiscard]] std::vector<ColumnItem>::const_iterator
+        findColumn(std::string_view key) const;
         [[nodiscard]] bool setColumnVisibleBySourceRow(std::size_t row, bool visible);
         [[nodiscard]] bool matchesFilter(const ColumnItem& column) const;
         [[nodiscard]] int sourceRowFromModelRow(int modelRow) const;

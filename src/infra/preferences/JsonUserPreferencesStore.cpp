@@ -37,27 +37,57 @@ namespace ssa::infra::preferences {
 
         const QJsonObject root = document.object();
         snapshot.schemaVersion = root.value("schema_version").toInt(snapshot.schemaVersion);
-        snapshot.pageSize =
-            domain::clampPageSize(root.value("page_size").toInt(snapshot.pageSize));
+        snapshot.pageSize = domain::clampPageSize(root.value("page_size").toInt(snapshot.pageSize));
         snapshot.theme =
             root.value("theme").toString(QString::fromStdString(snapshot.theme)).toStdString();
         snapshot.density =
             root.value("density").toString(QString::fromStdString(snapshot.density)).toStdString();
         snapshot.detailsVisible = root.value("details_visible").toBool(snapshot.detailsVisible);
-        snapshot.detailsPanelWidth = domain::clampDetailsPanelWidth(
+        snapshot.detailsPanelWidth = ports::clampDetailsPanelWidth(
             root.value("details_panel_width").toInt(snapshot.detailsPanelWidth));
+        const auto defaultSortColumnKey = snapshot.sortColumnKey;
+        snapshot.sortColumnKey = root.value("sort_column_key")
+                                     .toString(QString::fromStdString(defaultSortColumnKey))
+                                     .toStdString();
+        if (!domain::ColumnCatalog::contains(snapshot.sortColumnKey)) {
+            snapshot.sortColumnKey = defaultSortColumnKey;
+        }
+        snapshot.sortAscending = root.value("sort_ascending").toBool(snapshot.sortAscending);
         snapshot.quickSector = root.value("quick_sector")
                                    .toString(QString::fromStdString(snapshot.quickSector))
                                    .toStdString();
         snapshot.excludeScaSesSte =
             root.value("exclude_sca_ses_ste").toBool(snapshot.excludeScaSesSte);
+        const auto defaultAdvancedWeekColumnKey = snapshot.advancedWeekColumnKey;
+        snapshot.advancedWeekColumnKey =
+            root.value("advanced_week_column_key")
+                .toString(QString::fromStdString(snapshot.advancedWeekColumnKey))
+                .toStdString();
+        if (!domain::ColumnCatalog::contains(snapshot.advancedWeekColumnKey)) {
+            snapshot.advancedWeekColumnKey = defaultAdvancedWeekColumnKey;
+        }
+        snapshot.advancedYear = root.value("advanced_year")
+                                    .toString(QString::fromStdString(snapshot.advancedYear))
+                                    .toStdString();
+        snapshot.advancedWeek = root.value("advanced_week")
+                                    .toString(QString::fromStdString(snapshot.advancedWeek))
+                                    .toStdString();
+        snapshot.derivationMode = root.value("derivation_mode")
+                                      .toString(QString::fromStdString(snapshot.derivationMode))
+                                      .toStdString();
+        snapshot.derivationMode = ports::normalizedDerivationMode(snapshot.derivationMode);
+        snapshot.onlyReprogrammed =
+            root.value("only_reprogrammed").toBool(snapshot.onlyReprogrammed);
 
         const QJsonArray visibleColumns = root.value("visible_columns").toArray();
         if (!visibleColumns.isEmpty()) {
             std::vector<std::string> parsedColumns;
             for (const auto& value : visibleColumns) {
                 if (value.isString()) {
-                    parsedColumns.push_back(value.toString().toStdString());
+                    const auto key = value.toString().toStdString();
+                    if (domain::ColumnCatalog::contains(key)) {
+                        parsedColumns.push_back(key);
+                    }
                 }
             }
             if (!parsedColumns.empty()) {
@@ -72,8 +102,10 @@ namespace ssa::infra::preferences {
 
         const QJsonObject columnFilters = root.value("column_filters").toObject();
         for (auto iterator = columnFilters.begin(); iterator != columnFilters.end(); ++iterator) {
-            snapshot.columnFilters[iterator.key().toStdString()] =
-                iterator.value().toString().toStdString();
+            const auto key = iterator.key().toStdString();
+            if (domain::ColumnCatalog::contains(key)) {
+                snapshot.columnFilters[key] = iterator.value().toString().toStdString();
+            }
         }
 
         return snapshot;
@@ -103,12 +135,21 @@ namespace ssa::infra::preferences {
         root.insert("theme", QString::fromStdString(snapshot.theme));
         root.insert("density", QString::fromStdString(snapshot.density));
         root.insert("details_visible", snapshot.detailsVisible);
-        root.insert("details_panel_width", domain::clampDetailsPanelWidth(snapshot.detailsPanelWidth));
+        root.insert("details_panel_width",
+                    ports::clampDetailsPanelWidth(snapshot.detailsPanelWidth));
+        root.insert("sort_column_key", QString::fromStdString(snapshot.sortColumnKey));
+        root.insert("sort_ascending", snapshot.sortAscending);
         root.insert("visible_columns", visibleColumns);
         root.insert("column_widths", columnWidths);
         root.insert("quick_sector", QString::fromStdString(snapshot.quickSector));
         root.insert("exclude_sca_ses_ste", snapshot.excludeScaSesSte);
         root.insert("column_filters", columnFilters);
+        root.insert("advanced_week_column_key",
+                    QString::fromStdString(snapshot.advancedWeekColumnKey));
+        root.insert("advanced_year", QString::fromStdString(snapshot.advancedYear));
+        root.insert("advanced_week", QString::fromStdString(snapshot.advancedWeek));
+        root.insert("derivation_mode", QString::fromStdString(snapshot.derivationMode));
+        root.insert("only_reprogrammed", snapshot.onlyReprogrammed);
 
         QFile output(QString::fromStdString(path_.string()));
         if (!output.open(QIODevice::WriteOnly | QIODevice::Truncate)) {

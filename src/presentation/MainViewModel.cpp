@@ -3,235 +3,110 @@
 #include "domain/ColumnCatalog.h"
 #include "domain/SsaTypes.h"
 
-#include <QFutureWatcher>
-#include <QtConcurrent>
+#include <QPointer>
 
-#include <algorithm>
 #include <stdexcept>
 #include <utility>
 
 namespace ssa::presentation {
 
+    namespace {
+
+        std::shared_ptr<ports::IExternalCommandPort>
+        requireCommandPort(std::shared_ptr<ports::IExternalCommandPort> commandPort) {
+            if (!commandPort) {
+                throw std::invalid_argument("external command port is required");
+            }
+            return commandPort;
+        }
+
+    } // namespace
+
     MainViewModel::MainViewModel(std::shared_ptr<query::SsaQueryService> queryService,
                                  std::shared_ptr<ports::IExternalCommandPort> commandPort,
                                  std::shared_ptr<ports::IUserPreferencesStore> preferencesStore,
+                                 std::shared_ptr<application::SsaWorkflowService> workflowService,
                                  QObject* parent)
-        : QObject(parent), queryService_(std::move(queryService)),
-          preferencesStore_(std::move(preferencesStore)),
-          visibleColumns_(domain::ColumnCatalog::defaultVisibleKeys()), search_(this),
-          filters_(this), details_(this), status_(this), commands_(std::move(commandPort), this),
-          columns_(this), tableModel_(this) {
-        if (!queryService_) {
-            throw std::invalid_argument("query service is required");
-        }
-        loadPreferences();
-        preferencesSaveTimer_.setSingleShot(true);
-        preferencesSaveTimer_.setInterval(250);
-        connect(&preferencesSaveTimer_, &QTimer::timeout, this, &MainViewModel::savePreferences);
-        connect(&search_, &SearchViewModel::applyRequested, this, &MainViewModel::apply);
-        connect(&search_, &SearchViewModel::clearRequested, this, &MainViewModel::clearSearch);
-        connect(&filters_, &FilterPanelViewModel::applyRequested, this, &MainViewModel::apply);
+        : QObject(parent), browse_(std::move(queryService), this),
+          commands_(requireCommandPort(std::move(commandPort)), nullptr, this),
+          exports_(
+              std::move(workflowService),
+              [this] {
+                  auto request = browse_.currentRequest();
+                  request.pageIndex = 0;
+                  return request;
+              },
+              nullptr, this),
+          columns_(this), ui_(this), preferences_(std::move(preferencesStore), this) {
+        connect(&browse_, &BrowseViewModel::pageChanged, this, &MainViewModel::pageChanged);
+        connect(&browse_, &BrowseViewModel::sortChanged, this, &MainViewModel::sortChanged);
+        connect(&browse_, &BrowseViewModel::preferencesSaveRequested, this,
+                &MainViewModel::scheduleSavePreferences);
+        connect(&ui_, &UiSettingsViewModel::preferencesSaveRequested, this,
+                &MainViewModel::scheduleSavePreferences);
+        connect(&ui_, &UiSettingsViewModel::settingsChanged, this,
+                &MainViewModel::preferencesChanged);
+        connect(&preferences_, &UserPreferencesCoordinator::saveFailed, this,
+                [this](const QString& message) {
+                    browse_.status()->setError(message);
+                    browse_.status()->setMessage("Falha ao salvar preferencias");
+                });
+        connect(&exports_, &ExportViewModel::runningChanged, this, [this] {
+            if (exports_.running()) {
+                browse_.status()->setError({});
+                browse_.status()->setMessage("Exportando dados...");
+            }
+        });
+        connect(&exports_, &ExportViewModel::lastResultChanged, this, [this] {
+            if (exports_.lastSucceeded()) {
+                browse_.status()->setError({});
+                browse_.status()->setMessage("Exportacao concluida");
+            } else {
+                browse_.status()->setError(exports_.lastMessage());
+                browse_.status()->setMessage("Falha ao exportar dados");
+            }
+        });
+        connect(&commands_, &CommandViewModel::runningChanged, this, [this] {
+            if (commands_.running()) {
+                browse_.status()->setError({});
+                browse_.status()->setMessage("Executando comando...");
+            }
+        });
+        connect(&commands_, &CommandViewModel::lastResultChanged, this, [this] {
+            if (commands_.lastSucceeded()) {
+                browse_.status()->setError({});
+                browse_.status()->setMessage("Comando concluido");
+            } else {
+                browse_.status()->setError(commands_.lastMessage());
+                browse_.status()->setMessage("Falha ao executar comando");
+            }
+        });
+        applyPreferences(preferences_.loadInitial());
     }
 
-    SearchViewModel* MainViewModel::search() {
-        return &search_;
-    }
-
-    FilterPanelViewModel* MainViewModel::filters() {
-        return &filters_;
-    }
-
-    DetailsViewModel* MainViewModel::details() {
-        return &details_;
-    }
-
-    StatusViewModel* MainViewModel::status() {
-        return &status_;
+    BrowseViewModel* MainViewModel::browse() {
+        return &browse_;
     }
 
     CommandViewModel* MainViewModel::commands() {
         return &commands_;
     }
 
+    ExportViewModel* MainViewModel::exports() {
+        return &exports_;
+    }
+
     ColumnSettingsModel* MainViewModel::columns() {
         return &columns_;
     }
 
-    SsaTableModel* MainViewModel::tableModel() {
-        return &tableModel_;
-    }
-
-    QString MainViewModel::theme() const {
-        return theme_;
-    }
-
-    void MainViewModel::setTheme(const QString& value) {
-        if (theme_ == value) {
-            return;
-        }
-        theme_ = value;
-        scheduleSavePreferences();
-        emit preferencesChanged();
-    }
-
-    QString MainViewModel::density() const {
-        return density_;
-    }
-
-void MainViewModel::setDensity(const QString& value) {
-        if (!isDensityValid(value)) {
-            return;
-        }
-        if (density_ == value) {
-            return;
-        }
-        density_ = value;
-        scheduleSavePreferences();
-        emit preferencesChanged();
-    }
-
-    bool MainViewModel::isDensityValid(const QString& value) const {
-        return value == "compact" || value == "normal" || value == "comfortable";
-    }
-
-    bool MainViewModel::detailsVisible() const {
-        return detailsVisible_;
-    }
-
-    void MainViewModel::setDetailsVisible(const bool value) {
-        if (detailsVisible_ == value) {
-            return;
-        }
-        detailsVisible_ = value;
-        scheduleSavePreferences();
-        emit preferencesChanged();
-    }
-
-    int MainViewModel::detailsPanelWidth() const {
-        return detailsPanelWidth_;
-    }
-
-    void MainViewModel::setDetailsPanelWidth(const int value) {
-        const int bounded = domain::clampDetailsPanelWidth(value);
-        if (detailsPanelWidth_ == bounded) {
-            return;
-        }
-        detailsPanelWidth_ = bounded;
-        scheduleSavePreferences();
-        emit preferencesChanged();
-    }
-
-    int MainViewModel::pageNumber() const {
-        if (totalRows_ == 0) {
-            return 0;
-        }
-        return static_cast<int>(pageIndex_ + 1);
-    }
-
-    int MainViewModel::pageCount() const {
-        if (totalRows_ == 0) {
-            return 0;
-        }
-        return static_cast<int>((totalRows_ + pageSize_ - 1) / pageSize_);
-    }
-
-    int MainViewModel::totalRows() const {
-        return static_cast<int>(totalRows_);
-    }
-
-    int MainViewModel::pageSize() const {
-        return static_cast<int>(pageSize_);
-    }
-
-    void MainViewModel::setPageSize(const int value) {
-        const int bounded = domain::clampPageSize(value);
-        const auto boundedSize = static_cast<std::size_t>(bounded);
-        if (pageSize_ == boundedSize) {
-            return;
-        }
-        pageSize_ = boundedSize;
-        pageIndex_ = 0;
-        scheduleSavePreferences();
-        load();
-    }
-
-    QString MainViewModel::sortColumnKey() const {
-        return QString::fromStdString(sort_.columnKey);
-    }
-
-    bool MainViewModel::sortAscending() const {
-        return sort_.ascending;
-    }
-
-    void MainViewModel::load() {
-        runRequest(buildRequest());
-    }
-
-    void MainViewModel::apply() {
-        pageIndex_ = 0;
-        savePreferences();
-        load();
-    }
-
-    void MainViewModel::clearSearch() {
-        pageIndex_ = 0;
-        search_.setText({});
-        load();
-    }
-
-    void MainViewModel::nextPage() {
-        const auto pages = static_cast<std::size_t>(pageCount());
-        if (pages == 0 || pageIndex_ + 1 >= pages) {
-            return;
-        }
-        ++pageIndex_;
-        load();
-    }
-
-    void MainViewModel::previousPage() {
-        if (pageIndex_ == 0) {
-            return;
-        }
-        --pageIndex_;
-        load();
-    }
-
-    void MainViewModel::selectRow(const int row) {
-        if (row < 0 || row >= tableModel_.rowCount()) {
-            details_.setRecord(nullptr);
-            return;
-        }
-        details_.setRecord(tableModel_.recordAt(row));
-    }
-
-    void MainViewModel::sortByColumn(const int column) {
-        const QString key = tableModel_.columnKey(column);
-        if (key.isEmpty()) {
-            return;
-        }
-        const auto nextKey = key.toStdString();
-        if (sort_.columnKey == nextKey) {
-            sort_.ascending = !sort_.ascending;
-        } else {
-            sort_.columnKey = nextKey;
-            sort_.ascending = true;
-        }
-        sort_.statusLast = domain::requiresStatusLastSort(sort_.columnKey);
-        pageIndex_ = 0;
-        emit sortChanged();
-        load();
+    UiSettingsViewModel* MainViewModel::ui() {
+        return &ui_;
     }
 
     void MainViewModel::applyColumnSettings() {
-        const auto previousVisibleColumns = visibleColumns_;
-        visibleColumns_ = columns_.visibleKeys();
-        columnWidths_ = columns_.columnWidths();
-        tableModel_.setColumnWidths(columnWidths_);
-        savePreferences();
-        if (visibleColumns_ != previousVisibleColumns) {
-            pageIndex_ = 0;
-            load();
-        }
+        browse_.applyColumnSettings(columns_.visibleKeys(), columns_.columnWidths());
+        scheduleSavePreferences();
     }
 
     void MainViewModel::resetColumnSettings() {
@@ -239,159 +114,46 @@ void MainViewModel::setDensity(const QString& value) {
     }
 
     void MainViewModel::discardColumnSettings() {
-        columns_.applyPreferences(visibleColumns_, columnWidths_);
+        columns_.applyPreferences(browse_.visibleColumns(), browse_.columnWidths());
     }
 
     void MainViewModel::openSelectedSsa() {
-        const auto selected = details_.selectedSsa();
+        const auto selected = browse_.details()->selectedSsa();
         if (!selected.isEmpty()) {
             commands_.openSsa(selected);
         }
     }
 
     void MainViewModel::cancelCurrentRequest() {
-        ++requestGeneration_;
-        status_.setLoading(false);
-        status_.setMessage("Consulta cancelada");
+        browse_.cancelCurrentRequest();
     }
 
-    domain::SsaPageRequest MainViewModel::buildRequest() const {
-        domain::SsaPageRequest request;
-        request.pageIndex = pageIndex_;
-        request.pageSize = pageSize_;
-        request.searchText = search_.text().toStdString();
-        request.columnFilters = filters_.columnFilters();
-        request.quickSector = filters_.quickSector().trimmed().toStdString();
-        request.excludeScaSesSte = filters_.excludeScaSesSte();
-        request.sort = sort_;
-        request.visibleColumns = visibleColumns_;
-        return request;
+    ports::UserPreferencesSnapshot MainViewModel::buildPreferencesSnapshot() const {
+        ports::UserPreferencesSnapshot snapshot;
+        ui_.writePreferences(snapshot);
+        browse_.writePreferences(snapshot);
+        return snapshot;
     }
 
-    void MainViewModel::runRequest(const domain::SsaPageRequest& request) {
-        const int generation = ++requestGeneration_;
-        status_.setLoading(true);
-        status_.setError({});
-        status_.setMessage("Consultando dados...");
-        auto* watcher = new QFutureWatcher<domain::SsaPageResult>(this);
-        connect(watcher, &QFutureWatcher<domain::SsaPageResult>::finished, this,
-                [this, watcher, request, generation] {
-                    try {
-                        auto result = watcher->result();
-                        watcher->deleteLater();
-                        if (generation != requestGeneration_) {
-                            return;
-                        }
-                        totalRows_ = result.totalRows;
-                        pageIndex_ = result.pageIndex;
-                        tableModel_.setPage(std::move(result), request.visibleColumns);
-                        if (tableModel_.rowCount() > 0) {
-                            details_.setRecord(tableModel_.recordAt(0));
-                        } else {
-                            details_.setRecord(nullptr);
-                        }
-                        status_.setMessage(QString("%1 registros, pagina %2 de %3")
-                                               .arg(totalRows())
-                                               .arg(pageNumber())
-                                               .arg(pageCount()));
-                    } catch (const std::exception& exc) {
-                        watcher->deleteLater();
-                        if (generation != requestGeneration_) {
-                            return;
-                        }
-                        status_.setError(QString::fromUtf8(exc.what()));
-                        status_.setMessage("Falha ao consultar dados");
-                    }
-                    status_.setLoading(false);
-                    emit pageChanged();
-                });
-        const std::weak_ptr<query::SsaQueryService> queryService = queryService_;
-        watcher->setFuture(QtConcurrent::run(
-            [queryService, request] {
-                const auto service = queryService.lock();
-                if (!service) {
-                    throw std::runtime_error("query service no longer available");
-                }
-                return service->search(request);
-            }));
-    }
-
-    void MainViewModel::loadPreferences() {
-        if (!preferencesStore_) {
-            return;
-        }
-        const auto snapshot = preferencesStore_->load();
-        pageSize_ = static_cast<std::size_t>(domain::clampPageSize(snapshot.pageSize));
-        if (!snapshot.visibleColumns.empty()) {
-            visibleColumns_ = snapshot.visibleColumns;
-        }
-        theme_ = QString::fromStdString(snapshot.theme);
-        const QString density = QString::fromStdString(snapshot.density);
-        if (isDensityValid(density)) {
-            density_ = density;
-        }
-        detailsVisible_ = snapshot.detailsVisible;
-        detailsPanelWidth_ = domain::clampDetailsPanelWidth(snapshot.detailsPanelWidth);
-        columns_.applyPreferences(visibleColumns_, snapshot.columnWidths);
-        visibleColumns_ = columns_.visibleKeys();
-        columnWidths_ = columns_.columnWidths();
-        tableModel_.setColumnWidths(columnWidths_);
-        filters_.setQuickSector(QString::fromStdString(snapshot.quickSector));
-        filters_.setExcludeScaSesSte(snapshot.excludeScaSesSte);
-        filters_.setColumnFilters(snapshot.columnFilters);
+    void MainViewModel::applyPreferences(ports::UserPreferencesSnapshot snapshot) {
+        ui_.applyPreferences(snapshot);
+        browse_.applyPreferences(snapshot);
+        ports::UserPreferencesSnapshot appliedBrowseSnapshot;
+        browse_.writePreferences(appliedBrowseSnapshot);
+        columns_.applyPreferences(appliedBrowseSnapshot.visibleColumns,
+                                  appliedBrowseSnapshot.columnWidths);
+        emit preferencesChanged();
     }
 
     void MainViewModel::scheduleSavePreferences() {
-        if (!preferencesStore_) {
-            return;
-        }
-        preferencesSaveTimer_.start();
+        const QPointer<MainViewModel> self{this};
+        preferences_.scheduleSave([self] {
+            return self ? self->buildPreferencesSnapshot() : ports::UserPreferencesSnapshot{};
+        });
     }
 
     void MainViewModel::savePreferences() {
-        if (!preferencesStore_) {
-            return;
-        }
-        if (preferencesSaveInProgress_) {
-            pendingPreferencesSave_ = true;
-            return;
-        }
-        preferencesSaveTimer_.stop();
-        preferencesSaveInProgress_ = true;
-        ports::UserPreferencesSnapshot snapshot;
-        snapshot.visibleColumns = visibleColumns_;
-        snapshot.columnWidths = columnWidths_;
-        snapshot.pageSize = static_cast<int>(pageSize_);
-        snapshot.theme = theme_.toStdString();
-        snapshot.density = density_.toStdString();
-        snapshot.detailsVisible = detailsVisible_;
-        snapshot.detailsPanelWidth = detailsPanelWidth_;
-        snapshot.quickSector = filters_.quickSector().trimmed().toStdString();
-        snapshot.excludeScaSesSte = filters_.excludeScaSesSte();
-        snapshot.columnFilters = filters_.columnFilters();
-        const auto store = preferencesStore_;
-        auto* watcher = new QFutureWatcher<bool>(this);
-        connect(watcher, &QFutureWatcher<bool>::finished, this, [this, watcher] {
-            try {
-                watcher->result();
-            } catch (const std::exception& exc) {
-                status_.setError(QString::fromUtf8(exc.what()));
-                status_.setMessage("Falha ao salvar preferencias");
-            }
-            preferencesSaveInProgress_ = false;
-            watcher->deleteLater();
-            if (pendingPreferencesSave_) {
-                pendingPreferencesSave_ = false;
-                savePreferences();
-            }
-        });
-        watcher->setFuture(QtConcurrent::run([store, snapshot] {
-            if (!store) {
-                return false;
-            }
-            store->save(snapshot);
-            return true;
-        }));
+        preferences_.saveNowOrSchedule(buildPreferencesSnapshot());
     }
 
 } // namespace ssa::presentation

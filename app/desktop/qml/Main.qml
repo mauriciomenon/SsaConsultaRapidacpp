@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Dialogs
 import QtQuick.Layouts
 import SsaConsultaRapida
 
@@ -21,13 +22,13 @@ ApplicationWindow {
 
     Binding {
         target: Theme
-        property: "dark"
-        value: root.vm.theme === "dark" ||
-               (root.vm.theme === "system" &&
-                Application.styleHints.colorScheme === Qt.ColorScheme.Dark)
+        property: "themeName"
+        value: root.vm.ui.theme === "system"
+               ? (Application.styleHints.colorScheme === Qt.ColorScheme.Dark ? "dark" : "light")
+               : root.vm.ui.theme
     }
 
-    Component.onCompleted: root.vm.load()
+    Component.onCompleted: root.vm.browse.load()
 
     function openPreferencesForSmoke() {
         preferencesDialog.open()
@@ -59,19 +60,51 @@ ApplicationWindow {
                     elide: Text.ElideRight
                 }
                 ActionButton { text: "SAM"; onClicked: root.vm.commands.openSamHome() }
-                ActionButton { text: "Atualizar"; onClicked: root.vm.load() }
+                ActionButton {
+                    id: openButton
+                    text: "Abrir"
+                    onClicked: openMenu.open()
+
+                    Menu {
+                        id: openMenu
+                        y: openButton.height
+
+                        MenuItem {
+                            text: "Pasta entrada"
+                            onTriggered: root.vm.commands.openInputFolder()
+                        }
+                        MenuItem {
+                            text: "Processados"
+                            onTriggered: root.vm.commands.openProcessedFolder()
+                        }
+                        MenuItem {
+                            text: "Redundantes"
+                            onTriggered: root.vm.commands.openRedundantFolder()
+                        }
+                        MenuItem {
+                            text: "Guia instalacao"
+                            onTriggered: root.vm.commands.openInstallationGuide()
+                        }
+                    }
+                }
+                ActionButton { text: "Atualizar"; onClicked: root.vm.browse.load() }
+                ActionButton {
+                    text: "Exportar"
+                    enabled: !root.vm.exports.running
+                    onClicked: exportDialog.open()
+                }
                 ActionButton { text: "Preferencias"; onClicked: preferencesDialog.open() }
                 ActionButton {
-                    text: "Cancelar"
-                    enabled: root.vm.status.loading
-                    onClicked: root.vm.cancelCurrentRequest()
+                    text: "Cancelar consulta"
+                    enabled: root.vm.browse.status.loading
+                    onClicked: root.vm.browse.cancelCurrentRequest()
                 }
             }
         }
 
         SearchAndPager {
             Layout.fillWidth: true
-            viewModel: root.vm
+            viewModel: root.vm.browse
         }
 
         SplitView {
@@ -86,27 +119,29 @@ ApplicationWindow {
 
                 FilterPanel {
                     Layout.fillWidth: true
-                    filterViewModel: root.vm.filters
-                    onApplyRequested: root.vm.apply()
+                    filterViewModel: root.vm.browse.filters
+                    onApplyRequested: root.vm.browse.apply()
                 }
 
                 SsaTable {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    viewModel: root.vm
+                    viewModel: root.vm.browse
+                    density: root.vm.ui.density
+                    onOpenRequested: root.vm.openSelectedSsa()
                 }
             }
 
             Loader {
-                SplitView.minimumWidth: root.vm.detailsVisible ? 280 : 0
-                SplitView.preferredWidth: root.vm.detailsVisible ? root.vm.detailsPanelWidth : 0
-                SplitView.maximumWidth: root.vm.detailsVisible ? 680 : 0
-                active: root.vm.detailsVisible
-                visible: root.vm.detailsVisible
+                SplitView.minimumWidth: root.vm.ui.detailsVisible ? 280 : 0
+                SplitView.preferredWidth: root.vm.ui.detailsVisible ? root.vm.ui.detailsPanelWidth : 0
+                SplitView.maximumWidth: root.vm.ui.detailsVisible ? 900 : 0
+                active: root.vm.ui.detailsVisible
+                visible: root.vm.ui.detailsVisible
 
                 sourceComponent: DetailsPanel {
-                    viewModel: root.vm.details
-                    density: root.vm.density
+                    viewModel: root.vm.browse.details
+                    density: root.vm.ui.density
                     onOpenRequested: root.vm.openSelectedSsa()
                 }
             }
@@ -114,12 +149,21 @@ ApplicationWindow {
 
         StatusPill {
             Layout.fillWidth: true
-            status: root.vm.status
+            status: root.vm.browse.status
+            browse: root.vm.browse
         }
     }
 
     PreferencesDialog {
         id: preferencesDialog
         viewModel: root.vm
+    }
+
+    FileDialog {
+        id: exportDialog
+        title: "Exportar CSV"
+        fileMode: FileDialog.SaveFile
+        nameFilters: ["CSV (*.csv)"]
+        onAccepted: root.vm.exports.exportFilteredList(selectedFile)
     }
 }

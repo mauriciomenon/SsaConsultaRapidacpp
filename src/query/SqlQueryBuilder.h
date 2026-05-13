@@ -2,8 +2,10 @@
 
 #include "domain/SsaTypes.h"
 #include "query/SearchParser.h"
+#include "query/SqlPredicateBuilder.h"
 
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace ssa::query {
@@ -24,13 +26,18 @@ namespace ssa::query {
 
     class SqlQueryBuilder final {
       public:
+        explicit SqlQueryBuilder(std::string tableName = "ssa_table");
+
         [[nodiscard]] SqlPageQueries build(const domain::SsaPageRequest& request) const;
-        [[nodiscard]] SqlRecordQuery buildRecordById(const domain::SsaId& id) const;
+        [[nodiscard]] SqlQuery buildRows(const domain::SsaPageRequest& request) const;
+        [[nodiscard]] SqlRecordQuery buildRecordBySsaNumber(const domain::SsaNumber& number) const;
         [[nodiscard]] SqlQuery
         buildDistinctValues(const domain::DistinctValuesRequest& request) const;
 
       private:
         SearchParser parser_;
+        SqlPredicateBuilder predicateBuilder_;
+        std::string tableName_;
     };
 
 } // namespace ssa::query

@@ -1,54 +1,48 @@
 #include "infra/sqlite/SqliteConnection.h"
 
-#include <regex>
 #include <stdexcept>
 
 namespace ssa::infra::sqlite {
 
     namespace {
 
-        void regexp(sqlite3_context* context, int argc, sqlite3_value** argv) {
-            if (argc != 2 || sqlite3_value_type(argv[0]) == SQLITE_NULL ||
-                sqlite3_value_type(argv[1]) == SQLITE_NULL) {
-                sqlite3_result_int(context, 0);
-                return;
+        int openFlags(const SqliteOpenMode mode) {
+            switch (mode) {
+            case SqliteOpenMode::ReadOnly:
+                return SQLITE_OPEN_READONLY;
+            case SqliteOpenMode::ReadWrite:
+                return SQLITE_OPEN_READWRITE;
             }
+            throw std::invalid_argument("unknown sqlite open mode");
+        }
 
-            const auto* patternText = reinterpret_cast<const char*>(sqlite3_value_text(argv[0]));
-            const auto* valueText = reinterpret_cast<const char*>(sqlite3_value_text(argv[1]));
-            try {
-                const std::regex pattern(patternText == nullptr ? "" : patternText,
-                                         std::regex_constants::icase);
-                const bool matched =
-                    std::regex_search(valueText == nullptr ? "" : valueText, pattern);
-                sqlite3_result_int(context, matched ? 1 : 0);
-            } catch (const std::regex_error&) {
-                sqlite3_result_int(context, 0);
+        void closeHandle(sqlite3*& db) {
+            if (db != nullptr) {
+                sqlite3_close_v2(db);
+                db = nullptr;
             }
         }
 
     } // namespace
 
-    SqliteConnection::SqliteConnection(const std::filesystem::path& dbPath) {
+    SqliteConnection::SqliteConnection(const std::filesystem::path& dbPath,
+                                       const SqliteOpenMode mode, const int busyTimeoutMs) {
         const auto path = dbPath.string();
-        const int rc = sqlite3_open_v2(path.c_str(), &db_, SQLITE_OPEN_READONLY, nullptr);
+        const int rc = sqlite3_open_v2(path.c_str(), &db_, openFlags(mode), nullptr);
         if (rc != SQLITE_OK) {
             std::string message =
                 db_ == nullptr ? "unknown sqlite open error" : sqlite3_errmsg(db_);
-            if (db_ != nullptr) {
-                sqlite3_close(db_);
-                db_ = nullptr;
-            }
+            closeHandle(db_);
             throw std::runtime_error("cannot open sqlite database: " + message);
         }
-        sqlite3_create_function(db_, "REGEXP", 2, SQLITE_UTF8 | SQLITE_DETERMINISTIC, nullptr,
-                                &regexp, nullptr, nullptr);
+        if (db_ == nullptr) {
+            throw std::runtime_error("cannot open sqlite database: null handle");
+        }
+        sqlite3_busy_timeout(db_, busyTimeoutMs);
     }
 
     SqliteConnection::~SqliteConnection() {
-        if (db_ != nullptr) {
-            sqlite3_close(db_);
-        }
+        closeHandle(db_);
     }
 
     sqlite3* SqliteConnection::handle() const noexcept {
@@ -69,8 +63,12 @@ namespace ssa::infra::sqlite {
         }
     }
 
-    void SqliteStatement::bindText(const int index, const std::string& value) {
-        const int rc = sqlite3_bind_text(statement_, index, value.c_str(), -1, SQLITE_TRANSIENT);
+    void SqliteStatement::bindTextOneBased(const int index, const std::string& value) {
+        if (index < 1) {
+            throw std::invalid_argument("sqlite bind index must be one-based");
+        }
+        const int rc = sqlite3_bind_text(statement_, index, value.c_str(),
+                                         static_cast<int>(value.size()), SQLITE_TRANSIENT);
         if (rc != SQLITE_OK) {
             throw std::runtime_error("cannot bind sqlite parameter");
         }
@@ -92,8 +90,14 @@ namespace ssa::infra::sqlite {
     }
 
     std::string SqliteStatement::columnName(const int column) const {
+        if (column < 0 || column >= sqlite3_column_count(statement_)) {
+            throw std::out_of_range("sqlite column index is out of range");
+        }
         const char* name = sqlite3_column_name(statement_, column);
-        return name == nullptr ? std::string{} : std::string{name};
+        if (name == nullptr) {
+            throw std::runtime_error("cannot read sqlite column name");
+        }
+        return std::string{name};
     }
 
     std::string SqliteStatement::columnText(const int column) const {

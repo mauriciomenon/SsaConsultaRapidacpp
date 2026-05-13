@@ -17,8 +17,7 @@ TEST_CASE("column catalog exposes visible and general-search contracts") {
 }
 
 TEST_CASE("ssa record returns empty string for missing values") {
-    ssa::domain::SsaRecord record;
-    record.values["numero_ssa"] = "202500001";
+    const ssa::domain::SsaRecord record{{{"numero_ssa", "202500001"}}};
 
     REQUIRE(record.valueOf("numero_ssa") == "202500001");
     REQUIRE(record.valueOf("missing").empty());

@@ -1,42 +1,38 @@
 #include "presentation/DetailsViewModel.h"
 
-#include "domain/ColumnCatalog.h"
-
-#include <QVariantMap>
-
 namespace ssa::presentation {
 
-    DetailsViewModel::DetailsViewModel(QObject* parent) : QObject(parent) {}
+    DetailsViewModel::DetailsViewModel(QObject* parent) : QObject(parent), fields_(this) {}
 
     QString DetailsViewModel::title() const {
         return title_;
     }
 
-    QVariantList DetailsViewModel::fields() const {
-        return fields_;
+    DetailsFieldsModel* DetailsViewModel::fields() {
+        return &fields_;
     }
 
-    void DetailsViewModel::setRecord(const domain::SsaRecord* record) {
-        fields_.clear();
-        selectedSsa_.clear();
-        if (record == nullptr) {
-            title_ = "Nenhuma SSA selecionada";
-            emit changed();
+    int DetailsViewModel::fieldCount() const {
+        return fields_.rowCount();
+    }
+
+    void DetailsViewModel::setRecord(const domain::SsaRecord& record) {
+        const auto selectedSsa = record.valueOf(domain::kSsaNumberColumnKey);
+        selectedSsa_ =
+            QString::fromUtf8(selectedSsa.data(), static_cast<qsizetype>(selectedSsa.size()));
+        if (selectedSsa_.isEmpty()) {
+            clearRecord();
             return;
         }
+        title_ = "SSA " + selectedSsa_;
+        fields_.setRecord(record);
+        emit changed();
+    }
 
-        selectedSsa_ = QString::fromStdString(record->valueOf("numero_ssa"));
-        title_ = selectedSsa_.isEmpty() ? "Detalhes" : "SSA " + selectedSsa_;
-        for (const auto& column : domain::ColumnCatalog::all()) {
-            const auto value = record->valueOf(column.key);
-            if (value.empty()) {
-                continue;
-            }
-            QVariantMap field;
-            field.insert("label", QString::fromStdString(column.label));
-            field.insert("value", QString::fromStdString(value));
-            fields_.push_back(field);
-        }
+    void DetailsViewModel::clearRecord() {
+        fields_.clear();
+        selectedSsa_.clear();
+        title_ = "Nenhuma SSA selecionada";
         emit changed();
     }
 

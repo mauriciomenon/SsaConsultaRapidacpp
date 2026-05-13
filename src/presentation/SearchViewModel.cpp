@@ -22,7 +22,7 @@ namespace ssa::presentation {
 
     void SearchViewModel::clear() {
         setText({});
-        emit clearRequested();
+        emit textClearRequested();
     }
 
 } // namespace ssa::presentation

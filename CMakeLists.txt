@@ -33,13 +33,25 @@ qt_policy(SET QTP0004 NEW)
 add_library(ssa_core STATIC
     src/domain/ColumnCatalog.cpp
     src/query/SearchParser.cpp
+    src/query/SqlPredicateBuilder.cpp
     src/query/SqlQueryBuilder.cpp
+    src/query/SqlQueryText.cpp
     src/query/SsaQueryService.cpp
 )
 target_include_directories(ssa_core PUBLIC src)
 
+add_library(ssa_application STATIC
+    src/application/SsaBrowseService.cpp
+    src/application/SsaWorkflowService.cpp
+    src/application/UnavailableWorkflowPort.cpp
+)
+target_include_directories(ssa_application PUBLIC src)
+target_link_libraries(ssa_application PUBLIC ssa_core)
+
 add_library(ssa_infra STATIC
+    src/infra/export/CsvExportPort.cpp
     src/infra/sqlite/SqliteConnection.cpp
+    src/infra/sqlite/SqliteMaintenancePort.cpp
     src/infra/sqlite/SqliteSsaRepository.cpp
     src/infra/sqlite/SqliteSchemaInspector.cpp
     src/infra/preferences/JsonUserPreferencesStore.cpp
@@ -49,20 +61,37 @@ target_link_libraries(ssa_infra PUBLIC ssa_core ${SSA_SQLITE_TARGET} Qt6::Core)
 
 add_library(ssa_presentation STATIC
     src/platform/DesktopExternalCommandPort.cpp
+    src/platform/LocalOpenCommandHandler.cpp
+    src/platform/OpenPathPolicy.cpp
+    src/platform/SamCommandHandler.cpp
     src/platform/AppPaths.cpp
     src/platform/StartupOptions.cpp
+    src/presentation/SsaColumnDisplayCatalog.cpp
+    src/presentation/SsaTableColumnManager.cpp
+    src/presentation/SsaTableDisplayCache.cpp
+    src/presentation/SsaTablePageFormatter.cpp
     src/presentation/SsaTableModel.cpp
+    src/presentation/SsaRecordValueFormatter.cpp
+    src/presentation/BrowseQueryState.cpp
+    src/presentation/BrowseOrchestrator.cpp
+    src/presentation/BrowseViewModel.cpp
     src/presentation/ColumnSettingsModel.cpp
     src/presentation/SearchViewModel.cpp
     src/presentation/FilterPanelViewModel.cpp
+    src/presentation/DetailsFieldsModel.cpp
     src/presentation/DetailsViewModel.cpp
     src/presentation/StatusViewModel.cpp
     src/presentation/CommandViewModel.cpp
+    src/presentation/ExportViewModel.cpp
+    src/presentation/UiSettingsViewModel.cpp
+    src/presentation/PageQueryCoordinator.cpp
+    src/presentation/UserPreferencesCoordinator.cpp
     src/presentation/MainViewModel.cpp
 )
 target_include_directories(ssa_presentation PUBLIC src)
 target_link_libraries(ssa_presentation PUBLIC
     ssa_core
+    ssa_application
     ssa_infra
     Qt6::Concurrent
     Qt6::Core
@@ -100,6 +129,27 @@ target_link_libraries(ssa_consulta_rapida PRIVATE
     Qt6::QuickControls2
 )
 
+add_library(ssa_cli STATIC
+    app/cli/SsaCliController.cpp
+    app/cli/SsaCliDatabasePath.cpp
+    app/cli/SsaCliPrinter.cpp
+    app/cli/SsaCliRequestMapper.cpp
+    app/cli/SsaCliWorkflowRunner.cpp
+)
+target_include_directories(ssa_cli PUBLIC app/cli)
+target_link_libraries(ssa_cli PUBLIC
+    ssa_application
+    Qt6::Core
+)
+
+add_executable(ssa_consulta_rapida_cli
+    app/cli/main.cpp
+)
+target_link_libraries(ssa_consulta_rapida_cli PRIVATE
+    ssa_cli
+    ssa_infra
+)
+
 set_target_properties(ssa_consulta_rapida PROPERTIES
     MACOSX_BUNDLE TRUE
     MACOSX_BUNDLE_GUI_IDENTIFIER br.menon.ssa-consulta-rapida
@@ -112,20 +162,28 @@ install(TARGETS ssa_consulta_rapida
     RUNTIME DESTINATION bin
 )
 
+install(TARGETS ssa_consulta_rapida_cli
+    RUNTIME DESTINATION bin
+)
+
 if(SSA_BUILD_TESTS)
     enable_testing()
     include(CTest)
     include(Catch)
 
     add_executable(ssa_core_tests
+        tests/unit/ApplicationTests.cpp
+        tests/unit/CliControllerTests.cpp
         tests/unit/DomainTests.cpp
         tests/unit/SearchParserTests.cpp
         tests/unit/SqlQueryBuilderTests.cpp
     )
-    target_link_libraries(ssa_core_tests PRIVATE ssa_core Catch2::Catch2WithMain)
+    target_link_libraries(ssa_core_tests PRIVATE ssa_application ssa_cli ssa_core Catch2::Catch2WithMain)
     catch_discover_tests(ssa_core_tests)
 
     add_executable(ssa_integration_tests
+        tests/integration/ExportPortTests.cpp
+        tests/integration/JsonPreferencesStoreTests.cpp
         tests/integration/SqliteRepositoryTests.cpp
     )
     target_link_libraries(ssa_integration_tests PRIVATE ssa_infra Catch2::Catch2WithMain)

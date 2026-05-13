@@ -21,6 +21,16 @@ namespace ssa::presentation {
         emit changed();
     }
 
+    void StatusViewModel::setQueryComplete(const qlonglong totalRows, const int pageNumber,
+                                           const int pageCount) {
+        if (totalRows == 0) {
+            setMessage("0 registros");
+            return;
+        }
+        setMessage(
+            QString("%1 registros, pagina %2 de %3").arg(totalRows).arg(pageNumber).arg(pageCount));
+    }
+
     void StatusViewModel::setError(const QString& value) {
         error_ = value;
         emit changed();

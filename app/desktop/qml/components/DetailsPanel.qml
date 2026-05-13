@@ -9,11 +9,9 @@ Rectangle {
     id: root
     required property var viewModel
     property string density: "normal"
-    readonly property bool compactDensity: density === "compact"
-    readonly property bool comfortableDensity: density === "comfortable"
-    readonly property int titleTextSize: compactDensity ? 14 : (comfortableDensity ? 18 : 16)
-    readonly property int labelTextSize: compactDensity ? 10 : (comfortableDensity ? 12 : 11)
-    readonly property int valueTextSize: compactDensity ? 11 : (comfortableDensity ? 14 : 12)
+    readonly property int titleTextSize: Theme.densityValue(root.density, 14, 16, 18)
+    readonly property int labelTextSize: Theme.densityValue(root.density, 10, 11, 12)
+    readonly property int valueTextSize: Theme.densityValue(root.density, 11, 12, 14)
     signal openRequested()
 
     color: Theme.panel
@@ -23,7 +21,7 @@ Rectangle {
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: Theme.gap
-        spacing: root.compactDensity ? 6 : Theme.gap
+        spacing: Theme.densityValue(root.density, 6, Theme.gap, Theme.gap)
 
         RowLayout {
             Layout.fillWidth: true
@@ -42,26 +40,27 @@ Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true
-            visible: root.viewModel.fields.length > 0
+            visible: root.viewModel.fieldCount > 0
 
             Column {
                 width: parent.width
-                spacing: root.compactDensity ? 4 : (root.comfortableDensity ? 8 : 6)
+                spacing: Theme.densityValue(root.density, 4, 6, 8)
                 Repeater {
                     model: root.viewModel.fields
                     delegate: Column {
                         id: fieldDelegate
-                        required property var modelData
+                        required property string label
+                        required property var value
 
                         width: parent.width
                         Label {
-                            text: fieldDelegate.modelData.label
+                            text: fieldDelegate.label
                             color: Theme.mutedText
                             font.pixelSize: root.labelTextSize
                         }
                         Text {
                             width: parent.width
-                            text: fieldDelegate.modelData.value
+                            text: fieldDelegate.value
                             color: Theme.text
                             wrapMode: Text.Wrap
                             font.pixelSize: root.valueTextSize
@@ -74,7 +73,7 @@ Rectangle {
         Label {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            visible: root.viewModel.fields.length === 0
+            visible: root.viewModel.fieldCount === 0
             text: "Selecione uma SSA na tabela"
             color: Theme.mutedText
             horizontalAlignment: Text.AlignHCenter

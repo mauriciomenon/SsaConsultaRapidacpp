@@ -18,7 +18,7 @@ namespace ssa::presentation {
       signals:
         void textChanged();
         void applyRequested();
-        void clearRequested();
+        void textClearRequested();
 
       public slots:
         void apply();

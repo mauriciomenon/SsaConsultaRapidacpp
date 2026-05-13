@@ -9,7 +9,7 @@ Rectangle {
 
     signal applyRequested()
 
-    Layout.preferredHeight: 124
+    Layout.preferredHeight: 164
     color: Theme.panel
     border.color: Theme.border
     radius: Theme.radius
@@ -68,6 +68,52 @@ Rectangle {
             }
             ActionButton { text: "Adicionar"; onClicked: root.filterViewModel.addColumnFilter() }
             ActionButton { text: "Padrao"; onClicked: root.filterViewModel.resetFilters() }
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Theme.gap
+
+            Label { text: "Semana:"; color: Theme.text }
+            ComboBox {
+                Layout.preferredWidth: 170
+                model: root.filterViewModel.weekColumnKeys
+                currentIndex: Math.max(0, root.filterViewModel.weekColumnKeys.indexOf(root.filterViewModel.weekColumnKey))
+                onActivated: root.filterViewModel.weekColumnKey = currentText
+            }
+            TextField {
+                Layout.preferredWidth: 80
+                implicitHeight: Theme.controlHeight
+                placeholderText: "Ano"
+                text: root.filterViewModel.yearFilter
+                inputMethodHints: Qt.ImhDigitsOnly
+                onTextChanged: root.filterViewModel.yearFilter = text
+                onAccepted: root.applyRequested()
+            }
+            TextField {
+                Layout.preferredWidth: 90
+                implicitHeight: Theme.controlHeight
+                placeholderText: "Sem."
+                text: root.filterViewModel.weekFilter
+                inputMethodHints: Qt.ImhDigitsOnly
+                onTextChanged: root.filterViewModel.weekFilter = text
+                onAccepted: root.applyRequested()
+            }
+            ComboBox {
+                readonly property var derivationOptions: ["all", "root", "derived"]
+
+                Layout.preferredWidth: 120
+                model: derivationOptions
+                currentIndex: Math.max(0, derivationOptions.indexOf(root.filterViewModel.derivationMode))
+                onActivated: root.filterViewModel.derivationMode = currentText
+            }
+            AppCheckBox {
+                Layout.preferredWidth: 170
+                text: "Reprogramadas"
+                checked: root.filterViewModel.onlyReprogrammed
+                onToggled: root.filterViewModel.onlyReprogrammed = checked
+            }
+            Item { Layout.fillWidth: true }
         }
 
         Label {

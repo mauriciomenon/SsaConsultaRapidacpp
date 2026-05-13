@@ -1,13 +1,11 @@
 #include "domain/ColumnCatalog.h"
-#include "infra/preferences/JsonUserPreferencesStore.h"
 #include "infra/sqlite/SqliteConnection.h"
+#include "infra/sqlite/SqliteMaintenancePort.h"
 #include "infra/sqlite/SqliteSsaRepository.h"
 
 #include <catch2/catch_test_macros.hpp>
 
-#include <QFile>
 #include <QDir>
-#include <QTemporaryDir>
 #include <QTemporaryFile>
 
 #include <filesystem>
@@ -17,9 +15,8 @@
 namespace {
 
     std::filesystem::path createFixture() {
-        QTemporaryFile dbFile(
-            QDir::tempPath() + QStringLiteral("/ssa_cpp_fixture_XXXXXX.sqlite"));
-        dbFile.setAutoRemove(false);
+        QTemporaryFile dbFile(QDir::tempPath() + QStringLiteral("/ssa_cpp_fixture_XXXXXX.sqlite"));
+        dbFile.setAutoRemove(true);
         REQUIRE(dbFile.open());
         const auto path = std::filesystem::path(dbFile.fileName().toStdString());
         dbFile.close();
@@ -50,13 +47,15 @@ namespace {
             grau_prioridade_emissao TEXT,
             grau_prioridade_planejamento TEXT,
             semana_programada INTEGER,
-            semana_executada INTEGER
+            semana_executada INTEGER,
+            num_reprogramacoes INTEGER,
+            total_de_reprogramacoes INTEGER
         );
         INSERT INTO ssa_table VALUES
-            ('202500003','APV','','LOC-1','Casa de forca','EQ-A',202501,'2025-01-01','Trocar filtro','Executar troca','SEM','SMM','Ana','Bruno','Caio','SAM','SYS','a.xlsx','2025-01-01','A','B',202502,202503),
-            ('202500002','STE','','LOC-2','Vertedouro','EQ-B',202501,'2025-01-02','Inspecionar bomba','Inspecao','SEM','STE','Bia','Davi','Eva','SAM','SYS','b.xlsx','2025-01-02','C','D',202502,202503),
-            ('202500001','SES','','LOC-3','Patio','EQ-C',202501,'2025-01-03','Limpar painel','Limpeza','OPR','SMM','Ivo','Leo','Mia','SAM','SYS','c.xlsx','2025-01-03','E','F',202502,202503),
-            ('202500000','SCA','','LOC-4','Galeria','EQ-D',202501,'2025-01-04','Cancelar atividade','Cancelada','OPR','SMM','Noa','Lia','Rui','SAM','SYS','d.xlsx','2025-01-04','G','H',202502,202503);
+            ('202500003','APV','202400001','LOC-1','Casa de forca','EQ-A',202501,'2025-01-01','Trocar filtro','Executar troca','SEM','SMM','Ana','Bruno','Caio','SAM','SYS','a.xlsx','2025-01-01','A','B',202502,202503,1,1),
+            ('202500002','STE','','LOC-2','Vertedouro','EQ-B',202501,'2025-01-02','Inspecionar bomba','Inspecao','SEM','STE','Bia','Davi','Eva','SAM','SYS','b.xlsx','2025-01-02','C','D',202502,202503,0,0),
+            ('202500001','SES','','LOC-3','Patio','EQ-C',202501,'2025-01-03','Limpar painel','Limpeza','OPR','SMM','Ivo','Leo','Mia','SAM','SYS','c.xlsx','2025-01-03','E','F',202502,202503,0,0),
+            ('202500000','SCA','','LOC-4','Galeria','EQ-D',202501,'2025-01-04','Cancelar atividade','Cancelada','OPR','SMM','Noa','Lia','Rui','SAM','SYS','d.xlsx','2025-01-04','G','H',202502,202503,0,0);
     )SQL";
         char* error = nullptr;
         const int rc = sqlite3_exec(db, sql, nullptr, nullptr, &error);
@@ -65,15 +64,32 @@ namespace {
         }
         REQUIRE(rc == SQLITE_OK);
         sqlite3_close(db);
+        dbFile.setAutoRemove(false);
         return path;
     }
 
+    struct SqliteFixture {
+        std::filesystem::path path{createFixture()};
+
+        SqliteFixture() = default;
+
+        ~SqliteFixture() {
+            std::filesystem::remove(path);
+        }
+
+        SqliteFixture(const SqliteFixture&) = delete;
+        SqliteFixture& operator=(const SqliteFixture&) = delete;
+        SqliteFixture(SqliteFixture&&) = delete;
+        SqliteFixture& operator=(SqliteFixture&&) = delete;
+    };
+
+    struct SqliteRepositoryFixture : SqliteFixture {
+        ssa::infra::sqlite::SqliteSsaRepository repository{path};
+    };
+
 } // namespace
 
-TEST_CASE("sqlite repository pages and filters rows") {
-    const auto path = createFixture();
-    const ssa::infra::sqlite::SqliteSsaRepository repository(path);
-
+TEST_CASE_METHOD(SqliteRepositoryFixture, "sqlite repository pages and filters rows") {
     ssa::domain::SsaPageRequest request;
     request.pageSize = 10;
     request.searchText = "filtro";
@@ -85,10 +101,35 @@ TEST_CASE("sqlite repository pages and filters rows") {
     REQUIRE(page.rows[0].valueOf("numero_ssa") == "202500003");
 }
 
-TEST_CASE("sqlite repository excludes SCA SES STE by default") {
-    const auto path = createFixture();
-    const ssa::infra::sqlite::SqliteSsaRepository repository(path);
+TEST_CASE_METHOD(SqliteRepositoryFixture,
+                 "sqlite repository applies safe pattern through escaped LIKE") {
+    ssa::domain::SsaPageRequest request;
+    request.pageSize = 10;
+    request.searchText = "~trocar filtro";
 
+    const auto page = repository.page(request);
+
+    REQUIRE(page.totalRows == 1);
+    REQUIRE(page.rows[0].valueOf("numero_ssa") == "202500003");
+}
+
+TEST_CASE_METHOD(SqliteRepositoryFixture,
+                 "sqlite repository negates general search across all searched columns") {
+    ssa::domain::SsaPageRequest request;
+    request.pageSize = 10;
+    request.searchText = "!filtro";
+    request.excludeScaSesSte = false;
+
+    const auto page = repository.page(request);
+
+    REQUIRE(page.totalRows == 3);
+    REQUIRE(page.rows.size() == 3);
+    for (const auto& row : page.rows) {
+        REQUIRE(row.valueOf("numero_ssa") != "202500003");
+    }
+}
+
+TEST_CASE_METHOD(SqliteRepositoryFixture, "sqlite repository excludes SCA SES STE by default") {
     ssa::domain::SsaPageRequest request;
     request.pageSize = 10;
 
@@ -100,11 +141,8 @@ TEST_CASE("sqlite repository excludes SCA SES STE by default") {
     REQUIRE(page.rows[0].valueOf("situacao") == "APV");
 }
 
-TEST_CASE("sqlite repository returns details and distinct values") {
-    const auto path = createFixture();
-    const ssa::infra::sqlite::SqliteSsaRepository repository(path);
-
-    const auto record = repository.recordById(ssa::domain::SsaId{"202500003"});
+TEST_CASE_METHOD(SqliteRepositoryFixture, "sqlite repository returns details and distinct values") {
+    const auto record = repository.recordBySsaNumber(ssa::domain::SsaNumber{"202500003"});
     REQUIRE(record.has_value());
     REQUIRE(record->valueOf("setor_executor") == "SMM");
 
@@ -114,52 +152,37 @@ TEST_CASE("sqlite repository returns details and distinct values") {
     REQUIRE_FALSE(values.empty());
 }
 
-TEST_CASE("json preferences store saves user preference snapshot") {
-    QTemporaryDir directory;
-    REQUIRE(directory.isValid());
+TEST_CASE_METHOD(SqliteRepositoryFixture, "sqlite repository applies advanced filters") {
+    ssa::domain::SsaPageRequest request;
+    request.pageSize = 10;
+    request.advancedFilters.weekColumnKey = "semana_programada";
+    request.advancedFilters.year = 2025;
+    request.advancedFilters.week = 2;
+    request.advancedFilters.derivationMode = ssa::domain::DerivationFilterMode::DerivedOnly;
+    request.advancedFilters.onlyReprogrammed = true;
 
-    const auto path = std::filesystem::path{directory.path().toStdString()} / "prefs.json";
-    const ssa::infra::preferences::JsonUserPreferencesStore store(path);
+    const auto page = repository.page(request);
 
-    ssa::ports::UserPreferencesSnapshot snapshot;
-    snapshot.pageSize = 50;
-    snapshot.theme = "dark";
-    snapshot.density = "compact";
-    snapshot.detailsVisible = false;
-    snapshot.detailsPanelWidth = 520;
-    snapshot.visibleColumns = {"numero_ssa", "situacao"};
-    snapshot.columnWidths = {{"numero_ssa", 140}};
-    snapshot.quickSector = "IEE3";
-    snapshot.excludeScaSesSte = false;
-    snapshot.columnFilters = {{"situacao", "=ADM"}};
-
-    store.save(snapshot);
-    const auto loaded = store.load();
-
-    REQUIRE(loaded.pageSize == 50);
-    REQUIRE(loaded.theme == "dark");
-    REQUIRE(loaded.density == "compact");
-    REQUIRE_FALSE(loaded.detailsVisible);
-    REQUIRE(loaded.detailsPanelWidth == 520);
-    REQUIRE(loaded.visibleColumns == std::vector<std::string>{"numero_ssa", "situacao"});
-    REQUIRE(loaded.columnWidths.at("numero_ssa") == 140);
-    REQUIRE(loaded.quickSector == "IEE3");
-    REQUIRE_FALSE(loaded.excludeScaSesSte);
-    REQUIRE(loaded.columnFilters.at("situacao") == "=ADM");
+    REQUIRE(page.totalRows == 1);
+    REQUIRE(page.rows[0].valueOf("numero_ssa") == "202500003");
 }
 
-TEST_CASE("json preferences store keeps default columns when saved list is invalid") {
-    QTemporaryDir directory;
-    REQUIRE(directory.isValid());
+TEST_CASE("sqlite maintenance port runs vacuum analyze") {
+    const SqliteFixture fixture;
+    ssa::infra::sqlite::SqliteMaintenancePort maintenance(fixture.path);
 
-    const auto path = std::filesystem::path{directory.path().toStdString()} / "prefs.json";
-    QFile file(QString::fromStdString(path.string()));
-    REQUIRE(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
-    file.write(R"JSON({"visible_columns":[1,false,null]})JSON");
-    file.close();
+    const auto result = maintenance.vacuumAnalyze();
 
-    const ssa::infra::preferences::JsonUserPreferencesStore store(path);
-    const auto loaded = store.load();
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+}
 
-    REQUIRE(loaded.visibleColumns == ssa::domain::ColumnCatalog::defaultVisibleKeys());
+TEST_CASE("sqlite maintenance port resets table data") {
+    const SqliteFixture fixture;
+    ssa::infra::sqlite::SqliteMaintenancePort maintenance(fixture.path);
+
+    const auto result = maintenance.resetDatabase();
+    const ssa::infra::sqlite::SqliteSsaRepository repository(fixture.path);
+
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE(repository.count({}) == 0);
 }

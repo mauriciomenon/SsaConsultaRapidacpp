@@ -94,7 +94,7 @@ namespace ssa::presentation {
     }
 
     bool ColumnSettingsModel::setColumnVisibleBySourceRow(const std::size_t sourceRow,
-                                                        const bool visible) {
+                                                          const bool visible) {
         if (sourceRow >= columns_.size()) {
             return false;
         }
@@ -122,16 +122,14 @@ namespace ssa::presentation {
 
     std::vector<ColumnSettingsModel::ColumnItem>::iterator
     ColumnSettingsModel::findColumn(const std::string_view key) {
-        return std::ranges::find_if(columns_, [&key](const ColumnItem& column) {
-            return column.key == key;
-        });
+        return std::ranges::find_if(columns_,
+                                    [&key](const ColumnItem& column) { return column.key == key; });
     }
 
     std::vector<ColumnSettingsModel::ColumnItem>::const_iterator
     ColumnSettingsModel::findColumn(const std::string_view key) const {
-        return std::ranges::find_if(columns_, [&key](const ColumnItem& column) {
-            return column.key == key;
-        });
+        return std::ranges::find_if(columns_,
+                                    [&key](const ColumnItem& column) { return column.key == key; });
     }
 
     bool ColumnSettingsModel::setColumnVisibleByKey(const QString& columnKey, const bool visible) {

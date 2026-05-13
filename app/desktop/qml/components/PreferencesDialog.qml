@@ -40,12 +40,12 @@ Dialog {
                 Layout.preferredWidth: 90
             }
             ComboBox {
-                readonly property var themeOptions: ["system", "light", "dark"]
+                readonly property var themeOptions: ["system", "light", "dark", "gruvbox"]
 
                 Layout.preferredWidth: 160
                 model: themeOptions
-                currentIndex: Math.max(0, themeOptions.indexOf(root.viewModel.theme))
-                onActivated: root.viewModel.theme = currentText
+                currentIndex: Math.max(0, themeOptions.indexOf(root.viewModel.ui.theme))
+                onActivated: root.viewModel.ui.theme = currentText
             }
             Label {
                 text: "Densidade"
@@ -57,8 +57,8 @@ Dialog {
 
                 Layout.preferredWidth: 150
                 model: densityOptions
-                currentIndex: Math.max(0, densityOptions.indexOf(root.viewModel.density))
-                onActivated: root.viewModel.density = currentText
+                currentIndex: Math.max(0, densityOptions.indexOf(root.viewModel.ui.density))
+                onActivated: root.viewModel.ui.density = currentText
             }
             Label {
                 Layout.fillWidth: true
@@ -71,8 +71,8 @@ Dialog {
         AppCheckBox {
             Layout.fillWidth: true
             text: "Mostrar painel de detalhes"
-            checked: root.viewModel.detailsVisible
-            onToggled: root.viewModel.detailsVisible = checked
+            checked: root.viewModel.ui.detailsVisible
+            onToggled: root.viewModel.ui.detailsVisible = checked
         }
 
         RowLayout {
@@ -86,10 +86,10 @@ Dialog {
             }
             SpinBox {
                 from: 280
-                to: 680
+                to: 900
                 stepSize: 20
-                value: root.viewModel.detailsPanelWidth
-                onValueModified: root.viewModel.detailsPanelWidth = value
+                value: root.viewModel.ui.detailsPanelWidth
+                onValueModified: root.viewModel.ui.detailsPanelWidth = value
             }
             Label {
                 Layout.fillWidth: true

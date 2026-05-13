@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <stdexcept>
 
 namespace ssa::domain {
 
@@ -9,31 +10,41 @@ namespace ssa::domain {
 
         using enum ColumnType;
 
+        constexpr std::string_view kStatusColumnKey = "situacao";
+        constexpr std::string_view kExecutorColumnKey = "setor_executor";
+        constexpr std::string_view kDerivationColumnKey = "derivada_de";
+        constexpr std::array<std::string_view, 3> kExcludedStatusCodes{"SCA", "SES", "STE"};
+        constexpr std::array<std::string_view, 3> kWeekColumnKeys{
+            "semana_cadastro", "semana_programada", "semana_executada"};
+        constexpr std::array<std::string_view, 2> kReprogrammingColumnKeys{
+            "num_reprogramacoes", "total_de_reprogramacoes"};
+        constexpr std::string_view kStatusLastSortCode = "STE";
+
         const std::array<ColumnDef, 84> kColumns{{
             {"id", "ID", Integer, false, false, 80},
-            {"numero_ssa", "SSA", Text, true, true, 120},
-            {"situacao", "Situacao", Text, true, true, 110},
-            {"derivada_de", "Derivada de", Text, true, true, 120},
-            {"localizacao_codigo", "Localizacao", Text, true, true, 140},
-            {"descricao_localizacao", "Desc. Localizacao", Text, true, true, 220},
-            {"equipamento", "Equipamento", Text, true, true, 150},
-            {"semana_cadastro", "Sem. Cadastro", Integer, true, true, 120},
-            {"data_cadastro", "Data Cadastro", DateText, true, false, 135},
+            {"numero_ssa", "No SSA", Text, true, true, 110},
+            {"situacao", "Sit.", Text, true, true, 80},
+            {"derivada_de", "Der.", Text, false, true, 110},
+            {"localizacao_codigo", "Loc.", Text, true, true, 120},
+            {"descricao_localizacao", "Desc. Loc.", Text, false, true, 220},
+            {"equipamento", "Equip.", Text, false, true, 150},
+            {"semana_cadastro", "Sem. Cad.", Integer, true, true, 95},
+            {"data_cadastro", "Cadastro", DateText, true, false, 120},
             {"descricao_ssa", "Descricao SSA", Text, true, true, 360},
             {"descricao_execucao", "Descricao Execucao", Text, true, true, 360},
-            {"setor_emissor", "Setor Emissor", Text, true, true, 140},
-            {"setor_executor", "Setor Executor", Text, true, true, 140},
-            {"solicitante", "Solicitante", Text, true, true, 180},
-            {"responsavel_programacao", "Resp. Programacao", Text, true, true, 180},
-            {"responsavel_execucao", "Resp. Execucao", Text, true, true, 180},
+            {"setor_emissor", "Emis.", Text, false, true, 90},
+            {"setor_executor", "Exec.", Text, true, true, 90},
+            {"solicitante", "Solicitante", Text, false, true, 180},
+            {"responsavel_programacao", "Resp. Programacao", Text, false, true, 180},
+            {"responsavel_execucao", "Resp. Execucao", Text, false, true, 180},
             {"servico_origem", "Servico Origem", Text, false, true, 150},
             {"sistema_origem", "Sistema Origem", Text, false, true, 150},
             {"arquivo_origem", "Arquivo Origem", Text, false, false, 180},
             {"data_planilha", "Data Planilha", DateText, false, false, 130},
-            {"grau_prioridade_emissao", "Prior. Emissao", Text, true, true, 140},
-            {"grau_prioridade_planejamento", "Prior. Planej.", Text, true, true, 140},
+            {"grau_prioridade_emissao", "Prior. Emissao", Text, false, true, 140},
+            {"grau_prioridade_planejamento", "Prior. Planej.", Text, false, true, 140},
             {"execucao_simples", "Exec. Simples", Text, false, false, 130},
-            {"semana_programada", "Sem. Programada", Integer, true, true, 140},
+            {"semana_programada", "Sem. Prog.", Integer, true, true, 95},
             {"prazo_limite", "Prazo Limite", DateText, false, false, 140},
             {"status_execucao_prazo", "Status Prazo", Text, false, false, 150},
             {"tempo_disponivel", "Tempo Disponivel", Text, false, false, 150},
@@ -47,12 +58,12 @@ namespace ssa::domain {
             {"total_tempo_tpo_planejado", "TPO Planejado", Text, false, false, 150},
             {"total_horas_programadas", "Horas Programadas", Text, false, false, 160},
             {"total_tempo_tpe_executada", "TPE Executada", Text, false, false, 150},
-            {"semana_executada", "Sem. Executada", Integer, true, true, 140},
+            {"semana_executada", "Sem. Exec.", Integer, false, true, 95},
             {"num_reprogramacoes", "Reprogramacoes", Integer, false, false, 140},
             {"execucao_parcial", "Exec. Parcial", Text, false, true, 140},
             {"anomalia", "Anomalia", Text, false, true, 130},
             {"registros_espera", "Reg. Espera", Text, false, false, 140},
-            {"num_reprobaciones", "Reprovacoes", Integer, false, true, 130},
+            {"num_reprobaciones", "Reprobaciones", Integer, false, true, 130},
             {"situacao_espera", "Situacao Espera", Text, false, true, 150},
             {"numero_desvios", "Desvios", Integer, false, true, 120},
             {"ate", "Ate", Text, false, false, 120},
@@ -96,6 +107,17 @@ namespace ssa::domain {
             {"data_arquivo_origem", "Data Arq. Origem", DateText, false, false, 160},
         }};
 
+        template <typename Predicate> std::vector<std::string> keysMatching(Predicate predicate) {
+            std::vector<std::string> result;
+            result.reserve(kColumns.size());
+            for (const auto& column : kColumns) {
+                if (predicate(column)) {
+                    result.push_back(column.key);
+                }
+            }
+            return result;
+        }
+
     } // namespace
 
     std::span<const ColumnDef> ColumnCatalog::all() {
@@ -110,40 +132,74 @@ namespace ssa::domain {
     }
 
     std::vector<std::string> ColumnCatalog::defaultVisibleKeys() {
-        std::vector<std::string> result;
-        for (const auto& column : kColumns) {
-            if (column.defaultVisible) {
-                result.push_back(column.key);
+        return keysMatching([](const ColumnDef& column) { return column.defaultVisible; });
+    }
+
+    std::vector<std::string> ColumnCatalog::visibleKeysOrDefault(std::vector<std::string> keys) {
+        if (keys.empty()) {
+            keys = defaultVisibleKeys();
+        }
+        for (const auto& key : keys) {
+            if (!contains(key)) {
+                throw std::invalid_argument("unknown column: " + key);
             }
         }
-        return result;
+        return keys;
     }
 
     std::vector<std::string> ColumnCatalog::generalSearchKeys() {
-        std::vector<std::string> result;
-        for (const auto& column : kColumns) {
-            if (column.generalSearch) {
-                result.push_back(column.key);
-            }
-        }
-        return result;
+        return keysMatching([](const ColumnDef& column) { return column.generalSearch; });
     }
 
     std::vector<std::string> ColumnCatalog::filterColumnKeys() {
-        constexpr std::array<std::string_view, 6> candidates{"situacao",      "setor_executor",
-                                                             "setor_emissor", "localizacao_codigo",
-                                                             "descricao_ssa", "derivada_de"};
-        std::vector<std::string> result;
-        for (const auto key : candidates) {
-            if (contains(key)) {
-                result.emplace_back(key);
-            }
+        auto keys = keysMatching([](const ColumnDef& column) { return column.key != "id"; });
+        const auto status = std::string{statusColumnKey()};
+        const auto statusIt = std::ranges::find(keys, status);
+        if (statusIt != keys.end() && statusIt != keys.begin()) {
+            keys.erase(statusIt);
+            keys.insert(keys.begin(), status);
         }
-        return result;
+        return keys;
     }
 
     std::string ColumnCatalog::defaultFilterColumnKey() {
         return "situacao";
+    }
+
+    std::string_view ColumnCatalog::statusColumnKey() {
+        return kStatusColumnKey;
+    }
+
+    std::string_view ColumnCatalog::executorColumnKey() {
+        return kExecutorColumnKey;
+    }
+
+    std::string_view ColumnCatalog::derivationColumnKey() {
+        return kDerivationColumnKey;
+    }
+
+    std::span<const std::string_view> ColumnCatalog::excludedStatusCodes() {
+        return kExcludedStatusCodes;
+    }
+
+    std::span<const std::string_view> ColumnCatalog::weekColumnKeys() {
+        return kWeekColumnKeys;
+    }
+
+    std::span<const std::string_view> ColumnCatalog::reprogrammingColumnKeys() {
+        return kReprogrammingColumnKeys;
+    }
+
+    std::string_view ColumnCatalog::statusLastSortCode() {
+        return kStatusLastSortCode;
+    }
+
+    bool ColumnCatalog::isQuickSectorFilterColumn(const std::string_view key) {
+        return key == kExecutorColumnKey;
+    }
+
+    bool ColumnCatalog::isStatusExclusionFilterColumn(const std::string_view key) {
+        return key == kStatusColumnKey;
     }
 
     std::optional<ColumnDef> ColumnCatalog::find(const std::string_view key) {

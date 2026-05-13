@@ -16,8 +16,9 @@ namespace ssa::query {
         return repository_->page(request);
     }
 
-    std::optional<domain::SsaRecord> SsaQueryService::details(const domain::SsaId& id) const {
-        return repository_->recordById(id);
+    std::optional<domain::SsaRecord>
+    SsaQueryService::details(const domain::SsaNumber& number) const {
+        return repository_->recordBySsaNumber(number);
     }
 
     std::vector<std::string>

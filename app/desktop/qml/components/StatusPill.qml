@@ -6,6 +6,7 @@ import SsaConsultaRapida
 Rectangle {
     id: root
     required property var status
+    property var browse: null
 
     Layout.preferredHeight: 32
     color: Theme.panel

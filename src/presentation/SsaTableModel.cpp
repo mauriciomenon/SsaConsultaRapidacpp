@@ -1,33 +1,44 @@
 #include "presentation/SsaTableModel.h"
 
-#include "domain/ColumnCatalog.h"
+#include <stdexcept>
+#include <utility>
 
 namespace ssa::presentation {
 
-    SsaTableModel::SsaTableModel(QObject* parent) : QAbstractTableModel(parent) {}
+    SsaTableModel::SsaTableModel(std::string idColumnKey, QObject* parent)
+        : QAbstractTableModel(parent), idColumnKey_(std::move(idColumnKey)) {}
 
     int SsaTableModel::rowCount(const QModelIndex& parent) const {
-        return parent.isValid() ? 0 : static_cast<int>(rows_.size());
+        if (parent.isValid() || columns_.empty()) {
+            return 0;
+        }
+        return static_cast<int>(rows_.size());
     }
 
     int SsaTableModel::columnCount(const QModelIndex& parent) const {
-        return parent.isValid() ? 0 : static_cast<int>(columns_.size());
+        return parent.isValid() ? 0 : static_cast<int>(columns_.count());
     }
 
     QVariant SsaTableModel::data(const QModelIndex& index, const int role) const {
-        if (!index.isValid() || role != Qt::DisplayRole) {
+        if (!index.isValid()) {
+            return {};
+        }
+        if (role != Qt::DisplayRole && role != Qt::ToolTipRole) {
             return {};
         }
         const int column = index.column();
-        const auto* record = recordAt(index.row());
-        if (record == nullptr || column < 0) {
+        if (index.row() < 0 || column < 0) {
             return {};
         }
         const auto columnIndex = static_cast<std::size_t>(column);
-        if (columnIndex >= columns_.size()) {
+        const auto rowIndex = static_cast<std::size_t>(index.row());
+        if (rowIndex >= rows_.size()) {
             return {};
         }
-        return QString::fromStdString(record->valueOf(columns_[columnIndex]));
+        if (columnIndex >= columns_.count()) {
+            return {};
+        }
+        return displayCache_.value(rowIndex, columnIndex);
     }
 
     QVariant SsaTableModel::headerData(const int section, const Qt::Orientation orientation,
@@ -36,88 +47,140 @@ namespace ssa::presentation {
             return {};
         }
         const auto sectionIndex = static_cast<std::size_t>(section);
-        if (sectionIndex >= columns_.size()) {
+        if (sectionIndex >= columns_.count()) {
             return {};
         }
-        const auto column = domain::ColumnCatalog::find(columns_[sectionIndex]);
-        return QString::fromStdString(column ? column->label : columns_[sectionIndex]);
+        return columns_.label(section);
     }
 
-    void SsaTableModel::setPage(domain::SsaPageResult page, std::vector<std::string> columns) {
+    QHash<int, QByteArray> SsaTableModel::roleNames() const {
+        auto roles = QAbstractTableModel::roleNames();
+        roles[Qt::DisplayRole] = "displayValue";
+        return roles;
+    }
+
+    void SsaTableModel::setPage(domain::SsaPageResult page, std::vector<std::string> columns,
+                                std::vector<SsaDisplayColumn> displayColumns,
+                                SsaTableDisplayValues displayValues) {
+        auto nextRows = std::move(page.rows);
+        if (displayColumns.size() != columns.size()) {
+            throw std::logic_error("table display columns do not match page columns");
+        }
+        if (displayValues.rowCount != nextRows.size() ||
+            displayValues.columnCount != columns.size() || !displayValues.hasValidShape()) {
+            throw std::logic_error("table display values do not match page shape");
+        }
+        if (canUpdateRowsWithoutReset(columns, displayColumns, nextRows.size())) {
+            rows_ = std::move(nextRows);
+            displayCache_.replace(std::move(displayValues));
+            const int rows = rowCount();
+            const int columns = columnCount();
+            if (rows > 0 && columns > 0) {
+                emit dataChanged(index(0, 0), index(rows - 1, columns - 1),
+                                 {Qt::DisplayRole, Qt::ToolTipRole});
+            }
+            return;
+        }
+
+        if (rows_.size() == nextRows.size() && columns_.hasSameKeys(columns)) {
+            rows_ = std::move(nextRows);
+            columns_.replace(std::move(columns), std::move(displayColumns));
+            displayCache_.replace(std::move(displayValues));
+            if (!columns_.empty()) {
+                emit headerDataChanged(Qt::Horizontal, 0, columnCount() - 1);
+            }
+            emit columnsChanged();
+            const int rows = rowCount();
+            const int columnTotal = columnCount();
+            if (rows > 0 && columnTotal > 0) {
+                emit dataChanged(index(0, 0), index(rows - 1, columnTotal - 1),
+                                 {Qt::DisplayRole, Qt::ToolTipRole});
+            }
+            return;
+        }
+
+        const bool columnKeysChanged = !columns_.hasSameKeys(columns);
         beginResetModel();
-        rows_ = std::move(page.rows);
-        columns_ = std::move(columns);
+        rows_ = std::move(nextRows);
+        columns_.replace(std::move(columns), std::move(displayColumns));
+        displayCache_.replace(std::move(displayValues));
         endResetModel();
-        emit columnsChanged();
+        if (columnKeysChanged) {
+            emit columnsChanged();
+        }
     }
 
     void SsaTableModel::setColumnWidths(std::map<std::string, int> widths) {
-        columnWidths_ = std::move(widths);
+        columns_.setWidthOverrides(widths);
         if (!columns_.empty()) {
             emit columnsChanged();
         }
     }
 
     int SsaTableModel::visibleColumnCount() const {
-        return static_cast<int>(columns_.size());
+        return columnCount();
     }
 
     QString SsaTableModel::columnKey(const int column) const {
-        if (column < 0) {
+        if (!hasColumn(column)) {
             return {};
         }
-        const auto columnIndex = static_cast<std::size_t>(column);
-        if (columnIndex >= columns_.size()) {
-            return {};
-        }
-        return QString::fromStdString(columns_[columnIndex]);
+        return columns_.key(column);
     }
 
     QString SsaTableModel::columnLabel(const int column) const {
-        if (column < 0) {
+        if (!hasColumn(column)) {
             return {};
         }
-        const auto columnIndex = static_cast<std::size_t>(column);
-        if (columnIndex >= columns_.size()) {
-            return {};
-        }
-        const auto definition = domain::ColumnCatalog::find(columns_[columnIndex]);
-        return QString::fromStdString(definition ? definition->label : columns_[columnIndex]);
+        return columns_.label(column);
     }
 
     int SsaTableModel::columnWidth(const int column) const {
-        if (column < 0) {
-            return 132;
+        if (!hasColumn(column)) {
+            return kFallbackTableColumnWidth;
         }
-        const auto columnIndex = static_cast<std::size_t>(column);
-        if (columnIndex >= columns_.size()) {
-            return 132;
-        }
-        const auto customWidth = columnWidths_.find(columns_[columnIndex]);
-        if (customWidth != columnWidths_.end()) {
-            return customWidth->second;
-        }
-        const auto definition = domain::ColumnCatalog::find(columns_[columnIndex]);
-        return definition ? definition->defaultWidth : 132;
+        return columns_.width(column);
     }
 
-    const domain::SsaRecord* SsaTableModel::recordAt(const int row) const {
+    QVariantList SsaTableModel::columnWidths() const {
+        return columns_.widths();
+    }
+
+    QVariantList SsaTableModel::tableColumns() const {
+        return columns_.tableColumns();
+    }
+
+    int SsaTableModel::fallbackColumnWidth() const {
+        return kFallbackTableColumnWidth;
+    }
+
+    bool SsaTableModel::hasColumn(const int column) const {
+        if (column < 0) {
+            return false;
+        }
+        return columns_.hasColumn(column);
+    }
+
+    bool
+    SsaTableModel::canUpdateRowsWithoutReset(const std::vector<std::string>& columns,
+                                             const std::vector<SsaDisplayColumn>& displayColumns,
+                                             const std::size_t rowCount) const {
+        return rows_.size() == rowCount && columns_.hasSameMetadata(columns, displayColumns);
+    }
+
+    std::optional<domain::SsaRecord> SsaTableModel::recordAt(const int row) const {
         if (row < 0) {
-            return nullptr;
+            return std::nullopt;
         }
         const auto rowIndex = static_cast<std::size_t>(row);
         if (rowIndex >= rows_.size()) {
-            return nullptr;
+            return std::nullopt;
         }
-        return &rows_[rowIndex];
+        return rows_[rowIndex];
     }
 
     QStringList SsaTableModel::columnKeys() const {
-        QStringList keys;
-        for (const auto& column : columns_) {
-            keys.push_back(QString::fromStdString(column));
-        }
-        return keys;
+        return columns_.keys();
     }
 
 } // namespace ssa::presentation

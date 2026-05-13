@@ -1,24 +1,34 @@
 #pragma once
 
+#include "platform/LocalOpenCommandHandler.h"
+#include "platform/SamCommandHandler.h"
 #include "ports/IExternalCommandPort.h"
 
 #include <QUrl>
+
+#include <filesystem>
+#include <vector>
 
 namespace ssa::platform {
 
     class DesktopExternalCommandPort final : public ports::IExternalCommandPort {
       public:
-        explicit DesktopExternalCommandPort(QUrl samBaseUrl = QUrl{"https://sam.itaipu.gov.br"});
+        explicit DesktopExternalCommandPort(
+            QUrl samBaseUrl, LocalOpenPaths paths = {},
+            std::vector<std::filesystem::path> allowedOpenRoots = {});
 
-        void openSamHome() override;
-        void openSsa(const std::string& numeroSsa) override;
-        void openPath(const std::string& path) override;
-        void exportSelection(const std::vector<std::map<std::string, std::string>>& rows) override;
-        void requestCommand(const std::string& command,
-                            const std::map<std::string, std::string>& parameters) override;
+        [[nodiscard]] ports::ExternalCommandResult
+        execute(const ports::ExternalCommand& command) override;
 
       private:
-        QUrl samBaseUrl_;
+        [[nodiscard]] ports::ExternalCommandResult
+        handleOpenSamHome(const ports::ExternalCommand& command);
+        [[nodiscard]] ports::ExternalCommandResult
+        handleOpenSsa(const ports::ExternalCommand& command);
+        [[nodiscard]] ports::ExternalCommandResult
+        handleOpenPath(const ports::ExternalCommand& command);
+        SamCommandHandler sam_;
+        LocalOpenCommandHandler localOpen_;
     };
 
 } // namespace ssa::platform

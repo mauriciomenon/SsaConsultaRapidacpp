@@ -2,6 +2,8 @@
 
 #include <QString>
 
+#include <filesystem>
+
 namespace ssa::platform {
 
     class AppPaths final {
@@ -11,6 +13,13 @@ namespace ssa::platform {
         [[nodiscard]] QString projectRoot() const;
         [[nodiscard]] QString configDir() const;
         [[nodiscard]] QString preferencesFile() const;
+        [[nodiscard]] std::filesystem::path projectRootPath() const;
+        [[nodiscard]] std::filesystem::path configDirectoryPath() const;
+        [[nodiscard]] std::filesystem::path inputFolderPath() const;
+        [[nodiscard]] std::filesystem::path processedFolderPath() const;
+        [[nodiscard]] std::filesystem::path redundantFolderPath() const;
+        [[nodiscard]] std::filesystem::path installationGuidePath() const;
+        void ensureConfigDirectory() const;
 
       private:
         QString projectRoot_;

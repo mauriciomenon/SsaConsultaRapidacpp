@@ -28,21 +28,25 @@ namespace ssa::query {
                 term.text = trim(std::string_view(term.text).substr(1));
             }
 
-            if (!term.text.empty()) {
-                const char mode = term.text.front();
-                if (mode == '^') {
-                    term.mode = domain::MatchMode::StartsWith;
-                    term.text = trim(std::string_view(term.text).substr(1));
-                } else if (mode == '$') {
-                    term.mode = domain::MatchMode::EndsWith;
-                    term.text = trim(std::string_view(term.text).substr(1));
-                } else if (mode == '=' || mode == '~') {
-                    term.mode = mode == '=' ? domain::MatchMode::Equals : domain::MatchMode::Regex;
-                    term.text = trim(std::string_view(term.text).substr(1));
-                } else if (term.text.size() > 1 && term.text.back() == '$') {
-                    term.mode = domain::MatchMode::EndsWith;
-                    term.text = trim(std::string_view(term.text).substr(0, term.text.size() - 1));
-                }
+            if (term.text.empty()) {
+                return term;
+            }
+
+            const char mode = term.text.front();
+            if (mode == '^') {
+                term.mode = domain::MatchMode::StartsWith;
+                term.text = trim(std::string_view(term.text).substr(1));
+            } else if (mode == '$') {
+                term.mode = domain::MatchMode::EndsWith;
+                term.text = trim(std::string_view(term.text).substr(1));
+            } else if (mode == '=' || mode == '~') {
+                // The '~' prefix is the explicit safe-pattern mode in the GUI contract.
+                term.mode =
+                    mode == '=' ? domain::MatchMode::Equals : domain::MatchMode::SafePattern;
+                term.text = trim(std::string_view(term.text).substr(1));
+            } else if (term.text.back() == '$') {
+                term.mode = domain::MatchMode::EndsWith;
+                term.text = trim(std::string_view(term.text).substr(0, term.text.size() - 1));
             }
 
             return term;

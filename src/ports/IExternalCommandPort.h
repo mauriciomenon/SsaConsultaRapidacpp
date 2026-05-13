@@ -6,17 +6,42 @@
 
 namespace ssa::ports {
 
+    enum class ExternalCommandKind {
+        OpenSamHome,
+        OpenSsa,
+        OpenPath,
+        OpenInputFolder,
+        OpenProcessedFolder,
+        OpenRedundantFolder,
+        OpenInstallationGuide,
+    };
+
+    enum class ExternalCommandStatus {
+        Succeeded,
+        NotImplemented,
+        Rejected,
+        Failed,
+    };
+
+    struct ExternalCommand {
+        ExternalCommandKind kind{ExternalCommandKind::OpenSamHome};
+        std::map<std::string, std::string> parameters;
+    };
+
+    struct ExternalCommandResult {
+        ExternalCommandStatus status{ExternalCommandStatus::Succeeded};
+        std::string message;
+
+        [[nodiscard]] bool ok() const noexcept {
+            return status == ExternalCommandStatus::Succeeded;
+        }
+    };
+
     class IExternalCommandPort {
       public:
         virtual ~IExternalCommandPort() = default;
 
-        virtual void openSamHome() = 0;
-        virtual void openSsa(const std::string& numeroSsa) = 0;
-        virtual void openPath(const std::string& path) = 0;
-        virtual void
-        exportSelection(const std::vector<std::map<std::string, std::string>>& rows) = 0;
-        virtual void requestCommand(const std::string& command,
-                                    const std::map<std::string, std::string>& parameters) = 0;
+        [[nodiscard]] virtual ExternalCommandResult execute(const ExternalCommand& command) = 0;
     };
 
 } // namespace ssa::ports

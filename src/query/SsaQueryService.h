@@ -11,7 +11,8 @@ namespace ssa::query {
         explicit SsaQueryService(std::shared_ptr<ports::ISsaRepository> repository);
 
         [[nodiscard]] domain::SsaPageResult search(const domain::SsaPageRequest& request) const;
-        [[nodiscard]] std::optional<domain::SsaRecord> details(const domain::SsaId& id) const;
+        [[nodiscard]] std::optional<domain::SsaRecord>
+        details(const domain::SsaNumber& number) const;
         [[nodiscard]] std::vector<std::string>
         distinctValues(const domain::DistinctValuesRequest& request) const;
 

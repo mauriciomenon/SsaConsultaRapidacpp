@@ -2,71 +2,52 @@
 
 #include "domain/ColumnCatalog.h"
 
+#include <algorithm>
 #include <cstddef>
+#include <iterator>
 #include <map>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
+#include <utility>
 #include <vector>
-#include <algorithm>
 
 namespace ssa::domain {
 
-    inline constexpr std::string_view kScaSesSteExclusionSummary = "sem SCA/SES/STE";
     inline constexpr int kMinPageSize = 10;
     inline constexpr int kMaxPageSize = 500;
     inline constexpr int kDefaultPageSize = 100;
-    inline constexpr int kMinDetailsPanelWidth = 280;
-    inline constexpr int kMaxDetailsPanelWidth = 680;
-    inline constexpr int kDefaultDetailsPanelWidth = 360;
-    inline constexpr std::string_view kStatusLastSortColumn = "numero_ssa";
+    inline constexpr std::string_view kSsaNumberColumnKey = "numero_ssa";
+    inline constexpr std::size_t kMaxSafePatternLength = 128;
     inline constexpr bool kDefaultExcludeScaSesSte = true;
 
     [[nodiscard]] inline int clampPageSize(const int value) {
         return std::clamp(value, kMinPageSize, kMaxPageSize);
     }
 
-    [[nodiscard]] inline int clampDetailsPanelWidth(const int value) {
-        return std::clamp(value, kMinDetailsPanelWidth, kMaxDetailsPanelWidth);
+    [[nodiscard]] inline std::size_t pageCount(const std::size_t totalRows,
+                                               const std::size_t pageSize) {
+        if (totalRows == 0 || pageSize == 0) {
+            return 0;
+        }
+        return (totalRows + pageSize - 1) / pageSize;
+    }
+
+    [[nodiscard]] inline bool isLastPage(const std::size_t pageIndex, const std::size_t totalRows,
+                                         const std::size_t pageSize) {
+        const auto pages = pageCount(totalRows, pageSize);
+        return pages == 0 || pageIndex + 1 >= pages;
     }
 
     [[nodiscard]] inline bool requiresStatusLastSort(const std::string_view columnKey) {
-        return columnKey == kStatusLastSortColumn;
+        return columnKey == kSsaNumberColumnKey;
     }
 
-    [[nodiscard]] inline std::vector<std::string> filterSummaryParts(
-        const std::string_view quickSector,
-        const bool excludeScaSesSte,
-        const std::map<std::string, std::string>& columnFilters) {
-        std::vector<std::string> parts;
-        if (!quickSector.empty()) {
-            parts.push_back(std::string("setor_executor:") + std::string(quickSector));
-        }
-        if (excludeScaSesSte) {
-            parts.push_back(std::string(kScaSesSteExclusionSummary));
-        }
-        for (const auto& [key, value] : columnFilters) {
-            parts.push_back(key + ":" + value);
-        }
-        return parts;
-    }
-
-    [[nodiscard]] inline std::string joinFilterSummary(
-        const std::vector<std::string>& parts,
-        const std::string_view separator = "  | ") {
-        std::string summary;
-        for (std::size_t i = 0; i < parts.size(); ++i) {
-            if (i > 0) {
-                summary += separator;
-            }
-            summary += parts[i];
-        }
-        return summary;
-    }
-
-    class SsaId final {
+    class SsaNumber final {
       public:
-        explicit SsaId(std::string value) : value_(std::move(value)) {}
+        explicit SsaNumber(std::string value) : value_(std::move(value)) {}
 
         [[nodiscard]] const std::string& value() const noexcept {
             return value_;
@@ -84,7 +65,7 @@ namespace ssa::domain {
         StartsWith,
         EndsWith,
         Equals,
-        Regex,
+        SafePattern,
     };
 
     struct FilterTerm {
@@ -93,26 +74,145 @@ namespace ssa::domain {
         bool negated{false};
     };
 
+    enum class DerivationFilterMode {
+        All,
+        RootOnly,
+        DerivedOnly,
+    };
+
+    struct AdvancedFilterSpec {
+        std::string weekColumnKey{"semana_programada"};
+        std::optional<int> year;
+        std::optional<int> week;
+        DerivationFilterMode derivationMode{DerivationFilterMode::All};
+        bool onlyReprogrammed{false};
+
+        [[nodiscard]] std::optional<int> exactYearWeek() const {
+            if (!year.has_value() || !week.has_value()) {
+                return std::nullopt;
+            }
+            return (*year * 100) + *week;
+        }
+
+        [[nodiscard]] std::optional<int> yearStartWeek() const {
+            if (!year.has_value()) {
+                return std::nullopt;
+            }
+            return (*year * 100) + 1;
+        }
+
+        [[nodiscard]] std::optional<int> yearEndWeek() const {
+            if (!year.has_value()) {
+                return std::nullopt;
+            }
+            return (*year * 100) + 53;
+        }
+    };
+
     struct SsaFilterExpression {
         std::vector<FilterTerm> generalTerms;
         std::map<std::string, std::vector<FilterTerm>> columnTerms;
         std::optional<std::string> quickSector;
         bool excludeScaSesSte{true};
+        AdvancedFilterSpec advanced;
     };
 
     struct SsaRecord {
-        std::map<std::string, std::string> values;
+        using Schema = std::vector<std::string>;
+        struct TransparentStringHash {
+            using is_transparent = void;
 
-        [[nodiscard]] std::string valueOf(const std::string& key) const {
-            const auto it = values.find(key);
-            return it == values.end() ? std::string{} : it->second;
+            [[nodiscard]] std::size_t operator()(const std::string_view value) const noexcept {
+                return std::hash<std::string_view>{}(value);
+            }
+
+            [[nodiscard]] std::size_t operator()(const std::string& value) const noexcept {
+                return std::hash<std::string_view>{}(value);
+            }
+        };
+        struct TransparentStringEqual {
+            using is_transparent = void;
+
+            [[nodiscard]] bool operator()(const std::string_view left,
+                                          const std::string_view right) const noexcept {
+                return left == right;
+            }
+        };
+        struct SchemaIndex {
+            Schema keys;
+            std::unordered_map<std::string, std::size_t, TransparentStringHash,
+                               TransparentStringEqual>
+                indexByKey;
+        };
+        struct FieldView {
+            std::string_view key;
+            std::string_view value;
+        };
+
+        SsaRecord() = default;
+
+        SsaRecord(std::shared_ptr<const SchemaIndex> schema, std::vector<std::string> rowValues)
+            : schema_(std::move(schema)), rowValues_(std::move(rowValues)) {}
+
+        SsaRecord(const std::map<std::string, std::string>& fields) : rowValues_{} {
+            auto mutableSchema = std::make_shared<SchemaIndex>();
+            mutableSchema->keys.reserve(fields.size());
+            mutableSchema->indexByKey.reserve(fields.size());
+            rowValues_.reserve(fields.size());
+            std::size_t index = 0;
+            for (const auto& [key, value] : fields) {
+                mutableSchema->indexByKey.emplace(key, index);
+                mutableSchema->keys.push_back(key);
+                rowValues_.push_back(value);
+                ++index;
+            }
+            schema_ = std::move(mutableSchema);
         }
+
+        [[nodiscard]] std::string_view valueOf(const std::string_view key) const {
+            if (!schema_) {
+                return {};
+            }
+            const auto it = schema_->indexByKey.find(key);
+            if (it == schema_->indexByKey.end()) {
+                return {};
+            }
+            const auto index = it->second;
+            return index < rowValues_.size() ? std::string_view{rowValues_[index]}
+                                             : std::string_view{};
+        }
+
+        [[nodiscard]] std::string_view valueAt(const std::size_t index) const {
+            return index < rowValues_.size() ? std::string_view{rowValues_[index]}
+                                             : std::string_view{};
+        }
+
+        [[nodiscard]] std::vector<FieldView> fields() const {
+            std::vector<FieldView> result;
+            if (!schema_) {
+                return result;
+            }
+            const auto count = std::min(schema_->keys.size(), rowValues_.size());
+            result.reserve(count);
+            for (std::size_t index = 0; index < count; ++index) {
+                result.push_back({schema_->keys[index], rowValues_[index]});
+            }
+            return result;
+        }
+
+        [[nodiscard]] std::size_t fieldCount() const {
+            return schema_ ? std::min(schema_->keys.size(), rowValues_.size()) : 0;
+        }
+
+      private:
+        std::shared_ptr<const SchemaIndex> schema_;
+        std::vector<std::string> rowValues_;
     };
 
     struct SortSpec {
         std::string columnKey{"numero_ssa"};
         bool ascending{false};
-        bool statusLast{true};
+        bool statusLast{requiresStatusLastSort(columnKey)};
     };
 
     struct SsaPageRequest {
@@ -122,6 +222,7 @@ namespace ssa::domain {
         std::map<std::string, std::string> columnFilters;
         std::string quickSector;
         bool excludeScaSesSte{true};
+        AdvancedFilterSpec advancedFilters;
         SortSpec sort;
         std::vector<std::string> visibleColumns;
     };

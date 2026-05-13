@@ -1,6 +1,7 @@
 #pragma once
 
 #include "domain/SsaTypes.h"
+#include "ports/IUserPreferencesStore.h"
 
 #include <QObject>
 #include <QString>
@@ -19,6 +20,14 @@ namespace ssa::presentation {
         Q_PROPERTY(QStringList filterColumnKeys READ filterColumnKeys CONSTANT)
         Q_PROPERTY(QString columnKey READ columnKey WRITE setColumnKey NOTIFY changed)
         Q_PROPERTY(QString columnValue READ columnValue WRITE setColumnValue NOTIFY changed)
+        Q_PROPERTY(QStringList weekColumnKeys READ weekColumnKeys CONSTANT)
+        Q_PROPERTY(QString weekColumnKey READ weekColumnKey WRITE setWeekColumnKey NOTIFY changed)
+        Q_PROPERTY(QString yearFilter READ yearFilter WRITE setYearFilter NOTIFY changed)
+        Q_PROPERTY(QString weekFilter READ weekFilter WRITE setWeekFilter NOTIFY changed)
+        Q_PROPERTY(
+            QString derivationMode READ derivationMode WRITE setDerivationMode NOTIFY changed)
+        Q_PROPERTY(
+            bool onlyReprogrammed READ onlyReprogrammed WRITE setOnlyReprogrammed NOTIFY changed)
         Q_PROPERTY(QStringList activeFilters READ activeFilters NOTIFY changed)
         Q_PROPERTY(QString activeFilterSummary READ activeFilterSummary NOTIFY changed)
 
@@ -34,10 +43,25 @@ namespace ssa::presentation {
         void setColumnKey(const QString& value);
         [[nodiscard]] QString columnValue() const;
         void setColumnValue(const QString& value);
+        [[nodiscard]] QStringList weekColumnKeys() const;
+        [[nodiscard]] QString weekColumnKey() const;
+        void setWeekColumnKey(const QString& value);
+        [[nodiscard]] QString yearFilter() const;
+        void setYearFilter(const QString& value);
+        [[nodiscard]] QString weekFilter() const;
+        void setWeekFilter(const QString& value);
+        [[nodiscard]] QString derivationMode() const;
+        void setDerivationMode(const QString& value);
+        [[nodiscard]] bool onlyReprogrammed() const;
+        void setOnlyReprogrammed(bool value);
         [[nodiscard]] QStringList activeFilters() const;
         [[nodiscard]] QString activeFilterSummary() const;
         [[nodiscard]] std::map<std::string, std::string> columnFilters() const;
+        [[nodiscard]] domain::AdvancedFilterSpec advancedFilters() const;
+        Q_INVOKABLE [[nodiscard]] bool hasFilterForColumn(const QString& key) const;
         void setColumnFilters(std::map<std::string, std::string> filters);
+        void applyPreferences(const ports::UserPreferencesSnapshot& snapshot);
+        void writePreferences(ports::UserPreferencesSnapshot& snapshot) const;
 
       signals:
         void changed();
@@ -49,18 +73,22 @@ namespace ssa::presentation {
 
       private:
         void rebuildActiveFilters();
-        void markActiveFiltersDirty();
-        void ensureActiveFiltersUpToDate() const;
+        void refreshActiveFilters();
 
         QString quickSector_;
         bool excludeScaSesSte_{domain::kDefaultExcludeScaSesSte};
         QStringList filterColumnKeys_;
+        QStringList weekColumnKeys_;
         QString columnKey_;
         QString columnValue_;
+        QString weekColumnKey_;
+        QString yearFilter_;
+        QString weekFilter_;
+        QString derivationMode_{"all"};
+        bool onlyReprogrammed_{false};
         std::map<std::string, std::string> columnFilters_;
-        mutable QStringList activeFilters_;
-        mutable QString activeFilterSummary_;
-        mutable bool activeFiltersStale_{true};
+        QStringList activeFilters_;
+        QString activeFilterSummary_;
     };
 
 } // namespace ssa::presentation

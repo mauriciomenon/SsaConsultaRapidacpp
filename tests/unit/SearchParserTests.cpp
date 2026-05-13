@@ -18,5 +18,5 @@ TEST_CASE("search parser supports modes and negation") {
     REQUIRE(expression.requiredTerms[0].mode == ssa::domain::MatchMode::StartsWith);
     REQUIRE(expression.requiredTerms[1].mode == ssa::domain::MatchMode::Equals);
     REQUIRE(expression.requiredTerms[2].mode == ssa::domain::MatchMode::EndsWith);
-    REQUIRE(expression.requiredTerms[3].mode == ssa::domain::MatchMode::Regex);
+    REQUIRE(expression.requiredTerms[3].mode == ssa::domain::MatchMode::SafePattern);
 }

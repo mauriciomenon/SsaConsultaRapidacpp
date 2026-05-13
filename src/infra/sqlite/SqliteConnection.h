@@ -7,9 +7,16 @@
 
 namespace ssa::infra::sqlite {
 
+    enum class SqliteOpenMode {
+        ReadOnly,
+        ReadWrite,
+    };
+
     class SqliteConnection final {
       public:
-        explicit SqliteConnection(const std::filesystem::path& dbPath);
+        explicit SqliteConnection(const std::filesystem::path& dbPath,
+                                  SqliteOpenMode mode = SqliteOpenMode::ReadOnly,
+                                  int busyTimeoutMs = 3000);
         ~SqliteConnection();
 
         SqliteConnection(const SqliteConnection&) = delete;
@@ -33,7 +40,7 @@ namespace ssa::infra::sqlite {
         SqliteStatement(SqliteStatement&&) = delete;
         SqliteStatement& operator=(SqliteStatement&&) = delete;
 
-        void bindText(int index, const std::string& value);
+        void bindTextOneBased(int index, const std::string& value);
         [[nodiscard]] bool step();
         [[nodiscard]] int columnCount() const;
         [[nodiscard]] std::string columnName(int column) const;

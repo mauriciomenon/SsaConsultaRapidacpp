@@ -1,17 +1,35 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Layouts
 import SsaConsultaRapida
 
 Rectangle {
     id: root
     required property var viewModel
-    readonly property bool compactDensity: root.viewModel.density === "compact"
-    readonly property bool comfortableDensity: root.viewModel.density === "comfortable"
-    readonly property int headerHeight: compactDensity ? 28 : (comfortableDensity ? 38 : 32)
-    readonly property int rowHeight: compactDensity ? 24 : (comfortableDensity ? 36 : 30)
-    readonly property int textSize: compactDensity ? 11 : (comfortableDensity ? 13 : 12)
+    required property string density
+    signal openRequested()
+
+    readonly property int headerHeight: Theme.densityValue(root.density, 28, 32, 38)
+    readonly property int rowHeight: Theme.densityValue(root.density, 24, 30, 36)
+    readonly property int textSize: Theme.densityValue(root.density, 11, 12, 13)
+    readonly property var tableColumns: root.viewModel.tableHeaders
+    readonly property var columnWidths: root.viewModel.tableModel.columnWidths
+
+    function columnWidthAt(column) {
+        if (!root.columnWidths || column < 0 || column >= root.columnWidths.length) {
+            return root.viewModel && root.viewModel.tableModel
+                   ? root.viewModel.tableModel.fallbackColumnWidth
+                   : 132
+        }
+        const width = root.columnWidths[column]
+        return width > 0
+               ? width
+               : (root.viewModel && root.viewModel.tableModel
+                  ? root.viewModel.tableModel.fallbackColumnWidth
+                  : 132)
+    }
 
     color: Theme.panel
     border.color: Theme.border
@@ -34,14 +52,16 @@ Rectangle {
             Row {
                 id: headerRow
                 height: parent.height
+                spacing: 1
 
                 Repeater {
-                    model: root.viewModel.tableModel.visibleColumnCount
+                    model: root.tableColumns
 
                     delegate: Rectangle {
                         required property int index
+                        required property var modelData
 
-                        width: root.viewModel.tableModel.columnWidth(index)
+                        width: root.columnWidthAt(index)
                         height: header.height
                         color: Theme.header
                         border.color: Theme.border
@@ -50,10 +70,7 @@ Rectangle {
                             anchors.fill: parent
                             anchors.leftMargin: 8
                             anchors.rightMargin: 8
-                            text: root.viewModel.tableModel.columnLabel(parent.index) +
-                                  (root.viewModel.sortColumnKey === root.viewModel.tableModel.columnKey(parent.index)
-                                   ? (root.viewModel.sortAscending ? "  ^" : "  v")
-                                   : "")
+                            text: parent.modelData.label
                             color: Theme.text
                             font.bold: true
                             font.pixelSize: root.textSize
@@ -63,7 +80,14 @@ Rectangle {
 
                         MouseArea {
                             anchors.fill: parent
-                            onClicked: root.viewModel.sortByColumn(parent.index)
+                            acceptedButtons: Qt.LeftButton | Qt.RightButton
+                            onClicked: function(mouse) {
+                                if (mouse.button === Qt.RightButton) {
+                                    root.viewModel.setFilterColumn(parent.modelData.key)
+                                    return
+                                }
+                                root.viewModel.sortByColumn(parent.index)
+                            }
                         }
                     }
                 }
@@ -79,33 +103,50 @@ Rectangle {
             rowSpacing: 1
             columnSpacing: 1
             boundsBehavior: Flickable.StopAtBounds
+            columnWidthProvider: function(column) {
+                return root.columnWidthAt(column)
+            }
+            rowHeightProvider: function(row) {
+                return table.cachedRowHeight
+            }
+            readonly property int cachedRowHeight: root.rowHeight
+            readonly property int cachedTextSize: root.textSize
             onContentXChanged: header.contentX = contentX
+            ScrollBar.horizontal: ScrollBar {}
+            ScrollBar.vertical: ScrollBar {}
+
+            Connections {
+                target: root.viewModel.tableModel
+
+                function onColumnsChanged() {
+                    table.forceLayout()
+                }
+            }
 
             delegate: Rectangle {
                 required property int row
                 required property int column
-                required property string display
+                required property var displayValue
 
-                implicitWidth: root.viewModel.tableModel.columnWidth(column)
-                implicitHeight: root.rowHeight
+                implicitHeight: table.cachedRowHeight
                 color: row % 2 === 0 ? Theme.panel : Theme.rowAlt
-                border.color: "#dde4ec"
+                border.color: Theme.border
 
                 Text {
                     anchors.fill: parent
                     anchors.leftMargin: 6
                     anchors.rightMargin: 6
-                    text: parent.display
+                    text: parent.displayValue
                     color: Theme.text
                     verticalAlignment: Text.AlignVCenter
                     elide: Text.ElideRight
-                    font.pixelSize: root.textSize
+                    font.pixelSize: table.cachedTextSize
                 }
 
                 MouseArea {
                     anchors.fill: parent
                     onClicked: root.viewModel.selectRow(parent.row)
-                    onDoubleClicked: root.viewModel.openSelectedSsa()
+                    onDoubleClicked: root.openRequested()
                 }
             }
         }
