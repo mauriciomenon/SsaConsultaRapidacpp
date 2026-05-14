@@ -2,6 +2,10 @@
 
 #include "domain/ColumnCatalog.h"
 #include "domain/SsaTypes.h"
+#include "query/SsaQueryService.h"
+#include "query/SearchParser.h"
+
+#include <QtConcurrent>
 
 #include <utility>
 #include <vector>
@@ -91,7 +95,9 @@ namespace ssa::presentation {
 
     } // namespace
 
-    FilterPanelViewModel::FilterPanelViewModel(QObject* parent) : QObject(parent) {
+    FilterPanelViewModel::FilterPanelViewModel(std::shared_ptr<query::SsaQueryService> queryService,
+                                             QObject* parent)
+        : QObject(parent), queryService_(std::move(queryService)) {
         for (const auto& key : domain::ColumnCatalog::filterColumnKeys()) {
             filterColumnKeys_.push_back(QString::fromStdString(key));
         }
@@ -102,6 +108,7 @@ namespace ssa::presentation {
         columnKey_ = QString::fromStdString(domain::ColumnCatalog::defaultFilterColumnKey());
         weekColumnKey_ = "semana_programada";
         refreshActiveFilters();
+        refreshColumnValueOptions();
     }
 
     QString FilterPanelViewModel::quickSector() const {
@@ -144,6 +151,7 @@ namespace ssa::presentation {
             return;
         }
         columnKey_ = value;
+        refreshColumnValueOptions();
         emit changed();
     }
 
@@ -209,6 +217,10 @@ namespace ssa::presentation {
         return derivationMode_;
     }
 
+    QStringList FilterPanelViewModel::derivationModeOptions() const {
+        return derivationModeOptions_;
+    }
+
     void FilterPanelViewModel::setDerivationMode(const QString& value) {
         const auto trimmed = value.trimmed();
         if (derivationMode_ == trimmed) {
@@ -221,6 +233,10 @@ namespace ssa::presentation {
 
     bool FilterPanelViewModel::onlyReprogrammed() const {
         return onlyReprogrammed_;
+    }
+
+    QStringList FilterPanelViewModel::columnValueOptions() const {
+        return columnValueOptions_;
     }
 
     void FilterPanelViewModel::setOnlyReprogrammed(const bool value) {
@@ -281,6 +297,22 @@ namespace ssa::presentation {
         return columnFilters_.contains(normalizedKey);
     }
 
+    void FilterPanelViewModel::setColumnValueOptions(std::vector<std::string> options) {
+        QStringList nextValues;
+        nextValues.reserve(static_cast<int>(options.size()));
+        for (const auto& option : options) {
+            const QString normalized = QString::fromStdString(option).trimmed();
+            if (!normalized.isEmpty()) {
+                nextValues.append(normalized);
+            }
+        }
+        if (columnValueOptions_ == nextValues) {
+            return;
+        }
+        columnValueOptions_ = std::move(nextValues);
+        emit columnValueOptionsChanged();
+    }
+
     void FilterPanelViewModel::setColumnFilters(std::map<std::string, std::string> filters) {
         if (columnFilters_ == filters) {
             return;
@@ -288,6 +320,64 @@ namespace ssa::presentation {
         columnFilters_ = std::move(filters);
         refreshActiveFilters();
         emit changed();
+    }
+
+    void FilterPanelViewModel::refreshColumnValueOptions() {
+        const auto request = buildDistinctValuesRequest(columnKey_);
+        if (columnValueOptionsWatcher_.isRunning()) {
+            columnValueOptionsWatcher_.cancel();
+        }
+        columnValueOptionsWatcher_.disconnect(this);
+
+        if (!request.has_value() || !queryService_) {
+            setColumnValueOptions({});
+            return;
+        }
+
+        const auto requestToken = ++columnValueRequestToken_;
+        const auto requestCopy = *request;
+        auto service = queryService_;
+        auto future = QtConcurrent::run([service, requestCopy]() {
+            return service->distinctValues(requestCopy);
+        });
+
+        connect(&columnValueOptionsWatcher_, &QFutureWatcherBase::finished, this,
+                [this, requestToken] { onColumnValueOptionsReady(requestToken); });
+        columnValueOptionsWatcher_.setFuture(future);
+    }
+
+    void FilterPanelViewModel::onColumnValueOptionsReady(const std::uint64_t requestToken) {
+        if (requestToken != columnValueRequestToken_) {
+            return;
+        }
+        if (!columnValueOptionsWatcher_.isFinished()) {
+            return;
+        }
+        setColumnValueOptions(columnValueOptionsWatcher_.result());
+    }
+
+    std::optional<domain::DistinctValuesRequest>
+    FilterPanelViewModel::buildDistinctValuesRequest(const QString& columnKey) const {
+        const auto normalizedColumn = columnKey.trimmed();
+        if (normalizedColumn.isEmpty()) {
+            return std::nullopt;
+        }
+
+        domain::DistinctValuesRequest request;
+        request.columnKey = normalizedColumn.toStdString();
+        request.filter.quickSector = quickSector_.trimmed().toStdString();
+        request.filter.excludeScaSesSte = excludeScaSesSte_;
+        request.filter.advanced = advancedFilters();
+        request.filter.advanced.year = parsePositiveInt(yearFilter_);
+        request.filter.advanced.week = parsePositiveInt(weekFilter_);
+        const query::SearchParser parser;
+        for (const auto& [key, value] : columnFilters_) {
+            if (key != normalizedColumn.toStdString()) {
+                request.filter.columnTerms.emplace(key, parser.parseTerms(value));
+            }
+        }
+        request.limit = 300;
+        return request;
     }
 
     void FilterPanelViewModel::applyPreferences(const ports::UserPreferencesSnapshot& snapshot) {

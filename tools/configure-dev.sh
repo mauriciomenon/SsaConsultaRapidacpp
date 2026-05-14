@@ -21,6 +21,31 @@ is_qt_prefix() {
   [[ -f "${candidate}/lib/cmake/Qt6/Qt6Config.cmake" ]]
 }
 
+normalize_path() {
+  local value="$1"
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  value="${value#\"}"
+  value="${value%\"}"
+  value="${value%\'}"
+  value="${value#\'}"
+  value="${value%/}"
+  value="${value%\\}"
+  printf '%s\n' "${value}"
+}
+
+split_path_list() {
+  local value="$1"
+  local sep="$2"
+  if [[ -z "${value}" ]]; then
+    return
+  fi
+  IFS="${sep}" read -r -a paths <<< "${value}"
+  for candidate in "${paths[@]}"; do
+    [[ -n "${candidate}" ]] && normalize_path "${candidate}" && printf '%s\n' "$(normalize_path "${candidate}")"
+  done
+}
+
 detect_qt_dir() {
   if [[ -n "${QT_DIR:-}" ]] && is_qt_prefix "${QT_DIR}"; then
     printf '%s\n' "${QT_DIR}"
@@ -28,12 +53,19 @@ detect_qt_dir() {
   fi
 
   if [[ -n "${CMAKE_PREFIX_PATH:-}" ]]; then
-    local first_prefix="${CMAKE_PREFIX_PATH%%:*}"
-    if is_qt_prefix "${first_prefix}"; then
-      printf '%s\n' "${first_prefix}"
-      return 0
+    while IFS= read -r candidate; do
+      if is_qt_prefix "${candidate}"; then
+        printf '%s\n' "${candidate}"
+        return 0
+      fi
+    done < <(split_path_list "${CMAKE_PREFIX_PATH}" ":")
+    while IFS= read -r candidate; do
+      if is_qt_prefix "${candidate}"; then
+        printf '%s\n' "${candidate}"
+        return 0
+      fi
+    done < <(split_path_list "${CMAKE_PREFIX_PATH}" ";")
     fi
-  fi
 
   if command -v brew >/dev/null 2>&1; then
     local brew_qt

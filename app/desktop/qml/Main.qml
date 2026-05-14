@@ -21,15 +21,25 @@ ApplicationWindow {
     color: Theme.window
     font.family: Theme.fontFamily
 
+    background: Rectangle {
+        color: Theme.window
+    }
+
     Binding {
         target: Theme
         property: "themeName"
-        value: root.vm.ui.theme === "system"
-               ? (Application.styleHints.colorScheme === Qt.ColorScheme.Dark ? "dark" : "light")
-               : root.vm.ui.theme
+        value: root.vm.ui.resolvedTheme
     }
 
-    Component.onCompleted: root.vm.browse.load()
+    Binding {
+        target: root.vm.ui
+        property: "detailsViewportWidth"
+        value: root.width
+    }
+
+    Component.onCompleted: {
+        root.vm.browse.load()
+    }
 
     Connections {
         target: root.smokeController
@@ -41,28 +51,45 @@ ApplicationWindow {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: Theme.gap
+        anchors.leftMargin: Theme.cardGap
+        anchors.rightMargin: Theme.cardGap
+        anchors.bottomMargin: Theme.cardGap
+        anchors.topMargin: Theme.cardGap
         spacing: Theme.gap
 
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: 44
+            Layout.preferredHeight: 56
             color: Theme.panel
             border.color: Theme.border
             radius: Theme.radius
 
             RowLayout {
                 anchors.fill: parent
-                anchors.margins: Theme.gap
+                anchors.margins: Theme.cardGap
                 spacing: Theme.gap
+
+                Rectangle {
+                    Layout.preferredWidth: 4
+                    Layout.fillHeight: true
+                    color: Theme.accent
+                    radius: 99
+                }
 
                 Label {
                     Layout.fillWidth: true
                     text: "SSA Consulta Rapida"
-                    font.pixelSize: 18
-                    font.bold: true
+                    font.pixelSize: 24
                     color: Theme.text
+                    font.bold: true
+                    font.letterSpacing: 0.1
                     elide: Text.ElideRight
+                }
+
+                Label {
+                    text: root.vm.ui.theme === "system" ? "Auto" : root.vm.ui.theme
+                    color: Theme.mutedText
+                    font.pixelSize: 11
                 }
                 ActionButton { text: "SAM"; onClicked: root.vm.commands.openSamHome() }
                 ActionButton {
@@ -92,7 +119,11 @@ ApplicationWindow {
                         }
                     }
                 }
-                ActionButton { text: "Atualizar"; onClicked: root.vm.browse.load() }
+                ActionButton {
+                    text: "Atualizar"
+                    enabled: !root.vm.browse.status.loading
+                    onClicked: root.vm.browse.load()
+                }
                 ActionButton {
                     text: "Exportar"
                     enabled: !root.vm.exports.running
@@ -102,6 +133,7 @@ ApplicationWindow {
                 ActionButton {
                     text: "Cancelar consulta"
                     enabled: root.vm.browse.status.loading
+                    danger: true
                     onClicked: root.vm.browse.cancelCurrentRequest()
                 }
             }
@@ -138,11 +170,12 @@ ApplicationWindow {
             }
 
             Loader {
-                SplitView.minimumWidth: root.vm.ui.detailsVisible ? 280 : 0
-                SplitView.preferredWidth: root.vm.ui.detailsVisible ? root.vm.ui.detailsPanelWidth : 0
-                SplitView.maximumWidth: root.vm.ui.detailsVisible ? 900 : 0
+                SplitView.minimumWidth: root.vm.ui.detailsVisible ? root.vm.ui.detailsMinimumWidth : 0
+                SplitView.preferredWidth: root.vm.ui.detailsVisible ? root.vm.ui.detailsEffectiveWidth : 0
+                SplitView.maximumWidth: root.vm.ui.detailsVisible ? root.vm.ui.detailsMaximumWidth : 0
                 active: root.vm.ui.detailsVisible
                 visible: root.vm.ui.detailsVisible
+                focus: false
 
                 sourceComponent: DetailsPanel {
                     viewModel: root.vm.browse.details
@@ -156,6 +189,7 @@ ApplicationWindow {
             Layout.fillWidth: true
             status: root.vm.browse.status
             browse: root.vm.browse
+            implicitHeight: 34
         }
     }
 
@@ -169,6 +203,20 @@ ApplicationWindow {
         title: "Exportar CSV"
         fileMode: FileDialog.SaveFile
         nameFilters: ["CSV (*.csv)"]
-        onAccepted: root.vm.exports.exportFilteredList(selectedFile)
+
+        function resolvedExportPath() {
+            const rawPath = selectedFile.toString().length > 0
+                ? selectedFile.toString()
+                : fileUrl.toString();
+            const resolved = Qt.resolvedUrl(rawPath)
+            return resolved.toLocalFile !== undefined && resolved.toLocalFile().length > 0
+                   ? resolved.toLocalFile()
+                   : resolved.toString()
+        }
+
+        onAccepted: {
+            const exportPath = resolvedExportPath()
+            root.vm.exports.exportFilteredList(exportPath)
+        }
     }
 }

@@ -254,7 +254,9 @@ namespace {
         }
 
         void column_filter_summary_uses_contains_marker() {
-            ssa::presentation::FilterPanelViewModel filters;
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::FilterPanelViewModel filters(service);
 
             filters.setColumnKey("situacao");
             filters.setColumnValue("APV");
@@ -289,7 +291,9 @@ namespace {
         }
 
         void reset_filters_restores_default_sca_ses_ste_exclusion() {
-            ssa::presentation::FilterPanelViewModel filters;
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::FilterPanelViewModel filters(service);
 
             filters.setColumnKey("setor_executor");
             filters.resetFilters();

@@ -6,65 +6,66 @@ Esta base nao e um port linha-a-linha da GUI Python. Ela preserva contratos de u
 
 ## Comandos rapidos
 
-### macOS
+### Build e run por SO (padrao de scripts)
 
 ```bash
-brew install qt cmake ninja sqlite
-./tools/configure-dev.sh
-cmake --build --preset dev
-ctest --preset dev --output-on-failure
+# macOS
+./scripts/build-macos.sh
+./scripts/run-macos.sh /path/para/ssas.db --screenshot /tmp/main.png
 
-./build/dev/ssa_consulta_rapida.app/Contents/MacOS/ssa_consulta_rapida \
-  --db /caminho/para/ssas.db
+# Debian/Ubuntu
+./scripts/build-debian.sh
+./scripts/run-debian.sh /path/para/ssas.db --config-dir "$HOME/.config/ssa-consulta-rapida-cpp"
 ```
-
-Se o Qt nao for detectado automaticamente:
-
-```bash
-QT_DIR=/opt/homebrew/opt/qt ./tools/configure-dev.sh
-```
-
-### Debian ou Ubuntu
-
-```bash
-sudo apt update
-sudo apt install -y \
-  build-essential cmake ninja-build libsqlite3-dev \
-  qt6-base-dev qt6-base-dev-tools \
-  qt6-declarative-dev qt6-tools-dev-tools \
-  qml6-module-qtquick qml6-module-qtquick-controls
-
-./tools/configure-dev.sh
-cmake --build --preset dev
-ctest --preset dev --output-on-failure
-
-./build/dev/ssa_consulta_rapida \
-  --db /caminho/para/ssas.db \
-  --config-dir "$HOME/.config/ssa-consulta-rapida-cpp"
-```
-
-### Windows 11
-
-Rode no "Developer PowerShell for VS 2022".
 
 ```powershell
-vcpkg install sqlite3:x64-windows
-.\tools\configure-dev.ps1
-cmake --build --preset dev
-ctest --preset dev --output-on-failure
+# Windows 11 (executar no Developer PowerShell for VS 2022)
+./scripts/build-windows.ps1
+./scripts/run-windows.ps1 -DbPath C:\caminho\ssas.db -Screenshot C:\tmp\main.png
+```
 
-$env:Path = "$env:QT_DIR\bin;$env:Path"
-.\build\dev\ssa_consulta_rapida.exe `
-  --db C:\caminho\para\ssas.db `
-  --config-dir "$env:LOCALAPPDATA\SSA_Consulta_Rapida_Cpp"
+### Ordem de deteccao usada nos scripts
+
+#### `tools/configure-dev.sh`
+- 1o: `QT_DIR`
+- 2o: `CMAKE_PREFIX_PATH`
+- 3o: instalacao padrao por SO (`/opt/homebrew/opt/qt`, `/usr/local/opt/qt`, `/usr/lib/cmake/Qt6/*`)
+- 4o: instalacao local (`$HOME/Qt`, etc)
+
+#### `tools/configure-dev.ps1`
+- 1o: parametro `-QtDir`
+- 2o: `QT_DIR` ou `CMAKE_PREFIX_PATH` (via variaveis de ambiente)
+- 3o: `C:\Qt\<QT_VERSION>\msvc2022_64` lido de `tools/qt-detect.conf`
+- 4o: `C:\Qt\*\msvc2022_64`
+
+### Caminhos customizados quando mudar de local
+
+```bash
+# macOS / Debian
+QT_DIR=/meu/qt ./tools/configure-dev.sh
+```
+
+```powershell
+# Windows
+.\tools\configure-dev.ps1 -QtDir "D:\Qt\6.11.0\msvc2022_64"
+.\tools\configure-dev.ps1 -SQLiteRoot "C:\vcpkg\installed\<triplet>"
+```
+
+### Verificacao de toolchain
+
+- No Windows, rode `.\scripts\build-windows.ps1` dentro de um shell com `cl.exe` no PATH (`vswhere` + `vcvarsall`).
+- Em caso de erro de SQLite, valide `vcpkg install sqlite3:<triplet>` e rode:
+
+```powershell
+.\tools\configure-dev.ps1 -SQLiteRoot "C:\vcpkg\installed\<triplet>"
 ```
 
 O script tenta detectar Qt nesta ordem:
 
 - `-QtDir` informado na linha de comando.
+- `QT_DIR` ou `CMAKE_PREFIX_PATH`.
 - `C:\Qt\<QT_VERSION>\msvc2022_64`, usando `QT_VERSION` de `tools\qt-detect.conf`.
 - `C:\Qt\*\msvc2022_64`, usando o subdiretorio definido em `tools\qt-detect.conf`.
-- `QT_DIR` ou `CMAKE_PREFIX_PATH`.
 
 O script tenta detectar SQLite nesta ordem:
 
@@ -87,7 +88,7 @@ Se o SQLite estiver em outro prefixo:
 ```powershell
 .\tools\configure-dev.ps1 `
   -QtDir "C:\Qt\6.11.0\msvc2022_64" `
-  -SQLiteRoot "C:\vcpkg\installed\x64-windows"
+  -SQLiteRoot "C:\vcpkg\installed\<triplet>"
 ```
 
 ## Requisitos
@@ -194,7 +195,7 @@ ctest --preset dev --output-on-failure
 - Instale Visual Studio 2022 Build Tools com "Desktop development with C++".
 - Instale Qt 6.11.0 para MSVC 2022 64-bit.
 - Instale CMake e Ninja.
-- Instale SQLite para MSVC, preferencialmente com `vcpkg install sqlite3:x64-windows`.
+- Instale SQLite para MSVC, preferencialmente com `vcpkg install sqlite3:<triplet>`.
 - Rode os comandos no "Developer PowerShell for VS 2022".
 
 Seu caminho esperado hoje:
@@ -207,7 +208,7 @@ Build direto:
 
 ```powershell
 $env:QT_DIR = "C:\Qt\6.11.0\msvc2022_64"
-$env:SQLite3_ROOT = "C:\vcpkg\installed\x64-windows"
+$env:SQLite3_ROOT = "C:\vcpkg\installed\<triplet>"
 $env:Path = "$env:QT_DIR\bin;$env:Path"
 cmake --preset dev `
   -DCMAKE_PREFIX_PATH="$env:QT_DIR" `
@@ -228,7 +229,7 @@ ctest --preset dev --output-on-failure
 Se o SQLite nao for detectado:
 
 ```powershell
-.\tools\configure-dev.ps1 -SQLiteRoot "C:\vcpkg\installed\x64-windows"
+.\tools\configure-dev.ps1 -SQLiteRoot "C:\vcpkg\installed\<triplet>"
 ```
 
 Se o Qt mudar de versao, o script procura automaticamente por:
@@ -265,7 +266,7 @@ Windows 11 PowerShell:
 
 ```powershell
 $env:QT_DIR = "C:\Qt\6.11.0\msvc2022_64"
-$env:SQLite3_ROOT = "C:\vcpkg\installed\x64-windows"
+$env:SQLite3_ROOT = "C:\vcpkg\installed\<triplet>"
 $env:Path = "$env:QT_DIR\bin;$env:Path"
 cmake --preset dev `
   -DCMAKE_PREFIX_PATH="$env:QT_DIR" `

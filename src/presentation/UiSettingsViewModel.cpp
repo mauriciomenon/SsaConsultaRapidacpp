@@ -1,8 +1,23 @@
 #include "presentation/UiSettingsViewModel.h"
 
+#include <QGuiApplication>
+#include <QStyleHints>
+
+#include <algorithm>
+
 namespace ssa::presentation {
 
-    UiSettingsViewModel::UiSettingsViewModel(QObject* parent) : QObject(parent) {}
+    UiSettingsViewModel::UiSettingsViewModel(QObject* parent) : QObject(parent) {
+        if (const auto hints = QGuiApplication::styleHints()) {
+            connect(hints, &QStyleHints::colorSchemeChanged, this,
+                    &UiSettingsViewModel::resolvedThemeChanged);
+        }
+        recalculateDetailsWidthRange();
+        preferencesSaveDebounce_.setSingleShot(true);
+        preferencesSaveDebounce_.setInterval(250);
+        connect(&preferencesSaveDebounce_, &QTimer::timeout, this,
+                &UiSettingsViewModel::preferencesSaveRequested);
+    }
 
     QString UiSettingsViewModel::theme() const {
         return theme_;
@@ -13,9 +28,22 @@ namespace ssa::presentation {
             return;
         }
         theme_ = value;
-        emit preferencesSaveRequested();
         emit themeChanged();
+        emit resolvedThemeChanged();
+        schedulePreferencesSave();
         emit settingsChanged();
+    }
+
+    QString UiSettingsViewModel::resolvedTheme() const {
+        if (theme_ != "system") {
+            return theme_;
+        }
+        const auto hints = QGuiApplication::styleHints();
+        if (!hints) {
+            return "light";
+        }
+        const auto scheme = hints->colorScheme();
+        return scheme == Qt::ColorScheme::Dark ? "dark" : "light";
     }
 
     QString UiSettingsViewModel::density() const {
@@ -27,8 +55,8 @@ namespace ssa::presentation {
             return;
         }
         density_ = value;
-        emit preferencesSaveRequested();
         emit densityChanged();
+        schedulePreferencesSave();
         emit settingsChanged();
     }
 
@@ -41,8 +69,8 @@ namespace ssa::presentation {
             return;
         }
         detailsVisible_ = value;
-        emit preferencesSaveRequested();
         emit detailsVisibleChanged();
+        schedulePreferencesSave();
         emit settingsChanged();
     }
 
@@ -56,9 +84,41 @@ namespace ssa::presentation {
             return;
         }
         detailsPanelWidth_ = bounded;
-        emit preferencesSaveRequested();
+        emit detailsWidthLayoutChanged();
         emit detailsPanelWidthChanged();
+        schedulePreferencesSave();
         emit settingsChanged();
+    }
+
+    int UiSettingsViewModel::detailsViewportWidth() const {
+        return detailsViewportWidth_;
+    }
+
+    void UiSettingsViewModel::setDetailsViewportWidth(const int value) {
+        const int normalizedWidth = value > 0 ? value : 1;
+        if (detailsViewportWidth_ == normalizedWidth) {
+            return;
+        }
+        detailsViewportWidth_ = normalizedWidth;
+        recalculateDetailsWidthRange();
+        emit detailsWidthLayoutChanged();
+    }
+
+    int UiSettingsViewModel::detailsMinimumWidth() const {
+        return detailsMinimumWidth_;
+    }
+
+    int UiSettingsViewModel::detailsPreferredWidth() const {
+        return detailsPreferredWidth_;
+    }
+
+    int UiSettingsViewModel::detailsMaximumWidth() const {
+        return detailsMaximumWidth_;
+    }
+
+    int UiSettingsViewModel::detailsEffectiveWidth() const {
+        const int preferred = detailsPanelWidth_ > 0 ? detailsPanelWidth_ : detailsPreferredWidth_;
+        return clampToWidthRange(preferred);
     }
 
     void UiSettingsViewModel::applyPreferences(const ports::UserPreferencesSnapshot& snapshot) {
@@ -69,9 +129,12 @@ namespace ssa::presentation {
         }
         detailsVisible_ = snapshot.detailsVisible;
         detailsPanelWidth_ = ports::clampDetailsPanelWidth(snapshot.detailsPanelWidth);
+        recalculateDetailsWidthRange();
         emit themeChanged();
+        emit resolvedThemeChanged();
         emit densityChanged();
         emit detailsVisibleChanged();
+        emit detailsWidthLayoutChanged();
         emit detailsPanelWidthChanged();
         emit settingsChanged();
     }
@@ -85,6 +148,37 @@ namespace ssa::presentation {
 
     bool UiSettingsViewModel::isDensityValid(const QString& value) const {
         return value == "compact" || value == "normal" || value == "comfortable";
+    }
+
+    int UiSettingsViewModel::computeDetailsMinimumWidth() const {
+        const int widthByRatio = (detailsViewportWidth_ * kDetailsMinRatioPercent) / 100;
+        return std::max(kDetailsMinAbsolutePx, widthByRatio);
+    }
+
+    int UiSettingsViewModel::computeDetailsMaximumWidth() const {
+        const int widthByRatio = (detailsViewportWidth_ * kDetailsMaxRatioPercent) / 100;
+        return std::max(computeDetailsMinimumWidth(),
+                        std::min(kDetailsMaxAbsolutePx, widthByRatio));
+    }
+
+    int UiSettingsViewModel::computeDetailsPreferredWidth() const {
+        const int widthByRatio = (detailsViewportWidth_ * kDetailsPrefRatioPercent) / 100;
+        return std::max(kDetailsMinAbsolutePx, std::min(computeDetailsMaximumWidth(), widthByRatio));
+    }
+
+    int UiSettingsViewModel::clampToWidthRange(const int value) const {
+        return std::max(detailsMinimumWidth_, std::min(detailsMaximumWidth_, value));
+    }
+
+    void UiSettingsViewModel::recalculateDetailsWidthRange() {
+        detailsMinimumWidth_ = computeDetailsMinimumWidth();
+        detailsMaximumWidth_ = computeDetailsMaximumWidth();
+        detailsPreferredWidth_ = computeDetailsPreferredWidth();
+        emit detailsWidthLayoutChanged();
+    }
+
+    void UiSettingsViewModel::schedulePreferencesSave() {
+        preferencesSaveDebounce_.start();
     }
 
 } // namespace ssa::presentation

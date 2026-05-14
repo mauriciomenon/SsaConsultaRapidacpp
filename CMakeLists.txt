@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(SSAConsultaRapidaCpp VERSION 0.1.0 LANGUAGES CXX)
+project(SSAConsultaRapidaCpp VERSION 0.4.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -119,8 +119,10 @@ qt_add_qml_module(ssa_consulta_rapida
         app/desktop/qml/Theme.qml
         app/desktop/qml/components/ActionButton.qml
         app/desktop/qml/components/AppCheckBox.qml
+        app/desktop/qml/components/AppTextField.qml
         app/desktop/qml/components/DetailsPanel.qml
         app/desktop/qml/components/FilterPanel.qml
+        app/desktop/qml/components/ColumnConfigList.qml
         app/desktop/qml/components/PreferencesDialog.qml
         app/desktop/qml/components/SearchAndPager.qml
         app/desktop/qml/components/SsaTable.qml

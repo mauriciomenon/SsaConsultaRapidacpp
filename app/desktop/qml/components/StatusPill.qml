@@ -11,11 +11,12 @@ Rectangle {
     Layout.preferredHeight: 32
     color: Theme.panel
     border.color: root.status.error.length > 0 ? Theme.danger : Theme.border
+    border.width: root.status.error.length > 0 ? 2 : 1
     radius: Theme.radius
 
     RowLayout {
         anchors.fill: parent
-        anchors.margins: 6
+        anchors.margins: 8
         spacing: Theme.gap
 
         BusyIndicator {
@@ -28,7 +29,16 @@ Rectangle {
             Layout.fillWidth: true
             text: root.status.error.length > 0 ? root.status.error : root.status.message
             color: root.status.error.length > 0 ? Theme.danger : Theme.text
+            font.pixelSize: 12
+            font.bold: root.status.error.length > 0
             elide: Text.ElideRight
+        }
+
+        Label {
+            visible: root.browse !== null && root.browse.totalRows > 0
+            text: root.browse.totalRows + " linhas"
+            color: Theme.mutedText
+            font.pixelSize: 11
         }
     }
 }

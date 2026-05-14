@@ -4,11 +4,19 @@
 #include "ports/IUserPreferencesStore.h"
 
 #include <QObject>
+#include <QFuture>
+#include <QFutureWatcher>
 #include <QString>
 #include <QStringList>
 
 #include <map>
+#include <memory>
+#include <optional>
 #include <string>
+
+namespace ssa::query {
+    class SsaQueryService;
+}
 
 namespace ssa::presentation {
 
@@ -26,13 +34,16 @@ namespace ssa::presentation {
         Q_PROPERTY(QString weekFilter READ weekFilter WRITE setWeekFilter NOTIFY changed)
         Q_PROPERTY(
             QString derivationMode READ derivationMode WRITE setDerivationMode NOTIFY changed)
+        Q_PROPERTY(QStringList derivationModeOptions READ derivationModeOptions CONSTANT)
         Q_PROPERTY(
             bool onlyReprogrammed READ onlyReprogrammed WRITE setOnlyReprogrammed NOTIFY changed)
+        Q_PROPERTY(QStringList columnValueOptions READ columnValueOptions NOTIFY columnValueOptionsChanged)
         Q_PROPERTY(QStringList activeFilters READ activeFilters NOTIFY changed)
         Q_PROPERTY(QString activeFilterSummary READ activeFilterSummary NOTIFY changed)
 
       public:
-        explicit FilterPanelViewModel(QObject* parent = nullptr);
+        explicit FilterPanelViewModel(std::shared_ptr<query::SsaQueryService> queryService,
+                                     QObject* parent = nullptr);
 
         [[nodiscard]] QString quickSector() const;
         void setQuickSector(const QString& value);
@@ -52,19 +63,23 @@ namespace ssa::presentation {
         void setWeekFilter(const QString& value);
         [[nodiscard]] QString derivationMode() const;
         void setDerivationMode(const QString& value);
+        [[nodiscard]] QStringList derivationModeOptions() const;
         [[nodiscard]] bool onlyReprogrammed() const;
         void setOnlyReprogrammed(bool value);
+        [[nodiscard]] QStringList columnValueOptions() const;
         [[nodiscard]] QStringList activeFilters() const;
         [[nodiscard]] QString activeFilterSummary() const;
         [[nodiscard]] std::map<std::string, std::string> columnFilters() const;
         [[nodiscard]] domain::AdvancedFilterSpec advancedFilters() const;
         Q_INVOKABLE [[nodiscard]] bool hasFilterForColumn(const QString& key) const;
+        Q_INVOKABLE void refreshColumnValueOptions();
         void setColumnFilters(std::map<std::string, std::string> filters);
         void applyPreferences(const ports::UserPreferencesSnapshot& snapshot);
         void writePreferences(ports::UserPreferencesSnapshot& snapshot) const;
 
       signals:
         void changed();
+        void columnValueOptionsChanged();
         void applyRequested();
 
       public slots:
@@ -74,7 +89,12 @@ namespace ssa::presentation {
       private:
         void rebuildActiveFilters();
         void refreshActiveFilters();
+        void setColumnValueOptions(std::vector<std::string> options);
+        void onColumnValueOptionsReady(const std::uint64_t requestToken);
+        [[nodiscard]] std::optional<domain::DistinctValuesRequest>
+        buildDistinctValuesRequest(const QString& columnKey) const;
 
+        std::shared_ptr<query::SsaQueryService> queryService_;
         QString quickSector_;
         bool excludeScaSesSte_{domain::kDefaultExcludeScaSesSte};
         QStringList filterColumnKeys_;
@@ -85,10 +105,14 @@ namespace ssa::presentation {
         QString yearFilter_;
         QString weekFilter_;
         QString derivationMode_{"all"};
+        const QStringList derivationModeOptions_{"all", "root", "derived"};
         bool onlyReprogrammed_{false};
         std::map<std::string, std::string> columnFilters_;
         QStringList activeFilters_;
         QString activeFilterSummary_;
+        QStringList columnValueOptions_;
+        std::uint64_t columnValueRequestToken_{0};
+        QFutureWatcher<std::vector<std::string>> columnValueOptionsWatcher_;
     };
 
 } // namespace ssa::presentation

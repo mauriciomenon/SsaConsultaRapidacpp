@@ -15,21 +15,6 @@ Rectangle {
     readonly property int rowHeight: Theme.densityValue(root.density, 24, 30, 36)
     readonly property int textSize: Theme.densityValue(root.density, 11, 12, 13)
     readonly property var tableColumns: root.viewModel.tableHeaders
-    readonly property var columnWidths: root.viewModel.tableModel.columnWidths
-
-    function columnWidthAt(column) {
-        if (!root.columnWidths || column < 0 || column >= root.columnWidths.length) {
-            return root.viewModel && root.viewModel.tableModel
-                   ? root.viewModel.tableModel.fallbackColumnWidth
-                   : 132
-        }
-        const width = root.columnWidths[column]
-        return width > 0
-               ? width
-               : (root.viewModel && root.viewModel.tableModel
-                  ? root.viewModel.tableModel.fallbackColumnWidth
-                  : 132)
-    }
 
     color: Theme.panel
     border.color: Theme.border
@@ -61,15 +46,18 @@ Rectangle {
                         required property int index
                         required property var modelData
 
-                        width: root.columnWidthAt(index)
+                        width: root.viewModel.tableModel.columnWidth(index)
                         height: header.height
                         color: Theme.header
                         border.color: Theme.border
+                        border.width: 0
 
                         Text {
                             anchors.fill: parent
-                            anchors.leftMargin: 8
-                            anchors.rightMargin: 8
+                            anchors.leftMargin: 10
+                            anchors.rightMargin: 10
+                            anchors.topMargin: 4
+                            anchors.bottomMargin: 4
                             text: parent.modelData.label
                             color: Theme.text
                             font.bold: true
@@ -94,7 +82,7 @@ Rectangle {
             }
         }
 
-        TableView {
+            TableView {
             id: table
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -104,7 +92,7 @@ Rectangle {
             columnSpacing: 1
             boundsBehavior: Flickable.StopAtBounds
             columnWidthProvider: function(column) {
-                return root.columnWidthAt(column)
+                return root.viewModel.tableModel.columnWidth(column)
             }
             rowHeightProvider: function(row) {
                 return table.cachedRowHeight
@@ -115,11 +103,26 @@ Rectangle {
             ScrollBar.horizontal: ScrollBar {}
             ScrollBar.vertical: ScrollBar {}
 
+            Timer {
+                id: relayoutTimer
+                interval: 0
+                repeat: false
+                onTriggered: table.forceLayout()
+            }
+
             Connections {
                 target: root.viewModel.tableModel
 
                 function onColumnsChanged() {
-                    table.forceLayout()
+                    relayoutTimer.restart()
+                }
+            }
+
+            Connections {
+                target: root
+
+                function onDensityChanged() {
+                    relayoutTimer.restart()
                 }
             }
 
@@ -127,16 +130,17 @@ Rectangle {
                 required property int row
                 required property int column
                 required property var displayValue
+                readonly property bool isStriped: (row % 2) !== 0
 
                 implicitHeight: table.cachedRowHeight
-                color: row % 2 === 0 ? Theme.panel : Theme.rowAlt
-                border.color: Theme.border
+                color: isStriped ? Theme.rowAlt : Theme.panel
+                border.width: 0
 
                 Text {
                     anchors.fill: parent
-                    anchors.leftMargin: 6
-                    anchors.rightMargin: 6
-                    text: parent.displayValue
+                    anchors.leftMargin: 10
+                    anchors.rightMargin: 10
+                    text: parent.displayValue === "" ? "-" : parent.displayValue
                     color: Theme.text
                     verticalAlignment: Text.AlignVCenter
                     elide: Text.ElideRight

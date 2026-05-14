@@ -1,0 +1,114 @@
+pragma ComponentBehavior: Bound
+
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
+import SsaConsultaRapida
+
+Item {
+    id: root
+    required property var viewModel
+
+    ColumnLayout {
+        anchors.fill: parent
+        anchors.margins: Theme.cardGap
+        spacing: Theme.gap
+
+        AppTextField {
+            id: columnFilter
+            Layout.fillWidth: true
+            placeholderText: "Filtrar colunas por nome ou chave"
+            selectByMouse: true
+
+            Timer {
+                id: columnFilterTimer
+                interval: 120
+                repeat: false
+                onTriggered: root.viewModel.setFilterText(columnFilter.text)
+            }
+
+            onTextChanged: {
+                columnFilterTimer.stop()
+                columnFilterTimer.start()
+            }
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            color: Theme.window
+            border.color: Theme.border
+            radius: Theme.radius
+            clip: true
+
+            ListView {
+                id: columnList
+                anchors.fill: parent
+                anchors.margins: 1
+                clip: true
+                model: root.viewModel
+
+                delegate: Rectangle {
+                    id: columnDelegate
+                    required property int index
+                    required property string columnKey
+                    required property string columnLabel
+                    required property bool columnVisible
+                    required property bool columnToggleEnabled
+                    required property int columnWidth
+
+                    width: columnList.width
+                    height: 38
+                    color: columnDelegate.index % 2 === 0 ? Theme.panel : Theme.rowAlt
+                    border.color: Theme.border
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: Theme.gap
+                        anchors.rightMargin: Theme.gap
+                        spacing: Theme.gap
+
+                        CheckBox {
+                            checked: columnDelegate.columnVisible
+                            enabled: columnDelegate.columnToggleEnabled
+                            onToggled: root.viewModel.setColumnVisibleByKey(
+                                columnDelegate.columnKey, checked)
+                        }
+                        Label {
+                            Layout.preferredWidth: 210
+                            text: columnDelegate.columnLabel
+                            color: Theme.text
+                            elide: Text.ElideRight
+                        }
+                        Label {
+                            Layout.fillWidth: true
+                            text: columnDelegate.columnKey
+                            color: Theme.mutedText
+                            elide: Text.ElideRight
+                        }
+                        SpinBox {
+                            id: widthSpin
+                            from: root.viewModel.minColumnWidth
+                            to: root.viewModel.maxColumnWidth
+                            stepSize: 10
+                            value: columnDelegate.columnWidth
+                            implicitHeight: Theme.controlHeight
+                            leftPadding: 8
+                            contentItem: TextInput {
+                                text: widthSpin.textFromValue(widthSpin.value, widthSpin.locale)
+                                color: Theme.text
+                                font.pixelSize: 11
+                                horizontalAlignment: Qt.AlignHCenter
+                                verticalAlignment: Qt.AlignVCenter
+                            }
+                            onValueModified: root.viewModel.setColumnWidth(
+                                columnDelegate.columnKey,
+                                value
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

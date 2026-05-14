@@ -6,18 +6,47 @@ import SsaConsultaRapida
 Rectangle {
     id: root
     required property var filterViewModel
-
     signal applyRequested()
+    property var columnValueOptions: root.filterViewModel.columnValueOptions
+    property var derivationOptions: root.filterViewModel.derivationModeOptions
 
-    Layout.preferredHeight: 164
+    function applyColumnValueFilter() {
+        if (!root.filterViewModel.columnValue) {
+            return
+        }
+        root.filterViewModel.addColumnFilter()
+        columnValueInput.editText = ""
+        columnValueInput.forceActiveFocus()
+    }
+
+    Layout.preferredHeight: 182
     color: Theme.panel
     border.color: Theme.border
     radius: Theme.radius
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: Theme.gap
-        spacing: 6
+        anchors.margins: Theme.cardGap
+        spacing: Theme.gap
+
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Theme.gap
+
+            Label {
+                text: "Filtros avancados"
+                color: Theme.text
+                font.bold: true
+                font.pixelSize: 12
+            }
+
+            Item { Layout.fillWidth: true }
+            Label {
+                text: "Clique em Aplicar filtros para atualizar"
+                color: Theme.mutedText
+                font.pixelSize: 10
+            }
+        }
 
         RowLayout {
             Layout.fillWidth: true
@@ -25,26 +54,37 @@ Rectangle {
 
             AppCheckBox {
                 Layout.preferredWidth: 170
-                text: "Excluir SCA/SES/STE"
+                text: "Excluir status de exclusao"
                 checked: root.filterViewModel.excludeScaSesSte
                 onToggled: root.filterViewModel.excludeScaSesSte = checked
             }
-            Label { text: "Executor:"; color: Theme.text }
-            TextField {
+            Label { text: "Setor:"; color: Theme.text }
+            AppTextField {
                 Layout.preferredWidth: 130
-                implicitHeight: Theme.controlHeight
+                id: quickSectorInput
+                focus: true
                 text: root.filterViewModel.quickSector
                 onTextChanged: root.filterViewModel.quickSector = text
                 onAccepted: root.applyRequested()
+                onActiveFocusChanged: if (activeFocus) {
+                    quickSectorInput.selectAll();
+                }
             }
             Label { text: "Coluna:"; color: Theme.text }
             ComboBox {
-                id: columnBox
-
+                id: columnCombo
                 Layout.preferredWidth: 190
                 model: root.filterViewModel.filterColumnKeys
-                currentIndex: Math.max(0, root.filterViewModel.filterColumnKeys.indexOf(root.filterViewModel.columnKey))
-                onActivated: root.filterViewModel.columnKey = currentText
+                currentIndex: Math.max(
+                    0,
+                    root.filterViewModel.filterColumnKeys.indexOf(root.filterViewModel.columnKey))
+                onCurrentTextChanged: {
+                    root.filterViewModel.columnKey = currentText
+                    root.filterViewModel.refreshColumnValueOptions()
+                    columnValueInput.editText = ""
+                    root.filterViewModel.columnValue = ""
+                    columnValueInput.forceActiveFocus()
+                }
             }
             Item { Layout.fillWidth: true }
         }
@@ -57,17 +97,42 @@ Rectangle {
                 text: "Filtro:"
                 color: Theme.text
             }
-            TextField {
+            ComboBox {
+                id: columnValueInput
+
                 Layout.fillWidth: true
                 Layout.minimumWidth: 220
-                implicitHeight: Theme.controlHeight
-                placeholderText: "Filtro da coluna selecionada"
-                text: root.filterViewModel.columnValue
-                onTextChanged: root.filterViewModel.columnValue = text
-                onAccepted: root.filterViewModel.addColumnFilter()
+                editable: true
+                model: root.filterViewModel.columnValueOptions
+                onAccepted: root.applyColumnValueFilter()
+                onActivated: {
+                    if (currentText === "") {
+                        return
+                    }
+                    if (columnValueInput.editText !== currentText) {
+                        columnValueInput.editText = currentText
+                    }
+                    root.filterViewModel.columnValue = currentText
+                    columnValueInput.forceActiveFocus()
+                }
+                onEditTextChanged: root.filterViewModel.columnValue = editText
+                Keys.onEscapePressed: root.filterViewModel.columnValue = ""
             }
-            ActionButton { text: "Adicionar"; onClicked: root.filterViewModel.addColumnFilter() }
-            ActionButton { text: "Padrao"; onClicked: root.filterViewModel.resetFilters() }
+            ActionButton {
+                text: "Adicionar"
+                enabled: root.filterViewModel.columnValue.trim() !== ""
+                onClicked: {
+                    root.applyColumnValueFilter()
+                }
+            }
+            ActionButton {
+                text: "Aplicar filtros"
+                onClicked: root.applyRequested()
+            }
+            ActionButton {
+                text: "Padrao"
+                onClicked: root.filterViewModel.resetFilters()
+            }
         }
 
         RowLayout {
@@ -78,33 +143,38 @@ Rectangle {
             ComboBox {
                 Layout.preferredWidth: 170
                 model: root.filterViewModel.weekColumnKeys
-                currentIndex: Math.max(0, root.filterViewModel.weekColumnKeys.indexOf(root.filterViewModel.weekColumnKey))
+                currentIndex: Math.max(
+                    0,
+                    root.filterViewModel.weekColumnKeys.indexOf(root.filterViewModel.weekColumnKey))
                 onActivated: root.filterViewModel.weekColumnKey = currentText
             }
-            TextField {
+            AppTextField {
                 Layout.preferredWidth: 80
-                implicitHeight: Theme.controlHeight
+                id: yearFilterInput
                 placeholderText: "Ano"
                 text: root.filterViewModel.yearFilter
                 inputMethodHints: Qt.ImhDigitsOnly
                 onTextChanged: root.filterViewModel.yearFilter = text
                 onAccepted: root.applyRequested()
+                Keys.onRightPressed: weekFilterInput.forceActiveFocus()
             }
-            TextField {
+            AppTextField {
                 Layout.preferredWidth: 90
-                implicitHeight: Theme.controlHeight
+                id: weekFilterInput
                 placeholderText: "Sem."
                 text: root.filterViewModel.weekFilter
                 inputMethodHints: Qt.ImhDigitsOnly
                 onTextChanged: root.filterViewModel.weekFilter = text
                 onAccepted: root.applyRequested()
+                Keys.onLeftPressed: yearFilterInput.forceActiveFocus()
             }
-            ComboBox {
-                readonly property var derivationOptions: ["all", "root", "derived"]
 
+            ComboBox {
                 Layout.preferredWidth: 120
-                model: derivationOptions
-                currentIndex: Math.max(0, derivationOptions.indexOf(root.filterViewModel.derivationMode))
+                model: root.derivationOptions
+                currentIndex: Math.max(
+                    0,
+                    root.derivationOptions.indexOf(root.filterViewModel.derivationMode))
                 onActivated: root.filterViewModel.derivationMode = currentText
             }
             AppCheckBox {
@@ -124,4 +194,5 @@ Rectangle {
             elide: Text.ElideRight
         }
     }
+
 }

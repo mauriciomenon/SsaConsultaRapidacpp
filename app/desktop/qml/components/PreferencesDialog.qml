@@ -8,13 +8,20 @@ import SsaConsultaRapida
 Dialog {
     id: root
     required property var viewModel
-    readonly property int hostAvailableWidth: ApplicationWindow.window ? ApplicationWindow.window.width : 1420
-    readonly property int hostAvailableHeight: ApplicationWindow.window ? ApplicationWindow.window.height : 860
+    readonly property int hostAvailableWidth: parent && parent.width > 0
+        ? parent.width
+        : 1280
+    readonly property int hostAvailableHeight: parent && parent.height > 0
+        ? parent.height
+        : 840
+    readonly property int detailsCurrentWidth: root.viewModel.ui.detailsEffectiveWidth
+    readonly property int detailsWidthMin: root.viewModel.ui.detailsMinimumWidth
+    readonly property int detailsWidthMax: root.viewModel.ui.detailsMaximumWidth
 
     modal: true
     title: "Preferencias"
-    width: Math.max(560, Math.min(760, hostAvailableWidth - 80))
-    height: Math.max(460, Math.min(660, hostAvailableHeight - 80))
+    width: Math.max(560, Math.min(820, hostAvailableWidth - 80))
+    height: Math.max(460, Math.min(700, hostAvailableHeight - 80))
     x: Math.round((hostAvailableWidth - width) / 2)
     y: Math.round((hostAvailableHeight - height) / 2)
     closePolicy: Popup.NoAutoClose
@@ -24,15 +31,22 @@ Dialog {
         color: Theme.panel
         border.color: Theme.border
         radius: Theme.radius
+        border.width: 1
     }
 
     ColumnLayout {
         anchors.fill: parent
-        spacing: Theme.gap
+        spacing: Theme.cardGap
 
         RowLayout {
             Layout.fillWidth: true
             spacing: Theme.gap
+
+            Rectangle {
+                Layout.preferredWidth: 3
+                Layout.fillHeight: true
+                color: Theme.accent
+            }
 
             Label {
                 text: "Tema"
@@ -85,10 +99,11 @@ Dialog {
                 Layout.preferredWidth: 160
             }
             SpinBox {
-                from: 280
-                to: 900
+                id: detailsWidthInput
+                from: root.detailsWidthMin
+                to: root.detailsWidthMax
+                value: root.detailsCurrentWidth
                 stepSize: 20
-                value: root.viewModel.ui.detailsPanelWidth
                 onValueModified: root.viewModel.ui.detailsPanelWidth = value
             }
             Label {
@@ -99,86 +114,10 @@ Dialog {
             }
         }
 
-        TextField {
-            id: columnSearch
-            Layout.fillWidth: true
-            placeholderText: "Filtrar colunas por nome ou chave"
-            selectByMouse: true
-            Timer {
-                id: columnFilterTimer
-                interval: 120
-                repeat: false
-                onTriggered: root.viewModel.columns.setFilterText(columnSearch.text)
-            }
-            onTextChanged: {
-                columnFilterTimer.stop()
-                columnFilterTimer.start()
-            }
-        }
-
-        Rectangle {
+        ColumnConfigList {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            color: Theme.window
-            border.color: Theme.border
-            radius: Theme.radius
-            clip: true
-
-            ListView {
-            id: columnList
-            anchors.fill: parent
-            anchors.margins: 1
-            model: root.viewModel.columns
-            clip: true
-
-                delegate: Rectangle {
-                    id: columnDelegate
-                    required property int index
-                    required property string columnKey
-                    required property string columnLabel
-                    required property bool columnVisible
-                    required property bool columnToggleEnabled
-                    required property int columnWidth
-
-                    width: columnList.width
-                    height: 38
-                    color: Theme.panel
-
-                    RowLayout {
-                        anchors.fill: parent
-                        anchors.leftMargin: Theme.gap
-                        anchors.rightMargin: Theme.gap
-                        spacing: Theme.gap
-
-                        CheckBox {
-                            checked: columnDelegate.columnVisible
-                            enabled: columnDelegate.columnToggleEnabled
-                            onToggled: root.viewModel.columns.setColumnVisibleByKey(
-                                columnDelegate.columnKey, checked)
-                        }
-                        Label {
-                            Layout.preferredWidth: 210
-                            text: columnDelegate.columnLabel
-                            color: Theme.text
-                            elide: Text.ElideRight
-                        }
-                        Label {
-                            Layout.fillWidth: true
-                            text: columnDelegate.columnKey
-                            color: Theme.mutedText
-                            elide: Text.ElideRight
-                        }
-                        SpinBox {
-                            id: widthSpin
-                            from: root.viewModel.columns.minColumnWidth
-                            to: root.viewModel.columns.maxColumnWidth
-                            stepSize: 10
-                            value: columnDelegate.columnWidth
-                            onValueModified: root.viewModel.columns.setColumnWidth(columnDelegate.columnKey, value)
-                        }
-                    }
-                }
-            }
+            viewModel: root.viewModel.columns
         }
 
         RowLayout {

@@ -57,14 +57,44 @@ function Test-QtPrefix {
     return Test-Path (Join-Path $Path "lib\cmake\Qt6\Qt6Config.cmake")
 }
 
+function ConvertTo-NormalizedPath {
+    param([string]$Path)
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return $null
+    }
+
+    $normalized = $Path.Trim().Trim('"').Trim("'")
+    if (-not $normalized) {
+        return $null
+    }
+    $normalized = $normalized -replace '^[\\/]+([A-Za-z]:)', '$1'
+    $normalized = $normalized.TrimEnd('\', '/')
+    return $normalized
+}
+
+function Get-NormalizedPathList {
+    param([string]$Value)
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return @()
+    }
+    return $Value.Split(';', [System.StringSplitOptions]::RemoveEmptyEntries) |
+        ForEach-Object { ConvertTo-NormalizedPath $_ } |
+        Where-Object { $_ }
+}
+
 function Find-FirstValidPrefix {
     param(
         [string[]]$Paths,
         [scriptblock]$IsValid
     )
     foreach ($path in $Paths) {
-        if ($path -and (& $IsValid $path)) {
-            return (Resolve-Path -LiteralPath $path).Path
+        $candidate = ConvertTo-NormalizedPath $path
+        if (-not $candidate) {
+            continue
+        }
+        if ($candidate -and (& $IsValid $candidate)) {
+            return (Resolve-Path -LiteralPath $candidate -ErrorAction SilentlyContinue).Path
         }
     }
     return $null
@@ -76,24 +106,55 @@ function Find-QtFromKnownPath {
 }
 
 function Find-QtFromEnvironment {
-    $paths = @($env:QT_DIR)
-    if ($env:CMAKE_PREFIX_PATH) {
-        $paths += $env:CMAKE_PREFIX_PATH -split ';'
-    }
+    $paths = @()
+    $paths += (Get-NormalizedPathList $env:QT_DIR)
+    $paths += (Get-NormalizedPathList $env:CMAKE_PREFIX_PATH)
     return Find-QtFromKnownPath $paths
 }
 
 function Find-QtUnderDefaultRoot {
-    if (Test-Path "C:\Qt") {
-        $candidates = @(Get-ChildItem "C:\Qt" -Directory -ErrorAction SilentlyContinue |
-            ForEach-Object {
-                Join-Path $_.FullName $DetectConfig.WINDOWS_QT_SUBDIR
-            } |
-            Where-Object { Test-QtPrefix $_ } |
-            Sort-Object -Descending)
+    function Get-QtCandidateInfo {
+        param([string]$Candidate)
+        if (-not (Test-QtPrefix $Candidate)) {
+            return $null
+        }
+        $versionMatch = [regex]::Match($Candidate, "\\d+\\.\\d+(?:\\.\\d+)?")
+        if (-not $versionMatch.Success) {
+            return $null
+        }
+        $versionValue = [version]"0.0.0.0"
+        [void][version]::TryParse($versionMatch.Value, [ref]$versionValue)
+        [PSCustomObject]@{
+            Path = $Candidate
+            Version = $versionValue
+        }
+    }
 
-        if ($candidates.Count -gt 0) {
-            return (Resolve-Path -LiteralPath $candidates[0]).Path
+    function Get-SortedQtCandidates {
+        param([string[]]$Candidates)
+        return @(
+            $Candidates |
+                ForEach-Object { Get-QtCandidateInfo $_ } |
+                Where-Object { $_ } |
+                Sort-Object -Property Version -Descending
+        )
+    }
+
+    if (Test-Path "C:\Qt") {
+        $versionRoots = @(Get-ChildItem "C:\Qt" -Directory -ErrorAction SilentlyContinue)
+        $candidates = @()
+        foreach ($versionRoot in $versionRoots) {
+            $candidates += Join-Path $versionRoot.FullName $DetectConfig.WINDOWS_QT_SUBDIR
+            $nestedRoots = @(Get-ChildItem $versionRoot.FullName -Directory -ErrorAction SilentlyContinue)
+            foreach ($nested in $nestedRoots) {
+                $candidates += Join-Path $nested.FullName $DetectConfig.WINDOWS_QT_SUBDIR
+            }
+        }
+
+        $sortedCandidates = Get-SortedQtCandidates $candidates
+
+        if ($sortedCandidates.Count -gt 0) {
+            return (Resolve-Path -LiteralPath $sortedCandidates[0].Path).Path
         }
     }
 
@@ -103,12 +164,19 @@ function Find-QtUnderDefaultRoot {
 function Find-QtDir {
     param([string]$ExplicitQtDir)
 
+    $normalizedExplicit = ConvertTo-NormalizedPath $ExplicitQtDir
+    if ($normalizedExplicit) {
+        if (Test-QtPrefix $normalizedExplicit) {
+            return $normalizedExplicit
+        }
+        throw "Explicit Qt path is not valid: $normalizedExplicit"
+    }
+
     $defaultInstallPath = "C:\Qt\$($DetectConfig.QT_VERSION)\$($DetectConfig.WINDOWS_QT_SUBDIR)"
     return Find-QtFromKnownPath @(
-        $ExplicitQtDir,
+        (Find-QtFromEnvironment),
         $defaultInstallPath,
-        (Find-QtUnderDefaultRoot),
-        (Find-QtFromEnvironment)
+        (Find-QtUnderDefaultRoot)
     )
 }
 
@@ -138,11 +206,12 @@ function Get-DefaultVcpkgTriplet {
 
 function Find-SqliteFromVcpkg {
     $triplet = Get-DefaultVcpkgTriplet
+    $vcpkgTripletPath = Join-Path "installed" $triplet
     $paths = @()
     if ($env:VCPKG_ROOT) {
-        $paths += Join-Path $env:VCPKG_ROOT "installed\$triplet"
+        $paths += Join-Path $env:VCPKG_ROOT $vcpkgTripletPath
     }
-    $paths += "C:\vcpkg\installed\$triplet"
+    $paths += Join-Path "C:\vcpkg" $vcpkgTripletPath
     return Find-SqliteFromKnownPath $paths
 }
 
@@ -180,8 +249,6 @@ You can run:
 }
 
 Write-Output "Using Qt prefix: $detectedQtDir"
-$env:QT_DIR = $detectedQtDir
-
 $cmakeArgs = @(
     "--preset", $Preset,
     "-DCMAKE_PREFIX_PATH=$detectedQtDir"
