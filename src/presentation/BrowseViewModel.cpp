@@ -10,8 +10,8 @@ namespace ssa::presentation {
 
     BrowseViewModel::BrowseViewModel(std::shared_ptr<query::SsaQueryService> queryService,
                                      QObject* parent)
-        : QObject(parent), search_(this), filters_(queryService, this), details_(this), status_(this),
-          tableModel_(std::string{domain::kSsaNumberColumnKey}, this),
+        : QObject(parent), search_(this), filters_(queryService, this), details_(this),
+          status_(this), tableModel_(std::string{domain::kSsaNumberColumnKey}, this),
           orchestrator_(std::move(queryService), search_, filters_, details_, status_, tableModel_,
                         this) {
         connect(&orchestrator_, &BrowseOrchestrator::pageChanged, this,

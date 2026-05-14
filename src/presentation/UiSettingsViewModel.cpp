@@ -163,7 +163,8 @@ namespace ssa::presentation {
 
     int UiSettingsViewModel::computeDetailsPreferredWidth() const {
         const int widthByRatio = (detailsViewportWidth_ * kDetailsPrefRatioPercent) / 100;
-        return std::max(kDetailsMinAbsolutePx, std::min(computeDetailsMaximumWidth(), widthByRatio));
+        return std::max(kDetailsMinAbsolutePx,
+                        std::min(computeDetailsMaximumWidth(), widthByRatio));
     }
 
     int UiSettingsViewModel::clampToWidthRange(const int value) const {

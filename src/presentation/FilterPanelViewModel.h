@@ -3,9 +3,9 @@
 #include "domain/SsaTypes.h"
 #include "ports/IUserPreferencesStore.h"
 
-#include <QObject>
 #include <QFuture>
 #include <QFutureWatcher>
+#include <QObject>
 #include <QString>
 #include <QStringList>
 
@@ -37,13 +37,14 @@ namespace ssa::presentation {
         Q_PROPERTY(QStringList derivationModeOptions READ derivationModeOptions CONSTANT)
         Q_PROPERTY(
             bool onlyReprogrammed READ onlyReprogrammed WRITE setOnlyReprogrammed NOTIFY changed)
-        Q_PROPERTY(QStringList columnValueOptions READ columnValueOptions NOTIFY columnValueOptionsChanged)
+        Q_PROPERTY(
+            QStringList columnValueOptions READ columnValueOptions NOTIFY columnValueOptionsChanged)
         Q_PROPERTY(QStringList activeFilters READ activeFilters NOTIFY changed)
         Q_PROPERTY(QString activeFilterSummary READ activeFilterSummary NOTIFY changed)
 
       public:
         explicit FilterPanelViewModel(std::shared_ptr<query::SsaQueryService> queryService,
-                                     QObject* parent = nullptr);
+                                      QObject* parent = nullptr);
 
         [[nodiscard]] QString quickSector() const;
         void setQuickSector(const QString& value);

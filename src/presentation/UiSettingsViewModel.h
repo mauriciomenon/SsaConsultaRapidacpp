@@ -18,12 +18,16 @@ namespace ssa::presentation {
                        detailsVisibleChanged)
         Q_PROPERTY(int detailsPanelWidth READ detailsPanelWidth WRITE setDetailsPanelWidth NOTIFY
                        detailsPanelWidthChanged)
-        Q_PROPERTY(int detailsViewportWidth READ detailsViewportWidth WRITE setDetailsViewportWidth NOTIFY
-                       detailsWidthLayoutChanged)
-        Q_PROPERTY(int detailsMinimumWidth READ detailsMinimumWidth NOTIFY detailsWidthLayoutChanged)
-        Q_PROPERTY(int detailsPreferredWidth READ detailsPreferredWidth NOTIFY detailsWidthLayoutChanged)
-        Q_PROPERTY(int detailsMaximumWidth READ detailsMaximumWidth NOTIFY detailsWidthLayoutChanged)
-        Q_PROPERTY(int detailsEffectiveWidth READ detailsEffectiveWidth NOTIFY detailsWidthLayoutChanged)
+        Q_PROPERTY(int detailsViewportWidth READ detailsViewportWidth WRITE setDetailsViewportWidth
+                       NOTIFY detailsWidthLayoutChanged)
+        Q_PROPERTY(
+            int detailsMinimumWidth READ detailsMinimumWidth NOTIFY detailsWidthLayoutChanged)
+        Q_PROPERTY(
+            int detailsPreferredWidth READ detailsPreferredWidth NOTIFY detailsWidthLayoutChanged)
+        Q_PROPERTY(
+            int detailsMaximumWidth READ detailsMaximumWidth NOTIFY detailsWidthLayoutChanged)
+        Q_PROPERTY(
+            int detailsEffectiveWidth READ detailsEffectiveWidth NOTIFY detailsWidthLayoutChanged)
 
       public:
         explicit UiSettingsViewModel(QObject* parent = nullptr);

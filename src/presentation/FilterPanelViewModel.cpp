@@ -2,8 +2,8 @@
 
 #include "domain/ColumnCatalog.h"
 #include "domain/SsaTypes.h"
-#include "query/SsaQueryService.h"
 #include "query/SearchParser.h"
+#include "query/SsaQueryService.h"
 
 #include <QtConcurrent>
 
@@ -96,7 +96,7 @@ namespace ssa::presentation {
     } // namespace
 
     FilterPanelViewModel::FilterPanelViewModel(std::shared_ptr<query::SsaQueryService> queryService,
-                                             QObject* parent)
+                                               QObject* parent)
         : QObject(parent), queryService_(std::move(queryService)) {
         for (const auto& key : domain::ColumnCatalog::filterColumnKeys()) {
             filterColumnKeys_.push_back(QString::fromStdString(key));
@@ -337,9 +337,8 @@ namespace ssa::presentation {
         const auto requestToken = ++columnValueRequestToken_;
         const auto requestCopy = *request;
         auto service = queryService_;
-        auto future = QtConcurrent::run([service, requestCopy]() {
-            return service->distinctValues(requestCopy);
-        });
+        auto future = QtConcurrent::run(
+            [service, requestCopy]() { return service->distinctValues(requestCopy); });
 
         connect(&columnValueOptionsWatcher_, &QFutureWatcherBase::finished, this,
                 [this, requestToken] { onColumnValueOptionsReady(requestToken); });
