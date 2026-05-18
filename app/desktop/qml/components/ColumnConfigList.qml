@@ -22,15 +22,12 @@ Item {
 
             Timer {
                 id: columnFilterTimer
-                interval: 120
+                interval: 180
                 repeat: false
                 onTriggered: root.viewModel.setFilterText(columnFilter.text)
             }
 
-            onTextChanged: {
-                columnFilterTimer.stop()
-                columnFilterTimer.start()
-            }
+            onTextChanged: columnFilterTimer.restart()
         }
 
         Rectangle {
@@ -54,7 +51,7 @@ Item {
                     required property string columnKey
                     required property string columnLabel
                     required property bool columnVisible
-                    required property bool columnToggleEnabled
+                    required property bool columnVisibilityChangeEnabled
                     required property int columnWidth
 
                     width: columnList.width
@@ -70,7 +67,7 @@ Item {
 
                         CheckBox {
                             checked: columnDelegate.columnVisible
-                            enabled: columnDelegate.columnToggleEnabled
+                            enabled: columnDelegate.columnVisibilityChangeEnabled
                             onToggled: root.viewModel.setColumnVisibleByKey(
                                 columnDelegate.columnKey, checked)
                         }
@@ -86,21 +83,12 @@ Item {
                             color: Theme.mutedText
                             elide: Text.ElideRight
                         }
-                        SpinBox {
+                        AppSpinBox {
                             id: widthSpin
                             from: root.viewModel.minColumnWidth
                             to: root.viewModel.maxColumnWidth
                             stepSize: 10
                             value: columnDelegate.columnWidth
-                            implicitHeight: Theme.controlHeight
-                            leftPadding: 8
-                            contentItem: TextInput {
-                                text: widthSpin.textFromValue(widthSpin.value, widthSpin.locale)
-                                color: Theme.text
-                                font.pixelSize: 11
-                                horizontalAlignment: Qt.AlignHCenter
-                                verticalAlignment: Qt.AlignVCenter
-                            }
                             onValueModified: root.viewModel.setColumnWidth(
                                 columnDelegate.columnKey,
                                 value

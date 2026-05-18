@@ -1,0 +1,174 @@
+#include "presentation/FilterPanelState.h"
+
+#include "domain/ColumnCatalog.h"
+#include "presentation/FilterPanelStateHelpers.h"
+
+#include <QStringList>
+
+namespace ssa::presentation::filterpanel {
+
+    FilterPanelState::FilterPanelState(const std::string_view defaultFilterColumnKey)
+        : quickSector_{},
+          columnKey_(QString::fromUtf8(defaultFilterColumnKey.data(),
+                                       static_cast<qsizetype>(defaultFilterColumnKey.size()))) {}
+
+    const QString& FilterPanelState::quickSector() const {
+        return quickSector_;
+    }
+
+    bool FilterPanelState::setQuickSector(QString value) {
+        value = value.trimmed();
+        if (quickSector_ == value) {
+            return false;
+        }
+        quickSector_ = std::move(value);
+        return true;
+    }
+
+    bool FilterPanelState::excludeScaSesSte() const {
+        return excludeScaSesSte_;
+    }
+
+    bool FilterPanelState::setExcludeScaSesSte(const bool value) {
+        if (excludeScaSesSte_ == value) {
+            return false;
+        }
+        excludeScaSesSte_ = value;
+        return true;
+    }
+
+    const QString& FilterPanelState::columnKey() const {
+        return columnKey_;
+    }
+
+    bool FilterPanelState::setColumnKey(const QString& value) {
+        const auto normalized = value.trimmed();
+        if (columnKey_ == normalized) {
+            return false;
+        }
+        columnKey_ = normalized;
+        return true;
+    }
+
+    const QString& FilterPanelState::columnValue() const {
+        return columnValue_;
+    }
+
+    bool FilterPanelState::setColumnValue(QString value) {
+        if (columnValue_ == value) {
+            return false;
+        }
+        columnValue_ = std::move(value);
+        return true;
+    }
+
+    FilterPanelAdvancedState& FilterPanelState::advanced() {
+        return advanced_;
+    }
+
+    const FilterPanelAdvancedState& FilterPanelState::advanced() const {
+        return advanced_;
+    }
+
+    const std::map<std::string, std::string>& FilterPanelState::columnFilters() const {
+        return columnFilters_;
+    }
+
+    bool FilterPanelState::setColumnFilters(std::map<std::string, std::string> filters) {
+        if (columnFilters_ == filters) {
+            return false;
+        }
+        columnFilters_ = std::move(filters);
+        return true;
+    }
+
+    bool FilterPanelState::addColumnFilter(const QString& key, const QString& value) {
+        const auto normalizedKey = key.trimmed();
+        const auto normalizedValue = value.trimmed();
+        if (normalizedKey.isEmpty() || normalizedValue.isEmpty()) {
+            return false;
+        }
+        const auto keyStd = normalizedKey.toStdString();
+        const auto valueStd = normalizedValue.toStdString();
+
+        auto it = columnFilters_.find(keyStd);
+        if (it == columnFilters_.end()) {
+            const auto [insertedIt, inserted] = columnFilters_.emplace(keyStd, valueStd);
+            return inserted;
+        }
+
+        if (it->second.find_first_not_of(" \t\r\n") == std::string::npos) {
+            it->second = valueStd;
+            return true;
+        }
+
+        if (!filterpanel::hasFilterValue(it->second, valueStd)) {
+            it->second += ", " + valueStd;
+            return true;
+        }
+        return false;
+    }
+
+    bool FilterPanelState::removeColumnFilter(const QString& key) {
+        const auto normalizedKey = key.trimmed().toStdString();
+        if (normalizedKey.empty()) {
+            return false;
+        }
+        return columnFilters_.erase(normalizedKey) > 0;
+    }
+
+    domain::AdvancedFilterSpec FilterPanelState::advancedFilters() const {
+        return advanced_.filters();
+    }
+
+    bool FilterPanelState::hasFilterForColumn(const QString& key) const {
+        const auto normalizedKey = key.trimmed().toStdString();
+        if (domain::ColumnCatalog::isQuickSectorFilterColumn(normalizedKey) &&
+            !quickSector_.trimmed().isEmpty()) {
+            return true;
+        }
+        if (domain::ColumnCatalog::isStatusExclusionFilterColumn(normalizedKey) &&
+            excludeScaSesSte_) {
+            return true;
+        }
+        return advanced_.hasFilterForColumn(key) || columnFilters_.contains(normalizedKey);
+    }
+
+    bool FilterPanelState::applyPreferences(const ports::UserPreferencesSnapshot& snapshot,
+                                            const QStringList& weekColumnKeys) {
+        const QString nextQuickSector =
+            QString::fromStdString(snapshot.filters.quickSector).trimmed();
+        const bool nextExcludeScaSesSte = snapshot.filters.excludeScaSesSte;
+        const auto nextColumnFilters = snapshot.filters.columnFilters;
+        const bool advancedChanged = advanced_.applyPreferences(snapshot, weekColumnKeys);
+
+        const bool changed = quickSector_ != nextQuickSector ||
+                             excludeScaSesSte_ != nextExcludeScaSesSte ||
+                             columnFilters_ != nextColumnFilters || advancedChanged;
+        if (!changed) {
+            return false;
+        }
+
+        quickSector_ = nextQuickSector;
+        excludeScaSesSte_ = nextExcludeScaSesSte;
+        columnFilters_ = nextColumnFilters;
+        return true;
+    }
+
+    void FilterPanelState::writePreferences(ports::UserPreferencesSnapshot& snapshot) const {
+        snapshot.filters.quickSector = quickSector_.trimmed().toStdString();
+        snapshot.filters.excludeScaSesSte = excludeScaSesSte_;
+        snapshot.filters.columnFilters = columnFilters_;
+        advanced_.writePreferences(snapshot);
+    }
+
+    void FilterPanelState::clear() {
+        quickSector_.clear();
+        columnKey_ = QString::fromStdString(domain::ColumnCatalog::defaultFilterColumnKey());
+        columnValue_.clear();
+        advanced_.clear();
+        columnFilters_.clear();
+        excludeScaSesSte_ = domain::kDefaultExcludeScaSesSte;
+    }
+
+} // namespace ssa::presentation::filterpanel

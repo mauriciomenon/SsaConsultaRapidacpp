@@ -1,12 +1,20 @@
+#include "application/SsaWorkflowService.h"
 #include "domain/SsaTypes.h"
+#include "presentation/AdvancedDerivationFilterViewModel.h"
+#include "presentation/AdvancedTextFilterViewModel.h"
+#include "presentation/AdvancedWeekFilterViewModel.h"
+#include "presentation/FilterPanelAdvancedViewModel.h"
 #include "presentation/FilterPanelViewModel.h"
 #include "presentation/MainViewModel.h"
 
+#include <QRegularExpression>
 #include <QSignalSpy>
 #include <QtTest>
 
 #include <chrono>
+#include <filesystem>
 #include <mutex>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -126,6 +134,67 @@ namespace {
         mutable std::mutex mutex_;
     };
 
+    class FakeFilterPresetStore final : public ssa::ports::IFilterPresetStore {
+      public:
+        ssa::ports::FilterPresetSnapshot load(std::filesystem::path) const override {
+            const std::scoped_lock lock(mutex_);
+            return nextLoad_;
+        }
+
+        void save(std::filesystem::path path,
+                  const ssa::ports::FilterPresetSnapshot& snapshot) const override {
+            const std::scoped_lock lock(mutex_);
+            savedPath_ = std::move(path);
+            saved_ = snapshot;
+            ++saveCount_;
+        }
+
+        void setNextLoad(ssa::ports::FilterPresetSnapshot snapshot) {
+            const std::scoped_lock lock(mutex_);
+            nextLoad_ = std::move(snapshot);
+        }
+
+        [[nodiscard]] int saveCount() const {
+            const std::scoped_lock lock(mutex_);
+            return saveCount_;
+        }
+
+        [[nodiscard]] ssa::ports::FilterPresetSnapshot saved() const {
+            const std::scoped_lock lock(mutex_);
+            return saved_;
+        }
+
+      private:
+        mutable std::mutex mutex_;
+        mutable ssa::ports::FilterPresetSnapshot saved_;
+        mutable std::filesystem::path savedPath_;
+        mutable int saveCount_{0};
+        ssa::ports::FilterPresetSnapshot nextLoad_;
+    };
+
+    class CapturingImportPort final : public ssa::ports::IImportWorkflowPort {
+      public:
+        ssa::ports::WorkflowResult
+        importExternalFiles(const ssa::ports::ImportExternalFilesRequest&) override {
+            return {ssa::ports::WorkflowStatus::NotImplemented, "import not implemented"};
+        }
+
+        ssa::ports::WorkflowResult rescan(const ssa::ports::RescanRequest& request) override {
+            const std::scoped_lock lock(mutex_);
+            requests_.push_back(request);
+            return {ssa::ports::WorkflowStatus::Succeeded, "rescan requested"};
+        }
+
+        [[nodiscard]] std::vector<ssa::ports::RescanRequest> requests() const {
+            const std::scoped_lock lock(mutex_);
+            return requests_;
+        }
+
+      private:
+        mutable std::mutex mutex_;
+        std::vector<ssa::ports::RescanRequest> requests_;
+    };
+
     class PresentationSmokeTest final : public QObject {
         Q_OBJECT
 
@@ -135,15 +204,13 @@ namespace {
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
             auto commands = std::make_shared<FakeCommands>();
             ssa::presentation::MainViewModel model(service, commands);
-            QSignalSpy pageSpy(&model, &ssa::presentation::MainViewModel::pageChanged);
+            QSignalSpy pageSpy(model.browse(), &ssa::presentation::BrowseViewModel::pageChanged);
 
             model.browse()->search()->setText("Teste");
             model.browse()->apply();
 
             QTRY_COMPARE_WITH_TIMEOUT(model.browse()->tableModel()->rowCount(), 1, 1000);
             QCOMPARE(model.browse()->totalRows(), 1);
-            QCOMPARE(model.browse()->details()->selectedSsa(), QString());
-            model.browse()->selectRow(0);
             QCOMPARE(model.browse()->details()->selectedSsa(), QString("202500001"));
             QVERIFY(pageSpy.count() >= 1);
             QCOMPARE(model.browse()->status()->loading(), false);
@@ -219,7 +286,7 @@ namespace {
 
             model.columns()->setColumnVisibleByKey("situacao", false);
             model.columns()->setColumnWidth("numero_ssa", 180);
-            model.applyColumnSettings();
+            QMetaObject::invokeMethod(model.columnFlow(), "applyColumnSettings");
 
             QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{1}, 1000);
             QTRY_COMPARE_WITH_TIMEOUT(model.browse()->tableModel()->rowCount(), 1, 1000);
@@ -245,7 +312,7 @@ namespace {
             model.browse()->load();
             QTRY_COMPARE_WITH_TIMEOUT(model.browse()->tableModel()->rowCount(), 1, 1000);
             model.columns()->setColumnWidth("numero_ssa", 220);
-            model.applyColumnSettings();
+            QMetaObject::invokeMethod(model.columnFlow(), "applyColumnSettings");
 
             QCOMPARE(repository->requests().size(), std::size_t{1});
             QCOMPARE(model.browse()->tableModel()->columnWidth(0), 220);
@@ -271,12 +338,33 @@ namespace {
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
             auto commands = std::make_shared<FakeCommands>();
             ssa::presentation::MainViewModel model(service, commands);
+            auto* advanced = qobject_cast<ssa::presentation::FilterPanelAdvancedViewModel*>(
+                model.browse()->filters()->advanced());
+            QVERIFY(advanced != nullptr);
+            auto* text =
+                qobject_cast<ssa::presentation::AdvancedTextFilterViewModel*>(advanced->text());
+            auto* week =
+                qobject_cast<ssa::presentation::AdvancedWeekFilterViewModel*>(advanced->week());
+            auto* derivation = qobject_cast<ssa::presentation::AdvancedDerivationFilterViewModel*>(
+                advanced->derivation());
+            QVERIFY(text != nullptr);
+            QVERIFY(week != nullptr);
+            QVERIFY(derivation != nullptr);
 
-            model.browse()->filters()->setWeekColumnKey("semana_programada");
-            model.browse()->filters()->setYearFilter("2025");
-            model.browse()->filters()->setWeekFilter("2");
-            model.browse()->filters()->setDerivationMode("derived");
-            model.browse()->filters()->setOnlyReprogrammed(true);
+            week->setWeekColumnKey("semana_programada");
+            week->setYearFilter("2025");
+            week->setWeekFilter("2");
+            text->setTextFilter("situacao", "=APV");
+            text->setTextFilter("setor_executor", "=SMM");
+            week->setIssueYearFilter("2025");
+            week->setExecutionYearFilter("2026");
+            derivation->setReprogrammingEqualsFilter("1");
+            week->setIssueWeekStartFilter("202501");
+            week->setIssueWeekEndFilter("202510");
+            week->setExecutionWeekStartFilter("202601");
+            week->setExecutionWeekEndFilter("202620");
+            derivation->setDerivationMode("derived");
+            derivation->setOnlyReprogrammed(true);
             model.browse()->apply();
 
             QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{1}, 1000);
@@ -285,9 +373,128 @@ namespace {
                      QString("semana_programada"));
             QCOMPARE(request.advancedFilters.year.value_or(0), 2025);
             QCOMPARE(request.advancedFilters.week.value_or(0), 2);
+            QVERIFY(request.advancedFilters.textFilters.at("situacao") == "=APV");
+            QVERIFY(request.advancedFilters.textFilters.at("setor_executor") == "=SMM");
+            QCOMPARE(request.advancedFilters.issueYear.value_or(0), 2025);
+            QCOMPARE(request.advancedFilters.executionYear.value_or(0), 2026);
+            QCOMPARE(request.advancedFilters.reprogrammingEquals.value_or(0), 1);
+            QCOMPARE(request.advancedFilters.issueWeekStart.value_or(0), 202501);
+            QCOMPARE(request.advancedFilters.issueWeekEnd.value_or(0), 202510);
+            QCOMPARE(request.advancedFilters.executionWeekStart.value_or(0), 202601);
+            QCOMPARE(request.advancedFilters.executionWeekEnd.value_or(0), 202620);
             QCOMPARE(request.advancedFilters.derivationMode,
                      ssa::domain::DerivationFilterMode::DerivedOnly);
             QCOMPARE(request.advancedFilters.onlyReprogrammed, true);
+        }
+
+        void advanced_text_filter_selection_builds_multi_value_terms() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::FilterPanelViewModel filters(service);
+            auto* advanced =
+                qobject_cast<ssa::presentation::FilterPanelAdvancedViewModel*>(filters.advanced());
+            QVERIFY(advanced != nullptr);
+            auto* text =
+                qobject_cast<ssa::presentation::AdvancedTextFilterViewModel*>(advanced->text());
+            QVERIFY(text != nullptr);
+
+            QCOMPARE(text->addSelectedValue("situacao", "APV"), true);
+            text->setOperatorMode("situacao", "different");
+            QCOMPARE(text->addSelectedValue("situacao", "ADM"), true);
+            QCOMPARE(text->addSelectedValue("situacao", "APV"), false);
+
+            QCOMPARE(text->textFilter("situacao"), QString("=APV,!ADM"));
+            QCOMPARE(text->operatorModeFor("situacao"), QString("mixed"));
+
+            text->setOperatorMode("situacao", "different");
+            QCOMPARE(text->operatorModeFor("situacao"), QString("different"));
+
+            text->setOperatorMode("situacao", "mixed");
+            QCOMPARE(text->operatorModeFor("situacao"), QString("mixed"));
+
+            text->replaceWithOperatorValueList("situacao", {"APV", "ADM"}, "different");
+
+            QCOMPARE(text->textFilter("situacao"), QString("!APV,!ADM"));
+        }
+
+        void advanced_text_filter_clear_preserves_selected_operator() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::FilterPanelViewModel filters(service);
+            auto* advanced =
+                qobject_cast<ssa::presentation::FilterPanelAdvancedViewModel*>(filters.advanced());
+            QVERIFY(advanced != nullptr);
+            auto* text =
+                qobject_cast<ssa::presentation::AdvancedTextFilterViewModel*>(advanced->text());
+            QVERIFY(text != nullptr);
+
+            text->setOperatorMode("situacao", "different");
+            text->addSelectedValue("situacao", "ASE");
+            text->setTextFilter("situacao", "");
+
+            QCOMPARE(text->textFilter("situacao"), QString(""));
+            QCOMPARE(text->operatorModeFor("situacao"), QString("different"));
+        }
+
+        void advanced_submodels_update_shared_filter_state() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::FilterPanelViewModel filters(service);
+            auto* advanced =
+                qobject_cast<ssa::presentation::FilterPanelAdvancedViewModel*>(filters.advanced());
+            QVERIFY(advanced != nullptr);
+            auto* text =
+                qobject_cast<ssa::presentation::AdvancedTextFilterViewModel*>(advanced->text());
+            auto* week =
+                qobject_cast<ssa::presentation::AdvancedWeekFilterViewModel*>(advanced->week());
+            auto* derivation = qobject_cast<ssa::presentation::AdvancedDerivationFilterViewModel*>(
+                advanced->derivation());
+            QVERIFY(text != nullptr);
+            QVERIFY(week != nullptr);
+            QVERIFY(derivation != nullptr);
+
+            text->addSelectedValue("situacao", "ASE");
+            week->setIssueWeekStartFilter("202601");
+            derivation->setDerivationMode("derived");
+
+            QCOMPARE(text->textFilter("situacao"), QString("=ASE"));
+            QCOMPARE(week->issueWeekStartFilter(), QString("202601"));
+            QCOMPARE(derivation->derivationMode(), QString("derived"));
+        }
+
+        void clear_advanced_filters_keeps_column_filters() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::FilterPanelViewModel filters(service);
+            auto* advanced =
+                qobject_cast<ssa::presentation::FilterPanelAdvancedViewModel*>(filters.advanced());
+            QVERIFY(advanced != nullptr);
+            auto* text =
+                qobject_cast<ssa::presentation::AdvancedTextFilterViewModel*>(advanced->text());
+            auto* week =
+                qobject_cast<ssa::presentation::AdvancedWeekFilterViewModel*>(advanced->week());
+            auto* derivation = qobject_cast<ssa::presentation::AdvancedDerivationFilterViewModel*>(
+                advanced->derivation());
+            QVERIFY(text != nullptr);
+            QVERIFY(week != nullptr);
+            QVERIFY(derivation != nullptr);
+            auto* columns =
+                qobject_cast<ssa::presentation::ColumnFilterViewModel*>(filters.columns());
+            QVERIFY(columns != nullptr);
+
+            columns->applyFilterFor("descricao_ssa", "bomba");
+            filters.setQuickSector("MEG2");
+            text->setTextFilter("situacao", "=APV");
+            week->setIssueYearFilter("2025");
+            derivation->setOnlyReprogrammed(true);
+            advanced->clear();
+
+            QVERIFY(filters.columnFilters().at("descricao_ssa") == "bomba");
+            QCOMPARE(text->textFilter("situacao"), QString(""));
+            QCOMPARE(week->issueYearFilter(), QString(""));
+            QCOMPARE(derivation->onlyReprogrammed(), false);
+            QCOMPARE(filters.quickSector(), QString("MEG2"));
+            QCOMPARE(filters.excludeScaSesSte(), true);
         }
 
         void reset_filters_restores_default_sca_ses_ste_exclusion() {
@@ -300,7 +507,40 @@ namespace {
 
             QCOMPARE(filters.columnKey(), QString("situacao"));
             QCOMPARE(filters.excludeScaSesSte(), true);
-            QCOMPARE(filters.activeFilters().contains("sem SCA/SES/STE"), true);
+            QCOMPARE(filters.activeFilters().contains("sem SCA/SES/STE"), false);
+        }
+
+        void column_filter_rows_publish_active_values() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::FilterPanelViewModel filters(service);
+            auto* columns =
+                qobject_cast<ssa::presentation::ColumnFilterViewModel*>(filters.columns());
+            QVERIFY(columns != nullptr);
+
+            columns->applyFilterFor("descricao_ssa", "bomba");
+
+            QString publishedValue;
+            for (const auto& row : columns->rows()) {
+                const auto map = row.toMap();
+                if (map.value("key").toString() == "descricao_ssa") {
+                    publishedValue = map.value("value").toString();
+                    break;
+                }
+            }
+
+            QCOMPARE(publishedValue, QString("bomba"));
+            filters.resetFilters();
+
+            QString resetValue;
+            for (const auto& row : columns->rows()) {
+                const auto map = row.toMap();
+                if (map.value("key").toString() == "descricao_ssa") {
+                    resetValue = map.value("value").toString();
+                    break;
+                }
+            }
+            QCOMPARE(resetValue, QString(""));
         }
 
         void theme_preference_is_saved() {
@@ -361,6 +601,107 @@ namespace {
                      QString("comfortable"));
         }
 
+        void current_week_exposes_iso_label_for_header() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            ssa::presentation::MainViewModel model(service, commands);
+
+            QVERIFY(
+                model.actions()->currentWeek()->value().contains(QRegularExpression("^20\\d{4}$")));
+            QVERIFY(model.actions()->currentWeek()->label().startsWith("Semana Atual: 20"));
+        }
+
+        void explicit_save_filters_button_persists_current_snapshot() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            auto preferences = std::make_shared<FakePreferences>();
+            ssa::presentation::MainViewModel model(service, commands, preferences);
+
+            model.browse()->filters()->setQuickSector("MEG2");
+            QMetaObject::invokeMethod(model.preferenceFlow(), "savePreferences");
+
+            QTRY_COMPARE_WITH_TIMEOUT(preferences->saveCount(), 1, 1000);
+            QCOMPARE(QString::fromStdString(preferences->snapshot().filters.quickSector),
+                     QString("MEG2"));
+        }
+
+        void filter_preset_export_uses_current_filters_without_search_text() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            auto preferences = std::make_shared<FakePreferences>();
+            auto presets = std::make_shared<FakeFilterPresetStore>();
+            ssa::presentation::MainViewModel model(service, commands, preferences, presets);
+
+            model.browse()->search()->setText("nao exportar");
+            model.browse()->filters()->setQuickSector("MEG2");
+            QMetaObject::invokeMethod(
+                model.preferenceFlow(), "exportFilterPreset",
+                Q_ARG(QUrl, QUrl::fromLocalFile("/tmp/ssa-filter-preset.json")));
+
+            QTRY_COMPARE_WITH_TIMEOUT(presets->saveCount(), 1, 1000);
+            QCOMPARE(QString::fromStdString(presets->saved().filters.quickSector), QString("MEG2"));
+            QCOMPARE(QString::fromStdString(presets->saved().filters.searchText), QString(""));
+        }
+
+        void filter_preset_import_preserves_search_text_and_applies_filters() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            auto preferences = std::make_shared<FakePreferences>();
+            auto presets = std::make_shared<FakeFilterPresetStore>();
+            ssa::ports::FilterPresetSnapshot preset;
+            preset.filters.quickSector = "MMU3";
+            preset.filters.columnFilters = {{"situacao", "=APV"}};
+            presets->setNextLoad(preset);
+            ssa::presentation::MainViewModel model(service, commands, preferences, presets);
+
+            model.browse()->search()->setText("manter busca");
+            QMetaObject::invokeMethod(
+                model.preferenceFlow(), "importFilterPreset",
+                Q_ARG(QUrl, QUrl::fromLocalFile("/tmp/ssa-filter-preset.json")));
+
+            QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{1}, 1000);
+            QCOMPARE(model.browse()->search()->text(), QString("manter busca"));
+            QCOMPARE(model.browse()->filters()->quickSector(), QString("MMU3"));
+            QCOMPARE(model.browse()->filters()->columnFilters().at("situacao"),
+                     std::string("=APV"));
+        }
+
+        void rescan_incremental_uses_workflow_port_and_updates_status() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            auto importPort = std::make_shared<CapturingImportPort>();
+            auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(importPort);
+            ssa::presentation::MainViewModel model(service, commands, nullptr, nullptr, workflows);
+
+            model.actions()->workflows()->rescanIncremental();
+
+            QTRY_COMPARE_WITH_TIMEOUT(importPort->requests().size(), std::size_t{1}, 1000);
+            QCOMPARE(importPort->requests().back().mode, ssa::ports::RescanMode::Incremental);
+            QCOMPARE(importPort->requests().back().optimized, true);
+            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->status()->message(),
+                                      QString("Reescaneamento concluido"), 1000);
+        }
+
+        void rescan_full_disables_optimized_mode() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            auto importPort = std::make_shared<CapturingImportPort>();
+            auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(importPort);
+            ssa::presentation::MainViewModel model(service, commands, nullptr, nullptr, workflows);
+
+            model.actions()->workflows()->rescanFull();
+
+            QTRY_COMPARE_WITH_TIMEOUT(importPort->requests().size(), std::size_t{1}, 1000);
+            QCOMPARE(importPort->requests().back().mode, ssa::ports::RescanMode::Full);
+            QCOMPARE(importPort->requests().back().optimized, false);
+        }
+
         void invalid_density_is_ignored() {
             auto repository = std::make_shared<FakeRepository>();
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
@@ -370,7 +711,7 @@ namespace {
 
             model.ui()->setDensity("wide");
 
-            QCOMPARE(model.ui()->density(), QString("normal"));
+            QCOMPARE(model.ui()->density(), QString("compact"));
             QCOMPARE(preferences->saveCount(), 0);
         }
 
@@ -387,8 +728,8 @@ namespace {
 
             model.columns()->setColumnVisibleByKey("situacao", false);
             model.columns()->setColumnWidth("numero_ssa", 220);
-            model.discardColumnSettings();
-            model.applyColumnSettings();
+            QMetaObject::invokeMethod(model.columnFlow(), "discardColumnSettings");
+            QMetaObject::invokeMethod(model.columnFlow(), "applyColumnSettings");
 
             QCOMPARE(repository->requests().size(), std::size_t{0});
             QTRY_COMPARE_WITH_TIMEOUT(preferences->snapshot().columnWidths.at("numero_ssa"), 140,

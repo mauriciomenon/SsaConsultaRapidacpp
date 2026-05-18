@@ -21,15 +21,21 @@ namespace ssa::presentation {
 
     PageQueryCoordinator::~PageQueryCoordinator() {
         cancel();
-        watcher_.waitForFinished();
-        watcher_.disconnect(this);
         activeRequest_.reset();
         pendingRequest_.reset();
         requestRunning_ = false;
         finishing_ = false;
+        activeCanceled_ = true;
+        explicitCancelRequested_ = true;
     }
 
     void PageQueryCoordinator::run(domain::SsaPageRequest request) {
+        if (activeRequest_ && *activeRequest_ == request && !activeCanceled_) {
+            return;
+        }
+        if (pendingRequest_ && *pendingRequest_ == request) {
+            return;
+        }
         if (requestRunning_ || finishing_ || watcher_.isRunning()) {
             // Latest-wins: intermediate search states are intentionally replaced.
             activeCanceled_ = true;
@@ -68,7 +74,7 @@ namespace ssa::presentation {
         auto displayColumns = columnCatalog_.resolveAll(request.visibleColumns);
         watcher_.setFuture(QtConcurrent::run([queryService, request = std::move(request),
                                               displayColumns = std::move(displayColumns),
-                                              cancelToken] {
+                                              cancelToken]() mutable {
             if (!queryService) {
                 throw std::runtime_error("query service no longer available");
             }

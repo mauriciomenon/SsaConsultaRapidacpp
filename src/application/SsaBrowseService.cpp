@@ -47,7 +47,8 @@ namespace ssa::application {
             if (!domain::ColumnCatalog::contains(request.sort.columnKey)) {
                 throw std::invalid_argument("unknown sort column: " + request.sort.columnKey);
             }
-            request.sort.statusLast = domain::requiresStatusLastSort(request.sort.columnKey);
+            request.sort.statusLast =
+                domain::shouldApplyStatusLastTieBreaker(request.sort.columnKey);
         }
         return request;
     }

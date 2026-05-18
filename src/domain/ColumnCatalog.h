@@ -32,18 +32,25 @@ namespace ssa::domain {
         [[nodiscard]] static std::vector<std::string>
         visibleKeysOrDefault(std::vector<std::string> keys);
         [[nodiscard]] static std::vector<std::string> generalSearchKeys();
-        [[nodiscard]] static std::vector<std::string> filterColumnKeys();
+        [[nodiscard]] static const std::vector<std::string>& orderedFilterColumnKeys();
+        [[nodiscard]] static std::span<const std::string_view> advancedFilterKeys();
+        [[nodiscard]] static std::string_view advancedFilterLabel(std::string_view key);
         [[nodiscard]] static std::string defaultFilterColumnKey();
         [[nodiscard]] static std::string_view statusColumnKey();
         [[nodiscard]] static std::string_view executorColumnKey();
         [[nodiscard]] static std::string_view derivationColumnKey();
         [[nodiscard]] static std::span<const std::string_view> excludedStatusCodes();
         [[nodiscard]] static std::span<const std::string_view> weekColumnKeys();
+        [[nodiscard]] static std::string_view defaultAdvancedWeekColumnKey();
+        [[nodiscard]] static std::string_view issueWeekColumnKey();
+        [[nodiscard]] static std::string_view executionWeekColumnKey();
         [[nodiscard]] static std::span<const std::string_view> reprogrammingColumnKeys();
+        [[nodiscard]] static std::string_view primaryReprogrammingColumnKey();
         [[nodiscard]] static std::string_view statusLastSortCode();
         [[nodiscard]] static bool isQuickSectorFilterColumn(std::string_view key);
         [[nodiscard]] static bool isStatusExclusionFilterColumn(std::string_view key);
-        [[nodiscard]] static std::optional<ColumnDef> find(std::string_view key);
+        [[nodiscard]] static bool isReprogrammingColumn(std::string_view key);
+        [[nodiscard]] static const ColumnDef* find(std::string_view key);
         [[nodiscard]] static bool contains(std::string_view key);
     };
 

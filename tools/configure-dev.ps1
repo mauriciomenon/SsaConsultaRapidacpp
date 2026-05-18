@@ -78,7 +78,7 @@ function Get-NormalizedPathList {
     if ([string]::IsNullOrWhiteSpace($Value)) {
         return @()
     }
-    return $Value.Split(';', [System.StringSplitOptions]::RemoveEmptyEntries) |
+    return $Value.Split(@(';'), [System.StringSplitOptions]::RemoveEmptyEntries) |
         ForEach-Object { ConvertTo-NormalizedPath $_ } |
         Where-Object { $_ }
 }
@@ -113,6 +113,10 @@ function Find-QtFromEnvironment {
 }
 
 function Find-QtUnderDefaultRoot {
+    if (-not (Test-Path "C:\Qt")) {
+        return $null
+    }
+
     function Get-QtCandidateInfo {
         param([string]$Candidate)
         if (-not (Test-QtPrefix $Candidate)) {
@@ -140,23 +144,15 @@ function Find-QtUnderDefaultRoot {
         )
     }
 
-    if (Test-Path "C:\Qt") {
-        $versionRoots = @(Get-ChildItem "C:\Qt" -Directory -ErrorAction SilentlyContinue)
-        $candidates = @()
-        foreach ($versionRoot in $versionRoots) {
-            $candidates += Join-Path $versionRoot.FullName $DetectConfig.WINDOWS_QT_SUBDIR
-            $nestedRoots = @(Get-ChildItem $versionRoot.FullName -Directory -ErrorAction SilentlyContinue)
-            foreach ($nested in $nestedRoots) {
-                $candidates += Join-Path $nested.FullName $DetectConfig.WINDOWS_QT_SUBDIR
-            }
-        }
+    $candidates = @(Get-ChildItem "C:\Qt" -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+        Join-Path $_.FullName $DetectConfig.WINDOWS_QT_SUBDIR
+    })
 
         $sortedCandidates = Get-SortedQtCandidates $candidates
 
         if ($sortedCandidates.Count -gt 0) {
             return (Resolve-Path -LiteralPath $sortedCandidates[0].Path).Path
         }
-    }
 
     return $null
 }
@@ -218,8 +214,12 @@ function Find-SqliteFromVcpkg {
 function Find-SqliteRoot {
     param([string]$ExplicitSQLiteRoot)
 
+    $normalizedExplicit = ConvertTo-NormalizedPath $ExplicitSQLiteRoot
+    if ($normalizedExplicit -and (Test-SqlitePrefix $normalizedExplicit)) {
+        return $normalizedExplicit
+    }
+
     return Find-SqliteFromKnownPath @(
-        $ExplicitSQLiteRoot,
         $env:SQLite3_ROOT,
         $env:SQLITE_ROOT,
         (Find-SqliteFromVcpkg)
@@ -228,6 +228,34 @@ function Find-SqliteRoot {
 
 function Test-RequiredCompiler {
     Test-RequiredCommand "cl.exe" "Run this script from 'Developer PowerShell for VS 2022' or install Visual Studio 2022 Build Tools with Desktop development with C++."
+}
+
+function Ensure-ClangFormat {
+    if (Get-Command clang-format -ErrorAction SilentlyContinue) {
+        return
+    }
+
+    $candidatePaths = @(
+        "C:\Program Files\LLVM\bin",
+        "$env:ProgramFiles\LLVM\bin",
+        "$env:ProgramFiles(x86)\LLVM\bin"
+    )
+    foreach ($candidate in $candidatePaths) {
+        if ($candidate -and (Test-Path $candidate)) {
+            $env:Path = "$candidate;$env:Path"
+            break
+        }
+    }
+
+    if (Get-Command clang-format -ErrorAction SilentlyContinue) {
+        Write-Output "clang-format found in session PATH."
+        return
+    }
+
+    Write-Warning "clang-format not found in PATH."
+    Write-Output "Install with:"
+    Write-Output "  winget install --id LLVM.LLVM"
+    Write-Output "Add C:\Program Files\LLVM\bin to PATH for this session and profile if needed."
 }
 
 Test-RequiredCommand "cmake" "Install CMake 3.24 or newer and add it to PATH."
@@ -268,3 +296,4 @@ if ($detectedSQLiteRoot) {
 }
 
 cmake @cmakeArgs
+Ensure-ClangFormat

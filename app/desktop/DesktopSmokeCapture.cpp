@@ -1,15 +1,16 @@
 #include "DesktopSmokeCapture.h"
 
+#include "DesktopSmokeScreenshotCapture.h"
+#include "DesktopSmokeWindowLocator.h"
+
 #include <QCommandLineParser>
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
-#include <QGuiApplication>
-#include <QImage>
 #include <QQmlApplicationEngine>
 #include <QQuickWindow>
 #include <QTimer>
-#include <QWindow>
+#include <QUrl>
 
 namespace ssa::app::desktop {
 
@@ -25,58 +26,25 @@ namespace ssa::app::desktop {
             return parent.exists() || QDir{}.mkpath(parent.absolutePath());
         }
 
-        QQuickWindow* rootWindow(QQmlApplicationEngine& engine) {
-            for (QObject* root : engine.rootObjects()) {
-                if (auto* window = qobject_cast<QQuickWindow*>(root)) {
-                    return window;
-                }
-            }
-            for (QWindow* window : QGuiApplication::topLevelWindows()) {
-                if (auto* quickWindow = qobject_cast<QQuickWindow*>(window)) {
-                    return quickWindow;
-                }
-            }
-            return nullptr;
-        }
-
-        int captureRootWindow(QQuickWindow& window, const QString& screenshotPath) {
-            const QImage image = window.grabWindow();
-            if (image.isNull() || !image.save(screenshotPath)) {
-                return 2;
-            }
-            return 0;
-        }
-
         int prepareCapture(QQmlApplicationEngine& engine, const QString& screenshotPath,
-                           const bool openPreferences, DesktopSmokeController& controller) {
+                           const bool openPreferences, const bool openAdvancedFilters,
+                           const int screenshotDelayMs, DesktopSmokeController& controller,
+                           const DesktopSmokeCaptureCompletion& completion) {
             if (!ensureScreenshotDirectory(screenshotPath)) {
                 return 2;
             }
-            auto* window = rootWindow(engine);
+            auto* window = DesktopSmokeWindowLocator::rootWindow(engine);
             if (window == nullptr) {
                 return 2;
             }
             if (openPreferences) {
                 controller.requestOpenPreferences();
             }
-            const QString outputPath = absoluteScreenshotPath(screenshotPath);
-            QObject::connect(
-                window, &QQuickWindow::afterRendering, window,
-                [window, outputPath] {
-                    QMetaObject::invokeMethod(
-                        window,
-                        [window, outputPath] {
-                            const int status = captureRootWindow(*window, outputPath);
-                            if (status == 0) {
-                                QCoreApplication::quit();
-                            } else {
-                                QCoreApplication::exit(status);
-                            }
-                        },
-                        Qt::QueuedConnection);
-                },
-                Qt::SingleShotConnection);
-            window->requestUpdate();
+            if (openAdvancedFilters) {
+                controller.requestOpenAdvancedFilters();
+            }
+            DesktopSmokeScreenshotCapture::capture(*window, absoluteScreenshotPath(screenshotPath),
+                                                   screenshotDelayMs, completion);
             return 0;
         }
 
@@ -88,6 +56,10 @@ namespace ssa::app::desktop {
         emit openPreferencesRequested();
     }
 
+    void DesktopSmokeController::requestOpenAdvancedFilters() {
+        emit openAdvancedFiltersRequested();
+    }
+
     void DesktopSmokeCapture::installIfRequested(const QCommandLineParser& parser,
                                                  QQmlApplicationEngine& engine,
                                                  DesktopSmokeController& controller) {
@@ -96,12 +68,45 @@ namespace ssa::app::desktop {
         }
         const QString screenshotPath = parser.value("screenshot");
         const bool openPreferences = parser.isSet("open-preferences");
-        QTimer::singleShot(0, &engine, [&engine, screenshotPath, openPreferences, &controller] {
-            const int status = prepareCapture(engine, screenshotPath, openPreferences, controller);
-            if (status != 0) {
+        const bool openAdvancedFilters = parser.isSet("open-advanced-filters");
+        bool delayParsed = true;
+        const int screenshotDelayMs = parser.isSet("screenshot-delay-ms")
+                                          ? parser.value("screenshot-delay-ms").toInt(&delayParsed)
+                                          : 900;
+        if (!delayParsed || screenshotDelayMs < 0) {
+            QTimer::singleShot(0, &engine, [] { QCoreApplication::exit(2); });
+            return;
+        }
+        const DesktopSmokeCaptureCompletion completion = [](const int status) {
+            if (status == 0) {
+                QCoreApplication::quit();
+            } else {
                 QCoreApplication::exit(status);
             }
-        });
+        };
+        const auto startCapture = [&engine, screenshotPath, openPreferences, openAdvancedFilters,
+                                   screenshotDelayMs, &controller, completion] {
+            const int status =
+                prepareCapture(engine, screenshotPath, openPreferences, openAdvancedFilters,
+                               screenshotDelayMs, controller, completion);
+            if (status != 0) {
+                completion(status);
+            }
+        };
+        if (!engine.rootObjects().isEmpty()) {
+            QTimer::singleShot(0, &engine, startCapture);
+            return;
+        }
+        QObject::connect(
+            &engine, &QQmlApplicationEngine::objectCreated, &engine,
+            [startCapture, completion](QObject* object, const QUrl&) {
+                if (object == nullptr) {
+                    completion(2);
+                    return;
+                }
+                startCapture();
+            },
+            Qt::SingleShotConnection);
     }
 
 } // namespace ssa::app::desktop

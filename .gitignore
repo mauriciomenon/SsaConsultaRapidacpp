@@ -14,4 +14,4 @@ CMakeUserPresets.json
 out/
 dist/
 coverage/
-
+config/ssa_cpp_preferences.json

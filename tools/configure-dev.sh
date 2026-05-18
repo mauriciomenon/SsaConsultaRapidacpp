@@ -16,6 +16,34 @@ require_command() {
   fi
 }
 
+warn_clang_format() {
+  if command -v clang-format >/dev/null 2>&1; then
+    return 0
+  fi
+
+  printf 'clang-format not found in PATH.\n' >&2
+  case "$(uname -s)" in
+    Darwin)
+      printf '%s\n' 'Install with:' >&2
+      printf '%s\n' '  brew install llvm' >&2
+      # shellcheck disable=SC2016,SC2059
+      printf '%s\n' "  echo 'export PATH=\"/opt/homebrew/opt/llvm/bin:\$PATH\"' >> ~/.zshrc" >&2
+      # shellcheck disable=SC2016,SC2059
+      printf '%s\n' "  echo 'export PATH=\"/opt/homebrew/opt/llvm/bin:\$PATH\"' >> ~/.bashrc" >&2
+      printf '%s\n' '  source ~/.zshrc ~/.bashrc' >&2
+      ;;
+    Linux)
+      printf '%s\n' 'Install with:' >&2
+      printf '%s\n' '  sudo apt install -y clang-format' >&2
+      ;;
+    *)
+      printf '%s\n' 'Install with:' >&2
+      printf '%s\n' '  winget install --id LLVM.LLVM' >&2
+      printf '%s\n' '  Add C:\Program Files\LLVM\bin to the current and user PATH.' >&2
+      ;;
+  esac
+}
+
 is_qt_prefix() {
   local candidate="$1"
   [[ -f "${candidate}/lib/cmake/Qt6/Qt6Config.cmake" ]]
@@ -31,6 +59,9 @@ normalize_path() {
   value="${value#\'}"
   value="${value%/}"
   value="${value%\\}"
+  if [[ -z "${value}" ]]; then
+    return
+  fi
   printf '%s\n' "${value}"
 }
 
@@ -42,7 +73,7 @@ split_path_list() {
   fi
   IFS="${sep}" read -r -a paths <<< "${value}"
   for candidate in "${paths[@]}"; do
-    [[ -n "${candidate}" ]] && normalize_path "${candidate}" && printf '%s\n' "$(normalize_path "${candidate}")"
+    [[ -n "${candidate}" ]] && printf '%s\n' "${candidate}"
   done
 }
 
@@ -53,19 +84,16 @@ detect_qt_dir() {
   fi
 
   if [[ -n "${CMAKE_PREFIX_PATH:-}" ]]; then
-    while IFS= read -r candidate; do
-      if is_qt_prefix "${candidate}"; then
-        printf '%s\n' "${candidate}"
-        return 0
-      fi
-    done < <(split_path_list "${CMAKE_PREFIX_PATH}" ":")
-    while IFS= read -r candidate; do
-      if is_qt_prefix "${candidate}"; then
-        printf '%s\n' "${candidate}"
-        return 0
-      fi
-    done < <(split_path_list "${CMAKE_PREFIX_PATH}" ";")
-    fi
+    for separator in ":" ";"; do
+      while IFS= read -r candidate; do
+        candidate="$(normalize_path "${candidate}")"
+        if is_qt_prefix "${candidate}"; then
+          printf '%s\n' "${candidate}"
+          return 0
+        fi
+      done < <(split_path_list "${CMAKE_PREFIX_PATH}" "${separator}")
+    done
+  fi
 
   if command -v brew >/dev/null 2>&1; then
     local brew_qt
@@ -86,17 +114,22 @@ detect_qt_dir() {
     fi
   done
 
-  for candidate in "${HOME}"/Qt/*/macos; do
-    if is_qt_prefix "${candidate}"; then
-      printf '%s\n' "${candidate}"
+  IFS=':' read -r -a linux_qt_dirs <<< "${LINUX_QT_CMAKE_DIRS}"
+  for candidate in "${linux_qt_dirs[@]}"; do
+    if [[ "${candidate}" == */lib/cmake/Qt6 ]]; then
+      local linux_prefix="${candidate%/lib/cmake/Qt6}"
+    else
+      local linux_prefix="${candidate}"
+    fi
+    if is_qt_prefix "${linux_prefix}"; then
+      printf '%s\n' "${linux_prefix}"
       return 0
     fi
   done
 
-  IFS=':' read -r -a linux_qt_dirs <<< "${LINUX_QT_CMAKE_DIRS}"
-  for candidate in "${linux_qt_dirs[@]}"; do
-    if [[ -f "${candidate}/Qt6Config.cmake" ]]; then
-      printf '%s\n' "${candidate%/lib/cmake/Qt6}"
+  for candidate in "${HOME}"/Qt/*/macos; do
+    if is_qt_prefix "${candidate}"; then
+      printf '%s\n' "${candidate}"
       return 0
     fi
   done
@@ -134,6 +167,11 @@ EOF
   esac
 }
 
+if [[ -z "${QT_VERSION:-}" ]]; then
+  printf 'Missing required variable: QT_VERSION\n' >&2
+  exit 1
+fi
+
 printf 'Target Qt version: %s\n' "${QT_VERSION}"
 
 require_command cmake "Install CMake 3.24 or newer."
@@ -144,7 +182,8 @@ if ! command -v c++ >/dev/null 2>&1 && ! command -v clang++ >/dev/null 2>&1 && !
   exit 1
 fi
 
-if qt_dir="$(detect_qt_dir)"; then
+qt_dir="$(detect_qt_dir || true)"
+if [[ -n "${qt_dir}" ]]; then
   printf 'Using Qt prefix: %s\n' "${qt_dir}"
   cmake --preset "${preset}" -DCMAKE_PREFIX_PATH="${qt_dir}"
 else
@@ -152,3 +191,5 @@ else
   printf 'Trying CMake without CMAKE_PREFIX_PATH in case Qt is registered system-wide.\n' >&2
   cmake --preset "${preset}"
 fi
+
+warn_clang_format

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ports/IUserPreferencesStore.h"
+
 #include <QAbstractListModel>
 #include <QString>
 
@@ -21,7 +23,7 @@ namespace ssa::presentation {
             LabelRole,
             VisibleRole,
             WidthRole,
-            ToggleEnabledRole,
+            VisibilityChangeEnabledRole,
         };
 
         explicit ColumnSettingsModel(QObject* parent = nullptr);
@@ -41,6 +43,7 @@ namespace ssa::presentation {
 
         void applyPreferences(const std::vector<std::string>& visibleColumns,
                               const std::map<std::string, int>& columnWidths);
+        void applyPreferences(const ports::UserPreferencesSnapshot& snapshot);
         [[nodiscard]] std::vector<std::string> visibleKeys() const;
         [[nodiscard]] std::map<std::string, int> columnWidths() const;
 

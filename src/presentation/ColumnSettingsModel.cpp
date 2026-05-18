@@ -3,8 +3,8 @@
 #include "domain/ColumnCatalog.h"
 
 #include <algorithm>
-#include <cctype>
 #include <set>
+#include <utility>
 
 namespace ssa::presentation {
     namespace {
@@ -12,14 +12,7 @@ namespace ssa::presentation {
         constexpr int kMaxColumnWidth = 520;
 
         [[nodiscard]] std::string toLower(std::string text) {
-            for (auto& c : text) {
-                const int lowered = std::tolower(static_cast<unsigned char>(c));
-                if (lowered == EOF) {
-                    continue;
-                }
-                c = static_cast<char>(lowered);
-            }
-            return text;
+            return QString::fromStdString(std::move(text)).toLower().toStdString();
         }
 
     } // namespace
@@ -59,7 +52,7 @@ namespace ssa::presentation {
             return column.visible;
         case WidthRole:
             return column.width;
-        case ToggleEnabledRole:
+        case VisibilityChangeEnabledRole:
             return !column.visible || visibleCount() > 1;
         default:
             return {};
@@ -71,7 +64,7 @@ namespace ssa::presentation {
                 {LabelRole, "columnLabel"},
                 {VisibleRole, "columnVisible"},
                 {WidthRole, "columnWidth"},
-                {ToggleEnabledRole, "columnToggleEnabled"}};
+                {VisibilityChangeEnabledRole, "columnVisibilityChangeEnabled"}};
     }
 
     int ColumnSettingsModel::minColumnWidth() const {
@@ -104,6 +97,10 @@ namespace ssa::presentation {
         }
         const int previousVisibleCount = visibleCount();
         if (!visible && previousVisibleCount == 1) {
+            const auto modelRow = modelRowFromSourceRow(sourceRow);
+            if (modelRow >= 0) {
+                emit dataChanged(this->index(modelRow), this->index(modelRow), {VisibleRole});
+            }
             return false;
         }
         column.visible = visible;
@@ -111,10 +108,11 @@ namespace ssa::presentation {
         const auto modelRow = modelRowFromSourceRow(sourceRow);
         if (modelRow >= 0) {
             emit dataChanged(this->index(modelRow), this->index(modelRow),
-                             {VisibleRole, ToggleEnabledRole});
+                             {VisibleRole, VisibilityChangeEnabledRole});
         }
         if ((previousVisibleCount <= 1) != (visibleCount() <= 1) && rowCount() > 0) {
-            emit dataChanged(this->index(0), this->index(rowCount() - 1), {ToggleEnabledRole});
+            emit dataChanged(this->index(0), this->index(rowCount() - 1),
+                             {VisibilityChangeEnabledRole});
         }
         emit changed();
         return true;
@@ -205,6 +203,7 @@ namespace ssa::presentation {
             }
         }
 
+        beginResetModel();
         visibleCount_ = 0;
         for (auto& column : columns_) {
             column.visible = visible.contains(column.key);
@@ -220,11 +219,26 @@ namespace ssa::presentation {
             columns_.front().visible = true;
             visibleCount_ = 1;
         }
-        if (rowCount() > 0) {
-            emit dataChanged(index(0), index(rowCount() - 1),
-                             {VisibleRole, WidthRole, ToggleEnabledRole});
-        }
+        rebuildFilteredRows();
+        endResetModel();
         emit changed();
+    }
+
+    void ColumnSettingsModel::applyPreferences(const ports::UserPreferencesSnapshot& snapshot) {
+        if (snapshot.visibleColumns.empty() && snapshot.columnWidths.empty()) {
+            resetDefaults();
+            return;
+        }
+
+        auto visibleColumns = snapshot.visibleColumns;
+        if (visibleColumns.empty()) {
+            visibleColumns = visibleKeys();
+        }
+        auto columnWidths = snapshot.columnWidths;
+        if (columnWidths.empty()) {
+            columnWidths = this->columnWidths();
+        }
+        applyPreferences(visibleColumns, columnWidths);
     }
 
     std::vector<std::string> ColumnSettingsModel::visibleKeys() const {

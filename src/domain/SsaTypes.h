@@ -8,6 +8,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -18,10 +19,12 @@ namespace ssa::domain {
 
     inline constexpr int kMinPageSize = 10;
     inline constexpr int kMaxPageSize = 500;
-    inline constexpr int kDefaultPageSize = 100;
+    inline constexpr int kDefaultPageSize = 50;
     inline constexpr std::string_view kSsaNumberColumnKey = "numero_ssa";
     inline constexpr std::size_t kMaxSafePatternLength = 128;
     inline constexpr bool kDefaultExcludeScaSesSte = true;
+    inline constexpr int kFirstIsoWeek = 1;
+    inline constexpr int kLastIsoWeek = 53;
 
     [[nodiscard]] inline int clampPageSize(const int value) {
         return std::clamp(value, kMinPageSize, kMaxPageSize);
@@ -29,19 +32,16 @@ namespace ssa::domain {
 
     [[nodiscard]] inline std::size_t pageCount(const std::size_t totalRows,
                                                const std::size_t pageSize) {
-        if (totalRows == 0 || pageSize == 0) {
+        if (pageSize == 0) {
+            throw std::invalid_argument("page size must be greater than zero");
+        }
+        if (totalRows == 0) {
             return 0;
         }
         return (totalRows + pageSize - 1) / pageSize;
     }
 
-    [[nodiscard]] inline bool isLastPage(const std::size_t pageIndex, const std::size_t totalRows,
-                                         const std::size_t pageSize) {
-        const auto pages = pageCount(totalRows, pageSize);
-        return pages == 0 || pageIndex + 1 >= pages;
-    }
-
-    [[nodiscard]] inline bool requiresStatusLastSort(const std::string_view columnKey) {
+    [[nodiscard]] inline bool shouldApplyStatusLastTieBreaker(const std::string_view columnKey) {
         return columnKey == kSsaNumberColumnKey;
     }
 
@@ -82,8 +82,16 @@ namespace ssa::domain {
 
     struct AdvancedFilterSpec {
         std::string weekColumnKey{"semana_programada"};
+        std::map<std::string, std::string> textFilters;
         std::optional<int> year;
         std::optional<int> week;
+        std::optional<int> issueYear;
+        std::optional<int> executionYear;
+        std::optional<int> reprogrammingEquals;
+        std::optional<int> issueWeekStart;
+        std::optional<int> issueWeekEnd;
+        std::optional<int> executionWeekStart;
+        std::optional<int> executionWeekEnd;
         DerivationFilterMode derivationMode{DerivationFilterMode::All};
         bool onlyReprogrammed{false};
 
@@ -98,16 +106,29 @@ namespace ssa::domain {
             if (!year.has_value()) {
                 return std::nullopt;
             }
-            return (*year * 100) + 1;
+            return (*year * 100) + kFirstIsoWeek;
         }
 
         [[nodiscard]] std::optional<int> yearEndWeek() const {
             if (!year.has_value()) {
                 return std::nullopt;
             }
-            return (*year * 100) + 53;
+            return (*year * 100) + kLastIsoWeek;
         }
     };
+
+    inline bool operator==(const AdvancedFilterSpec& left, const AdvancedFilterSpec& right) {
+        return left.weekColumnKey == right.weekColumnKey && left.textFilters == right.textFilters &&
+               left.year == right.year && left.week == right.week &&
+               left.issueYear == right.issueYear && left.executionYear == right.executionYear &&
+               left.reprogrammingEquals == right.reprogrammingEquals &&
+               left.issueWeekStart == right.issueWeekStart &&
+               left.issueWeekEnd == right.issueWeekEnd &&
+               left.executionWeekStart == right.executionWeekStart &&
+               left.executionWeekEnd == right.executionWeekEnd &&
+               left.derivationMode == right.derivationMode &&
+               left.onlyReprogrammed == right.onlyReprogrammed;
+    }
 
     struct SsaFilterExpression {
         std::vector<FilterTerm> generalTerms;
@@ -152,7 +173,14 @@ namespace ssa::domain {
         SsaRecord() = default;
 
         SsaRecord(std::shared_ptr<const SchemaIndex> schema, std::vector<std::string> rowValues)
-            : schema_(std::move(schema)), rowValues_(std::move(rowValues)) {}
+            : schema_(std::move(schema)), rowValues_(std::move(rowValues)) {
+            if (!schema_ && !rowValues_.empty()) {
+                throw std::invalid_argument("SSA record values require a schema");
+            }
+            if (schema_ && schema_->keys.size() != rowValues_.size()) {
+                throw std::invalid_argument("SSA record schema/value count mismatch");
+            }
+        }
 
         SsaRecord(const std::map<std::string, std::string>& fields) : rowValues_{} {
             auto mutableSchema = std::make_shared<SchemaIndex>();
@@ -178,8 +206,10 @@ namespace ssa::domain {
                 return {};
             }
             const auto index = it->second;
-            return index < rowValues_.size() ? std::string_view{rowValues_[index]}
-                                             : std::string_view{};
+            if (index >= rowValues_.size()) {
+                throw std::logic_error("SSA record schema index is out of bounds");
+            }
+            return std::string_view{rowValues_[index]};
         }
 
         [[nodiscard]] std::string_view valueAt(const std::size_t index) const {
@@ -212,8 +242,13 @@ namespace ssa::domain {
     struct SortSpec {
         std::string columnKey{"numero_ssa"};
         bool ascending{false};
-        bool statusLast{requiresStatusLastSort(columnKey)};
+        bool statusLast{shouldApplyStatusLastTieBreaker(columnKey)};
     };
+
+    inline bool operator==(const SortSpec& left, const SortSpec& right) {
+        return left.columnKey == right.columnKey && left.ascending == right.ascending &&
+               left.statusLast == right.statusLast;
+    }
 
     struct SsaPageRequest {
         std::size_t pageIndex{0};
@@ -226,6 +261,15 @@ namespace ssa::domain {
         SortSpec sort;
         std::vector<std::string> visibleColumns;
     };
+
+    inline bool operator==(const SsaPageRequest& left, const SsaPageRequest& right) {
+        return left.pageIndex == right.pageIndex && left.pageSize == right.pageSize &&
+               left.searchText == right.searchText && left.columnFilters == right.columnFilters &&
+               left.quickSector == right.quickSector &&
+               left.excludeScaSesSte == right.excludeScaSesSte &&
+               left.advancedFilters == right.advancedFilters && left.sort == right.sort &&
+               left.visibleColumns == right.visibleColumns;
+    }
 
     struct SsaPageResult {
         std::vector<SsaRecord> rows;

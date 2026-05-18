@@ -6,22 +6,93 @@ Esta base nao e um port linha-a-linha da GUI Python. Ela preserva contratos de u
 
 ## Comandos rapidos
 
+### Binarios, CLI e arquivos gerados
+
+O projeto gera dois entrypoints diferentes:
+
+- GUI: `build/dev/ssa_consulta_rapida.app/Contents/MacOS/ssa_consulta_rapida`
+- CLI: `build/dev/ssa_consulta_rapida_cli`
+
+O CLI atual nao e uma TUI interativa. Ele e um command-line entrypoint para consulta, detalhes, exportacao e manutencao:
+
+```bash
+./build/dev/ssa_consulta_rapida_cli --db /path/para/ssas.db --page-size 10
+./build/dev/ssa_consulta_rapida_cli --db /path/para/ssas.db --details <numero_ssa>
+./build/dev/ssa_consulta_rapida_cli --db /path/para/ssas.db --search MEG2 --export /tmp/ssas.csv
+```
+
+Arquivos de build ficam dentro do repo, em pasta ignorada:
+
+```text
+build/dev/
+build/dev/ssa_consulta_rapida.app
+build/dev/ssa_consulta_rapida_cli
+build/dev/ssa_unit_tests
+build/dev/ssa_integration_tests
+build/dev/ssa_qt_presentation_tests
+```
+
+Os scripts de smoke usam `build/runtime/macos` para copia runtime de `ssas.db`, preferencias e screenshot. Os executaveis nao ficam no tmp.
+O caminho default de banco para scripts sem argumentos e `data/ssas.db` dentro deste repo. Esse arquivo e ignorado pelo Git.
+
+Para preparar o banco local do repo C++:
+
+```bash
+mkdir -p data
+cp /path/para/ssas.db data/ssas.db
+```
+
+Artefatos de distribuicao, quando gerados por `./scripts/package-macos.sh`, ficam em `dist/macos/<arch>/`, tambem ignorado por git.
+
 ### Build e run por SO (padrao de scripts)
 
 ```bash
-# macOS
+# macOS (padrao dev)
 ./scripts/build-macos.sh
-./scripts/run-macos.sh /path/para/ssas.db --screenshot /tmp/main.png
+./scripts/run-macos.sh
 
-# Debian/Ubuntu
+# Self executable path (macOS)
+# <repo>/build/dev/ssa_consulta_rapida.app/Contents/MacOS/ssa_consulta_rapida
+
+# Debian/Ubuntu (padrao dev)
 ./scripts/build-debian.sh
-./scripts/run-debian.sh /path/para/ssas.db --config-dir "$HOME/.config/ssa-consulta-rapida-cpp"
+./scripts/run-debian.sh
+
+# Self executable path (Debian)
+# <repo>/build/dev/ssa_consulta_rapida
 ```
 
 ```powershell
 # Windows 11 (executar no Developer PowerShell for VS 2022)
 ./scripts/build-windows.ps1
-./scripts/run-windows.ps1 -DbPath C:\caminho\ssas.db -Screenshot C:\tmp\main.png
+./scripts/run-windows.ps1
+
+# Self executable path (Windows)
+# <repo>\build\dev\ssa_consulta_rapida.exe
+```
+
+### Smoke completo (build + test + execucao com screenshot) no macOS e Debian
+
+```bash
+# Default smoke flow (no args): build/test/offscreen with default db and defaults.
+./scripts/smoke-macos.sh
+
+# Help on the default flow
+./scripts/smoke-macos.sh --help
+
+# Parameterized smoke flow (stored in lazy scripts)
+./scripts/lazy_scripts/macos-build-clean-test-smoke-run.sh
+./scripts/lazy_scripts/macos-build-test-smoke-run.sh /path/para/ssas.db --help
+
+# Parameterized build/run flows
+./scripts/lazy_scripts/build-macos.sh --preset dev
+./scripts/lazy_scripts/run-macos.sh /path/para/ssas.db --project-root "$REPO_ROOT" --screenshot /tmp/main.png
+./scripts/lazy_scripts/run-debian.sh /path/para/ssas.db --project-root "$REPO_ROOT"
+./scripts/lazy_scripts/build-windows.ps1 -Preset dev
+.\scripts\lazy_scripts\run-windows.ps1 -DbPath C:\\caminho\\ssas.db -ProjectRoot C:\\path\\to\\SSA_Consulta_Rapida_Cpp -Screenshot C:\\tmp\\main.png
+
+# Run from custom db path with parameterized lazy script
+./scripts/lazy_scripts/run-macos.sh /path/para/ssas.db --project-root "$REPO_ROOT" --screenshot /tmp/main.png
 ```
 
 ### Ordem de deteccao usada nos scripts
@@ -298,13 +369,165 @@ ctest --preset dev --output-on-failure
 & "$env:QT_DIR\bin\qmllint.exe" -I build/dev app/desktop/qml/Main.qml app/desktop/qml/Theme.qml app/desktop/qml/components/*.qml
 ```
 
+## Clang-format
+
+Verifique instalacao:
+
+```bash
+clang-format --version
+```
+
+macOS (recomendado):
+
+```bash
+brew install llvm
+cat <<'EOF' >> ~/.zshrc
+export PATH="/opt/homebrew/opt/llvm/bin:$PATH"
+EOF
+cat <<'EOF' >> ~/.bashrc
+export PATH="/opt/homebrew/opt/llvm/bin:$PATH"
+EOF
+source ~/.zshrc
+```
+
+Debian/Ubuntu:
+
+```bash
+sudo apt update
+sudo apt install -y clang-format
+```
+
+Comando rapido para sessao atual (sem alterar perfil):
+
+```bash
+export PATH="/opt/homebrew/opt/llvm/bin:$PATH"
+export PATH="/usr/bin:$PATH"
+```
+
+Windows 11:
+
+```powershell
+winget install --id LLVM.LLVM
+```
+
+Adicione `C:\Program Files\LLVM\bin` no `PATH` da sessao atual:
+
+```powershell
+$llvmBin = "C:\Program Files\LLVM\bin"
+$env:Path = "$llvmBin;$env:Path"
+```
+
+Para injetar nos arquivos de perfil do PowerShell:
+
+```powershell
+if (-not (Test-Path $PROFILE)) { New-Item -Path $PROFILE -ItemType File -Force | Out-Null }
+Add-Content -Path $PROFILE -Value '$env:Path = "C:\Program Files\LLVM\bin;$env:Path"'
+```
+
+Para recarregar o perfil e validar:
+
+```powershell
+. $PROFILE
+clang-format --version
+```
+
+## Smoke visual
+
+Exemplo de smoke visual com banco isolado:
+
+```bash
+REPO_ROOT=/caminho/para/SSA_Consulta_Rapida_Cpp
+mkdir -p "${REPO_ROOT}/build/runtime/macos"
+cp "${REPO_ROOT}/data/ssas.db" "${REPO_ROOT}/build/runtime/macos/ssas.db"
+./run-macos-smoke-clean
+```
+
+## Packaging e artefatos finais por plataforma
+
+Comandos padrao sem argumentos (sem variavel de ambiente e sem parametros) geram pasta final persistente em `dist/<so>/<arquitetura>/`:
+
+```bash
+./scripts/package-macos.sh      # gera dist/macos/<arch>/ssa_consulta_rapida-<ver>-<arch>-macos.* (.zip e .dmg)
+./scripts/package-linux.sh      # comando principal para Linux tarball
+./scripts/package-linux.sh --skip-tests    # gera o mesmo pacote sem executar ctest
+./scripts/package-debian.sh     # wrapper de compatibilidade; nao gera pacote .deb
+```
+
+```powershell
+./scripts/package-windows.ps1   # gera dist/windows/<arch>/ssa_consulta_rapida-<ver>-<arch>-windows.zip e installer .exe opcional
+./scripts/package-windows.ps1 -SkipTests   # gera o mesmo pacote sem executar ctest
+```
+
+Existem wrappers com argumento em `scripts/lazy_scripts` para cenarios com controle manual:
+
+```bash
+./scripts/lazy_scripts/package-macos.sh --preset <preset> --arch <arch> --dist-dir <dir>
+./scripts/lazy_scripts/package-debian.sh --preset <preset> --arch <arch> --dist-dir <dir>
+.\scripts\lazy_scripts\package-windows.ps1 -Preset <preset> -Arch <arch> -DistDir <dir>
+```
+
+Formatos persistentes criados:
+
+- macOS: `ssa_consulta_rapida-<ver>-<arch>-macos.zip` e `ssa_consulta_rapida-<ver>-<arch>-macos.dmg`
+  pacote persistente em `ssa_consulta_rapida-<ver>-<arch>-macos/ssa_consulta_rapida.app` e `run-ssa_consulta_rapida.sh`
+- Debian/Linux: `ssa_consulta_rapida-<ver>-<arch>-linux.tar.gz`
+  pacote persistente em `ssa_consulta_rapida-<ver>-<arch>-linux/` com `bin/`, `lib/` e `run-ssa_consulta_rapida.sh`
+- Windows: `ssa_consulta_rapida-<ver>-<arch>-windows.zip` e `ssa_consulta_rapida-<ver>-<arch>-windows-installer.exe` (quando MakeNSIS esta instalado)
+  pacote persistente em `ssa_consulta_rapida-<ver>-<arch>-windows/` com `ssa_consulta_rapida.exe` e `run-ssa_consulta_rapida.bat`
+
+Todos os pacotes sao gerados apos build+test no preset `release` e sao organizados em `dist/<so>/<arch>/`.
+Cada pacote cria tambem o ponteiro `dist/<so>/<arch>/latest` para o artefato atual.
+No Windows, esses ponteiros sao links quando o sistema permite; caso contrario, os scripts usam copia como fallback.
+Com base no ponteiro `latest`, ficam fixos tambem:
+
+- `dist/linux/<arch>/latest-binary` (self sufficient wrapper script)
+- `dist/linux/<arch>/latest-raw` (raw binary in `bin/`, requires `LD_LIBRARY_PATH` from `lib/`)
+- `dist/linux/<arch>/latest-run.sh` (same launcher)
+- `dist/linux/<arch>/latest.tar.gz`
+- `dist/macos/<arch>/latest.app`
+- `dist/macos/<arch>/latest-binary`
+- `dist/macos/<arch>/latest-run.sh`
+- `dist/macos/<arch>/latest.zip`
+- `dist/macos/<arch>/latest.dmg`
+- `dist/windows/<arch>/latest.exe` (installer alias, only when generated)
+- `dist/windows/<arch>/latest-binary` (portable application executable)
+- `dist/windows/<arch>/latest-run.bat`
+- `dist/windows/<arch>/latest.zip`
+- `dist/windows/<arch>/latest-installer.exe` (quando gerado)
+
+Execucao direta dos artefatos persistentes:
+
+```bash
+./dist/linux/<arch>/ssa_consulta_rapida-<ver>-<arch>-linux/run-ssa_consulta_rapida.sh --project-root <repo> --db <db>
+./dist/linux/<arch>/latest/bin/ssa_consulta_rapida --project-root <repo> --db <db>
+./dist/linux/<arch>/latest-binary --project-root <repo> --db <db>
+./dist/linux/<arch>/latest-raw --project-root <repo> --db <db> # requer LD_LIBRARY_PATH
+./dist/linux/<arch>/latest-run.sh --project-root <repo> --db <db>
+./dist/macos/<arch>/ssa_consulta_rapida-<ver>-<arch>-macos/run-ssa_consulta_rapida.sh --project-root <repo> --db <db>
+./dist/macos/<arch>/latest/run-ssa_consulta_rapida.sh --project-root <repo> --db <db>
+./dist/macos/<arch>/latest-binary --project-root <repo> --db <db>
+./dist/macos/<arch>/latest.app/Contents/MacOS/ssa_consulta_rapida --project-root <repo> --db <db>
+./dist/macos/<arch>/latest.dmg
+./dist/macos/<arch>/latest.zip
+```
+
+```powershell
+.\dist\windows\<arch>\ssa_consulta_rapida-<ver>-<arch>-windows\ssa_consulta_rapida.exe --project-root <repo> --db <db>
+.\dist\windows\<arch>\latest\ssa_consulta_rapida.exe --project-root <repo> --db <db>
+.\dist\windows\<arch>\latest-binary --project-root <repo> --db <db>
+.\dist\windows\<arch>\latest-run.bat
+.\dist\windows\<arch>\latest.zip
+.\dist\windows\<arch>\latest.exe
+.\dist\windows\<arch>\latest-installer.exe
+```
+
 ## Execucao
 
 macOS:
 
 ```bash
 ./build/dev/ssa_consulta_rapida.app/Contents/MacOS/ssa_consulta_rapida \
-  --db /Users/menon/git/SSA_Consulta_Rapida/data/ssas.db
+  --db "${REPO_ROOT}/data/ssas.db"
 ```
 
 Debian:

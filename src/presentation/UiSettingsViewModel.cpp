@@ -1,18 +1,11 @@
 #include "presentation/UiSettingsViewModel.h"
 
-#include <QGuiApplication>
-#include <QStyleHints>
-
 #include <algorithm>
 
 namespace ssa::presentation {
 
     UiSettingsViewModel::UiSettingsViewModel(QObject* parent) : QObject(parent) {
-        if (const auto hints = QGuiApplication::styleHints()) {
-            connect(hints, &QStyleHints::colorSchemeChanged, this,
-                    &UiSettingsViewModel::resolvedThemeChanged);
-        }
-        recalculateDetailsWidthRange();
+        emitDetailsWidthLayoutChanged();
         preferencesSaveDebounce_.setSingleShot(true);
         preferencesSaveDebounce_.setInterval(250);
         connect(&preferencesSaveDebounce_, &QTimer::timeout, this,
@@ -38,12 +31,17 @@ namespace ssa::presentation {
         if (theme_ != "system") {
             return theme_;
         }
-        const auto hints = QGuiApplication::styleHints();
-        if (!hints) {
-            return "light";
+        return systemTheme_;
+    }
+
+    void UiSettingsViewModel::setSystemTheme(const QString& theme) {
+        if (systemTheme_ == theme) {
+            return;
         }
-        const auto scheme = hints->colorScheme();
-        return scheme == Qt::ColorScheme::Dark ? "dark" : "light";
+        systemTheme_ = theme;
+        if (theme_ == "system") {
+            emit resolvedThemeChanged();
+        }
     }
 
     QString UiSettingsViewModel::density() const {
@@ -51,10 +49,9 @@ namespace ssa::presentation {
     }
 
     void UiSettingsViewModel::setDensity(const QString& value) {
-        if (!isDensityValid(value) || density_ == value) {
+        if (!applyDensityValue(value)) {
             return;
         }
-        density_ = value;
         emit densityChanged();
         schedulePreferencesSave();
         emit settingsChanged();
@@ -79,13 +76,11 @@ namespace ssa::presentation {
     }
 
     void UiSettingsViewModel::setDetailsPanelWidth(const int value) {
-        const int bounded = ports::clampDetailsPanelWidth(value);
-        if (detailsPanelWidth_ == bounded) {
+        if (!applyDetailsPanelWidthValue(value)) {
             return;
         }
-        detailsPanelWidth_ = bounded;
-        emit detailsWidthLayoutChanged();
         emit detailsPanelWidthChanged();
+        emitDetailsWidthLayoutChanged();
         schedulePreferencesSave();
         emit settingsChanged();
     }
@@ -100,41 +95,40 @@ namespace ssa::presentation {
             return;
         }
         detailsViewportWidth_ = normalizedWidth;
-        recalculateDetailsWidthRange();
-        emit detailsWidthLayoutChanged();
+        emitDetailsWidthLayoutChanged();
     }
 
     int UiSettingsViewModel::detailsMinimumWidth() const {
-        return detailsMinimumWidth_;
+        return detailsLayoutGeometry().minimumWidth;
     }
 
     int UiSettingsViewModel::detailsPreferredWidth() const {
-        return detailsPreferredWidth_;
+        return detailsLayoutGeometry().preferredWidth;
     }
 
     int UiSettingsViewModel::detailsMaximumWidth() const {
-        return detailsMaximumWidth_;
+        return detailsLayoutGeometry().maximumWidth;
     }
 
     int UiSettingsViewModel::detailsEffectiveWidth() const {
-        const int preferred = detailsPanelWidth_ > 0 ? detailsPanelWidth_ : detailsPreferredWidth_;
-        return clampToWidthRange(preferred);
+        const int preferred = detailsPanelWidth_ > 0 ? detailsPanelWidth_ : detailsPreferredWidth();
+        const auto geometry = detailsLayoutGeometry();
+        return std::clamp(preferred, geometry.minimumWidth, geometry.maximumWidth);
     }
 
     void UiSettingsViewModel::applyPreferences(const ports::UserPreferencesSnapshot& snapshot) {
         theme_ = QString::fromStdString(snapshot.theme);
         const QString density = QString::fromStdString(snapshot.density);
-        if (isDensityValid(density)) {
-            density_ = density;
-        }
+        const bool densityWasUpdated = applyDensityValue(density);
         detailsVisible_ = snapshot.detailsVisible;
-        detailsPanelWidth_ = ports::clampDetailsPanelWidth(snapshot.detailsPanelWidth);
-        recalculateDetailsWidthRange();
+        applyDetailsPanelWidthValue(snapshot.detailsPanelWidth);
+        emitDetailsWidthLayoutChanged();
         emit themeChanged();
         emit resolvedThemeChanged();
-        emit densityChanged();
+        if (densityWasUpdated) {
+            emit densityChanged();
+        }
         emit detailsVisibleChanged();
-        emit detailsWidthLayoutChanged();
         emit detailsPanelWidthChanged();
         emit settingsChanged();
     }
@@ -146,36 +140,29 @@ namespace ssa::presentation {
         snapshot.detailsPanelWidth = detailsPanelWidth_;
     }
 
-    bool UiSettingsViewModel::isDensityValid(const QString& value) const {
-        return value == "compact" || value == "normal" || value == "comfortable";
+    details_layout::DetailsPanelGeometry UiSettingsViewModel::detailsLayoutGeometry() const {
+        return details_layout::computeDetailsPanelGeometry(detailsViewportWidth_);
     }
 
-    int UiSettingsViewModel::computeDetailsMinimumWidth() const {
-        const int widthByRatio = (detailsViewportWidth_ * kDetailsMinRatioPercent) / 100;
-        return std::max(kDetailsMinAbsolutePx, widthByRatio);
-    }
-
-    int UiSettingsViewModel::computeDetailsMaximumWidth() const {
-        const int widthByRatio = (detailsViewportWidth_ * kDetailsMaxRatioPercent) / 100;
-        return std::max(computeDetailsMinimumWidth(),
-                        std::min(kDetailsMaxAbsolutePx, widthByRatio));
-    }
-
-    int UiSettingsViewModel::computeDetailsPreferredWidth() const {
-        const int widthByRatio = (detailsViewportWidth_ * kDetailsPrefRatioPercent) / 100;
-        return std::max(kDetailsMinAbsolutePx,
-                        std::min(computeDetailsMaximumWidth(), widthByRatio));
-    }
-
-    int UiSettingsViewModel::clampToWidthRange(const int value) const {
-        return std::max(detailsMinimumWidth_, std::min(detailsMaximumWidth_, value));
-    }
-
-    void UiSettingsViewModel::recalculateDetailsWidthRange() {
-        detailsMinimumWidth_ = computeDetailsMinimumWidth();
-        detailsMaximumWidth_ = computeDetailsMaximumWidth();
-        detailsPreferredWidth_ = computeDetailsPreferredWidth();
+    void UiSettingsViewModel::emitDetailsWidthLayoutChanged() {
         emit detailsWidthLayoutChanged();
+    }
+
+    bool UiSettingsViewModel::applyDensityValue(const QString& value) {
+        if (!ports::isDensityValid(value.toStdString()) || density_ == value) {
+            return false;
+        }
+        density_ = value;
+        return true;
+    }
+
+    bool UiSettingsViewModel::applyDetailsPanelWidthValue(const int value) {
+        const int bounded = ports::clampDetailsPanelWidth(value);
+        if (detailsPanelWidth_ == bounded) {
+            return false;
+        }
+        detailsPanelWidth_ = bounded;
+        return true;
     }
 
     void UiSettingsViewModel::schedulePreferencesSave() {

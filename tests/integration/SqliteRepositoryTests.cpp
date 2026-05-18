@@ -167,6 +167,26 @@ TEST_CASE_METHOD(SqliteRepositoryFixture, "sqlite repository applies advanced fi
     REQUIRE(page.rows[0].valueOf("numero_ssa") == "202500003");
 }
 
+TEST_CASE_METHOD(SqliteRepositoryFixture,
+                 "sqlite repository applies advanced text and range filters") {
+    ssa::domain::SsaPageRequest request;
+    request.pageSize = 10;
+    request.advancedFilters.textFilters = {{"situacao", "=APV"}, {"setor_executor", "=SMM"}};
+    request.advancedFilters.issueYear = 2025;
+    request.advancedFilters.executionYear = 2025;
+    request.advancedFilters.reprogrammingEquals = 1;
+    request.advancedFilters.issueWeekStart = 202501;
+    request.advancedFilters.issueWeekEnd = 202501;
+    request.advancedFilters.executionWeekStart = 202503;
+    request.advancedFilters.executionWeekEnd = 202503;
+
+    const auto page = repository.page(request);
+
+    REQUIRE(page.totalRows == 1);
+    REQUIRE(page.rows.size() == 1);
+    REQUIRE(page.rows[0].valueOf("numero_ssa") == "202500003");
+}
+
 TEST_CASE("sqlite maintenance port runs vacuum analyze") {
     const SqliteFixture fixture;
     ssa::infra::sqlite::SqliteMaintenancePort maintenance(fixture.path);

@@ -1,12 +1,21 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
+#include <string_view>
 
 namespace ssa::ports {
 
     inline constexpr int kMinDetailsPanelWidth = 320;
-    inline constexpr int kMaxDetailsPanelWidth = 920;
-    inline constexpr int kDefaultDetailsPanelWidth = 520;
+    inline constexpr int kMaxDetailsPanelWidth = 1200;
+    inline constexpr int kDefaultDetailsPanelWidth = 1020;
+    inline constexpr std::array<std::string_view, 3> kDensityValues{"compact", "normal",
+                                                                    "comfortable"};
+
+    [[nodiscard]] inline bool isDensityValid(const std::string_view density) {
+        return std::ranges::any_of(
+            kDensityValues, [density](const std::string_view value) { return value == density; });
+    }
 
     [[nodiscard]] inline int clampDetailsPanelWidth(const int value) {
         return std::clamp(value, kMinDetailsPanelWidth, kMaxDetailsPanelWidth);

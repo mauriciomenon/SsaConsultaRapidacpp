@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <stdexcept>
+#include <unordered_map>
 
 namespace ssa::domain {
 
@@ -18,31 +19,46 @@ namespace ssa::domain {
             "semana_cadastro", "semana_programada", "semana_executada"};
         constexpr std::array<std::string_view, 2> kReprogrammingColumnKeys{
             "num_reprogramacoes", "total_de_reprogramacoes"};
+        struct AdvancedFilterColumnDef {
+            std::string_view key;
+            std::string_view label;
+        };
+
+        constexpr std::array<AdvancedFilterColumnDef, 8> kAdvancedFilterColumns{{
+            {"setor_emissor", "Setor emissor"},
+            {"setor_executor", "Setor executor"},
+            {"situacao", "Situacao"},
+            {"grau_prioridade_emissao", "Prioridade emissao"},
+            {"grau_prioridade_planejamento", "Prioridade planejamento"},
+            {"solicitante", "Solicitante"},
+            {"responsavel_programacao", "Responsavel programacao"},
+            {"responsavel_execucao", "Responsavel execucao"},
+        }};
         constexpr std::string_view kStatusLastSortCode = "STE";
 
         const std::array<ColumnDef, 84> kColumns{{
             {"id", "ID", Integer, false, false, 80},
             {"numero_ssa", "No SSA", Text, true, true, 110},
             {"situacao", "Sit.", Text, true, true, 80},
-            {"derivada_de", "Der.", Text, false, true, 110},
+            {"derivada_de", "Der.", Text, true, true, 110},
             {"localizacao_codigo", "Loc.", Text, true, true, 120},
-            {"descricao_localizacao", "Desc. Loc.", Text, false, true, 220},
-            {"equipamento", "Equip.", Text, false, true, 150},
+            {"descricao_localizacao", "Desc. Loc.", Text, true, true, 220},
+            {"equipamento", "Equip.", Text, true, true, 150},
             {"semana_cadastro", "Sem. Cad.", Integer, true, true, 95},
             {"data_cadastro", "Cadastro", DateText, true, false, 120},
             {"descricao_ssa", "Descricao SSA", Text, true, true, 360},
             {"descricao_execucao", "Descricao Execucao", Text, true, true, 360},
-            {"setor_emissor", "Emis.", Text, false, true, 90},
+            {"setor_emissor", "Emis.", Text, true, true, 90},
             {"setor_executor", "Exec.", Text, true, true, 90},
-            {"solicitante", "Solicitante", Text, false, true, 180},
-            {"responsavel_programacao", "Resp. Programacao", Text, false, true, 180},
-            {"responsavel_execucao", "Resp. Execucao", Text, false, true, 180},
+            {"solicitante", "Solicitante", Text, true, true, 180},
+            {"responsavel_programacao", "Resp. Programacao", Text, true, true, 180},
+            {"responsavel_execucao", "Resp. Execucao", Text, true, true, 180},
             {"servico_origem", "Servico Origem", Text, false, true, 150},
             {"sistema_origem", "Sistema Origem", Text, false, true, 150},
             {"arquivo_origem", "Arquivo Origem", Text, false, false, 180},
             {"data_planilha", "Data Planilha", DateText, false, false, 130},
-            {"grau_prioridade_emissao", "Prior. Emissao", Text, false, true, 140},
-            {"grau_prioridade_planejamento", "Prior. Planej.", Text, false, true, 140},
+            {"grau_prioridade_emissao", "Prior. Emissao", Text, true, true, 140},
+            {"grau_prioridade_planejamento", "Prior. Planej.", Text, true, true, 140},
             {"execucao_simples", "Exec. Simples", Text, false, false, 130},
             {"semana_programada", "Sem. Prog.", Integer, true, true, 95},
             {"prazo_limite", "Prazo Limite", DateText, false, false, 140},
@@ -58,12 +74,12 @@ namespace ssa::domain {
             {"total_tempo_tpo_planejado", "TPO Planejado", Text, false, false, 150},
             {"total_horas_programadas", "Horas Programadas", Text, false, false, 160},
             {"total_tempo_tpe_executada", "TPE Executada", Text, false, false, 150},
-            {"semana_executada", "Sem. Exec.", Integer, false, true, 95},
+            {"semana_executada", "Sem. Exec.", Integer, true, true, 95},
             {"num_reprogramacoes", "Reprogramacoes", Integer, false, false, 140},
             {"execucao_parcial", "Exec. Parcial", Text, false, true, 140},
             {"anomalia", "Anomalia", Text, false, true, 130},
             {"registros_espera", "Reg. Espera", Text, false, false, 140},
-            {"num_reprobaciones", "Reprobaciones", Integer, false, true, 130},
+            {"num_reprobaciones", "Reprobaciones", Integer, false, false, 130},
             {"situacao_espera", "Situacao Espera", Text, false, true, 150},
             {"numero_desvios", "Desvios", Integer, false, true, 120},
             {"ate", "Ate", Text, false, false, 120},
@@ -118,6 +134,38 @@ namespace ssa::domain {
             return result;
         }
 
+        const std::unordered_map<std::string_view, ColumnDef>& columnByKey() {
+            static const std::unordered_map<std::string_view, ColumnDef> columns = [] {
+                std::unordered_map<std::string_view, ColumnDef> result;
+                result.reserve(kColumns.size());
+                for (const auto& column : kColumns) {
+                    result.emplace(column.key, column);
+                }
+                return result;
+            }();
+            return columns;
+        }
+
+        std::vector<std::string> buildOrderedFilterColumnKeys() {
+            auto keys = keysMatching([](const ColumnDef& column) { return column.key != "id"; });
+            const auto status = std::string{ColumnCatalog::statusColumnKey()};
+            const auto statusIt = std::ranges::find(keys, status);
+            if (statusIt != keys.end() && statusIt != keys.begin()) {
+                keys.erase(statusIt);
+                keys.insert(keys.begin(), status);
+            }
+            return keys;
+        }
+
+        constexpr std::array<std::string_view, kAdvancedFilterColumns.size()>
+        buildAdvancedFilterKeys() {
+            std::array<std::string_view, kAdvancedFilterColumns.size()> keys{};
+            for (std::size_t index = 0; index < kAdvancedFilterColumns.size(); ++index) {
+                keys[index] = kAdvancedFilterColumns[index].key;
+            }
+            return keys;
+        }
+
     } // namespace
 
     std::span<const ColumnDef> ColumnCatalog::all() {
@@ -151,15 +199,26 @@ namespace ssa::domain {
         return keysMatching([](const ColumnDef& column) { return column.generalSearch; });
     }
 
-    std::vector<std::string> ColumnCatalog::filterColumnKeys() {
-        auto keys = keysMatching([](const ColumnDef& column) { return column.key != "id"; });
-        const auto status = std::string{statusColumnKey()};
-        const auto statusIt = std::ranges::find(keys, status);
-        if (statusIt != keys.end() && statusIt != keys.begin()) {
-            keys.erase(statusIt);
-            keys.insert(keys.begin(), status);
-        }
+    const std::vector<std::string>& ColumnCatalog::orderedFilterColumnKeys() {
+        static const auto keys = buildOrderedFilterColumnKeys();
         return keys;
+    }
+
+    std::span<const std::string_view> ColumnCatalog::advancedFilterKeys() {
+        static constexpr auto kAdvancedFilterKeys = buildAdvancedFilterKeys();
+        return kAdvancedFilterKeys;
+    }
+
+    std::string_view ColumnCatalog::advancedFilterLabel(const std::string_view key) {
+        for (const auto& column : kAdvancedFilterColumns) {
+            if (column.key == key) {
+                return column.label;
+            }
+        }
+        if (const auto* column = find(key); column != nullptr) {
+            return column->label;
+        }
+        return key;
     }
 
     std::string ColumnCatalog::defaultFilterColumnKey() {
@@ -186,8 +245,24 @@ namespace ssa::domain {
         return kWeekColumnKeys;
     }
 
+    std::string_view ColumnCatalog::defaultAdvancedWeekColumnKey() {
+        return kWeekColumnKeys[1];
+    }
+
+    std::string_view ColumnCatalog::issueWeekColumnKey() {
+        return kWeekColumnKeys[0];
+    }
+
+    std::string_view ColumnCatalog::executionWeekColumnKey() {
+        return kWeekColumnKeys[2];
+    }
+
     std::span<const std::string_view> ColumnCatalog::reprogrammingColumnKeys() {
         return kReprogrammingColumnKeys;
+    }
+
+    std::string_view ColumnCatalog::primaryReprogrammingColumnKey() {
+        return kReprogrammingColumnKeys.front();
     }
 
     std::string_view ColumnCatalog::statusLastSortCode() {
@@ -202,17 +277,20 @@ namespace ssa::domain {
         return key == kStatusColumnKey;
     }
 
-    std::optional<ColumnDef> ColumnCatalog::find(const std::string_view key) {
-        const auto it = std::ranges::find_if(
-            kColumns, [key](const ColumnDef& column) { return column.key == key; });
-        if (it == kColumns.end()) {
-            return std::nullopt;
+    bool ColumnCatalog::isReprogrammingColumn(const std::string_view key) {
+        return std::ranges::find(kReprogrammingColumnKeys, key) != kReprogrammingColumnKeys.end();
+    }
+
+    const ColumnDef* ColumnCatalog::find(const std::string_view key) {
+        const auto it = columnByKey().find(key);
+        if (it == columnByKey().end()) {
+            return nullptr;
         }
-        return *it;
+        return &it->second;
     }
 
     bool ColumnCatalog::contains(const std::string_view key) {
-        return find(key).has_value();
+        return columnByKey().contains(key);
     }
 
 } // namespace ssa::domain

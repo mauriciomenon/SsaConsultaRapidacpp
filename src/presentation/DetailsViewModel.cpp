@@ -1,6 +1,43 @@
 #include "presentation/DetailsViewModel.h"
 
+#include "domain/SsaRelationGraph.h"
+
+#include <QVariantMap>
+
 namespace ssa::presentation {
+
+    namespace {
+
+        QString relationKindLabel(const domain::SsaRelationKind kind) {
+            switch (kind) {
+            case domain::SsaRelationKind::Current:
+                return QStringLiteral("Atual");
+            case domain::SsaRelationKind::DerivedFrom:
+                return QStringLiteral("Derivada de");
+            case domain::SsaRelationKind::Related:
+                return QStringLiteral("Relacionada");
+            }
+            return {};
+        }
+
+        QVariantMap relationMap(const domain::SsaRelationItem& relation) {
+            QVariantMap item;
+            item.insert(QStringLiteral("kind"), relationKindLabel(relation.kind));
+            item.insert(QStringLiteral("ssa"), QString::fromStdString(relation.number));
+            return item;
+        }
+
+        QVariantList buildRelations(const domain::SsaRecord& record) {
+            const auto relationItems = domain::SsaRelationGraph::fromRecord(record);
+            QVariantList relations;
+            relations.reserve(static_cast<qsizetype>(relationItems.size()));
+            for (const auto& relation : relationItems) {
+                relations.append(relationMap(relation));
+            }
+            return relations;
+        }
+
+    } // namespace
 
     DetailsViewModel::DetailsViewModel(QObject* parent) : QObject(parent), fields_(this) {}
 
@@ -25,6 +62,7 @@ namespace ssa::presentation {
             return;
         }
         title_ = "SSA " + selectedSsa_;
+        relations_ = buildRelations(record);
         fields_.setRecord(record);
         emit changed();
     }
@@ -32,12 +70,25 @@ namespace ssa::presentation {
     void DetailsViewModel::clearRecord() {
         fields_.clear();
         selectedSsa_.clear();
+        relations_.clear();
         title_ = "Nenhuma SSA selecionada";
         emit changed();
     }
 
     QString DetailsViewModel::selectedSsa() const {
         return selectedSsa_;
+    }
+
+    QString DetailsViewModel::selectedSsaNumber() const {
+        return selectedSsa_;
+    }
+
+    QVariantList DetailsViewModel::relations() const {
+        return relations_;
+    }
+
+    int DetailsViewModel::relationCount() const {
+        return static_cast<int>(relations_.size());
     }
 
 } // namespace ssa::presentation

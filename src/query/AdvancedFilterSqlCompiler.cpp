@@ -65,6 +65,56 @@ namespace ssa::query {
             hasCondition = true;
         }
 
+        void appendYearFromWeekFilter(std::ostringstream& where, std::vector<std::string>& bindings,
+                                      const std::string& columnKey, const std::optional<int> year,
+                                      bool& hasCondition) {
+            if (!year.has_value()) {
+                return;
+            }
+            appendSqlAndSeparator(where, hasCondition);
+            where << numericValueExpression(columnKey) << " BETWEEN ? AND ?";
+            bindings.push_back(std::to_string((*year * 100) + domain::kFirstIsoWeek));
+            bindings.push_back(std::to_string((*year * 100) + domain::kLastIsoWeek));
+            hasCondition = true;
+        }
+
+        void appendWeekRangeFilter(std::ostringstream& where, std::vector<std::string>& bindings,
+                                   const std::string& columnKey, const std::optional<int> startWeek,
+                                   const std::optional<int> endWeek, bool& hasCondition) {
+            if (!startWeek.has_value() && !endWeek.has_value()) {
+                return;
+            }
+            appendSqlAndSeparator(where, hasCondition);
+            const auto numericColumn = numericValueExpression(columnKey);
+            if (startWeek.has_value() && endWeek.has_value()) {
+                where << numericColumn << " BETWEEN ? AND ?";
+                bindings.push_back(std::to_string(*startWeek));
+                bindings.push_back(std::to_string(*endWeek));
+            } else if (startWeek.has_value()) {
+                where << numericColumn << " >= ?";
+                bindings.push_back(std::to_string(*startWeek));
+            } else {
+                where << numericColumn << " <= ?";
+                bindings.push_back(std::to_string(*endWeek));
+            }
+            hasCondition = true;
+        }
+
+        void appendReprogrammingEqualsFilter(std::ostringstream& where,
+                                             std::vector<std::string>& bindings,
+                                             const domain::AdvancedFilterSpec& advanced,
+                                             bool& hasCondition) {
+            if (!advanced.reprogrammingEquals.has_value()) {
+                return;
+            }
+            appendSqlAndSeparator(where, hasCondition);
+            where << numericValueExpression(
+                         std::string{domain::ColumnCatalog::primaryReprogrammingColumnKey()})
+                  << " = ?";
+            bindings.push_back(std::to_string(*advanced.reprogrammingEquals));
+            hasCondition = true;
+        }
+
         void appendDerivationFilter(std::ostringstream& where,
                                     const domain::AdvancedFilterSpec& advanced,
                                     bool& hasCondition) {
@@ -112,6 +162,19 @@ namespace ssa::query {
         std::ostringstream& where, std::vector<std::string>& bindings,
         const domain::AdvancedFilterSpec& advanced, bool& hasCondition) const {
         appendAdvancedWeekFilter(where, bindings, advanced, hasCondition);
+        appendYearFromWeekFilter(where, bindings,
+                                 std::string{domain::ColumnCatalog::issueWeekColumnKey()},
+                                 advanced.issueYear, hasCondition);
+        appendYearFromWeekFilter(where, bindings,
+                                 std::string{domain::ColumnCatalog::executionWeekColumnKey()},
+                                 advanced.executionYear, hasCondition);
+        appendReprogrammingEqualsFilter(where, bindings, advanced, hasCondition);
+        appendWeekRangeFilter(where, bindings,
+                              std::string{domain::ColumnCatalog::issueWeekColumnKey()},
+                              advanced.issueWeekStart, advanced.issueWeekEnd, hasCondition);
+        appendWeekRangeFilter(where, bindings,
+                              std::string{domain::ColumnCatalog::executionWeekColumnKey()},
+                              advanced.executionWeekStart, advanced.executionWeekEnd, hasCondition);
         appendDerivationFilter(where, advanced, hasCondition);
         appendReprogrammingFilter(where, advanced, hasCondition);
     }

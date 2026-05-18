@@ -26,6 +26,9 @@ namespace ssa::query {
             for (const auto& [key, value] : request.columnFilters) {
                 filter.columnTerms.emplace(key, parser.parseTerms(value));
             }
+            for (const auto& [key, value] : request.advancedFilters.textFilters) {
+                filter.columnTerms.emplace(key, parser.parseTerms(value));
+            }
             if (!request.quickSector.empty()) {
                 filter.quickSector = request.quickSector;
             }
@@ -36,15 +39,15 @@ namespace ssa::query {
 
         std::string orderByClause(const domain::SsaPageRequest& request) {
             std::ostringstream order;
-            order << quoteColumnIdentifier(request.sort.columnKey)
-                  << (request.sort.ascending ? " ASC" : " DESC");
             if (request.sort.statusLast) {
-                order << ", CASE WHEN UPPER(COALESCE("
+                order << "CASE WHEN UPPER(COALESCE("
                       << quoteColumnIdentifier(
                              std::string{domain::ColumnCatalog::statusColumnKey()})
                       << ", '')) = '" << uppercaseCopy(domain::ColumnCatalog::statusLastSortCode())
-                      << "' THEN 1 ELSE 0 END ASC";
+                      << "' THEN 1 ELSE 0 END ASC, ";
             }
+            order << quoteColumnIdentifier(request.sort.columnKey)
+                  << (request.sort.ascending ? " ASC" : " DESC");
             return order.str();
         }
 

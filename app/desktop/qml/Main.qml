@@ -9,20 +9,157 @@ import SsaConsultaRapida
 ApplicationWindow {
     id: root
     required property var mainViewModel
-    required property var smokeController
+    property var smokeController: null
     property var vm: mainViewModel
+    readonly property int bottomPaneHeight: Theme.bottomPaneHeight(height)
 
-    width: 1420
-    height: 860
-    minimumWidth: 1100
-    minimumHeight: 720
+    width: 1580
+    height: 940
+    minimumWidth: 1180
+    minimumHeight: 760
     visible: true
-    title: "SSA Consulta Rapida"
+    title: "Consulta Rapida de SSAs"
     color: Theme.window
     font.family: Theme.fontFamily
 
     background: Rectangle {
         color: Theme.window
+    }
+
+    Action {
+        id: openInputFolderAction
+        text: "Pasta entrada"
+        onTriggered: root.vm.actions.commands.openInputFolder()
+    }
+
+    Action {
+        id: openProcessedFolderAction
+        text: "Processados"
+        onTriggered: root.vm.actions.commands.openProcessedFolder()
+    }
+
+    Action {
+        id: openRedundantFolderAction
+        text: "Redundantes"
+        onTriggered: root.vm.actions.commands.openRedundantFolder()
+    }
+
+    Action {
+        id: openInstallationGuideAction
+        text: "Guia instalacao"
+        onTriggered: root.vm.actions.commands.openInstallationGuide()
+    }
+
+    menuBar: MenuBar {
+        Menu {
+            title: "Arquivo"
+
+            MenuItem {
+                text: "Carregar dados"
+                enabled: !root.vm.browse.status.loading
+                onTriggered: root.vm.browse.load()
+            }
+            MenuItem {
+                text: "Exportar resultados"
+                onTriggered: exportDialog.open()
+            }
+            MenuSeparator {}
+            MenuItem {
+                text: "Sair"
+                onTriggered: Qt.quit()
+            }
+        }
+
+        Menu {
+            title: "SAM"
+
+            MenuItem {
+                text: "Abrir SAM"
+                onTriggered: root.vm.actions.commands.openSamHome()
+            }
+            MenuItem {
+                text: "Abrir SSA selecionada"
+                enabled: root.vm.browse.details.selectedSsaNumber.length > 0
+                onTriggered: root.vm.selectionFlow.openSelectedSsa()
+            }
+        }
+
+        Menu {
+            title: "Pastas"
+
+            MenuItem {
+                action: openInputFolderAction
+            }
+            MenuItem {
+                action: openProcessedFolderAction
+            }
+            MenuItem {
+                action: openRedundantFolderAction
+            }
+            MenuItem {
+                action: openInstallationGuideAction
+            }
+        }
+
+        Menu {
+            title: "Filtros"
+
+            MenuItem {
+                text: "Aplicar filtros"
+                onTriggered: root.vm.browse.apply()
+            }
+            MenuItem {
+                text: "Abrir filtros avancados"
+                onTriggered: filterPanel.showAdvancedFilters()
+            }
+            MenuItem {
+                text: "Exportar filtros"
+                onTriggered: exportFiltersDialog.open()
+            }
+            MenuItem {
+                text: "Importar filtros"
+                onTriggered: importFiltersDialog.open()
+            }
+            MenuSeparator {}
+            MenuItem {
+                text: "Salvar preferencias"
+                onTriggered: root.vm.preferenceFlow.savePreferences()
+            }
+        }
+
+        Menu {
+            title: "Exibir"
+
+            MenuItem {
+                text: "Preferencias"
+                onTriggered: preferencesDialog.open()
+            }
+            MenuItem {
+                text: root.vm.ui.detailsVisible ? "Ocultar detalhes" : "Mostrar detalhes"
+                onTriggered: root.vm.ui.detailsVisible = !root.vm.ui.detailsVisible
+            }
+        }
+
+        Menu {
+            title: "Manutencao"
+
+            MenuItem {
+                text: "Reescanear incremental"
+                enabled: !root.vm.actions.workflows.running
+                onTriggered: root.vm.actions.workflows.rescanIncremental()
+            }
+            MenuItem {
+                text: "Reescanear completo"
+                enabled: !root.vm.actions.workflows.running
+                onTriggered: root.vm.actions.workflows.rescanFull()
+            }
+            MenuSeparator {}
+            MenuItem {
+                text: "Cancelar consulta"
+                enabled: root.vm.browse.status.loading
+                onTriggered: root.vm.requestFlow.cancelCurrentRequest()
+            }
+        }
     }
 
     Binding {
@@ -47,54 +184,49 @@ ApplicationWindow {
         function onOpenPreferencesRequested() {
             preferencesDialog.open()
         }
+
+        function onOpenAdvancedFiltersRequested() {
+            filterPanel.showAdvancedFilters()
+        }
     }
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.leftMargin: Theme.cardGap
-        anchors.rightMargin: Theme.cardGap
-        anchors.bottomMargin: Theme.cardGap
-        anchors.topMargin: Theme.cardGap
+        anchors.margins: 8
         spacing: Theme.gap
 
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: 56
-            color: Theme.panel
-            border.color: Theme.border
+            Layout.preferredHeight: 48
+            color: Theme.header
+            border.color: Theme.borderSoft
             radius: Theme.radius
 
             RowLayout {
                 anchors.fill: parent
-                anchors.margins: Theme.cardGap
+                anchors.margins: 8
                 spacing: Theme.gap
 
-                Rectangle {
-                    Layout.preferredWidth: 4
-                    Layout.fillHeight: true
-                    color: Theme.accent
-                    radius: 99
+                ActionButton {
+                    text: "Abrir SAM"
+                    implicitWidth: 116
+                    onClicked: root.vm.actions.commands.openSamHome()
                 }
-
-                Label {
-                    Layout.fillWidth: true
-                    text: "SSA Consulta Rapida"
-                    font.pixelSize: 24
-                    color: Theme.text
-                    font.bold: true
-                    font.letterSpacing: 0.1
-                    elide: Text.ElideRight
+                ActionButton {
+                    text: "Carregar Dados"
+                    enabled: !root.vm.browse.status.loading
+                    implicitWidth: 132
+                    onClicked: root.vm.browse.load()
                 }
-
-                Label {
-                    text: root.vm.ui.theme === "system" ? "Auto" : root.vm.ui.theme
-                    color: Theme.mutedText
-                    font.pixelSize: 11
+                ActionButton {
+                    text: "Reescanear"
+                    enabled: !root.vm.actions.workflows.running
+                    implicitWidth: 112
+                    onClicked: root.vm.actions.workflows.rescanIncremental()
                 }
-                ActionButton { text: "SAM"; onClicked: root.vm.commands.openSamHome() }
                 ActionButton {
                     id: openButton
-                    text: "Abrir"
+                    text: "Pastas"
                     onClicked: openMenu.open()
 
                     Menu {
@@ -102,39 +234,75 @@ ApplicationWindow {
                         y: openButton.height
 
                         MenuItem {
-                            text: "Pasta entrada"
-                            onTriggered: root.vm.commands.openInputFolder()
+                            action: openInputFolderAction
                         }
                         MenuItem {
-                            text: "Processados"
-                            onTriggered: root.vm.commands.openProcessedFolder()
+                            action: openProcessedFolderAction
                         }
                         MenuItem {
-                            text: "Redundantes"
-                            onTriggered: root.vm.commands.openRedundantFolder()
+                            action: openRedundantFolderAction
                         }
                         MenuItem {
-                            text: "Guia instalacao"
-                            onTriggered: root.vm.commands.openInstallationGuide()
+                            action: openInstallationGuideAction
                         }
                     }
                 }
-                ActionButton {
-                    text: "Atualizar"
-                    enabled: !root.vm.browse.status.loading
-                    onClicked: root.vm.browse.load()
+                Item { Layout.fillWidth: true }
+                Label {
+                    Layout.preferredWidth: 220
+                    Layout.preferredHeight: Theme.controlHeight
+                    text: root.vm.actions.currentWeek.label
+                    color: Theme.accent
+                    font.pixelSize: 16
+                    font.bold: true
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                    background: Rectangle {
+                        color: Theme.panelRaised
+                        border.color: Theme.border
+                        radius: Theme.radius
+                    }
                 }
-                ActionButton {
-                    text: "Exportar"
-                    enabled: !root.vm.exports.running
-                    onClicked: exportDialog.open()
+                Label {
+                    Layout.preferredWidth: 250
+                    Layout.preferredHeight: Theme.controlHeight
+                    text: "Status: " + root.vm.browse.totalRows + " SSAs"
+                    color: Theme.accent
+                    font.pixelSize: 15
+                    font.bold: true
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                    background: Rectangle {
+                        color: Theme.surface
+                        border.color: Theme.borderSoft
+                        radius: Theme.radius
+                    }
                 }
-                ActionButton { text: "Preferencias"; onClicked: preferencesDialog.open() }
+                Label {
+                    Layout.preferredWidth: 360
+                    Layout.preferredHeight: Theme.controlHeight
+                    text: root.vm.browse.status.error.length > 0
+                          ? root.vm.browse.status.error
+                          : root.vm.browse.status.message
+                    color: root.vm.browse.status.error.length > 0 ? Theme.dangerStrong : Theme.accent
+                    font.pixelSize: 14
+                    font.bold: true
+                    horizontalAlignment: Text.AlignLeft
+                    verticalAlignment: Text.AlignVCenter
+                    leftPadding: 12
+                    elide: Text.ElideRight
+                    background: Rectangle {
+                        color: Theme.panelRaised
+                        border.color: root.vm.browse.status.error.length > 0 ? Theme.danger : Theme.border
+                        radius: Theme.radius
+                    }
+                }
+                ActionButton { text: "Tema"; onClicked: preferencesDialog.open() }
                 ActionButton {
-                    text: "Cancelar consulta"
+                    text: "Cancelar"
                     enabled: root.vm.browse.status.loading
                     danger: true
-                    onClicked: root.vm.browse.cancelCurrentRequest()
+                    onClicked: root.vm.requestFlow.cancelCurrentRequest()
                 }
             }
         }
@@ -142,36 +310,31 @@ ApplicationWindow {
         SearchAndPager {
             Layout.fillWidth: true
             viewModel: root.vm.browse
+            onExportRequested: exportDialog.open()
+            onSaveFiltersRequested: root.vm.preferenceFlow.savePreferences()
+            onExportFiltersRequested: exportFiltersDialog.open()
+            onImportFiltersRequested: importFiltersDialog.open()
+            onConfigureColumnsRequested: preferencesDialog.open()
+        }
+
+        SsaTable {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            Layout.minimumHeight: 280
+            viewModel: root.vm.browse
+            density: root.vm.ui.density
+            onOpenRequested: root.vm.selectionFlow.openSelectedSsa()
         }
 
         SplitView {
             Layout.fillWidth: true
-            Layout.fillHeight: true
+            Layout.preferredHeight: root.bottomPaneHeight
+            Layout.minimumHeight: 280
             orientation: Qt.Horizontal
-
-            ColumnLayout {
-                SplitView.minimumWidth: 720
-                SplitView.fillWidth: true
-                spacing: Theme.gap
-
-                FilterPanel {
-                    Layout.fillWidth: true
-                    filterViewModel: root.vm.browse.filters
-                    onApplyRequested: root.vm.browse.apply()
-                }
-
-                SsaTable {
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    viewModel: root.vm.browse
-                    density: root.vm.ui.density
-                    onOpenRequested: root.vm.openSelectedSsa()
-                }
-            }
 
             Loader {
                 SplitView.minimumWidth: root.vm.ui.detailsVisible ? root.vm.ui.detailsMinimumWidth : 0
-                SplitView.preferredWidth: root.vm.ui.detailsVisible ? root.vm.ui.detailsEffectiveWidth : 0
+                SplitView.preferredWidth: root.vm.ui.detailsVisible ? root.vm.ui.detailsPreferredWidth : 0
                 SplitView.maximumWidth: root.vm.ui.detailsVisible ? root.vm.ui.detailsMaximumWidth : 0
                 active: root.vm.ui.detailsVisible
                 visible: root.vm.ui.detailsVisible
@@ -180,8 +343,16 @@ ApplicationWindow {
                 sourceComponent: DetailsPanel {
                     viewModel: root.vm.browse.details
                     density: root.vm.ui.density
-                    onOpenRequested: root.vm.openSelectedSsa()
+                    onOpenRequested: root.vm.selectionFlow.openSelectedSsa()
                 }
+            }
+
+            FilterPanel {
+                id: filterPanel
+                SplitView.minimumWidth: 520
+                SplitView.fillWidth: true
+                filterViewModel: root.vm.browse.filters
+                onApplyRequested: root.vm.browse.apply()
             }
         }
 
@@ -189,7 +360,7 @@ ApplicationWindow {
             Layout.fillWidth: true
             status: root.vm.browse.status
             browse: root.vm.browse
-            implicitHeight: 34
+            implicitHeight: 28
         }
     }
 
@@ -204,19 +375,30 @@ ApplicationWindow {
         fileMode: FileDialog.SaveFile
         nameFilters: ["CSV (*.csv)"]
 
-        function resolvedExportPath() {
-            const rawPath = selectedFile.toString().length > 0
-                ? selectedFile.toString()
-                : fileUrl.toString();
-            const resolved = Qt.resolvedUrl(rawPath)
-            return resolved.toLocalFile !== undefined && resolved.toLocalFile().length > 0
-                   ? resolved.toLocalFile()
-                   : resolved.toString()
+        onAccepted: {
+            root.vm.actions.exports.exportFilteredList(exportDialog.selectedFile)
         }
+    }
+
+    FileDialog {
+        id: exportFiltersDialog
+        title: "Exportar filtros"
+        fileMode: FileDialog.SaveFile
+        nameFilters: ["JSON (*.json)"]
 
         onAccepted: {
-            const exportPath = resolvedExportPath()
-            root.vm.exports.exportFilteredList(exportPath)
+            root.vm.preferenceFlow.exportFilterPreset(exportFiltersDialog.selectedFile)
+        }
+    }
+
+    FileDialog {
+        id: importFiltersDialog
+        title: "Importar filtros"
+        fileMode: FileDialog.OpenFile
+        nameFilters: ["JSON (*.json)"]
+
+        onAccepted: {
+            root.vm.preferenceFlow.importFilterPreset(importFiltersDialog.selectedFile)
         }
     }
 }

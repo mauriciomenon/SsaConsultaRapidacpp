@@ -10,8 +10,10 @@ TextField {
     rightPadding: 10
     color: Theme.text
     placeholderTextColor: Theme.mutedText
+    selectionColor: Theme.accentSoft
+    selectedTextColor: Theme.text
     background: Rectangle {
-        color: Theme.surface
+        color: Theme.panelRaised
         border.color: root.activeFocus ? Theme.accent : Theme.border
         border.width: 1
         radius: Theme.radius

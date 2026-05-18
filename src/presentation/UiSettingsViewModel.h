@@ -2,6 +2,7 @@
 
 #include "ports/IUserPreferencesStore.h"
 #include "ports/UserPreferenceDefaults.h"
+#include "presentation/UiDetailsPanelGeometry.h"
 
 #include <QObject>
 #include <QString>
@@ -18,6 +19,8 @@ namespace ssa::presentation {
                        detailsVisibleChanged)
         Q_PROPERTY(int detailsPanelWidth READ detailsPanelWidth WRITE setDetailsPanelWidth NOTIFY
                        detailsPanelWidthChanged)
+        // Runtime-only input that tracks the main window width for responsive layout.
+        // Not persisted in user preferences.
         Q_PROPERTY(int detailsViewportWidth READ detailsViewportWidth WRITE setDetailsViewportWidth
                        NOTIFY detailsWidthLayoutChanged)
         Q_PROPERTY(
@@ -37,6 +40,7 @@ namespace ssa::presentation {
         [[nodiscard]] QString resolvedTheme() const;
         [[nodiscard]] QString density() const;
         void setDensity(const QString& value);
+        void setSystemTheme(const QString& theme);
         [[nodiscard]] bool detailsVisible() const;
         void setDetailsVisible(bool value);
         [[nodiscard]] int detailsPanelWidth() const;
@@ -62,27 +66,18 @@ namespace ssa::presentation {
         void preferencesSaveRequested();
 
       private:
-        [[nodiscard]] bool isDensityValid(const QString& value) const;
-        [[nodiscard]] int clampToWidthRange(int value) const;
-        [[nodiscard]] int computeDetailsMinimumWidth() const;
-        [[nodiscard]] int computeDetailsMaximumWidth() const;
-        [[nodiscard]] int computeDetailsPreferredWidth() const;
-        void recalculateDetailsWidthRange();
+        [[nodiscard]] details_layout::DetailsPanelGeometry detailsLayoutGeometry() const;
+        bool applyDensityValue(const QString& value);
+        bool applyDetailsPanelWidthValue(int value);
+        void emitDetailsWidthLayoutChanged();
         void schedulePreferencesSave();
 
-        QString theme_{"light"};
+        QString theme_{"system"};
+        QString systemTheme_{"light"};
         QString density_{"normal"};
         bool detailsVisible_{true};
         int detailsPanelWidth_{ports::kDefaultDetailsPanelWidth};
         int detailsViewportWidth_{1280};
-        int detailsMinimumWidth_{340};
-        int detailsPreferredWidth_{340};
-        int detailsMaximumWidth_{380};
-        static constexpr int kDetailsMinAbsolutePx = 340;
-        static constexpr int kDetailsMaxAbsolutePx = 700;
-        static constexpr int kDetailsMinRatioPercent = 30;
-        static constexpr int kDetailsPrefRatioPercent = 45;
-        static constexpr int kDetailsMaxRatioPercent = 50;
         QTimer preferencesSaveDebounce_;
     };
 

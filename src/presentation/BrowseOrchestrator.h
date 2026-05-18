@@ -2,10 +2,12 @@
 
 #include "domain/SsaTypes.h"
 #include "ports/IUserPreferencesStore.h"
+#include "presentation/BrowseInputCoordinator.h"
 #include "presentation/BrowseQueryState.h"
+#include "presentation/BrowseRequestCoordinator.h"
+#include "presentation/BrowseSelectionCoordinator.h"
 #include "presentation/DetailsViewModel.h"
 #include "presentation/FilterPanelViewModel.h"
-#include "presentation/PageQueryCoordinator.h"
 #include "presentation/SearchViewModel.h"
 #include "presentation/SsaTableModel.h"
 #include "presentation/StatusViewModel.h"
@@ -60,19 +62,14 @@ namespace ssa::presentation {
         void cancelCurrentRequest();
 
       private:
-        [[nodiscard]] domain::SsaPageRequest buildRequest() const;
-        void runRequest(const domain::SsaPageRequest& request);
-        void applyPageResult(PageQueryResult result, const domain::SsaPageRequest& request);
-        void applyPageCanceled();
-        void applyPageError(const QString& message);
-
         SearchViewModel& search_;
         FilterPanelViewModel& filters_;
-        DetailsViewModel& details_;
         StatusViewModel& status_;
         SsaTableModel& tableModel_;
         BrowseQueryState queryState_;
-        PageQueryCoordinator pageQueries_;
+        BrowseInputCoordinator inputCoordinator_;
+        BrowseSelectionCoordinator selectionCoordinator_;
+        BrowseRequestCoordinator requestCoordinator_;
     };
 
 } // namespace ssa::presentation

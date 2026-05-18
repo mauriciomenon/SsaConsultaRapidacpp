@@ -1,141 +1,124 @@
 #include "presentation/FilterPanelViewModel.h"
 
 #include "domain/ColumnCatalog.h"
-#include "domain/SsaTypes.h"
-#include "query/SearchParser.h"
+#include "domain/ColumnValuePriorityPolicy.h"
+#include "presentation/FilterPanelStateHelpers.h"
 #include "query/SsaQueryService.h"
 
-#include <QtConcurrent>
+#include <QVariantMap>
 
+#include <algorithm>
+#include <iterator>
 #include <utility>
 #include <vector>
 
 namespace ssa::presentation {
-
     namespace {
+        constexpr std::size_t kMaxColumnValueOptionCacheEntries = 24;
 
-        constexpr std::string_view kStatusExclusionSummary = "sem SCA/SES/STE";
-
-        std::optional<int> parsePositiveInt(const QString& value) {
-            const auto text = value.trimmed();
-            if (text.isEmpty()) {
-                return std::nullopt;
-            }
-            bool ok = false;
-            const int parsed = text.toInt(&ok);
-            if (!ok || parsed <= 0) {
-                return std::nullopt;
-            }
-            return parsed;
-        }
-
-        domain::DerivationFilterMode derivationModeFromString(const QString& value) {
-            if (value == "root") {
-                return domain::DerivationFilterMode::RootOnly;
-            }
-            if (value == "derived") {
-                return domain::DerivationFilterMode::DerivedOnly;
-            }
-            return domain::DerivationFilterMode::All;
-        }
-
-        std::string derivationModeToString(const domain::DerivationFilterMode mode) {
-            if (mode == domain::DerivationFilterMode::RootOnly) {
-                return "root";
-            }
-            if (mode == domain::DerivationFilterMode::DerivedOnly) {
-                return "derived";
-            }
-            return "all";
-        }
-
-        std::vector<std::string>
-        filterSummaryParts(const std::string_view quickSector, const bool excludeScaSesSte,
-                           const std::map<std::string, std::string>& columnFilters,
-                           const domain::AdvancedFilterSpec& advanced) {
-            std::vector<std::string> parts;
-            if (!quickSector.empty()) {
-                parts.push_back(std::string(domain::ColumnCatalog::executorColumnKey()) + ":" +
-                                std::string(quickSector));
-            }
-            if (excludeScaSesSte) {
-                parts.push_back(std::string(kStatusExclusionSummary));
-            }
-            for (const auto& [key, value] : columnFilters) {
-                parts.push_back(key + ":" + value);
-            }
-            if (advanced.year.has_value()) {
-                parts.push_back("ano:" + std::to_string(*advanced.year));
-            }
-            if (advanced.week.has_value()) {
-                parts.push_back("semana:" + std::to_string(*advanced.week));
-            }
-            if (advanced.derivationMode == domain::DerivationFilterMode::RootOnly) {
-                parts.push_back("somente originais");
-            } else if (advanced.derivationMode == domain::DerivationFilterMode::DerivedOnly) {
-                parts.push_back("somente derivadas");
-            }
-            if (advanced.onlyReprogrammed) {
-                parts.push_back("somente reprogramadas");
-            }
-            return parts;
-        }
-
-        std::string joinFilterSummary(const std::vector<std::string>& parts,
-                                      const std::string_view separator = "  | ") {
-            std::string summary;
-            for (std::size_t i = 0; i < parts.size(); ++i) {
-                if (i > 0) {
-                    summary += separator;
+        QStringList toColumnValueDisplayList(const std::vector<std::string>& values) {
+            QStringList priority;
+            QStringList other;
+            const auto capacity = static_cast<int>(values.size());
+            priority.reserve(capacity);
+            other.reserve(capacity);
+            for (const auto& value : values) {
+                if (domain::isPriorityColumnValue(value)) {
+                    priority.append(QString::fromStdString(value));
+                } else {
+                    other.append(QString::fromStdString(value));
                 }
-                summary += parts[i];
             }
-            return summary;
+            for (auto& value : other) {
+                priority.append(std::move(value));
+            }
+            return priority;
+        }
+
+        void trimColumnValueOptionCache(std::map<QString, ColumnValueOptionCacheEntry>& cache,
+                                        const QString& protectedKey) {
+            while (cache.size() > kMaxColumnValueOptionCacheEntries) {
+                auto optionIt = cache.end();
+                for (auto candidate = cache.begin(); candidate != cache.end(); ++candidate) {
+                    if (candidate->first != protectedKey) {
+                        optionIt = candidate;
+                        break;
+                    }
+                }
+                if (optionIt == cache.end()) {
+                    return;
+                }
+                cache.erase(optionIt);
+            }
         }
 
     } // namespace
 
     FilterPanelViewModel::FilterPanelViewModel(std::shared_ptr<query::SsaQueryService> queryService,
                                                QObject* parent)
-        : QObject(parent), queryService_(std::move(queryService)) {
-        for (const auto& key : domain::ColumnCatalog::filterColumnKeys()) {
+        : QObject(parent), state_{domain::ColumnCatalog::defaultFilterColumnKey()},
+          columns_(state_, this), sector_(state_, this),
+          distinctValues_(std::move(queryService), state_, this), activeFilterRefreshTimer_(this) {
+        loadFilterCatalog();
+        advanced_ = new FilterPanelAdvancedViewModel(state_.advanced(), weekColumnKeys_, this);
+        connect(advanced_, &FilterPanelAdvancedViewModel::stateChanged, this,
+                [this]() { publishFilterStateChange(); });
+        connect(advanced_, &FilterPanelAdvancedViewModel::applyRequested, this,
+                &FilterPanelViewModel::applyRequested);
+        connect(&columns_, &ColumnFilterViewModel::stateChanged, this,
+                [this]() { synchronizeFilterState(false); });
+        connect(&columns_, &ColumnFilterViewModel::applyRequested, this,
+                &FilterPanelViewModel::applyRequested);
+        configureDistinctValueRefresh();
+        refreshActiveFilters();
+        scheduleColumnValueRefresh();
+        refreshQuickSectorOptions();
+    }
+
+    void FilterPanelViewModel::loadFilterCatalog() {
+        for (const auto& key : domain::ColumnCatalog::orderedFilterColumnKeys()) {
             filterColumnKeys_.push_back(QString::fromStdString(key));
         }
         for (const auto key : domain::ColumnCatalog::weekColumnKeys()) {
             weekColumnKeys_.push_back(
                 QString::fromUtf8(key.data(), static_cast<qsizetype>(key.size())));
         }
-        columnKey_ = QString::fromStdString(domain::ColumnCatalog::defaultFilterColumnKey());
-        weekColumnKey_ = "semana_programada";
-        refreshActiveFilters();
-        refreshColumnValueOptions();
+    }
+
+    void FilterPanelViewModel::configureDistinctValueRefresh() {
+        activeFilterRefreshTimer_.setInterval(120);
+        activeFilterRefreshTimer_.setSingleShot(true);
+        connect(&activeFilterRefreshTimer_, &QTimer::timeout, this, [this]() {
+            refreshActiveFilters();
+            emit changed();
+        });
+        connect(&distinctValues_, &FilterPanelDistinctValuesController::columnValueOptionsReady,
+                this, [this](const std::vector<std::string>& values, const QString& key) {
+                    setColumnValueOptions(values, key);
+                });
+        connect(&distinctValues_, &FilterPanelDistinctValuesController::quickSectorOptionsReady,
+                this,
+                [this](const std::vector<std::string>& values) { sector_.setOptions(values); });
+        connect(&sector_, &FilterPanelSectorViewModel::stateChanged, this,
+                [this](const bool quickSectorChanged) {
+                    publishFilterStateChange(quickSectorChanged);
+                });
     }
 
     QString FilterPanelViewModel::quickSector() const {
-        return quickSector_;
+        return sector_.quickSector();
     }
 
     void FilterPanelViewModel::setQuickSector(const QString& value) {
-        const auto trimmed = value.trimmed();
-        if (quickSector_ == trimmed) {
-            return;
-        }
-        quickSector_ = trimmed;
-        refreshActiveFilters();
-        emit changed();
+        sector_.setQuickSector(value);
     }
 
     bool FilterPanelViewModel::excludeScaSesSte() const {
-        return excludeScaSesSte_;
+        return sector_.excludeScaSesSte();
     }
 
     void FilterPanelViewModel::setExcludeScaSesSte(const bool value) {
-        if (excludeScaSesSte_ == value) {
-            return;
-        }
-        excludeScaSesSte_ = value;
-        refreshActiveFilters();
-        emit changed();
+        sector_.setExcludeScaSesSte(value);
     }
 
     QStringList FilterPanelViewModel::filterColumnKeys() const {
@@ -143,109 +126,41 @@ namespace ssa::presentation {
     }
 
     QString FilterPanelViewModel::columnKey() const {
-        return columnKey_;
+        return state_.columnKey();
     }
 
     void FilterPanelViewModel::setColumnKey(const QString& value) {
-        if (columnKey_ == value) {
+        if (!state_.setColumnKey(value)) {
             return;
         }
-        columnKey_ = value;
-        refreshColumnValueOptions();
-        emit changed();
+        publishFilterStateChange();
     }
 
     QString FilterPanelViewModel::columnValue() const {
-        return columnValue_;
+        return state_.columnValue();
     }
 
     void FilterPanelViewModel::setColumnValue(const QString& value) {
-        if (columnValue_ == value) {
+        if (!state_.setColumnValue(value)) {
             return;
         }
-        columnValue_ = value;
-        emit changed();
+        publishFilterStateChange();
     }
 
     QStringList FilterPanelViewModel::weekColumnKeys() const {
         return weekColumnKeys_;
     }
 
-    QString FilterPanelViewModel::weekColumnKey() const {
-        return weekColumnKey_;
+    QObject* FilterPanelViewModel::advanced() const {
+        return advanced_;
     }
 
-    void FilterPanelViewModel::setWeekColumnKey(const QString& value) {
-        const auto trimmed = value.trimmed();
-        if (weekColumnKey_ == trimmed || !weekColumnKeys_.contains(trimmed)) {
-            return;
-        }
-        weekColumnKey_ = trimmed;
-        refreshActiveFilters();
-        emit changed();
+    QObject* FilterPanelViewModel::columns() {
+        return &columns_;
     }
 
-    QString FilterPanelViewModel::yearFilter() const {
-        return yearFilter_;
-    }
-
-    void FilterPanelViewModel::setYearFilter(const QString& value) {
-        const auto trimmed = value.trimmed();
-        if (yearFilter_ == trimmed) {
-            return;
-        }
-        yearFilter_ = trimmed;
-        refreshActiveFilters();
-        emit changed();
-    }
-
-    QString FilterPanelViewModel::weekFilter() const {
-        return weekFilter_;
-    }
-
-    void FilterPanelViewModel::setWeekFilter(const QString& value) {
-        const auto trimmed = value.trimmed();
-        if (weekFilter_ == trimmed) {
-            return;
-        }
-        weekFilter_ = trimmed;
-        refreshActiveFilters();
-        emit changed();
-    }
-
-    QString FilterPanelViewModel::derivationMode() const {
-        return derivationMode_;
-    }
-
-    QStringList FilterPanelViewModel::derivationModeOptions() const {
-        return derivationModeOptions_;
-    }
-
-    void FilterPanelViewModel::setDerivationMode(const QString& value) {
-        const auto trimmed = value.trimmed();
-        if (derivationMode_ == trimmed) {
-            return;
-        }
-        derivationMode_ = trimmed == "root" || trimmed == "derived" ? trimmed : "all";
-        refreshActiveFilters();
-        emit changed();
-    }
-
-    bool FilterPanelViewModel::onlyReprogrammed() const {
-        return onlyReprogrammed_;
-    }
-
-    QStringList FilterPanelViewModel::columnValueOptions() const {
-        return columnValueOptions_;
-    }
-
-    void FilterPanelViewModel::setOnlyReprogrammed(const bool value) {
-        if (onlyReprogrammed_ == value) {
-            return;
-        }
-        onlyReprogrammed_ = value;
-        refreshActiveFilters();
-        emit changed();
+    QObject* FilterPanelViewModel::sector() {
+        return &sector_;
     }
 
     QStringList FilterPanelViewModel::activeFilters() const {
@@ -257,234 +172,200 @@ namespace ssa::presentation {
     }
 
     std::map<std::string, std::string> FilterPanelViewModel::columnFilters() const {
-        return columnFilters_;
+        return state_.columnFilters();
     }
 
     domain::AdvancedFilterSpec FilterPanelViewModel::advancedFilters() const {
-        domain::AdvancedFilterSpec filters;
-        filters.weekColumnKey = weekColumnKey_.trimmed().toStdString();
-        filters.year = parsePositiveInt(yearFilter_);
-        filters.week = parsePositiveInt(weekFilter_);
-        filters.derivationMode = derivationModeFromString(derivationMode_);
-        filters.onlyReprogrammed = onlyReprogrammed_;
-        return filters;
+        return state_.advancedFilters();
     }
 
     bool FilterPanelViewModel::hasFilterForColumn(const QString& key) const {
-        const auto normalizedKey = key.trimmed().toStdString();
-        if (domain::ColumnCatalog::isQuickSectorFilterColumn(normalizedKey) &&
-            !quickSector_.trimmed().isEmpty()) {
-            return true;
-        }
-        if (domain::ColumnCatalog::isStatusExclusionFilterColumn(normalizedKey) &&
-            excludeScaSesSte_) {
-            return true;
-        }
-        if (normalizedKey == weekColumnKey_.toStdString() &&
-            (parsePositiveInt(yearFilter_).has_value() ||
-             parsePositiveInt(weekFilter_).has_value())) {
-            return true;
-        }
-        if (normalizedKey == domain::ColumnCatalog::derivationColumnKey() &&
-            derivationMode_ != "all") {
-            return true;
-        }
-        for (const auto key : domain::ColumnCatalog::reprogrammingColumnKeys()) {
-            if (normalizedKey == key && onlyReprogrammed_) {
-                return true;
-            }
-        }
-        return columnFilters_.contains(normalizedKey);
+        return state_.hasFilterForColumn(key);
     }
 
-    void FilterPanelViewModel::setColumnValueOptions(std::vector<std::string> options) {
-        QStringList nextValues;
-        nextValues.reserve(static_cast<int>(options.size()));
-        for (const auto& option : options) {
-            const QString normalized = QString::fromStdString(option).trimmed();
-            if (!normalized.isEmpty()) {
-                nextValues.append(normalized);
-            }
+    int FilterPanelViewModel::columnValueOptionsVersion() const {
+        return columnValueOptionsVersion_;
+    }
+
+    QStringList FilterPanelViewModel::quickSectorOptions() const {
+        return sector_.options();
+    }
+
+    QStringList FilterPanelViewModel::quickSectorSelectorValues() const {
+        return sector_.selectorValues();
+    }
+
+    int FilterPanelViewModel::quickSectorSelectorIndex() const {
+        return sector_.selectorIndex();
+    }
+
+    QStringList FilterPanelViewModel::columnValueOptionsFor(const QString& key) const {
+        const auto it = columnValueOptionsByKey_.find(key.trimmed());
+        return it == columnValueOptionsByKey_.end() ? QStringList{} : it->second.options;
+    }
+
+    QStringList FilterPanelViewModel::columnValuePreviewOptionsFor(const QString& key,
+                                                                   const int limit,
+                                                                   const bool expanded) const {
+        const auto it = columnValueOptionsByKey_.find(key.trimmed());
+        const auto values =
+            it == columnValueOptionsByKey_.end() ? QStringList{} : it->second.previewSource;
+        if (expanded || limit <= 0 || values.size() <= limit) {
+            return values;
         }
-        if (columnValueOptions_ == nextValues) {
-            return;
-        }
-        columnValueOptions_ = std::move(nextValues);
+        return values.sliced(0, std::min(limit, static_cast<int>(values.size())));
+    }
+
+    bool FilterPanelViewModel::hasMoreColumnValueOptionsFor(const QString& key,
+                                                            const int limit) const {
+        return limit > 0 && columnValueOptionsFor(key).size() > limit;
+    }
+
+    bool FilterPanelViewModel::columnValueOptionsLoadingFor(const QString& key) const {
+        return columnValueLoadingKeys_.contains(key.trimmed());
+    }
+
+    void FilterPanelViewModel::setColumnValueOptions(const std::vector<std::string>& options,
+                                                     const QString& key) {
+        const auto normalizedKey = key.trimmed();
+        columnValueLoadingKeys_.remove(normalizedKey);
+        auto displayList = toColumnValueDisplayList(options);
+        columnValueOptionsByKey_[normalizedKey] = {
+            .source = options, .options = displayList, .previewSource = displayList};
+        trimColumnValueOptionCache(columnValueOptionsByKey_, normalizedKey);
+        ++columnValueOptionsVersion_;
         emit columnValueOptionsChanged();
     }
 
+    void FilterPanelViewModel::publishFilterStateChange(const bool quickSectorChanged) {
+        clearColumnValueOptionsCache();
+        scheduleActiveFilterRefresh();
+        scheduleColumnValueRefresh();
+        if (!quickSectorChanged) {
+            refreshQuickSectorOptions();
+        }
+    }
+
     void FilterPanelViewModel::setColumnFilters(std::map<std::string, std::string> filters) {
-        if (columnFilters_ == filters) {
+        if (!state_.setColumnFilters(std::move(filters))) {
             return;
         }
-        columnFilters_ = std::move(filters);
-        refreshActiveFilters();
-        emit changed();
+        columns_.refreshFromState();
+        synchronizeFilterState(false);
     }
 
     void FilterPanelViewModel::refreshColumnValueOptions() {
-        const auto request = buildDistinctValuesRequest(columnKey_);
-        if (columnValueOptionsWatcher_.isRunning()) {
-            columnValueOptionsWatcher_.cancel();
-        }
-        columnValueOptionsWatcher_.disconnect(this);
-
-        if (!request.has_value() || !queryService_) {
-            setColumnValueOptions({});
-            return;
-        }
-
-        const auto requestToken = ++columnValueRequestToken_;
-        const auto requestCopy = *request;
-        auto service = queryService_;
-        auto future = QtConcurrent::run(
-            [service, requestCopy]() { return service->distinctValues(requestCopy); });
-
-        connect(&columnValueOptionsWatcher_, &QFutureWatcherBase::finished, this,
-                [this, requestToken] { onColumnValueOptionsReady(requestToken); });
-        columnValueOptionsWatcher_.setFuture(future);
+        refreshColumnValueOptionsFor(state_.columnKey());
     }
 
-    void FilterPanelViewModel::onColumnValueOptionsReady(const std::uint64_t requestToken) {
-        if (requestToken != columnValueRequestToken_) {
+    void FilterPanelViewModel::refreshColumnValueOptionsFor(const QString& key) {
+        const auto normalizedKey = key.trimmed();
+        if (columnValueLoadingKeys_.contains(normalizedKey)) {
             return;
         }
-        if (!columnValueOptionsWatcher_.isFinished()) {
+        const auto cached = columnValueOptionsByKey_.find(normalizedKey);
+        if (cached != columnValueOptionsByKey_.end()) {
+            ++columnValueOptionsVersion_;
+            emit columnValueOptionsChanged();
             return;
         }
-        setColumnValueOptions(columnValueOptionsWatcher_.result());
+        columnValueLoadingKeys_.insert(normalizedKey);
+        ++columnValueOptionsVersion_;
+        emit columnValueOptionsChanged();
+        distinctValues_.refreshColumnValueOptionsFor(normalizedKey);
     }
 
-    std::optional<domain::DistinctValuesRequest>
-    FilterPanelViewModel::buildDistinctValuesRequest(const QString& columnKey) const {
-        const auto normalizedColumn = columnKey.trimmed();
-        if (normalizedColumn.isEmpty()) {
-            return std::nullopt;
-        }
-
-        domain::DistinctValuesRequest request;
-        request.columnKey = normalizedColumn.toStdString();
-        request.filter.quickSector = quickSector_.trimmed().toStdString();
-        request.filter.excludeScaSesSte = excludeScaSesSte_;
-        request.filter.advanced = advancedFilters();
-        request.filter.advanced.year = parsePositiveInt(yearFilter_);
-        request.filter.advanced.week = parsePositiveInt(weekFilter_);
-        const query::SearchParser parser;
-        for (const auto& [key, value] : columnFilters_) {
-            if (key != normalizedColumn.toStdString()) {
-                request.filter.columnTerms.emplace(key, parser.parseTerms(value));
-            }
-        }
-        request.limit = 300;
-        return request;
+    void FilterPanelViewModel::refreshQuickSectorOptions() {
+        distinctValues_.refreshQuickSectorOptions();
     }
 
     void FilterPanelViewModel::applyPreferences(const ports::UserPreferencesSnapshot& snapshot) {
-        bool didChange = false;
-        const auto nextQuickSector = QString::fromStdString(snapshot.quickSector).trimmed();
-        if (quickSector_ != nextQuickSector) {
-            quickSector_ = nextQuickSector;
-            didChange = true;
-        }
-        if (excludeScaSesSte_ != snapshot.excludeScaSesSte) {
-            excludeScaSesSte_ = snapshot.excludeScaSesSte;
-            didChange = true;
-        }
-        if (columnFilters_ != snapshot.columnFilters) {
-            columnFilters_ = snapshot.columnFilters;
-            didChange = true;
-        }
-        const auto nextWeekColumnKey =
-            QString::fromStdString(snapshot.advancedWeekColumnKey).trimmed();
-        if (weekColumnKeys_.contains(nextWeekColumnKey) && weekColumnKey_ != nextWeekColumnKey) {
-            weekColumnKey_ = nextWeekColumnKey;
-            didChange = true;
-        }
-        const auto nextYear = QString::fromStdString(snapshot.advancedYear).trimmed();
-        if (yearFilter_ != nextYear) {
-            yearFilter_ = nextYear;
-            didChange = true;
-        }
-        const auto nextWeek = QString::fromStdString(snapshot.advancedWeek).trimmed();
-        if (weekFilter_ != nextWeek) {
-            weekFilter_ = nextWeek;
-            didChange = true;
-        }
-        const auto nextDerivation = QString::fromStdString(snapshot.derivationMode).trimmed();
-        if (derivationMode_ != nextDerivation) {
-            derivationMode_ =
-                nextDerivation == "root" || nextDerivation == "derived" ? nextDerivation : "all";
-            didChange = true;
-        }
-        if (onlyReprogrammed_ != snapshot.onlyReprogrammed) {
-            onlyReprogrammed_ = snapshot.onlyReprogrammed;
-            didChange = true;
-        }
-        if (!didChange) {
+        if (!state_.applyPreferences(snapshot, weekColumnKeys_)) {
             return;
         }
-        refreshActiveFilters();
-        emit changed();
+        sector_.refreshFromState();
+        advanced_->refreshFromState();
+        columns_.refreshFromState();
+        synchronizeFilterState(true);
     }
 
     void FilterPanelViewModel::writePreferences(ports::UserPreferencesSnapshot& snapshot) const {
-        snapshot.quickSector = quickSector_.trimmed().toStdString();
-        snapshot.excludeScaSesSte = excludeScaSesSte_;
-        snapshot.columnFilters = columnFilters_;
-        snapshot.advancedWeekColumnKey = weekColumnKey_.trimmed().toStdString();
-        snapshot.advancedYear = yearFilter_.trimmed().toStdString();
-        snapshot.advancedWeek = weekFilter_.trimmed().toStdString();
-        snapshot.derivationMode = derivationMode_.trimmed().toStdString();
-        snapshot.onlyReprogrammed = onlyReprogrammed_;
+        state_.writePreferences(snapshot);
     }
 
     void FilterPanelViewModel::addColumnFilter() {
-        const auto key = columnKey_.trimmed();
-        const auto value = columnValue_.trimmed();
-        if (!key.isEmpty() && !value.isEmpty()) {
-            auto& filter = columnFilters_[key.toStdString()];
-            if (filter.empty()) {
-                filter = value.toStdString();
-            } else {
-                filter += ", " + value.toStdString();
-            }
-            columnValue_.clear();
-            refreshActiveFilters();
-            emit changed();
-            emit applyRequested();
+        if (!columns_.applyFilterFor(state_.columnKey(), state_.columnValue())) {
+            return;
         }
+        state_.setColumnValue(QString{});
     }
 
     void FilterPanelViewModel::resetFilters() {
-        quickSector_.clear();
-        columnKey_ = QString::fromStdString(domain::ColumnCatalog::defaultFilterColumnKey());
-        columnValue_.clear();
-        weekColumnKey_ = "semana_programada";
-        yearFilter_.clear();
-        weekFilter_.clear();
-        derivationMode_ = "all";
-        onlyReprogrammed_ = false;
-        columnFilters_.clear();
-        excludeScaSesSte_ = domain::kDefaultExcludeScaSesSte;
-        refreshActiveFilters();
-        emit changed();
+        state_.clear();
+        sector_.refreshFromState();
+        advanced_->refreshFromState();
+        columns_.refreshFromState();
+        synchronizeFilterState(true);
         emit applyRequested();
     }
 
     void FilterPanelViewModel::rebuildActiveFilters() {
-        const auto activeParts =
-            filterSummaryParts(quickSector_.trimmed().toStdString(), excludeScaSesSte_,
-                               columnFilters_, advancedFilters());
-        activeFilters_.clear();
-        activeFilters_.reserve(static_cast<int>(activeParts.size()));
-        for (const auto& filter : activeParts) {
-            activeFilters_.push_back(QString::fromStdString(filter));
+        if (!activeFiltersDirty_) {
+            return;
         }
-        activeFilterSummary_ = QString::fromStdString(joinFilterSummary(activeParts));
+        activeFiltersDirty_ = false;
+        const auto activeParts =
+            filterpanel::buildFilterSummaryParts(state_.quickSector().trimmed().toStdString(),
+                                                 state_.columnFilters(), advancedFilters());
+        QStringList nextActiveFilters;
+        nextActiveFilters.reserve(static_cast<qsizetype>(activeParts.size()));
+        for (const auto& filter : activeParts) {
+            nextActiveFilters.append(QString::fromStdString(filter));
+        }
+        const auto nextSummary =
+            QString::fromStdString(filterpanel::joinFilterSummary(activeParts, "  | "));
+        if (activeFilters_ == nextActiveFilters && activeFilterSummary_ == nextSummary) {
+            return;
+        }
+        activeFilters_ = std::move(nextActiveFilters);
+        activeFilterSummary_ = nextSummary;
     }
 
     void FilterPanelViewModel::refreshActiveFilters() {
         rebuildActiveFilters();
+    }
+
+    void FilterPanelViewModel::synchronizeFilterState(const bool refreshSectorOptions) {
+        markActiveFiltersDirty();
+        refreshActiveFilters();
+        scheduleColumnValueRefresh();
+        if (refreshSectorOptions) {
+            refreshQuickSectorOptions();
+        }
+        emit changed();
+    }
+
+    void FilterPanelViewModel::scheduleColumnValueRefresh() {
+        distinctValues_.scheduleColumnValueRefresh();
+    }
+
+    void FilterPanelViewModel::clearColumnValueOptionsCache() {
+        if (columnValueOptionsByKey_.empty() && columnValueLoadingKeys_.empty()) {
+            return;
+        }
+        columnValueOptionsByKey_.clear();
+        columnValueLoadingKeys_.clear();
+        ++columnValueOptionsVersion_;
+        emit columnValueOptionsChanged();
+    }
+
+    void FilterPanelViewModel::scheduleActiveFilterRefresh() {
+        markActiveFiltersDirty();
+        activeFilterRefreshTimer_.start();
+    }
+
+    void FilterPanelViewModel::markActiveFiltersDirty() {
+        activeFiltersDirty_ = true;
     }
 
 } // namespace ssa::presentation

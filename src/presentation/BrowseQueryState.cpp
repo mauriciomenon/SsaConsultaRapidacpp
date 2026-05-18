@@ -95,7 +95,7 @@ namespace ssa::presentation {
             sort_.columnKey = columnKey;
             sort_.ascending = true;
         }
-        sort_.statusLast = domain::requiresStatusLastSort(columnKey);
+        sort_.statusLast = domain::shouldApplyStatusLastTieBreaker(columnKey);
         resetPage();
     }
 
@@ -116,7 +116,7 @@ namespace ssa::presentation {
         if (domain::ColumnCatalog::contains(snapshot.sortColumnKey)) {
             sort_.columnKey = snapshot.sortColumnKey;
             sort_.ascending = snapshot.sortAscending;
-            sort_.statusLast = domain::requiresStatusLastSort(sort_.columnKey);
+            sort_.statusLast = domain::shouldApplyStatusLastTieBreaker(sort_.columnKey);
         }
         columnWidths_ = snapshot.columnWidths;
     }

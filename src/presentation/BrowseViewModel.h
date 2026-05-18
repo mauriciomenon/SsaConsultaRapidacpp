@@ -28,6 +28,7 @@ namespace ssa::presentation {
         Q_PROPERTY(SsaTableModel* tableModel READ tableModel CONSTANT)
         Q_PROPERTY(int pageNumber READ pageNumber NOTIFY pageChanged)
         Q_PROPERTY(int pageCount READ pageCount NOTIFY pageChanged)
+        Q_PROPERTY(QString pageSummary READ pageSummary NOTIFY pageChanged)
         Q_PROPERTY(qlonglong totalRows READ totalRows NOTIFY pageChanged)
         Q_PROPERTY(int pageSize READ pageSize WRITE setPageSize NOTIFY pageChanged)
         Q_PROPERTY(QString sortColumnKey READ sortColumnKey NOTIFY sortChanged)
@@ -45,6 +46,7 @@ namespace ssa::presentation {
         [[nodiscard]] SsaTableModel* tableModel();
         [[nodiscard]] int pageNumber() const;
         [[nodiscard]] int pageCount() const;
+        [[nodiscard]] QString pageSummary() const;
         [[nodiscard]] qlonglong totalRows() const;
         [[nodiscard]] int pageSize() const;
         void setPageSize(int value);
@@ -54,7 +56,7 @@ namespace ssa::presentation {
         [[nodiscard]] domain::SsaPageRequest currentRequest() const;
         [[nodiscard]] const std::vector<std::string>& visibleColumns() const;
         [[nodiscard]] const std::map<std::string, int>& columnWidths() const;
-        Q_INVOKABLE void setFilterColumn(const QString& key);
+        Q_INVOKABLE void setFilterPanelFocusColumn(const QString& key);
 
         void applyPreferences(const ports::UserPreferencesSnapshot& snapshot);
         void writePreferences(ports::UserPreferencesSnapshot& snapshot) const;
@@ -78,12 +80,17 @@ namespace ssa::presentation {
         void cancelCurrentRequest();
 
       private:
+        void invalidateTableHeaders() const;
+        void rebuildTableHeaders() const;
+
         SearchViewModel search_;
         FilterPanelViewModel filters_;
         DetailsViewModel details_;
         StatusViewModel status_;
         SsaTableModel tableModel_;
         BrowseOrchestrator orchestrator_;
+        mutable QVariantList cachedTableHeaders_;
+        mutable bool tableHeadersDirty_{true};
     };
 
 } // namespace ssa::presentation

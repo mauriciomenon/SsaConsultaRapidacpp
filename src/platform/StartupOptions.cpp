@@ -1,6 +1,7 @@
 #include "platform/StartupOptions.h"
 
 #include <QDir>
+#include <QUrl>
 
 #include <filesystem>
 #include <stdexcept>
@@ -45,7 +46,7 @@ namespace ssa::platform {
             return toQString(path);
         }
 
-        QString normalizedWritableDirectoryPath(const QString& value, const char* label) {
+        QString normalizedOptionalDirectoryPath(const QString& value, const char* label) {
             const auto path = normalizedPath(value);
             if (std::filesystem::exists(path) && !std::filesystem::is_directory(path)) {
                 throw std::invalid_argument(std::string{label} + " is not a directory");
@@ -56,13 +57,32 @@ namespace ssa::platform {
             return toQString(path);
         }
 
+        QString normalizedOptionalUrl(const QString& value, const char* label) {
+            if (value.isEmpty()) {
+                return {};
+            }
+            const QUrl url{value};
+            if (!url.isValid() || url.scheme().isEmpty()) {
+                throw std::invalid_argument(std::string{label} + " is not a valid absolute URL");
+            }
+            if (url.scheme() != "http" && url.scheme() != "https") {
+                throw std::invalid_argument(std::string{label} + " must use http or https");
+            }
+            return value;
+        }
+
     } // namespace
+
+    QString StartupOptions::defaultSamBaseUrl() {
+        return QStringLiteral("https://osprd.itaipu/SAM_SMA/");
+    }
 
     StartupOptions StartupOptions::fromParser(const QCommandLineParser& parser) {
         StartupOptions options;
         options.projectRoot = parser.value("project-root");
         options.databasePath = parser.value("db");
         options.configDir = parser.value("config-dir");
+        options.samBaseUrl = parser.value("sam-url");
 
         if (options.projectRoot.isEmpty()) {
             options.projectRoot = QDir::currentPath();
@@ -73,9 +93,13 @@ namespace ssa::platform {
         if (options.configDir.isEmpty()) {
             options.configDir = QDir(options.projectRoot).filePath("config");
         }
+        if (options.samBaseUrl.isEmpty()) {
+            options.samBaseUrl = defaultSamBaseUrl();
+        }
         options.projectRoot = normalizedExistingDirectory(options.projectRoot, "project root");
         options.databasePath = normalizedDatabasePath(options.databasePath, "database path");
-        options.configDir = normalizedWritableDirectoryPath(options.configDir, "config dir");
+        options.configDir = normalizedOptionalDirectoryPath(options.configDir, "config dir");
+        options.samBaseUrl = normalizedOptionalUrl(options.samBaseUrl, "SAM URL");
         return options;
     }
 

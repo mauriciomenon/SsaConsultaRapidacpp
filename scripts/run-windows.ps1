@@ -1,28 +1,57 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)]
-    [string]$DbPath,
+    [string]$DbPath = "",
     [string]$Preset = "dev",
-    [string]$QtDir,
     [string]$ProjectRoot = "",
-    [string]$ExecutablePath,
-    [string]$ConfigDir,
-    [string]$Screenshot
+    [string]$ConfigDir = "",
+    [string]$Screenshot = "",
+    [string]$QtDir = "",
+    [switch]$Help
 )
 
 $ErrorActionPreference = "Stop"
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$repoRoot = (Resolve-Path (Join-Path $scriptDir "..")).Path
+$repoRoot = if ($ProjectRoot) { (Resolve-Path $ProjectRoot).Path } else { (Resolve-Path (Join-Path $scriptDir "..")).Path }
 $buildDir = Join-Path $repoRoot "build\$Preset"
-if ($ExecutablePath) {
-    $executable = $ExecutablePath
-} else {
-    $executableCandidates = @(Join-Path $buildDir "ssa_consulta_rapida.exe")
-    $executable = $executableCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+. (Join-Path $scriptDir "project-paths.ps1")
+
+if ($Help) {
+    Write-Host @"
+Usage:
+  .\scripts\run-windows.ps1
+
+Run built Windows app using default project DB resolution.
+
+The database path is resolved in this order:
+  1) <repo>\data\ssas.db
+
+Defaults:
+  Preset: dev
+  Project root: directory that contains this script.
+
+Explicit options can be passed directly:
+  .\scripts\run-windows.ps1 -DbPath <path> -Preset <preset> -ProjectRoot <dir> -ConfigDir <dir> -Screenshot <file>
+"@
+    return
 }
 
-if (-not $executable) {
-    throw "Binary not found for preset '$Preset' at: $buildDir\ssa_consulta_rapida.exe. Run .\scripts\build-windows.ps1 -Preset $Preset or pass -ExecutablePath."
+if (-not $DbPath) {
+    $DbPath = Resolve-ProjectDefaultDbPath -Root $repoRoot
+}
+if (-not $DbPath) {
+    Write-ProjectDefaultDbNotFound `
+        -Root $repoRoot `
+        -ExplicitPathHint "Use .\scripts\run-windows.ps1 -DbPath <path> for an explicit external DB path."
+    exit 1
+}
+
+if (-not (Test-Path $DbPath)) {
+    throw "Database path not found: $DbPath"
+}
+
+$executable = Join-Path $buildDir "ssa_consulta_rapida.exe"
+if (-not (Test-Path $executable)) {
+    throw "Binary not found for preset '$Preset' at: $executable. Run .\scripts\build-windows.ps1 before running .\scripts\run-windows.ps1."
 }
 
 $qtBinPath = $null
@@ -32,17 +61,12 @@ if ($QtDir) {
     } else {
         Write-Warning "QtDir not found: $QtDir. Continuing without adding Qt bin to PATH."
     }
-} elseif ($env:QT_DIR) {
-    $qtBinPath = Join-Path $env:QT_DIR "bin"
-} else {
-    Write-Warning "Qt bin path not provided. If the app fails to start with missing DLL errors, run from a Developer Command Prompt with Qt bin in PATH or pass -QtDir."
 }
 
-$argsList = @()
-if ($ProjectRoot) {
-    $argsList += @("--project-root", $ProjectRoot)
-}
-$argsList += @("--db", $DbPath)
+$argsList = @(
+    "--project-root", $repoRoot,
+    "--db", $DbPath
+)
 if ($ConfigDir) { $argsList += @("--config-dir", $ConfigDir) }
 if ($Screenshot) { $argsList += @("--screenshot", $Screenshot) }
 
@@ -50,9 +74,6 @@ if ($qtBinPath -and (Test-Path $qtBinPath)) {
     $previousPath = $env:Path
     try {
         $env:Path = "$qtBinPath;$previousPath"
-        if (-not (Get-Command cl.exe -ErrorAction SilentlyContinue) -and -not (Get-Command link.exe -ErrorAction SilentlyContinue)) {
-            Write-Warning "Developer toolchain commands (cl.exe/link.exe) not found. Run this script from a Developer PowerShell for Visual Studio."
-        }
         & $executable @argsList
     }
     finally {

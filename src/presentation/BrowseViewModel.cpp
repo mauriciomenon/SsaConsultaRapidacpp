@@ -14,16 +14,23 @@ namespace ssa::presentation {
           status_(this), tableModel_(std::string{domain::kSsaNumberColumnKey}, this),
           orchestrator_(std::move(queryService), search_, filters_, details_, status_, tableModel_,
                         this) {
-        connect(&orchestrator_, &BrowseOrchestrator::pageChanged, this,
-                &BrowseViewModel::pageChanged);
+        connect(&orchestrator_, &BrowseOrchestrator::pageChanged, this, [this] {
+            invalidateTableHeaders();
+            emit pageChanged();
+        });
         connect(&orchestrator_, &BrowseOrchestrator::sortChanged, this, [this] {
+            invalidateTableHeaders();
             emit sortChanged();
             emit tableHeadersChanged();
         });
-        connect(&filters_, &FilterPanelViewModel::changed, this,
-                &BrowseViewModel::tableHeadersChanged);
-        connect(&tableModel_, &SsaTableModel::columnsChanged, this,
-                &BrowseViewModel::tableHeadersChanged);
+        connect(&filters_, &FilterPanelViewModel::changed, this, [this] {
+            invalidateTableHeaders();
+            emit tableHeadersChanged();
+        });
+        connect(&tableModel_, &SsaTableModel::columnsChanged, this, [this] {
+            invalidateTableHeaders();
+            emit tableHeadersChanged();
+        });
         connect(&orchestrator_, &BrowseOrchestrator::preferencesSaveRequested, this,
                 &BrowseViewModel::preferencesSaveRequested);
     }
@@ -56,6 +63,13 @@ namespace ssa::presentation {
         return orchestrator_.pageCount();
     }
 
+    QString BrowseViewModel::pageSummary() const {
+        if (totalRows() == 0 || pageCount() == 0) {
+            return QStringLiteral("Sem resultados");
+        }
+        return QStringLiteral("Pagina %1 de %2").arg(pageNumber()).arg(pageCount());
+    }
+
     qlonglong BrowseViewModel::totalRows() const {
         return orchestrator_.totalRows();
     }
@@ -77,25 +91,40 @@ namespace ssa::presentation {
     }
 
     QVariantList BrowseViewModel::tableHeaders() const {
-        QVariantList headers;
+        if (!tableHeadersDirty_) {
+            return cachedTableHeaders_;
+        }
+        rebuildTableHeaders();
+        return cachedTableHeaders_;
+    }
+
+    void BrowseViewModel::rebuildTableHeaders() const {
         const auto columns = tableModel_.tableColumns();
         const auto widths = tableModel_.columnWidths();
+        QVariantList headers;
         headers.reserve(columns.size());
+        const auto currentSortColumn = sortColumnKey();
+        const auto isSortAscending = sortAscending();
+        static const auto ssaNumberKey = QString::fromUtf8(domain::kSsaNumberColumnKey.data(),
+                                                           domain::kSsaNumberColumnKey.size());
+
         for (qsizetype index = 0; index < columns.size(); ++index) {
             QVariantMap header = columns[index].toMap();
             const auto key = header.value("key").toString();
-            auto label = header.value("label").toString();
-            if (filters_.hasFilterForColumn(key)) {
-                label += " [f]";
-            }
-            if (key == sortColumnKey()) {
-                label += sortAscending() ? "  ^" : "  v";
-            }
-            header.insert("label", label);
+            header.insert("filtered", filters_.hasFilterForColumn(key));
+            header.insert("sorted", key == currentSortColumn);
+            header.insert("sortAscending", isSortAscending);
+            header.insert("opensSam", key == ssaNumberKey);
             header.insert("width", index < widths.size() ? widths[index].toInt() : 0);
             headers.push_back(header);
         }
-        return headers;
+        cachedTableHeaders_.swap(headers);
+        tableHeadersDirty_ = false;
+    }
+
+    void BrowseViewModel::invalidateTableHeaders() const {
+        cachedTableHeaders_.clear();
+        tableHeadersDirty_ = true;
     }
 
     domain::SsaPageRequest BrowseViewModel::currentRequest() const {
@@ -110,7 +139,7 @@ namespace ssa::presentation {
         return orchestrator_.columnWidths();
     }
 
-    void BrowseViewModel::setFilterColumn(const QString& key) {
+    void BrowseViewModel::setFilterPanelFocusColumn(const QString& key) {
         filters_.setColumnKey(key);
     }
 

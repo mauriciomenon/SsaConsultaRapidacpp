@@ -9,33 +9,39 @@
 
 namespace ssa::ports {
 
-    struct UserPreferencesSnapshot {
-        int schemaVersion{1};
-        std::vector<std::string> visibleColumns;
-        std::map<std::string, int> columnWidths;
-        int pageSize{domain::kDefaultPageSize};
-        std::string theme{"system"};
-        std::string density{"normal"};
-        bool detailsVisible{true};
-        int detailsPanelWidth{ports::kDefaultDetailsPanelWidth};
-        std::string sortColumnKey{"numero_ssa"};
-        bool sortAscending{false};
+    struct FilterPreferencesSnapshot {
+        std::string searchText;
         std::string quickSector;
-        bool excludeScaSesSte{true};
         std::map<std::string, std::string> columnFilters;
+        std::map<std::string, std::string> advancedTextFilters;
         std::string advancedWeekColumnKey{"semana_programada"};
         std::string advancedYear;
         std::string advancedWeek;
+        std::string issueYear;
+        std::string executionYear;
+        std::string reprogrammingEquals;
+        std::string issueWeekStart;
+        std::string issueWeekEnd;
+        std::string executionWeekStart;
+        std::string executionWeekEnd;
         std::string derivationMode{"all"};
+        bool excludeScaSesSte{true};
         bool onlyReprogrammed{false};
     };
 
-    [[nodiscard]] inline std::string normalizedDerivationMode(std::string value) {
-        if (value == "root" || value == "derived") {
-            return value;
-        }
-        return "all";
-    }
+    struct UserPreferencesSnapshot {
+        std::vector<std::string> visibleColumns;
+        std::map<std::string, int> columnWidths;
+        std::string theme{"gruvbox"};
+        std::string density{"compact"};
+        std::string sortColumnKey{"numero_ssa"};
+        FilterPreferencesSnapshot filters;
+        int schemaVersion{1};
+        int pageSize{domain::kDefaultPageSize};
+        int detailsPanelWidth{ports::kDefaultDetailsPanelWidth};
+        bool detailsVisible{true};
+        bool sortAscending{false};
+    };
 
     class IUserPreferencesStore {
       public:

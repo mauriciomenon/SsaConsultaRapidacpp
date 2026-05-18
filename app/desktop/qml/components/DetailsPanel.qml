@@ -10,8 +10,8 @@ Rectangle {
     required property var viewModel
     property string density: "normal"
     readonly property int titleTextSize: Theme.densityValue(root.density, 14, 16, 18)
-    readonly property int labelTextSize: Theme.densityValue(root.density, 10, 11, 12)
-    readonly property int valueTextSize: Theme.densityValue(root.density, 11, 12, 14)
+    readonly property int labelTextSize: Theme.densityValue(root.density, 12, 13, 14)
+    readonly property int valueTextSize: Theme.densityValue(root.density, 12, 13, 15)
     signal openRequested()
 
     color: Theme.panel
@@ -21,24 +21,97 @@ Rectangle {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: Theme.cardGap
+        anchors.margins: 10
         spacing: Theme.gap
 
-        RowLayout {
+        Label {
             Layout.fillWidth: true
-            Label {
-                Layout.fillWidth: true
-                text: root.viewModel.title
-                color: Theme.text
-                font.bold: true
-                font.pixelSize: root.titleTextSize
-                wrapMode: Text.Wrap
-                elide: Text.ElideRight
-            }
-            ActionButton {
-                text: "Abrir"
-                enabled: root.viewModel.fieldCount > 0
-                onClicked: root.openRequested()
+            text: root.viewModel.title
+            color: Theme.text
+            font.bold: true
+            font.pixelSize: root.titleTextSize
+            wrapMode: Text.Wrap
+            elide: Text.ElideRight
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.preferredHeight: relationsLayout.implicitHeight
+            visible: root.viewModel.relationCount > 0
+            color: Theme.surface
+            border.color: Theme.border
+            radius: Theme.radius
+            clip: true
+
+            ColumnLayout {
+                id: relationsLayout
+                anchors.fill: parent
+                anchors.margins: 8
+                spacing: 6
+
+                Label {
+                    Layout.fillWidth: true
+                    text: "SSAs relacionadas"
+                    color: Theme.accentStrong
+                    font.bold: true
+                    font.pixelSize: root.labelTextSize
+                    elide: Text.ElideRight
+                }
+
+                Flow {
+                    id: relationsFlow
+                    Layout.fillWidth: true
+                    spacing: 6
+
+                    Repeater {
+                        model: root.viewModel.relations
+
+                        delegate: Row {
+                            id: relationRow
+                            required property int index
+                            required property var modelData
+                            spacing: 6
+                            height: relationBox.implicitHeight
+
+                            Label {
+                                visible: relationRow.index > 0
+                                text: "->"
+                                color: Theme.mutedText
+                                font.bold: true
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+
+                            Rectangle {
+                                id: relationBox
+                                width: Math.max(Theme.relationNodeMinWidth,
+                                                relationText.implicitWidth + 18)
+                                implicitHeight: Theme.relationNodeHeight
+                                radius: Theme.radius
+                                color: relationRow.index === 0 ? Theme.accentSoft : Theme.panelRaised
+                                border.color: relationRow.index === 0 ? Theme.accent : Theme.border
+
+                                Column {
+                                    anchors.centerIn: parent
+                                    spacing: 1
+
+                                    Text {
+                                        id: relationText
+                                        text: relationRow.modelData.ssa
+                                        color: Theme.text
+                                        font.bold: true
+                                        font.pixelSize: root.valueTextSize
+                                    }
+
+                                    Text {
+                                        text: relationRow.modelData.kind
+                                        color: Theme.mutedText
+                                        font.pixelSize: Math.max(10, root.valueTextSize - 2)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -61,35 +134,36 @@ Rectangle {
                 property string rowValue: value === undefined || value === null ? "" : String(value)
 
                 width: detailsList.width
-                spacing: 0
+                spacing: 2
 
-                Label {
+                RowLayout {
                     width: parent.width
-                    font.pixelSize: root.labelTextSize
-                    text: fieldDelegate.label
-                    color: Theme.mutedText
-                    elide: Text.ElideRight
+                    spacing: Theme.gap
+
+                    Label {
+                        Layout.preferredWidth: Theme.detailsLabelWidth
+                        font.pixelSize: root.labelTextSize
+                        font.bold: true
+                        text: fieldDelegate.label + ":"
+                        color: Theme.text
+                        elide: Text.ElideRight
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: fieldDelegate.rowValue
+                        color: Theme.text
+                        wrapMode: Text.Wrap
+                        font.pixelSize: root.valueTextSize
+                        font.bold: true
+                    }
                 }
 
                 Rectangle {
                     width: parent.width
                     height: 1
                     color: Theme.border
-                    opacity: 0.5
-                }
-
-                Text {
-                    width: parent.width
-                    text: fieldDelegate.rowValue
-                    color: Theme.text
-                    wrapMode: Text.Wrap
-                    font.pixelSize: root.valueTextSize
-                }
-
-                Rectangle {
-                    width: parent.width
-                    height: Theme.gap
-                    color: "transparent"
+                    opacity: 0.8
                 }
             }
         }
