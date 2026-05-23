@@ -26,6 +26,7 @@ namespace ssa::presentation {
           selectionFlow_(browse_, *actions_.commands()), requestFlow_(browse_) {
         preferencesFlow_.applyStoredPreferences(preferences_.loadInitial());
         connectPreferenceFlows();
+        connectWorkflowRefresh();
     }
 
     void MainViewModel::connectPreferenceFlows() {
@@ -39,6 +40,23 @@ namespace ssa::presentation {
                 browse_.status(), &StatusViewModel::setError);
         connect(&preferencesFlow_, &MainPreferenceFlowCoordinator::statusErrorClearRequested,
                 browse_.status(), [status = browse_.status()] { status->setError({}); });
+    }
+
+    void MainViewModel::connectWorkflowRefresh() {
+        connect(actions_.workflows(), &WorkflowCommandViewModel::lastResultChanged, &browse_,
+                [this] {
+                    if (actions_.workflows()->lastSucceeded()) {
+                        pendingWorkflowRefreshMessage_ = actions_.workflows()->successMessage();
+                        browse_.apply();
+                    }
+                });
+        connect(&browse_, &BrowseViewModel::pageChanged, this, [this] {
+            if (pendingWorkflowRefreshMessage_.isEmpty()) {
+                return;
+            }
+            browse_.status()->setMessage(pendingWorkflowRefreshMessage_);
+            pendingWorkflowRefreshMessage_.clear();
+        });
     }
 
     BrowseViewModel* MainViewModel::browse() {

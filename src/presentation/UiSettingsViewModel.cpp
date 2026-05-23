@@ -17,10 +17,9 @@ namespace ssa::presentation {
     }
 
     void UiSettingsViewModel::setTheme(const QString& value) {
-        if (theme_ == value) {
+        if (!applyThemeValue(value)) {
             return;
         }
-        theme_ = value;
         emit themeChanged();
         emit resolvedThemeChanged();
         schedulePreferencesSave();
@@ -111,20 +110,26 @@ namespace ssa::presentation {
     }
 
     int UiSettingsViewModel::detailsEffectiveWidth() const {
+        if (!detailsVisible_) {
+            return 0;
+        }
         const int preferred = detailsPanelWidth_ > 0 ? detailsPanelWidth_ : detailsPreferredWidth();
         const auto geometry = detailsLayoutGeometry();
         return std::clamp(preferred, geometry.minimumWidth, geometry.maximumWidth);
     }
 
     void UiSettingsViewModel::applyPreferences(const ports::UserPreferencesSnapshot& snapshot) {
-        theme_ = QString::fromStdString(snapshot.theme);
+        const QString theme = QString::fromStdString(snapshot.theme);
+        const bool themeWasUpdated = applyThemeValue(theme);
         const QString density = QString::fromStdString(snapshot.density);
         const bool densityWasUpdated = applyDensityValue(density);
         detailsVisible_ = snapshot.detailsVisible;
         applyDetailsPanelWidthValue(snapshot.detailsPanelWidth);
         emitDetailsWidthLayoutChanged();
-        emit themeChanged();
-        emit resolvedThemeChanged();
+        if (themeWasUpdated) {
+            emit themeChanged();
+            emit resolvedThemeChanged();
+        }
         if (densityWasUpdated) {
             emit densityChanged();
         }
@@ -146,6 +151,14 @@ namespace ssa::presentation {
 
     void UiSettingsViewModel::emitDetailsWidthLayoutChanged() {
         emit detailsWidthLayoutChanged();
+    }
+
+    bool UiSettingsViewModel::applyThemeValue(const QString& value) {
+        if (!ports::isThemeValid(value.toStdString()) || theme_ == value) {
+            return false;
+        }
+        theme_ = value;
+        return true;
     }
 
     bool UiSettingsViewModel::applyDensityValue(const QString& value) {

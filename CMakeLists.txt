@@ -56,8 +56,17 @@ target_link_libraries(ssa_application PUBLIC ssa_core)
 
 add_library(ssa_infra STATIC
     src/infra/export/CsvExportPort.cpp
+    src/infra/import/ImportFileStager.cpp
+    src/infra/import/LegacySpreadsheetConverter.cpp
+    src/infra/import/SpreadsheetImportWorkflowPort.cpp
+    src/infra/import/SsaImportConflictResolver.cpp
+    src/infra/import/SsaSpreadsheetHeaderCatalog.cpp
+    src/infra/import/SsaSpreadsheetMapper.cpp
+    src/infra/import/XlsxPackage.cpp
+    src/infra/import/XlsxWorkbookReader.cpp
     src/infra/sqlite/SqliteConnection.cpp
     src/infra/sqlite/SqliteMaintenancePort.cpp
+    src/infra/sqlite/SqliteSsaImportWriter.cpp
     src/infra/sqlite/SqliteSsaRepository.cpp
     src/infra/sqlite/SqliteSchemaInspector.cpp
     src/infra/preferences/JsonUserPreferencesStore.cpp
@@ -67,7 +76,7 @@ add_library(ssa_infra STATIC
     src/infra/preferences/UserPreferencesJsonCodec.cpp
 )
 target_include_directories(ssa_infra PUBLIC src)
-target_link_libraries(ssa_infra PUBLIC ssa_core ${SSA_SQLITE_TARGET} Qt6::Core)
+target_link_libraries(ssa_infra PUBLIC ssa_core ${SSA_SQLITE_TARGET} Qt6::Core miniz)
 
 add_library(ssa_platform STATIC
     src/platform/AppPaths.cpp
@@ -158,10 +167,14 @@ qt_add_executable(ssa_consulta_rapida
     app/desktop/DesktopApplicationRuntime.cpp
     app/desktop/DesktopMainViewModelFactory.cpp
     app/desktop/DesktopSmokeCapture.cpp
+    app/desktop/DesktopSmokeCaptureFileSystem.cpp
+    app/desktop/DesktopSmokeObjectNames.cpp
     app/desktop/DesktopSmokeScreenshotCapture.cpp
     app/desktop/DesktopSmokeWindowLocator.cpp
+    app/desktop/DesktopSmokeWindowWaiter.cpp
     app/desktop/main.cpp
 )
+target_include_directories(ssa_consulta_rapida PRIVATE app/desktop)
 
 set_source_files_properties(app/desktop/qml/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
@@ -186,11 +199,13 @@ qt_add_qml_module(ssa_consulta_rapida
         app/desktop/qml/components/ColumnFilterRow.qml
         app/desktop/qml/components/FilterCard.qml
         app/desktop/qml/components/FilterFieldLabel.qml
+        app/desktop/qml/components/FileWorkflowDialogs.qml
         app/desktop/qml/components/FilterTabButton.qml
         app/desktop/qml/components/FilterPanel.qml
         app/desktop/qml/components/ColumnConfigList.qml
         app/desktop/qml/components/PreferencesDialog.qml
         app/desktop/qml/components/SearchAndPager.qml
+        app/desktop/qml/components/SmokeCaptureBridge.qml
         app/desktop/qml/components/SsaTable.qml
         app/desktop/qml/components/StatusPill.qml
 )
@@ -207,6 +222,7 @@ target_link_libraries(ssa_consulta_rapida PRIVATE
 add_library(ssa_cli STATIC
     app/cli/SsaCliController.cpp
     app/cli/SsaCliDatabasePath.cpp
+    app/cli/SsaCliImportPaths.cpp
     app/cli/SsaCliPrinter.cpp
     app/cli/SsaCliRequestMapper.cpp
     app/cli/SsaCliWorkflowRunner.cpp
@@ -215,9 +231,12 @@ target_include_directories(ssa_cli PUBLIC app/cli)
 target_link_libraries(ssa_cli PUBLIC ssa_application Qt6::Core)
 
 add_executable(ssa_consulta_rapida_cli
+    app/cli/CliServiceFactory.cpp
+    app/cli/SsaCliApplicationRuntime.cpp
     app/cli/main.cpp
 )
 target_link_libraries(ssa_consulta_rapida_cli PRIVATE ssa_cli ssa_infra)
+target_compile_definitions(ssa_consulta_rapida_cli PRIVATE SSA_PROJECT_VERSION="${PROJECT_VERSION}")
 
 set_target_properties(ssa_consulta_rapida PROPERTIES
     MACOSX_BUNDLE TRUE
@@ -261,6 +280,7 @@ if(SSA_BUILD_TESTS)
     add_executable(ssa_integration_tests
         tests/integration/ExportPortTests.cpp
         tests/integration/JsonPreferencesStoreTests.cpp
+        tests/integration/SpreadsheetImportWorkflowPortTests.cpp
         tests/integration/SqliteRepositoryTests.cpp
     )
     target_link_libraries(ssa_integration_tests PRIVATE
@@ -280,4 +300,9 @@ if(SSA_BUILD_TESTS)
     )
     target_link_libraries(ssa_qt_filter_panel_tests PRIVATE ssa_presentation Qt6::Test)
     add_test(NAME ssa_qt_filter_panel_tests COMMAND ssa_qt_filter_panel_tests)
+
+    add_test(NAME ssa_cli_version COMMAND ssa_consulta_rapida_cli --version)
+    set_tests_properties(ssa_cli_version PROPERTIES
+        PASS_REGULAR_EXPRESSION "ssa_consulta_rapida_cli ${PROJECT_VERSION}"
+    )
 endif()

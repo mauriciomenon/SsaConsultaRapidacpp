@@ -20,7 +20,7 @@ namespace ssa::app::cli {
         using WorkflowFactory = std::function<std::shared_ptr<application::SsaWorkflowService>()>;
         using DatabaseWorkflowFactory =
             std::function<std::shared_ptr<application::SsaWorkflowService>(
-                const std::filesystem::path&)>;
+                const std::filesystem::path&, const std::filesystem::path&)>;
 
         SsaCliController(BrowseFactory browseFactory, WorkflowFactory workflowFactory,
                          DatabaseWorkflowFactory databaseWorkflowFactory);

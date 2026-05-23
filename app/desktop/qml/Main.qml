@@ -2,7 +2,6 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Dialogs
 import QtQuick.Layouts
 import SsaConsultaRapida
 
@@ -61,12 +60,32 @@ ApplicationWindow {
             }
             MenuItem {
                 text: "Exportar resultados"
-                onTriggered: exportDialog.open()
+                onTriggered: fileDialogs.openExportResults()
             }
             MenuSeparator {}
             MenuItem {
                 text: "Sair"
                 onTriggered: Qt.quit()
+            }
+        }
+
+        Menu {
+            title: "Importacao"
+
+            MenuItem {
+                text: "Importar XLS/XLSX externo"
+                enabled: !root.vm.actions.workflows.running
+                onTriggered: fileDialogs.openImportData()
+            }
+            MenuItem {
+                text: "Atualizar dados"
+                enabled: !root.vm.actions.workflows.running
+                onTriggered: root.vm.actions.workflows.rescanIncremental()
+            }
+            MenuItem {
+                text: "Reescaneamento completo"
+                enabled: !root.vm.actions.workflows.running
+                onTriggered: root.vm.actions.workflows.rescanFull()
             }
         }
 
@@ -114,11 +133,11 @@ ApplicationWindow {
             }
             MenuItem {
                 text: "Exportar filtros"
-                onTriggered: exportFiltersDialog.open()
+                onTriggered: fileDialogs.openExportFilters()
             }
             MenuItem {
                 text: "Importar filtros"
-                onTriggered: importFiltersDialog.open()
+                onTriggered: fileDialogs.openImportFilters()
             }
             MenuSeparator {}
             MenuItem {
@@ -144,12 +163,12 @@ ApplicationWindow {
             title: "Manutencao"
 
             MenuItem {
-                text: "Reescanear incremental"
+                text: "Atualizar dados"
                 enabled: !root.vm.actions.workflows.running
                 onTriggered: root.vm.actions.workflows.rescanIncremental()
             }
             MenuItem {
-                text: "Reescanear completo"
+                text: "Reescaneamento completo"
                 enabled: !root.vm.actions.workflows.running
                 onTriggered: root.vm.actions.workflows.rescanFull()
             }
@@ -176,18 +195,6 @@ ApplicationWindow {
 
     Component.onCompleted: {
         root.vm.browse.load()
-    }
-
-    Connections {
-        target: root.smokeController
-
-        function onOpenPreferencesRequested() {
-            preferencesDialog.open()
-        }
-
-        function onOpenAdvancedFiltersRequested() {
-            filterPanel.showAdvancedFilters()
-        }
     }
 
     ColumnLayout {
@@ -310,10 +317,10 @@ ApplicationWindow {
         SearchAndPager {
             Layout.fillWidth: true
             viewModel: root.vm.browse
-            onExportRequested: exportDialog.open()
+            onExportRequested: fileDialogs.openExportResults()
             onSaveFiltersRequested: root.vm.preferenceFlow.savePreferences()
-            onExportFiltersRequested: exportFiltersDialog.open()
-            onImportFiltersRequested: importFiltersDialog.open()
+            onExportFiltersRequested: fileDialogs.openExportFilters()
+            onImportFiltersRequested: fileDialogs.openImportFilters()
             onConfigureColumnsRequested: preferencesDialog.open()
         }
 
@@ -369,36 +376,14 @@ ApplicationWindow {
         viewModel: root.vm
     }
 
-    FileDialog {
-        id: exportDialog
-        title: "Exportar CSV"
-        fileMode: FileDialog.SaveFile
-        nameFilters: ["CSV (*.csv)"]
-
-        onAccepted: {
-            root.vm.actions.exports.exportFilteredList(exportDialog.selectedFile)
-        }
+    SmokeCaptureBridge {
+        smokeController: root.smokeController
+        preferencesDialog: preferencesDialog
+        filterPanel: filterPanel
     }
 
-    FileDialog {
-        id: exportFiltersDialog
-        title: "Exportar filtros"
-        fileMode: FileDialog.SaveFile
-        nameFilters: ["JSON (*.json)"]
-
-        onAccepted: {
-            root.vm.preferenceFlow.exportFilterPreset(exportFiltersDialog.selectedFile)
-        }
-    }
-
-    FileDialog {
-        id: importFiltersDialog
-        title: "Importar filtros"
-        fileMode: FileDialog.OpenFile
-        nameFilters: ["JSON (*.json)"]
-
-        onAccepted: {
-            root.vm.preferenceFlow.importFilterPreset(importFiltersDialog.selectedFile)
-        }
+    FileWorkflowDialogs {
+        id: fileDialogs
+        viewModel: root.vm
     }
 }

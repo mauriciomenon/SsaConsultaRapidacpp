@@ -6,9 +6,11 @@
 #include "presentation/FilterPanelAdvancedViewModel.h"
 #include "presentation/FilterPanelViewModel.h"
 #include "presentation/MainViewModel.h"
+#include "presentation/SsaRecordValueFormatter.h"
 
 #include <QRegularExpression>
 #include <QSignalSpy>
+#include <QUrl>
 #include <QtTest>
 
 #include <chrono>
@@ -175,8 +177,10 @@ namespace {
     class CapturingImportPort final : public ssa::ports::IImportWorkflowPort {
       public:
         ssa::ports::WorkflowResult
-        importExternalFiles(const ssa::ports::ImportExternalFilesRequest&) override {
-            return {ssa::ports::WorkflowStatus::NotImplemented, "import not implemented"};
+        importExternalFiles(const ssa::ports::ImportExternalFilesRequest& request) override {
+            const std::scoped_lock lock(mutex_);
+            importRequests_.push_back(request);
+            return {ssa::ports::WorkflowStatus::Succeeded, "import staged"};
         }
 
         ssa::ports::WorkflowResult rescan(const ssa::ports::RescanRequest& request) override {
@@ -190,8 +194,14 @@ namespace {
             return requests_;
         }
 
+        [[nodiscard]] std::vector<ssa::ports::ImportExternalFilesRequest> importRequests() const {
+            const std::scoped_lock lock(mutex_);
+            return importRequests_;
+        }
+
       private:
         mutable std::mutex mutex_;
+        std::vector<ssa::ports::ImportExternalFilesRequest> importRequests_;
         std::vector<ssa::ports::RescanRequest> requests_;
     };
 
@@ -199,6 +209,19 @@ namespace {
         Q_OBJECT
 
       private slots:
+        void date_text_formatter_keeps_only_day_month_year() {
+            const ssa::presentation::SsaRecordValueFormatter formatter;
+
+            QCOMPARE(formatter.valueFor("2026-04-13 11:21:01", ssa::domain::ColumnType::DateText)
+                         .toString(),
+                     QString("13/04/2026"));
+            QCOMPARE(formatter.valueFor("2026-04-13T12:26:00", ssa::domain::ColumnType::DateText)
+                         .toString(),
+                     QString("13/04/2026"));
+            QCOMPARE(formatter.valueFor("sem data", ssa::domain::ColumnType::DateText).toString(),
+                     QString("sem data"));
+        }
+
         void load_populates_table_and_allows_details_selection() {
             auto repository = std::make_shared<FakeRepository>();
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
@@ -398,10 +421,10 @@ namespace {
                 qobject_cast<ssa::presentation::AdvancedTextFilterViewModel*>(advanced->text());
             QVERIFY(text != nullptr);
 
-            QCOMPARE(text->addSelectedValue("situacao", "APV"), true);
+            QCOMPARE(text->updateFilterWithSelectedValue("situacao", "APV"), true);
             text->setOperatorMode("situacao", "different");
-            QCOMPARE(text->addSelectedValue("situacao", "ADM"), true);
-            QCOMPARE(text->addSelectedValue("situacao", "APV"), false);
+            QCOMPARE(text->updateFilterWithSelectedValue("situacao", "ADM"), true);
+            QCOMPARE(text->updateFilterWithSelectedValue("situacao", "APV"), false);
 
             QCOMPARE(text->textFilter("situacao"), QString("=APV,!ADM"));
             QCOMPARE(text->operatorModeFor("situacao"), QString("mixed"));
@@ -429,7 +452,7 @@ namespace {
             QVERIFY(text != nullptr);
 
             text->setOperatorMode("situacao", "different");
-            text->addSelectedValue("situacao", "ASE");
+            text->updateFilterWithSelectedValue("situacao", "ASE");
             text->setTextFilter("situacao", "");
 
             QCOMPARE(text->textFilter("situacao"), QString(""));
@@ -453,7 +476,7 @@ namespace {
             QVERIFY(week != nullptr);
             QVERIFY(derivation != nullptr);
 
-            text->addSelectedValue("situacao", "ASE");
+            text->updateFilterWithSelectedValue("situacao", "ASE");
             week->setIssueWeekStartFilter("202601");
             derivation->setDerivationMode("derived");
 
@@ -685,6 +708,25 @@ namespace {
             QCOMPARE(importPort->requests().back().optimized, true);
             QTRY_COMPARE_WITH_TIMEOUT(model.browse()->status()->message(),
                                       QString("Reescaneamento concluido"), 1000);
+        }
+
+        void import_external_files_uses_workflow_port_and_updates_status() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            auto importPort = std::make_shared<CapturingImportPort>();
+            auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(importPort);
+            ssa::presentation::MainViewModel model(service, commands, nullptr, nullptr, workflows);
+
+            QVariantList selectedFiles;
+            selectedFiles.push_back(QUrl::fromLocalFile("/tmp/entrada.xlsx"));
+            model.actions()->workflows()->importExternalFiles(selectedFiles);
+
+            QTRY_COMPARE_WITH_TIMEOUT(importPort->importRequests().size(), std::size_t{1}, 1000);
+            QCOMPARE(importPort->importRequests().back().files.size(), std::size_t{1});
+            QCOMPARE(importPort->importRequests().back().optimized, true);
+            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->status()->message(),
+                                      QString("Importacao concluida"), 1000);
         }
 
         void rescan_full_disables_optimized_mode() {

@@ -17,33 +17,29 @@ namespace ssa::presentation {
         constexpr std::size_t kMaxColumnValueOptionCacheEntries = 24;
 
         QStringList toColumnValueDisplayList(const std::vector<std::string>& values) {
-            QStringList priority;
-            QStringList other;
+            QStringList priorityValues;
+            QStringList otherValues;
             const auto capacity = static_cast<int>(values.size());
-            priority.reserve(capacity);
-            other.reserve(capacity);
+            priorityValues.reserve(capacity);
+            otherValues.reserve(capacity);
             for (const auto& value : values) {
+                auto displayValue = QString::fromStdString(value);
                 if (domain::isPriorityColumnValue(value)) {
-                    priority.append(QString::fromStdString(value));
+                    priorityValues.append(std::move(displayValue));
                 } else {
-                    other.append(QString::fromStdString(value));
+                    otherValues.append(std::move(displayValue));
                 }
             }
-            for (auto& value : other) {
-                priority.append(std::move(value));
-            }
-            return priority;
+            priorityValues.append(otherValues);
+            return priorityValues;
         }
 
         void trimColumnValueOptionCache(std::map<QString, ColumnValueOptionCacheEntry>& cache,
                                         const QString& protectedKey) {
             while (cache.size() > kMaxColumnValueOptionCacheEntries) {
-                auto optionIt = cache.end();
-                for (auto candidate = cache.begin(); candidate != cache.end(); ++candidate) {
-                    if (candidate->first != protectedKey) {
-                        optionIt = candidate;
-                        break;
-                    }
+                auto optionIt = cache.begin();
+                if (optionIt != cache.end() && optionIt->first == protectedKey) {
+                    ++optionIt;
                 }
                 if (optionIt == cache.end()) {
                     return;
@@ -210,6 +206,7 @@ namespace ssa::presentation {
         const auto it = columnValueOptionsByKey_.find(key.trimmed());
         const auto values =
             it == columnValueOptionsByKey_.end() ? QStringList{} : it->second.previewSource;
+        // Expanded mode intentionally shows every loaded option for that column.
         if (expanded || limit <= 0 || values.size() <= limit) {
             return values;
         }
@@ -235,6 +232,7 @@ namespace ssa::presentation {
         trimColumnValueOptionCache(columnValueOptionsByKey_, normalizedKey);
         ++columnValueOptionsVersion_;
         emit columnValueOptionsChanged();
+        emit columnValueOptionsChangedFor(normalizedKey);
     }
 
     void FilterPanelViewModel::publishFilterStateChange(const bool quickSectorChanged) {
@@ -267,11 +265,13 @@ namespace ssa::presentation {
         if (cached != columnValueOptionsByKey_.end()) {
             ++columnValueOptionsVersion_;
             emit columnValueOptionsChanged();
+            emit columnValueOptionsChangedFor(normalizedKey);
             return;
         }
         columnValueLoadingKeys_.insert(normalizedKey);
         ++columnValueOptionsVersion_;
         emit columnValueOptionsChanged();
+        emit columnValueOptionsChangedFor(normalizedKey);
         distinctValues_.refreshColumnValueOptionsFor(normalizedKey);
     }
 
@@ -357,6 +357,7 @@ namespace ssa::presentation {
         columnValueLoadingKeys_.clear();
         ++columnValueOptionsVersion_;
         emit columnValueOptionsChanged();
+        emit columnValueOptionsReset();
     }
 
     void FilterPanelViewModel::scheduleActiveFilterRefresh() {

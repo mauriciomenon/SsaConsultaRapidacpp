@@ -54,7 +54,7 @@ namespace ssa::presentation {
       public slots:
         void load();
         void apply();
-        void clearSearchTextAndReload();
+        void clearSearchAndResetPage();
         void nextPage();
         void previousPage();
         void selectRow(int row);

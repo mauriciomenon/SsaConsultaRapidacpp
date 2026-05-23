@@ -17,9 +17,10 @@ namespace ssa::platform {
 
       private:
         [[nodiscard]] static std::optional<std::filesystem::path>
-        normalizePath(const std::filesystem::path& path);
+        canonicalizePath(const std::filesystem::path& path);
 
         std::vector<std::filesystem::path> canonicalAllowedRoots_;
+        std::size_t rejectedAllowedRoots_{0};
     };
 
 } // namespace ssa::platform

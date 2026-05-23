@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <ranges>
 #include <sstream>
 #include <stdexcept>
 
@@ -17,14 +18,21 @@ namespace ssa::query {
     }
 
     std::string quoteTableIdentifier(const std::string& name) {
+        const auto valid = !name.empty() && std::ranges::all_of(name, [](const char ch) {
+            const auto value = static_cast<unsigned char>(ch);
+            return std::isalnum(value) != 0 || ch == '_';
+        });
+        if (!valid) {
+            throw std::invalid_argument("invalid SQL table identifier: " + name);
+        }
         return "\"" + name + "\"";
     }
 
     std::string uppercaseCopy(const std::string_view value) {
         std::string upper;
         upper.resize(value.size());
-        std::ranges::transform(value, upper.begin(), [](const unsigned char ch) {
-            return static_cast<char>(std::toupper(ch));
+        std::ranges::transform(value, upper.begin(), [](const char ch) {
+            return static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
         });
         return upper;
     }

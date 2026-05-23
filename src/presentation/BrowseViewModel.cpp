@@ -164,8 +164,8 @@ namespace ssa::presentation {
         orchestrator_.apply();
     }
 
-    void BrowseViewModel::clearSearchTextAndReload() {
-        orchestrator_.clearSearchTextAndReload();
+    void BrowseViewModel::clearSearchAndResetPage() {
+        orchestrator_.clearSearchAndResetPage();
     }
 
     void BrowseViewModel::nextPage() {

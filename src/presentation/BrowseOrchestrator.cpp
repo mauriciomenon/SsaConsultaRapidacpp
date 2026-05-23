@@ -16,7 +16,7 @@ namespace ssa::presentation {
         connect(&search_, &SearchViewModel::applyRequested, &inputCoordinator_,
                 &BrowseInputCoordinator::apply);
         connect(&search_, &SearchViewModel::textClearRequested, &inputCoordinator_,
-                &BrowseInputCoordinator::clearSearchTextAndReload);
+                &BrowseInputCoordinator::clearSearchAndResetPage);
         connect(&filters_, &FilterPanelViewModel::applyRequested, &inputCoordinator_,
                 &BrowseInputCoordinator::apply);
         connect(&requestCoordinator_, &BrowseRequestCoordinator::pageChanged, this, [this] {
@@ -109,8 +109,8 @@ namespace ssa::presentation {
         load();
     }
 
-    void BrowseOrchestrator::clearSearchTextAndReload() {
-        inputCoordinator_.clearSearchTextAndReload();
+    void BrowseOrchestrator::clearSearchAndResetPage() {
+        inputCoordinator_.clearSearchAndResetPage();
         load();
     }
 

@@ -16,6 +16,19 @@ Rectangle {
     signal configureColumnsRequested()
     focus: true
 
+    function focusSearchInput() {
+        if (root.visible) {
+            searchInput.forceActiveFocus()
+        }
+    }
+
+    Component.onCompleted: Qt.callLater(root.focusSearchInput)
+    onVisibleChanged: {
+        if (visible) {
+            Qt.callLater(root.focusSearchInput)
+        }
+    }
+
     Layout.preferredHeight: 136
     color: Theme.surface
     border.color: Theme.border
@@ -49,7 +62,6 @@ Rectangle {
                 onAccepted: {
                     root.viewModel.search.apply()
                 }
-                Component.onCompleted: forceActiveFocus()
             }
             ActionButton {
                 text: "Aplicar"
@@ -88,7 +100,7 @@ Rectangle {
 
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: 42
+            Layout.preferredHeight: 34
             color: Theme.panelRaised
             border.color: Theme.border
             radius: Theme.radius
@@ -102,11 +114,11 @@ Rectangle {
                 Label {
                     text: root.filterViewModel.activeFilterSummary.length > 0
                           ? root.filterViewModel.activeFilterSummary
-                          : "Nenhum filtro ativo"
+                          : "Sem filtros manuais"
                     color: root.filterViewModel.activeFilterSummary.length > 0
                            ? Theme.text
                            : Theme.mutedText
-                    font.bold: true
+                    font.bold: root.filterViewModel.activeFilterSummary.length > 0
                     font.pixelSize: 13
                     Layout.fillWidth: true
                     elide: Text.ElideRight
@@ -148,7 +160,7 @@ Rectangle {
                 id: pageSizeSpin
                 from: 10
                 to: 500
-                stepSize: 10
+                stepSize: 5
                 value: root.viewModel.pageSize
                 Layout.preferredWidth: 92
                 onValueModified: {
@@ -177,8 +189,8 @@ Rectangle {
                 currentIndex: root.filterViewModel.sector.selectorIndex
                 font.pixelSize: 12
                 font.bold: true
-                onActivated: function(index) {
-                    root.filterViewModel.sector.quickSector = sectorFilter.textAt(index)
+                onActivated: {
+                    root.filterViewModel.sector.quickSector = sectorFilter.currentText
                     root.viewModel.apply()
                 }
                 delegate: ItemDelegate {

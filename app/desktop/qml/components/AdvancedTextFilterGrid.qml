@@ -10,53 +10,72 @@ GridView {
     readonly property var emptyValues: []
 
     Layout.fillWidth: true
-    Layout.preferredHeight: Math.min(360, Math.max(cellHeight, contentHeight))
+    Layout.preferredHeight: Math.min(380, Math.max(cellHeight, contentHeight))
     Layout.minimumWidth: 0
     clip: true
-    model: root.textFilters.rows
-    cellWidth: width >= 760 ? Math.floor(width / 2) : width
-    cellHeight: 112
+    model: root.textFilters.cardStates
+    cellWidth: width >= 960 ? Math.floor(width / 3) : (width >= 640 ? Math.floor(width / 2) : width)
+    cellHeight: 116
 
     delegate: AdvancedTextFilterCard {
+        id: filterCardDelegate
         required property var modelData
+        property var loadedValueOptions: root.emptyValues
+        property var visibleValueOptions: root.emptyValues
+        property bool moreValueOptions: false
+        property bool valueOptionsLoading: false
+
+        function reloadOptionState() {
+            loadedValueOptions = root.filterViewModel.columnValueOptionsFor(modelData.key)
+            valueOptionsLoading = root.filterViewModel.columnValueOptionsLoadingFor(modelData.key)
+            moreValueOptions = root.filterViewModel.hasMoreColumnValueOptionsFor(
+                modelData.key,
+                compactValueLimit)
+            visibleValueOptions = root.filterViewModel.columnValuePreviewOptionsFor(
+                modelData.key,
+                compactValueLimit,
+                expandedValues)
+        }
 
         row: modelData
         operatorModes: root.textFilters.operatorModes
-        visibleValues: root.filterViewModel.columnValueOptionsVersion >= 0
-                       ? root.filterViewModel.columnValuePreviewOptionsFor(
-                             modelData.key,
-                             compactValueLimit,
-                             expandedValues)
-                       : root.emptyValues
-        hasMoreValues: root.filterViewModel.hasMoreColumnValueOptionsFor(
-                           modelData.key,
-                           compactValueLimit)
-        valuesLoading: root.filterViewModel.columnValueOptionsLoadingFor(modelData.key)
-        textFilter: root.textFilters.textFilter(modelData.key)
-        operatorIndex: root.textFilters.version >= 0
-                       ? root.textFilters.operatorIndexFor(modelData.key)
-                       : -1
-        operatorLabel: root.textFilters.version >= 0
-                       ? root.textFilters.operatorLabelFor(modelData.key)
-                       : ""
+        visibleValues: visibleValueOptions
+        hasMoreValues: moreValueOptions
+        valuesLoading: valueOptionsLoading
+        textFilter: modelData.textFilter
+        operatorIndex: modelData.operatorIndex
+        operatorLabel: modelData.operatorLabel
         cardWidth: root.cellWidth - 8
         cardHeight: root.cellHeight - 8
 
+        Component.onCompleted: reloadOptionState()
+        onExpandedValuesChanged: reloadOptionState()
+
+        Connections {
+            target: root.filterViewModel
+            function onColumnValueOptionsChangedFor(key) {
+                if (key === filterCardDelegate.modelData.key)
+                    filterCardDelegate.reloadOptionState()
+            }
+            function onColumnValueOptionsReset() {
+                filterCardDelegate.reloadOptionState()
+            }
+        }
+
         onOptionsRequested: {
-            if (root.filterViewModel.columnValueOptionsFor(modelData.key).length === 0
-                    && !root.filterViewModel.columnValueOptionsLoadingFor(modelData.key))
+            if (loadedValueOptions.length === 0 && !valueOptionsLoading)
                 root.filterViewModel.refreshColumnValueOptionsFor(modelData.key)
         }
         onOperatorModeRequested: function(mode) {
             root.textFilters.setOperatorMode(modelData.key, mode)
         }
         onSelectedValueRequested: function(value) {
-            root.textFilters.addSelectedValue(modelData.key, value)
+            root.textFilters.updateFilterWithSelectedValue(modelData.key, value)
         }
-        onLoadedValuesFilterRequested: function(mode) {
+        onLoadedValuesReplacementRequested: function(mode) {
             root.textFilters.replaceWithOperatorValueList(
                 modelData.key,
-                root.filterViewModel.columnValueOptionsFor(modelData.key),
+                loadedValueOptions,
                 mode)
         }
         onTextFilterClearRequested: root.textFilters.setTextFilter(modelData.key, "")

@@ -1,5 +1,6 @@
 #include "infra/sqlite/SqliteConnection.h"
 
+#include <exception>
 #include <stdexcept>
 
 namespace ssa::infra::sqlite {
@@ -12,6 +13,8 @@ namespace ssa::infra::sqlite {
                 return SQLITE_OPEN_READONLY;
             case SqliteOpenMode::ReadWrite:
                 return SQLITE_OPEN_READWRITE;
+            case SqliteOpenMode::ReadWriteCreate:
+                return SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
             }
             throw std::invalid_argument("unknown sqlite open mode");
         }
@@ -74,15 +77,70 @@ namespace ssa::infra::sqlite {
         }
     }
 
+    void SqliteStatement::bindNullOneBased(const int index) {
+        if (index < 1) {
+            throw std::invalid_argument("sqlite bind index must be one-based");
+        }
+        const int rc = sqlite3_bind_null(statement_, index);
+        if (rc != SQLITE_OK) {
+            throw std::runtime_error("cannot bind sqlite null parameter");
+        }
+    }
+
+    void SqliteStatement::bindInt64OneBased(const int index, const long long value) {
+        if (index < 1) {
+            throw std::invalid_argument("sqlite bind index must be one-based");
+        }
+        const int rc = sqlite3_bind_int64(statement_, index, value);
+        if (rc != SQLITE_OK) {
+            throw std::runtime_error("cannot bind sqlite int64 parameter");
+        }
+    }
+
     bool SqliteStatement::step() {
         const int rc = sqlite3_step(statement_);
         if (rc == SQLITE_ROW) {
+            hasCurrentRow_ = true;
             return true;
         }
+        hasCurrentRow_ = false;
         if (rc == SQLITE_DONE) {
             return false;
         }
         throw std::runtime_error("sqlite statement execution failed");
+    }
+
+    void SqliteStatement::executeAndReset() {
+        const int rc = sqlite3_step(statement_);
+        hasCurrentRow_ = false;
+        std::exception_ptr resetError;
+        try {
+            resetAndClearBindings();
+        } catch (...) {
+            resetError = std::current_exception();
+        }
+        if (rc != SQLITE_DONE) {
+            throw std::runtime_error("sqlite statement execution failed");
+        }
+        if (resetError) {
+            std::rethrow_exception(resetError);
+        }
+    }
+
+    void SqliteStatement::resetAndClearBindings() {
+        hasCurrentRow_ = false;
+        const int resetRc = sqlite3_reset(statement_);
+        const int clearRc = sqlite3_clear_bindings(statement_);
+        if (resetRc != SQLITE_OK) {
+            throw std::runtime_error("sqlite statement reset failed");
+        }
+        if (clearRc != SQLITE_OK) {
+            throw std::runtime_error("sqlite statement binding clear failed");
+        }
+    }
+
+    sqlite3_stmt* SqliteStatement::handle() const noexcept {
+        return statement_;
     }
 
     int SqliteStatement::columnCount() const {
@@ -101,12 +159,20 @@ namespace ssa::infra::sqlite {
     }
 
     std::string SqliteStatement::columnText(const int column) const {
+        requireCurrentRow();
         const auto* text = reinterpret_cast<const char*>(sqlite3_column_text(statement_, column));
         return text == nullptr ? std::string{} : std::string{text};
     }
 
     long long SqliteStatement::columnInt64(const int column) const {
+        requireCurrentRow();
         return sqlite3_column_int64(statement_, column);
+    }
+
+    void SqliteStatement::requireCurrentRow() const {
+        if (!hasCurrentRow_) {
+            throw std::logic_error("sqlite column access requires current row");
+        }
     }
 
 } // namespace ssa::infra::sqlite

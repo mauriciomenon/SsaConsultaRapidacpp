@@ -9,14 +9,18 @@ namespace ssa::presentation {
     bool BrowseInputCoordinator::setPageSize(const int value) {
         const auto previousPageSize = queryState_.pageSize();
         queryState_.setPageSize(value);
-        return queryState_.pageSize() != previousPageSize;
+        const bool changed = queryState_.pageSize() != previousPageSize;
+        if (changed) {
+            queryState_.resetPage();
+        }
+        return changed;
     }
 
     void BrowseInputCoordinator::apply() {
         queryState_.resetPage();
     }
 
-    void BrowseInputCoordinator::clearSearchTextAndReload() {
+    void BrowseInputCoordinator::clearSearchAndResetPage() {
         search_.setText({});
         queryState_.resetPage();
     }

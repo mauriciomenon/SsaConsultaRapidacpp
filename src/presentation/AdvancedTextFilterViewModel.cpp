@@ -11,10 +11,17 @@ namespace ssa::presentation {
                          {QVariantMap{{"label", tr("Diferente")}, {"mode", "different"}}}},
           operatorModeIndex_{{"equals", 0}, {"different", 1}} {
         refreshFromState();
+        if (cardStates_.empty()) {
+            rebuildCardStates();
+        }
     }
 
     const QVariantList& AdvancedTextFilterViewModel::rows() const {
         return rows_;
+    }
+
+    const QVariantList& AdvancedTextFilterViewModel::cardStates() const {
+        return cardStates_;
     }
 
     const QVariantList& AdvancedTextFilterViewModel::operatorModes() const {
@@ -52,7 +59,7 @@ namespace ssa::presentation {
         if (!columns_.setOperatorMode(key, operatorMode, currentExpression)) {
             return;
         }
-        publishChanged();
+        publishChangedFor(key);
     }
 
     QString AdvancedTextFilterViewModel::textFilter(const QString& key) const {
@@ -64,10 +71,11 @@ namespace ssa::presentation {
             return;
         }
         columns_.setExpression(key, value);
-        publishChanged();
+        publishChangedFor(key);
     }
 
-    bool AdvancedTextFilterViewModel::addSelectedValue(const QString& key, const QString& value) {
+    bool AdvancedTextFilterViewModel::updateFilterWithSelectedValue(const QString& key,
+                                                                    const QString& value) {
         const auto expression =
             columns_.expressionWithAddedValue(key, textFilter(key), value, operatorModeFor(key));
         if (!expression.has_value()) {
@@ -81,7 +89,7 @@ namespace ssa::presentation {
                                                                    const QString& operatorMode) {
         columns_.setOperatorMode(key, operatorMode, textFilter(key));
         publishExpression(key, columns_.expressionReplacingWithOperator(values, operatorMode),
-                          true);
+                          false);
     }
 
     void AdvancedTextFilterViewModel::refreshFromState() {
@@ -97,13 +105,61 @@ namespace ssa::presentation {
             return false;
         }
         columns_.setExpression(key, expression, inferOperatorMode);
-        publishChanged();
+        publishChangedFor(key);
         return true;
     }
 
     void AdvancedTextFilterViewModel::publishChanged() {
+        rebuildCardStates();
         ++version_;
         emit changed();
+    }
+
+    void AdvancedTextFilterViewModel::publishChangedFor(const QString& key) {
+        updateCardState(key);
+        ++version_;
+        emit changed();
+    }
+
+    void AdvancedTextFilterViewModel::rebuildCardStates() {
+        QVariantList states;
+        QHash<QString, int> indexes;
+        states.reserve(rows_.size());
+        for (const auto& row : rows_) {
+            auto state = createCardState(row.toMap());
+            const auto key = state.value("key").toString();
+            indexes.insert(key, states.size());
+            states.push_back(state);
+        }
+        cardStates_ = std::move(states);
+        cardStateIndex_ = std::move(indexes);
+    }
+
+    void AdvancedTextFilterViewModel::updateCardState(const QString& key) {
+        const auto index = cardStateIndex_.constFind(key);
+        if (index == cardStateIndex_.constEnd() || index.value() < 0 ||
+            index.value() >= cardStates_.size()) {
+            rebuildCardStates();
+            return;
+        }
+        const auto state = createCardState(cardStates_.at(index.value()).toMap());
+        cardStates_[index.value()] = state;
+    }
+
+    QVariantMap AdvancedTextFilterViewModel::createCardState(const QVariantMap& baseState) const {
+        auto state = baseState;
+        const auto key = state.value("key").toString();
+        const auto mode = operatorModeFor(key);
+        const auto modeIndex = operatorModeIndex_.constFind(mode);
+        const int operatorIndex =
+            modeIndex == operatorModeIndex_.constEnd() ? -1 : modeIndex.value();
+        const auto label = operatorIndex < 0
+                               ? (mode == "mixed" ? tr("Misto") : QString{})
+                               : operatorModes_.at(operatorIndex).toMap().value("label").toString();
+        state.insert("textFilter", textFilter(key));
+        state.insert("operatorIndex", operatorIndex);
+        state.insert("operatorLabel", label);
+        return state;
     }
 
 } // namespace ssa::presentation

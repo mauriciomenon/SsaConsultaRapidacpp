@@ -1,6 +1,7 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Layouts
 import SsaConsultaRapida
 
@@ -22,24 +23,39 @@ FilterCard {
         FilterFieldLabel {
             text: "Setor Executor"
         }
-        AppTextField {
+        AppComboBox {
+            id: sectorSelector
             Layout.fillWidth: true
-            text: root.filterViewModel.sector.quickSector
-            placeholderText: "Todos"
-            onTextEdited: root.filterViewModel.sector.quickSector = text
-            onAccepted: root.applyRequested()
+            model: root.filterViewModel.sector.selectorValues
+            currentIndex: root.filterViewModel.sector.selectorIndex
+            displayText: currentIndex <= 0 ? "Todos" : currentText
+            onActivated: {
+                root.filterViewModel.sector.quickSector = sectorSelector.currentText
+                root.applyRequested()
+            }
+            delegate: ItemDelegate {
+                required property string modelData
+                width: sectorSelector.width
+                text: modelData.length === 0 ? "Todos" : modelData
+            }
         }
         AppCheckBox {
             Layout.fillWidth: true
             text: "Excluir SCA/SES/STE"
             checked: root.filterViewModel.sector.excludeScaSesSte
-            onToggled: root.filterViewModel.sector.excludeScaSesSte = checked
+            onToggled: {
+                root.filterViewModel.sector.excludeScaSesSte = checked
+                root.applyRequested()
+            }
         }
         AppCheckBox {
             Layout.fillWidth: true
             text: "Reprogramadas"
             checked: root.derivation.onlyReprogrammed
-            onToggled: root.derivation.onlyReprogrammed = checked
+            onToggled: {
+                root.derivation.onlyReprogrammed = checked
+                root.applyRequested()
+            }
         }
 
         FilterFieldLabel {
@@ -51,7 +67,10 @@ FilterCard {
             currentIndex: Math.max(
                 0,
                 root.derivation.derivationModeOptions.indexOf(root.derivation.derivationMode))
-            onActivated: root.derivation.derivationMode = currentText
+            onActivated: {
+                root.derivation.derivationMode = currentText
+                root.applyRequested()
+            }
         }
         FilterFieldLabel {
             text: "Reprogramacoes ="

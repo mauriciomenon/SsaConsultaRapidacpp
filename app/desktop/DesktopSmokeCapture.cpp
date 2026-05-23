@@ -1,14 +1,12 @@
 #include "DesktopSmokeCapture.h"
 
-#include "DesktopSmokeScreenshotCapture.h"
-#include "DesktopSmokeWindowLocator.h"
+#include "DesktopSmokeCaptureFileSystem.h"
+#include "DesktopSmokeWindowWaiter.h"
 
 #include <QCommandLineParser>
 #include <QCoreApplication>
-#include <QDir>
-#include <QFileInfo>
+#include <QPointer>
 #include <QQmlApplicationEngine>
-#include <QQuickWindow>
 #include <QTimer>
 #include <QUrl>
 
@@ -16,36 +14,101 @@ namespace ssa::app::desktop {
 
     namespace {
 
-        QString absoluteScreenshotPath(const QString& screenshotPath) {
-            return QFileInfo{screenshotPath}.absoluteFilePath();
-        }
+        constexpr int smokeCaptureFailureExitCode = 2;
+        constexpr int defaultScreenshotDelayMs = 900;
 
-        bool ensureScreenshotDirectory(const QString& screenshotPath) {
-            const QFileInfo fileInfo{absoluteScreenshotPath(screenshotPath)};
-            const QDir parent = fileInfo.absoluteDir();
-            return parent.exists() || QDir{}.mkpath(parent.absolutePath());
-        }
+        struct DesktopSmokeCaptureOptions {
+            QString screenshotPath;
+            bool openPreferences = false;
+            bool openAdvancedFilters = false;
+            int screenshotDelayMs = defaultScreenshotDelayMs;
+        };
 
-        int prepareCapture(QQmlApplicationEngine& engine, const QString& screenshotPath,
-                           const bool openPreferences, const bool openAdvancedFilters,
-                           const int screenshotDelayMs, DesktopSmokeController& controller,
-                           const DesktopSmokeCaptureCompletion& completion) {
-            if (!ensureScreenshotDirectory(screenshotPath)) {
-                return 2;
-            }
-            auto* window = DesktopSmokeWindowLocator::rootWindow(engine);
-            if (window == nullptr) {
-                return 2;
-            }
+        DesktopSmokeCaptureTarget targetForRequest(const bool openPreferences,
+                                                   const bool openAdvancedFilters) {
             if (openPreferences) {
-                controller.requestOpenPreferences();
+                return DesktopSmokeCaptureTarget::PreferencesWindow;
             }
             if (openAdvancedFilters) {
-                controller.requestOpenAdvancedFilters();
+                return DesktopSmokeCaptureTarget::RootWindowWithAdvancedFilters;
             }
-            DesktopSmokeScreenshotCapture::capture(*window, absoluteScreenshotPath(screenshotPath),
-                                                   screenshotDelayMs, completion);
-            return 0;
+            return DesktopSmokeCaptureTarget::RootWindow;
+        }
+
+        bool parseCaptureOptions(const QCommandLineParser& parser,
+                                 DesktopSmokeCaptureOptions& options) {
+            bool delayParsed = true;
+            options.screenshotPath = parser.value("screenshot");
+            options.openPreferences = parser.isSet("open-preferences");
+            options.openAdvancedFilters = parser.isSet("open-advanced-filters");
+            options.screenshotDelayMs =
+                parser.isSet("screenshot-delay-ms")
+                    ? parser.value("screenshot-delay-ms").toInt(&delayParsed)
+                    : defaultScreenshotDelayMs;
+            return delayParsed && options.screenshotDelayMs >= 0;
+        }
+
+        void prepareCapture(QQmlApplicationEngine& engine, const QString& screenshotPath,
+                            const bool openPreferences, const bool openAdvancedFilters,
+                            const int screenshotDelayMs,
+                            const QPointer<DesktopSmokeController>& controller,
+                            const DesktopSmokeCaptureCompletion& completion) {
+            if (!DesktopSmokeCaptureFileSystem::ensureScreenshotDirectory(screenshotPath)) {
+                completion(smokeCaptureFailureExitCode);
+                return;
+            }
+            if ((openPreferences || openAdvancedFilters) && controller.isNull()) {
+                completion(smokeCaptureFailureExitCode);
+                return;
+            }
+            if (openPreferences) {
+                controller->requestOpenPreferences();
+            }
+            if (openAdvancedFilters) {
+                controller->requestOpenAdvancedFilters();
+            }
+            const QPointer<QQmlApplicationEngine> guardedEngine{&engine};
+            if (guardedEngine.isNull()) {
+                completion(smokeCaptureFailureExitCode);
+                return;
+            }
+            const DesktopSmokeCaptureTarget target =
+                targetForRequest(openPreferences, openAdvancedFilters);
+            QTimer::singleShot(screenshotDelayMs, guardedEngine,
+                               [guardedEngine, screenshotPath, target, completion] {
+                                   DesktopSmokeWindowWaiter::capture(*guardedEngine, screenshotPath,
+                                                                     target, completion);
+                               });
+        }
+
+        void scheduleCapture(QQmlApplicationEngine& engine, DesktopSmokeController& controller,
+                             const DesktopSmokeCaptureOptions& options,
+                             const DesktopSmokeCaptureCompletion& completion) {
+            const QPointer<QQmlApplicationEngine> guardedEngine{&engine};
+            const QPointer<DesktopSmokeController> guardedController{&controller};
+            const auto startCapture = [guardedEngine, guardedController, options, completion] {
+                if (guardedEngine.isNull()) {
+                    completion(smokeCaptureFailureExitCode);
+                    return;
+                }
+                prepareCapture(*guardedEngine, options.screenshotPath, options.openPreferences,
+                               options.openAdvancedFilters, options.screenshotDelayMs,
+                               guardedController, completion);
+            };
+            if (!engine.rootObjects().isEmpty()) {
+                QTimer::singleShot(0, &engine, startCapture);
+                return;
+            }
+            QObject::connect(
+                &engine, &QQmlApplicationEngine::objectCreated, &engine,
+                [startCapture, completion](QObject* object, const QUrl&) {
+                    if (object == nullptr) {
+                        completion(smokeCaptureFailureExitCode);
+                        return;
+                    }
+                    startCapture();
+                },
+                Qt::SingleShotConnection);
         }
 
     } // namespace
@@ -66,15 +129,10 @@ namespace ssa::app::desktop {
         if (!parser.isSet("screenshot")) {
             return;
         }
-        const QString screenshotPath = parser.value("screenshot");
-        const bool openPreferences = parser.isSet("open-preferences");
-        const bool openAdvancedFilters = parser.isSet("open-advanced-filters");
-        bool delayParsed = true;
-        const int screenshotDelayMs = parser.isSet("screenshot-delay-ms")
-                                          ? parser.value("screenshot-delay-ms").toInt(&delayParsed)
-                                          : 900;
-        if (!delayParsed || screenshotDelayMs < 0) {
-            QTimer::singleShot(0, &engine, [] { QCoreApplication::exit(2); });
+        DesktopSmokeCaptureOptions options;
+        if (!parseCaptureOptions(parser, options)) {
+            QTimer::singleShot(0, &engine,
+                               [] { QCoreApplication::exit(smokeCaptureFailureExitCode); });
             return;
         }
         const DesktopSmokeCaptureCompletion completion = [](const int status) {
@@ -84,29 +142,7 @@ namespace ssa::app::desktop {
                 QCoreApplication::exit(status);
             }
         };
-        const auto startCapture = [&engine, screenshotPath, openPreferences, openAdvancedFilters,
-                                   screenshotDelayMs, &controller, completion] {
-            const int status =
-                prepareCapture(engine, screenshotPath, openPreferences, openAdvancedFilters,
-                               screenshotDelayMs, controller, completion);
-            if (status != 0) {
-                completion(status);
-            }
-        };
-        if (!engine.rootObjects().isEmpty()) {
-            QTimer::singleShot(0, &engine, startCapture);
-            return;
-        }
-        QObject::connect(
-            &engine, &QQmlApplicationEngine::objectCreated, &engine,
-            [startCapture, completion](QObject* object, const QUrl&) {
-                if (object == nullptr) {
-                    completion(2);
-                    return;
-                }
-                startCapture();
-            },
-            Qt::SingleShotConnection);
+        scheduleCapture(engine, controller, options, completion);
     }
 
 } // namespace ssa::app::desktop

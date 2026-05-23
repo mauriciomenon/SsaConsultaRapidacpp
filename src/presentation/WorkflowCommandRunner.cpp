@@ -18,13 +18,37 @@ namespace ssa::presentation {
         return running_;
     }
 
+    void WorkflowCommandRunner::importExternalFiles(std::vector<std::filesystem::path> files) {
+        if (running_) {
+            return;
+        }
+        if (!workflows_) {
+            emit finished({ports::WorkflowStatus::Failed,
+                           "import_external_files workflow is not configured"});
+            return;
+        }
+
+        ports::ImportExternalFilesRequest request;
+        request.files = std::move(files);
+        request.optimized = true;
+
+        running_ = true;
+        emit runningChanged(running_);
+
+        auto workflows = workflows_;
+        watcher_.setFuture(
+            QtConcurrent::run(QThreadPool::globalInstance(),
+                              [workflows = std::move(workflows), request = std::move(request)] {
+                                  return workflows->importExternalFiles(request);
+                              }));
+    }
+
     void WorkflowCommandRunner::rescan(const ports::RescanMode mode) {
         if (running_) {
             return;
         }
         if (!workflows_) {
-            emit finished(
-                {ports::WorkflowStatus::NotImplemented, "rescan workflow is not configured"});
+            emit finished({ports::WorkflowStatus::Failed, "rescan workflow is not configured"});
             return;
         }
 
@@ -36,10 +60,12 @@ namespace ssa::presentation {
         running_ = true;
         emit runningChanged(running_);
 
-        const std::shared_ptr<application::SsaWorkflowService> workflows = workflows_;
-        watcher_.setFuture(QtConcurrent::run(QThreadPool::globalInstance(), [workflows, request] {
-            return workflows->rescan(request);
-        }));
+        auto workflows = workflows_;
+        watcher_.setFuture(
+            QtConcurrent::run(QThreadPool::globalInstance(),
+                              [workflows = std::move(workflows), request = std::move(request)] {
+                                  return workflows->rescan(request);
+                              }));
     }
 
     void WorkflowCommandRunner::finish() {

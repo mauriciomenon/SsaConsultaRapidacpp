@@ -15,6 +15,7 @@
 #include "query/SsaQueryService.h"
 
 #include <QObject>
+#include <QString>
 
 #include <memory>
 
@@ -50,6 +51,7 @@ namespace ssa::presentation {
 
       private:
         void connectPreferenceFlows();
+        void connectWorkflowRefresh();
 
         BrowseViewModel browse_;
         ColumnSettingsModel columns_;
@@ -61,6 +63,7 @@ namespace ssa::presentation {
         MainColumnFlowCoordinator columnsFlow_;
         MainSelectionFlowCoordinator selectionFlow_;
         MainRequestFlowCoordinator requestFlow_;
+        QString pendingWorkflowRefreshMessage_;
     };
 
 } // namespace ssa::presentation

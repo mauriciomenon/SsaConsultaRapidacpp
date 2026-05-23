@@ -10,6 +10,7 @@ namespace ssa::infra::sqlite {
     enum class SqliteOpenMode {
         ReadOnly,
         ReadWrite,
+        ReadWriteCreate,
     };
 
     class SqliteConnection final {
@@ -41,14 +42,22 @@ namespace ssa::infra::sqlite {
         SqliteStatement& operator=(SqliteStatement&&) = delete;
 
         void bindTextOneBased(int index, const std::string& value);
+        void bindNullOneBased(int index);
+        void bindInt64OneBased(int index, long long value);
         [[nodiscard]] bool step();
+        void executeAndReset();
+        void resetAndClearBindings();
+        [[nodiscard]] sqlite3_stmt* handle() const noexcept;
         [[nodiscard]] int columnCount() const;
         [[nodiscard]] std::string columnName(int column) const;
         [[nodiscard]] std::string columnText(int column) const;
         [[nodiscard]] long long columnInt64(int column) const;
 
       private:
+        void requireCurrentRow() const;
+
         sqlite3_stmt* statement_{nullptr};
+        bool hasCurrentRow_{false};
     };
 
 } // namespace ssa::infra::sqlite

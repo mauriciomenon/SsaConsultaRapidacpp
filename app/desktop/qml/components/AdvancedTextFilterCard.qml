@@ -23,18 +23,20 @@ FilterCard {
     signal optionsRequested()
     signal operatorModeRequested(string mode)
     signal selectedValueRequested(string value)
-    signal loadedValuesFilterRequested(string mode)
+    signal loadedValuesReplacementRequested(string mode)
     signal textFilterClearRequested()
 
     width: cardWidth
     height: cardHeight
+    padding: 6
 
     ColumnLayout {
         anchors.fill: parent
-        spacing: 4
+        spacing: 5
 
         RowLayout {
             Layout.fillWidth: true
+            Layout.preferredHeight: 18
             spacing: 6
 
             Label {
@@ -46,9 +48,9 @@ FilterCard {
             }
 
             Label {
-                Layout.preferredWidth: Math.min(180, Math.max(72, root.cardWidth * 0.34))
-                text: root.textFilter.length > 0 ? root.textFilter : ""
-                color: Theme.accentStrong
+                Layout.preferredWidth: Math.min(240, Math.max(96, root.cardWidth * 0.36))
+                text: root.textFilter.length > 0 ? "Filtro: " + root.textFilter : "Sem filtro"
+                color: root.textFilter.length > 0 ? Theme.accentStrong : Theme.mutedText
                 font.pixelSize: 11
                 horizontalAlignment: Text.AlignRight
                 elide: Text.ElideRight
@@ -75,9 +77,9 @@ FilterCard {
             AppComboBox {
                 id: advancedValueSelector
                 Layout.fillWidth: true
-                enabled: root.operatorIndex >= 0
+                enabled: root.operatorIndex >= 0 && !root.valuesLoading
                 model: root.visibleValues
-                displayText: root.valuesLoading ? "Carregando" : "Valor"
+                displayText: root.valuesLoading ? "Carregando" : "Selecionar"
                 onPressedChanged: {
                     if (pressed)
                         root.optionsRequested()
@@ -87,7 +89,7 @@ FilterCard {
                         return
                     if (index < 0 || index >= root.visibleValues.length)
                         return
-                    root.selectedValueRequested(advancedValueSelector.textAt(index))
+                    root.selectedValueRequested(root.visibleValues[index])
                 }
             }
 
@@ -104,20 +106,20 @@ FilterCard {
             spacing: 6
             Item { Layout.fillWidth: true }
             ActionButton {
-                text: "Selecionar todos"
-                implicitWidth: 116
+                text: "Usar lista"
+                implicitWidth: 88
                 enabled: root.visibleValues.length > 0
-                onClicked: root.loadedValuesFilterRequested("equals")
+                onClicked: root.loadedValuesReplacementRequested("equals")
             }
             ActionButton {
-                text: "Excluir todos"
-                implicitWidth: 96
+                text: "Exceto lista"
+                implicitWidth: 102
                 enabled: root.visibleValues.length > 0
-                onClicked: root.loadedValuesFilterRequested("different")
+                onClicked: root.loadedValuesReplacementRequested("different")
             }
             ActionButton {
-                text: "Limpar filtro"
-                implicitWidth: 94
+                text: "Limpar"
+                implicitWidth: 72
                 onClicked: root.textFilterClearRequested()
             }
         }

@@ -87,7 +87,7 @@ Item {
                             id: widthSpin
                             from: root.viewModel.minColumnWidth
                             to: root.viewModel.maxColumnWidth
-                            stepSize: 10
+                            stepSize: 5
                             value: columnDelegate.columnWidth
                             onValueModified: root.viewModel.setColumnWidth(
                                 columnDelegate.columnKey,

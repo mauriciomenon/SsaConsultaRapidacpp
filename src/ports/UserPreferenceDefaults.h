@@ -8,9 +8,16 @@ namespace ssa::ports {
 
     inline constexpr int kMinDetailsPanelWidth = 320;
     inline constexpr int kMaxDetailsPanelWidth = 1200;
-    inline constexpr int kDefaultDetailsPanelWidth = 1020;
+    inline constexpr int kDefaultDetailsPanelWidth = 450;
+    inline constexpr std::array<std::string_view, 4> kThemeValues{"system", "light", "dark",
+                                                                  "gruvbox"};
     inline constexpr std::array<std::string_view, 3> kDensityValues{"compact", "normal",
                                                                     "comfortable"};
+
+    [[nodiscard]] inline bool isThemeValid(const std::string_view theme) {
+        return std::ranges::any_of(
+            kThemeValues, [theme](const std::string_view value) { return value == theme; });
+    }
 
     [[nodiscard]] inline bool isDensityValid(const std::string_view density) {
         return std::ranges::any_of(

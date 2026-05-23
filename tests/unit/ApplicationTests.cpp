@@ -5,6 +5,8 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <limits>
+
 namespace {
 
     class FakeRepository final : public ssa::ports::ISsaRepository {
@@ -70,6 +72,21 @@ TEST_CASE("browse service normalizes empty visible columns and page size") {
 
     REQUIRE(page.pageSize == static_cast<std::size_t>(ssa::domain::kMinPageSize));
     REQUIRE_FALSE(repository->lastRequest.visibleColumns.empty());
+}
+
+TEST_CASE("browse service clamps oversized page size without narrowing") {
+    const auto repository = std::make_shared<FakeRepository>();
+    const auto query = std::make_shared<ssa::query::SsaQueryService>(repository);
+    const ssa::application::SsaBrowseService service(query);
+
+    ssa::domain::SsaPageRequest request;
+    request.pageSize = std::numeric_limits<std::size_t>::max();
+
+    const auto page = service.page(request);
+
+    REQUIRE(page.pageSize == static_cast<std::size_t>(ssa::domain::kMaxPageSize));
+    REQUIRE(repository->lastRequest.pageSize ==
+            static_cast<std::size_t>(ssa::domain::kMaxPageSize));
 }
 
 TEST_CASE("browse service returns details by SSA number") {

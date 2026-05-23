@@ -1,6 +1,7 @@
 #include "SsaCliController.h"
 
 #include "SsaCliDatabasePath.h"
+#include "SsaCliImportPaths.h"
 #include "SsaCliPrinter.h"
 #include "SsaCliRequestMapper.h"
 #include "SsaCliWorkflowRunner.h"
@@ -26,6 +27,8 @@ namespace {
         parser.addHelpOption();
         parser.addVersionOption();
         parser.addOption(QCommandLineOption(QStringList{"db"}, "SQLite database path.", "path"));
+        parser.addOption(
+            QCommandLineOption(QStringList{"docs-dir"}, "Input XLSX directory.", "path"));
         parser.addOption(QCommandLineOption(QStringList{"search"}, "General search text.", "text"));
         parser.addOption(
             QCommandLineOption(QStringList{"details"}, "Print one SSA by number.", "ssa"));
@@ -46,9 +49,9 @@ namespace {
         parser.addOption(
             QCommandLineOption(QStringList{"incremental-rescan"}, "Run incremental rescan."));
         parser.addOption(QCommandLineOption(QStringList{"skip-import"},
-                                            "Compatibility flag; import is skipped by default."));
-        parser.addOption(QCommandLineOption(QStringList{"optimized"},
-                                            "Compatibility flag; optimized import is default."));
+                                            "Deprecated compatibility flag; accepted as no-op."));
+        parser.addOption(
+            QCommandLineOption(QStringList{"optimized"}, "Use optimized import strategy."));
         parser.addOption(
             QCommandLineOption(QStringList{"standard"}, "Use standard import strategy."));
         parser.addOption(QCommandLineOption(QStringList{"reset-db"}, "Reset the local database."));
@@ -96,24 +99,40 @@ namespace ssa::app::cli {
         }
 
         try {
-            if (parser.isSet("optimized") && parser.isSet("standard")) {
-                throw std::invalid_argument("--optimized and --standard cannot be used together");
-            }
             if (SsaCliWorkflowRunner::hasWorkflowCommand(parser)) {
-                const auto workflows =
-                    SsaCliWorkflowRunner::requiresDatabase(parser)
-                        ? databaseWorkflowFactory_(SsaCliDatabasePath::required(parser))
-                        : workflowFactory_();
+                std::shared_ptr<application::SsaWorkflowService> workflows;
+                if (SsaCliWorkflowRunner::requiresDatabase(parser)) {
+                    if (!parser.isSet("db")) {
+                        std::cerr << "missing required --db\n";
+                        return 2;
+                    }
+                    const auto databasePath = SsaCliDatabasePath::required(parser);
+                    const auto docsDir = SsaCliImportPaths::docsDirectory(parser, databasePath);
+                    if (SsaCliImportPaths::isRescanOperation(parser) &&
+                        (docsDir.empty() || !std::filesystem::exists(docsDir))) {
+                        std::cerr << "missing --docs-dir and no docs_entrada directory was found\n";
+                        return 2;
+                    }
+                    workflows = databaseWorkflowFactory_(databasePath, docsDir);
+                } else {
+                    workflows = workflowFactory_();
+                }
+                if (!workflows) {
+                    throw std::runtime_error("workflow service factory returned null");
+                }
                 return runWorkflow(parser, *workflows);
-            }
-            if (parser.isSet("export")) {
-                return runExport(parser, SsaCliDatabasePath::required(parser));
             }
             if (!parser.isSet("db")) {
                 std::cerr << "missing required --db\n";
                 return 2;
             }
+            if (parser.isSet("export")) {
+                return runExport(parser, SsaCliDatabasePath::required(parser));
+            }
             const auto browse = createBrowseService(parser);
+            if (!browse) {
+                throw std::runtime_error("browse service factory returned null");
+            }
             if (parser.isSet("details")) {
                 return runDetails(parser, *browse);
             }
@@ -170,7 +189,8 @@ namespace ssa::app::cli {
             throw std::runtime_error("browse service factory returned null");
         }
         const auto outputColumns = browse->columnsOrDefault(requestedColumns);
-        const auto workflows = databaseWorkflowFactory_(databasePath);
+        const auto workflows = databaseWorkflowFactory_(
+            databasePath, SsaCliImportPaths::docsDirectory(parser, databasePath));
 
         ports::ExportFilteredListRequest request;
         request.query = SsaCliRequestMapper::pageRequest(parser, outputColumns);

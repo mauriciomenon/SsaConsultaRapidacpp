@@ -1,5 +1,6 @@
 #include "application/SsaBrowseService.h"
 
+#include <algorithm>
 #include <stdexcept>
 #include <utility>
 
@@ -42,7 +43,8 @@ namespace ssa::application {
     SsaBrowseService::normalizeRequest(domain::SsaPageRequest request) const {
         request.visibleColumns = columnsOrDefault(std::move(request.visibleColumns));
         request.pageSize =
-            static_cast<std::size_t>(domain::clampPageSize(static_cast<int>(request.pageSize)));
+            std::clamp(request.pageSize, static_cast<std::size_t>(domain::kMinPageSize),
+                       static_cast<std::size_t>(domain::kMaxPageSize));
         if (!request.sort.columnKey.empty()) {
             if (!domain::ColumnCatalog::contains(request.sort.columnKey)) {
                 throw std::invalid_argument("unknown sort column: " + request.sort.columnKey);

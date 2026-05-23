@@ -5,7 +5,9 @@
 #include <QFutureWatcher>
 #include <QObject>
 
+#include <filesystem>
 #include <memory>
+#include <vector>
 
 namespace ssa::presentation {
 
@@ -17,6 +19,7 @@ namespace ssa::presentation {
                                        QObject* parent = nullptr);
 
         [[nodiscard]] bool running() const;
+        void importExternalFiles(std::vector<std::filesystem::path> files);
         void rescan(ports::RescanMode mode);
 
       signals:

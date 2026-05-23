@@ -1,8 +1,13 @@
 #include "query/SqlQueryBuilder.h"
 
+#include "domain/ColumnCatalog.h"
+#include "domain/SafePattern.h"
+
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <limits>
+#include <stdexcept>
 
 TEST_CASE("sql query builder uses bound parameters for search text") {
     ssa::domain::SsaPageRequest request;
@@ -11,10 +16,12 @@ TEST_CASE("sql query builder uses bound parameters for search text") {
 
     const auto queries = ssa::query::SqlQueryBuilder{}.build(request);
 
+    const std::string expectedPageSize = "50";
+    const std::string expectedOffset = "0";
     REQUIRE(queries.page.sql.find("abc") == std::string::npos);
     REQUIRE(queries.page.bindings.size() > 2);
-    REQUIRE(queries.page.bindings.back() == "0");
-    REQUIRE(queries.page.bindings[queries.page.bindings.size() - 2] == "50");
+    REQUIRE(queries.page.bindings.back() == expectedOffset);
+    REQUIRE(queries.page.bindings[queries.page.bindings.size() - 2] == expectedPageSize);
 }
 
 TEST_CASE("sql query builder rejects unknown visible columns") {
@@ -24,14 +31,36 @@ TEST_CASE("sql query builder rejects unknown visible columns") {
     REQUIRE_THROWS_AS(ssa::query::SqlQueryBuilder{}.build(request), std::invalid_argument);
 }
 
-TEST_CASE("sql query builder compiles safe pattern search with escaped LIKE") {
+TEST_CASE("sql query builder rejects unsafe table identifiers") {
+    ssa::domain::SsaPageRequest request;
+
+    REQUIRE_THROWS_AS(
+        ssa::query::SqlQueryBuilder{R"(ssa"; DROP TABLE ssa_table; --)"}.build(request),
+        std::invalid_argument);
+}
+
+TEST_CASE("sql query builder status-last sort uses a catalog-backed column") {
+    REQUIRE(ssa::domain::ColumnCatalog::contains(ssa::domain::ColumnCatalog::statusColumnKey()));
+
+    ssa::domain::SsaPageRequest request;
+    request.sort.statusLast = true;
+
+    const auto queries = ssa::query::SqlQueryBuilder{}.build(request);
+
+    REQUIRE(queries.page.sql.find("\"situacao\"") != std::string::npos);
+}
+
+TEST_CASE("sql query builder compiles safe pattern dot wildcard through LIKE") {
     ssa::domain::SsaPageRequest request;
     request.searchText = "~foo.bar";
 
     const auto queries = ssa::query::SqlQueryBuilder{}.build(request);
 
+    REQUIRE(ssa::domain::kSafePatternWildcard == ".");
     REQUIRE(queries.page.sql.find("LIKE ? COLLATE NOCASE ESCAPE") != std::string::npos);
-    REQUIRE(queries.page.bindings.front() == "FOO_BAR");
+    REQUIRE(queries.page.bindings.front().starts_with("FOO"));
+    REQUIRE(queries.page.bindings.front().at(3) == '_');
+    REQUIRE(queries.page.bindings.front().ends_with("BAR"));
 }
 
 TEST_CASE("sql query builder compiles advanced week and derivation filters") {
@@ -74,6 +103,49 @@ TEST_CASE("sql query builder compiles advanced text and range filters") {
     REQUIRE(std::ranges::find(queries.page.bindings, "202530") != queries.page.bindings.end());
     REQUIRE(queries.page.sql.find("APV") == std::string::npos);
     REQUIRE(queries.page.sql.find("SMM") == std::string::npos);
+}
+
+TEST_CASE("sql query builder combines basic and advanced filters for the same column") {
+    ssa::domain::SsaPageRequest request;
+    request.columnFilters = {{"situacao", "=APL"}};
+    request.advancedFilters.textFilters = {{"situacao", "!SPG"}};
+
+    const auto queries = ssa::query::SqlQueryBuilder{}.build(request);
+
+    REQUIRE(std::ranges::find(queries.page.bindings, "APL") != queries.page.bindings.end());
+    REQUIRE(std::ranges::any_of(queries.page.bindings, [](const std::string& binding) {
+        return binding.find("SPG") != std::string::npos;
+    }));
+}
+
+TEST_CASE("sql query builder binds distinct values limit") {
+    ssa::domain::DistinctValuesRequest request;
+    request.columnKey = "situacao";
+    request.limit = 37;
+
+    const auto query = ssa::query::SqlQueryBuilder{}.buildDistinctValues(request);
+
+    REQUIRE(query.sql.find("LIMIT ?") != std::string::npos);
+    REQUIRE_FALSE(query.bindings.empty());
+    REQUIRE(query.bindings.back() == "37");
+}
+
+TEST_CASE("sql query builder rejects overflowing page offsets") {
+    ssa::domain::SsaPageRequest request;
+    request.pageSize = 500;
+    request.pageIndex = std::numeric_limits<std::size_t>::max();
+
+    REQUIRE_THROWS_AS(ssa::query::SqlQueryBuilder{}.build(request), std::overflow_error);
+}
+
+TEST_CASE("sql query builder omits pagination when page size is zero") {
+    ssa::domain::SsaPageRequest request;
+    request.pageSize = 0;
+
+    const auto queries = ssa::query::SqlQueryBuilder{}.build(request);
+
+    REQUIRE(queries.page.sql.find(" LIMIT ? OFFSET ?") == std::string::npos);
+    REQUIRE(std::ranges::find(queries.page.bindings, "0") == queries.page.bindings.end());
 }
 
 TEST_CASE("sql query builder rejects oversized safe pattern filters") {

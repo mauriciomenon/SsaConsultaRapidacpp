@@ -16,6 +16,9 @@ namespace {
     }
 
     bool usesDefaultOptimizedImport(const QCommandLineParser& parser) {
+        if (parser.isSet("optimized")) {
+            return true;
+        }
         if (parser.isSet("standard")) {
             return false;
         }
@@ -58,10 +61,14 @@ namespace {
          }},
     }};
 
-    constexpr std::array<const char*, 3> kDatabaseWorkflowCommands{{
+    constexpr std::array<const char*, 7> kDatabaseWorkflowCommands{{
+        "rescan",
+        "force-rescan",
+        "incremental-rescan",
         "reset-db",
         "clean-data",
         "vacuum-analyze",
+        "sync-derivadas",
     }};
 
 } // namespace

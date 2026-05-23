@@ -56,8 +56,16 @@ int main(int argc, char* argv[]) {
     QObject::connect(
         &engine, &QQmlApplicationEngine::objectCreationFailed, &app,
         [] { QCoreApplication::exit(1); }, Qt::QueuedConnection);
-    runtime->loadMainWindow(engine);
-    runtime->installSmokeCapture(parser, engine);
+    try {
+        runtime->loadMainWindow(engine);
+        runtime->installSmokeCapture(parser, engine);
+    } catch (const std::exception& exc) {
+        std::cerr << "startup error: " << exc.what() << '\n';
+        return 2;
+    } catch (...) {
+        std::cerr << "startup error: unknown exception while loading desktop runtime\n";
+        return 2;
+    }
     if (parser.isSet("smoke-exit-ms")) {
         bool ok = false;
         const int delayMs = parser.value("smoke-exit-ms").toInt(&ok);

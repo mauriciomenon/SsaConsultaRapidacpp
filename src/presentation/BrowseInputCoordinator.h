@@ -17,7 +17,7 @@ namespace ssa::presentation {
 
         [[nodiscard]] bool setPageSize(const int value);
         void apply();
-        void clearSearchTextAndReload();
+        void clearSearchAndResetPage();
         [[nodiscard]] bool nextPage();
         [[nodiscard]] bool previousPage();
         [[nodiscard]] bool applySortByColumn(const QString& key);

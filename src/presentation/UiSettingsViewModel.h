@@ -67,14 +67,15 @@ namespace ssa::presentation {
 
       private:
         [[nodiscard]] details_layout::DetailsPanelGeometry detailsLayoutGeometry() const;
+        bool applyThemeValue(const QString& value);
         bool applyDensityValue(const QString& value);
         bool applyDetailsPanelWidthValue(int value);
         void emitDetailsWidthLayoutChanged();
         void schedulePreferencesSave();
 
-        QString theme_{"system"};
+        QString theme_{"gruvbox"};
         QString systemTheme_{"light"};
-        QString density_{"normal"};
+        QString density_{"compact"};
         bool detailsVisible_{true};
         int detailsPanelWidth_{ports::kDefaultDetailsPanelWidth};
         int detailsViewportWidth_{1280};

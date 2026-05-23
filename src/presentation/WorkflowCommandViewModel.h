@@ -5,6 +5,7 @@
 
 #include <QObject>
 #include <QString>
+#include <QVariantList>
 
 #include <memory>
 
@@ -23,12 +24,16 @@ namespace ssa::presentation {
         [[nodiscard]] QString lastMessage() const;
         [[nodiscard]] bool lastSucceeded() const;
         [[nodiscard]] bool running() const;
+        [[nodiscard]] QString runningMessage() const;
+        [[nodiscard]] QString successMessage() const;
+        [[nodiscard]] QString failureMessage() const;
 
       signals:
         void lastResultChanged();
         void runningChanged();
 
       public slots:
+        void importExternalFiles(const QVariantList& selectedFiles);
         void rescanIncremental();
         void rescanFull();
 
@@ -38,8 +43,14 @@ namespace ssa::presentation {
         void setRunning(bool running);
         void setResult(QString message, bool succeeded);
 
+        enum class Operation {
+            Rescan,
+            ImportExternalFiles,
+        };
+
         WorkflowCommandRunner runner_;
         QString lastMessage_;
+        Operation operation_{Operation::Rescan};
         bool lastSucceeded_{false};
         bool running_{false};
     };

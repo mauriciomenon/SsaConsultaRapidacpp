@@ -10,9 +10,6 @@ namespace ssa::presentation {
         const QString kExportRunningMessage{"Exportando dados..."};
         const QString kExportSuccessMessage{"Exportacao concluida"};
         const QString kExportFailedMessage{"Falha ao exportar dados"};
-        const QString kWorkflowRunningMessage{"Reescaneando dados..."};
-        const QString kWorkflowSuccessMessage{"Reescaneamento concluido"};
-        const QString kWorkflowFailedMessage{"Falha ao reescanear dados"};
         const QString kPreferencesFailedMessage{"Falha ao salvar preferencias"};
 
         struct ActionStatusMessages {
@@ -83,12 +80,12 @@ namespace ssa::presentation {
     }
 
     void ActionStatusCoordinator::onWorkflowRunning() {
-        reportRunning(status_, workflows_.running(), kWorkflowRunningMessage);
+        reportRunning(status_, workflows_.running(), workflows_.runningMessage());
     }
 
     void ActionStatusCoordinator::onWorkflowResult() {
         reportResult(status_, workflows_.lastSucceeded(), workflows_.lastMessage(),
-                     {kWorkflowSuccessMessage, kWorkflowFailedMessage});
+                     {workflows_.successMessage(), workflows_.failureMessage()});
     }
 
     void ActionStatusCoordinator::onPreferenceSaveFailed(const QString& message) {

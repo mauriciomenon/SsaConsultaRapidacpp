@@ -9,7 +9,8 @@ Rectangle {
     id: root
     required property var filterViewModel
     required property var columnViewModel
-    readonly property string filterSyntaxHint: "Termos separados por virgula; ! exclui; ^, $, =, ~ alteram o modo"
+    readonly property string filterPlaceholder: "Filtro"
+    readonly property string filterSyntaxHint: "Virgula combina alternativas; ! exclui; = exato; ^ inicio; $ fim; ~ contem"
 
     color: Theme.panel
     border.color: Theme.border
@@ -33,7 +34,7 @@ Rectangle {
 
                 width: columnFilterList.width
                 row: modelData
-                placeholderText: root.filterSyntaxHint
+                placeholderText: root.filterPlaceholder
                 onFilterSubmitted: (key, value) => root.columnViewModel.applyFilterFor(key, value)
                 onFilterCleared: key => root.columnViewModel.clearFilterFor(key)
             }
@@ -43,14 +44,28 @@ Rectangle {
             Layout.fillWidth: true
             spacing: Theme.gap
 
-            Label {
+            ColumnLayout {
                 Layout.fillWidth: true
-                text: root.columnViewModel.activeFilterCount === 0
-                      ? "Nenhum filtro por coluna ativo"
-                      : root.columnViewModel.activeFilterCount + " filtros por coluna ativos"
-                color: Theme.mutedText
-                font.pixelSize: 12
-                elide: Text.ElideRight
+                spacing: 1
+
+                Label {
+                    Layout.fillWidth: true
+                    text: root.columnViewModel.activeFilterCount === 0
+                          ? "Sem filtros por coluna"
+                          : root.columnViewModel.activeFilterCount + " filtros por coluna"
+                    color: Theme.mutedText
+                    font.pixelSize: 12
+                    elide: Text.ElideRight
+                }
+
+                Label {
+                    Layout.fillWidth: true
+                    visible: root.columnViewModel.activeFilterCount > 0
+                    text: root.filterSyntaxHint
+                    color: Theme.mutedText
+                    font.pixelSize: 10
+                    elide: Text.ElideRight
+                }
             }
 
             ActionButton {

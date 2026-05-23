@@ -88,6 +88,8 @@ namespace ssa::presentation {
       signals:
         void changed();
         void columnValueOptionsChanged();
+        void columnValueOptionsChangedFor(QString key);
+        void columnValueOptionsReset();
         void applyRequested();
 
       public slots:
