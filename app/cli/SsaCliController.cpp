@@ -10,6 +10,7 @@
 
 #include <QCommandLineOption>
 #include <QCommandLineParser>
+#include <QLoggingCategory>
 #include <QCoreApplication>
 #include <QStringList>
 
@@ -60,6 +61,49 @@ namespace {
                                             "Run SQLite vacuum/analyze maintenance."));
         parser.addOption(
             QCommandLineOption(QStringList{"sync-derivadas"}, "Synchronize derivadas data."));
+        parser.addOption(
+            QCommandLineOption(QStringList{"log-level"}, "Set logging level.", "level"));
+    }
+
+    int parseLogLevel(const QString& level) {
+        const auto normalized = level.toLower();
+        if (normalized == "trace" || normalized == "debug") {
+            QLoggingCategory::setFilterRules("*.debug=true\n"
+                                             "*.info=true\n"
+                                             "*.warning=true\n"
+                                             "*.critical=true\n");
+            return 0;
+        }
+        if (normalized == "info") {
+            QLoggingCategory::setFilterRules("*.debug=false\n"
+                                             "*.info=true\n"
+                                             "*.warning=true\n"
+                                             "*.critical=true\n");
+            return 0;
+        }
+        if (normalized == "warning") {
+            QLoggingCategory::setFilterRules("*.debug=false\n"
+                                             "*.info=false\n"
+                                             "*.warning=true\n"
+                                             "*.critical=true\n");
+            return 0;
+        }
+        if (normalized == "error" || normalized == "critical") {
+            QLoggingCategory::setFilterRules("*.debug=false\n"
+                                             "*.info=false\n"
+                                             "*.warning=false\n"
+                                             "*.critical=true\n");
+            return 0;
+        }
+        if (normalized == "off") {
+            QLoggingCategory::setFilterRules("*.debug=false\n"
+                                             "*.info=false\n"
+                                             "*.warning=false\n"
+                                             "*.critical=false\n");
+            return 0;
+        }
+        std::cerr << "error: invalid --log-level value, expected: trace|debug|info|warning|error|critical|off\n";
+        return 2;
     }
 
 } // namespace
@@ -87,6 +131,12 @@ namespace ssa::app::cli {
         if (!parser.parse(arguments)) {
             std::cerr << "error: " << parser.errorText().toStdString() << '\n';
             return 2;
+        }
+        if (parser.isSet("log-level")) {
+            const auto exitCode = parseLogLevel(parser.value("log-level"));
+            if (exitCode != 0) {
+                return exitCode;
+            }
         }
         if (parser.isSet("help")) {
             std::cout << parser.helpText().toStdString();

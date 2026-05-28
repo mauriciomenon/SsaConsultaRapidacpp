@@ -99,6 +99,26 @@ TEST_CASE("cli lets optimized override standard import strategy") {
     REQUIRE(importPort->lastRequest.optimized);
 }
 
+TEST_CASE("cli accepts --log-level values") {
+    auto importPort = std::make_shared<CapturingImportPort>();
+    auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(importPort);
+
+    const auto controller = controllerWithWorkflow(workflows);
+
+    const int exitCode = controller.run({"ssa", "--log-level", "info", "--version"});
+    REQUIRE(exitCode == 0);
+}
+
+TEST_CASE("cli rejects invalid --log-level values") {
+    auto importPort = std::make_shared<CapturingImportPort>();
+    auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(importPort);
+
+    const auto controller = controllerWithWorkflow(workflows);
+
+    const int exitCode = controller.run({"ssa", "--log-level", "invalid", "--version"});
+    REQUIRE(exitCode == 2);
+}
+
 TEST_CASE("cli rejects multiple workflow commands") {
     auto importPort = std::make_shared<CapturingImportPort>();
     auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(importPort);
