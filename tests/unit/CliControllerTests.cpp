@@ -153,6 +153,19 @@ TEST_CASE("cli maps acao backfill to sync derivadas command") {
     REQUIRE(derivadasPort->called);
 }
 
+TEST_CASE("cli executes sync-derivadas command") {
+    auto derivadasPort = std::make_shared<CapturingDerivadasPort>();
+    auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(
+        std::make_shared<CapturingImportPort>(), nullptr, nullptr, derivadasPort);
+
+    const auto controller = controllerWithWorkflow(workflows);
+    const auto databasePath = existingDatabaseArgument();
+    const int exitCode = controller.run({"ssa", "--sync-derivadas", "--db", databasePath.c_str()});
+
+    REQUIRE(exitCode == 0);
+    REQUIRE(derivadasPort->called);
+}
+
 TEST_CASE("cli rejects unsupported acao commands") {
     auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(
         std::make_shared<CapturingImportPort>(), nullptr, nullptr,
@@ -163,6 +176,20 @@ TEST_CASE("cli rejects unsupported acao commands") {
     const int exitCode = controller.run({"ssa", "--acao", "invalid", "--db", databasePath.c_str()});
 
     REQUIRE(exitCode == 1);
+}
+
+TEST_CASE("cli rejects acao with another workflow command") {
+    auto derivadasPort = std::make_shared<CapturingDerivadasPort>();
+    auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(
+        std::make_shared<CapturingImportPort>(), nullptr, nullptr, derivadasPort);
+
+    const auto controller = controllerWithWorkflow(workflows);
+    const auto databasePath = existingDatabaseArgument();
+    const int exitCode = controller.run(
+        {"ssa", "--sync-derivadas", "--acao", "backfill", "--db", databasePath.c_str()});
+
+    REQUIRE(exitCode == 1);
+    REQUIRE_FALSE(derivadasPort->called);
 }
 
 TEST_CASE("cli rejects multiple workflow commands") {
