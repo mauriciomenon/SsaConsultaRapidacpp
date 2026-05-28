@@ -7,6 +7,7 @@
 #include "infra/import/SpreadsheetImportWorkflowPort.h"
 #include "infra/preferences/JsonFilterPresetStore.h"
 #include "infra/preferences/JsonUserPreferencesStore.h"
+#include "infra/sqlite/SqliteMaintenancePort.h"
 #include "infra/sqlite/SqliteSsaRepository.h"
 #include "platform/DesktopExternalCommandPort.h"
 #include "query/SsaQueryService.h"
@@ -48,12 +49,12 @@ namespace ssa::app::desktop {
             const auto importPort =
                 std::make_shared<ssa::infra::importing::SpreadsheetImportWorkflowPort>(
                     paths.inputFolderPath(), databasePath(options), importColumns());
-            const auto unavailableMaintenancePort =
-                std::make_shared<ssa::application::UnavailableWorkflowPort>();
+            const auto maintenancePort =
+                std::make_shared<ssa::infra::sqlite::SqliteMaintenancePort>(databasePath(options));
             const auto unavailableDerivadasPort =
                 std::make_shared<ssa::application::UnavailableWorkflowPort>();
             return std::make_shared<ssa::application::SsaWorkflowService>(
-                importPort, exportPort, unavailableMaintenancePort, unavailableDerivadasPort);
+                importPort, exportPort, maintenancePort, unavailableDerivadasPort);
         }
 
         std::shared_ptr<ssa::platform::DesktopExternalCommandPort>
