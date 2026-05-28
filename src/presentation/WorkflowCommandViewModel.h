@@ -36,16 +36,25 @@ namespace ssa::presentation {
         void importExternalFiles(const QVariantList& selectedFiles);
         void rescanIncremental();
         void rescanFull();
+        void syncDerivadas();
 
       private:
+        struct OperationMessages {
+            QString running;
+            QString success;
+            QString failure;
+        };
+
         void startRescan(ports::RescanMode mode);
         void applyResult(const ports::WorkflowResult& result);
         void setRunning(bool running);
         void setResult(QString message, bool succeeded);
+        [[nodiscard]] OperationMessages messagesForCurrentOperation() const;
 
         enum class Operation {
             Rescan,
             ImportExternalFiles,
+            SyncDerivadas,
         };
 
         WorkflowCommandRunner runner_;

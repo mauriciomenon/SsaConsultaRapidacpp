@@ -3,6 +3,7 @@
 #include <QThreadPool>
 #include <QtConcurrent>
 
+#include <filesystem>
 #include <utility>
 
 namespace ssa::presentation {
@@ -18,7 +19,7 @@ namespace ssa::presentation {
         return running_;
     }
 
-    void WorkflowCommandRunner::importExternalFiles(std::vector<std::filesystem::path> files) {
+    void WorkflowCommandRunner::importExternalFiles(std::vector<QString> files) {
         if (running_) {
             return;
         }
@@ -29,9 +30,11 @@ namespace ssa::presentation {
         }
 
         ports::ImportExternalFilesRequest request;
-        request.files = std::move(files);
         request.optimized = true;
-
+        request.files.reserve(files.size());
+        for (auto& path : files) {
+            request.files.emplace_back(std::filesystem::path(path.toStdString()));
+        }
         running_ = true;
         emit runningChanged(running_);
 
@@ -66,6 +69,26 @@ namespace ssa::presentation {
                               [workflows = std::move(workflows), request = std::move(request)] {
                                   return workflows->rescan(request);
                               }));
+    }
+
+    void WorkflowCommandRunner::syncDerivadas() {
+        if (running_) {
+            return;
+        }
+        if (!workflows_) {
+            emit finished(
+                {ports::WorkflowStatus::Failed, "sync derivadas workflow is not configured"});
+            return;
+        }
+
+        running_ = true;
+        emit runningChanged(running_);
+
+        auto workflows = workflows_;
+        watcher_.setFuture(
+            QtConcurrent::run(QThreadPool::globalInstance(), [workflows = std::move(workflows)] {
+                return workflows->syncDerivadas();
+            }));
     }
 
     void WorkflowCommandRunner::finish() {

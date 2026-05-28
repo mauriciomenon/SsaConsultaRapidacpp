@@ -2,7 +2,6 @@
 
 #include <QUrl>
 
-#include <filesystem>
 #include <utility>
 #include <vector>
 
@@ -10,27 +9,19 @@ namespace ssa::presentation {
 
     namespace {
 
-        std::filesystem::path filesystemPathFromLocalFile(const QString& localFile) {
-#ifdef _WIN32
-            return std::filesystem::path{localFile.toStdWString()};
-#else
-            return std::filesystem::path{localFile.toStdString()};
-#endif
-        }
+        enum class FileSelectionError { None, NonLocalFile };
 
-        std::vector<std::filesystem::path> localFilePathsFromUrls(const QVariantList& selectedFiles,
-                                                                  QString& errorMessage) {
-            std::vector<std::filesystem::path> files;
+        FileSelectionError localFilePathsFromUrls(const QVariantList& selectedFiles,
+                                                  std::vector<QString>& files) {
             files.reserve(static_cast<std::size_t>(selectedFiles.size()));
             for (const auto& selectedFile : selectedFiles) {
                 const QUrl url = selectedFile.toUrl();
                 if (!url.isLocalFile()) {
-                    errorMessage = "import_external_files local_files_required";
-                    return {};
+                    return FileSelectionError::NonLocalFile;
                 }
-                files.push_back(filesystemPathFromLocalFile(url.toLocalFile()));
+                files.push_back(url.toLocalFile());
             }
-            return files;
+            return FileSelectionError::None;
         }
 
     } // namespace
@@ -56,29 +47,45 @@ namespace ssa::presentation {
         return running_;
     }
 
+    WorkflowCommandViewModel::OperationMessages
+    WorkflowCommandViewModel::messagesForCurrentOperation() const {
+        switch (operation_) {
+        case Operation::Rescan:
+            return {tr("Reescaneando dados..."), tr("Reescaneamento concluido"),
+                    tr("Falha ao reescanear dados")};
+        case Operation::ImportExternalFiles:
+            return {tr("Importando arquivos..."), tr("Importacao concluida"),
+                    tr("Falha ao importar arquivos")};
+        case Operation::SyncDerivadas:
+            return {tr("Sincronizando derivadas..."), tr("Sincronizacao de derivadas concluida"),
+                    tr("Falha ao sincronizar derivadas")};
+        }
+        return {tr("Reescaneando dados..."), tr("Reescaneamento concluido"),
+                tr("Falha ao reescanear dados")};
+    }
+
     QString WorkflowCommandViewModel::runningMessage() const {
-        return operation_ == Operation::ImportExternalFiles ? tr("Importando arquivos...")
-                                                            : tr("Reescaneando dados...");
+        return messagesForCurrentOperation().running;
     }
 
     QString WorkflowCommandViewModel::successMessage() const {
-        return operation_ == Operation::ImportExternalFiles ? tr("Importacao concluida")
-                                                            : tr("Reescaneamento concluido");
+        return messagesForCurrentOperation().success;
     }
 
     QString WorkflowCommandViewModel::failureMessage() const {
-        return operation_ == Operation::ImportExternalFiles ? tr("Falha ao importar arquivos")
-                                                            : tr("Falha ao reescanear dados");
+        return messagesForCurrentOperation().failure;
     }
 
     void WorkflowCommandViewModel::importExternalFiles(const QVariantList& selectedFiles) {
         if (runner_.running()) {
             return;
         }
-        QString errorMessage;
-        auto files = localFilePathsFromUrls(selectedFiles, errorMessage);
-        if (!errorMessage.isEmpty()) {
-            setResult(std::move(errorMessage), false);
+
+        std::vector<QString> files;
+        const auto parseError = localFilePathsFromUrls(selectedFiles, files);
+        if (parseError == FileSelectionError::NonLocalFile) {
+            setResult(tr("Falha ao importar arquivos: apenas arquivos locais sao suportados"),
+                      false);
             return;
         }
         operation_ = Operation::ImportExternalFiles;
@@ -93,6 +100,14 @@ namespace ssa::presentation {
         startRescan(ports::RescanMode::Full);
     }
 
+    void WorkflowCommandViewModel::syncDerivadas() {
+        if (runner_.running()) {
+            return;
+        }
+        operation_ = Operation::SyncDerivadas;
+        runner_.syncDerivadas();
+    }
+
     void WorkflowCommandViewModel::startRescan(const ports::RescanMode mode) {
         if (runner_.running()) {
             return;
@@ -102,8 +117,13 @@ namespace ssa::presentation {
     }
 
     void WorkflowCommandViewModel::applyResult(const ports::WorkflowResult& result) {
-        setResult(result.ok() ? successMessage() : QString::fromStdString(result.message),
-                  result.ok());
+        if (result.ok()) {
+            setResult(QString::fromStdString(result.message.empty() ? successMessage().toStdString()
+                                                                    : result.message),
+                      true);
+            return;
+        }
+        setResult(QString::fromStdString(result.message), false);
     }
 
     void WorkflowCommandViewModel::setRunning(const bool running) {

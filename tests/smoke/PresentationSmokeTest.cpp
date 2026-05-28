@@ -205,6 +205,35 @@ namespace {
         std::vector<ssa::ports::RescanRequest> requests_;
     };
 
+    class CapturingDerivadasPort final : public ssa::ports::IDerivadasPort {
+      public:
+        explicit CapturingDerivadasPort(
+            ssa::ports::WorkflowResult result = {ssa::ports::WorkflowStatus::Succeeded,
+                                                 "derivadas sync completed"})
+            : nextResult_(std::move(result)) {}
+
+        ssa::ports::WorkflowResult syncDerivadas() override {
+            const std::scoped_lock lock(mutex_);
+            ++syncCalls_;
+            return nextResult_;
+        }
+
+        [[nodiscard]] std::size_t syncCalls() const {
+            const std::scoped_lock lock(mutex_);
+            return syncCalls_;
+        }
+
+        void setNextResult(ssa::ports::WorkflowResult result) {
+            const std::scoped_lock lock(mutex_);
+            nextResult_ = std::move(result);
+        }
+
+      private:
+        mutable std::mutex mutex_;
+        std::size_t syncCalls_{0};
+        ssa::ports::WorkflowResult nextResult_;
+    };
+
     class PresentationSmokeTest final : public QObject {
         Q_OBJECT
 
@@ -727,6 +756,43 @@ namespace {
             QCOMPARE(importPort->importRequests().back().optimized, true);
             QTRY_COMPARE_WITH_TIMEOUT(model.browse()->status()->message(),
                                       QString("Importacao concluida"), 1000);
+        }
+
+        void sync_derivadas_updates_status_after_success() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            auto derivadasPort = std::make_shared<CapturingDerivadasPort>();
+            auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(
+                std::make_shared<CapturingImportPort>(), nullptr, nullptr, derivadasPort);
+            ssa::presentation::MainViewModel model(service, commands, nullptr, nullptr, workflows);
+
+            model.actions()->workflows()->syncDerivadas();
+
+            QTRY_COMPARE_WITH_TIMEOUT(derivadasPort->syncCalls(), std::size_t{1}, 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->status()->message(),
+                                      QString("Sincronizacao de derivadas concluida"), 1000);
+            QCOMPARE(model.actions()->workflows()->lastSucceeded(), true);
+        }
+
+        void sync_derivadas_reports_workflow_error() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            auto derivadasPort = std::make_shared<CapturingDerivadasPort>(
+                ssa::ports::WorkflowResult{ssa::ports::WorkflowStatus::Failed,
+                                           "sync derivadas failed in integration path"});
+            auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(
+                std::make_shared<CapturingImportPort>(), nullptr, nullptr, derivadasPort);
+            ssa::presentation::MainViewModel model(service, commands, nullptr, nullptr, workflows);
+
+            model.actions()->workflows()->syncDerivadas();
+
+            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->status()->message(),
+                                      QString("Falha ao sincronizar derivadas"), 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->status()->error(),
+                                      QString("sync derivadas failed in integration path"), 1000);
+            QCOMPARE(model.actions()->workflows()->lastSucceeded(), false);
         }
 
         void rescan_full_disables_optimized_mode() {
