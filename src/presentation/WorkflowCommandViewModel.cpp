@@ -81,6 +81,7 @@ namespace ssa::presentation {
             return;
         }
 
+        operation_ = Operation::ImportExternalFiles;
         std::vector<QString> files;
         const auto parseError = localFilePathsFromUrls(selectedFiles, files);
         if (parseError == FileSelectionError::NonLocalFile) {
@@ -88,7 +89,6 @@ namespace ssa::presentation {
                       false);
             return;
         }
-        operation_ = Operation::ImportExternalFiles;
         runner_.importExternalFiles(std::move(files));
     }
 
