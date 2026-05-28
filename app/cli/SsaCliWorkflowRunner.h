@@ -11,6 +11,8 @@ namespace ssa::app::cli {
         [[nodiscard]] static bool hasWorkflowCommand(const QCommandLineParser& parser);
         [[nodiscard]] static bool requiresDatabase(const QCommandLineParser& parser);
         [[nodiscard]] static ports::WorkflowResult
+        validateWorkflowRequest(const QCommandLineParser& parser);
+        [[nodiscard]] static ports::WorkflowResult
         runSelected(const QCommandLineParser& parser,
                     const application::SsaWorkflowService& workflows);
     };

@@ -178,6 +178,17 @@ TEST_CASE("cli rejects unsupported acao commands") {
     REQUIRE(exitCode == 1);
 }
 
+TEST_CASE("cli rejects unsupported acao before requiring db") {
+    auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(
+        std::make_shared<CapturingImportPort>(), nullptr, nullptr,
+        std::make_shared<CapturingDerivadasPort>());
+
+    const auto controller = controllerWithWorkflow(workflows);
+    const int exitCode = controller.run({"ssa", "--acao", "invalid"});
+
+    REQUIRE(exitCode == 1);
+}
+
 TEST_CASE("cli rejects acao with another workflow command") {
     auto derivadasPort = std::make_shared<CapturingDerivadasPort>();
     auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(

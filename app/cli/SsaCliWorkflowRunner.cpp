@@ -118,10 +118,8 @@ namespace ssa::app::cli {
     }
 
     ports::WorkflowResult
-    SsaCliWorkflowRunner::runSelected(const QCommandLineParser& parser,
-                                      const application::SsaWorkflowService& workflows) {
+    SsaCliWorkflowRunner::validateWorkflowRequest(const QCommandLineParser& parser) {
         int selectedCommands = 0;
-        const WorkflowCliCommand* selectedCommand = nullptr;
         const bool hasAcao = isAcaoRequested(parser);
         if (hasAcao && !isBackfillActionRequested(parser)) {
             return rejectUnsupportedAction(parser.value("acao"));
@@ -132,11 +130,32 @@ namespace ssa::app::cli {
         for (const auto& command : kWorkflowCommands) {
             if (parser.isSet(command.option)) {
                 ++selectedCommands;
-                selectedCommand = &command;
             }
         }
         if (selectedCommands > 1) {
             return rejectMultipleWorkflowCommands();
+        }
+        if (!hasAcao && selectedCommands == 0) {
+            return {ssa::ports::WorkflowStatus::Rejected, "no workflow command selected"};
+        }
+        return {ssa::ports::WorkflowStatus::Succeeded, "workflow command validated"};
+    }
+
+    ports::WorkflowResult
+    SsaCliWorkflowRunner::runSelected(const QCommandLineParser& parser,
+                                      const application::SsaWorkflowService& workflows) {
+        const auto requestValidation = validateWorkflowRequest(parser);
+        if (!requestValidation.ok()) {
+            return requestValidation;
+        }
+        int selectedCommands = 0;
+        const WorkflowCliCommand* selectedCommand = nullptr;
+        const bool hasAcao = isAcaoRequested(parser);
+        for (const auto& command : kWorkflowCommands) {
+            if (parser.isSet(command.option)) {
+                ++selectedCommands;
+                selectedCommand = &command;
+            }
         }
         if (selectedCommand != nullptr) {
             return selectedCommand->run(parser, workflows);

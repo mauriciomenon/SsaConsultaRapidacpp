@@ -154,6 +154,12 @@ namespace ssa::app::cli {
         try {
             if (SsaCliWorkflowRunner::hasWorkflowCommand(parser)) {
                 std::shared_ptr<application::SsaWorkflowService> workflows;
+                const auto workflowValidation =
+                    SsaCliWorkflowRunner::validateWorkflowRequest(parser);
+                if (!workflowValidation.ok()) {
+                    std::cerr << workflowValidation.message << '\n';
+                    return 1;
+                }
                 if (SsaCliWorkflowRunner::requiresDatabase(parser)) {
                     if (!parser.isSet("db")) {
                         std::cerr << "missing required --db\n";
