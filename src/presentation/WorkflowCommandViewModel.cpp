@@ -9,10 +9,13 @@ namespace ssa::presentation {
 
     namespace {
 
-        enum class FileSelectionError { None, NonLocalFile };
+        enum class FileSelectionError { None, EmptySelection, NonLocalFile };
 
         FileSelectionError localFilePathsFromUrls(const QVariantList& selectedFiles,
                                                   std::vector<QString>& files) {
+            if (selectedFiles.empty()) {
+                return FileSelectionError::EmptySelection;
+            }
             files.reserve(static_cast<std::size_t>(selectedFiles.size()));
             for (const auto& selectedFile : selectedFiles) {
                 const QUrl url = selectedFile.toUrl();
@@ -84,6 +87,10 @@ namespace ssa::presentation {
         operation_ = Operation::ImportExternalFiles;
         std::vector<QString> files;
         const auto parseError = localFilePathsFromUrls(selectedFiles, files);
+        if (parseError == FileSelectionError::EmptySelection) {
+            setResult(tr("Falha ao importar arquivos: nenhum arquivo selecionado"), false);
+            return;
+        }
         if (parseError == FileSelectionError::NonLocalFile) {
             setResult(tr("Falha ao importar arquivos: apenas arquivos locais sao suportados"),
                       false);

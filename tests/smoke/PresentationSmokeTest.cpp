@@ -778,6 +778,26 @@ namespace {
                 QString("Falha ao importar arquivos: apenas arquivos locais sao suportados"), 1000);
         }
 
+        void import_external_files_rejects_empty_selection() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            auto importPort = std::make_shared<CapturingImportPort>();
+            auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(importPort);
+            ssa::presentation::MainViewModel model(service, commands, nullptr, nullptr, workflows);
+
+            QVariantList selectedFiles;
+            model.actions()->workflows()->importExternalFiles(selectedFiles);
+
+            QTRY_COMPARE_WITH_TIMEOUT(importPort->importRequests().size(), std::size_t{0}, 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->status()->message(),
+                                      QString("Falha ao importar arquivos"), 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(
+                model.browse()->status()->error(),
+                QString("Falha ao importar arquivos: nenhum arquivo selecionado"), 1000);
+            QCOMPARE(model.actions()->workflows()->lastSucceeded(), false);
+        }
+
         void sync_derivadas_updates_status_after_success() {
             auto repository = std::make_shared<FakeRepository>();
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
