@@ -5,10 +5,21 @@
 
 namespace {
 
+    ssa::ports::WorkflowResult runBackfill(const QCommandLineParser&,
+                                           const ssa::application::SsaWorkflowService& workflows) {
+        return workflows.syncDerivadas();
+    }
+
     struct WorkflowCliCommand {
         const char* option;
+        bool requiresDatabase;
         ssa::ports::WorkflowResult (*run)(const QCommandLineParser&,
                                           const ssa::application::SsaWorkflowService&);
+    };
+
+    struct WorkflowCommandSelection final {
+        int selectedCommands{0};
+        const WorkflowCliCommand* selectedCommand{nullptr};
     };
 
     ssa::ports::WorkflowResult rejectMultipleWorkflowCommands() {
@@ -25,7 +36,7 @@ namespace {
         return action.toLower() == "backfill";
     }
 
-    bool usesDefaultOptimizedImport(const QCommandLineParser& parser) {
+    bool shouldOptimizeImport(const QCommandLineParser& parser) {
         if (parser.isSet("optimized")) {
             return true;
         }
@@ -39,47 +50,38 @@ namespace {
     incrementalRescan(const QCommandLineParser& parser,
                       const ssa::application::SsaWorkflowService& workflows) {
         return workflows.rescan(
-            {ssa::ports::RescanMode::Incremental, true, usesDefaultOptimizedImport(parser)});
+            {ssa::ports::RescanMode::Incremental, true, shouldOptimizeImport(parser)});
     }
 
     ssa::ports::WorkflowResult fullRescan(const QCommandLineParser& parser,
                                           const ssa::application::SsaWorkflowService& workflows) {
-        return workflows.rescan(
-            {ssa::ports::RescanMode::Full, true, usesDefaultOptimizedImport(parser)});
+        return workflows.rescan({ssa::ports::RescanMode::Full, true, shouldOptimizeImport(parser)});
     }
 
     // Python compatibility: --rescan is an alias for --force-rescan.
     constexpr std::array<WorkflowCliCommand, 7> kWorkflowCommands{{
-        {"rescan", fullRescan},
-        {"force-rescan", fullRescan},
-        {"incremental-rescan", incrementalRescan},
-        {"reset-db",
+        {"rescan", true, fullRescan},
+        {"force-rescan", true, fullRescan},
+        {"incremental-rescan", true, incrementalRescan},
+        {"reset-db", true,
          [](const QCommandLineParser&, const ssa::application::SsaWorkflowService& workflows) {
              return workflows.resetDatabase();
          }},
-        {"clean-data",
+        {"clean-data", true,
          [](const QCommandLineParser&, const ssa::application::SsaWorkflowService& workflows) {
              return workflows.cleanData();
          }},
-        {"vacuum-analyze",
+        {"vacuum-analyze", true,
          [](const QCommandLineParser&, const ssa::application::SsaWorkflowService& workflows) {
              return workflows.vacuumAnalyze();
          }},
-        {"sync-derivadas",
+        {"sync-derivadas", true,
          [](const QCommandLineParser&, const ssa::application::SsaWorkflowService& workflows) {
              return workflows.syncDerivadas();
          }},
     }};
 
-    constexpr std::array<const char*, 7> kDatabaseWorkflowCommands{{
-        "rescan",
-        "force-rescan",
-        "incremental-rescan",
-        "reset-db",
-        "clean-data",
-        "vacuum-analyze",
-        "sync-derivadas",
-    }};
+    constexpr WorkflowCliCommand kAcaoBackfillCommand{"acao-backfill", true, runBackfill};
 
     bool isAcaoRequested(const QCommandLineParser& parser) {
         return parser.isSet("acao");
@@ -89,79 +91,81 @@ namespace {
         return isAcaoRequested(parser) && isBackfillAction(parser.value("acao"));
     }
 
+    WorkflowCommandSelection selectedWorkflowCommand(const QCommandLineParser& parser) {
+        WorkflowCommandSelection selection;
+        if (isBackfillActionRequested(parser)) {
+            ++selection.selectedCommands;
+            selection.selectedCommand = &kAcaoBackfillCommand;
+        }
+        for (const auto& command : kWorkflowCommands) {
+            if (parser.isSet(command.option)) {
+                ++selection.selectedCommands;
+                selection.selectedCommand = &command;
+            }
+        }
+        return selection;
+    }
+
+    ssa::ports::WorkflowResult
+    validateWorkflowSelection(const QCommandLineParser& parser,
+                              const WorkflowCommandSelection& selection) {
+        const bool hasAcao = isAcaoRequested(parser);
+        if (hasAcao && !isBackfillActionRequested(parser)) {
+            return rejectUnsupportedAction(parser.value("acao"));
+        }
+        if (selection.selectedCommands > 1) {
+            return rejectMultipleWorkflowCommands();
+        }
+        if (!selection.selectedCommand) {
+            return {ssa::ports::WorkflowStatus::Rejected, "no workflow command selected"};
+        }
+        return {ssa::ports::WorkflowStatus::Succeeded, "workflow command validated"};
+    }
+
 } // namespace
 
 namespace ssa::app::cli {
 
     bool SsaCliWorkflowRunner::hasWorkflowCommand(const QCommandLineParser& parser) {
+        if (isAcaoRequested(parser)) {
+            return true;
+        }
         for (const auto& command : kWorkflowCommands) {
             if (parser.isSet(command.option)) {
                 return true;
             }
         }
-        if (isAcaoRequested(parser)) {
-            return true;
-        }
         return false;
     }
 
     bool SsaCliWorkflowRunner::requiresDatabase(const QCommandLineParser& parser) {
-        for (const auto* option : kDatabaseWorkflowCommands) {
-            if (parser.isSet(option)) {
-                return true;
-            }
-        }
         if (isAcaoRequested(parser)) {
-            return true;
+            return kAcaoBackfillCommand.requiresDatabase;
+        }
+        for (const auto& command : kWorkflowCommands) {
+            if (parser.isSet(command.option)) {
+                return command.requiresDatabase;
+            }
         }
         return false;
     }
 
     ports::WorkflowResult
     SsaCliWorkflowRunner::validateWorkflowRequest(const QCommandLineParser& parser) {
-        int selectedCommands = 0;
-        const bool hasAcao = isAcaoRequested(parser);
-        if (hasAcao && !isBackfillActionRequested(parser)) {
-            return rejectUnsupportedAction(parser.value("acao"));
-        }
-        if (hasAcao) {
-            ++selectedCommands;
-        }
-        for (const auto& command : kWorkflowCommands) {
-            if (parser.isSet(command.option)) {
-                ++selectedCommands;
-            }
-        }
-        if (selectedCommands > 1) {
-            return rejectMultipleWorkflowCommands();
-        }
-        if (!hasAcao && selectedCommands == 0) {
-            return {ssa::ports::WorkflowStatus::Rejected, "no workflow command selected"};
-        }
-        return {ssa::ports::WorkflowStatus::Succeeded, "workflow command validated"};
+        return validateWorkflowSelection(parser, selectedWorkflowCommand(parser));
     }
 
     ports::WorkflowResult
     SsaCliWorkflowRunner::runSelected(const QCommandLineParser& parser,
                                       const application::SsaWorkflowService& workflows) {
-        const auto requestValidation = validateWorkflowRequest(parser);
+        const auto selection = selectedWorkflowCommand(parser);
+        const auto requestValidation = validateWorkflowSelection(parser, selection);
         if (!requestValidation.ok()) {
             return requestValidation;
         }
-        int selectedCommands = 0;
-        const WorkflowCliCommand* selectedCommand = nullptr;
-        const bool hasAcao = isAcaoRequested(parser);
-        for (const auto& command : kWorkflowCommands) {
-            if (parser.isSet(command.option)) {
-                ++selectedCommands;
-                selectedCommand = &command;
-            }
-        }
+        const WorkflowCliCommand* selectedCommand = selection.selectedCommand;
         if (selectedCommand != nullptr) {
             return selectedCommand->run(parser, workflows);
-        }
-        if (hasAcao) {
-            return workflows.syncDerivadas();
         }
         return {ports::WorkflowStatus::Rejected, "no workflow command selected"};
     }

@@ -67,46 +67,61 @@ namespace {
             QCommandLineOption(QStringList{"log-level"}, "Set logging level.", "level"));
     }
 
-    int parseLogLevel(const QString& level) {
+    struct LogLevelRules final {
+        int exitCode{0};
+        std::string filterRules;
+    };
+
+    LogLevelRules parseLogLevel(const QString& level) {
         const auto normalized = level.toLower();
         if (normalized == "trace" || normalized == "debug") {
-            QLoggingCategory::setFilterRules("*.debug=true\n"
-                                             "*.info=true\n"
-                                             "*.warning=true\n"
-                                             "*.critical=true\n");
-            return 0;
+            return {
+                0,
+                "*.debug=true\n"
+                "*.info=true\n"
+                "*.warning=true\n"
+                "*.critical=true\n",
+            };
         }
         if (normalized == "info") {
-            QLoggingCategory::setFilterRules("*.debug=false\n"
-                                             "*.info=true\n"
-                                             "*.warning=true\n"
-                                             "*.critical=true\n");
-            return 0;
+            return {
+                0,
+                "*.debug=false\n"
+                "*.info=true\n"
+                "*.warning=true\n"
+                "*.critical=true\n",
+            };
         }
         if (normalized == "warning") {
-            QLoggingCategory::setFilterRules("*.debug=false\n"
-                                             "*.info=false\n"
-                                             "*.warning=true\n"
-                                             "*.critical=true\n");
-            return 0;
+            return {
+                0,
+                "*.debug=false\n"
+                "*.info=false\n"
+                "*.warning=true\n"
+                "*.critical=true\n",
+            };
         }
         if (normalized == "error" || normalized == "critical") {
-            QLoggingCategory::setFilterRules("*.debug=false\n"
-                                             "*.info=false\n"
-                                             "*.warning=false\n"
-                                             "*.critical=true\n");
-            return 0;
+            return {
+                0,
+                "*.debug=false\n"
+                "*.info=false\n"
+                "*.warning=false\n"
+                "*.critical=true\n",
+            };
         }
         if (normalized == "off") {
-            QLoggingCategory::setFilterRules("*.debug=false\n"
-                                             "*.info=false\n"
-                                             "*.warning=false\n"
-                                             "*.critical=false\n");
-            return 0;
+            return {
+                0,
+                "*.debug=false\n"
+                "*.info=false\n"
+                "*.warning=false\n"
+                "*.critical=false\n",
+            };
         }
         std::cerr << "error: invalid --log-level value, expected: "
                      "trace|debug|info|warning|error|critical|off\n";
-        return 2;
+        return {2, {}};
     }
 
 } // namespace
@@ -136,9 +151,12 @@ namespace ssa::app::cli {
             return 2;
         }
         if (parser.isSet("log-level")) {
-            const auto exitCode = parseLogLevel(parser.value("log-level"));
-            if (exitCode != 0) {
-                return exitCode;
+            const auto logLevel = parseLogLevel(parser.value("log-level"));
+            if (logLevel.exitCode != 0) {
+                return logLevel.exitCode;
+            }
+            if (!logLevel.filterRules.empty()) {
+                QLoggingCategory::setFilterRules(QString::fromStdString(logLevel.filterRules));
             }
         }
         if (parser.isSet("help")) {
