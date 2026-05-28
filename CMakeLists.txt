@@ -65,6 +65,7 @@ add_library(ssa_infra STATIC
     src/infra/import/XlsxPackage.cpp
     src/infra/import/XlsxWorkbookReader.cpp
     src/infra/sqlite/SqliteConnection.cpp
+    src/infra/sqlite/SqliteDerivadasPort.cpp
     src/infra/sqlite/SqliteMaintenancePort.cpp
     src/infra/sqlite/SqliteSsaImportWriter.cpp
     src/infra/sqlite/SqliteSsaRepository.cpp

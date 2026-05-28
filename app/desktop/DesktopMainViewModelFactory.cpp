@@ -1,12 +1,12 @@
 #include "DesktopMainViewModelFactory.h"
 
 #include "application/SsaWorkflowService.h"
-#include "application/UnavailableWorkflowPort.h"
 #include "domain/ColumnCatalog.h"
 #include "infra/export/CsvExportPort.h"
 #include "infra/import/SpreadsheetImportWorkflowPort.h"
 #include "infra/preferences/JsonFilterPresetStore.h"
 #include "infra/preferences/JsonUserPreferencesStore.h"
+#include "infra/sqlite/SqliteDerivadasPort.h"
 #include "infra/sqlite/SqliteMaintenancePort.h"
 #include "infra/sqlite/SqliteSsaRepository.h"
 #include "platform/DesktopExternalCommandPort.h"
@@ -51,10 +51,10 @@ namespace ssa::app::desktop {
                     paths.inputFolderPath(), databasePath(options), importColumns());
             const auto maintenancePort =
                 std::make_shared<ssa::infra::sqlite::SqliteMaintenancePort>(databasePath(options));
-            const auto unavailableDerivadasPort =
-                std::make_shared<ssa::application::UnavailableWorkflowPort>();
+            const auto derivadasPort =
+                std::make_shared<ssa::infra::sqlite::SqliteDerivadasPort>(databasePath(options));
             return std::make_shared<ssa::application::SsaWorkflowService>(
-                importPort, exportPort, maintenancePort, unavailableDerivadasPort);
+                importPort, exportPort, maintenancePort, derivadasPort);
         }
 
         std::shared_ptr<ssa::platform::DesktopExternalCommandPort>

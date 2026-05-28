@@ -1,5 +1,6 @@
 #include "domain/ColumnCatalog.h"
 #include "infra/sqlite/SqliteConnection.h"
+#include "infra/sqlite/SqliteDerivadasPort.h"
 #include "infra/sqlite/SqliteMaintenancePort.h"
 #include "infra/sqlite/SqliteSsaRepository.h"
 
@@ -205,4 +206,22 @@ TEST_CASE("sqlite maintenance port resets table data") {
 
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
     REQUIRE(repository.count({}) == 0);
+}
+
+TEST_CASE("sqlite derivadas port clears orphan derivadas") {
+    const SqliteFixture fixture;
+    ssa::infra::sqlite::SqliteDerivadasPort derivadasPort(fixture.path);
+    ssa::infra::sqlite::SqliteSsaRepository repository(fixture.path);
+
+    REQUIRE(repository.recordBySsaNumber(ssa::domain::SsaNumber{"202500003"}).has_value());
+    REQUIRE(
+        repository.recordBySsaNumber(ssa::domain::SsaNumber{"202500003"})->valueOf("derivada_de") ==
+        "202400001");
+
+    const auto result = derivadasPort.syncDerivadas();
+
+    const auto after = repository.recordBySsaNumber(ssa::domain::SsaNumber{"202500003"});
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE(after.has_value());
+    REQUIRE(after->valueOf("derivada_de").empty());
 }

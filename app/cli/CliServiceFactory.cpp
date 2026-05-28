@@ -4,6 +4,7 @@
 #include "domain/ColumnCatalog.h"
 #include "infra/export/CsvExportPort.h"
 #include "infra/import/SpreadsheetImportWorkflowPort.h"
+#include "infra/sqlite/SqliteDerivadasPort.h"
 #include "infra/sqlite/SqliteMaintenancePort.h"
 #include "infra/sqlite/SqliteSsaRepository.h"
 #include "query/SsaQueryService.h"
@@ -46,9 +47,10 @@ namespace ssa::app::cli {
                 const auto importPort =
                     std::make_shared<ssa::infra::importing::SpreadsheetImportWorkflowPort>(
                         inputFolder, dbPath, importColumns());
-                auto unavailable = std::make_shared<ssa::application::UnavailableWorkflowPort>();
+                const auto derivadasPort =
+                    std::make_shared<ssa::infra::sqlite::SqliteDerivadasPort>(dbPath);
                 return std::make_shared<ssa::application::SsaWorkflowService>(
-                    importPort, exportPort, maintenancePort, unavailable);
+                    importPort, exportPort, maintenancePort, derivadasPort);
             }};
     }
 
