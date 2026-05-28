@@ -1,6 +1,7 @@
 #include "SsaCliWorkflowRunner.h"
 
 #include <array>
+#include <string>
 
 namespace {
 
@@ -13,6 +14,15 @@ namespace {
     ssa::ports::WorkflowResult rejectMultipleWorkflowCommands() {
         return {ssa::ports::WorkflowStatus::Rejected,
                 "select only one workflow command per execution"};
+    }
+
+    ssa::ports::WorkflowResult rejectUnsupportedAction(const QString& action) {
+        return {ssa::ports::WorkflowStatus::Rejected,
+                "unsupported --acao value: " + action.toStdString()};
+    }
+
+    bool isBackfillAction(const QString& action) {
+        return action.toLower() == "backfill";
     }
 
     bool usesDefaultOptimizedImport(const QCommandLineParser& parser) {
@@ -71,6 +81,14 @@ namespace {
         "sync-derivadas",
     }};
 
+    bool isAcaoRequested(const QCommandLineParser& parser) {
+        return parser.isSet("acao");
+    }
+
+    bool isBackfillActionRequested(const QCommandLineParser& parser) {
+        return isAcaoRequested(parser) && isBackfillAction(parser.value("acao"));
+    }
+
 } // namespace
 
 namespace ssa::app::cli {
@@ -81,6 +99,9 @@ namespace ssa::app::cli {
                 return true;
             }
         }
+        if (isAcaoRequested(parser)) {
+            return true;
+        }
         return false;
     }
 
@@ -90,6 +111,9 @@ namespace ssa::app::cli {
                 return true;
             }
         }
+        if (isAcaoRequested(parser)) {
+            return true;
+        }
         return false;
     }
 
@@ -98,6 +122,13 @@ namespace ssa::app::cli {
                                       const application::SsaWorkflowService& workflows) {
         int selectedCommands = 0;
         const WorkflowCliCommand* selectedCommand = nullptr;
+        const bool hasAcao = isAcaoRequested(parser);
+        if (hasAcao && !isBackfillActionRequested(parser)) {
+            return rejectUnsupportedAction(parser.value("acao"));
+        }
+        if (hasAcao) {
+            ++selectedCommands;
+        }
         for (const auto& command : kWorkflowCommands) {
             if (parser.isSet(command.option)) {
                 ++selectedCommands;
@@ -109,6 +140,9 @@ namespace ssa::app::cli {
         }
         if (selectedCommand != nullptr) {
             return selectedCommand->run(parser, workflows);
+        }
+        if (hasAcao) {
+            return workflows.syncDerivadas();
         }
         return {ports::WorkflowStatus::Rejected, "no workflow command selected"};
     }

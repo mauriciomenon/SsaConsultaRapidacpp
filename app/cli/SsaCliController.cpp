@@ -10,8 +10,8 @@
 
 #include <QCommandLineOption>
 #include <QCommandLineParser>
-#include <QLoggingCategory>
 #include <QCoreApplication>
+#include <QLoggingCategory>
 #include <QStringList>
 
 #include <filesystem>
@@ -35,8 +35,8 @@ namespace {
             QCommandLineOption(QStringList{"details"}, "Print one SSA by number.", "ssa"));
         parser.addOption(
             QCommandLineOption(QStringList{"export"}, "Export filtered list to CSV.", "path"));
-        parser.addOption(
-            QCommandLineOption(QStringList{"columns"}, "Comma-separated column keys.", "keys"));
+        parser.addOption(QCommandLineOption(QStringList{"columns", "cols"},
+                                            "Comma-separated column keys.", "keys"));
         parser.addOption(QCommandLineOption(QStringList{"page"}, "1-based page number.", "number"));
         parser.addOption(QCommandLineOption(QStringList{"page-size"}, "Rows per page.", "number"));
         parser.addOption(QCommandLineOption(QStringList{"sort"}, "Sort column key.", "key"));
@@ -61,6 +61,8 @@ namespace {
                                             "Run SQLite vacuum/analyze maintenance."));
         parser.addOption(
             QCommandLineOption(QStringList{"sync-derivadas"}, "Synchronize derivadas data."));
+        parser.addOption(QCommandLineOption(QStringList{"acao"},
+                                            "Run legacy action commands, ex: backfill.", "action"));
         parser.addOption(
             QCommandLineOption(QStringList{"log-level"}, "Set logging level.", "level"));
     }
@@ -102,7 +104,8 @@ namespace {
                                              "*.critical=false\n");
             return 0;
         }
-        std::cerr << "error: invalid --log-level value, expected: trace|debug|info|warning|error|critical|off\n";
+        std::cerr << "error: invalid --log-level value, expected: "
+                     "trace|debug|info|warning|error|critical|off\n";
         return 2;
     }
 

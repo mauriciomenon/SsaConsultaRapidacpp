@@ -27,6 +27,16 @@ namespace {
         bool called{false};
     };
 
+    class CapturingDerivadasPort final : public ssa::ports::IDerivadasPort {
+      public:
+        [[nodiscard]] ssa::ports::WorkflowResult syncDerivadas() override {
+            called = true;
+            return {ssa::ports::WorkflowStatus::Succeeded, "sync derivadas requested"};
+        }
+
+        bool called{false};
+    };
+
     std::shared_ptr<ssa::application::SsaBrowseService>
     unusedBrowseFactory(const std::filesystem::path& path) {
         (void)path;
@@ -117,6 +127,42 @@ TEST_CASE("cli rejects invalid --log-level values") {
 
     const int exitCode = controller.run({"ssa", "--log-level", "invalid", "--version"});
     REQUIRE(exitCode == 2);
+}
+
+TEST_CASE("cli accepts --cols as alias for --columns") {
+    auto importPort = std::make_shared<CapturingImportPort>();
+    auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(importPort);
+
+    const auto controller = controllerWithWorkflow(workflows);
+    const int exitCode = controller.run({"ssa", "--cols", "numero_ssa", "--version"});
+
+    REQUIRE(exitCode == 0);
+}
+
+TEST_CASE("cli maps acao backfill to sync derivadas command") {
+    auto derivadasPort = std::make_shared<CapturingDerivadasPort>();
+    auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(
+        std::make_shared<CapturingImportPort>(), nullptr, nullptr, derivadasPort);
+
+    const auto controller = controllerWithWorkflow(workflows);
+    const auto databasePath = existingDatabaseArgument();
+    const int exitCode =
+        controller.run({"ssa", "--acao", "backfill", "--db", databasePath.c_str()});
+
+    REQUIRE(exitCode == 0);
+    REQUIRE(derivadasPort->called);
+}
+
+TEST_CASE("cli rejects unsupported acao commands") {
+    auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(
+        std::make_shared<CapturingImportPort>(), nullptr, nullptr,
+        std::make_shared<CapturingDerivadasPort>());
+
+    const auto controller = controllerWithWorkflow(workflows);
+    const auto databasePath = existingDatabaseArgument();
+    const int exitCode = controller.run({"ssa", "--acao", "invalid", "--db", databasePath.c_str()});
+
+    REQUIRE(exitCode == 1);
 }
 
 TEST_CASE("cli rejects multiple workflow commands") {
