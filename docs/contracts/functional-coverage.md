@@ -32,6 +32,11 @@ This document tracks parity against the Python project at
 
 ## CLI Coverage
 
+The C++ CLI is flag-based, not an interactive REPL. Python interactive-only
+commands (`v`, `m`, `r`, `clear`, `clearall`, `x`, `l/listar/filtros`,
+`status-cli`) are out of scope for the flag-based paradigm and are covered
+by equivalent flags where noted.
+
 | Area | Python reference | C++ target owner | Status |
 |---|---|---|---|
 | `--version` | `interface/cli_args.py` | CLI entrypoint | Present |
@@ -42,19 +47,19 @@ This document tracks parity against the Python project at
 | `--optimized/--standard` | `main.py` | import strategy selection | CLI present, adapter contract only |
 | `--reset-db` | `main.py` | `SsaWorkflowService` | CLI present |
 | `--clean-data` | `main.py` | `SsaWorkflowService` | CLI present, SQLite cleanup only |
-| `--log-level` | `main.py` | logging setup | Missing |
-| `--acao backfill` | `scripts/migracao/backfill_reprocessar.py` | migration/backfill use case | Missing |
-| Search page command | `interface/cli.py` | `SsaBrowseService`, CLI adapter | Partial |
-| `d #` details | `interface/cli.py` | `SsaBrowseService`, CLI adapter | Partial |
-| `v` undo filter | `interface/cli.py` | CLI filter stack | Missing |
-| `m`, `m z` pagination | `interface/cli.py` | CLI pager | Missing |
-| `r`, `clear`, `clearall` | `interface/cli.py` | CLI filter state | Missing |
-| interactive `e name` export | `interface/cli.py`, `exportacao/exporter.py` | CLI interactive adapter | Missing |
-| `ord/ordi/ordn/ordni` | `interface/cli.py` | sort request builder | Partial |
-| `cols` | `interface/cli.py` | column catalog adapter | Missing |
-| `x <term>` | `interface/cli.py` | CLI filter state | Missing |
-| `l/listar/filtros` | `interface/cli.py` | CLI filter state | Missing |
-| `status-cli`, debug toggles | `interface/cli.py` | diagnostics adapter | Missing |
+| `--log-level` | `main.py` | `QLoggingCategory` filter rules in `SsaCliController` | Present |
+| `--acao backfill` | `scripts/migracao/backfill_reprocessar.py` | `SsaCliWorkflowRunner`, `--acao` flag | Present |
+| Search page command | `interface/cli.py` | `SsaBrowseService`, `--search`/`--page`/`--page-size` | Present |
+| `d #` details | `interface/cli.py` | `SsaBrowseService`, `--details` flag | Present |
+| `ord/ordi/ordn/ordni` | `interface/cli.py` | `--sort`/`--asc`/`--desc` flags | Present |
+| `cols` | `interface/cli.py` | `--columns`/`--cols` flag | Present |
+| interactive `e name` export | `interface/cli.py`, `exportacao/exporter.py` | `--export` flag | Present |
+| `status-cli`, debug toggles | `interface/cli.py` | `--log-level trace\|debug` | Present |
+| `v` undo filter | `interface/cli.py` | interactive REPL command | Out of scope (flag-based CLI) |
+| `m`, `m z` pagination | `interface/cli.py` | interactive REPL pager | Out of scope (flag-based CLI) |
+| `r`, `clear`, `clearall` | `interface/cli.py` | interactive REPL filter state | Out of scope (flag-based CLI) |
+| `x <term>` | `interface/cli.py` | interactive REPL filter exclusion | Out of scope (flag-based CLI) |
+| `l/listar/filtros` | `interface/cli.py` | interactive REPL filter listing | Out of scope (flag-based CLI) |
 
 ## Acceptance Rule
 
