@@ -172,8 +172,11 @@ namespace ssa::presentation {
 
     void BrowseOrchestrator::selectNextRow() {
         const int current = selectionCoordinator_.currentRow();
+        if (current < 0) {
+            return;
+        }
         const int last = tableModel_.rowCount() - 1;
-        if (current >= 0 && current < last) {
+        if (current < last) {
             selectionCoordinator_.selectRow(current + 1);
             return;
         }
@@ -185,6 +188,9 @@ namespace ssa::presentation {
 
     void BrowseOrchestrator::selectPreviousRow() {
         const int current = selectionCoordinator_.currentRow();
+        if (current < 0) {
+            return;
+        }
         if (current > 0) {
             selectionCoordinator_.selectRow(current - 1);
             return;

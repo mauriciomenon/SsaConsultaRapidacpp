@@ -11,6 +11,10 @@ namespace ssa::presentation {
         const auto record = tableModel_.recordAt(row);
         if (!record) {
             details_.clearRecord();
+            if (currentRow_ != kNoSelection) {
+                currentRow_ = kNoSelection;
+                emit currentRowChanged(kNoSelection);
+            }
             return;
         }
         details_.setRecord(*record);
@@ -22,9 +26,9 @@ namespace ssa::presentation {
 
     void BrowseSelectionCoordinator::clearSelection() {
         details_.clearRecord();
-        if (currentRow_ != -1) {
-            currentRow_ = -1;
-            emit currentRowChanged(-1);
+        if (currentRow_ != kNoSelection) {
+            currentRow_ = kNoSelection;
+            emit currentRowChanged(kNoSelection);
         }
     }
 
@@ -37,7 +41,7 @@ namespace ssa::presentation {
     }
 
     void BrowseSelectionCoordinator::setPendingLastRow() {
-        pendingRow_ = -2;
+        pendingRow_ = kPendingLastRow;
     }
 
     int BrowseSelectionCoordinator::pendingRow() const {
@@ -45,7 +49,7 @@ namespace ssa::presentation {
     }
 
     void BrowseSelectionCoordinator::consumePendingRow() {
-        pendingRow_ = -1;
+        pendingRow_ = kNoPendingRow;
     }
 
 } // namespace ssa::presentation

@@ -42,14 +42,12 @@ Rectangle {
             Button {
                 text: "<"
                 enabled: root.browseViewModel.canSelectPreviousRow
-                focusPolicy: Qt.NoFocus
                 onClicked: root.browseViewModel.selectPreviousRow()
             }
 
             Button {
                 text: ">"
                 enabled: root.browseViewModel.canSelectNextRow
-                focusPolicy: Qt.NoFocus
                 onClicked: root.browseViewModel.selectNextRow()
             }
         }
