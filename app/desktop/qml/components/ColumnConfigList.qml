@@ -94,6 +94,18 @@ Item {
                                 value
                             )
                         }
+                        Button {
+                            text: "^"
+                            enabled: columnDelegate.index > 0
+                            onClicked: root.viewModel.moveColumn(
+                                columnDelegate.index, columnDelegate.index - 1)
+                        }
+                        Button {
+                            text: "v"
+                            enabled: columnDelegate.index < columnList.count - 1
+                            onClicked: root.viewModel.moveColumn(
+                                columnDelegate.index, columnDelegate.index + 1)
+                        }
                     }
                 }
             }

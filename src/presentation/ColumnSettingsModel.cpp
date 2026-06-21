@@ -155,6 +155,35 @@ namespace ssa::presentation {
         emit changed();
     }
 
+    bool ColumnSettingsModel::moveColumn(const int fromRow, const int toRow) {
+        if (fromRow < 0 || toRow < 0 || fromRow == toRow) {
+            return false;
+        }
+        const auto fromSource = sourceRowFromModelRow(fromRow);
+        const auto toSource = sourceRowFromModelRow(toRow);
+        if (fromSource < 0 || toSource < 0) {
+            return false;
+        }
+        const auto fromIdx = static_cast<std::size_t>(fromSource);
+        const auto toIdx = static_cast<std::size_t>(toSource);
+
+        if (fromIdx < toIdx) {
+            std::rotate(columns_.begin() + static_cast<std::ptrdiff_t>(fromIdx),
+                        columns_.begin() + static_cast<std::ptrdiff_t>(fromIdx + 1),
+                        columns_.begin() + static_cast<std::ptrdiff_t>(toIdx + 1));
+        } else {
+            std::rotate(columns_.begin() + static_cast<std::ptrdiff_t>(toIdx),
+                        columns_.begin() + static_cast<std::ptrdiff_t>(fromIdx),
+                        columns_.begin() + static_cast<std::ptrdiff_t>(fromIdx + 1));
+        }
+
+        beginResetModel();
+        rebuildFilteredRows();
+        endResetModel();
+        emit changed();
+        return true;
+    }
+
     void ColumnSettingsModel::setFilterText(const QString& filterText) {
         const auto normalized = filterText.toLower().toStdString();
         if (normalized == filterTextLower_) {
@@ -203,7 +232,26 @@ namespace ssa::presentation {
             }
         }
 
+        std::vector<ColumnItem> reordered;
+        reordered.reserve(columns_.size());
+        for (const auto& key : visibleColumns) {
+            auto it = std::ranges::find_if(columns_,
+                                           [&key](const ColumnItem& c) { return c.key == key; });
+            if (it != columns_.end()) {
+                reordered.push_back(*it);
+            }
+        }
+        for (const auto& column : columns_) {
+            if (visible.find(column.key) == visible.end()) {
+                reordered.push_back(column);
+            }
+        }
+        if (reordered.size() != columns_.size()) {
+            reordered = columns_;
+        }
+
         beginResetModel();
+        columns_ = std::move(reordered);
         visibleCount_ = 0;
         for (auto& column : columns_) {
             column.visible = visible.contains(column.key);
