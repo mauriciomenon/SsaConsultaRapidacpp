@@ -42,6 +42,11 @@ Window {
         root.close();
     }
 
+    onClosing: function(close) {
+        root.viewModel.ui.theme = root.originalTheme;
+        close.accept();
+    }
+
     Rectangle {
         anchors.fill: parent
         anchors.margins: 10
@@ -91,7 +96,6 @@ Window {
                             onClicked: {
                                 root.pendingTheme = themeDelegate.modelData;
                                 root.viewModel.ui.theme = themeDelegate.modelData;
-                                themeList.currentIndex = themeDelegate.index;
                             }
                             contentItem: Label {
                                 text: themeDelegate.text

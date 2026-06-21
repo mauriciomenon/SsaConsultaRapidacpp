@@ -9,8 +9,7 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
-        "SSA_BUILD_TESTS": "ON",
-        "CMAKE_PREFIX_PATH": "$ENV{HOME}/Qt/6.11.0/macos"
+        "SSA_BUILD_TESTS": "ON"
       }
     },
     {
@@ -21,8 +20,7 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
-        "SSA_BUILD_TESTS": "ON",
-        "CMAKE_PREFIX_PATH": "$ENV{HOME}/Qt/6.11.0/macos"
+        "SSA_BUILD_TESTS": "ON"
       }
     }
   ],
