@@ -376,10 +376,13 @@ ApplicationWindow {
         viewModel: root.vm
     }
 
-    SmokeCaptureBridge {
-        smokeController: root.smokeController
-        preferencesDialog: preferencesDialog
-        filterPanel: filterPanel
+    Loader {
+        active: root.smokeController !== null
+        sourceComponent: SmokeCaptureBridge {
+            smokeController: root.smokeController
+            preferencesDialog: preferencesDialog
+            filterPanel: filterPanel
+        }
     }
 
     FileWorkflowDialogs {

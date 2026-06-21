@@ -2,7 +2,6 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Layouts
 import SsaConsultaRapida
 
 Rectangle {
@@ -21,15 +20,15 @@ Rectangle {
     radius: Theme.radius
     clip: true
 
-    ColumnLayout {
+    Column {
         anchors.fill: parent
         anchors.margins: 1
         spacing: 0
 
         Flickable {
             id: header
-            Layout.fillWidth: true
-            Layout.preferredHeight: root.headerHeight
+            width: parent.width
+            height: root.headerHeight
             contentWidth: headerRow.width
             clip: true
             interactive: false
@@ -88,8 +87,8 @@ Rectangle {
 
             TableView {
             id: table
-            Layout.fillWidth: true
-            Layout.fillHeight: true
+            width: parent.width
+            height: parent.height - header.height
             model: root.viewModel.tableModel
             clip: true
             rowSpacing: 0
