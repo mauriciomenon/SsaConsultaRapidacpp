@@ -167,6 +167,7 @@ namespace ssa::presentation {
         const auto fromIdx = static_cast<std::size_t>(fromSource);
         const auto toIdx = static_cast<std::size_t>(toSource);
 
+        beginMoveRows(QModelIndex(), fromRow, fromRow, toRow);
         if (fromIdx < toIdx) {
             std::rotate(columns_.begin() + static_cast<std::ptrdiff_t>(fromIdx),
                         columns_.begin() + static_cast<std::ptrdiff_t>(fromIdx + 1),
@@ -176,10 +177,8 @@ namespace ssa::presentation {
                         columns_.begin() + static_cast<std::ptrdiff_t>(fromIdx),
                         columns_.begin() + static_cast<std::ptrdiff_t>(fromIdx + 1));
         }
-
-        beginResetModel();
         rebuildFilteredRows();
-        endResetModel();
+        endMoveRows();
         emit changed();
         return true;
     }
