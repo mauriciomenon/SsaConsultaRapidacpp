@@ -69,8 +69,12 @@ jobs:
           sqlite3 /tmp/mem_fixture.db < tools/generate_mem_fixture.sql
           ./build/dev/ssa_mem_stress --db /tmp/mem_fixture.db --pages 40 --page-size 50 > mem_smoke.tsv
           awk -F'\t' '
-            NR==2 { start=$3 }
+            NR==2 {
+              if (NF < 3) { print "FAIL: unexpected output format"; exit 1 }
+              start=$3
+            }
             END {
+              if (NR < 2 || NF < 3) { print "FAIL: missing data rows"; exit 1 }
               delta=$3-start
               printf "startup=%dKB final=%dKB delta=%dKB\n", start, $3, delta
               if (delta > 2048) { print "FAIL: delta exceeds 2MB budget"; exit 1 }

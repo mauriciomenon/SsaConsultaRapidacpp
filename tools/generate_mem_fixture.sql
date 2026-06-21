@@ -3,7 +3,7 @@
 -- synthetic rows so paging exercises multiple pages. Run with:
 --   sqlite3 <db_path> < tools/generate_mem_fixture.sql
 
-CREATE TABLE ssa_table (
+CREATE TABLE IF NOT EXISTS ssa_table (
     numero_ssa TEXT,
     situacao TEXT,
     derivada_de TEXT,
@@ -28,15 +28,24 @@ CREATE TABLE ssa_table (
     semana_programada INTEGER,
     semana_executada INTEGER,
     num_reprogramacoes INTEGER,
-    total_de_reprogramacoes INTEGER
+    total_deprogramacoes INTEGER
 );
 
--- Generate 2000 synthetic rows via recursive CTE. page-size 50 -> 40 pages,
--- enough to exercise paging without bloating the CI runner.
-WITH RECURSIVE sequence(row_num) AS (
+-- Generate 2000 synthetic rows via cross-join of two CTEs (45x45 = 2025,
+-- capped at 2000). Each CTE stays well under SQLite's default recursion
+-- limit of 1000. page-size 50 -> 40 pages for paging exercise.
+WITH RECURSIVE lo(row_num) AS (
     SELECT 1
     UNION ALL
-    SELECT row_num + 1 FROM sequence WHERE row_num < 2000
+    SELECT row_num + 1 FROM lo WHERE row_num < 45
+),
+hi(row_num) AS (
+    SELECT 1
+    UNION ALL
+    SELECT row_num + 1 FROM hi WHERE row_num < 45
+),
+product(idx) AS (
+    SELECT lo.row_num, hi.row_num FROM lo, hi
 )
 INSERT INTO ssa_table (
     numero_ssa, situacao, derivada_de, localizacao_codigo,
@@ -46,29 +55,30 @@ INSERT INTO ssa_table (
     servico_origem, sistema_origem, arquivo_origem, data_planilha,
     grau_prioridade_emissao, grau_prioridade_planejamento,
     semana_programada, semana_executada,
-    num_reprogramacoes, total_de_reprogramacoes
+    num_reprogramacoes, total_deprogramacoes
 )
 SELECT
-    '2025' || printf('%06d', row_num),
-    CASE row_num % 4 WHEN 0 THEN 'APV' WHEN 1 THEN 'STE' WHEN 2 THEN 'SES' ELSE 'SCA' END,
+    '2025' || printf('%06d', idx),
+    CASE idx % 4 WHEN 0 THEN 'APV' WHEN 1 THEN 'STE' WHEN 2 THEN 'SES' ELSE 'SCA' END,
     '',
-    'LOC-' || (row_num % 100),
-    'Fixture location ' || row_num,
-    'EQ-' || (row_num % 50),
-    202501 + (row_num % 4),
-    '2025-01-' || printf('%02d', (row_num % 28) + 1),
-    'Fixture SSA description ' || row_num,
-    'Fixture execution text ' || row_num,
+    'LOC-' || (idx % 100),
+    'Fixture location ' || idx,
+    'EQ-' || (idx % 50),
+    202501 + (idx % 4),
+    '2025-01-' || printf('%02d', (idx % 28) + 1),
+    'Fixture SSA description ' || idx,
+    'Fixture execution text ' || idx,
     'SEM',
-    CASE row_num % 3 WHEN 0 THEN 'SMM' WHEN 1 THEN 'STE' ELSE 'OPR' END,
-    'Solicitant ' || row_num,
-    'Planner ' || row_num,
-    'Executor ' || row_num,
+    CASE idx % 3 WHEN 0 THEN 'SMM' WHEN 1 THEN 'STE' ELSE 'OPR' END,
+    'Solicitant ' || idx,
+    'Planner ' || idx,
+    'Executor ' || idx,
     'SAM',
     'SYS',
     'fixture.xlsx',
     '2025-01-01',
     'A', 'B',
     202502, 202503,
-    row_num % 5, row_num % 5
-FROM sequence;
+    idx % 5, idx % 5
+FROM product
+WHERE idx < 2000;
