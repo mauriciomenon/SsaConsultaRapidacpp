@@ -327,6 +327,41 @@ namespace {
             QVERIFY(model.browse()->currentRow() == 0);
         }
 
+        void details_navigation_walks_across_pages_next_then_prev() {
+            auto repository = std::make_shared<FakeRepository>(std::chrono::milliseconds{0},
+                                                               std::size_t{25}, std::size_t{10});
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            ssa::presentation::MainViewModel model(service, commands);
+
+            model.browse()->setPageSize(10);
+            model.browse()->load();
+            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->tableModel()->rowCount(), 10, 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->currentRow(), 0, 1000);
+            QCOMPARE(model.browse()->pageCount(), 3);
+
+            // Walk to last row of page 1
+            for (int i = 0; i < 9; ++i) {
+                model.browse()->selectNextRow();
+            }
+            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->currentRow(), 9, 1000);
+            QVERIFY(model.browse()->canSelectNextRow());
+            QCOMPARE(model.browse()->pageNumber(), 1);
+
+            // Cross to page 2 -> auto-select first row
+            model.browse()->selectNextRow();
+            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->pageNumber(), 2, 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->currentRow(), 0, 1000);
+            QCOMPARE(model.browse()->details()->selectedSsa(), QString("202500001"));
+
+            // Previous from first row of page 2 -> back to page 1 last row
+            QVERIFY(model.browse()->canSelectPreviousRow());
+            model.browse()->selectPreviousRow();
+            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->pageNumber(), 1, 2000);
+            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->currentRow(), 9, 2000);
+            QCOMPARE(model.browse()->details()->selectedSsa(), QString("202500010"));
+        }
+
         void sort_by_column_updates_request_contract() {
             auto repository = std::make_shared<FakeRepository>();
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);

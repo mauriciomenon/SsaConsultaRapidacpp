@@ -17,6 +17,10 @@ namespace ssa::presentation {
         void selectRow(int row);
         void clearSelection();
         [[nodiscard]] int currentRow() const;
+        void setPendingFirstRow();
+        void setPendingLastRow();
+        [[nodiscard]] int pendingRow() const;
+        void consumePendingRow();
 
       signals:
         void currentRowChanged(int row);
@@ -25,6 +29,7 @@ namespace ssa::presentation {
         DetailsViewModel& details_;
         SsaTableModel& tableModel_;
         mutable int currentRow_{-1};
+        int pendingRow_{-1};
     };
 
 } // namespace ssa::presentation

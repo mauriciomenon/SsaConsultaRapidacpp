@@ -32,4 +32,20 @@ namespace ssa::presentation {
         return currentRow_;
     }
 
+    void BrowseSelectionCoordinator::setPendingFirstRow() {
+        pendingRow_ = 0;
+    }
+
+    void BrowseSelectionCoordinator::setPendingLastRow() {
+        pendingRow_ = -2;
+    }
+
+    int BrowseSelectionCoordinator::pendingRow() const {
+        return pendingRow_;
+    }
+
+    void BrowseSelectionCoordinator::consumePendingRow() {
+        pendingRow_ = -1;
+    }
+
 } // namespace ssa::presentation

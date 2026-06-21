@@ -38,6 +38,8 @@ namespace ssa::presentation {
         [[nodiscard]] QString sortColumnKey() const;
         [[nodiscard]] bool sortAscending() const;
         [[nodiscard]] int currentRow() const;
+        [[nodiscard]] bool hasMorePages() const;
+        [[nodiscard]] bool hasPreviousPages() const;
         [[nodiscard]] domain::SsaPageRequest currentRequest() const;
         [[nodiscard]] const std::vector<std::string>& visibleColumns() const;
         [[nodiscard]] const std::map<std::string, int>& columnWidths() const;

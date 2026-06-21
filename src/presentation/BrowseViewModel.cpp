@@ -101,11 +101,21 @@ namespace ssa::presentation {
         if (row < 0) {
             return false;
         }
-        return row < tableModel_.rowCount() - 1;
+        if (row < tableModel_.rowCount() - 1) {
+            return true;
+        }
+        return orchestrator_.hasMorePages();
     }
 
     bool BrowseViewModel::canSelectPreviousRow() const {
-        return orchestrator_.currentRow() > 0;
+        const int row = orchestrator_.currentRow();
+        if (row > 0) {
+            return true;
+        }
+        if (row < 0) {
+            return false;
+        }
+        return orchestrator_.hasPreviousPages();
     }
 
     QVariantList BrowseViewModel::tableHeaders() const {
