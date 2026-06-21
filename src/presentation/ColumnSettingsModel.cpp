@@ -167,7 +167,8 @@ namespace ssa::presentation {
         const auto fromIdx = static_cast<std::size_t>(fromSource);
         const auto toIdx = static_cast<std::size_t>(toSource);
 
-        beginMoveRows(QModelIndex(), fromRow, fromRow, toRow);
+        const int destRow = (fromRow < toRow) ? toRow + 1 : toRow;
+        beginMoveRows(QModelIndex(), fromRow, fromRow, QModelIndex(), destRow);
         if (fromIdx < toIdx) {
             std::rotate(columns_.begin() + static_cast<std::ptrdiff_t>(fromIdx),
                         columns_.begin() + static_cast<std::ptrdiff_t>(fromIdx + 1),
@@ -233,20 +234,24 @@ namespace ssa::presentation {
 
         std::vector<ColumnItem> reordered;
         reordered.reserve(columns_.size());
+        std::set<std::string> added;
+
         for (const auto& key : visibleColumns) {
+            if (added.contains(key)) {
+                continue;
+            }
             auto it = std::ranges::find_if(columns_,
                                            [&key](const ColumnItem& c) { return c.key == key; });
             if (it != columns_.end()) {
                 reordered.push_back(*it);
+                added.insert(key);
             }
         }
         for (const auto& column : columns_) {
-            if (visible.find(column.key) == visible.end()) {
+            if (!added.contains(column.key)) {
                 reordered.push_back(column);
+                added.insert(column.key);
             }
-        }
-        if (reordered.size() != columns_.size()) {
-            reordered = columns_;
         }
 
         beginResetModel();
