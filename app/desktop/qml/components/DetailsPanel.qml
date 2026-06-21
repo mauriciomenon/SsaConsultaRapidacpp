@@ -8,6 +8,7 @@ import SsaConsultaRapida
 Rectangle {
     id: root
     required property var viewModel
+    required property var browseViewModel
     property string density: "normal"
     readonly property int titleTextSize: Theme.densityValue(root.density, 14, 16, 18)
     readonly property int labelTextSize: Theme.densityValue(root.density, 12, 13, 14)
@@ -24,14 +25,33 @@ Rectangle {
         anchors.margins: 10
         spacing: Theme.gap
 
-        Label {
+        RowLayout {
             Layout.fillWidth: true
-            text: root.viewModel.title
-            color: Theme.text
-            font.bold: true
-            font.pixelSize: root.titleTextSize
-            wrapMode: Text.Wrap
-            elide: Text.ElideRight
+            spacing: Theme.gap
+
+            Label {
+                Layout.fillWidth: true
+                text: root.viewModel.title
+                color: Theme.text
+                font.bold: true
+                font.pixelSize: root.titleTextSize
+                wrapMode: Text.Wrap
+                elide: Text.ElideRight
+            }
+
+            Button {
+                text: "<"
+                enabled: root.browseViewModel.canSelectPreviousRow
+                focusPolicy: Qt.NoFocus
+                onClicked: root.browseViewModel.selectPreviousRow()
+            }
+
+            Button {
+                text: ">"
+                enabled: root.browseViewModel.canSelectNextRow
+                focusPolicy: Qt.NoFocus
+                onClicked: root.browseViewModel.selectNextRow()
+            }
         }
 
         Rectangle {

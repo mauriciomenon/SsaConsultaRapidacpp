@@ -14,12 +14,17 @@ namespace ssa::presentation {
         explicit BrowseSelectionCoordinator(DetailsViewModel& details, SsaTableModel& tableModel,
                                             QObject* parent = nullptr);
 
-        void selectRow(int row) const;
+        void selectRow(int row);
         void clearSelection();
+        [[nodiscard]] int currentRow() const;
+
+      signals:
+        void currentRowChanged(int row);
 
       private:
         DetailsViewModel& details_;
         SsaTableModel& tableModel_;
+        mutable int currentRow_{-1};
     };
 
 } // namespace ssa::presentation

@@ -27,6 +27,8 @@ namespace ssa::presentation {
             }
             emit pageChanged();
         });
+        connect(&selectionCoordinator_, &BrowseSelectionCoordinator::currentRowChanged, this,
+                &BrowseOrchestrator::currentRowChanged);
     }
 
     int BrowseOrchestrator::pageNumber() const {
@@ -59,6 +61,10 @@ namespace ssa::presentation {
 
     bool BrowseOrchestrator::sortAscending() const {
         return queryState_.sortAscending();
+    }
+
+    int BrowseOrchestrator::currentRow() const {
+        return selectionCoordinator_.currentRow();
     }
 
     domain::SsaPageRequest BrowseOrchestrator::currentRequest() const {
@@ -144,6 +150,26 @@ namespace ssa::presentation {
 
     void BrowseOrchestrator::selectRow(const int row) {
         selectionCoordinator_.selectRow(row);
+    }
+
+    void BrowseOrchestrator::selectNextRow() {
+        const int current = selectionCoordinator_.currentRow();
+        if (current < 0) {
+            return;
+        }
+        const int last = tableModel_.rowCount() - 1;
+        if (current >= last) {
+            return;
+        }
+        selectionCoordinator_.selectRow(current + 1);
+    }
+
+    void BrowseOrchestrator::selectPreviousRow() {
+        const int current = selectionCoordinator_.currentRow();
+        if (current <= 0) {
+            return;
+        }
+        selectionCoordinator_.selectRow(current - 1);
     }
 
 } // namespace ssa::presentation

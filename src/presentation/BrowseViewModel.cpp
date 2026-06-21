@@ -23,6 +23,8 @@ namespace ssa::presentation {
             emit sortChanged();
             emit tableHeadersChanged();
         });
+        connect(&orchestrator_, &BrowseOrchestrator::currentRowChanged, this,
+                &BrowseViewModel::currentRowChanged);
         connect(&filters_, &FilterPanelViewModel::changed, this, [this] {
             invalidateTableHeaders();
             emit tableHeadersChanged();
@@ -88,6 +90,22 @@ namespace ssa::presentation {
 
     bool BrowseViewModel::sortAscending() const {
         return orchestrator_.sortAscending();
+    }
+
+    int BrowseViewModel::currentRow() const {
+        return orchestrator_.currentRow();
+    }
+
+    bool BrowseViewModel::canSelectNextRow() const {
+        const int row = orchestrator_.currentRow();
+        if (row < 0) {
+            return false;
+        }
+        return row < tableModel_.rowCount() - 1;
+    }
+
+    bool BrowseViewModel::canSelectPreviousRow() const {
+        return orchestrator_.currentRow() > 0;
     }
 
     QVariantList BrowseViewModel::tableHeaders() const {
@@ -178,6 +196,14 @@ namespace ssa::presentation {
 
     void BrowseViewModel::selectRow(const int row) {
         orchestrator_.selectRow(row);
+    }
+
+    void BrowseViewModel::selectNextRow() {
+        orchestrator_.selectNextRow();
+    }
+
+    void BrowseViewModel::selectPreviousRow() {
+        orchestrator_.selectPreviousRow();
     }
 
     void BrowseViewModel::sortByColumn(const int column) {
