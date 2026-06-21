@@ -11,9 +11,6 @@ without porting Python architecture, and stabilize CI/flaky tests.
 - Fix flaky `OpenPathPolicyTests` (tests 46-48) under parallel ctest. Likely a
   shared temp dir or filesystem race in `platform/OpenPathPolicy.cpp`. Repro:
   `ctest --preset dev -j8` fails, isolated `-R "open path policy"` passes.
-- Extend Linux CI job to run `qmllint` (currently only macOS runs it). Linux
-  uses `install-qt-action` which provides `qmllint` at
-  `$Qt6_DIR/../../../Tools/Qt-6.8.3/gcc_64/bin/qmllint`.
 - Add Windows CI job (MSVC) mirroring macOS steps; `msvc.yml` today only does
   code analysis, no build/test.
 
@@ -88,7 +85,7 @@ parity gaps because the GUI already calls them and gets "not configured" today.
 
 ### Architectural improvements
 - Split `gui_ssa.py` (247 KB, single class) parity is already avoided; keep
-  enforcing via `AGENTS.md` "no god class" rule and code review.
+  enforcing via `AGENTS.md` "God class" prohibition and code review.
 - Add property-based tests for `SearchParser` and `SqlQueryBuilder` (Catch2
   generators or rapidcheck) to match Python `validate_filter_optimizations.py`.
 - Add a `docs/contracts/performance-budget.md` documenting measured baselines
@@ -112,4 +109,5 @@ parity gaps because the GUI already calls them and gets "not configured" today.
 | Stress 200 pages, data path | 5.1 MB | < 6 MB |
 | ctest parallel pass rate | flaky (46-48) | 100% |
 
-Re-measure after each merge with `tools/ssa_mem_stress` and `vmmap --summary`.
+Re-measure after each merge with `ssa_mem_stress` (CMake target under
+`SSA_BUILD_TESTS`) and `vmmap --summary`.

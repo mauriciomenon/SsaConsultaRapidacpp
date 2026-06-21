@@ -30,24 +30,27 @@ static std::size_t currentFootprintKb() {
 }
 #elif defined(__linux__)
 #include <cstdio>
+#include <unistd.h>
 static std::size_t currentFootprintKb() {
-    // /proc/self/statm reports current resident pages, unlike getrusage.ru_maxrss
+    // /proc/self/statm fields: size resident shared text lib data dt (in pages).
+    // Field 2 (resident) is current resident pages, unlike getrusage.ru_maxrss
     // which is peak RSS since process start and plateaus early.
     std::FILE* f = std::fopen("/proc/self/statm", "r");
     if (f == nullptr) {
         return 0;
     }
-    unsigned long pages = 0;
-    int matched = std::fscanf(f, "%lu", &pages);
+    unsigned long total = 0;
+    unsigned long resident = 0;
+    int matched = std::fscanf(f, "%lu %lu", &total, &resident);
     std::fclose(f);
-    if (matched != 1) {
+    if (matched < 2) {
         return 0;
     }
     long pageSize = sysconf(_SC_PAGESIZE);
     if (pageSize <= 0) {
         pageSize = 4096;
     }
-    return (pages * static_cast<std::size_t>(pageSize)) / 1024;
+    return (resident * static_cast<std::size_t>(pageSize)) / 1024;
 }
 #else
 #include <sys/resource.h>
@@ -94,15 +97,20 @@ int main(int argc, char** argv) {
     ssa::presentation::BrowseViewModel browse(service);
 
     // Persistent connection tracks pageChanged emissions across waitPage calls
-    // so a signal fired before waitPage connects is not lost.
+    // so a signal fired while the event loop is not spinning is still captured.
+    // waitPage spins a nested event loop with a timeout; the persistent lambda
+    // sets the flag and quits the loop. No temporary connection is created, so
+    // there is no race window between connect and loop.exec().
     bool pageChangedEmitted = false;
-    QObject::connect(&browse, &ssa::presentation::BrowseViewModel::pageChanged,
-                     [&]() { pageChangedEmitted = true; });
+    QEventLoop* activeLoop = nullptr;
+    QObject::connect(&browse, &ssa::presentation::BrowseViewModel::pageChanged, [&]() {
+        pageChangedEmitted = true;
+        if (activeLoop != nullptr) {
+            activeLoop->quit();
+        }
+    });
 
     // Returns true if pageChanged fired within the timeout, false on timeout.
-    // The persistent connection above is checked first to catch signals emitted
-    // before this call. We also process pending events before the check to
-    // close the race window where a signal is queued but not yet delivered.
     auto waitPage = [&]() -> bool {
         QCoreApplication::processEvents(QEventLoop::AllEvents);
         if (pageChangedEmitted) {
@@ -110,21 +118,17 @@ int main(int argc, char** argv) {
             return true;
         }
         QEventLoop loop;
-        bool signalReceived = false;
         QTimer timeoutTimer;
         timeoutTimer.setSingleShot(true);
         timeoutTimer.setInterval(5000);
         QObject::connect(&timeoutTimer, &QTimer::timeout, &loop, &QEventLoop::quit);
-        auto conn = QObject::connect(&browse, &ssa::presentation::BrowseViewModel::pageChanged,
-                                     &loop, [&]() {
-                                         signalReceived = true;
-                                         pageChangedEmitted = false;
-                                         loop.quit();
-                                     });
+        activeLoop = &loop;
         timeoutTimer.start();
         loop.exec();
-        QObject::disconnect(conn);
-        return signalReceived;
+        activeLoop = nullptr;
+        const bool received = pageChangedEmitted;
+        pageChangedEmitted = false;
+        return received;
     };
 
     browse.setPageSize(pageSize);
@@ -143,11 +147,11 @@ int main(int argc, char** argv) {
 
     int lastPageNumber = browse.pageNumber();
     for (int i = 2; i <= totalPages; ++i) {
-        const int pageCount = browse.pageCount();
-        const int pageNumber = browse.pageNumber();
+        const int pageCountBefore = browse.pageCount();
+        const int pageNumberBefore = browse.pageNumber();
         // Guard against single-page or empty result sets: navigating next would
         // be a no-op or wrap, and the reset branch would loop forever.
-        if (pageCount <= 1 || pageNumber >= pageCount) {
+        if (pageCountBefore <= 1 || pageNumberBefore >= pageCountBefore) {
             browse.clearSearchAndResetPage();
             if (!waitPage()) {
                 std::fprintf(stderr, "error: reset timed out at iteration %d\n", i);
@@ -160,10 +164,15 @@ int main(int argc, char** argv) {
                 return 1;
             }
         }
-        // Guard against the model failing to advance pages, which would make
-        // the loop spin without progress and waste resources.
+        // Recapture pageCount after the load: clearSearchAndResetPage/nextPage
+        // can change totalRows and therefore pageCount, so the value captured
+        // before navigation is stale for the progress check.
         const int currentPage = browse.pageNumber();
-        if (currentPage == lastPageNumber && pageCount > 1) {
+        const int currentPageCount = browse.pageCount();
+        // Guard against the model failing to advance pages, which would make
+        // the loop spin without progress and waste resources. Only enforce
+        // when there is more than one page to advance through.
+        if (currentPageCount > 1 && currentPage == lastPageNumber) {
             std::fprintf(stderr, "error: page did not advance at iteration %d (stuck at %d)\n", i,
                          currentPage);
             return 1;
