@@ -113,6 +113,8 @@ QtObject {
     readonly property int bottomPaneMaxHeight: 390
     readonly property real bottomPaneHeightRatio: 0.37
 
+    readonly property var themeOptions: ["system", "light", "dark", "gruvbox"]
+
     function densityValue(density, compactValue, normalValue, comfortableValue) {
         if (density === "normal") {
             return normalValue

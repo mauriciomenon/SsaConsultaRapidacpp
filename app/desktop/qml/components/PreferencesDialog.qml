@@ -81,14 +81,11 @@ Window {
                         font.bold: true
                     }
                     AppComboBox {
-                        readonly property var themeOptions: ["system", "light", "dark", "gruvbox"]
-                        readonly property int themeIndex: themeOptions.indexOf(root.viewModel.ui.theme)
-
                         Layout.preferredWidth: 150
-                        model: themeOptions
-                        currentIndex: themeIndex >= 0 ? themeIndex : themeOptions.indexOf("system")
+                        model: Theme.themeOptions
+                        currentIndex: Theme.themeOptions.indexOf(root.viewModel.ui.theme) >= 0 ? Theme.themeOptions.indexOf(root.viewModel.ui.theme) : Theme.themeOptions.indexOf("system")
                         onActivated: function (index) {
-                            root.viewModel.ui.theme = themeOptions[index];
+                            root.viewModel.ui.theme = Theme.themeOptions[index];
                         }
                     }
 

@@ -11,7 +11,6 @@ Window {
     objectName: DesktopSmokeObjectNames.themeDialog
 
     required property var viewModel
-    readonly property var themeOptions: ["system", "light", "dark", "gruvbox"]
     property string originalTheme: ""
     property string pendingTheme: viewModel ? viewModel.ui.theme : ""
 
@@ -84,8 +83,8 @@ Window {
                         anchors.fill: parent
                         anchors.margins: 6
                         clip: true
-                        model: root.themeOptions
-                        currentIndex: root.themeOptions.indexOf(root.pendingTheme)
+                        model: Theme.themeOptions
+                        currentIndex: Theme.themeOptions.indexOf(root.pendingTheme)
                         delegate: ItemDelegate {
                             id: themeDelegate
                             required property string modelData
