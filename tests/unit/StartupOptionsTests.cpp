@@ -9,25 +9,58 @@
 #include <QCommandLineParser>
 #include <QDir>
 
+#include <atomic>
 #include <filesystem>
 #include <fstream>
+#include <random>
 #include <stdexcept>
+#include <string>
+
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <unistd.h>
+#endif
 
 namespace {
+
+    std::string processIdStamp() {
+#ifdef _WIN32
+        const auto pid = static_cast<unsigned long>(GetCurrentProcessId());
+#else
+        const auto pid = static_cast<unsigned long>(getpid());
+#endif
+        return std::to_string(pid);
+    }
+
+    std::string uniqueStamp() {
+        static std::atomic<unsigned long> counter{0};
+        const auto seq = counter.fetch_add(1, std::memory_order_relaxed);
+        std::random_device rd;
+        return processIdStamp() + "-" + std::to_string(seq) + "-" + std::to_string(rd());
+    }
 
     class TemporaryDirectoryPair final {
       public:
         TemporaryDirectoryPair()
-            : root{std::filesystem::temp_directory_path() / "ssa-open-policy-root"},
-              outside{std::filesystem::temp_directory_path() / "ssa-open-policy-outside"} {
+            : root{std::filesystem::temp_directory_path() /
+                   ("ssa-open-policy-root-" + uniqueStamp())},
+              outside{std::filesystem::temp_directory_path() /
+                      ("ssa-open-policy-outside-" + uniqueStamp())} {
             std::filesystem::create_directories(root);
             std::filesystem::create_directories(outside);
         }
 
         ~TemporaryDirectoryPair() {
-            std::filesystem::remove_all(root);
-            std::filesystem::remove_all(outside);
+            // Best-effort cleanup; ignore errors so a parallel test removing a
+            // sibling path does not abort this process via throwing destructor.
+            std::error_code ec;
+            std::filesystem::remove_all(root, ec);
+            std::filesystem::remove_all(outside, ec);
         }
+
+        TemporaryDirectoryPair(const TemporaryDirectoryPair&) = delete;
+        TemporaryDirectoryPair& operator=(const TemporaryDirectoryPair&) = delete;
 
         std::filesystem::path root;
         std::filesystem::path outside;
