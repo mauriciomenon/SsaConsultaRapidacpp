@@ -6,7 +6,7 @@ build*/
 *.db
 *.sqlite
 *.sqlite3
-*.dSYM/
+.dSYM/
 *.app/
 *.zip
 compile_commands.json
@@ -15,3 +15,5 @@ out/
 dist/
 coverage/
 config/ssa_cpp_preferences.json
+.idea/
+.clawpatch/

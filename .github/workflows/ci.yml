@@ -23,14 +23,14 @@ jobs:
       - name: QML lint
         run: qmllint -I build/dev app/desktop/qml/Main.qml app/desktop/qml/Theme.qml app/desktop/qml/components/*.qml
       - name: C++ format
-        run: find src app tests -type f \( -name '*.cpp' -o -name '*.h' \) -print0 | xargs -0 "$(brew --prefix llvm)/bin/clang-format" --dry-run --Werror
+        run: find src app tests tools -type f \( -name '*.cpp' -o -name '*.h' \) -print0 | xargs -0 "$(brew --prefix llvm)/bin/clang-format" --dry-run --Werror
       - name: C++ tidy
         run: |
           SDKROOT="$(xcrun --show-sdk-path)"
           PATH="$(brew --prefix llvm)/bin:$PATH" run-clang-tidy -p build/dev -quiet \
-            -header-filter="$PWD/(src|app)/.*" \
+            -header-filter="$PWD/(src|app|tools)/.*" \
             -extra-arg=-isysroot -extra-arg="$SDKROOT" \
-            "$PWD/(src|app)/.*\\.(cpp|h)$"
+            "$PWD/(src|app|tools)/.*\\.(cpp|h)$"
       - name: Secret scan
         run: gitleaks dir . --redact --exit-code 1 --no-banner
       - name: Package macOS bundle
