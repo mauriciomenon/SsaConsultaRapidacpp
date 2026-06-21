@@ -287,6 +287,32 @@ namespace {
             QCOMPARE(model.browse()->sortColumnKey(), QString("situacao"));
         }
 
+        void sort_cycle_ascends_descends_then_clears() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            ssa::presentation::MainViewModel model(service, commands);
+
+            model.browse()->load();
+            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->tableModel()->rowCount(), 1, 1000);
+
+            model.browse()->sortByColumn(1);
+            QCOMPARE(model.browse()->sortColumnKey(), QString("situacao"));
+            QCOMPARE(model.browse()->sortAscending(), true);
+
+            model.browse()->sortByColumn(1);
+            QCOMPARE(model.browse()->sortColumnKey(), QString("situacao"));
+            QCOMPARE(model.browse()->sortAscending(), false);
+
+            model.browse()->sortByColumn(1);
+            QCOMPARE(model.browse()->sortColumnKey(), QString(""));
+            QCOMPARE(model.browse()->sortAscending(), false);
+
+            model.browse()->sortByColumn(1);
+            QCOMPARE(model.browse()->sortColumnKey(), QString("situacao"));
+            QCOMPARE(model.browse()->sortAscending(), true);
+        }
+
         void next_page_reaches_final_page() {
             auto repository =
                 std::make_shared<FakeRepository>(std::chrono::milliseconds{0}, std::size_t{21});

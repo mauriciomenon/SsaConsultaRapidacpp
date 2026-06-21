@@ -93,8 +93,12 @@ namespace ssa::query {
                       << ", '')) <> " << singleQuotedSqlLiteral(kStatusLastSortCode)
                       << " THEN 0 ELSE 1 END ASC, ";
             }
-            order << quoteColumnIdentifier(request.sort.columnKey)
-                  << (request.sort.ascending ? " ASC" : " DESC");
+            const auto& sortKey = request.sort.columnKey.empty()
+                                      ? std::string{domain::kSsaNumberColumnKey}
+                                      : request.sort.columnKey;
+            const bool sortAscending =
+                request.sort.columnKey.empty() ? false : request.sort.ascending;
+            order << quoteColumnIdentifier(sortKey) << (sortAscending ? " ASC" : " DESC");
             return order.str();
         }
 
