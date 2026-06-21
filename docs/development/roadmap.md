@@ -35,9 +35,9 @@ without porting Python architecture, and stabilize CI/flaky tests.
 - CLI flag parity is complete: `--log-level`, `--acao backfill`, `--cols`,
   `--export`, `--sort`/`--asc`/`--desc` are all Present (see
   `docs/contracts/functional-coverage.md`). The remaining Python CLI items
-  (`v`, `m`, `r`, `clear`, `clearall`, `x`, `l/listar/filtros`,
-  `status-cli`) are interactive REPL commands out of scope for the
-  flag-based C++ CLI.
+  (`v`, `m`, `r`, `clear`, `clearall`, `x`, `l/listar/filtros`)
+   are interactive REPL commands out of scope for the
+   flag-based C++ CLI. Note: `status-cli` maps to `--log-level` and is Present.
 
 ### CI hygiene
 - Pin `install-qt-action` version; consider caching `build/dev` across runs.
