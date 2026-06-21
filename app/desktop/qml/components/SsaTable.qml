@@ -88,7 +88,7 @@ Rectangle {
             TableView {
             id: table
             width: parent.width
-            height: parent.height - header.height
+            height: Math.max(0, parent.height - header.height)
             model: root.viewModel.tableModel
             clip: true
             rowSpacing: 0

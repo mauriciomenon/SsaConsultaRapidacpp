@@ -1,6 +1,6 @@
 // Diagnostic harness: drives BrowseViewModel with a real SqliteSsaRepository
-// against data/ssas.db and samples RSS across many page navigations.
-// Not part of shipped binaries; built only when invoked explicitly.
+// against a database and samples RSS across many page navigations.
+// Built only on non-Windows (uses POSIX getrusage / mach task_info).
 
 #include "infra/sqlite/SqliteSsaRepository.h"
 #include "presentation/BrowseViewModel.h"
@@ -8,10 +8,12 @@
 
 #include <QCoreApplication>
 #include <QEventLoop>
+#include <QObject>
 #include <QString>
 #include <QTimer>
 
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <memory>
 
@@ -60,37 +62,80 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    auto repository = std::make_shared<ssa::infra::sqlite::SqliteSsaRepository>(
-        std::filesystem::path{dbPath.toStdString()});
+    std::filesystem::path dbFilePath{dbPath.toStdString()};
+    std::error_code ec;
+    if (!std::filesystem::exists(dbFilePath, ec)) {
+        std::fprintf(stderr, "error: database file does not exist: %s\n",
+                     dbFilePath.string().c_str());
+        return 1;
+    }
+
+    auto repository = std::make_shared<ssa::infra::sqlite::SqliteSsaRepository>(dbFilePath);
     auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
     ssa::presentation::BrowseViewModel browse(service);
 
+    // Persistent connection tracks pageChanged emissions across waitPage calls
+    // so a signal fired before waitPage connects is not lost.
+    bool pageChangedEmitted = false;
+    QObject::connect(&browse, &ssa::presentation::BrowseViewModel::pageChanged,
+                     [&]() { pageChangedEmitted = true; });
+
+    // Returns true if pageChanged fired within the timeout, false on timeout.
+    auto waitPage = [&]() -> bool {
+        if (pageChangedEmitted) {
+            pageChangedEmitted = false;
+            return true;
+        }
+        QEventLoop loop;
+        bool signalReceived = false;
+        QTimer timeoutTimer;
+        timeoutTimer.setSingleShot(true);
+        timeoutTimer.setInterval(5000);
+        QObject::connect(&timeoutTimer, &QTimer::timeout, &loop, &QEventLoop::quit);
+        auto conn = QObject::connect(&browse, &ssa::presentation::BrowseViewModel::pageChanged,
+                                     &loop, [&]() {
+                                         signalReceived = true;
+                                         pageChangedEmitted = false;
+                                         loop.quit();
+                                     });
+        timeoutTimer.start();
+        loop.exec();
+        QObject::disconnect(conn);
+        return signalReceived;
+    };
+
     browse.setPageSize(pageSize);
     browse.load();
-
-    auto waitPage = [&]() {
-        QEventLoop loop;
-        QTimer::singleShot(5000, &loop, &QEventLoop::quit);
-        QObject::connect(&browse, &ssa::presentation::BrowseViewModel::pageChanged, &loop,
-                         &QEventLoop::quit);
-        loop.exec();
-    };
-    waitPage();
+    if (!waitPage()) {
+        std::fprintf(stderr, "error: initial page load timed out\n");
+        return 1;
+    }
 
     std::printf("phase\tpages\trss_kb\n");
     std::printf("startup\t0\t%zu\n", currentRssKb());
     std::printf("firstpage\t1\t%zu\n", currentRssKb());
 
     for (int i = 2; i <= totalPages; ++i) {
-        browse.nextPage();
-        waitPage();
+        const int pageCount = browse.pageCount();
+        const int pageNumber = browse.pageNumber();
+        // Guard against single-page or empty result sets: navigating next would
+        // be a no-op or wrap, and the reset branch would loop forever.
+        if (pageCount <= 1 || pageNumber >= pageCount) {
+            browse.clearSearchAndResetPage();
+            if (!waitPage()) {
+                std::fprintf(stderr, "error: reset timed out at iteration %d\n", i);
+                return 1;
+            }
+        } else {
+            browse.nextPage();
+            if (!waitPage()) {
+                std::fprintf(stderr, "error: nextPage timed out at iteration %d\n", i);
+                return 1;
+            }
+        }
         if (i % 10 == 0) {
             std::printf("nav\t%d\t%zu\n", i, currentRssKb());
             std::fflush(stdout);
-        }
-        if (browse.pageNumber() >= browse.pageCount()) {
-            browse.clearSearchAndResetPage();
-            waitPage();
         }
     }
     std::printf("final\t%d\t%zu\n", totalPages, currentRssKb());

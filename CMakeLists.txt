@@ -307,6 +307,8 @@ if(SSA_BUILD_TESTS)
         PASS_REGULAR_EXPRESSION "ssa_consulta_rapida_cli ${PROJECT_VERSION}"
     )
 
-    add_executable(ssa_mem_stress tools/mem_stress.cpp)
-    target_link_libraries(ssa_mem_stress PRIVATE ssa_presentation ssa_infra Qt6::Core)
+    if(NOT WIN32)
+        add_executable(ssa_mem_stress tools/mem_stress.cpp)
+        target_link_libraries(ssa_mem_stress PRIVATE ssa_presentation ssa_infra Qt6::Core)
+    endif()
 endif()

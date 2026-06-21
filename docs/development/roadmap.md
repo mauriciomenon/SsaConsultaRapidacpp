@@ -1,7 +1,7 @@
 # Roadmap: SSA Consulta Rapida C++
 
 Plan derived from `docs/contracts/functional-coverage.md` parity gaps and from
-the PyQt6 reference at `/Users/menon/git/SSA_Consulta_Rapida`. Goals: keep C++
+the PyQt6 reference repository (sibling project). Goals: keep C++
 memory advantage (already ~7x lower than PyQt6 GUI), close functional parity
 without porting Python architecture, and stabilize CI/flaky tests.
 
