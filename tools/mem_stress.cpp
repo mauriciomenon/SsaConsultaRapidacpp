@@ -19,7 +19,7 @@
 
 #ifdef __APPLE__
 #include <mach/mach.h>
-static std::size_t currentRssKb() {
+static std::size_t currentFootprintKb() {
     task_vm_info_data_t info;
     mach_msg_type_number_t count = TASK_VM_INFO_COUNT;
     if (task_info(mach_task_self(), TASK_VM_INFO, reinterpret_cast<task_info_t>(&info), &count) !=
@@ -28,16 +28,35 @@ static std::size_t currentRssKb() {
     }
     return static_cast<std::size_t>(info.phys_footprint) / 1024;
 }
+#elif defined(__linux__)
+#include <cstdio>
+static std::size_t currentFootprintKb() {
+    // /proc/self/statm reports current resident pages, unlike getrusage.ru_maxrss
+    // which is peak RSS since process start and plateaus early.
+    std::FILE* f = std::fopen("/proc/self/statm", "r");
+    if (f == nullptr) {
+        return 0;
+    }
+    unsigned long pages = 0;
+    int matched = std::fscanf(f, "%lu", &pages);
+    std::fclose(f);
+    if (matched != 1) {
+        return 0;
+    }
+    long pageSize = sysconf(_SC_PAGESIZE);
+    if (pageSize <= 0) {
+        pageSize = 4096;
+    }
+    return (pages * static_cast<std::size_t>(pageSize)) / 1024;
+}
 #else
 #include <sys/resource.h>
-static std::size_t currentRssKb() {
+static std::size_t currentFootprintKb() {
+    // Fallback: peak RSS (KB on BSD/macOS, bytes on Linux - but Linux branch above
+    // handles /proc). On other BSDs ru_maxrss is in KB.
     rusage usage{};
     getrusage(RUSAGE_SELF, &usage);
-#ifdef __linux__
     return static_cast<std::size_t>(usage.ru_maxrss);
-#else
-    return static_cast<std::size_t>(usage.ru_maxrss) / 1024;
-#endif
 }
 #endif
 
@@ -81,7 +100,11 @@ int main(int argc, char** argv) {
                      [&]() { pageChangedEmitted = true; });
 
     // Returns true if pageChanged fired within the timeout, false on timeout.
+    // The persistent connection above is checked first to catch signals emitted
+    // before this call. We also process pending events before the check to
+    // close the race window where a signal is queued but not yet delivered.
     auto waitPage = [&]() -> bool {
+        QCoreApplication::processEvents(QEventLoop::AllEvents);
         if (pageChangedEmitted) {
             pageChangedEmitted = false;
             return true;
@@ -111,10 +134,14 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    std::printf("phase\tpages\trss_kb\n");
-    std::printf("startup\t0\t%zu\n", currentRssKb());
-    std::printf("firstpage\t1\t%zu\n", currentRssKb());
+    // macOS: phys_footprint (real app-owned memory). Linux: current resident
+    // pages via /proc/self/statm. Other BSDs: peak RSS fallback (noted in
+    // currentFootprintKb). Label reflects the common semantic, not raw RSS.
+    std::printf("phase\tpages\tfootprint_kb\n");
+    std::printf("startup\t0\t%zu\n", currentFootprintKb());
+    std::printf("firstpage\t1\t%zu\n", currentFootprintKb());
 
+    int lastPageNumber = browse.pageNumber();
     for (int i = 2; i <= totalPages; ++i) {
         const int pageCount = browse.pageCount();
         const int pageNumber = browse.pageNumber();
@@ -133,12 +160,21 @@ int main(int argc, char** argv) {
                 return 1;
             }
         }
+        // Guard against the model failing to advance pages, which would make
+        // the loop spin without progress and waste resources.
+        const int currentPage = browse.pageNumber();
+        if (currentPage == lastPageNumber && pageCount > 1) {
+            std::fprintf(stderr, "error: page did not advance at iteration %d (stuck at %d)\n", i,
+                         currentPage);
+            return 1;
+        }
+        lastPageNumber = currentPage;
         if (i % 10 == 0) {
-            std::printf("nav\t%d\t%zu\n", i, currentRssKb());
+            std::printf("nav\t%d\t%zu\n", i, currentFootprintKb());
             std::fflush(stdout);
         }
     }
-    std::printf("final\t%d\t%zu\n", totalPages, currentRssKb());
+    std::printf("final\t%d\t%zu\n", totalPages, currentFootprintKb());
 
     return 0;
 }

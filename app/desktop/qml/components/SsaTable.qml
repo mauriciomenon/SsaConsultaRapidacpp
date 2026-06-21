@@ -86,19 +86,19 @@ Rectangle {
         }
 
             TableView {
-            id: table
-            width: parent.width
-            height: Math.max(0, parent.height - header.height)
-            model: root.viewModel.tableModel
-            clip: true
-            rowSpacing: 0
-            columnSpacing: 1
-            boundsBehavior: Flickable.StopAtBounds
-            columnWidthProvider: function(column) {
-                return column >= 0 && column < root.tableColumns.length
-                       ? root.tableColumns[column].width
-                       : 0
-            }
+                id: table
+                width: parent.width
+                height: Math.max(0, parent.height - header.height)
+                model: root.viewModel.tableModel
+                clip: true
+                rowSpacing: 0
+                columnSpacing: 1
+                boundsBehavior: Flickable.StopAtBounds
+                columnWidthProvider: function(column) {
+                    return column >= 0 && column < root.tableColumns.length
+                           ? root.tableColumns[column].width
+                           : 0
+                }
             rowHeightProvider: function(row) {
                 return table.cachedRowHeight
             }

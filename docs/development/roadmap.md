@@ -72,7 +72,7 @@ without porting Python architecture, and stabilize CI/flaky tests.
 - `l/listar/filtros`: list active filters.
 - `status-cli`, debug toggles: diagnostics adapter.
 
-### "Contract only" → "Present"
+### "Contract only" -> "Present"
 These have `I*Port` interfaces but no real adapter. They are the highest-value
 parity gaps because the GUI already calls them and gets "not configured" today.
 - `Import external XLS/XLSX`: implement `SpreadsheetImportWorkflowPort` end to
@@ -93,7 +93,7 @@ parity gaps because the GUI already calls them and gets "not configured" today.
   generators or rapidcheck) to match Python `validate_filter_optimizations.py`.
 - Add a `docs/contracts/performance-budget.md` documenting measured baselines
   (GUI footprint 35 MB, CLI 23 MB, stress 5 MB) so regressions are detectable.
-- Consider `QtQuick.Controls` → `QtQuick` native items where Controls adds
+- Consider `QtQuick.Controls` -> `QtQuick` native items where Controls adds
   overhead without value (e.g. `ScrollBar` already required Controls; audit
   other usages).
 
