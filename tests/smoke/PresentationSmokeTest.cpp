@@ -609,6 +609,28 @@ namespace {
             QCOMPARE(QString::fromStdString(preferences->snapshot().theme), QString("dark"));
         }
 
+        void theme_can_be_reverted_after_preview_change() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            auto preferences = std::make_shared<FakePreferences>();
+            ssa::presentation::MainViewModel model(service, commands, preferences);
+
+            const QString original = model.ui()->theme();
+            QVERIFY(!original.isEmpty());
+
+            QSignalSpy themeSpy(model.ui(), &ssa::presentation::UiSettingsViewModel::themeChanged);
+            model.ui()->setTheme("dark");
+            QCOMPARE(model.ui()->theme(), QString("dark"));
+            QVERIFY(themeSpy.count() >= 1);
+
+            // Simulate ThemeDialog::reject() restoring the original theme
+            themeSpy.clear();
+            model.ui()->setTheme(original);
+            QCOMPARE(model.ui()->theme(), original);
+            QVERIFY(themeSpy.count() >= 1);
+        }
+
         void details_visibility_preference_is_saved() {
             auto repository = std::make_shared<FakeRepository>();
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);

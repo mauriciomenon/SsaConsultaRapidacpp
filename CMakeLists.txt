@@ -209,6 +209,7 @@ qt_add_qml_module(ssa_consulta_rapida
         app/desktop/qml/components/SmokeCaptureBridge.qml
         app/desktop/qml/components/SsaTable.qml
         app/desktop/qml/components/StatusPill.qml
+        app/desktop/qml/components/ThemeDialog.qml
 )
 
 target_link_libraries(ssa_consulta_rapida PRIVATE

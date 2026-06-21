@@ -374,6 +374,12 @@ ApplicationWindow {
     PreferencesDialog {
         id: preferencesDialog
         viewModel: root.vm
+        themeDialog: themeDialog
+    }
+
+    ThemeDialog {
+        id: themeDialog
+        viewModel: root.vm
     }
 
     SmokeCaptureBridge {
