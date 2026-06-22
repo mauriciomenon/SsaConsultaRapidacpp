@@ -32,26 +32,23 @@ namespace ssa::presentation {
     bool MainColumnFlowCoordinator::setColumnWidthAndApply(const QString& columnKey,
                                                            const int width) {
         const auto key = columnKey.toStdString();
+        if (!columns_.columnWidths().contains(key)) {
+            return false;
+        }
+
         auto appliedColumnWidths = browse_.columnWidths();
+        const int boundedWidth =
+            std::clamp(width, columns_.minColumnWidth(), columns_.maxColumnWidth());
         const auto previousWidth = appliedColumnWidths.find(key);
-        if (!columns_.setColumnWidth(columnKey, width)) {
+        if (previousWidth != appliedColumnWidths.end() && previousWidth->second == boundedWidth) {
             return false;
         }
 
-        const auto stagedColumnWidths = columns_.columnWidths();
-        const auto stagedWidth = stagedColumnWidths.find(key);
-        if (stagedWidth == stagedColumnWidths.end()) {
-            return false;
-        }
-        if (previousWidth != appliedColumnWidths.end() &&
-            previousWidth->second == stagedWidth->second) {
-            return false;
-        }
-
-        appliedColumnWidths[key] = stagedWidth->second;
+        appliedColumnWidths[key] = boundedWidth;
         browse_.applyColumnSettings(browse_.visibleColumns(), appliedColumnWidths);
+        columns_.applyPreferences(browse_.visibleColumns(), browse_.columnWidths());
         if (saveAppliedColumns_) {
-            saveAppliedColumns_(browse_.visibleColumns(), std::move(appliedColumnWidths));
+            saveAppliedColumns_(browse_.visibleColumns(), browse_.columnWidths());
         }
         return true;
     }
@@ -59,6 +56,10 @@ namespace ssa::presentation {
     bool MainColumnFlowCoordinator::setColumnVisibleAndApply(const QString& columnKey,
                                                              const bool visible) {
         const auto key = columnKey.toStdString();
+        if (!columns_.columnWidths().contains(key)) {
+            return false;
+        }
+
         auto appliedVisibleKeys = browse_.visibleColumns();
         const auto appliedPosition = std::ranges::find(appliedVisibleKeys, key);
         const bool currentlyVisible = appliedPosition != appliedVisibleKeys.end();
@@ -68,9 +69,6 @@ namespace ssa::presentation {
         if (!visible && (!currentlyVisible || appliedVisibleKeys.size() <= 1)) {
             return false;
         }
-        if (!columns_.setColumnVisibleByKey(columnKey, visible)) {
-            return false;
-        }
 
         if (visible) {
             appliedVisibleKeys.push_back(key);
@@ -78,8 +76,9 @@ namespace ssa::presentation {
             appliedVisibleKeys.erase(appliedPosition);
         }
         browse_.applyColumnSettings(appliedVisibleKeys, browse_.columnWidths());
+        columns_.applyPreferences(browse_.visibleColumns(), browse_.columnWidths());
         if (saveAppliedColumns_) {
-            saveAppliedColumns_(std::move(appliedVisibleKeys), browse_.columnWidths());
+            saveAppliedColumns_(browse_.visibleColumns(), browse_.columnWidths());
         }
         return true;
     }

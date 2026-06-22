@@ -585,6 +585,7 @@ namespace {
             model.browse()->load();
             QTRY_COMPARE_WITH_TIMEOUT(model.browse()->tableModel()->rowCount(), 1, 1000);
             QVERIFY(model.columns()->setColumnVisibleByKey("setor_executor", false));
+            QVERIFY(model.columns()->setColumnWidth("numero_ssa", 230));
             QVERIFY(model.columns()->setColumnWidth("situacao", 260));
 
             bool changed = false;
@@ -644,6 +645,7 @@ namespace {
             model.browse()->load();
             QTRY_COMPARE_WITH_TIMEOUT(model.browse()->tableModel()->rowCount(), 1, 1000);
             QVERIFY(model.columns()->setColumnVisibleByKey("setor_executor", false));
+            QVERIFY(model.columns()->setColumnVisibleByKey("situacao", false));
             QVERIFY(model.columns()->setColumnWidth("numero_ssa", 230));
 
             bool canHideStagedColumn = false;
@@ -664,6 +666,10 @@ namespace {
             QCOMPARE(QString::fromStdString(visibleColumns.at(0)), QString("numero_ssa"));
             QCOMPARE(QString::fromStdString(visibleColumns.at(1)), QString("setor_executor"));
             QCOMPARE(preferences->snapshot().columnWidths.at("numero_ssa"), 140);
+            const auto stagedVisibleKeys = model.columns()->visibleKeys();
+            QCOMPARE(stagedVisibleKeys.size(), std::size_t{2});
+            QCOMPARE(QString::fromStdString(stagedVisibleKeys.at(0)), QString("numero_ssa"));
+            QCOMPARE(QString::fromStdString(stagedVisibleKeys.at(1)), QString("setor_executor"));
         }
 
         void column_visibility_flow_keeps_one_visible_column() {
