@@ -32,17 +32,18 @@ without porting Python architecture, and stabilize CI/flaky tests.
   `gui/ssa/gui_theme_dialog.py` (live preview).
 
 ### Close "Partial" / "Missing" CLI items
-- `--log-level`: wire to a logging facade in `application/` (no Qt).
-- `--acao backfill`: port `scripts/migracao/backfill_reprocessar.py` logic to a
-  `application::BackfillAcaoUseCase` with CLI flag.
-- `ord/ordi/ordn/ordni`: complete sort request builder parity with
-  `interface/cli.py` sort commands.
+- CLI flag parity is complete: `--log-level`, `--acao backfill`, `--cols`,
+  `--export`, `--sort`/`--asc`/`--desc` are all Present (see
+  `docs/contracts/functional-coverage.md`). The remaining Python CLI items
+  (`v`, `m`, `r`, `clear`, `clearall`, `x`, `l/listar/filtros`)
+   are interactive REPL commands out of scope for the
+   flag-based C++ CLI. Note: `status-cli` maps to `--log-level` and is Present.
 
 ### CI hygiene
 - Pin `install-qt-action` version; consider caching `build/dev` across runs.
 - Add `clang-tidy` summary to PR comments (currently fails silently in logs).
-- Run `ssa_mem_stress` as a CI smoke with a small fixture DB and assert RSS
-  delta < 2 MB over 50 pages (regression guard for memory).
+- Memory regression smoke: `ssa_mem_stress` runs on Linux CI with fixture DB
+  (done locally, needs CI validation).
 
 ## Long term (multiple PRs, no fixed order)
 
@@ -59,15 +60,11 @@ without porting Python architecture, and stabilize CI/flaky tests.
   `gui/gui_ssa.py::show_context_menu`, `show_header_context_menu`.
 - `Header context menu`: column show/hide + sort reset.
 
-### Missing CLI features (interactive)
-- `v` undo filter: CLI filter stack with history.
-- `m`, `m z` pagination: interactive pager.
-- `r`, `clear`, `clearall`: CLI filter state management.
-- `e name` export: interactive export filename prompt.
-- `cols`: column catalog adapter.
-- `x <term>`: CLI filter state exclusion.
-- `l/listar/filtros`: list active filters.
-- `status-cli`, debug toggles: diagnostics adapter.
+### Missing CLI features (interactive REPL, out of scope)
+The C++ CLI is flag-based, not an interactive REPL. These Python interactive
+commands are out of scope unless a REPL mode is explicitly added:
+- `v` undo filter, `m`/`m z` pager, `r`/`clear`/`clearall` filter state,
+  `x <term>` exclusion, `l/listar/filtros` listing.
 
 ### "Contract only" -> "Present" (completed)
 - `Import external XLS/XLSX`: done. `SpreadsheetImportWorkflowPort` wired in
