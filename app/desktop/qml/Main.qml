@@ -406,8 +406,6 @@ ApplicationWindow {
 
     ColumnSelectorPopup {
         id: columnSelectorPopup
-        x: Math.max(8, root.width - columnSelectorPopup.width - 16)
-        y: 88
         viewModel: root.vm
     }
 

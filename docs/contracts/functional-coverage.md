@@ -27,7 +27,7 @@ This document tracks parity against the Python project at
 | Vacuum/analyze DB | `gui/gui_ssa.py::run_vacuum_analyze` | `SqliteMaintenancePort`, `SsaWorkflowService` | CLI present |
 | Open input/processed/redundant folders and docs | `gui/gui_ssa.py` menu handlers | command port variants | Present |
 | Preferences/theme/density | `gui/ssa/gui_theme.py`, config JSON | `IUserPreferencesStore` | Partial |
-| Context menus | `gui/gui_ssa.py::show_context_menu` | QML menu + view model commands | Partial |
+| Context menus | `gui/gui_ssa.py::show_context_menu` | QML menu + view model commands | Missing |
 | Header context menu | `gui/gui_ssa.py::show_header_context_menu` | QML menu + column VM | Partial |
 
 ## CLI Coverage

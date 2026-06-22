@@ -31,7 +31,11 @@ namespace ssa::presentation {
 
     bool MainColumnFlowCoordinator::setColumnWidthAndApply(const QString& columnKey,
                                                            const int width) {
+        const auto previousColumnWidths = columns_.columnWidths();
         if (!columns_.setColumnWidth(columnKey, width)) {
+            return false;
+        }
+        if (columns_.columnWidths() == previousColumnWidths) {
             return false;
         }
         applyColumnSettings();

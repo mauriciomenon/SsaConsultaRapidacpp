@@ -8,13 +8,27 @@ import SsaConsultaRapida
 Popup {
     id: root
     required property var viewModel
+    property int preferredY: 88
 
-    width: 760
-    height: 560
+    width: Math.max(320, Math.min(760, (parent ? parent.width : 792) - 32))
+    height: Math.max(360, Math.min(560, (parent ? parent.height : 680) - 120))
     modal: false
     focus: true
     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
     padding: 0
+
+    function updatePosition() {
+        if (!parent) {
+            return
+        }
+        x = Math.max(8, parent.width - width - 16)
+        y = Math.max(8, Math.min(preferredY, parent.height - height - 16))
+    }
+
+    Component.onCompleted: updatePosition()
+    onOpened: updatePosition()
+    onWidthChanged: updatePosition()
+    onHeightChanged: updatePosition()
 
     background: Rectangle {
         color: Theme.panel

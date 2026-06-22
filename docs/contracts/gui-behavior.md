@@ -51,8 +51,9 @@
 - The GUI must not use column customization to introduce query aliases or business synonyms.
 - At least one visible column must remain selected.
 - Width edits are stored by column key, not by visual index.
-- Toolbar column selection and header hide actions apply immediately and persist through
-  `IUserPreferencesStore`.
+- Toolbar column selection opens a popup with staged changes; only its explicit apply action
+  persists through `IUserPreferencesStore`.
+- Header hide actions apply immediately and persist through `IUserPreferencesStore`.
 - Closing the preferences dialog without applying discards pending column visibility and width
   edits.
 - Detail panel visibility is applied immediately because it is a screen layout preference, not a

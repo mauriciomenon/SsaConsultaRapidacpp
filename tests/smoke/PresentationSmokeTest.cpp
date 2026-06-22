@@ -417,13 +417,16 @@ namespace {
             QTRY_COMPARE_WITH_TIMEOUT(model.browse()->pageCount(), 3, 1000);
             model.browse()->nextPage();
             QTRY_COMPARE_WITH_TIMEOUT(model.browse()->pageNumber(), 2, 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(repository->requests().back().pageIndex, std::size_t{1},
+                                      1000);
 
             const auto requestCountBeforeSort = repository->requests().size();
             model.browse()->sortByColumn(1);
 
             QTRY_VERIFY_WITH_TIMEOUT(repository->requests().size() > requestCountBeforeSort, 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(repository->requests().back().pageIndex, std::size_t{0},
+                                      1000);
             QTRY_COMPARE_WITH_TIMEOUT(model.browse()->pageNumber(), 1, 1000);
-            QCOMPARE(repository->requests().back().pageIndex, std::size_t{0});
             QTRY_COMPARE_WITH_TIMEOUT(QString::fromStdString(preferences->snapshot().sortColumnKey),
                                       QString("situacao"), 1000);
             QTRY_COMPARE_WITH_TIMEOUT(preferences->snapshot().sortAscending, true, 1000);

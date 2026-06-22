@@ -148,7 +148,7 @@ namespace ssa::presentation {
         }
         const int bounded = std::clamp(width, kMinColumnWidth, kMaxColumnWidth);
         if (item->width == bounded) {
-            return false;
+            return true;
         }
         item->width = bounded;
         emitRowChanged(static_cast<int>(std::distance(columns_.begin(), item)));

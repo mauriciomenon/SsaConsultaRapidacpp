@@ -48,8 +48,18 @@ Rectangle {
                         id: headerCell
                         required property int index
                         required property var modelData
+                        readonly property bool hasColumnKey: modelData
+                                                             && modelData.key !== undefined
+                                                             && modelData.key !== null
+                                                             && modelData.key !== ""
+                        readonly property string columnKey: hasColumnKey ? modelData.key : ""
+                        readonly property int modelWidth: modelData
+                                                          && modelData.width !== undefined
+                                                          && modelData.width !== null
+                                                          ? modelData.width
+                                                          : 120
                         property int dragStartWidth: 0
-                        property int previewWidth: modelData.width
+                        property int previewWidth: modelWidth
 
                         width: previewWidth
                         height: header.height
@@ -57,7 +67,7 @@ Rectangle {
                         border.color: Theme.borderSoft
                         border.width: 1
 
-                        onModelDataChanged: previewWidth = modelData.width
+                        onModelDataChanged: previewWidth = modelWidth
 
                         Text {
                             anchors.fill: parent
@@ -65,9 +75,11 @@ Rectangle {
                             anchors.rightMargin: 10
                             anchors.topMargin: 4
                             anchors.bottomMargin: 4
-                            text: parent.modelData.label
-                                  + (parent.modelData.filtered ? " [f]" : "")
-                                  + (parent.modelData.sorted
+                            text: (parent.modelData && parent.modelData.label !== undefined
+                                   ? parent.modelData.label
+                                   : "")
+                                  + (parent.modelData && parent.modelData.filtered ? " [f]" : "")
+                                  + (parent.modelData && parent.modelData.sorted
                                      ? (parent.modelData.sortAscending ? "  ^" : "  v")
                                      : "")
                             color: Theme.accentStrong
@@ -95,15 +107,16 @@ Rectangle {
 
                             MenuItem {
                                 text: "Filtrar coluna"
+                                enabled: headerCell.hasColumnKey
                                 onTriggered: root.viewModel.setFilterPanelFocusColumn(
-                                    headerCell.modelData.key)
+                                    headerCell.columnKey)
                             }
                             MenuItem {
                                 text: "Ocultar coluna"
-                                enabled: root.columnFlow !== null
-                                         && root.columnFlow.canHideColumn(headerCell.modelData.key)
+                                enabled: headerCell.hasColumnKey && root.columnFlow !== null
+                                         && root.columnFlow.canHideColumn(headerCell.columnKey)
                                 onTriggered: root.columnFlow.setColumnVisibleAndApply(
-                                    headerCell.modelData.key, false)
+                                    headerCell.columnKey, false)
                             }
                             MenuSeparator {}
                             MenuItem {
@@ -146,9 +159,9 @@ Rectangle {
                                     headerCell.previewWidth = bounded
                                 }
                                 onReleased: {
-                                    if (root.columnFlow !== null) {
+                                    if (root.columnFlow !== null && headerCell.hasColumnKey) {
                                         root.columnFlow.setColumnWidthAndApply(
-                                            headerCell.modelData.key, headerCell.previewWidth)
+                                            headerCell.columnKey, headerCell.previewWidth)
                                     }
                                 }
                             }
