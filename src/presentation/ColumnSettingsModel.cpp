@@ -168,7 +168,9 @@ namespace ssa::presentation {
         const auto toIdx = static_cast<std::size_t>(toSource);
 
         const int destRow = (fromRow < toRow) ? toRow + 1 : toRow;
-        beginMoveRows(QModelIndex(), fromRow, fromRow, QModelIndex(), destRow);
+        if (!beginMoveRows(QModelIndex(), fromRow, fromRow, QModelIndex(), destRow)) {
+            return false;
+        }
         if (fromIdx < toIdx) {
             std::rotate(columns_.begin() + static_cast<std::ptrdiff_t>(fromIdx),
                         columns_.begin() + static_cast<std::ptrdiff_t>(fromIdx + 1),

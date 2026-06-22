@@ -96,13 +96,17 @@ Item {
                         }
                         Button {
                             text: "^"
-                            enabled: columnDelegate.index > 0
+                            enabled: columnDelegate.index > 0 && columnDelegate.columnVisible
+                            Accessible.name: "Mover coluna para cima"
+                            ToolTip.text: "Mover coluna para cima"
                             onClicked: root.viewModel.moveColumn(
                                 columnDelegate.index, columnDelegate.index - 1)
                         }
                         Button {
                             text: "v"
-                            enabled: columnDelegate.index < columnList.count - 1
+                            enabled: columnDelegate.index < columnList.count - 1 && columnDelegate.columnVisible
+                            Accessible.name: "Mover coluna para baixo"
+                            ToolTip.text: "Mover coluna para baixo"
                             onClicked: root.viewModel.moveColumn(
                                 columnDelegate.index, columnDelegate.index + 1)
                         }
