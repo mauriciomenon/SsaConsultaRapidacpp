@@ -28,8 +28,8 @@ namespace ssa::presentation {
                                                                 std::move(columnWidths));
               }),
           selectionFlow_(browse_, *actions_.commands()), requestFlow_(browse_) {
-        preferencesFlow_.applyStoredPreferences(preferences_.loadInitial());
         connectPreferenceFlows();
+        preferencesFlow_.applyStoredPreferences(preferences_.loadInitial());
         connectWorkflowRefresh();
     }
 

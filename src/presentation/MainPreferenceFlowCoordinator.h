@@ -40,10 +40,10 @@ namespace ssa::presentation {
 
         [[nodiscard]] ports::UserPreferencesSnapshot buildPreferencesSnapshot() const;
         void applyStoredPreferences(ports::UserPreferencesSnapshot snapshot);
-        void scheduleSavePreferences() const;
+        void scheduleSavePreferences();
         void saveAppliedColumnPreferences(std::vector<std::string> visibleColumns,
-                                          std::map<std::string, int> columnWidths) const;
-        void saveNowOrSchedule() const;
+                                          std::map<std::string, int> columnWidths);
+        void saveNowOrSchedule();
         Q_INVOKABLE void savePreferences();
         Q_INVOKABLE void exportFilterPreset(const QUrl& outputUrl);
         Q_INVOKABLE void importFilterPreset(const QUrl& inputUrl);
