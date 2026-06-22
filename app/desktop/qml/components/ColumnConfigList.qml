@@ -94,16 +94,18 @@ Item {
                                 value
                             )
                         }
-                        Button {
+                        ActionButton {
                             text: "^"
+                            implicitWidth: 80
                             enabled: columnDelegate.index > 0 && columnDelegate.columnVisible
                             Accessible.name: "Mover coluna para cima"
                             ToolTip.text: "Mover coluna para cima"
                             onClicked: root.viewModel.moveColumn(
                                 columnDelegate.index, columnDelegate.index - 1)
                         }
-                        Button {
+                        ActionButton {
                             text: "v"
+                            implicitWidth: 80
                             enabled: columnDelegate.index < columnList.count - 1 && columnDelegate.columnVisible
                             Accessible.name: "Mover coluna para baixo"
                             ToolTip.text: "Mover coluna para baixo"

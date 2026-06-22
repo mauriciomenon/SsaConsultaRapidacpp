@@ -18,7 +18,7 @@ TEST_CASE("json preferences store saves user preference snapshot") {
 
     ssa::ports::UserPreferencesSnapshot snapshot;
     snapshot.pageSize = 50;
-    snapshot.theme = "dark";
+    snapshot.theme = "tokyo-night";
     snapshot.density = "compact";
     snapshot.detailsVisible = false;
     snapshot.detailsPanelWidth = 520;
@@ -48,7 +48,7 @@ TEST_CASE("json preferences store saves user preference snapshot") {
     const auto loaded = store.load();
 
     REQUIRE(loaded.pageSize == 50);
-    REQUIRE(loaded.theme == "dark");
+    REQUIRE(loaded.theme == "tokyo-night");
     REQUIRE(loaded.density == "compact");
     REQUIRE_FALSE(loaded.detailsVisible);
     REQUIRE(loaded.detailsPanelWidth == 520);

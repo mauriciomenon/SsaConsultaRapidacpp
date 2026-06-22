@@ -39,14 +39,16 @@ Rectangle {
                 elide: Text.ElideRight
             }
 
-            Button {
+            ActionButton {
                 text: "<"
+                implicitWidth: 80
                 enabled: root.browseViewModel.canSelectPreviousRow
                 onClicked: root.browseViewModel.selectPreviousRow()
             }
 
-            Button {
+            ActionButton {
                 text: ">"
+                implicitWidth: 80
                 enabled: root.browseViewModel.canSelectNextRow
                 onClicked: root.browseViewModel.selectNextRow()
             }

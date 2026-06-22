@@ -720,11 +720,31 @@ namespace {
             auto preferences = std::make_shared<FakePreferences>();
             ssa::presentation::MainViewModel model(service, commands, preferences);
 
-            model.ui()->setTheme("dark");
+            model.ui()->setTheme("tokyo-night");
 
             QTRY_COMPARE_WITH_TIMEOUT(preferences->saveCount(), 1, 1000);
-            QCOMPARE(model.ui()->theme(), QString("dark"));
-            QCOMPARE(QString::fromStdString(preferences->snapshot().theme), QString("dark"));
+            QCOMPARE(model.ui()->theme(), QString("tokyo-night"));
+            QCOMPARE(QString::fromStdString(preferences->snapshot().theme), QString("tokyo-night"));
+        }
+
+        void pyqt_theme_catalog_is_accepted() {
+            const QStringList themes{
+                "grayscale",  "windows7", "classico",       "gruvbox",
+                "dark",       "dracula",  "solarized-dark", "solarized-light",
+                "mint-light", "paper",    "tokyo-night",    "catppuccin",
+                "nord",
+            };
+
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            auto preferences = std::make_shared<FakePreferences>();
+            ssa::presentation::MainViewModel model(service, commands, preferences);
+
+            for (const QString& theme : themes) {
+                model.ui()->setTheme(theme);
+                QCOMPARE(model.ui()->theme(), theme);
+            }
         }
 
         void theme_can_be_reverted_after_preview_change() {
