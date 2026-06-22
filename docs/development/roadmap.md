@@ -22,10 +22,9 @@ without porting Python architecture, and stabilize CI/flaky tests.
   negation, sector prefixes).
 - `Advanced filters`: complete `AdvancedFilterSpec` parity with
   `gui/ssa/gui_filters_advanced_logic.py` (activity, grid, specs modules).
-- `Sort by header`: add multi-column sort indicator in QML header (PyQt6 has
-  `on_header_clicked` with cycle asc/desc/none).
-- `Visible columns` / `Column widths`: persist reorder via
-  `ColumnSettingsModel`; PyQt6 `column_manager_dialog.py` supports drag-reorder.
+- `Visible columns` / `Column widths`: column hide/show and width persistence
+  are Present. Remaining gap: persist reorder via `ColumnSettingsModel`; PyQt6
+  `column_manager_dialog.py` supports drag-reorder.
 - `Details panel`: port `details_dialog_navigation.py` (next/prev SSA in
   filtered list) and `details_normalization.py` (field display rules).
 - `Preferences/theme/density`: add theme dialog parity with
@@ -56,9 +55,10 @@ without porting Python architecture, and stabilize CI/flaky tests.
   `armazenamento/derivadas_sync.py`. Tracked in `RECOVERY_BACKLOG.md`.
 - `Load other DB`: repository factory + command. Python ref:
   `gui/gui_ssa.py::load_other_database`.
-- `Context menus`: row and header context menus. Python ref:
-  `gui/gui_ssa.py::show_context_menu`, `show_header_context_menu`.
-- `Header context menu`: column show/hide + sort reset.
+- `Context menus`: row context menus. Python ref:
+  `gui/gui_ssa.py::show_context_menu`.
+- `Header context menu`: header menu exists for filter focus, hide column, and
+  column selector. Remaining gap: sort reset action.
 
 ### Missing CLI features (interactive REPL, out of scope)
 The C++ CLI is flag-based, not an interactive REPL. These Python interactive
