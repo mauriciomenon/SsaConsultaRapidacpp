@@ -608,6 +608,7 @@ namespace {
             QCOMPARE(canHide, false);
             QCOMPARE(changed, false);
             QCOMPARE(model.columns()->visibleKeys().size(), std::size_t{1});
+            QCOMPARE(preferences->saveCount(), 0);
         }
 
         void column_filter_summary_uses_contains_marker() {

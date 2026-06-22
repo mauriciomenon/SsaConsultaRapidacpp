@@ -132,6 +132,8 @@ Rectangle {
                             anchors.top: parent.top
                             anchors.bottom: parent.bottom
                             width: 8
+                            visible: root.columnSettings !== null && root.columnFlow !== null
+                                     && headerCell.hasColumnKey
                             color: resizeHandle.containsMouse || resizeHandle.pressed
                                    ? Theme.accentSoft
                                    : "transparent"
@@ -166,6 +168,8 @@ Rectangle {
                                     if (root.columnFlow !== null && headerCell.hasColumnKey) {
                                         root.columnFlow.setColumnWidthAndApply(
                                             headerCell.columnKey, headerCell.previewWidth)
+                                    } else {
+                                        headerCell.previewWidth = headerCell.modelWidth
                                     }
                                 }
                             }
