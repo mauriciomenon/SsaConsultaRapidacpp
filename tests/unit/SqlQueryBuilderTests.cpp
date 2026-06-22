@@ -50,6 +50,43 @@ TEST_CASE("sql query builder status-last sort uses a catalog-backed column") {
     REQUIRE(queries.page.sql.find("\"situacao\"") != std::string::npos);
 }
 
+TEST_CASE("sql query builder uses SSA number descending as default order") {
+    ssa::domain::SsaPageRequest request;
+
+    const auto queries = ssa::query::SqlQueryBuilder{}.build(request);
+
+    REQUIRE(queries.page.sql.find("\"numero_ssa\" DESC") != std::string::npos);
+}
+
+TEST_CASE("sql query builder orders requested text columns in both directions") {
+    ssa::domain::SsaPageRequest request;
+    request.sort.columnKey = "situacao";
+    request.sort.ascending = true;
+    request.sort.statusLast = ssa::domain::shouldApplyStatusLastTieBreaker(request.sort.columnKey);
+
+    auto queries = ssa::query::SqlQueryBuilder{}.build(request);
+    REQUIRE(queries.page.sql.find("ORDER BY \"situacao\" ASC") != std::string::npos);
+
+    request.sort.ascending = false;
+    queries = ssa::query::SqlQueryBuilder{}.build(request);
+    REQUIRE(queries.page.sql.find("ORDER BY \"situacao\" DESC") != std::string::npos);
+}
+
+TEST_CASE("sql query builder preserves status-last tie breaker before SSA sort") {
+    ssa::domain::SsaPageRequest request;
+    request.sort.columnKey = "numero_ssa";
+    request.sort.ascending = true;
+    request.sort.statusLast = true;
+
+    const auto queries = ssa::query::SqlQueryBuilder{}.build(request);
+    const auto statusCase = queries.page.sql.find("CASE WHEN UPPER(COALESCE(\"situacao\"");
+    const auto ssaOrder = queries.page.sql.find("\"numero_ssa\" ASC");
+
+    REQUIRE(statusCase != std::string::npos);
+    REQUIRE(ssaOrder != std::string::npos);
+    REQUIRE(statusCase < ssaOrder);
+}
+
 TEST_CASE("sql query builder compiles safe pattern dot wildcard through LIKE") {
     ssa::domain::SsaPageRequest request;
     request.searchText = "~foo.bar";

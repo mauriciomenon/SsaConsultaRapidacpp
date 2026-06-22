@@ -405,6 +405,48 @@ namespace {
             QCOMPARE(model.browse()->sortAscending(), true);
         }
 
+        void sort_by_column_resets_page_and_saves_preferences() {
+            auto repository =
+                std::make_shared<FakeRepository>(std::chrono::milliseconds{0}, std::size_t{21});
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            auto preferences = std::make_shared<FakePreferences>();
+            ssa::presentation::MainViewModel model(service, commands, preferences);
+
+            model.browse()->setPageSize(10);
+            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->pageCount(), 3, 1000);
+            model.browse()->nextPage();
+            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->pageNumber(), 2, 1000);
+
+            const auto requestCountBeforeSort = repository->requests().size();
+            model.browse()->sortByColumn(1);
+
+            QTRY_VERIFY_WITH_TIMEOUT(repository->requests().size() > requestCountBeforeSort, 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->pageNumber(), 1, 1000);
+            QCOMPARE(repository->requests().back().pageIndex, std::size_t{0});
+            QTRY_COMPARE_WITH_TIMEOUT(QString::fromStdString(preferences->snapshot().sortColumnKey),
+                                      QString("situacao"), 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(preferences->snapshot().sortAscending, true, 1000);
+        }
+
+        void table_headers_expose_sort_indicator_state() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            ssa::presentation::MainViewModel model(service, commands);
+
+            model.browse()->load();
+            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->tableModel()->rowCount(), 1, 1000);
+            model.browse()->sortByColumn(1);
+
+            const auto headers = model.browse()->tableHeaders();
+            QVERIFY(headers.size() > 1);
+            const auto sortedHeader = headers[1].toMap();
+            QCOMPARE(sortedHeader.value("key").toString(), QString("situacao"));
+            QCOMPARE(sortedHeader.value("sorted").toBool(), true);
+            QCOMPARE(sortedHeader.value("sortAscending").toBool(), true);
+        }
+
         void next_page_reaches_final_page() {
             auto repository =
                 std::make_shared<FakeRepository>(std::chrono::milliseconds{0}, std::size_t{21});
