@@ -37,6 +37,9 @@ namespace ssa::presentation {
         void setPageSize(int value);
         [[nodiscard]] QString sortColumnKey() const;
         [[nodiscard]] bool sortAscending() const;
+        [[nodiscard]] int currentRow() const;
+        [[nodiscard]] bool hasMorePages() const;
+        [[nodiscard]] bool hasPreviousPages() const;
         [[nodiscard]] domain::SsaPageRequest currentRequest() const;
         [[nodiscard]] const std::vector<std::string>& visibleColumns() const;
         [[nodiscard]] const std::map<std::string, int>& columnWidths() const;
@@ -49,6 +52,7 @@ namespace ssa::presentation {
       signals:
         void pageChanged();
         void sortChanged();
+        void currentRowChanged(int row);
         void preferencesSaveRequested();
 
       public slots:
@@ -58,6 +62,8 @@ namespace ssa::presentation {
         void nextPage();
         void previousPage();
         void selectRow(int row);
+        void selectNextRow();
+        void selectPreviousRow();
         void sortByColumn(int column);
         void cancelCurrentRequest();
 

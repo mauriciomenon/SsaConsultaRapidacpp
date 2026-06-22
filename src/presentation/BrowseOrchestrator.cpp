@@ -1,5 +1,6 @@
 #include "presentation/BrowseOrchestrator.h"
 
+#include <algorithm>
 #include <utility>
 
 namespace ssa::presentation {
@@ -21,12 +22,23 @@ namespace ssa::presentation {
                 &BrowseInputCoordinator::apply);
         connect(&requestCoordinator_, &BrowseRequestCoordinator::pageChanged, this, [this] {
             if (tableModel_.rowCount() > 0) {
-                selectionCoordinator_.selectRow(0);
+                const int pending = selectionCoordinator_.pendingRow();
+                int target = 0;
+                if (pending == -2) {
+                    target = tableModel_.rowCount() - 1;
+                } else if (pending >= 0) {
+                    target = std::min(pending, tableModel_.rowCount() - 1);
+                }
+                selectionCoordinator_.consumePendingRow();
+                selectionCoordinator_.selectRow(target);
             } else {
+                selectionCoordinator_.consumePendingRow();
                 selectionCoordinator_.clearSelection();
             }
             emit pageChanged();
         });
+        connect(&selectionCoordinator_, &BrowseSelectionCoordinator::currentRowChanged, this,
+                &BrowseOrchestrator::currentRowChanged);
     }
 
     int BrowseOrchestrator::pageNumber() const {
@@ -59,6 +71,18 @@ namespace ssa::presentation {
 
     bool BrowseOrchestrator::sortAscending() const {
         return queryState_.sortAscending();
+    }
+
+    int BrowseOrchestrator::currentRow() const {
+        return selectionCoordinator_.currentRow();
+    }
+
+    bool BrowseOrchestrator::hasMorePages() const {
+        return queryState_.pageNumber() < queryState_.pageCount();
+    }
+
+    bool BrowseOrchestrator::hasPreviousPages() const {
+        return queryState_.pageNumber() > 1;
     }
 
     domain::SsaPageRequest BrowseOrchestrator::currentRequest() const {
@@ -144,6 +168,37 @@ namespace ssa::presentation {
 
     void BrowseOrchestrator::selectRow(const int row) {
         selectionCoordinator_.selectRow(row);
+    }
+
+    void BrowseOrchestrator::selectNextRow() {
+        const int current = selectionCoordinator_.currentRow();
+        if (current < 0) {
+            return;
+        }
+        const int last = tableModel_.rowCount() - 1;
+        if (current < last) {
+            selectionCoordinator_.selectRow(current + 1);
+            return;
+        }
+        if (hasMorePages()) {
+            selectionCoordinator_.setPendingFirstRow();
+            nextPage();
+        }
+    }
+
+    void BrowseOrchestrator::selectPreviousRow() {
+        const int current = selectionCoordinator_.currentRow();
+        if (current < 0) {
+            return;
+        }
+        if (current > 0) {
+            selectionCoordinator_.selectRow(current - 1);
+            return;
+        }
+        if (hasPreviousPages()) {
+            selectionCoordinator_.setPendingLastRow();
+            previousPage();
+        }
     }
 
 } // namespace ssa::presentation

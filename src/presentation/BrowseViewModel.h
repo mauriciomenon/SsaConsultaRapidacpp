@@ -33,6 +33,9 @@ namespace ssa::presentation {
         Q_PROPERTY(int pageSize READ pageSize WRITE setPageSize NOTIFY pageChanged)
         Q_PROPERTY(QString sortColumnKey READ sortColumnKey NOTIFY sortChanged)
         Q_PROPERTY(bool sortAscending READ sortAscending NOTIFY sortChanged)
+        Q_PROPERTY(int currentRow READ currentRow NOTIFY currentRowChanged)
+        Q_PROPERTY(bool canSelectNextRow READ canSelectNextRow NOTIFY currentRowChanged)
+        Q_PROPERTY(bool canSelectPreviousRow READ canSelectPreviousRow NOTIFY currentRowChanged)
         Q_PROPERTY(QVariantList tableHeaders READ tableHeaders NOTIFY tableHeadersChanged)
 
       public:
@@ -52,6 +55,9 @@ namespace ssa::presentation {
         void setPageSize(int value);
         [[nodiscard]] QString sortColumnKey() const;
         [[nodiscard]] bool sortAscending() const;
+        [[nodiscard]] int currentRow() const;
+        [[nodiscard]] bool canSelectNextRow() const;
+        [[nodiscard]] bool canSelectPreviousRow() const;
         [[nodiscard]] QVariantList tableHeaders() const;
         [[nodiscard]] domain::SsaPageRequest currentRequest() const;
         [[nodiscard]] const std::vector<std::string>& visibleColumns() const;
@@ -66,6 +72,7 @@ namespace ssa::presentation {
       signals:
         void pageChanged();
         void sortChanged();
+        void currentRowChanged(int row);
         void tableHeadersChanged();
         void preferencesSaveRequested();
 
@@ -76,6 +83,8 @@ namespace ssa::presentation {
         void nextPage();
         void previousPage();
         void selectRow(int row);
+        void selectNextRow();
+        void selectPreviousRow();
         void sortByColumn(int column);
         void cancelCurrentRequest();
 

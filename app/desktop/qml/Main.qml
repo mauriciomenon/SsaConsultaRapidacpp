@@ -361,6 +361,7 @@ ApplicationWindow {
 
                 sourceComponent: DetailsPanel {
                     viewModel: root.vm.browse.details
+                    browseViewModel: root.vm.browse
                     density: root.vm.ui.density
                     onOpenRequested: root.vm.selectionFlow.openSelectedSsa()
                 }

@@ -8,8 +8,10 @@
 #include "presentation/MainViewModel.h"
 #include "presentation/SsaRecordValueFormatter.h"
 
+#include <QChar>
 #include <QRegularExpression>
 #include <QSignalSpy>
+#include <QString>
 #include <QUrl>
 #include <QtTest>
 
@@ -25,8 +27,8 @@ namespace {
     class FakeRepository final : public ssa::ports::ISsaRepository {
       public:
         explicit FakeRepository(std::chrono::milliseconds delay = std::chrono::milliseconds{0},
-                                std::size_t totalRows = 1)
-            : delay_(delay), totalRows_(totalRows) {}
+                                std::size_t totalRows = 1, std::size_t rowCount = 1)
+            : delay_(delay), totalRows_(totalRows), rowCount_(rowCount) {}
 
         ssa::domain::SsaPageResult page(const ssa::domain::SsaPageRequest& request) const override {
             if (delay_.count() > 0) {
@@ -36,11 +38,18 @@ namespace {
                 const std::scoped_lock lock(mutex_);
                 requests_.push_back(request);
             }
-            const ssa::domain::SsaRecord record{
-                {{"numero_ssa", "202500001"},
-                 {"situacao", "APV"},
-                 {"descricao_ssa", request.searchText.empty() ? "Inicial" : request.searchText}}};
-            return {{record}, totalRows_, request.pageIndex, request.pageSize};
+            std::vector<ssa::domain::SsaRecord> rows;
+            rows.reserve(rowCount_);
+            for (std::size_t i = 0; i < rowCount_; ++i) {
+                const auto ssaNumber =
+                    QString("2025%1").arg(i + 1, 5, 10, QChar('0')).toStdString();
+                rows.push_back(ssa::domain::SsaRecord{
+                    {{"numero_ssa", ssaNumber},
+                     {"situacao", "APV"},
+                     {"descricao_ssa",
+                      request.searchText.empty() ? "Inicial" : request.searchText}}});
+            }
+            return {rows, totalRows_, request.pageIndex, request.pageSize};
         }
 
         std::size_t count(const ssa::domain::SsaPageRequest&) const override {
@@ -78,6 +87,7 @@ namespace {
       private:
         std::chrono::milliseconds delay_;
         std::size_t totalRows_;
+        std::size_t rowCount_;
         mutable std::mutex mutex_;
         mutable std::vector<ssa::domain::SsaPageRequest> requests_;
     };
@@ -268,6 +278,88 @@ namespace {
             QCOMPARE(model.browse()->status()->loading(), false);
             QCOMPARE(model.browse()->tableModel()->columnLabel(0), QString("No SSA"));
             QVERIFY(model.browse()->tableModel()->columnWidth(0) > 0);
+        }
+
+        void details_navigation_walks_next_then_prev_within_page() {
+            auto repository = std::make_shared<FakeRepository>(std::chrono::milliseconds{0},
+                                                               std::size_t{3}, std::size_t{3});
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            ssa::presentation::MainViewModel model(service, commands);
+
+            QSignalSpy rowSpy(model.browse(),
+                              &ssa::presentation::BrowseViewModel::currentRowChanged);
+
+            model.browse()->load();
+            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->tableModel()->rowCount(), 3, 1000);
+
+            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->currentRow(), 0, 1000);
+            QCOMPARE(model.browse()->details()->selectedSsa(), QString("202500001"));
+            QVERIFY(model.browse()->canSelectNextRow());
+            QVERIFY(!model.browse()->canSelectPreviousRow());
+            QCOMPARE(rowSpy.count(), 1);
+
+            model.browse()->selectNextRow();
+
+            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->currentRow(), 1, 1000);
+            QCOMPARE(model.browse()->details()->selectedSsa(), QString("202500002"));
+            QVERIFY(model.browse()->canSelectNextRow());
+            QVERIFY(model.browse()->canSelectPreviousRow());
+
+            model.browse()->selectNextRow();
+            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->currentRow(), 2, 1000);
+            QCOMPARE(model.browse()->details()->selectedSsa(), QString("202500003"));
+            QVERIFY(!model.browse()->canSelectNextRow());
+            QVERIFY(model.browse()->canSelectPreviousRow());
+
+            model.browse()->selectNextRow();
+            QVERIFY(model.browse()->currentRow() == 2);
+
+            model.browse()->selectPreviousRow();
+            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->currentRow(), 1, 1000);
+            QCOMPARE(model.browse()->details()->selectedSsa(), QString("202500002"));
+
+            model.browse()->selectPreviousRow();
+            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->currentRow(), 0, 1000);
+            QCOMPARE(model.browse()->details()->selectedSsa(), QString("202500001"));
+
+            model.browse()->selectPreviousRow();
+            QVERIFY(model.browse()->currentRow() == 0);
+        }
+
+        void details_navigation_walks_across_pages_next_then_prev() {
+            auto repository = std::make_shared<FakeRepository>(std::chrono::milliseconds{0},
+                                                               std::size_t{25}, std::size_t{10});
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            ssa::presentation::MainViewModel model(service, commands);
+
+            model.browse()->setPageSize(10);
+            model.browse()->load();
+            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->tableModel()->rowCount(), 10, 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->currentRow(), 0, 1000);
+            QCOMPARE(model.browse()->pageCount(), 3);
+
+            // Walk to last row of page 1
+            for (int i = 0; i < 9; ++i) {
+                model.browse()->selectNextRow();
+            }
+            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->currentRow(), 9, 1000);
+            QVERIFY(model.browse()->canSelectNextRow());
+            QCOMPARE(model.browse()->pageNumber(), 1);
+
+            // Cross to page 2 -> auto-select first row
+            model.browse()->selectNextRow();
+            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->pageNumber(), 2, 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->currentRow(), 0, 1000);
+            QCOMPARE(model.browse()->details()->selectedSsa(), QString("202500001"));
+
+            // Previous from first row of page 2 -> back to page 1 last row
+            QVERIFY(model.browse()->canSelectPreviousRow());
+            model.browse()->selectPreviousRow();
+            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->pageNumber(), 1, 2000);
+            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->currentRow(), 9, 2000);
+            QCOMPARE(model.browse()->details()->selectedSsa(), QString("202500010"));
         }
 
         void sort_by_column_updates_request_contract() {
