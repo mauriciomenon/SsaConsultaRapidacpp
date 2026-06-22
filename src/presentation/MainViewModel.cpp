@@ -19,10 +19,14 @@ namespace ssa::presentation {
           actions_(
               std::move(commandPort), std::move(workflowService),
               [this] { return browse_.currentRequest(); }, *browse_.status(), preferences_, this),
-          columnsFlow_(browse_, columns_,
-                       [preferencesFlow = &preferencesFlow_] {
-                           preferencesFlow->scheduleSavePreferences();
-                       }),
+          columnsFlow_(
+              browse_, columns_,
+              [preferencesFlow = &preferencesFlow_] { preferencesFlow->scheduleSavePreferences(); },
+              [preferencesFlow = &preferencesFlow_](std::vector<std::string> visibleColumns,
+                                                    std::map<std::string, int> columnWidths) {
+                  preferencesFlow->saveAppliedColumnPreferences(std::move(visibleColumns),
+                                                                std::move(columnWidths));
+              }),
           selectionFlow_(browse_, *actions_.commands()), requestFlow_(browse_) {
         preferencesFlow_.applyStoredPreferences(preferences_.loadInitial());
         connectPreferenceFlows();

@@ -12,7 +12,10 @@
 #include <QString>
 #include <QUrl>
 
+#include <map>
 #include <memory>
+#include <string>
+#include <vector>
 
 namespace ssa::presentation {
 
@@ -38,6 +41,8 @@ namespace ssa::presentation {
         [[nodiscard]] ports::UserPreferencesSnapshot buildPreferencesSnapshot() const;
         void applyStoredPreferences(ports::UserPreferencesSnapshot snapshot);
         void scheduleSavePreferences() const;
+        void saveAppliedColumnPreferences(std::vector<std::string> visibleColumns,
+                                          std::map<std::string, int> columnWidths) const;
         void saveNowOrSchedule() const;
         Q_INVOKABLE void savePreferences();
         Q_INVOKABLE void exportFilterPreset(const QUrl& outputUrl);

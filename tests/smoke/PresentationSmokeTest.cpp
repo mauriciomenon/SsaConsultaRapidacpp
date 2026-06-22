@@ -448,6 +448,16 @@ namespace {
             QCOMPARE(sortedHeader.value("key").toString(), QString("situacao"));
             QCOMPARE(sortedHeader.value("sorted").toBool(), true);
             QCOMPARE(sortedHeader.value("sortAscending").toBool(), true);
+
+            const auto unsortedHeader = headers[0].toMap();
+            QCOMPARE(unsortedHeader.value("sorted").toBool(), false);
+
+            model.browse()->sortByColumn(1);
+            const auto descendingHeaders = model.browse()->tableHeaders();
+            const auto descendingHeader = descendingHeaders[1].toMap();
+            QCOMPARE(descendingHeader.value("key").toString(), QString("situacao"));
+            QCOMPARE(descendingHeader.value("sorted").toBool(), true);
+            QCOMPARE(descendingHeader.value("sortAscending").toBool(), false);
         }
 
         void next_page_reaches_final_page() {
@@ -560,6 +570,38 @@ namespace {
                                       1000);
         }
 
+        void immediate_column_width_flow_ignores_unapplied_popup_edits() {
+            ssa::ports::UserPreferencesSnapshot initial;
+            initial.visibleColumns = {"numero_ssa", "situacao", "setor_executor"};
+            initial.columnWidths = {
+                {"numero_ssa", 140}, {"situacao", 160}, {"setor_executor", 180}};
+
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            auto preferences = std::make_shared<FakePreferences>(initial);
+            ssa::presentation::MainViewModel model(service, commands, preferences);
+
+            model.browse()->load();
+            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->tableModel()->rowCount(), 1, 1000);
+            QVERIFY(model.columns()->setColumnVisibleByKey("setor_executor", false));
+            QVERIFY(model.columns()->setColumnWidth("situacao", 260));
+
+            bool changed = false;
+            QMetaObject::invokeMethod(model.columnFlow(), "setColumnWidthAndApply",
+                                      qReturnArg(changed), Q_ARG(QString, "numero_ssa"),
+                                      Q_ARG(int, 230));
+
+            QCOMPARE(changed, true);
+            QCOMPARE(repository->requests().size(), std::size_t{1});
+            QTRY_COMPARE_WITH_TIMEOUT(preferences->snapshot().columnWidths.at("numero_ssa"), 230,
+                                      1000);
+            QCOMPARE(preferences->snapshot().columnWidths.at("situacao"), 160);
+            QCOMPARE(preferences->snapshot().visibleColumns.size(), std::size_t{3});
+            QCOMPARE(QString::fromStdString(preferences->snapshot().visibleColumns.at(2)),
+                     QString("setor_executor"));
+        }
+
         void column_visibility_flow_persists_and_reloads_query() {
             ssa::ports::UserPreferencesSnapshot initial;
             initial.visibleColumns = {"numero_ssa", "situacao"};
@@ -587,6 +629,42 @@ namespace {
                                       1000);
         }
 
+        void immediate_column_visibility_flow_ignores_unapplied_popup_edits() {
+            ssa::ports::UserPreferencesSnapshot initial;
+            initial.visibleColumns = {"numero_ssa", "situacao", "setor_executor"};
+            initial.columnWidths = {
+                {"numero_ssa", 140}, {"situacao", 160}, {"setor_executor", 180}};
+
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            auto preferences = std::make_shared<FakePreferences>(initial);
+            ssa::presentation::MainViewModel model(service, commands, preferences);
+
+            model.browse()->load();
+            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->tableModel()->rowCount(), 1, 1000);
+            QVERIFY(model.columns()->setColumnVisibleByKey("setor_executor", false));
+            QVERIFY(model.columns()->setColumnWidth("numero_ssa", 230));
+
+            bool canHideStagedColumn = false;
+            QMetaObject::invokeMethod(model.columnFlow(), "canHideColumn",
+                                      qReturnArg(canHideStagedColumn),
+                                      Q_ARG(QString, "setor_executor"));
+            bool changed = false;
+            QMetaObject::invokeMethod(model.columnFlow(), "setColumnVisibleAndApply",
+                                      qReturnArg(changed), Q_ARG(QString, "situacao"),
+                                      Q_ARG(bool, false));
+
+            QCOMPARE(canHideStagedColumn, true);
+            QCOMPARE(changed, true);
+            QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{2}, 1000);
+            const auto visibleColumns = preferences->snapshot().visibleColumns;
+            QCOMPARE(visibleColumns.size(), std::size_t{2});
+            QCOMPARE(QString::fromStdString(visibleColumns.at(0)), QString("numero_ssa"));
+            QCOMPARE(QString::fromStdString(visibleColumns.at(1)), QString("setor_executor"));
+            QCOMPARE(preferences->snapshot().columnWidths.at("numero_ssa"), 140);
+        }
+
         void column_visibility_flow_keeps_one_visible_column() {
             ssa::ports::UserPreferencesSnapshot initial;
             initial.visibleColumns = {"numero_ssa"};
@@ -608,6 +686,10 @@ namespace {
             QCOMPARE(canHide, false);
             QCOMPARE(changed, false);
             QCOMPARE(model.columns()->visibleKeys().size(), std::size_t{1});
+            QCOMPARE(repository->requests().size(), std::size_t{0});
+            QCOMPARE(preferences->snapshot().visibleColumns.size(), std::size_t{1});
+            QCOMPARE(QString::fromStdString(preferences->snapshot().visibleColumns.front()),
+                     QString("numero_ssa"));
             QCOMPARE(preferences->saveCount(), 0);
         }
 

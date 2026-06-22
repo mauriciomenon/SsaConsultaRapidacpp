@@ -80,6 +80,14 @@ namespace ssa::presentation {
         preferences_.scheduleSave([this] { return buildPreferencesSnapshot(); });
     }
 
+    void MainPreferenceFlowCoordinator::saveAppliedColumnPreferences(
+        std::vector<std::string> visibleColumns, std::map<std::string, int> columnWidths) const {
+        auto snapshot = buildPreferencesSnapshot();
+        snapshot.visibleColumns = std::move(visibleColumns);
+        snapshot.columnWidths = std::move(columnWidths);
+        preferences_.saveNowOrSchedule(std::move(snapshot));
+    }
+
     void MainPreferenceFlowCoordinator::saveNowOrSchedule() const {
         preferences_.saveNowOrSchedule(buildPreferencesSnapshot());
     }

@@ -18,15 +18,12 @@ Popup {
     readonly property int verticalMargin: 120
     readonly property int edgeMargin: 8
     readonly property int popupRightMargin: 16
+    readonly property int popupBottomMargin: 16
     readonly property int toolbarOffsetY: 88
     property int preferredY: toolbarOffsetY
 
-    width: Math.max(minPopupWidth,
-                    Math.min(maxPopupWidth,
-                             (parent ? parent.width : fallbackParentWidth) - horizontalMargin))
-    height: Math.max(minPopupHeight,
-                     Math.min(maxPopupHeight,
-                              (parent ? parent.height : fallbackParentHeight) - verticalMargin))
+    width: Math.max(minPopupWidth, Math.min(maxPopupWidth, (parent ? parent.width : fallbackParentWidth) - horizontalMargin))
+    height: Math.max(minPopupHeight, Math.min(maxPopupHeight, (parent ? parent.height : fallbackParentHeight) - verticalMargin))
     modal: false
     focus: true
     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
@@ -34,16 +31,28 @@ Popup {
 
     function updatePosition() {
         if (!parent) {
-            return
+            return;
         }
-        x = Math.max(edgeMargin, parent.width - width - popupRightMargin)
-        y = Math.max(edgeMargin, Math.min(preferredY, parent.height - height - popupRightMargin))
+        x = Math.max(edgeMargin, parent.width - width - popupRightMargin);
+        y = Math.max(edgeMargin, Math.min(preferredY, parent.height - height - popupBottomMargin));
     }
 
     Component.onCompleted: updatePosition()
     onOpened: updatePosition()
     onWidthChanged: updatePosition()
     onHeightChanged: updatePosition()
+
+    Connections {
+        target: root.parent
+
+        function onWidthChanged() {
+            root.updatePosition();
+        }
+
+        function onHeightChanged() {
+            root.updatePosition();
+        }
+    }
 
     background: Rectangle {
         color: Theme.panel

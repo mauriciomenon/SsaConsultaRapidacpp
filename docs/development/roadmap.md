@@ -23,7 +23,7 @@ without porting Python architecture, and stabilize CI/flaky tests.
 - `Advanced filters`: complete `AdvancedFilterSpec` parity with
   `gui/ssa/gui_filters_advanced_logic.py` (activity, grid, specs modules).
 - `Visible columns` / `Column widths`: column hide/show and width persistence
-  are Present. Remaining gap: persist reorder via `ColumnSettingsModel`; PyQt6
+  are present. Remaining gap: persist reorder via `ColumnSettingsModel`; PyQt6
   `column_manager_dialog.py` supports drag-reorder.
 - `Details panel`: port `details_dialog_navigation.py` (next/prev SSA in
   filtered list) and `details_normalization.py` (field display rules).

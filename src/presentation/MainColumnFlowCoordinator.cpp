@@ -7,12 +7,12 @@
 
 namespace ssa::presentation {
 
-    MainColumnFlowCoordinator::MainColumnFlowCoordinator(BrowseViewModel& browse,
-                                                         ColumnSettingsModel& columns,
-                                                         const SaveTrigger savePreferences,
-                                                         QObject* parent)
+    MainColumnFlowCoordinator::MainColumnFlowCoordinator(
+        BrowseViewModel& browse, ColumnSettingsModel& columns, const SaveTrigger savePreferences,
+        SaveAppliedColumnsTrigger saveAppliedColumns, QObject* parent)
         : QObject(parent), browse_(browse), columns_(columns),
-          savePreferences_(std::move(savePreferences)) {}
+          savePreferences_(std::move(savePreferences)),
+          saveAppliedColumns_(std::move(saveAppliedColumns)) {}
 
     void MainColumnFlowCoordinator::applyColumnSettings() {
         browse_.applyColumnSettings(columns_.visibleKeys(), columns_.columnWidths());
@@ -31,32 +31,61 @@ namespace ssa::presentation {
 
     bool MainColumnFlowCoordinator::setColumnWidthAndApply(const QString& columnKey,
                                                            const int width) {
-        const auto previousColumnWidths = columns_.columnWidths();
+        const auto key = columnKey.toStdString();
+        auto appliedColumnWidths = browse_.columnWidths();
+        const auto previousWidth = appliedColumnWidths.find(key);
         if (!columns_.setColumnWidth(columnKey, width)) {
             return false;
         }
-        if (columns_.columnWidths() == previousColumnWidths) {
+
+        const auto stagedColumnWidths = columns_.columnWidths();
+        const auto stagedWidth = stagedColumnWidths.find(key);
+        if (stagedWidth == stagedColumnWidths.end()) {
             return false;
         }
-        applyColumnSettings();
+        if (previousWidth != appliedColumnWidths.end() &&
+            previousWidth->second == stagedWidth->second) {
+            return false;
+        }
+
+        appliedColumnWidths[key] = stagedWidth->second;
+        browse_.applyColumnSettings(browse_.visibleColumns(), appliedColumnWidths);
+        if (saveAppliedColumns_) {
+            saveAppliedColumns_(browse_.visibleColumns(), std::move(appliedColumnWidths));
+        }
         return true;
     }
 
     bool MainColumnFlowCoordinator::setColumnVisibleAndApply(const QString& columnKey,
                                                              const bool visible) {
-        const auto previousVisibleKeys = columns_.visibleKeys();
+        const auto key = columnKey.toStdString();
+        auto appliedVisibleKeys = browse_.visibleColumns();
+        const auto appliedPosition = std::ranges::find(appliedVisibleKeys, key);
+        const bool currentlyVisible = appliedPosition != appliedVisibleKeys.end();
+        if (currentlyVisible == visible) {
+            return false;
+        }
+        if (!visible && (!currentlyVisible || appliedVisibleKeys.size() <= 1)) {
+            return false;
+        }
         if (!columns_.setColumnVisibleByKey(columnKey, visible)) {
             return false;
         }
-        if (columns_.visibleKeys() == previousVisibleKeys) {
-            return false;
+
+        if (visible) {
+            appliedVisibleKeys.push_back(key);
+        } else {
+            appliedVisibleKeys.erase(appliedPosition);
         }
-        applyColumnSettings();
+        browse_.applyColumnSettings(appliedVisibleKeys, browse_.columnWidths());
+        if (saveAppliedColumns_) {
+            saveAppliedColumns_(std::move(appliedVisibleKeys), browse_.columnWidths());
+        }
         return true;
     }
 
     bool MainColumnFlowCoordinator::canHideColumn(const QString& columnKey) const {
-        const auto visibleKeys = columns_.visibleKeys();
+        const auto visibleKeys = browse_.visibleColumns();
         const auto key = columnKey.toStdString();
         return visibleKeys.size() > 1 && std::ranges::find(visibleKeys, key) != visibleKeys.end();
     }
