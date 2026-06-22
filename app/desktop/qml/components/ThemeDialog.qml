@@ -33,6 +33,7 @@ Window {
 
     function accept() {
         root.viewModel.ui.theme = root.pendingTheme;
+        root.originalTheme = root.pendingTheme;
         root.close();
     }
 
@@ -42,8 +43,10 @@ Window {
     }
 
     onClosing: function(close) {
-        root.viewModel.ui.theme = root.originalTheme;
-        close.accept();
+        if (root.viewModel.ui.theme !== root.originalTheme) {
+            root.viewModel.ui.theme = root.originalTheme;
+        }
+        close.accepted = true;
     }
 
     Rectangle {

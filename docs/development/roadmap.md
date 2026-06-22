@@ -75,7 +75,7 @@ without porting Python architecture, and stabilize CI/flaky tests.
 - `Rescan/update data`: done. `IImportWorkflowPort::rescan` wired; QML invokes
   via Importacao menu, Manutencao menu, and toolbar button.
 - `Update derivadas`: `syncDerivadas` C++ impl complete; QML trigger added to
-  Manutencao menu. Graph view still missing (tracked in
+  Importacao and Manutencao menus. Graph view still missing (tracked in
   `RECOVERY_BACKLOG.md`).
 
 ### Architectural improvements

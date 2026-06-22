@@ -22,7 +22,7 @@ This document tracks parity against the Python project at
 | Export filtered list | `exportacao/exporter.py`, `gui/gui_ssa.py` | `CsvExportPort`, `SsaWorkflowService` | GUI present, CLI flag present |
 | Import external XLS/XLSX | `gui/gui_ssa.py::import_external_excel_files` | `SpreadsheetImportWorkflowPort`, `SsaWorkflowService` | Present |
 | Rescan/update data | `gui/ssa/gui_workers.py`, `core/app_logic.py` | `SpreadsheetImportWorkflowPort`, `SsaWorkflowService` | Present |
-| Update derivadas | `gui/gui_ssa.py::update_derivadas_from_sources` | `IImportWorkflowPort::syncDerivadas`, `SsaWorkflowService` | GUI present, graph view missing |
+| Update derivadas | `gui/gui_ssa.py::update_derivadas_from_sources` | `IDerivadasPort::syncDerivadas`, `SsaWorkflowService` | GUI present, graph view missing |
 | Load other DB | `gui/gui_ssa.py::load_other_database` | repository factory + command | Missing |
 | Vacuum/analyze DB | `gui/gui_ssa.py::run_vacuum_analyze` | `SqliteMaintenancePort`, `SsaWorkflowService` | CLI present |
 | Open input/processed/redundant folders and docs | `gui/gui_ssa.py` menu handlers | command port variants | Present |
