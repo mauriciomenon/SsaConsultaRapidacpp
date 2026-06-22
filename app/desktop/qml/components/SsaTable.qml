@@ -16,6 +16,7 @@ Rectangle {
     readonly property int headerHeight: Theme.densityValue(root.density, 26, 30, 36)
     readonly property int rowHeight: Theme.densityValue(root.density, 25, 30, 35)
     readonly property int textSize: Theme.densityValue(root.density, 12, 13, 14)
+    readonly property int fallbackColumnWidth: 120
     readonly property var tableColumns: root.viewModel.tableHeaders
 
     color: Theme.surface
@@ -57,8 +58,9 @@ Rectangle {
                                                           && modelData.width !== undefined
                                                           && modelData.width !== null
                                                           ? modelData.width
-                                                          : 120
+                                                          : root.fallbackColumnWidth
                         property int dragStartWidth: 0
+                        property real dragStartX: 0
                         property int previewWidth: modelWidth
 
                         width: previewWidth
@@ -141,8 +143,9 @@ Rectangle {
                                 hoverEnabled: true
                                 acceptedButtons: Qt.LeftButton
 
-                                onPressed: {
+                                onPressed: function(mouse) {
                                     headerCell.dragStartWidth = headerCell.width
+                                    headerCell.dragStartX = mouse.x
                                 }
                                 onPositionChanged: function(mouse) {
                                     if (!pressed) {
@@ -154,7 +157,8 @@ Rectangle {
                                     const bounded = Math.max(
                                         root.columnSettings.minColumnWidth,
                                         Math.min(root.columnSettings.maxColumnWidth,
-                                                 headerCell.dragStartWidth + mouse.x)
+                                                 headerCell.dragStartWidth
+                                                 + (mouse.x - headerCell.dragStartX))
                                     )
                                     headerCell.previewWidth = bounded
                                 }

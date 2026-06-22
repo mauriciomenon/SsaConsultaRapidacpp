@@ -339,7 +339,7 @@ ApplicationWindow {
             onSaveFiltersRequested: root.vm.preferenceFlow.savePreferences()
             onExportFiltersRequested: fileDialogs.openExportFilters()
             onImportFiltersRequested: fileDialogs.openImportFilters()
-            onConfigureColumnsRequested: preferencesDialog.open()
+            onConfigureColumnsRequested: columnSelectorPopup.open()
         }
 
         SsaTable {

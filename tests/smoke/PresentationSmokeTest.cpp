@@ -499,8 +499,8 @@ namespace {
             auto preferences = std::make_shared<FakePreferences>(initial);
             ssa::presentation::MainViewModel model(service, commands, preferences);
 
-            model.columns()->setColumnVisibleByKey("situacao", false);
-            model.columns()->setColumnWidth("numero_ssa", 180);
+            QVERIFY(model.columns()->setColumnVisibleByKey("situacao", false));
+            QVERIFY(model.columns()->setColumnWidth("numero_ssa", 180));
             QMetaObject::invokeMethod(model.columnFlow(), "applyColumnSettings");
 
             QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{1}, 1000);
@@ -526,7 +526,7 @@ namespace {
 
             model.browse()->load();
             QTRY_COMPARE_WITH_TIMEOUT(model.browse()->tableModel()->rowCount(), 1, 1000);
-            model.columns()->setColumnWidth("numero_ssa", 220);
+            QVERIFY(model.columns()->setColumnWidth("numero_ssa", 220));
             QMetaObject::invokeMethod(model.columnFlow(), "applyColumnSettings");
 
             QCOMPARE(repository->requests().size(), std::size_t{1});
@@ -1169,8 +1169,8 @@ namespace {
             auto preferences = std::make_shared<FakePreferences>(initial);
             ssa::presentation::MainViewModel model(service, commands, preferences);
 
-            model.columns()->setColumnVisibleByKey("situacao", false);
-            model.columns()->setColumnWidth("numero_ssa", 220);
+            QVERIFY(model.columns()->setColumnVisibleByKey("situacao", false));
+            QVERIFY(model.columns()->setColumnWidth("numero_ssa", 220));
             QMetaObject::invokeMethod(model.columnFlow(), "discardColumnSettings");
             QMetaObject::invokeMethod(model.columnFlow(), "applyColumnSettings");
 

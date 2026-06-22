@@ -23,8 +23,8 @@ namespace ssa::presentation {
         void applyColumnSettings();
         void resetColumnSettings();
         void discardColumnSettings();
-        bool setColumnWidthAndApply(const QString& columnKey, int width);
-        bool setColumnVisibleAndApply(const QString& columnKey, bool visible);
+        [[nodiscard]] bool setColumnWidthAndApply(const QString& columnKey, int width);
+        [[nodiscard]] bool setColumnVisibleAndApply(const QString& columnKey, bool visible);
         [[nodiscard]] bool canHideColumn(const QString& columnKey) const;
 
       private:

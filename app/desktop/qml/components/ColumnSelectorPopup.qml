@@ -8,10 +8,25 @@ import SsaConsultaRapida
 Popup {
     id: root
     required property var viewModel
-    property int preferredY: 88
+    readonly property int minPopupWidth: 320
+    readonly property int maxPopupWidth: 760
+    readonly property int minPopupHeight: 360
+    readonly property int maxPopupHeight: 560
+    readonly property int fallbackParentWidth: 792
+    readonly property int fallbackParentHeight: 680
+    readonly property int horizontalMargin: 32
+    readonly property int verticalMargin: 120
+    readonly property int edgeMargin: 8
+    readonly property int popupRightMargin: 16
+    readonly property int toolbarOffsetY: 88
+    property int preferredY: toolbarOffsetY
 
-    width: Math.max(320, Math.min(760, (parent ? parent.width : 792) - 32))
-    height: Math.max(360, Math.min(560, (parent ? parent.height : 680) - 120))
+    width: Math.max(minPopupWidth,
+                    Math.min(maxPopupWidth,
+                             (parent ? parent.width : fallbackParentWidth) - horizontalMargin))
+    height: Math.max(minPopupHeight,
+                     Math.min(maxPopupHeight,
+                              (parent ? parent.height : fallbackParentHeight) - verticalMargin))
     modal: false
     focus: true
     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
@@ -21,8 +36,8 @@ Popup {
         if (!parent) {
             return
         }
-        x = Math.max(8, parent.width - width - 16)
-        y = Math.max(8, Math.min(preferredY, parent.height - height - 16))
+        x = Math.max(edgeMargin, parent.width - width - popupRightMargin)
+        y = Math.max(edgeMargin, Math.min(preferredY, parent.height - height - popupRightMargin))
     }
 
     Component.onCompleted: updatePosition()
