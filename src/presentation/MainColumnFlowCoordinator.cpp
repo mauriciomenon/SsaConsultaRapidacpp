@@ -16,7 +16,9 @@ namespace ssa::presentation {
 
     void MainColumnFlowCoordinator::applyColumnSettings() {
         browse_.applyColumnSettings(columns_.visibleKeys(), columns_.columnWidths());
-        if (savePreferences_) {
+        if (saveAppliedColumns_) {
+            saveAppliedColumns_(browse_.visibleColumns(), browse_.columnWidths());
+        } else if (savePreferences_) {
             savePreferences_();
         }
     }
