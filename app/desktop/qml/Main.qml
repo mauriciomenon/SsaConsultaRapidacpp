@@ -87,6 +87,12 @@ ApplicationWindow {
                 enabled: !root.vm.actions.workflows.running
                 onTriggered: root.vm.actions.workflows.rescanFull()
             }
+            MenuSeparator {}
+            MenuItem {
+                text: "Atualizar derivadas"
+                enabled: !root.vm.actions.workflows.running
+                onTriggered: root.vm.actions.workflows.syncDerivadas()
+            }
         }
 
         Menu {
@@ -171,6 +177,12 @@ ApplicationWindow {
                 text: "Reescaneamento completo"
                 enabled: !root.vm.actions.workflows.running
                 onTriggered: root.vm.actions.workflows.rescanFull()
+            }
+            MenuSeparator {}
+            MenuItem {
+                text: "Atualizar derivadas"
+                enabled: !root.vm.actions.workflows.running
+                onTriggered: root.vm.actions.workflows.syncDerivadas()
             }
             MenuSeparator {}
             MenuItem {
@@ -373,6 +385,12 @@ ApplicationWindow {
 
     PreferencesDialog {
         id: preferencesDialog
+        viewModel: root.vm
+        themeDialog: themeDialog
+    }
+
+    ThemeDialog {
+        id: themeDialog
         viewModel: root.vm
     }
 

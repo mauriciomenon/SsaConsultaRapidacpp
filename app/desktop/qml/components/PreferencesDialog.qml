@@ -11,30 +11,21 @@ Window {
     objectName: DesktopSmokeObjectNames.preferencesDialog
 
     required property var viewModel
+    property var themeDialog: null
     readonly property int detailsCurrentWidth: root.viewModel.ui.detailsPanelWidth
     readonly property int detailsWidthMin: root.viewModel.ui.detailsMinimumWidth
     readonly property int detailsWidthMax: root.viewModel.ui.detailsMaximumWidth
-    readonly property int availableScreenWidth: Screen.desktopAvailableWidth > 0
-                                                ? Screen.desktopAvailableWidth
-                                                : 1280
-    readonly property int availableScreenHeight: Screen.desktopAvailableHeight > 0
-                                                 ? Screen.desktopAvailableHeight
-                                                 : 840
+    readonly property int availableScreenWidth: Screen.desktopAvailableWidth > 0 ? Screen.desktopAvailableWidth : 1280
+    readonly property int availableScreenHeight: Screen.desktopAvailableHeight > 0 ? Screen.desktopAvailableHeight : 840
     readonly property int availableScreenX: Screen.virtualX
     readonly property int availableScreenY: Screen.virtualY
     function centeredCoordinate(availableOrigin, availableSize, windowSize) {
-        return availableOrigin + Math.min(Math.max(0, Math.round((availableSize - windowSize) / 2)),
-                                          Math.max(0, availableSize - windowSize))
+        return availableOrigin + Math.min(Math.max(0, Math.round((availableSize - windowSize) / 2)), Math.max(0, availableSize - windowSize));
     }
 
     title: "Preferencias"
     modality: Qt.ApplicationModal
-    flags: Qt.Window
-           | Qt.WindowTitleHint
-           | Qt.WindowSystemMenuHint
-           | Qt.WindowMinimizeButtonHint
-           | Qt.WindowMaximizeButtonHint
-           | Qt.WindowCloseButtonHint
+    flags: Qt.Window | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowMinimizeButtonHint | Qt.WindowMaximizeButtonHint | Qt.WindowCloseButtonHint
     color: Theme.window
     minimumWidth: Math.min(900, availableScreenWidth)
     minimumHeight: Math.min(620, availableScreenHeight)
@@ -44,17 +35,17 @@ Window {
     y: centeredCoordinate(availableScreenY, availableScreenHeight, height)
 
     function open() {
-        root.show()
-        root.raise()
-        root.requestActivate()
+        root.show();
+        root.raise();
+        root.requestActivate();
     }
 
     function applyColumnChanges() {
-        root.viewModel.columnFlow.applyColumnSettings()
+        root.viewModel.columnFlow.applyColumnSettings();
     }
 
     function discardColumnChanges() {
-        root.viewModel.columnFlow.discardColumnSettings()
+        root.viewModel.columnFlow.discardColumnSettings();
     }
 
     Rectangle {
@@ -90,14 +81,11 @@ Window {
                         font.bold: true
                     }
                     AppComboBox {
-                        readonly property var themeOptions: ["system", "light", "dark", "gruvbox"]
-                        readonly property int themeIndex: themeOptions.indexOf(root.viewModel.ui.theme)
-
                         Layout.preferredWidth: 150
-                        model: themeOptions
-                        currentIndex: themeIndex >= 0 ? themeIndex : themeOptions.indexOf("system")
-                        onActivated: function(index) {
-                            root.viewModel.ui.theme = themeOptions[index]
+                        model: Theme.themeOptions
+                        currentIndex: Theme.themeOptions.indexOf(root.viewModel.ui.theme) >= 0 ? Theme.themeOptions.indexOf(root.viewModel.ui.theme) : Theme.themeOptions.indexOf("system")
+                        onActivated: function (index) {
+                            root.viewModel.ui.theme = Theme.themeOptions[index];
                         }
                     }
 
@@ -113,8 +101,8 @@ Window {
                         Layout.preferredWidth: 160
                         model: densityOptions
                         currentIndex: densityIndex >= 0 ? densityIndex : densityOptions.indexOf("normal")
-                        onActivated: function(index) {
-                            root.viewModel.ui.density = densityOptions[index]
+                        onActivated: function (index) {
+                            root.viewModel.ui.density = densityOptions[index];
                         }
                     }
 
@@ -140,9 +128,15 @@ Window {
                         Layout.preferredWidth: 120
                         onValueModified: root.viewModel.ui.detailsPanelWidth = value
                     }
+                    ActionButton {
+                        text: "Personalizar tema..."
+                        implicitWidth: 150
+                        enabled: root.themeDialog !== null
+                        onClicked: root.themeDialog.open()
+                    }
 
                     Label {
-                        Layout.columnSpan: 4
+                        Layout.columnSpan: 3
                         Layout.fillWidth: true
                         text: "Colunas visiveis e largura da tabela"
                         color: Theme.mutedText
@@ -181,7 +175,9 @@ Window {
                         onClicked: root.viewModel.columnFlow.resetColumnSettings()
                     }
 
-                    Item { Layout.fillWidth: true }
+                    Item {
+                        Layout.fillWidth: true
+                    }
 
                     ActionButton {
                         text: "Aplicar colunas"

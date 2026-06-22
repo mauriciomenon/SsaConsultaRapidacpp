@@ -69,19 +69,14 @@ without porting Python architecture, and stabilize CI/flaky tests.
 - `l/listar/filtros`: list active filters.
 - `status-cli`, debug toggles: diagnostics adapter.
 
-### "Contract only" -> "Present"
-These have `I*Port` interfaces but no real adapter. They are the highest-value
-parity gaps because the GUI already calls them and gets "not configured" today.
-- `Import external XLS/XLSX`: implement `SpreadsheetImportWorkflowPort` end to
-  end. Python ref: `gui/gui_ssa.py::import_external_excel_files`,
-  `core/import_single_file.py`, `core/import_staging.py`,
-  `core/import_postprocess.py`, `core/import_consolidation.py`,
-  `core/import_database_rotation.py`. Test with fixture xlsx.
-- `Rescan/update data`: implement `IImportWorkflowPort::rescan`. Python ref:
-  `gui/ssa/gui_rescan_lifecycle.py`, `core/app_logic.py`.
-- `Update derivadas`: implement `IDerivadasPort::syncDerivadas` with real graph
-  sync. Python ref: `gui/ssa/derivadas_sync_job.py`,
-  `armazenamento/derivadas_sync.py`.
+### "Contract only" -> "Present" (completed)
+- `Import external XLS/XLSX`: done. `SpreadsheetImportWorkflowPort` wired in
+  `DesktopMainViewModelFactory`; QML invokes via Importacao menu + FileDialog.
+- `Rescan/update data`: done. `IImportWorkflowPort::rescan` wired; QML invokes
+  via Importacao menu, Manutencao menu, and toolbar button.
+- `Update derivadas`: `syncDerivadas` C++ impl complete; QML trigger added to
+  Importacao and Manutencao menus. Graph view still missing (tracked in
+  `RECOVERY_BACKLOG.md`).
 
 ### Architectural improvements
 - Split `gui_ssa.py` (247 KB, single class) parity is already avoided; keep

@@ -7,6 +7,7 @@
 namespace ssa::app::desktop::smoke_object_names {
 
     inline constexpr auto preferencesDialog = "ssaSmokePreferencesDialog";
+    inline constexpr auto themeDialog = "ssaSmokeThemeDialog";
 
 } // namespace ssa::app::desktop::smoke_object_names
 
@@ -17,10 +18,14 @@ namespace ssa::app::desktop {
         QML_ELEMENT
         QML_SINGLETON
         Q_PROPERTY(QString preferencesDialog READ preferencesDialog CONSTANT)
+        Q_PROPERTY(QString themeDialog READ themeDialog CONSTANT)
 
       public:
         [[nodiscard]] QString preferencesDialog() const {
             return QString::fromLatin1(smoke_object_names::preferencesDialog);
+        }
+        [[nodiscard]] QString themeDialog() const {
+            return QString::fromLatin1(smoke_object_names::themeDialog);
         }
     };
 
