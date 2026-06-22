@@ -24,6 +24,8 @@ namespace ssa::presentation {
         void resetColumnSettings();
         void discardColumnSettings();
         bool setColumnWidthAndApply(const QString& columnKey, int width);
+        bool setColumnVisibleAndApply(const QString& columnKey, bool visible);
+        [[nodiscard]] bool canHideColumn(const QString& columnKey) const;
 
       private:
         BrowseViewModel& browse_;

@@ -11,6 +11,7 @@ Rectangle {
     property var columnFlow: null
     required property string density
     signal openRequested()
+    signal configureColumnsRequested()
 
     readonly property int headerHeight: Theme.densityValue(root.density, 26, 30, 36)
     readonly property int rowHeight: Theme.densityValue(root.density, 25, 30, 35)
@@ -82,10 +83,32 @@ Rectangle {
                             acceptedButtons: Qt.LeftButton | Qt.RightButton
                             onClicked: function(mouse) {
                                 if (mouse.button === Qt.RightButton) {
-                                    root.viewModel.setFilterPanelFocusColumn(parent.modelData.key)
+                                    headerMenu.popup()
                                     return
                                 }
                                 root.viewModel.sortByColumn(parent.index)
+                            }
+                        }
+
+                        Menu {
+                            id: headerMenu
+
+                            MenuItem {
+                                text: "Filtrar coluna"
+                                onTriggered: root.viewModel.setFilterPanelFocusColumn(
+                                    headerCell.modelData.key)
+                            }
+                            MenuItem {
+                                text: "Ocultar coluna"
+                                enabled: root.columnFlow !== null
+                                         && root.columnFlow.canHideColumn(headerCell.modelData.key)
+                                onTriggered: root.columnFlow.setColumnVisibleAndApply(
+                                    headerCell.modelData.key, false)
+                            }
+                            MenuSeparator {}
+                            MenuItem {
+                                text: "Configurar colunas"
+                                onTriggered: root.configureColumnsRequested()
                             }
                         }
 

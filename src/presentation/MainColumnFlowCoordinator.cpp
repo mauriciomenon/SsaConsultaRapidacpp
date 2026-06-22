@@ -3,6 +3,8 @@
 #include "presentation/BrowseViewModel.h"
 #include "presentation/ColumnSettingsModel.h"
 
+#include <algorithm>
+
 namespace ssa::presentation {
 
     MainColumnFlowCoordinator::MainColumnFlowCoordinator(BrowseViewModel& browse,
@@ -34,6 +36,25 @@ namespace ssa::presentation {
         }
         applyColumnSettings();
         return true;
+    }
+
+    bool MainColumnFlowCoordinator::setColumnVisibleAndApply(const QString& columnKey,
+                                                             const bool visible) {
+        const auto previousVisibleKeys = columns_.visibleKeys();
+        if (!columns_.setColumnVisibleByKey(columnKey, visible)) {
+            return false;
+        }
+        if (columns_.visibleKeys() == previousVisibleKeys) {
+            return false;
+        }
+        applyColumnSettings();
+        return true;
+    }
+
+    bool MainColumnFlowCoordinator::canHideColumn(const QString& columnKey) const {
+        const auto visibleKeys = columns_.visibleKeys();
+        const auto key = columnKey.toStdString();
+        return visibleKeys.size() > 1 && std::ranges::find(visibleKeys, key) != visibleKeys.end();
     }
 
 } // namespace ssa::presentation

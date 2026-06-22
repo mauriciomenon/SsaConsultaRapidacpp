@@ -318,6 +318,12 @@ ApplicationWindow {
                 }
                 ActionButton { text: "Tema"; onClicked: preferencesDialog.open() }
                 ActionButton {
+                    id: columnSelectorButton
+                    text: "Colunas"
+                    implicitWidth: 104
+                    onClicked: columnSelectorPopup.open()
+                }
+                ActionButton {
                     text: "Cancelar"
                     enabled: root.vm.browse.status.loading
                     danger: true
@@ -345,6 +351,7 @@ ApplicationWindow {
             columnFlow: root.vm.columnFlow
             density: root.vm.ui.density
             onOpenRequested: root.vm.selectionFlow.openSelectedSsa()
+            onConfigureColumnsRequested: columnSelectorPopup.open()
         }
 
         SplitView {
@@ -394,6 +401,13 @@ ApplicationWindow {
 
     ThemeDialog {
         id: themeDialog
+        viewModel: root.vm
+    }
+
+    ColumnSelectorPopup {
+        id: columnSelectorPopup
+        x: Math.max(8, root.width - columnSelectorPopup.width - 16)
+        y: 88
         viewModel: root.vm
     }
 
