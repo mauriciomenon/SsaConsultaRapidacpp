@@ -89,13 +89,18 @@ namespace ssa::presentation {
     }
 
     void BrowseQueryState::sortByColumnKey(const std::string& columnKey) {
-        if (sort_.columnKey == columnKey) {
-            sort_.ascending = !sort_.ascending;
+        if (sort_.columnKey == columnKey && !columnKey.empty()) {
+            if (sort_.ascending) {
+                sort_.ascending = false;
+            } else {
+                sort_.columnKey.clear();
+                sort_.ascending = false;
+            }
         } else {
             sort_.columnKey = columnKey;
             sort_.ascending = true;
         }
-        sort_.statusLast = domain::shouldApplyStatusLastTieBreaker(columnKey);
+        sort_.statusLast = domain::shouldApplyStatusLastTieBreaker(sort_.columnKey);
         resetPage();
     }
 
