@@ -27,4 +27,13 @@ namespace ssa::presentation {
         columns_.applyPreferences(browse_.visibleColumns(), browse_.columnWidths());
     }
 
+    bool MainColumnFlowCoordinator::setColumnWidthAndApply(const QString& columnKey,
+                                                           const int width) {
+        if (!columns_.setColumnWidth(columnKey, width)) {
+            return false;
+        }
+        applyColumnSettings();
+        return true;
+    }
+
 } // namespace ssa::presentation

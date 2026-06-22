@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QObject>
+#include <QString>
 
 #include <functional>
 
@@ -22,6 +23,7 @@ namespace ssa::presentation {
         void applyColumnSettings();
         void resetColumnSettings();
         void discardColumnSettings();
+        bool setColumnWidthAndApply(const QString& columnKey, int width);
 
       private:
         BrowseViewModel& browse_;

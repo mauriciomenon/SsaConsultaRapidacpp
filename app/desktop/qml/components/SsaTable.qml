@@ -7,6 +7,8 @@ import SsaConsultaRapida
 Rectangle {
     id: root
     required property var viewModel
+    property var columnSettings: null
+    property var columnFlow: null
     required property string density
     signal openRequested()
 
@@ -42,14 +44,19 @@ Rectangle {
                     model: root.tableColumns
 
                     delegate: Rectangle {
+                        id: headerCell
                         required property int index
                         required property var modelData
+                        property int dragStartWidth: 0
+                        property int previewWidth: modelData.width
 
-                        width: modelData.width
+                        width: previewWidth
                         height: header.height
                         color: Theme.tableHeader
                         border.color: Theme.borderSoft
                         border.width: 1
+
+                        onModelDataChanged: previewWidth = modelData.width
 
                         Text {
                             anchors.fill: parent
@@ -71,6 +78,7 @@ Rectangle {
 
                         MouseArea {
                             anchors.fill: parent
+                            anchors.rightMargin: 8
                             acceptedButtons: Qt.LeftButton | Qt.RightButton
                             onClicked: function(mouse) {
                                 if (mouse.button === Qt.RightButton) {
@@ -78,6 +86,48 @@ Rectangle {
                                     return
                                 }
                                 root.viewModel.sortByColumn(parent.index)
+                            }
+                        }
+
+                        Rectangle {
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            anchors.bottom: parent.bottom
+                            width: 8
+                            color: resizeHandle.containsMouse || resizeHandle.pressed
+                                   ? Theme.accentSoft
+                                   : "transparent"
+
+                            MouseArea {
+                                id: resizeHandle
+                                anchors.fill: parent
+                                cursorShape: Qt.SizeHorCursor
+                                hoverEnabled: true
+                                acceptedButtons: Qt.LeftButton
+
+                                onPressed: {
+                                    headerCell.dragStartWidth = headerCell.width
+                                }
+                                onPositionChanged: function(mouse) {
+                                    if (!pressed) {
+                                        return
+                                    }
+                                    if (root.columnSettings === null) {
+                                        return
+                                    }
+                                    const bounded = Math.max(
+                                        root.columnSettings.minColumnWidth,
+                                        Math.min(root.columnSettings.maxColumnWidth,
+                                                 headerCell.dragStartWidth + mouse.x)
+                                    )
+                                    headerCell.previewWidth = bounded
+                                }
+                                onReleased: {
+                                    if (root.columnFlow !== null) {
+                                        root.columnFlow.setColumnWidthAndApply(
+                                            headerCell.modelData.key, headerCell.previewWidth)
+                                    }
+                                }
                             }
                         }
                     }

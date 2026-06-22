@@ -490,6 +490,31 @@ namespace {
                                       1000);
         }
 
+        void column_width_flow_persists_without_reloading_query() {
+            ssa::ports::UserPreferencesSnapshot initial;
+            initial.visibleColumns = {"numero_ssa", "situacao"};
+            initial.columnWidths = {{"numero_ssa", 140}, {"situacao", 160}};
+
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            auto preferences = std::make_shared<FakePreferences>(initial);
+            ssa::presentation::MainViewModel model(service, commands, preferences);
+
+            model.browse()->load();
+            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->tableModel()->rowCount(), 1, 1000);
+            bool changed = false;
+            QMetaObject::invokeMethod(model.columnFlow(), "setColumnWidthAndApply",
+                                      qReturnArg(changed), Q_ARG(QString, "numero_ssa"),
+                                      Q_ARG(int, 230));
+
+            QCOMPARE(changed, true);
+            QCOMPARE(repository->requests().size(), std::size_t{1});
+            QCOMPARE(model.browse()->tableModel()->columnWidth(0), 230);
+            QTRY_COMPARE_WITH_TIMEOUT(preferences->snapshot().columnWidths.at("numero_ssa"), 230,
+                                      1000);
+        }
+
         void column_filter_summary_uses_contains_marker() {
             auto repository = std::make_shared<FakeRepository>();
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);

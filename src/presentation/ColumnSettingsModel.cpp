@@ -140,19 +140,20 @@ namespace ssa::presentation {
             static_cast<std::size_t>(std::distance(columns_.begin(), item)), visible);
     }
 
-    void ColumnSettingsModel::setColumnWidth(const QString& columnKey, const int width) {
+    bool ColumnSettingsModel::setColumnWidth(const QString& columnKey, const int width) {
         const auto key = columnKey.toStdString();
         const auto item = findColumn(key);
         if (item == columns_.end()) {
-            return;
+            return false;
         }
         const int bounded = std::clamp(width, kMinColumnWidth, kMaxColumnWidth);
         if (item->width == bounded) {
-            return;
+            return false;
         }
         item->width = bounded;
         emitRowChanged(static_cast<int>(std::distance(columns_.begin(), item)));
         emit changed();
+        return true;
     }
 
     bool ColumnSettingsModel::moveColumn(const int fromRow, const int toRow) {

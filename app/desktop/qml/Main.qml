@@ -341,6 +341,8 @@ ApplicationWindow {
             Layout.fillHeight: true
             Layout.minimumHeight: 280
             viewModel: root.vm.browse
+            columnSettings: root.vm.columns
+            columnFlow: root.vm.columnFlow
             density: root.vm.ui.density
             onOpenRequested: root.vm.selectionFlow.openSelectedSsa()
         }
