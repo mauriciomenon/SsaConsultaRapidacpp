@@ -37,6 +37,7 @@ namespace ssa::presentation {
         Q_INVOKABLE bool setColumnVisible(int row, bool visible);
         Q_INVOKABLE bool setColumnVisibleByKey(const QString& columnKey, bool visible);
         Q_INVOKABLE void setColumnWidth(const QString& columnKey, int width);
+        Q_INVOKABLE bool moveColumn(int fromRow, int toRow);
         Q_INVOKABLE void resetDefaults();
         Q_INVOKABLE void selectAll();
         Q_INVOKABLE void setFilterText(const QString& filterText);

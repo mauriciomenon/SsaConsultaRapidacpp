@@ -53,6 +53,7 @@ prepare_macos_build_dir() {
   local preset="${2}"
   local clean_requested="${3}"
   local build_dir="${project_root}/build/${preset}"
+  local configure_script="${project_root}/tools/configure-dev.sh"
 
   if [[ -z "${CMAKE_PREFIX_PATH}" ]]; then
     export CMAKE_PREFIX_PATH="${HOME}/Qt/6.11.0/macos"
@@ -60,9 +61,9 @@ prepare_macos_build_dir() {
 
   if [[ "${clean_requested}" == "true" ]]; then
     rm -rf "${build_dir}"
-    cmake --preset "${preset}"
+    "${configure_script}" "${preset}"
   elif [[ ! -f "${build_dir}/CMakeCache.txt" ]]; then
-    cmake --preset "${preset}"
+    "${configure_script}" "${preset}"
   fi
 }
 

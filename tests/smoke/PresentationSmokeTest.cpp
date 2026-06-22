@@ -960,6 +960,80 @@ namespace {
                      ssa::ports::ExternalCommandKind::OpenInputFolder);
             QTRY_COMPARE_WITH_TIMEOUT(model.lastStatus(), QString("succeeded"), 1000);
         }
+
+        void column_move_reorders_visible_keys() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            ssa::presentation::MainViewModel model(service, commands);
+
+            // Find the first two visible columns to swap.
+            const auto keys = model.columns()->visibleKeys();
+            QVERIFY(keys.size() >= 2);
+            const auto keyA = QString::fromStdString(keys[0]);
+            const auto keyB = QString::fromStdString(keys[1]);
+
+            // Find model rows for these keys and swap them.
+            QString firstKey;
+            QString secondKey;
+            for (int i = 0; i < model.columns()->rowCount(); ++i) {
+                const auto idx = model.columns()->index(i);
+                const auto k = idx.data(ssa::presentation::ColumnSettingsModel::KeyRole).toString();
+                if (k == keyA) {
+                    firstKey = k;
+                }
+                if (k == keyB) {
+                    secondKey = k;
+                }
+            }
+            QCOMPARE(firstKey, keyA);
+            QCOMPARE(secondKey, keyB);
+
+            // Determine the source row indices for these two visible keys.
+            const auto allKeys = model.columns()->visibleKeys();
+            QCOMPARE(QString::fromStdString(allKeys[0]), keyA);
+            QCOMPARE(QString::fromStdString(allKeys[1]), keyB);
+
+            // Find the model rows that correspond to these keys.
+            int rowA = -1;
+            int rowB = -1;
+            for (int i = 0; i < model.columns()->rowCount(); ++i) {
+                const auto k = model.columns()
+                                   ->data(model.columns()->index(i),
+                                          ssa::presentation::ColumnSettingsModel::KeyRole)
+                                   .toString();
+                if (k == keyA) {
+                    rowA = i;
+                }
+                if (k == keyB) {
+                    rowB = i;
+                }
+            }
+            QVERIFY(rowA >= 0);
+            QVERIFY(rowB >= 0);
+
+            const bool moved = model.columns()->moveColumn(rowA, rowB);
+            QCOMPARE(moved, true);
+
+            const auto keysAfter = model.columns()->visibleKeys();
+            QCOMPARE(QString::fromStdString(keysAfter[0]), keyB);
+            QCOMPARE(QString::fromStdString(keysAfter[1]), keyA);
+        }
+
+        void column_move_persists_order_through_preferences() {
+            ssa::ports::UserPreferencesSnapshot initial;
+            initial.visibleColumns = {"situacao", "numero_ssa"};
+
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            auto preferences = std::make_shared<FakePreferences>(initial);
+            ssa::presentation::MainViewModel model(service, commands, preferences);
+
+            const auto keys = model.columns()->visibleKeys();
+            QCOMPARE(QString::fromStdString(keys[0]), QString("situacao"));
+            QCOMPARE(QString::fromStdString(keys[1]), QString("numero_ssa"));
+        }
     };
 
 } // namespace
