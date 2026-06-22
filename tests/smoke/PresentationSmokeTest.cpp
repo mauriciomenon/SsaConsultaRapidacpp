@@ -406,11 +406,11 @@ namespace {
         }
 
         void sort_by_column_resets_page_and_saves_preferences() {
-            auto repository =
+            const auto repository =
                 std::make_shared<FakeRepository>(std::chrono::milliseconds{0}, std::size_t{21});
-            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
-            auto commands = std::make_shared<FakeCommands>();
-            auto preferences = std::make_shared<FakePreferences>();
+            const auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            const auto commands = std::make_shared<FakeCommands>();
+            const auto preferences = std::make_shared<FakePreferences>();
             ssa::presentation::MainViewModel model(service, commands, preferences);
 
             model.browse()->setPageSize(10);
@@ -433,9 +433,9 @@ namespace {
         }
 
         void table_headers_expose_sort_indicator_state() {
-            auto repository = std::make_shared<FakeRepository>();
-            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
-            auto commands = std::make_shared<FakeCommands>();
+            const auto repository = std::make_shared<FakeRepository>();
+            const auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            const auto commands = std::make_shared<FakeCommands>();
             ssa::presentation::MainViewModel model(service, commands);
 
             model.browse()->load();
@@ -503,10 +503,10 @@ namespace {
             initial.visibleColumns = {"numero_ssa", "situacao"};
             initial.columnWidths = {{"numero_ssa", 140}, {"situacao", 160}};
 
-            auto repository = std::make_shared<FakeRepository>();
-            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
-            auto commands = std::make_shared<FakeCommands>();
-            auto preferences = std::make_shared<FakePreferences>(initial);
+            const auto repository = std::make_shared<FakeRepository>();
+            const auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            const auto commands = std::make_shared<FakeCommands>();
+            const auto preferences = std::make_shared<FakePreferences>(initial);
             ssa::presentation::MainViewModel model(service, commands, preferences);
 
             QVERIFY(model.columns()->setColumnVisibleByKey("situacao", false));
@@ -528,10 +528,10 @@ namespace {
             initial.visibleColumns = {"numero_ssa", "situacao"};
             initial.columnWidths = {{"numero_ssa", 140}, {"situacao", 160}};
 
-            auto repository = std::make_shared<FakeRepository>();
-            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
-            auto commands = std::make_shared<FakeCommands>();
-            auto preferences = std::make_shared<FakePreferences>(initial);
+            const auto repository = std::make_shared<FakeRepository>();
+            const auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            const auto commands = std::make_shared<FakeCommands>();
+            const auto preferences = std::make_shared<FakePreferences>(initial);
             ssa::presentation::MainViewModel model(service, commands, preferences);
 
             model.browse()->load();
@@ -550,10 +550,10 @@ namespace {
             initial.visibleColumns = {"numero_ssa", "situacao"};
             initial.columnWidths = {{"numero_ssa", 140}, {"situacao", 160}};
 
-            auto repository = std::make_shared<FakeRepository>();
-            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
-            auto commands = std::make_shared<FakeCommands>();
-            auto preferences = std::make_shared<FakePreferences>(initial);
+            const auto repository = std::make_shared<FakeRepository>();
+            const auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            const auto commands = std::make_shared<FakeCommands>();
+            const auto preferences = std::make_shared<FakePreferences>(initial);
             ssa::presentation::MainViewModel model(service, commands, preferences);
 
             model.browse()->load();
@@ -576,10 +576,10 @@ namespace {
             initial.columnWidths = {
                 {"numero_ssa", 140}, {"situacao", 160}, {"setor_executor", 180}};
 
-            auto repository = std::make_shared<FakeRepository>();
-            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
-            auto commands = std::make_shared<FakeCommands>();
-            auto preferences = std::make_shared<FakePreferences>(initial);
+            const auto repository = std::make_shared<FakeRepository>();
+            const auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            const auto commands = std::make_shared<FakeCommands>();
+            const auto preferences = std::make_shared<FakePreferences>(initial);
             ssa::presentation::MainViewModel model(service, commands, preferences);
 
             model.browse()->load();
@@ -607,10 +607,10 @@ namespace {
             initial.visibleColumns = {"numero_ssa", "situacao"};
             initial.columnWidths = {{"numero_ssa", 140}, {"situacao", 160}};
 
-            auto repository = std::make_shared<FakeRepository>();
-            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
-            auto commands = std::make_shared<FakeCommands>();
-            auto preferences = std::make_shared<FakePreferences>(initial);
+            const auto repository = std::make_shared<FakeRepository>();
+            const auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            const auto commands = std::make_shared<FakeCommands>();
+            const auto preferences = std::make_shared<FakePreferences>(initial);
             ssa::presentation::MainViewModel model(service, commands, preferences);
 
             model.browse()->load();
@@ -635,10 +635,10 @@ namespace {
             initial.columnWidths = {
                 {"numero_ssa", 140}, {"situacao", 160}, {"setor_executor", 180}};
 
-            auto repository = std::make_shared<FakeRepository>();
-            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
-            auto commands = std::make_shared<FakeCommands>();
-            auto preferences = std::make_shared<FakePreferences>(initial);
+            const auto repository = std::make_shared<FakeRepository>();
+            const auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            const auto commands = std::make_shared<FakeCommands>();
+            const auto preferences = std::make_shared<FakePreferences>(initial);
             ssa::presentation::MainViewModel model(service, commands, preferences);
 
             model.browse()->load();
@@ -658,8 +658,9 @@ namespace {
             QCOMPARE(canHideStagedColumn, true);
             QCOMPARE(changed, true);
             QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{2}, 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(preferences->snapshot().visibleColumns.size(), std::size_t{2},
+                                      1000);
             const auto visibleColumns = preferences->snapshot().visibleColumns;
-            QCOMPARE(visibleColumns.size(), std::size_t{2});
             QCOMPARE(QString::fromStdString(visibleColumns.at(0)), QString("numero_ssa"));
             QCOMPARE(QString::fromStdString(visibleColumns.at(1)), QString("setor_executor"));
             QCOMPARE(preferences->snapshot().columnWidths.at("numero_ssa"), 140);
@@ -669,10 +670,10 @@ namespace {
             ssa::ports::UserPreferencesSnapshot initial;
             initial.visibleColumns = {"numero_ssa"};
 
-            auto repository = std::make_shared<FakeRepository>();
-            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
-            auto commands = std::make_shared<FakeCommands>();
-            auto preferences = std::make_shared<FakePreferences>(initial);
+            const auto repository = std::make_shared<FakeRepository>();
+            const auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            const auto commands = std::make_shared<FakeCommands>();
+            const auto preferences = std::make_shared<FakePreferences>(initial);
             ssa::presentation::MainViewModel model(service, commands, preferences);
 
             bool canHide = true;

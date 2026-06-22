@@ -80,7 +80,6 @@ Popup {
             }
             ActionButton {
                 text: "Fechar"
-                implicitWidth: 92
                 onClicked: root.close()
             }
         }
@@ -97,12 +96,10 @@ Popup {
 
             ActionButton {
                 text: "Selecionar tudo"
-                implicitWidth: 132
                 onClicked: root.viewModel.columns.selectAll()
             }
             ActionButton {
                 text: "Restaurar padrao"
-                implicitWidth: 140
                 onClicked: root.viewModel.columnFlow.resetColumnSettings()
             }
 
@@ -112,12 +109,10 @@ Popup {
 
             ActionButton {
                 text: "Aplicar"
-                implicitWidth: 104
                 onClicked: root.viewModel.columnFlow.applyColumnSettings()
             }
             ActionButton {
                 text: "Reverter"
-                implicitWidth: 110
                 onClicked: root.viewModel.columnFlow.discardColumnSettings()
             }
         }
