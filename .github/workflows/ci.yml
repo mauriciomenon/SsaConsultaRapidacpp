@@ -103,7 +103,7 @@ jobs:
           path: |
             C:\Users\runneradmin\.cache\vcpkg
             C:\vcpkg\installed
-          key: ${{ runner.os }}-vcpkg-${{ hashFiles('vcpkg.json') }}
+          key: ${{ runner.os }}-vcpkg-sqlite3-x64-windows
           restore-keys: |
             ${{ runner.os }}-vcpkg-
       - name: Install SQLite via vcpkg

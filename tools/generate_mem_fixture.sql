@@ -45,7 +45,7 @@ hi(row_num) AS (
     SELECT row_num + 1 FROM hi WHERE row_num < 45
 ),
 product(idx) AS (
-    SELECT lo.row_num, hi.row_num FROM lo, hi
+    SELECT (lo.row_num - 1) * 45 + hi.row_num FROM lo, hi
 )
 INSERT INTO ssa_table (
     numero_ssa, situacao, derivada_de, localizacao_codigo,
@@ -81,4 +81,4 @@ SELECT
     202502, 202503,
     idx % 5, idx % 5
 FROM product
-WHERE idx < 2000;
+WHERE idx <= 2000;
