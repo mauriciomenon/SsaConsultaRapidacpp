@@ -55,7 +55,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build libsqlite3-dev libgl1-mesa-dev
+          sudo apt-get install -y cmake ninja-build libsqlite3-dev libgl1-mesa-dev sqlite3
       - name: Configure
         run: cmake --preset dev
       - name: Build
@@ -64,3 +64,56 @@ jobs:
         run: ctest --preset dev --output-on-failure
       - name: QML lint
         run: qmllint -I build/dev app/desktop/qml/Main.qml app/desktop/qml/Theme.qml app/desktop/qml/components/*.qml
+      - name: Memory regression smoke
+        run: |
+          set -e
+          trap 'rm -f /tmp/mem_fixture.db mem_smoke.tsv' EXIT
+          sqlite3 /tmp/mem_fixture.db < tools/generate_mem_fixture.sql
+          ./build/dev/ssa_mem_stress --db /tmp/mem_fixture.db --pages 40 --page-size 50 > mem_smoke.tsv
+          awk -F'\t' '
+            NR==2 {
+              if (NF < 3 || $3 !~ /^[0-9]+$/) { print "FAIL: invalid memory column format at row 2"; exit 1 }
+              start=$3
+            }
+            END {
+              if (NR < 2 || NF < 3 || $3 !~ /^[0-9]+$/) { print "FAIL: missing or invalid data rows"; exit 1 }
+              delta=$3-start
+              printf "startup=%dKB final=%dKB delta=%dKB\n", start, $3, delta
+              if (delta > 2048) { print "FAIL: delta exceeds 2MB budget"; exit 1 }
+              print "PASS: delta within 2MB budget"
+            }
+          ' mem_smoke.tsv
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Developer PowerShell for VS 2022
+        uses: ilammy/msvc-dev-shell@v1
+        with:
+          arch: x64
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.8.3"
+          arch: win64_msvc2022_64
+          cache: true
+      - name: Cache vcpkg
+        uses: actions/cache@v4
+        with:
+          path: |
+            C:\Users\runneradmin\.cache\vcpkg
+            C:\vcpkg\installed
+          key: ${{ runner.os }}-vcpkg-sqlite3-x64-windows
+          restore-keys: |
+            ${{ runner.os }}-vcpkg-
+      - name: Install SQLite via vcpkg
+        run: vcpkg install sqlite3:x64-windows
+      - name: Configure
+        run: |
+          cmake --preset dev `
+            -DCMAKE_PREFIX_PATH="$env:Qt6_DIR" `
+            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
+      - name: Build
+        run: cmake --build --preset dev
+      - name: Test
+        run: ctest --preset dev --output-on-failure
