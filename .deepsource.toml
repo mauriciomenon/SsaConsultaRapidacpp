@@ -1,0 +1,140 @@
+# DeepSource configuration for C++/Qt6/QML project
+# https://docs.deepsource.com/docs/platform/reference/core-analyzers
+
+version = 1
+
+test_patterns = [
+  "tests/**/*",
+  "*_test.cpp",
+  "*_tests.cpp"
+]
+
+exclude_patterns = [
+  "build/**",
+  ".cache/**",
+  "*.app/**",
+  "out/**",
+  "dist/**",
+  "coverage/**",
+  "compile_commands.json",
+  "CMakeUserPresets.json",
+  "config/**",
+  ".idea/**",
+  ".clawpatch/**",
+  "*.db",
+  "*.sqlite",
+  "*.sqlite3"
+]
+
+[[analyzers]]
+name = "cpp"
+enabled = true
+
+  [analyzers.meta]
+  # C++ standard version
+  cpp_standard = "c++20"
+
+  # Compilation database for accurate analysis
+  compilation_database = "build/dev/compile_commands.json"
+
+  # Include paths for Qt6 and project
+  include_paths = [
+    "src",
+    "app",
+    "/usr/include/qt6",
+    "/usr/include/qt6/QtCore",
+    "/usr/include/qt6/QtGui",
+    "/usr/include/qt6/QtWidgets",
+    "/usr/include/qt6/QtQml",
+    "/usr/include/qt6/QtQuick",
+    "/usr/local/include/qt6",
+    "/opt/homebrew/include/qt6",
+    "${HOME}/Qt/6.11.0/macos/include"
+  ]
+
+  # Qt-specific macros to suppress false positives
+  defines = [
+    "QT_CORE_LIB",
+    "QT_GUI_LIB",
+    "QT_WIDGETS_LIB",
+    "QT_QML_LIB",
+    "QT_QUICK_LIB",
+    "QT_NO_DEBUG",
+    "NDEBUG"
+  ]
+
+  # Custom rules for Qt/QML codebase
+  [analyzers.config]
+  # Disable rules that conflict with Qt patterns
+  disable = [
+    "CPP001",  # Avoid using namespace std (Qt uses its own)
+    "CPP032",  # Avoid std::endl (Qt streams)
+    "CPP045",  # Avoid C-style casts (Qt uses qobject_cast)
+    "CPP046"   # Avoid reinterpret_cast (Qt meta-object)
+  ]
+
+  # Enable additional security/performance rules
+  enable = [
+    "CPP050",  # Use smart pointers
+    "CPP051",  # Prefer std::make_unique
+    "CPP052",  # Prefer std::make_shared
+    "CPP060",  # Check for memory leaks
+    "CPP061"   # Check for buffer overflows
+  ]
+
+[[analyzers]]
+name = "qml"
+enabled = true
+
+  [analyzers.meta]
+  # QML/QtQuick specific analysis
+  qt_version = "6"
+  import_paths = [
+    "app/desktop/qml",
+    "app/desktop/qml/components"
+  ]
+
+  [analyzers.config]
+  # Disable rules not applicable to our QML style
+  disable = [
+    "QML001",  # Missing semicolons (not required in QML)
+    "QML002"   # Property binding warnings (handled by qmllint)
+  ]
+
+[[analyzers]]
+name = "cmake"
+enabled = true
+
+  [analyzers.meta]
+  cmake_version = "3.25"
+
+  [analyzers.config]
+  # CMake best practices
+  disable = [
+    "CMAKE001"  # Minimum version (we use 3.25+)
+  ]
+
+[[analyzers]]
+name = "bash"
+enabled = true
+
+  [analyzers.config]
+  shell = "bash"
+  # Shell script best practices
+  disable = [
+    "SC1091"  # Not following sourced file (scripts use relative paths)
+  ]
+
+[[transformers]]
+name = "clang-format"
+enabled = true
+
+  [transformers.config]
+  config_file = ".clang-format"
+
+[[transformers]]
+name = "qmlformat"
+enabled = true
+
+  [transformers.config]
+  config_file = ".qmlformat"
