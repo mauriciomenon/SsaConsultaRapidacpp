@@ -68,7 +68,8 @@ namespace {
 
     void addStartupOptions(QCommandLineParser& parser) {
         parser.addOption(QCommandLineOption(QStringList{"project-root"}, "", "path"));
-        parser.addOption(QCommandLineOption(QStringList{"db"}, "", "path"));
+        parser.addOption(
+            QCommandLineOption(QStringList{"db", "database", "database-path"}, "", "path"));
         parser.addOption(QCommandLineOption(QStringList{"config-dir"}, "", "path"));
         parser.addOption(QCommandLineOption(QStringList{"sam-url"}, "", "url"));
     }
@@ -76,6 +77,25 @@ namespace {
     QString testDatabasePath() {
         return QDir::current().filePath("startup-options-test.db");
     }
+
+    class CurrentDirectoryGuard final {
+      public:
+        explicit CurrentDirectoryGuard(QString nextPath) : previousPath_{QDir::currentPath()} {
+            if (!QDir::setCurrent(nextPath)) {
+                throw std::runtime_error("cannot change current directory for test");
+            }
+        }
+
+        ~CurrentDirectoryGuard() {
+            QDir::setCurrent(previousPath_);
+        }
+
+        CurrentDirectoryGuard(const CurrentDirectoryGuard&) = delete;
+        CurrentDirectoryGuard& operator=(const CurrentDirectoryGuard&) = delete;
+
+      private:
+        QString previousPath_;
+    };
 
 } // namespace
 
@@ -99,6 +119,44 @@ TEST_CASE("startup options use SAM default URL when omitted") {
     const ssa::platform::StartupOptions options = ssa::platform::StartupOptions::fromParser(parser);
 
     REQUIRE(options.samBaseUrl == ssa::platform::StartupOptions::defaultSamBaseUrl());
+}
+
+TEST_CASE("startup options discover project root from current directory database") {
+    const TemporaryDirectoryPair directories;
+    const auto dataDirectory = directories.root / "data";
+    std::filesystem::create_directories(dataDirectory);
+    {
+        std::ofstream database{dataDirectory / "ssas.db"};
+    }
+    const auto nestedDirectory = directories.root / "build" / "release";
+    std::filesystem::create_directories(nestedDirectory);
+
+    const CurrentDirectoryGuard currentDirectory{QString::fromStdString(nestedDirectory.string())};
+    QCommandLineParser parser;
+    addStartupOptions(parser);
+    REQUIRE(parser.parse({"ssa_test"}));
+
+    const ssa::platform::StartupOptions options = ssa::platform::StartupOptions::fromParser(parser);
+
+    REQUIRE(options.projectRoot ==
+            QString::fromStdString(std::filesystem::weakly_canonical(directories.root).string()));
+    REQUIRE(options.databasePath ==
+            QString::fromStdString(
+                std::filesystem::weakly_canonical(dataDirectory / "ssas.db").string()));
+}
+
+TEST_CASE("startup options accept database path aliases") {
+    QCommandLineParser parser;
+    addStartupOptions(parser);
+    REQUIRE(parser.parse({"ssa_test", "--project-root", QDir::currentPath(), "--database-path",
+                          testDatabasePath()}));
+
+    const ssa::platform::StartupOptions options = ssa::platform::StartupOptions::fromParser(parser);
+
+    REQUIRE(options.databasePath ==
+            QString::fromStdString(std::filesystem::absolute(testDatabasePath().toStdString())
+                                       .lexically_normal()
+                                       .string()));
 }
 
 TEST_CASE("startup options reject invalid SAM URL") {

@@ -26,7 +26,8 @@ int main(int argc, char* argv[]) {
     parser.addHelpOption();
     parser.addOption(QCommandLineOption(QStringList{"project-root"},
                                         "Project root used for default paths.", "path"));
-    parser.addOption(QCommandLineOption(QStringList{"db"}, "SQLite database path.", "path"));
+    parser.addOption(QCommandLineOption(QStringList{"db", "database", "database-path"},
+                                        "SQLite database path.", "path"));
     parser.addOption(QCommandLineOption(QStringList{"config-dir"},
                                         "Configuration directory used for the preferences file.",
                                         "path"));

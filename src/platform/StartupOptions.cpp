@@ -1,11 +1,14 @@
 #include "platform/StartupOptions.h"
 
+#include <QCoreApplication>
 #include <QDir>
 #include <QUrl>
 
 #include <filesystem>
+#include <optional>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace ssa::platform {
 
@@ -20,6 +23,47 @@ namespace ssa::platform {
                 .lexically_normal();
         }
 
+        void appendCandidateWithParents(std::vector<std::filesystem::path>& candidates,
+                                        std::filesystem::path path) {
+            path = std::filesystem::absolute(path).lexically_normal();
+            while (!path.empty()) {
+                candidates.push_back(path);
+                const auto parent = path.parent_path();
+                if (parent == path) {
+                    break;
+                }
+                path = parent;
+            }
+        }
+
+        bool containsDefaultDatabase(const std::filesystem::path& root) {
+            const auto database = root / "data" / "ssas.db";
+            std::error_code error;
+            return std::filesystem::is_regular_file(database, error);
+        }
+
+        std::optional<std::filesystem::path> findProjectRootWithDatabase() {
+            std::vector<std::filesystem::path> candidates;
+            appendCandidateWithParents(candidates,
+                                       std::filesystem::path{QDir::currentPath().toStdString()});
+            appendCandidateWithParents(
+                candidates,
+                std::filesystem::path{QCoreApplication::applicationDirPath().toStdString()});
+            for (const auto& candidate : candidates) {
+                if (containsDefaultDatabase(candidate)) {
+                    return candidate;
+                }
+            }
+            return std::nullopt;
+        }
+
+        QString defaultProjectRoot() {
+            if (const auto discovered = findProjectRootWithDatabase()) {
+                return toQString(std::filesystem::weakly_canonical(*discovered));
+            }
+            return QDir::currentPath();
+        }
+
         QString normalizedExistingDirectory(const QString& value, const char* label) {
             const auto path = normalizedPath(value);
             if (!std::filesystem::exists(path)) {
@@ -31,13 +75,14 @@ namespace ssa::platform {
             return toQString(std::filesystem::weakly_canonical(path));
         }
 
-        QString normalizedDatabasePath(const QString& value, const char* label) {
+        QString normalizedDatabasePath(const QString& value, const char* label,
+                                       const bool requireParentDirectory) {
             const auto path = normalizedPath(value);
             if (std::filesystem::exists(path) && !std::filesystem::is_regular_file(path)) {
                 throw std::invalid_argument(std::string{label} + " is not a regular file");
             }
             const auto parent = path.parent_path();
-            if (!parent.empty() && !std::filesystem::exists(parent)) {
+            if (requireParentDirectory && !parent.empty() && !std::filesystem::exists(parent)) {
                 throw std::invalid_argument(std::string{label} + " directory does not exist");
             }
             if (std::filesystem::exists(path)) {
@@ -83,9 +128,10 @@ namespace ssa::platform {
         options.databasePath = parser.value("db");
         options.configDir = parser.value("config-dir");
         options.samBaseUrl = parser.value("sam-url");
+        const bool explicitDatabasePath = parser.isSet("db");
 
         if (options.projectRoot.isEmpty()) {
-            options.projectRoot = QDir::currentPath();
+            options.projectRoot = defaultProjectRoot();
         }
         if (options.databasePath.isEmpty()) {
             options.databasePath = QDir(options.projectRoot).filePath("data/ssas.db");
@@ -97,7 +143,8 @@ namespace ssa::platform {
             options.samBaseUrl = defaultSamBaseUrl();
         }
         options.projectRoot = normalizedExistingDirectory(options.projectRoot, "project root");
-        options.databasePath = normalizedDatabasePath(options.databasePath, "database path");
+        options.databasePath =
+            normalizedDatabasePath(options.databasePath, "database path", explicitDatabasePath);
         options.configDir = normalizedOptionalDirectoryPath(options.configDir, "config dir");
         options.samBaseUrl = normalizedOptionalUrl(options.samBaseUrl, "SAM URL");
         return options;
