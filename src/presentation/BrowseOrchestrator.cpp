@@ -159,6 +159,7 @@ namespace ssa::presentation {
             return;
         }
         emit sortChanged();
+        emit preferencesSaveRequested();
         load();
     }
 

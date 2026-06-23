@@ -10,8 +10,11 @@
   filters, derivation mode, and reprogrammed-only filter.
 - Table with the current SQL page only.
 - Table header labels and widths come from `ColumnCatalog`.
-- Header click sorts by that column and toggles ascending/descending on repeated click.
-- Sorting by column `numero_ssa` applies secondary status ordering after primary SSA sort by design.
+- Header width edits are applied through `ColumnSettingsModel`, persisted by column key, and do not
+  reload the SQL page.
+- Header click sorts by that column and cycles ascending, descending, then no explicit sort.
+- Sorting by column `numero_ssa` applies status-last ordering before SSA ordering by design.
+- Header right-click exposes column filter focus, hide-current-column, and column selector actions.
 - Details panel for the selected SSA.
 - Preferences dialog with theme selection, visual density, visible column selection, column width
   editing, select all, defaults reset, detail panel visibility, detail panel width, local column
@@ -48,6 +51,9 @@
 - The GUI must not use column customization to introduce query aliases or business synonyms.
 - At least one visible column must remain selected.
 - Width edits are stored by column key, not by visual index.
+- Toolbar column selection opens a popup with staged changes; only its explicit apply action
+  persists through `IUserPreferencesStore`.
+- Header hide actions apply immediately and persist through `IUserPreferencesStore`.
 - Closing the preferences dialog without applying discards pending column visibility and width
   edits.
 - Detail panel visibility is applied immediately because it is a screen layout preference, not a

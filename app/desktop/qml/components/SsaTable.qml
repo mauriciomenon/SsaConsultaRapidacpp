@@ -7,13 +7,19 @@ import SsaConsultaRapida
 Rectangle {
     id: root
     required property var viewModel
+    property var columnSettings: null
+    property var columnFlow: null
     required property string density
-    signal openRequested()
+    signal openRequested
+    signal configureColumnsRequested
 
     readonly property int headerHeight: Theme.densityValue(root.density, 26, 30, 36)
     readonly property int rowHeight: Theme.densityValue(root.density, 25, 30, 35)
     readonly property int textSize: Theme.densityValue(root.density, 12, 13, 14)
+    readonly property int fallbackColumnWidth: 120
     readonly property var tableColumns: root.viewModel.tableHeaders
+    property int previewColumnIndex: -1
+    property int previewColumnWidth: 0
 
     color: Theme.surface
     border.color: Theme.border
@@ -42,14 +48,23 @@ Rectangle {
                     model: root.tableColumns
 
                     delegate: Rectangle {
+                        id: headerCell
                         required property int index
                         required property var modelData
+                        readonly property bool hasColumnKey: modelData.key !== undefined && modelData.key !== null && modelData.key !== ""
+                        readonly property string columnKey: hasColumnKey ? modelData.key : ""
+                        readonly property int modelWidth: modelData.width !== undefined && modelData.width !== null ? modelData.width : root.fallbackColumnWidth
+                        property int dragStartWidth: 0
+                        property real dragStartX: 0
+                        property int previewWidth: modelWidth
 
-                        width: modelData.width
+                        width: previewWidth
                         height: header.height
                         color: Theme.tableHeader
                         border.color: Theme.borderSoft
                         border.width: 1
+
+                        onModelDataChanged: previewWidth = modelWidth
 
                         Text {
                             anchors.fill: parent
@@ -57,11 +72,7 @@ Rectangle {
                             anchors.rightMargin: 10
                             anchors.topMargin: 4
                             anchors.bottomMargin: 4
-                            text: parent.modelData.label
-                                  + (parent.modelData.filtered ? " [f]" : "")
-                                  + (parent.modelData.sorted
-                                     ? (parent.modelData.sortAscending ? "  ^" : "  v")
-                                     : "")
+                            text: (headerCell.modelData.label !== undefined ? headerCell.modelData.label : "") + (headerCell.modelData.filtered ? " [f]" : "") + (headerCell.modelData.sorted ? (headerCell.modelData.sortAscending ? "  ^" : "  v") : "")
                             color: Theme.accentStrong
                             font.bold: true
                             font.pixelSize: root.textSize
@@ -71,13 +82,84 @@ Rectangle {
 
                         MouseArea {
                             anchors.fill: parent
+                            anchors.rightMargin: 8
                             acceptedButtons: Qt.LeftButton | Qt.RightButton
-                            onClicked: function(mouse) {
+                            onClicked: function (mouse) {
                                 if (mouse.button === Qt.RightButton) {
-                                    root.viewModel.setFilterPanelFocusColumn(parent.modelData.key)
-                                    return
+                                    headerMenu.popup();
+                                    return;
                                 }
-                                root.viewModel.sortByColumn(parent.index)
+                                root.viewModel.sortByColumn(headerCell.index);
+                            }
+                        }
+
+                        Menu {
+                            id: headerMenu
+
+                            MenuItem {
+                                text: "Filtrar coluna"
+                                enabled: headerCell.hasColumnKey
+                                onTriggered: root.viewModel.setFilterPanelFocusColumn(headerCell.columnKey)
+                            }
+                            MenuItem {
+                                text: "Ocultar coluna"
+                                enabled: headerCell.hasColumnKey && root.columnFlow !== null && root.columnFlow.canHideColumn(headerCell.columnKey)
+                                onTriggered: root.columnFlow.setColumnVisibleAndApply(headerCell.columnKey, false)
+                            }
+                            MenuSeparator {}
+                            MenuItem {
+                                text: "Configurar colunas"
+                                onTriggered: root.configureColumnsRequested()
+                            }
+                        }
+
+                        Rectangle {
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            anchors.bottom: parent.bottom
+                            width: 8
+                            visible: root.columnSettings !== null && root.columnFlow !== null && headerCell.hasColumnKey
+                            color: resizeHandle.containsMouse || resizeHandle.pressed ? Theme.accentSoft : "transparent"
+
+                            MouseArea {
+                                id: resizeHandle
+                                anchors.fill: parent
+                                cursorShape: Qt.SizeHorCursor
+                                hoverEnabled: true
+                                acceptedButtons: Qt.LeftButton
+
+                                onPressed: function (mouse) {
+                                    headerCell.dragStartWidth = headerCell.width;
+                                    headerCell.dragStartX = resizeHandle.mapToItem(null, mouse.x, mouse.y).x;
+                                    root.previewColumnIndex = headerCell.index;
+                                    root.previewColumnWidth = headerCell.width;
+                                }
+                                onPositionChanged: function (mouse) {
+                                    if (!pressed) {
+                                        return;
+                                    }
+                                    if (root.columnSettings === null) {
+                                        return;
+                                    }
+                                    const currentX = resizeHandle.mapToItem(null, mouse.x, mouse.y).x;
+                                    const bounded = Math.max(root.columnSettings.minColumnWidth, Math.min(root.columnSettings.maxColumnWidth, headerCell.dragStartWidth + (currentX - headerCell.dragStartX)));
+                                    headerCell.previewWidth = bounded;
+                                    root.previewColumnWidth = bounded;
+                                    table.forceLayout();
+                                }
+                                onReleased: {
+                                    if (root.columnFlow !== null && headerCell.hasColumnKey) {
+                                        const changed = root.columnFlow.setColumnWidthAndApply(headerCell.columnKey, headerCell.previewWidth);
+                                        if (!changed) {
+                                            headerCell.previewWidth = headerCell.modelWidth;
+                                        }
+                                    } else {
+                                        headerCell.previewWidth = headerCell.modelWidth;
+                                    }
+                                    root.previewColumnIndex = -1;
+                                    root.previewColumnWidth = 0;
+                                    table.forceLayout();
+                                }
                             }
                         }
                     }
@@ -85,22 +167,27 @@ Rectangle {
             }
         }
 
-            TableView {
-                id: table
-                width: parent.width
-                height: Math.max(0, parent.height - header.height)
-                model: root.viewModel.tableModel
-                clip: true
-                rowSpacing: 0
-                columnSpacing: 1
-                boundsBehavior: Flickable.StopAtBounds
-                columnWidthProvider: function(column) {
-                    return column >= 0 && column < root.tableColumns.length
-                           ? root.tableColumns[column].width
-                           : 0
+        TableView {
+            id: table
+            width: parent.width
+            height: Math.max(0, parent.height - header.height)
+            model: root.viewModel.tableModel
+            clip: true
+            rowSpacing: 0
+            columnSpacing: 1
+            boundsBehavior: Flickable.StopAtBounds
+            columnWidthProvider: function (column) {
+                if (column < 0 || column >= root.tableColumns.length) {
+                    return 0;
                 }
-            rowHeightProvider: function(row) {
-                return table.cachedRowHeight
+                if (column === root.previewColumnIndex) {
+                    return root.previewColumnWidth;
+                }
+                const configuredWidth = root.tableColumns[column].width;
+                return configuredWidth !== undefined && configuredWidth !== null ? configuredWidth : root.fallbackColumnWidth;
+            }
+            rowHeightProvider: function (row) {
+                return table.cachedRowHeight;
             }
             readonly property int cachedRowHeight: root.rowHeight
             readonly property int cachedTextSize: root.textSize
@@ -119,7 +206,7 @@ Rectangle {
                 target: root.viewModel.tableModel
 
                 function onColumnsChanged() {
-                    relayoutTimer.restart()
+                    relayoutTimer.restart();
                 }
             }
 
@@ -127,7 +214,7 @@ Rectangle {
                 target: root
 
                 function onDensityChanged() {
-                    relayoutTimer.restart()
+                    relayoutTimer.restart();
                 }
             }
 
@@ -135,9 +222,7 @@ Rectangle {
                 required property int row
                 required property int column
                 required property var displayValue
-                readonly property var columnConfig: root.tableColumns[column]
-                                                    ? root.tableColumns[column]
-                                                    : ({})
+                readonly property var columnConfig: root.tableColumns[column] ? root.tableColumns[column] : ({})
                 readonly property bool isStriped: (row % 2) !== 0
                 readonly property bool opensSam: columnConfig.opensSam === true
 
@@ -162,9 +247,9 @@ Rectangle {
                     anchors.fill: parent
                     cursorShape: parent.opensSam ? Qt.PointingHandCursor : Qt.ArrowCursor
                     onClicked: {
-                        root.viewModel.selectRow(parent.row)
+                        root.viewModel.selectRow(parent.row);
                         if (parent.opensSam) {
-                            root.openRequested()
+                            root.openRequested();
                         }
                     }
                 }

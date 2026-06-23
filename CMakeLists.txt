@@ -198,6 +198,7 @@ qt_add_qml_module(ssa_consulta_rapida
         app/desktop/qml/components/DetailsPanel.qml
         app/desktop/qml/components/ColumnFilterPanel.qml
         app/desktop/qml/components/ColumnFilterRow.qml
+        app/desktop/qml/components/ColumnSelectorPopup.qml
         app/desktop/qml/components/FilterCard.qml
         app/desktop/qml/components/FilterFieldLabel.qml
         app/desktop/qml/components/FileWorkflowDialogs.qml

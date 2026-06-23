@@ -318,6 +318,12 @@ ApplicationWindow {
                 }
                 ActionButton { text: "Tema"; onClicked: preferencesDialog.open() }
                 ActionButton {
+                    id: columnSelectorButton
+                    text: "Colunas"
+                    implicitWidth: 104
+                    onClicked: columnSelectorPopup.open()
+                }
+                ActionButton {
                     text: "Cancelar"
                     enabled: root.vm.browse.status.loading
                     danger: true
@@ -333,7 +339,7 @@ ApplicationWindow {
             onSaveFiltersRequested: root.vm.preferenceFlow.savePreferences()
             onExportFiltersRequested: fileDialogs.openExportFilters()
             onImportFiltersRequested: fileDialogs.openImportFilters()
-            onConfigureColumnsRequested: preferencesDialog.open()
+            onConfigureColumnsRequested: columnSelectorPopup.open()
         }
 
         SsaTable {
@@ -341,8 +347,11 @@ ApplicationWindow {
             Layout.fillHeight: true
             Layout.minimumHeight: 280
             viewModel: root.vm.browse
+            columnSettings: root.vm.columns
+            columnFlow: root.vm.columnFlow
             density: root.vm.ui.density
             onOpenRequested: root.vm.selectionFlow.openSelectedSsa()
+            onConfigureColumnsRequested: columnSelectorPopup.open()
         }
 
         SplitView {
@@ -392,6 +401,11 @@ ApplicationWindow {
 
     ThemeDialog {
         id: themeDialog
+        viewModel: root.vm
+    }
+
+    ColumnSelectorPopup {
+        id: columnSelectorPopup
         viewModel: root.vm
     }
 
