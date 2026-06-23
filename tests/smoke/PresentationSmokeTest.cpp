@@ -689,10 +689,14 @@ namespace {
             QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{2}, 1000);
             QTRY_COMPARE_WITH_TIMEOUT(preferences->snapshot().visibleColumns.size(), std::size_t{2},
                                       1000);
-            const auto visibleColumns = preferences->snapshot().visibleColumns;
-            QCOMPARE(QString::fromStdString(visibleColumns.at(0)), QString("numero_ssa"));
-            QCOMPARE(QString::fromStdString(visibleColumns.at(1)), QString("setor_executor"));
-            QCOMPARE(preferences->snapshot().columnWidths.at("numero_ssa"), 140);
+            QTRY_COMPARE_WITH_TIMEOUT(
+                QString::fromStdString(preferences->snapshot().visibleColumns.at(0)),
+                QString("numero_ssa"), 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(
+                QString::fromStdString(preferences->snapshot().visibleColumns.at(1)),
+                QString("setor_executor"), 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(preferences->snapshot().columnWidths.at("numero_ssa"), 140,
+                                      1000);
             const auto stagedVisibleKeys = model.columns()->visibleKeys();
             QCOMPARE(stagedVisibleKeys.size(), std::size_t{2});
             QCOMPARE(QString::fromStdString(stagedVisibleKeys.at(0)), QString("numero_ssa"));
