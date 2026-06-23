@@ -80,6 +80,44 @@ namespace ssa::domain {
         DerivedOnly,
     };
 
+    enum class NumericComparisonMode {
+        Equals,
+        LessOrEqual,
+        GreaterOrEqual,
+    };
+
+    [[nodiscard]] inline std::string normalizedNumericComparisonMode(const std::string_view value) {
+        if (value == "lte" || value == "<=") {
+            return "lte";
+        }
+        if (value == "gte" || value == ">=") {
+            return "gte";
+        }
+        return "eq";
+    }
+
+    [[nodiscard]] inline NumericComparisonMode
+    numericComparisonModeFromString(const std::string_view value) {
+        const auto normalized = normalizedNumericComparisonMode(value);
+        if (normalized == "lte") {
+            return NumericComparisonMode::LessOrEqual;
+        }
+        if (normalized == "gte") {
+            return NumericComparisonMode::GreaterOrEqual;
+        }
+        return NumericComparisonMode::Equals;
+    }
+
+    [[nodiscard]] inline const char* numericComparisonOperator(const NumericComparisonMode mode) {
+        if (mode == NumericComparisonMode::LessOrEqual) {
+            return "<=";
+        }
+        if (mode == NumericComparisonMode::GreaterOrEqual) {
+            return ">=";
+        }
+        return "=";
+    }
+
     struct AdvancedFilterSpec {
         std::string weekColumnKey{"semana_programada"};
         std::map<std::string, std::string> textFilters;
@@ -88,6 +126,7 @@ namespace ssa::domain {
         std::optional<int> issueYear;
         std::optional<int> executionYear;
         std::optional<int> reprogrammingEquals;
+        NumericComparisonMode reprogrammingComparison{NumericComparisonMode::Equals};
         std::optional<int> issueWeekStart;
         std::optional<int> issueWeekEnd;
         std::optional<int> executionWeekStart;
@@ -122,6 +161,7 @@ namespace ssa::domain {
                left.year == right.year && left.week == right.week &&
                left.issueYear == right.issueYear && left.executionYear == right.executionYear &&
                left.reprogrammingEquals == right.reprogrammingEquals &&
+               left.reprogrammingComparison == right.reprogrammingComparison &&
                left.issueWeekStart == right.issueWeekStart &&
                left.issueWeekEnd == right.issueWeekEnd &&
                left.executionWeekStart == right.executionWeekStart &&

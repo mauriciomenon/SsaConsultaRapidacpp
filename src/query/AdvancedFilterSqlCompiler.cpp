@@ -100,17 +100,18 @@ namespace ssa::query {
             hasCondition = true;
         }
 
-        void appendReprogrammingEqualsFilter(std::ostringstream& where,
-                                             std::vector<std::string>& bindings,
-                                             const domain::AdvancedFilterSpec& advanced,
-                                             bool& hasCondition) {
+        void appendReprogrammingValueFilter(std::ostringstream& where,
+                                            std::vector<std::string>& bindings,
+                                            const domain::AdvancedFilterSpec& advanced,
+                                            bool& hasCondition) {
             if (!advanced.reprogrammingEquals.has_value()) {
                 return;
             }
             appendSqlAndSeparator(where, hasCondition);
             where << numericValueExpression(
                          std::string{domain::ColumnCatalog::primaryReprogrammingColumnKey()})
-                  << " = ?";
+                  << " " << domain::numericComparisonOperator(advanced.reprogrammingComparison)
+                  << " ?";
             bindings.push_back(std::to_string(*advanced.reprogrammingEquals));
             hasCondition = true;
         }
@@ -168,7 +169,7 @@ namespace ssa::query {
         appendYearFromWeekFilter(where, bindings,
                                  std::string{domain::ColumnCatalog::executionWeekColumnKey()},
                                  advanced.executionYear, hasCondition);
-        appendReprogrammingEqualsFilter(where, bindings, advanced, hasCondition);
+        appendReprogrammingValueFilter(where, bindings, advanced, hasCondition);
         appendWeekRangeFilter(where, bindings,
                               std::string{domain::ColumnCatalog::issueWeekColumnKey()},
                               advanced.issueWeekStart, advanced.issueWeekEnd, hasCondition);

@@ -110,6 +110,20 @@ namespace ssa::presentation::filterpanel {
         return setTrimmed(input_.reprogramming.equals, std::move(value));
     }
 
+    const QString& FilterPanelAdvancedState::reprogrammingMode() const {
+        return input_.reprogramming.mode;
+    }
+
+    bool FilterPanelAdvancedState::setReprogrammingMode(const QString& value) {
+        const auto normalized = QString::fromStdString(
+            domain::normalizedNumericComparisonMode(value.trimmed().toStdString()));
+        if (input_.reprogramming.mode == normalized) {
+            return false;
+        }
+        input_.reprogramming.mode = normalized;
+        return true;
+    }
+
     const QString& FilterPanelAdvancedState::issueWeekStart() const {
         return input_.weekRanges.issueStart;
     }
@@ -184,6 +198,8 @@ namespace ssa::presentation::filterpanel {
         input.years.execution = QString::fromStdString(snapshot.filters.executionYear).trimmed();
         input.reprogramming.equals =
             QString::fromStdString(snapshot.filters.reprogrammingEquals).trimmed();
+        input.reprogramming.mode = QString::fromStdString(
+            domain::normalizedNumericComparisonMode(snapshot.filters.reprogrammingMode));
         input.weekRanges.issueStart =
             QString::fromStdString(snapshot.filters.issueWeekStart).trimmed();
         input.weekRanges.issueEnd = QString::fromStdString(snapshot.filters.issueWeekEnd).trimmed();
@@ -207,6 +223,8 @@ namespace ssa::presentation::filterpanel {
         snapshot.filters.issueYear = input.years.issue.trimmed().toStdString();
         snapshot.filters.executionYear = input.years.execution.trimmed().toStdString();
         snapshot.filters.reprogrammingEquals = input.reprogramming.equals.trimmed().toStdString();
+        snapshot.filters.reprogrammingMode = domain::normalizedNumericComparisonMode(
+            input.reprogramming.mode.trimmed().toStdString());
         snapshot.filters.issueWeekStart = input.weekRanges.issueStart.trimmed().toStdString();
         snapshot.filters.issueWeekEnd = input.weekRanges.issueEnd.trimmed().toStdString();
         snapshot.filters.executionWeekStart =
@@ -240,6 +258,8 @@ namespace ssa::presentation::filterpanel {
         filters.issueYear = parsePositiveInt(input_.years.issue);
         filters.executionYear = parsePositiveInt(input_.years.execution);
         filters.reprogrammingEquals = parsePositiveInt(input_.reprogramming.equals);
+        filters.reprogrammingComparison =
+            domain::numericComparisonModeFromString(input_.reprogramming.mode.toStdString());
         filters.issueWeekStart = parsePositiveInt(input_.weekRanges.issueStart);
         filters.issueWeekEnd = parsePositiveInt(input_.weekRanges.issueEnd);
         filters.executionWeekStart = parsePositiveInt(input_.weekRanges.executionStart);
@@ -291,6 +311,7 @@ namespace ssa::presentation::filterpanel {
         input_.years.issue.clear();
         input_.years.execution.clear();
         input_.reprogramming.equals.clear();
+        input_.reprogramming.mode = QStringLiteral("eq");
         input_.weekRanges.issueStart.clear();
         input_.weekRanges.issueEnd.clear();
         input_.weekRanges.executionStart.clear();

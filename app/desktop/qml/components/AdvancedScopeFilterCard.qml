@@ -71,15 +71,35 @@ FilterCard {
             }
         }
         FilterFieldLabel {
-            text: "Reprogramacoes ="
+            text: "Reprogramacoes"
         }
-        AppTextField {
+        RowLayout {
             Layout.fillWidth: true
-            text: root.derivation.reprogrammingEqualsFilter
-            placeholderText: "0, 1, 2..."
-            inputMethodHints: Qt.ImhDigitsOnly
-            onTextEdited: root.derivation.reprogrammingEqualsFilter = text
-            onAccepted: root.applyRequested()
+
+            AppComboBox {
+                id: reprogrammingModeSelector
+                Layout.preferredWidth: 76
+                model: root.derivation.reprogrammingModeOptions
+                currentIndex: Math.max(0, root.derivation.reprogrammingModeOptions.indexOf(root.derivation.reprogrammingMode))
+                displayText: currentText === "lte" ? "<=" : currentText === "gte" ? ">=" : "="
+                onActivated: {
+                    root.derivation.reprogrammingMode = currentText;
+                    root.applyRequested();
+                }
+                delegate: ItemDelegate {
+                    required property string modelData
+                    width: reprogrammingModeSelector.width
+                    text: modelData === "lte" ? "<=" : modelData === "gte" ? ">=" : "="
+                }
+            }
+            AppTextField {
+                Layout.fillWidth: true
+                text: root.derivation.reprogrammingEqualsFilter
+                placeholderText: "0, 1, 2..."
+                inputMethodHints: Qt.ImhDigitsOnly
+                onTextEdited: root.derivation.reprogrammingEqualsFilter = text
+                onAccepted: root.applyRequested()
+            }
         }
     }
 }

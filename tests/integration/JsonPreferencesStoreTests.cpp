@@ -37,6 +37,7 @@ TEST_CASE("json preferences store saves user preference snapshot") {
     snapshot.filters.issueYear = "2026";
     snapshot.filters.executionYear = "2027";
     snapshot.filters.reprogrammingEquals = "2";
+    snapshot.filters.reprogrammingMode = "lte";
     snapshot.filters.issueWeekStart = "202601";
     snapshot.filters.issueWeekEnd = "202620";
     snapshot.filters.executionWeekStart = "202701";
@@ -68,6 +69,7 @@ TEST_CASE("json preferences store saves user preference snapshot") {
     REQUIRE(loaded.filters.issueYear == "2026");
     REQUIRE(loaded.filters.executionYear == "2027");
     REQUIRE(loaded.filters.reprogrammingEquals == "2");
+    REQUIRE(loaded.filters.reprogrammingMode == "lte");
     REQUIRE(loaded.filters.issueWeekStart == "202601");
     REQUIRE(loaded.filters.issueWeekEnd == "202620");
     REQUIRE(loaded.filters.executionWeekStart == "202701");

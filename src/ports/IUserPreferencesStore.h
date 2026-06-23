@@ -20,6 +20,7 @@ namespace ssa::ports {
         std::string issueYear;
         std::string executionYear;
         std::string reprogrammingEquals;
+        std::string reprogrammingMode{"eq"};
         std::string issueWeekStart;
         std::string issueWeekEnd;
         std::string executionWeekStart;

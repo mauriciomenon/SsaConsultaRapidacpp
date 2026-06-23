@@ -122,6 +122,8 @@ TEST_CASE("sql query builder compiles advanced text and range filters") {
     request.advancedFilters.issueYear = 2025;
     request.advancedFilters.executionYear = 2025;
     request.advancedFilters.reprogrammingEquals = 1;
+    request.advancedFilters.reprogrammingComparison =
+        ssa::domain::NumericComparisonMode::GreaterOrEqual;
     request.advancedFilters.issueWeekStart = 202501;
     request.advancedFilters.issueWeekEnd = 202520;
     request.advancedFilters.executionWeekStart = 202503;
@@ -134,6 +136,7 @@ TEST_CASE("sql query builder compiles advanced text and range filters") {
     REQUIRE(queries.page.sql.find("\"semana_cadastro\"") != std::string::npos);
     REQUIRE(queries.page.sql.find("\"semana_executada\"") != std::string::npos);
     REQUIRE(queries.page.sql.find("\"num_reprogramacoes\"") != std::string::npos);
+    REQUIRE(queries.page.sql.find(">= ?") != std::string::npos);
     REQUIRE(std::ranges::find(queries.page.bindings, "APV") != queries.page.bindings.end());
     REQUIRE(std::ranges::find(queries.page.bindings, "SMM") != queries.page.bindings.end());
     REQUIRE(std::ranges::find(queries.page.bindings, "202501") != queries.page.bindings.end());

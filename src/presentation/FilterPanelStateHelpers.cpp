@@ -135,9 +135,12 @@ namespace ssa::presentation::filterpanel {
                                .key = {}});
         }
         if (advanced.reprogrammingEquals.has_value()) {
-            entries.push_back({.text = "reprog=" + std::to_string(*advanced.reprogrammingEquals),
-                               .kind = "advanced_reprogramming",
-                               .key = {}});
+            entries.push_back(
+                {.text = std::string{"reprog"} +
+                         domain::numericComparisonOperator(advanced.reprogrammingComparison) +
+                         std::to_string(*advanced.reprogrammingEquals),
+                 .kind = "advanced_reprogramming",
+                 .key = {}});
         }
         appendRangeSummary(entries, "emissao", "advanced_issue_week_range", advanced.issueWeekStart,
                            advanced.issueWeekEnd);

@@ -17,6 +17,21 @@ namespace ssa::presentation {
         emit changed();
     }
 
+    QString AdvancedDerivationFilterViewModel::reprogrammingMode() const {
+        return state_.reprogrammingMode();
+    }
+
+    void AdvancedDerivationFilterViewModel::setReprogrammingMode(const QString& value) {
+        if (!state_.setReprogrammingMode(value)) {
+            return;
+        }
+        emit changed();
+    }
+
+    QStringList AdvancedDerivationFilterViewModel::reprogrammingModeOptions() const {
+        return reprogrammingModeOptions_;
+    }
+
     QString AdvancedDerivationFilterViewModel::derivationMode() const {
         return state_.derivationMode();
     }

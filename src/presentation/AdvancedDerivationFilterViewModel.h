@@ -12,6 +12,9 @@ namespace ssa::presentation {
         Q_OBJECT
         Q_PROPERTY(QString reprogrammingEqualsFilter READ reprogrammingEqualsFilter WRITE
                        setReprogrammingEqualsFilter NOTIFY changed)
+        Q_PROPERTY(QString reprogrammingMode READ reprogrammingMode WRITE setReprogrammingMode
+                       NOTIFY changed)
+        Q_PROPERTY(QStringList reprogrammingModeOptions READ reprogrammingModeOptions CONSTANT)
         Q_PROPERTY(
             QString derivationMode READ derivationMode WRITE setDerivationMode NOTIFY changed)
         Q_PROPERTY(QStringList derivationModeOptions READ derivationModeOptions CONSTANT)
@@ -24,6 +27,9 @@ namespace ssa::presentation {
 
         [[nodiscard]] QString reprogrammingEqualsFilter() const;
         void setReprogrammingEqualsFilter(const QString& value);
+        [[nodiscard]] QString reprogrammingMode() const;
+        void setReprogrammingMode(const QString& value);
+        [[nodiscard]] QStringList reprogrammingModeOptions() const;
         [[nodiscard]] QString derivationMode() const;
         void setDerivationMode(const QString& value);
         [[nodiscard]] QStringList derivationModeOptions() const;
@@ -36,6 +42,7 @@ namespace ssa::presentation {
 
       private:
         filterpanel::FilterPanelAdvancedState& state_;
+        const QStringList reprogrammingModeOptions_{"eq", "lte", "gte"};
         const QStringList derivationModeOptions_{"all", "root", "derived"};
     };
 

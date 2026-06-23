@@ -86,6 +86,8 @@ namespace ssa::infra::preferences {
                 std::string{domain::ColumnCatalog::defaultAdvancedWeekColumnKey()};
         }
         readStringFilters(root, baseSnapshot, kStringFilters);
+        baseSnapshot.reprogrammingMode = domain::normalizedNumericComparisonMode(
+            jsonString(root, "reprogramming_mode", baseSnapshot.reprogrammingMode));
         baseSnapshot.derivationMode = domain::normalizedDerivationMode(
             jsonString(root, "derivation_mode", baseSnapshot.derivationMode));
         baseSnapshot.onlyReprogrammed =
@@ -106,6 +108,9 @@ namespace ssa::infra::preferences {
                 : std::string{domain::ColumnCatalog::defaultAdvancedWeekColumnKey()};
         root.insert("advanced_week_column_key", QString::fromStdString(advancedWeekColumnKey));
         writeStringFilters(root, filters, kStringFilters);
+        root.insert("reprogramming_mode",
+                    QString::fromStdString(
+                        domain::normalizedNumericComparisonMode(filters.reprogrammingMode)));
         root.insert("derivation_mode", QString::fromStdString(domain::normalizedDerivationMode(
                                            filters.derivationMode)));
         root.insert("only_reprogrammed", filters.onlyReprogrammed);

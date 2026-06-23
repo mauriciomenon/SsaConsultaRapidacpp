@@ -768,6 +768,7 @@ namespace {
             week->setIssueYearFilter("2025");
             week->setExecutionYearFilter("2026");
             derivation->setReprogrammingEqualsFilter("1");
+            derivation->setReprogrammingMode("gte");
             week->setIssueWeekStartFilter("202501");
             week->setIssueWeekEndFilter("202510");
             week->setExecutionWeekStartFilter("202601");
@@ -787,6 +788,8 @@ namespace {
             QCOMPARE(request.advancedFilters.issueYear.value_or(0), 2025);
             QCOMPARE(request.advancedFilters.executionYear.value_or(0), 2026);
             QCOMPARE(request.advancedFilters.reprogrammingEquals.value_or(0), 1);
+            QCOMPARE(request.advancedFilters.reprogrammingComparison,
+                     ssa::domain::NumericComparisonMode::GreaterOrEqual);
             QCOMPARE(request.advancedFilters.issueWeekStart.value_or(0), 202501);
             QCOMPARE(request.advancedFilters.issueWeekEnd.value_or(0), 202510);
             QCOMPARE(request.advancedFilters.executionWeekStart.value_or(0), 202601);
