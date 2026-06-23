@@ -115,6 +115,37 @@ namespace {
             QCOMPARE(sector->quickSector(), QString("MEG2"));
             QCOMPARE(sector->excludeScaSesSte(), false);
         }
+
+        void filter_summary_entries_are_structured_and_removable() {
+            auto repository = std::make_shared<FilterPanelRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::FilterPanelViewModel filters(service);
+            auto* advanced =
+                qobject_cast<ssa::presentation::FilterPanelAdvancedViewModel*>(filters.advanced());
+            QVERIFY(advanced != nullptr);
+            auto* text =
+                qobject_cast<ssa::presentation::AdvancedTextFilterViewModel*>(advanced->text());
+            QVERIFY(text != nullptr);
+
+            filters.setQuickSector("MEG2");
+            filters.setColumnFilters({{"situacao", "=APV"}});
+            text->setTextFilter("setor_executor", "=MAM2");
+
+            QTRY_COMPARE_WITH_TIMEOUT(filters.activeFilterEntries().size(), 3, 1000);
+            const auto entries = filters.activeFilterEntries();
+            QCOMPARE(entries.size(), 3);
+            QCOMPARE(entries.at(0).toMap().value("kind").toString(), QString("quick_sector"));
+            QCOMPARE(entries.at(1).toMap().value("kind").toString(), QString("column"));
+            QCOMPARE(entries.at(1).toMap().value("key").toString(), QString("situacao"));
+            QCOMPARE(entries.at(2).toMap().value("kind").toString(), QString("advanced_text"));
+            QCOMPARE(entries.at(2).toMap().value("key").toString(), QString("setor_executor"));
+
+            QCOMPARE(filters.removeActiveFilter("column", "situacao"), true);
+
+            QVERIFY(!filters.columnFilters().contains("situacao"));
+            QCOMPARE(text->textFilter("setor_executor"), QString("=MAM2"));
+            QCOMPARE(filters.quickSector(), QString("MEG2"));
+        }
     };
 
 } // namespace

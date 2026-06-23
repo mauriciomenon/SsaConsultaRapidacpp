@@ -29,6 +29,7 @@ namespace ssa::presentation {
         [[nodiscard]] QStringList derivationModeOptions() const;
         [[nodiscard]] bool onlyReprogrammed() const;
         void setOnlyReprogrammed(bool value);
+        void refreshFromState();
 
       signals:
         void changed();

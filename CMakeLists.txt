@@ -204,9 +204,11 @@ qt_add_qml_module(ssa_consulta_rapida
         app/desktop/qml/components/FileWorkflowDialogs.qml
         app/desktop/qml/components/FilterTabButton.qml
         app/desktop/qml/components/FilterPanel.qml
+        app/desktop/qml/components/FilterSummaryBar.qml
         app/desktop/qml/components/ColumnConfigList.qml
         app/desktop/qml/components/PreferencesDialog.qml
         app/desktop/qml/components/SearchAndPager.qml
+        app/desktop/qml/components/SummaryTag.qml
         app/desktop/qml/components/SmokeCaptureBridge.qml
         app/desktop/qml/components/SsaTable.qml
         app/desktop/qml/components/StatusPill.qml

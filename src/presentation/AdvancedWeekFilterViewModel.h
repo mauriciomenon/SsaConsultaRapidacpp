@@ -50,6 +50,7 @@ namespace ssa::presentation {
         void setExecutionWeekStartFilter(const QString& value);
         [[nodiscard]] QString executionWeekEndFilter() const;
         void setExecutionWeekEndFilter(const QString& value);
+        void refreshFromState();
 
       signals:
         void changed();

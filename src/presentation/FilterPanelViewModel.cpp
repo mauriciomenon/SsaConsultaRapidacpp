@@ -16,6 +16,14 @@ namespace ssa::presentation {
     namespace {
         constexpr std::size_t kMaxColumnValueOptionCacheEntries = 24;
 
+        QVariantMap summaryEntryMap(const filterpanel::FilterSummaryEntry& entry) {
+            QVariantMap map;
+            map.insert(QStringLiteral("text"), QString::fromStdString(entry.text));
+            map.insert(QStringLiteral("kind"), QString::fromStdString(entry.kind));
+            map.insert(QStringLiteral("key"), QString::fromStdString(entry.key));
+            return map;
+        }
+
         QStringList toColumnValueDisplayList(const std::vector<std::string>& values) {
             QStringList priorityValues;
             QStringList otherValues;
@@ -167,6 +175,10 @@ namespace ssa::presentation {
         return activeFilterSummary_;
     }
 
+    QVariantList FilterPanelViewModel::activeFilterEntries() const {
+        return activeFilterEntries_;
+    }
+
     std::map<std::string, std::string> FilterPanelViewModel::columnFilters() const {
         return state_.columnFilters();
     }
@@ -220,6 +232,54 @@ namespace ssa::presentation {
 
     bool FilterPanelViewModel::columnValueOptionsLoadingFor(const QString& key) const {
         return columnValueLoadingKeys_.contains(key.trimmed());
+    }
+
+    bool FilterPanelViewModel::removeActiveFilter(const QString& kind, const QString& key) {
+        const auto action = kind.trimmed();
+        bool changed = false;
+        if (action == "quick_sector") {
+            changed = state_.setQuickSector({});
+            if (changed) {
+                sector_.refreshFromState();
+            }
+        } else if (action == "column") {
+            changed = state_.removeColumnFilter(key);
+            if (changed) {
+                columns_.refreshFromState();
+            }
+        } else if (action == "advanced_text") {
+            changed = state_.advanced().setTextFilter(key, {});
+        } else if (action == "advanced_year") {
+            changed = state_.advanced().setYear({});
+        } else if (action == "advanced_week") {
+            changed = state_.advanced().setWeek({});
+        } else if (action == "advanced_issue_year") {
+            changed = state_.advanced().setIssueYear({});
+        } else if (action == "advanced_execution_year") {
+            changed = state_.advanced().setExecutionYear({});
+        } else if (action == "advanced_reprogramming") {
+            changed = state_.advanced().setReprogrammingEquals({});
+        } else if (action == "advanced_issue_week_range") {
+            const bool startChanged = state_.advanced().setIssueWeekStart({});
+            const bool endChanged = state_.advanced().setIssueWeekEnd({});
+            changed = startChanged || endChanged;
+        } else if (action == "advanced_execution_week_range") {
+            const bool startChanged = state_.advanced().setExecutionWeekStart({});
+            const bool endChanged = state_.advanced().setExecutionWeekEnd({});
+            changed = startChanged || endChanged;
+        } else if (action == "advanced_derivation_mode") {
+            changed = state_.advanced().setDerivationMode(QStringLiteral("all"));
+        } else if (action == "advanced_only_reprogrammed") {
+            changed = state_.advanced().setOnlyReprogrammed(false);
+        }
+
+        if (!changed) {
+            return false;
+        }
+        advanced_->refreshFromState();
+        synchronizeFilterState(action == "quick_sector");
+        emit applyRequested();
+        return true;
     }
 
     void FilterPanelViewModel::setColumnValueOptions(const std::vector<std::string>& options,
@@ -314,21 +374,29 @@ namespace ssa::presentation {
             return;
         }
         activeFiltersDirty_ = false;
-        const auto activeParts =
-            filterpanel::buildFilterSummaryParts(state_.quickSector().trimmed().toStdString(),
-                                                 state_.columnFilters(), advancedFilters());
+        const auto activeEntries =
+            filterpanel::buildFilterSummaryEntries(state_.quickSector().trimmed().toStdString(),
+                                                   state_.columnFilters(), advancedFilters());
+        std::vector<std::string> activeParts;
+        activeParts.reserve(activeEntries.size());
         QStringList nextActiveFilters;
-        nextActiveFilters.reserve(static_cast<qsizetype>(activeParts.size()));
-        for (const auto& filter : activeParts) {
-            nextActiveFilters.append(QString::fromStdString(filter));
+        QVariantList nextActiveFilterEntries;
+        nextActiveFilters.reserve(static_cast<qsizetype>(activeEntries.size()));
+        nextActiveFilterEntries.reserve(static_cast<qsizetype>(activeEntries.size()));
+        for (const auto& entry : activeEntries) {
+            activeParts.push_back(entry.text);
+            nextActiveFilters.append(QString::fromStdString(entry.text));
+            nextActiveFilterEntries.append(summaryEntryMap(entry));
         }
         const auto nextSummary =
             QString::fromStdString(filterpanel::joinFilterSummary(activeParts, "  | "));
-        if (activeFilters_ == nextActiveFilters && activeFilterSummary_ == nextSummary) {
+        if (activeFilters_ == nextActiveFilters && activeFilterSummary_ == nextSummary &&
+            activeFilterEntries_ == nextActiveFilterEntries) {
             return;
         }
         activeFilters_ = std::move(nextActiveFilters);
         activeFilterSummary_ = nextSummary;
+        activeFilterEntries_ = std::move(nextActiveFilterEntries);
     }
 
     void FilterPanelViewModel::refreshActiveFilters() {

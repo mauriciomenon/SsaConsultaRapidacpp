@@ -1123,6 +1123,31 @@ namespace {
                      std::string("=APV"));
         }
 
+        void filter_summary_removal_preserves_sort_and_visible_columns() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            ssa::ports::UserPreferencesSnapshot initial;
+            initial.visibleColumns = {"numero_ssa", "situacao"};
+            initial.columnWidths = {{"numero_ssa", 160}, {"situacao", 140}};
+            initial.sortColumnKey = "situacao";
+            initial.sortAscending = true;
+            auto preferences = std::make_shared<FakePreferences>(initial);
+            ssa::presentation::MainViewModel model(service, commands, preferences);
+
+            model.browse()->filters()->setColumnFilters({{"situacao", "=APV"}});
+
+            QCOMPARE(model.browse()->filters()->removeActiveFilter("column", "situacao"), true);
+
+            QVERIFY(model.browse()->filters()->columnFilters().empty());
+            QCOMPARE(model.browse()->sortColumnKey(), QString("situacao"));
+            QCOMPARE(model.browse()->sortAscending(), true);
+            const auto visibleColumns = model.browse()->visibleColumns();
+            QCOMPARE(visibleColumns.size(), std::size_t{2});
+            QCOMPARE(QString::fromStdString(visibleColumns.at(0)), QString("numero_ssa"));
+            QCOMPARE(QString::fromStdString(visibleColumns.at(1)), QString("situacao"));
+        }
+
         void rescan_incremental_uses_workflow_port_and_updates_status() {
             auto repository = std::make_shared<FakeRepository>();
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);

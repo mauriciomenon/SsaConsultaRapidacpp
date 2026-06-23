@@ -43,4 +43,8 @@ namespace ssa::presentation {
         emit changed();
     }
 
+    void AdvancedDerivationFilterViewModel::refreshFromState() {
+        emit changed();
+    }
+
 } // namespace ssa::presentation

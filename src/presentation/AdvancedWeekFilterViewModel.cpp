@@ -111,4 +111,8 @@ namespace ssa::presentation {
         emit changed();
     }
 
+    void AdvancedWeekFilterViewModel::refreshFromState() {
+        emit changed();
+    }
+
 } // namespace ssa::presentation

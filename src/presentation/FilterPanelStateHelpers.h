@@ -11,6 +11,14 @@
 
 namespace ssa::presentation::filterpanel {
 
+    struct FilterSummaryEntry {
+        std::string text;
+        std::string kind;
+        std::string key;
+
+        bool operator==(const FilterSummaryEntry&) const = default;
+    };
+
     [[nodiscard]] std::optional<int> parsePositiveInt(const QString& value);
 
     [[nodiscard]] domain::DerivationFilterMode derivationModeFromString(const QString& value);
@@ -21,6 +29,12 @@ namespace ssa::presentation::filterpanel {
     buildFilterSummaryParts(const std::string_view quickSector,
                             const std::map<std::string, std::string>& columnFilters,
                             const domain::AdvancedFilterSpec& advanced);
+
+    [[nodiscard]] std::vector<FilterSummaryEntry>
+    buildFilterSummaryEntries(const std::string_view quickSector,
+                              const std::map<std::string, std::string>& columnFilters,
+                              const domain::AdvancedFilterSpec& advanced);
+
     [[nodiscard]] bool hasFilterValue(const std::string& currentFilter,
                                       const std::string& candidateValue);
 

@@ -31,12 +31,16 @@ namespace ssa::presentation {
     void FilterPanelAdvancedViewModel::clear() {
         state_.clear();
         text_.refreshFromState();
+        week_.refreshFromState();
+        derivation_.refreshFromState();
         publishChanged();
         emit applyRequested();
     }
 
     void FilterPanelAdvancedViewModel::refreshFromState() {
         text_.refreshFromState();
+        week_.refreshFromState();
+        derivation_.refreshFromState();
         publishChanged();
     }
 

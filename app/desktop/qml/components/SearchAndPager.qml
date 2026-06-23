@@ -9,23 +9,23 @@ Rectangle {
     id: root
     required property var viewModel
     readonly property var filterViewModel: viewModel.filters
-    signal exportRequested()
-    signal saveFiltersRequested()
-    signal exportFiltersRequested()
-    signal importFiltersRequested()
-    signal configureColumnsRequested()
+    signal exportRequested
+    signal saveFiltersRequested
+    signal exportFiltersRequested
+    signal importFiltersRequested
+    signal configureColumnsRequested
     focus: true
 
     function focusSearchInput() {
         if (root.visible) {
-            searchInput.forceActiveFocus()
+            searchInput.forceActiveFocus();
         }
     }
 
     Component.onCompleted: Qt.callLater(root.focusSearchInput)
     onVisibleChanged: {
         if (visible) {
-            Qt.callLater(root.focusSearchInput)
+            Qt.callLater(root.focusSearchInput);
         }
     }
 
@@ -47,8 +47,8 @@ Rectangle {
                 text: "Limpar"
                 implicitWidth: 88
                 onClicked: {
-                    root.viewModel.search.clear()
-                    root.viewModel.search.apply()
+                    root.viewModel.search.clear();
+                    root.viewModel.search.apply();
                 }
             }
             AppTextField {
@@ -60,7 +60,7 @@ Rectangle {
                 font.pixelSize: 12
                 onTextEdited: root.viewModel.search.text = text
                 onAccepted: {
-                    root.viewModel.search.apply()
+                    root.viewModel.search.apply();
                 }
             }
             ActionButton {
@@ -98,31 +98,14 @@ Rectangle {
             }
         }
 
-        Rectangle {
+        FilterSummaryBar {
             Layout.fillWidth: true
             Layout.preferredHeight: 34
-            color: Theme.panelRaised
-            border.color: Theme.border
-            radius: Theme.radius
-
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 12
-                anchors.rightMargin: 12
-                spacing: Theme.gap
-
-                Label {
-                    text: root.filterViewModel.activeFilterSummary.length > 0
-                          ? root.filterViewModel.activeFilterSummary
-                          : "Sem filtros manuais"
-                    color: root.filterViewModel.activeFilterSummary.length > 0
-                           ? Theme.text
-                           : Theme.mutedText
-                    font.bold: root.filterViewModel.activeFilterSummary.length > 0
-                    font.pixelSize: 13
-                    Layout.fillWidth: true
-                    elide: Text.ElideRight
-                }
+            filterViewModel: root.filterViewModel
+            searchText: root.viewModel.search.text
+            onClearSearchRequested: {
+                root.viewModel.search.clear();
+                root.viewModel.search.apply();
             }
         }
 
@@ -164,7 +147,7 @@ Rectangle {
                 value: root.viewModel.pageSize
                 Layout.preferredWidth: 92
                 onValueModified: {
-                    root.viewModel.pageSize = pageSizeSpin.value
+                    root.viewModel.pageSize = pageSizeSpin.value;
                 }
             }
             ActionButton {
@@ -190,8 +173,8 @@ Rectangle {
                 font.pixelSize: 12
                 font.bold: true
                 onActivated: {
-                    root.filterViewModel.sector.quickSector = sectorFilter.currentText
-                    root.viewModel.apply()
+                    root.filterViewModel.sector.quickSector = sectorFilter.currentText;
+                    root.viewModel.apply();
                 }
                 delegate: ItemDelegate {
                     required property string modelData

@@ -1,5 +1,6 @@
 #include "presentation/FilterPanelStateHelpers.h"
 
+#include <algorithm>
 #include <map>
 #include <string>
 #include <utility>
@@ -20,7 +21,8 @@ namespace ssa::presentation::filterpanel {
             return value.substr(begin, end - begin);
         }
 
-        void appendRangeSummary(std::vector<std::string>& parts, const std::string_view label,
+        void appendRangeSummary(std::vector<FilterSummaryEntry>& entries,
+                                const std::string_view label, const std::string_view kind,
                                 const std::optional<int> start, const std::optional<int> end) {
             if (!start.has_value() && !end.has_value()) {
                 return;
@@ -38,7 +40,7 @@ namespace ssa::presentation::filterpanel {
                 part += "<=";
                 part += std::to_string(*end);
             }
-            parts.push_back(std::move(part));
+            entries.push_back({.text = std::move(part), .kind = std::string{kind}, .key = {}});
         }
 
     } // namespace
@@ -80,51 +82,79 @@ namespace ssa::presentation::filterpanel {
     buildFilterSummaryParts(const std::string_view quickSector,
                             const std::map<std::string, std::string>& columnFilters,
                             const domain::AdvancedFilterSpec& advanced) {
+        const auto entries = buildFilterSummaryEntries(quickSector, columnFilters, advanced);
         std::vector<std::string> parts;
+        parts.reserve(entries.size());
+        std::ranges::transform(entries, std::back_inserter(parts),
+                               [](const FilterSummaryEntry& entry) { return entry.text; });
+        return parts;
+    }
+
+    std::vector<FilterSummaryEntry>
+    buildFilterSummaryEntries(const std::string_view quickSector,
+                              const std::map<std::string, std::string>& columnFilters,
+                              const domain::AdvancedFilterSpec& advanced) {
+        std::vector<FilterSummaryEntry> entries;
         if (!quickSector.empty()) {
-            parts.push_back(std::string(domain::ColumnCatalog::executorColumnKey()) + ":" +
-                            std::string(quickSector));
+            entries.push_back({.text = std::string(domain::ColumnCatalog::executorColumnKey()) +
+                                       ":" + std::string(quickSector),
+                               .kind = "quick_sector",
+                               .key = {}});
         }
         for (const auto& [key, value] : columnFilters) {
             auto part = key;
             part += ":";
             part += value;
-            parts.push_back(std::move(part));
+            entries.push_back({.text = std::move(part), .kind = "column", .key = key});
         }
         for (const auto& [key, value] : advanced.textFilters) {
             std::string part{"adv "};
             part += key;
             part += ":";
             part += value;
-            parts.push_back(std::move(part));
+            entries.push_back({.text = std::move(part), .kind = "advanced_text", .key = key});
         }
         if (advanced.year.has_value()) {
-            parts.push_back("ano:" + std::to_string(*advanced.year));
+            entries.push_back({.text = "ano:" + std::to_string(*advanced.year),
+                               .kind = "advanced_year",
+                               .key = {}});
         }
         if (advanced.week.has_value()) {
-            parts.push_back("semana:" + std::to_string(*advanced.week));
+            entries.push_back({.text = "semana:" + std::to_string(*advanced.week),
+                               .kind = "advanced_week",
+                               .key = {}});
         }
         if (advanced.issueYear.has_value()) {
-            parts.push_back("ano emissao:" + std::to_string(*advanced.issueYear));
+            entries.push_back({.text = "ano emissao:" + std::to_string(*advanced.issueYear),
+                               .kind = "advanced_issue_year",
+                               .key = {}});
         }
         if (advanced.executionYear.has_value()) {
-            parts.push_back("ano execucao:" + std::to_string(*advanced.executionYear));
+            entries.push_back({.text = "ano execucao:" + std::to_string(*advanced.executionYear),
+                               .kind = "advanced_execution_year",
+                               .key = {}});
         }
         if (advanced.reprogrammingEquals.has_value()) {
-            parts.push_back("reprog=" + std::to_string(*advanced.reprogrammingEquals));
+            entries.push_back({.text = "reprog=" + std::to_string(*advanced.reprogrammingEquals),
+                               .kind = "advanced_reprogramming",
+                               .key = {}});
         }
-        appendRangeSummary(parts, "emissao", advanced.issueWeekStart, advanced.issueWeekEnd);
-        appendRangeSummary(parts, "execucao", advanced.executionWeekStart,
-                           advanced.executionWeekEnd);
+        appendRangeSummary(entries, "emissao", "advanced_issue_week_range", advanced.issueWeekStart,
+                           advanced.issueWeekEnd);
+        appendRangeSummary(entries, "execucao", "advanced_execution_week_range",
+                           advanced.executionWeekStart, advanced.executionWeekEnd);
         if (advanced.derivationMode == domain::DerivationFilterMode::RootOnly) {
-            parts.emplace_back("somente originais");
+            entries.push_back(
+                {.text = "somente originais", .kind = "advanced_derivation_mode", .key = {}});
         } else if (advanced.derivationMode == domain::DerivationFilterMode::DerivedOnly) {
-            parts.emplace_back("somente derivadas");
+            entries.push_back(
+                {.text = "somente derivadas", .kind = "advanced_derivation_mode", .key = {}});
         }
         if (advanced.onlyReprogrammed) {
-            parts.emplace_back("somente reprogramadas");
+            entries.push_back(
+                {.text = "somente reprogramadas", .kind = "advanced_only_reprogrammed", .key = {}});
         }
-        return parts;
+        return entries;
     }
 
     bool hasFilterValue(const std::string& currentFilter, const std::string& candidateValue) {

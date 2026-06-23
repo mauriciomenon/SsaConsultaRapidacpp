@@ -46,6 +46,7 @@ namespace ssa::presentation {
                        columnValueOptionsChanged)
         Q_PROPERTY(QStringList activeFilters READ activeFilters NOTIFY changed)
         Q_PROPERTY(QString activeFilterSummary READ activeFilterSummary NOTIFY changed)
+        Q_PROPERTY(QVariantList activeFilterEntries READ activeFilterEntries NOTIFY changed)
 
       public:
         explicit FilterPanelViewModel(std::shared_ptr<query::SsaQueryService> queryService,
@@ -70,6 +71,7 @@ namespace ssa::presentation {
         [[nodiscard]] int quickSectorSelectorIndex() const;
         [[nodiscard]] QStringList activeFilters() const;
         [[nodiscard]] QString activeFilterSummary() const;
+        [[nodiscard]] QVariantList activeFilterEntries() const;
         [[nodiscard]] std::map<std::string, std::string> columnFilters() const;
         [[nodiscard]] domain::AdvancedFilterSpec advancedFilters() const;
         Q_INVOKABLE [[nodiscard]] bool hasFilterForColumn(const QString& key) const;
@@ -79,6 +81,7 @@ namespace ssa::presentation {
         Q_INVOKABLE [[nodiscard]] bool hasMoreColumnValueOptionsFor(const QString& key,
                                                                     int limit) const;
         Q_INVOKABLE [[nodiscard]] bool columnValueOptionsLoadingFor(const QString& key) const;
+        Q_INVOKABLE bool removeActiveFilter(const QString& kind, const QString& key);
         Q_INVOKABLE void refreshColumnValueOptions();
         Q_INVOKABLE void refreshColumnValueOptionsFor(const QString& key);
         void setColumnFilters(std::map<std::string, std::string> filters);
@@ -118,6 +121,7 @@ namespace ssa::presentation {
         FilterPanelAdvancedViewModel* advanced_{nullptr};
         QStringList activeFilters_;
         QString activeFilterSummary_;
+        QVariantList activeFilterEntries_;
         bool activeFiltersDirty_{true};
         std::map<QString, ColumnValueOptionCacheEntry> columnValueOptionsByKey_;
         QSet<QString> columnValueLoadingKeys_;
