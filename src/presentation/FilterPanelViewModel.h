@@ -114,6 +114,7 @@ namespace ssa::presentation {
         void markActiveFiltersDirty();
 
         filterpanel::FilterPanelState state_;
+        std::shared_ptr<query::SsaQueryService> queryService_;
         QStringList filterColumnKeys_;
         QStringList weekColumnKeys_;
         ColumnFilterViewModel columns_;

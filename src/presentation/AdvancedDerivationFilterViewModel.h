@@ -15,6 +15,8 @@ namespace ssa::presentation {
         Q_PROPERTY(QString reprogrammingMode READ reprogrammingMode WRITE setReprogrammingMode
                        NOTIFY changed)
         Q_PROPERTY(QStringList reprogrammingModeOptions READ reprogrammingModeOptions CONSTANT)
+        Q_PROPERTY(QStringList reprogrammingValues READ reprogrammingValues WRITE
+                       setReprogrammingValues NOTIFY changed)
         Q_PROPERTY(
             QString derivationMode READ derivationMode WRITE setDerivationMode NOTIFY changed)
         Q_PROPERTY(QStringList derivationModeOptions READ derivationModeOptions CONSTANT)
@@ -30,6 +32,8 @@ namespace ssa::presentation {
         [[nodiscard]] QString reprogrammingMode() const;
         void setReprogrammingMode(const QString& value);
         [[nodiscard]] QStringList reprogrammingModeOptions() const;
+        [[nodiscard]] QStringList reprogrammingValues() const;
+        void setReprogrammingValues(const QStringList& values);
         [[nodiscard]] QString derivationMode() const;
         void setDerivationMode(const QString& value);
         [[nodiscard]] QStringList derivationModeOptions() const;

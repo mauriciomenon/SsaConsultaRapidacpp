@@ -5,12 +5,18 @@
 #include "presentation/AdvancedSectorHierarchyViewModel.h"
 #include "presentation/AdvancedTextFilterViewModel.h"
 #include "presentation/AdvancedWeekFilterViewModel.h"
-#include "presentation/FilterPanelAdvancedState.h"
+#include "presentation/FilterPanelState.h"
 
 #include <QObject>
 #include <QString>
 #include <QStringList>
 #include <QVariantList>
+
+#include <memory>
+
+namespace ssa::query {
+    class SsaQueryService;
+}
 
 namespace ssa::presentation {
 
@@ -24,7 +30,10 @@ namespace ssa::presentation {
 
       public:
         FilterPanelAdvancedViewModel(filterpanel::FilterPanelAdvancedState& state,
-                                     QStringList weekColumnKeys, QObject* parent = nullptr);
+                                     filterpanel::FilterPanelState& filterState,
+                                     QStringList weekColumnKeys,
+                                     std::shared_ptr<query::SsaQueryService> queryService,
+                                     QObject* parent = nullptr);
 
         [[nodiscard]] QObject* text();
         [[nodiscard]] QObject* week();

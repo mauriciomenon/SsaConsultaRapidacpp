@@ -126,6 +126,7 @@ namespace ssa::domain {
         std::optional<int> issueYear;
         std::optional<int> executionYear;
         std::optional<int> reprogrammingEquals;
+        std::vector<int> reprogrammingValues;
         NumericComparisonMode reprogrammingComparison{NumericComparisonMode::Equals};
         std::optional<int> issueWeekStart;
         std::optional<int> issueWeekEnd;
@@ -161,6 +162,7 @@ namespace ssa::domain {
                left.year == right.year && left.week == right.week &&
                left.issueYear == right.issueYear && left.executionYear == right.executionYear &&
                left.reprogrammingEquals == right.reprogrammingEquals &&
+               left.reprogrammingValues == right.reprogrammingValues &&
                left.reprogrammingComparison == right.reprogrammingComparison &&
                left.issueWeekStart == right.issueWeekStart &&
                left.issueWeekEnd == right.issueWeekEnd &&
@@ -322,6 +324,7 @@ namespace ssa::domain {
         std::string columnKey;
         SsaFilterExpression filter;
         std::size_t limit{500};
+        bool orderByFrequency{false};
     };
 
 } // namespace ssa::domain

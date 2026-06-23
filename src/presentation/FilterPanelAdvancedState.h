@@ -34,6 +34,8 @@ namespace ssa::presentation::filterpanel {
         bool setReprogrammingEquals(QString value);
         [[nodiscard]] const QString& reprogrammingMode() const;
         bool setReprogrammingMode(const QString& value);
+        [[nodiscard]] const QString& reprogrammingValues() const;
+        bool setReprogrammingValues(QString value);
         [[nodiscard]] const QString& issueWeekStart() const;
         bool setIssueWeekStart(QString value);
         [[nodiscard]] const QString& issueWeekEnd() const;
@@ -84,6 +86,7 @@ namespace ssa::presentation::filterpanel {
             struct Reprogramming {
                 QString equals;
                 QString mode{QStringLiteral("eq")};
+                QString values;
                 bool only{false};
 
                 bool operator==(const Reprogramming&) const = default;

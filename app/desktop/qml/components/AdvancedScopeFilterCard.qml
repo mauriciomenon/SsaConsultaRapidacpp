@@ -12,7 +12,23 @@ FilterCard {
     signal applyRequested
 
     Layout.fillWidth: true
-    Layout.preferredHeight: 128
+    Layout.preferredHeight: 168
+
+    property var selectedReprogrammingValues: []
+
+    function containsSelected(value) {
+        return selectedReprogrammingValues.indexOf(value) >= 0;
+    }
+
+    function toggleSelected(value, checked) {
+        var values = selectedReprogrammingValues.slice();
+        var index = values.indexOf(value);
+        if (checked && index < 0)
+            values.push(value);
+        if (!checked && index >= 0)
+            values.splice(index, 1);
+        selectedReprogrammingValues = values;
+    }
 
     GridLayout {
         anchors.fill: parent
@@ -99,6 +115,108 @@ FilterCard {
                 inputMethodHints: Qt.ImhDigitsOnly
                 onTextEdited: root.derivation.reprogrammingEqualsFilter = text
                 onAccepted: root.applyRequested()
+            }
+        }
+
+        FilterFieldLabel {
+            text: "Valores Reprog."
+        }
+        ActionButton {
+            Layout.fillWidth: true
+            text: root.derivation.reprogrammingValues.length > 0 ? root.derivation.reprogrammingValues.join(", ") : "Selecionar"
+            onClicked: {
+                root.filterViewModel.refreshColumnValueOptionsFor("num_reprogramacoes");
+                root.selectedReprogrammingValues = root.derivation.reprogrammingValues.slice();
+                reprogrammingValuesPopup.open();
+            }
+        }
+        ActionButton {
+            Layout.fillWidth: true
+            text: "Limpar valores"
+            onClicked: {
+                root.derivation.reprogrammingValues = [];
+                root.applyRequested();
+            }
+        }
+        Item {
+            Layout.fillWidth: true
+        }
+    }
+
+    Popup {
+        id: reprogrammingValuesPopup
+        width: Math.min(360, Math.max(260, root.width * 0.45))
+        height: 320
+        modal: false
+        focus: true
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        padding: 10
+
+        background: Rectangle {
+            color: Theme.panelRaised
+            border.color: Theme.border
+            radius: Theme.radius
+        }
+
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 8
+
+            Label {
+                Layout.fillWidth: true
+                text: "Valores de reprogramacoes"
+                color: Theme.text
+                font.pixelSize: 12
+                font.bold: true
+                elide: Text.ElideRight
+            }
+
+            ScrollView {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+
+                ColumnLayout {
+                    width: reprogrammingValuesPopup.availableWidth - 4
+                    spacing: 2
+
+                    Label {
+                        Layout.fillWidth: true
+                        visible: root.filterViewModel.columnValueOptionsFor("num_reprogramacoes").length === 0
+                        text: root.filterViewModel.columnValueOptionsLoadingFor("num_reprogramacoes") ? "Carregando" : "Sem valores"
+                        color: Theme.mutedText
+                        font.pixelSize: 11
+                        horizontalAlignment: Text.AlignHCenter
+                    }
+
+                    Repeater {
+                        model: root.filterViewModel.columnValueOptionsFor("num_reprogramacoes")
+
+                        AppCheckBox {
+                            required property string modelData
+                            Layout.fillWidth: true
+                            text: modelData
+                            checked: root.containsSelected(modelData)
+                            onToggled: root.toggleSelected(modelData, checked)
+                        }
+                    }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                Item {
+                    Layout.fillWidth: true
+                }
+                ActionButton {
+                    text: "Aplicar"
+                    implicitWidth: 90
+                    onClicked: {
+                        root.derivation.reprogrammingValues = root.selectedReprogrammingValues;
+                        root.applyRequested();
+                        reprogrammingValuesPopup.close();
+                    }
+                }
             }
         }
     }

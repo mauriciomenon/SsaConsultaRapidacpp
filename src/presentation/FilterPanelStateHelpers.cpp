@@ -142,6 +142,17 @@ namespace ssa::presentation::filterpanel {
                  .kind = "advanced_reprogramming",
                  .key = {}});
         }
+        if (!advanced.reprogrammingValues.empty()) {
+            std::string values;
+            for (std::size_t index = 0; index < advanced.reprogrammingValues.size(); ++index) {
+                if (index > 0) {
+                    values += ",";
+                }
+                values += std::to_string(advanced.reprogrammingValues[index]);
+            }
+            entries.push_back(
+                {.text = "reprog valores:" + values, .kind = "advanced_reprogramming", .key = {}});
+        }
         appendRangeSummary(entries, "emissao", "advanced_issue_week_range", advanced.issueWeekStart,
                            advanced.issueWeekEnd);
         appendRangeSummary(entries, "execucao", "advanced_execution_week_range",

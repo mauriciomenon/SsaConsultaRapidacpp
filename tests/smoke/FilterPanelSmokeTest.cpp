@@ -10,12 +10,33 @@
 
 #include <QtTest>
 
+#include <QDate>
+
 #include <iterator>
+#include <map>
 #include <mutex>
 #include <ranges>
 #include <vector>
 
 namespace {
+
+    [[nodiscard]] std::string currentYearWeek() {
+        int isoYear = 0;
+        const int isoWeek = QDate::currentDate().weekNumber(&isoYear);
+        return QString("%1%2").arg(isoYear).arg(isoWeek, 2, 10, QChar('0')).toStdString();
+    }
+
+    [[nodiscard]] ssa::domain::SsaRecord reportRecord(const std::string& ssaNumber,
+                                                      const std::string& sector,
+                                                      const std::string& week,
+                                                      const std::string& responsible) {
+        return ssa::domain::SsaRecord{std::map<std::string, std::string>{
+            {"numero_ssa", ssaNumber},
+            {"setor_executor", sector},
+            {"semana_executada", week},
+            {"responsavel_execucao", responsible},
+        }};
+    }
 
     class FilterPanelRepository final : public ssa::ports::ISsaRepository {
       public:
@@ -41,12 +62,33 @@ namespace {
             if (request.columnKey == "setor_executor") {
                 return {"MEG2", "MAM2", "OUO7"};
             }
+            if (request.columnKey == "responsavel_execucao") {
+                return {"ANA", "BRUNO"};
+            }
+            if (request.columnKey == "num_reprogramacoes") {
+                return {"0", "1", "3"};
+            }
             return {};
         }
 
         ssa::ports::SsaReadResult readAll(const ssa::domain::SsaPageRequest&,
-                                          ssa::ports::SsaRecordConsumer) const override {
-            return {0, {}};
+                                          ssa::ports::SsaRecordConsumer consume) const override {
+            const auto week = currentYearWeek();
+            const std::vector<ssa::domain::SsaRecord> rows{
+                reportRecord("202600001", "MEG2", week, "ANA"),
+                reportRecord("202600001", "MEG2", week, "ANA"),
+                reportRecord("202600002", "MEG2", week, "ANA"),
+                reportRecord("202600003", "MAM2", week, "BRUNO"),
+                reportRecord("202500001", "MAM2", "202501", "BRUNO"),
+            };
+            std::size_t rowCount = 0;
+            for (const auto& row : rows) {
+                if (auto error = consume(row); error.has_value()) {
+                    return {rowCount, *error};
+                }
+                ++rowCount;
+            }
+            return {rowCount, {}};
         }
 
         [[nodiscard]] std::vector<ssa::domain::DistinctValuesRequest> distinctRequests() const {
@@ -90,6 +132,21 @@ namespace {
                                       1000);
             QVERIFY(filters.columnValueOptionsFor("setor_executor").contains("MEG2"));
             QCOMPARE(filters.columnKey(), QString("situacao"));
+        }
+
+        void responsible_value_options_request_frequency_ordering() {
+            auto repository = std::make_shared<FilterPanelRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::FilterPanelViewModel filters(service);
+
+            filters.refreshColumnValueOptionsFor("responsavel_execucao");
+
+            QTRY_COMPARE_WITH_TIMEOUT(filters.columnValueOptionsLoadingFor("responsavel_execucao"),
+                                      false, 1000);
+            const auto distinctRequests = repository->distinctRequests();
+            QVERIFY(std::ranges::any_of(distinctRequests, [](const auto& request) {
+                return request.columnKey == "responsavel_execucao" && request.orderByFrequency;
+            }));
         }
 
         void advanced_text_rows_cover_expanded_filter_fields() {
@@ -154,6 +211,31 @@ namespace {
             macro->setSelectedMacro("ssas_para_baixar");
 
             QCOMPARE(text->textFilter("situacao"), QString("!SAD,!SCA,!SES,!STE"));
+        }
+
+        void advanced_macro_report_counts_current_month_ssas_by_sector_week_and_person() {
+            auto repository = std::make_shared<FilterPanelRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::FilterPanelViewModel filters(service);
+            auto* advanced =
+                qobject_cast<ssa::presentation::FilterPanelAdvancedViewModel*>(filters.advanced());
+            QVERIFY(advanced != nullptr);
+            auto* macro =
+                qobject_cast<ssa::presentation::AdvancedMacroFilterViewModel*>(advanced->macro());
+            QVERIFY(macro != nullptr);
+
+            macro->setSelectedMacro("ssas_executadas_setor");
+
+            QCOMPARE(macro->reportTitle(), QString("SSA Executadas Setor"));
+            QCOMPARE(macro->reportRows().size(), 2);
+            const auto first = macro->reportRows().at(0).toMap();
+            QCOMPARE(first.value("group").toString(), QString("MAM2"));
+            QCOMPARE(first.value("person").toString(), QString("BRUNO"));
+            QCOMPARE(first.value("count").toInt(), 1);
+            const auto second = macro->reportRows().at(1).toMap();
+            QCOMPARE(second.value("group").toString(), QString("MEG2"));
+            QCOMPARE(second.value("person").toString(), QString("ANA"));
+            QCOMPARE(second.value("count").toInt(), 2);
         }
 
         void quick_sector_distinct_request_ignores_column_filters() {

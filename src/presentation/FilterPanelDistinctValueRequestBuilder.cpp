@@ -9,6 +9,11 @@ namespace ssa::presentation {
         constexpr int kColumnValueLimit = 300;
         constexpr int kQuickSectorLimit = 500;
 
+        bool isResponsibleColumn(const std::string& columnKey) {
+            return columnKey == "solicitante" || columnKey == "responsavel_programacao" ||
+                   columnKey == "responsavel_execucao";
+        }
+
     } // namespace
 
     void FilterPanelDistinctValueRequestBuilder::applyColumnTermsExcept(
@@ -45,6 +50,7 @@ namespace ssa::presentation {
         request.filter.advanced = state.advancedFilters();
         applyColumnTermsExcept(request.filter, state.columnFilters(), request.columnKey);
         request.limit = kColumnValueLimit;
+        request.orderByFrequency = isResponsibleColumn(columnKey);
         return request;
     }
 

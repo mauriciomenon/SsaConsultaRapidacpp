@@ -145,6 +145,20 @@ TEST_CASE("sql query builder compiles advanced text and range filters") {
     REQUIRE(queries.page.sql.find("SMM") == std::string::npos);
 }
 
+TEST_CASE("sql query builder compiles reprogramming multi-select as bound values") {
+    ssa::domain::SsaPageRequest request;
+    request.advancedFilters.reprogrammingValues = {1, 3, 5};
+    request.advancedFilters.reprogrammingComparison = ssa::domain::NumericComparisonMode::Equals;
+
+    const auto queries = ssa::query::SqlQueryBuilder{}.build(request);
+
+    REQUIRE(queries.page.sql.find("\"num_reprogramacoes\"") != std::string::npos);
+    REQUIRE(queries.page.sql.find(" IN (?, ?, ?)") != std::string::npos);
+    REQUIRE(std::ranges::find(queries.page.bindings, "1") != queries.page.bindings.end());
+    REQUIRE(std::ranges::find(queries.page.bindings, "3") != queries.page.bindings.end());
+    REQUIRE(std::ranges::find(queries.page.bindings, "5") != queries.page.bindings.end());
+}
+
 TEST_CASE("sql query builder combines basic and advanced filters for the same column") {
     ssa::domain::SsaPageRequest request;
     request.columnFilters = {{"situacao", "=APL"}};
@@ -168,6 +182,20 @@ TEST_CASE("sql query builder binds distinct values limit") {
     REQUIRE(query.sql.find("LIMIT ?") != std::string::npos);
     REQUIRE_FALSE(query.bindings.empty());
     REQUIRE(query.bindings.back() == "37");
+}
+
+TEST_CASE("sql query builder can order distinct values by filtered frequency") {
+    ssa::domain::DistinctValuesRequest request;
+    request.columnKey = "responsavel_execucao";
+    request.limit = 25;
+    request.orderByFrequency = true;
+
+    const auto query = ssa::query::SqlQueryBuilder{}.buildDistinctValues(request);
+
+    REQUIRE(query.sql.find("SELECT DISTINCT") == std::string::npos);
+    REQUIRE(query.sql.find("GROUP BY \"responsavel_execucao\"") != std::string::npos);
+    REQUIRE(query.sql.find("ORDER BY COUNT(*) DESC") != std::string::npos);
+    REQUIRE(query.bindings.back() == "25");
 }
 
 TEST_CASE("sql query builder rejects overflowing page offsets") {

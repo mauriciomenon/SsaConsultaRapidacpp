@@ -14,12 +14,13 @@ namespace ssa::infra::preferences {
             std::string ports::FilterPreferencesSnapshot::* field;
         };
 
-        constexpr std::array<StringFilterBinding, 9> kStringFilters{{
+        constexpr std::array<StringFilterBinding, 10> kStringFilters{{
             {"advanced_year", &ports::FilterPreferencesSnapshot::advancedYear},
             {"advanced_week", &ports::FilterPreferencesSnapshot::advancedWeek},
             {"issue_year", &ports::FilterPreferencesSnapshot::issueYear},
             {"execution_year", &ports::FilterPreferencesSnapshot::executionYear},
             {"reprogramming_equals", &ports::FilterPreferencesSnapshot::reprogrammingEquals},
+            {"reprogramming_values", &ports::FilterPreferencesSnapshot::reprogrammingValues},
             {"issue_week_start", &ports::FilterPreferencesSnapshot::issueWeekStart},
             {"issue_week_end", &ports::FilterPreferencesSnapshot::issueWeekEnd},
             {"execution_week_start", &ports::FilterPreferencesSnapshot::executionWeekStart},

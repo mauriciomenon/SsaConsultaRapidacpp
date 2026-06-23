@@ -61,10 +61,11 @@ namespace ssa::presentation {
     FilterPanelViewModel::FilterPanelViewModel(std::shared_ptr<query::SsaQueryService> queryService,
                                                QObject* parent)
         : QObject(parent), state_{domain::ColumnCatalog::defaultFilterColumnKey()},
-          columns_(state_, this), sector_(state_, this),
-          distinctValues_(std::move(queryService), state_, this), activeFilterRefreshTimer_(this) {
+          queryService_(std::move(queryService)), columns_(state_, this), sector_(state_, this),
+          distinctValues_(queryService_, state_, this), activeFilterRefreshTimer_(this) {
         loadFilterCatalog();
-        advanced_ = new FilterPanelAdvancedViewModel(state_.advanced(), weekColumnKeys_, this);
+        advanced_ = new FilterPanelAdvancedViewModel(state_.advanced(), state_, weekColumnKeys_,
+                                                     queryService_, this);
         connect(advanced_, &FilterPanelAdvancedViewModel::stateChanged, this,
                 [this]() { publishFilterStateChange(); });
         connect(advanced_, &FilterPanelAdvancedViewModel::applyRequested, this,
@@ -258,7 +259,9 @@ namespace ssa::presentation {
         } else if (action == "advanced_execution_year") {
             changed = state_.advanced().setExecutionYear({});
         } else if (action == "advanced_reprogramming") {
-            changed = state_.advanced().setReprogrammingEquals({});
+            const bool equalsChanged = state_.advanced().setReprogrammingEquals({});
+            const bool valuesChanged = state_.advanced().setReprogrammingValues({});
+            changed = equalsChanged || valuesChanged;
         } else if (action == "advanced_issue_week_range") {
             const bool startChanged = state_.advanced().setIssueWeekStart({});
             const bool endChanged = state_.advanced().setIssueWeekEnd({});

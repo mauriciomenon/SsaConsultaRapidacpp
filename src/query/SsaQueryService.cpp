@@ -26,4 +26,9 @@ namespace ssa::query {
         return repository_->distinctValues(request);
     }
 
+    ports::SsaReadResult SsaQueryService::readAll(const domain::SsaPageRequest& request,
+                                                  ports::SsaRecordConsumer consume) const {
+        return repository_->readAll(request, std::move(consume));
+    }
+
 } // namespace ssa::query

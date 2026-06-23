@@ -69,6 +69,14 @@ namespace ssa::query {
             return sql.str();
         }
 
+        std::string distinctValuesOrderSql(const std::string& column,
+                                           const domain::DistinctValuesRequest& request) {
+            if (request.orderByFrequency) {
+                return " GROUP BY " + column + " ORDER BY COUNT(*) DESC, " + column + " ASC";
+            }
+            return " ORDER BY " + column + " ASC";
+        }
+
         std::string singleQuotedSqlLiteral(const std::string& value) {
             std::string literal{"'"};
             for (const char ch : value) {
@@ -173,9 +181,10 @@ namespace ssa::query {
         expression.requiredTerms = request.filter.generalTerms;
         auto where = predicateBuilder_.build(expression, request.filter);
         std::ostringstream sql;
-        sql << "SELECT DISTINCT " << column << " FROM " << quoteTableIdentifier(tableName_) << " ";
+        sql << "SELECT " << (request.orderByFrequency ? "" : "DISTINCT ") << column << " FROM "
+            << quoteTableIdentifier(tableName_) << " ";
         sql << "WHERE " << distinctValuesWhereSql(column, where);
-        sql << " ORDER BY " << column << " ASC LIMIT ?";
+        sql << distinctValuesOrderSql(column, request) << " LIMIT ?";
         auto bindings = std::move(where.bindings);
         bindings.push_back(std::to_string(request.limit));
         return {sql.str(), std::move(bindings)};

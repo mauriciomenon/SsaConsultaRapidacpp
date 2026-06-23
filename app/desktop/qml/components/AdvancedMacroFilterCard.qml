@@ -12,7 +12,7 @@ FilterCard {
     signal applyRequested
 
     Layout.fillWidth: true
-    Layout.preferredHeight: 122
+    Layout.preferredHeight: 230
 
     function divisionIndex() {
         for (var index = 0; index < root.sectorHierarchy.divisions.length; ++index) {
@@ -90,6 +90,88 @@ FilterCard {
             color: root.macro.reportTitle.length > 0 ? Theme.accentStrong : Theme.mutedText
             font.pixelSize: 11
             elide: Text.ElideRight
+        }
+
+        ColumnLayout {
+            Layout.columnSpan: 4
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            spacing: 2
+            visible: root.macro.reportRows.length > 0
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 6
+
+                FilterFieldLabel {
+                    Layout.preferredWidth: 92
+                    text: "Setor/Div"
+                }
+                FilterFieldLabel {
+                    Layout.preferredWidth: 58
+                    text: "Semana"
+                }
+                FilterFieldLabel {
+                    Layout.fillWidth: true
+                    text: "Pessoa"
+                }
+                FilterFieldLabel {
+                    Layout.preferredWidth: 42
+                    text: "SSAs"
+                }
+            }
+
+            ScrollView {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+                ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+
+                ColumnLayout {
+                    width: parent.width
+                    spacing: 2
+
+                    Repeater {
+                        model: root.macro.reportRows
+
+                        RowLayout {
+                            id: reportRow
+                            required property var modelData
+
+                            width: parent.width
+                            spacing: 6
+
+                            Label {
+                                Layout.preferredWidth: 92
+                                text: reportRow.modelData.group
+                                color: Theme.text
+                                font.pixelSize: 11
+                                elide: Text.ElideRight
+                            }
+                            Label {
+                                Layout.preferredWidth: 58
+                                text: reportRow.modelData.week
+                                color: Theme.text
+                                font.pixelSize: 11
+                            }
+                            Label {
+                                Layout.fillWidth: true
+                                text: reportRow.modelData.person
+                                color: Theme.text
+                                font.pixelSize: 11
+                                elide: Text.ElideRight
+                            }
+                            Label {
+                                Layout.preferredWidth: 42
+                                horizontalAlignment: Text.AlignRight
+                                text: reportRow.modelData.count
+                                color: Theme.accentStrong
+                                font.pixelSize: 11
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

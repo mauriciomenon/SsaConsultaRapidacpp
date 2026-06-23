@@ -15,6 +15,8 @@ namespace ssa::query {
         details(const domain::SsaNumber& number) const;
         [[nodiscard]] std::vector<std::string>
         distinctValues(const domain::DistinctValuesRequest& request) const;
+        [[nodiscard]] ports::SsaReadResult readAll(const domain::SsaPageRequest& request,
+                                                   ports::SsaRecordConsumer consume) const;
 
       private:
         std::shared_ptr<ports::ISsaRepository> repository_;

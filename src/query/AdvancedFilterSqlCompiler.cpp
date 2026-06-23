@@ -3,6 +3,7 @@
 #include "domain/ColumnCatalog.h"
 #include "query/SqlQueryText.h"
 
+#include <algorithm>
 #include <sstream>
 #include <stdexcept>
 
@@ -104,15 +105,38 @@ namespace ssa::query {
                                             std::vector<std::string>& bindings,
                                             const domain::AdvancedFilterSpec& advanced,
                                             bool& hasCondition) {
-            if (!advanced.reprogrammingEquals.has_value()) {
+            if (advanced.reprogrammingValues.empty() && !advanced.reprogrammingEquals.has_value()) {
                 return;
             }
             appendSqlAndSeparator(where, hasCondition);
-            where << numericValueExpression(
-                         std::string{domain::ColumnCatalog::primaryReprogrammingColumnKey()})
-                  << " " << domain::numericComparisonOperator(advanced.reprogrammingComparison)
-                  << " ?";
-            bindings.push_back(std::to_string(*advanced.reprogrammingEquals));
+            const auto column = numericValueExpression(
+                std::string{domain::ColumnCatalog::primaryReprogrammingColumnKey()});
+            if (!advanced.reprogrammingValues.empty() &&
+                advanced.reprogrammingComparison == domain::NumericComparisonMode::Equals) {
+                where << column << " IN (";
+                for (std::size_t index = 0; index < advanced.reprogrammingValues.size(); ++index) {
+                    if (index > 0) {
+                        where << ", ";
+                    }
+                    where << "?";
+                    bindings.push_back(std::to_string(advanced.reprogrammingValues[index]));
+                }
+                where << ")";
+            } else {
+                int value = advanced.reprogrammingEquals.value_or(0);
+                if (!advanced.reprogrammingValues.empty()) {
+                    const auto [minIt, maxIt] =
+                        std::ranges::minmax_element(advanced.reprogrammingValues);
+                    value = advanced.reprogrammingComparison ==
+                                    domain::NumericComparisonMode::LessOrEqual
+                                ? *maxIt
+                                : *minIt;
+                }
+                where << column << " "
+                      << domain::numericComparisonOperator(advanced.reprogrammingComparison)
+                      << " ?";
+                bindings.push_back(std::to_string(value));
+            }
             hasCondition = true;
         }
 
