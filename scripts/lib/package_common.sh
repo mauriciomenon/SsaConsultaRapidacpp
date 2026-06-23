@@ -26,13 +26,9 @@ package_repo_root_from_script() {
 package_project_version() {
   local repo_root="${1}"
   local version=""
-  version="$(awk '
-    $0 ~ /^project\(SSAConsultaRapidaCpp[[:space:]]+VERSION[[:space:]]+[0-9]+\.[0-9]+\.[0-9]+/ {
-      match($0, /VERSION[[:space:]]+([0-9]+\.[0-9]+\.[0-9]+)/, m)
-      print m[1]
-      exit
-    }
-  ' "${repo_root}/CMakeLists.txt")"
+  version="$(sed -nE \
+    's/^[[:space:]]*project\(SSAConsultaRapidaCpp[[:space:]]+VERSION[[:space:]]+([0-9]+\.[0-9]+\.[0-9]+).*$/\1/p' \
+    "${repo_root}/CMakeLists.txt" | head -n 1)"
   printf '%s\n' "${version}"
 }
 
@@ -66,19 +62,51 @@ package_linux_arch() {
 }
 
 package_resolve_macdeployqt() {
+  local -a candidate_prefixes=()
+  local candidate
+
   if command -v macdeployqt >/dev/null 2>&1; then
     printf '%s\n' "macdeployqt"
     return 0
   fi
 
+  if [[ -n "${QT_DIR:-}" ]]; then
+    candidate_prefixes+=("${QT_DIR}")
+  fi
+  if [[ -n "${CMAKE_PREFIX_PATH:-}" ]]; then
+    while IFS= read -r candidate; do
+      [[ -n "${candidate}" ]] && candidate_prefixes+=("${candidate}")
+    done < <(printf '%s\n' "${CMAKE_PREFIX_PATH}" | tr ':;' '\n')
+  fi
+
   if command -v qtpaths >/dev/null 2>&1; then
-    local candidate
     candidate="$(qtpaths --binary-dir 2>/dev/null)/macdeployqt"
     if [[ -x "${candidate}" ]]; then
       printf '%s\n' "${candidate}"
       return 0
     fi
   fi
+
+  candidate_prefixes+=(
+    "/opt/homebrew/opt/qt"
+    "/usr/local/opt/qt"
+  )
+  if [[ -f "${PWD}/tools/qt-detect.conf" ]]; then
+    # shellcheck disable=SC1091
+    source "${PWD}/tools/qt-detect.conf"
+    candidate_prefixes+=("${MACOS_QT_ONLINE_INSTALLER_DIR}")
+  fi
+  if [[ -n "${QT_VERSION:-}" ]]; then
+    candidate_prefixes+=("${HOME}/Qt/${QT_VERSION}/macos")
+  fi
+
+  for candidate in "${candidate_prefixes[@]}"; do
+    candidate="${candidate%/}/bin/macdeployqt"
+    if [[ -x "${candidate}" ]]; then
+      printf '%s\n' "${candidate}"
+      return 0
+    fi
+  done
 
   return 1
 }
