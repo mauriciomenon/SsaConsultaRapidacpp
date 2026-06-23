@@ -4,6 +4,8 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <fstream>
+#include <iostream>
+#include <sstream>
 
 namespace {
 
@@ -60,7 +62,57 @@ namespace {
         return path.string();
     }
 
+    class StderrCapture final {
+      public:
+        StderrCapture() : previous_(std::cerr.rdbuf(buffer_.rdbuf())) {}
+
+        ~StderrCapture() {
+            std::cerr.rdbuf(previous_);
+        }
+
+        [[nodiscard]] std::string text() const {
+            return buffer_.str();
+        }
+
+      private:
+        std::ostringstream buffer_;
+        std::streambuf* previous_;
+    };
+
 } // namespace
+
+TEST_CASE("cli prints actionable database guidance when db is missing") {
+    auto importPort = std::make_shared<CapturingImportPort>();
+    auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(importPort);
+
+    const auto controller = controllerWithWorkflow(workflows);
+    StderrCapture stderrCapture;
+
+    const int exitCode = controller.run({"ssa"});
+
+    REQUIRE(exitCode == 2);
+    const auto output = stderrCapture.text();
+    REQUIRE(output.find("error: missing required --db") != std::string::npos);
+    REQUIRE(output.find("ssa_consulta_rapida_cli --db <path-to-ssas.db>") != std::string::npos);
+    REQUIRE((output.find("Detected project database:") != std::string::npos ||
+             output.find("Place the database at <repo>/data/ssas.db") != std::string::npos));
+}
+
+TEST_CASE("cli reports invalid database path with the provided path") {
+    auto importPort = std::make_shared<CapturingImportPort>();
+    auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(importPort);
+
+    const auto controller = controllerWithWorkflow(workflows);
+    const auto missingPath =
+        (std::filesystem::temp_directory_path() / "ssa_cli_missing_database.db").string();
+    StderrCapture stderrCapture;
+
+    const int exitCode = controller.run({"ssa", "--db", missingPath.c_str()});
+
+    REQUIRE(exitCode == 1);
+    const auto output = stderrCapture.text();
+    REQUIRE(output.find("database path does not exist: " + missingPath) != std::string::npos);
+}
 
 TEST_CASE("cli treats rescan as full rescan compatibility alias with optimized default") {
     auto importPort = std::make_shared<CapturingImportPort>();

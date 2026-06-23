@@ -17,6 +17,7 @@
 #include <filesystem>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -124,6 +125,47 @@ namespace {
         return {2, {}};
     }
 
+    std::optional<std::filesystem::path> findDefaultDatabaseFromCurrentDirectory() {
+        std::error_code error;
+        auto directory = std::filesystem::current_path(error);
+        if (error) {
+            return std::nullopt;
+        }
+
+        while (!directory.empty()) {
+            const auto candidate = directory / "data" / "ssas.db";
+            if (std::filesystem::is_regular_file(candidate, error)) {
+                return std::filesystem::weakly_canonical(candidate, error);
+            }
+            if (error) {
+                error.clear();
+            }
+            const auto parent = directory.parent_path();
+            if (parent == directory) {
+                break;
+            }
+            directory = parent;
+        }
+        return std::nullopt;
+    }
+
+    void printMissingDatabaseMessage() {
+        std::cerr << "error: missing required --db\n"
+                  << "Usage:\n"
+                  << "  ssa_consulta_rapida_cli --db <path-to-ssas.db> [options]\n"
+                  << "Examples:\n"
+                  << "  ssa_consulta_rapida_cli --db data/ssas.db\n"
+                  << "  ssa_consulta_rapida_cli --db /absolute/path/ssas.db --search \"term\"\n";
+
+        if (const auto defaultDatabase = findDefaultDatabaseFromCurrentDirectory()) {
+            std::cerr << "Detected project database:\n"
+                      << "  " << defaultDatabase->string() << '\n';
+        } else {
+            std::cerr << "No project database was found from the current directory.\n"
+                      << "Place the database at <repo>/data/ssas.db or pass an explicit path.\n";
+        }
+    }
+
 } // namespace
 
 namespace ssa::app::cli {
@@ -180,7 +222,7 @@ namespace ssa::app::cli {
                 }
                 if (SsaCliWorkflowRunner::requiresDatabase(parser)) {
                     if (!parser.isSet("db")) {
-                        std::cerr << "missing required --db\n";
+                        printMissingDatabaseMessage();
                         return 2;
                     }
                     const auto databasePath = SsaCliDatabasePath::required(parser);
@@ -200,7 +242,7 @@ namespace ssa::app::cli {
                 return runWorkflow(parser, *workflows);
             }
             if (!parser.isSet("db")) {
-                std::cerr << "missing required --db\n";
+                printMissingDatabaseMessage();
                 return 2;
             }
             if (parser.isSet("export")) {
