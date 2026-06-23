@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'EOF_USAGE'
+Usage:
+  ./scripts/make_clean [--dry-run]
+  ./make_clean [--dry-run]
+
+Clean generated CMake artifacts for the standard local presets.
+
+Runs:
+  cmake --build --preset dev --target clean
+  cmake --build --preset release --target clean
+
+This does not remove data/, dist/, config files, or source files.
+EOF_USAGE
+}
+
+dry_run="false"
+while [[ $# -gt 0 ]]; do
+  case "${1}" in
+    --help|-h)
+      usage
+      exit 0
+      ;;
+    --dry-run)
+      dry_run="true"
+      shift
+      ;;
+    *)
+      echo "Unknown argument: ${1}" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(cd "${script_dir}/.." && pwd)"
+
+run_clean() {
+  local preset="${1}"
+  local -a command=(cmake --build --preset "${preset}" --target clean)
+
+  if [[ "${dry_run}" == "true" ]]; then
+    printf 'Would run:'
+    printf ' %q' "${command[@]}"
+    printf '\n'
+    return
+  fi
+
+  echo "Cleaning CMake preset: ${preset}"
+  "${command[@]}"
+}
+
+cd "${repo_root}"
+run_clean dev
+run_clean release
