@@ -14,6 +14,7 @@ $ErrorActionPreference = "Stop"
 function Show-Help {
     [string]$helpText = @"
 Usage:
+  .\package-windows.ps1
   .\scripts\package-windows.ps1
 
 Build and package Windows release artifacts.
@@ -23,7 +24,7 @@ Defaults:
   Architecture: amd64 (x64-windows) or arm64
   Artifact dir: dist\windows\<arch>\
   Required build output: build\<preset>\SsaConsultaRapida QML module must exist.
-  Optional parameters: -ProjectRoot, -Arch, -DistDir, -Version
+  Optional parameters: -Preset, -ProjectRoot, -Arch, -DistDir, -Version
   Optional switch: -SkipTests
   Latest pointers: symbolic links when permitted, copied fallback otherwise.
 

@@ -16,7 +16,7 @@ $buildDir = Join-Path $repoRoot "build\$preset"
 $cacheFile = Join-Path $buildDir "CMakeCache.txt"
 
 if ($Help) {
-    Write-Host @"
+    Write-Output @"
 Usage:
   .\scripts\build-windows.ps1
 
@@ -27,7 +27,7 @@ Defaults:
   Repository root: directory that contains this script.
 
 Explicit options can be used through:
-  .\scripts\lazy_scripts\build-windows.ps1 -Preset <preset> [-QtDir <qt-dir>] [-SQLiteRoot <path>]
+  .\scripts\build-windows.ps1 -Preset <preset> [-QtDir <qt-dir>] [-SQLiteRoot <path>]
 "@
     return
 }

@@ -134,7 +134,7 @@ function Find-QtUnderDefaultRoot {
         }
     }
 
-    function Get-SortedQtCandidates {
+    function Get-SortedQtCandidate {
         param([string[]]$Candidates)
         return @(
             $Candidates |
@@ -148,11 +148,11 @@ function Find-QtUnderDefaultRoot {
         Join-Path $_.FullName $DetectConfig.WINDOWS_QT_SUBDIR
     })
 
-        $sortedCandidates = Get-SortedQtCandidates $candidates
+    $sortedCandidates = Get-SortedQtCandidate $candidates
 
-        if ($sortedCandidates.Count -gt 0) {
-            return (Resolve-Path -LiteralPath $sortedCandidates[0].Path).Path
-        }
+    if ($sortedCandidates.Count -gt 0) {
+        return (Resolve-Path -LiteralPath $sortedCandidates[0].Path).Path
+    }
 
     return $null
 }
@@ -230,7 +230,7 @@ function Test-RequiredCompiler {
     Test-RequiredCommand "cl.exe" "Run this script from 'Developer PowerShell for VS 2022' or install Visual Studio 2022 Build Tools with Desktop development with C++."
 }
 
-function Ensure-ClangFormat {
+function Confirm-ClangFormat {
     if (Get-Command clang-format -ErrorAction SilentlyContinue) {
         return
     }
@@ -296,4 +296,4 @@ if ($detectedSQLiteRoot) {
 }
 
 cmake @cmakeArgs
-Ensure-ClangFormat
+Confirm-ClangFormat

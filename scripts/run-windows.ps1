@@ -16,7 +16,7 @@ $buildDir = Join-Path $repoRoot "build\$Preset"
 . (Join-Path $scriptDir "project-paths.ps1")
 
 if ($Help) {
-    Write-Host @"
+    Write-Output @"
 Usage:
   .\scripts\run-windows.ps1
 
