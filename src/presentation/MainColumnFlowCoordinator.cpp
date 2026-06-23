@@ -68,7 +68,7 @@ namespace ssa::presentation {
         if (currentlyVisible == visible) {
             return false;
         }
-        if (!visible && (!currentlyVisible || appliedVisibleKeys.size() <= 1)) {
+        if (!visible && appliedVisibleKeys.size() <= 1) {
             return false;
         }
 
