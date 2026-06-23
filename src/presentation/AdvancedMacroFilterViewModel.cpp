@@ -155,7 +155,7 @@ namespace ssa::presentation {
         std::map<ReportKey, std::set<QString>> grouped;
         const auto currentDate = QDate::currentDate();
         const auto result = queryService_->readAll(
-            reportRequestFromState(filterState_), [&](const domain::SsaRecord record) {
+            reportRequestFromState(filterState_), [&](const domain::SsaRecord& record) {
                 const auto setor =
                     QString::fromStdString(std::string{record.valueOf("setor_executor")})
                         .trimmed()

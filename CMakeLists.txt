@@ -318,5 +318,11 @@ if(SSA_BUILD_TESTS)
     if(NOT WIN32)
         add_executable(ssa_mem_stress tools/mem_stress.cpp)
         target_link_libraries(ssa_mem_stress PRIVATE ssa_presentation ssa_infra Qt6::Core)
+        add_test(NAME ssa_mem_stress_rejects_invalid_pages
+            COMMAND /bin/sh -c "$<TARGET_FILE:ssa_mem_stress> --db missing.sqlite --pages abc 2>&1 | grep -q 'error: --pages must be a positive integer'"
+        )
+        add_test(NAME ssa_mem_stress_rejects_invalid_page_size
+            COMMAND /bin/sh -c "$<TARGET_FILE:ssa_mem_stress> --db missing.sqlite --page-size 0 2>&1 | grep -q 'error: --page-size must be a positive integer'"
+        )
     endif()
 endif()

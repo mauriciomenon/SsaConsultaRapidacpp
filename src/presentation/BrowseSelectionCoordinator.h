@@ -34,7 +34,4 @@ namespace ssa::presentation {
         int currentRow_{kNoSelection};
         int pendingRow_{kNoPendingRow};
     };
-
-    inline constexpr int BrowseSelectionCoordinator::kNoSelection;
-    inline constexpr int BrowseSelectionCoordinator::kPendingLastRow;
 } // namespace ssa::presentation

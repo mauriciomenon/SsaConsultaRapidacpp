@@ -34,8 +34,8 @@ ctest --preset dev --output-on-failure
 qmllint -I build/dev app/desktop/qml/Main.qml app/desktop/qml/Theme.qml app/desktop/qml/components/*.qml
 find src app tests -type f \( -name '*.cpp' -o -name '*.h' \) -print0 | \
   xargs -0 /opt/homebrew/opt/llvm/bin/clang-format --dry-run --Werror
-SDKROOT="$(xcrun --show-sdk-path)" PATH="/opt/homebrew/opt/llvm/bin:$PATH" \
-  run-clang-tidy -p build/dev -quiet \
+SDKROOT="$(xcrun --show-sdk-path)"
+PATH="/opt/homebrew/opt/llvm/bin:$PATH" run-clang-tidy -p build/dev -quiet \
   -header-filter="$PWD/(src|app)/.*" \
   -extra-arg=-isysroot -extra-arg="$SDKROOT" \
   "$PWD/(src|app)/.*\\.(cpp|h)$"

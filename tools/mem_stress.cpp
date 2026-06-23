@@ -69,14 +69,29 @@ int main(int argc, char** argv) {
     QString dbPath;
     int totalPages = 200;
     int pageSize = 50;
+    auto parsePositiveInt = [](const QString& value, const char* option, int& output) -> bool {
+        bool parsed = false;
+        const int parsedValue = value.toInt(&parsed);
+        if (!parsed || parsedValue <= 0) {
+            std::fprintf(stderr, "error: %s must be a positive integer\n", option);
+            return false;
+        }
+        output = parsedValue;
+        return true;
+    };
+
     for (int i = 1; i < args.size(); ++i) {
         const QString& a = args[i];
         if (a == "--db" && i + 1 < args.size()) {
             dbPath = args[++i];
         } else if (a == "--pages" && i + 1 < args.size()) {
-            totalPages = args[++i].toInt();
+            if (!parsePositiveInt(args[++i], "--pages", totalPages)) {
+                return 1;
+            }
         } else if (a == "--page-size" && i + 1 < args.size()) {
-            pageSize = args[++i].toInt();
+            if (!parsePositiveInt(args[++i], "--page-size", pageSize)) {
+                return 1;
+            }
         }
     }
     if (dbPath.isEmpty()) {
@@ -151,7 +166,10 @@ int main(int argc, char** argv) {
         const int pageNumberBefore = browse.pageNumber();
         // Guard against single-page or empty result sets: navigating next would
         // be a no-op or wrap, and the reset branch would loop forever.
-        if (pageCountBefore <= 1 || pageNumberBefore >= pageCountBefore) {
+        if (pageCountBefore <= 1) {
+            QCoreApplication::processEvents(QEventLoop::AllEvents);
+            pageChangedEmitted = false;
+        } else if (pageNumberBefore >= pageCountBefore) {
             browse.clearSearchAndResetPage();
             if (!waitPage()) {
                 std::fprintf(stderr, "error: reset timed out at iteration %d\n", i);
