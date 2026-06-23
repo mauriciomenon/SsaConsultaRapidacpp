@@ -50,6 +50,9 @@ namespace ssa::presentation {
         void setExecutionWeekStartFilter(const QString& value);
         [[nodiscard]] QString executionWeekEndFilter() const;
         void setExecutionWeekEndFilter(const QString& value);
+        Q_INVOKABLE [[nodiscard]] bool isYearValid(const QString& value) const;
+        Q_INVOKABLE [[nodiscard]] bool isWeekValid(const QString& value) const;
+        Q_INVOKABLE [[nodiscard]] bool isYearWeekValid(const QString& value) const;
         void refreshFromState();
 
       signals:

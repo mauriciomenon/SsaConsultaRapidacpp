@@ -1,5 +1,6 @@
 #include "domain/ColumnCatalog.h"
 #include "domain/ColumnValuePriorityPolicy.h"
+#include "domain/SectorHierarchy.h"
 #include "domain/SsaRelationGraph.h"
 #include "domain/SsaTypes.h"
 
@@ -49,6 +50,16 @@ TEST_CASE("column value priority policy recognizes SMIN and SMME prefixes") {
     CHECK(ssa::domain::isPriorityColumnValue("smme"));
     CHECK_FALSE(ssa::domain::isPriorityColumnValue("SMINX"));
     CHECK_FALSE(ssa::domain::isPriorityColumnValue("MEG2"));
+}
+
+TEST_CASE("sector hierarchy expands divisions and orders known sectors") {
+    const auto smin = ssa::domain::SectorHierarchy::sectorsForDivision("smin");
+    REQUIRE(smin == std::vector<std::string>{"IEE1", "IEE2", "IEE3", "IEE4"});
+    REQUIRE(ssa::domain::SectorHierarchy::divisionForSector("meg2") == "SMMG");
+
+    const std::vector<std::string> mixed{"MEG2", "IEE4", "MEL1", "IEE1", "IEE1"};
+    const auto ordered = ssa::domain::SectorHierarchy::orderedSectors(mixed);
+    REQUIRE(ordered == std::vector<std::string>{"MEL1", "IEE1", "IEE4", "MEG2"});
 }
 
 TEST_CASE("ssa record returns empty string for missing values") {

@@ -1,5 +1,7 @@
 #include "presentation/AdvancedWeekFilterViewModel.h"
 
+#include "domain/SsaTypes.h"
+
 #include <utility>
 
 namespace ssa::presentation {
@@ -109,6 +111,41 @@ namespace ssa::presentation {
             return;
         }
         emit changed();
+    }
+
+    bool AdvancedWeekFilterViewModel::isYearValid(const QString& value) const {
+        const auto trimmed = value.trimmed();
+        if (trimmed.isEmpty()) {
+            return true;
+        }
+        bool ok = false;
+        const int year = trimmed.toInt(&ok);
+        return ok && trimmed.size() == 4 && year >= 1900 && year <= 2999;
+    }
+
+    bool AdvancedWeekFilterViewModel::isWeekValid(const QString& value) const {
+        const auto trimmed = value.trimmed();
+        if (trimmed.isEmpty()) {
+            return true;
+        }
+        bool ok = false;
+        const int week = trimmed.toInt(&ok);
+        return ok && week >= domain::kFirstIsoWeek && week <= domain::kLastIsoWeek;
+    }
+
+    bool AdvancedWeekFilterViewModel::isYearWeekValid(const QString& value) const {
+        const auto trimmed = value.trimmed();
+        if (trimmed.isEmpty()) {
+            return true;
+        }
+        bool ok = false;
+        const int yearWeek = trimmed.toInt(&ok);
+        if (!ok || trimmed.size() != 6) {
+            return false;
+        }
+        const int week = yearWeek % 100;
+        return isYearValid(trimmed.first(4)) && week >= domain::kFirstIsoWeek &&
+               week <= domain::kLastIsoWeek;
     }
 
     void AdvancedWeekFilterViewModel::refreshFromState() {

@@ -30,6 +30,12 @@ Rectangle {
                 textFilters: root.advanced.text
             }
 
+            AdvancedMacroFilterCard {
+                sectorHierarchy: root.advanced.sectorHierarchy
+                macro: root.advanced.macro
+                onApplyRequested: root.applyRequested()
+            }
+
             AdvancedScopeFilterCard {
                 filterViewModel: root.filterViewModel
                 derivation: root.advanced.derivation

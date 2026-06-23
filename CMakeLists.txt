@@ -33,6 +33,7 @@ qt_policy(SET QTP0004 NEW)
 add_library(ssa_core STATIC
     src/domain/ColumnCatalog.cpp
     src/domain/ColumnValuePriorityPolicy.cpp
+    src/domain/SectorHierarchy.cpp
     src/domain/SsaRelationGraph.cpp
     src/query/SearchParser.cpp
     src/query/AdvancedFilterSqlCompiler.cpp
@@ -121,6 +122,8 @@ add_library(ssa_presentation_models STATIC
     src/presentation/AdvancedTextFilterRowModelFactory.cpp
     src/presentation/AdvancedTextFilterSnapshotSynchronizer.cpp
     src/presentation/AdvancedDerivationFilterViewModel.cpp
+    src/presentation/AdvancedMacroFilterViewModel.cpp
+    src/presentation/AdvancedSectorHierarchyViewModel.cpp
     src/presentation/AdvancedTextFilterViewModel.cpp
     src/presentation/AdvancedWeekFilterViewModel.cpp
     src/presentation/FilterPanelAdvancedViewModel.cpp
@@ -191,6 +194,7 @@ qt_add_qml_module(ssa_consulta_rapida
         app/desktop/qml/components/AppSpinBox.qml
         app/desktop/qml/components/AppTextField.qml
         app/desktop/qml/components/AdvancedFilterPanel.qml
+        app/desktop/qml/components/AdvancedMacroFilterCard.qml
         app/desktop/qml/components/AdvancedScopeFilterCard.qml
         app/desktop/qml/components/AdvancedTextFilterCard.qml
         app/desktop/qml/components/AdvancedTextFilterGrid.qml
