@@ -16,4 +16,5 @@ dist/
 coverage/
 config/ssa_cpp_preferences.json
 .idea/
+.antigravitycli/
 .clawpatch/
