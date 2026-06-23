@@ -182,7 +182,7 @@ namespace ssa::domain {
             }
         }
 
-        SsaRecord(const std::map<std::string, std::string>& fields) : rowValues_{} {
+        explicit SsaRecord(const std::map<std::string, std::string>& fields) : rowValues_{} {
             auto mutableSchema = std::make_shared<SchemaIndex>();
             mutableSchema->keys.reserve(fields.size());
             mutableSchema->indexByKey.reserve(fields.size());

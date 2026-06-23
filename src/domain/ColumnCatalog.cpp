@@ -187,10 +187,10 @@ namespace ssa::domain {
         if (keys.empty()) {
             keys = defaultVisibleKeys();
         }
-        for (const auto& key : keys) {
-            if (!contains(key)) {
-                throw std::invalid_argument("unknown column: " + key);
-            }
+        const auto invalidKey =
+            std::ranges::find_if(keys, [](const std::string& key) { return !contains(key); });
+        if (invalidKey != keys.end()) {
+            throw std::invalid_argument("unknown column: " + *invalidKey);
         }
         return keys;
     }
@@ -210,10 +210,11 @@ namespace ssa::domain {
     }
 
     std::string_view ColumnCatalog::advancedFilterLabel(const std::string_view key) {
-        for (const auto& column : kAdvancedFilterColumns) {
-            if (column.key == key) {
-                return column.label;
-            }
+        const auto advancedColumn = std::ranges::find_if(
+            kAdvancedFilterColumns,
+            [key](const AdvancedFilterColumnDef& column) { return column.key == key; });
+        if (advancedColumn != kAdvancedFilterColumns.end()) {
+            return advancedColumn->label;
         }
         if (const auto* column = find(key); column != nullptr) {
             return column->label;

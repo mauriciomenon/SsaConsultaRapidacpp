@@ -8,7 +8,7 @@ namespace ssa::application {
 
     class SsaWorkflowService final {
       public:
-        SsaWorkflowService(
+        explicit SsaWorkflowService(
             std::shared_ptr<ports::IImportWorkflowPort> importPort = nullptr,
             std::shared_ptr<ports::IExportPort> exportPort = nullptr,
             std::shared_ptr<ports::IDatabaseMaintenancePort> maintenancePort = nullptr,

@@ -18,10 +18,10 @@ namespace ssa::domain {
     struct ColumnDef {
         std::string key;
         std::string label;
-        ColumnType type;
-        bool defaultVisible;
-        bool generalSearch;
-        int defaultWidth;
+        ColumnType type{ColumnType::Text};
+        bool defaultVisible{false};
+        bool generalSearch{false};
+        int defaultWidth{0};
     };
 
     class ColumnCatalog final {
