@@ -22,12 +22,15 @@ namespace ssa::presentation {
                            bool inferOperatorMode = false);
         [[nodiscard]] std::optional<QString>
         expressionWithAddedValue(const QString& key, const QString& currentExpression,
-                                 const QString& value, const QString& operatorMode);
-        [[nodiscard]] QString
+                                 const QString& value, const QString& operatorMode) const;
+        [[nodiscard]] static QString
         expressionReplacingCurrentExpressionWithOperator(const QString& currentExpression,
-                                                         const QString& operatorMode) const;
-        [[nodiscard]] QString expressionReplacingWithOperator(const QStringList& values,
-                                                              const QString& operatorMode) const;
+                                                         const QString& operatorMode);
+        [[nodiscard]] static QString expressionReplacingWithOperator(const QStringList& values,
+                                                                     const QString& operatorMode);
+        [[nodiscard]] static QString
+        expressionReplacingWithOperatorLists(const QStringList& includeValues,
+                                             const QStringList& excludeValues);
         bool refreshFrom(const std::map<std::string, std::string>& filters);
 
       private:

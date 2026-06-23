@@ -26,19 +26,15 @@ GridView {
         property bool valueOptionsLoading: false
 
         function reloadOptionState() {
-            loadedValueOptions = root.filterViewModel.columnValueOptionsFor(modelData.key)
-            valueOptionsLoading = root.filterViewModel.columnValueOptionsLoadingFor(modelData.key)
-            moreValueOptions = root.filterViewModel.hasMoreColumnValueOptionsFor(
-                modelData.key,
-                compactValueLimit)
-            visibleValueOptions = root.filterViewModel.columnValuePreviewOptionsFor(
-                modelData.key,
-                compactValueLimit,
-                expandedValues)
+            loadedValueOptions = root.filterViewModel.columnValueOptionsFor(modelData.key);
+            valueOptionsLoading = root.filterViewModel.columnValueOptionsLoadingFor(modelData.key);
+            moreValueOptions = root.filterViewModel.hasMoreColumnValueOptionsFor(modelData.key, compactValueLimit);
+            visibleValueOptions = root.filterViewModel.columnValuePreviewOptionsFor(modelData.key, compactValueLimit, expandedValues);
         }
 
         row: modelData
         operatorModes: root.textFilters.operatorModes
+        allValues: loadedValueOptions
         visibleValues: visibleValueOptions
         hasMoreValues: moreValueOptions
         valuesLoading: valueOptionsLoading
@@ -55,28 +51,28 @@ GridView {
             target: root.filterViewModel
             function onColumnValueOptionsChangedFor(key) {
                 if (key === filterCardDelegate.modelData.key)
-                    filterCardDelegate.reloadOptionState()
+                    filterCardDelegate.reloadOptionState();
             }
             function onColumnValueOptionsReset() {
-                filterCardDelegate.reloadOptionState()
+                filterCardDelegate.reloadOptionState();
             }
         }
 
         onOptionsRequested: {
             if (loadedValueOptions.length === 0 && !valueOptionsLoading)
-                root.filterViewModel.refreshColumnValueOptionsFor(modelData.key)
+                root.filterViewModel.refreshColumnValueOptionsFor(modelData.key);
         }
-        onOperatorModeRequested: function(mode) {
-            root.textFilters.setOperatorMode(modelData.key, mode)
+        onOperatorModeRequested: function (mode) {
+            root.textFilters.setOperatorMode(modelData.key, mode);
         }
-        onSelectedValueRequested: function(value) {
-            root.textFilters.updateFilterWithSelectedValue(modelData.key, value)
+        onSelectedValueRequested: function (value) {
+            root.textFilters.updateFilterWithSelectedValue(modelData.key, value);
         }
-        onLoadedValuesReplacementRequested: function(mode) {
-            root.textFilters.replaceWithOperatorValueList(
-                modelData.key,
-                loadedValueOptions,
-                mode)
+        onLoadedValuesReplacementRequested: function (mode) {
+            root.textFilters.replaceWithOperatorValueList(modelData.key, loadedValueOptions, mode);
+        }
+        onMixedValuesReplacementRequested: function (includeValues, excludeValues) {
+            root.textFilters.replaceWithOperatorValueLists(modelData.key, includeValues, excludeValues);
         }
         onTextFilterClearRequested: root.textFilters.setTextFilter(modelData.key, "")
     }

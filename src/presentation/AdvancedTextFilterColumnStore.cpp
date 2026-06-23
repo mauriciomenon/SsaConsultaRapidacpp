@@ -52,7 +52,7 @@ namespace ssa::presentation {
 
     std::optional<QString> AdvancedTextFilterColumnStore::expressionWithAddedValue(
         const QString& key, const QString& currentExpression, const QString& value,
-        const QString& operatorMode) {
+        const QString& operatorMode) const {
         auto tokens = tokensFor(key, currentExpression);
         auto op = query::textFilterOperatorFromMode(operatorMode.toStdString());
         if (!op.has_value() || !query::addTextFilterValue(tokens, value.toStdString(), *op)) {
@@ -62,7 +62,7 @@ namespace ssa::presentation {
     }
 
     QString AdvancedTextFilterColumnStore::expressionReplacingCurrentExpressionWithOperator(
-        const QString& currentExpression, const QString& operatorMode) const {
+        const QString& currentExpression, const QString& operatorMode) {
         const auto op = query::textFilterOperatorFromMode(operatorMode.toStdString());
         if (!op.has_value()) {
             return currentExpression;
@@ -75,8 +75,9 @@ namespace ssa::presentation {
         return QString::fromStdString(query::joinTextFilterTokens(replaced));
     }
 
-    QString AdvancedTextFilterColumnStore::expressionReplacingWithOperator(
-        const QStringList& values, const QString& operatorMode) const {
+    QString
+    AdvancedTextFilterColumnStore::expressionReplacingWithOperator(const QStringList& values,
+                                                                   const QString& operatorMode) {
         const auto op = query::textFilterOperatorFromMode(operatorMode.toStdString());
         if (!op.has_value()) {
             return {};
@@ -84,6 +85,20 @@ namespace ssa::presentation {
         query::TextFilterTokenSet tokens;
         for (const auto& value : values) {
             query::addTextFilterValue(tokens, value.toStdString(), *op);
+        }
+        return QString::fromStdString(query::joinTextFilterTokens(tokens));
+    }
+
+    QString AdvancedTextFilterColumnStore::expressionReplacingWithOperatorLists(
+        const QStringList& includeValues, const QStringList& excludeValues) {
+        query::TextFilterTokenSet tokens;
+        for (const auto& value : includeValues) {
+            query::addTextFilterValue(tokens, value.toStdString(),
+                                      query::TextFilterOperator::Equals);
+        }
+        for (const auto& value : excludeValues) {
+            query::addTextFilterValue(tokens, value.toStdString(),
+                                      query::TextFilterOperator::Different);
         }
         return QString::fromStdString(query::joinTextFilterTokens(tokens));
     }

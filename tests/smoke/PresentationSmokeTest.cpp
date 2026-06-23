@@ -826,6 +826,11 @@ namespace {
             text->replaceWithOperatorValueList("situacao", {"APV", "ADM"}, "different");
 
             QCOMPARE(text->textFilter("situacao"), QString("!APV,!ADM"));
+
+            text->replaceWithOperatorValueLists("situacao", {"SCA", "SES"}, {"STE"});
+
+            QCOMPARE(text->textFilter("situacao"), QString("=SCA,=SES,!STE"));
+            QCOMPARE(text->operatorModeFor("situacao"), QString("mixed"));
         }
 
         void advanced_text_filter_clear_preserves_selected_operator() {

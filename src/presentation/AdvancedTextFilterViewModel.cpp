@@ -92,6 +92,12 @@ namespace ssa::presentation {
                           false);
     }
 
+    void AdvancedTextFilterViewModel::replaceWithOperatorValueLists(
+        const QString& key, const QStringList& includeValues, const QStringList& excludeValues) {
+        publishExpression(
+            key, columns_.expressionReplacingWithOperatorLists(includeValues, excludeValues), true);
+    }
+
     void AdvancedTextFilterViewModel::refreshFromState() {
         if (columns_.refreshFrom(state_.textFilters())) {
             publishChanged();

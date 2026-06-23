@@ -37,6 +37,9 @@ namespace ssa::presentation {
         Q_INVOKABLE bool updateFilterWithSelectedValue(const QString& key, const QString& value);
         Q_INVOKABLE void replaceWithOperatorValueList(const QString& key, const QStringList& values,
                                                       const QString& operatorMode);
+        Q_INVOKABLE void replaceWithOperatorValueLists(const QString& key,
+                                                       const QStringList& includeValues,
+                                                       const QStringList& excludeValues);
         void refreshFromState();
 
       signals:
