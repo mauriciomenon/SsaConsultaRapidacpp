@@ -24,7 +24,7 @@ namespace ssa::domain {
             std::string_view label;
         };
 
-        constexpr std::array<AdvancedFilterColumnDef, 8> kAdvancedFilterColumns{{
+        constexpr std::array<AdvancedFilterColumnDef, 20> kAdvancedFilterColumns{{
             {"setor_emissor", "Setor emissor"},
             {"setor_executor", "Setor executor"},
             {"situacao", "Situacao"},
@@ -33,6 +33,18 @@ namespace ssa::domain {
             {"solicitante", "Solicitante"},
             {"responsavel_programacao", "Responsavel programacao"},
             {"responsavel_execucao", "Responsavel execucao"},
+            {"localizacao_codigo", "Localizacao"},
+            {"equipamento", "Equipamento"},
+            {"servico_origem", "Servico origem"},
+            {"sistema_origem", "Sistema origem"},
+            {"execucao_simples", "Execucao simples"},
+            {"status_execucao_prazo", "Status prazo"},
+            {"execucao_parcial", "Execucao parcial"},
+            {"anomalia", "Anomalia"},
+            {"situacao_espera", "Situacao espera"},
+            {"justificativa", "Justificativa"},
+            {"parciais", "Parciais"},
+            {"situacao_da_parcial", "Situacao parcial"},
         }};
         constexpr std::string_view kStatusLastSortCode = "STE";
 

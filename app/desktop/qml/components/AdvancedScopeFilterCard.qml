@@ -9,7 +9,7 @@ FilterCard {
     id: root
     required property var filterViewModel
     required property var derivation
-    signal applyRequested()
+    signal applyRequested
 
     Layout.fillWidth: true
     Layout.preferredHeight: 128
@@ -30,8 +30,8 @@ FilterCard {
             currentIndex: root.filterViewModel.sector.selectorIndex
             displayText: currentIndex <= 0 ? "Todos" : currentText
             onActivated: {
-                root.filterViewModel.sector.quickSector = sectorSelector.currentText
-                root.applyRequested()
+                root.filterViewModel.sector.quickSector = sectorSelector.currentText;
+                root.applyRequested();
             }
             delegate: ItemDelegate {
                 required property string modelData
@@ -44,8 +44,8 @@ FilterCard {
             text: "Excluir SCA/SES/STE"
             checked: root.filterViewModel.sector.excludeScaSesSte
             onToggled: {
-                root.filterViewModel.sector.excludeScaSesSte = checked
-                root.applyRequested()
+                root.filterViewModel.sector.excludeScaSesSte = checked;
+                root.applyRequested();
             }
         }
         AppCheckBox {
@@ -53,8 +53,8 @@ FilterCard {
             text: "Reprogramadas"
             checked: root.derivation.onlyReprogrammed
             onToggled: {
-                root.derivation.onlyReprogrammed = checked
-                root.applyRequested()
+                root.derivation.onlyReprogrammed = checked;
+                root.applyRequested();
             }
         }
 
@@ -64,12 +64,10 @@ FilterCard {
         AppComboBox {
             Layout.fillWidth: true
             model: root.derivation.derivationModeOptions
-            currentIndex: Math.max(
-                0,
-                root.derivation.derivationModeOptions.indexOf(root.derivation.derivationMode))
+            currentIndex: Math.max(0, root.derivation.derivationModeOptions.indexOf(root.derivation.derivationMode))
             onActivated: {
-                root.derivation.derivationMode = currentText
-                root.applyRequested()
+                root.derivation.derivationMode = currentText;
+                root.applyRequested();
             }
         }
         FilterFieldLabel {

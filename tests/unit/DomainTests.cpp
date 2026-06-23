@@ -5,7 +5,9 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <memory>
+#include <ranges>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -21,6 +23,25 @@ TEST_CASE("column catalog exposes visible and general-search contracts") {
     REQUIRE(ssa::domain::ColumnCatalog::contains("numero_ssa"));
     REQUIRE(ssa::domain::ColumnCatalog::contains("situacao"));
     REQUIRE_FALSE(ssa::domain::ColumnCatalog::contains("unknown_column"));
+}
+
+TEST_CASE("column catalog exposes expanded advanced filter fields") {
+    const auto keys = ssa::domain::ColumnCatalog::advancedFilterKeys();
+    const auto containsKey = [&keys](const std::string_view key) {
+        return std::ranges::find(keys, key) != keys.end();
+    };
+
+    REQUIRE(keys.size() >= 18);
+    REQUIRE(containsKey("setor_emissor"));
+    REQUIRE(containsKey("setor_executor"));
+    REQUIRE(containsKey("solicitante"));
+    REQUIRE(containsKey("responsavel_programacao"));
+    REQUIRE(containsKey("responsavel_execucao"));
+    REQUIRE(containsKey("status_execucao_prazo"));
+    REQUIRE(containsKey("situacao_da_parcial"));
+    for (const auto key : keys) {
+        REQUIRE(ssa::domain::ColumnCatalog::contains(key));
+    }
 }
 
 TEST_CASE("column value priority policy recognizes SMIN and SMME prefixes") {

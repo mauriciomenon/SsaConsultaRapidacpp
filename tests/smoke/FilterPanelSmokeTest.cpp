@@ -6,7 +6,9 @@
 
 #include <QtTest>
 
+#include <iterator>
 #include <mutex>
+#include <ranges>
 #include <vector>
 
 namespace {
@@ -84,6 +86,31 @@ namespace {
                                       1000);
             QVERIFY(filters.columnValueOptionsFor("setor_executor").contains("MEG2"));
             QCOMPARE(filters.columnKey(), QString("situacao"));
+        }
+
+        void advanced_text_rows_cover_expanded_filter_fields() {
+            auto repository = std::make_shared<FilterPanelRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::FilterPanelViewModel filters(service);
+            auto* advanced =
+                qobject_cast<ssa::presentation::FilterPanelAdvancedViewModel*>(filters.advanced());
+            QVERIFY(advanced != nullptr);
+            auto* text =
+                qobject_cast<ssa::presentation::AdvancedTextFilterViewModel*>(advanced->text());
+            QVERIFY(text != nullptr);
+
+            QStringList keys;
+            const auto rows = text->rows();
+            std::ranges::transform(rows, std::back_inserter(keys), [](const QVariant& row) {
+                return row.toMap().value("key").toString();
+            });
+
+            QVERIFY(keys.size() >= 18);
+            QVERIFY(keys.contains("setor_emissor"));
+            QVERIFY(keys.contains("setor_executor"));
+            QVERIFY(keys.contains("responsavel_execucao"));
+            QVERIFY(keys.contains("status_execucao_prazo"));
+            QVERIFY(keys.contains("situacao_da_parcial"));
         }
 
         void quick_sector_distinct_request_ignores_column_filters() {

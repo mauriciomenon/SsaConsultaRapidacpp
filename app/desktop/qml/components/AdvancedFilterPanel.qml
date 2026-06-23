@@ -9,7 +9,7 @@ Rectangle {
     id: root
     required property var filterViewModel
     required property var advanced
-    signal applyRequested()
+    signal applyRequested
 
     color: Theme.panel
     border.color: Theme.border

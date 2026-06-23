@@ -8,7 +8,7 @@ FilterCard {
     id: root
     required property var week
     required property var advanced
-    signal applyRequested()
+    signal applyRequested
 
     Layout.fillWidth: true
     Layout.preferredHeight: 126
