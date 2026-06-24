@@ -54,8 +54,6 @@ namespace ssa::presentation {
 
         [[nodiscard]] QString quickSector() const;
         void setQuickSector(const QString& value);
-        [[nodiscard]] bool excludeScaSesSte() const;
-        void setExcludeScaSesSte(bool value);
         [[nodiscard]] QStringList filterColumnKeys() const;
         [[nodiscard]] QString columnKey() const;
         void setColumnKey(const QString& value);

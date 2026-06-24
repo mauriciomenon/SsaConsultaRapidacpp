@@ -118,14 +118,6 @@ namespace ssa::presentation {
         sector_.setQuickSector(value);
     }
 
-    bool FilterPanelViewModel::excludeScaSesSte() const {
-        return sector_.excludeScaSesSte();
-    }
-
-    void FilterPanelViewModel::setExcludeScaSesSte(const bool value) {
-        sector_.setExcludeScaSesSte(value);
-    }
-
     QStringList FilterPanelViewModel::filterColumnKeys() const {
         return filterColumnKeys_;
     }

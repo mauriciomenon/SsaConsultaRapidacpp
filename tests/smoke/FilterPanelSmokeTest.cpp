@@ -263,7 +263,7 @@ namespace {
             sector->setExcludeScaSesSte(false);
 
             QCOMPARE(filters.quickSector(), QString("MEG2"));
-            QCOMPARE(filters.excludeScaSesSte(), false);
+            QCOMPARE(sector->excludeScaSesSte(), false);
             QCOMPARE(sector->quickSector(), QString("MEG2"));
             QCOMPARE(sector->excludeScaSesSte(), false);
         }

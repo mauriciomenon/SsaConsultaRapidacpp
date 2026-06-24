@@ -25,7 +25,8 @@
 
 - General search keeps the Python semantics documented in `query-contract.md`.
 - Closed statuses `SCA`, `SES`, and `STE` can be excluded.
-- Resetting filters restores the default `SCA/SES/STE` exclusion.
+- Resetting filters restores the default, which shows `SCA`, `SES`, and `STE` (the
+  `SCA/SES/STE` exclusion checkbox starts unchecked).
 - Advanced filters are query parameters, not QML logic:
   week/year use one of `semana_cadastro`, `semana_programada`, or `semana_executada`;
   derivation mode is `all`, `root`, or `derived`; reprogrammed-only checks reprogramming

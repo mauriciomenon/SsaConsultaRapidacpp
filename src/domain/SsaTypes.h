@@ -176,7 +176,7 @@ namespace ssa::domain {
         std::vector<FilterTerm> generalTerms;
         std::map<std::string, std::vector<FilterTerm>> columnTerms;
         std::optional<std::string> quickSector;
-        bool excludeScaSesSte{true};
+        bool excludeScaSesSte{kDefaultExcludeScaSesSte};
         AdvancedFilterSpec advanced;
     };
 
@@ -298,7 +298,7 @@ namespace ssa::domain {
         std::string searchText;
         std::map<std::string, std::string> columnFilters;
         std::string quickSector;
-        bool excludeScaSesSte{true};
+        bool excludeScaSesSte{kDefaultExcludeScaSesSte};
         AdvancedFilterSpec advancedFilters;
         SortSpec sort;
         std::vector<std::string> visibleColumns;

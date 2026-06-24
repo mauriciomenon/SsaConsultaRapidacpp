@@ -913,7 +913,10 @@ namespace {
             QCOMPARE(week->issueYearFilter(), QString(""));
             QCOMPARE(derivation->onlyReprogrammed(), false);
             QCOMPARE(filters.quickSector(), QString("MEG2"));
-            QCOMPARE(filters.excludeScaSesSte(), false);
+            QCOMPARE(qobject_cast<ssa::presentation::FilterPanelSectorViewModel*>(
+                         filters.sector())
+                         ->excludeScaSesSte(),
+                     false);
         }
 
         void reset_filters_restores_default_sca_ses_ste_exclusion() {
@@ -925,7 +928,10 @@ namespace {
             filters.resetFilters();
 
             QCOMPARE(filters.columnKey(), QString("situacao"));
-            QCOMPARE(filters.excludeScaSesSte(), false);
+            QCOMPARE(qobject_cast<ssa::presentation::FilterPanelSectorViewModel*>(
+                         filters.sector())
+                         ->excludeScaSesSte(),
+                     false);
             QCOMPARE(filters.activeFilters().contains("sem SCA/SES/STE"), false);
         }
 

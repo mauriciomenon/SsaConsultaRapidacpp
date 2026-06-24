@@ -27,7 +27,7 @@ namespace ssa::ports {
         std::string executionWeekStart;
         std::string executionWeekEnd;
         std::string derivationMode{"all"};
-        bool excludeScaSesSte{true};
+        bool excludeScaSesSte{domain::kDefaultExcludeScaSesSte};
         bool onlyReprogrammed{false};
     };
 

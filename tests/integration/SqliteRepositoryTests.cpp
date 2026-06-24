@@ -130,9 +130,10 @@ TEST_CASE_METHOD(SqliteRepositoryFixture,
     }
 }
 
-TEST_CASE_METHOD(SqliteRepositoryFixture, "sqlite repository excludes SCA SES STE by default") {
+TEST_CASE_METHOD(SqliteRepositoryFixture, "sqlite repository excludes SCA SES STE when requested") {
     ssa::domain::SsaPageRequest request;
     request.pageSize = 10;
+    request.excludeScaSesSte = true;
 
     const auto page = repository.page(request);
 
