@@ -125,8 +125,14 @@ mkdir -p "${artifact_root}"
 cp -R "${app_bundle}" "${artifact_root}/"
 bundle_copy="${artifact_root}/ssa_consulta_rapida.app"
 
+qml_module_dir="${build_dir}/SsaConsultaRapida"
+if [[ ! -d "${qml_module_dir}" ]]; then
+  echo "Generated QML module not found: ${qml_module_dir}" >&2
+  exit 1
+fi
+
 if macdeploy_tool="$(package_resolve_macdeployqt)"; then
-  if "${macdeploy_tool}" "${bundle_copy}"; then
+  if "${macdeploy_tool}" "${bundle_copy}" -qmldir="${qml_module_dir}"; then
     :
   else
     echo "macdeployqt returned non-zero. Generated bundle may not be self sufficient." >&2

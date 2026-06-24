@@ -116,7 +116,7 @@ namespace {
             const auto distinctRequests = repository->distinctRequests();
             QCOMPARE(QString::fromStdString(distinctRequests.back().columnKey),
                      QString("setor_executor"));
-            QCOMPARE(distinctRequests.back().filter.excludeScaSesSte, true);
+            QCOMPARE(distinctRequests.back().filter.excludeScaSesSte, false);
         }
 
         void advanced_value_options_load_for_requested_column_without_changing_column_filter() {
@@ -248,7 +248,7 @@ namespace {
 
             QCOMPARE(QString::fromStdString(request.columnKey), QString("setor_executor"));
             QVERIFY(request.filter.columnTerms.empty());
-            QCOMPARE(request.filter.excludeScaSesSte, true);
+            QCOMPARE(request.filter.excludeScaSesSte, false);
         }
 
         void sector_submodel_owns_sector_ui_state() {

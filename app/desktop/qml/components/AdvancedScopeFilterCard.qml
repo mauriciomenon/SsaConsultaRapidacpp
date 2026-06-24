@@ -57,15 +57,6 @@ FilterCard {
         }
         AppCheckBox {
             Layout.fillWidth: true
-            text: "Excluir SCA/SES/STE"
-            checked: root.filterViewModel.sector.excludeScaSesSte
-            onToggled: {
-                root.filterViewModel.sector.excludeScaSesSte = checked;
-                root.applyRequested();
-            }
-        }
-        AppCheckBox {
-            Layout.fillWidth: true
             text: "Reprogramadas"
             checked: root.derivation.onlyReprogrammed
             onToggled: {

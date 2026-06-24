@@ -14,7 +14,8 @@ Rectangle {
     readonly property string trimmedSearchText: searchText.trim()
     readonly property bool hasSearch: trimmedSearchText.length > 0
     readonly property bool hasFilterEntries: filterViewModel.activeFilterEntries.length > 0
-    readonly property bool compact: filterViewModel.activeFilterEntries.length + (hasSearch ? 1 : 0) >= 2
+    readonly property bool hasActiveExclusion: filterViewModel.sector.excludeScaSesSte
+    readonly property bool compact: filterViewModel.activeFilterEntries.length + (hasSearch ? 1 : 0) + (hasActiveExclusion ? 1 : 0) >= 2
     readonly property int tagTextSize: compact ? 11 : 12
 
     color: Theme.panelRaised
@@ -29,7 +30,7 @@ Rectangle {
         spacing: Theme.gap
 
         Label {
-            visible: !root.hasSearch && !root.hasFilterEntries
+            visible: !root.hasSearch && !root.hasFilterEntries && !root.hasActiveExclusion
             Layout.fillWidth: true
             text: "Sem filtros manuais"
             color: Theme.mutedText
@@ -39,7 +40,7 @@ Rectangle {
         }
 
         ScrollView {
-            visible: root.hasSearch || root.hasFilterEntries
+            visible: root.hasSearch || root.hasFilterEntries || root.hasActiveExclusion
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true
@@ -59,6 +60,15 @@ Rectangle {
                     compact: root.compact
                     tagTextSize: root.tagTextSize
                     onRemoveRequested: root.clearSearchRequested()
+                }
+
+                SummaryTag {
+                    visible: root.hasActiveExclusion
+                    text: "Excluindo SCA/SES/STE"
+                    tooltipText: text
+                    compact: root.compact
+                    tagTextSize: root.tagTextSize
+                    onRemoveRequested: root.filterViewModel.sector.excludeScaSesSte = false
                 }
 
                 Repeater {

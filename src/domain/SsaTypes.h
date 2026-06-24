@@ -22,7 +22,7 @@ namespace ssa::domain {
     inline constexpr int kDefaultPageSize = 50;
     inline constexpr std::string_view kSsaNumberColumnKey = "numero_ssa";
     inline constexpr std::size_t kMaxSafePatternLength = 128;
-    inline constexpr bool kDefaultExcludeScaSesSte = true;
+    inline constexpr bool kDefaultExcludeScaSesSte = false;
     inline constexpr int kFirstIsoWeek = 1;
     inline constexpr int kLastIsoWeek = 53;
 

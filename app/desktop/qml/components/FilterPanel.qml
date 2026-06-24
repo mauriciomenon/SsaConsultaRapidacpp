@@ -60,6 +60,20 @@ Rectangle {
             }
         }
 
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Theme.gap
+
+            AppCheckBox {
+                text: "Excluir SCA/SES/STE"
+                checked: root.filterViewModel.sector.excludeScaSesSte
+                onToggled: {
+                    root.filterViewModel.sector.excludeScaSesSte = checked;
+                    root.applyRequested();
+                }
+            }
+        }
+
         StackLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
