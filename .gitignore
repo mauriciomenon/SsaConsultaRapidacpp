@@ -18,3 +18,4 @@ config/ssa_cpp_preferences.json
 .idea/
 .antigravitycli/
 .clawpatch/
+docs_entrada/
