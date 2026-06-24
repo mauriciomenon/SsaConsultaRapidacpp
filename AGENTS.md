@@ -81,12 +81,40 @@ Sem acentos/cedilha/emojis/emdash em codigo, chat e mensagens tecnicas.
 - `trufflehog filesystem .`
 - Verificar casos de regressao, concorrencia, perda de desempenho e locks.
 
+## Procedimento de build, limpeza e distribuicao (canonico)
+
+Procedimento oficial do projeto. Seguir estes scripts/presets; NAO inventar
+diretorios de build ad hoc (ex: build-test) nem chamar executaveis na mao.
+Qt6 fica em `~/Qt/6.11.0/macos`; exportar antes dos comandos se precisar.
+
+1. Limpar (presets `dev` e `release`; nao toca em `dist/`, `data/`, config):
+   `./scripts/make_clean`
+2. Build + testes (preset `dev`, Debug - fluxo padrao de desenvolvimento):
+   `export SSA_CPP_PRESET=dev && ./scripts/build-macos.sh`
+   `ctest --preset dev --output-on-failure`
+3. Executaveis ficam em `build/dev/`:
+   `build/dev/ssa_consulta_rapida.app/Contents/MacOS/ssa_consulta_rapida`
+   `build/dev/ssa_consulta_rapida_cli`
+4. Distribuicao (preset `release` do zero + ctest + macdeployqt + zip/dmg):
+   `./scripts/package-macos.sh`
+   Gera `dist/macos/<arch>/ssa_consulta_rapida-<version>-<arch>-macos.{zip,dmg}`
+   e symlinks `latest*`. Versao vem de `CMakeLists.txt` (project VERSION).
+5. Presets CMake oficiais (CMakePresets.json): `dev` (`build/dev`) e
+   `release` (`build/release`). NAO existe outro preset.
+
+Notas:
+- Para screenshots offscreen, `QT_QPA_PLATFORM=offscreen` no ambiente.
+- make_clean roda `cmake --build --preset <p> --target clean`, nao apaga
+  pastas de build. Para reconstrucao total, o proprio build/package recria.
+- build/release nao e reconstruido por `build-macos.sh` (so dev). Para
+  release+dist, usar `package-macos.sh`.
+
 ## Regras de conduta (criticas)
 
 - Sempre apresentar plano, sem excecoes.
 - Sempre apresentar resumo tecnico apos uma rodada e sempre mostrar proxima atividade.
-- NUNCA criar branch novo nem PR sem autorizacao explicita (nao inferir por palavras genericas).
-- Nao criar worktree/pasta sem aprovacao.
+- NUNCA criar branch novo nem PR sem autorizacao explicita E EXCLUSIVA para essa acao (nao inferir por palavras genericas e nem por aprovacao de plano/pedido maior). A pergunta e a aprovacao devem ser dedicadas so a criacao da branch/worktree. Trabalhar direto no branch atual por default.
+- Nao criar worktree/pasta sem aprovacao dedicada (mesma regra acima: exclusiva e explicita).
 - NUNCA abrir PR sem pedido explicito.
 - NUNCA fechar PR sem pedido explicito. Cuidado com operacoes de git que produzem o mesmo efeito indiretamente (proibidos).
 - NUNCA desfazer alteracoes por simples pedidos de esclarecimento. Seguir protocolo.
