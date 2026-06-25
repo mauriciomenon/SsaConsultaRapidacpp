@@ -1,0 +1,198 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Versao a empacotar (deixa vazio para ler do CMakeLists.txt)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  # ---------------------------------------------------------------
+  # macOS: arm64 e amd64. Entregavel: .dmg + .zip com .app bundle.
+  # ---------------------------------------------------------------
+  macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            arch: arm64
+          - runner: macos-13
+            arch: x86_64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Qt + deps
+        run: brew install qt cmake ninja sqlite gitleaks
+      - name: Package macOS (.app/.dmg/.zip)
+        env:
+          CMAKE_PREFIX_PATH: $(brew --prefix qt)
+          PATH: $(brew --prefix qt)/bin:$PATH
+        run: |
+          export CMAKE_PREFIX_PATH="$(brew --prefix qt)"
+          export PATH="$(brew --prefix qt)/bin:$PATH"
+          ./scripts/package-macos.sh --skip-tests
+      - name: Normalize arch folder to arm64/amd64
+        run: |
+          src="dist/macos/${{ matrix.arch }}"
+          dst="dist/macos/${{ matrix.arch == 'x86_64' && 'amd64' || 'arm64' }}"
+          if [[ "${src}" != "${dst}" && -d "${src}" ]]; then
+            mkdir -p "$(dirname "${dst}")"
+            rm -rf "${dst}"
+            mv "${src}" "${dst}"
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-macos-${{ matrix.arch == 'x86_64' && 'amd64' || 'arm64' }}
+          path: |
+            dist/macos/**/*.dmg
+            dist/macos/**/*.zip
+
+  # ---------------------------------------------------------------
+  # Windows: amd64 e arm64. Entregavel: .zip portatil + .exe (NSIS).
+  # ---------------------------------------------------------------
+  windows:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            artifact: amd64
+          - arch: arm64
+            artifact: arm64
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Developer PowerShell for VS 2022
+        uses: ilammy/msvc-dev-shell@v1
+        with:
+          arch: ${{ matrix.arch }}
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.8.3"
+          arch: ${{ matrix.arch == 'x64' && 'win64_msvc2022_64' || 'win64_msvc2022_arm64' }}
+          cache: true
+      - name: Cache vcpkg
+        uses: actions/cache@v4
+        with:
+          path: |
+            C:\Users\runneradmin\.cache\vcpkg
+            C:\vcpkg\installed
+          key: ${{ runner.os }}-vcpkg-sqlite3-${{ matrix.arch }}
+      - name: Install SQLite via vcpkg
+        run: vcpkg install sqlite3:${{ matrix.arch }}-windows
+      - name: Package Windows (.zip/.exe)
+        env:
+          CMAKE_PREFIX_PATH: ${{ env.Qt6_DIR }}
+          CMAKE_TOOLCHAIN_FILE: ${{ env.VCPKG_INSTALLATION_ROOT }}/scripts/buildsystems/vcpkg.cmake
+        run: |
+          .\scripts\package-windows.ps1 -SkipTests -Arch ${{ matrix.artifact }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-windows-${{ matrix.artifact }}
+          path: |
+            dist/windows/**/*.zip
+            dist/windows/**/*-installer.exe
+
+  # ---------------------------------------------------------------
+  # Debian/Ubuntu: amd64 e arm64. Entregavel: .deb
+  # ---------------------------------------------------------------
+  debian:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.8.3"
+          cache: true
+      - name: Install deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build libsqlite3-dev libgl1-mesa-dev \
+            sqlite3 dpkg-dev fakeroot
+      - name: Package Debian (.deb)
+        run: ./scripts/package-debian.sh --skip-tests --arch "${{ matrix.arch }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-debian-${{ matrix.arch }}
+          path: dist/linux/${{ matrix.arch }}/*.deb
+
+  # ---------------------------------------------------------------
+  # Arch/Artix: amd64 e arm64. Entregavel: .pkg.tar.zst
+  # ---------------------------------------------------------------
+  arch:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: x86_64
+            container: archlinux:latest
+          - runner: ubuntu-24.04-arm
+            arch: aarch64
+            container: archlinuxarm:latest
+    runs-on: ${{ matrix.runner }}
+    container: ${{ matrix.container }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install deps (Arch)
+        run: |
+          pacman -Syu --noconfirm base-devel cmake ninja qt6-base sqlite zstd
+      - name: Package Arch (.pkg.tar.zst)
+        run: ./scripts/package-arch.sh --skip-tests --arch "${{ matrix.arch }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-arch-${{ matrix.arch }}
+          path: dist/linux/${{ matrix.arch }}/*.pkg.tar.zst
+
+  # ---------------------------------------------------------------
+  # Release: reune todos os artifacts e publica no GitHub Release.
+  # ---------------------------------------------------------------
+  publish:
+    needs: [macos, windows, debian, arch]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read version
+        id: ver
+        run: |
+          v="${{ github.event.inputs.version }}"
+          if [[ -z "${v}" ]]; then
+            v="$(sed -nE 's/^[[:space:]]*project\(SSAConsultaRapidaCpp[[:space:]]+VERSION[[:space:]]+([0-9]+\.[0-9]+\.[0-9]+).*$/\1/p' CMakeLists.txt | head -n1)"
+          fi
+          echo "version=${v}" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+      - name: Collect release files
+        run: |
+          mkdir -p staging
+          find release-assets -type f \( \
+            -name '*.dmg' -o -name '*.zip' -o -name '*.deb' -o \
+            -name '*.pkg.tar.zst' -o -name '*-installer.exe' \) \
+            -exec cp {} staging/ \;
+          ls -la staging/
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.ver.outputs.version }}
+          name: SSA Consulta Rapida ${{ steps.ver.outputs.version }}
+          generate_release_notes: true
+          files: staging/*
