@@ -105,6 +105,21 @@ if ! command -v zstd >/dev/null 2>&1; then
   exit 1
 fi
 
+# makepkg se recusa a rodar como root. Se somos root, re-executa este script
+# como usuario builder nao-root, preservando o diretorio e os argumentos.
+if [[ "$(id -u)" -eq 0 ]]; then
+  if ! id builder >/dev/null 2>&1; then
+    echo "Creating non-root builder user for makepkg." >&2
+    useradd -m -s /bin/bash builder
+  fi
+  chown -R builder:builder "${repo_root}"
+  quoted_args=()
+  for arg in "$@"; do
+    quoted_args+=("$(printf '%q' "${arg}")")
+  done
+  exec su builder -c "cd $(printf '%q' "${repo_root}") && bash $(printf '%q' "${BASH_SOURCE[0]}") ${quoted_args[*]-}"
+fi
+
 build_dir="${repo_root}/build/${preset}"
 artifact_name="ssa_consulta_rapida-${version}-${arch}-linux"
 artifact_root="${dist_root}/${artifact_name}"

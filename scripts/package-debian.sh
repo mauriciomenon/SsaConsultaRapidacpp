@@ -128,8 +128,7 @@ mkdir -p "${install_prefix}/lib/ssa_consulta_rapida/bin" \
          "${install_prefix}/lib/ssa_consulta_rapida/lib" \
          "${install_prefix}/bin" \
          "${install_prefix}/share/applications" \
-         "${install_prefix}/share/doc/ssa-consulta-rapida" \
-         "${install_prefix}/share/icons/hicolor/256x256/apps"
+         "${install_prefix}/share/doc/ssa-consulta-rapida"
 
 cp "${binary}" "${install_prefix}/lib/ssa_consulta_rapida/bin/ssa_consulta_rapida"
 chmod 0755 "${install_prefix}/lib/ssa_consulta_rapida/bin/ssa_consulta_rapida"
@@ -157,13 +156,9 @@ Type=Application
 Name=SSA Consulta Rapida
 Comment=Consulta rapida de SSAs
 Exec=ssa_consulta_rapida
-Icon=ssa-consulta-rapida
 Categories=Utility;Office;
 Terminal=false
 EOF_DESKTOP
-
-# Minimal placeholder icon so the desktop entry resolves.
-printf '\x89PNG\r\n\x1a\n' > "${install_prefix}/share/icons/hicolor/256x256/apps/ssa-consulta-rapida.png"
 
 cat > "${install_prefix}/share/doc/ssa-consulta-rapida/copyright" <<EOF_COPYRIGHT
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
@@ -184,9 +179,9 @@ License: MIT
  all copies or substantial portions of the Software.
 EOF_COPYRIGHT
 
-cat > "${install_prefix}/share/doc/ssa-consulta-rapida/changelog.Debian.gz" <<EOF_CHANGELOG
-placeholder changelog for ssa-consulta-rapida ${version}; see upstream releases.
-EOF_CHANGELOG
+printf 'ssa-consulta-rapida (%s) stable; urgency=low\n\n  * Release %s.\n\n -- Mauricio Menon <mauriciomenon@users.noreply.github.com>  %s\n' \
+  "${version}" "${version}" "$(date -R)" \
+  | gzip -n > "${install_prefix}/share/doc/ssa-consulta-rapida/changelog.Debian.gz"
 
 maintainer="Mauricio Menon <mauriciomenon@users.noreply.github.com>"
 installed_size_kb="$(du -sk "${install_prefix}" | awk '{print $1}')"

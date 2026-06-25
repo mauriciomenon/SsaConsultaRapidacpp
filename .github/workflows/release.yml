@@ -33,9 +33,6 @@ jobs:
       - name: Install Qt + deps
         run: brew install qt cmake ninja sqlite gitleaks
       - name: Package macOS (.app/.dmg/.zip)
-        env:
-          CMAKE_PREFIX_PATH: $(brew --prefix qt)
-          PATH: $(brew --prefix qt)/bin:$PATH
         run: |
           export CMAKE_PREFIX_PATH="$(brew --prefix qt)"
           export PATH="$(brew --prefix qt)/bin:$PATH"
@@ -135,6 +132,7 @@ jobs:
 
   # ---------------------------------------------------------------
   # Arch/Artix: amd64 e arm64. Entregavel: .pkg.tar.zst
+  # makepkg recusa root, por isso rodamos via usuario builder.
   # ---------------------------------------------------------------
   arch:
     strategy:
@@ -146,16 +144,21 @@ jobs:
             container: archlinux:latest
           - runner: ubuntu-24.04-arm
             arch: aarch64
-            container: archlinuxarm:latest
+            container: joseluis/archlinux-arm64:latest
     runs-on: ${{ matrix.runner }}
     container: ${{ matrix.container }}
     steps:
       - uses: actions/checkout@v4
-      - name: Install deps (Arch)
+      - name: Install deps + builder user (Arch)
         run: |
-          pacman -Syu --noconfirm base-devel cmake ninja qt6-base sqlite zstd
+          pacman -Syu --noconfirm base-devel cmake ninja qt6-base sqlite zstd sudo
+          # makepkg se recusa a rodar como root.
+          id builder >/dev/null 2>&1 || useradd -m -G wheel -s /bin/bash builder
+          echo "builder ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/builder
+          chown -R builder:builder "${GITHUB_WORKSPACE:-$(pwd)}"
       - name: Package Arch (.pkg.tar.zst)
-        run: ./scripts/package-arch.sh --skip-tests --arch "${{ matrix.arch }}"
+        run: |
+          su builder -c "./scripts/package-arch.sh --skip-tests --arch '${{ matrix.arch }}'"
       - uses: actions/upload-artifact@v4
         with:
           name: release-arch-${{ matrix.arch }}
