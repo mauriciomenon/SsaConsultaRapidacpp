@@ -33,6 +33,7 @@ namespace ssa::presentation {
         [[nodiscard]] int pageNumber() const;
         [[nodiscard]] int pageCount() const;
         [[nodiscard]] qlonglong totalRows() const;
+        [[nodiscard]] qlonglong totalRowsAll() const;
         [[nodiscard]] int pageSize() const;
         void setPageSize(int value);
         [[nodiscard]] QString sortColumnKey() const;

@@ -66,9 +66,9 @@ Rectangle {
 
             AppCheckBox {
                 text: "Excluir SCA/SES/STE"
-                checked: root.filterViewModel.sector.excludeScaSesSte
+                checked: root.filterViewModel.excludeScaSesSte
                 onToggled: {
-                    root.filterViewModel.sector.excludeScaSesSte = checked;
+                    root.filterViewModel.excludeScaSesSte = checked;
                     root.applyRequested();
                 }
             }

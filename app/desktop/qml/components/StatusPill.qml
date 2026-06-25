@@ -30,13 +30,13 @@ Rectangle {
             text: root.status.error.length > 0 ? root.status.error : root.status.message
             color: root.status.error.length > 0 ? Theme.danger : Theme.text
             font.pixelSize: 12
-            font.bold: root.status.error.length > 0
+            font.bold: false
             elide: Text.ElideRight
         }
 
         Label {
-            visible: root.browse !== null && root.browse.totalRows > 0
-            text: root.browse.totalRows + " linhas"
+            visible: root.browse !== null
+            text: root.browse.totalRows + " / " + root.browse.totalRowsAll + " SSAs"
             color: Theme.mutedText
             font.pixelSize: 11
         }

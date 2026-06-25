@@ -25,30 +25,6 @@ ApplicationWindow {
         color: Theme.window
     }
 
-    Action {
-        id: openInputFolderAction
-        text: "Pasta entrada"
-        onTriggered: root.vm.actions.commands.openInputFolder()
-    }
-
-    Action {
-        id: openProcessedFolderAction
-        text: "Processados"
-        onTriggered: root.vm.actions.commands.openProcessedFolder()
-    }
-
-    Action {
-        id: openRedundantFolderAction
-        text: "Redundantes"
-        onTriggered: root.vm.actions.commands.openRedundantFolder()
-    }
-
-    Action {
-        id: openInstallationGuideAction
-        text: "Guia instalacao"
-        onTriggered: root.vm.actions.commands.openInstallationGuide()
-    }
-
     menuBar: MenuBar {
         Menu {
             title: "Arquivo"
@@ -106,23 +82,6 @@ ApplicationWindow {
                 text: "Abrir SSA selecionada"
                 enabled: root.vm.browse.details.selectedSsaNumber.length > 0
                 onTriggered: root.vm.selectionFlow.openSelectedSsa()
-            }
-        }
-
-        Menu {
-            title: "Pastas"
-
-            MenuItem {
-                action: openInputFolderAction
-            }
-            MenuItem {
-                action: openProcessedFolderAction
-            }
-            MenuItem {
-                action: openRedundantFolderAction
-            }
-            MenuItem {
-                action: openInstallationGuideAction
             }
         }
 
@@ -238,39 +197,16 @@ ApplicationWindow {
                     onClicked: root.vm.browse.load()
                 }
                 ActionButton {
-                    text: "Reescanear"
+                    text: "Importar XLS"
                     enabled: !root.vm.actions.workflows.running
                     implicitWidth: 112
-                    onClicked: root.vm.actions.workflows.rescanIncremental()
-                }
-                ActionButton {
-                    id: openButton
-                    text: "Pastas"
-                    onClicked: openMenu.open()
-
-                    Menu {
-                        id: openMenu
-                        y: openButton.height
-
-                        MenuItem {
-                            action: openInputFolderAction
-                        }
-                        MenuItem {
-                            action: openProcessedFolderAction
-                        }
-                        MenuItem {
-                            action: openRedundantFolderAction
-                        }
-                        MenuItem {
-                            action: openInstallationGuideAction
-                        }
-                    }
+                    onClicked: fileDialogs.openImportData()
                 }
                 Item { Layout.fillWidth: true }
                 Label {
                     Layout.preferredWidth: 220
                     Layout.preferredHeight: Theme.controlHeight
-                    text: root.vm.actions.currentWeek.label
+                    text: root.vm.actions.currentWeek.value
                     color: Theme.accent
                     font.pixelSize: 16
                     font.bold: true
@@ -285,10 +221,10 @@ ApplicationWindow {
                 Label {
                     Layout.preferredWidth: 250
                     Layout.preferredHeight: Theme.controlHeight
-                    text: "Status: " + root.vm.browse.totalRows + " SSAs"
+                    text: root.vm.browse.totalRows + " / " + root.vm.browse.totalRowsAll + " SSAs"
                     color: Theme.accent
                     font.pixelSize: 15
-                    font.bold: true
+                    font.bold: false
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
                     background: Rectangle {
@@ -305,7 +241,6 @@ ApplicationWindow {
                           : root.vm.browse.status.message
                     color: root.vm.browse.status.error.length > 0 ? Theme.dangerStrong : Theme.accent
                     font.pixelSize: 14
-                    font.bold: true
                     horizontalAlignment: Text.AlignLeft
                     verticalAlignment: Text.AlignVCenter
                     leftPadding: 12
@@ -316,13 +251,7 @@ ApplicationWindow {
                         radius: Theme.radius
                     }
                 }
-                ActionButton { text: "Tema"; onClicked: preferencesDialog.open() }
-                ActionButton {
-                    id: columnSelectorButton
-                    text: "Colunas"
-                    implicitWidth: 104
-                    onClicked: columnSelectorPopup.open()
-                }
+                ActionButton { text: "Preferencias"; onClicked: preferencesDialog.open() }
                 ActionButton {
                     text: "Cancelar"
                     enabled: root.vm.browse.status.loading
@@ -339,7 +268,6 @@ ApplicationWindow {
             onSaveFiltersRequested: root.vm.preferenceFlow.savePreferences()
             onExportFiltersRequested: fileDialogs.openExportFilters()
             onImportFiltersRequested: fileDialogs.openImportFilters()
-            onConfigureColumnsRequested: columnSelectorPopup.open()
         }
 
         SsaTable {

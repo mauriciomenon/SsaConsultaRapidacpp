@@ -16,6 +16,7 @@ namespace ssa::presentation {
         [[nodiscard]] int pageNumber() const;
         [[nodiscard]] int pageCount() const;
         [[nodiscard]] qlonglong totalRows() const;
+        [[nodiscard]] qlonglong totalRowsAll() const;
         [[nodiscard]] int pageSize() const;
         [[nodiscard]] QString sortColumnKey() const;
         [[nodiscard]] bool sortAscending() const;
@@ -26,7 +27,7 @@ namespace ssa::presentation {
         void resetPage();
         bool nextPage();
         bool previousPage();
-        void applyPageResult(const domain::SsaPageResult& result);
+        void applyPageResult(const domain::SsaPageResult& result, const std::size_t totalRowsAll);
         void sortByColumnKey(const std::string& columnKey);
         void applyColumnSettings(std::vector<std::string> visibleColumns,
                                  std::map<std::string, int> columnWidths);
@@ -45,6 +46,7 @@ namespace ssa::presentation {
         std::size_t pageIndex_{0};
         std::size_t pageSize_{domain::kDefaultPageSize};
         std::size_t totalRows_{0};
+        std::size_t totalRowsAll_{0};
     };
 
 } // namespace ssa::presentation

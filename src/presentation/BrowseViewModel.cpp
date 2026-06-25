@@ -76,6 +76,10 @@ namespace ssa::presentation {
         return orchestrator_.totalRows();
     }
 
+    qlonglong BrowseViewModel::totalRowsAll() const {
+        return orchestrator_.totalRowsAll();
+    }
+
     int BrowseViewModel::pageSize() const {
         return orchestrator_.pageSize();
     }

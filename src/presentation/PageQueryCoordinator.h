@@ -18,6 +18,7 @@ namespace ssa::presentation {
 
     struct PageQueryResult {
         domain::SsaPageResult page;
+        std::size_t totalRowsAll{0};
         std::vector<SsaDisplayColumn> displayColumns;
         SsaTableDisplayValues displayValues;
         bool canceled{false};
@@ -57,6 +58,8 @@ namespace ssa::presentation {
         bool activeCanceled_{false};
         bool explicitCancelRequested_{false};
         bool finishing_{false};
+        bool totalRowsAllKnown_{false};
+        std::size_t totalRowsAll_{0};
     };
 
 } // namespace ssa::presentation

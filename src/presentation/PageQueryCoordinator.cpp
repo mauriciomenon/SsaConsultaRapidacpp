@@ -72,23 +72,36 @@ namespace ssa::presentation {
         const auto queryService = queryService_;
         const auto cancelToken = activeCancelToken_;
         auto displayColumns = columnCatalog_.resolveAll(request.visibleColumns);
-        watcher_.setFuture(QtConcurrent::run([queryService, request = std::move(request),
-                                              displayColumns = std::move(displayColumns),
-                                              cancelToken]() mutable {
-            if (!queryService) {
-                throw std::runtime_error("query service no longer available");
-            }
-            auto page = queryService->search(request);
-            if (cancelToken && cancelToken->load(std::memory_order_relaxed)) {
-                return PageQueryResult{domain::SsaPageResult{}, {}, SsaTableDisplayValues{}, true};
-            }
-            auto displayValues = SsaTablePageFormatter::format(page, displayColumns, cancelToken);
-            if (!displayValues) {
-                return PageQueryResult{domain::SsaPageResult{}, {}, SsaTableDisplayValues{}, true};
-            }
-            return PageQueryResult{std::move(page), std::move(displayColumns),
-                                   std::move(*displayValues), false};
-        }));
+        const bool needTotalRowsAll = !totalRowsAllKnown_;
+        const auto cachedTotalRowsAll = totalRowsAll_;
+        watcher_.setFuture(QtConcurrent::run(
+            [queryService, request = std::move(request), displayColumns = std::move(displayColumns),
+             cancelToken, needTotalRowsAll, cachedTotalRowsAll]() mutable {
+                if (!queryService) {
+                    throw std::runtime_error("query service no longer available");
+                }
+                auto totalRowsRequest = domain::SsaPageRequest{};
+                totalRowsRequest.excludeScaSesSte = domain::kDefaultExcludeScaSesSte;
+                auto page = queryService->search(request);
+                if (cancelToken && cancelToken->load(std::memory_order_relaxed)) {
+                    return PageQueryResult{
+                        domain::SsaPageResult{}, 0, {}, SsaTableDisplayValues{}, true};
+                }
+                const auto totalRowsAll =
+                    needTotalRowsAll ? queryService->count(totalRowsRequest) : cachedTotalRowsAll;
+                if (cancelToken && cancelToken->load(std::memory_order_relaxed)) {
+                    return PageQueryResult{
+                        domain::SsaPageResult{}, totalRowsAll, {}, SsaTableDisplayValues{}, true};
+                }
+                auto displayValues =
+                    SsaTablePageFormatter::format(page, displayColumns, cancelToken);
+                if (!displayValues) {
+                    return PageQueryResult{
+                        domain::SsaPageResult{}, totalRowsAll, {}, SsaTableDisplayValues{}, true};
+                }
+                return PageQueryResult{std::move(page), totalRowsAll, std::move(displayColumns),
+                                       std::move(*displayValues), false};
+            }));
         emit started();
     }
 
@@ -105,6 +118,8 @@ namespace ssa::presentation {
                         emit canceled();
                     }
                 } else {
+                    totalRowsAll_ = result.totalRowsAll;
+                    totalRowsAllKnown_ = true;
                     emit succeeded(std::move(result), *activeRequest_);
                 }
             } catch (const std::length_error& exc) {

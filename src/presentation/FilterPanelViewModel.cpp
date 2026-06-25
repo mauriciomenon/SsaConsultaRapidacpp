@@ -118,6 +118,19 @@ namespace ssa::presentation {
         sector_.setQuickSector(value);
     }
 
+    bool FilterPanelViewModel::excludeScaSesSte() const {
+        return sector_.excludeScaSesSte();
+    }
+
+    void FilterPanelViewModel::setExcludeScaSesSte(const bool value) {
+        const bool changed = sector_.excludeScaSesSte() != value;
+        if (!changed) {
+            return;
+        }
+        sector_.setExcludeScaSesSte(value);
+        publishFilterStateChange();
+    }
+
     QStringList FilterPanelViewModel::filterColumnKeys() const {
         return filterColumnKeys_;
     }
@@ -282,8 +295,8 @@ namespace ssa::presentation {
         const auto normalizedKey = key.trimmed();
         columnValueLoadingKeys_.remove(normalizedKey);
         auto displayList = toColumnValueDisplayList(options);
-        columnValueOptionsByKey_[normalizedKey] = {
-            .source = options, .options = displayList, .previewSource = displayList};
+        columnValueOptionsByKey_[normalizedKey] = {options, displayList, displayList,
+                                                   filterStateVersion_};
         trimColumnValueOptionCache(columnValueOptionsByKey_, normalizedKey);
         ++columnValueOptionsVersion_;
         emit columnValueOptionsChanged();
@@ -291,7 +304,8 @@ namespace ssa::presentation {
     }
 
     void FilterPanelViewModel::publishFilterStateChange(const bool quickSectorChanged) {
-        clearColumnValueOptionsCache();
+        ++filterStateVersion_;
+        columnValueLoadingKeys_.clear();
         scheduleActiveFilterRefresh();
         scheduleColumnValueRefresh();
         if (!quickSectorChanged) {
@@ -317,7 +331,8 @@ namespace ssa::presentation {
             return;
         }
         const auto cached = columnValueOptionsByKey_.find(normalizedKey);
-        if (cached != columnValueOptionsByKey_.end()) {
+        if (cached != columnValueOptionsByKey_.end() &&
+            cached->second.stateVersion == filterStateVersion_) {
             ++columnValueOptionsVersion_;
             emit columnValueOptionsChanged();
             emit columnValueOptionsChangedFor(normalizedKey);
@@ -410,17 +425,6 @@ namespace ssa::presentation {
 
     void FilterPanelViewModel::scheduleColumnValueRefresh() {
         distinctValues_.scheduleColumnValueRefresh();
-    }
-
-    void FilterPanelViewModel::clearColumnValueOptionsCache() {
-        if (columnValueOptionsByKey_.empty() && columnValueLoadingKeys_.empty()) {
-            return;
-        }
-        columnValueOptionsByKey_.clear();
-        columnValueLoadingKeys_.clear();
-        ++columnValueOptionsVersion_;
-        emit columnValueOptionsChanged();
-        emit columnValueOptionsReset();
     }
 
     void FilterPanelViewModel::scheduleActiveFilterRefresh() {

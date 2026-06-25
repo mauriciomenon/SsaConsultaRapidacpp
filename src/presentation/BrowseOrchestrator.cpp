@@ -53,6 +53,10 @@ namespace ssa::presentation {
         return queryState_.totalRows();
     }
 
+    qlonglong BrowseOrchestrator::totalRowsAll() const {
+        return queryState_.totalRowsAll();
+    }
+
     int BrowseOrchestrator::pageSize() const {
         return queryState_.pageSize();
     }

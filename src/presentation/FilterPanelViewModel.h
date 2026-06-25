@@ -15,6 +15,7 @@
 #include <QTimer>
 #include <QVariantList>
 
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <optional>
@@ -31,6 +32,7 @@ namespace ssa::presentation {
         std::vector<std::string> source;
         QStringList options;
         QStringList previewSource;
+        std::uint64_t stateVersion{0};
     };
 
     class FilterPanelViewModel final : public QObject {
@@ -38,6 +40,8 @@ namespace ssa::presentation {
         Q_PROPERTY(QStringList filterColumnKeys READ filterColumnKeys CONSTANT)
         Q_PROPERTY(QString columnKey READ columnKey WRITE setColumnKey NOTIFY changed)
         Q_PROPERTY(QString columnValue READ columnValue WRITE setColumnValue NOTIFY changed)
+        Q_PROPERTY(
+            bool excludeScaSesSte READ excludeScaSesSte WRITE setExcludeScaSesSte NOTIFY changed)
         Q_PROPERTY(QStringList weekColumnKeys READ weekColumnKeys CONSTANT)
         Q_PROPERTY(QObject* advanced READ advanced CONSTANT)
         Q_PROPERTY(QObject* columns READ columns CONSTANT)
@@ -54,6 +58,8 @@ namespace ssa::presentation {
 
         [[nodiscard]] QString quickSector() const;
         void setQuickSector(const QString& value);
+        [[nodiscard]] bool excludeScaSesSte() const;
+        void setExcludeScaSesSte(const bool value);
         [[nodiscard]] QStringList filterColumnKeys() const;
         [[nodiscard]] QString columnKey() const;
         void setColumnKey(const QString& value);
@@ -104,7 +110,6 @@ namespace ssa::presentation {
         void rebuildActiveFilters();
         void synchronizeFilterState(bool refreshSectorOptions);
         void setColumnValueOptions(const std::vector<std::string>& options, const QString& key);
-        void clearColumnValueOptionsCache();
         void publishFilterStateChange(bool quickSectorChanged = false);
         void scheduleActiveFilterRefresh();
         void scheduleColumnValueRefresh();
@@ -127,6 +132,7 @@ namespace ssa::presentation {
         int columnValueOptionsVersion_{0};
         FilterPanelDistinctValuesController distinctValues_;
         QTimer activeFilterRefreshTimer_;
+        std::uint64_t filterStateVersion_{0};
     };
 
 } // namespace ssa::presentation

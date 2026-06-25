@@ -24,11 +24,11 @@ namespace ssa::presentation {
     void
     BrowsePageLifecycleCoordinator::markRequestSucceeded(PageQueryResult result,
                                                          const domain::SsaPageRequest& request) {
-        queryState_.applyPageResult(result.page);
+        queryState_.applyPageResult(result.page, result.totalRowsAll);
         tableModel_.setPage(std::move(result.page), request.visibleColumns,
                             std::move(result.displayColumns), std::move(result.displayValues));
-        status_.setQueryComplete(queryState_.totalRows(), queryState_.pageNumber(),
-                                 queryState_.pageCount());
+        status_.setQueryComplete(queryState_.totalRows(), queryState_.totalRowsAll(),
+                                 queryState_.pageNumber(), queryState_.pageCount());
         status_.setLoading(false);
     }
 

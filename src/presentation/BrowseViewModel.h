@@ -30,6 +30,7 @@ namespace ssa::presentation {
         Q_PROPERTY(int pageCount READ pageCount NOTIFY pageChanged)
         Q_PROPERTY(QString pageSummary READ pageSummary NOTIFY pageChanged)
         Q_PROPERTY(qlonglong totalRows READ totalRows NOTIFY pageChanged)
+        Q_PROPERTY(qlonglong totalRowsAll READ totalRowsAll NOTIFY pageChanged)
         Q_PROPERTY(int pageSize READ pageSize WRITE setPageSize NOTIFY pageChanged)
         Q_PROPERTY(QString sortColumnKey READ sortColumnKey NOTIFY sortChanged)
         Q_PROPERTY(bool sortAscending READ sortAscending NOTIFY sortChanged)
@@ -51,6 +52,7 @@ namespace ssa::presentation {
         [[nodiscard]] int pageCount() const;
         [[nodiscard]] QString pageSummary() const;
         [[nodiscard]] qlonglong totalRows() const;
+        [[nodiscard]] qlonglong totalRowsAll() const;
         [[nodiscard]] int pageSize() const;
         void setPageSize(int value);
         [[nodiscard]] QString sortColumnKey() const;

@@ -53,7 +53,7 @@ namespace {
         }
 
         std::size_t count(const ssa::domain::SsaPageRequest&) const override {
-            return 1;
+            return totalRows_;
         }
 
         std::optional<ssa::domain::SsaRecord>
@@ -913,8 +913,7 @@ namespace {
             QCOMPARE(week->issueYearFilter(), QString(""));
             QCOMPARE(derivation->onlyReprogrammed(), false);
             QCOMPARE(filters.quickSector(), QString("MEG2"));
-            QCOMPARE(qobject_cast<ssa::presentation::FilterPanelSectorViewModel*>(
-                         filters.sector())
+            QCOMPARE(qobject_cast<ssa::presentation::FilterPanelSectorViewModel*>(filters.sector())
                          ->excludeScaSesSte(),
                      false);
         }
@@ -928,8 +927,7 @@ namespace {
             filters.resetFilters();
 
             QCOMPARE(filters.columnKey(), QString("situacao"));
-            QCOMPARE(qobject_cast<ssa::presentation::FilterPanelSectorViewModel*>(
-                         filters.sector())
+            QCOMPARE(qobject_cast<ssa::presentation::FilterPanelSectorViewModel*>(filters.sector())
                          ->excludeScaSesSte(),
                      false);
             QCOMPARE(filters.activeFilters().contains("sem SCA/SES/STE"), false);
@@ -1074,9 +1072,10 @@ namespace {
             auto commands = std::make_shared<FakeCommands>();
             ssa::presentation::MainViewModel model(service, commands);
 
-            QVERIFY(
-                model.actions()->currentWeek()->value().contains(QRegularExpression("^20\\d{4}$")));
-            QVERIFY(model.actions()->currentWeek()->label().startsWith("Semana Atual: 20"));
+            QCOMPARE(model.actions()->currentWeek()->value(),
+                     model.actions()->currentWeek()->label());
+            QVERIFY(model.actions()->currentWeek()->value().contains(
+                QRegularExpression("^(?:[1-9]|0[1-9]|[1-5][0-9])$")));
         }
 
         void explicit_save_filters_button_persists_current_snapshot() {

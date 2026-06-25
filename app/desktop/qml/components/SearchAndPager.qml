@@ -13,7 +13,6 @@ Rectangle {
     signal saveFiltersRequested
     signal exportFiltersRequested
     signal importFiltersRequested
-    signal configureColumnsRequested
     focus: true
 
     function focusSearchInput() {
@@ -29,7 +28,7 @@ Rectangle {
         }
     }
 
-    Layout.preferredHeight: 136
+    Layout.preferredHeight: 122
     color: Theme.surface
     border.color: Theme.border
     radius: Theme.radius
@@ -114,30 +113,18 @@ Rectangle {
             spacing: Theme.gap
 
             ActionButton {
-                text: "Pagina Anterior"
-                implicitWidth: 130
+                text: "<"
+                implicitWidth: 40
+                implicitHeight: Theme.controlHeight - 4
                 enabled: root.viewModel.pageNumber > 1
                 onClicked: root.viewModel.previousPage()
             }
-            Label {
-                Layout.preferredWidth: 150
-                font.pixelSize: 12
-                text: root.viewModel.pageSummary
-                color: Theme.accent
-                font.bold: true
-                elide: Text.ElideRight
-            }
             ActionButton {
-                text: "Proxima Pagina"
-                implicitWidth: 130
+                text: ">"
+                implicitWidth: 40
+                implicitHeight: Theme.controlHeight - 4
                 enabled: root.viewModel.pageNumber < root.viewModel.pageCount
                 onClicked: root.viewModel.nextPage()
-            }
-            Label {
-                text: "Linhas:"
-                color: Theme.accent
-                font.pixelSize: 12
-                font.bold: true
             }
             AppSpinBox {
                 id: pageSizeSpin
@@ -145,33 +132,28 @@ Rectangle {
                 to: 500
                 stepSize: 5
                 value: root.viewModel.pageSize
-                Layout.preferredWidth: 92
+                Layout.preferredWidth: 72
                 onValueModified: {
                     root.viewModel.pageSize = pageSizeSpin.value;
                 }
-            }
-            ActionButton {
-                Layout.preferredWidth: 360
-                Layout.fillWidth: true
-                text: "Colunas: " + root.viewModel.tableHeaders.length
-                onClicked: root.configureColumnsRequested()
             }
             Label {
                 text: "Setor:"
                 color: Theme.accent
                 font.pixelSize: 12
-                font.bold: true
+                font.bold: false
                 horizontalAlignment: Text.AlignRight
                 verticalAlignment: Text.AlignVCenter
             }
             AppComboBox {
                 id: sectorFilter
 
-                Layout.preferredWidth: 220
+                Layout.preferredWidth: 180
                 model: root.filterViewModel.sector.selectorValues
                 currentIndex: root.filterViewModel.sector.selectorIndex
-                font.pixelSize: 12
-                font.bold: true
+                implicitHeight: Theme.controlHeight - 4
+                font.pixelSize: 11
+                font.bold: false
                 onActivated: {
                     root.filterViewModel.sector.quickSector = sectorFilter.currentText;
                     root.viewModel.apply();

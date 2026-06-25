@@ -24,6 +24,10 @@ namespace ssa::presentation {
         return static_cast<qlonglong>(totalRows_);
     }
 
+    qlonglong BrowseQueryState::totalRowsAll() const {
+        return static_cast<qlonglong>(totalRowsAll_);
+    }
+
     int BrowseQueryState::pageSize() const {
         return static_cast<int>(pageSize_);
     }
@@ -80,8 +84,10 @@ namespace ssa::presentation {
         return true;
     }
 
-    void BrowseQueryState::applyPageResult(const domain::SsaPageResult& result) {
+    void BrowseQueryState::applyPageResult(const domain::SsaPageResult& result,
+                                           const std::size_t totalRowsAll) {
         totalRows_ = result.totalRows;
+        totalRowsAll_ = totalRowsAll;
         pageIndex_ = result.pageIndex;
         if (totalRows_ == 0) {
             pageIndex_ = 0;

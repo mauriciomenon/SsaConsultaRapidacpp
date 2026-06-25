@@ -14,7 +14,7 @@ Rectangle {
     readonly property string trimmedSearchText: searchText.trim()
     readonly property bool hasSearch: trimmedSearchText.length > 0
     readonly property bool hasFilterEntries: filterViewModel.activeFilterEntries.length > 0
-    readonly property bool hasActiveExclusion: filterViewModel.sector.excludeScaSesSte
+    readonly property bool hasActiveExclusion: filterViewModel.excludeScaSesSte
     readonly property bool compact: filterViewModel.activeFilterEntries.length + (hasSearch ? 1 : 0) + (hasActiveExclusion ? 1 : 0) >= 2
     readonly property int tagTextSize: compact ? 11 : 12
 
@@ -68,7 +68,7 @@ Rectangle {
                     tooltipText: text
                     compact: root.compact
                     tagTextSize: root.tagTextSize
-                    onRemoveRequested: root.filterViewModel.sector.excludeScaSesSte = false
+                    onRemoveRequested: root.filterViewModel.excludeScaSesSte = false
                 }
 
                 Repeater {

@@ -16,6 +16,10 @@ namespace ssa::query {
         return repository_->page(request);
     }
 
+    std::size_t SsaQueryService::count(const domain::SsaPageRequest& request) const {
+        return repository_->count(request);
+    }
+
     std::optional<domain::SsaRecord>
     SsaQueryService::details(const domain::SsaNumber& number) const {
         return repository_->recordBySsaNumber(number);
