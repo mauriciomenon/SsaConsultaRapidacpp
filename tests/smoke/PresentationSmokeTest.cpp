@@ -1075,7 +1075,7 @@ namespace {
             QCOMPARE(model.actions()->currentWeek()->value(),
                      model.actions()->currentWeek()->label());
             QVERIFY(model.actions()->currentWeek()->value().contains(
-                QRegularExpression("^(?:[1-9]|0[1-9]|[1-5][0-9])$")));
+                QRegularExpression("^\\d{6}$")));
         }
 
         void explicit_save_filters_button_persists_current_snapshot() {

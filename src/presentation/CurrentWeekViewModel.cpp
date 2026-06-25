@@ -5,8 +5,9 @@
 namespace ssa::presentation {
 
     CurrentWeekViewModel::CurrentWeekViewModel(QObject* parent) : QObject(parent) {
-        const int isoWeek = QDate::currentDate().weekNumber(nullptr);
-        value_ = QString::number(isoWeek);
+        int isoYear = 0;
+        const int isoWeek = QDate::currentDate().weekNumber(&isoYear);
+        value_ = QString::number(isoYear * 100 + isoWeek);
     }
 
     QString CurrentWeekViewModel::value() const {
