@@ -65,10 +65,11 @@ package_resolve_macdeployqt() {
   local -a candidate_prefixes=()
   local candidate
 
-  if command -v macdeployqt >/dev/null 2>&1; then
-    printf '%s\n' "macdeployqt"
-    return 0
-  fi
+  # PRIORIDADE: o macdeployqt (e os plugins que ele copia) devem vir da MESMA
+  # Qt usada no build. Se misturarmos (ex.: build com 6.11.0 mas macdeployqt do
+  # brew 6.11.1), o bundle fica com frameworks 6.11.0 e plugin cocoa 6.11.1 ->
+  # mismatch de versao -> crash via launchd/Finder ("Could not load platform
+  # plugin cocoa"). Por isso QT_DIR/CMAKE_PREFIX_PATH vencem o PATH generico.
 
   if [[ -n "${QT_DIR:-}" ]]; then
     candidate_prefixes+=("${QT_DIR}")
@@ -79,18 +80,6 @@ package_resolve_macdeployqt() {
     done < <(printf '%s\n' "${CMAKE_PREFIX_PATH}" | tr ':;' '\n')
   fi
 
-  if command -v qtpaths >/dev/null 2>&1; then
-    candidate="$(qtpaths --binary-dir 2>/dev/null)/macdeployqt"
-    if [[ -x "${candidate}" ]]; then
-      printf '%s\n' "${candidate}"
-      return 0
-    fi
-  fi
-
-  candidate_prefixes+=(
-    "/opt/homebrew/opt/qt"
-    "/usr/local/opt/qt"
-  )
   if [[ -f "${PWD}/tools/qt-detect.conf" ]]; then
     # shellcheck disable=SC1091
     source "${PWD}/tools/qt-detect.conf"
@@ -107,6 +96,20 @@ package_resolve_macdeployqt() {
       return 0
     fi
   done
+
+  # Fallback: qtpaths, depois macdeployqt generico do PATH (brew, etc.).
+  if command -v qtpaths >/dev/null 2>&1; then
+    candidate="$(qtpaths --binary-dir 2>/dev/null)/macdeployqt"
+    if [[ -x "${candidate}" ]]; then
+      printf '%s\n' "${candidate}"
+      return 0
+    fi
+  fi
+
+  if command -v macdeployqt >/dev/null 2>&1; then
+    printf '%s\n' "macdeployqt"
+    return 0
+  fi
 
   return 1
 }
