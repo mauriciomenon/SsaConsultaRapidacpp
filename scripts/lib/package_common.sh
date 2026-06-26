@@ -163,30 +163,54 @@ package_copy_runtime_libraries() {
   done < <(ldd "${binary}")
 
   if [[ "${#libs[@]}" -gt 0 ]]; then
-    cp -f "${libs[@]}" "${output_dir}/"
+    # -L resolve symlinks (Qt envia libs versionadas como symlinks; cp sem -L
+    # copiaria o link apontando para lugar inexistente no destino).
+    cp -fL "${libs[@]}" "${output_dir}/"
   fi
 }
 
 # Descobre o prefix de instalacao do Qt6 a partir de um binario linkado contra
-# Qt6 (via ldd -> libQt6Core.so.6) ou via qmake6/qmake. Ecoa o prefix para stdout.
+# Qt6. Prioridade: CMAKE_PREFIX_PATH/QT_DIR (fonte do build) antes de ldd e
+# qmake do PATH (que pode apontar para uma Qt diferente da do build, causando
+# mismatch de versao nos plugins copiados). Ecoa o prefix para stdout.
 package_resolve_qt_prefix() {
   local binary="$1"
-  local qt_core
+  local candidate
 
-  # Caminho 1: ldd revela onde libQt6Core.so.6 mora.
+  # Caminho 1: vars de ambiente que controlaram o build (mais confiavel).
+  for candidate in "${CMAKE_PREFIX_PATH:-}" "${QT_DIR:-}"; do
+    candidate="${candidate%%:*}"
+    if [[ -n "${candidate}" && -d "${candidate}/plugins" ]]; then
+      echo "${candidate}"
+      return 0
+    fi
+  done
+
+  # Caminho 2: ldd revela onde libQt6Core.so.6 mora.
+  local qt_core
   if qt_core="$(ldd "${binary}" 2>/dev/null | grep -Eo '/[^ ]*libQt6Core\.so[^ ]*' | head -n1)"; then
     if [[ -n "${qt_core}" ]]; then
-      # lib esta em <prefix>/lib/ -> sobe 2 niveis.
-      local candidate
-      candidate="$(cd "$(dirname "${qt_core}")/.." && pwd)"
-      if [[ -d "${candidate}/plugins" || -d "${candidate}/qml" ]]; then
-        echo "${candidate}"
+      # lib pode estar em <prefix>/lib, <prefix>/lib/<multiarch>, ou
+      # <prefix>/lib/qt6 (Debian/Arch). Sobe e procura plugins/qml.
+      local lib_dir
+      lib_dir="$(cd "$(dirname "${qt_core}")" && pwd)"
+      local parent
+      parent="$(cd "${lib_dir}/.." && pwd)"
+      for candidate in "${parent}" "${lib_dir}/qt6/.." "$(cd "${lib_dir}/../.." && pwd)"; do
+        if [[ -d "${candidate}/plugins" ]]; then
+          echo "${candidate}"
+          return 0
+        fi
+      done
+      # Caso Debian multiarch: plugins em <prefix>/lib/<multiarch>/qt6/plugins
+      if [[ -d "${lib_dir}/qt6/plugins" ]]; then
+        echo "${lib_dir}/qt6"
         return 0
       fi
     fi
   fi
 
-  # Caminho 2: qmake6 / qmake.
+  # Caminho 3: qmake6 (menos confiavel - pode ser de outra Qt no PATH).
   local qmake_bin
   for qmake_bin in qmake6 qmake; do
     if command -v "${qmake_bin}" >/dev/null 2>&1; then
@@ -225,19 +249,27 @@ package_copy_qt_resources() {
     for sub in platforms imageformats iconengines styles wayland-decoration wayland-graphics-integration-client wayland-graphics-integration-server wayland-shell-integration platforminputcontexts; do
       if [[ -d "${plugins_src}/${sub}" ]]; then
         mkdir -p "${plugins_dst}/${sub}"
-        cp -f "${plugins_src}/${sub}/"* "${plugins_dst}/${sub}/" 2>/dev/null || true
+        cp -fL "${plugins_src}/${sub}/"* "${plugins_dst}/${sub}/" 2>/dev/null || true
       fi
     done
+    # Plugins dependem de libs Qt (libQt6Gui, libQt6DBus, libQt6Wayland*, etc).
+    # Copiar as deps transitivas de cada .so de plugin para o lib/ do bundle.
+    local plugin_so
+    while IFS= read -r -d '' plugin_so; do
+      package_copy_runtime_libraries "${plugin_so}" "${bundle_dir}/lib"
+    done < <(find "${plugins_dst}" -type f -name '*.so' -print0 2>/dev/null)
   else
     echo "package_copy_qt_resources: ${plugins_src} nao encontrado; plugins nao copiados." >&2
   fi
 
   if [[ -d "${qml_src}" ]]; then
     mkdir -p "${qml_dst}"
-    # Copia os modulos QML que o app usa (QtQuick, QtQuick.Controls, QtQml, etc.).
-    for mod in Qt QtQml QtQuick QtQuickControls2 QtQuickLayouts QtQuickTemplates2 QtQuickWindow; do
+    # Em Qt6 os modulos ficam aninhados (QtQuick/Controls, QtQuick/Layouts,
+    # QtQuick/Window, QtQuick/Dialogs). Copiar QtQuick e QtQml recursivamente
+    # cobre todos os imports que o app usa. -L resolve symlinks.
+    for mod in Qt QtQml QtQuick; do
       if [[ -d "${qml_src}/${mod}" ]]; then
-        cp -R "${qml_src}/${mod}" "${qml_dst}/"
+        cp -RL "${qml_src}/${mod}" "${qml_dst}/"
       fi
     done
   else

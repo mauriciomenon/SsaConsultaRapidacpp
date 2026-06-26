@@ -30,16 +30,15 @@ jobs:
             "$PWD/(src|app|tools)/.*\\.(cpp|h)$"
       - name: Secret scan
         run: gitleaks dir . --redact --exit-code 1 --no-banner
-      - name: Package macOS bundle
+      - name: Package macOS bundle (release + macdeployqt)
         run: |
-          mkdir -p dist
-          ditto -c -k --sequesterRsrc --keepParent \
-            build/dev/ssa_consulta_rapida.app \
-            dist/ssa_consulta_rapida-macos.zip
+          export CMAKE_PREFIX_PATH="$(brew --prefix qt)"
+          export PATH="$(brew --prefix qt)/bin:$PATH"
+          ./scripts/package-macos.sh --skip-tests
       - uses: actions/upload-artifact@v4
         with:
           name: ssa-consulta-rapida-macos
-          path: dist/ssa_consulta_rapida-macos.zip
+          path: dist/macos/arm64/ssa_consulta_rapida-*-arm64-macos.zip
 
   linux:
     runs-on: ubuntu-24.04
@@ -49,7 +48,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: jurplel/install-qt-action@v4
         with:
-          version: "6.8.3"
+          version: "6.11.0"
           cache: true
       - name: Install dependencies
         run: |
@@ -95,7 +94,7 @@ jobs:
           arch: x64
       - uses: jurplel/install-qt-action@v4
         with:
-          version: "6.8.3"
+          version: "6.11.0"
           arch: win64_msvc2022_64
           cache: true
       - name: Cache vcpkg

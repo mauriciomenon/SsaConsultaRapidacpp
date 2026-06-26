@@ -41,17 +41,22 @@ repo_root="$(cd "${script_dir}/.." && pwd)"
 
 run_clean() {
   local preset="${1}"
-  local -a command=(cmake --build --preset "${preset}" --target clean)
+  local build_dir="${repo_root}/build/${preset}"
 
+  # rm -rf e mais robusto que "cmake --build --target clean" porque o target
+  # clean exige configure previo (falha em fresh checkout). O Ninja nao tem
+  # estado incremental que sobre-viva a remocao do diretorio de build.
   if [[ "${dry_run}" == "true" ]]; then
-    printf 'Would run:'
-    printf ' %q' "${command[@]}"
-    printf '\n'
+    printf 'Would run: rm -rf %q\n' "${build_dir}"
     return
   fi
 
-  echo "Cleaning CMake preset: ${preset}"
-  "${command[@]}"
+  if [[ -d "${build_dir}" ]]; then
+    echo "Cleaning CMake preset: ${preset} (rm -rf ${build_dir})"
+    rm -rf "${build_dir}"
+  else
+    echo "Skipping preset ${preset}: ${build_dir} not present (nothing to clean)."
+  fi
 }
 
 cd "${repo_root}"

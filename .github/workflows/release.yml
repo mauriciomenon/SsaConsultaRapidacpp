@@ -83,7 +83,7 @@ jobs:
           arch: ${{ matrix.msvc_arch }}
       - uses: jurplel/install-qt-action@v4
         with:
-          version: "6.8.3"
+          version: "6.11.0"
           arch: ${{ matrix.qt_arch }}
           cache: true
       - name: Cache vcpkg
@@ -127,7 +127,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: jurplel/install-qt-action@v4
         with:
-          version: "6.8.3"
+          version: "6.11.0"
           cache: true
       - name: Install deps
         run: |

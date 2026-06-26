@@ -90,8 +90,29 @@ New-Item -ItemType Directory -Path $artifactDir -Force | Out-Null
 
 Copy-Item $binary (Join-Path $artifactDir "ssa_consulta_rapida.exe")
 
+# Resolver windeployqt da MESMA Qt usada no build (ler CMakeCache.txt Qt6_DIR),
+# para evitar mismatch de versao entre as DLLs copiadas pelo windeployqt e o
+# binario. Ordem: CMakeCache (verdade do build) -> Qt6_DIR -> QT_DIR -> PATH.
 $qtBinDir = $null
-if (Test-Path Env:\QT_DIR) {
+$cmakeCache = Join-Path $buildDir "CMakeCache.txt"
+if (Test-Path $cmakeCache) {
+    $cacheQtLine = Select-String -Path $cmakeCache -Pattern '^Qt6_DIR:PATH=(.+)$' -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($cacheQtLine) {
+        $cacheQtDir = (Split-Path (Split-Path $cacheQtLine.Matches[0].Groups[1].Value.Trim()))
+        if ($cacheQtDir -and (Test-Path (Join-Path $cacheQtDir "bin\windeployqt.exe"))) {
+            $qtBinDir = Join-Path $cacheQtDir "bin"
+        }
+    }
+}
+if (-not $qtBinDir -and (Test-Path Env:\Qt6_DIR)) {
+    $qt6Dir = $env:Qt6_DIR
+    # Qt6_DIR aponta para <prefix>/lib/cmake/Qt6 -> sobe 3 niveis.
+    $qt6Prefix = (Split-Path (Split-Path (Split-Path $qt6Dir)))
+    if (Test-Path (Join-Path $qt6Prefix "bin\windeployqt.exe")) {
+        $qtBinDir = Join-Path $qt6Prefix "bin"
+    }
+}
+if (-not $qtBinDir -and (Test-Path Env:\QT_DIR)) {
     $qtDir = $env:QT_DIR
     if (Test-Path (Join-Path $qtDir "bin\windeployqt.exe")) {
         $qtBinDir = Join-Path $qtDir "bin"

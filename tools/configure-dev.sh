@@ -95,6 +95,19 @@ detect_qt_dir() {
     done
   fi
 
+  # Priorizar o Qt declarado em qt-detect.conf (online installer, versao
+  # pinada) ANTES do brew, para evitar mismatch de versao (brew pode ter uma
+  # versao diferente da declarada, causando deploy inconsistente).
+  for candidate in \
+    "${MACOS_QT_ONLINE_INSTALLER_DIR}" \
+    "${MACOS_HOMEBREW_ARM_QT}" \
+    "${MACOS_HOMEBREW_INTEL_QT}"; do
+    if is_qt_prefix "${candidate}"; then
+      printf '%s\n' "${candidate}"
+      return 0
+    fi
+  done
+
   if command -v brew >/dev/null 2>&1; then
     local brew_qt
     brew_qt="$(brew --prefix qt 2>/dev/null || true)"
@@ -103,16 +116,6 @@ detect_qt_dir() {
       return 0
     fi
   fi
-
-  for candidate in \
-    "${MACOS_HOMEBREW_ARM_QT}" \
-    "${MACOS_HOMEBREW_INTEL_QT}" \
-    "${MACOS_QT_ONLINE_INSTALLER_DIR}"; do
-    if is_qt_prefix "${candidate}"; then
-      printf '%s\n' "${candidate}"
-      return 0
-    fi
-  done
 
   IFS=':' read -r -a linux_qt_dirs <<< "${LINUX_QT_CMAKE_DIRS}"
   for candidate in "${linux_qt_dirs[@]}"; do

@@ -46,6 +46,9 @@ run_tests="true"
 arch="$(uname -m)"
 dist_root=""
 
+# Capturar args originais ANTES do parser consumi-los (para re-exec como builder).
+SSA_ORIGINAL_ARGS=("$@")
+
 while [[ $# -gt 0 ]]; do
   case "${1}" in
     --preset)
@@ -106,18 +109,24 @@ if ! command -v zstd >/dev/null 2>&1; then
 fi
 
 # makepkg se recusa a rodar como root. Se somos root, re-executa este script
-# como usuario builder nao-root, preservando o diretorio e os argumentos.
+# como usuario builder nao-root, preservando o diretorio, os argumentos e as
+# variaveis de ambiente relevantes (CMAKE_PREFIX_PATH, QT_DIR, PATH).
 if [[ "$(id -u)" -eq 0 ]]; then
   if ! id builder >/dev/null 2>&1; then
     echo "Creating non-root builder user for makepkg." >&2
     useradd -m -s /bin/bash builder
   fi
   chown -R builder:builder "${repo_root}"
-  quoted_args=()
-  for arg in "$@"; do
-    quoted_args+=("$(printf '%q' "${arg}")")
-  done
-  exec su builder -c "cd $(printf '%q' "${repo_root}") && bash $(printf '%q' "${BASH_SOURCE[0]}") ${quoted_args[*]-}"
+  # Passar args via variavel de ambiente para evitar problemas de quoting do
+  # su -c "...". 'runuser -l' cria shell de login limpo, entao reexportamos
+  # as vars necessarias explicitamente.
+  export SSA_REEXEC_ARGS="${SSA_ORIGINAL_ARGS[*]-}"
+  exec runuser -u builder -- env \
+    CMAKE_PREFIX_PATH="${CMAKE_PREFIX_PATH-}" \
+    QT_DIR="${QT_DIR-}" \
+    PATH="${PATH}" \
+    SSA_REEXEC_ARGS="${SSA_REEXEC_ARGS-}" \
+    bash -lc "cd $(printf '%q' "${repo_root}") && bash $(printf '%q' "${BASH_SOURCE[0]}") \${SSA_REEXEC_ARGS}"
 fi
 
 build_dir="${repo_root}/build/${preset}"
@@ -144,6 +153,8 @@ rm -rf "${pkgbuild_root}"
 mkdir -p "${pkgbuild_root}/src"
 cp "${binary}" "${pkgbuild_root}/src/ssa_consulta_rapida"
 package_copy_runtime_libraries "${binary}" "${pkgbuild_root}/src"
+# Deploy de plugins Qt + imports QML (bundle autocontido).
+package_copy_qt_resources "${binary}" "${pkgbuild_root}/src"
 
 cat > "${pkgbuild_root}/PKGBUILD" <<EOF_PKGBUILD
 # Maintainer: Mauricio Menon <mauriciomenon@users.noreply.github.com>
@@ -155,7 +166,9 @@ pkgdesc="Consulta rapida de SSAs (ordens de servico)"
 arch=('${arch}')
 url="https://github.com/mauriciomenon/SSA_Consulta_Rapida_Cpp"
 license=('MIT')
-depends=('glibc' 'sqlite')
+# Bundle autocontido em Qt/QML; depende das libs de sistema de display/font
+# que os plugins Qt (xcb/wayland) carregam dinamicamente.
+depends=('glibc' 'sqlite' 'libgl' 'libegl' 'libxkbcommon' 'dbus' 'fontconfig' 'freetype2')
 makedepends=()
 checkdepends=()
 optdepends=()
@@ -176,11 +189,28 @@ build() {
 }
 
 package() {
-  install -Dm0755 "\${srcdir}/ssa_consulta_rapida" "\${pkgdir}/usr/bin/ssa_consulta_rapida"
+  install -Dm0755 "\${srcdir}/ssa_consulta_rapida" "\${pkgdir}/usr/lib/ssa_consulta_rapida/bin/ssa_consulta_rapida"
   for lib in "\${srcdir}"/lib*.so* "\${srcdir}"/*.so.*; do
     [[ -e "\${lib}" ]] || continue
-    install -Dm0755 "\${lib}" "\${pkgdir}/usr/lib/\$(basename "\${lib}")"
+    install -Dm0755 "\${lib}" "\${pkgdir}/usr/lib/ssa_consulta_rapida/lib/\$(basename "\${lib}")"
   done
+  if [[ -d "\${srcdir}/plugins" ]]; then
+    cp -R "\${srcdir}/plugins" "\${pkgdir}/usr/lib/ssa_consulta_rapida/plugins"
+  fi
+  if [[ -d "\${srcdir}/qml" ]]; then
+    cp -R "\${srcdir}/qml" "\${pkgdir}/usr/lib/ssa_consulta_rapida/qml"
+  fi
+  install -d "\${pkgdir}/usr/bin"
+  cat > "\${pkgdir}/usr/bin/ssa_consulta_rapida" <<'LAUNCHER'
+#!/usr/bin/env bash
+set -euo pipefail
+APP_DIR="/usr/lib/ssa_consulta_rapida"
+export LD_LIBRARY_PATH="\${APP_DIR}/lib\${LD_LIBRARY_PATH+:}\${LD_LIBRARY_PATH-}"
+[[ -d "\${APP_DIR}/plugins" ]] && export QT_PLUGIN_PATH="\${APP_DIR}/plugins"
+[[ -d "\${APP_DIR}/qml" ]] && export QML_IMPORT_PATH="\${APP_DIR}/qml" QML2_IMPORT_PATH="\${APP_DIR}/qml"
+exec "\${APP_DIR}/bin/ssa_consulta_rapida" "\$@"
+LAUNCHER
+  chmod 0755 "\${pkgdir}/usr/bin/ssa_consulta_rapida"
   install -d "\${pkgdir}/usr/share/applications"
   cat > "\${pkgdir}/usr/share/applications/ssa-consulta-rapida.desktop" <<'DESKTOP'
 [Desktop Entry]
@@ -188,7 +218,6 @@ Type=Application
 Name=SSA Consulta Rapida
 Comment=Consulta rapida de SSAs
 Exec=ssa_consulta_rapida
-Icon=ssa-consulta-rapida
 Categories=Utility;Office;
 Terminal=false
 DESKTOP

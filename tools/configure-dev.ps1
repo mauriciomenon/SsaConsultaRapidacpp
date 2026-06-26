@@ -108,6 +108,8 @@ function Find-QtFromKnownPath {
 
 function Find-QtFromEnvironment {
     $paths = @()
+    # Qt6_DIR e exportado pela install-qt-action no CI; honrar antes do PATH.
+    $paths += (Get-NormalizedPathList $env:Qt6_DIR)
     $paths += (Get-NormalizedPathList $env:QT_DIR)
     $paths += (Get-NormalizedPathList $env:CMAKE_PREFIX_PATH)
     return Find-QtFromKnownPath $paths
@@ -150,10 +152,17 @@ function Find-QtUnderDefaultRoot {
     })
 
     $sortedCandidates = Get-SortedQtCandidate $candidates
-
-    if ($sortedCandidates.Count -gt 0) {
-        return (Resolve-Path -LiteralPath $sortedCandidates[0].Path).Path
+    if ($sortedCandidates.Count -eq 0) {
+        return $null
     }
+
+    # Preferir a versao pinada em qt-detect.conf para evitar mismatch
+    # (ex.: build com 6.11.0 mas deploy com 6.11.1). Se nao existir, cai
+    # para a mais alta disponivel.
+    $pinnedVersion = $DetectConfig.QT_VERSION
+    $pinnedMatch = $sortedCandidates | Where-Object { $_.Version -eq ([version]$pinnedVersion) } | Select-Object -First 1
+    $chosen = if ($pinnedMatch) { $pinnedMatch } else { $sortedCandidates[0] }
+    return (Resolve-Path -LiteralPath $chosen.Path).Path
 
     return $null
 }
@@ -192,6 +201,12 @@ function Find-SqliteFromKnownPath {
 }
 
 function Get-DefaultVcpkgTriplet {
+    # Honrar triplet explicito (env ou -DVCPKG_TARGET_TRIPLET via CmakeExtraArgs)
+    # antes de derivar do PROCESSOR_ARCHITECTURE do host, que pode divergir em
+    # cross-compile (ex.: arm64 pedido em host x64).
+    if ($env:VCPKG_TARGET_TRIPLET) {
+        return $env:VCPKG_TARGET_TRIPLET
+    }
     if ($env:VCPKG_DEFAULT_TRIPLET) {
         return $env:VCPKG_DEFAULT_TRIPLET
     }
