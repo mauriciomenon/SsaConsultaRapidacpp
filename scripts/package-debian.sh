@@ -133,6 +133,8 @@ mkdir -p "${install_prefix}/lib/ssa_consulta_rapida/bin" \
 cp "${binary}" "${install_prefix}/lib/ssa_consulta_rapida/bin/ssa_consulta_rapida"
 chmod 0755 "${install_prefix}/lib/ssa_consulta_rapida/bin/ssa_consulta_rapida"
 package_copy_runtime_libraries "${binary}" "${install_prefix}/lib/ssa_consulta_rapida/lib"
+# Deploy de plugins Qt + imports QML para o bundle ser autocontido.
+package_copy_qt_resources "${binary}" "${install_prefix}/lib/ssa_consulta_rapida"
 
 cat > "${install_prefix}/lib/ssa_consulta_rapida/ssa_consulta_rapida" <<'EOF_LAUNCHER'
 #!/usr/bin/env bash
@@ -142,6 +144,18 @@ if [[ -n "${LD_LIBRARY_PATH-}" ]]; then
   export LD_LIBRARY_PATH="${SCRIPT_DIR}/lib:${LD_LIBRARY_PATH}"
 else
   export LD_LIBRARY_PATH="${SCRIPT_DIR}/lib"
+fi
+if [[ -d "${SCRIPT_DIR}/plugins" ]]; then
+  export QT_PLUGIN_PATH="${SCRIPT_DIR}/plugins"
+fi
+if [[ -d "${SCRIPT_DIR}/qml" ]]; then
+  if [[ -n "${QML_IMPORT_PATH-}" ]]; then
+    export QML_IMPORT_PATH="${SCRIPT_DIR}/qml:${QML_IMPORT_PATH}"
+    export QML2_IMPORT_PATH="${SCRIPT_DIR}/qml:${QML2_IMPORT_PATH-}"
+  else
+    export QML_IMPORT_PATH="${SCRIPT_DIR}/qml"
+    export QML2_IMPORT_PATH="${SCRIPT_DIR}/qml"
+  fi
 fi
 exec "${SCRIPT_DIR}/bin/ssa_consulta_rapida" "$@"
 EOF_LAUNCHER
@@ -199,7 +213,7 @@ Description: Consulta rapida de SSAs (ordens de servico)
  Aplicacao desktop C++/Qt6/QML para consulta de SSAs, com filtros,
  exportacao e detalhes. Bundle autossuficiente com bibliotecas Qt
  incluidas quando possivel.
-Depends: libc6, libsqlite3-0
+Depends: libc6, libsqlite3-0, libgl1, libegl1, libxkbcommon0, libdbus-1-3, libfontconfig1, libfreetype6
 EOF_CONTROL
 
 cat > "${pkgroot}/DEBIAN/postinst" <<'EOF_POSTINST'

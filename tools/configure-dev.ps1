@@ -2,7 +2,8 @@
 param(
     [string]$QtDir,
     [string]$SQLiteRoot,
-    [string]$Preset = "dev"
+    [string]$Preset = "dev",
+    [string[]]$CmakeExtraArgs = @()
 )
 
 $ErrorActionPreference = "Stop"
@@ -293,6 +294,11 @@ if ($detectedSQLiteRoot) {
     Write-Output "  vcpkg install sqlite3:$(Get-DefaultVcpkgTriplet)"
     Write-Output "Then rerun this script with VCPKG_ROOT set, or pass:"
     Write-Output "  .\tools\configure-dev.ps1 -SQLiteRoot `"C:\vcpkg\installed\$(Get-DefaultVcpkgTriplet)`""
+}
+
+if ($CmakeExtraArgs -and $CmakeExtraArgs.Count -gt 0) {
+    Write-Output "Appending extra CMake args: $($CmakeExtraArgs -join ' ')"
+    $cmakeArgs += $CmakeExtraArgs
 }
 
 cmake @cmakeArgs

@@ -6,7 +6,8 @@ param(
     [string]$Arch = "",
     [string]$DistDir = "",
     [string]$Version = "",
-    [switch]$SkipTests
+    [switch]$SkipTests,
+    [string[]]$CmakeExtraArgs = @()
 )
 
 $ErrorActionPreference = "Stop"
@@ -62,7 +63,12 @@ $zipPath = Join-Path $artifactRoot ("{0}.zip" -f $artifactName)
 $installerPath = Join-Path $artifactRoot ("{0}-installer.exe" -f $artifactName)
 $nsiPath = Join-Path $artifactRoot "installer.nsi"
 
-& $configureScript -Preset $preset | Out-Null
+$configureParams = @("-Preset", $preset)
+if ($CmakeExtraArgs -and $CmakeExtraArgs.Count -gt 0) {
+    $configureParams += "-CmakeExtraArgs"
+    $configureParams += $CmakeExtraArgs
+}
+& $configureScript @configureParams | Out-Null
 
 cmake --build --preset $preset
 if (-not $SkipTests) {

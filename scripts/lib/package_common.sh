@@ -163,3 +163,83 @@ package_copy_runtime_libraries() {
     cp -f "${libs[@]}" "${output_dir}/"
   fi
 }
+
+# Descobre o prefix de instalacao do Qt6 a partir de um binario linkado contra
+# Qt6 (via ldd -> libQt6Core.so.6) ou via qmake6/qmake. Ecoa o prefix para stdout.
+package_resolve_qt_prefix() {
+  local binary="$1"
+  local qt_core
+
+  # Caminho 1: ldd revela onde libQt6Core.so.6 mora.
+  if qt_core="$(ldd "${binary}" 2>/dev/null | grep -Eo '/[^ ]*libQt6Core\.so[^ ]*' | head -n1)"; then
+    if [[ -n "${qt_core}" ]]; then
+      # lib esta em <prefix>/lib/ -> sobe 2 niveis.
+      local candidate
+      candidate="$(cd "$(dirname "${qt_core}")/.." && pwd)"
+      if [[ -d "${candidate}/plugins" || -d "${candidate}/qml" ]]; then
+        echo "${candidate}"
+        return 0
+      fi
+    fi
+  fi
+
+  # Caminho 2: qmake6 / qmake.
+  local qmake_bin
+  for qmake_bin in qmake6 qmake; do
+    if command -v "${qmake_bin}" >/dev/null 2>&1; then
+      local prefix
+      prefix="$("${qmake_bin}" -query QT_INSTALL_PREFIX 2>/dev/null | head -n1)"
+      if [[ -n "${prefix}" && -d "${prefix}" ]]; then
+        echo "${prefix}"
+        return 0
+      fi
+    fi
+  done
+
+  return 1
+}
+
+# Copia plugins Qt (platforms, imageformats, iconengines, styles, wayland*) e a
+# arvore de imports QML para <bundle>/plugins e <bundle>/qml, de forma que o
+# app rode em maquina sem Qt6 sistema. Ecoa o prefix usado para stdout.
+package_copy_qt_resources() {
+  local binary="$1"
+  local bundle_dir="$2"
+  local qt_prefix
+
+  qt_prefix="$(package_resolve_qt_prefix "${binary}")" || {
+    echo "package_copy_qt_resources: nao foi possivel resolver o prefix Qt; pulando deploy de plugins/QML." >&2
+    return 0
+  }
+
+  local plugins_src="${qt_prefix}/plugins"
+  local qml_src="${qt_prefix}/qml"
+  local plugins_dst="${bundle_dir}/plugins"
+  local qml_dst="${bundle_dir}/qml"
+
+  if [[ -d "${plugins_src}" ]]; then
+    mkdir -p "${plugins_dst}"
+    for sub in platforms imageformats iconengines styles wayland-decoration wayland-graphics-integration-client wayland-graphics-integration-server wayland-shell-integration platforminputcontexts; do
+      if [[ -d "${plugins_src}/${sub}" ]]; then
+        mkdir -p "${plugins_dst}/${sub}"
+        cp -f "${plugins_src}/${sub}/"* "${plugins_dst}/${sub}/" 2>/dev/null || true
+      fi
+    done
+  else
+    echo "package_copy_qt_resources: ${plugins_src} nao encontrado; plugins nao copiados." >&2
+  fi
+
+  if [[ -d "${qml_src}" ]]; then
+    mkdir -p "${qml_dst}"
+    # Copia os modulos QML que o app usa (QtQuick, QtQuick.Controls, QtQml, etc.).
+    for mod in Qt QtQml QtQuick QtQuickControls2 QtQuickLayouts QtQuickTemplates2 QtQuickWindow; do
+      if [[ -d "${qml_src}/${mod}" ]]; then
+        cp -R "${qml_src}/${mod}" "${qml_dst}/"
+      fi
+    done
+  else
+    echo "package_copy_qt_resources: ${qml_src} nao encontrado; imports QML nao copiados." >&2
+  fi
+
+  echo "${qt_prefix}"
+}

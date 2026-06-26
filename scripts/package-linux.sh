@@ -118,6 +118,8 @@ cp "${binary}" "${artifact_root}/bin/"
 chmod +x "${artifact_root}/bin/ssa_consulta_rapida"
 
 package_copy_runtime_libraries "${binary}" "${artifact_root}/lib"
+# Deploy de plugins Qt + imports QML para o bundle ser autocontido.
+package_copy_qt_resources "${binary}" "${artifact_root}"
 package_set_latest_link "${dist_root}" "${artifact_name}"
 package_set_latest_alias "${dist_root}" "latest.tar.gz" "${artifact_name}.tar.gz"
 
@@ -130,6 +132,18 @@ if [[ -n "${LD_LIBRARY_PATH-}" ]]; then
   export LD_LIBRARY_PATH="${SCRIPT_DIR}/lib:${LD_LIBRARY_PATH}"
 else
   export LD_LIBRARY_PATH="${SCRIPT_DIR}/lib"
+fi
+if [[ -d "${SCRIPT_DIR}/plugins" ]]; then
+  export QT_PLUGIN_PATH="${SCRIPT_DIR}/plugins"
+fi
+if [[ -d "${SCRIPT_DIR}/qml" ]]; then
+  if [[ -n "${QML_IMPORT_PATH-}" ]]; then
+    export QML_IMPORT_PATH="${SCRIPT_DIR}/qml:${QML_IMPORT_PATH}"
+    export QML2_IMPORT_PATH="${SCRIPT_DIR}/qml:${QML2_IMPORT_PATH-}"
+  else
+    export QML_IMPORT_PATH="${SCRIPT_DIR}/qml"
+    export QML2_IMPORT_PATH="${SCRIPT_DIR}/qml"
+  fi
 fi
 "${SCRIPT_DIR}/bin/ssa_consulta_rapida" "$@"
 EOF_RUN

@@ -198,7 +198,7 @@ EOF_PKGBUILD
 (
   cd "${pkgbuild_root}"
   makepkg --syncdeps --noconfirm --skipinteg --skippgpcheck \
-          --force --noextract --nocolor 2>&1 || true
+          --force --noextract --nocolor
 )
 
 # Locate the produced package inside the staging dir.
