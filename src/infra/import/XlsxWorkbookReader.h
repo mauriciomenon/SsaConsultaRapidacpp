@@ -10,7 +10,7 @@ namespace ssa::infra::importing {
 
     class XlsxWorkbookReader final {
       public:
-        [[nodiscard]] SpreadsheetTable readFirstSheet(const std::filesystem::path& filePath) const;
+        [[nodiscard]] static SpreadsheetTable readFirstSheet(const std::filesystem::path& filePath);
 
       private:
         [[nodiscard]] static std::vector<std::string> parseSharedStrings(const std::string& xml);

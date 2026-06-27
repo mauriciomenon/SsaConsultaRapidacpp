@@ -34,12 +34,12 @@ namespace ssa::infra::sqlite {
 
       private:
         [[nodiscard]] SqliteConnection& connectionLocked(const std::scoped_lock<std::mutex>&) const;
-        [[nodiscard]] std::size_t executeCount(sqlite3* db, const query::SqlQuery& query) const;
-        [[nodiscard]] std::vector<domain::SsaRecord>
-        executeRows(sqlite3* db, const query::SqlQuery& query) const;
-        [[nodiscard]] ports::SsaReadResult
+        [[nodiscard]] static std::size_t executeCount(sqlite3* db, const query::SqlQuery& query);
+        [[nodiscard]] static std::vector<domain::SsaRecord>
+        executeRows(sqlite3* db, const query::SqlQuery& query);
+        [[nodiscard]] static ports::SsaReadResult
         consumeRows(sqlite3* db, const query::SqlQuery& query,
-                    const ports::SsaRecordConsumer& consume) const;
+                    const ports::SsaRecordConsumer& consume);
 
         std::filesystem::path dbPath_;
         query::SqlQueryBuilder queryBuilder_;

@@ -7,6 +7,7 @@
 #include <QString>
 #include <QXmlStreamReader>
 
+#include <algorithm>
 #include <stdexcept>
 
 namespace ssa::infra::importing {
@@ -213,8 +214,7 @@ namespace ssa::infra::importing {
 
     } // namespace
 
-    SpreadsheetTable
-    XlsxWorkbookReader::readFirstSheet(const std::filesystem::path& filePath) const {
+    SpreadsheetTable XlsxWorkbookReader::readFirstSheet(const std::filesystem::path& filePath) {
         XlsxPackage package(filePath);
         const auto workbook = package.textEntry("xl/workbook.xml", true);
         const auto relationshipId = relationshipIdForFirstWorkbookSheet(workbook);
@@ -281,10 +281,10 @@ namespace ssa::infra::importing {
             if (!reader.isStartElement() || reader.name() != "sheet") {
                 continue;
             }
-            for (const auto& attribute : reader.attributes()) {
-                if (isRelationshipIdAttribute(attribute)) {
-                    return toStdString(attribute.value());
-                }
+            const auto attributes = reader.attributes();
+            const auto relationship = std::ranges::find_if(attributes, isRelationshipIdAttribute);
+            if (relationship != attributes.end()) {
+                return toStdString(relationship->value());
             }
         }
         throw std::runtime_error("xlsx workbook has no sheet relationship");
@@ -382,6 +382,7 @@ namespace ssa::infra::importing {
                 } else {
                     rows.push_back(std::move(currentRow));
                 }
+                currentRow = {};
                 if (rows.size() > kMaxWorksheetRows) {
                     throw std::runtime_error("xlsx worksheet has too many rows");
                 }

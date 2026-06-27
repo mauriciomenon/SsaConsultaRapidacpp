@@ -158,10 +158,11 @@ namespace ssa::infra::exporting {
 
         ports::WorkflowResult writeFilteredRows(std::ofstream& output,
                                                 const ports::ISsaRepository& repository,
-                                                domain::SsaPageRequest query) {
-            const auto columns = query.visibleColumns;
+                                                const domain::SsaPageRequest& query) {
+            const auto& columns = query.visibleColumns;
             const auto result = repository.readAll(
-                query, [&output, columns](domain::SsaRecord row) -> std::optional<std::string> {
+                query,
+                [&output, &columns](const domain::SsaRecord& row) -> std::optional<std::string> {
                     writeCsvRow(output, row, columns);
                     if (!output) {
                         return "failed while writing export output file";

@@ -9,7 +9,7 @@
 
 namespace ssa::ports {
 
-    using SsaRecordConsumer = std::function<std::optional<std::string>(domain::SsaRecord)>;
+    using SsaRecordConsumer = std::function<std::optional<std::string>(const domain::SsaRecord&)>;
 
     struct SsaReadResult {
         std::size_t rowCount{0};

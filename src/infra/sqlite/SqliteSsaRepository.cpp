@@ -156,7 +156,7 @@ namespace ssa::infra::sqlite {
         return *connection_;
     }
 
-    std::size_t SqliteSsaRepository::executeCount(sqlite3* db, const query::SqlQuery& query) const {
+    std::size_t SqliteSsaRepository::executeCount(sqlite3* db, const query::SqlQuery& query) {
         SqliteStatement statement(db, query.sql);
         bindAll(statement, query.bindings);
         if (!statement.step()) {
@@ -165,11 +165,11 @@ namespace ssa::infra::sqlite {
         return static_cast<std::size_t>(statement.columnInt64(0));
     }
 
-    std::vector<domain::SsaRecord>
-    SqliteSsaRepository::executeRows(sqlite3* db, const query::SqlQuery& query) const {
+    std::vector<domain::SsaRecord> SqliteSsaRepository::executeRows(sqlite3* db,
+                                                                    const query::SqlQuery& query) {
         std::vector<domain::SsaRecord> rows;
-        const auto result = consumeRows(db, query, [&rows](domain::SsaRecord row) {
-            rows.push_back(std::move(row));
+        const auto result = consumeRows(db, query, [&rows](const domain::SsaRecord& row) {
+            rows.push_back(row);
             return std::nullopt;
         });
         if (!result.ok()) {
@@ -178,9 +178,8 @@ namespace ssa::infra::sqlite {
         return rows;
     }
 
-    ports::SsaReadResult
-    SqliteSsaRepository::consumeRows(sqlite3* db, const query::SqlQuery& query,
-                                     const ports::SsaRecordConsumer& consume) const {
+    ports::SsaReadResult SqliteSsaRepository::consumeRows(sqlite3* db, const query::SqlQuery& query,
+                                                          const ports::SsaRecordConsumer& consume) {
         SqliteStatement statement(db, query.sql);
         bindAll(statement, query.bindings);
 
@@ -192,7 +191,7 @@ namespace ssa::infra::sqlite {
             }
             auto record = readRecord(statement, schema);
             ++rowCount;
-            if (auto error = consume(std::move(record)); error.has_value()) {
+            if (auto error = consume(record); error.has_value()) {
                 return {rowCount, *error};
             }
         }
