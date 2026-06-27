@@ -30,12 +30,12 @@ namespace ssa::app::cli {
       private:
         [[nodiscard]] std::shared_ptr<application::SsaBrowseService>
         createBrowseService(const QCommandLineParser& parser) const;
-        [[nodiscard]] int runDetails(const QCommandLineParser& parser,
-                                     const application::SsaBrowseService& browse) const;
-        [[nodiscard]] int runPage(const QCommandLineParser& parser,
-                                  const application::SsaBrowseService& browse) const;
-        [[nodiscard]] int runWorkflow(const QCommandLineParser& parser,
-                                      const application::SsaWorkflowService& workflows) const;
+        [[nodiscard]] static int runDetails(const QCommandLineParser& parser,
+                                            const application::SsaBrowseService& browse);
+        [[nodiscard]] static int runPage(const QCommandLineParser& parser,
+                                         const application::SsaBrowseService& browse);
+        [[nodiscard]] static int runWorkflow(const QCommandLineParser& parser,
+                                             const application::SsaWorkflowService& workflows);
         [[nodiscard]] int runExport(const QCommandLineParser& parser,
                                     const std::filesystem::path& databasePath) const;
         BrowseFactory browseFactory_;

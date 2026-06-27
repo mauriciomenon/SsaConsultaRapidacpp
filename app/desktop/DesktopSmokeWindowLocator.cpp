@@ -7,6 +7,8 @@
 #include <QQuickWindow>
 #include <QWindow>
 
+#include <algorithm>
+
 namespace ssa::app::desktop {
 
     namespace {
@@ -18,17 +20,17 @@ namespace ssa::app::desktop {
     } // namespace
 
     QQuickWindow* DesktopSmokeWindowLocator::rootWindow(QQmlApplicationEngine& engine) {
-        for (QObject* root : engine.rootObjects()) {
-            if (auto* window = asQuickWindow(root)) {
-                return window;
-            }
+        const auto roots = engine.rootObjects();
+        const auto rootWindow = std::ranges::find_if(
+            roots, [](QObject* root) { return asQuickWindow(root) != nullptr; });
+        if (rootWindow != roots.end()) {
+            return asQuickWindow(*rootWindow);
         }
-        for (QWindow* window : QGuiApplication::topLevelWindows()) {
-            if (auto* quickWindow = asQuickWindow(window)) {
-                return quickWindow;
-            }
-        }
-        return nullptr;
+
+        const auto windows = QGuiApplication::topLevelWindows();
+        const auto quickWindow = std::ranges::find_if(
+            windows, [](QWindow* window) { return asQuickWindow(window) != nullptr; });
+        return quickWindow == windows.end() ? nullptr : asQuickWindow(*quickWindow);
     }
 
     QQuickWindow* DesktopSmokeWindowLocator::findPreferencesDialog() {

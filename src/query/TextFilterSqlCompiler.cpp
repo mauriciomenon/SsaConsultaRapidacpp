@@ -4,6 +4,8 @@
 #include "domain/SafePattern.h"
 #include "query/SqlQueryText.h"
 
+#include <algorithm>
+#include <iterator>
 #include <sstream>
 #include <stdexcept>
 
@@ -100,9 +102,7 @@ namespace ssa::query {
             std::vector<std::string> result;
             const auto excludedCodes = domain::ColumnCatalog::excludedStatusCodes();
             result.reserve(excludedCodes.size());
-            for (const auto code : excludedCodes) {
-                result.push_back(uppercaseCopy(code));
-            }
+            std::ranges::transform(excludedCodes, std::back_inserter(result), uppercaseCopy);
             return result;
         }
 

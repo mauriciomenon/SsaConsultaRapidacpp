@@ -11,26 +11,20 @@ namespace ssa::infra::importing {
 
     namespace {
 
-        bool extensionEquals(const std::filesystem::path& path, const std::string_view expected) {
-            const auto extension = path.extension().string();
-            const std::string expectedExtension =
-                expected.starts_with('.') ? std::string{expected} : "." + std::string{expected};
-            if (extension.size() != expectedExtension.size()) {
-                return false;
-            }
-            return std::ranges::equal(extension, expectedExtension,
-                                      [](const char left, const char right) {
-                                          return std::tolower(static_cast<unsigned char>(left)) ==
-                                                 std::tolower(static_cast<unsigned char>(right));
-                                      });
+        std::string lowercaseExtension(const std::filesystem::path& path) {
+            auto extension = path.extension().string();
+            std::ranges::transform(extension, extension.begin(), [](const char ch) {
+                return static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+            });
+            return extension;
         }
 
         bool isXlsxFile(const std::filesystem::path& path) {
-            return extensionEquals(path, ".xlsx");
+            return lowercaseExtension(path) == ".xlsx";
         }
 
         bool isLegacyXlsFile(const std::filesystem::path& path) {
-            return extensionEquals(path, ".xls");
+            return lowercaseExtension(path) == ".xls";
         }
 
         bool isExcelLockFile(const std::filesystem::path& path) {
@@ -79,18 +73,18 @@ namespace ssa::infra::importing {
                 continue;
             }
             if (isLegacyXlsFile(source)) {
-                const auto destination = stagedDestination(source, prefix, fileIndex);
+                const auto destination = stagedDestination({source, prefix, fileIndex});
                 ++fileIndex;
                 auto xlsxDestination = destination;
                 xlsxDestination.replace_extension(".xlsx");
-                stageLegacyFile(source, xlsxDestination, result);
+                stageLegacyFile({source, xlsxDestination}, result);
                 continue;
             }
             if (!isXlsxFile(source)) {
                 ++result.unsupported;
                 continue;
             }
-            const auto destination = stagedDestination(source, prefix, fileIndex);
+            const auto destination = stagedDestination({source, prefix, fileIndex});
             ++fileIndex;
             std::filesystem::copy_file(source, destination,
                                        std::filesystem::copy_options::overwrite_existing, error);
@@ -130,7 +124,7 @@ namespace ssa::infra::importing {
                     ++result.legacyXls;
                     continue;
                 }
-                stageLegacyFile(path, destination, result);
+                stageLegacyFile({path, destination}, result);
                 continue;
             }
             if (isXlsxFile(path)) {
@@ -143,11 +137,10 @@ namespace ssa::infra::importing {
         return result;
     }
 
-    bool ImportFileStager::stageLegacyFile(const std::filesystem::path& source,
-                                           const std::filesystem::path& destination,
+    bool ImportFileStager::stageLegacyFile(const LegacyStageRequest& request,
                                            ImportStagingResult& result) const {
         ++result.legacyXls;
-        const auto conversion = legacyConverter_.convertToXlsx(source, destination);
+        const auto conversion = legacyConverter_.convertToXlsx(request.source, request.destination);
         if (!conversion.ok()) {
             ++result.failedLegacyXls;
             return false;
@@ -157,15 +150,14 @@ namespace ssa::infra::importing {
         return true;
     }
 
-    std::filesystem::path ImportFileStager::stagedDestination(const std::filesystem::path& source,
-                                                              const std::string& batchPrefix,
-                                                              const std::size_t fileIndex) const {
-        std::filesystem::path candidateName{source.stem()};
+    std::filesystem::path
+    ImportFileStager::stagedDestination(const StagedDestinationRequest& request) const {
+        std::filesystem::path candidateName{request.source.stem()};
         candidateName += "_";
-        candidateName += batchPrefix;
+        candidateName += request.batchPrefix;
         candidateName += "_";
-        candidateName += std::to_string(fileIndex);
-        candidateName += source.extension();
+        candidateName += std::to_string(request.fileIndex);
+        candidateName += request.source.extension();
         return inputFolder_ / candidateName;
     }
 

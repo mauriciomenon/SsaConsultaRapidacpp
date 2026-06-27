@@ -268,7 +268,7 @@ namespace ssa::app::cli {
     }
 
     int SsaCliController::runDetails(const QCommandLineParser& parser,
-                                     const application::SsaBrowseService& browse) const {
+                                     const application::SsaBrowseService& browse) {
         const auto record = browse.details(parser.value("details").toStdString());
         if (!record) {
             std::cerr << "ssa not found\n";
@@ -279,7 +279,7 @@ namespace ssa::app::cli {
     }
 
     int SsaCliController::runPage(const QCommandLineParser& parser,
-                                  const application::SsaBrowseService& browse) const {
+                                  const application::SsaBrowseService& browse) {
         const auto requestedColumns = SsaCliRequestMapper::requestedColumns(parser);
         const auto outputColumns = browse.columnsOrDefault(requestedColumns);
         const auto request = SsaCliRequestMapper::pageRequest(parser, outputColumns);
@@ -290,7 +290,7 @@ namespace ssa::app::cli {
     }
 
     int SsaCliController::runWorkflow(const QCommandLineParser& parser,
-                                      const application::SsaWorkflowService& workflows) const {
+                                      const application::SsaWorkflowService& workflows) {
         ports::WorkflowResult result;
         result = SsaCliWorkflowRunner::runSelected(parser, workflows);
         std::cerr << result.message << '\n';

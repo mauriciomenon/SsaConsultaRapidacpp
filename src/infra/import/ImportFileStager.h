@@ -4,6 +4,7 @@
 
 #include <filesystem>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace ssa::infra::importing {
@@ -27,12 +28,20 @@ namespace ssa::infra::importing {
         [[nodiscard]] ImportStagingResult stageInputFiles() const;
 
       private:
-        bool stageLegacyFile(const std::filesystem::path& source,
-                             const std::filesystem::path& destination,
-                             ImportStagingResult& result) const;
-        [[nodiscard]] std::filesystem::path stagedDestination(const std::filesystem::path& source,
-                                                              const std::string& batchPrefix,
-                                                              std::size_t fileIndex) const;
+        struct LegacyStageRequest {
+            const std::filesystem::path& source;
+            const std::filesystem::path& destination;
+        };
+
+        struct StagedDestinationRequest {
+            const std::filesystem::path& source;
+            std::string_view batchPrefix;
+            std::size_t fileIndex;
+        };
+
+        bool stageLegacyFile(const LegacyStageRequest& request, ImportStagingResult& result) const;
+        [[nodiscard]] std::filesystem::path
+        stagedDestination(const StagedDestinationRequest& request) const;
 
         std::filesystem::path inputFolder_;
         LegacySpreadsheetConverter legacyConverter_;
