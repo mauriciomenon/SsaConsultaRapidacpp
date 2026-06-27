@@ -161,6 +161,34 @@ TEST_CASE("spreadsheet import workflow stages xlsx and writes sqlite rows") {
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
+TEST_CASE("spreadsheet import workflow reports xlsx read failure cause") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto sourceDirectory = root / "source";
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(sourceDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+
+    const auto workbook = sourceDirectory / "broken.xlsx";
+    std::ofstream output(workbook);
+    output << "not a zip package";
+    output.close();
+
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+    ssa::ports::ImportExternalFilesRequest request;
+    request.files = {workbook};
+
+    const auto result = port.importExternalFiles(request);
+
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
+    REQUIRE(result.message.find("failed=1") != std::string::npos);
+    REQUIRE(result.message.find("error=cannot read xlsx zip package") != std::string::npos);
+}
+
 TEST_CASE("spreadsheet import workflow full rescan replaces existing rows") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());

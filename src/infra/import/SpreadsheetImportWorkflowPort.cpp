@@ -2,15 +2,21 @@
 
 #include <memory>
 #include <sstream>
+#include <string_view>
 #include <utility>
 
 namespace ssa::infra::importing {
 
     namespace {
 
+        struct WorkflowFailure {
+            std::size_t failedFiles{0};
+            std::string_view error{};
+        };
+
         std::string workflowMessage(const char* operation, const ImportStagingResult& files,
                                     const SsaImportWriteSummary& writeSummary,
-                                    const std::size_t failedFiles) {
+                                    const WorkflowFailure& failure = WorkflowFailure{}) {
             std::ostringstream output;
             output << operation << " files=" << files.xlsxFiles.size()
                    << " rows=" << writeSummary.rowsWritten
@@ -19,13 +25,16 @@ namespace ssa::infra::importing {
                    << " legacy_xls=" << files.legacyXls << " converted_xls=" << files.convertedXls
                    << " failed_legacy_xls=" << files.failedLegacyXls
                    << " unsupported=" << files.unsupported
-                   << " failed=" << (failedFiles + files.failedCopies);
+                   << " failed=" << (failure.failedFiles + files.failedCopies);
+            if (!failure.error.empty()) {
+                output << " error=" << failure.error;
+            }
             return output.str();
         }
 
         std::string rejectedMessage(const char* operation, const ImportStagingResult& files) {
             SsaImportWriteSummary empty;
-            return workflowMessage(operation, files, empty, 0);
+            return workflowMessage(operation, files, empty);
         }
 
     } // namespace
@@ -59,7 +68,7 @@ namespace ssa::infra::importing {
                 ResolvedSsaImportRows emptyRows;
                 const auto summary = writer_.write(emptyRows, 0, 0, true);
                 return {ports::WorkflowStatus::Succeeded,
-                        workflowMessage(operation, files, summary, 0)};
+                        workflowMessage(operation, files, summary)};
             }
             return {ports::WorkflowStatus::Rejected, rejectedMessage(operation, files)};
         }
@@ -71,9 +80,9 @@ namespace ssa::infra::importing {
             try {
                 writeSession = std::make_unique<sqlite::SqliteSsaImportWriter::WriteSession>(
                     writer_.startSession(true));
-            } catch (const std::exception&) {
+            } catch (const std::exception& exc) {
                 return {ports::WorkflowStatus::Failed,
-                        workflowMessage(operation, files, totalSummary, 1)};
+                        workflowMessage(operation, files, totalSummary, {1, exc.what()})};
             }
         }
         std::size_t failedFiles = 0;
@@ -82,10 +91,10 @@ namespace ssa::infra::importing {
             SsaImportBatch batch;
             try {
                 batch = mapper_.map(reader_.readFirstSheet(file));
-            } catch (const std::exception&) {
+            } catch (const std::exception& exc) {
                 ++failedFiles;
                 return {ports::WorkflowStatus::Failed,
-                        workflowMessage(operation, files, totalSummary, failedFiles)};
+                        workflowMessage(operation, files, totalSummary, {failedFiles, exc.what()})};
             }
             if (batch.rows.empty()) {
                 ++emptyFiles;
@@ -102,10 +111,10 @@ namespace ssa::infra::importing {
                         writer_.startSession(replaceAll));
                 }
                 writeSession->write(resolved, 1, singleBatch.front().skippedRows);
-            } catch (const std::exception&) {
+            } catch (const std::exception& exc) {
                 ++failedFiles;
                 return {ports::WorkflowStatus::Failed,
-                        workflowMessage(operation, files, totalSummary, failedFiles)};
+                        workflowMessage(operation, files, totalSummary, {failedFiles, exc.what()})};
             }
         }
         if (writeSession) {
@@ -116,12 +125,12 @@ namespace ssa::infra::importing {
         }
         if (totalSummary.rowsWritten == 0) {
             return {ports::WorkflowStatus::Succeeded,
-                    workflowMessage(operation, files, totalSummary, failedFiles)};
+                    workflowMessage(operation, files, totalSummary, {failedFiles})};
         }
 
         (void)emptyFiles;
         return {ports::WorkflowStatus::Succeeded,
-                workflowMessage(operation, files, totalSummary, failedFiles)};
+                workflowMessage(operation, files, totalSummary, {failedFiles})};
     }
 
 } // namespace ssa::infra::importing
