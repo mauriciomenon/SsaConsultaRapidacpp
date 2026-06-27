@@ -304,6 +304,12 @@ if(SSA_BUILD_TESTS)
     target_link_libraries(ssa_qt_presentation_tests PRIVATE ssa_presentation Qt6::Test)
     add_test(NAME ssa_qt_presentation_tests COMMAND ssa_qt_presentation_tests)
 
+    add_executable(ssa_qt_presentation_filter_tests
+        tests/smoke/PresentationFilterSmokeTest.cpp
+    )
+    target_link_libraries(ssa_qt_presentation_filter_tests PRIVATE ssa_presentation Qt6::Test)
+    add_test(NAME ssa_qt_presentation_filter_tests COMMAND ssa_qt_presentation_filter_tests)
+
     add_executable(ssa_qt_filter_panel_tests
         tests/smoke/FilterPanelSmokeTest.cpp
     )
