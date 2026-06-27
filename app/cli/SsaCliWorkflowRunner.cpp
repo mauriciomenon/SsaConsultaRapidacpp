@@ -1,5 +1,6 @@
 #include "SsaCliWorkflowRunner.h"
 
+#include <algorithm>
 #include <array>
 #include <string>
 
@@ -127,25 +128,20 @@ namespace {
 namespace ssa::app::cli {
 
     bool SsaCliWorkflowRunner::hasWorkflowCommand(const QCommandLineParser& parser) {
-        if (isAcaoRequested(parser)) {
-            return true;
-        }
-        for (const auto& command : kWorkflowCommands) {
-            if (parser.isSet(command.option)) {
-                return true;
-            }
-        }
-        return false;
+        return isAcaoRequested(parser) ||
+               std::ranges::any_of(kWorkflowCommands, [&parser](const auto& command) {
+                   return parser.isSet(command.option);
+               });
     }
 
     bool SsaCliWorkflowRunner::requiresDatabase(const QCommandLineParser& parser) {
         if (isAcaoRequested(parser)) {
             return kAcaoBackfillCommand.requiresDatabase;
         }
-        for (const auto& command : kWorkflowCommands) {
-            if (parser.isSet(command.option)) {
-                return command.requiresDatabase;
-            }
+        const auto command = std::ranges::find_if(
+            kWorkflowCommands, [&parser](const auto& item) { return parser.isSet(item.option); });
+        if (command != kWorkflowCommands.end()) {
+            return command->requiresDatabase;
         }
         return false;
     }
@@ -159,7 +155,7 @@ namespace ssa::app::cli {
     SsaCliWorkflowRunner::runSelected(const QCommandLineParser& parser,
                                       const application::SsaWorkflowService& workflows) {
         const auto selection = selectedWorkflowCommand(parser);
-        const auto requestValidation = validateWorkflowSelection(parser, selection);
+        auto requestValidation = validateWorkflowSelection(parser, selection);
         if (!requestValidation.ok()) {
             return requestValidation;
         }

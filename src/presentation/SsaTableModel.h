@@ -37,7 +37,7 @@ namespace ssa::presentation {
         void setPage(domain::SsaPageResult page, std::vector<std::string> columns,
                      std::vector<SsaDisplayColumn> displayColumns,
                      SsaTableDisplayValues displayValues);
-        void setColumnWidths(std::map<std::string, int> widths);
+        void setColumnWidths(const std::map<std::string, int>& widths);
         Q_INVOKABLE [[nodiscard]] int visibleColumnCount() const;
         Q_INVOKABLE [[nodiscard]] QString columnKey(int column) const;
         Q_INVOKABLE [[nodiscard]] QString columnLabel(int column) const;
@@ -56,7 +56,7 @@ namespace ssa::presentation {
         [[nodiscard]] bool
         canUpdateRowsWithoutReset(const std::vector<std::string>& columns,
                                   const std::vector<SsaDisplayColumn>& displayColumns,
-                                  std::size_t rowCount) const;
+                                  std::size_t nextRowCount) const;
 
         std::vector<domain::SsaRecord> rows_;
         SsaTableColumnManager columns_;

@@ -8,7 +8,7 @@
 namespace ssa::presentation {
 
     MainColumnFlowCoordinator::MainColumnFlowCoordinator(
-        BrowseViewModel& browse, ColumnSettingsModel& columns, const SaveTrigger savePreferences,
+        BrowseViewModel& browse, ColumnSettingsModel& columns, SaveTrigger savePreferences,
         SaveAppliedColumnsTrigger saveAppliedColumns, QObject* parent)
         : QObject(parent), browse_(browse), columns_(columns),
           savePreferences_(std::move(savePreferences)),

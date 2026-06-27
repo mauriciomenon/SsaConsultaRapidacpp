@@ -19,7 +19,7 @@ namespace ssa::presentation {
                                        QObject* parent = nullptr);
 
         [[nodiscard]] bool running() const;
-        void importExternalFiles(std::vector<QString> files);
+        void importExternalFiles(const std::vector<QString>& files);
         void rescan(ports::RescanMode mode);
         void syncDerivadas();
 

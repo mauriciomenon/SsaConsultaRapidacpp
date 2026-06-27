@@ -38,7 +38,7 @@ namespace ssa::platform {
 #ifdef _WIN32
             return _wcsnicmp(path.c_str(), root.c_str(), root.size()) == 0;
 #else
-            return path.compare(0, root.size(), root) == 0;
+            return path.starts_with(root);
 #endif
         }
 

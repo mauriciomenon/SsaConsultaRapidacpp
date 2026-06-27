@@ -69,8 +69,8 @@ namespace ssa::presentation {
         return snapshot;
     }
 
-    void
-    MainPreferenceFlowCoordinator::applyStoredPreferences(ports::UserPreferencesSnapshot snapshot) {
+    void MainPreferenceFlowCoordinator::applyStoredPreferences(
+        const ports::UserPreferencesSnapshot& snapshot) {
         ui_.applyPreferences(snapshot);
         browse_.applyPreferences(snapshot);
         columns_.applyPreferences(snapshot);
@@ -94,20 +94,20 @@ namespace ssa::presentation {
 
     void MainPreferenceFlowCoordinator::savePreferences() {
         saveNowOrSchedule();
-        emit statusMessageRequested("Salvamento solicitado");
+        emit this->statusMessageRequested("Salvamento solicitado");
     }
 
     void MainPreferenceFlowCoordinator::exportFilterPreset(const QUrl& outputUrl) {
         if (!presetStore_) {
-            emit statusErrorRequested("Exportacao de filtros nao configurada");
+            emit this->statusErrorRequested("Exportacao de filtros nao configurada");
             return;
         }
         if (!outputUrl.isLocalFile()) {
-            emit statusErrorRequested("Preset de filtros deve ser arquivo local");
+            emit this->statusErrorRequested("Preset de filtros deve ser arquivo local");
             return;
         }
         if (exportPresetWatcher_.isRunning() || importPresetWatcher_.isRunning()) {
-            emit statusErrorRequested("Operacao de filtros em andamento");
+            emit this->statusErrorRequested("Operacao de filtros em andamento");
             return;
         }
 
@@ -117,51 +117,51 @@ namespace ssa::presentation {
              snapshot = presetService_.createPresetWithClearedSearch(buildPreferencesSnapshot())] {
                 return savePresetFile(store, path, snapshot);
             }));
-        emit statusMessageRequested("Exportando filtros");
+        emit this->statusMessageRequested("Exportando filtros");
     }
 
     void MainPreferenceFlowCoordinator::importFilterPreset(const QUrl& inputUrl) {
         if (!presetStore_) {
-            emit statusErrorRequested("Importacao de filtros nao configurada");
+            emit this->statusErrorRequested("Importacao de filtros nao configurada");
             return;
         }
         if (!inputUrl.isLocalFile()) {
-            emit statusErrorRequested("Preset de filtros deve ser arquivo local");
+            emit this->statusErrorRequested("Preset de filtros deve ser arquivo local");
             return;
         }
         if (exportPresetWatcher_.isRunning() || importPresetWatcher_.isRunning()) {
-            emit statusErrorRequested("Operacao de filtros em andamento");
+            emit this->statusErrorRequested("Operacao de filtros em andamento");
             return;
         }
 
         const auto store = presetStore_;
         importPresetWatcher_.setFuture(QtConcurrent::run(
             [store, path = localFilePath(inputUrl)] { return loadPresetFile(store, path); }));
-        emit statusMessageRequested("Importando filtros");
+        emit this->statusMessageRequested("Importando filtros");
     }
 
     void MainPreferenceFlowCoordinator::finishExportFilterPreset() {
         const auto error = exportPresetWatcher_.future().result();
         if (error.isEmpty()) {
-            emit statusErrorClearRequested();
-            emit statusMessageRequested("Filtros exportados");
+            emit this->statusErrorClearRequested();
+            emit this->statusMessageRequested("Filtros exportados");
         } else {
-            emit statusErrorRequested(error);
+            emit this->statusErrorRequested(error);
         }
     }
 
     void MainPreferenceFlowCoordinator::finishImportFilterPreset() {
         const auto result = importPresetWatcher_.future().result();
         if (!result.error.isEmpty()) {
-            emit statusErrorRequested(result.error);
+            emit this->statusErrorRequested(result.error);
             return;
         }
         auto baseSnapshot = buildPreferencesSnapshot();
         presetService_.applyPresetPreservingSearch(result.snapshot, baseSnapshot);
-        applyStoredPreferences(std::move(baseSnapshot));
+        applyStoredPreferences(baseSnapshot);
         browse_.apply();
-        emit statusErrorClearRequested();
-        emit statusMessageRequested("Filtros importados");
+        emit this->statusErrorClearRequested();
+        emit this->statusMessageRequested("Filtros importados");
     }
 
     void MainPreferenceFlowCoordinator::waitForPresetTasks() {

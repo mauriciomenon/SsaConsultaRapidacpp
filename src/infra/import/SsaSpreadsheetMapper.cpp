@@ -6,6 +6,7 @@
 #include <QString>
 
 #include <algorithm>
+#include <iterator>
 #include <optional>
 #include <unordered_map>
 #include <unordered_set>
@@ -68,7 +69,7 @@ namespace ssa::infra::importing {
             if (begin >= end) {
                 return {};
             }
-            return std::string(begin, end);
+            return {begin, end};
         }
 
         std::string normalizeSsaNumber(const std::string& value) {
@@ -78,11 +79,9 @@ namespace ssa::infra::importing {
             }
             std::string digits;
             digits.reserve(text.size());
-            for (const auto ch : text) {
-                if (std::isdigit(static_cast<unsigned char>(ch)) != 0) {
-                    digits.push_back(ch);
-                }
-            }
+            std::ranges::copy_if(text, std::back_inserter(digits), [](const auto ch) {
+                return std::isdigit(static_cast<unsigned char>(ch)) != 0;
+            });
             if (digits.size() < 5 || digits.size() > 9) {
                 return text;
             }
@@ -135,7 +134,7 @@ namespace ssa::infra::importing {
 
     } // namespace
 
-    SsaImportBatch SsaSpreadsheetMapper::map(const SpreadsheetTable& table) const {
+    SsaImportBatch SsaSpreadsheetMapper::map(const SpreadsheetTable& table) {
         SsaImportBatch batch;
         batch.sourcePath = table.sourcePath;
         HeaderColumnCache headerCache;

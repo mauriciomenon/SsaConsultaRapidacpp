@@ -17,7 +17,7 @@ namespace ssa::infra::importing {
 #ifdef _WIN32
             return QString::fromStdWString(path.wstring());
 #else
-            const auto native = path.native();
+            const auto& native = path.native();
             return QFile::decodeName(native.data());
 #endif
         }

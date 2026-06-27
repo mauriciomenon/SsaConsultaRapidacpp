@@ -39,7 +39,7 @@ namespace ssa::presentation {
         ~MainPreferenceFlowCoordinator() override;
 
         [[nodiscard]] ports::UserPreferencesSnapshot buildPreferencesSnapshot() const;
-        void applyStoredPreferences(ports::UserPreferencesSnapshot snapshot);
+        void applyStoredPreferences(const ports::UserPreferencesSnapshot& snapshot);
         void scheduleSavePreferences();
         void saveAppliedColumnPreferences(std::vector<std::string> visibleColumns,
                                           std::map<std::string, int> columnWidths);

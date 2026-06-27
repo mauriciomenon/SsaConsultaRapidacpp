@@ -18,7 +18,7 @@ namespace ssa::infra::importing {
 #ifdef _WIN32
             return QString::fromStdWString(path.wstring());
 #else
-            const auto native = path.native();
+            const auto& native = path.native();
             return QFile::decodeName(native.data());
 #endif
         }
@@ -152,7 +152,7 @@ namespace ssa::infra::importing {
         if (!executablePath_.empty()) {
             return executablePath_;
         }
-        const auto environmentPath = executableFromEnvironment();
+        auto environmentPath = executableFromEnvironment();
         if (!environmentPath.empty()) {
             return environmentPath;
         }

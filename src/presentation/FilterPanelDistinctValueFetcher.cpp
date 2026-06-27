@@ -32,7 +32,7 @@ namespace ssa::presentation {
     FilterPanelDistinctValueFetcher::requestValues(const domain::DistinctValuesRequest& request,
                                                    const std::uint64_t requestToken) {
         if (!queryService_) {
-            emit valuesReady(requestToken, {});
+            emit this->valuesReady(requestToken, {});
             return;
         }
         if (watcher_.isRunning()) {
@@ -40,13 +40,13 @@ namespace ssa::presentation {
         }
 
         const auto service = queryService_;
-        const auto requestCopy = request;
-        const auto future = QtConcurrent::run([service, requestCopy]() {
+        auto requestCopy = request;
+        const auto future = QtConcurrent::run([service, requestCopy = std::move(requestCopy)]() {
             auto values = service->distinctValues(requestCopy);
             std::vector<std::string> normalized;
             normalized.reserve(values.size());
             for (auto& value : values) {
-                const auto trimmed = trimCopy(std::move(value));
+                auto trimmed = trimCopy(std::move(value));
                 if (!trimmed.empty()) {
                     normalized.push_back(std::move(trimmed));
                 }
@@ -61,7 +61,7 @@ namespace ssa::presentation {
         if (!watcher_.isFinished()) {
             return;
         }
-        emit valuesReady(activeRequestToken_, watcher_.result());
+        emit this->valuesReady(activeRequestToken_, watcher_.result());
     }
 
 } // namespace ssa::presentation

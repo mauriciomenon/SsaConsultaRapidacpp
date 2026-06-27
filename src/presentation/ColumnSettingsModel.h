@@ -44,7 +44,7 @@ namespace ssa::presentation {
         Q_INVOKABLE void setFilterText(const QString& filterText);
 
         void applyPreferences(const std::vector<std::string>& visibleColumns,
-                              const std::map<std::string, int>& columnWidths);
+                              const std::map<std::string, int>& widthByColumn);
         void applyPreferences(const ports::UserPreferencesSnapshot& snapshot);
         [[nodiscard]] std::vector<std::string> visibleKeys() const;
         [[nodiscard]] std::map<std::string, int> columnWidths() const;
@@ -68,7 +68,7 @@ namespace ssa::presentation {
         [[nodiscard]] std::vector<ColumnItem>::iterator findColumn(std::string_view key);
         [[nodiscard]] std::vector<ColumnItem>::const_iterator
         findColumn(std::string_view key) const;
-        [[nodiscard]] bool setColumnVisibleBySourceRow(std::size_t row, bool visible);
+        [[nodiscard]] bool setColumnVisibleBySourceRow(std::size_t sourceRow, bool visible);
         [[nodiscard]] bool matchesFilter(const ColumnItem& column) const;
         [[nodiscard]] int sourceRowFromModelRow(int modelRow) const;
         [[nodiscard]] int modelRowFromSourceRow(std::size_t sourceRow) const;

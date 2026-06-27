@@ -16,11 +16,11 @@ namespace ssa::app::cli {
         if (databaseDirectory.filename() == "data") {
             return databaseDirectory.parent_path() / "docs_entrada";
         }
-        const auto currentDocs = std::filesystem::current_path() / "docs_entrada";
+        auto currentDocs = std::filesystem::current_path() / "docs_entrada";
         if (std::filesystem::exists(currentDocs)) {
             return currentDocs;
         }
-        const auto databaseSiblingDocs = databaseDirectory / "docs_entrada";
+        auto databaseSiblingDocs = databaseDirectory / "docs_entrada";
         if (std::filesystem::exists(databaseSiblingDocs)) {
             return databaseSiblingDocs;
         }

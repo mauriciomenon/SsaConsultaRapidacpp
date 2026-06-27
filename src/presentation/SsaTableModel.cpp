@@ -74,9 +74,9 @@ namespace ssa::presentation {
             rows_ = std::move(nextRows);
             displayCache_.replace(std::move(displayValues));
             const int rows = rowCount();
-            const int columns = columnCount();
-            if (rows > 0 && columns > 0) {
-                emit dataChanged(index(0, 0), index(rows - 1, columns - 1),
+            const int displayedColumns = columnCount();
+            if (rows > 0 && displayedColumns > 0) {
+                emit dataChanged(index(0, 0), index(rows - 1, displayedColumns - 1),
                                  {Qt::DisplayRole, Qt::ToolTipRole});
             }
             return;
@@ -110,7 +110,7 @@ namespace ssa::presentation {
         }
     }
 
-    void SsaTableModel::setColumnWidths(std::map<std::string, int> widths) {
+    void SsaTableModel::setColumnWidths(const std::map<std::string, int>& widths) {
         columns_.setWidthOverrides(widths);
         if (!columns_.empty()) {
             emit columnsChanged();
@@ -164,8 +164,8 @@ namespace ssa::presentation {
     bool
     SsaTableModel::canUpdateRowsWithoutReset(const std::vector<std::string>& columns,
                                              const std::vector<SsaDisplayColumn>& displayColumns,
-                                             const std::size_t rowCount) const {
-        return rows_.size() == rowCount && columns_.hasSameMetadata(columns, displayColumns);
+                                             const std::size_t nextRowCount) const {
+        return rows_.size() == nextRowCount && columns_.hasSameMetadata(columns, displayColumns);
     }
 
     std::optional<domain::SsaRecord> SsaTableModel::recordAt(const int row) const {

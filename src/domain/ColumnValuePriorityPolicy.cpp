@@ -1,5 +1,6 @@
 #include "domain/ColumnValuePriorityPolicy.h"
 
+#include <algorithm>
 #include <array>
 
 namespace ssa::domain {
@@ -32,12 +33,9 @@ namespace ssa::domain {
     } // namespace
 
     bool isPriorityColumnValue(const std::string_view value) {
-        for (const auto prefix : kPriorityPrefixes) {
-            if (matchesAsciiCodeSegmentCaseInsensitive(value, prefix)) {
-                return true;
-            }
-        }
-        return false;
+        return std::ranges::any_of(kPriorityPrefixes, [value](const auto prefix) {
+            return matchesAsciiCodeSegmentCaseInsensitive(value, prefix);
+        });
     }
 
 } // namespace ssa::domain

@@ -11,7 +11,7 @@ namespace ssa::platform {
         : paths_(std::move(paths)), policy_(std::move(policy)) {}
 
     ports::ExternalCommandResult LocalOpenCommandHandler::openPath(const std::string& path) const {
-        const auto validation = policy_.validate(path);
+        auto validation = policy_.validate(path);
         if (!validation.ok()) {
             return validation;
         }

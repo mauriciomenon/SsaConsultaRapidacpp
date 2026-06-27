@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <set>
+#include <string_view>
 #include <utility>
 
 namespace ssa::presentation {
@@ -11,8 +12,10 @@ namespace ssa::presentation {
         constexpr int kMinColumnWidth = 80;
         constexpr int kMaxColumnWidth = 520;
 
-        [[nodiscard]] std::string toLower(std::string text) {
-            return QString::fromStdString(std::move(text)).toLower().toStdString();
+        [[nodiscard]] std::string toLower(const std::string_view text) {
+            return QString::fromUtf8(text.data(), static_cast<qsizetype>(text.size()))
+                .toLower()
+                .toStdString();
         }
 
     } // namespace
@@ -225,7 +228,7 @@ namespace ssa::presentation {
     }
 
     void ColumnSettingsModel::applyPreferences(const std::vector<std::string>& visibleColumns,
-                                               const std::map<std::string, int>& columnWidths) {
+                                               const std::map<std::string, int>& widthByColumn) {
         std::set<std::string> visible(visibleColumns.begin(), visibleColumns.end());
         if (visible.empty()) {
             for (const auto& column : columns_) {
@@ -265,8 +268,8 @@ namespace ssa::presentation {
             if (column.visible) {
                 ++visibleCount_;
             }
-            const auto width = columnWidths.find(column.key);
-            column.width = width == columnWidths.end()
+            const auto width = widthByColumn.find(column.key);
+            column.width = width == widthByColumn.end()
                                ? column.defaultWidth
                                : std::clamp(width->second, kMinColumnWidth, kMaxColumnWidth);
         }
@@ -289,11 +292,11 @@ namespace ssa::presentation {
         if (visibleColumns.empty()) {
             visibleColumns = visibleKeys();
         }
-        auto columnWidths = snapshot.columnWidths;
-        if (columnWidths.empty()) {
-            columnWidths = this->columnWidths();
+        auto widthByColumn = snapshot.columnWidths;
+        if (widthByColumn.empty()) {
+            widthByColumn = columnWidths();
         }
-        applyPreferences(visibleColumns, columnWidths);
+        applyPreferences(visibleColumns, widthByColumn);
     }
 
     std::vector<std::string> ColumnSettingsModel::visibleKeys() const {

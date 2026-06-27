@@ -19,24 +19,24 @@ namespace ssa::presentation {
         return running_;
     }
 
-    void WorkflowCommandRunner::importExternalFiles(std::vector<QString> files) {
+    void WorkflowCommandRunner::importExternalFiles(const std::vector<QString>& files) {
         if (running_) {
             return;
         }
         if (!workflows_) {
-            emit finished({ports::WorkflowStatus::Failed,
-                           "import_external_files workflow is not configured"});
+            emit this->finished({ports::WorkflowStatus::Failed,
+                                 "import_external_files workflow is not configured"});
             return;
         }
 
         ports::ImportExternalFilesRequest request;
         request.optimized = true;
         request.files.reserve(files.size());
-        for (auto& path : files) {
-            request.files.emplace_back(std::filesystem::path(path.toStdString()));
+        for (const auto& path : files) {
+            request.files.emplace_back(path.toStdString());
         }
         running_ = true;
-        emit runningChanged(running_);
+        emit this->runningChanged(running_);
 
         auto workflows = workflows_;
         watcher_.setFuture(
@@ -51,7 +51,8 @@ namespace ssa::presentation {
             return;
         }
         if (!workflows_) {
-            emit finished({ports::WorkflowStatus::Failed, "rescan workflow is not configured"});
+            emit this->finished(
+                {ports::WorkflowStatus::Failed, "rescan workflow is not configured"});
             return;
         }
 
@@ -61,14 +62,12 @@ namespace ssa::presentation {
         request.optimized = mode == ports::RescanMode::Incremental;
 
         running_ = true;
-        emit runningChanged(running_);
+        emit this->runningChanged(running_);
 
         auto workflows = workflows_;
-        watcher_.setFuture(
-            QtConcurrent::run(QThreadPool::globalInstance(),
-                              [workflows = std::move(workflows), request = std::move(request)] {
-                                  return workflows->rescan(request);
-                              }));
+        watcher_.setFuture(QtConcurrent::run(
+            QThreadPool::globalInstance(),
+            [workflows = std::move(workflows), request] { return workflows->rescan(request); }));
     }
 
     void WorkflowCommandRunner::syncDerivadas() {
@@ -76,13 +75,13 @@ namespace ssa::presentation {
             return;
         }
         if (!workflows_) {
-            emit finished(
+            emit this->finished(
                 {ports::WorkflowStatus::Failed, "sync derivadas workflow is not configured"});
             return;
         }
 
         running_ = true;
-        emit runningChanged(running_);
+        emit this->runningChanged(running_);
 
         auto workflows = workflows_;
         watcher_.setFuture(
@@ -94,8 +93,8 @@ namespace ssa::presentation {
     void WorkflowCommandRunner::finish() {
         const ports::WorkflowResult result = watcher_.result();
         running_ = false;
-        emit runningChanged(running_);
-        emit finished(result);
+        emit this->runningChanged(running_);
+        emit this->finished(result);
     }
 
 } // namespace ssa::presentation
