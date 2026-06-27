@@ -41,7 +41,7 @@ namespace ssa::presentation {
 
         const auto service = queryService_;
         auto requestCopy = request;
-        const auto future = QtConcurrent::run([service, requestCopy = std::move(requestCopy)]() {
+        auto future = QtConcurrent::run([service, requestCopy = std::move(requestCopy)]() {
             auto values = service->distinctValues(requestCopy);
             std::vector<std::string> normalized;
             normalized.reserve(values.size());
