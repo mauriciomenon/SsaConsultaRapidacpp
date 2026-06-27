@@ -33,6 +33,8 @@ namespace ssa::presentation {
         void finishSave();
 
       private:
+        bool ensureOwnerThread(const char* operation);
+
         // Null store is a supported no-persistence mode for tests and temporary sessions.
         std::shared_ptr<ports::IUserPreferencesStore> preferencesStore_;
         QFutureWatcher<bool> watcher_;

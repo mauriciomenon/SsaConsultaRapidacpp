@@ -20,6 +20,7 @@
 #include <chrono>
 #include <filesystem>
 #include <mutex>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
@@ -149,8 +150,18 @@ namespace {
 
         void save(const ssa::ports::UserPreferencesSnapshot& snapshot) const override {
             const std::scoped_lock lock(mutex_);
+            if (!saveError_.empty()) {
+                auto saveError = saveError_;
+                saveError_.clear();
+                throw std::runtime_error(saveError);
+            }
             snapshot_ = snapshot;
             ++saveCount_;
+        }
+
+        void failNextSave(std::string message) {
+            const std::scoped_lock lock(mutex_);
+            saveError_ = std::move(message);
         }
 
         [[nodiscard]] ssa::ports::UserPreferencesSnapshot snapshot() const {
@@ -166,6 +177,7 @@ namespace {
       private:
         mutable ssa::ports::UserPreferencesSnapshot snapshot_;
         mutable int saveCount_{0};
+        mutable std::string saveError_;
         mutable std::mutex mutex_;
     };
 
@@ -1341,6 +1353,36 @@ namespace {
             QTRY_COMPARE_WITH_TIMEOUT(preferences->saveCount(), 1, 1000);
             QCOMPARE(QString::fromStdString(preferences->snapshot().filters.quickSector),
                      QString("MEG2"));
+        }
+
+        void preferences_save_failure_reports_store_error() {
+            auto preferences = std::make_shared<FakePreferences>();
+            preferences->failNextSave("disk full");
+            ssa::presentation::UserPreferencesCoordinator coordinator(preferences);
+            QSignalSpy failedSpy(&coordinator,
+                                 &ssa::presentation::UserPreferencesCoordinator::saveFailed);
+
+            coordinator.saveNowOrSchedule({});
+
+            QTRY_COMPARE_WITH_TIMEOUT(failedSpy.count(), 1, 1000);
+            const auto message = failedSpy.takeFirst().at(0).toString();
+            QVERIFY(message.contains("disk full"));
+            QCOMPARE(preferences->saveCount(), 0);
+        }
+
+        void preferences_save_rejects_wrong_thread_call_without_saving() {
+            auto preferences = std::make_shared<FakePreferences>();
+            ssa::presentation::UserPreferencesCoordinator coordinator(preferences);
+            QSignalSpy failedSpy(&coordinator,
+                                 &ssa::presentation::UserPreferencesCoordinator::saveFailed);
+
+            std::thread worker([&coordinator] { coordinator.saveNowOrSchedule({}); });
+            worker.join();
+
+            QTRY_COMPARE_WITH_TIMEOUT(failedSpy.count(), 1, 1000);
+            const auto message = failedSpy.takeFirst().at(0).toString();
+            QVERIFY(message.contains("thread"));
+            QCOMPARE(preferences->saveCount(), 0);
         }
 
         void filter_preset_export_uses_current_filters_without_search_text() {

@@ -46,9 +46,21 @@ namespace ssa::presentation {
         return preferencesStore_->load();
     }
 
+    bool UserPreferencesCoordinator::ensureOwnerThread(const char* operation) {
+        if (thread() == QThread::currentThread()) {
+            return true;
+        }
+        qWarning() << "UserPreferencesCoordinator" << operation << "called outside owner thread";
+        emit this->saveFailed(
+            QStringLiteral("Falha interna ao salvar preferencias: chamada fora da thread da GUI"));
+        return false;
+    }
+
     void UserPreferencesCoordinator::scheduleSave(
         std::function<ports::UserPreferencesSnapshot()> snapshotProvider) {
-        Q_ASSERT(thread() == QThread::currentThread());
+        if (!ensureOwnerThread("scheduleSave")) {
+            return;
+        }
         if (!preferencesStore_) {
             return;
         }
@@ -57,7 +69,9 @@ namespace ssa::presentation {
     }
 
     void UserPreferencesCoordinator::saveNowOrSchedule(ports::UserPreferencesSnapshot snapshot) {
-        Q_ASSERT(thread() == QThread::currentThread());
+        if (!ensureOwnerThread("saveNowOrSchedule")) {
+            return;
+        }
         if (!preferencesStore_) {
             emit saved();
             return;
@@ -73,7 +87,9 @@ namespace ssa::presentation {
     }
 
     void UserPreferencesCoordinator::flushPendingSave() {
-        Q_ASSERT(thread() == QThread::currentThread());
+        if (!ensureOwnerThread("flushPendingSave")) {
+            return;
+        }
         if (!preferencesStore_ || watcher_.isRunning()) {
             return;
         }
@@ -100,13 +116,20 @@ namespace ssa::presentation {
     }
 
     void UserPreferencesCoordinator::finishSave() {
-        Q_ASSERT(thread() == QThread::currentThread());
+        if (!ensureOwnerThread("finishSave")) {
+            return;
+        }
         try {
             watcher_.result();
             emit saved();
         } catch (const std::exception& exc) {
-            (void)exc;
-            emit saveFailed("Falha interna ao salvar preferencias");
+            const auto detail = QString::fromUtf8(exc.what());
+            qWarning() << "Failed to save preferences:" << detail;
+            emit this->saveFailed(
+                QStringLiteral("Falha interna ao salvar preferencias: %1").arg(detail));
+        } catch (...) {
+            qWarning() << "Failed to save preferences";
+            emit this->saveFailed(QStringLiteral("Falha interna ao salvar preferencias"));
         }
         if (hasPendingSnapshot_ || pendingSnapshotProvider_) {
             flushPendingSave();
