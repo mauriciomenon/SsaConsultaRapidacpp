@@ -1,4 +1,5 @@
 #include "domain/ColumnCatalog.h"
+#include "infra/import/ImportFileStager.h"
 #include "infra/import/SpreadsheetImportWorkflowPort.h"
 
 #include <QTemporaryDir>
@@ -241,6 +242,33 @@ TEST_CASE("spreadsheet import workflow reports legacy xls when converter is unav
 
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
     REQUIRE(result.message.find("legacy_xls=1") != std::string::npos);
+}
+
+TEST_CASE("import file stager counts legacy xls with existing xlsx without conversion") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto inputDirectory = std::filesystem::path{tempDir.path().toStdString()};
+    const auto legacy = inputDirectory / "legacy.xls";
+    const auto workbook = inputDirectory / "legacy.xlsx";
+    {
+        std::ofstream output(legacy);
+        output << "legacy";
+    }
+    {
+        std::ofstream output(workbook);
+        output << "already converted";
+    }
+
+    const ssa::infra::importing::ImportFileStager stager(inputDirectory);
+
+    const auto result = stager.stageInputFiles();
+
+    REQUIRE(result.legacyXls == 1);
+    REQUIRE(result.convertedXls == 0);
+    REQUIRE(result.failedLegacyXls == 0);
+    REQUIRE(result.unsupported == 0);
+    REQUIRE(result.xlsxFiles == std::vector<std::filesystem::path>{workbook});
 }
 
 #ifndef _WIN32

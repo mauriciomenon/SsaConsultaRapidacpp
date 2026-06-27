@@ -121,18 +121,23 @@ namespace ssa::infra::importing {
         for (const auto& path : candidates) {
             if (isExcelLockFile(path)) {
                 ++result.unsupported;
-            } else if (isLegacyXlsFile(path)) {
+                continue;
+            }
+            if (isLegacyXlsFile(path)) {
                 auto destination = path;
                 destination.replace_extension(".xlsx");
                 if (std::filesystem::exists(destination)) {
+                    ++result.legacyXls;
                     continue;
                 }
                 stageLegacyFile(path, destination, result);
-            } else if (isXlsxFile(path)) {
-                result.xlsxFiles.push_back(path);
-            } else {
-                ++result.unsupported;
+                continue;
             }
+            if (isXlsxFile(path)) {
+                result.xlsxFiles.push_back(path);
+                continue;
+            }
+            ++result.unsupported;
         }
         std::ranges::sort(result.xlsxFiles);
         return result;
@@ -153,11 +158,11 @@ namespace ssa::infra::importing {
     }
 
     std::filesystem::path ImportFileStager::stagedDestination(const std::filesystem::path& source,
-                                                              const std::string& prefix,
+                                                              const std::string& batchPrefix,
                                                               const std::size_t fileIndex) const {
         std::filesystem::path candidateName{source.stem()};
         candidateName += "_";
-        candidateName += prefix;
+        candidateName += batchPrefix;
         candidateName += "_";
         candidateName += std::to_string(fileIndex);
         candidateName += source.extension();
