@@ -8,13 +8,20 @@
 #include <QXmlStreamReader>
 
 #include <algorithm>
+#include <optional>
 #include <stdexcept>
+#include <string>
+#include <utility>
+#include <vector>
 
 namespace ssa::infra::importing {
 
     namespace {
 
         constexpr std::size_t kMaxWorksheetRows = 250'000;
+        constexpr std::size_t kMaxWorksheetCells = 5'000'000;
+        constexpr int kSpreadsheetColumnBase = 26;
+        constexpr qsizetype kDefaultSharedStringReserve = 256;
 
         QByteArray xmlBytes(const std::string& xml) {
             return QByteArray::fromRawData(xml.data(), static_cast<qsizetype>(xml.size()));
@@ -28,12 +35,13 @@ namespace ssa::infra::importing {
             constexpr int kMaxImportedColumns = 512;
             int index = 0;
             bool hasLetters = false;
-            for (const auto ch : ref) {
-                if (!ch.isLetter()) {
+            for (const auto character : ref) {
+                if (!character.isLetter()) {
                     break;
                 }
                 hasLetters = true;
-                index = index * 26 + (ch.toUpper().unicode() - QChar{'A'}.unicode() + 1);
+                index = (index * kSpreadsheetColumnBase) +
+                        (character.toUpper().unicode() - QChar{'A'}.unicode() + 1);
                 if (index > kMaxImportedColumns) {
                     return std::nullopt;
                 }
@@ -63,18 +71,18 @@ namespace ssa::infra::importing {
             if (digitStart >= lastCell.size()) {
                 return 0;
             }
-            bool ok = false;
-            const auto rows = lastCell.sliced(digitStart).toULongLong(&ok);
-            return ok ? static_cast<std::size_t>(rows) : 0;
+            bool parsed = false;
+            const auto rows = lastCell.sliced(digitStart).toULongLong(&parsed);
+            return parsed ? static_cast<std::size_t>(rows) : 0;
         }
 
         std::optional<std::size_t> rowIndexFromRowRef(const QStringView ref) {
             if (ref.empty()) {
                 return std::nullopt;
             }
-            bool ok = false;
-            const auto row = ref.toULongLong(&ok);
-            if (!ok || row == 0 || row > kMaxWorksheetRows) {
+            bool parsed = false;
+            const auto row = ref.toULongLong(&parsed);
+            if (!parsed || row == 0 || row > kMaxWorksheetRows) {
                 throw std::runtime_error("xlsx row index out of supported range");
             }
             return static_cast<std::size_t>(row - 1);
@@ -147,9 +155,10 @@ namespace ssa::infra::importing {
         std::string decodeCellValue(const QString& rawValue, const QStringView type,
                                     const std::vector<std::string>& sharedStrings) {
             if (type == "s") {
-                bool ok = false;
-                const auto index = rawValue.toInt(&ok);
-                if (ok && index >= 0 && static_cast<std::size_t>(index) < sharedStrings.size()) {
+                bool parsed = false;
+                const auto index = rawValue.toInt(&parsed);
+                if (parsed && index >= 0 &&
+                    static_cast<std::size_t>(index) < sharedStrings.size()) {
                     return sharedStrings[static_cast<std::size_t>(index)];
                 }
                 return {};
@@ -212,6 +221,103 @@ namespace ssa::infra::importing {
                             "http://schemas.openxmlformats.org/officeDocument/2006/relationships"));
         }
 
+        class SheetRowsParser final {
+          public:
+            SheetRowsParser(const std::string& xml, const std::vector<std::string>& sharedStrings)
+                : reader_(xmlBytes(xml)), sharedStrings_(sharedStrings) {}
+
+            [[nodiscard]] std::vector<std::vector<std::string>> parse() {
+                while (!reader_.atEnd()) {
+                    reader_.readNext();
+                    recordXmlToken(reader_, readBudget_);
+                    if (reader_.isStartElement() && reader_.name() == "dimension") {
+                        handleDimension();
+                    } else if (reader_.isStartElement() && reader_.name() == "row") {
+                        startRow();
+                    } else if (inRow_ && reader_.isStartElement() && reader_.name() == "c") {
+                        readCell();
+                    } else if (reader_.isEndElement() && reader_.name() == "row") {
+                        finishRow();
+                    }
+                }
+                if (reader_.hasError()) {
+                    throw std::runtime_error("cannot parse xlsx worksheet");
+                }
+                return std::move(rows_);
+            }
+
+          private:
+            void handleDimension() {
+                expectedColumns_ =
+                    absoluteColumnSlotsFromDimensionRef(reader_.attributes().value("ref"));
+                if (expectedColumns_ > 0) {
+                    currentRow_.reserve(expectedColumns_);
+                }
+                const auto expectedRows =
+                    absoluteRowSlotsFromDimensionRef(reader_.attributes().value("ref"));
+                if (expectedRows > 0) {
+                    rows_.reserve(std::min(expectedRows, kMaxWorksheetRows));
+                }
+            }
+
+            void startRow() {
+                currentRow_.clear();
+                if (expectedColumns_ > 0) {
+                    currentRow_.reserve(expectedColumns_);
+                }
+                currentRowIndex_ = rowIndexFromRowRef(reader_.attributes().value("r"));
+                nextColumnIndex_ = 0;
+                inRow_ = true;
+            }
+
+            void readCell() {
+                const auto attributes = reader_.attributes();
+                const auto ref = attributes.value("r");
+                const auto type = attributes.value("t");
+                const auto columnIndex = columnIndexFromCellRef(ref);
+                const QString rawValue = readCellRawValue(reader_, readBudget_, textBudget_);
+                if (!columnIndex && !ref.isEmpty()) {
+                    return;
+                }
+                const auto resolvedColumn =
+                    columnIndex ? static_cast<std::size_t>(*columnIndex) : nextColumnIndex_;
+                currentRow_.resize(std::max<std::size_t>(currentRow_.size(), resolvedColumn + 1));
+                currentRow_[resolvedColumn] = decodeCellValue(rawValue, type, sharedStrings_);
+                nextColumnIndex_ = resolvedColumn + 1;
+                ++totalCells_;
+                if (totalCells_ > kMaxWorksheetCells) {
+                    throw std::runtime_error("xlsx worksheet has too many cells");
+                }
+            }
+
+            void finishRow() {
+                if (currentRowIndex_) {
+                    rows_.resize(std::max(rows_.size(), *currentRowIndex_ + 1));
+                    rows_[*currentRowIndex_] = std::move(currentRow_);
+                } else {
+                    rows_.push_back(std::move(currentRow_));
+                }
+                currentRow_ = {};
+                if (rows_.size() > kMaxWorksheetRows) {
+                    throw std::runtime_error("xlsx worksheet has too many rows");
+                }
+                inRow_ = false;
+                currentRowIndex_.reset();
+            }
+
+            QXmlStreamReader reader_;
+            const std::vector<std::string>& sharedStrings_;
+            std::vector<std::vector<std::string>> rows_;
+            std::vector<std::string> currentRow_;
+            bool inRow_{false};
+            std::optional<std::size_t> currentRowIndex_;
+            std::size_t nextColumnIndex_{0};
+            std::size_t expectedColumns_{0};
+            std::size_t totalCells_{0};
+            XmlReadBudget readBudget_;
+            XmlTextBudget textBudget_;
+        };
+
     } // namespace
 
     SpreadsheetTable XlsxWorkbookReader::readFirstSheet(const std::filesystem::path& filePath) {
@@ -219,7 +325,7 @@ namespace ssa::infra::importing {
         const auto workbook = package.textEntry("xl/workbook.xml", true);
         const auto relationshipId = relationshipIdForFirstWorkbookSheet(workbook);
         const auto relationships = package.textEntry("xl/_rels/workbook.xml.rels", true);
-        const auto worksheetEntry = worksheetEntryForRelationship(relationships, relationshipId);
+        const auto worksheetEntry = worksheetEntryForRelationship({relationships, relationshipId});
         const auto sharedStrings =
             parseSharedStrings(package.textEntry("xl/sharedStrings.xml", false));
         const auto sheetXml = package.textEntry(worksheetEntry, true);
@@ -233,7 +339,7 @@ namespace ssa::infra::importing {
         }
         QXmlStreamReader reader(xmlBytes(xml));
         QString current;
-        current.reserve(256);
+        current.reserve(kDefaultSharedStringReserve);
         bool inString = false;
         int phoneticDepth = 0;
         XmlReadBudget budget;
@@ -243,9 +349,9 @@ namespace ssa::infra::importing {
             recordXmlToken(reader, budget);
             if (reader.isStartElement() && reader.name() == "sst") {
                 constexpr int kMaxReservedSharedStrings = 1'000'000;
-                bool ok = false;
-                const auto count = reader.attributes().value("uniqueCount").toInt(&ok);
-                if (ok && count > 0) {
+                bool parsed = false;
+                const auto count = reader.attributes().value("uniqueCount").toInt(&parsed);
+                if (parsed && count > 0) {
                     values.reserve(
                         static_cast<std::size_t>(std::min(count, kMaxReservedSharedStrings)));
                 }
@@ -291,24 +397,23 @@ namespace ssa::infra::importing {
     }
 
     std::string
-    XlsxWorkbookReader::worksheetEntryForRelationship(const std::string& xml,
-                                                      const std::string& relationshipId) {
-        QXmlStreamReader reader(xmlBytes(xml));
+    XlsxWorkbookReader::worksheetEntryForRelationship(const WorksheetRelationshipRequest& request) {
+        QXmlStreamReader reader(xmlBytes(request.xml));
         while (!reader.atEnd()) {
             reader.readNext();
             if (!reader.isStartElement() || reader.name() != "Relationship") {
                 continue;
             }
-            std::string id;
+            std::string identifier;
             std::string target;
             for (const auto& attribute : reader.attributes()) {
                 if (attribute.name() == "Id") {
-                    id = toStdString(attribute.value());
+                    identifier = toStdString(attribute.value());
                 } else if (attribute.name() == "Target") {
                     target = toStdString(attribute.value());
                 }
             }
-            if (id == relationshipId && !target.empty()) {
+            if (identifier == request.relationshipId && !target.empty()) {
                 return normalizeWorksheetTarget(target);
             }
         }
@@ -318,82 +423,7 @@ namespace ssa::infra::importing {
     std::vector<std::vector<std::string>>
     XlsxWorkbookReader::parseSheetRows(const std::string& xml,
                                        const std::vector<std::string>& sharedStrings) {
-        std::vector<std::vector<std::string>> rows;
-        QXmlStreamReader reader(xmlBytes(xml));
-        std::vector<std::string> currentRow;
-        bool inRow = false;
-        std::optional<std::size_t> currentRowIndex;
-        std::size_t nextColumnIndex = 0;
-        std::size_t expectedColumns = 0;
-        std::size_t totalCells = 0;
-        XmlReadBudget budget;
-        XmlTextBudget textBudget;
-        while (!reader.atEnd()) {
-            reader.readNext();
-            recordXmlToken(reader, budget);
-            if (reader.isStartElement() && reader.name() == "dimension") {
-                expectedColumns =
-                    absoluteColumnSlotsFromDimensionRef(reader.attributes().value("ref"));
-                if (expectedColumns > 0) {
-                    currentRow.reserve(expectedColumns);
-                }
-                const auto expectedRows =
-                    absoluteRowSlotsFromDimensionRef(reader.attributes().value("ref"));
-                if (expectedRows > 0) {
-                    rows.reserve(std::min(expectedRows, kMaxWorksheetRows));
-                }
-                continue;
-            }
-            if (reader.isStartElement() && reader.name() == "row") {
-                currentRow.clear();
-                if (expectedColumns > 0) {
-                    currentRow.reserve(expectedColumns);
-                }
-                currentRowIndex = rowIndexFromRowRef(reader.attributes().value("r"));
-                nextColumnIndex = 0;
-                inRow = true;
-                continue;
-            }
-            if (inRow && reader.isStartElement() && reader.name() == "c") {
-                const auto attributes = reader.attributes();
-                const auto ref = attributes.value("r");
-                const auto type = attributes.value("t");
-                const auto columnIndex = columnIndexFromCellRef(ref);
-                const QString rawValue = readCellRawValue(reader, budget, textBudget);
-                if (columnIndex || ref.isEmpty()) {
-                    const auto resolvedColumn =
-                        columnIndex ? static_cast<std::size_t>(*columnIndex) : nextColumnIndex;
-                    currentRow.resize(std::max<std::size_t>(
-                        currentRow.size(), static_cast<std::size_t>(resolvedColumn + 1)));
-                    currentRow[resolvedColumn] = decodeCellValue(rawValue, type, sharedStrings);
-                    nextColumnIndex = resolvedColumn + 1;
-                    ++totalCells;
-                    constexpr std::size_t kMaxWorksheetCells = 5'000'000;
-                    if (totalCells > kMaxWorksheetCells) {
-                        throw std::runtime_error("xlsx worksheet has too many cells");
-                    }
-                }
-                continue;
-            }
-            if (reader.isEndElement() && reader.name() == "row") {
-                if (currentRowIndex) {
-                    rows.resize(std::max(rows.size(), *currentRowIndex + 1));
-                    rows[*currentRowIndex] = std::move(currentRow);
-                } else {
-                    rows.push_back(std::move(currentRow));
-                }
-                currentRow = {};
-                if (rows.size() > kMaxWorksheetRows) {
-                    throw std::runtime_error("xlsx worksheet has too many rows");
-                }
-                inRow = false;
-                currentRowIndex.reset();
-            }
-        }
-        if (reader.hasError()) {
-            throw std::runtime_error("cannot parse xlsx worksheet");
-        }
-        return rows;
+        return SheetRowsParser{xml, sharedStrings}.parse();
     }
 
 } // namespace ssa::infra::importing

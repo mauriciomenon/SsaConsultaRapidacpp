@@ -162,6 +162,39 @@ TEST_CASE("spreadsheet import workflow stages xlsx and writes sqlite rows") {
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
+TEST_CASE("spreadsheet import workflow maps sparse xlsx cells by cell reference") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto sourceDirectory = root / "source";
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(sourceDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+
+    const auto workbook = sourceDirectory / "sparse.xlsx";
+    writeWorkbook(workbook, row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                                    inlineCell("C1", "Descricao da SSA"),
+                                    inlineCell("D1", "Setor Executor")}) +
+                                row(2, {inlineCell("A2", "202600777"), inlineCell("D2", "MEL9")}));
+
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+    ssa::ports::ImportExternalFilesRequest request;
+    request.files = {workbook};
+
+    const auto result = port.importExternalFiles(request);
+
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarText(db, "SELECT setor_executor FROM ssa_table WHERE numero_ssa='202600777'") ==
+            "MEL9");
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
 TEST_CASE("spreadsheet import workflow reports xlsx read failure cause") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
