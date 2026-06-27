@@ -14,7 +14,7 @@ namespace ssa::presentation {
         saveTimer_.setSingleShot(true);
         saveTimer_.setInterval(500);
         connect(&saveTimer_, &QTimer::timeout, this, &UserPreferencesCoordinator::flushPendingSave);
-        connect(&watcher_, &QFutureWatcher<bool>::finished, this,
+        connect(&watcher_, &QFutureWatcher<QString>::finished, this,
                 &UserPreferencesCoordinator::finishSave);
     }
 
@@ -27,12 +27,9 @@ namespace ssa::presentation {
         }
         if (watcher_.isRunning()) {
             watcher_.waitForFinished();
-            try {
-                watcher_.result();
-            } catch (const std::exception& exc) {
-                qWarning() << "Failed to save preferences during shutdown:" << exc.what();
-            } catch (...) {
-                qWarning() << "Failed to save preferences during shutdown";
+            const auto error = watcher_.result();
+            if (!error.isEmpty()) {
+                qWarning() << "Failed to save preferences during shutdown:" << error;
             }
         }
         pendingSnapshotProvider_ = nullptr;
@@ -110,8 +107,14 @@ namespace ssa::presentation {
         hasPendingSnapshot_ = false;
 
         watcher_.setFuture(QtConcurrent::run([store, snapshot = std::move(snapshot)] {
-            store->save(snapshot);
-            return true;
+            try {
+                store->save(snapshot);
+                return QString{};
+            } catch (const std::exception& exc) {
+                return QString::fromUtf8(exc.what());
+            } catch (...) {
+                return QStringLiteral("erro desconhecido");
+            }
         }));
     }
 
@@ -119,17 +122,13 @@ namespace ssa::presentation {
         if (!ensureOwnerThread("finishSave")) {
             return;
         }
-        try {
-            watcher_.result();
+        const auto error = watcher_.result();
+        if (error.isEmpty()) {
             emit saved();
-        } catch (const std::exception& exc) {
-            const auto detail = QString::fromUtf8(exc.what());
-            qWarning() << "Failed to save preferences:" << detail;
+        } else {
+            qWarning() << "Failed to save preferences:" << error;
             emit this->saveFailed(
-                QStringLiteral("Falha interna ao salvar preferencias: %1").arg(detail));
-        } catch (...) {
-            qWarning() << "Failed to save preferences";
-            emit this->saveFailed(QStringLiteral("Falha interna ao salvar preferencias"));
+                QStringLiteral("Falha interna ao salvar preferencias: %1").arg(error));
         }
         if (hasPendingSnapshot_ || pendingSnapshotProvider_) {
             flushPendingSave();

@@ -37,7 +37,7 @@ namespace ssa::presentation {
 
         // Null store is a supported no-persistence mode for tests and temporary sessions.
         std::shared_ptr<ports::IUserPreferencesStore> preferencesStore_;
-        QFutureWatcher<bool> watcher_;
+        QFutureWatcher<QString> watcher_;
         QTimer saveTimer_;
         std::function<ports::UserPreferencesSnapshot()> pendingSnapshotProvider_;
         ports::UserPreferencesSnapshot pendingSnapshot_;

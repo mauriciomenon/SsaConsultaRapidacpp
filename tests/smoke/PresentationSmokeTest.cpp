@@ -18,9 +18,9 @@
 #include <QtTest>
 
 #include <chrono>
+#include <exception>
 #include <filesystem>
 #include <mutex>
-#include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
@@ -140,6 +140,18 @@ namespace {
 
     class FakePreferences final : public ssa::ports::IUserPreferencesStore {
       public:
+        class SaveFailure final : public std::exception {
+          public:
+            explicit SaveFailure(std::string message) : message_(std::move(message)) {}
+
+            [[nodiscard]] const char* what() const noexcept override {
+                return message_.c_str();
+            }
+
+          private:
+            std::string message_;
+        };
+
         explicit FakePreferences(ssa::ports::UserPreferencesSnapshot initial = {})
             : snapshot_(std::move(initial)) {}
 
@@ -153,13 +165,13 @@ namespace {
             if (!saveError_.empty()) {
                 auto saveError = saveError_;
                 saveError_.clear();
-                throw std::runtime_error(saveError);
+                throw SaveFailure(std::move(saveError));
             }
             snapshot_ = snapshot;
             ++saveCount_;
         }
 
-        void failNextSave(std::string message) {
+        void failNextSave(std::string message) const {
             const std::scoped_lock lock(mutex_);
             saveError_ = std::move(message);
         }
