@@ -2,6 +2,8 @@
 
 #include "presentation/AdvancedTextFilterRowModelFactory.h"
 
+#include <utility>
+
 namespace ssa::presentation {
 
     AdvancedTextFilterViewModel::AdvancedTextFilterViewModel(
@@ -49,8 +51,8 @@ namespace ssa::presentation {
     }
 
     int AdvancedTextFilterViewModel::operatorIndexFor(const QString& key) const {
-        const auto it = operatorModeIndex_.constFind(operatorModeFor(key));
-        return it == operatorModeIndex_.constEnd() ? -1 : it.value();
+        const auto modeEntry = operatorModeIndex_.constFind(operatorModeFor(key));
+        return modeEntry == operatorModeIndex_.constEnd() ? -1 : modeEntry.value();
     }
 
     void AdvancedTextFilterViewModel::setOperatorMode(const QString& key,
@@ -99,7 +101,7 @@ namespace ssa::presentation {
         columns_.setOperatorMode(
             {.key = key, .operatorMode = operatorMode, .currentExpression = textFilter(key)});
         publishExpressionAndApply(key,
-                                  columns_.expressionReplacingWithOperator(
+                                  AdvancedTextFilterColumnStore::expressionReplacingWithOperator(
                                       {.values = values, .operatorMode = operatorMode}),
                                   false);
     }
@@ -108,7 +110,7 @@ namespace ssa::presentation {
         const QString& key, const QStringList& includeValues, const QStringList& excludeValues) {
         publishExpressionAndApply(
             key,
-            columns_.expressionReplacingWithOperatorLists(
+            AdvancedTextFilterColumnStore::expressionReplacingWithOperatorLists(
                 {.includeValues = includeValues, .excludeValues = excludeValues}),
             true);
     }
@@ -185,9 +187,12 @@ namespace ssa::presentation {
         const auto modeIndex = operatorModeIndex_.constFind(mode);
         const int operatorIndex =
             modeIndex == operatorModeIndex_.constEnd() ? -1 : modeIndex.value();
-        const auto label = operatorIndex < 0
-                               ? (mode == "mixed" ? tr("Misto") : QString{})
-                               : operatorModes_.at(operatorIndex).toMap().value("label").toString();
+        QString label;
+        if (operatorIndex >= 0) {
+            label = operatorModes_.at(operatorIndex).toMap().value("label").toString();
+        } else if (mode == "mixed") {
+            label = tr("Misto");
+        }
         state.insert("textFilter", textFilter(key));
         state.insert("operatorIndex", operatorIndex);
         state.insert("operatorLabel", label);

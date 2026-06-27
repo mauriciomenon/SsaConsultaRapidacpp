@@ -1,13 +1,16 @@
 #include "presentation/AdvancedMacroFilterViewModel.h"
 
+#include "domain/SsaTypes.h"
 #include "query/SsaQueryService.h"
 
 #include <QDate>
 #include <QVariantMap>
 
 #include <map>
+#include <memory>
 #include <optional>
 #include <set>
+#include <string>
 #include <tuple>
 #include <utility>
 
@@ -20,6 +23,9 @@ namespace ssa::presentation {
         constexpr auto kExecutadasDivisao = "ssas_executadas_divisao";
         constexpr auto kStatusColumn = "situacao";
         constexpr auto kBaixarStatusFilter = "!SAD,!SCA,!SES,!STE";
+        constexpr int kYearWeekTextLength = 6;
+        constexpr int kMaxIsoYearSearchDays = 370;
+        constexpr int kDaysPerWeek = 7;
 
         struct ReportKey {
             QString setor;
@@ -33,20 +39,21 @@ namespace ssa::presentation {
         };
 
         bool isCurrentMonthWeek(const QString& weekText, const QDate& currentDate) {
-            bool ok = false;
-            const int yearWeek = weekText.trimmed().toInt(&ok);
-            if (!ok || weekText.trimmed().size() != 6) {
+            const auto trimmedWeek = weekText.trimmed();
+            bool conversionOk = false;
+            const int yearWeek = trimmedWeek.toInt(&conversionOk);
+            if (!conversionOk || trimmedWeek.size() != kYearWeekTextLength) {
                 return false;
             }
-            const int isoYear = yearWeek / 100;
-            const int isoWeek = yearWeek % 100;
+            const int isoYear = yearWeek / domain::kYearWeekMultiplier;
+            const int isoWeek = yearWeek % domain::kYearWeekMultiplier;
             QDate monday{isoYear, 1, 1};
-            for (int day = 0; day < 370; ++day) {
+            for (int day = 0; day < kMaxIsoYearSearchDays; ++day) {
                 int candidateIsoYear = 0;
                 if (monday.weekNumber(&candidateIsoYear) == isoWeek &&
                     candidateIsoYear == isoYear) {
                     const auto weekStart = monday.addDays(1 - monday.dayOfWeek());
-                    for (int offset = 0; offset < 7; ++offset) {
+                    for (int offset = 0; offset < kDaysPerWeek; ++offset) {
                         const auto date = weekStart.addDays(offset);
                         if (date.month() == currentDate.month() &&
                             date.year() == currentDate.year()) {

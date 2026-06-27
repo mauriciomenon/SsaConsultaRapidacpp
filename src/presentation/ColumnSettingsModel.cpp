@@ -3,9 +3,12 @@
 #include "domain/ColumnCatalog.h"
 
 #include <algorithm>
+#include <map>
 #include <set>
+#include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 namespace ssa::presentation {
     namespace {
@@ -246,10 +249,10 @@ namespace ssa::presentation {
             if (added.contains(key)) {
                 continue;
             }
-            auto it = std::ranges::find_if(columns_,
-                                           [&key](const ColumnItem& c) { return c.key == key; });
-            if (it != columns_.end()) {
-                reordered.push_back(*it);
+            auto columnEntry = std::ranges::find_if(
+                columns_, [&key](const ColumnItem& column) { return column.key == key; });
+            if (columnEntry != columns_.end()) {
+                reordered.push_back(*columnEntry);
                 added.insert(key);
             }
         }

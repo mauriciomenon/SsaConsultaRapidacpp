@@ -5,6 +5,10 @@
 
 #include <QStringList>
 
+#include <map>
+#include <string>
+#include <utility>
+
 namespace ssa::presentation::filterpanel {
 
     FilterPanelState::FilterPanelState(const std::string_view defaultFilterColumnKey)
@@ -91,19 +95,19 @@ namespace ssa::presentation::filterpanel {
         const auto keyStd = normalizedKey.toStdString();
         const auto valueStd = normalizedValue.toStdString();
 
-        auto it = columnFilters_.find(keyStd);
-        if (it == columnFilters_.end()) {
+        auto filterEntry = columnFilters_.find(keyStd);
+        if (filterEntry == columnFilters_.end()) {
             const auto [insertedIt, inserted] = columnFilters_.emplace(keyStd, valueStd);
             return inserted;
         }
 
-        if (it->second.find_first_not_of(" \t\r\n") == std::string::npos) {
-            it->second = valueStd;
+        if (filterEntry->second.find_first_not_of(" \t\r\n") == std::string::npos) {
+            filterEntry->second = valueStd;
             return true;
         }
 
-        if (!filterpanel::hasFilterValue(it->second, valueStd)) {
-            it->second += ", " + valueStd;
+        if (!filterpanel::hasFilterValue(filterEntry->second, valueStd)) {
+            filterEntry->second += ", " + valueStd;
             return true;
         }
         return false;

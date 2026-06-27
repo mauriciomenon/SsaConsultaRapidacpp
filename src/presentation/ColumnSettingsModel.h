@@ -5,6 +5,7 @@
 #include <QAbstractListModel>
 #include <QString>
 
+#include <cstdint>
 #include <map>
 #include <string>
 #include <string_view>
@@ -12,13 +13,15 @@
 
 namespace ssa::presentation {
 
+    inline constexpr int kDefaultColumnSettingsWidth = 132;
+
     class ColumnSettingsModel final : public QAbstractListModel {
         Q_OBJECT
         Q_PROPERTY(int minColumnWidth READ minColumnWidth CONSTANT)
         Q_PROPERTY(int maxColumnWidth READ maxColumnWidth CONSTANT)
 
       public:
-        enum Role {
+        enum Role : std::uint16_t {
             KeyRole = Qt::UserRole + 1,
             LabelRole,
             VisibleRole,
@@ -60,8 +63,8 @@ namespace ssa::presentation {
             std::string labelLower;
             bool defaultVisible{false};
             bool visible{false};
-            int defaultWidth{132};
-            int width{132};
+            int defaultWidth{kDefaultColumnSettingsWidth};
+            int width{kDefaultColumnSettingsWidth};
         };
 
         [[nodiscard]] int visibleCount() const;
@@ -79,7 +82,7 @@ namespace ssa::presentation {
         std::vector<int> filteredRows_;
         std::vector<int> sourceToModelRow_;
         int visibleCount_{0};
-        std::string filterTextLower_{};
+        std::string filterTextLower_;
     };
 
 } // namespace ssa::presentation
