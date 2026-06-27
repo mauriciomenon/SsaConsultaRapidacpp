@@ -56,7 +56,9 @@ namespace ssa::presentation {
     void AdvancedTextFilterViewModel::setOperatorMode(const QString& key,
                                                       const QString& operatorMode) {
         const auto currentExpression = textFilter(key);
-        if (!columns_.setOperatorMode(key, operatorMode, currentExpression)) {
+        if (!columns_.setOperatorMode({.key = key,
+                                       .operatorMode = operatorMode,
+                                       .currentExpression = currentExpression})) {
             return;
         }
         publishChangedFor(key);
@@ -70,7 +72,7 @@ namespace ssa::presentation {
         if (!state_.setTextFilter(key, value)) {
             return;
         }
-        columns_.setExpression(key, value);
+        columns_.setExpression({.key = key, .expression = value});
         publishChangedFor(key);
     }
 
@@ -81,7 +83,10 @@ namespace ssa::presentation {
     bool AdvancedTextFilterViewModel::updateFilterWithSelectedValue(const QString& key,
                                                                     const QString& value) {
         const auto expression =
-            columns_.expressionWithAddedValue(key, textFilter(key), value, operatorModeFor(key));
+            columns_.expressionWithAddedValue({.key = key,
+                                               .currentExpression = textFilter(key),
+                                               .value = value,
+                                               .operatorMode = operatorModeFor(key)});
         if (!expression.has_value()) {
             return false;
         }
@@ -91,15 +96,21 @@ namespace ssa::presentation {
     void AdvancedTextFilterViewModel::replaceWithOperatorValueList(const QString& key,
                                                                    const QStringList& values,
                                                                    const QString& operatorMode) {
-        columns_.setOperatorMode(key, operatorMode, textFilter(key));
-        publishExpressionAndApply(
-            key, columns_.expressionReplacingWithOperator(values, operatorMode), false);
+        columns_.setOperatorMode(
+            {.key = key, .operatorMode = operatorMode, .currentExpression = textFilter(key)});
+        publishExpressionAndApply(key,
+                                  columns_.expressionReplacingWithOperator(
+                                      {.values = values, .operatorMode = operatorMode}),
+                                  false);
     }
 
     void AdvancedTextFilterViewModel::replaceWithOperatorValueLists(
         const QString& key, const QStringList& includeValues, const QStringList& excludeValues) {
         publishExpressionAndApply(
-            key, columns_.expressionReplacingWithOperatorLists(includeValues, excludeValues), true);
+            key,
+            columns_.expressionReplacingWithOperatorLists(
+                {.includeValues = includeValues, .excludeValues = excludeValues}),
+            true);
     }
 
     void AdvancedTextFilterViewModel::refreshFromState() {
@@ -114,7 +125,8 @@ namespace ssa::presentation {
         if (!state_.setTextFilter(key, expression)) {
             return false;
         }
-        columns_.setExpression(key, expression, inferOperatorMode);
+        columns_.setExpression(
+            {.key = key, .expression = expression, .inferOperatorMode = inferOperatorMode});
         publishChangedFor(key);
         return true;
     }

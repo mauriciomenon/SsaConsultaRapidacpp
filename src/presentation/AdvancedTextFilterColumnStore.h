@@ -15,22 +15,51 @@ namespace ssa::presentation {
 
     class AdvancedTextFilterColumnStore final {
       public:
+        struct OperatorModeUpdate {
+            QString key;
+            QString operatorMode;
+            QString currentExpression;
+        };
+
+        struct ExpressionUpdate {
+            QString key;
+            QString expression;
+            bool inferOperatorMode{false};
+        };
+
+        struct AddValueRequest {
+            QString key;
+            QString currentExpression;
+            QString value;
+            QString operatorMode;
+        };
+
+        struct OperatorExpressionRequest {
+            QString currentExpression;
+            QString operatorMode;
+        };
+
+        struct OperatorValueListRequest {
+            QStringList values;
+            QString operatorMode;
+        };
+
+        struct OperatorValueListsRequest {
+            QStringList includeValues;
+            QStringList excludeValues;
+        };
+
         [[nodiscard]] QString operatorModeFor(const QString& key) const;
-        bool setOperatorMode(const QString& key, const QString& operatorMode,
-                             const QString& currentExpression);
-        void setExpression(const QString& key, const QString& expression,
-                           bool inferOperatorMode = false);
+        bool setOperatorMode(const OperatorModeUpdate& update);
+        void setExpression(const ExpressionUpdate& update);
         [[nodiscard]] std::optional<QString>
-        expressionWithAddedValue(const QString& key, const QString& currentExpression,
-                                 const QString& value, const QString& operatorMode) const;
+        expressionWithAddedValue(const AddValueRequest& request) const;
         [[nodiscard]] static QString
-        expressionReplacingCurrentExpressionWithOperator(const QString& currentExpression,
-                                                         const QString& operatorMode);
-        [[nodiscard]] static QString expressionReplacingWithOperator(const QStringList& values,
-                                                                     const QString& operatorMode);
+        expressionReplacingCurrentExpressionWithOperator(const OperatorExpressionRequest& request);
         [[nodiscard]] static QString
-        expressionReplacingWithOperatorLists(const QStringList& includeValues,
-                                             const QStringList& excludeValues);
+        expressionReplacingWithOperator(const OperatorValueListRequest& request);
+        [[nodiscard]] static QString
+        expressionReplacingWithOperatorLists(const OperatorValueListsRequest& request);
         bool refreshFrom(const std::map<std::string, std::string>& filters);
 
       private:
