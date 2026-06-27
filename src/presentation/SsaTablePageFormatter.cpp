@@ -2,7 +2,9 @@
 
 #include "presentation/SsaRecordValueFormatter.h"
 
+#include <memory>
 #include <stdexcept>
+#include <vector>
 
 namespace ssa::presentation {
 
@@ -14,7 +16,6 @@ namespace ssa::presentation {
             throw std::length_error("Pagina excede limite de exibicao");
         }
 
-        const SsaRecordValueFormatter formatter;
         SsaTableDisplayValues display;
         display.rowCount = page.rows.size();
         display.columnCount = displayColumns.size();
@@ -25,7 +26,8 @@ namespace ssa::presentation {
                 if (cancelToken && cancelToken->load(std::memory_order_relaxed)) {
                     return std::nullopt;
                 }
-                display.values[valueIndex] = formatter.valueFor(row, column.key, column.type);
+                display.values[valueIndex] =
+                    SsaRecordValueFormatter::valueFor(row, column.key, column.type);
                 ++valueIndex;
             }
         }

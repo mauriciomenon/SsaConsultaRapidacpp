@@ -7,11 +7,13 @@
 
 namespace ssa::presentation {
 
+    inline constexpr int kDefaultDisplayColumnWidth = 132;
+
     struct SsaDisplayColumn {
         std::string key;
         std::string label;
         domain::ColumnType type{domain::ColumnType::Text};
-        int defaultWidth{132};
+        int defaultWidth{kDefaultDisplayColumnWidth};
     };
 
     class SsaColumnDisplayCatalog final {

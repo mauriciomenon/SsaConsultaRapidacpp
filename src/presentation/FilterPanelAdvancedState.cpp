@@ -5,6 +5,8 @@
 #include "presentation/FilterPanelStateHelpers.h"
 
 #include <algorithm>
+#include <map>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -40,26 +42,28 @@ namespace ssa::presentation::filterpanel {
     }
 
     QString FilterPanelAdvancedState::textFilter(const QString& key) const {
-        const auto it = input_.textFilters.find(key.trimmed().toStdString());
-        return it == input_.textFilters.end() ? QString{} : QString::fromStdString(it->second);
+        const auto filterEntry = input_.textFilters.find(key.trimmed().toStdString());
+        return filterEntry == input_.textFilters.end()
+                   ? QString{}
+                   : QString::fromStdString(filterEntry->second);
     }
 
     bool FilterPanelAdvancedState::setTextFilter(const QString& key, QString value) {
         const auto normalizedKey = key.trimmed().toStdString();
         value = value.trimmed();
         const auto normalizedValue = value.toStdString();
-        const auto it = input_.textFilters.find(normalizedKey);
+        const auto filterEntry = input_.textFilters.find(normalizedKey);
         if (normalizedValue.empty()) {
-            if (it == input_.textFilters.end()) {
+            if (filterEntry == input_.textFilters.end()) {
                 return false;
             }
-            input_.textFilters.erase(it);
+            input_.textFilters.erase(filterEntry);
             return true;
         }
         if (!domain::ColumnCatalog::contains(normalizedKey)) {
             return false;
         }
-        if (it != input_.textFilters.end() && it->second == normalizedValue) {
+        if (filterEntry != input_.textFilters.end() && filterEntry->second == normalizedValue) {
             return false;
         }
         input_.textFilters[normalizedKey] = normalizedValue;

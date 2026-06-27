@@ -12,11 +12,11 @@ namespace ssa::presentation {
 
     class SsaRecordValueFormatter final {
       public:
-        [[nodiscard]] QVariant valueFor(const domain::SsaRecord& record,
-                                        const std::string& columnKey,
-                                        domain::ColumnType columnType) const;
-        [[nodiscard]] QVariant valueFor(std::string_view value,
-                                        domain::ColumnType columnType) const;
+        [[nodiscard]] static QVariant valueFor(const domain::SsaRecord& record,
+                                               const std::string& columnKey,
+                                               domain::ColumnType columnType);
+        [[nodiscard]] static QVariant valueFor(std::string_view value,
+                                               domain::ColumnType columnType);
     };
 
 } // namespace ssa::presentation

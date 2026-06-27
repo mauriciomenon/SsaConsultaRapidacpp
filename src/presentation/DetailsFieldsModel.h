@@ -2,10 +2,10 @@
 
 #include "domain/ColumnCatalog.h"
 #include "domain/SsaTypes.h"
-#include "presentation/SsaRecordValueFormatter.h"
 
 #include <QAbstractListModel>
 
+#include <cstdint>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -16,7 +16,7 @@ namespace ssa::presentation {
         Q_OBJECT
 
       public:
-        enum Role { LabelRole = Qt::UserRole + 1, ValueRole };
+        enum Role : std::uint16_t { LabelRole = Qt::UserRole + 1, ValueRole };
 
         explicit DetailsFieldsModel(QObject* parent = nullptr);
 
@@ -34,14 +34,13 @@ namespace ssa::presentation {
         };
         using RecordFields = std::vector<domain::SsaRecord::FieldView>;
 
-        [[nodiscard]] RecordFields nonEmptyFields(const RecordFields& recordFields) const;
-        [[nodiscard]] std::vector<FieldEntry> buildEntries(const RecordFields& recordFields) const;
+        [[nodiscard]] static RecordFields nonEmptyFields(const RecordFields& recordFields);
+        [[nodiscard]] static std::vector<FieldEntry> buildEntries(const RecordFields& recordFields);
         [[nodiscard]] bool hasSameSchema(const RecordFields& recordFields) const;
         void updateValues(const RecordFields& recordFields);
 
         std::vector<FieldEntry> fields_;
         std::unordered_map<std::string, domain::ColumnDef> columnsByKey_;
-        SsaRecordValueFormatter valueFormatter_;
     };
 
 } // namespace ssa::presentation

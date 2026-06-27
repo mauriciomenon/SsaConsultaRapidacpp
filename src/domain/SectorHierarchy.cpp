@@ -3,6 +3,9 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <string>
+#include <utility>
+#include <vector>
 
 namespace ssa::domain {
 
@@ -21,8 +24,8 @@ namespace ssa::domain {
 
         [[nodiscard]] std::string uppercaseCopy(const std::string_view value) {
             std::string result{value};
-            std::ranges::transform(result, result.begin(), [](const unsigned char ch) {
-                return static_cast<char>(std::toupper(ch));
+            std::ranges::transform(result, result.begin(), [](const unsigned char character) {
+                return static_cast<char>(std::toupper(character));
             });
             return result;
         }
@@ -40,14 +43,14 @@ namespace ssa::domain {
 
     std::vector<std::string> SectorHierarchy::sectorsForDivision(const std::string_view key) {
         const auto normalized = uppercaseCopy(key);
-        const auto it = std::ranges::find_if(
+        const auto* const divisionEntry = std::ranges::find_if(
             kDivisions, [&normalized](const auto& division) { return division.key == normalized; });
-        if (it == kDivisions.end()) {
+        if (divisionEntry == kDivisions.end()) {
             return {};
         }
         std::vector<std::string> result;
-        result.reserve(it->sectors.size());
-        for (const auto sector : it->sectors) {
+        result.reserve(divisionEntry->sectors.size());
+        for (const auto sector : divisionEntry->sectors) {
             result.emplace_back(sector);
         }
         return result;

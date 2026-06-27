@@ -1,6 +1,12 @@
 #include "presentation/DetailsFieldsModel.h"
 
+#include "presentation/SsaRecordValueFormatter.h"
+
 #include <QString>
+
+#include <string>
+#include <utility>
+#include <vector>
 
 namespace ssa::presentation {
 
@@ -29,9 +35,9 @@ namespace ssa::presentation {
                                                                         : column->second.label);
         }
         if (role == ValueRole) {
-            return valueFormatter_.valueFor(field.value, column == columnsByKey_.end()
-                                                             ? domain::ColumnType::Text
-                                                             : column->second.type);
+            return SsaRecordValueFormatter::valueFor(field.value, column == columnsByKey_.end()
+                                                                      ? domain::ColumnType::Text
+                                                                      : column->second.type);
         }
         return {};
     }
@@ -57,7 +63,7 @@ namespace ssa::presentation {
     }
 
     DetailsFieldsModel::RecordFields
-    DetailsFieldsModel::nonEmptyFields(const RecordFields& recordFields) const {
+    DetailsFieldsModel::nonEmptyFields(const RecordFields& recordFields) {
         RecordFields result;
         result.reserve(recordFields.size());
         for (const auto& field : recordFields) {
@@ -69,7 +75,7 @@ namespace ssa::presentation {
     }
 
     std::vector<DetailsFieldsModel::FieldEntry>
-    DetailsFieldsModel::buildEntries(const RecordFields& recordFields) const {
+    DetailsFieldsModel::buildEntries(const RecordFields& recordFields) {
         std::vector<FieldEntry> entries;
         entries.reserve(recordFields.size());
         for (const auto& [key, value] : recordFields) {

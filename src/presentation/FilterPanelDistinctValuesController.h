@@ -46,7 +46,7 @@ namespace ssa::presentation {
         };
 
         void configureConnections();
-        void requestColumnValueOptionsFor(QString key);
+        void requestColumnValueOptionsFor(const QString& key);
         void onColumnValueOptionsReady(std::uint64_t requestToken, std::vector<std::string> values);
         void onQuickSectorOptionsReady(std::uint64_t requestToken, std::vector<std::string> values);
 

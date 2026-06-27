@@ -2,6 +2,7 @@
 #include "presentation/AdvancedMacroFilterViewModel.h"
 #include "presentation/AdvancedSectorHierarchyViewModel.h"
 #include "presentation/AdvancedTextFilterViewModel.h"
+#include "presentation/AdvancedWeekFilterViewModel.h"
 #include "presentation/FilterPanelAdvancedViewModel.h"
 #include "presentation/FilterPanelDistinctValueRequestBuilder.h"
 #include "presentation/FilterPanelSectorViewModel.h"
@@ -15,8 +16,10 @@
 
 #include <iterator>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <ranges>
+#include <string>
 #include <vector>
 
 namespace {
@@ -173,6 +176,32 @@ namespace {
             QVERIFY(keys.contains("responsavel_execucao"));
             QVERIFY(keys.contains("status_execucao_prazo"));
             QVERIFY(keys.contains("situacao_da_parcial"));
+        }
+
+        void advanced_week_validation_accepts_empty_and_rejects_out_of_range_values() {
+            auto repository = std::make_shared<FilterPanelRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::FilterPanelViewModel filters(service);
+            auto* advanced =
+                qobject_cast<ssa::presentation::FilterPanelAdvancedViewModel*>(filters.advanced());
+            QVERIFY(advanced != nullptr);
+            auto* week =
+                qobject_cast<ssa::presentation::AdvancedWeekFilterViewModel*>(advanced->week());
+            QVERIFY(week != nullptr);
+
+            QCOMPARE(week->isYearValid(""), true);
+            QCOMPARE(week->isYearValid("1900"), true);
+            QCOMPARE(week->isYearValid("2999"), true);
+            QCOMPARE(week->isYearValid("1899"), false);
+            QCOMPARE(week->isYearValid("3000"), false);
+            QCOMPARE(week->isWeekValid("1"), true);
+            QCOMPARE(week->isWeekValid("53"), true);
+            QCOMPARE(week->isWeekValid("0"), false);
+            QCOMPARE(week->isWeekValid("54"), false);
+            QCOMPARE(week->isYearWeekValid("202601"), true);
+            QCOMPARE(week->isYearWeekValid("202653"), true);
+            QCOMPARE(week->isYearWeekValid("202600"), false);
+            QCOMPARE(week->isYearWeekValid("202654"), false);
         }
 
         void advanced_sector_hierarchy_updates_executor_filter() {

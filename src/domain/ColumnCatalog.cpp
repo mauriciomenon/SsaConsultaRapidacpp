@@ -3,7 +3,9 @@
 #include <algorithm>
 #include <array>
 #include <stdexcept>
+#include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace ssa::domain {
 
@@ -222,7 +224,7 @@ namespace ssa::domain {
     }
 
     std::string_view ColumnCatalog::advancedFilterLabel(const std::string_view key) {
-        const auto advancedColumn = std::ranges::find_if(
+        const auto* const advancedColumn = std::ranges::find_if(
             kAdvancedFilterColumns,
             [key](const AdvancedFilterColumnDef& column) { return column.key == key; });
         if (advancedColumn != kAdvancedFilterColumns.end()) {
@@ -295,11 +297,11 @@ namespace ssa::domain {
     }
 
     const ColumnDef* ColumnCatalog::find(const std::string_view key) {
-        const auto it = columnByKey().find(key);
-        if (it == columnByKey().end()) {
+        const auto columnEntry = columnByKey().find(key);
+        if (columnEntry == columnByKey().end()) {
             return nullptr;
         }
-        return &it->second;
+        return &columnEntry->second;
     }
 
     bool ColumnCatalog::contains(const std::string_view key) {

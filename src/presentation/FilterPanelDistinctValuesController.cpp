@@ -2,9 +2,16 @@
 
 #include "query/SsaQueryService.h"
 
+#include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
 namespace ssa::presentation {
+
+    namespace {
+        constexpr int kColumnValueRefreshDelayMs = 250;
+    } // namespace
 
     std::uint64_t
     FilterPanelDistinctValuesController::DistinctValueRequestContext::start(QString requestKey) {
@@ -14,7 +21,7 @@ namespace ssa::presentation {
     }
 
     bool FilterPanelDistinctValuesController::DistinctValueRequestContext::accepts(
-        const std::uint64_t requestToken) const {
+        std::uint64_t requestToken) const {
         return requestToken == token;
     }
 
@@ -28,16 +35,16 @@ namespace ssa::presentation {
     }
 
     void FilterPanelDistinctValuesController::configureConnections() {
-        columnValueRefreshTimer_.setInterval(250);
+        columnValueRefreshTimer_.setInterval(kColumnValueRefreshDelayMs);
         columnValueRefreshTimer_.setSingleShot(true);
         connect(&columnValueRefreshTimer_, &QTimer::timeout, this,
                 [this]() { refreshColumnValueOptions(); });
         connect(&columnValueOptionsFetcher_, &FilterPanelDistinctValueFetcher::valuesReady, this,
-                [this](const std::uint64_t requestToken, std::vector<std::string> values) {
+                [this](std::uint64_t requestToken, std::vector<std::string> values) {
                     onColumnValueOptionsReady(requestToken, std::move(values));
                 });
         connect(&quickSectorOptionsFetcher_, &FilterPanelDistinctValueFetcher::valuesReady, this,
-                [this](const std::uint64_t requestToken, std::vector<std::string> values) {
+                [this](std::uint64_t requestToken, std::vector<std::string> values) {
                     onQuickSectorOptionsReady(requestToken, std::move(values));
                 });
     }
@@ -54,7 +61,7 @@ namespace ssa::presentation {
         requestColumnValueOptionsFor(key);
     }
 
-    void FilterPanelDistinctValuesController::requestColumnValueOptionsFor(QString key) {
+    void FilterPanelDistinctValuesController::requestColumnValueOptionsFor(const QString& key) {
         if (!queryService_) {
             emit columnValueOptionsReady({}, key);
             return;
@@ -80,7 +87,7 @@ namespace ssa::presentation {
     }
 
     void FilterPanelDistinctValuesController::onColumnValueOptionsReady(
-        const std::uint64_t requestToken, std::vector<std::string> values) {
+        std::uint64_t requestToken, std::vector<std::string> values) {
         if (!columnValueRequest_.accepts(requestToken)) {
             return;
         }
@@ -88,7 +95,7 @@ namespace ssa::presentation {
     }
 
     void FilterPanelDistinctValuesController::onQuickSectorOptionsReady(
-        const std::uint64_t requestToken, std::vector<std::string> values) {
+        std::uint64_t requestToken, std::vector<std::string> values) {
         if (!quickSectorRequest_.accepts(requestToken)) {
             return;
         }

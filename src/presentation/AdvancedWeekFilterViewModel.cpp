@@ -6,6 +6,13 @@
 
 namespace ssa::presentation {
 
+    namespace {
+        constexpr int kYearTextLength = 4;
+        constexpr int kYearWeekTextLength = 6;
+        constexpr int kMinValidYear = 1900;
+        constexpr int kMaxValidYear = 2999;
+    } // namespace
+
     AdvancedWeekFilterViewModel::AdvancedWeekFilterViewModel(
         filterpanel::FilterPanelAdvancedState& state, QStringList weekColumnKeys, QObject* parent)
         : QObject(parent), state_(state), weekColumnKeys_(std::move(weekColumnKeys)) {}
@@ -118,9 +125,10 @@ namespace ssa::presentation {
         if (trimmed.isEmpty()) {
             return true;
         }
-        bool ok = false;
-        const int year = trimmed.toInt(&ok);
-        return ok && trimmed.size() == 4 && year >= 1900 && year <= 2999;
+        bool conversionOk = false;
+        const int year = trimmed.toInt(&conversionOk);
+        return conversionOk && trimmed.size() == kYearTextLength && year >= kMinValidYear &&
+               year <= kMaxValidYear;
     }
 
     bool AdvancedWeekFilterViewModel::isWeekValid(const QString& value) const {
@@ -128,9 +136,9 @@ namespace ssa::presentation {
         if (trimmed.isEmpty()) {
             return true;
         }
-        bool ok = false;
-        const int week = trimmed.toInt(&ok);
-        return ok && week >= domain::kFirstIsoWeek && week <= domain::kLastIsoWeek;
+        bool conversionOk = false;
+        const int week = trimmed.toInt(&conversionOk);
+        return conversionOk && week >= domain::kFirstIsoWeek && week <= domain::kLastIsoWeek;
     }
 
     bool AdvancedWeekFilterViewModel::isYearWeekValid(const QString& value) const {
@@ -138,13 +146,13 @@ namespace ssa::presentation {
         if (trimmed.isEmpty()) {
             return true;
         }
-        bool ok = false;
-        const int yearWeek = trimmed.toInt(&ok);
-        if (!ok || trimmed.size() != 6) {
+        bool conversionOk = false;
+        const int yearWeek = trimmed.toInt(&conversionOk);
+        if (!conversionOk || trimmed.size() != kYearWeekTextLength) {
             return false;
         }
-        const int week = yearWeek % 100;
-        return isYearValid(trimmed.first(4)) && week >= domain::kFirstIsoWeek &&
+        const int week = yearWeek % domain::kYearWeekMultiplier;
+        return isYearValid(trimmed.first(kYearTextLength)) && week >= domain::kFirstIsoWeek &&
                week <= domain::kLastIsoWeek;
     }
 

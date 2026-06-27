@@ -36,15 +36,17 @@ namespace {
 
       private slots:
         void date_text_formatter_keeps_only_day_month_year() {
-            const ssa::presentation::SsaRecordValueFormatter formatter;
-
-            QCOMPARE(formatter.valueFor("2026-04-13 11:21:01", ssa::domain::ColumnType::DateText)
+            QCOMPARE(ssa::presentation::SsaRecordValueFormatter::valueFor(
+                         "2026-04-13 11:21:01", ssa::domain::ColumnType::DateText)
                          .toString(),
                      QString("13/04/2026"));
-            QCOMPARE(formatter.valueFor("2026-04-13T12:26:00", ssa::domain::ColumnType::DateText)
+            QCOMPARE(ssa::presentation::SsaRecordValueFormatter::valueFor(
+                         "2026-04-13T12:26:00", ssa::domain::ColumnType::DateText)
                          .toString(),
                      QString("13/04/2026"));
-            QCOMPARE(formatter.valueFor("sem data", ssa::domain::ColumnType::DateText).toString(),
+            QCOMPARE(ssa::presentation::SsaRecordValueFormatter::valueFor(
+                         "sem data", ssa::domain::ColumnType::DateText)
+                         .toString(),
                      QString("sem data"));
         }
 

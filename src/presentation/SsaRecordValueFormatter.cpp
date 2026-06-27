@@ -3,6 +3,8 @@
 #include <QDate>
 #include <QString>
 
+#include <string>
+
 namespace ssa::presentation {
 
     namespace {
@@ -16,18 +18,18 @@ namespace ssa::presentation {
 
     QVariant SsaRecordValueFormatter::valueFor(const domain::SsaRecord& record,
                                                const std::string& columnKey,
-                                               const domain::ColumnType columnType) const {
+                                               const domain::ColumnType columnType) {
         return valueFor(record.valueOf(columnKey), columnType);
     }
 
     QVariant SsaRecordValueFormatter::valueFor(const std::string_view value,
-                                               const domain::ColumnType columnType) const {
+                                               const domain::ColumnType columnType) {
         const QString text = QString::fromUtf8(value.data(), static_cast<qsizetype>(value.size()));
         switch (columnType) {
         case domain::ColumnType::Integer: {
-            bool ok = false;
-            const qlonglong number = text.toLongLong(&ok);
-            if (ok) {
+            bool conversionOk = false;
+            const qlonglong number = text.toLongLong(&conversionOk);
+            if (conversionOk) {
                 return number;
             }
             return text;
