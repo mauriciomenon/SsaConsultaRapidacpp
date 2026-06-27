@@ -8,6 +8,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace ssa::presentation {
@@ -20,7 +21,7 @@ namespace ssa::presentation {
             std::shared_ptr<query::SsaQueryService> queryService, QObject* parent = nullptr);
 
         void requestValues(const domain::DistinctValuesRequest& request,
-                           const std::uint64_t requestToken);
+                           std::uint64_t requestToken);
 
       signals:
         void valuesReady(std::uint64_t requestToken, std::vector<std::string> values);

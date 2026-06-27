@@ -4,12 +4,14 @@
 
 #include <algorithm>
 #include <cctype>
+#include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
 namespace {
     std::string trimCopy(std::string value) {
-        auto isSpace = [](const unsigned char c) { return std::isspace(c); };
+        auto isSpace = [](const unsigned char character) { return std::isspace(character); };
         const auto left = std::find_if_not(value.begin(), value.end(), isSpace);
         if (left == value.end()) {
             return {};
@@ -30,7 +32,7 @@ namespace ssa::presentation {
 
     void
     FilterPanelDistinctValueFetcher::requestValues(const domain::DistinctValuesRequest& request,
-                                                   const std::uint64_t requestToken) {
+                                                   std::uint64_t requestToken) {
         if (!queryService_) {
             emit this->valuesReady(requestToken, {});
             return;

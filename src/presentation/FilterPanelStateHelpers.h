@@ -5,7 +5,9 @@
 
 #include <QString>
 
+#include <map>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -23,15 +25,15 @@ namespace ssa::presentation::filterpanel {
 
     [[nodiscard]] domain::DerivationFilterMode derivationModeFromString(const QString& value);
 
-    [[nodiscard]] std::string derivationModeToString(const domain::DerivationFilterMode mode);
+    [[nodiscard]] std::string derivationModeToString(domain::DerivationFilterMode mode);
 
     [[nodiscard]] std::vector<std::string>
-    buildFilterSummaryParts(const std::string_view quickSector,
+    buildFilterSummaryParts(std::string_view quickSector,
                             const std::map<std::string, std::string>& columnFilters,
                             const domain::AdvancedFilterSpec& advanced);
 
     [[nodiscard]] std::vector<FilterSummaryEntry>
-    buildFilterSummaryEntries(const std::string_view quickSector,
+    buildFilterSummaryEntries(std::string_view quickSector,
                               const std::map<std::string, std::string>& columnFilters,
                               const domain::AdvancedFilterSpec& advanced);
 

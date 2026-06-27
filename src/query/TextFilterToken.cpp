@@ -1,6 +1,8 @@
 #include "query/TextFilterToken.h"
 
+#include <string>
 #include <utility>
+#include <vector>
 
 namespace ssa::query {
 
@@ -18,13 +20,14 @@ namespace ssa::query {
             return std::string{value.substr(first, last - first + 1)};
         }
 
-        TextFilterOperator tokenOperatorForStorage(const TextFilterOperator op) {
-            return op == TextFilterOperator::Different ? TextFilterOperator::Different
-                                                       : TextFilterOperator::Equals;
+        TextFilterOperator tokenOperatorForStorage(const TextFilterOperator filterOperator) {
+            return filterOperator == TextFilterOperator::Different ? TextFilterOperator::Different
+                                                                   : TextFilterOperator::Equals;
         }
 
-        char tokenPrefix(const TextFilterOperator op) {
-            return op == TextFilterOperator::Different ? kDifferentPrefix : kEqualsPrefix;
+        char tokenPrefix(const TextFilterOperator filterOperator) {
+            return filterOperator == TextFilterOperator::Different ? kDifferentPrefix
+                                                                   : kEqualsPrefix;
         }
 
         TextFilterToken parseToken(const std::string_view rawToken) {
@@ -32,13 +35,13 @@ namespace ssa::query {
             if (token.empty()) {
                 return {};
             }
-            auto op = TextFilterOperator::Equals;
+            auto filterOperator = TextFilterOperator::Equals;
             if (token.front() == kDifferentPrefix || token.front() == kEqualsPrefix) {
-                op = token.front() == kDifferentPrefix ? TextFilterOperator::Different
-                                                       : TextFilterOperator::Equals;
+                filterOperator = token.front() == kDifferentPrefix ? TextFilterOperator::Different
+                                                                   : TextFilterOperator::Equals;
                 token.erase(token.begin());
             }
-            return TextFilterToken{op, trimmedCopy(token)};
+            return TextFilterToken{filterOperator, trimmedCopy(token)};
         }
 
         std::string serializeToken(const TextFilterToken& token) {
@@ -47,7 +50,7 @@ namespace ssa::query {
             }
             std::string serialized;
             serialized.reserve(token.value.size() + 1);
-            serialized.push_back(tokenPrefix(token.op));
+            serialized.push_back(tokenPrefix(token.filterOperator));
             serialized.append(token.value);
             return serialized;
         }
@@ -57,13 +60,13 @@ namespace ssa::query {
             if (token.value.empty()) {
                 return false;
             }
-            token.op = tokenOperatorForStorage(token.op);
+            token.filterOperator = tokenOperatorForStorage(token.filterOperator);
             if (const auto existing = tokens.indexByValue.find(token.value);
                 existing != tokens.indexByValue.end()) {
-                if (tokens.ordered[existing->second].op == token.op) {
+                if (tokens.ordered[existing->second].filterOperator == token.filterOperator) {
                     return false;
                 }
-                tokens.ordered[existing->second].op = token.op;
+                tokens.ordered[existing->second].filterOperator = token.filterOperator;
                 return true;
             }
             tokens.indexByValue[token.value] = tokens.ordered.size();
@@ -83,8 +86,8 @@ namespace ssa::query {
         return std::nullopt;
     }
 
-    std::string textFilterOperatorMode(const TextFilterOperator op) {
-        return op == TextFilterOperator::Different ? "different" : "equals";
+    std::string textFilterOperatorMode(const TextFilterOperator filterOperator) {
+        return filterOperator == TextFilterOperator::Different ? "different" : "equals";
     }
 
     TextFilterUiMode textFilterUiModeFromName(const std::string_view mode) {
@@ -101,8 +104,10 @@ namespace ssa::query {
         return mode == TextFilterUiMode::Mixed ? "mixed" : "equals";
     }
 
-    std::string makeTextFilterToken(const std::string_view value, const TextFilterOperator op) {
-        return serializeToken(TextFilterToken{tokenOperatorForStorage(op), trimmedCopy(value)});
+    std::string makeTextFilterToken(const std::string_view value,
+                                    const TextFilterOperator filterOperator) {
+        return serializeToken(
+            TextFilterToken{tokenOperatorForStorage(filterOperator), trimmedCopy(value)});
     }
 
     TextFilterTokenSet parseTextFilterTokens(const std::string_view expression) {
@@ -122,19 +127,19 @@ namespace ssa::query {
     }
 
     TextFilterTokenSet makeTextFilterTokenSet(const std::vector<std::string>& values,
-                                              const TextFilterOperator op) {
+                                              const TextFilterOperator filterOperator) {
         TextFilterTokenSet tokens;
         for (const auto& value : values) {
-            appendOrReplaceByValue(
-                tokens, TextFilterToken{tokenOperatorForStorage(op), trimmedCopy(value)});
+            appendOrReplaceByValue(tokens, TextFilterToken{tokenOperatorForStorage(filterOperator),
+                                                           trimmedCopy(value)});
         }
         return tokens;
     }
 
     bool addTextFilterValue(TextFilterTokenSet& tokens, const std::string_view value,
-                            const TextFilterOperator op) {
+                            const TextFilterOperator filterOperator) {
         return appendOrReplaceByValue(
-            tokens, TextFilterToken{tokenOperatorForStorage(op), trimmedCopy(value)});
+            tokens, TextFilterToken{tokenOperatorForStorage(filterOperator), trimmedCopy(value)});
     }
 
     bool sameTextFilterTokens(const TextFilterTokenSet& lhs, const TextFilterTokenSet& rhs) {
@@ -142,7 +147,7 @@ namespace ssa::query {
             return false;
         }
         for (std::size_t index = 0; index < lhs.ordered.size(); ++index) {
-            if (lhs.ordered[index].op != rhs.ordered[index].op ||
+            if (lhs.ordered[index].filterOperator != rhs.ordered[index].filterOperator ||
                 lhs.ordered[index].value != rhs.ordered[index].value) {
                 return false;
             }
@@ -173,8 +178,8 @@ namespace ssa::query {
         bool hasEquals = false;
         bool hasDifferent = false;
         for (const auto& token : tokens.ordered) {
-            hasDifferent = hasDifferent || token.op == TextFilterOperator::Different;
-            hasEquals = hasEquals || token.op == TextFilterOperator::Equals;
+            hasDifferent = hasDifferent || token.filterOperator == TextFilterOperator::Different;
+            hasEquals = hasEquals || token.filterOperator == TextFilterOperator::Equals;
         }
         if (hasEquals && hasDifferent) {
             return TextFilterUiMode::Mixed;

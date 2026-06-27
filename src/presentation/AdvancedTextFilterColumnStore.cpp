@@ -1,22 +1,25 @@
 #include "presentation/AdvancedTextFilterColumnStore.h"
 
+#include <map>
+#include <string>
+
 namespace ssa::presentation {
 
     QString AdvancedTextFilterColumnStore::operatorModeFor(const QString& key) const {
-        const auto it = columns_.find(key);
-        return it == columns_.end() ? QString{"equals"} : it->second.operatorMode;
+        const auto columnEntry = columns_.find(key);
+        return columnEntry == columns_.end() ? QString{"equals"} : columnEntry->second.operatorMode;
     }
 
     bool AdvancedTextFilterColumnStore::setOperatorMode(const OperatorModeUpdate& update) {
         const auto normalizedMode = QString::fromStdString(query::textFilterUiModeName(
             query::textFilterUiModeFromName(update.operatorMode.toStdString())));
-        auto [it, inserted] = columns_.try_emplace(update.key);
+        auto [columnEntry, inserted] = columns_.try_emplace(update.key);
         if (inserted && !update.currentExpression.trimmed().isEmpty()) {
-            it->second.tokens =
+            columnEntry->second.tokens =
                 query::parseTextFilterTokens(update.currentExpression.toStdString());
-            it->second.snapshot = update.currentExpression.trimmed();
+            columnEntry->second.snapshot = update.currentExpression.trimmed();
         }
-        auto& column = it->second;
+        auto& column = columnEntry->second;
         if (column.operatorMode == normalizedMode) {
             return false;
         }
@@ -24,18 +27,9 @@ namespace ssa::presentation {
         return true;
     }
 
-    query::TextFilterTokenSet
-    AdvancedTextFilterColumnStore::tokensFor(const QString& key, const QString& expression) const {
-        const auto it = columns_.find(key);
-        if (it != columns_.end()) {
-            return it->second.tokens;
-        }
-        return query::parseTextFilterTokens(expression.toStdString());
-    }
-
     void AdvancedTextFilterColumnStore::setExpression(const ExpressionUpdate& update) {
-        auto it = columns_.try_emplace(update.key).first;
-        auto& column = it->second;
+        auto columnEntry = columns_.try_emplace(update.key).first;
+        auto& column = columnEntry->second;
         const auto rawExpression = update.expression.toStdString();
         if (column.rawSnapshot != rawExpression) {
             column.tokens = query::parseTextFilterTokens(rawExpression);
@@ -50,10 +44,13 @@ namespace ssa::presentation {
 
     std::optional<QString>
     AdvancedTextFilterColumnStore::expressionWithAddedValue(const AddValueRequest& request) const {
-        auto tokens = tokensFor(request.key, request.currentExpression);
-        auto op = query::textFilterOperatorFromMode(request.operatorMode.toStdString());
-        if (!op.has_value() ||
-            !query::addTextFilterValue(tokens, request.value.toStdString(), *op)) {
+        const auto columnEntry = columns_.find(request.key);
+        auto tokens = columnEntry != columns_.end()
+                          ? columnEntry->second.tokens
+                          : query::parseTextFilterTokens(request.currentExpression.toStdString());
+        auto filterOperator = query::textFilterOperatorFromMode(request.operatorMode.toStdString());
+        if (!filterOperator.has_value() ||
+            !query::addTextFilterValue(tokens, request.value.toStdString(), *filterOperator)) {
             return std::nullopt;
         }
         return QString::fromStdString(query::joinTextFilterTokens(tokens));
@@ -61,27 +58,29 @@ namespace ssa::presentation {
 
     QString AdvancedTextFilterColumnStore::expressionReplacingCurrentExpressionWithOperator(
         const OperatorExpressionRequest& request) {
-        const auto op = query::textFilterOperatorFromMode(request.operatorMode.toStdString());
-        if (!op.has_value()) {
+        const auto filterOperator =
+            query::textFilterOperatorFromMode(request.operatorMode.toStdString());
+        if (!filterOperator.has_value()) {
             return request.currentExpression;
         }
         const auto tokens = query::parseTextFilterTokens(request.currentExpression.toStdString());
         query::TextFilterTokenSet replaced;
         for (const auto& token : tokens.ordered) {
-            query::addTextFilterValue(replaced, token.value, *op);
+            query::addTextFilterValue(replaced, token.value, *filterOperator);
         }
         return QString::fromStdString(query::joinTextFilterTokens(replaced));
     }
 
     QString AdvancedTextFilterColumnStore::expressionReplacingWithOperator(
         const OperatorValueListRequest& request) {
-        const auto op = query::textFilterOperatorFromMode(request.operatorMode.toStdString());
-        if (!op.has_value()) {
+        const auto filterOperator =
+            query::textFilterOperatorFromMode(request.operatorMode.toStdString());
+        if (!filterOperator.has_value()) {
             return {};
         }
         query::TextFilterTokenSet tokens;
         for (const auto& value : request.values) {
-            query::addTextFilterValue(tokens, value.toStdString(), *op);
+            query::addTextFilterValue(tokens, value.toStdString(), *filterOperator);
         }
         return QString::fromStdString(query::joinTextFilterTokens(tokens));
     }

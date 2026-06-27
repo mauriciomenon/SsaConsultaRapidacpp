@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -8,19 +10,19 @@
 
 namespace ssa::query {
 
-    enum class TextFilterOperator {
+    enum class TextFilterOperator : std::uint8_t {
         Equals,
         Different,
     };
 
-    enum class TextFilterUiMode {
+    enum class TextFilterUiMode : std::uint8_t {
         Equals,
         Different,
         Mixed,
     };
 
     struct TextFilterToken {
-        TextFilterOperator op{TextFilterOperator::Equals};
+        TextFilterOperator filterOperator{TextFilterOperator::Equals};
         std::string value;
     };
 
@@ -31,15 +33,16 @@ namespace ssa::query {
 
     [[nodiscard]] std::optional<TextFilterOperator>
     textFilterOperatorFromMode(std::string_view mode);
-    [[nodiscard]] std::string textFilterOperatorMode(TextFilterOperator op);
+    [[nodiscard]] std::string textFilterOperatorMode(TextFilterOperator filterOperator);
     [[nodiscard]] TextFilterUiMode textFilterUiModeFromName(std::string_view mode);
     [[nodiscard]] std::string textFilterUiModeName(TextFilterUiMode mode);
-    [[nodiscard]] std::string makeTextFilterToken(std::string_view value, TextFilterOperator op);
+    [[nodiscard]] std::string makeTextFilterToken(std::string_view value,
+                                                  TextFilterOperator filterOperator);
     [[nodiscard]] TextFilterTokenSet parseTextFilterTokens(std::string_view expression);
     [[nodiscard]] TextFilterTokenSet makeTextFilterTokenSet(const std::vector<std::string>& values,
-                                                            TextFilterOperator op);
+                                                            TextFilterOperator filterOperator);
     bool addTextFilterValue(TextFilterTokenSet& tokens, std::string_view value,
-                            TextFilterOperator op);
+                            TextFilterOperator filterOperator);
     [[nodiscard]] bool sameTextFilterTokens(const TextFilterTokenSet& lhs,
                                             const TextFilterTokenSet& rhs);
     [[nodiscard]] std::string joinTextFilterTokens(const TextFilterTokenSet& tokens);

@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <iterator>
 #include <map>
 #include <memory>
@@ -25,6 +26,9 @@ namespace ssa::domain {
     inline constexpr bool kDefaultExcludeScaSesSte = false;
     inline constexpr int kFirstIsoWeek = 1;
     inline constexpr int kLastIsoWeek = 53;
+    inline constexpr int kYearWeekMultiplier = 100;
+    inline constexpr std::size_t kDefaultRequestPageSize = 100;
+    inline constexpr std::size_t kDefaultDistinctValuesLimit = 500;
 
     [[nodiscard]] inline int clampPageSize(const int value) {
         return std::clamp(value, kMinPageSize, kMaxPageSize);
@@ -60,7 +64,7 @@ namespace ssa::domain {
         std::string value_;
     };
 
-    enum class MatchMode {
+    enum class MatchMode : std::uint8_t {
         Contains,
         StartsWith,
         EndsWith,
@@ -74,13 +78,13 @@ namespace ssa::domain {
         bool negated{false};
     };
 
-    enum class DerivationFilterMode {
+    enum class DerivationFilterMode : std::uint8_t {
         All,
         RootOnly,
         DerivedOnly,
     };
 
-    enum class NumericComparisonMode {
+    enum class NumericComparisonMode : std::uint8_t {
         Equals,
         LessOrEqual,
         GreaterOrEqual,
@@ -139,21 +143,21 @@ namespace ssa::domain {
             if (!year.has_value() || !week.has_value()) {
                 return std::nullopt;
             }
-            return (*year * 100) + *week;
+            return (*year * kYearWeekMultiplier) + *week;
         }
 
         [[nodiscard]] std::optional<int> yearStartWeek() const {
             if (!year.has_value()) {
                 return std::nullopt;
             }
-            return (*year * 100) + kFirstIsoWeek;
+            return (*year * kYearWeekMultiplier) + kFirstIsoWeek;
         }
 
         [[nodiscard]] std::optional<int> yearEndWeek() const {
             if (!year.has_value()) {
                 return std::nullopt;
             }
-            return (*year * 100) + kLastIsoWeek;
+            return (*year * kYearWeekMultiplier) + kLastIsoWeek;
         }
     };
 
@@ -224,7 +228,7 @@ namespace ssa::domain {
             }
         }
 
-        explicit SsaRecord(const std::map<std::string, std::string>& fields) : rowValues_{} {
+        explicit SsaRecord(const std::map<std::string, std::string>& fields) {
             auto mutableSchema = std::make_shared<SchemaIndex>();
             mutableSchema->keys.reserve(fields.size());
             mutableSchema->indexByKey.reserve(fields.size());
@@ -243,11 +247,11 @@ namespace ssa::domain {
             if (!schema_) {
                 return {};
             }
-            const auto it = schema_->indexByKey.find(key);
-            if (it == schema_->indexByKey.end()) {
+            const auto schemaEntry = schema_->indexByKey.find(key);
+            if (schemaEntry == schema_->indexByKey.end()) {
                 return {};
             }
-            const auto index = it->second;
+            const auto index = schemaEntry->second;
             if (index >= rowValues_.size()) {
                 throw std::logic_error("SSA record schema index is out of bounds");
             }
@@ -294,7 +298,7 @@ namespace ssa::domain {
 
     struct SsaPageRequest {
         std::size_t pageIndex{0};
-        std::size_t pageSize{100};
+        std::size_t pageSize{kDefaultRequestPageSize};
         std::string searchText;
         std::map<std::string, std::string> columnFilters;
         std::string quickSector;
@@ -317,13 +321,13 @@ namespace ssa::domain {
         std::vector<SsaRecord> rows;
         std::size_t totalRows{0};
         std::size_t pageIndex{0};
-        std::size_t pageSize{100};
+        std::size_t pageSize{kDefaultRequestPageSize};
     };
 
     struct DistinctValuesRequest {
         std::string columnKey;
         SsaFilterExpression filter;
-        std::size_t limit{500};
+        std::size_t limit{kDefaultDistinctValuesLimit};
         bool orderByFrequency{false};
     };
 

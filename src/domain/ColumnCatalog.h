@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <cstdint>
 #include <optional>
 #include <span>
 #include <string>
@@ -9,7 +10,7 @@
 
 namespace ssa::domain {
 
-    enum class ColumnType {
+    enum class ColumnType : std::uint8_t {
         Text,
         Integer,
         DateText,

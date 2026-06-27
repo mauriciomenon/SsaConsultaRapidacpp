@@ -63,9 +63,6 @@ namespace ssa::presentation {
         bool refreshFrom(const std::map<std::string, std::string>& filters);
 
       private:
-        [[nodiscard]] query::TextFilterTokenSet tokensFor(const QString& key,
-                                                          const QString& expression) const;
-
         std::map<QString, AdvancedTextFilterColumnState> columns_;
         AdvancedTextFilterSnapshotSynchronizer synchronizer_;
     };

@@ -6,9 +6,9 @@ TEST_CASE("text filter tokens are trimmed prefixed and deduplicated") {
     auto tokens = ssa::query::parseTextFilterTokens(" =ASE, !ADI,=ASE,  ,");
 
     REQUIRE(tokens.ordered.size() == 2);
-    CHECK(tokens.ordered[0].op == ssa::query::TextFilterOperator::Equals);
+    CHECK(tokens.ordered[0].filterOperator == ssa::query::TextFilterOperator::Equals);
     CHECK(tokens.ordered[0].value == "ASE");
-    CHECK(tokens.ordered[1].op == ssa::query::TextFilterOperator::Different);
+    CHECK(tokens.ordered[1].filterOperator == ssa::query::TextFilterOperator::Different);
     CHECK(tokens.ordered[1].value == "ADI");
     CHECK(ssa::query::joinTextFilterTokens(tokens) == "=ASE,!ADI");
     CHECK(tokens.indexByValue.contains("ASE"));
@@ -34,7 +34,7 @@ TEST_CASE("text filter token builder replaces opposite operator for same value")
 
     CHECK(ssa::query::joinTextFilterTokens(tokens) == "!APV");
     REQUIRE(tokens.ordered.size() == 1);
-    CHECK(tokens.ordered[0].op == ssa::query::TextFilterOperator::Different);
+    CHECK(tokens.ordered[0].filterOperator == ssa::query::TextFilterOperator::Different);
     CHECK(tokens.indexByValue.contains("APV"));
 }
 

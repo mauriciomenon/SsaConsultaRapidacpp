@@ -4,6 +4,7 @@
 #include <map>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace ssa::presentation::filterpanel {
 
@@ -11,6 +12,13 @@ namespace ssa::presentation::filterpanel {
 
         constexpr std::string_view kValueSeparator = ",";
         constexpr std::string_view kSpaceChars = " \t\r\n";
+
+        struct RangeSummaryRequest {
+            std::string_view label;
+            std::string_view kind;
+            std::optional<int> start;
+            std::optional<int> end;
+        };
 
         [[nodiscard]] std::string_view trimCopy(std::string_view value) {
             auto begin = value.find_first_not_of(kSpaceChars);
@@ -22,25 +30,25 @@ namespace ssa::presentation::filterpanel {
         }
 
         void appendRangeSummary(std::vector<FilterSummaryEntry>& entries,
-                                const std::string_view label, const std::string_view kind,
-                                const std::optional<int> start, const std::optional<int> end) {
-            if (!start.has_value() && !end.has_value()) {
+                                const RangeSummaryRequest& request) {
+            if (!request.start.has_value() && !request.end.has_value()) {
                 return;
             }
-            std::string part{label};
-            if (start.has_value() && end.has_value()) {
+            std::string part{request.label};
+            if (request.start.has_value() && request.end.has_value()) {
                 part += ":";
-                part += std::to_string(*start);
+                part += std::to_string(*request.start);
                 part += "-";
-                part += std::to_string(*end);
-            } else if (start.has_value()) {
+                part += std::to_string(*request.end);
+            } else if (request.start.has_value()) {
                 part += ">=";
-                part += std::to_string(*start);
+                part += std::to_string(*request.start);
             } else {
                 part += "<=";
-                part += std::to_string(*end);
+                part += std::to_string(*request.end);
             }
-            entries.push_back({.text = std::move(part), .kind = std::string{kind}, .key = {}});
+            entries.push_back(
+                {.text = std::move(part), .kind = std::string{request.kind}, .key = {}});
         }
 
     } // namespace
@@ -50,9 +58,9 @@ namespace ssa::presentation::filterpanel {
         if (text.isEmpty()) {
             return std::nullopt;
         }
-        bool ok = false;
-        const int parsed = text.toInt(&ok);
-        if (!ok || parsed <= 0) {
+        bool conversionOk = false;
+        const int parsed = text.toInt(&conversionOk);
+        if (!conversionOk || parsed <= 0) {
             return std::nullopt;
         }
         return parsed;
@@ -68,7 +76,7 @@ namespace ssa::presentation::filterpanel {
         return domain::DerivationFilterMode::All;
     }
 
-    std::string derivationModeToString(const domain::DerivationFilterMode mode) {
+    std::string derivationModeToString(domain::DerivationFilterMode mode) {
         if (mode == domain::DerivationFilterMode::RootOnly) {
             return "root";
         }
@@ -79,7 +87,7 @@ namespace ssa::presentation::filterpanel {
     }
 
     std::vector<std::string>
-    buildFilterSummaryParts(const std::string_view quickSector,
+    buildFilterSummaryParts(std::string_view quickSector,
                             const std::map<std::string, std::string>& columnFilters,
                             const domain::AdvancedFilterSpec& advanced) {
         const auto entries = buildFilterSummaryEntries(quickSector, columnFilters, advanced);
@@ -91,7 +99,7 @@ namespace ssa::presentation::filterpanel {
     }
 
     std::vector<FilterSummaryEntry>
-    buildFilterSummaryEntries(const std::string_view quickSector,
+    buildFilterSummaryEntries(std::string_view quickSector,
                               const std::map<std::string, std::string>& columnFilters,
                               const domain::AdvancedFilterSpec& advanced) {
         std::vector<FilterSummaryEntry> entries;
@@ -153,10 +161,14 @@ namespace ssa::presentation::filterpanel {
             entries.push_back(
                 {.text = "reprog valores:" + values, .kind = "advanced_reprogramming", .key = {}});
         }
-        appendRangeSummary(entries, "emissao", "advanced_issue_week_range", advanced.issueWeekStart,
-                           advanced.issueWeekEnd);
-        appendRangeSummary(entries, "execucao", "advanced_execution_week_range",
-                           advanced.executionWeekStart, advanced.executionWeekEnd);
+        appendRangeSummary(entries, {.label = "emissao",
+                                     .kind = "advanced_issue_week_range",
+                                     .start = advanced.issueWeekStart,
+                                     .end = advanced.issueWeekEnd});
+        appendRangeSummary(entries, {.label = "execucao",
+                                     .kind = "advanced_execution_week_range",
+                                     .start = advanced.executionWeekStart,
+                                     .end = advanced.executionWeekEnd});
         if (advanced.derivationMode == domain::DerivationFilterMode::RootOnly) {
             entries.push_back(
                 {.text = "somente originais", .kind = "advanced_derivation_mode", .key = {}});
@@ -197,7 +209,7 @@ namespace ssa::presentation::filterpanel {
     }
 
     std::string joinFilterSummary(const std::vector<std::string>& parts,
-                                  const std::string_view separator) {
+                                  std::string_view separator) {
         std::string summary;
         for (std::size_t i = 0; i < parts.size(); ++i) {
             if (i > 0) {
