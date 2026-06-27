@@ -127,6 +127,7 @@ add_library(ssa_presentation_models STATIC
     src/presentation/AdvancedTextFilterViewModel.cpp
     src/presentation/AdvancedWeekFilterViewModel.cpp
     src/presentation/FilterPanelAdvancedViewModel.cpp
+    src/presentation/FilterPanelColumnValueOptions.cpp
     src/presentation/FilterPanelViewModel.cpp
     src/presentation/FilterPanelDistinctValueFetcher.cpp
     src/presentation/FilterPanelDistinctValuesController.cpp

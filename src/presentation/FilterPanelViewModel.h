@@ -4,12 +4,12 @@
 #include "ports/IUserPreferencesStore.h"
 #include "presentation/ColumnFilterViewModel.h"
 #include "presentation/FilterPanelAdvancedViewModel.h"
+#include "presentation/FilterPanelColumnValueOptions.h"
 #include "presentation/FilterPanelDistinctValuesController.h"
 #include "presentation/FilterPanelSectorViewModel.h"
 #include "presentation/FilterPanelState.h"
 
 #include <QObject>
-#include <QSet>
 #include <QString>
 #include <QStringList>
 #include <QTimer>
@@ -28,13 +28,6 @@ namespace ssa::query {
 }
 
 namespace ssa::presentation {
-
-    struct ColumnValueOptionCacheEntry final {
-        std::vector<std::string> source;
-        QStringList options;
-        QStringList previewSource;
-        std::uint64_t stateVersion{0};
-    };
 
     class FilterPanelViewModel final : public QObject {
         Q_OBJECT
@@ -60,7 +53,7 @@ namespace ssa::presentation {
         [[nodiscard]] QString quickSector() const;
         void setQuickSector(const QString& value);
         [[nodiscard]] bool excludeScaSesSte() const;
-        void setExcludeScaSesSte(const bool value);
+        void setExcludeScaSesSte(bool value);
         [[nodiscard]] QStringList filterColumnKeys() const;
         [[nodiscard]] QString columnKey() const;
         void setColumnKey(const QString& value);
@@ -128,9 +121,7 @@ namespace ssa::presentation {
         QString activeFilterSummary_;
         QVariantList activeFilterEntries_;
         bool activeFiltersDirty_{true};
-        std::map<QString, ColumnValueOptionCacheEntry> columnValueOptionsByKey_;
-        QSet<QString> columnValueLoadingKeys_;
-        int columnValueOptionsVersion_{0};
+        FilterPanelColumnValueOptions columnValueOptions_;
         FilterPanelDistinctValuesController distinctValues_;
         QTimer activeFilterRefreshTimer_;
         std::uint64_t filterStateVersion_{0};
