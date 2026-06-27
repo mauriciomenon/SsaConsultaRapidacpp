@@ -74,6 +74,6 @@ GridView {
         onMixedValuesReplacementRequested: function (includeValues, excludeValues) {
             root.textFilters.replaceWithOperatorValueLists(modelData.key, includeValues, excludeValues);
         }
-        onTextFilterClearRequested: root.textFilters.setTextFilter(modelData.key, "")
+        onTextFilterClearRequested: root.textFilters.clearTextFilterAndApply(modelData.key)
     }
 }

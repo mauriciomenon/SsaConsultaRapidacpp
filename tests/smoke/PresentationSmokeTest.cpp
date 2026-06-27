@@ -9,10 +9,12 @@
 #include "presentation/SsaRecordValueFormatter.h"
 
 #include <QChar>
+#include <QObject>
 #include <QRegularExpression>
 #include <QSignalSpy>
 #include <QString>
 #include <QUrl>
+#include <QVariantMap>
 #include <QtTest>
 
 #include <chrono>
@@ -24,11 +26,16 @@
 
 namespace {
 
+    struct FakeRepositoryConfig final {
+        std::chrono::milliseconds delay{0};
+        std::size_t totalRows{1};
+        std::size_t rowCount{1};
+    };
+
     class FakeRepository final : public ssa::ports::ISsaRepository {
       public:
-        explicit FakeRepository(std::chrono::milliseconds delay = std::chrono::milliseconds{0},
-                                std::size_t totalRows = 1, std::size_t rowCount = 1)
-            : delay_(delay), totalRows_(totalRows), rowCount_(rowCount) {}
+        explicit FakeRepository(FakeRepositoryConfig config = {})
+            : delay_(config.delay), totalRows_(config.totalRows), rowCount_(config.rowCount) {}
 
         ssa::domain::SsaPageResult page(const ssa::domain::SsaPageRequest& request) const override {
             if (delay_.count() > 0) {
@@ -113,6 +120,22 @@ namespace {
         mutable std::mutex mutex;
         std::vector<ssa::ports::ExternalCommand> commands_;
     };
+
+    [[nodiscard]] QVariantMap
+    activeFilterEntry(const ssa::presentation::FilterPanelViewModel* filters, const QString& kind,
+                      const QString& key = {}) {
+        for (const auto& entry : filters->activeFilterEntries()) {
+            const auto map = entry.toMap();
+            if (map.value(QStringLiteral("kind")).toString() != kind) {
+                continue;
+            }
+            if (!key.isEmpty() && map.value(QStringLiteral("key")).toString() != key) {
+                continue;
+            }
+            return map;
+        }
+        return {};
+    }
 
     class FakePreferences final : public ssa::ports::IUserPreferencesStore {
       public:
@@ -280,9 +303,192 @@ namespace {
             QVERIFY(model.browse()->tableModel()->columnWidth(0) > 0);
         }
 
+        void search_apply_signal_reloads_table() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            ssa::presentation::MainViewModel model(service, commands);
+
+            model.browse()->search()->setText("bomba");
+            model.browse()->search()->apply();
+
+            QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{1}, 1000);
+            QCOMPARE(QString::fromStdString(repository->requests().back().searchText),
+                     QString("bomba"));
+        }
+
+        void column_filter_apply_signal_reloads_table_with_responsible_execution_filter() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            ssa::presentation::MainViewModel model(service, commands);
+            auto* columns = qobject_cast<ssa::presentation::ColumnFilterViewModel*>(
+                model.browse()->filters()->columns());
+            QVERIFY(columns != nullptr);
+
+            columns->applyFilterFor("responsavel_execucao", "Ana");
+
+            QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{1}, 1000);
+            const auto request = repository->requests().back();
+            QVERIFY(request.columnFilters.contains("responsavel_execucao"));
+            QCOMPARE(QString::fromStdString(request.columnFilters.at("responsavel_execucao")),
+                     QString("Ana"));
+        }
+
+        void active_filter_removal_reloads_table_without_removed_column_filter() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            ssa::presentation::MainViewModel model(service, commands);
+
+            model.browse()->filters()->setColumnFilters({{"responsavel_execucao", "Ana"}});
+            QCOMPARE(model.browse()->filters()->removeActiveFilter(QVariantMap{
+                         {QStringLiteral("kind"), QStringLiteral("column")},
+                         {QStringLiteral("key"), QStringLiteral("responsavel_execucao")}}),
+                     true);
+
+            QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{1}, 1000);
+            QVERIFY(!repository->requests().back().columnFilters.contains("responsavel_execucao"));
+        }
+
+        void manual_filter_state_summary_and_request_stay_in_sync() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            ssa::presentation::MainViewModel model(service, commands);
+            auto* advanced = qobject_cast<ssa::presentation::FilterPanelAdvancedViewModel*>(
+                model.browse()->filters()->advanced());
+            QVERIFY(advanced != nullptr);
+            auto* text =
+                qobject_cast<ssa::presentation::AdvancedTextFilterViewModel*>(advanced->text());
+            QVERIFY(text != nullptr);
+
+            model.browse()->filters()->setQuickSector("MEG2");
+            model.browse()->filters()->setColumnFilters({{"responsavel_execucao", "Ana"}});
+            text->setTextFilter("situacao", "=APV");
+
+            QCOMPARE(repository->requests().size(), std::size_t{0});
+            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->filters()->activeFilterEntries().size(), 3,
+                                      1000);
+            QVERIFY(!activeFilterEntry(model.browse()->filters(), "quick_sector").isEmpty());
+            QVERIFY(!activeFilterEntry(model.browse()->filters(), "column", "responsavel_execucao")
+                         .isEmpty());
+            QVERIFY(!activeFilterEntry(model.browse()->filters(), "advanced_text", "situacao")
+                         .isEmpty());
+            QVERIFY(model.browse()->filters()->activeFilterSummary().contains("MEG2"));
+            QVERIFY(model.browse()->filters()->activeFilterSummary().contains("responsavel"));
+            QVERIFY(model.browse()->filters()->activeFilterSummary().contains("situacao"));
+
+            model.browse()->apply();
+
+            QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{1}, 1000);
+            const auto request = repository->requests().back();
+            QCOMPARE(QString::fromStdString(request.quickSector), QString("MEG2"));
+            QVERIFY(request.columnFilters.contains("responsavel_execucao"));
+            QCOMPARE(QString::fromStdString(request.columnFilters.at("responsavel_execucao")),
+                     QString("Ana"));
+            QVERIFY(request.advancedFilters.textFilters.contains("situacao"));
+            QCOMPARE(QString::fromStdString(request.advancedFilters.textFilters.at("situacao")),
+                     QString("=APV"));
+        }
+
+        void summary_removal_reloads_only_the_removed_filter_family() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            ssa::presentation::MainViewModel model(service, commands);
+            auto* advanced = qobject_cast<ssa::presentation::FilterPanelAdvancedViewModel*>(
+                model.browse()->filters()->advanced());
+            QVERIFY(advanced != nullptr);
+            auto* text =
+                qobject_cast<ssa::presentation::AdvancedTextFilterViewModel*>(advanced->text());
+            QVERIFY(text != nullptr);
+
+            model.browse()->filters()->setQuickSector("MEG2");
+            model.browse()->filters()->setColumnFilters({{"responsavel_execucao", "Ana"}});
+            text->setTextFilter("situacao", "=APV");
+            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->filters()->activeFilterEntries().size(), 3,
+                                      1000);
+
+            const auto advancedEntry =
+                activeFilterEntry(model.browse()->filters(), "advanced_text", "situacao");
+            QVERIFY(!advancedEntry.isEmpty());
+            QCOMPARE(model.browse()->filters()->removeActiveFilter(advancedEntry), true);
+
+            QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{1}, 1000);
+            auto request = repository->requests().back();
+            QVERIFY(!request.advancedFilters.textFilters.contains("situacao"));
+            QCOMPARE(QString::fromStdString(request.quickSector), QString("MEG2"));
+            QVERIFY(request.columnFilters.contains("responsavel_execucao"));
+
+            const auto quickSectorEntry =
+                activeFilterEntry(model.browse()->filters(), "quick_sector");
+            QVERIFY(!quickSectorEntry.isEmpty());
+            QCOMPARE(model.browse()->filters()->removeActiveFilter(quickSectorEntry), true);
+
+            QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{2}, 1000);
+            request = repository->requests().back();
+            QCOMPARE(QString::fromStdString(request.quickSector), QString(""));
+            QVERIFY(request.columnFilters.contains("responsavel_execucao"));
+            QVERIFY(!request.advancedFilters.textFilters.contains("situacao"));
+        }
+
+        void exclusion_filter_setter_reloads_table() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            ssa::presentation::MainViewModel model(service, commands);
+
+            model.browse()->filters()->setExcludeScaSesSte(true);
+
+            QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{1}, 1000);
+            QCOMPARE(repository->requests().back().excludeScaSesSte, true);
+        }
+
+        void advanced_text_filter_selection_reloads_table() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            ssa::presentation::MainViewModel model(service, commands);
+            auto* advanced = qobject_cast<ssa::presentation::FilterPanelAdvancedViewModel*>(
+                model.browse()->filters()->advanced());
+            QVERIFY(advanced != nullptr);
+            auto* text =
+                qobject_cast<ssa::presentation::AdvancedTextFilterViewModel*>(advanced->text());
+            QVERIFY(text != nullptr);
+
+            QCOMPARE(text->updateFilterWithSelectedValue("responsavel_execucao", "Ana"), true);
+
+            QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{1}, 1000);
+            const auto textFilters = repository->requests().back().advancedFilters.textFilters;
+            QVERIFY(textFilters.contains("responsavel_execucao"));
+            QCOMPARE(QString::fromStdString(textFilters.at("responsavel_execucao")),
+                     QString("=Ana"));
+        }
+
+        void advanced_text_filter_clear_reloads_table_without_filter() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            ssa::presentation::MainViewModel model(service, commands);
+            auto* advanced = qobject_cast<ssa::presentation::FilterPanelAdvancedViewModel*>(
+                model.browse()->filters()->advanced());
+            QVERIFY(advanced != nullptr);
+            auto* text =
+                qobject_cast<ssa::presentation::AdvancedTextFilterViewModel*>(advanced->text());
+            QVERIFY(text != nullptr);
+
+            text->setTextFilter("responsavel_execucao", "=Ana");
+            QCOMPARE(text->clearTextFilterAndApply("responsavel_execucao"), true);
+
+            QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{1}, 1000);
+            QVERIFY(!repository->requests().back().advancedFilters.textFilters.contains(
+                "responsavel_execucao"));
+        }
+
         void details_navigation_walks_next_then_prev_within_page() {
-            auto repository = std::make_shared<FakeRepository>(std::chrono::milliseconds{0},
-                                                               std::size_t{3}, std::size_t{3});
+            auto repository = std::make_shared<FakeRepository>(
+                FakeRepositoryConfig{.totalRows = std::size_t{3}, .rowCount = std::size_t{3}});
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
             auto commands = std::make_shared<FakeCommands>();
             ssa::presentation::MainViewModel model(service, commands);
@@ -328,8 +534,8 @@ namespace {
         }
 
         void details_navigation_walks_across_pages_next_then_prev() {
-            auto repository = std::make_shared<FakeRepository>(std::chrono::milliseconds{0},
-                                                               std::size_t{25}, std::size_t{10});
+            auto repository = std::make_shared<FakeRepository>(
+                FakeRepositoryConfig{.totalRows = std::size_t{25}, .rowCount = std::size_t{10}});
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
             auto commands = std::make_shared<FakeCommands>();
             ssa::presentation::MainViewModel model(service, commands);
@@ -406,8 +612,8 @@ namespace {
         }
 
         void sort_by_column_resets_page_and_saves_preferences() {
-            const auto repository =
-                std::make_shared<FakeRepository>(std::chrono::milliseconds{0}, std::size_t{21});
+            const auto repository = std::make_shared<FakeRepository>(
+                FakeRepositoryConfig{.totalRows = std::size_t{21}});
             const auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
             const auto commands = std::make_shared<FakeCommands>();
             const auto preferences = std::make_shared<FakePreferences>();
@@ -459,8 +665,8 @@ namespace {
         }
 
         void next_page_reaches_final_page() {
-            auto repository =
-                std::make_shared<FakeRepository>(std::chrono::milliseconds{0}, std::size_t{21});
+            auto repository = std::make_shared<FakeRepository>(
+                FakeRepositoryConfig{.totalRows = std::size_t{21}});
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
             auto commands = std::make_shared<FakeCommands>();
             ssa::presentation::MainViewModel model(service, commands);
@@ -482,7 +688,8 @@ namespace {
         }
 
         void cancel_marks_current_request_as_stale() {
-            auto repository = std::make_shared<FakeRepository>(std::chrono::milliseconds{80});
+            auto repository = std::make_shared<FakeRepository>(
+                FakeRepositoryConfig{.delay = std::chrono::milliseconds{80}});
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
             auto commands = std::make_shared<FakeCommands>();
             ssa::presentation::MainViewModel model(service, commands);
@@ -776,6 +983,7 @@ namespace {
             week->setExecutionWeekEndFilter("202620");
             derivation->setDerivationMode("derived");
             derivation->setOnlyReprogrammed(true);
+            QCOMPARE(repository->requests().size(), std::size_t{0});
             model.browse()->apply();
 
             QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{1}, 1000);
@@ -853,6 +1061,48 @@ namespace {
 
             QCOMPARE(text->textFilter("situacao"), QString(""));
             QCOMPARE(text->operatorModeFor("situacao"), QString("different"));
+        }
+
+        void advanced_summary_removal_reloads_week_and_derivation_filters() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            ssa::presentation::MainViewModel model(service, commands);
+            auto* advanced = qobject_cast<ssa::presentation::FilterPanelAdvancedViewModel*>(
+                model.browse()->filters()->advanced());
+            QVERIFY(advanced != nullptr);
+            auto* week =
+                qobject_cast<ssa::presentation::AdvancedWeekFilterViewModel*>(advanced->week());
+            auto* derivation = qobject_cast<ssa::presentation::AdvancedDerivationFilterViewModel*>(
+                advanced->derivation());
+            QVERIFY(week != nullptr);
+            QVERIFY(derivation != nullptr);
+
+            week->setIssueYearFilter("2026");
+            derivation->setOnlyReprogrammed(true);
+            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->filters()->activeFilterEntries().size(), 2,
+                                      1000);
+
+            const auto issueYearEntry =
+                activeFilterEntry(model.browse()->filters(), "advanced_issue_year");
+            QVERIFY(!issueYearEntry.isEmpty());
+            QCOMPARE(model.browse()->filters()->removeActiveFilter(issueYearEntry), true);
+
+            QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{1}, 1000);
+            auto request = repository->requests().back();
+            QVERIFY(!request.advancedFilters.issueYear.has_value());
+            QCOMPARE(request.advancedFilters.onlyReprogrammed, true);
+
+            const auto reprogrammedEntry =
+                activeFilterEntry(model.browse()->filters(), "advanced_only_reprogrammed");
+            QVERIFY(!reprogrammedEntry.isEmpty());
+            QCOMPARE(model.browse()->filters()->removeActiveFilter(reprogrammedEntry), true);
+
+            QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{2}, 1000);
+            request = repository->requests().back();
+            QVERIFY(!request.advancedFilters.issueYear.has_value());
+            QCOMPARE(request.advancedFilters.onlyReprogrammed, false);
+            QCOMPARE(model.browse()->filters()->activeFilterEntries().size(), 0);
         }
 
         void advanced_submodels_update_shared_filter_state() {
@@ -1074,8 +1324,8 @@ namespace {
 
             QCOMPARE(model.actions()->currentWeek()->value(),
                      model.actions()->currentWeek()->label());
-            QVERIFY(model.actions()->currentWeek()->value().contains(
-                QRegularExpression("^\\d{6}$")));
+            QVERIFY(
+                model.actions()->currentWeek()->value().contains(QRegularExpression("^\\d{6}$")));
         }
 
         void explicit_save_filters_button_persists_current_snapshot() {
@@ -1150,7 +1400,10 @@ namespace {
 
             model.browse()->filters()->setColumnFilters({{"situacao", "=APV"}});
 
-            QCOMPARE(model.browse()->filters()->removeActiveFilter("column", "situacao"), true);
+            QCOMPARE(model.browse()->filters()->removeActiveFilter(
+                         QVariantMap{{QStringLiteral("kind"), QStringLiteral("column")},
+                                     {QStringLiteral("key"), QStringLiteral("situacao")}}),
+                     true);
 
             QVERIFY(model.browse()->filters()->columnFilters().empty());
             QCOMPARE(model.browse()->sortColumnKey(), QString("situacao"));

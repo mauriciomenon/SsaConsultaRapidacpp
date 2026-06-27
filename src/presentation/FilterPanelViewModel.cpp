@@ -129,6 +129,7 @@ namespace ssa::presentation {
         }
         sector_.setExcludeScaSesSte(value);
         publishFilterStateChange();
+        emit applyRequested();
     }
 
     QStringList FilterPanelViewModel::filterColumnKeys() const {
@@ -222,7 +223,7 @@ namespace ssa::presentation {
                                                                    const int limit,
                                                                    const bool expanded) const {
         const auto it = columnValueOptionsByKey_.find(key.trimmed());
-        const auto values =
+        auto values =
             it == columnValueOptionsByKey_.end() ? QStringList{} : it->second.previewSource;
         // Expanded mode intentionally shows every loaded option for that column.
         if (expanded || limit <= 0 || values.size() <= limit) {
@@ -240,8 +241,9 @@ namespace ssa::presentation {
         return columnValueLoadingKeys_.contains(key.trimmed());
     }
 
-    bool FilterPanelViewModel::removeActiveFilter(const QString& kind, const QString& key) {
-        const auto action = kind.trimmed();
+    bool FilterPanelViewModel::removeActiveFilter(const QVariantMap& entry) {
+        const auto action = entry.value(QStringLiteral("kind")).toString().trimmed();
+        const auto key = entry.value(QStringLiteral("key")).toString();
         bool changed = false;
         if (action == "quick_sector") {
             changed = state_.setQuickSector({});

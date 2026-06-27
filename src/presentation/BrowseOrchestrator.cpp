@@ -14,12 +14,10 @@ namespace ssa::presentation {
           selectionCoordinator_(details, tableModel, this),
           requestCoordinator_(std::move(queryService), queryState_, search_, filters_, status,
                               tableModel, this) {
-        connect(&search_, &SearchViewModel::applyRequested, &inputCoordinator_,
-                &BrowseInputCoordinator::apply);
+        connect(&search_, &SearchViewModel::applyRequested, this, &BrowseOrchestrator::apply);
         connect(&search_, &SearchViewModel::textClearRequested, &inputCoordinator_,
                 &BrowseInputCoordinator::clearSearchAndResetPage);
-        connect(&filters_, &FilterPanelViewModel::applyRequested, &inputCoordinator_,
-                &BrowseInputCoordinator::apply);
+        connect(&filters_, &FilterPanelViewModel::applyRequested, this, &BrowseOrchestrator::apply);
         connect(&requestCoordinator_, &BrowseRequestCoordinator::pageChanged, this, [this] {
             if (tableModel_.rowCount() > 0) {
                 const int pending = selectionCoordinator_.pendingRow();

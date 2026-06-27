@@ -74,6 +74,10 @@ namespace ssa::presentation {
         publishChangedFor(key);
     }
 
+    bool AdvancedTextFilterViewModel::clearTextFilterAndApply(const QString& key) {
+        return publishExpressionAndApply(key, {}, true);
+    }
+
     bool AdvancedTextFilterViewModel::updateFilterWithSelectedValue(const QString& key,
                                                                     const QString& value) {
         const auto expression =
@@ -81,20 +85,20 @@ namespace ssa::presentation {
         if (!expression.has_value()) {
             return false;
         }
-        return publishExpression(key, *expression, true);
+        return publishExpressionAndApply(key, *expression, true);
     }
 
     void AdvancedTextFilterViewModel::replaceWithOperatorValueList(const QString& key,
                                                                    const QStringList& values,
                                                                    const QString& operatorMode) {
         columns_.setOperatorMode(key, operatorMode, textFilter(key));
-        publishExpression(key, columns_.expressionReplacingWithOperator(values, operatorMode),
-                          false);
+        publishExpressionAndApply(
+            key, columns_.expressionReplacingWithOperator(values, operatorMode), false);
     }
 
     void AdvancedTextFilterViewModel::replaceWithOperatorValueLists(
         const QString& key, const QStringList& includeValues, const QStringList& excludeValues) {
-        publishExpression(
+        publishExpressionAndApply(
             key, columns_.expressionReplacingWithOperatorLists(includeValues, excludeValues), true);
     }
 
@@ -112,6 +116,16 @@ namespace ssa::presentation {
         }
         columns_.setExpression(key, expression, inferOperatorMode);
         publishChangedFor(key);
+        return true;
+    }
+
+    bool AdvancedTextFilterViewModel::publishExpressionAndApply(const QString& key,
+                                                                const QString& expression,
+                                                                const bool inferOperatorMode) {
+        if (!publishExpression(key, expression, inferOperatorMode)) {
+            return false;
+        }
+        emit applyRequested();
         return true;
     }
 
@@ -134,7 +148,7 @@ namespace ssa::presentation {
         for (const auto& row : rows_) {
             auto state = createCardState(row.toMap());
             const auto key = state.value("key").toString();
-            indexes.insert(key, states.size());
+            indexes.insert(key, static_cast<int>(states.size()));
             states.push_back(state);
         }
         cardStates_ = std::move(states);

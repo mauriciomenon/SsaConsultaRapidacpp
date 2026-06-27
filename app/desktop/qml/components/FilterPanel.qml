@@ -12,10 +12,10 @@ Rectangle {
     readonly property var advanced: filterViewModel.advanced
     readonly property string columnTabText: "Por coluna"
     readonly property string advancedTabText: "Avancados"
-    signal applyRequested()
+    signal applyRequested
 
     function showAdvancedFilters() {
-        selectedTabIndex = 1
+        selectedTabIndex = 1;
     }
 
     color: Theme.surface
@@ -69,7 +69,6 @@ Rectangle {
                 checked: root.filterViewModel.excludeScaSesSte
                 onToggled: {
                     root.filterViewModel.excludeScaSesSte = checked;
-                    root.applyRequested();
                 }
             }
         }

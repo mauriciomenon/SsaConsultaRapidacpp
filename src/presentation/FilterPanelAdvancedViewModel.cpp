@@ -14,6 +14,8 @@ namespace ssa::presentation {
           macro_(state_, filterState, std::move(queryService), this) {
         connect(&text_, &AdvancedTextFilterViewModel::changed, this,
                 &FilterPanelAdvancedViewModel::publishChanged);
+        connect(&text_, &AdvancedTextFilterViewModel::applyRequested, this,
+                &FilterPanelAdvancedViewModel::applyRequested);
         connect(&week_, &AdvancedWeekFilterViewModel::changed, this,
                 &FilterPanelAdvancedViewModel::publishChanged);
         connect(&derivation_, &AdvancedDerivationFilterViewModel::changed, this,

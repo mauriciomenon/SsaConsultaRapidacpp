@@ -8,6 +8,7 @@
 #include "presentation/FilterPanelState.h"
 #include "presentation/FilterPanelViewModel.h"
 
+#include <QObject>
 #include <QtTest>
 
 #include <QDate>
@@ -292,7 +293,10 @@ namespace {
             QCOMPARE(entries.at(2).toMap().value("kind").toString(), QString("advanced_text"));
             QCOMPARE(entries.at(2).toMap().value("key").toString(), QString("setor_executor"));
 
-            QCOMPARE(filters.removeActiveFilter("column", "situacao"), true);
+            QCOMPARE(filters.removeActiveFilter(
+                         QVariantMap{{QStringLiteral("kind"), QStringLiteral("column")},
+                                     {QStringLiteral("key"), QStringLiteral("situacao")}}),
+                     true);
 
             QVERIFY(!filters.columnFilters().contains("situacao"));
             QCOMPARE(text->textFilter("setor_executor"), QString("=MAM2"));

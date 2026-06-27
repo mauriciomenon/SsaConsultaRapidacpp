@@ -68,7 +68,9 @@ Rectangle {
                     tooltipText: text
                     compact: root.compact
                     tagTextSize: root.tagTextSize
-                    onRemoveRequested: root.filterViewModel.excludeScaSesSte = false
+                    onRemoveRequested: {
+                        root.filterViewModel.excludeScaSesSte = false;
+                    }
                 }
 
                 Repeater {
@@ -80,7 +82,7 @@ Rectangle {
                         tooltipText: modelData.text
                         compact: root.compact
                         tagTextSize: root.tagTextSize
-                        onRemoveRequested: root.filterViewModel.removeActiveFilter(modelData.kind, modelData.key)
+                        onRemoveRequested: root.filterViewModel.removeActiveFilter(modelData)
                     }
                 }
             }

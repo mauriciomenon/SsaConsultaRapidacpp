@@ -14,6 +14,7 @@
 #include <QStringList>
 #include <QTimer>
 #include <QVariantList>
+#include <QVariantMap>
 
 #include <cstdint>
 #include <map>
@@ -85,7 +86,7 @@ namespace ssa::presentation {
         Q_INVOKABLE [[nodiscard]] bool hasMoreColumnValueOptionsFor(const QString& key,
                                                                     int limit) const;
         Q_INVOKABLE [[nodiscard]] bool columnValueOptionsLoadingFor(const QString& key) const;
-        Q_INVOKABLE bool removeActiveFilter(const QString& kind, const QString& key);
+        Q_INVOKABLE bool removeActiveFilter(const QVariantMap& entry);
         Q_INVOKABLE void refreshColumnValueOptions();
         Q_INVOKABLE void refreshColumnValueOptionsFor(const QString& key);
         void setColumnFilters(std::map<std::string, std::string> filters);

@@ -34,6 +34,7 @@ namespace ssa::presentation {
         Q_INVOKABLE void setOperatorMode(const QString& key, const QString& operatorMode);
         Q_INVOKABLE [[nodiscard]] QString textFilter(const QString& key) const;
         Q_INVOKABLE void setTextFilter(const QString& key, const QString& value);
+        Q_INVOKABLE bool clearTextFilterAndApply(const QString& key);
         Q_INVOKABLE bool updateFilterWithSelectedValue(const QString& key, const QString& value);
         Q_INVOKABLE void replaceWithOperatorValueList(const QString& key, const QStringList& values,
                                                       const QString& operatorMode);
@@ -44,10 +45,13 @@ namespace ssa::presentation {
 
       signals:
         void changed();
+        void applyRequested();
 
       private:
         bool publishExpression(const QString& key, const QString& expression,
                                bool inferOperatorMode = false);
+        bool publishExpressionAndApply(const QString& key, const QString& expression,
+                                       bool inferOperatorMode = false);
         void publishChanged();
         void publishChangedFor(const QString& key);
         void rebuildCardStates();
