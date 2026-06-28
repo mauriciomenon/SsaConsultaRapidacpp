@@ -19,3 +19,15 @@ config/ssa_cpp_preferences.json
 .antigravitycli/
 .clawpatch/
 docs_entrada/
+
+# Local tool dirs (never version)
+.vscode/
+.codex/
+.claude/
+.opencode/
+.zed/
+cmake-build-debug/
+
+# Local env files
+.env
+.envrc

@@ -1,0 +1,91 @@
+# Pre-commit hooks for SSA Consulta Rapida Cpp.
+# Install once: pre-commit install
+# Run manually: pre-commit run --all-files
+#
+# Stack-appropriate linters are wired via local hooks (tools are installed
+# system-wide via brew/uv). Secret scanners use their official hook repos.
+
+repos:
+  # --- Formatting & static analysis (C++/CMake) ---
+  - repo: local
+    hooks:
+      - id: clang-format
+        name: clang-format (C++)
+        description: Format C/C++ sources.
+        entry: clang-format -i
+        language: system
+        files: \.(cpp|h|hpp|cc)$
+        exclude: ^build/|^build-dev/|^_deps/
+
+      - id: cmake-format
+        name: cmake-format
+        description: Format CMake files.
+        entry: cmake-format -i
+        language: system
+        files: (CMakeLists\.txt|.*\.cmake)$
+        exclude: ^build/
+
+      - id: cmake-lint
+        name: cmake-lint
+        description: Lint CMake files.
+        entry: cmake-lint
+        language: system
+        files: (CMakeLists\.txt|.*\.cmake)$
+        exclude: ^build/
+        stages: [manual]
+
+      - id: cppcheck
+        name: cppcheck
+        description: Static analysis for C/C++.
+        entry: cppcheck --enable=warning,style --inconclusive
+              --suppress=missingIncludeSystem --suppress=useStlAlgorithm
+              --suppress=functionStatic --suppress=constParameterReference
+              --suppress=constVariableReference --error-exitcode=1
+        language: system
+        files: \.(cpp|h|hpp|cc)$
+        exclude: ^build/|^build-dev/|^_deps/|^tests/
+        pass_filenames: false
+        stages: [manual]
+
+      - id: shellcheck
+        name: shellcheck (scripts)
+        description: Lint shell scripts.
+        entry: shellcheck --exclude=SC1091
+        language: system
+        files: ^scripts/.*\.sh$
+
+  # --- QML formatting & linting ---
+  - repo: local
+    hooks:
+      - id: qmlformat
+        name: qmlformat
+        description: Format QML files.
+        entry: qmlformat -i
+        language: system
+        files: \.qml$
+        exclude: ^build/
+
+      - id: qmllint
+        name: qmllint
+        description: Lint QML files.
+        entry: qmllint
+        language: system
+        files: \.qml$
+        exclude: ^build/
+        stages: [manual]
+
+  # --- Secret scanning ---
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks
+        name: gitleaks (secrets)
+        args: [--redact, --staged, --verbose]
+
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        name: detect-secrets
+        args: [--baseline, .secrets.baseline]
+        stages: [manual]

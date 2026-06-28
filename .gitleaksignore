@@ -1,0 +1,4 @@
+# Gitleaks ignore list (fingerprints). The detect-secrets baseline stores
+# hashed secrets that gitleaks misidentifies as real generic-api-key findings;
+# it is generated, not a source of secrets.
+.secrets.baseline:generic-api-key:137
