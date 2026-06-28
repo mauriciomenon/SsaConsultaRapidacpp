@@ -1,0 +1,103 @@
+# Minimal Debian image for building and testing the SSA Consulta Rapida C++ project
+# on Linux (amd64/arm64). Optimized for size: uses debian:slim and a single apt layer.
+#
+# Build with Apple Container:
+#   container build -f scripts/container/Containerfile.debian-build -t ssa-debian-build scripts/container
+#
+# Or with Docker/Podman (compatible):
+#   docker build -f scripts/container/Containerfile.debian-build -t ssa-debian-build scripts/container
+#
+# Run interactively:
+#   container run --rm -it -w /work ssa-debian-build
+
+# NOTE: uses Debian Trixie (testing) because the project requires Qt >= 6.6 and
+# Bookworm only ships Qt 6.4.2. Trixie ships Qt 6.8.x.
+FROM debian:trixie-slim
+
+# Configure apt: no interactive prompts, keep image small.
+ENV DEBIAN_FRONTEND=noninteractive \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8
+
+# Core build tools, compiler, debugger and the static analysis linters used by
+# this project. Bundled in one RUN to keep layers flat and apt cache out of the
+# final image.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        build-essential \
+        g++ \
+        clang \
+        clang-tidy \
+        clang-format \
+        cmake \
+        ninja-build \
+        make \
+        automake \
+        autoconf \
+        libtool \
+        pkg-config \
+        bison \
+        flex \
+        gawk \
+        sed \
+        coreutils \
+        locate \
+        gdb \
+        cppcheck \
+        git \
+        sqlite3 \
+        libsqlite3-dev \
+        qt6-base-dev \
+        qt6-base-dev-tools \
+        qt6-declarative-dev \
+        qt6-declarative-dev-tools \
+        qml6-module-qtquick \
+        qml6-module-qtquick-controls \
+        qml6-module-qtquick-layouts \
+        qml6-module-qtquick-window \
+        qml6-module-qtquick-templates \
+        libgl1-mesa-dev \
+        libglx-dev \
+        libgl-dev \
+        libegl-dev \
+        libxkbcommon-dev \
+        python3 \
+        python3-pip \
+        python3-venv \
+        wget \
+        unzip \
+        file \
+        less \
+        vim-tiny \
+        procps \
+        iproute2 \
+        iputils-ping \
+        net-tools \
+        dnsutils \
+    && rm -rf /var/lib/apt/lists/*
+
+# lsd (ls replacement, Rust) via prebuilt binary - smaller than pulling cargo.
+ARG LSD_VERSION=1.1.5
+RUN arch="$(uname -m)" \
+    && case "$arch" in \
+        x86_64)  lsd_arch="x86_64";; \
+        aarch64) lsd_arch="aarch64";; \
+        *) echo "unsupported arch: $arch"; exit 1;; \
+    esac \
+    && curl -fsSL "https://github.com/lsd-rs/lsd/releases/download/v${LSD_VERSION}/lsd-v${LSD_VERSION}-${arch}-unknown-linux-gnu.tar.gz" \
+        -o /tmp/lsd.tar.gz \
+    && tar -xzf /tmp/lsd.tar.gz -C /tmp \
+    && mv "/tmp/lsd-v${LSD_VERSION}-${arch}-unknown-linux-gnu/lsd" /usr/local/bin/lsd \
+    && chmod +x /usr/local/bin/lsd \
+    && rm -rf /tmp/lsd*
+
+# mingw-w64 for cross-compiling to Windows from Linux (optional toolchain).
+RUN apt-get update && apt-get install -y --no-install-recommends mingw-w64 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Working directory for mounting the project source.
+WORKDIR /work
+
+# Default shell so `container run -it ssa-debian-build` drops into bash.
+CMD ["/bin/bash"]
