@@ -116,8 +116,12 @@ explicit approval, the remaining work is configuration only:
 2. IWYU: note it requires the Homebrew clang toolchain to match the build; since
    the build uses Apple clang, IWYU shows `<array> not found`. Running IWYU would
    require a separate build using Homebrew clang (blocked on the Apple-SDK issue).
-3. SonarQube: a `sonar-project.properties` plus a running SonarQube server
-   (via Apple Container, see below) to receive `sonar-scanner` uploads.
+3. SonarQube: a `sonar-project.properties` is present but SonarQube Community
+   does NOT include a C/C++ analyzer (CFamily is a commercial plugin). The
+   scanner runs only text/secrets analysis on .cpp/.h without a licensed
+   edition. For local C++ analysis rely on the clang-tidy + cppcheck toolchain.
+   To experiment: `container run -d --name sonarqube -p 9000:9000 -m 4G
+   sonarqube:community` then `sonar-scanner`.
 
 ## Linux build container (Debian Trixie)
 

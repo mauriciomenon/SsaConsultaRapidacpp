@@ -13,6 +13,19 @@
   - `MainPreferenceFlowCoordinator`: adicionado `processEvents()` apos `waitForFinished` para drenar o signal finished antes do teardown.
   Validado: dev-tsan 100/100 (2x consecutivas).
 
+- [COVERAGE] Analise de gaps de cobertura (78.15% linhas agregado, meta 90%).
+  Arquivos com cobertura < 70% (priorizar adicionar testes):
+  - `query/SqlPredicateBuilder.cpp` (0%) - critico, compoe WHERE clauses
+  - `query/SqlQueryText.cpp` (0%) - validacao/escape de identificadores SQL
+  - `query/SqlQueryBuilder.cpp` (~6%) - gerador central de queries (testes unit existe mas nao cobre buildRows/buildCount)
+  - `application/SsaBrowseService.cpp` (~1%) - servico de browse principal
+  - `domain/SectorHierarchy.cpp` (~6%) - logica de hierarquia de setores
+  - `domain/ColumnValuePriorityPolicy.cpp` (~3%) - politica de prioridade de colunas
+  - `infra/import/SsaSpreadsheetHeaderCatalog.cpp` (0%) - catalogo de headers de import
+  - `infra/preferences/FilterPresetJsonCodec.cpp` (~1%) - codec JSON de presets
+  - `ports/*.h` (0-1%) - interfaces, cobertura esperada baixa (headers)
+  Gerar relatorio: `bash scripts/generate-coverage.sh` -> build/dev-cov/coverage_html/
+
 - [STYLE] clang-tidy/cppcheck achados de estilo nao corrigidos (codigo pre-existente em SsaTypes.h/ColumnCatalog - refatoracao transversal fora de escopo):
   - `cppcoreguidelines-pro-type-member-init` em varias structs de dominio (AdvancedFilterSpec, SsaPageRequest, etc.)
   - `performance-enum-size` (enums usam int onde uint8 bastaria)
