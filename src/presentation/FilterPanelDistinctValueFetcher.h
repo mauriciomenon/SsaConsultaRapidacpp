@@ -6,8 +6,10 @@
 #include <QFutureWatcher>
 #include <QObject>
 
+#include <atomic>
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -19,6 +21,7 @@ namespace ssa::presentation {
       public:
         explicit FilterPanelDistinctValueFetcher(
             std::shared_ptr<query::SsaQueryService> queryService, QObject* parent = nullptr);
+        ~FilterPanelDistinctValueFetcher() override;
 
         void requestValues(const domain::DistinctValuesRequest& request,
                            std::uint64_t requestToken);
@@ -28,9 +31,24 @@ namespace ssa::presentation {
 
       private:
         void onWatcherFinished();
+        void startWorker(const domain::DistinctValuesRequest& request, std::uint64_t requestToken);
+
         std::shared_ptr<query::SsaQueryService> queryService_;
+        // void watcher: QFutureWatcher<T> for non-trivial T has a data race in
+        // QFutureInterface's ResultStore when torn down while the worker reports
+        // its result (TSan: race in vector<string> destruction). The result is
+        // carried via a shared_ptr, guarded by resultMutex_.
+        QFutureWatcher<void> watcher_;
+        std::shared_ptr<std::atomic_bool> activeCancelToken_;
+        std::shared_ptr<std::vector<std::string>> activeResult_;
+        std::mutex resultMutex_;
         std::uint64_t activeRequestToken_{0};
-        QFutureWatcher<std::vector<std::string>> watcher_;
+        // When a request arrives while a worker is running, it is queued here and
+        // dispatched when the worker finishes, instead of cancel+setFuture which
+        // races the runnable vptr.
+        domain::DistinctValuesRequest pendingRequest_;
+        std::uint64_t pendingRequestToken_{0};
+        bool hasPendingRequest_{false};
     };
 
 } // namespace ssa::presentation

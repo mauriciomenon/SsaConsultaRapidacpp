@@ -4,10 +4,13 @@
 
 #include <QFutureWatcher>
 #include <QObject>
+#include <QString>
 #include <QTimer>
 
 #include <functional>
 #include <memory>
+#include <mutex>
+#include <string>
 
 namespace ssa::presentation {
 
@@ -37,10 +40,17 @@ namespace ssa::presentation {
 
         // Null store is a supported no-persistence mode for tests and temporary sessions.
         std::shared_ptr<ports::IUserPreferencesStore> preferencesStore_;
-        QFutureWatcher<QString> watcher_;
+        // void watcher: avoids QFutureInterface<QString>'s ResultStore, which has a
+        // data race (QString move-emplace vs destruction) when the watcher is torn
+        // down while the worker reports its result. The error is carried via a
+        // mutex-protected std::string so the worker write and the finishSave read
+        // are properly synchronized.
+        QFutureWatcher<void> watcher_;
         QTimer saveTimer_;
-        std::function<ports::UserPreferencesSnapshot()> pendingSnapshotProvider_;
+        std::function<ports::UserPreferencesSnapshot()> snapshotProvider_;
         ports::UserPreferencesSnapshot pendingSnapshot_;
+        std::mutex errorMutex_;
+        std::string lastSaveError_;
         bool hasPendingSnapshot_{false};
     };
 

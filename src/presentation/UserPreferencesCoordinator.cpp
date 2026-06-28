@@ -1,5 +1,6 @@
 #include "presentation/UserPreferencesCoordinator.h"
 
+#include <QCoreApplication>
 #include <QDebug>
 #include <QThread>
 #include <QtConcurrent>
@@ -14,25 +15,26 @@ namespace ssa::presentation {
         saveTimer_.setSingleShot(true);
         saveTimer_.setInterval(500);
         connect(&saveTimer_, &QTimer::timeout, this, &UserPreferencesCoordinator::flushPendingSave);
-        connect(&watcher_, &QFutureWatcher<QString>::finished, this,
+        connect(&watcher_, &QFutureWatcher<void>::finished, this,
                 &UserPreferencesCoordinator::finishSave);
     }
 
     UserPreferencesCoordinator::~UserPreferencesCoordinator() {
         saveTimer_.stop();
         if (!preferencesStore_) {
-            pendingSnapshotProvider_ = nullptr;
+            snapshotProvider_ = nullptr;
             hasPendingSnapshot_ = false;
             return;
         }
+        // Drain any in-flight save so it is not torn down concurrently. Using a
+        // void future avoids the ResultStore<QString> race entirely; we still wait
+        // for completion and pump events so the queued 'finished' signal is handled
+        // before the watcher's destructor runs.
         if (watcher_.isRunning()) {
             watcher_.waitForFinished();
-            const auto error = watcher_.result();
-            if (!error.isEmpty()) {
-                qWarning() << "Failed to save preferences during shutdown:" << error;
-            }
+            QCoreApplication::processEvents();
         }
-        pendingSnapshotProvider_ = nullptr;
+        snapshotProvider_ = nullptr;
         hasPendingSnapshot_ = false;
     }
 
@@ -61,7 +63,7 @@ namespace ssa::presentation {
         if (!preferencesStore_) {
             return;
         }
-        pendingSnapshotProvider_ = std::move(snapshotProvider);
+        snapshotProvider_ = std::move(snapshotProvider);
         saveTimer_.start();
     }
 
@@ -75,7 +77,7 @@ namespace ssa::presentation {
         }
         pendingSnapshot_ = std::move(snapshot);
         hasPendingSnapshot_ = true;
-        pendingSnapshotProvider_ = nullptr;
+        snapshotProvider_ = nullptr;
         if (watcher_.isRunning()) {
             return;
         }
@@ -90,31 +92,36 @@ namespace ssa::presentation {
         if (!preferencesStore_ || watcher_.isRunning()) {
             return;
         }
-        if (pendingSnapshotProvider_) {
-            pendingSnapshot_ = pendingSnapshotProvider_();
-            pendingSnapshotProvider_ = nullptr;
+        if (snapshotProvider_) {
+            pendingSnapshot_ = snapshotProvider_();
+            snapshotProvider_ = nullptr;
             hasPendingSnapshot_ = true;
         }
         if (!hasPendingSnapshot_) {
-            return;
-        }
-        if (watcher_.isRunning()) {
             return;
         }
 
         const auto store = preferencesStore_;
         auto snapshot = std::move(pendingSnapshot_);
         hasPendingSnapshot_ = false;
+        // Clear the previous error before launching the worker; do NOT hold the
+        // mutex across setFuture or the worker would deadlock on completion.
+        {
+            std::lock_guard<std::mutex> lock(errorMutex_);
+            lastSaveError_.clear();
+        }
 
-        watcher_.setFuture(QtConcurrent::run([store, snapshot = std::move(snapshot)] {
+        watcher_.setFuture(QtConcurrent::run([store, snapshot = std::move(snapshot), this] {
+            std::string error;
             try {
                 store->save(snapshot);
-                return QString{};
             } catch (const std::exception& exc) {
-                return QString::fromUtf8(exc.what());
+                error = exc.what();
             } catch (...) {
-                return QStringLiteral("erro desconhecido");
+                error = "erro desconhecido";
             }
+            std::lock_guard<std::mutex> lock(errorMutex_);
+            lastSaveError_ = std::move(error);
         }));
     }
 
@@ -122,15 +129,20 @@ namespace ssa::presentation {
         if (!ensureOwnerThread("finishSave")) {
             return;
         }
-        const auto error = watcher_.result();
-        if (error.isEmpty()) {
+        std::string error;
+        {
+            std::lock_guard<std::mutex> lock(errorMutex_);
+            error = lastSaveError_;
+        }
+        if (error.empty()) {
             emit saved();
         } else {
-            qWarning() << "Failed to save preferences:" << error;
+            const auto message = QString::fromStdString(error);
+            qWarning() << "Failed to save preferences:" << message;
             emit this->saveFailed(
-                QStringLiteral("Falha interna ao salvar preferencias: %1").arg(error));
+                QStringLiteral("Falha interna ao salvar preferencias: %1").arg(message));
         }
-        if (hasPendingSnapshot_ || pendingSnapshotProvider_) {
+        if (hasPendingSnapshot_ || snapshotProvider_) {
             flushPendingSave();
         }
     }

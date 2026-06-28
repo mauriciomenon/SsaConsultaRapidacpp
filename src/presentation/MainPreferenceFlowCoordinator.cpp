@@ -2,9 +2,8 @@
 
 #include "presentation/UserPreferencesCoordinator.h"
 
+#include <QCoreApplication>
 #include <QtConcurrent>
-
-#include <QtGlobal>
 
 #include <filesystem>
 #include <stdexcept>
@@ -165,12 +164,17 @@ namespace ssa::presentation {
     }
 
     void MainPreferenceFlowCoordinator::waitForPresetTasks() {
+        // Wait for the workers AND pump the event loop so the queued 'finished'
+        // signals are handled (and their ResultStore results consumed) before the
+        // watchers' destructors run. Without processEvents the QFutureInterface<T>
+        // result can race teardown (TSan: data race in ResultStore clear).
         if (exportPresetWatcher_.isRunning()) {
             exportPresetWatcher_.waitForFinished();
         }
         if (importPresetWatcher_.isRunning()) {
             importPresetWatcher_.waitForFinished();
         }
+        QCoreApplication::processEvents();
     }
 
     void MainPreferenceFlowCoordinator::requestSaveFromSignal() {
