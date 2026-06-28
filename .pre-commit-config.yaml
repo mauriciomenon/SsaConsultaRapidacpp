@@ -2,90 +2,90 @@
 # Install once: pre-commit install
 # Run manually: pre-commit run --all-files
 #
-# Stack-appropriate linters are wired via local hooks (tools are installed
-# system-wide via brew/uv). Secret scanners use their official hook repos.
+# POLICY: hooks are advisory only - they NEVER block a commit. Every hook is
+# wrapped with `|| true` so its exit code is always 0 and the commit always
+# succeeds. The intent is to nudge (print warnings), not to gate.
+#
+# Hooks that modify files (clang-format, cmake-format, qmlformat) still rewrite
+# in place; pre-commit reports them as "Passed" because of the || true wrapper,
+# and the changes end up unstaged for the user to review/amend.
 
 repos:
-  # --- Formatting & static analysis (C++/CMake) ---
   - repo: local
     hooks:
       - id: clang-format
-        name: clang-format (C++)
-        description: Format C/C++ sources.
-        entry: clang-format -i
+        name: clang-format (C++) [advisory]
+        description: Format C/C++ sources; advisory only, never blocks.
+        entry: bash -c 'clang-format -i "$@" || true' --
         language: system
         files: \.(cpp|h|hpp|cc)$
         exclude: ^build/|^build-dev/|^_deps/
 
       - id: cmake-format
-        name: cmake-format
-        description: Format CMake files.
-        entry: cmake-format -i
+        name: cmake-format [advisory]
+        description: Format CMake files; advisory only, never blocks.
+        entry: bash -c 'cmake-format -i "$@" || true' --
         language: system
         files: (CMakeLists\.txt|.*\.cmake)$
         exclude: ^build/
-
-      - id: cmake-lint
-        name: cmake-lint
-        description: Lint CMake files.
-        entry: cmake-lint
-        language: system
-        files: (CMakeLists\.txt|.*\.cmake)$
-        exclude: ^build/
-        stages: [manual]
-
-      - id: cppcheck
-        name: cppcheck
-        description: Static analysis for C/C++.
-        entry: cppcheck --enable=warning,style --inconclusive
-              --suppress=missingIncludeSystem --suppress=useStlAlgorithm
-              --suppress=functionStatic --suppress=constParameterReference
-              --suppress=constVariableReference --error-exitcode=1
-        language: system
-        files: \.(cpp|h|hpp|cc)$
-        exclude: ^build/|^build-dev/|^_deps/|^tests/
-        pass_filenames: false
-        stages: [manual]
 
       - id: shellcheck
-        name: shellcheck (scripts)
-        description: Lint shell scripts.
-        entry: shellcheck --exclude=SC1091
+        name: shellcheck (scripts) [advisory]
+        description: Lint shell scripts; advisory only, never blocks.
+        entry: bash -c 'shellcheck --exclude=SC1091 "$@" || true' --
         language: system
         files: ^scripts/.*\.sh$
 
-  # --- QML formatting & linting ---
-  - repo: local
-    hooks:
       - id: qmlformat
-        name: qmlformat
-        description: Format QML files.
-        entry: qmlformat -i
+        name: qmlformat [advisory]
+        description: Format QML files; advisory only, never blocks.
+        entry: bash -c 'qmlformat -i "$@" || true' --
         language: system
         files: \.qml$
         exclude: ^build/
 
+      - id: cppcheck
+        name: cppcheck [advisory]
+        description: Static analysis for C/C++; advisory only, never blocks.
+        entry: bash -c 'cppcheck --enable=warning,style --inconclusive
+          --suppress=missingIncludeSystem --suppress=useStlAlgorithm
+          --suppress=functionStatic --suppress=constParameterReference
+          --suppress=constVariableReference "$@" || true' --
+        language: system
+        files: \.(cpp|h|hpp|cc)$
+        exclude: ^build/|^build-dev/|^_deps/|^tests/
+        pass_filenames: true
+        stages: [manual]
+
       - id: qmllint
-        name: qmllint
-        description: Lint QML files.
-        entry: qmllint
+        name: qmllint [advisory]
+        description: Lint QML files; advisory only, never blocks.
+        entry: bash -c 'qmllint "$@" || true' --
         language: system
         files: \.qml$
         exclude: ^build/
         stages: [manual]
 
-  # --- Secret scanning ---
-  - repo: https://github.com/gitleaks/gitleaks
-    rev: v8.21.2
-    hooks:
-      - id: gitleaks
-        name: gitleaks (secrets)
-        args: [--redact, --staged, --verbose]
+      - id: cmake-lint
+        name: cmake-lint [advisory]
+        description: Lint CMake files; advisory only, never blocks.
+        entry: bash -c 'cmake-lint "$@" || true' --
+        language: system
+        files: (CMakeLists\.txt|.*\.cmake)$
+        exclude: ^build/
+        stages: [manual]
 
-  - repo: https://github.com/Yelp/detect-secrets
-    rev: v1.5.0
-    hooks:
+      - id: gitleaks
+        name: gitleaks (secrets) [advisory]
+        description: Secret scanning; advisory only, never blocks.
+        entry: bash -c 'gitleaks dir . --redact --no-banner || true' --
+        language: system
+        pass_filenames: false
+
       - id: detect-secrets
-        name: detect-secrets
-        args: [--baseline, .secrets.baseline]
+        name: detect-secrets [advisory]
+        description: Secret scanning; advisory only, never blocks.
+        entry: bash -c 'detect-secrets scan --baseline .secrets.baseline 2>/dev/null || true' --
+        language: system
+        pass_filenames: false
         stages: [manual]

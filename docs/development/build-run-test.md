@@ -34,7 +34,7 @@ what was already present, what was fixed, and what is newly available.
 
 ```bash
 brew install qt cmake ninja sqlite llvm clang-format cppcheck \
-  include-what-you-use lcov sonar-scanner pre-commit gitleaks trufflehog
+  include-what-you-use lcov pre-commit gitleaks trufflehog
 uv tool install cmakelang          # provides cmake-format and cmake-lint
 pip3 install detect-secrets        # or: uv tool install detect-secrets
 ```
@@ -73,7 +73,6 @@ the core of the quality gate.
 | lcov 2.4 + genhtml | Test coverage HTML reports | `brew install lcov` | OK |
 | cmake-format 0.6.13 | CMake files formatting | `uv tool install cmakelang` | OK |
 | cmake-lint 0.6.13 | CMake files linting | `uv tool install cmakelang` | OK |
-| sonar-scanner 8.1.0 | SonarQube analysis uploader | `brew install sonar-scanner` | OK |
 
 ### Compiler-provided (no install needed; Apple clang 21)
 
@@ -111,17 +110,12 @@ exports to lcov via `llvm-cov`, and renders HTML via `genhtml`. Requires the
 The tools above are installed but not yet wired into the project config. Pending
 explicit approval, the remaining work is configuration only:
 
-1. `.pre-commit-config.yaml`: wire clang-format, clang-tidy, cppcheck, gitleaks,
-   detect-secrets, cmake-format, qmllint, qmlformat to run on every commit.
-2. IWYU: note it requires the Homebrew clang toolchain to match the build; since
-   the build uses Apple clang, IWYU shows `<array> not found`. Running IWYU would
+1. `.pre-commit-config.yaml`: clang-format, cmake-format, shellcheck, qmlformat
+   run on every commit as advisory (never block); cppcheck/qmllint/cmake-lint/
+   detect-secrets run as manual advisory stages.
+2. IWYU: requires the Homebrew clang toolchain to match the build; since the
+   build uses Apple clang, IWYU shows `<array> not found`. Running IWYU would
    require a separate build using Homebrew clang (blocked on the Apple-SDK issue).
-3. SonarQube: a `sonar-project.properties` is present but SonarQube Community
-   does NOT include a C/C++ analyzer (CFamily is a commercial plugin). The
-   scanner runs only text/secrets analysis on .cpp/.h without a licensed
-   edition. For local C++ analysis rely on the clang-tidy + cppcheck toolchain.
-   To experiment: `container run -d --name sonarqube -p 9000:9000 -m 4G
-   sonarqube:community` then `sonar-scanner`.
 
 ## Linux build container (Debian Trixie)
 

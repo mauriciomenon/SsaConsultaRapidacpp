@@ -32,5 +32,3 @@ cmake-build-debug/
 .env
 .envrc
 
-# SonarScanner cache (generated)
-.scannerwork/
