@@ -13,11 +13,11 @@ QtObject {
         target: root.smokeController
 
         function onOpenPreferencesRequested() {
-            root.preferencesDialog.open()
+            root.preferencesDialog.open();
         }
 
         function onOpenAdvancedFiltersRequested() {
-            root.filterPanel.showAdvancedFilters()
+            root.filterPanel.showAdvancedFilters();
         }
     }
 }

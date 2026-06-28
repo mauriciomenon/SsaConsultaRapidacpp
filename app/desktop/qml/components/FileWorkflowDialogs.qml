@@ -8,19 +8,19 @@ Item {
     required property var viewModel
 
     function openExportResults() {
-        exportDialog.open()
+        exportDialog.open();
     }
 
     function openExportFilters() {
-        exportFiltersDialog.open()
+        exportFiltersDialog.open();
     }
 
     function openImportFilters() {
-        importFiltersDialog.open()
+        importFiltersDialog.open();
     }
 
     function openImportData() {
-        importDataDialog.open()
+        importDataDialog.open();
     }
 
     FileDialog {

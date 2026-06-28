@@ -11,9 +11,7 @@ SpinBox {
     readonly property string reservedDigitProbe: "888"
 
     implicitHeight: Theme.controlHeight
-    implicitWidth: Math.max(Theme.controlHeight * 2,
-                            Math.ceil(reservedDigitMetrics.width) + root.indicatorWidth
-                                + (root.horizontalTextPadding * 2))
+    implicitWidth: Math.max(Theme.controlHeight * 2, Math.ceil(reservedDigitMetrics.width) + root.indicatorWidth + (root.horizontalTextPadding * 2))
     leftPadding: root.horizontalTextPadding
     rightPadding: root.indicatorWidth + root.horizontalTextPadding
     editable: false
@@ -46,9 +44,7 @@ SpinBox {
         y: 1
         width: root.indicatorWidth
         height: Math.floor((root.height - 2) / 2)
-        color: root.up.pressed ? Theme.accentSoft
-             : root.up.hovered ? Theme.surface
-             : Theme.panelRaised
+        color: root.up.pressed ? Theme.accentSoft : root.up.hovered ? Theme.surface : Theme.panelRaised
         border.color: Theme.border
 
         Text {
@@ -64,9 +60,7 @@ SpinBox {
         y: Math.floor(root.height / 2)
         width: root.indicatorWidth
         height: root.height - y - 1
-        color: root.down.pressed ? Theme.accentSoft
-             : root.down.hovered ? Theme.surface
-             : Theme.panelRaised
+        color: root.down.pressed ? Theme.accentSoft : root.down.hovered ? Theme.surface : Theme.panelRaised
         border.color: Theme.border
 
         Text {

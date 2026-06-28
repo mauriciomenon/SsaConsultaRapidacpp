@@ -16,7 +16,7 @@ RowLayout {
 
     onRowChanged: {
         if (root.row.value === undefined || root.row.value === null || root.row.value.length === 0)
-            clearPending = false
+            clearPending = false;
     }
 
     Label {
@@ -34,7 +34,7 @@ RowLayout {
         font.pixelSize: 12
         onAccepted: {
             if (text.trim() !== "")
-                root.filterSubmitted(root.row.key, text)
+                root.filterSubmitted(root.row.key, text);
         }
     }
 
@@ -42,10 +42,7 @@ RowLayout {
         target: rowFilterInput
         property: "text"
         value: root.row.value ?? ""
-        when: !root.clearPending
-              && (!rowFilterInput.activeFocus || root.row.value === undefined
-              || root.row.value === null || root.row.value.length === 0
-              )
+        when: !root.clearPending && (!rowFilterInput.activeFocus || root.row.value === undefined || root.row.value === null || root.row.value.length === 0)
         restoreMode: Binding.RestoreNone
     }
 
@@ -54,7 +51,7 @@ RowLayout {
         implicitWidth: 72
         enabled: rowFilterInput.text.trim() !== ""
         onClicked: {
-            root.filterSubmitted(root.row.key, rowFilterInput.text)
+            root.filterSubmitted(root.row.key, rowFilterInput.text);
         }
     }
 
@@ -62,9 +59,9 @@ RowLayout {
         text: "Limpar"
         implicitWidth: 70
         onClicked: {
-            root.clearPending = true
-            rowFilterInput.text = ""
-            root.filterCleared(root.row.key)
+            root.clearPending = true;
+            rowFilterInput.text = "";
+            root.filterCleared(root.row.key);
         }
     }
 }

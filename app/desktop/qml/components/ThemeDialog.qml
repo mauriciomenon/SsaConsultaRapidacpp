@@ -42,7 +42,7 @@ Window {
         root.close();
     }
 
-    onClosing: function(close) {
+    onClosing: function (close) {
         if (root.viewModel.ui.theme !== root.originalTheme) {
             root.viewModel.ui.theme = root.originalTheme;
         }

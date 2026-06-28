@@ -165,7 +165,7 @@ ApplicationWindow {
     }
 
     Component.onCompleted: {
-        root.vm.browse.load()
+        root.vm.browse.load();
     }
 
     ColumnLayout {
@@ -202,7 +202,9 @@ ApplicationWindow {
                     implicitWidth: 112
                     onClicked: fileDialogs.openImportData()
                 }
-                Item { Layout.fillWidth: true }
+                Item {
+                    Layout.fillWidth: true
+                }
                 Label {
                     Layout.preferredWidth: 220
                     Layout.preferredHeight: Theme.controlHeight
@@ -236,9 +238,7 @@ ApplicationWindow {
                 Label {
                     Layout.preferredWidth: 360
                     Layout.preferredHeight: Theme.controlHeight
-                    text: root.vm.browse.status.error.length > 0
-                          ? root.vm.browse.status.error
-                          : root.vm.browse.status.message
+                    text: root.vm.browse.status.error.length > 0 ? root.vm.browse.status.error : root.vm.browse.status.message
                     color: root.vm.browse.status.error.length > 0 ? Theme.dangerStrong : Theme.accent
                     font.pixelSize: 13
                     horizontalAlignment: Text.AlignLeft
@@ -251,7 +251,10 @@ ApplicationWindow {
                         radius: Theme.radius
                     }
                 }
-                ActionButton { text: "Preferencias"; onClicked: preferencesDialog.open() }
+                ActionButton {
+                    text: "Preferencias"
+                    onClicked: preferencesDialog.open()
+                }
                 ActionButton {
                     text: "Cancelar"
                     enabled: root.vm.browse.status.loading

@@ -68,8 +68,7 @@ Item {
                         CheckBox {
                             checked: columnDelegate.columnVisible
                             enabled: columnDelegate.columnVisibilityChangeEnabled
-                            onToggled: root.viewModel.setColumnVisibleByKey(
-                                columnDelegate.columnKey, checked)
+                            onToggled: root.viewModel.setColumnVisibleByKey(columnDelegate.columnKey, checked)
                         }
                         Label {
                             Layout.preferredWidth: 210
@@ -89,10 +88,7 @@ Item {
                             to: root.viewModel.maxColumnWidth
                             stepSize: 5
                             value: columnDelegate.columnWidth
-                            onValueModified: root.viewModel.setColumnWidth(
-                                columnDelegate.columnKey,
-                                value
-                            )
+                            onValueModified: root.viewModel.setColumnWidth(columnDelegate.columnKey, value)
                         }
                         ActionButton {
                             text: "^"
@@ -100,8 +96,7 @@ Item {
                             enabled: columnDelegate.index > 0 && columnDelegate.columnVisible
                             Accessible.name: "Mover coluna para cima"
                             ToolTip.text: "Mover coluna para cima"
-                            onClicked: root.viewModel.moveColumn(
-                                columnDelegate.index, columnDelegate.index - 1)
+                            onClicked: root.viewModel.moveColumn(columnDelegate.index, columnDelegate.index - 1)
                         }
                         ActionButton {
                             text: "v"
@@ -109,8 +104,7 @@ Item {
                             enabled: columnDelegate.index < columnList.count - 1 && columnDelegate.columnVisible
                             Accessible.name: "Mover coluna para baixo"
                             ToolTip.text: "Mover coluna para baixo"
-                            onClicked: root.viewModel.moveColumn(
-                                columnDelegate.index, columnDelegate.index + 1)
+                            onClicked: root.viewModel.moveColumn(columnDelegate.index, columnDelegate.index + 1)
                         }
                     }
                 }

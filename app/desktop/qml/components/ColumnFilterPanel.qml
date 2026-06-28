@@ -50,9 +50,7 @@ Rectangle {
 
                 Label {
                     Layout.fillWidth: true
-                    text: root.columnViewModel.activeFilterCount === 0
-                          ? "Sem filtros por coluna"
-                          : root.columnViewModel.activeFilterCount + " filtros por coluna"
+                    text: root.columnViewModel.activeFilterCount === 0 ? "Sem filtros por coluna" : root.columnViewModel.activeFilterCount + " filtros por coluna"
                     color: Theme.mutedText
                     font.pixelSize: 12
                     elide: Text.ElideRight

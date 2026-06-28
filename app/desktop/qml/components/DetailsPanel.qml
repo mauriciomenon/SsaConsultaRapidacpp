@@ -13,7 +13,7 @@ Rectangle {
     readonly property int titleTextSize: Theme.densityValue(root.density, 14, 16, 18)
     readonly property int labelTextSize: Theme.densityValue(root.density, 12, 13, 14)
     readonly property int valueTextSize: Theme.densityValue(root.density, 12, 13, 15)
-    signal openRequested()
+    signal openRequested
 
     color: Theme.panel
     border.color: Theme.border
@@ -103,8 +103,7 @@ Rectangle {
 
                             Rectangle {
                                 id: relationBox
-                                width: Math.max(Theme.relationNodeMinWidth,
-                                                relationText.implicitWidth + 18)
+                                width: Math.max(Theme.relationNodeMinWidth, relationText.implicitWidth + 18)
                                 implicitHeight: Theme.relationNodeHeight
                                 radius: Theme.radius
                                 color: relationRow.index === 0 ? Theme.accentSoft : Theme.panelRaised

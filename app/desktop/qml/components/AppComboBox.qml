@@ -19,9 +19,7 @@ ComboBox {
         required property var modelData
         width: root.popup.width
         height: Theme.controlHeight
-        text: root.textRole.length > 0 && modelData[root.textRole] !== undefined
-              ? modelData[root.textRole]
-              : modelData
+        text: root.textRole.length > 0 && modelData[root.textRole] !== undefined ? modelData[root.textRole] : modelData
         font.family: Theme.fontFamily
         font.pixelSize: 12
         highlighted: root.highlightedIndex === index
