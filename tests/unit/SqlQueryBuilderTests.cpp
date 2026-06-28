@@ -193,7 +193,9 @@ TEST_CASE("sql query builder can order distinct values by filtered frequency") {
     const auto query = ssa::query::SqlQueryBuilder{}.buildDistinctValues(request);
 
     REQUIRE(query.sql.find("SELECT DISTINCT") == std::string::npos);
-    REQUIRE(query.sql.find("GROUP BY \"responsavel_execucao\"") != std::string::npos);
+    // Projection/grouping use the trimmed expression so whitespace variants collapse.
+    REQUIRE(query.sql.find("GROUP BY TRIM(COALESCE(\"responsavel_execucao\", ''))") !=
+            std::string::npos);
     REQUIRE(query.sql.find("ORDER BY COUNT(*) DESC") != std::string::npos);
     REQUIRE(query.bindings.back() == "25");
 }

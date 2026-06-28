@@ -14,12 +14,15 @@
 
 #include <QDate>
 
+#include <charconv>
+#include <climits>
 #include <iterator>
 #include <map>
 #include <memory>
 #include <mutex>
 #include <ranges>
 #include <string>
+#include <system_error>
 #include <vector>
 
 namespace {
@@ -75,7 +78,7 @@ namespace {
             return {};
         }
 
-        ssa::ports::SsaReadResult readAll(const ssa::domain::SsaPageRequest&,
+        ssa::ports::SsaReadResult readAll(const ssa::domain::SsaPageRequest& request,
                                           ssa::ports::SsaRecordConsumer consume) const override {
             const auto week = currentYearWeek();
             const std::vector<ssa::domain::SsaRecord> rows{
@@ -85,8 +88,19 @@ namespace {
                 reportRecord("202600003", "MAM2", week, "BRUNO"),
                 reportRecord("202500001", "MAM2", "202501", "BRUNO"),
             };
+            // Simulate the SQL semana_executada BETWEEN filter that a real
+            // repository applies from advancedFilters.executionWeekStart/End.
+            const auto weekStart = request.advancedFilters.executionWeekStart.value_or(0);
+            const auto weekEnd = request.advancedFilters.executionWeekEnd.value_or(INT_MAX);
             std::size_t rowCount = 0;
             for (const auto& row : rows) {
+                const auto rowWeek = row.valueOf("semana_executada");
+                int value = 0;
+                const auto parsed =
+                    std::from_chars(rowWeek.data(), rowWeek.data() + rowWeek.size(), value);
+                if (parsed.ec != std::errc{} || value < weekStart || value > weekEnd) {
+                    continue;
+                }
                 if (auto error = consume(row); error.has_value()) {
                     return {rowCount, *error};
                 }

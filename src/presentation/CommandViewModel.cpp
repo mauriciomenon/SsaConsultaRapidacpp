@@ -2,7 +2,6 @@
 
 #include <QThreadPool>
 #include <QtConcurrent>
-#include <QtGlobal>
 
 #include <stdexcept>
 #include <utility>
@@ -22,8 +21,9 @@ namespace ssa::presentation {
             case ports::ExternalCommandStatus::Failed:
                 return "failed";
             }
-            Q_ASSERT_X(false, "statusName", "unhandled ExternalCommandStatus");
-            return "unknown";
+            // Throw in all builds: a new enum value must not silently fall through
+            // (Q_ASSERT_X is compiled out in release).
+            throw std::logic_error("unhandled ExternalCommandStatus");
         }
 
     } // namespace

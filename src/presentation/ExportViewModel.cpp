@@ -1,7 +1,6 @@
 #include "presentation/ExportViewModel.h"
 
 #include <QtConcurrent>
-#include <QtGlobal>
 
 #include <filesystem>
 #include <stdexcept>
@@ -22,8 +21,9 @@ namespace ssa::presentation {
             case ports::WorkflowStatus::Failed:
                 return "failed";
             }
-            Q_ASSERT_X(false, "statusName", "unhandled WorkflowStatus");
-            return "unknown";
+            // Throw in all builds: a new enum value must not silently fall through
+            // (Q_ASSERT_X is compiled out in release).
+            throw std::logic_error("unhandled WorkflowStatus");
         }
 
     } // namespace

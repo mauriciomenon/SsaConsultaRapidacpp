@@ -36,7 +36,7 @@ namespace ssa::application {
                 throw std::invalid_argument("unknown column: " + key);
             }
         }
-        return requestedColumns;
+        return std::move(requestedColumns);
     }
 
     domain::SsaPageRequest

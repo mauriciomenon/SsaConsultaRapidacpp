@@ -6,12 +6,6 @@
 #include <QDate>
 #include <QVariantMap>
 
-#include <map>
-#include <memory>
-#include <optional>
-#include <set>
-#include <string>
-#include <tuple>
 #include <utility>
 
 namespace ssa::presentation {
@@ -23,58 +17,36 @@ namespace ssa::presentation {
         constexpr auto kExecutadasDivisao = "ssas_executadas_divisao";
         constexpr auto kStatusColumn = "situacao";
         constexpr auto kBaixarStatusFilter = "!SAD,!SCA,!SES,!STE";
-        constexpr int kYearWeekTextLength = 6;
-        constexpr int kMaxIsoYearSearchDays = 370;
-        constexpr int kDaysPerWeek = 7;
 
-        struct ReportKey {
-            QString setor;
-            QString semana;
-            QString pessoa;
-
-            bool operator<(const ReportKey& other) const {
-                return std::tie(setor, semana, pessoa) <
-                       std::tie(other.setor, other.semana, other.pessoa);
-            }
+        // Range of ISO year-weeks (YYYYWW) overlapping the month of currentDate.
+        // The database restricts the set via semana_executada BETWEEN, so the
+        // macro report never loads the full table just to filter it in memory.
+        struct YearWeekRange {
+            int start{0};
+            int end{0};
         };
 
-        bool isCurrentMonthWeek(const QString& weekText, const QDate& currentDate) {
-            const auto trimmedWeek = weekText.trimmed();
-            bool conversionOk = false;
-            const int yearWeek = trimmedWeek.toInt(&conversionOk);
-            if (!conversionOk || trimmedWeek.size() != kYearWeekTextLength) {
-                return false;
-            }
-            const int isoYear = yearWeek / domain::kYearWeekMultiplier;
-            const int isoWeek = yearWeek % domain::kYearWeekMultiplier;
-            QDate monday{isoYear, 1, 1};
-            for (int day = 0; day < kMaxIsoYearSearchDays; ++day) {
-                int candidateIsoYear = 0;
-                if (monday.weekNumber(&candidateIsoYear) == isoWeek &&
-                    candidateIsoYear == isoYear) {
-                    const auto weekStart = monday.addDays(1 - monday.dayOfWeek());
-                    for (int offset = 0; offset < kDaysPerWeek; ++offset) {
-                        const auto date = weekStart.addDays(offset);
-                        if (date.month() == currentDate.month() &&
-                            date.year() == currentDate.year()) {
-                            return true;
-                        }
-                    }
-                    return false;
-                }
-                monday = monday.addDays(1);
-            }
-            return false;
+        YearWeekRange executionWeekRangeForCurrentMonth(const QDate& currentDate) {
+            const QDate firstOfMonth(currentDate.year(), currentDate.month(), 1);
+            int startIsoYear = 0;
+            const int startWeek = firstOfMonth.weekNumber(&startIsoYear);
+            const QDate lastOfMonth(currentDate.year(), currentDate.month(),
+                                    currentDate.daysInMonth());
+            int endIsoYear = 0;
+            const int endWeek = lastOfMonth.weekNumber(&endIsoYear);
+            return YearWeekRange{startIsoYear * domain::kYearWeekMultiplier + startWeek,
+                                 endIsoYear * domain::kYearWeekMultiplier + endWeek};
         }
 
-        QVariantMap reportRowMap(const ReportKey& key, const std::set<QString>& ssas) {
-            return QVariantMap{{"group", key.setor},
-                               {"week", key.semana},
-                               {"person", key.pessoa},
-                               {"count", static_cast<int>(ssas.size())}};
+        QVariantMap reportRowMap(const application::ExecutadasReportRow& row) {
+            return QVariantMap{{"group", QString::fromStdString(row.group)},
+                               {"week", QString::fromStdString(row.week)},
+                               {"person", QString::fromStdString(row.person)},
+                               {"count", row.count}};
         }
 
-        domain::SsaPageRequest reportRequestFromState(const filterpanel::FilterPanelState& state) {
+        domain::SsaPageRequest reportRequestFromState(const filterpanel::FilterPanelState& state,
+                                                      const QDate& currentDate) {
             domain::SsaPageRequest request;
             request.visibleColumns = {"numero_ssa", "setor_executor", "semana_executada",
                                       "responsavel_execucao"};
@@ -82,7 +54,10 @@ namespace ssa::presentation {
             request.excludeScaSesSte = state.excludeScaSesSte();
             request.columnFilters = state.columnFilters();
             request.advancedFilters = state.advancedFilters();
-            request.pageSize = 0;
+            // Narrow the scan to the current month at the database level.
+            const auto weekRange = executionWeekRangeForCurrentMonth(currentDate);
+            request.advancedFilters.executionWeekStart = weekRange.start;
+            request.advancedFilters.executionWeekEnd = weekRange.end;
             return request;
         }
     } // namespace
@@ -92,7 +67,8 @@ namespace ssa::presentation {
         const filterpanel::FilterPanelState& filterState,
         std::shared_ptr<query::SsaQueryService> queryService, QObject* parent)
         : QObject(parent), advancedState_(advancedState), filterState_(filterState),
-          queryService_(std::move(queryService)),
+          reportService_(
+              std::make_unique<application::SsaExecutadasReportService>(std::move(queryService))),
           options_{
               QVariantMap{{"label", tr("Nenhum")}, {"value", QString::fromLatin1(kNone)}},
               QVariantMap{{"label", tr("Baixar")}, {"value", QString::fromLatin1(kBaixar)}},
@@ -154,44 +130,17 @@ namespace ssa::presentation {
         const bool byDivision = value == QString::fromLatin1(kExecutadasDivisao);
         reportTitle_ = byDivision ? tr("SSA Executadas Divisao") : tr("SSA Executadas Setor");
         reportRows_.clear();
-        if (!queryService_) {
-            reportText_ = tr("Fonte de dados indisponivel.");
-            return;
-        }
 
-        std::map<ReportKey, std::set<QString>> grouped;
         const auto currentDate = QDate::currentDate();
-        const auto result = queryService_->readAll(
-            reportRequestFromState(filterState_), [&](const domain::SsaRecord& record) {
-                const auto setor =
-                    QString::fromStdString(std::string{record.valueOf("setor_executor")})
-                        .trimmed()
-                        .toUpper();
-                const auto semana =
-                    QString::fromStdString(std::string{record.valueOf("semana_executada")})
-                        .trimmed();
-                auto pessoa =
-                    QString::fromStdString(std::string{record.valueOf("responsavel_execucao")})
-                        .trimmed();
-                const auto ssa =
-                    QString::fromStdString(std::string{record.valueOf("numero_ssa")}).trimmed();
-                if (setor.isEmpty() || semana.isEmpty() || ssa.isEmpty() ||
-                    !isCurrentMonthWeek(semana, currentDate)) {
-                    return std::optional<std::string>{};
-                }
-                if (pessoa.isEmpty()) {
-                    pessoa = QStringLiteral("-");
-                }
-                const auto groupSetor = byDivision ? setor.left(3) : setor;
-                grouped[{groupSetor, semana, pessoa}].insert(ssa);
-                return std::optional<std::string>{};
-            });
-        if (!result.ok()) {
+        const auto request = reportRequestFromState(filterState_, currentDate);
+        const auto result = reportService_->buildExecutadasReport(request, byDivision);
+        if (!result.ok) {
             reportText_ = QString::fromStdString(result.error);
             return;
         }
-        for (const auto& [key, ssas] : grouped) {
-            reportRows_.push_back(reportRowMap(key, ssas));
+        reportRows_.reserve(static_cast<int>(result.rows.size()));
+        for (const auto& row : result.rows) {
+            reportRows_.push_back(reportRowMap(row));
         }
         reportText_ = reportRows_.empty()
                           ? tr("Nenhuma SSA baixada no mes vigente para o recorte atual.")

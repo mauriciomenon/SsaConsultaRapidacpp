@@ -103,10 +103,10 @@ namespace ssa::infra::sqlite {
     }
 
     std::size_t SqliteSsaRepository::count(const domain::SsaPageRequest& request) const {
-        const auto queries = queryBuilder_.build(request);
+        const auto countQuery = queryBuilder_.buildCount(request);
         const std::scoped_lock lock(connectionMutex_);
         auto& sqlite = connectionLocked(lock);
-        return executeCount(sqlite.handle(), queries.count);
+        return executeCount(sqlite.handle(), countQuery);
     }
 
     std::optional<domain::SsaRecord>
@@ -142,10 +142,35 @@ namespace ssa::infra::sqlite {
 
     ports::SsaReadResult SqliteSsaRepository::readAll(const domain::SsaPageRequest& request,
                                                       ports::SsaRecordConsumer consume) const {
-        const auto query = queryBuilder_.buildRows(request);
         const std::scoped_lock lock(connectionMutex_);
         auto& sqlite = connectionLocked(lock);
-        return consumeRows(sqlite.handle(), query, consume);
+        // pageSize == 0 means unbounded streaming (single query, no LIMIT).
+        // pageSize > 0 means paginated streaming: read in chunks so peak memory
+        // stays bounded to one page even for large filtered result sets.
+        if (request.pageSize == 0) {
+            const auto query = queryBuilder_.buildRows(request);
+            return consumeRows(sqlite.handle(), query, consume);
+        }
+        std::size_t rowCount = 0;
+        for (std::size_t pageIndex = 0;; ++pageIndex) {
+            auto paged = request;
+            paged.pageIndex = pageIndex;
+            const auto query = queryBuilder_.buildRows(paged);
+            std::size_t before = rowCount;
+            const auto result =
+                consumeRows(sqlite.handle(), query, [&](const domain::SsaRecord& row) {
+                    ++rowCount;
+                    return consume(row);
+                });
+            if (!result.ok()) {
+                return {rowCount, result.error};
+            }
+            const std::size_t emitted = rowCount - before;
+            if (emitted < request.pageSize) {
+                break;
+            }
+        }
+        return {rowCount, {}};
     }
 
     SqliteConnection&

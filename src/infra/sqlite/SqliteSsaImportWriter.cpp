@@ -11,7 +11,9 @@
 #include <sstream>
 #include <stdexcept>
 #include <string_view>
+#include <unordered_set>
 #include <utility>
+#include <vector>
 
 namespace ssa::infra::sqlite {
 
@@ -114,6 +116,35 @@ namespace ssa::infra::sqlite {
                    query::quoteTableIdentifier(ssaNumberIndexName(tableName)) + " ON " +
                    query::quoteTableIdentifier(tableName) + " (" +
                    query::quoteColumnIdentifier(ssaNumberColumn) + ")";
+        }
+
+        // Columns used by interactive filters/sorts/distinct lookups. Indexing them
+        // turns the common browse/filter/distinct queries from full table scans into
+        // index lookups on large datasets. IF NOT EXISTS keeps this idempotent and
+        // safe to re-run on existing databases. Only columns actually present in the
+        // configured schema are indexed, so custom imports without these columns do
+        // not raise "no such column".
+        std::vector<std::string>
+        createFilterIndexesSql(const std::string& tableName,
+                               const std::vector<domain::ColumnDef>& columns) {
+            static constexpr std::string_view filterColumns[] = {
+                "situacao", "setor_executor", "semana_programada", "semana_executada"};
+            std::unordered_set<std::string_view> present;
+            for (const auto& column : columns) {
+                present.insert(column.key);
+            }
+            std::vector<std::string> statements;
+            for (const auto column : filterColumns) {
+                if (present.find(column) == present.end()) {
+                    continue;
+                }
+                const auto name = "idx_" + tableName + "_" + std::string{column};
+                statements.push_back("CREATE INDEX IF NOT EXISTS " +
+                                     query::quoteTableIdentifier(name) + " ON " +
+                                     query::quoteTableIdentifier(tableName) + " (" +
+                                     query::quoteColumnIdentifier(std::string{column}) + ")");
+            }
+            return statements;
         }
 
         std::string insertSql(const std::string& tableName,
@@ -257,6 +288,9 @@ namespace ssa::infra::sqlite {
             auto* db = connection.handle();
             executeSql(db, createTableSql(this->tableName, columns));
             executeSql(db, createSsaNumberIndexSql(this->tableName));
+            for (const auto& indexSql : createFilterIndexesSql(this->tableName, columns)) {
+                executeSql(db, indexSql);
+            }
             prepareImportNumberTable(db);
             transaction = std::make_unique<WriteTransaction>(db);
             if (replaceAll) {

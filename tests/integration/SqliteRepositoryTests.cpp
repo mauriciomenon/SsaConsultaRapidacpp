@@ -154,6 +154,39 @@ TEST_CASE_METHOD(SqliteRepositoryFixture, "sqlite repository returns details and
     REQUIRE_FALSE(values.empty());
 }
 
+TEST_CASE_METHOD(SqliteRepositoryFixture,
+                 "sqlite repository readAll streams pages when page sized") {
+    ssa::domain::SsaPageRequest request;
+    request.pageSize = 2;
+    request.excludeScaSesSte = false;
+
+    std::vector<std::string> seen;
+    const auto result = repository.readAll(request, [&seen](const ssa::domain::SsaRecord& row) {
+        seen.emplace_back(row.valueOf("numero_ssa"));
+        return std::nullopt;
+    });
+
+    REQUIRE(result.ok());
+    REQUIRE(result.rowCount == 4);
+    REQUIRE(seen.size() == 4);
+}
+
+TEST_CASE_METHOD(SqliteRepositoryFixture,
+                 "sqlite repository readAll unbounded when page size zero") {
+    ssa::domain::SsaPageRequest request;
+    request.pageSize = 0;
+    request.excludeScaSesSte = false;
+
+    std::size_t count = 0;
+    const auto result = repository.readAll(request, [&count](const ssa::domain::SsaRecord&) {
+        ++count;
+        return std::nullopt;
+    });
+
+    REQUIRE(result.ok());
+    REQUIRE(count == 4);
+}
+
 TEST_CASE_METHOD(SqliteRepositoryFixture, "sqlite repository applies advanced filters") {
     ssa::domain::SsaPageRequest request;
     request.pageSize = 10;

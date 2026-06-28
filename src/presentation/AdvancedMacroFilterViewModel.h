@@ -1,5 +1,7 @@
 #pragma once
 
+#include "application/SsaExecutadasReportService.h"
+#include "domain/SsaTypes.h"
 #include "presentation/FilterPanelAdvancedState.h"
 #include "presentation/FilterPanelState.h"
 
@@ -8,10 +10,6 @@
 #include <QVariantList>
 
 #include <memory>
-
-namespace ssa::query {
-    class SsaQueryService;
-}
 
 namespace ssa::presentation {
 
@@ -47,7 +45,7 @@ namespace ssa::presentation {
 
         filterpanel::FilterPanelAdvancedState& advancedState_;
         const filterpanel::FilterPanelState& filterState_;
-        std::shared_ptr<query::SsaQueryService> queryService_;
+        std::unique_ptr<application::SsaExecutadasReportService> reportService_;
         QVariantList options_;
         QString selectedMacro_;
         QString reportTitle_;

@@ -49,7 +49,10 @@ namespace ssa::infra::preferences {
         }
 
         const auto document = UserPreferencesJsonCodec{}.documentFromSnapshot(snapshot);
-        output.write(document.toJson(QJsonDocument::Compact));
+        if (output.write(document.toJson(QJsonDocument::Compact)) < 0) {
+            throw std::runtime_error("cannot write preferences file: " +
+                                     output.errorString().toStdString());
+        }
     }
 
 } // namespace ssa::infra::preferences

@@ -13,6 +13,15 @@ namespace ssa::query {
 
         std::string numericValueExpression(const std::string& key) {
             const auto column = quoteColumnIdentifier(key);
+            // Integer columns (semana_*, reprogramacoes) are stored natively as
+            // INTEGER by the import writer, so filtering on the raw column keeps the
+            // predicate sargable and lets the index (created at import time) be used.
+            // Defensive CAST/GLOB wrapping is reserved for text-affinity columns.
+            if (const auto* def = domain::ColumnCatalog::find(key)) {
+                if (def->type == domain::ColumnType::Integer) {
+                    return column;
+                }
+            }
             const auto text = "TRIM(COALESCE(" + column + ", ''))";
             return "CAST(CASE WHEN " + text + " <> '' AND " + text + " NOT GLOB '*[^0-9]*' THEN " +
                    text + " ELSE NULL END AS INTEGER)";

@@ -904,44 +904,27 @@ namespace {
             const auto keyA = QString::fromStdString(keys[0]);
             const auto keyB = QString::fromStdString(keys[1]);
 
-            // Find model rows for these keys and swap them.
-            QString firstKey;
-            QString secondKey;
-            for (int i = 0; i < model.columns()->rowCount(); ++i) {
-                const auto idx = model.columns()->index(i);
-                const auto k = idx.data(ssa::presentation::ColumnSettingsModel::KeyRole).toString();
-                if (k == keyA) {
-                    firstKey = k;
-                }
-                if (k == keyB) {
-                    secondKey = k;
-                }
-            }
-            QCOMPARE(firstKey, keyA);
-            QCOMPARE(secondKey, keyB);
-
-            // Determine the source row indices for these two visible keys.
-            const auto allKeys = model.columns()->visibleKeys();
-            QCOMPARE(QString::fromStdString(allKeys[0]), keyA);
-            QCOMPARE(QString::fromStdString(allKeys[1]), keyB);
-
-            // Find the model rows that correspond to these keys.
+            // Find the model rows for these two keys in a single pass.
             int rowA = -1;
             int rowB = -1;
             for (int i = 0; i < model.columns()->rowCount(); ++i) {
-                const auto k = model.columns()
-                                   ->data(model.columns()->index(i),
-                                          ssa::presentation::ColumnSettingsModel::KeyRole)
-                                   .toString();
-                if (k == keyA) {
+                const auto key = model.columns()
+                                     ->data(model.columns()->index(i),
+                                            ssa::presentation::ColumnSettingsModel::KeyRole)
+                                     .toString();
+                if (key == keyA) {
                     rowA = i;
                 }
-                if (k == keyB) {
+                if (key == keyB) {
                     rowB = i;
                 }
             }
             QVERIFY(rowA >= 0);
             QVERIFY(rowB >= 0);
+
+            const auto allKeys = model.columns()->visibleKeys();
+            QCOMPARE(QString::fromStdString(allKeys[0]), keyA);
+            QCOMPARE(QString::fromStdString(allKeys[1]), keyB);
 
             const bool moved = model.columns()->moveColumn(rowA, rowB);
             QCOMPARE(moved, true);
@@ -961,9 +944,42 @@ namespace {
             auto preferences = std::make_shared<FakePreferences>(initial);
             ssa::presentation::MainViewModel model(service, commands, preferences);
 
-            const auto keys = model.columns()->visibleKeys();
-            QCOMPARE(QString::fromStdString(keys[0]), QString("situacao"));
-            QCOMPARE(QString::fromStdString(keys[1]), QString("numero_ssa"));
+            const auto initialKeys = model.columns()->visibleKeys();
+            QCOMPARE(QString::fromStdString(initialKeys[0]), QString("situacao"));
+            QCOMPARE(QString::fromStdString(initialKeys[1]), QString("numero_ssa"));
+
+            // Move column 0 (situacao) to position 1, swapping the visible order.
+            int rowA = -1;
+            int rowB = -1;
+            for (int i = 0; i < model.columns()->rowCount(); ++i) {
+                const auto key = model.columns()
+                                     ->data(model.columns()->index(i),
+                                            ssa::presentation::ColumnSettingsModel::KeyRole)
+                                     .toString();
+                if (key == QString("situacao")) {
+                    rowA = i;
+                }
+                if (key == QString("numero_ssa")) {
+                    rowB = i;
+                }
+            }
+            QVERIFY(rowA >= 0);
+            QVERIFY(rowB >= 0);
+
+            const bool moved = model.columns()->moveColumn(rowA, rowB);
+            QCOMPARE(moved, true);
+            qobject_cast<ssa::presentation::MainColumnFlowCoordinator*>(model.columnFlow())
+                ->applyColumnSettings();
+
+            // Verify the in-memory order flipped.
+            const auto reordered = model.columns()->visibleKeys();
+            QCOMPARE(QString::fromStdString(reordered[0]), QString("numero_ssa"));
+            QCOMPARE(QString::fromStdString(reordered[1]), QString("situacao"));
+
+            // Verify the new order actually persisted into the preferences store.
+            QTRY_COMPARE_WITH_TIMEOUT(preferences->snapshot().visibleColumns.front(),
+                                      std::string("numero_ssa"), 1000);
+            QCOMPARE(preferences->snapshot().visibleColumns.at(1), std::string("situacao"));
         }
     };
 

@@ -30,6 +30,7 @@ namespace ssa::query {
 
         [[nodiscard]] SqlPageQueries build(const domain::SsaPageRequest& request) const;
         [[nodiscard]] SqlQuery buildRows(const domain::SsaPageRequest& request) const;
+        [[nodiscard]] SqlQuery buildCount(const domain::SsaPageRequest& request) const;
         [[nodiscard]] SqlRecordQuery buildRecordBySsaNumber(const domain::SsaNumber& number) const;
         [[nodiscard]] SqlQuery
         buildDistinctValues(const domain::DistinctValuesRequest& request) const;

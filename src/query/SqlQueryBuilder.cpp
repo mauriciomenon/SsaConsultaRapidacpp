@@ -60,9 +60,10 @@ namespace ssa::query {
             return predicateBuilder.build(expression, filterFromRequest(request, expression));
         }
 
-        std::string distinctValuesWhereSql(const std::string& column, const SqlWhereClause& where) {
+        std::string distinctValuesWhereSql(const std::string& projection,
+                                           const SqlWhereClause& where) {
             std::ostringstream sql;
-            sql << column << " IS NOT NULL AND TRIM(COALESCE(" << column << ", '')) <> ''";
+            sql << projection << " <> ''";
             if (!where.sql.empty()) {
                 sql << " AND " << where.sql;
             }
@@ -153,7 +154,7 @@ namespace ssa::query {
 
     SqlQuery SqlQueryBuilder::buildRows(const domain::SsaPageRequest& request) const {
         const auto where = whereClauseFromRequest(request, parser_, predicateBuilder_);
-        return buildSelectQuery(request, tableName_, where.sql, where.bindings);
+        return buildPagedSelectQuery(request, tableName_, where.sql, where.bindings);
     }
 
     SqlPageQueries SqlQueryBuilder::build(const domain::SsaPageRequest& request) const {
@@ -167,6 +168,13 @@ namespace ssa::query {
         return {std::move(page), std::move(count)};
     }
 
+    SqlQuery SqlQueryBuilder::buildCount(const domain::SsaPageRequest& request) const {
+        const auto where = whereClauseFromRequest(request, parser_, predicateBuilder_);
+        return {"SELECT COUNT(*) FROM " + quoteTableIdentifier(tableName_) +
+                    (where.sql.empty() ? "" : " WHERE " + where.sql),
+                where.bindings};
+    }
+
     SqlRecordQuery SqlQueryBuilder::buildRecordBySsaNumber(const domain::SsaNumber& number) const {
         return {SqlQuery{"SELECT * FROM " + quoteTableIdentifier(tableName_) + " WHERE " +
                              quoteColumnIdentifier(std::string{domain::kSsaNumberColumnKey}) +
@@ -177,14 +185,18 @@ namespace ssa::query {
     SqlQuery
     SqlQueryBuilder::buildDistinctValues(const domain::DistinctValuesRequest& request) const {
         const std::string column = quoteColumnIdentifier(request.columnKey);
+        // Project TRIM(COALESCE(column,'')) so the result is already normalized and
+        // the C++ fetcher does not need a second trim/empty-check pass. Grouping and
+        // ordering use the same expression so whitespace variants collapse together.
+        const std::string projection = "TRIM(COALESCE(" + column + ", ''))";
         SearchExpression expression;
         expression.requiredTerms = request.filter.generalTerms;
         auto where = predicateBuilder_.build(expression, request.filter);
         std::ostringstream sql;
-        sql << "SELECT " << (request.orderByFrequency ? "" : "DISTINCT ") << column << " FROM "
+        sql << "SELECT " << (request.orderByFrequency ? "" : "DISTINCT ") << projection << " FROM "
             << quoteTableIdentifier(tableName_) << " ";
-        sql << "WHERE " << distinctValuesWhereSql(column, where);
-        sql << distinctValuesOrderSql(column, request) << " LIMIT ?";
+        sql << "WHERE " << distinctValuesWhereSql(projection, where);
+        sql << distinctValuesOrderSql(projection, request) << " LIMIT ?";
         auto bindings = std::move(where.bindings);
         bindings.push_back(std::to_string(request.limit));
         return {sql.str(), std::move(bindings)};

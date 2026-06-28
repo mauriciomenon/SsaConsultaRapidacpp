@@ -35,8 +35,14 @@ namespace ssa::infra::preferences {
             const QJsonObject columnWidths = root.value("column_widths").toObject();
             for (auto iterator = columnWidths.begin(); iterator != columnWidths.end(); ++iterator) {
                 const auto key = iterator.key().toStdString();
-                if (domain::ColumnCatalog::contains(key)) {
-                    widths[key] = iterator.value().toInt();
+                if (!domain::ColumnCatalog::contains(key)) {
+                    continue;
+                }
+                // QJsonValue has no toInt(bool* ok); skip non-numeric widths instead of
+                // silently coercing them to 0.
+                const auto value = iterator.value();
+                if (value.isDouble()) {
+                    widths[key] = value.toInt(0);
                 }
             }
             return widths;

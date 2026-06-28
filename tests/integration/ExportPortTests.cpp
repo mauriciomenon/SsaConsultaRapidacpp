@@ -134,9 +134,14 @@ TEST_CASE("csv export port exports complete filtered list from any current page"
     ssa::ports::ExportFilteredListRequest request;
     request.outputPath = outputPath;
     request.query.pageIndex = 1;
+    request.query.pageSize = 1;
+    request.query.visibleColumns = {"numero_ssa", "descricao_ssa"};
 
     const auto result = port.exportFilteredList(request);
 
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+    // Export must emit the COMPLETE filtered list regardless of the current page,
+    // not just the rows of page 1. Both rows must appear in the file.
+    REQUIRE(readFile(outputPath) == "No SSA,Descricao SSA\n202500001,\"A,B\"\n202500002,Plain\n");
     std::filesystem::remove(outputPath);
 }

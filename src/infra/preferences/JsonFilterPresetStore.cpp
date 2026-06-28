@@ -46,8 +46,12 @@ namespace ssa::infra::preferences {
         if (!output.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
             throw std::runtime_error("cannot write filter preset: " + path.string());
         }
-        output.write(
-            FilterPresetJsonCodec{}.documentFromSnapshot(snapshot).toJson(QJsonDocument::Compact));
+        const auto payload =
+            FilterPresetJsonCodec{}.documentFromSnapshot(snapshot).toJson(QJsonDocument::Compact);
+        if (output.write(payload) < 0) {
+            throw std::runtime_error("cannot write filter preset: " + path.string() + ": " +
+                                     output.errorString().toStdString());
+        }
     }
 
 } // namespace ssa::infra::preferences

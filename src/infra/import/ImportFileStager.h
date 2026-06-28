@@ -36,7 +36,7 @@ namespace ssa::infra::importing {
         struct StagedDestinationRequest {
             const std::filesystem::path& source;
             std::string_view batchPrefix;
-            std::size_t fileIndex;
+            std::size_t fileIndex{0};
         };
 
         bool stageLegacyFile(const LegacyStageRequest& request, ImportStagingResult& result) const;
