@@ -137,6 +137,9 @@ Rectangle {
                     root.viewModel.pageSize = pageSizeSpin.value;
                 }
             }
+            Item {
+                Layout.fillWidth: true
+            }
             Label {
                 text: "Setor:"
                 color: Theme.accent
