@@ -11,14 +11,13 @@ on:
         required: false
         default: ""
 
-permissions:
-  contents: write
-
 jobs:
   # ---------------------------------------------------------------
   # macOS: arm64 e amd64. Entregavel: .dmg + .zip com .app bundle.
   # ---------------------------------------------------------------
   macos:
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -58,6 +57,8 @@ jobs:
   # Entregavel: .zip portatil + .exe (NSIS).
   # ---------------------------------------------------------------
   windows:
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -112,6 +113,8 @@ jobs:
   # Debian/Ubuntu: amd64 e arm64. Entregavel: .deb
   # ---------------------------------------------------------------
   debian:
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -148,6 +151,8 @@ jobs:
   # makepkg recusa root, por isso rodamos via usuario builder.
   # ---------------------------------------------------------------
   arch:
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -157,7 +162,7 @@ jobs:
           - runner: ubuntu-24.04-arm
             arch: aarch64
     runs-on: ${{ matrix.runner }}
-    container: archlinux:latest
+    container: archlinux@sha256:d9abf957599bddf27955a0dd82b4457dcfaace50525bb773f6c7518f8015e7e4
     env:
       QT_QPA_PLATFORM: offscreen
     steps:
@@ -187,6 +192,8 @@ jobs:
   # ---------------------------------------------------------------
   publish:
     needs: [macos, windows, debian, arch]
+    permissions:
+      contents: write
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
