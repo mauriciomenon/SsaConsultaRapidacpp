@@ -86,7 +86,7 @@ FilterCard {
 
             Label {
                 Layout.preferredWidth: Math.min(240, Math.max(96, root.cardWidth * 0.36))
-                text: root.textFilter.length > 0 ? "Filtro: " + root.textFilter : "Sem filtro"
+                text: root.textFilter.length > 0 ? root.textFilter : "Sem filtro"
                 color: root.textFilter.length > 0 ? Theme.accentStrong : Theme.mutedText
                 font.pixelSize: 11
                 horizontalAlignment: Text.AlignRight
@@ -100,7 +100,7 @@ FilterCard {
 
             AppComboBox {
                 id: advancedOperator
-                Layout.preferredWidth: 104
+                Layout.preferredWidth: 84
                 textRole: "label"
                 valueRole: "mode"
                 model: root.operatorModes
@@ -129,16 +129,22 @@ FilterCard {
             }
 
             ActionButton {
-                text: root.expandedValues ? "Menos" : "Mais"
-                implicitWidth: 52
+                text: root.expandedValues ? "-" : "+"
+                implicitWidth: 36
                 enabled: root.hasMoreValues || root.expandedValues
+                ToolTip.visible: hovered
+                ToolTip.text: root.expandedValues ? qsTr("Menos valores") : qsTr("Mais valores")
+                ToolTip.delay: 0
                 onClicked: root.expandedValues = !root.expandedValues
             }
 
             ActionButton {
-                text: "Escolher"
-                implicitWidth: 88
+                text: "\u2630"
+                implicitWidth: 44
                 enabled: !root.valuesLoading
+                ToolTip.visible: hovered
+                ToolTip.text: qsTr("Escolher valores")
+                ToolTip.delay: 0
                 onClicked: {
                     if (root.allValues.length === 0)
                         root.optionsRequested();
@@ -147,8 +153,11 @@ FilterCard {
                 }
             }
             ActionButton {
-                text: "Limpar"
-                implicitWidth: 72
+                text: "\u2326"
+                implicitWidth: 36
+                ToolTip.visible: hovered
+                ToolTip.text: qsTr("Limpar filtro")
+                ToolTip.delay: 0
                 onClicked: root.textFilterClearRequested()
             }
         }
