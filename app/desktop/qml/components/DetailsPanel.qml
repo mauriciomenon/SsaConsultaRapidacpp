@@ -14,6 +14,7 @@ Rectangle {
     readonly property int labelTextSize: Theme.densityValue(root.density, 15, 16, 18)
     readonly property int valueTextSize: Theme.densityValue(root.density, 15, 16, 18)
     signal openRequested
+    signal navigateToRelationRequested(string ssaNumber)
 
     color: Theme.panel
     border.color: Theme.border
@@ -127,6 +128,17 @@ Rectangle {
                                         font.pixelSize: Math.max(10, root.valueTextSize - 2)
                                     }
                                 }
+
+                                MouseArea {
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onDoubleClicked: {
+                                        relationPopup.ssaNumber = relationRow.modelData.ssa;
+                                        relationPopup.kindLabel = relationRow.modelData.kind;
+                                        relationPopup.open();
+                                    }
+                                }
                             }
                         }
                     }
@@ -197,6 +209,75 @@ Rectangle {
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
             wrapMode: Text.Wrap
+        }
+    }
+
+    Popup {
+        id: relationPopup
+        property string ssaNumber: ""
+        property string kindLabel: ""
+        x: Math.max(0, (root.width - width) / 2)
+        y: Math.max(0, (root.height - height) / 2)
+        width: Math.min(360, Math.max(280, root.width - 24))
+        height: 160
+        modal: true
+        focus: true
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        padding: 12
+
+        background: Rectangle {
+            color: Theme.panelRaised
+            border.color: Theme.border
+            radius: Theme.radius
+        }
+
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 8
+
+            Label {
+                Layout.fillWidth: true
+                text: relationPopup.ssaNumber
+                color: Theme.accentStrong
+                font.bold: true
+                font.pixelSize: root.valueTextSize
+                horizontalAlignment: Text.AlignHCenter
+            }
+
+            Label {
+                Layout.fillWidth: true
+                text: relationPopup.kindLabel.length > 0 ? relationPopup.kindLabel : "SSA relacionada"
+                color: Theme.mutedText
+                font.pixelSize: root.labelTextSize
+                horizontalAlignment: Text.AlignHCenter
+            }
+
+            Item {
+                Layout.fillHeight: true
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+
+                Item {
+                    Layout.fillWidth: true
+                }
+                ActionButton {
+                    text: "Ir para SSA"
+                    implicitWidth: 110
+                    enabled: relationPopup.ssaNumber.length > 0
+                    onClicked: {
+                        root.navigateToRelationRequested(relationPopup.ssaNumber);
+                        relationPopup.close();
+                    }
+                }
+                ActionButton {
+                    text: "Fechar"
+                    implicitWidth: 90
+                    onClicked: relationPopup.close()
+                }
+            }
         }
     }
 }

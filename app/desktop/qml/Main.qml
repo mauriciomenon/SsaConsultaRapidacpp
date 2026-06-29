@@ -278,6 +278,7 @@ ApplicationWindow {
                     browseViewModel: root.vm.browse
                     density: root.vm.ui.density
                     onOpenRequested: root.vm.selectionFlow.openSelectedSsa()
+                    onNavigateToRelationRequested: ssaNumber => root.vm.browse.selectRowBySsaNumber(ssaNumber)
                 }
             }
 
