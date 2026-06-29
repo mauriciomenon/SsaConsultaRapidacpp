@@ -10,6 +10,7 @@
 #include "presentation/FilterPanelViewModel.h"
 #include "presentation/MainViewModel.h"
 #include "presentation/SsaRecordValueFormatter.h"
+#include "presentation/StatusViewModel.h"
 
 #include <QChar>
 #include <QObject>
@@ -51,6 +52,23 @@ namespace {
                      QString("sem data"));
         }
 
+        void status_view_model_query_complete_messages_avoid_count_duplication() {
+            ssa::presentation::StatusViewModel status;
+            // Single page result: generic completion message, no count in the
+            // message (count is shown separately in the status pill).
+            status.setQueryComplete(10, 10, 1, 1);
+            QCOMPARE(status.message(), QString("Consulta concluida"));
+            QVERIFY(!status.message().contains("SSAs"));
+
+            // Multipage: show page info instead of the count.
+            status.setQueryComplete(10, 250, 1, 25);
+            QCOMPARE(status.message(), QString("Pagina 1 de 25"));
+
+            // Empty result.
+            status.setQueryComplete(0, 100, 1, 10);
+            QCOMPARE(status.message(), QString("Nenhum resultado"));
+        }
+
         void load_populates_table_and_allows_details_selection() {
             auto repository = std::make_shared<FakeRepository>();
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
@@ -68,6 +86,41 @@ namespace {
             QCOMPARE(model.browse()->status()->loading(), false);
             QCOMPARE(model.browse()->tableModel()->columnLabel(0), QString("No SSA"));
             QVERIFY(model.browse()->tableModel()->columnWidth(0) > 0);
+        }
+
+        void details_relation_current_carries_status_from_record() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            ssa::presentation::MainViewModel model(service, commands);
+
+            model.browse()->load();
+            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->tableModel()->rowCount(), 1, 1000);
+
+            const auto relations = model.browse()->details()->relations();
+            QVERIFY(relations.size() > 0);
+            // The first relation is the Current node and must carry the
+            // situacao status from the loaded record (FakeRepository sets APV).
+            const auto current = relations.at(0).toMap();
+            QCOMPARE(current.value("kind").toString(), QString("Atual"));
+            QCOMPARE(current.value("status").toString(), QString("APV"));
+            QCOMPARE(current.value("ssa").toString(), QString("202500001"));
+        }
+
+        void details_graph_model_rebuilds_after_load() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            ssa::presentation::MainViewModel model(service, commands);
+
+            QVERIFY(model.browse()->details()->graphModel()->rowCount() == 0);
+
+            model.browse()->load();
+            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->tableModel()->rowCount(), 1, 1000);
+
+            // After load, the graph model must contain at least the target node.
+            QVERIFY(model.browse()->details()->graphModel()->rowCount() >= 1);
+            QCOMPARE(model.browse()->details()->graphModel()->target(), QString("202500001"));
         }
 
         void search_apply_signal_reloads_table() {
@@ -197,6 +250,57 @@ namespace {
             QCOMPARE(model.rowCount(), 0);
             QCOMPARE(model.target(), QString());
             QCOMPARE(model.graphWidth(), 0.0);
+        }
+
+        void derivadas_graph_model_layout_x_advances_with_depth() {
+            ssa::presentation::DerivadasGraphModel model;
+            QVariantList relations;
+            relations.push_back(QVariantMap{{"kind", "Atual"}, {"ssa", "202500003"}});
+            relations.push_back(QVariantMap{{"kind", "Derivada de"}, {"ssa", "202500001"}});
+            relations.push_back(QVariantMap{{"kind", "Derivada de"}, {"ssa", "202500002"}});
+            relations.push_back(QVariantMap{{"kind", "Relacionada"}, {"ssa", "202500004"}});
+
+            model.buildFromRelations(QStringLiteral("202500003"), relations);
+            // 2 ancestors (depth 0,1) + target (depth 2) + 1 child (depth 3)
+            QCOMPARE(model.rowCount(), 4);
+
+            // x increases with depth: ancestor0 < ancestor1 < target < child
+            const auto xAncestor0 = model.nodeCenter(0).x();
+            const auto xAncestor1 = model.nodeCenter(1).x();
+            const auto xTarget = model.nodeCenter(2).x();
+            const auto xChild = model.nodeCenter(3).x();
+            QVERIFY(xAncestor0 < xAncestor1);
+            QVERIFY(xAncestor1 < xTarget);
+            QVERIFY(xTarget < xChild);
+
+            // y increases with index (each node is one row down)
+            QVERIFY(model.nodeCenter(0).y() < model.nodeCenter(1).y());
+            QVERIFY(model.nodeCenter(1).y() < model.nodeCenter(2).y());
+        }
+
+        void derivadas_graph_model_invalid_index_returns_empty() {
+            ssa::presentation::DerivadasGraphModel model;
+            model.buildFromRelations(QStringLiteral("202500001"),
+                                     {QVariantMap{{"kind", "Atual"}, {"ssa", "202500001"}}});
+
+            QCOMPARE(model.nodeSsa(-1), QString());
+            QCOMPARE(model.nodeSsa(99), QString());
+            QCOMPARE(model.nodeIsTarget(-1), false);
+            QVERIFY(model.nodeCenter(-1).isNull());
+        }
+
+        void derivadas_graph_model_dedupes_repeated_relations() {
+            ssa::presentation::DerivadasGraphModel model;
+            QVariantList relations;
+            relations.push_back(QVariantMap{{"kind", "Atual"}, {"ssa", "202500002"}});
+            // Same ancestor twice
+            relations.push_back(QVariantMap{{"kind", "Derivada de"}, {"ssa", "202500001"}});
+            relations.push_back(QVariantMap{{"kind", "Derivada de"}, {"ssa", "202500001"}});
+
+            model.buildFromRelations(QStringLiteral("202500002"), relations);
+            // Target + 1 deduped ancestor = 2 nodes (not 3)
+            QCOMPARE(model.rowCount(), 2);
+            QCOMPARE(model.edges().size(), 1);
         }
 
         void details_navigation_walks_across_pages_next_then_prev() {

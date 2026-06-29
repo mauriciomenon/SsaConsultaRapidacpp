@@ -1,6 +1,7 @@
 #include "presentation/DerivadasGraphModel.h"
 
 #include <algorithm>
+#include <unordered_set>
 
 namespace ssa::presentation {
 
@@ -54,16 +55,18 @@ namespace ssa::presentation {
 
         // First pass: collect ancestors (DerivedFrom) then target, then children
         // (related nodes). Depth is heuristic from the relation kind since the
-        // local record only exposes direct relations.
+        // local record only exposes direct relations. Dedupe relation values so
+        // a repeated SSA does not produce duplicate nodes or edges.
         std::vector<QString> ancestors;
+        std::unordered_set<std::string> seenAncestors;
         for (const auto& entry : relations) {
             const auto map = entry.toMap();
             const auto kind = map.value(QStringLiteral("kind")).toString();
             const auto ssa = map.value(QStringLiteral("ssa")).toString();
-            if (ssa.isEmpty()) {
+            if (ssa.isEmpty() || kind != QStringLiteral("Derivada de")) {
                 continue;
             }
-            if (kind == QStringLiteral("Derivada de")) {
+            if (seenAncestors.insert(ssa.toStdString()).second) {
                 ancestors.push_back(ssa);
             }
         }
@@ -75,6 +78,7 @@ namespace ssa::presentation {
         appendNode(target_, targetDepth);
 
         std::vector<QString> children;
+        std::unordered_set<std::string> seenChildren;
         for (const auto& entry : relations) {
             const auto map = entry.toMap();
             const auto kind = map.value(QStringLiteral("kind")).toString();
@@ -83,8 +87,10 @@ namespace ssa::presentation {
                 kind == QStringLiteral("Derivada de")) {
                 continue;
             }
-            children.push_back(ssa);
-            appendNode(ssa, targetDepth + 1);
+            if (seenChildren.insert(ssa.toStdString()).second) {
+                children.push_back(ssa);
+                appendNode(ssa, targetDepth + 1);
+            }
         }
 
         // Layout: x = margin + depth * xGap; y = margin + index * yGap.
@@ -149,8 +155,9 @@ namespace ssa::presentation {
                            node.position.y() + kNodeHeight / 2.0);
         case LabelRole:
             return node.ssa;
+        default:
+            return {};
         }
-        return {};
     }
 
     QHash<int, QByteArray> DerivadasGraphModel::roleNames() const {
