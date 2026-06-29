@@ -32,8 +32,8 @@ namespace ssa::presentation {
 
     void CurrentWeekViewModel::refreshHeaderLabel() {
         const auto now = QDateTime::currentDateTime();
-        const auto newLabel = QStringLiteral("Sem %1 | %2")
-                                  .arg(value_, now.toString(QStringLiteral("yyyy/MM/dd HH:mm")));
+        const auto newLabel =
+            QStringLiteral("%1 - %2").arg(now.toString(QStringLiteral("dd/MM/yyyy HH:mm")), value_);
         if (newLabel != headerLabel_) {
             headerLabel_ = newLabel;
             emit headerLabelChanged();

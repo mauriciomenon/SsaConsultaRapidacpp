@@ -87,7 +87,8 @@ namespace {
                          .isEmpty());
             QVERIFY(model.browse()->filters()->activeFilterSummary().contains("MEG2"));
             QVERIFY(model.browse()->filters()->activeFilterSummary().contains("responsavel"));
-            QVERIFY(model.browse()->filters()->activeFilterSummary().contains("situacao"));
+            QVERIFY(model.browse()->filters()->activeFilterSummary().contains("Sit."));
+            QVERIFY(model.browse()->filters()->activeFilterSummary().contains("APV"));
 
             model.browse()->apply();
 

@@ -15,7 +15,7 @@ GridView {
     clip: true
     model: root.textFilters.cardStates
     cellWidth: width >= 960 ? Math.floor(width / 3) : (width >= 640 ? Math.floor(width / 2) : width)
-    cellHeight: 96
+    cellHeight: 84
 
     delegate: AdvancedTextFilterCard {
         id: filterCardDelegate

@@ -1,5 +1,7 @@
 #include "presentation/FilterPanelStateHelpers.h"
 
+#include "domain/ColumnCatalog.h"
+
 #include <algorithm>
 #include <map>
 #include <string>
@@ -116,8 +118,7 @@ namespace ssa::presentation::filterpanel {
             entries.push_back({.text = std::move(part), .kind = "column", .key = key});
         }
         for (const auto& [key, value] : advanced.textFilters) {
-            std::string part{"adv "};
-            part += key;
+            std::string part{std::string{domain::ColumnCatalog::advancedFilterShortLabel(key)}};
             part += ":";
             part += value;
             entries.push_back({.text = std::move(part), .kind = "advanced_text", .key = key});

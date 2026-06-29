@@ -8,7 +8,7 @@ namespace ssa::ports {
 
     inline constexpr int kMinDetailsPanelWidth = 320;
     inline constexpr int kMaxDetailsPanelWidth = 1200;
-    inline constexpr int kDefaultDetailsPanelWidth = 450;
+    inline constexpr int kDefaultDetailsPanelWidth = 560;
     inline constexpr std::array<std::string_view, 15> kThemeValues{
         "system",     "light", "grayscale",   "windows7",       "classico",
         "gruvbox",    "dark",  "dracula",     "solarized-dark", "solarized-light",

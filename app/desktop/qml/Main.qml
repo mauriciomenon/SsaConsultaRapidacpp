@@ -209,6 +209,8 @@ ApplicationWindow {
                     Layout.preferredHeight: Theme.controlHeight
                     Layout.leftMargin: 12
                     Layout.rightMargin: 12
+                    leftPadding: 20
+                    rightPadding: 20
                     text: root.vm.actions.currentWeek.headerLabel
                     color: Theme.accent
                     font.pixelSize: 15
@@ -216,7 +218,7 @@ ApplicationWindow {
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
                     background: Rectangle {
-                        color: Theme.panelRaised
+                        color: Theme.window
                         border.color: Theme.border
                         radius: Theme.radius
                     }
