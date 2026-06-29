@@ -211,7 +211,7 @@ ApplicationWindow {
                     Layout.rightMargin: 12
                     leftPadding: 20
                     rightPadding: 20
-                    text: root.vm.actions.currentWeek.headerLabel
+                    text: root.vm.actions.currentWeek.value
                     color: Theme.accent
                     font.pixelSize: 15
                     font.bold: true
@@ -297,6 +297,7 @@ ApplicationWindow {
             Layout.fillWidth: true
             status: root.vm.browse.status
             browse: root.vm.browse
+            weekModel: root.vm.actions.currentWeek
             implicitHeight: 28
         }
     }

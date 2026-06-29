@@ -7,6 +7,7 @@ Rectangle {
     id: root
     required property var status
     property var browse: null
+    property var weekModel: null
 
     Layout.preferredHeight: 32
     color: Theme.panel
@@ -32,6 +33,13 @@ Rectangle {
             font.pixelSize: 12
             font.bold: false
             elide: Text.ElideRight
+        }
+
+        Label {
+            visible: root.weekModel !== null
+            text: root.weekModel !== null ? root.weekModel.headerLabel : ""
+            color: Theme.mutedText
+            font.pixelSize: 11
         }
 
         Label {
