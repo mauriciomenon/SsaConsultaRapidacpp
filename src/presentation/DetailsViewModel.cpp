@@ -1,5 +1,6 @@
 #include "presentation/DetailsViewModel.h"
 
+#include "domain/ColumnCatalog.h"
 #include "domain/SsaRelationGraph.h"
 
 #include <QVariantMap>
@@ -20,19 +21,29 @@ namespace ssa::presentation {
             return {};
         }
 
-        QVariantMap relationMap(const domain::SsaRelationItem& relation) {
+        QVariantMap relationMap(const domain::SsaRelationItem& relation,
+                                const std::string_view currentStatus) {
             QVariantMap item;
             item.insert(QStringLiteral("kind"), relationKindLabel(relation.kind));
             item.insert(QStringLiteral("ssa"), QString::fromStdString(relation.number));
+            // Status (situacao) is only known for the Current node, which maps to
+            // the displayed record. Related/Derived nodes require a repository
+            // lookup that is out of scope for the inline details panel.
+            if (relation.kind == domain::SsaRelationKind::Current && !currentStatus.empty()) {
+                item.insert(QStringLiteral("status"),
+                            QString::fromUtf8(currentStatus.data(),
+                                              static_cast<qsizetype>(currentStatus.size())));
+            }
             return item;
         }
 
         QVariantList buildRelations(const domain::SsaRecord& record) {
             const auto relationItems = domain::SsaRelationGraph::fromRecord(record);
+            const auto currentStatus = record.valueOf(domain::ColumnCatalog::statusColumnKey());
             QVariantList relations;
             relations.reserve(static_cast<qsizetype>(relationItems.size()));
             for (const auto& relation : relationItems) {
-                relations.append(relationMap(relation));
+                relations.append(relationMap(relation, currentStatus));
             }
             return relations;
         }

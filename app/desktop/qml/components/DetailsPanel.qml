@@ -123,9 +123,13 @@ Rectangle {
                                     }
 
                                     Text {
-                                        text: relationRow.modelData.kind
+                                        text: {
+                                            const status = relationRow.modelData.status !== undefined ? relationRow.modelData.status : "";
+                                            return status.length > 0 ? "<b>" + status + "</b> " + relationRow.modelData.kind : relationRow.modelData.kind;
+                                        }
                                         color: Theme.mutedText
                                         font.pixelSize: Math.max(10, root.valueTextSize - 2)
+                                        textFormat: Text.RichText
                                     }
                                 }
 
@@ -136,6 +140,7 @@ Rectangle {
                                     onDoubleClicked: {
                                         relationPopup.ssaNumber = relationRow.modelData.ssa;
                                         relationPopup.kindLabel = relationRow.modelData.kind;
+                                        relationPopup.statusLabel = relationRow.modelData.status !== undefined ? relationRow.modelData.status : "";
                                         relationPopup.open();
                                     }
                                 }
@@ -216,6 +221,7 @@ Rectangle {
         id: relationPopup
         property string ssaNumber: ""
         property string kindLabel: ""
+        property string statusLabel: ""
         x: Math.max(0, (root.width - width) / 2)
         y: Math.max(0, (root.height - height) / 2)
         width: Math.min(360, Math.max(280, root.width - 24))
@@ -246,10 +252,14 @@ Rectangle {
 
             Label {
                 Layout.fillWidth: true
-                text: relationPopup.kindLabel.length > 0 ? relationPopup.kindLabel : "SSA relacionada"
+                text: {
+                    const kind = relationPopup.kindLabel.length > 0 ? relationPopup.kindLabel : "SSA relacionada";
+                    return relationPopup.statusLabel.length > 0 ? "<b>" + relationPopup.statusLabel + "</b> " + kind : kind;
+                }
                 color: Theme.mutedText
                 font.pixelSize: root.labelTextSize
                 horizontalAlignment: Text.AlignHCenter
+                textFormat: Text.RichText
             }
 
             Item {
