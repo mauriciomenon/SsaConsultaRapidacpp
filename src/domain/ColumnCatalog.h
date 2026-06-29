@@ -37,6 +37,7 @@ namespace ssa::domain {
         [[nodiscard]] static const std::vector<std::string>& orderedFilterColumnKeys();
         [[nodiscard]] static std::span<const std::string_view> advancedFilterKeys();
         [[nodiscard]] static std::string_view advancedFilterLabel(std::string_view key);
+        [[nodiscard]] static std::string_view advancedFilterShortLabel(std::string_view key);
         [[nodiscard]] static std::string defaultFilterColumnKey();
         [[nodiscard]] static std::string_view statusColumnKey();
         [[nodiscard]] static std::string_view executorColumnKey();

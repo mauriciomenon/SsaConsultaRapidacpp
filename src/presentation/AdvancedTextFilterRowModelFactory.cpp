@@ -9,10 +9,12 @@
 namespace ssa::presentation {
     namespace {
 
-        QVariantMap filterRow(const std::string_view key, const std::string_view label) {
+        QVariantMap filterRow(const std::string_view key, const std::string_view label,
+                              const std::string_view shortLabel) {
             QVariantMap row;
             row.insert("key", QString::fromStdString(std::string{key}));
             row.insert("label", QString::fromStdString(std::string{label}));
+            row.insert("labelShort", QString::fromStdString(std::string{shortLabel}));
             return row;
         }
 
@@ -23,8 +25,9 @@ namespace ssa::presentation {
         for (const auto key : domain::ColumnCatalog::advancedFilterKeys()) {
             const auto* column = domain::ColumnCatalog::find(key);
             if (column != nullptr) {
-                rows.push_back(filterRow(column->key,
-                                         domain::ColumnCatalog::advancedFilterLabel(column->key)));
+                rows.push_back(
+                    filterRow(column->key, domain::ColumnCatalog::advancedFilterLabel(column->key),
+                              domain::ColumnCatalog::advancedFilterShortLabel(column->key)));
             }
         }
         return rows;

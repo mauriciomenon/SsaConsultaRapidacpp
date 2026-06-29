@@ -24,29 +24,30 @@ namespace ssa::domain {
         struct AdvancedFilterColumnDef {
             std::string_view key;
             std::string_view label;
+            std::string_view shortLabel;
         };
 
         constexpr std::array<AdvancedFilterColumnDef, 20> kAdvancedFilterColumns{{
-            {"setor_emissor", "Setor emissor"},
-            {"setor_executor", "Setor executor"},
-            {"situacao", "Situacao"},
-            {"grau_prioridade_emissao", "Prioridade emissao"},
-            {"grau_prioridade_planejamento", "Prioridade planejamento"},
-            {"solicitante", "Solicitante"},
-            {"responsavel_programacao", "Responsavel programacao"},
-            {"responsavel_execucao", "Responsavel execucao"},
-            {"localizacao_codigo", "Localizacao"},
-            {"equipamento", "Equipamento"},
-            {"servico_origem", "Servico origem"},
-            {"sistema_origem", "Sistema origem"},
-            {"execucao_simples", "Execucao simples"},
-            {"status_execucao_prazo", "Status prazo"},
-            {"execucao_parcial", "Execucao parcial"},
-            {"anomalia", "Anomalia"},
-            {"situacao_espera", "Situacao espera"},
-            {"justificativa", "Justificativa"},
-            {"parciais", "Parciais"},
-            {"situacao_da_parcial", "Situacao parcial"},
+            {"setor_emissor", "Setor emissor", "Emis."},
+            {"setor_executor", "Setor executor", "Exec."},
+            {"situacao", "Situacao", "Sit."},
+            {"grau_prioridade_emissao", "Prioridade emissao", "Prior. Emis."},
+            {"grau_prioridade_planejamento", "Prioridade planejamento", "Prior. Plan."},
+            {"solicitante", "Solicitante", "Solicit."},
+            {"responsavel_programacao", "Responsavel programacao", "Resp. Plan."},
+            {"responsavel_execucao", "Responsavel execucao", "Resp. Exec."},
+            {"localizacao_codigo", "Localizacao", "Loc."},
+            {"equipamento", "Equipamento", "Equip."},
+            {"servico_origem", "Servico origem", "Serv. Orig."},
+            {"sistema_origem", "Sistema origem", "Sist. Orig."},
+            {"execucao_simples", "Execucao simples", "Exec. Simp."},
+            {"status_execucao_prazo", "Status prazo", "Stat. Prazo"},
+            {"execucao_parcial", "Execucao parcial", "Exec. Parc."},
+            {"anomalia", "Anomalia", "Anom."},
+            {"situacao_espera", "Situacao espera", "Sit. Esp."},
+            {"justificativa", "Justificativa", "Justif."},
+            {"parciais", "Parciais", "Parc."},
+            {"situacao_da_parcial", "Situacao parcial", "Sit. Parc."},
         }};
         constexpr std::string_view kStatusLastSortCode = "STE";
 
@@ -229,6 +230,19 @@ namespace ssa::domain {
             [key](const AdvancedFilterColumnDef& column) { return column.key == key; });
         if (advancedColumn != kAdvancedFilterColumns.end()) {
             return advancedColumn->label;
+        }
+        if (const auto* column = find(key); column != nullptr) {
+            return column->label;
+        }
+        return key;
+    }
+
+    std::string_view ColumnCatalog::advancedFilterShortLabel(const std::string_view key) {
+        const auto* const advancedColumn = std::ranges::find_if(
+            kAdvancedFilterColumns,
+            [key](const AdvancedFilterColumnDef& column) { return column.key == key; });
+        if (advancedColumn != kAdvancedFilterColumns.end() && !advancedColumn->shortLabel.empty()) {
+            return advancedColumn->shortLabel;
         }
         if (const auto* column = find(key); column != nullptr) {
             return column->label;

@@ -78,7 +78,7 @@ FilterCard {
 
             Label {
                 Layout.fillWidth: true
-                text: root.row.label
+                text: root.row.labelShort !== undefined && root.row.labelShort.length > 0 ? root.row.labelShort : root.row.label
                 color: Theme.text
                 font.pixelSize: 12
                 elide: Text.ElideRight
@@ -181,7 +181,7 @@ FilterCard {
 
                 Label {
                     Layout.fillWidth: true
-                    text: root.row.label
+                    text: root.row.labelShort !== undefined && root.row.labelShort.length > 0 ? root.row.labelShort : root.row.label
                     color: Theme.text
                     font.pixelSize: 12
                     font.bold: true
