@@ -8,7 +8,7 @@ jobs:
   macos:
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
       - name: Install dependencies
         run: brew install qt cmake ninja sqlite llvm gitleaks
       - name: Configure
@@ -35,7 +35,7 @@ jobs:
           export CMAKE_PREFIX_PATH="$(brew --prefix qt)"
           export PATH="$(brew --prefix qt)/bin:$PATH"
           ./scripts/package-macos.sh --skip-tests
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ssa-consulta-rapida-macos
           path: dist/macos/arm64/ssa_consulta_rapida-*-arm64-macos.zip
@@ -45,8 +45,8 @@ jobs:
     env:
       QT_QPA_PLATFORM: offscreen
     steps:
-      - uses: actions/checkout@v4
-      - uses: jurplel/install-qt-action@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730
         with:
           version: "6.11.0"
           cache: true
@@ -87,18 +87,18 @@ jobs:
     env:
       QT_QPA_PLATFORM: offscreen
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
       - name: Set up Developer PowerShell for VS 2022
-        uses: ilammy/msvc-dev-shell@v1
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756
         with:
           arch: x64
-      - uses: jurplel/install-qt-action@v4
+      - uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730
         with:
           version: "6.11.0"
           arch: win64_msvc2022_64
           cache: true
       - name: Cache vcpkg
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
           path: |
             C:\Users\runneradmin\.cache\vcpkg

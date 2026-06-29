@@ -18,8 +18,8 @@ jobs:
       actions: read
       contents: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: jurplel/install-qt-action@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730
         with:
           version: "6.11.0"
           cache: true
@@ -27,11 +27,11 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build libsqlite3-dev libgl1-mesa-dev
-      - uses: github/codeql-action/init@v4
+      - uses: github/codeql-action/init@411bbbe57033eedfc1a82d68c01345aa96c737d7
         with:
           languages: c-cpp
       - name: Configure
         run: cmake --preset dev
       - name: Build
         run: cmake --build --preset dev
-      - uses: github/codeql-action/analyze@v4
+      - uses: github/codeql-action/analyze@411bbbe57033eedfc1a82d68c01345aa96c737d7
