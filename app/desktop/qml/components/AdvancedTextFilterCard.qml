@@ -134,14 +134,7 @@ FilterCard {
                 enabled: root.hasMoreValues || root.expandedValues
                 onClicked: root.expandedValues = !root.expandedValues
             }
-        }
 
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: 6
-            Item {
-                Layout.fillWidth: true
-            }
             ActionButton {
                 text: "Escolher"
                 implicitWidth: 88
@@ -152,12 +145,6 @@ FilterCard {
                     root.resetPopupSelections();
                     multiSelectPopup.open();
                 }
-            }
-            ActionButton {
-                text: "Exceto lista"
-                implicitWidth: 102
-                enabled: root.visibleValues.length > 0
-                onClicked: root.loadedValuesReplacementRequested("different")
             }
             ActionButton {
                 text: "Limpar"
