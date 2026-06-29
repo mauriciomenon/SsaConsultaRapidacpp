@@ -23,13 +23,17 @@ namespace ssa::presentation {
 
     void StatusViewModel::setQueryComplete(const qlonglong totalRows, const qlonglong totalRowsAll,
                                            const int pageNumber, const int pageCount) {
+        (void)totalRows;
+        (void)totalRowsAll;
         if (totalRows == 0) {
-            setMessage(QStringLiteral("0 / %1 SSAs").arg(totalRowsAll));
+            setMessage(QStringLiteral("Nenhum resultado"));
             return;
         }
-        (void)pageNumber;
-        (void)pageCount;
-        setMessage(QStringLiteral("%1 / %2 SSAs").arg(totalRows).arg(totalRowsAll));
+        if (pageCount > 1) {
+            setMessage(QStringLiteral("Pagina %1 de %2").arg(pageNumber).arg(pageCount));
+            return;
+        }
+        setMessage(QStringLiteral("Consulta concluida"));
     }
 
     void StatusViewModel::setError(const QString& value) {
