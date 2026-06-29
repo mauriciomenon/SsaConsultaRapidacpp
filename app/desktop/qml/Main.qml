@@ -206,9 +206,10 @@ ApplicationWindow {
                     Layout.fillWidth: true
                 }
                 Label {
-                    Layout.preferredWidth: 220
                     Layout.preferredHeight: Theme.controlHeight
-                    text: root.vm.actions.currentWeek.value
+                    Layout.leftMargin: 12
+                    Layout.rightMargin: 12
+                    text: root.vm.actions.currentWeek.headerLabel
                     color: Theme.accent
                     font.pixelSize: 15
                     font.bold: true
@@ -220,36 +221,8 @@ ApplicationWindow {
                         radius: Theme.radius
                     }
                 }
-                Label {
-                    Layout.preferredWidth: 250
-                    Layout.preferredHeight: Theme.controlHeight
-                    text: root.vm.browse.totalRows + " / " + root.vm.browse.totalRowsAll + " SSAs"
-                    color: Theme.accent
-                    font.pixelSize: 14
-                    font.bold: false
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                    background: Rectangle {
-                        color: Theme.surface
-                        border.color: Theme.borderSoft
-                        radius: Theme.radius
-                    }
-                }
-                Label {
-                    Layout.preferredWidth: 360
-                    Layout.preferredHeight: Theme.controlHeight
-                    text: root.vm.browse.status.error.length > 0 ? root.vm.browse.status.error : root.vm.browse.status.message
-                    color: root.vm.browse.status.error.length > 0 ? Theme.dangerStrong : Theme.accent
-                    font.pixelSize: 13
-                    horizontalAlignment: Text.AlignLeft
-                    verticalAlignment: Text.AlignVCenter
-                    leftPadding: 12
-                    elide: Text.ElideRight
-                    background: Rectangle {
-                        color: Theme.panelRaised
-                        border.color: root.vm.browse.status.error.length > 0 ? Theme.danger : Theme.border
-                        radius: Theme.radius
-                    }
+                Item {
+                    Layout.fillWidth: true
                 }
                 ActionButton {
                     text: "Preferencias"
