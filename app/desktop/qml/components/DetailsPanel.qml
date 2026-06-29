@@ -10,9 +10,9 @@ Rectangle {
     required property var viewModel
     required property var browseViewModel
     property string density: "normal"
-    readonly property int titleTextSize: Theme.densityValue(root.density, 14, 16, 18)
-    readonly property int labelTextSize: Theme.densityValue(root.density, 12, 13, 14)
-    readonly property int valueTextSize: Theme.densityValue(root.density, 12, 13, 15)
+    readonly property int titleTextSize: Theme.densityValue(root.density, 18, 20, 22)
+    readonly property int labelTextSize: Theme.densityValue(root.density, 15, 16, 18)
+    readonly property int valueTextSize: Theme.densityValue(root.density, 15, 16, 18)
     signal openRequested
 
     color: Theme.panel
