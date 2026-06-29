@@ -12,6 +12,7 @@ namespace ssa::presentation {
     struct SsaDisplayColumn {
         std::string key;
         std::string label;
+        std::string labelFull;
         domain::ColumnType type{domain::ColumnType::Text};
         int defaultWidth{kDefaultDisplayColumnWidth};
     };

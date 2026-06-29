@@ -55,6 +55,10 @@ Rectangle {
                         readonly property bool hasColumnKey: modelData.key !== undefined && modelData.key !== null && modelData.key !== ""
                         readonly property string columnKey: hasColumnKey ? modelData.key : ""
                         readonly property int modelWidth: modelData.width !== undefined && modelData.width !== null ? modelData.width : root.fallbackColumnWidth
+                        readonly property string effectiveLabel: {
+                            const full = modelData.labelFull !== undefined ? modelData.labelFull : "";
+                            return full.length > 0 ? full : (modelData.label !== undefined ? modelData.label : "");
+                        }
                         property int dragStartWidth: 0
                         property real dragStartX: 0
                         property int previewWidth: modelWidth
@@ -73,7 +77,7 @@ Rectangle {
                             anchors.rightMargin: 10
                             anchors.topMargin: 4
                             anchors.bottomMargin: 4
-                            text: (headerCell.modelData.label !== undefined ? headerCell.modelData.label : "") + (headerCell.modelData.filtered ? " [f]" : "") + (headerCell.modelData.sorted ? (headerCell.modelData.sortAscending ? "  ^" : "  v") : "")
+                            text: headerCell.effectiveLabel + (headerCell.modelData.filtered ? " [f]" : "") + (headerCell.modelData.sorted ? (headerCell.modelData.sortAscending ? "  ^" : "  v") : "")
                             color: Theme.accentStrong
                             font.bold: true
                             font.pixelSize: root.textSize

@@ -5,9 +5,9 @@ namespace ssa::presentation {
     SsaDisplayColumn SsaColumnDisplayCatalog::resolve(const std::string& key) const {
         const auto column = domain::ColumnCatalog::find(key);
         if (!column) {
-            return {key, key, domain::ColumnType::Text, 132};
+            return {key, key, {}, domain::ColumnType::Text, 132};
         }
-        return {column->key, column->label, column->type, column->defaultWidth};
+        return {column->key, column->label, column->labelFull, column->type, column->defaultWidth};
     }
 
     std::vector<SsaDisplayColumn>

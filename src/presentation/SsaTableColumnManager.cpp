@@ -68,7 +68,8 @@ namespace ssa::presentation {
             const auto& current = columns_[index].display;
             const auto& next = displayColumns[index];
             if (current.key != next.key || current.label != next.label ||
-                current.type != next.type || current.defaultWidth != next.defaultWidth) {
+                current.labelFull != next.labelFull || current.type != next.type ||
+                current.defaultWidth != next.defaultWidth) {
                 return false;
             }
         }
@@ -135,6 +136,7 @@ namespace ssa::presentation {
             QVariantMap item;
             item.insert("key", QString::fromStdString(column.key));
             item.insert("label", QString::fromStdString(column.display.label));
+            item.insert("labelFull", QString::fromStdString(column.display.labelFull));
             tableColumnValues_.push_back(item);
         }
         rebuildWidthCache();

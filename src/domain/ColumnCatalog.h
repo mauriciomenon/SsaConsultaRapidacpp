@@ -19,6 +19,7 @@ namespace ssa::domain {
     struct ColumnDef {
         std::string key;
         std::string label;
+        std::string labelFull;
         ColumnType type{ColumnType::Text};
         bool defaultVisible{false};
         bool generalSearch{false};
