@@ -256,6 +256,7 @@ ApplicationWindow {
             density: root.vm.ui.density
             onOpenRequested: root.vm.selectionFlow.openSelectedSsa()
             onConfigureColumnsRequested: columnSelectorPopup.open()
+            onNavigateToRelationRequested: ssaNumber => root.vm.browse.selectRowBySsaNumber(ssaNumber)
         }
 
         SplitView {

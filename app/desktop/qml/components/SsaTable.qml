@@ -12,6 +12,7 @@ Rectangle {
     required property string density
     signal openRequested
     signal configureColumnsRequested
+    signal navigateToRelationRequested(string ssaNumber)
 
     readonly property int headerHeight: Theme.densityValue(root.density, 26, 30, 36)
     readonly property int rowHeight: Theme.densityValue(root.density, 25, 30, 35)
@@ -219,12 +220,15 @@ Rectangle {
             }
 
             delegate: Rectangle {
+                id: cellDelegate
                 required property int row
                 required property int column
                 required property var displayValue
                 readonly property var columnConfig: root.tableColumns[column] ? root.tableColumns[column] : ({})
                 readonly property bool isStriped: (row % 2) !== 0
                 readonly property bool opensSam: columnConfig.opensSam === true
+                readonly property string cellText: displayValue === undefined || displayValue === "" ? "-" : String(displayValue)
+                readonly property bool isDerivationLink: columnConfig.key === "derivada_de" && cellText !== "-"
 
                 implicitHeight: table.cachedRowHeight
                 color: isStriped ? Theme.rowAlt : Theme.surface
@@ -234,22 +238,24 @@ Rectangle {
                     anchors.fill: parent
                     anchors.leftMargin: 8
                     anchors.rightMargin: 8
-                    text: parent.displayValue === "" ? "-" : parent.displayValue
-                    color: parent.opensSam ? Theme.link : Theme.text
+                    text: cellDelegate.cellText
+                    color: cellDelegate.opensSam || cellDelegate.isDerivationLink ? Theme.link : Theme.text
                     verticalAlignment: Text.AlignVCenter
                     elide: Text.ElideRight
                     font.pixelSize: table.cachedTextSize
-                    font.bold: parent.opensSam
-                    font.underline: parent.opensSam
+                    font.bold: cellDelegate.opensSam || cellDelegate.isDerivationLink
+                    font.underline: cellDelegate.opensSam || cellDelegate.isDerivationLink
                 }
 
                 MouseArea {
                     anchors.fill: parent
-                    cursorShape: parent.opensSam ? Qt.PointingHandCursor : Qt.ArrowCursor
+                    cursorShape: cellDelegate.opensSam || cellDelegate.isDerivationLink ? Qt.PointingHandCursor : Qt.ArrowCursor
                     onClicked: {
-                        root.viewModel.selectRow(parent.row);
-                        if (parent.opensSam) {
+                        root.viewModel.selectRow(cellDelegate.row);
+                        if (cellDelegate.opensSam) {
                             root.openRequested();
+                        } else if (cellDelegate.isDerivationLink) {
+                            root.navigateToRelationRequested(cellDelegate.cellText);
                         }
                     }
                 }

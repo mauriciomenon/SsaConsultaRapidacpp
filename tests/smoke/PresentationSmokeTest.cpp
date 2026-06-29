@@ -130,6 +130,45 @@ namespace {
             QVERIFY(model.browse()->currentRow() == 0);
         }
 
+        void select_by_ssa_number_picks_row_when_present_on_page() {
+            auto repository = std::make_shared<FakeRepository>(
+                FakeRepositoryConfig{.totalRows = std::size_t{3}, .rowCount = std::size_t{3}});
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            ssa::presentation::MainViewModel model(service, commands);
+
+            model.browse()->load();
+            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->tableModel()->rowCount(), 3, 1000);
+
+            QVERIFY(model.browse()->selectRowBySsaNumber(QString("202500002")));
+            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->currentRow(), 1, 1000);
+            QCOMPARE(model.browse()->details()->selectedSsa(), QString("202500002"));
+        }
+
+        void select_by_ssa_number_falls_back_to_search_when_absent() {
+            auto repository = std::make_shared<FakeRepository>(
+                FakeRepositoryConfig{.totalRows = std::size_t{3}, .rowCount = std::size_t{3}});
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            ssa::presentation::MainViewModel model(service, commands);
+
+            model.browse()->load();
+            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->tableModel()->rowCount(), 3, 1000);
+
+            QVERIFY(model.browse()->selectRowBySsaNumber(QString("202599999")));
+            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->search()->text(), QString("202599999"), 1000);
+        }
+
+        void select_by_ssa_number_rejects_empty_input() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            ssa::presentation::MainViewModel model(service, commands);
+
+            QVERIFY(!model.browse()->selectRowBySsaNumber(QString("")));
+            QVERIFY(!model.browse()->selectRowBySsaNumber(QString("   ")));
+        }
+
         void details_navigation_walks_across_pages_next_then_prev() {
             auto repository = std::make_shared<FakeRepository>(
                 FakeRepositoryConfig{.totalRows = std::size_t{25}, .rowCount = std::size_t{10}});
