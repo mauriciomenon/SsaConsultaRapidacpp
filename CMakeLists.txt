@@ -232,6 +232,7 @@ qt_add_qml_module(
   app/desktop/qml/components/SmokeCaptureBridge.qml
   app/desktop/qml/components/SsaTable.qml
   app/desktop/qml/components/StatusPill.qml
+  app/desktop/qml/components/SsaDetailsWindow.qml
   app/desktop/qml/components/ThemeDialog.qml)
 
 target_link_libraries(

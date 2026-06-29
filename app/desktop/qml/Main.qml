@@ -262,6 +262,7 @@ ApplicationWindow {
             onOpenRequested: root.vm.selectionFlow.openSelectedSsa()
             onConfigureColumnsRequested: columnSelectorPopup.open()
             onNavigateToRelationRequested: ssaNumber => root.vm.selectionFlow.openSsa(ssaNumber)
+            onDetailsWindowRequested: detailsWindowLoader.active = true
         }
 
         SplitView {
@@ -330,5 +331,14 @@ ApplicationWindow {
     FileWorkflowDialogs {
         id: fileDialogs
         viewModel: root.vm
+    }
+
+    Loader {
+        id: detailsWindowLoader
+        active: false
+        sourceComponent: SsaDetailsWindow {
+            onClosing: detailsWindowLoader.active = false
+        }
+        onLoaded: item.detailsViewModel = Qt.binding(() => root.vm.browse.details)
     }
 }

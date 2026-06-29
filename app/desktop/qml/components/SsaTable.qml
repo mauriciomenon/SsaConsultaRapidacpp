@@ -13,6 +13,7 @@ Rectangle {
     signal openRequested
     signal configureColumnsRequested
     signal navigateToRelationRequested(string ssaNumber)
+    signal detailsWindowRequested
 
     readonly property int headerHeight: Theme.densityValue(root.density, 26, 30, 36)
     readonly property int rowHeight: Theme.densityValue(root.density, 25, 30, 35)
@@ -261,6 +262,10 @@ Rectangle {
                         } else if (cellDelegate.isDerivationLink) {
                             root.navigateToRelationRequested(cellDelegate.cellText);
                         }
+                    }
+                    onDoubleClicked: {
+                        root.viewModel.selectRow(cellDelegate.row);
+                        root.detailsWindowRequested();
                     }
                 }
             }
