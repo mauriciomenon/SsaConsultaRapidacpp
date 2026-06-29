@@ -26,16 +26,45 @@ namespace ssa::presentation {
             int end{0};
         };
 
+        // Returns the inclusive range of ISO year-weeks (YYYYWW) overlapping the
+        // month of currentDate. The week encoding is year-major so BETWEEN works,
+        // BUT only when both bounds share the same ISO year: if Dec 31 falls in
+        // ISO week 1 of the next year, a naive [YYYY52, (YYYY+1)01] range would
+        // cross the boundary and pull in next-January rows. We anchor both bounds
+        // to the ISO year of a day safely inside the month (the 15th) so the
+        // range stays within a single ISO year and covers every week that the
+        // month touches.
         YearWeekRange executionWeekRangeForCurrentMonth(const QDate& currentDate) {
             const QDate firstOfMonth(currentDate.year(), currentDate.month(), 1);
-            int startIsoYear = 0;
-            const int startWeek = firstOfMonth.weekNumber(&startIsoYear);
             const QDate lastOfMonth(currentDate.year(), currentDate.month(),
                                     currentDate.daysInMonth());
+            // A mid-month day always belongs to a week fully inside the month, so
+            // its ISO year is the authoritative year for the whole range.
+            int anchorIsoYear = 0;
+            QDate(currentDate.year(), currentDate.month(), 15).weekNumber(&anchorIsoYear);
+
+            int startIsoYear = 0;
+            const int startWeek = firstOfMonth.weekNumber(&startIsoYear);
             int endIsoYear = 0;
             const int endWeek = lastOfMonth.weekNumber(&endIsoYear);
-            return YearWeekRange{startIsoYear * domain::kYearWeekMultiplier + startWeek,
-                                 endIsoYear * domain::kYearWeekMultiplier + endWeek};
+
+            // Boundary weeks (first/last day) may belong to an adjacent ISO year;
+            // coerce them into the anchor year so the BETWEEN never crosses years.
+            const auto resolveWeek = [anchorIsoYear](const int isoYear, const int week) {
+                if (isoYear == anchorIsoYear) {
+                    return anchorIsoYear * domain::kYearWeekMultiplier + week;
+                }
+                // Day fell into the tail (previous ISO year, high week number) or
+                // the head (next ISO year, week 1) of the month. Clamp to the
+                // anchor year's first/last week respectively.
+                QDate lastOfAnchorYear(anchorIsoYear, 12, 28);
+                int lastAnchorIsoYear = 0;
+                const int lastAnchorWeek = lastOfAnchorYear.weekNumber(&lastAnchorIsoYear);
+                return anchorIsoYear * domain::kYearWeekMultiplier +
+                       (isoYear < anchorIsoYear ? 1 : lastAnchorWeek);
+            };
+            return YearWeekRange{resolveWeek(startIsoYear, startWeek),
+                                 resolveWeek(endIsoYear, endWeek)};
         }
 
         QVariantMap reportRowMap(const application::ExecutadasReportRow& row) {

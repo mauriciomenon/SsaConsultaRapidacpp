@@ -84,22 +84,29 @@ namespace ssa::presentation {
                 totalRowsRequest.excludeScaSesSte = domain::kDefaultExcludeScaSesSte;
                 auto page = queryService->search(request);
                 if (cancelToken && cancelToken->load(std::memory_order_relaxed)) {
-                    return PageQueryResult{
-                        domain::SsaPageResult{}, 0, {}, SsaTableDisplayValues{}, true};
+                    return PageQueryResult{domain::SsaPageResult{}, 0,   false, {},
+                                           SsaTableDisplayValues{}, true};
                 }
-                const auto totalRowsAll =
-                    needTotalRowsAll ? queryService->count(totalRowsRequest) : cachedTotalRowsAll;
+                std::size_t totalRowsAll = cachedTotalRowsAll;
+                bool totalRowsAllComputed = false;
+                if (needTotalRowsAll) {
+                    totalRowsAll = queryService->count(totalRowsRequest);
+                    totalRowsAllComputed = true;
+                }
                 if (cancelToken && cancelToken->load(std::memory_order_relaxed)) {
-                    return PageQueryResult{
-                        domain::SsaPageResult{}, totalRowsAll, {}, SsaTableDisplayValues{}, true};
+                    return PageQueryResult{domain::SsaPageResult{}, totalRowsAll,
+                                           totalRowsAllComputed,    {},
+                                           SsaTableDisplayValues{}, true};
                 }
                 auto displayValues =
                     SsaTablePageFormatter::format(page, displayColumns, cancelToken);
                 if (!displayValues) {
-                    return PageQueryResult{
-                        domain::SsaPageResult{}, totalRowsAll, {}, SsaTableDisplayValues{}, true};
+                    return PageQueryResult{domain::SsaPageResult{}, totalRowsAll,
+                                           totalRowsAllComputed,    {},
+                                           SsaTableDisplayValues{}, true};
                 }
-                return PageQueryResult{std::move(page), totalRowsAll, std::move(displayColumns),
+                return PageQueryResult{std::move(page),           totalRowsAll,
+                                       totalRowsAllComputed,      std::move(displayColumns),
                                        std::move(*displayValues), false};
             }));
         emit started();
@@ -113,13 +120,19 @@ namespace ssa::presentation {
         if (!activeCanceled_ && !watcher_.isCanceled()) {
             try {
                 auto result = watcher_.result();
+                // Cache the grand total as soon as it is computed, even when the
+                // request is later superseded/cancelled: the COUNT(*) over the
+                // whole table is stable for the session and re-running it on every
+                // keystroke is the expensive part.
+                if (result.totalRowsAllComputed) {
+                    totalRowsAll_ = result.totalRowsAll;
+                    totalRowsAllKnown_ = true;
+                }
                 if (result.canceled) {
                     if (explicitCancelRequested_ && !pendingRequest_) {
                         emit canceled();
                     }
                 } else {
-                    totalRowsAll_ = result.totalRowsAll;
-                    totalRowsAllKnown_ = true;
                     emit succeeded(std::move(result), *activeRequest_);
                 }
             } catch (const std::length_error& exc) {

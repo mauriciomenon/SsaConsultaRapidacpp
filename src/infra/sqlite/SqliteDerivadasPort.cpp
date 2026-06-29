@@ -38,19 +38,41 @@ namespace ssa::infra::sqlite {
 
     ports::WorkflowResult SqliteDerivadasPort::syncDerivadas() {
         SqliteConnection connection(databasePath_, SqliteOpenMode::ReadWrite);
-        constexpr const char* operationSql =
-            "UPDATE ssa_table\n"
-            "SET derivada_de = NULL\n"
-            "WHERE TRIM(COALESCE(derivada_de, '')) <> ''\n"
-            "  AND NOT EXISTS (\n"
-            "      SELECT 1\n"
-            "      FROM ssa_table AS parents\n"
-            "      WHERE parents.numero_ssa = ssa_table.derivada_de\n"
-            "  )";
-        if (auto result = executeSyncSql(connection, operationSql)) {
+        // Run inside an explicit immediate transaction: the original auto-commit
+        // form issued the UPDATE as one implicit transaction per statement, and
+        // the correlated NOT EXISTS subquery did a full table scan with an index
+        // probe per non-blank row. Wrapping in BEGIN IMMEDIATE also serializes
+        // the write cleanly.
+        if (auto result = executeSyncSql(connection, "BEGIN IMMEDIATE")) {
             return *result;
         }
-        return succeeded(static_cast<std::size_t>(sqlite3_changes(connection.handle())));
+        // Materialize the orphan derivada_de values once (using the numero_ssa
+        // index for the anti-join) instead of re-evaluating a correlated NOT
+        // EXISTS per row. The CTE resolves the set of broken references first,
+        // then the UPDATE joins against it - a single scan of the index plus one
+        // pass over candidates.
+        constexpr const char* operationSql =
+            "WITH orphan_refs AS (\n"
+            "    SELECT DISTINCT TRIM(derivada_de) AS orphan\n"
+            "    FROM ssa_table\n"
+            "    WHERE TRIM(COALESCE(derivada_de, '')) <> ''\n"
+            "      AND NOT EXISTS (\n"
+            "          SELECT 1 FROM ssa_table AS parents\n"
+            "          WHERE parents.numero_ssa = TRIM(ssa_table.derivada_de)\n"
+            "      )\n"
+            ")\n"
+            "UPDATE ssa_table\n"
+            "SET derivada_de = NULL\n"
+            "WHERE TRIM(COALESCE(derivada_de, '')) IN (SELECT orphan FROM orphan_refs)";
+        if (auto result = executeSyncSql(connection, operationSql)) {
+            executeSyncSql(connection, "ROLLBACK");
+            return *result;
+        }
+        const auto fixedRecords = static_cast<std::size_t>(sqlite3_changes(connection.handle()));
+        if (auto result = executeSyncSql(connection, "COMMIT")) {
+            return *result;
+        }
+        return succeeded(fixedRecords);
     }
 
 } // namespace ssa::infra::sqlite
