@@ -20,7 +20,8 @@ Control {
 
     ToolTip.visible: hovered && tooltipText.length > 0
     ToolTip.text: tooltipText
-    ToolTip.delay: 500
+    ToolTip.delay: 0
+    ToolTip.timeout: 10000
 
     background: Rectangle {
         color: Theme.surface

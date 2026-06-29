@@ -21,6 +21,9 @@ ApplicationWindow {
     color: Theme.window
     font.family: Theme.fontFamily
 
+    palette.toolTipBase: Theme.panelRaised
+    palette.toolTipText: Theme.text
+
     background: Rectangle {
         color: Theme.window
     }

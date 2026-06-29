@@ -55,8 +55,8 @@ Rectangle {
 
                 SummaryTag {
                     visible: root.hasSearch
-                    text: "Busca: " + root.trimmedSearchText
-                    tooltipText: text
+                    text: root.trimmedSearchText
+                    tooltipText: root.trimmedSearchText
                     compact: root.compact
                     tagTextSize: root.tagTextSize
                     onRemoveRequested: root.clearSearchRequested()
