@@ -14,6 +14,9 @@ on:
   schedule:
     - cron: '24 10 * * 5'
 
+permissions:
+  contents: read
+
 jobs:
   flawfinder:
     name: Flawfinder
