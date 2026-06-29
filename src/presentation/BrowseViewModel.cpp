@@ -175,27 +175,6 @@ namespace ssa::presentation {
         filters_.setColumnKey(key);
     }
 
-    bool BrowseViewModel::selectRowBySsaNumber(const QString& ssaNumber) {
-        const auto trimmed = ssaNumber.trimmed();
-        if (trimmed.isEmpty()) {
-            return false;
-        }
-        const auto target = trimmed.toStdString();
-        const auto rowCount = tableModel_.rowCount();
-        for (int row = 0; row < rowCount; ++row) {
-            const auto record = tableModel_.recordAt(row);
-            if (record && record->valueOf(domain::kSsaNumberColumnKey) == target) {
-                orchestrator_.selectRow(row);
-                return true;
-            }
-        }
-        // Not present on the current page: narrow the general search so the
-        // requested SSA becomes visible (single-record navigation).
-        search_.setText(trimmed);
-        search_.apply();
-        return true;
-    }
-
     void BrowseViewModel::applyPreferences(const ports::UserPreferencesSnapshot& snapshot) {
         orchestrator_.applyPreferences(snapshot);
     }

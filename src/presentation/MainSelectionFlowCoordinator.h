@@ -16,6 +16,7 @@ namespace ssa::presentation {
 
       public slots:
         void openSelectedSsa();
+        void openSsa(const QString& numeroSsa);
 
       private:
         BrowseViewModel& browse_;

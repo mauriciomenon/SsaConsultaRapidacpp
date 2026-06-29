@@ -258,7 +258,7 @@ ApplicationWindow {
             density: root.vm.ui.density
             onOpenRequested: root.vm.selectionFlow.openSelectedSsa()
             onConfigureColumnsRequested: columnSelectorPopup.open()
-            onNavigateToRelationRequested: ssaNumber => root.vm.browse.selectRowBySsaNumber(ssaNumber)
+            onNavigateToRelationRequested: ssaNumber => root.vm.selectionFlow.openSsa(ssaNumber)
         }
 
         SplitView {
@@ -280,7 +280,7 @@ ApplicationWindow {
                     browseViewModel: root.vm.browse
                     density: root.vm.ui.density
                     onOpenRequested: root.vm.selectionFlow.openSelectedSsa()
-                    onNavigateToRelationRequested: ssaNumber => root.vm.browse.selectRowBySsaNumber(ssaNumber)
+                    onNavigateToRelationRequested: ssaNumber => root.vm.selectionFlow.openSsa(ssaNumber)
                 }
             }
 

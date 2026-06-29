@@ -65,7 +65,6 @@ namespace ssa::presentation {
         [[nodiscard]] const std::vector<std::string>& visibleColumns() const;
         [[nodiscard]] const std::map<std::string, int>& columnWidths() const;
         Q_INVOKABLE void setFilterPanelFocusColumn(const QString& key);
-        Q_INVOKABLE bool selectRowBySsaNumber(const QString& ssaNumber);
 
         void applyPreferences(const ports::UserPreferencesSnapshot& snapshot);
         void writePreferences(ports::UserPreferencesSnapshot& snapshot) const;

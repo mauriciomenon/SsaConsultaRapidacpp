@@ -17,4 +17,11 @@ namespace ssa::presentation {
         }
     }
 
+    void MainSelectionFlowCoordinator::openSsa(const QString& numeroSsa) {
+        const auto trimmed = numeroSsa.trimmed();
+        if (!trimmed.isEmpty()) {
+            commands_.openSsa(trimmed);
+        }
+    }
+
 } // namespace ssa::presentation
