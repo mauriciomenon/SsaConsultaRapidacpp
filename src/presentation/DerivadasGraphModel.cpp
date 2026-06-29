@@ -13,16 +13,6 @@ namespace ssa::presentation {
         constexpr qreal kYGap = 60;
         constexpr qreal kMargin = 8;
 
-        QString kindToLabel(const QString& kind) {
-            if (kind == QStringLiteral("Atual")) {
-                return QStringLiteral("Atual");
-            }
-            if (kind == QStringLiteral("Derivada de")) {
-                return QStringLiteral("Derivada");
-            }
-            return QStringLiteral("Relacionada");
-        }
-
     } // namespace
 
     DerivadasGraphModel::DerivadasGraphModel(QObject* parent) : QAbstractListModel(parent) {}
