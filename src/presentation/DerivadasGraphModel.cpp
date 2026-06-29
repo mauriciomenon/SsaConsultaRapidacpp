@@ -1,0 +1,241 @@
+#include "presentation/DerivadasGraphModel.h"
+
+#include <algorithm>
+
+namespace ssa::presentation {
+
+    namespace {
+
+        // Mirrors gui/ssa/details_dialog_constants.py
+        constexpr qreal kNodeWidth = 100;
+        constexpr qreal kNodeHeight = 30;
+        constexpr qreal kXGap = 170;
+        constexpr qreal kYGap = 60;
+        constexpr qreal kMargin = 8;
+
+        QString kindToLabel(const QString& kind) {
+            if (kind == QStringLiteral("Atual")) {
+                return QStringLiteral("Atual");
+            }
+            if (kind == QStringLiteral("Derivada de")) {
+                return QStringLiteral("Derivada");
+            }
+            return QStringLiteral("Relacionada");
+        }
+
+    } // namespace
+
+    DerivadasGraphModel::DerivadasGraphModel(QObject* parent) : QAbstractListModel(parent) {}
+
+    void DerivadasGraphModel::buildFromRelations(const QString& target,
+                                                 const QVariantList& relations) {
+        beginResetModel();
+        nodes_.clear();
+        edges_.clear();
+        target_ = target.trimmed();
+
+        if (target_.isEmpty()) {
+            graphWidth_ = 0;
+            graphHeight_ = 0;
+            endResetModel();
+            emit graphChanged();
+            return;
+        }
+
+        // Build a directed graph: Current is the target; DerivedFrom points to
+        // an ancestor (ancestor -> target); Related are dashed lateral edges.
+        // Node order: ancestors first (depth 0..n-1), then target, then children.
+        std::unordered_map<std::string, int> seenIndex;
+        std::vector<QString> orderedSsa;
+        std::vector<int> orderedDepth;
+
+        const auto appendNode = [&](const QString& ssa, int depth) {
+            if (ssa.isEmpty()) {
+                return;
+            }
+            const auto key = ssa.toStdString();
+            if (seenIndex.find(key) != seenIndex.end()) {
+                return;
+            }
+            seenIndex.emplace(key, static_cast<int>(orderedSsa.size()));
+            orderedSsa.push_back(ssa);
+            orderedDepth.push_back(depth);
+        };
+
+        // First pass: collect ancestors (DerivedFrom) then target, then children
+        // (related nodes). Depth is heuristic from the relation kind since the
+        // local record only exposes direct relations.
+        std::vector<QString> ancestors;
+        for (const auto& entry : relations) {
+            const auto map = entry.toMap();
+            const auto kind = map.value(QStringLiteral("kind")).toString();
+            const auto ssa = map.value(QStringLiteral("ssa")).toString();
+            if (ssa.isEmpty()) {
+                continue;
+            }
+            if (kind == QStringLiteral("Derivada de")) {
+                ancestors.push_back(ssa);
+            }
+        }
+
+        int targetDepth = static_cast<int>(ancestors.size());
+        for (int index = 0; index < static_cast<int>(ancestors.size()); ++index) {
+            appendNode(ancestors[index], index);
+        }
+        appendNode(target_, targetDepth);
+
+        std::vector<QString> children;
+        for (const auto& entry : relations) {
+            const auto map = entry.toMap();
+            const auto kind = map.value(QStringLiteral("kind")).toString();
+            const auto ssa = map.value(QStringLiteral("ssa")).toString();
+            if (ssa.isEmpty() || kind == QStringLiteral("Atual") ||
+                kind == QStringLiteral("Derivada de")) {
+                continue;
+            }
+            children.push_back(ssa);
+            appendNode(ssa, targetDepth + 1);
+        }
+
+        // Layout: x = margin + depth * xGap; y = margin + index * yGap.
+        for (std::size_t index = 0; index < orderedSsa.size(); ++index) {
+            GraphNode node;
+            node.ssa = orderedSsa[index];
+            node.isTarget = node.ssa == target_;
+            const qreal x = kMargin + orderedDepth[index] * kXGap;
+            const qreal y = kMargin + static_cast<qreal>(index) * kYGap;
+            node.position = QPointF(x, y);
+            nodes_.push_back(std::move(node));
+        }
+
+        // Edges: each ancestor -> target; target -> each child.
+        for (const auto& ancestor : ancestors) {
+            GraphEdge edge;
+            edge.from = ancestor;
+            edge.to = target_;
+            edges_.push_back(std::move(edge));
+        }
+        for (const auto& child : children) {
+            GraphEdge edge;
+            edge.from = target_;
+            edge.to = child;
+            edge.dashed = true;
+            edges_.push_back(std::move(edge));
+        }
+
+        // Compute bounding box.
+        qreal maxX = 0;
+        qreal maxY = 0;
+        for (const auto& node : nodes_) {
+            maxX = std::max(maxX, node.position.x() + kNodeWidth);
+            maxY = std::max(maxY, node.position.y() + kNodeHeight);
+        }
+        graphWidth_ = maxX + kMargin;
+        graphHeight_ = maxY + kMargin;
+
+        endResetModel();
+        emit graphChanged();
+    }
+
+    int DerivadasGraphModel::rowCount(const QModelIndex& parent) const {
+        if (parent.isValid()) {
+            return 0;
+        }
+        return static_cast<int>(nodes_.size());
+    }
+
+    QVariant DerivadasGraphModel::data(const QModelIndex& index, const int role) const {
+        if (!index.isValid() || index.row() < 0 || index.row() >= static_cast<int>(nodes_.size())) {
+            return {};
+        }
+        const auto& node = nodes_[index.row()];
+        switch (role) {
+        case SsaRole:
+            return node.ssa;
+        case IsTargetRole:
+            return node.isTarget;
+        case PositionRole:
+            return QPointF(node.position.x() + kNodeWidth / 2.0,
+                           node.position.y() + kNodeHeight / 2.0);
+        case LabelRole:
+            return node.ssa;
+        }
+        return {};
+    }
+
+    QHash<int, QByteArray> DerivadasGraphModel::roleNames() const {
+        return {
+            {SsaRole, "ssa"},
+            {IsTargetRole, "isTarget"},
+            {PositionRole, "nodeCenter"},
+            {LabelRole, "label"},
+        };
+    }
+
+    QString DerivadasGraphModel::target() const {
+        return target_;
+    }
+
+    QString DerivadasGraphModel::summary() const {
+        return QStringLiteral("Nos: %1 | Relacoes: %2")
+            .arg(static_cast<int>(nodes_.size()))
+            .arg(static_cast<int>(edges_.size()));
+    }
+
+    qreal DerivadasGraphModel::graphWidth() const {
+        return graphWidth_;
+    }
+
+    qreal DerivadasGraphModel::graphHeight() const {
+        return graphHeight_;
+    }
+
+    QVariantList DerivadasGraphModel::edges() const {
+        QVariantList result;
+        result.reserve(static_cast<qsizetype>(edges_.size()));
+        std::unordered_map<std::string, QPointF> centerBySsa;
+        for (const auto& node : nodes_) {
+            centerBySsa.emplace(node.ssa.toStdString(),
+                                QPointF(node.position.x() + kNodeWidth / 2.0,
+                                        node.position.y() + kNodeHeight / 2.0));
+        }
+        for (const auto& edge : edges_) {
+            const auto fromIt = centerBySsa.find(edge.from.toStdString());
+            const auto toIt = centerBySsa.find(edge.to.toStdString());
+            if (fromIt == centerBySsa.end() || toIt == centerBySsa.end()) {
+                continue;
+            }
+            QVariantMap entry;
+            entry.insert(QStringLiteral("fromX"), fromIt->second.x());
+            entry.insert(QStringLiteral("fromY"), fromIt->second.y());
+            entry.insert(QStringLiteral("toX"), toIt->second.x());
+            entry.insert(QStringLiteral("toY"), toIt->second.y());
+            entry.insert(QStringLiteral("dashed"), edge.dashed);
+            result.push_back(entry);
+        }
+        return result;
+    }
+
+    QPointF DerivadasGraphModel::nodeCenter(const int index) const {
+        if (index < 0 || index >= static_cast<int>(nodes_.size())) {
+            return {};
+        }
+        const auto& node = nodes_[index];
+        return {node.position.x() + kNodeWidth / 2.0, node.position.y() + kNodeHeight / 2.0};
+    }
+
+    QString DerivadasGraphModel::nodeSsa(const int index) const {
+        if (index < 0 || index >= static_cast<int>(nodes_.size())) {
+            return {};
+        }
+        return nodes_[index].ssa;
+    }
+
+    bool DerivadasGraphModel::nodeIsTarget(const int index) const {
+        if (index < 0 || index >= static_cast<int>(nodes_.size())) {
+            return false;
+        }
+        return nodes_[index].isTarget;
+    }
+
+} // namespace ssa::presentation

@@ -153,6 +153,7 @@ add_library(
   src/presentation/FilterPanelStateHelpers.cpp
   src/presentation/FilterPanelState.cpp
   src/presentation/DetailsViewModel.cpp
+  src/presentation/DerivadasGraphModel.cpp
   src/presentation/StatusViewModel.cpp
   src/presentation/CommandViewModel.cpp
   src/presentation/MainColumnFlowCoordinator.cpp
@@ -214,6 +215,7 @@ qt_add_qml_module(
   app/desktop/qml/components/AdvancedTextFilterGrid.qml
   app/desktop/qml/components/AdvancedWeekFilterCard.qml
   app/desktop/qml/components/DetailsPanel.qml
+  app/desktop/qml/components/DerivadasGraph.qml
   app/desktop/qml/components/ColumnFilterPanel.qml
   app/desktop/qml/components/ColumnFilterRow.qml
   app/desktop/qml/components/ColumnSelectorPopup.qml

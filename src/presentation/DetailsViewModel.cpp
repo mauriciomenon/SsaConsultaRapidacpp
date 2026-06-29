@@ -74,6 +74,7 @@ namespace ssa::presentation {
         }
         title_ = "SSA " + selectedSsa_;
         relations_ = buildRelations(record);
+        graphModel_.buildFromRelations(selectedSsa_, relations_);
         fields_.setRecord(record);
         emit changed();
     }
@@ -82,8 +83,13 @@ namespace ssa::presentation {
         fields_.clear();
         selectedSsa_.clear();
         relations_.clear();
+        graphModel_.buildFromRelations({}, {});
         title_ = "Nenhuma SSA selecionada";
         emit changed();
+    }
+
+    DerivadasGraphModel* DetailsViewModel::graphModel() {
+        return &graphModel_;
     }
 
     QString DetailsViewModel::selectedSsa() const {

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "domain/SsaTypes.h"
+#include "presentation/DerivadasGraphModel.h"
 #include "presentation/DetailsFieldsModel.h"
 
 #include <QObject>
@@ -17,6 +18,7 @@ namespace ssa::presentation {
         Q_PROPERTY(int fieldCount READ fieldCount NOTIFY changed)
         Q_PROPERTY(QVariantList relations READ relations NOTIFY changed)
         Q_PROPERTY(int relationCount READ relationCount NOTIFY changed)
+        Q_PROPERTY(DerivadasGraphModel* graphModel READ graphModel CONSTANT)
 
       public:
         explicit DetailsViewModel(QObject* parent = nullptr);
@@ -30,6 +32,7 @@ namespace ssa::presentation {
         [[nodiscard]] QString selectedSsaNumber() const;
         [[nodiscard]] QVariantList relations() const;
         [[nodiscard]] int relationCount() const;
+        [[nodiscard]] DerivadasGraphModel* graphModel();
 
       signals:
         void changed();
@@ -39,6 +42,7 @@ namespace ssa::presentation {
         DetailsFieldsModel fields_;
         QString selectedSsa_;
         QVariantList relations_;
+        DerivadasGraphModel graphModel_;
     };
 
 } // namespace ssa::presentation

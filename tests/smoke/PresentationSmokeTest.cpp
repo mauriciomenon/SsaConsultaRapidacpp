@@ -5,6 +5,7 @@
 #include "presentation/AdvancedDerivationFilterViewModel.h"
 #include "presentation/AdvancedTextFilterViewModel.h"
 #include "presentation/AdvancedWeekFilterViewModel.h"
+#include "presentation/DerivadasGraphModel.h"
 #include "presentation/FilterPanelAdvancedViewModel.h"
 #include "presentation/FilterPanelViewModel.h"
 #include "presentation/MainViewModel.h"
@@ -154,6 +155,48 @@ namespace {
                                       Q_ARG(QString, QString("   ")));
             QTest::qWait(50);
             QCOMPARE(commands->commands().size(), std::size_t{0});
+        }
+
+        void derivadas_graph_model_builds_target_ancestor_and_child_layout() {
+            ssa::presentation::DerivadasGraphModel model;
+            QVariantList relations;
+            relations.push_back(QVariantMap{{"kind", "Atual"}, {"ssa", "202500002"}});
+            relations.push_back(QVariantMap{{"kind", "Derivada de"}, {"ssa", "202500001"}});
+            relations.push_back(QVariantMap{{"kind", "Relacionada"}, {"ssa", "202500003"}});
+
+            QSignalSpy spy(&model, &ssa::presentation::DerivadasGraphModel::graphChanged);
+            model.buildFromRelations(QStringLiteral("202500002"), relations);
+
+            QCOMPARE(model.target(), QString("202500002"));
+            QCOMPARE(model.rowCount(), 3);
+            QCOMPARE(spy.count(), 1);
+            QVERIFY(model.graphWidth() > 0);
+            QVERIFY(model.graphHeight() > 0);
+
+            // Ancestor first (depth 0), target second (depth 1), child third.
+            QCOMPARE(model.nodeSsa(0), QString("202500001"));
+            QCOMPARE(model.nodeIsTarget(0), false);
+            QCOMPARE(model.nodeSsa(1), QString("202500002"));
+            QCOMPARE(model.nodeIsTarget(1), true);
+            QCOMPARE(model.nodeSsa(2), QString("202500003"));
+
+            const auto edges = model.edges();
+            QCOMPARE(edges.size(), 2);
+            // First edge: ancestor -> target (solid)
+            QCOMPARE(edges.at(0).toMap().value("dashed"), false);
+            // Second edge: target -> child (dashed)
+            QCOMPARE(edges.at(1).toMap().value("dashed"), true);
+        }
+
+        void derivadas_graph_model_clears_on_empty_target() {
+            ssa::presentation::DerivadasGraphModel model;
+            model.buildFromRelations(QStringLiteral("202500002"), {});
+            QCOMPARE(model.rowCount(), 1);
+
+            model.buildFromRelations(QString(), {});
+            QCOMPARE(model.rowCount(), 0);
+            QCOMPARE(model.target(), QString());
+            QCOMPARE(model.graphWidth(), 0.0);
         }
 
         void details_navigation_walks_across_pages_next_then_prev() {
