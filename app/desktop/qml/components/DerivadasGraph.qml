@@ -40,13 +40,18 @@ Flickable {
                 return;
             }
 
-            // Edges first (so nodes draw on top).
+            // Edges first (so nodes draw on top). Right-angle (L-shaped)
+            // connections: horizontal then vertical. Dashed = related,
+            // solid = derived.
             ctx.lineWidth = 0.9;
             ctx.strokeStyle = Theme.border;
             const edgeList = model.edges();
             for (const edge of edgeList) {
+                const midX = (edge.fromX + edge.toX) / 2;
                 ctx.beginPath();
                 ctx.moveTo(edge.fromX, edge.fromY);
+                ctx.lineTo(midX, edge.fromY);
+                ctx.lineTo(midX, edge.toY);
                 ctx.lineTo(edge.toX, edge.toY);
                 if (edge.dashed) {
                     ctx.setLineDash([7, 6]);
