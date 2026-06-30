@@ -239,15 +239,6 @@ Rectangle {
                 implicitHeight: table.cachedRowHeight
                 color: isSelected ? Theme.rowSelected : (isStriped ? Theme.rowAlt : Theme.surface)
                 border.width: 0
-                // Thin, soft vertical divider on the right edge.
-                Rectangle {
-                    anchors.right: parent.right
-                    anchors.top: parent.top
-                    anchors.bottom: parent.bottom
-                    width: 1
-                    color: Theme.borderSoft
-                    opacity: 0.35
-                }
                 Rectangle {
                     anchors.left: parent.left
                     anchors.top: parent.top
