@@ -247,6 +247,26 @@ Rectangle {
                     visible: cellDelegate.isSelected
                     color: Theme.accent
                 }
+                // Thin themed divider on top and bottom edges of the selected
+                // row, giving a subtle highlight without heavy borders.
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    height: 1
+                    visible: cellDelegate.isSelected
+                    color: Theme.accent
+                    opacity: 0.5
+                }
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    height: 1
+                    visible: cellDelegate.isSelected
+                    color: Theme.accent
+                    opacity: 0.5
+                }
 
                 Text {
                     anchors.fill: parent
