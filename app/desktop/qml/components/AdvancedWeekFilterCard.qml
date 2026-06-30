@@ -15,7 +15,7 @@ FilterCard {
 
     function fieldBorder(valid, control) {
         if (!valid)
-            return "#d14b4b";
+            return Theme.danger;
         return control.activeFocus ? Theme.accent : Theme.border;
     }
 
