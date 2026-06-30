@@ -28,35 +28,6 @@ Rectangle {
         anchors.margins: 10
         spacing: Theme.gap
 
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: Theme.gap
-
-            Label {
-                Layout.fillWidth: true
-                text: root.viewModel.title
-                color: Theme.text
-                font.bold: true
-                font.pixelSize: root.titleTextSize
-                wrapMode: Text.Wrap
-                elide: Text.ElideRight
-            }
-
-            ActionButton {
-                text: "<"
-                implicitWidth: 80
-                enabled: root.browseViewModel.canSelectPreviousRow
-                onClicked: root.browseViewModel.selectPreviousRow()
-            }
-
-            ActionButton {
-                text: ">"
-                implicitWidth: 80
-                enabled: root.browseViewModel.canSelectNextRow
-                onClicked: root.browseViewModel.selectNextRow()
-            }
-        }
-
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: relationsLayout.implicitHeight
@@ -72,13 +43,28 @@ Rectangle {
                 anchors.margins: 8
                 spacing: 6
 
-                Label {
+                RowLayout {
                     Layout.fillWidth: true
-                    text: "SSAs relacionadas"
-                    color: Theme.accentStrong
-                    font.bold: true
-                    font.pixelSize: root.labelTextSize
-                    elide: Text.ElideRight
+                    spacing: 2
+
+                    Item {
+                        Layout.fillWidth: true
+                    }
+
+                    ActionButton {
+                        text: "<"
+                        implicitWidth: 22
+                        implicitHeight: 22
+                        enabled: root.browseViewModel.canSelectPreviousRow
+                        onClicked: root.browseViewModel.selectPreviousRow()
+                    }
+                    ActionButton {
+                        text: ">"
+                        implicitWidth: 22
+                        implicitHeight: 22
+                        enabled: root.browseViewModel.canSelectNextRow
+                        onClicked: root.browseViewModel.selectNextRow()
+                    }
                 }
 
                 Flow {
