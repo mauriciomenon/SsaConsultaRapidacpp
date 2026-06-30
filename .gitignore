@@ -32,3 +32,5 @@ cmake-build-debug/
 .env
 .envrc
 
+.deps-cache/
+cmake/*.bak.*
