@@ -115,6 +115,10 @@ namespace ssa::query {
 
     SqlQueryBuilder::SqlQueryBuilder(std::string tableName) : tableName_(std::move(tableName)) {}
 
+    std::string SqlQueryBuilder::tableName() const {
+        return quoteTableIdentifier(tableName_);
+    }
+
     SqlQuery buildSelectQuery(const domain::SsaPageRequest& request, const std::string& tableName,
                               const std::string& where,
                               const std::vector<std::string>& whereBindings) {

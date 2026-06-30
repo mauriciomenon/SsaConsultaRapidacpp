@@ -34,6 +34,7 @@ namespace ssa::query {
         [[nodiscard]] SqlRecordQuery buildRecordBySsaNumber(const domain::SsaNumber& number) const;
         [[nodiscard]] SqlQuery
         buildDistinctValues(const domain::DistinctValuesRequest& request) const;
+        [[nodiscard]] std::string tableName() const;
 
       private:
         SearchParser parser_;

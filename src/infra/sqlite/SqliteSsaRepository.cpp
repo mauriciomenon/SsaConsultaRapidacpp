@@ -142,8 +142,8 @@ namespace ssa::infra::sqlite {
 
     std::vector<domain::SsaDerivadaEntry>
     SqliteSsaRepository::derivadasDiretas(const domain::SsaNumber& number) const {
-        constexpr auto sql = "SELECT numero_ssa, situacao FROM ssa WHERE derivada_de = ? "
-                             "AND numero_ssa IS NOT NULL ORDER BY numero_ssa";
+        const auto sql = "SELECT numero_ssa, situacao FROM " + queryBuilder_.tableName() +
+                         " WHERE derivada_de = ? AND numero_ssa IS NOT NULL ORDER BY numero_ssa";
         const std::scoped_lock lock(connectionMutex_);
         auto& sqlite = connectionLocked(lock);
         SqliteStatement statement(sqlite.handle(), sql);
