@@ -44,7 +44,7 @@ Rectangle {
             Row {
                 id: headerRow
                 height: parent.height
-                spacing: 1
+                spacing: 0
 
                 Repeater {
                     model: root.tableColumns
@@ -68,7 +68,7 @@ Rectangle {
                         height: header.height
                         color: Theme.tableHeader
                         border.color: Theme.borderSoft
-                        border.width: 1
+                        border.width: 0
 
                         onModelDataChanged: previewWidth = modelWidth
 
@@ -180,7 +180,7 @@ Rectangle {
             model: root.viewModel.tableModel
             clip: true
             rowSpacing: 0
-            columnSpacing: 1
+            columnSpacing: 0
             boundsBehavior: Flickable.StopAtBounds
             columnWidthProvider: function (column) {
                 if (column < 0 || column >= root.tableColumns.length) {
@@ -239,6 +239,15 @@ Rectangle {
                 implicitHeight: table.cachedRowHeight
                 color: isSelected ? Theme.rowSelected : (isStriped ? Theme.rowAlt : Theme.surface)
                 border.width: 0
+                // Thin, soft vertical divider on the right edge.
+                Rectangle {
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    width: 1
+                    color: Theme.borderSoft
+                    opacity: 0.35
+                }
                 Rectangle {
                     anchors.left: parent.left
                     anchors.top: parent.top
@@ -256,7 +265,7 @@ Rectangle {
                     height: 1
                     visible: cellDelegate.isSelected
                     color: Theme.accent
-                    opacity: 0.5
+                    opacity: 0.35
                 }
                 Rectangle {
                     anchors.left: parent.left
@@ -265,7 +274,7 @@ Rectangle {
                     height: 1
                     visible: cellDelegate.isSelected
                     color: Theme.accent
-                    opacity: 0.5
+                    opacity: 0.35
                 }
 
                 Text {
