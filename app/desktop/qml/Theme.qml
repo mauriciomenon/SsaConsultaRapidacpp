@@ -354,6 +354,19 @@ QtObject {
         return density === "comfortable" ? comfortableValue : compactValue;
     }
 
+    // Relative luminance of a color (sRGB), clamped to [0,1]. Used to pick a
+    // foreground that contrasts with a given background tint across themes.
+    function luminance(color) {
+        return (0.2126 * color.r + 0.7152 * color.g + 0.0722 * color.b);
+    }
+
+    // True when the background tint is dark enough that a light foreground
+    // (Theme.text) reads better than a dark one (Theme.accentText).
+    function isDarkTint(bg) {
+        return luminance(bg) < 0.4;
+    }
+    }
+
     function bottomPaneHeight(windowHeight) {
         return Math.max(bottomPaneMinHeight, Math.min(bottomPaneMaxHeight, Math.round(windowHeight * bottomPaneHeightRatio)));
     }
