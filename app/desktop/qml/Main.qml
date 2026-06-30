@@ -125,6 +125,11 @@ ApplicationWindow {
                 text: root.vm.ui.detailsVisible ? "Ocultar detalhes" : "Mostrar detalhes"
                 onTriggered: root.vm.ui.detailsVisible = !root.vm.ui.detailsVisible
             }
+            MenuItem {
+                text: "Janela de detalhes (grafo)"
+                enabled: root.vm.browse.details.selectedSsaNumber.length > 0
+                onTriggered: detailsWindowLoader.active = true
+            }
         }
 
         Menu {
