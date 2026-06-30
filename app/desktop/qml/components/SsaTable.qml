@@ -236,6 +236,9 @@ Rectangle {
                 readonly property string cellText: displayValue === undefined || displayValue === "" ? "-" : String(displayValue)
                 readonly property bool isDerivationLink: columnConfig.key === "derivada_de" && cellText !== "-"
 
+                // Overlap by 1px to the right to eliminate subpixel gaps
+                // between adjacent cells that show the table background.
+                implicitWidth: (table.columnWidthProvider(column) || 0) + 1
                 implicitHeight: table.cachedRowHeight
                 color: isSelected ? Theme.rowSelected : (isStriped ? Theme.rowAlt : Theme.surface)
                 border.width: 0
