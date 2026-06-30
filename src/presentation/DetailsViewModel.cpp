@@ -99,6 +99,10 @@ namespace ssa::presentation {
         rebuildDerivadas(record);
         fields_.setRecord(record);
         emit changed();
+        // Emit relationNavigationChanged after changed() so the QML sees the
+        // updated relationCount before re-evaluating canSelect* flags.
+        currentRelationIndex_ = 0;
+        emit relationNavigationChanged();
     }
 
     void DetailsViewModel::clearRecord() {
@@ -107,6 +111,7 @@ namespace ssa::presentation {
         relations_.clear();
         graphModel_.buildFromRelations({}, {});
         title_ = "Nenhuma SSA selecionada";
+        setCurrentRelationIndex(0);
         emit changed();
     }
 
@@ -139,6 +144,57 @@ namespace ssa::presentation {
         }
         setRecord(*record);
         return true;
+    }
+
+    int DetailsViewModel::currentRelationIndex() const {
+        return currentRelationIndex_;
+    }
+
+    bool DetailsViewModel::canSelectNextRelation() const {
+        return currentRelationIndex_ >= 0 && currentRelationIndex_ < relationCount() - 1;
+    }
+
+    bool DetailsViewModel::canSelectPreviousRelation() const {
+        return currentRelationIndex_ > 0;
+    }
+
+    void DetailsViewModel::selectNextRelation() {
+        if (!canSelectNextRelation()) {
+            return;
+        }
+        loadRelation(currentRelationIndex_ + 1);
+    }
+
+    void DetailsViewModel::selectPreviousRelation() {
+        if (!canSelectPreviousRelation()) {
+            return;
+        }
+        loadRelation(currentRelationIndex_ - 1);
+    }
+
+    void DetailsViewModel::setCurrentRelationIndex(const int index) {
+        if (currentRelationIndex_ == index) {
+            return;
+        }
+        currentRelationIndex_ = index;
+        emit relationNavigationChanged();
+    }
+
+    void DetailsViewModel::loadRelation(const int index) {
+        if (index < 0 || index >= relations_.size()) {
+            return;
+        }
+        const auto ssa = relations_.at(index).toMap().value(QStringLiteral("ssa")).toString();
+        // Advance the navigation index regardless of whether the load succeeds:
+        // the UI must reflect the user's position in the chain.
+        setCurrentRelationIndex(index);
+        if (!ssa.isEmpty() && ssa != selectedSsa_) {
+            loadBySsaNumber(ssa);
+            // loadBySsaNumber resets the index to 0 (Current node of the loaded
+            // SSA). Restore the navigation index so the user keeps walking the
+            // original chain.
+            setCurrentRelationIndex(index);
+        }
     }
 
     QString DetailsViewModel::selectedSsa() const {

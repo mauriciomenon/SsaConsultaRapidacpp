@@ -144,16 +144,16 @@ Rectangle {
                                 implicitWidth: 22
                                 implicitHeight: 22
                                 anchors.verticalCenter: parent.verticalCenter
-                                enabled: root.browseViewModel.canSelectPreviousRow
-                                onClicked: root.browseViewModel.selectPreviousRow()
+                                enabled: root.viewModel.canSelectPreviousRelation
+                                onClicked: root.viewModel.selectPreviousRelation()
                             }
                             ActionButton {
                                 text: ">"
                                 implicitWidth: 22
                                 implicitHeight: 22
                                 anchors.verticalCenter: parent.verticalCenter
-                                enabled: root.browseViewModel.canSelectNextRow
-                                onClicked: root.browseViewModel.selectNextRow()
+                                enabled: root.viewModel.canSelectNextRelation
+                                onClicked: root.viewModel.selectNextRelation()
                             }
                         }
                     }

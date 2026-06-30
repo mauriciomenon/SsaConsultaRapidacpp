@@ -6,6 +6,7 @@
 #include "presentation/AdvancedTextFilterViewModel.h"
 #include "presentation/AdvancedWeekFilterViewModel.h"
 #include "presentation/DerivadasGraphModel.h"
+#include "presentation/DetailsViewModel.h"
 #include "presentation/FilterPanelAdvancedViewModel.h"
 #include "presentation/FilterPanelViewModel.h"
 #include "presentation/MainViewModel.h"
@@ -122,6 +123,43 @@ namespace {
             // After load, the graph model must contain at least the target node.
             QVERIFY(model.browse()->details()->graphModel()->rowCount() >= 1);
             QCOMPARE(model.browse()->details()->graphModel()->target(), QString("202500001"));
+        }
+
+        void details_relation_navigation_indices_and_flags() {
+            // FakeRepository returns nullopt for recordBySsaNumber, so
+            // loadBySsaNumber will not change the record; but the index/flags
+            // logic must still respond. Use a DetailsViewModel with a service.
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::DetailsViewModel details(service);
+
+            // Build a record with an ancestor so relationCount >= 2.
+            ssa::domain::SsaRecord record{
+                {{"numero_ssa", "202500003"}, {"situacao", "APV"}, {"derivada_de", "202500001"}}};
+            details.setRecord(record);
+
+            QCOMPARE(details.relationCount(), 2);
+            QCOMPARE(details.currentRelationIndex(), 0);
+            QVERIFY(!details.canSelectPreviousRelation());
+            QVERIFY(details.canSelectNextRelation());
+
+            details.selectNextRelation();
+            // FakeRepository returns nullopt so the record does not change,
+            // but the navigation index advances.
+            QCOMPARE(details.currentRelationIndex(), 1);
+            QVERIFY(details.canSelectPreviousRelation());
+            QVERIFY(!details.canSelectNextRelation());
+
+            details.selectPreviousRelation();
+            QCOMPARE(details.currentRelationIndex(), 0);
+            QVERIFY(!details.canSelectPreviousRelation());
+
+            // Out-of-range calls are no-ops.
+            details.selectPreviousRelation();
+            QCOMPARE(details.currentRelationIndex(), 0);
+            details.selectNextRelation();
+            details.selectNextRelation();
+            QCOMPARE(details.currentRelationIndex(), 1);
         }
 
         void search_apply_signal_reloads_table() {
