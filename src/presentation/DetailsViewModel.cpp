@@ -125,6 +125,22 @@ namespace ssa::presentation {
         graphModel_.buildFromRelations(selectedSsa_, relations_);
     }
 
+    bool DetailsViewModel::loadBySsaNumber(const QString& ssaNumber) {
+        if (!queryService_) {
+            return false;
+        }
+        const auto trimmed = ssaNumber.trimmed();
+        if (trimmed.isEmpty()) {
+            return false;
+        }
+        const auto record = queryService_->details(domain::SsaNumber{trimmed.toStdString()});
+        if (!record) {
+            return false;
+        }
+        setRecord(*record);
+        return true;
+    }
+
     QString DetailsViewModel::selectedSsa() const {
         return selectedSsa_;
     }

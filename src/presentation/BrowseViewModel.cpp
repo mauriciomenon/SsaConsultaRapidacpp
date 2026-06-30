@@ -175,6 +175,10 @@ namespace ssa::presentation {
         filters_.setColumnKey(key);
     }
 
+    bool BrowseViewModel::loadDetailsBySsaNumber(const QString& ssaNumber) {
+        return details_.loadBySsaNumber(ssaNumber);
+    }
+
     void BrowseViewModel::applyPreferences(const ports::UserPreferencesSnapshot& snapshot) {
         orchestrator_.applyPreferences(snapshot);
     }

@@ -36,6 +36,9 @@ namespace ssa::presentation {
         [[nodiscard]] int fieldCount() const;
         void setRecord(const domain::SsaRecord& record);
         void clearRecord();
+        // Loads a single SSA by number from the repository (if wired) and
+        // displays it. Returns false if not found or no service attached.
+        bool loadBySsaNumber(const QString& ssaNumber);
         [[nodiscard]] QString selectedSsa() const;
         [[nodiscard]] QString selectedSsaNumber() const;
         [[nodiscard]] QVariantList relations() const;

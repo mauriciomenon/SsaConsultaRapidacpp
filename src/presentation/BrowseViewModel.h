@@ -65,6 +65,9 @@ namespace ssa::presentation {
         [[nodiscard]] const std::vector<std::string>& visibleColumns() const;
         [[nodiscard]] const std::map<std::string, int>& columnWidths() const;
         Q_INVOKABLE void setFilterPanelFocusColumn(const QString& key);
+        // Loads a single SSA by number into the details panel (used when
+        // navigating to a related/derived SSA from the details view).
+        Q_INVOKABLE bool loadDetailsBySsaNumber(const QString& ssaNumber);
 
         void applyPreferences(const ports::UserPreferencesSnapshot& snapshot);
         void writePreferences(ports::UserPreferencesSnapshot& snapshot) const;

@@ -10,11 +10,13 @@ Rectangle {
     required property var viewModel
     required property var browseViewModel
     property string density: "normal"
-    readonly property int titleTextSize: Theme.densityValue(root.density, 14, 16, 18)
     readonly property int labelTextSize: Theme.densityValue(root.density, 12, 13, 14)
     readonly property int valueTextSize: Theme.densityValue(root.density, 12, 13, 15)
+    readonly property int nodeTextSize: Math.max(10, Theme.densityValue(root.density, 10, 11, 12))
     signal openRequested
-    signal navigateToRelationRequested(string ssaNumber)
+    // Emitted when the user clicks a relation node: the main view should load
+    // that SSA into the details panel (not open SAM).
+    signal loadRelationRequested(string ssaNumber)
 
     color: Theme.panel
     border.color: Theme.border
@@ -23,121 +25,131 @@ Rectangle {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 10
+        anchors.margins: 8
         spacing: Theme.gap
 
+        // 2b/2c: compact nav buttons in a small box, top-right corner.
         RowLayout {
             Layout.fillWidth: true
             spacing: Theme.gap
 
-            Label {
+            Item {
                 Layout.fillWidth: true
-                text: root.viewModel.title
-                color: Theme.text
-                font.bold: true
-                font.pixelSize: root.titleTextSize
-                wrapMode: Text.Wrap
-                elide: Text.ElideRight
             }
 
-            ActionButton {
-                text: "<"
-                implicitWidth: 80
-                enabled: root.browseViewModel.canSelectPreviousRow
-                onClicked: root.browseViewModel.selectPreviousRow()
-            }
+            Rectangle {
+                Layout.preferredHeight: 26
+                Layout.preferredWidth: navRow.implicitWidth + 8
+                color: Theme.panelRaised
+                border.color: Theme.border
+                radius: Theme.radius
 
-            ActionButton {
-                text: ">"
-                implicitWidth: 80
-                enabled: root.browseViewModel.canSelectNextRow
-                onClicked: root.browseViewModel.selectNextRow()
+                RowLayout {
+                    id: navRow
+                    anchors.centerIn: parent
+                    spacing: 2
+
+                    ActionButton {
+                        text: "<"
+                        implicitWidth: 22
+                        implicitHeight: 22
+                        enabled: root.browseViewModel.canSelectPreviousRow
+                        onClicked: root.browseViewModel.selectPreviousRow()
+                    }
+                    ActionButton {
+                        text: ">"
+                        implicitWidth: 22
+                        implicitHeight: 22
+                        enabled: root.browseViewModel.canSelectNextRow
+                        onClicked: root.browseViewModel.selectNextRow()
+                    }
+                }
             }
         }
 
-        Rectangle {
+        // 2d/2j: relation flow (mae -> atual -> filhas), horizontal, compact.
+        // 2e: shows status only (no "Atual" word). 2f: Der./Rel. indicator.
+        ScrollView {
             Layout.fillWidth: true
-            Layout.preferredHeight: relationsLayout.implicitHeight
-            visible: root.viewModel.relationCount > 0
-            color: Theme.surface
-            border.color: Theme.border
-            radius: Theme.radius
+            Layout.preferredHeight: 52
             clip: true
+            ScrollBar.horizontal.policy: summaryFlow.width > width ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
+            ScrollBar.vertical.policy: ScrollBar.AlwaysOff
 
-            ColumnLayout {
-                id: relationsLayout
-                anchors.fill: parent
-                anchors.margins: 8
-                spacing: 6
+            Row {
+                id: summaryFlow
+                spacing: 4
+                height: 48
 
-                Label {
-                    Layout.fillWidth: true
-                    text: "SSAs relacionadas"
-                    color: Theme.accentStrong
-                    font.bold: true
-                    font.pixelSize: root.labelTextSize
-                    elide: Text.ElideRight
-                }
+                Repeater {
+                    model: root.viewModel.relations
 
-                Flow {
-                    id: relationsFlow
-                    Layout.fillWidth: true
-                    spacing: 6
+                    delegate: Rectangle {
+                        id: relNode
+                        required property int index
+                        required property var modelData
+                        readonly property bool isCurrent: modelData.kind === "Atual"
+                        readonly property string shortKind: {
+                            const k = modelData.kind;
+                            if (k === "Derivada" || k === "Derivada de")
+                                return "Der.";
+                            if (k === "Relacionada")
+                                return "Rel.";
+                            return "";
+                        }
+                        width: Math.max(64, relColumn.implicitWidth + 12)
+                        height: 48
+                        radius: Theme.radius
+                        color: isCurrent ? Theme.accentSoft : Theme.panelRaised
+                        border.color: isCurrent ? Theme.accent : Theme.border
+                        border.width: isCurrent ? 2 : 1
 
-                    Repeater {
-                        model: root.viewModel.relations
+                        ToolTip.visible: relArea.containsMouse
+                        ToolTip.delay: 0
+                        ToolTip.text: {
+                            const s = modelData.ssa !== undefined ? modelData.ssa : "";
+                            const st = modelData.status !== undefined ? modelData.status : "";
+                            const k = modelData.kind !== undefined ? modelData.kind : "";
+                            return s + (st.length > 0 ? " [" + st + "]" : "") + (k.length > 0 ? " - " + k : "");
+                        }
 
-                        delegate: Row {
-                            id: relationRow
-                            required property int index
-                            required property var modelData
-                            spacing: 6
-                            height: relationBox.implicitHeight
+                        ColumnLayout {
+                            id: relColumn
+                            anchors.centerIn: parent
+                            spacing: 0
 
-                            Label {
-                                visible: relationRow.index > 0
-                                text: "->"
-                                color: Theme.mutedText
+                            Text {
+                                text: relNode.modelData.ssa !== undefined ? relNode.modelData.ssa : ""
+                                color: Theme.text
                                 font.bold: true
-                                anchors.verticalCenter: parent.verticalCenter
+                                font.pixelSize: root.nodeTextSize
+                                Layout.alignment: Qt.AlignHCenter
                             }
+                            Text {
+                                visible: relNode.modelData.status !== undefined && relNode.modelData.status.length > 0
+                                text: "<b>" + (relNode.modelData.status !== undefined ? relNode.modelData.status : "") + "</b>"
+                                color: Theme.mutedText
+                                font.pixelSize: Math.max(9, root.nodeTextSize - 1)
+                                textFormat: Text.RichText
+                                Layout.alignment: Qt.AlignHCenter
+                            }
+                            Text {
+                                visible: relNode.shortKind.length > 0
+                                text: relNode.shortKind
+                                color: Theme.mutedText
+                                font.pixelSize: Math.max(9, root.nodeTextSize - 1)
+                                Layout.alignment: Qt.AlignHCenter
+                            }
+                        }
 
-                            Rectangle {
-                                id: relationBox
-                                width: Math.max(Theme.relationNodeMinWidth, relationText.implicitWidth + 18)
-                                implicitHeight: Theme.relationNodeHeight
-                                radius: Theme.radius
-                                color: relationRow.index === 0 ? Theme.accentSoft : Theme.panelRaised
-                                border.color: relationRow.index === 0 ? Theme.accent : Theme.border
-
-                                Column {
-                                    anchors.centerIn: parent
-                                    spacing: 1
-
-                                    Text {
-                                        id: relationText
-                                        text: relationRow.modelData.ssa
-                                        color: Theme.text
-                                        font.bold: true
-                                        font.pixelSize: root.valueTextSize
-                                    }
-
-                                    Text {
-                                        text: {
-                                            const status = relationRow.modelData.status !== undefined ? relationRow.modelData.status : "";
-                                            return status.length > 0 ? "<b>" + status + "</b> " + relationRow.modelData.kind : relationRow.modelData.kind;
-                                        }
-                                        color: Theme.mutedText
-                                        font.pixelSize: Math.max(10, root.valueTextSize - 2)
-                                        textFormat: Text.RichText
-                                    }
-                                }
-
-                                MouseArea {
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: root.navigateToRelationRequested(relationRow.modelData.ssa)
+                        MouseArea {
+                            id: relArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                if (!relNode.isCurrent && relNode.modelData.ssa !== undefined) {
+                                    root.loadRelationRequested(relNode.modelData.ssa);
                                 }
                             }
                         }
