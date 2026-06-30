@@ -8,6 +8,12 @@
 #include <QString>
 #include <QVariantList>
 
+#include <memory>
+
+namespace ssa::query {
+    class SsaQueryService;
+}
+
 namespace ssa::presentation {
 
     class DetailsViewModel final : public QObject {
@@ -22,6 +28,8 @@ namespace ssa::presentation {
 
       public:
         explicit DetailsViewModel(QObject* parent = nullptr);
+        explicit DetailsViewModel(std::shared_ptr<query::SsaQueryService> queryService,
+                                  QObject* parent = nullptr);
 
         [[nodiscard]] QString title() const;
         [[nodiscard]] DetailsFieldsModel* fields();
@@ -38,11 +46,14 @@ namespace ssa::presentation {
         void changed();
 
       private:
+        void rebuildDerivadas(const domain::SsaRecord& record);
+
         QString title_;
         DetailsFieldsModel fields_;
         QString selectedSsa_;
         QVariantList relations_;
         DerivadasGraphModel graphModel_;
+        std::shared_ptr<query::SsaQueryService> queryService_;
     };
 
 } // namespace ssa::presentation

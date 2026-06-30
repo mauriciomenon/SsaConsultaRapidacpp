@@ -14,6 +14,8 @@ namespace ssa::query {
         [[nodiscard]] std::size_t count(const domain::SsaPageRequest& request) const;
         [[nodiscard]] std::optional<domain::SsaRecord>
         details(const domain::SsaNumber& number) const;
+        [[nodiscard]] std::vector<domain::SsaDerivadaEntry>
+        derivadasDiretas(const domain::SsaNumber& number) const;
         [[nodiscard]] std::vector<std::string>
         distinctValues(const domain::DistinctValuesRequest& request) const;
         [[nodiscard]] ports::SsaReadResult readAll(const domain::SsaPageRequest& request,

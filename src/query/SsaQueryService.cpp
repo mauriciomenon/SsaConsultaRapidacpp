@@ -25,6 +25,11 @@ namespace ssa::query {
         return repository_->recordBySsaNumber(number);
     }
 
+    std::vector<domain::SsaDerivadaEntry>
+    SsaQueryService::derivadasDiretas(const domain::SsaNumber& number) const {
+        return repository_->derivadasDiretas(number);
+    }
+
     std::vector<std::string>
     SsaQueryService::distinctValues(const domain::DistinctValuesRequest& request) const {
         return repository_->distinctValues(request);
