@@ -90,7 +90,7 @@ Rectangle {
                                         Text {
                                             id: relationText
                                             text: relationRow.modelData.ssa
-                                            color: Theme.text
+                                            color: relationRow.index === 0 ? Theme.accentText : Theme.text
                                             font.bold: true
                                             font.pixelSize: root.valueTextSize
                                         }
@@ -105,7 +105,7 @@ Rectangle {
                                                     return "<b>" + status + "</b>";
                                                 return kind;
                                             }
-                                            color: Theme.mutedText
+                                            color: relationRow.index === 0 ? Theme.accentText : Theme.mutedText
                                             font.pixelSize: Math.max(10, root.valueTextSize - 2)
                                             textFormat: Text.RichText
                                         }
