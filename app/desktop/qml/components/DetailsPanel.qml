@@ -43,103 +43,129 @@ Rectangle {
                 anchors.margins: 8
                 spacing: 6
 
-                RowLayout {
+                Flickable {
+                    id: relationsFlick
                     Layout.fillWidth: true
-                    spacing: 2
+                    Layout.fillHeight: true
+                    clip: true
+                    contentWidth: relationsRow.width
+                    contentHeight: relationsRow.height
+                    boundsBehavior: Flickable.StopAtBounds
+                    flickableDirection: Flickable.HorizontalFlick
 
-                    Item {
-                        Layout.fillWidth: true
-                    }
+                    Row {
+                        id: relationsRow
+                        spacing: 6
 
-                    ActionButton {
-                        text: "<"
-                        implicitWidth: 22
-                        implicitHeight: 22
-                        enabled: root.browseViewModel.canSelectPreviousRow
-                        onClicked: root.browseViewModel.selectPreviousRow()
-                    }
-                    ActionButton {
-                        text: ">"
-                        implicitWidth: 22
-                        implicitHeight: 22
-                        enabled: root.browseViewModel.canSelectNextRow
-                        onClicked: root.browseViewModel.selectNextRow()
-                    }
-                }
+                        Repeater {
+                            model: root.viewModel.relations
 
-                Flow {
-                    id: relationsFlow
-                    Layout.fillWidth: true
-                    spacing: 6
+                            delegate: Row {
+                                id: relationRow
+                                required property int index
+                                required property var modelData
+                                spacing: 6
+                                height: relationBox.implicitHeight
 
-                    Repeater {
-                        model: root.viewModel.relations
+                                Label {
+                                    visible: relationRow.index > 0
+                                    text: "->"
+                                    color: Theme.mutedText
+                                    font.bold: true
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
 
-                        delegate: Row {
-                            id: relationRow
-                            required property int index
-                            required property var modelData
-                            spacing: 6
-                            height: relationBox.implicitHeight
+                                Rectangle {
+                                    id: relationBox
+                                    width: Math.max(Theme.relationNodeMinWidth, relationText.implicitWidth + 18)
+                                    implicitHeight: Theme.relationNodeHeight
+                                    radius: Theme.radius
+                                    color: relationRow.index === 0 ? Theme.accentSoft : Theme.panelRaised
+                                    border.color: relationRow.index === 0 ? Theme.accent : Theme.border
 
-                            Label {
-                                visible: relationRow.index > 0
-                                text: "->"
-                                color: Theme.mutedText
-                                font.bold: true
+                                    Column {
+                                        anchors.centerIn: parent
+                                        spacing: 1
+
+                                        Text {
+                                            id: relationText
+                                            text: relationRow.modelData.ssa
+                                            color: Theme.text
+                                            font.bold: true
+                                            font.pixelSize: root.valueTextSize
+                                        }
+
+                                        Text {
+                                            text: {
+                                                const status = relationRow.modelData.status !== undefined ? relationRow.modelData.status : "";
+                                                const kind = relationRow.modelData.kind !== undefined ? relationRow.modelData.kind : "";
+                                                if (status.length > 0 && kind.length > 0)
+                                                    return "<b>" + status + "</b> " + kind;
+                                                if (status.length > 0)
+                                                    return "<b>" + status + "</b>";
+                                                return kind;
+                                            }
+                                            color: Theme.mutedText
+                                            font.pixelSize: Math.max(10, root.valueTextSize - 2)
+                                            textFormat: Text.RichText
+                                        }
+                                    }
+
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            if (relationRow.index > 0) {
+                                                root.loadRelationRequested(relationRow.modelData.ssa);
+                                            }
+                                        }
+                                        ToolTip.visible: containsMouse
+                                        ToolTip.delay: 0
+                                        ToolTip.text: {
+                                            const s = relationRow.modelData.ssa !== undefined ? relationRow.modelData.ssa : "";
+                                            const st = relationRow.modelData.status !== undefined ? relationRow.modelData.status : "";
+                                            const k = relationRow.modelData.kind !== undefined ? relationRow.modelData.kind : "";
+                                            return s + (st.length > 0 ? " [" + st + "]" : "") + (k.length > 0 ? " - " + k : "");
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Navigation buttons aligned with the relation row.
+                        Row {
+                            spacing: 2
+                            height: Theme.relationNodeHeight
+                            leftPadding: 6
+
+                            ActionButton {
+                                text: "<"
+                                implicitWidth: 22
+                                implicitHeight: 22
                                 anchors.verticalCenter: parent.verticalCenter
+                                enabled: root.browseViewModel.canSelectPreviousRow
+                                onClicked: root.browseViewModel.selectPreviousRow()
                             }
-
-                            Rectangle {
-                                id: relationBox
-                                width: Math.max(Theme.relationNodeMinWidth, relationText.implicitWidth + 18)
-                                implicitHeight: Theme.relationNodeHeight
-                                radius: Theme.radius
-                                color: relationRow.index === 0 ? Theme.accentSoft : Theme.panelRaised
-                                border.color: relationRow.index === 0 ? Theme.accent : Theme.border
-
-                                Column {
-                                    anchors.centerIn: parent
-                                    spacing: 1
-
-                                    Text {
-                                        id: relationText
-                                        text: relationRow.modelData.ssa
-                                        color: Theme.text
-                                        font.bold: true
-                                        font.pixelSize: root.valueTextSize
-                                    }
-
-                                    Text {
-                                        text: {
-                                            const status = relationRow.modelData.status !== undefined ? relationRow.modelData.status : "";
-                                            return status.length > 0 ? "<b>" + status + "</b> " + relationRow.modelData.kind : relationRow.modelData.kind;
-                                        }
-                                        color: Theme.mutedText
-                                        font.pixelSize: Math.max(10, root.valueTextSize - 2)
-                                        textFormat: Text.RichText
-                                    }
-                                }
-
-                                MouseArea {
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: {
-                                        if (relationRow.index > 0) {
-                                            root.loadRelationRequested(relationRow.modelData.ssa);
-                                        }
-                                    }
-                                    ToolTip.visible: containsMouse
-                                    ToolTip.delay: 0
-                                    ToolTip.text: {
-                                        const s = relationRow.modelData.ssa !== undefined ? relationRow.modelData.ssa : "";
-                                        const st = relationRow.modelData.status !== undefined ? relationRow.modelData.status : "";
-                                        const k = relationRow.modelData.kind !== undefined ? relationRow.modelData.kind : "";
-                                        return s + (st.length > 0 ? " [" + st + "]" : "") + (k.length > 0 ? " - " + k : "");
-                                    }
-                                }
+                            ActionButton {
+                                text: ">"
+                                implicitWidth: 22
+                                implicitHeight: 22
+                                anchors.verticalCenter: parent.verticalCenter
+                                enabled: root.browseViewModel.canSelectNextRow
+                                onClicked: root.browseViewModel.selectNextRow()
                             }
+                        }
+                    }
+
+                    // Thin themed scrollbar only when content overflows.
+                    ScrollBar.horizontal: ScrollBar {
+                        policy: relationsFlick.contentWidth > relationsFlick.width ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
+                        contentItem: Rectangle {
+                            implicitHeight: 2
+                            color: Theme.accent
+                            opacity: 0.7
+                            radius: 1
                         }
                     }
                 }
