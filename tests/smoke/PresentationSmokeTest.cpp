@@ -102,7 +102,8 @@ namespace {
             // The first relation is the Current node and must carry the
             // situacao status from the loaded record (FakeRepository sets APV).
             const auto current = relations.at(0).toMap();
-            QCOMPARE(current.value("kind").toString(), QString("Atual"));
+            // Current node has no kind label (only status is shown).
+            QCOMPARE(current.value("kind").toString(), QString(""));
             QCOMPARE(current.value("status").toString(), QString("APV"));
             QCOMPARE(current.value("ssa").toString(), QString("202500001"));
         }
