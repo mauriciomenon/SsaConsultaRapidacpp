@@ -13,7 +13,9 @@ Control {
     property int tagTextSize: 12
     signal removeRequested
 
-    implicitWidth: Math.min(700, tagLabel.implicitWidth + removeButton.implicitWidth + 26)
+    // No artificial width cap: show the full text and only elide when the
+    // container (ScrollView in FilterSummaryBar) runs out of room.
+    implicitWidth: tagLabel.implicitWidth + removeButton.implicitWidth + 26
     implicitHeight: compact ? 24 : 26
     padding: 0
     hoverEnabled: true
