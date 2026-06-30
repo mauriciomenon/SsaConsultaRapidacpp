@@ -46,7 +46,7 @@ Rectangle {
                 Flickable {
                     id: relationsFlick
                     Layout.fillWidth: true
-                    Layout.fillHeight: true
+                    Layout.preferredHeight: Theme.relationNodeHeight + 6
                     clip: true
                     contentWidth: relationsRow.width
                     contentHeight: relationsRow.height
