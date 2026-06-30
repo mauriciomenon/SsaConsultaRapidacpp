@@ -9,8 +9,8 @@ namespace ssa::presentation {
     AdvancedTextFilterViewModel::AdvancedTextFilterViewModel(
         filterpanel::FilterPanelAdvancedState& state, QObject* parent)
         : QObject(parent), state_(state), rows_(AdvancedTextFilterRowModelFactory{}.buildRows()),
-          operatorModes_{{QVariantMap{{"label", tr("Igual")}, {"mode", "equals"}}},
-                         {QVariantMap{{"label", tr("Diferente")}, {"mode", "different"}}}},
+          operatorModes_{{QVariantMap{{"label", QStringLiteral("=")}, {"mode", "equals"}}},
+                         {QVariantMap{{"label", QStringLiteral("\u2260")}, {"mode", "different"}}}},
           operatorModeIndex_{{"equals", 0}, {"different", 1}} {
         refreshFromState();
         if (cardStates_.empty()) {

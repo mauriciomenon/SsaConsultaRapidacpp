@@ -27,7 +27,6 @@ Rectangle {
             implicitHeight: 20
         }
         Label {
-            Layout.fillWidth: true
             text: root.status.error.length > 0 ? root.status.error : root.status.message
             color: root.status.error.length > 0 ? Theme.danger : Theme.text
             font.pixelSize: 12
@@ -36,15 +35,19 @@ Rectangle {
         }
 
         Label {
-            visible: root.weekModel !== null
-            text: root.weekModel !== null ? root.weekModel.headerLabel : ""
+            visible: root.browse !== null
+            text: root.browse.totalRows + " / " + root.browse.totalRowsAll + " SSAs"
             color: Theme.mutedText
             font.pixelSize: 11
         }
 
+        Item {
+            Layout.fillWidth: true
+        }
+
         Label {
-            visible: root.browse !== null
-            text: root.browse.totalRows + " / " + root.browse.totalRowsAll + " SSAs"
+            visible: root.weekModel !== null
+            text: root.weekModel !== null ? root.weekModel.headerLabel : ""
             color: Theme.mutedText
             font.pixelSize: 11
         }

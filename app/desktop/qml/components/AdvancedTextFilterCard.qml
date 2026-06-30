@@ -78,7 +78,7 @@ FilterCard {
 
             Label {
                 Layout.fillWidth: true
-                text: root.row.labelShort !== undefined && root.row.labelShort.length > 0 ? root.row.labelShort : root.row.label
+                text: root.row.label !== undefined ? root.row.label : ""
                 color: Theme.text
                 font.pixelSize: 12
                 elide: Text.ElideRight
@@ -153,7 +153,7 @@ FilterCard {
                 }
             }
             ActionButton {
-                text: "\u2326"
+                text: "\u232b"
                 implicitWidth: 36
                 ToolTip.visible: hovered
                 ToolTip.text: qsTr("Limpar filtro")
@@ -190,7 +190,7 @@ FilterCard {
 
                 Label {
                     Layout.fillWidth: true
-                    text: root.row.labelShort !== undefined && root.row.labelShort.length > 0 ? root.row.labelShort : root.row.label
+                    text: root.row.label !== undefined ? root.row.label : ""
                     color: Theme.text
                     font.pixelSize: 12
                     font.bold: true

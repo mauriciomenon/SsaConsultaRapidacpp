@@ -231,13 +231,22 @@ Rectangle {
                 required property var displayValue
                 readonly property var columnConfig: root.tableColumns[column] ? root.tableColumns[column] : ({})
                 readonly property bool isStriped: (row % 2) !== 0
+                readonly property bool isSelected: row === root.viewModel.currentRow
                 readonly property bool opensSam: columnConfig.opensSam === true
                 readonly property string cellText: displayValue === undefined || displayValue === "" ? "-" : String(displayValue)
                 readonly property bool isDerivationLink: columnConfig.key === "derivada_de" && cellText !== "-"
 
                 implicitHeight: table.cachedRowHeight
-                color: isStriped ? Theme.rowAlt : Theme.surface
+                color: isSelected ? Theme.rowSelected : (isStriped ? Theme.rowAlt : Theme.surface)
                 border.width: 0
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    width: 3
+                    visible: cellDelegate.isSelected
+                    color: Theme.accent
+                }
 
                 Text {
                     anchors.fill: parent

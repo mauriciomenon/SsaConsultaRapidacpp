@@ -13,7 +13,7 @@ Control {
     property int tagTextSize: 12
     signal removeRequested
 
-    implicitWidth: Math.min(360, tagLabel.implicitWidth + removeButton.implicitWidth + 26)
+    implicitWidth: Math.min(700, tagLabel.implicitWidth + removeButton.implicitWidth + 26)
     implicitHeight: compact ? 24 : 26
     padding: 0
     hoverEnabled: true
