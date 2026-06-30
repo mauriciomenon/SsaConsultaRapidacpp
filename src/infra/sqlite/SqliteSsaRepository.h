@@ -26,6 +26,9 @@ namespace ssa::infra::sqlite {
         [[nodiscard]] std::optional<domain::SsaRecord>
         recordBySsaNumber(const domain::SsaNumber& number) const override;
 
+        [[nodiscard]] std::vector<domain::SsaDerivadaEntry>
+        derivadasDiretas(const domain::SsaNumber& number) const override;
+
         [[nodiscard]] std::vector<std::string>
         distinctValues(const domain::DistinctValuesRequest& request) const override;
 

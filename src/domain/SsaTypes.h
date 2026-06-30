@@ -64,6 +64,12 @@ namespace ssa::domain {
         std::string value_;
     };
 
+    // Direct derived SSA (one level): number + situacao for compact display.
+    struct SsaDerivadaEntry final {
+        std::string number;
+        std::string situacao;
+    };
+
     enum class MatchMode : std::uint8_t {
         Contains,
         StartsWith,

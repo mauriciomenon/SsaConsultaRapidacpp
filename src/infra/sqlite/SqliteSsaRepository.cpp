@@ -140,6 +140,26 @@ namespace ssa::infra::sqlite {
         return values;
     }
 
+    std::vector<domain::SsaDerivadaEntry>
+    SqliteSsaRepository::derivadasDiretas(const domain::SsaNumber& number) const {
+        constexpr auto sql = "SELECT numero_ssa, situacao FROM ssa WHERE derivada_de = ? "
+                             "AND numero_ssa IS NOT NULL ORDER BY numero_ssa";
+        const std::scoped_lock lock(connectionMutex_);
+        auto& sqlite = connectionLocked(lock);
+        SqliteStatement statement(sqlite.handle(), sql);
+        statement.bindTextOneBased(1, number.value());
+        std::vector<domain::SsaDerivadaEntry> entries;
+        while (statement.step()) {
+            domain::SsaDerivadaEntry entry;
+            entry.number = statement.columnText(0);
+            entry.situacao = statement.columnText(1);
+            if (!entry.number.empty()) {
+                entries.push_back(std::move(entry));
+            }
+        }
+        return entries;
+    }
+
     ports::SsaReadResult SqliteSsaRepository::readAll(const domain::SsaPageRequest& request,
                                                       ports::SsaRecordConsumer consume) const {
         const std::scoped_lock lock(connectionMutex_);

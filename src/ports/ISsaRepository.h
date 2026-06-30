@@ -32,6 +32,11 @@ namespace ssa::ports {
         [[nodiscard]] virtual std::optional<domain::SsaRecord>
         recordBySsaNumber(const domain::SsaNumber& number) const = 0;
 
+        // Returns the direct derived SSAs (one level): records whose
+        // derivada_de matches the given SSA number.
+        [[nodiscard]] virtual std::vector<domain::SsaDerivadaEntry>
+        derivadasDiretas(const domain::SsaNumber& number) const = 0;
+
         [[nodiscard]] virtual std::vector<std::string>
         distinctValues(const domain::DistinctValuesRequest& request) const = 0;
 

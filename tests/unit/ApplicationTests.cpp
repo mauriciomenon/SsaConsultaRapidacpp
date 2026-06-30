@@ -34,6 +34,10 @@ namespace {
             }
             return ssa::domain::SsaRecord{{{"numero_ssa", id.value()}}};
         }
+        std::vector<ssa::domain::SsaDerivadaEntry>
+        derivadasDiretas(const ssa::domain::SsaNumber&) const override {
+            return {};
+        }
 
         [[nodiscard]] std::vector<std::string>
         distinctValues(const ssa::domain::DistinctValuesRequest& request) const override {
