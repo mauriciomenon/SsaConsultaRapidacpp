@@ -90,7 +90,10 @@ Rectangle {
                                         Text {
                                             id: relationText
                                             text: relationRow.modelData.ssa
-                                            color: relationRow.index === 0 ? Theme.accentText : Theme.text
+                                            // The Current node sits on accentSoft (a light tint). Pick the
+                                            // foreground that contrasts with it: text on light themes,
+                                            // accentText on dark themes.
+                                            color: relationRow.index === 0 ? (Theme.dark ? Theme.accentText : Theme.text) : Theme.text
                                             font.bold: true
                                             font.pixelSize: root.valueTextSize
                                         }
@@ -105,7 +108,7 @@ Rectangle {
                                                     return "<b>" + status + "</b>";
                                                 return kind;
                                             }
-                                            color: relationRow.index === 0 ? Theme.accentText : Theme.mutedText
+                                            color: relationRow.index === 0 ? (Theme.dark ? Theme.accentText : Theme.text) : Theme.mutedText
                                             font.pixelSize: Math.max(10, root.valueTextSize - 2)
                                             textFormat: Text.RichText
                                         }
