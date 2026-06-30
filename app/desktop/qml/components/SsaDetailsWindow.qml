@@ -9,13 +9,13 @@ import SsaConsultaRapida
 // relation graph and the SSA fields. Mirrors the Python details_dialog.
 ApplicationWindow {
     id: root
-    required property var detailsViewModel
+    property var detailsViewModel: null
     title: detailsViewModel ? "Detalhes da SSA " + detailsViewModel.title : "Detalhes da SSA"
     width: 760
     height: 620
     minimumWidth: 520
     minimumHeight: 420
-    visible: true
+    visible: false
     color: Theme.window
     font.family: Theme.fontFamily
 

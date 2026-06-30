@@ -344,6 +344,9 @@ ApplicationWindow {
         sourceComponent: SsaDetailsWindow {
             onClosing: detailsWindowLoader.active = false
         }
-        onLoaded: item.detailsViewModel = Qt.binding(() => root.vm.browse.details)
+        onLoaded: {
+            item.detailsViewModel = Qt.binding(() => root.vm.browse.details);
+            item.visible = true;
+        }
     }
 }
