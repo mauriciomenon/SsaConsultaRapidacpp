@@ -92,7 +92,7 @@ Item {
                         }
                         ActionButton {
                             text: "^"
-                            implicitWidth: 80
+                            implicitWidth: 34
                             enabled: columnDelegate.index > 0 && columnDelegate.columnVisible
                             Accessible.name: "Mover coluna para cima"
                             ToolTip.text: "Mover coluna para cima"
@@ -100,7 +100,7 @@ Item {
                         }
                         ActionButton {
                             text: "v"
-                            implicitWidth: 80
+                            implicitWidth: 34
                             enabled: columnDelegate.index < columnList.count - 1 && columnDelegate.columnVisible
                             Accessible.name: "Mover coluna para baixo"
                             ToolTip.text: "Mover coluna para baixo"

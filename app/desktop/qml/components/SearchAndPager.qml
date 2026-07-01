@@ -8,6 +8,7 @@ import SsaConsultaRapida
 Rectangle {
     id: root
     required property var viewModel
+    property string density: "normal"
     readonly property var filterViewModel: viewModel.filters
     signal exportRequested
     signal saveFiltersRequested
@@ -28,15 +29,15 @@ Rectangle {
         }
     }
 
-    Layout.preferredHeight: 122
+    Layout.preferredHeight: Theme.densityValue(root.density, 108, 122, 132)
     color: Theme.surface
     border.color: Theme.border
     radius: Theme.radius
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 8
-        spacing: Theme.gap
+        anchors.margins: Theme.densityValue(root.density, 6, 8, 10)
+        spacing: Theme.densityValue(root.density, 5, Theme.gap, 10)
 
         RowLayout {
             Layout.fillWidth: true
@@ -45,6 +46,7 @@ Rectangle {
             ActionButton {
                 text: "Limpar"
                 implicitWidth: 88
+                implicitHeight: Theme.densityValue(root.density, 26, Theme.controlHeight, 34)
                 onClicked: {
                     root.viewModel.search.clear();
                     root.viewModel.search.apply();
@@ -64,17 +66,20 @@ Rectangle {
             }
             ActionButton {
                 text: "Aplicar"
+                implicitHeight: Theme.densityValue(root.density, 26, Theme.controlHeight, 34)
                 onClicked: root.viewModel.search.apply()
             }
             ActionButton {
                 text: "Exportar"
                 implicitWidth: 124
+                implicitHeight: Theme.densityValue(root.density, 26, Theme.controlHeight, 34)
                 onClicked: root.exportRequested()
             }
             ActionButton {
                 id: filterMenuButton
                 text: "Filtros"
                 implicitWidth: 96
+                implicitHeight: Theme.densityValue(root.density, 26, Theme.controlHeight, 34)
                 onClicked: filterMenu.open()
 
                 Menu {
@@ -99,7 +104,7 @@ Rectangle {
 
         FilterSummaryBar {
             Layout.fillWidth: true
-            Layout.preferredHeight: 34
+            Layout.preferredHeight: Theme.densityValue(root.density, 30, 34, 38)
             filterViewModel: root.filterViewModel
             searchText: root.viewModel.search.text
             onClearSearchRequested: {

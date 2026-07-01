@@ -183,14 +183,14 @@ ApplicationWindow {
 
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: 48
+            Layout.preferredHeight: Theme.densityValue(root.vm.ui.density, 42, 48, 54)
             color: Theme.header
             border.color: Theme.borderSoft
             radius: Theme.radius
 
             RowLayout {
                 anchors.fill: parent
-                anchors.margins: 8
+                anchors.margins: Theme.densityValue(root.vm.ui.density, 6, 8, 10)
                 spacing: Theme.gap
 
                 ActionButton {
@@ -250,6 +250,7 @@ ApplicationWindow {
         SearchAndPager {
             Layout.fillWidth: true
             viewModel: root.vm.browse
+            density: root.vm.ui.density
             onExportRequested: fileDialogs.openExportResults()
             onSaveFiltersRequested: root.vm.preferenceFlow.savePreferences()
             onExportFiltersRequested: fileDialogs.openExportFilters()
@@ -275,6 +276,13 @@ ApplicationWindow {
             Layout.preferredHeight: root.bottomPaneHeight
             Layout.minimumHeight: 280
             orientation: Qt.Horizontal
+            handle: Rectangle {
+                implicitWidth: 7
+                implicitHeight: 7
+                color: SplitHandle.pressed ? Theme.accent : SplitHandle.hovered ? Theme.accentSoft : Theme.borderSoft
+                border.color: SplitHandle.pressed || SplitHandle.hovered ? Theme.accentStrong : Theme.border
+                border.width: 1
+            }
 
             Loader {
                 SplitView.minimumWidth: root.vm.ui.detailsVisible ? root.vm.ui.detailsMinimumWidth : 0
