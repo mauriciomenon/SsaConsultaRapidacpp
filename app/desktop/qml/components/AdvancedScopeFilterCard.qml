@@ -12,8 +12,8 @@ FilterCard {
     signal applyRequested
 
     Layout.fillWidth: true
-    Layout.preferredHeight: width < 760 ? 76 : 42
-    implicitHeight: width < 760 ? 76 : 42
+    Layout.preferredHeight: implicitHeight
+    implicitHeight: Math.max(Theme.controlHeight + padding * 2, scopeFlow.childrenRect.height + padding * 2)
     padding: 6
 
     property var selectedReprogrammingValues: []
@@ -65,7 +65,7 @@ FilterCard {
         }
         AppComboBox {
             id: sectorSelector
-            width: 150
+            width: 112
             height: Theme.controlHeight
             model: root.filterViewModel.sector.selectorValues
             currentIndex: root.filterViewModel.sector.selectorIndex
@@ -81,7 +81,7 @@ FilterCard {
             }
         }
         AppCheckBox {
-            width: 82
+            width: 84
             height: Theme.controlHeight
             text: "Reprog."
             checked: root.derivation.onlyReprogrammed
@@ -97,7 +97,7 @@ FilterCard {
             text: "Deriv."
         }
         AppComboBox {
-            width: 104
+            width: 92
             height: Theme.controlHeight
             model: root.derivation.derivationModeOptions
             currentIndex: Math.max(0, root.derivation.derivationModeOptions.indexOf(root.derivation.derivationMode))
@@ -108,13 +108,13 @@ FilterCard {
         }
 
         FilterFieldLabel {
-            width: 54
+            width: 46
             height: Theme.controlHeight
             text: "Reprog."
         }
         AppComboBox {
             id: reprogrammingModeSelector
-            width: 104
+            width: 106
             height: Theme.controlHeight
             leftPadding: 8
             rightPadding: 22
@@ -133,7 +133,7 @@ FilterCard {
             }
         }
         AppTextField {
-            width: 82
+            width: 76
             height: Theme.controlHeight
             text: root.derivation.reprogrammingEqualsFilter
             placeholderText: "0, 1..."
