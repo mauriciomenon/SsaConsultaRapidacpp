@@ -247,7 +247,7 @@ Rectangle {
                     anchors.top: parent.top
                     anchors.bottom: parent.bottom
                     width: 1
-                    visible: cellDelegate.isSelected
+                    visible: cellDelegate.isSelected && cellDelegate.column === 0
                     color: Theme.accent
                     opacity: 0.35
                 }

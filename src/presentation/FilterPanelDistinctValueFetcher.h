@@ -8,6 +8,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <deque>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -25,6 +26,7 @@ namespace ssa::presentation {
 
         void requestValues(const domain::DistinctValuesRequest& request,
                            std::uint64_t requestToken);
+        void clearPendingRequests();
 
       signals:
         void valuesReady(std::uint64_t requestToken, std::vector<std::string> values);
@@ -46,9 +48,12 @@ namespace ssa::presentation {
         // When a request arrives while a worker is running, it is queued here and
         // dispatched when the worker finishes, instead of cancel+setFuture which
         // races the runnable vptr.
-        domain::DistinctValuesRequest pendingRequest_;
-        std::uint64_t pendingRequestToken_{0};
-        bool hasPendingRequest_{false};
+        struct PendingRequest final {
+            domain::DistinctValuesRequest request;
+            std::uint64_t requestToken{0};
+        };
+
+        std::deque<PendingRequest> pendingRequests_;
     };
 
 } // namespace ssa::presentation

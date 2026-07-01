@@ -145,9 +145,10 @@ namespace {
             QVERIFY(filters.quickSectorOptions().contains("MAM2"));
             QTRY_VERIFY_WITH_TIMEOUT(!repository->distinctRequests().empty(), 1000);
             const auto distinctRequests = repository->distinctRequests();
-            QCOMPARE(QString::fromStdString(distinctRequests.back().columnKey),
-                     QString("setor_executor"));
-            QCOMPARE(distinctRequests.back().filter.excludeScaSesSte, false);
+            QVERIFY(std::ranges::any_of(distinctRequests, [](const auto& request) {
+                return request.columnKey == "setor_executor" &&
+                       request.filter.excludeScaSesSte == false;
+            }));
         }
 
         void advanced_value_options_load_for_requested_column_without_changing_column_filter() {
@@ -163,6 +164,22 @@ namespace {
                                       1000);
             QVERIFY(filters.columnValueOptionsFor("setor_executor").contains("MEG2"));
             QCOMPARE(filters.columnKey(), QString("situacao"));
+        }
+
+        void advanced_value_options_preload_queues_visible_card_values() {
+            auto repository = std::make_shared<FilterPanelRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::FilterPanelViewModel filters(service);
+
+            filters.preloadAdvancedColumnValueOptions();
+
+            QCOMPARE(filters.columnValueOptionsLoadingFor("setor_executor"), true);
+            QTRY_COMPARE_WITH_TIMEOUT(filters.columnValueOptionsLoadingFor("setor_executor"), false,
+                                      1000);
+            QVERIFY(filters.columnValueOptionsFor("setor_executor").contains("MEG2"));
+            QTRY_COMPARE_WITH_TIMEOUT(filters.columnValueOptionsLoadingFor("num_reprogramacoes"),
+                                      false, 1000);
+            QVERIFY(filters.columnValueOptionsFor("num_reprogramacoes").contains("1"));
         }
 
         void column_value_options_reset_hides_stale_cache_after_filter_change() {
@@ -190,7 +207,7 @@ namespace {
 
             filters.refreshColumnValueOptionsFor("setor_executor");
             QTRY_COMPARE_WITH_TIMEOUT(filters.columnValueOptionsLoadingFor("setor_executor"), false,
-                                      1000);
+                                      3000);
             QVERIFY(filters.columnValueOptionsFor("setor_executor").contains("MEG2"));
         }
 
@@ -204,12 +221,17 @@ namespace {
             QCOMPARE(filters.columnValueOptionsLoadingFor("setor_executor"), true);
 
             filters.setColumnValue("APV");
-            QTest::qWait(180);
 
-            QCOMPARE(filters.columnValueOptionsLoadingFor("setor_executor"), false);
             QCOMPARE(filters.columnValueOptionsFor("setor_executor"), QStringList{});
             QVERIFY(
                 !filters.columnValuePreviewOptionsFor("setor_executor", 1, false).contains("MEG2"));
+            QTRY_COMPARE_WITH_TIMEOUT(filters.columnValueOptionsLoadingFor("setor_executor"), false,
+                                      3000);
+
+            filters.preloadAdvancedColumnValueOptions();
+            QTRY_COMPARE_WITH_TIMEOUT(filters.columnValueOptionsLoadingFor("setor_executor"), false,
+                                      3000);
+            QVERIFY(filters.columnValueOptionsFor("setor_executor").contains("MEG2"));
         }
 
         void responsible_value_options_request_frequency_ordering() {

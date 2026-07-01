@@ -106,7 +106,11 @@ FilterCard {
 
             AppComboBox {
                 id: reprogrammingModeSelector
-                Layout.preferredWidth: 76
+                Layout.preferredWidth: 54
+                leftPadding: 0
+                rightPadding: 0
+                indicator: null
+                popup.width: 96
                 model: root.derivation.reprogrammingModeOptions
                 currentIndex: Math.max(0, root.derivation.reprogrammingModeOptions.indexOf(root.derivation.reprogrammingMode))
                 displayText: currentText === "lte" ? "<=" : currentText === "gte" ? ">=" : "="

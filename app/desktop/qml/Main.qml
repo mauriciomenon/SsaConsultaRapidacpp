@@ -144,7 +144,7 @@ ApplicationWindow {
             MenuItem {
                 text: "Janela de detalhes (grafo)"
                 enabled: root.vm.browse.details.selectedSsaNumber.length > 0
-                onTriggered: detailsWindowLoader.active = true
+                onTriggered: root.openDetailsWindow()
             }
         }
 
@@ -293,7 +293,7 @@ ApplicationWindow {
             onOpenRequested: root.vm.selectionFlow.openSelectedSsa()
             onConfigureColumnsRequested: columnSelectorPopup.open()
             onNavigateToRelationRequested: ssaNumber => root.vm.selectionFlow.openSsa(ssaNumber)
-            onDetailsWindowRequested: detailsWindowLoader.active = true
+            onDetailsWindowRequested: root.openDetailsWindow()
         }
 
         SplitView {
@@ -322,7 +322,7 @@ ApplicationWindow {
                     browseViewModel: root.vm.browse
                     density: root.vm.ui.density
                     onOpenRequested: root.vm.selectionFlow.openSelectedSsa()
-                    onGraphWindowRequested: detailsWindowLoader.active = true
+                    onGraphWindowRequested: root.openDetailsWindow()
                     onLoadRelationRequested: ssaNumber => root.vm.browse.loadDetailsBySsaNumber(ssaNumber)
                 }
             }
@@ -365,7 +365,8 @@ ApplicationWindow {
         smokeController: root.smokeController
         preferencesDialog: preferencesDialog
         filterPanel: filterPanel
-        onDetailsWindowRequested: detailsWindowLoader.active = true
+        browseViewModel: root.vm.browse
+        onDetailsWindowRequested: root.openDetailsWindow()
     }
 
     FileWorkflowDialogs {
@@ -373,16 +374,20 @@ ApplicationWindow {
         viewModel: root.vm
     }
 
-    Loader {
-        id: detailsWindowLoader
-        active: false
-        sourceComponent: SsaDetailsWindow {
-            onClosing: detailsWindowLoader.active = false
-            onGraphNodeRequested: ssaNumber => root.vm.browse.loadDetailsBySsaNumber(ssaNumber)
-        }
-        onLoaded: {
-            item.detailsViewModel = Qt.binding(() => root.vm.browse.details);
-            item.visible = true;
-        }
+    function openDetailsWindow() {
+        const ssaNumber = root.vm.browse.details.selectedSsaNumber;
+        if (ssaNumber.length === 0)
+            return;
+        const window = detailsWindowComponent.createObject(root);
+        if (window === null)
+            return;
+        window.detailsViewModel = root.vm.browse.createDetailsWindowModel(ssaNumber, window);
+        window.visible = true;
+    }
+
+    Component {
+        id: detailsWindowComponent
+
+        SsaDetailsWindow {}
     }
 }

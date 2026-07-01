@@ -67,8 +67,10 @@ namespace ssa::presentation {
             emit changed();
         });
         connect(&distinctValues_, &FilterPanelDistinctValuesController::columnValueOptionsReady,
-                this, [this](const std::vector<std::string>& values, const QString& key) {
-                    setColumnValueOptions(values, key);
+                this,
+                [this](const std::vector<std::string>& values, const QString& key,
+                       const std::uint64_t stateVersion) {
+                    setColumnValueOptions(values, key, stateVersion);
                 });
         connect(&distinctValues_, &FilterPanelDistinctValuesController::quickSectorOptionsReady,
                 this,
@@ -263,7 +265,11 @@ namespace ssa::presentation {
     }
 
     void FilterPanelViewModel::setColumnValueOptions(const std::vector<std::string>& options,
-                                                     const QString& key) {
+                                                     const QString& key,
+                                                     const std::uint64_t stateVersion) {
+        if (stateVersion != 0 && stateVersion != filterStateVersion_) {
+            return;
+        }
         const auto normalizedKey = key.trimmed();
         columnValueOptions_.store(options, normalizedKey, filterStateVersion_);
         emit columnValueOptionsChanged();
@@ -310,7 +316,35 @@ namespace ssa::presentation {
         columnValueOptions_.markLoading(normalizedKey);
         emit columnValueOptionsChanged();
         emit columnValueOptionsChangedFor(normalizedKey);
-        distinctValues_.refreshColumnValueOptionsFor(normalizedKey);
+        distinctValues_.preloadColumnValueOptionsFor(QStringList{normalizedKey},
+                                                     filterStateVersion_);
+    }
+
+    void FilterPanelViewModel::preloadAdvancedColumnValueOptions() {
+        QStringList keys;
+        for (const auto key : domain::ColumnCatalog::advancedFilterKeys()) {
+            const auto qKey = QString::fromUtf8(key.data(), static_cast<qsizetype>(key.size()));
+            if (columnValueOptions_.loadingFor(qKey) ||
+                columnValueOptions_.hasFreshOptions(qKey, filterStateVersion_)) {
+                continue;
+            }
+            keys.push_back(qKey);
+        }
+
+        const QString reprogrammingKey = QStringLiteral("num_reprogramacoes");
+        if (!columnValueOptions_.loadingFor(reprogrammingKey) &&
+            !columnValueOptions_.hasFreshOptions(reprogrammingKey, filterStateVersion_)) {
+            keys.push_back(reprogrammingKey);
+        }
+        if (keys.empty()) {
+            return;
+        }
+        for (const auto& key : keys) {
+            columnValueOptions_.markLoading(key);
+            emit columnValueOptionsChangedFor(key);
+        }
+        emit columnValueOptionsChanged();
+        distinctValues_.preloadColumnValueOptionsFor(keys, filterStateVersion_);
     }
 
     void FilterPanelViewModel::refreshQuickSectorOptions() {

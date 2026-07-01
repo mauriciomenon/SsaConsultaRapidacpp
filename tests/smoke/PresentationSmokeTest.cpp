@@ -193,27 +193,27 @@ namespace {
             details.setRecord(record);
 
             QCOMPARE(details.relationCount(), 2);
-            QCOMPARE(details.currentRelationIndex(), 0);
-            QVERIFY(!details.canSelectPreviousRelation());
-            QVERIFY(details.canSelectNextRelation());
-
-            details.selectNextRelation();
-            // FakeRepository returns nullopt so the record does not change,
-            // but the navigation index advances.
             QCOMPARE(details.currentRelationIndex(), 1);
             QVERIFY(details.canSelectPreviousRelation());
             QVERIFY(!details.canSelectNextRelation());
 
             details.selectPreviousRelation();
+            // FakeRepository returns nullopt so the record does not change,
+            // but the navigation index advances.
             QCOMPARE(details.currentRelationIndex(), 0);
             QVERIFY(!details.canSelectPreviousRelation());
+            QVERIFY(details.canSelectNextRelation());
 
-            // Out-of-range calls are no-ops.
-            details.selectPreviousRelation();
-            QCOMPARE(details.currentRelationIndex(), 0);
-            details.selectNextRelation();
             details.selectNextRelation();
             QCOMPARE(details.currentRelationIndex(), 1);
+            QVERIFY(!details.canSelectNextRelation());
+
+            // Out-of-range calls are no-ops.
+            details.selectNextRelation();
+            QCOMPARE(details.currentRelationIndex(), 1);
+            details.selectPreviousRelation();
+            details.selectPreviousRelation();
+            QCOMPARE(details.currentRelationIndex(), 0);
         }
 
         void details_load_relation_clamps_index_after_successful_shorter_chain_load() {
@@ -227,7 +227,7 @@ namespace {
                 {{"numero_ssa", "202500003"}, {"situacao", "APV"}, {"derivada_de", "202500001"}}});
 
             QCOMPARE(details.relationCount(), 2);
-            details.selectNextRelation();
+            details.selectPreviousRelation();
 
             QCOMPARE(details.selectedSsa(), QString("202500001"));
             QCOMPARE(details.relationCount(), 1);
@@ -374,9 +374,10 @@ namespace {
 
             const auto relations = details.relations();
             QCOMPARE(relations.size(), 3);
-            QCOMPARE(relations.at(0).toMap().value("kind").toString(), QString("Atual"));
-            QCOMPARE(relations.at(1).toMap().value("kind").toString(), QString("Origem"));
-            QCOMPARE(relations.at(1).toMap().value("role").toString(), QString("parent"));
+            QCOMPARE(relations.at(0).toMap().value("kind").toString(), QString("Origem"));
+            QCOMPARE(relations.at(0).toMap().value("role").toString(), QString("parent"));
+            QCOMPARE(relations.at(1).toMap().value("kind").toString(), QString("Atual"));
+            QCOMPARE(relations.at(1).toMap().value("role").toString(), QString("current"));
             QCOMPARE(relations.at(2).toMap().value("kind").toString(), QString("Derivada"));
             QCOMPARE(relations.at(2).toMap().value("role").toString(), QString("child"));
 

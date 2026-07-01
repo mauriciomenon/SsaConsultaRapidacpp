@@ -18,6 +18,20 @@ GridView {
     cellWidth: width >= 960 ? Math.floor(width / 3) : (width >= 640 ? Math.floor(width / 2) : width)
     cellHeight: 72
 
+    function preloadOptions() {
+        root.filterViewModel.preloadAdvancedColumnValueOptions();
+    }
+
+    Component.onCompleted: root.preloadOptions()
+
+    Connections {
+        target: root.filterViewModel
+
+        function onColumnValueOptionsReset() {
+            root.preloadOptions();
+        }
+    }
+
     delegate: AdvancedTextFilterCard {
         id: filterCardDelegate
         required property var modelData

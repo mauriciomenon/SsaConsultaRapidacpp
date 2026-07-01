@@ -3,6 +3,7 @@
 #include <QCoreApplication>
 #include <QtConcurrent>
 
+#include <algorithm>
 #include <atomic>
 #include <memory>
 #include <utility>
@@ -18,10 +19,17 @@ namespace ssa::presentation {
     FilterPanelDistinctValueFetcher::~FilterPanelDistinctValueFetcher() {
         // Drop any queued request so onWatcherFinished does not start a new worker
         // during teardown, then drain the in-flight one.
-        hasPendingRequest_ = false;
+        clearPendingRequests();
         if (watcher_.isRunning()) {
             watcher_.waitForFinished();
             QCoreApplication::processEvents();
+        }
+    }
+
+    void FilterPanelDistinctValueFetcher::clearPendingRequests() {
+        pendingRequests_.clear();
+        if (activeCancelToken_) {
+            activeCancelToken_->store(true, std::memory_order_relaxed);
         }
     }
 
@@ -34,16 +42,19 @@ namespace ssa::presentation {
         }
         // If a task is in flight, do NOT cancel+setFuture immediately: the
         // previous runnable may still be constructing/running and racing its vptr
-        // with the new setFuture call (TSan: data race on vptr). Instead, mark the
-        // old request cancelled and queue this one to run when the current worker
-        // finishes (handled in onWatcherFinished).
+        // with the new setFuture call (TSan: data race on vptr). Instead, queue
+        // this one to run when the current worker finishes.
         if (watcher_.isRunning()) {
-            if (activeCancelToken_) {
-                activeCancelToken_->store(true, std::memory_order_relaxed);
+            const auto sameColumn = [&request](const PendingRequest& pending) {
+                return pending.request.columnKey == request.columnKey;
+            };
+            if (const auto found =
+                    std::find_if(pendingRequests_.begin(), pendingRequests_.end(), sameColumn);
+                found != pendingRequests_.end()) {
+                *found = PendingRequest{request, requestToken};
+            } else {
+                pendingRequests_.push_back(PendingRequest{request, requestToken});
             }
-            pendingRequest_ = request;
-            pendingRequestToken_ = requestToken;
-            hasPendingRequest_ = true;
             return;
         }
 
@@ -84,24 +95,24 @@ namespace ssa::presentation {
         // the pending one if any (keeps the latest user intent).
         const bool cancelled =
             activeCancelToken_ && activeCancelToken_->load(std::memory_order_relaxed);
+        std::shared_ptr<std::vector<std::string>> result;
+        {
+            std::lock_guard<std::mutex> lock(resultMutex_);
+            result = activeResult_;
+            activeResult_.reset();
+        }
         if (!cancelled) {
             std::vector<std::string> values;
-            std::shared_ptr<std::vector<std::string>> result;
-            {
-                std::lock_guard<std::mutex> lock(resultMutex_);
-                result = activeResult_;
-                activeResult_.reset();
-            }
             if (result) {
                 values = std::move(*result);
             }
             emit this->valuesReady(activeRequestToken_, std::move(values));
         }
-        if (hasPendingRequest_) {
-            const auto pending = std::move(pendingRequest_);
-            const auto token = pendingRequestToken_;
-            hasPendingRequest_ = false;
-            startWorker(pending, token);
+        activeCancelToken_.reset();
+        if (!pendingRequests_.empty()) {
+            auto pending = std::move(pendingRequests_.front());
+            pendingRequests_.pop_front();
+            startWorker(pending.request, pending.requestToken);
         }
     }
 

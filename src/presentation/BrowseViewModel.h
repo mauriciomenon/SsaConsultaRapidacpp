@@ -68,6 +68,8 @@ namespace ssa::presentation {
         // Loads a single SSA by number into the details panel (used when
         // navigating to a related/derived SSA from the details view).
         Q_INVOKABLE bool loadDetailsBySsaNumber(const QString& ssaNumber);
+        Q_INVOKABLE DetailsViewModel* createDetailsWindowModel(const QString& ssaNumber,
+                                                               QObject* parent);
 
         void applyPreferences(const ports::UserPreferencesSnapshot& snapshot);
         void writePreferences(ports::UserPreferencesSnapshot& snapshot) const;
@@ -106,6 +108,7 @@ namespace ssa::presentation {
         BrowseOrchestrator orchestrator_;
         mutable QVariantList cachedTableHeaders_;
         mutable bool tableHeadersDirty_{true};
+        std::shared_ptr<query::SsaQueryService> queryService_;
     };
 
 } // namespace ssa::presentation

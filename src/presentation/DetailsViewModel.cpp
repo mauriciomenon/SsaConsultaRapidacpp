@@ -6,7 +6,6 @@
 
 #include <QVariantMap>
 
-#include <algorithm>
 #include <utility>
 
 namespace ssa::presentation {
@@ -51,14 +50,40 @@ namespace ssa::presentation {
             return item;
         }
 
-        // Local relations (ancestral derivada_de + 3 relacionados) read from the
-        // record fields. The Current node carries its own situacao.
+        int currentRelationIndexFor(const QVariantList& relations, const QString& selectedSsa) {
+            for (qsizetype index = 0; index < relations.size(); ++index) {
+                const auto map = relations.at(index).toMap();
+                const auto role = map.value(QStringLiteral("role")).toString();
+                const auto ssa = map.value(QStringLiteral("ssa")).toString();
+                if (role == QStringLiteral("current") || ssa == selectedSsa) {
+                    return static_cast<int>(index);
+                }
+            }
+            return 0;
+        }
+
+        // Local relations (ancestral derivada_de + current + 3 relacionados)
+        // read from the record fields. The Current node carries its own situacao.
         QVariantList buildLocalRelations(const domain::SsaRecord& record) {
             const auto relationItems = domain::SsaRelationGraph::fromRecord(record);
             const auto currentStatus = record.valueOf(domain::ColumnCatalog::statusColumnKey());
             QVariantList relations;
             relations.reserve(static_cast<qsizetype>(relationItems.size()));
             for (const auto& relation : relationItems) {
+                if (relation.kind == domain::SsaRelationKind::DerivedFrom) {
+                    relations.append(relationMap(relation, std::string_view{}));
+                }
+            }
+            for (const auto& relation : relationItems) {
+                if (relation.kind != domain::SsaRelationKind::Current) {
+                    continue;
+                }
+                relations.append(relationMap(relation, currentStatus));
+            }
+            for (const auto& relation : relationItems) {
+                if (relation.kind != domain::SsaRelationKind::Related) {
+                    continue;
+                }
                 const auto status = relation.kind == domain::SsaRelationKind::Current
                                         ? currentStatus
                                         : std::string_view{};
@@ -116,7 +141,7 @@ namespace ssa::presentation {
         emit changed();
         // Emit relationNavigationChanged after changed() so the QML sees the
         // updated relationCount before re-evaluating canSelect* flags.
-        currentRelationIndex_ = 0;
+        currentRelationIndex_ = currentRelationIndexFor(relations_, selectedSsa_);
         emit relationNavigationChanged();
     }
 
@@ -208,10 +233,6 @@ namespace ssa::presentation {
             if (!loaded) {
                 return;
             }
-            // loadBySsaNumber resets the index to 0 (Current node of the loaded
-            // SSA). Keep the chain position only when it still exists.
-            const int lastIndex = std::max(0, relationCount() - 1);
-            setCurrentRelationIndex(std::min(index, lastIndex));
         }
     }
 

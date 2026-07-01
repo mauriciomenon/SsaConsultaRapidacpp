@@ -14,18 +14,60 @@ ApplicationWindow {
     property var detailsViewModel: null
     property string graphExportMessage: ""
     property bool showMermaid: false
+    property var navigationHistory: []
+    property int navigationIndex: -1
     signal graphNodeRequested(string ssaNumber)
     title: detailsViewModel && detailsViewModel.selectedSsaNumber.length > 0 ? "Detalhes da SSA " + detailsViewModel.selectedSsaNumber : "Detalhes da SSA"
     width: 760
-    height: 620
+    height: 675
     minimumWidth: 520
-    minimumHeight: 420
+    minimumHeight: 480
     visible: false
     color: Theme.window
     font.family: Theme.fontFamily
 
     palette.toolTipBase: Theme.panelRaised
     palette.toolTipText: Theme.text
+    onClosing: root.destroy()
+
+    function currentSsaNumber() {
+        return root.detailsViewModel ? root.detailsViewModel.selectedSsaNumber : "";
+    }
+
+    function resetNavigationHistory() {
+        const ssaNumber = root.currentSsaNumber();
+        root.navigationHistory = ssaNumber.length > 0 ? [ssaNumber] : [];
+        root.navigationIndex = root.navigationHistory.length - 1;
+    }
+
+    function navigateToSsa(ssaNumber) {
+        if (!root.detailsViewModel || ssaNumber.length === 0 || ssaNumber === root.currentSsaNumber())
+            return;
+        if (!root.detailsViewModel.loadBySsaNumber(ssaNumber))
+            return;
+        const nextHistory = root.navigationHistory.slice(0, root.navigationIndex + 1);
+        nextHistory.push(ssaNumber);
+        root.navigationHistory = nextHistory;
+        root.navigationIndex = root.navigationHistory.length - 1;
+    }
+
+    function navigateHistory(offset) {
+        const nextIndex = root.navigationIndex + offset;
+        if (!root.detailsViewModel || nextIndex < 0 || nextIndex >= root.navigationHistory.length)
+            return;
+        const ssaNumber = root.navigationHistory[nextIndex];
+        if (!root.detailsViewModel.loadBySsaNumber(ssaNumber))
+            return;
+        root.navigationIndex = nextIndex;
+    }
+
+    function breadcrumbText() {
+        if (root.navigationHistory.length === 0)
+            return "";
+        return root.navigationHistory.join(" > ");
+    }
+
+    onDetailsViewModelChanged: root.resetNavigationHistory()
 
     ColumnLayout {
         anchors.fill: parent
@@ -38,6 +80,42 @@ ApplicationWindow {
             color: Theme.text
             font.bold: true
             font.pixelSize: 16
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: 6
+
+            ActionButton {
+                text: "<"
+                implicitWidth: 34
+                implicitHeight: 26
+                enabled: root.navigationIndex > 0
+                ToolTip.visible: hovered
+                ToolTip.text: "Voltar no historico"
+                ToolTip.delay: 0
+                onClicked: root.navigateHistory(-1)
+            }
+
+            ActionButton {
+                text: ">"
+                implicitWidth: 34
+                implicitHeight: 26
+                enabled: root.navigationIndex >= 0 && root.navigationIndex < root.navigationHistory.length - 1
+                ToolTip.visible: hovered
+                ToolTip.text: "Avancar no historico"
+                ToolTip.delay: 0
+                onClicked: root.navigateHistory(1)
+            }
+
+            Label {
+                Layout.fillWidth: true
+                text: root.breadcrumbText()
+                color: Theme.mutedText
+                font.pixelSize: 11
+                elide: Text.ElideMiddle
+                verticalAlignment: Text.AlignVCenter
+            }
         }
 
         SplitView {
@@ -53,8 +131,8 @@ ApplicationWindow {
             }
 
             Rectangle {
-                SplitView.preferredHeight: 220
-                SplitView.minimumHeight: 160
+                SplitView.preferredHeight: 275
+                SplitView.minimumHeight: 200
                 color: Theme.panel
                 border.color: Theme.border
                 radius: Theme.radius
@@ -112,7 +190,7 @@ ApplicationWindow {
                         Layout.fillHeight: true
                         visible: !root.showMermaid && root.detailsViewModel && root.detailsViewModel.graphModel.nodeCount > 0
                         graphModel: root.detailsViewModel ? root.detailsViewModel.graphModel : null
-                        onNodeClicked: ssaNumber => root.graphNodeRequested(ssaNumber)
+                        onNodeClicked: ssaNumber => root.navigateToSsa(ssaNumber)
                         onExportFinished: succeeded => root.graphExportMessage = succeeded ? "Grafo exportado" : "Falha ao exportar grafo"
                     }
 

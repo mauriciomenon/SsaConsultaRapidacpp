@@ -109,9 +109,11 @@ FilterCard {
 
             AppComboBox {
                 id: advancedOperator
-                Layout.preferredWidth: 64
-                leftPadding: 8
-                rightPadding: 18
+                Layout.preferredWidth: 44
+                leftPadding: 0
+                rightPadding: 0
+                indicator: null
+                popup.width: 96
                 textRole: "label"
                 valueRole: "mode"
                 model: root.operatorModes
@@ -122,7 +124,10 @@ FilterCard {
 
             AppComboBox {
                 id: advancedValueSelector
-                Layout.fillWidth: true
+                Layout.minimumWidth: 110
+                Layout.preferredWidth: Math.max(120, root.cardWidth * 0.34)
+                Layout.maximumWidth: Math.max(140, root.cardWidth * 0.42)
+                popup.width: Math.max(260, root.cardWidth * 0.64)
                 enabled: root.operatorIndex >= 0 && !root.valuesLoading
                 model: root.visibleValues
                 displayText: root.valuesLoading ? "Carregando" : "Valor"
@@ -140,21 +145,21 @@ FilterCard {
             }
 
             ActionButton {
-                text: root.expandedValues ? "Menos" : "Mais"
-                implicitWidth: 52
+                text: root.expandedValues ? "-" : "+"
+                implicitWidth: 34
                 enabled: root.hasMoreValues || root.expandedValues
                 ToolTip.visible: hovered
-                ToolTip.text: root.expandedValues ? qsTr("Mostrar menos valores") : qsTr("Mostrar mais valores")
+                ToolTip.text: root.expandedValues ? "Mostrar menos valores" : "Mostrar mais valores"
                 ToolTip.delay: 0
                 onClicked: root.expandedValues = !root.expandedValues
             }
 
             ActionButton {
-                text: "Lista"
-                implicitWidth: 56
+                text: "..."
+                implicitWidth: 34
                 enabled: !root.valuesLoading
                 ToolTip.visible: hovered
-                ToolTip.text: qsTr("Escolher valores")
+                ToolTip.text: "Escolher valores"
                 ToolTip.delay: 0
                 onClicked: {
                     if (root.allValues.length === 0)
@@ -164,10 +169,10 @@ FilterCard {
                 }
             }
             ActionButton {
-                text: "X"
+                text: "x"
                 implicitWidth: 30
                 ToolTip.visible: hovered
-                ToolTip.text: qsTr("Limpar filtro")
+                ToolTip.text: "Limpar filtro"
                 ToolTip.delay: 0
                 onClicked: root.textFilterClearRequested()
             }

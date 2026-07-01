@@ -59,30 +59,40 @@ namespace ssa::presentation {
     }
 
     void FilterPanelDistinctValuesController::refreshColumnValueOptions() {
-        requestColumnValueOptionsFor(state_.columnKey());
+        requestColumnValueOptionsFor(state_.columnKey(), 0);
     }
 
     void FilterPanelDistinctValuesController::refreshColumnValueOptionsFor(const QString& key) {
-        requestColumnValueOptionsFor(key);
+        requestColumnValueOptionsFor(key, 0);
+    }
+
+    void FilterPanelDistinctValuesController::preloadColumnValueOptionsFor(
+        const QStringList& keys, const std::uint64_t stateVersion) {
+        for (const auto& key : keys) {
+            requestColumnValueOptionsFor(key, stateVersion);
+        }
     }
 
     void FilterPanelDistinctValuesController::invalidateColumnValueRequests() {
         columnValueRefreshTimer_.stop();
-        columnValueRequest_.invalidate();
+        columnValueRequests_.clear();
+        columnValueOptionsFetcher_.clearPendingRequests();
     }
 
-    void FilterPanelDistinctValuesController::requestColumnValueOptionsFor(const QString& key) {
+    void FilterPanelDistinctValuesController::requestColumnValueOptionsFor(
+        const QString& key, const std::uint64_t stateVersion) {
         if (!queryService_) {
-            emit columnValueOptionsReady({}, key);
+            emit columnValueOptionsReady({}, key, stateVersion);
             return;
         }
         const auto request = requestBuilder_.columnValuesRequestFor(state_, key.toStdString());
         if (!request.has_value()) {
-            emit columnValueOptionsReady({}, key);
+            emit columnValueOptionsReady({}, key, stateVersion);
             return;
         }
 
-        const auto requestToken = columnValueRequest_.start(key);
+        const auto requestToken = ++nextColumnValueRequestToken_;
+        columnValueRequests_[requestToken] = ColumnRequestContext{key, stateVersion};
         columnValueOptionsFetcher_.requestValues(*request, requestToken);
     }
 
@@ -98,10 +108,13 @@ namespace ssa::presentation {
 
     void FilterPanelDistinctValuesController::onColumnValueOptionsReady(
         std::uint64_t requestToken, std::vector<std::string> values) {
-        if (!columnValueRequest_.accepts(requestToken)) {
+        const auto request = columnValueRequests_.find(requestToken);
+        if (request == columnValueRequests_.end()) {
             return;
         }
-        emit columnValueOptionsReady(std::move(values), columnValueRequest_.key);
+        const auto context = request->second;
+        columnValueRequests_.erase(request);
+        emit columnValueOptionsReady(std::move(values), context.key, context.stateVersion);
     }
 
     void FilterPanelDistinctValuesController::onQuickSectorOptionsReady(

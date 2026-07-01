@@ -13,7 +13,8 @@ namespace ssa::presentation {
         : QObject(parent), search_(this), filters_(queryService, this),
           details_(queryService, this), status_(this),
           tableModel_(std::string{domain::kSsaNumberColumnKey}, this),
-          orchestrator_(queryService, search_, filters_, details_, status_, tableModel_, this) {
+          orchestrator_(queryService, search_, filters_, details_, status_, tableModel_, this),
+          queryService_(std::move(queryService)) {
         connect(&orchestrator_, &BrowseOrchestrator::pageChanged, this, [this] {
             invalidateTableHeaders();
             emit pageChanged();
@@ -177,6 +178,15 @@ namespace ssa::presentation {
 
     bool BrowseViewModel::loadDetailsBySsaNumber(const QString& ssaNumber) {
         return details_.loadBySsaNumber(ssaNumber);
+    }
+
+    DetailsViewModel* BrowseViewModel::createDetailsWindowModel(const QString& ssaNumber,
+                                                                QObject* parent) {
+        auto* model = new DetailsViewModel(queryService_, parent);
+        if (!ssaNumber.trimmed().isEmpty()) {
+            model->loadBySsaNumber(ssaNumber);
+        }
+        return model;
     }
 
     void BrowseViewModel::applyPreferences(const ports::UserPreferencesSnapshot& snapshot) {

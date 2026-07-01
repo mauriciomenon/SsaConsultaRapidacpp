@@ -12,7 +12,7 @@ namespace ssa::presentation {
         constexpr qreal kNodeWidth = 100;
         constexpr qreal kNodeHeight = 42;
         constexpr qreal kXGap = 170;
-        constexpr qreal kYGap = 60;
+        constexpr qreal kYGap = kNodeHeight + 9;
         constexpr qreal kMargin = 8;
 
         QString mermaidEscaped(QString value) {

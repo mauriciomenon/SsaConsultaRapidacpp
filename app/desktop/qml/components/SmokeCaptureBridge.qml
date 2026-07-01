@@ -8,7 +8,29 @@ QtObject {
     required property var smokeController
     required property var preferencesDialog
     required property var filterPanel
+    required property var browseViewModel
     signal detailsWindowRequested
+    property int detailsOpenAttempts: 0
+
+    function requestDetailsWindowWhenReady() {
+        if (root.browseViewModel.details.selectedSsaNumber.length > 0) {
+            detailsOpenRetry.stop();
+            root.detailsWindowRequested();
+            return;
+        }
+        if (root.detailsOpenAttempts >= 30) {
+            detailsOpenRetry.stop();
+            return;
+        }
+        root.detailsOpenAttempts += 1;
+        detailsOpenRetry.restart();
+    }
+
+    readonly property Timer detailsOpenRetry: Timer {
+        interval: 100
+        repeat: false
+        onTriggered: root.requestDetailsWindowWhenReady()
+    }
 
     readonly property Connections controllerConnections: Connections {
         target: root.smokeController
@@ -22,7 +44,8 @@ QtObject {
         }
 
         function onOpenDetailsWindowRequested() {
-            root.detailsWindowRequested();
+            root.detailsOpenAttempts = 0;
+            root.requestDetailsWindowWhenReady();
         }
     }
 }

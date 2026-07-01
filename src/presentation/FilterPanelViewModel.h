@@ -82,6 +82,7 @@ namespace ssa::presentation {
         Q_INVOKABLE bool removeActiveFilter(const QVariantMap& entry);
         Q_INVOKABLE void refreshColumnValueOptions();
         Q_INVOKABLE void refreshColumnValueOptionsFor(const QString& key);
+        Q_INVOKABLE void preloadAdvancedColumnValueOptions();
         void setColumnFilters(std::map<std::string, std::string> filters);
         void applyPreferences(const ports::UserPreferencesSnapshot& snapshot);
         void writePreferences(ports::UserPreferencesSnapshot& snapshot) const;
@@ -103,7 +104,8 @@ namespace ssa::presentation {
         void refreshActiveFilters();
         void rebuildActiveFilters();
         void synchronizeFilterState(bool refreshSectorOptions);
-        void setColumnValueOptions(const std::vector<std::string>& options, const QString& key);
+        void setColumnValueOptions(const std::vector<std::string>& options, const QString& key,
+                                   std::uint64_t stateVersion);
         void publishFilterStateChange(bool quickSectorChanged = false);
         void scheduleActiveFilterRefresh();
         void scheduleColumnValueRefresh();
