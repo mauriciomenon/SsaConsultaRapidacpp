@@ -72,19 +72,21 @@ A feature is only marked `Present` when it has:
 - no direct SQL in QML or presentation;
 - no Qt dependency in `domain`, `query`, or `ports`.
 
-## 0.8.0 GUI Notes
+## 0.9.0 GUI Notes
 
 - `qtd_derivadas` remains an internal virtual column key/SQL alias, not an
   imported spreadsheet schema column.
 - The table label for that key is `Qtd. Derivadas`, and cells with values
   greater than zero open the dedicated details/graph window.
-- Relation navigation distinguishes `Origem`, `Atual`, `Derivada`, and
-  `Relacionada` in the details relation strip.
+- Relation navigation distinguishes `Origem`, `Derivada`, and `Relacionada`;
+  the current SSA is highlighted by position/status without a visible `Atual`
+  label.
 - The dedicated details window can be opened in multiple independent
-  instances, has breadcrumb navigation, exposes Mermaid explicitly, and keeps
-  PNG export.
+  instances, has breadcrumb navigation, copies Mermaid text through `Copiar`,
+  and keeps PNG export.
 - Advanced text filters use compact cards, preload queued distinct values, keep
   the value popup wider than the inline selector, and make include/exclude token
   semantics visible in the popup.
 - Table cells expose copy actions through the context menu, and details fields
-  are selectable so displayed text can be copied without opening SAM.
+  are prioritized and selectable so displayed text can be copied without
+  opening SAM.
