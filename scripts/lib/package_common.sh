@@ -26,9 +26,25 @@ package_repo_root_from_script() {
 package_project_version() {
   local repo_root="${1}"
   local version=""
-  version="$(sed -nE \
-    's/^[[:space:]]*project\(SSAConsultaRapidaCpp[[:space:]]+VERSION[[:space:]]+([0-9]+\.[0-9]+\.[0-9]+).*$/\1/p' \
-    "${repo_root}/CMakeLists.txt" | head -n 1)"
+  version="$(awk '
+    /^[[:space:]]*project[[:space:]]*\(/ { in_project = 1 }
+    in_project {
+      for (i = 1; i <= NF; ++i) {
+        token = $i
+        gsub(/[()]/, "", token)
+        if (want_version) {
+          print token
+          exit
+        }
+        if (token == "VERSION") {
+          want_version = 1
+        }
+      }
+      if ($0 ~ /\)/) {
+        in_project = 0
+      }
+    }
+  ' "${repo_root}/CMakeLists.txt" | head -n 1)"
   printf '%s\n' "${version}"
 }
 
