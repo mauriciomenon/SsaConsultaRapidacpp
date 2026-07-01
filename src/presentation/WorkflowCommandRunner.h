@@ -22,6 +22,7 @@ namespace ssa::presentation {
         void importExternalFiles(const std::vector<QString>& files);
         void rescan(ports::RescanMode mode);
         void syncDerivadas();
+        void compactDatabase();
 
       signals:
         void runningChanged(bool running);

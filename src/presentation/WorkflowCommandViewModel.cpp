@@ -62,6 +62,9 @@ namespace ssa::presentation {
         case Operation::SyncDerivadas:
             return {tr("Sincronizando derivadas..."), tr("Sincronizacao de derivadas concluida"),
                     tr("Falha ao sincronizar derivadas")};
+        case Operation::CompactDatabase:
+            return {tr("Compactando banco..."), tr("Banco compactado"),
+                    tr("Falha ao compactar banco")};
         }
         return {tr("Reescaneando dados..."), tr("Reescaneamento concluido"),
                 tr("Falha ao reescanear dados")};
@@ -113,6 +116,14 @@ namespace ssa::presentation {
         }
         operation_ = Operation::SyncDerivadas;
         runner_.syncDerivadas();
+    }
+
+    void WorkflowCommandViewModel::compactDatabase() {
+        if (runner_.running()) {
+            return;
+        }
+        operation_ = Operation::CompactDatabase;
+        runner_.compactDatabase();
     }
 
     void WorkflowCommandViewModel::startRescan(const ports::RescanMode mode) {

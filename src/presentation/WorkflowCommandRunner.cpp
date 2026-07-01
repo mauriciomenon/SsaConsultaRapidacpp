@@ -90,6 +90,26 @@ namespace ssa::presentation {
             }));
     }
 
+    void WorkflowCommandRunner::compactDatabase() {
+        if (running_) {
+            return;
+        }
+        if (!workflows_) {
+            emit this->finished(
+                {ports::WorkflowStatus::Failed, "compact database workflow is not configured"});
+            return;
+        }
+
+        running_ = true;
+        emit this->runningChanged(running_);
+
+        auto workflows = workflows_;
+        watcher_.setFuture(
+            QtConcurrent::run(QThreadPool::globalInstance(), [workflows = std::move(workflows)] {
+                return workflows->vacuumAnalyze();
+            }));
+    }
+
     void WorkflowCommandRunner::finish() {
         const ports::WorkflowResult result = watcher_.result();
         running_ = false;

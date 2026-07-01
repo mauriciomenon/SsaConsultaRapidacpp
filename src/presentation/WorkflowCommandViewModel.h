@@ -37,6 +37,7 @@ namespace ssa::presentation {
         void rescanIncremental();
         void rescanFull();
         void syncDerivadas();
+        void compactDatabase();
 
       private:
         struct OperationMessages {
@@ -55,6 +56,7 @@ namespace ssa::presentation {
             Rescan,
             ImportExternalFiles,
             SyncDerivadas,
+            CompactDatabase,
         };
 
         WorkflowCommandRunner runner_;

@@ -32,6 +32,7 @@ namespace {
 
     using ssa::tests::presentation_smoke::CapturingDerivadasPort;
     using ssa::tests::presentation_smoke::CapturingImportPort;
+    using ssa::tests::presentation_smoke::CapturingMaintenancePort;
     using ssa::tests::presentation_smoke::FakeCommands;
     using ssa::tests::presentation_smoke::FakePreferences;
     using ssa::tests::presentation_smoke::FakeRepository;
@@ -1079,6 +1080,23 @@ namespace {
             QTRY_COMPARE_WITH_TIMEOUT(derivadasPort->syncCalls(), std::size_t{1}, 1000);
             QTRY_COMPARE_WITH_TIMEOUT(model.browse()->status()->message(),
                                       QString("Sincronizacao de derivadas concluida"), 1000);
+            QCOMPARE(model.actions()->workflows()->lastSucceeded(), true);
+        }
+
+        void compact_database_runs_maintenance_workflow() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            auto maintenancePort = std::make_shared<CapturingMaintenancePort>();
+            auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(
+                std::make_shared<CapturingImportPort>(), nullptr, maintenancePort, nullptr);
+            ssa::presentation::MainViewModel model(service, commands, nullptr, nullptr, workflows);
+
+            model.actions()->workflows()->compactDatabase();
+
+            QTRY_COMPARE_WITH_TIMEOUT(maintenancePort->vacuumAnalyzeCalls(), std::size_t{1}, 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->status()->message(),
+                                      QString("Banco compactado"), 1000);
             QCOMPARE(model.actions()->workflows()->lastSucceeded(), true);
         }
 

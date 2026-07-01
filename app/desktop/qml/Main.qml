@@ -43,6 +43,22 @@ ApplicationWindow {
             }
             MenuSeparator {}
             MenuItem {
+                text: "Abrir pasta de entrada"
+                enabled: !root.vm.actions.commands.running
+                onTriggered: root.vm.actions.commands.openInputFolder()
+            }
+            MenuItem {
+                text: "Abrir pasta de processados"
+                enabled: !root.vm.actions.commands.running
+                onTriggered: root.vm.actions.commands.openProcessedFolder()
+            }
+            MenuItem {
+                text: "Abrir pasta de redundantes"
+                enabled: !root.vm.actions.commands.running
+                onTriggered: root.vm.actions.commands.openRedundantFolder()
+            }
+            MenuSeparator {}
+            MenuItem {
                 text: "Sair"
                 onTriggered: Qt.quit()
             }
@@ -151,11 +167,26 @@ ApplicationWindow {
                 enabled: !root.vm.actions.workflows.running
                 onTriggered: root.vm.actions.workflows.syncDerivadas()
             }
+            MenuItem {
+                text: "Compactar DB"
+                enabled: !root.vm.actions.workflows.running
+                onTriggered: root.vm.actions.workflows.compactDatabase()
+            }
             MenuSeparator {}
             MenuItem {
                 text: "Cancelar consulta"
                 enabled: root.vm.browse.status.loading
                 onTriggered: root.vm.requestFlow.cancelCurrentRequest()
+            }
+        }
+
+        Menu {
+            title: "Ajuda"
+
+            MenuItem {
+                text: "Guia de instalacao"
+                enabled: !root.vm.actions.commands.running
+                onTriggered: root.vm.actions.commands.openInstallationGuide()
             }
         }
     }

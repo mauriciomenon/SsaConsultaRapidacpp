@@ -300,4 +300,37 @@ namespace ssa::tests::presentation_smoke {
         ssa::ports::WorkflowResult nextResult_;
     };
 
+    class CapturingMaintenancePort final : public ssa::ports::IDatabaseMaintenancePort {
+      public:
+        ssa::ports::WorkflowResult resetDatabase() override {
+            return {ssa::ports::WorkflowStatus::Succeeded, "reset database requested"};
+        }
+
+        ssa::ports::WorkflowResult cleanData() override {
+            return {ssa::ports::WorkflowStatus::Succeeded, "clean data requested"};
+        }
+
+        ssa::ports::WorkflowResult vacuumAnalyze() override {
+            const std::scoped_lock lock(mutex_);
+            ++vacuumAnalyzeCalls_;
+            return nextResult_;
+        }
+
+        [[nodiscard]] std::size_t vacuumAnalyzeCalls() const {
+            const std::scoped_lock lock(mutex_);
+            return vacuumAnalyzeCalls_;
+        }
+
+        void setNextResult(ssa::ports::WorkflowResult result) {
+            const std::scoped_lock lock(mutex_);
+            nextResult_ = std::move(result);
+        }
+
+      private:
+        mutable std::mutex mutex_;
+        std::size_t vacuumAnalyzeCalls_{0};
+        ssa::ports::WorkflowResult nextResult_{ssa::ports::WorkflowStatus::Succeeded,
+                                               "database compacted"};
+    };
+
 } // namespace ssa::tests::presentation_smoke

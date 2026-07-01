@@ -98,6 +98,14 @@ Rectangle {
                         text: "Importar Filtros"
                         onTriggered: root.importFiltersRequested()
                     }
+                    MenuSeparator {}
+                    MenuItem {
+                        text: "Limpar Filtros"
+                        onTriggered: {
+                            root.filterViewModel.resetFilters();
+                            root.viewModel.apply();
+                        }
+                    }
                 }
             }
         }
