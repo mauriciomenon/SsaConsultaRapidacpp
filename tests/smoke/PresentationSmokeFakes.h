@@ -58,6 +58,8 @@ namespace ssa::tests::presentation_smoke {
         }
 
         std::size_t count(const ssa::domain::SsaPageRequest&) const override {
+            const std::scoped_lock lock(mutex_);
+            ++countCalls_;
             return totalRows_;
         }
 
@@ -93,12 +95,18 @@ namespace ssa::tests::presentation_smoke {
             return requests_;
         }
 
+        [[nodiscard]] std::size_t countCalls() const {
+            const std::scoped_lock lock(mutex_);
+            return countCalls_;
+        }
+
       private:
         std::chrono::milliseconds delay_;
         std::size_t totalRows_;
         std::size_t rowCount_;
         mutable std::mutex mutex_;
         mutable std::vector<ssa::domain::SsaPageRequest> requests_;
+        mutable std::size_t countCalls_{0};
     };
 
     class FakeCommands final : public ssa::ports::IExternalCommandPort {

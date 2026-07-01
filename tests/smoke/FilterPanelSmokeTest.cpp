@@ -15,6 +15,7 @@
 #include <QDate>
 
 #include <charconv>
+#include <chrono>
 #include <climits>
 #include <iterator>
 #include <map>
@@ -23,6 +24,7 @@
 #include <ranges>
 #include <string>
 #include <system_error>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -47,6 +49,9 @@ namespace {
 
     class FilterPanelRepository final : public ssa::ports::ISsaRepository {
       public:
+        explicit FilterPanelRepository(std::chrono::milliseconds distinctDelay = {})
+            : distinctDelay_(distinctDelay) {}
+
         ssa::domain::SsaPageResult page(const ssa::domain::SsaPageRequest& request) const override {
             return {{}, 0, request.pageIndex, request.pageSize};
         }
@@ -66,6 +71,9 @@ namespace {
 
         std::vector<std::string>
         distinctValues(const ssa::domain::DistinctValuesRequest& request) const override {
+            if (distinctDelay_.count() > 0) {
+                std::this_thread::sleep_for(distinctDelay_);
+            }
             {
                 const std::scoped_lock lock(mutex_);
                 distinctRequests_.push_back(request);
@@ -119,6 +127,7 @@ namespace {
         }
 
       private:
+        std::chrono::milliseconds distinctDelay_;
         mutable std::mutex mutex_;
         mutable std::vector<ssa::domain::DistinctValuesRequest> distinctRequests_;
     };
@@ -154,6 +163,53 @@ namespace {
                                       1000);
             QVERIFY(filters.columnValueOptionsFor("setor_executor").contains("MEG2"));
             QCOMPARE(filters.columnKey(), QString("situacao"));
+        }
+
+        void column_value_options_reset_hides_stale_cache_after_filter_change() {
+            auto repository = std::make_shared<FilterPanelRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::FilterPanelViewModel filters(service);
+            QSignalSpy resetSpy(&filters,
+                                &ssa::presentation::FilterPanelViewModel::columnValueOptionsReset);
+
+            filters.refreshColumnValueOptionsFor("setor_executor");
+            QTRY_COMPARE_WITH_TIMEOUT(filters.columnValueOptionsLoadingFor("setor_executor"), false,
+                                      1000);
+            QVERIFY(filters.columnValueOptionsFor("setor_executor").contains("MEG2"));
+            QVERIFY(
+                filters.columnValuePreviewOptionsFor("setor_executor", 1, false).contains("MEG2"));
+            QCOMPARE(filters.hasMoreColumnValueOptionsFor("setor_executor", 1), true);
+
+            filters.setColumnValue("APV");
+
+            QCOMPARE(resetSpy.count(), 1);
+            QCOMPARE(filters.columnValueOptionsFor("setor_executor"), QStringList{});
+            QCOMPARE(filters.columnValuePreviewOptionsFor("setor_executor", 1, false),
+                     QStringList{});
+            QCOMPARE(filters.hasMoreColumnValueOptionsFor("setor_executor", 1), false);
+
+            filters.refreshColumnValueOptionsFor("setor_executor");
+            QTRY_COMPARE_WITH_TIMEOUT(filters.columnValueOptionsLoadingFor("setor_executor"), false,
+                                      1000);
+            QVERIFY(filters.columnValueOptionsFor("setor_executor").contains("MEG2"));
+        }
+
+        void stale_inflight_column_value_options_are_dropped_after_filter_change() {
+            auto repository =
+                std::make_shared<FilterPanelRepository>(std::chrono::milliseconds{120});
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::FilterPanelViewModel filters(service);
+
+            filters.refreshColumnValueOptionsFor("setor_executor");
+            QCOMPARE(filters.columnValueOptionsLoadingFor("setor_executor"), true);
+
+            filters.setColumnValue("APV");
+            QTest::qWait(180);
+
+            QCOMPARE(filters.columnValueOptionsLoadingFor("setor_executor"), false);
+            QCOMPARE(filters.columnValueOptionsFor("setor_executor"), QStringList{});
+            QVERIFY(
+                !filters.columnValuePreviewOptionsFor("setor_executor", 1, false).contains("MEG2"));
         }
 
         void responsible_value_options_request_frequency_ordering() {

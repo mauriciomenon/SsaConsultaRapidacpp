@@ -62,8 +62,11 @@ namespace ssa::presentation {
         for (const auto& entry : relations) {
             const auto map = entry.toMap();
             const auto kind = map.value(QStringLiteral("kind")).toString();
+            const auto role = map.value(QStringLiteral("role")).toString();
             const auto ssa = map.value(QStringLiteral("ssa")).toString();
-            if (ssa.isEmpty() || kind != QStringLiteral("Derivada de")) {
+            const bool isParent = role == QStringLiteral("parent") ||
+                                  (role.isEmpty() && kind == QStringLiteral("Derivada de"));
+            if (ssa.isEmpty() || !isParent) {
                 continue;
             }
             if (seenAncestors.insert(ssa.toStdString()).second) {
@@ -82,9 +85,13 @@ namespace ssa::presentation {
         for (const auto& entry : relations) {
             const auto map = entry.toMap();
             const auto kind = map.value(QStringLiteral("kind")).toString();
+            const auto role = map.value(QStringLiteral("role")).toString();
             const auto ssa = map.value(QStringLiteral("ssa")).toString();
-            if (ssa.isEmpty() || kind == QStringLiteral("Atual") ||
-                kind == QStringLiteral("Derivada de")) {
+            const bool isCurrent = role == QStringLiteral("current") ||
+                                   (role.isEmpty() && kind == QStringLiteral("Atual"));
+            const bool isParent = role == QStringLiteral("parent") ||
+                                  (role.isEmpty() && kind == QStringLiteral("Derivada de"));
+            if (ssa.isEmpty() || isCurrent || isParent) {
                 continue;
             }
             if (seenChildren.insert(ssa.toStdString()).second) {

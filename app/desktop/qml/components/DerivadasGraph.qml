@@ -96,4 +96,11 @@ Flickable {
             canvas.requestPaint();
         }
     }
+
+    Connections {
+        target: Theme
+        function onThemeNameChanged() {
+            canvas.requestPaint();
+        }
+    }
 }

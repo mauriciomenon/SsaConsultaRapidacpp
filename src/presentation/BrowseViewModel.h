@@ -73,6 +73,7 @@ namespace ssa::presentation {
         void writePreferences(ports::UserPreferencesSnapshot& snapshot) const;
         void applyColumnSettings(std::vector<std::string> visibleColumns,
                                  std::map<std::string, int> columnWidths);
+        void invalidateTotalRowsAll();
 
       signals:
         void pageChanged();

@@ -6,6 +6,7 @@
 
 #include <QVariantMap>
 
+#include <algorithm>
 #include <utility>
 
 namespace ssa::presentation {
@@ -24,10 +25,23 @@ namespace ssa::presentation {
             return {};
         }
 
+        QString relationRole(const domain::SsaRelationKind kind) {
+            switch (kind) {
+            case domain::SsaRelationKind::Current:
+                return QStringLiteral("current");
+            case domain::SsaRelationKind::DerivedFrom:
+                return QStringLiteral("parent");
+            case domain::SsaRelationKind::Related:
+                return QStringLiteral("related");
+            }
+            return {};
+        }
+
         QVariantMap relationMap(const domain::SsaRelationItem& relation,
                                 const std::string_view status) {
             QVariantMap item;
             item.insert(QStringLiteral("kind"), relationKindLabel(relation.kind));
+            item.insert(QStringLiteral("role"), relationRole(relation.kind));
             item.insert(QStringLiteral("ssa"), QString::fromStdString(relation.number));
             if (!status.empty()) {
                 item.insert(
@@ -59,6 +73,7 @@ namespace ssa::presentation {
             for (const auto& child : children) {
                 QVariantMap item;
                 item.insert(QStringLiteral("kind"), QStringLiteral("Der."));
+                item.insert(QStringLiteral("role"), QStringLiteral("child"));
                 item.insert(QStringLiteral("ssa"), QString::fromStdString(child.number));
                 if (!child.situacao.empty()) {
                     item.insert(QStringLiteral("status"), QString::fromStdString(child.situacao));
@@ -189,11 +204,14 @@ namespace ssa::presentation {
         // the UI must reflect the user's position in the chain.
         setCurrentRelationIndex(index);
         if (!ssa.isEmpty() && ssa != selectedSsa_) {
-            loadBySsaNumber(ssa);
+            const bool loaded = loadBySsaNumber(ssa);
+            if (!loaded) {
+                return;
+            }
             // loadBySsaNumber resets the index to 0 (Current node of the loaded
-            // SSA). Restore the navigation index so the user keeps walking the
-            // original chain.
-            setCurrentRelationIndex(index);
+            // SSA). Keep the chain position only when it still exists.
+            const int lastIndex = std::max(0, relationCount() - 1);
+            setCurrentRelationIndex(std::min(index, lastIndex));
         }
     }
 

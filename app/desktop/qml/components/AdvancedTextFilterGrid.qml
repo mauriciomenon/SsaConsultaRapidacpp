@@ -10,9 +10,10 @@ GridView {
     readonly property var emptyValues: []
 
     Layout.fillWidth: true
-    Layout.preferredHeight: Math.min(380, Math.max(cellHeight, contentHeight))
+    Layout.preferredHeight: Math.max(cellHeight, contentHeight)
     Layout.minimumWidth: 0
     clip: true
+    interactive: false
     model: root.textFilters.cardStates
     cellWidth: width >= 960 ? Math.floor(width / 3) : (width >= 640 ? Math.floor(width / 2) : width)
     cellHeight: 84

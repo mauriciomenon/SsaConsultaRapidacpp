@@ -10,7 +10,7 @@ import SsaConsultaRapida
 ApplicationWindow {
     id: root
     property var detailsViewModel: null
-    title: detailsViewModel ? "Detalhes da SSA " + detailsViewModel.title : "Detalhes da SSA"
+    title: detailsViewModel && detailsViewModel.selectedSsaNumber.length > 0 ? "Detalhes da SSA " + detailsViewModel.selectedSsaNumber : "Detalhes da SSA"
     width: 760
     height: 620
     minimumWidth: 520

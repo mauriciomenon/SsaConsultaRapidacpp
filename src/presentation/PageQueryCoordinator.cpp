@@ -62,6 +62,11 @@ namespace ssa::presentation {
         pendingRequest_.reset();
     }
 
+    void PageQueryCoordinator::invalidateTotalRowsAll() {
+        totalRowsAllKnown_ = false;
+        totalRowsAll_ = 0;
+    }
+
     void PageQueryCoordinator::start(domain::SsaPageRequest request) {
         activeRequest_ = request;
         requestRunning_ = true;

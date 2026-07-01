@@ -22,8 +22,11 @@
 #include <QVariantMap>
 #include <QtTest>
 
+#include <map>
 #include <memory>
+#include <optional>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -33,6 +36,57 @@ namespace {
     using ssa::tests::presentation_smoke::FakePreferences;
     using ssa::tests::presentation_smoke::FakeRepository;
     using ssa::tests::presentation_smoke::FakeRepositoryConfig;
+
+    class DetailsRelationRepository final : public ssa::ports::ISsaRepository {
+      public:
+        ssa::domain::SsaPageResult page(const ssa::domain::SsaPageRequest& request) const override {
+            return {{}, 0, request.pageIndex, request.pageSize};
+        }
+
+        std::size_t count(const ssa::domain::SsaPageRequest&) const override {
+            return 0;
+        }
+
+        std::optional<ssa::domain::SsaRecord>
+        recordBySsaNumber(const ssa::domain::SsaNumber& number) const override {
+            const auto found = records_.find(number.value());
+            if (found == records_.end()) {
+                return std::nullopt;
+            }
+            return found->second;
+        }
+
+        std::vector<ssa::domain::SsaDerivadaEntry>
+        derivadasDiretas(const ssa::domain::SsaNumber& number) const override {
+            const auto found = children_.find(number.value());
+            if (found == children_.end()) {
+                return {};
+            }
+            return found->second;
+        }
+
+        std::vector<std::string>
+        distinctValues(const ssa::domain::DistinctValuesRequest&) const override {
+            return {};
+        }
+
+        ssa::ports::SsaReadResult readAll(const ssa::domain::SsaPageRequest&,
+                                          ssa::ports::SsaRecordConsumer) const override {
+            return {0, {}};
+        }
+
+        void setRecord(std::string number, ssa::domain::SsaRecord record) {
+            records_.insert_or_assign(std::move(number), std::move(record));
+        }
+
+        void setChildren(std::string number, std::vector<ssa::domain::SsaDerivadaEntry> children) {
+            children_.insert_or_assign(std::move(number), std::move(children));
+        }
+
+      private:
+        std::map<std::string, ssa::domain::SsaRecord> records_;
+        std::map<std::string, std::vector<ssa::domain::SsaDerivadaEntry>> children_;
+    };
 
     class PresentationSmokeTest final : public QObject {
         Q_OBJECT
@@ -162,6 +216,26 @@ namespace {
             QCOMPARE(details.currentRelationIndex(), 1);
         }
 
+        void details_load_relation_clamps_index_after_successful_shorter_chain_load() {
+            auto repository = std::make_shared<DetailsRelationRepository>();
+            repository->setRecord("202500001", ssa::domain::SsaRecord{{{"numero_ssa", "202500001"},
+                                                                       {"situacao", "APV"}}});
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::DetailsViewModel details(service);
+
+            details.setRecord(ssa::domain::SsaRecord{
+                {{"numero_ssa", "202500003"}, {"situacao", "APV"}, {"derivada_de", "202500001"}}});
+
+            QCOMPARE(details.relationCount(), 2);
+            details.selectNextRelation();
+
+            QCOMPARE(details.selectedSsa(), QString("202500001"));
+            QCOMPARE(details.relationCount(), 1);
+            QCOMPARE(details.currentRelationIndex(), 0);
+            QVERIFY(!details.canSelectNextRelation());
+            QVERIFY(!details.canSelectPreviousRelation());
+        }
+
         void search_apply_signal_reloads_table() {
             auto repository = std::make_shared<FakeRepository>();
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
@@ -278,6 +352,34 @@ namespace {
             QCOMPARE(edges.at(0).toMap().value("dashed"), false);
             // Second edge: target -> child (dashed)
             QCOMPARE(edges.at(1).toMap().value("dashed"), true);
+        }
+
+        void derivadas_graph_model_uses_details_view_model_relation_roles() {
+            auto repository = std::make_shared<DetailsRelationRepository>();
+            repository->setChildren("202500003", {{"202500004", "STE"}});
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::DetailsViewModel details(service);
+
+            details.setRecord(ssa::domain::SsaRecord{
+                {{"numero_ssa", "202500003"}, {"situacao", "APV"}, {"derivada_de", "202500001"}}});
+
+            const auto relations = details.relations();
+            QCOMPARE(relations.size(), 3);
+            QCOMPARE(relations.at(1).toMap().value("kind").toString(), QString("Der."));
+            QCOMPARE(relations.at(1).toMap().value("role").toString(), QString("parent"));
+            QCOMPARE(relations.at(2).toMap().value("role").toString(), QString("child"));
+
+            const auto* graph = details.graphModel();
+            QCOMPARE(graph->target(), QString("202500003"));
+            QCOMPARE(graph->rowCount(), 3);
+            QCOMPARE(graph->nodeSsa(0), QString("202500001"));
+            QCOMPARE(graph->nodeIsTarget(0), false);
+            QCOMPARE(graph->nodeSsa(1), QString("202500003"));
+            QCOMPARE(graph->nodeIsTarget(1), true);
+            QCOMPARE(graph->nodeSsa(2), QString("202500004"));
+            QCOMPARE(graph->edges().size(), 2);
+            QCOMPARE(graph->edges().at(0).toMap().value("dashed"), false);
+            QCOMPARE(graph->edges().at(1).toMap().value("dashed"), true);
         }
 
         void derivadas_graph_model_clears_on_empty_target() {
@@ -978,6 +1080,25 @@ namespace {
             QTRY_COMPARE_WITH_TIMEOUT(model.browse()->status()->message(),
                                       QString("Sincronizacao de derivadas concluida"), 1000);
             QCOMPARE(model.actions()->workflows()->lastSucceeded(), true);
+        }
+
+        void workflow_success_invalidates_total_rows_all_before_refresh() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            auto derivadasPort = std::make_shared<CapturingDerivadasPort>();
+            auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(
+                std::make_shared<CapturingImportPort>(), nullptr, nullptr, derivadasPort);
+            ssa::presentation::MainViewModel model(service, commands, nullptr, nullptr, workflows);
+
+            model.browse()->load();
+            QTRY_COMPARE_WITH_TIMEOUT(repository->countCalls(), std::size_t{1}, 1000);
+
+            model.actions()->workflows()->syncDerivadas();
+
+            QTRY_COMPARE_WITH_TIMEOUT(repository->countCalls(), std::size_t{2}, 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->status()->message(),
+                                      QString("Sincronizacao de derivadas concluida"), 1000);
         }
 
         void sync_derivadas_reports_workflow_error() {

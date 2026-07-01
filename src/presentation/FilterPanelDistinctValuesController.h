@@ -31,6 +31,7 @@ namespace ssa::presentation {
         void refreshColumnValueOptions();
         Q_INVOKABLE void refreshColumnValueOptionsFor(const QString& key);
         void refreshQuickSectorOptions();
+        void invalidateColumnValueRequests();
 
       signals:
         void columnValueOptionsReady(std::vector<std::string> values, QString key);
@@ -42,6 +43,7 @@ namespace ssa::presentation {
             QString key;
 
             std::uint64_t start(QString requestKey = {});
+            void invalidate();
             [[nodiscard]] bool accepts(std::uint64_t requestToken) const;
         };
 

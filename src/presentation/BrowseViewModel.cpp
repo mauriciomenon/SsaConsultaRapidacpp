@@ -192,6 +192,10 @@ namespace ssa::presentation {
         orchestrator_.applyColumnSettings(std::move(visibleColumns), std::move(columnWidths));
     }
 
+    void BrowseViewModel::invalidateTotalRowsAll() {
+        orchestrator_.invalidateTotalRowsAll();
+    }
+
     void BrowseViewModel::load() {
         orchestrator_.load();
     }

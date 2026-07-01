@@ -38,6 +38,7 @@ namespace ssa::presentation {
 
         void run(domain::SsaPageRequest request);
         void cancel();
+        void invalidateTotalRowsAll();
 
       signals:
         void started();

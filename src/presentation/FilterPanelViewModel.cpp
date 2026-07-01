@@ -184,17 +184,26 @@ namespace ssa::presentation {
     }
 
     QStringList FilterPanelViewModel::columnValueOptionsFor(const QString& key) const {
+        if (!columnValueOptions_.hasFreshOptions(key, filterStateVersion_)) {
+            return {};
+        }
         return columnValueOptions_.optionsFor(key);
     }
 
     QStringList FilterPanelViewModel::columnValuePreviewOptionsFor(const QString& key,
                                                                    const int limit,
                                                                    const bool expanded) const {
+        if (!columnValueOptions_.hasFreshOptions(key, filterStateVersion_)) {
+            return {};
+        }
         return columnValueOptions_.previewOptionsFor(key, limit, expanded);
     }
 
     bool FilterPanelViewModel::hasMoreColumnValueOptionsFor(const QString& key,
                                                             const int limit) const {
+        if (!columnValueOptions_.hasFreshOptions(key, filterStateVersion_)) {
+            return false;
+        }
         return columnValueOptions_.hasMoreOptionsFor(key, limit);
     }
 
@@ -263,7 +272,11 @@ namespace ssa::presentation {
 
     void FilterPanelViewModel::publishFilterStateChange(const bool quickSectorChanged) {
         ++filterStateVersion_;
+        distinctValues_.invalidateColumnValueRequests();
         columnValueOptions_.clearLoading();
+        columnValueOptions_.touchVersion();
+        emit columnValueOptionsReset();
+        emit columnValueOptionsChanged();
         scheduleActiveFilterRefresh();
         scheduleColumnValueRefresh();
         if (!quickSectorChanged) {

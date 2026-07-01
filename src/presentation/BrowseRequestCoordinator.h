@@ -31,6 +31,7 @@ namespace ssa::presentation {
         [[nodiscard]] domain::SsaPageRequest currentRequest() const;
         void loadCurrentRequest();
         void cancelCurrentRequest();
+        void invalidateTotalRowsAll();
 
       signals:
         void pageChanged();

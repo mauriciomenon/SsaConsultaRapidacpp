@@ -20,6 +20,11 @@ namespace ssa::presentation {
         return token;
     }
 
+    void FilterPanelDistinctValuesController::DistinctValueRequestContext::invalidate() {
+        ++token;
+        key.clear();
+    }
+
     bool FilterPanelDistinctValuesController::DistinctValueRequestContext::accepts(
         std::uint64_t requestToken) const {
         return requestToken == token;
@@ -59,6 +64,11 @@ namespace ssa::presentation {
 
     void FilterPanelDistinctValuesController::refreshColumnValueOptionsFor(const QString& key) {
         requestColumnValueOptionsFor(key);
+    }
+
+    void FilterPanelDistinctValuesController::invalidateColumnValueRequests() {
+        columnValueRefreshTimer_.stop();
+        columnValueRequest_.invalidate();
     }
 
     void FilterPanelDistinctValuesController::requestColumnValueOptionsFor(const QString& key) {

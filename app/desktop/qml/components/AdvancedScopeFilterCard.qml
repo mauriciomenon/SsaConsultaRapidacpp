@@ -15,6 +15,14 @@ FilterCard {
     Layout.preferredHeight: 168
 
     property var selectedReprogrammingValues: []
+    readonly property string reprogrammingColumnKey: "num_reprogramacoes"
+    property var reprogrammingValueOptions: []
+    property bool reprogrammingValueOptionsLoading: false
+
+    function reloadReprogrammingOptionState() {
+        reprogrammingValueOptions = root.filterViewModel.columnValueOptionsFor(reprogrammingColumnKey);
+        reprogrammingValueOptionsLoading = root.filterViewModel.columnValueOptionsLoadingFor(reprogrammingColumnKey);
+    }
 
     function containsSelected(value) {
         return selectedReprogrammingValues.indexOf(value) >= 0;
@@ -28,6 +36,19 @@ FilterCard {
         if (!checked && index >= 0)
             values.splice(index, 1);
         selectedReprogrammingValues = values;
+    }
+
+    Component.onCompleted: reloadReprogrammingOptionState()
+
+    Connections {
+        target: root.filterViewModel
+        function onColumnValueOptionsChangedFor(key) {
+            if (key === root.reprogrammingColumnKey)
+                root.reloadReprogrammingOptionState();
+        }
+        function onColumnValueOptionsReset() {
+            root.reloadReprogrammingOptionState();
+        }
     }
 
     GridLayout {
@@ -116,7 +137,8 @@ FilterCard {
             Layout.fillWidth: true
             text: root.derivation.reprogrammingValues.length > 0 ? root.derivation.reprogrammingValues.join(", ") : "Selecionar"
             onClicked: {
-                root.filterViewModel.refreshColumnValueOptionsFor("num_reprogramacoes");
+                root.reloadReprogrammingOptionState();
+                root.filterViewModel.refreshColumnValueOptionsFor(root.reprogrammingColumnKey);
                 root.selectedReprogrammingValues = root.derivation.reprogrammingValues.slice();
                 reprogrammingValuesPopup.open();
             }
@@ -173,15 +195,15 @@ FilterCard {
 
                     Label {
                         Layout.fillWidth: true
-                        visible: root.filterViewModel.columnValueOptionsFor("num_reprogramacoes").length === 0
-                        text: root.filterViewModel.columnValueOptionsLoadingFor("num_reprogramacoes") ? "Carregando" : "Sem valores"
+                        visible: root.reprogrammingValueOptions.length === 0
+                        text: root.reprogrammingValueOptionsLoading ? "Carregando" : "Sem valores"
                         color: Theme.mutedText
                         font.pixelSize: 11
                         horizontalAlignment: Text.AlignHCenter
                     }
 
                     Repeater {
-                        model: root.filterViewModel.columnValueOptionsFor("num_reprogramacoes")
+                        model: root.reprogrammingValueOptions
 
                         AppCheckBox {
                             required property string modelData

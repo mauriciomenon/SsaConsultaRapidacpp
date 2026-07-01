@@ -44,6 +44,10 @@ namespace ssa::presentation {
         pageLifecycle_.markRequestCanceled();
     }
 
+    void BrowseRequestCoordinator::invalidateTotalRowsAll() {
+        pageQueries_.invalidateTotalRowsAll();
+    }
+
     domain::SsaPageRequest BrowseRequestCoordinator::buildRequest() const {
         auto* sector = qobject_cast<FilterPanelSectorViewModel*>(filters_.sector());
         return queryState_.buildRequest(search_.text().toStdString(), filters_.columnFilters(),

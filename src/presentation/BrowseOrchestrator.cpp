@@ -124,6 +124,10 @@ namespace ssa::presentation {
         }
     }
 
+    void BrowseOrchestrator::invalidateTotalRowsAll() {
+        requestCoordinator_.invalidateTotalRowsAll();
+    }
+
     void BrowseOrchestrator::load() {
         selectionCoordinator_.clearSelection();
         requestCoordinator_.loadCurrentRequest();
