@@ -45,6 +45,7 @@ namespace ssa::presentation {
         std::shared_ptr<std::vector<std::string>> activeResult_;
         std::mutex resultMutex_;
         std::uint64_t activeRequestToken_{0};
+        bool activeRequestInFlight_{false};
         // When a request arrives while a worker is running, it is queued here and
         // dispatched when the worker finishes, instead of cancel+setFuture which
         // races the runnable vptr.

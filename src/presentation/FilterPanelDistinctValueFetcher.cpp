@@ -44,7 +44,7 @@ namespace ssa::presentation {
         // previous runnable may still be constructing/running and racing its vptr
         // with the new setFuture call (TSan: data race on vptr). Instead, queue
         // this one to run when the current worker finishes.
-        if (watcher_.isRunning()) {
+        if (activeRequestInFlight_) {
             const auto sameColumn = [&request](const PendingRequest& pending) {
                 return pending.request.columnKey == request.columnKey;
             };
@@ -63,6 +63,8 @@ namespace ssa::presentation {
 
     void FilterPanelDistinctValueFetcher::startWorker(const domain::DistinctValuesRequest& request,
                                                       std::uint64_t requestToken) {
+        activeRequestInFlight_ = true;
+        activeRequestToken_ = requestToken;
         activeCancelToken_ = std::make_shared<std::atomic_bool>(false);
         const auto cancelToken = activeCancelToken_;
         const auto service = queryService_;
@@ -84,7 +86,6 @@ namespace ssa::presentation {
                 }
                 *result = service->distinctValues(requestCopy);
             }));
-        activeRequestToken_ = requestToken;
     }
 
     void FilterPanelDistinctValueFetcher::onWatcherFinished() {
@@ -109,6 +110,7 @@ namespace ssa::presentation {
             emit this->valuesReady(activeRequestToken_, std::move(values));
         }
         activeCancelToken_.reset();
+        activeRequestInFlight_ = false;
         if (!pendingRequests_.empty()) {
             auto pending = std::move(pendingRequests_.front());
             pendingRequests_.pop_front();

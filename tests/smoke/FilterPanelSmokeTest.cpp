@@ -168,21 +168,23 @@ namespace {
         }
 
         void advanced_value_options_preload_queues_visible_card_values() {
-            auto repository = std::make_shared<FilterPanelRepository>();
-            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
-            ssa::presentation::FilterPanelViewModel filters(service);
+            for (int iteration = 0; iteration < 10; ++iteration) {
+                auto repository = std::make_shared<FilterPanelRepository>();
+                auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+                ssa::presentation::FilterPanelViewModel filters(service);
 
-            filters.preloadAdvancedColumnValueOptions();
+                filters.preloadAdvancedColumnValueOptions();
 
-            QCOMPARE(filters.columnValueOptionsLoadingFor("setor_executor"), true);
-            QTRY_VERIFY_WITH_TIMEOUT(
-                filters.columnValueOptionsFor("setor_executor").contains("MEG2"), 10000);
-            QCOMPARE(filters.columnValueOptionsLoadingFor("setor_executor"), false);
-            QVERIFY(filters.columnValueOptionsFor("setor_executor").contains("MEG2"));
-            QTRY_VERIFY_WITH_TIMEOUT(
-                filters.columnValueOptionsFor("num_reprogramacoes").contains("1"), 10000);
-            QCOMPARE(filters.columnValueOptionsLoadingFor("num_reprogramacoes"), false);
-            QVERIFY(filters.columnValueOptionsFor("num_reprogramacoes").contains("1"));
+                QCOMPARE(filters.columnValueOptionsLoadingFor("setor_executor"), true);
+                QTRY_VERIFY_WITH_TIMEOUT(
+                    filters.columnValueOptionsFor("setor_executor").contains("MEG2"), 10000);
+                QCOMPARE(filters.columnValueOptionsLoadingFor("setor_executor"), false);
+                QVERIFY(filters.columnValueOptionsFor("setor_executor").contains("MEG2"));
+                QTRY_VERIFY_WITH_TIMEOUT(
+                    filters.columnValueOptionsFor("num_reprogramacoes").contains("1"), 10000);
+                QCOMPARE(filters.columnValueOptionsLoadingFor("num_reprogramacoes"), false);
+                QVERIFY(filters.columnValueOptionsFor("num_reprogramacoes").contains("1"));
+            }
         }
 
         void column_value_options_reset_hides_stale_cache_after_filter_change() {
