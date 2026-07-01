@@ -212,19 +212,19 @@ TEST_CASE("sql query builder binds distinct values limit") {
     REQUIRE(query.bindings.back() == "37");
 }
 
-TEST_CASE("sql query builder can order distinct values by filtered frequency") {
+TEST_CASE("sql query builder orders distinct values by display priority before limit") {
     ssa::domain::DistinctValuesRequest request;
     request.columnKey = "responsavel_execucao";
     request.limit = 25;
-    request.orderByFrequency = true;
 
     const auto query = ssa::query::SqlQueryBuilder{}.buildDistinctValues(request);
 
-    REQUIRE(query.sql.find("SELECT DISTINCT") == std::string::npos);
-    // Projection/grouping use the trimmed expression so whitespace variants collapse.
-    REQUIRE(query.sql.find("GROUP BY TRIM(COALESCE(\"responsavel_execucao\", ''))") !=
+    REQUIRE(query.sql.find("SELECT DISTINCT") != std::string::npos);
+    REQUIRE(query.sql.find("CASE UPPER(TRIM(COALESCE(\"responsavel_execucao\", '')))") !=
             std::string::npos);
-    REQUIRE(query.sql.find("ORDER BY COUNT(*) DESC") != std::string::npos);
+    REQUIRE(query.sql.find("WHEN 'IEE3' THEN 0") != std::string::npos);
+    REQUIRE(query.sql.find("WHEN 'IEE1' THEN 1") != std::string::npos);
+    REQUIRE(query.sql.find("COLLATE NOCASE ASC") != std::string::npos);
     REQUIRE(query.bindings.back() == "25");
 }
 

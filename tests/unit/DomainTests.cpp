@@ -58,10 +58,21 @@ TEST_CASE("column catalog exposes expanded advanced filter fields") {
 }
 
 TEST_CASE("column value priority policy recognizes SMIN and SMME prefixes") {
+    CHECK(ssa::domain::isPriorityColumnValue("IEE3"));
+    CHECK(ssa::domain::isPriorityColumnValue("MEL4"));
     CHECK(ssa::domain::isPriorityColumnValue("SMIN.DT"));
     CHECK(ssa::domain::isPriorityColumnValue("smme"));
     CHECK_FALSE(ssa::domain::isPriorityColumnValue("SMINX"));
     CHECK_FALSE(ssa::domain::isPriorityColumnValue("MEG2"));
+}
+
+TEST_CASE("column value priority policy orders display values") {
+    std::vector<std::string> values{"MEL3",  "ANA",  "IEE2", "IEE3", "MEL1",
+                                    "BRUNO", "IEE4", "IEE1", "MEG2"};
+    std::ranges::sort(values, ssa::domain::columnValueLessForDisplay);
+
+    REQUIRE(values == std::vector<std::string>{"IEE3", "IEE1", "IEE2", "IEE4", "MEL1", "MEL3",
+                                               "ANA", "BRUNO", "MEG2"});
 }
 
 TEST_CASE("sector hierarchy expands divisions and orders known sectors") {

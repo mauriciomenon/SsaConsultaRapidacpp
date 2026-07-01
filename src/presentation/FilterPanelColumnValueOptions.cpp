@@ -15,21 +15,14 @@ namespace ssa::presentation {
         constexpr std::size_t kMaxColumnValueOptionCacheEntries = 24;
 
         QStringList toColumnValueDisplayList(const std::vector<std::string>& values) {
-            QStringList priorityValues;
-            QStringList otherValues;
-            const auto capacity = static_cast<int>(values.size());
-            priorityValues.reserve(capacity);
-            otherValues.reserve(capacity);
-            for (const auto& value : values) {
-                auto displayValue = QString::fromStdString(value);
-                if (domain::isPriorityColumnValue(value)) {
-                    priorityValues.append(std::move(displayValue));
-                } else {
-                    otherValues.append(std::move(displayValue));
-                }
+            auto orderedValues = values;
+            std::ranges::sort(orderedValues, domain::columnValueLessForDisplay);
+            QStringList displayValues;
+            displayValues.reserve(static_cast<int>(orderedValues.size()));
+            for (const auto& value : orderedValues) {
+                displayValues.append(QString::fromStdString(value));
             }
-            priorityValues.append(otherValues);
-            return priorityValues;
+            return displayValues;
         }
 
     } // namespace

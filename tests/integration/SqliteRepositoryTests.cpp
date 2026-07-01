@@ -160,10 +160,22 @@ TEST_CASE_METHOD(SqliteRepositoryFixture, "sqlite repository returns details and
     REQUIRE(record.has_value());
     REQUIRE(record->valueOf("setor_executor") == "SMM");
 
+    executeSql(path, R"SQL(
+        INSERT INTO ssa_table VALUES
+            ('202500010','APV','','LOC-10','Area','EQ-X',202501,'2025-01-10','A','A','SEM','MEG2','Ana','Bruno','Caio','SAM','SYS','x.xlsx','2025-01-10','A','B',202502,202503,0,0),
+            ('202500011','APV','','LOC-11','Area','EQ-X',202501,'2025-01-11','A','A','SEM','IEE4','Ana','Bruno','Caio','SAM','SYS','x.xlsx','2025-01-11','A','B',202502,202503,0,0),
+            ('202500012','APV','','LOC-12','Area','EQ-X',202501,'2025-01-12','A','A','SEM','MEL2','Ana','Bruno','Caio','SAM','SYS','x.xlsx','2025-01-12','A','B',202502,202503,0,0),
+            ('202500013','APV','','LOC-13','Area','EQ-X',202501,'2025-01-13','A','A','SEM','IEE3','Ana','Bruno','Caio','SAM','SYS','x.xlsx','2025-01-13','A','B',202502,202503,0,0),
+            ('202500014','APV','','LOC-14','Area','EQ-X',202501,'2025-01-14','A','A','SEM','AAA','Ana','Bruno','Caio','SAM','SYS','x.xlsx','2025-01-14','A','B',202502,202503,0,0),
+            ('202500015','APV','','LOC-15','Area','EQ-X',202501,'2025-01-15','A','A','SEM','MEL1','Ana','Bruno','Caio','SAM','SYS','x.xlsx','2025-01-15','A','B',202502,202503,0,0),
+            ('202500016','APV','','LOC-16','Area','EQ-X',202501,'2025-01-16','A','A','SEM','IEE1','Ana','Bruno','Caio','SAM','SYS','x.xlsx','2025-01-16','A','B',202502,202503,0,0);
+    )SQL");
+
     ssa::domain::DistinctValuesRequest request;
     request.columnKey = "setor_executor";
     const auto values = repository.distinctValues(request);
-    REQUIRE_FALSE(values.empty());
+    REQUIRE(values == std::vector<std::string>{"IEE3", "IEE1", "IEE4", "MEL1", "MEL2", "AAA",
+                                               "MEG2", "SMM", "STE"});
 }
 
 TEST_CASE_METHOD(SqliteRepositoryFixture,

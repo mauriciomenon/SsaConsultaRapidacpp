@@ -4,6 +4,7 @@
 #include "presentation/AdvancedTextFilterViewModel.h"
 #include "presentation/AdvancedWeekFilterViewModel.h"
 #include "presentation/FilterPanelAdvancedViewModel.h"
+#include "presentation/FilterPanelColumnValueOptions.h"
 #include "presentation/FilterPanelDistinctValueRequestBuilder.h"
 #include "presentation/FilterPanelSectorViewModel.h"
 #include "presentation/FilterPanelState.h"
@@ -194,7 +195,7 @@ namespace {
                                       1000);
             QVERIFY(filters.columnValueOptionsFor("setor_executor").contains("MEG2"));
             QVERIFY(
-                filters.columnValuePreviewOptionsFor("setor_executor", 1, false).contains("MEG2"));
+                filters.columnValuePreviewOptionsFor("setor_executor", 2, false).contains("MEG2"));
             QCOMPARE(filters.hasMoreColumnValueOptionsFor("setor_executor", 1), true);
 
             filters.setColumnValue("APV");
@@ -234,7 +235,7 @@ namespace {
             QVERIFY(filters.columnValueOptionsFor("setor_executor").contains("MEG2"));
         }
 
-        void responsible_value_options_request_frequency_ordering() {
+        void responsible_value_options_request_display_ordering() {
             auto repository = std::make_shared<FilterPanelRepository>();
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
             ssa::presentation::FilterPanelViewModel filters(service);
@@ -245,8 +246,19 @@ namespace {
                                       false, 1000);
             const auto distinctRequests = repository->distinctRequests();
             QVERIFY(std::ranges::any_of(distinctRequests, [](const auto& request) {
-                return request.columnKey == "responsavel_execucao" && request.orderByFrequency;
+                return request.columnKey == "responsavel_execucao" && !request.orderByFrequency;
             }));
+        }
+
+        void column_value_options_display_priority_then_alphabetical_values() {
+            ssa::presentation::FilterPanelColumnValueOptions options;
+
+            options.store({"MEL3", "ANA", "IEE2", "IEE3", "MEL1", "BRUNO", "IEE4", "IEE1", "MEG2"},
+                          QStringLiteral("setor_executor"), 1);
+
+            QCOMPARE(options.optionsFor("setor_executor"),
+                     QStringList(
+                         {"IEE3", "IEE1", "IEE2", "IEE4", "MEL1", "MEL3", "ANA", "BRUNO", "MEG2"}));
         }
 
         void advanced_text_rows_cover_expanded_filter_fields() {

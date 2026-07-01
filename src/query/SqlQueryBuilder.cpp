@@ -119,12 +119,19 @@ namespace ssa::query {
             return sql.str();
         }
 
-        std::string distinctValuesOrderSql(const std::string& column,
-                                           const domain::DistinctValuesRequest& request) {
-            if (request.orderByFrequency) {
-                return " GROUP BY " + column + " ORDER BY COUNT(*) DESC, " + column + " ASC";
-            }
-            return " ORDER BY " + column + " ASC";
+        std::string distinctValuesOrderSql(const std::string& column) {
+            std::ostringstream sql;
+            sql << " ORDER BY CASE UPPER(" << column << ")"
+                << " WHEN 'IEE3' THEN 0"
+                << " WHEN 'IEE1' THEN 1"
+                << " WHEN 'IEE2' THEN 2"
+                << " WHEN 'IEE4' THEN 3"
+                << " WHEN 'MEL1' THEN 4"
+                << " WHEN 'MEL2' THEN 5"
+                << " WHEN 'MEL3' THEN 6"
+                << " WHEN 'MEL4' THEN 7"
+                << " ELSE 100 END, " << column << " COLLATE NOCASE ASC, " << column << " ASC";
+            return sql.str();
         }
 
         std::string singleQuotedSqlLiteral(const std::string& value) {
@@ -262,10 +269,10 @@ namespace ssa::query {
         expression.requiredTerms = request.filter.generalTerms;
         auto where = predicateBuilder_.build(expression, request.filter);
         std::ostringstream sql;
-        sql << "SELECT " << (request.orderByFrequency ? "" : "DISTINCT ") << projection << " FROM "
-            << quoteTableIdentifier(tableName_) << " ";
+        sql << "SELECT DISTINCT " << projection << " FROM " << quoteTableIdentifier(tableName_)
+            << " ";
         sql << "WHERE " << distinctValuesWhereSql(projection, where);
-        sql << distinctValuesOrderSql(projection, request) << " LIMIT ?";
+        sql << distinctValuesOrderSql(projection) << " LIMIT ?";
         auto bindings = std::move(where.bindings);
         bindings.push_back(std::to_string(request.limit));
         return {sql.str(), std::move(bindings)};
