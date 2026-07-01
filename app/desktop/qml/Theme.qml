@@ -331,7 +331,7 @@ QtObject {
     readonly property color dangerStrong: palette.dangerStrong
     readonly property color rowAlt: palette.rowAlt
     readonly property color rowSelected: palette.rowSelected
-    readonly property string fontFamily: "Arial"
+    readonly property string fontFamily: Qt.platform.os === "windows" ? "Segoe UI" : Qt.platform.os === "linux" ? "DejaVu Sans" : "Arial"
     readonly property int radius: 4
     readonly property int radiusSoft: 6
     readonly property int gap: 8

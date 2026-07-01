@@ -7,6 +7,7 @@
 #include <QQmlApplicationEngine>
 #include <QQuickStyle>
 #include <QTimer>
+#include <QtGlobal>
 
 #include <exception>
 #include <iostream>
@@ -17,7 +18,13 @@ int main(int argc, char* argv[]) {
     QGuiApplication::setApplicationName("SSA Consulta Rapida");
     QGuiApplication::setOrganizationName("Menon");
     QFont uiFont;
-    uiFont.setFamilies({"Arial", "Helvetica Neue", "DejaVu Sans", "Noto Sans", "Liberation Sans"});
+#if defined(Q_OS_MACOS)
+    uiFont.setFamilies({"Arial", "Helvetica Neue", "Helvetica"});
+#elif defined(Q_OS_WIN)
+    uiFont.setFamilies({"Segoe UI", "Arial"});
+#else
+    uiFont.setFamilies({"DejaVu Sans", "Noto Sans", "Liberation Sans", "Arial"});
+#endif
     QGuiApplication::setFont(uiFont);
     QQuickStyle::setStyle("Fusion");
 

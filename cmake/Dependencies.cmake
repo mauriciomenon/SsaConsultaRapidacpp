@@ -11,7 +11,9 @@ set(SSA_FETCHCACHE_DIR
     "${CMAKE_SOURCE_DIR}/.deps-cache"
     CACHE PATH "Persistent fetch cache for third-party deps")
 set(FETCHCONTENT_BASE_DIR "${SSA_FETCHCACHE_DIR}")
-set(FETCHCONTENT_UPDATES_DISCONNECTED ON)
+option(SSA_FETCHCONTENT_UPDATES_DISCONNECTED
+       "Reuse cached FetchContent deps without checking remote updates" ON)
+set(FETCHCONTENT_UPDATES_DISCONNECTED ${SSA_FETCHCONTENT_UPDATES_DISCONNECTED})
 
 FetchContent_Declare(
   miniz
