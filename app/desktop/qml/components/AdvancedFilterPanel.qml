@@ -25,21 +25,26 @@ Rectangle {
             width: parent.width
             spacing: 6
 
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 6
+
+                AdvancedMacroFilterCard {
+                    sectorHierarchy: root.advanced.sectorHierarchy
+                    macro: root.advanced.macro
+                    onApplyRequested: root.applyRequested()
+                }
+
+                AdvancedScopeFilterCard {
+                    filterViewModel: root.filterViewModel
+                    derivation: root.advanced.derivation
+                    onApplyRequested: root.applyRequested()
+                }
+            }
+
             AdvancedTextFilterGrid {
                 filterViewModel: root.filterViewModel
                 textFilters: root.advanced.text
-            }
-
-            AdvancedMacroFilterCard {
-                sectorHierarchy: root.advanced.sectorHierarchy
-                macro: root.advanced.macro
-                onApplyRequested: root.applyRequested()
-            }
-
-            AdvancedScopeFilterCard {
-                filterViewModel: root.filterViewModel
-                derivation: root.advanced.derivation
-                onApplyRequested: root.applyRequested()
             }
 
             AdvancedWeekFilterCard {

@@ -160,8 +160,8 @@ FilterCard {
             }
 
             ActionButton {
-                text: "..."
-                implicitWidth: 32
+                text: "Enter"
+                implicitWidth: 44
                 implicitHeight: Theme.controlHeight
                 padding: 0
                 enabled: root.operatorIndex >= 0
@@ -176,8 +176,8 @@ FilterCard {
                 }
             }
             ActionButton {
-                text: "x"
-                implicitWidth: 32
+                text: "Del"
+                implicitWidth: 34
                 implicitHeight: Theme.controlHeight
                 padding: 0
                 font.bold: true

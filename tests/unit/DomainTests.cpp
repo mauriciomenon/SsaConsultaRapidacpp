@@ -44,7 +44,7 @@ TEST_CASE("column catalog exposes expanded advanced filter fields") {
         return std::ranges::find(keys, key) != keys.end();
     };
 
-    REQUIRE(keys.size() >= 18);
+    REQUIRE(keys.size() == 14);
     REQUIRE(containsKey("setor_emissor"));
     REQUIRE(containsKey("setor_executor"));
     REQUIRE(containsKey("solicitante"));
@@ -52,6 +52,12 @@ TEST_CASE("column catalog exposes expanded advanced filter fields") {
     REQUIRE(containsKey("responsavel_execucao"));
     REQUIRE(containsKey("status_execucao_prazo"));
     REQUIRE(containsKey("situacao_da_parcial"));
+    REQUIRE_FALSE(containsKey("equipamento"));
+    REQUIRE_FALSE(containsKey("servico_origem"));
+    REQUIRE_FALSE(containsKey("sistema_origem"));
+    REQUIRE_FALSE(containsKey("justificativa"));
+    REQUIRE_FALSE(containsKey("parciais"));
+    REQUIRE_FALSE(containsKey("execucao_parcial"));
     for (const auto key : keys) {
         REQUIRE(ssa::domain::ColumnCatalog::contains(key));
     }

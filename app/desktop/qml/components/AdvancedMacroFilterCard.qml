@@ -12,15 +12,7 @@ FilterCard {
     signal applyRequested
 
     Layout.fillWidth: true
-    Layout.preferredHeight: 230
-
-    function divisionIndex() {
-        for (var index = 0; index < root.sectorHierarchy.divisions.length; ++index) {
-            if (root.sectorHierarchy.divisions[index].key === root.sectorHierarchy.selectedDivision)
-                return index;
-        }
-        return -1;
-    }
+    Layout.preferredHeight: root.macro.reportRows.length > 0 ? 156 : 42
 
     function macroIndex() {
         for (var index = 0; index < root.macro.options.length; ++index) {
@@ -32,41 +24,9 @@ FilterCard {
 
     GridLayout {
         anchors.fill: parent
-        columns: 4
+        columns: 3
         columnSpacing: Theme.gap
-        rowSpacing: 6
-
-        FilterFieldLabel {
-            text: "Divisao"
-        }
-        AppComboBox {
-            id: divisionSelector
-            Layout.fillWidth: true
-            textRole: "key"
-            valueRole: "key"
-            model: root.sectorHierarchy.divisions
-            currentIndex: root.divisionIndex()
-            displayText: currentIndex >= 0 ? currentText : "Selecionar"
-            onActivated: {
-                root.sectorHierarchy.applyDivision(currentValue);
-                root.applyRequested();
-            }
-        }
-        ActionButton {
-            text: "Limpar divisao"
-            implicitWidth: 120
-            onClicked: {
-                root.sectorHierarchy.clearDivision();
-                root.applyRequested();
-            }
-        }
-        Label {
-            Layout.fillWidth: true
-            text: root.sectorHierarchy.selectedDivision.length > 0 ? root.sectorHierarchy.selectedDivision : "Sem divisao"
-            color: root.sectorHierarchy.selectedDivision.length > 0 ? Theme.accentStrong : Theme.mutedText
-            font.pixelSize: 11
-            elide: Text.ElideRight
-        }
+        rowSpacing: 4
 
         FilterFieldLabel {
             text: "Macro"
@@ -84,7 +44,6 @@ FilterCard {
             }
         }
         Label {
-            Layout.columnSpan: 2
             Layout.fillWidth: true
             text: root.macro.reportTitle.length > 0 ? root.macro.reportTitle + ": " + root.macro.reportText : "Sem relatorio macro"
             color: root.macro.reportTitle.length > 0 ? Theme.accentStrong : Theme.mutedText
@@ -93,7 +52,7 @@ FilterCard {
         }
 
         ColumnLayout {
-            Layout.columnSpan: 4
+            Layout.columnSpan: 3
             Layout.fillWidth: true
             Layout.fillHeight: true
             spacing: 2

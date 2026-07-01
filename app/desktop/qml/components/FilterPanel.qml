@@ -8,7 +8,7 @@ import SsaConsultaRapida
 Rectangle {
     id: root
     required property var filterViewModel
-    property int selectedTabIndex: 0
+    property int selectedTabIndex: 1
     readonly property var advanced: filterViewModel.advanced
     readonly property string columnTabText: "Por coluna"
     readonly property string advancedTabText: "Avancados"

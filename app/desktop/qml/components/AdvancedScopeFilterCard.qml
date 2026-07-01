@@ -12,7 +12,7 @@ FilterCard {
     signal applyRequested
 
     Layout.fillWidth: true
-    Layout.preferredHeight: 168
+    Layout.preferredHeight: 88
 
     property var selectedReprogrammingValues: []
     readonly property string reprogrammingColumnKey: "num_reprogramacoes"
@@ -53,9 +53,9 @@ FilterCard {
 
     GridLayout {
         anchors.fill: parent
-        columns: 4
+        columns: 6
         columnSpacing: Theme.gap
-        rowSpacing: 6
+        rowSpacing: 4
 
         FilterFieldLabel {
             text: "Setor Executor"
@@ -78,7 +78,7 @@ FilterCard {
         }
         AppCheckBox {
             Layout.fillWidth: true
-            text: "Reprogramadas"
+            text: "Reprog."
             checked: root.derivation.onlyReprogrammed
             onToggled: {
                 root.derivation.onlyReprogrammed = checked;
@@ -103,17 +103,17 @@ FilterCard {
         }
         RowLayout {
             Layout.fillWidth: true
+            Layout.columnSpan: 2
 
             AppComboBox {
                 id: reprogrammingModeSelector
-                Layout.preferredWidth: 54
-                leftPadding: 0
-                rightPadding: 0
-                indicator: null
-                popup.width: 96
+                Layout.preferredWidth: 122
+                leftPadding: 8
+                rightPadding: 22
+                popup.width: 170
                 model: root.derivation.reprogrammingModeOptions
                 currentIndex: Math.max(0, root.derivation.reprogrammingModeOptions.indexOf(root.derivation.reprogrammingMode))
-                displayText: currentText === "lte" ? "<=" : currentText === "gte" ? ">=" : "="
+                displayText: currentText === "lte" ? "<= Menor" : currentText === "gte" ? ">= Maior" : "= Igual"
                 onActivated: {
                     root.derivation.reprogrammingMode = currentText;
                     root.applyRequested();
@@ -121,7 +121,7 @@ FilterCard {
                 delegate: ItemDelegate {
                     required property string modelData
                     width: reprogrammingModeSelector.width
-                    text: modelData === "lte" ? "<=" : modelData === "gte" ? ">=" : "="
+                    text: modelData === "lte" ? "<= Menor ou igual" : modelData === "gte" ? ">= Maior ou igual" : "= Igual"
                 }
             }
             AppTextField {
@@ -135,11 +135,11 @@ FilterCard {
         }
 
         FilterFieldLabel {
-            text: "Valores Reprog."
+            text: "Valores"
         }
         ActionButton {
             Layout.fillWidth: true
-            text: root.derivation.reprogrammingValues.length > 0 ? root.derivation.reprogrammingValues.join(", ") : "Selecionar"
+            text: root.derivation.reprogrammingValues.length > 0 ? root.derivation.reprogrammingValues.join(", ") : "Enter"
             onClicked: {
                 root.reloadReprogrammingOptionState();
                 root.filterViewModel.refreshColumnValueOptionsFor(root.reprogrammingColumnKey);
@@ -149,7 +149,7 @@ FilterCard {
         }
         ActionButton {
             Layout.fillWidth: true
-            text: "Limpar valores"
+            text: "Del"
             onClicked: {
                 root.derivation.reprogrammingValues = [];
                 root.applyRequested();

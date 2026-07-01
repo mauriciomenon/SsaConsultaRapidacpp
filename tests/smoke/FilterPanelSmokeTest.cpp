@@ -282,12 +282,18 @@ namespace {
                 return row.toMap().value("key").toString();
             });
 
-            QVERIFY(keys.size() >= 18);
+            QCOMPARE(keys.size(), 14);
             QVERIFY(keys.contains("setor_emissor"));
             QVERIFY(keys.contains("setor_executor"));
             QVERIFY(keys.contains("responsavel_execucao"));
             QVERIFY(keys.contains("status_execucao_prazo"));
             QVERIFY(keys.contains("situacao_da_parcial"));
+            QVERIFY(!keys.contains("equipamento"));
+            QVERIFY(!keys.contains("servico_origem"));
+            QVERIFY(!keys.contains("sistema_origem"));
+            QVERIFY(!keys.contains("justificativa"));
+            QVERIFY(!keys.contains("parciais"));
+            QVERIFY(!keys.contains("execucao_parcial"));
         }
 
         void advanced_week_validation_accepts_empty_and_rejects_out_of_range_values() {
