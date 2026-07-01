@@ -382,6 +382,7 @@ ApplicationWindow {
         active: false
         sourceComponent: SsaDetailsWindow {
             onClosing: detailsWindowLoader.active = false
+            onGraphNodeRequested: ssaNumber => root.vm.browse.loadDetailsBySsaNumber(ssaNumber)
         }
         onLoaded: {
             item.detailsViewModel = Qt.binding(() => root.vm.browse.details);

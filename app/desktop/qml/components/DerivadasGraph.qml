@@ -9,6 +9,29 @@ import SsaConsultaRapida
 Flickable {
     id: root
     required property var graphModel
+    signal nodeClicked(string ssaNumber)
+    signal exportFinished(bool succeeded)
+
+    function localPathFromUrl(fileUrl) {
+        let path = decodeURIComponent(String(fileUrl));
+        if (path.startsWith("file://")) {
+            path = path.substring(7);
+        }
+        if (Qt.platform.os === "windows" && path.length > 2 && path[0] === "/" && path[2] === ":") {
+            path = path.substring(1);
+        }
+        return path;
+    }
+
+    function savePng(fileUrl) {
+        if (!graphModel || graphModel.nodeCount === 0) {
+            root.exportFinished(false);
+            return;
+        }
+        canvas.grabToImage(result => {
+            root.exportFinished(result.saveToFile(root.localPathFromUrl(fileUrl)));
+        });
+    }
 
     contentWidth: Math.max(width, graphModel ? graphModel.graphWidth : 0)
     contentHeight: Math.max(height, graphModel ? graphModel.graphHeight : 0)
@@ -30,6 +53,25 @@ Flickable {
 
         readonly property real nodeWidth: 100
         readonly property real nodeHeight: 30
+
+        function nodeAt(pointX, pointY) {
+            const model = root.graphModel;
+            if (!model) {
+                return "";
+            }
+            const count = model.rowCount();
+            for (let i = 0; i < count; ++i) {
+                const center = model.nodeCenter(i);
+                const left = center.x - canvas.nodeWidth / 2;
+                const right = center.x + canvas.nodeWidth / 2;
+                const top = center.y - canvas.nodeHeight / 2;
+                const bottom = center.y + canvas.nodeHeight / 2;
+                if (pointX >= left && pointX <= right && pointY >= top && pointY <= bottom) {
+                    return model.nodeSsa(i);
+                }
+            }
+            return "";
+        }
 
         onPaint: {
             const ctx = getContext("2d");
@@ -86,6 +128,17 @@ Flickable {
                 ctx.textAlign = "center";
                 ctx.textBaseline = "middle";
                 ctx.fillText(ssa, cx, cy);
+            }
+        }
+
+        MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            onClicked: mouse => {
+                const ssaNumber = canvas.nodeAt(mouse.x, mouse.y);
+                if (ssaNumber.length > 0) {
+                    root.nodeClicked(ssaNumber);
+                }
             }
         }
     }
