@@ -262,12 +262,19 @@ package_copy_qt_resources() {
 
   if [[ -d "${plugins_src}" ]]; then
     mkdir -p "${plugins_dst}"
-    for sub in platforms imageformats iconengines styles wayland-decoration wayland-graphics-integration-client wayland-graphics-integration-server wayland-shell-integration platforminputcontexts; do
-      if [[ -d "${plugins_src}/${sub}" ]]; then
-        mkdir -p "${plugins_dst}/${sub}"
-        cp -fL "${plugins_src}/${sub}/"* "${plugins_dst}/${sub}/" 2>/dev/null || true
-      fi
-    done
+    (
+      shopt -s nullglob
+      for sub in platforms imageformats iconengines styles wayland-decoration wayland-graphics-integration-client wayland-graphics-integration-server wayland-shell-integration platforminputcontexts; do
+        if [[ -d "${plugins_src}/${sub}" ]]; then
+          local -a plugin_files=("${plugins_src}/${sub}/"*)
+          if [[ "${#plugin_files[@]}" -eq 0 ]]; then
+            continue
+          fi
+          mkdir -p "${plugins_dst}/${sub}"
+          cp -fL "${plugin_files[@]}" "${plugins_dst}/${sub}/"
+        fi
+      done
+    )
     # Plugins dependem de libs Qt (libQt6Gui, libQt6DBus, libQt6Wayland*, etc).
     # Copiar as deps transitivas de cada .so de plugin para o lib/ do bundle.
     local plugin_so
