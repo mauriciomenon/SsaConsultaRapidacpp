@@ -83,3 +83,8 @@ A feature is only marked `Present` when it has:
 - The dedicated details window can be opened in multiple independent
   instances, has breadcrumb navigation, exposes Mermaid explicitly, and keeps
   PNG export.
+- Advanced text filters use compact cards, preload queued distinct values, keep
+  the value popup wider than the inline selector, and make include/exclude token
+  semantics visible in the popup.
+- Table cells expose copy actions through the context menu, and details fields
+  are selectable so displayed text can be copied without opening SAM.
