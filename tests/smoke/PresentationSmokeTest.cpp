@@ -751,7 +751,7 @@ namespace {
 
             QVERIFY(columns.setColumnWidth(QStringLiteral("descricao_ssa"), 900));
 
-            QCOMPARE(columns.maxColumnWidth(), 1200);
+            QCOMPARE(columns.maxColumnWidth(), 2400);
             QCOMPARE(columns.columnWidths().at("descricao_ssa"), 900);
         }
 

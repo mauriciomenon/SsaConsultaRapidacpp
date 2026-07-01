@@ -13,7 +13,7 @@
 namespace ssa::presentation {
     namespace {
         constexpr int kMinColumnWidth = 80;
-        constexpr int kMaxColumnWidth = 1200;
+        constexpr int kMaxColumnWidth = 2400;
 
         [[nodiscard]] std::string toLower(const std::string_view text) {
             return QString::fromUtf8(text.data(), static_cast<qsizetype>(text.size()))
