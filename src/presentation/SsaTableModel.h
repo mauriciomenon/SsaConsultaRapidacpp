@@ -45,6 +45,7 @@ namespace ssa::presentation {
         Q_INVOKABLE [[nodiscard]] QVariantList columnWidths() const;
         Q_INVOKABLE [[nodiscard]] QVariantList tableColumns() const;
         Q_INVOKABLE [[nodiscard]] int fallbackColumnWidth() const;
+        Q_INVOKABLE [[nodiscard]] QString ssaNumberAt(int row) const;
         [[nodiscard]] std::optional<domain::SsaRecord> recordAt(int row) const;
         [[nodiscard]] QStringList columnKeys() const;
 

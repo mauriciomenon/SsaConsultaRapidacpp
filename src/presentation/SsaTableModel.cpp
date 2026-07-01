@@ -154,6 +154,15 @@ namespace ssa::presentation {
         return kFallbackTableColumnWidth;
     }
 
+    QString SsaTableModel::ssaNumberAt(const int row) const {
+        const auto record = recordAt(row);
+        if (!record.has_value()) {
+            return {};
+        }
+        const auto value = record->valueOf(domain::kSsaNumberColumnKey);
+        return QString::fromUtf8(value.data(), static_cast<qsizetype>(value.size()));
+    }
+
     bool SsaTableModel::hasColumn(const int column) const {
         if (column < 0) {
             return false;

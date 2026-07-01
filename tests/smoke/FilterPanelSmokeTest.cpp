@@ -175,11 +175,13 @@ namespace {
             filters.preloadAdvancedColumnValueOptions();
 
             QCOMPARE(filters.columnValueOptionsLoadingFor("setor_executor"), true);
-            QTRY_COMPARE_WITH_TIMEOUT(filters.columnValueOptionsLoadingFor("setor_executor"), false,
-                                      3000);
+            QTRY_VERIFY_WITH_TIMEOUT(
+                filters.columnValueOptionsFor("setor_executor").contains("MEG2"), 10000);
+            QCOMPARE(filters.columnValueOptionsLoadingFor("setor_executor"), false);
             QVERIFY(filters.columnValueOptionsFor("setor_executor").contains("MEG2"));
-            QTRY_COMPARE_WITH_TIMEOUT(filters.columnValueOptionsLoadingFor("num_reprogramacoes"),
-                                      false, 3000);
+            QTRY_VERIFY_WITH_TIMEOUT(
+                filters.columnValueOptionsFor("num_reprogramacoes").contains("1"), 10000);
+            QCOMPARE(filters.columnValueOptionsLoadingFor("num_reprogramacoes"), false);
             QVERIFY(filters.columnValueOptionsFor("num_reprogramacoes").contains("1"));
         }
 

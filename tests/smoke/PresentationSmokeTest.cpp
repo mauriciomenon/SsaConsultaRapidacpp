@@ -142,6 +142,8 @@ namespace {
             QCOMPARE(model.browse()->status()->loading(), false);
             QCOMPARE(model.browse()->tableModel()->columnLabel(0), QString("No SSA"));
             QVERIFY(model.browse()->tableModel()->columnWidth(0) > 0);
+            QCOMPARE(model.browse()->tableModel()->ssaNumberAt(0), QString("202500001"));
+            QCOMPARE(model.browse()->tableModel()->ssaNumberAt(99), QString());
         }
 
         void details_relation_current_carries_status_from_record() {
@@ -361,6 +363,11 @@ namespace {
             QVERIFY(mermaid.contains(QStringLiteral("flowchart LR")));
             QVERIFY(mermaid.contains(QStringLiteral("202500002\\nAPV")));
             QVERIFY(mermaid.contains(QStringLiteral("-.->")));
+
+            const auto svg = model.svg();
+            QVERIFY(svg.contains(QStringLiteral("<svg")));
+            QVERIFY(svg.contains(QStringLiteral("202500002")));
+            QVERIFY(svg.contains(QStringLiteral("stroke-dasharray")));
         }
 
         void derivadas_graph_model_uses_details_view_model_relation_roles() {

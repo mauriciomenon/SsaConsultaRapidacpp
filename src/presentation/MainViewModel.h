@@ -48,6 +48,7 @@ namespace ssa::presentation {
         [[nodiscard]] QObject* selectionFlow();
         [[nodiscard]] QObject* requestFlow();
         [[nodiscard]] QObject* preferenceFlow();
+        Q_INVOKABLE bool copyTextToClipboard(const QString& text);
 
       private:
         void connectPreferenceFlows();

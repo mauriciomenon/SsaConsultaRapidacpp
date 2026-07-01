@@ -29,6 +29,14 @@ namespace ssa::presentation {
             return mermaidEscaped(ssa + QStringLiteral("\n") + status);
         }
 
+        QString svgEscaped(QString value) {
+            value.replace(QStringLiteral("&"), QStringLiteral("&amp;"));
+            value.replace(QStringLiteral("<"), QStringLiteral("&lt;"));
+            value.replace(QStringLiteral(">"), QStringLiteral("&gt;"));
+            value.replace(QStringLiteral("\""), QStringLiteral("&quot;"));
+            return value;
+        }
+
     } // namespace
 
     DerivadasGraphModel::DerivadasGraphModel(QObject* parent) : QAbstractListModel(parent) {}
@@ -249,6 +257,77 @@ namespace ssa::presentation {
                 result += QStringLiteral("  class N%1 target\n").arg(static_cast<int>(index));
             }
         }
+        return result;
+    }
+
+    QString DerivadasGraphModel::svg() const {
+        const qreal width = std::max<qreal>(graphWidth_, kNodeWidth + 2 * kMargin);
+        const qreal height = std::max<qreal>(graphHeight_, kNodeHeight + 2 * kMargin);
+        QString result =
+            QStringLiteral("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"%1\" height=\"%2\" "
+                           "viewBox=\"0 0 %1 %2\">\n"
+                           "  <rect width=\"100%\" height=\"100%\" fill=\"#2f2a27\"/>\n")
+                .arg(width)
+                .arg(height);
+
+        std::unordered_map<std::string, QPointF> centerBySsa;
+        centerBySsa.reserve(nodes_.size());
+        for (const auto& node : nodes_) {
+            centerBySsa.emplace(node.ssa.toStdString(),
+                                QPointF(node.position.x() + kNodeWidth / 2.0,
+                                        node.position.y() + kNodeHeight / 2.0));
+        }
+
+        for (const auto& edge : edges_) {
+            const auto fromIt = centerBySsa.find(edge.from.toStdString());
+            const auto toIt = centerBySsa.find(edge.to.toStdString());
+            if (fromIt == centerBySsa.end() || toIt == centerBySsa.end()) {
+                continue;
+            }
+            result +=
+                QStringLiteral("  <line x1=\"%1\" y1=\"%2\" x2=\"%3\" y2=\"%4\" "
+                               "stroke=\"#8a8179\" stroke-width=\"1.5\"%5/>\n")
+                    .arg(fromIt->second.x())
+                    .arg(fromIt->second.y())
+                    .arg(toIt->second.x())
+                    .arg(toIt->second.y())
+                    .arg(edge.dashed ? QStringLiteral(" stroke-dasharray=\"6 4\"") : QString{});
+        }
+
+        for (const auto& node : nodes_) {
+            const QString fill =
+                node.isTarget ? QStringLiteral("#ffbf00") : QStringLiteral("#151a1a");
+            const QString stroke =
+                node.isTarget ? QStringLiteral("#4a3a00") : QStringLiteral("#7b6f66");
+            const QString textColor =
+                node.isTarget ? QStringLiteral("#1a1400") : QStringLiteral("#f5deb3");
+            result +=
+                QStringLiteral("  <rect x=\"%1\" y=\"%2\" width=\"%3\" height=\"%4\" rx=\"7\" "
+                               "fill=\"%5\" stroke=\"%6\" stroke-width=\"1.5\"/>\n")
+                    .arg(node.position.x())
+                    .arg(node.position.y())
+                    .arg(kNodeWidth)
+                    .arg(kNodeHeight)
+                    .arg(fill, stroke);
+            result +=
+                QStringLiteral("  <text x=\"%1\" y=\"%2\" text-anchor=\"middle\" "
+                               "font-family=\"sans-serif\" font-size=\"14\" font-weight=\"700\" "
+                               "fill=\"%3\">%4</text>\n")
+                    .arg(node.position.x() + kNodeWidth / 2.0)
+                    .arg(node.position.y() + 22)
+                    .arg(textColor, svgEscaped(node.ssa));
+            if (!node.status.isEmpty()) {
+                result += QStringLiteral(
+                              "  <text x=\"%1\" y=\"%2\" text-anchor=\"middle\" "
+                              "font-family=\"sans-serif\" font-size=\"12\" font-weight=\"700\" "
+                              "fill=\"%3\">%4</text>\n")
+                              .arg(node.position.x() + kNodeWidth / 2.0)
+                              .arg(node.position.y() + 40)
+                              .arg(textColor, svgEscaped(node.status));
+            }
+        }
+
+        result += QStringLiteral("</svg>\n");
         return result;
     }
 

@@ -12,6 +12,8 @@ Rectangle {
     required property string density
     signal openRequested
     signal configureColumnsRequested
+    signal copyDerivationSvgRequested
+    signal copyTextRequested(string text)
     signal navigateToRelationRequested(string ssaNumber)
     signal detailsWindowRequested
 
@@ -234,6 +236,7 @@ Rectangle {
                 readonly property bool isSelected: row === root.viewModel.currentRow
                 readonly property bool opensSam: columnConfig.opensSam === true
                 readonly property string cellText: displayValue === undefined || displayValue === "" ? "-" : String(displayValue)
+                readonly property string rowSsaNumber: root.viewModel.tableModel.ssaNumberAt(cellDelegate.row)
                 readonly property bool isDerivationLink: columnConfig.key === "derivada_de" && cellText !== "-"
                 readonly property bool opensDerivationGraph: columnConfig.key === "qtd_derivadas" && Number(cellText) > 0
 
@@ -288,9 +291,14 @@ Rectangle {
 
                 MouseArea {
                     anchors.fill: parent
+                    acceptedButtons: Qt.LeftButton | Qt.RightButton
                     cursorShape: cellDelegate.opensSam || cellDelegate.isDerivationLink || cellDelegate.opensDerivationGraph ? Qt.PointingHandCursor : Qt.ArrowCursor
-                    onClicked: {
+                    onClicked: function (mouse) {
                         root.viewModel.selectRow(cellDelegate.row);
+                        if (mouse.button === Qt.RightButton) {
+                            cellContextMenu.popup();
+                            return;
+                        }
                         if (cellDelegate.opensSam) {
                             root.openRequested();
                         } else if (cellDelegate.isDerivationLink) {
@@ -302,6 +310,34 @@ Rectangle {
                     onDoubleClicked: {
                         root.viewModel.selectRow(cellDelegate.row);
                         root.detailsWindowRequested();
+                    }
+                }
+
+                Menu {
+                    id: cellContextMenu
+
+                    MenuItem {
+                        text: "Copiar celula"
+                        onTriggered: root.copyTextRequested(cellDelegate.cellText)
+                    }
+                    MenuItem {
+                        text: "Copiar numero SSA"
+                        enabled: cellDelegate.rowSsaNumber.length > 0
+                        onTriggered: root.copyTextRequested(cellDelegate.rowSsaNumber)
+                    }
+                    MenuItem {
+                        text: "Copiar diagrama SVG"
+                        enabled: root.viewModel.details.graphModel.nodeCount > 0
+                        onTriggered: root.copyDerivationSvgRequested()
+                    }
+                    MenuSeparator {}
+                    MenuItem {
+                        text: "Abrir tela de detalhes"
+                        onTriggered: root.detailsWindowRequested()
+                    }
+                    MenuItem {
+                        text: "Alterar colunas visiveis"
+                        onTriggered: root.configureColumnsRequested()
                     }
                 }
             }

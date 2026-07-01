@@ -290,6 +290,8 @@ ApplicationWindow {
             columnSettings: root.vm.columns
             columnFlow: root.vm.columnFlow
             density: root.vm.ui.density
+            onCopyDerivationSvgRequested: root.vm.copyTextToClipboard(root.vm.browse.details.graphModel.svg)
+            onCopyTextRequested: text => root.vm.copyTextToClipboard(text)
             onOpenRequested: root.vm.selectionFlow.openSelectedSsa()
             onConfigureColumnsRequested: columnSelectorPopup.open()
             onNavigateToRelationRequested: ssaNumber => root.vm.selectionFlow.openSsa(ssaNumber)

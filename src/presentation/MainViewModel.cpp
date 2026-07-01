@@ -2,6 +2,9 @@
 
 #include "domain/SsaTypes.h"
 
+#include <QClipboard>
+#include <QGuiApplication>
+
 #include <utility>
 
 namespace ssa::presentation {
@@ -94,6 +97,19 @@ namespace ssa::presentation {
 
     QObject* MainViewModel::preferenceFlow() {
         return &preferencesFlow_;
+    }
+
+    bool MainViewModel::copyTextToClipboard(const QString& text) {
+        if (text.isEmpty()) {
+            return false;
+        }
+        auto* clipboard = QGuiApplication::clipboard();
+        if (clipboard == nullptr) {
+            return false;
+        }
+        clipboard->setText(text);
+        browse_.status()->setMessage(QStringLiteral("Texto copiado"));
+        return true;
     }
 
 } // namespace ssa::presentation
