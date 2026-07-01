@@ -32,6 +32,7 @@ namespace ssa::presentation {
             IsTargetRole,
             PositionRole,
             LabelRole,
+            RoleRole,
         };
 
         // Target stays fixed; edges are derived from the relation list passed in.
@@ -54,6 +55,7 @@ namespace ssa::presentation {
         Q_INVOKABLE [[nodiscard]] QString nodeSsa(int index) const;
         Q_INVOKABLE [[nodiscard]] QString nodeStatus(int index) const;
         Q_INVOKABLE [[nodiscard]] bool nodeIsTarget(int index) const;
+        Q_INVOKABLE [[nodiscard]] QString nodeRole(int index) const;
 
       signals:
         void graphChanged();
@@ -62,6 +64,7 @@ namespace ssa::presentation {
         struct GraphNode {
             QString ssa;
             QString status;
+            QString role;
             QPointF position;
             bool isTarget{false};
         };

@@ -17,6 +17,7 @@ ApplicationWindow {
     property var navigationHistory: []
     property int navigationIndex: -1
     signal graphNodeRequested(string ssaNumber)
+    signal copyTextRequested(string text)
     title: detailsViewModel && detailsViewModel.selectedSsaNumber.length > 0 ? "Detalhes da SSA " + detailsViewModel.selectedSsaNumber : "Detalhes da SSA"
     width: 920
     height: 780
@@ -52,7 +53,10 @@ ApplicationWindow {
     }
 
     function navigateHistory(offset) {
-        const nextIndex = root.navigationIndex + offset;
+        root.navigateHistoryTo(root.navigationIndex + offset);
+    }
+
+    function navigateHistoryTo(nextIndex) {
         if (!root.detailsViewModel || nextIndex < 0 || nextIndex >= root.navigationHistory.length)
             return;
         const ssaNumber = root.navigationHistory[nextIndex];
@@ -108,14 +112,62 @@ ApplicationWindow {
                 onClicked: root.navigateHistory(1)
             }
 
-            Label {
+            Flickable {
                 Layout.fillWidth: true
-                text: root.navigationHistory.length > 0 ? "Historico " + (root.navigationIndex + 1) + "/" + root.navigationHistory.length + ": " + root.breadcrumbText() : ""
-                color: Theme.mutedText
-                font.pixelSize: 12
-                font.bold: true
-                elide: Text.ElideMiddle
-                verticalAlignment: Text.AlignVCenter
+                Layout.preferredHeight: 26
+                clip: true
+                contentWidth: historyRow.width
+                contentHeight: historyRow.height
+                boundsBehavior: Flickable.StopAtBounds
+                flickableDirection: Flickable.HorizontalFlick
+
+                Row {
+                    id: historyRow
+                    spacing: 5
+                    height: 26
+
+                    Label {
+                        text: root.navigationHistory.length > 0 ? "Historico " + (root.navigationIndex + 1) + "/" + root.navigationHistory.length : ""
+                        color: Theme.mutedText
+                        font.pixelSize: 12
+                        font.bold: true
+                        verticalAlignment: Text.AlignVCenter
+                        height: 24
+                    }
+
+                    Repeater {
+                        model: root.navigationHistory
+
+                        delegate: Rectangle {
+                            id: historyChip
+                            required property int index
+                            required property string modelData
+                            width: Math.max(76, historyText.implicitWidth + 18)
+                            height: 24
+                            radius: Theme.radius
+                            color: historyChip.index === root.navigationIndex ? Theme.accentSoft : Theme.surface
+                            border.color: historyChip.index === root.navigationIndex ? Theme.accent : Theme.border
+
+                            Text {
+                                id: historyText
+                                anchors.centerIn: parent
+                                text: historyChip.modelData
+                                color: historyChip.index === root.navigationIndex ? Theme.accentStrong : Theme.text
+                                font.pixelSize: 12
+                                font.bold: historyChip.index === root.navigationIndex
+                                elide: Text.ElideRight
+                                width: historyChip.width - 10
+                                horizontalAlignment: Text.AlignHCenter
+                            }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.navigateHistoryTo(historyChip.index)
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -175,6 +227,17 @@ ApplicationWindow {
                             ToolTip.text: "Mostrar codigo Mermaid"
                             ToolTip.delay: 0
                             onClicked: root.showMermaid = true
+                        }
+
+                        ActionButton {
+                            text: "Copiar"
+                            implicitWidth: 70
+                            implicitHeight: 26
+                            enabled: root.detailsViewModel && root.detailsViewModel.graphModel.nodeCount > 0
+                            ToolTip.visible: hovered
+                            ToolTip.text: "Copiar codigo Mermaid"
+                            ToolTip.delay: 0
+                            onClicked: root.copyTextRequested(root.detailsViewModel.graphModel.mermaid)
                         }
 
                         ActionButton {

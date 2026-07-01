@@ -323,6 +323,7 @@ ApplicationWindow {
                     viewModel: root.vm.browse.details
                     browseViewModel: root.vm.browse
                     density: root.vm.ui.density
+                    onCopyMermaidRequested: root.vm.copyTextToClipboard(root.vm.browse.details.graphModel.mermaid)
                     onOpenRequested: root.vm.selectionFlow.openSelectedSsa()
                     onGraphWindowRequested: root.openDetailsWindow()
                     onLoadRelationRequested: ssaNumber => root.vm.browse.loadDetailsBySsaNumber(ssaNumber)
@@ -390,6 +391,8 @@ ApplicationWindow {
     Component {
         id: detailsWindowComponent
 
-        SsaDetailsWindow {}
+        SsaDetailsWindow {
+            onCopyTextRequested: text => root.vm.copyTextToClipboard(text)
+        }
     }
 }

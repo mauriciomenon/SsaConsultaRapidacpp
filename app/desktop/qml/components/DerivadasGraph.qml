@@ -33,6 +33,42 @@ Flickable {
         });
     }
 
+    function roleLabel(role) {
+        if (role === "parent")
+            return "Origem";
+        if (role === "current")
+            return "Atual";
+        if (role === "child")
+            return "Derivada";
+        if (role === "related")
+            return "Relacionada";
+        return "SSA";
+    }
+
+    function nodeFillColor(role, isTarget) {
+        if (isTarget)
+            return Theme.accent;
+        if (role === "parent")
+            return Theme.surface;
+        if (role === "child")
+            return Theme.panelRaised;
+        if (role === "related")
+            return Theme.window;
+        return Theme.surface;
+    }
+
+    function nodeStrokeColor(role, isTarget) {
+        if (isTarget)
+            return Theme.accentStrong;
+        if (role === "parent")
+            return Theme.link;
+        if (role === "child")
+            return Theme.accentStrong;
+        if (role === "related")
+            return Theme.mutedText;
+        return Theme.border;
+    }
+
     contentWidth: Math.max(width, graphModel ? graphModel.graphWidth : 0)
     contentHeight: Math.max(height, graphModel ? graphModel.graphHeight : 0)
     clip: true
@@ -110,6 +146,7 @@ Flickable {
                 const center = model.nodeCenter(i);
                 const ssa = model.nodeSsa(i);
                 const status = model.nodeStatus(i);
+                const role = model.nodeRole(i);
                 const isTarget = model.nodeIsTarget(i);
                 const cx = center.x;
                 const cy = center.y;
@@ -118,20 +155,24 @@ Flickable {
 
                 ctx.beginPath();
                 ctx.roundedRect(x0, y0, canvas.nodeWidth, canvas.nodeHeight, 5, 5);
-                ctx.fillStyle = isTarget ? Theme.accent : Theme.surface;
+                ctx.fillStyle = root.nodeFillColor(role, isTarget);
                 ctx.fill();
-                ctx.lineWidth = 0.8;
-                ctx.strokeStyle = isTarget ? Theme.accentStrong : Theme.border;
+                ctx.lineWidth = isTarget ? 1.2 : 0.9;
+                ctx.strokeStyle = root.nodeStrokeColor(role, isTarget);
                 ctx.stroke();
 
                 ctx.fillStyle = isTarget ? Theme.accentText : Theme.text;
-                ctx.font = "bold 14px " + Theme.fontFamily;
                 ctx.textAlign = "center";
                 ctx.textBaseline = "middle";
-                ctx.fillText(ssa, cx, status.length > 0 ? cy - 7 : cy);
+                ctx.font = "bold 10px " + Theme.fontFamily;
+                ctx.fillStyle = isTarget ? Theme.accentText : root.nodeStrokeColor(role, false);
+                ctx.fillText(root.roleLabel(role), cx, cy - 16);
+                ctx.font = "bold 14px " + Theme.fontFamily;
+                ctx.fillStyle = isTarget ? Theme.accentText : Theme.text;
+                ctx.fillText(ssa, cx, status.length > 0 ? cy - 1 : cy + 3);
                 if (status.length > 0) {
-                    ctx.font = "bold 13px " + Theme.fontFamily;
-                    ctx.fillText(status, cx, cy + 11);
+                    ctx.font = "bold 12px " + Theme.fontFamily;
+                    ctx.fillText(status, cx, cy + 16);
                 }
             }
         }

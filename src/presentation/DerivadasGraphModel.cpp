@@ -61,10 +61,11 @@ namespace ssa::presentation {
         // Node order: ancestors first (depth 0..n-1), then target, then children.
         std::unordered_map<std::string, int> seenIndex;
         std::unordered_map<std::string, QString> statusBySsa;
+        std::unordered_map<std::string, QString> roleBySsa;
         std::vector<QString> orderedSsa;
         std::vector<int> orderedDepth;
 
-        const auto appendNode = [&](const QString& ssa, int depth) {
+        const auto appendNode = [&](const QString& ssa, int depth, const QString& role) {
             if (ssa.isEmpty()) {
                 return;
             }
@@ -75,6 +76,8 @@ namespace ssa::presentation {
             seenIndex.emplace(key, static_cast<int>(orderedSsa.size()));
             orderedSsa.push_back(ssa);
             orderedDepth.push_back(depth);
+            statusBySsa.try_emplace(key, QString{});
+            roleBySsa.insert_or_assign(key, role);
         };
 
         for (const auto& entry : relations) {
@@ -110,9 +113,9 @@ namespace ssa::presentation {
 
         int targetDepth = static_cast<int>(ancestors.size());
         for (int index = 0; index < static_cast<int>(ancestors.size()); ++index) {
-            appendNode(ancestors[index], index);
+            appendNode(ancestors[index], index, QStringLiteral("parent"));
         }
-        appendNode(target_, targetDepth);
+        appendNode(target_, targetDepth, QStringLiteral("current"));
 
         std::vector<std::pair<QString, bool>> children;
         std::unordered_set<std::string> seenChildren;
@@ -133,7 +136,8 @@ namespace ssa::presentation {
                 const bool isRelated = role == QStringLiteral("related") ||
                                        (role.isEmpty() && kind == QStringLiteral("Relacionada"));
                 children.emplace_back(ssa, isRelated);
-                appendNode(ssa, targetDepth + 1);
+                appendNode(ssa, targetDepth + 1,
+                           isRelated ? QStringLiteral("related") : QStringLiteral("child"));
             }
         }
 
@@ -144,6 +148,10 @@ namespace ssa::presentation {
             if (const auto statusIt = statusBySsa.find(node.ssa.toStdString());
                 statusIt != statusBySsa.end()) {
                 node.status = statusIt->second;
+            }
+            if (const auto roleIt = roleBySsa.find(node.ssa.toStdString());
+                roleIt != roleBySsa.end()) {
+                node.role = roleIt->second;
             }
             node.isTarget = node.ssa == target_;
             const qreal x = kMargin + orderedDepth[index] * kXGap;
@@ -203,6 +211,8 @@ namespace ssa::presentation {
                            node.position.y() + kNodeHeight / 2.0);
         case LabelRole:
             return node.ssa;
+        case RoleRole:
+            return node.role;
         default:
             return {};
         }
@@ -210,10 +220,8 @@ namespace ssa::presentation {
 
     QHash<int, QByteArray> DerivadasGraphModel::roleNames() const {
         return {
-            {SsaRole, "ssa"},
-            {IsTargetRole, "isTarget"},
-            {PositionRole, "nodeCenter"},
-            {LabelRole, "label"},
+            {SsaRole, "ssa"},     {IsTargetRole, "isTarget"}, {PositionRole, "nodeCenter"},
+            {LabelRole, "label"}, {RoleRole, "role"},
         };
     }
 
@@ -392,6 +400,13 @@ namespace ssa::presentation {
             return false;
         }
         return nodes_[index].isTarget;
+    }
+
+    QString DerivadasGraphModel::nodeRole(const int index) const {
+        if (index < 0 || index >= static_cast<int>(nodes_.size())) {
+            return {};
+        }
+        return nodes_[index].role;
     }
 
 } // namespace ssa::presentation

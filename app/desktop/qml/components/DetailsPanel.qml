@@ -16,6 +16,7 @@ Rectangle {
     readonly property int detailsLabelWidth: Theme.densityValue(root.density, 118, 132, 150)
     signal openRequested
     signal graphWindowRequested
+    signal copyMermaidRequested
     // Emitted when the user clicks a relation node: the main view loads that
     // SSA into the details panel (not open SAM).
     signal loadRelationRequested(string ssaNumber)
@@ -227,6 +228,17 @@ Rectangle {
                                 anchors.verticalCenter: parent.verticalCenter
                                 enabled: root.viewModel.selectedSsaNumber.length > 0
                                 onClicked: root.graphWindowRequested()
+                            }
+                            ActionButton {
+                                text: "Mermaid"
+                                implicitWidth: 70
+                                implicitHeight: 22
+                                anchors.verticalCenter: parent.verticalCenter
+                                enabled: root.viewModel.graphModel.nodeCount > 0
+                                ToolTip.visible: hovered
+                                ToolTip.text: "Copiar codigo Mermaid"
+                                ToolTip.delay: 0
+                                onClicked: root.copyMermaidRequested()
                             }
                         }
                     }

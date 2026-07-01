@@ -346,10 +346,13 @@ namespace {
             // Ancestor first (depth 0), target second (depth 1), child third.
             QCOMPARE(model.nodeSsa(0), QString("202500001"));
             QCOMPARE(model.nodeIsTarget(0), false);
+            QCOMPARE(model.nodeRole(0), QString("parent"));
             QCOMPARE(model.nodeSsa(1), QString("202500002"));
             QCOMPARE(model.nodeIsTarget(1), true);
+            QCOMPARE(model.nodeRole(1), QString("current"));
             QCOMPARE(model.nodeStatus(1), QString("APV"));
             QCOMPARE(model.nodeSsa(2), QString("202500003"));
+            QCOMPARE(model.nodeRole(2), QString("related"));
             QCOMPARE(model.nodeStatus(2), QString("STE"));
 
             const auto edges = model.edges();
@@ -393,10 +396,13 @@ namespace {
             QCOMPARE(graph->rowCount(), 3);
             QCOMPARE(graph->nodeSsa(0), QString("202500001"));
             QCOMPARE(graph->nodeIsTarget(0), false);
+            QCOMPARE(graph->nodeRole(0), QString("parent"));
             QCOMPARE(graph->nodeSsa(1), QString("202500003"));
             QCOMPARE(graph->nodeIsTarget(1), true);
+            QCOMPARE(graph->nodeRole(1), QString("current"));
             QCOMPARE(graph->nodeStatus(1), QString("APV"));
             QCOMPARE(graph->nodeSsa(2), QString("202500004"));
+            QCOMPARE(graph->nodeRole(2), QString("child"));
             QCOMPARE(graph->nodeStatus(2), QString("STE"));
             QCOMPARE(graph->edges().size(), 2);
             QCOMPARE(graph->edges().at(0).toMap().value("dashed"), false);
