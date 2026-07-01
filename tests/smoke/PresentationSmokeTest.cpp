@@ -183,7 +183,8 @@ namespace {
 
         void details_fields_keep_python_priority_order() {
             ssa::presentation::DetailsViewModel details;
-            details.setRecord(ssa::domain::SsaRecord{{{"responsavel_execucao", "DANILO NADAL"},
+            details.setRecord(ssa::domain::SsaRecord{{{"id", "3802"},
+                                                      {"responsavel_execucao", "DANILO NADAL"},
                                                       {"descricao_ssa", "Descricao longa"},
                                                       {"numero_ssa", "202500003"},
                                                       {"qtd_derivadas", "2"},
@@ -229,6 +230,12 @@ namespace {
                 fields->data(fields->index(9, 0), ssa::presentation::DetailsFieldsModel::LabelRole)
                     .toString(),
                 QString("Resp. Execucao"));
+            for (int row = 0; row < fields->rowCount(); ++row) {
+                QVERIFY(fields
+                            ->data(fields->index(row, 0),
+                                   ssa::presentation::DetailsFieldsModel::LabelRole)
+                            .toString() != QString("ID"));
+            }
         }
 
         void details_relation_navigation_indices_and_flags() {
@@ -419,6 +426,7 @@ namespace {
 
             const auto svg = model.svg();
             QVERIFY(svg.contains(QStringLiteral("<svg")));
+            QVERIFY(svg.contains(QStringLiteral("<path")));
             QVERIFY(svg.contains(QStringLiteral("202500002")));
             QVERIFY(svg.contains(QStringLiteral("stroke-dasharray")));
         }
@@ -494,6 +502,26 @@ namespace {
             // y increases with index (each node is one row down)
             QVERIFY(model.nodeCenter(0).y() < model.nodeCenter(1).y());
             QVERIFY(model.nodeCenter(1).y() < model.nodeCenter(2).y());
+        }
+
+        void derivadas_graph_model_fans_many_children_horizontally() {
+            ssa::presentation::DerivadasGraphModel model;
+            QVariantList relations;
+            relations.push_back(QVariantMap{{"role", "current"}, {"ssa", "202500100"}});
+            for (int index = 0; index < 7; ++index) {
+                relations.push_back(QVariantMap{
+                    {"role", "child"}, {"ssa", QStringLiteral("20250010%1").arg(index + 1)}});
+            }
+
+            model.buildFromRelations(QStringLiteral("202500100"), relations);
+
+            QCOMPARE(model.rowCount(), 8);
+            QVERIFY(model.graphWidth() > model.graphHeight());
+            const auto targetY = model.nodeCenter(0).y();
+            for (int row = 1; row < model.rowCount(); ++row) {
+                QCOMPARE(model.nodeCenter(row).y(), targetY);
+                QVERIFY(model.nodeCenter(row - 1).x() < model.nodeCenter(row).x());
+            }
         }
 
         void derivadas_graph_model_invalid_index_returns_empty() {
@@ -716,6 +744,15 @@ namespace {
             QTRY_COMPARE_WITH_TIMEOUT(preferences->snapshot().columnWidths.at("numero_ssa"), 180,
                                       1000);
             QCOMPARE(model.browse()->tableModel()->columnWidth(0), 180);
+        }
+
+        void column_settings_allows_wide_description_column() {
+            ssa::presentation::ColumnSettingsModel columns;
+
+            QVERIFY(columns.setColumnWidth(QStringLiteral("descricao_ssa"), 900));
+
+            QCOMPARE(columns.maxColumnWidth(), 1200);
+            QCOMPARE(columns.columnWidths().at("descricao_ssa"), 900);
         }
 
         void column_width_update_does_not_reload_query() {

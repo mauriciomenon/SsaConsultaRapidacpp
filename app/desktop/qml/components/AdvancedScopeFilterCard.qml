@@ -11,8 +11,10 @@ FilterCard {
     required property var derivation
     signal applyRequested
 
-    Layout.fillWidth: true
-    Layout.preferredHeight: 88
+    Layout.fillWidth: false
+    Layout.preferredWidth: 720
+    Layout.maximumWidth: 820
+    Layout.preferredHeight: 74
 
     property var selectedReprogrammingValues: []
     readonly property string reprogrammingColumnKey: "num_reprogramacoes"
@@ -51,63 +53,78 @@ FilterCard {
         }
     }
 
-    GridLayout {
+    ColumnLayout {
         anchors.fill: parent
-        columns: 6
-        columnSpacing: Theme.gap
-        rowSpacing: 4
+        spacing: 6
 
-        FilterFieldLabel {
-            text: "Setor Executor"
-        }
-        AppComboBox {
-            id: sectorSelector
+        RowLayout {
             Layout.fillWidth: true
-            model: root.filterViewModel.sector.selectorValues
-            currentIndex: root.filterViewModel.sector.selectorIndex
-            displayText: currentIndex <= 0 ? "Todos" : currentText
-            onActivated: {
-                root.filterViewModel.sector.quickSector = sectorSelector.currentText;
-                root.applyRequested();
-            }
-            delegate: ItemDelegate {
-                required property string modelData
-                width: sectorSelector.width
-                text: modelData.length === 0 ? "Todos" : modelData
-            }
-        }
-        AppCheckBox {
-            Layout.fillWidth: true
-            text: "Reprog."
-            checked: root.derivation.onlyReprogrammed
-            onToggled: {
-                root.derivation.onlyReprogrammed = checked;
-                root.applyRequested();
-            }
-        }
+            spacing: 6
 
-        FilterFieldLabel {
-            text: "Derivadas"
-        }
-        AppComboBox {
-            Layout.fillWidth: true
-            model: root.derivation.derivationModeOptions
-            currentIndex: Math.max(0, root.derivation.derivationModeOptions.indexOf(root.derivation.derivationMode))
-            onActivated: {
-                root.derivation.derivationMode = currentText;
-                root.applyRequested();
+            FilterFieldLabel {
+                Layout.preferredWidth: 42
+                text: "Setor"
             }
-        }
-        FilterFieldLabel {
-            text: "Reprogramacoes"
+            AppComboBox {
+                id: sectorSelector
+                Layout.preferredWidth: 168
+                model: root.filterViewModel.sector.selectorValues
+                currentIndex: root.filterViewModel.sector.selectorIndex
+                displayText: currentIndex <= 0 ? "Todos" : currentText
+                onActivated: {
+                    root.filterViewModel.sector.quickSector = sectorSelector.currentText;
+                    root.applyRequested();
+                }
+                delegate: ItemDelegate {
+                    required property string modelData
+                    width: sectorSelector.width
+                    text: modelData.length === 0 ? "Todos" : modelData
+                }
+            }
+            AppCheckBox {
+                Layout.preferredWidth: 92
+                text: "Reprog."
+                checked: root.derivation.onlyReprogrammed
+                onToggled: {
+                    root.derivation.onlyReprogrammed = checked;
+                    root.applyRequested();
+                }
+            }
+
+            FilterFieldLabel {
+                Layout.preferredWidth: 48
+                text: "Deriv."
+            }
+            AppComboBox {
+                Layout.preferredWidth: 118
+                model: root.derivation.derivationModeOptions
+                currentIndex: Math.max(0, root.derivation.derivationModeOptions.indexOf(root.derivation.derivationMode))
+                onActivated: {
+                    root.derivation.derivationMode = currentText;
+                    root.applyRequested();
+                }
+            }
+            Label {
+                Layout.fillWidth: true
+                visible: root.derivation.reprogrammingValues.length > 0
+                text: "Valores: " + root.derivation.reprogrammingValues.join(", ")
+                color: Theme.accentStrong
+                font.pixelSize: 11
+                elide: Text.ElideRight
+            }
         }
         RowLayout {
             Layout.fillWidth: true
-            Layout.columnSpan: 2
+            spacing: 6
+
+            FilterFieldLabel {
+                Layout.preferredWidth: 58
+                text: "Reprog."
+            }
 
             AppComboBox {
                 id: reprogrammingModeSelector
-                Layout.preferredWidth: 122
+                Layout.preferredWidth: 112
                 leftPadding: 8
                 rightPadding: 22
                 popup.width: 170
@@ -125,38 +142,42 @@ FilterCard {
                 }
             }
             AppTextField {
-                Layout.fillWidth: true
+                Layout.preferredWidth: 92
                 text: root.derivation.reprogrammingEqualsFilter
                 placeholderText: "0, 1, 2..."
                 inputMethodHints: Qt.ImhDigitsOnly
                 onTextEdited: root.derivation.reprogrammingEqualsFilter = text
                 onAccepted: root.applyRequested()
             }
-        }
-
-        FilterFieldLabel {
-            text: "Valores"
-        }
-        ActionButton {
-            Layout.fillWidth: true
-            text: root.derivation.reprogrammingValues.length > 0 ? root.derivation.reprogrammingValues.join(", ") : "Enter"
-            onClicked: {
-                root.reloadReprogrammingOptionState();
-                root.filterViewModel.refreshColumnValueOptionsFor(root.reprogrammingColumnKey);
-                root.selectedReprogrammingValues = root.derivation.reprogrammingValues.slice();
-                reprogrammingValuesPopup.open();
+            ActionButton {
+                text: "Enter"
+                implicitWidth: 58
+                implicitHeight: Theme.controlHeight
+                ToolTip.visible: hovered
+                ToolTip.text: "Escolher valores de reprogramacao"
+                ToolTip.delay: 0
+                onClicked: {
+                    root.reloadReprogrammingOptionState();
+                    root.filterViewModel.refreshColumnValueOptionsFor(root.reprogrammingColumnKey);
+                    root.selectedReprogrammingValues = root.derivation.reprogrammingValues.slice();
+                    reprogrammingValuesPopup.open();
+                }
             }
-        }
-        ActionButton {
-            Layout.fillWidth: true
-            text: "Del"
-            onClicked: {
-                root.derivation.reprogrammingValues = [];
-                root.applyRequested();
+            ActionButton {
+                text: "Del"
+                implicitWidth: 44
+                implicitHeight: Theme.controlHeight
+                ToolTip.visible: hovered
+                ToolTip.text: "Limpar valores de reprogramacao"
+                ToolTip.delay: 0
+                onClicked: {
+                    root.derivation.reprogrammingValues = [];
+                    root.applyRequested();
+                }
             }
-        }
-        Item {
-            Layout.fillWidth: true
+            Item {
+                Layout.fillWidth: true
+            }
         }
     }
 

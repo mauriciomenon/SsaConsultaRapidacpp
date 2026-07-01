@@ -235,9 +235,10 @@ Rectangle {
                 readonly property bool isStriped: (row % 2) !== 0
                 readonly property bool isSelected: row === root.viewModel.currentRow
                 readonly property bool opensSam: columnConfig.opensSam === true
-                readonly property string cellText: displayValue === undefined || displayValue === "" ? "-" : String(displayValue)
+                readonly property bool hasCellText: displayValue !== undefined && displayValue !== null && String(displayValue).length > 0
+                readonly property string cellText: hasCellText ? String(displayValue) : ""
                 readonly property string rowSsaNumber: root.viewModel.tableModel.ssaNumberAt(cellDelegate.row)
-                readonly property bool isDerivationLink: columnConfig.key === "derivada_de" && cellText !== "-"
+                readonly property bool isDerivationLink: columnConfig.key === "derivada_de" && hasCellText
                 readonly property bool opensDerivationGraph: columnConfig.key === "qtd_derivadas" && Number(cellText) > 0
 
                 // Overlap by 1px to the right to eliminate subpixel gaps

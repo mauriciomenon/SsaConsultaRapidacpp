@@ -94,9 +94,10 @@ FilterCard {
             }
 
             Label {
-                Layout.preferredWidth: Math.min(150, Math.max(72, root.cardWidth * 0.22))
-                text: root.textFilter.length > 0 ? root.textFilter : "Sem filtro"
-                color: root.textFilter.length > 0 ? Theme.accentStrong : Theme.mutedText
+                Layout.preferredWidth: Math.min(96, Math.max(60, root.cardWidth * 0.16))
+                visible: root.textFilter.length > 0
+                text: root.textFilter
+                color: Theme.accentStrong
                 font.pixelSize: 11
                 horizontalAlignment: Text.AlignRight
                 elide: Text.ElideRight
@@ -124,9 +125,9 @@ FilterCard {
 
             AppComboBox {
                 id: advancedValueSelector
-                Layout.minimumWidth: 112
-                Layout.preferredWidth: Math.max(120, root.cardWidth * 0.34)
-                Layout.maximumWidth: Math.max(136, root.cardWidth * 0.38)
+                Layout.minimumWidth: 96
+                Layout.preferredWidth: Math.max(108, root.cardWidth * 0.30)
+                Layout.maximumWidth: Math.max(124, root.cardWidth * 0.34)
                 leftPadding: 8
                 rightPadding: 20
                 popup.width: Math.min(560, Math.max(360, root.cardWidth * 0.86))
@@ -154,7 +155,7 @@ FilterCard {
                 font.bold: true
                 enabled: root.hasMoreValues || root.expandedValues
                 ToolTip.visible: hovered
-                ToolTip.text: root.expandedValues ? "Reduzir a lista de valores do combo" : "Mostrar mais valores no combo"
+                ToolTip.text: root.expandedValues ? "Voltar ao combo curto de Valor" : "Mostrar mais valores no combo de Valor; nao aplica filtro"
                 ToolTip.delay: 0
                 onClicked: root.expandedValues = !root.expandedValues
             }

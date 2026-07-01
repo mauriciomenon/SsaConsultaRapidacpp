@@ -11,7 +11,7 @@ FilterCard {
     signal applyRequested
 
     Layout.fillWidth: true
-    Layout.preferredHeight: 126
+    Layout.preferredHeight: 112
 
     function fieldBorder(valid, control) {
         if (!valid)
@@ -26,7 +26,7 @@ FilterCard {
         rowSpacing: 6
 
         FilterFieldLabel {
-            text: "Semana generica"
+            text: "Semana"
         }
         AppComboBox {
             Layout.fillWidth: true
@@ -96,7 +96,7 @@ FilterCard {
         }
 
         FilterFieldLabel {
-            text: "AnoSemana"
+            text: "Intervalo"
         }
         AppTextField {
             id: issueWeekStartField

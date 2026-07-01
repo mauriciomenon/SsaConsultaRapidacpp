@@ -14,8 +14,7 @@ namespace ssa::presentation {
 
     namespace {
 
-        constexpr std::array<std::string_view, 30> kDetailsFieldOrder{{
-            "id",
+        constexpr std::array<std::string_view, 29> kDetailsFieldOrder{{
             "numero_ssa",
             "situacao",
             "localizacao_codigo",
@@ -113,6 +112,9 @@ namespace ssa::presentation {
         RecordFields result;
         result.reserve(recordFields.size());
         for (const auto& field : recordFields) {
+            if (field.key == "id") {
+                continue;
+            }
             if (!field.value.empty()) {
                 result.push_back(field);
             }

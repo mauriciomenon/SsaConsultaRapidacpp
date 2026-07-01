@@ -141,7 +141,30 @@ namespace ssa::presentation {
             }
         }
 
-        // Layout: x = margin + depth * xGap; y = margin + index * yGap.
+        std::unordered_map<std::string, QPointF> positionBySsa;
+        positionBySsa.reserve(orderedSsa.size());
+        const bool useHorizontalChildFan = children.size() >= 4;
+        if (useHorizontalChildFan) {
+            const qreal targetY = kMargin;
+            for (int index = 0; index < static_cast<int>(ancestors.size()); ++index) {
+                positionBySsa.emplace(
+                    ancestors[index].toStdString(),
+                    QPointF(kMargin + static_cast<qreal>(index) * kXGap, targetY));
+            }
+            positionBySsa.emplace(
+                target_.toStdString(),
+                QPointF(kMargin + static_cast<qreal>(targetDepth) * kXGap, targetY));
+            for (int index = 0; index < static_cast<int>(children.size()); ++index) {
+                const auto& child = children[static_cast<std::size_t>(index)].first;
+                positionBySsa.emplace(
+                    child.toStdString(),
+                    QPointF(kMargin + static_cast<qreal>(targetDepth + index + 1) * kXGap,
+                            targetY));
+            }
+        }
+
+        // Layout: normal mode stacks relation nodes vertically; dense child
+        // sets fan out horizontally to keep the graph readable in wide windows.
         for (std::size_t index = 0; index < orderedSsa.size(); ++index) {
             GraphNode node;
             node.ssa = orderedSsa[index];
@@ -154,9 +177,14 @@ namespace ssa::presentation {
                 node.role = roleIt->second;
             }
             node.isTarget = node.ssa == target_;
-            const qreal x = kMargin + orderedDepth[index] * kXGap;
-            const qreal y = kMargin + static_cast<qreal>(index) * kYGap;
-            node.position = QPointF(x, y);
+            if (const auto positionIt = positionBySsa.find(node.ssa.toStdString());
+                positionIt != positionBySsa.end()) {
+                node.position = positionIt->second;
+            } else {
+                const qreal x = kMargin + orderedDepth[index] * kXGap;
+                const qreal y = kMargin + static_cast<qreal>(index) * kYGap;
+                node.position = QPointF(x, y);
+            }
             nodes_.push_back(std::move(node));
         }
 
@@ -292,13 +320,15 @@ namespace ssa::presentation {
             if (fromIt == centerBySsa.end() || toIt == centerBySsa.end()) {
                 continue;
             }
+            const qreal midX = (fromIt->second.x() + toIt->second.x()) / 2.0;
             result +=
-                QStringLiteral("  <line x1=\"%1\" y1=\"%2\" x2=\"%3\" y2=\"%4\" "
-                               "stroke=\"#8a8179\" stroke-width=\"1.5\"%5/>\n")
+                QStringLiteral("  <path d=\"M %1 %2 H %3 V %4 H %5\" "
+                               "fill=\"none\" stroke=\"#8a8179\" stroke-width=\"1.5\"%6/>\n")
                     .arg(fromIt->second.x())
                     .arg(fromIt->second.y())
-                    .arg(toIt->second.x())
+                    .arg(midX)
                     .arg(toIt->second.y())
+                    .arg(toIt->second.x())
                     .arg(edge.dashed ? QStringLiteral(" stroke-dasharray=\"6 4\"") : QString{});
         }
 

@@ -42,14 +42,19 @@ ApplicationWindow {
     }
 
     function navigateToSsa(ssaNumber) {
-        if (!root.detailsViewModel || ssaNumber.length === 0 || ssaNumber === root.currentSsaNumber())
+        if (!root.detailsViewModel || ssaNumber.length === 0)
             return;
+        if (ssaNumber === root.currentSsaNumber()) {
+            root.graphExportMessage = "SSA ja aberta";
+            return;
+        }
         if (!root.detailsViewModel.loadBySsaNumber(ssaNumber))
             return;
         const nextHistory = root.navigationHistory.slice(0, root.navigationIndex + 1);
         nextHistory.push(ssaNumber);
         root.navigationHistory = nextHistory;
         root.navigationIndex = root.navigationHistory.length - 1;
+        root.graphExportMessage = "Caminho: " + root.breadcrumbText();
     }
 
     function navigateHistory(offset) {
@@ -63,6 +68,7 @@ ApplicationWindow {
         if (!root.detailsViewModel.loadBySsaNumber(ssaNumber))
             return;
         root.navigationIndex = nextIndex;
+        root.graphExportMessage = "Caminho: " + root.breadcrumbText();
     }
 
     function breadcrumbText() {
@@ -127,7 +133,7 @@ ApplicationWindow {
                     height: 26
 
                     Label {
-                        text: root.navigationHistory.length > 0 ? "Historico " + (root.navigationIndex + 1) + "/" + root.navigationHistory.length : ""
+                        text: root.navigationHistory.length > 0 ? "Caminho " + (root.navigationIndex + 1) + "/" + root.navigationHistory.length : ""
                         color: Theme.mutedText
                         font.pixelSize: 12
                         font.bold: true

@@ -12,7 +12,7 @@ FilterCard {
     signal applyRequested
 
     Layout.fillWidth: true
-    Layout.preferredHeight: root.macro.reportRows.length > 0 ? 156 : 42
+    Layout.preferredHeight: root.macro.reportRows.length > 0 ? 156 : 36
 
     function macroIndex() {
         for (var index = 0; index < root.macro.options.length; ++index) {
@@ -45,8 +45,9 @@ FilterCard {
         }
         Label {
             Layout.fillWidth: true
-            text: root.macro.reportTitle.length > 0 ? root.macro.reportTitle + ": " + root.macro.reportText : "Sem relatorio macro"
-            color: root.macro.reportTitle.length > 0 ? Theme.accentStrong : Theme.mutedText
+            visible: root.macro.reportTitle.length > 0
+            text: root.macro.reportTitle + ": " + root.macro.reportText
+            color: Theme.accentStrong
             font.pixelSize: 11
             elide: Text.ElideRight
         }
