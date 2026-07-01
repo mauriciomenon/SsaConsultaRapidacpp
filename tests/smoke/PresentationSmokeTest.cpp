@@ -154,7 +154,7 @@ namespace {
             QTRY_COMPARE_WITH_TIMEOUT(model.browse()->tableModel()->rowCount(), 1, 1000);
 
             const auto relations = model.browse()->details()->relations();
-            QVERIFY(relations.size() > 0);
+            QVERIFY(!relations.empty());
             // The first relation is the Current node and must carry the
             // situacao status from the loaded record (FakeRepository sets APV).
             const auto current = relations.at(0).toMap();

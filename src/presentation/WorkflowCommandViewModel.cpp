@@ -99,7 +99,7 @@ namespace ssa::presentation {
                       false);
             return;
         }
-        runner_.importExternalFiles(std::move(files));
+        runner_.importExternalFiles(files);
     }
 
     void WorkflowCommandViewModel::rescanIncremental() {
