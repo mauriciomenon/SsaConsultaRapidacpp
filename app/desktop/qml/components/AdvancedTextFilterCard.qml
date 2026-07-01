@@ -60,20 +60,29 @@ FilterCard {
         excludeValues = tokenValues("!");
     }
 
+    function currentOperatorText() {
+        if (root.operatorIndex >= 0 && root.operatorIndex < root.operatorModes.length) {
+            const label = root.operatorModes[root.operatorIndex].label;
+            if (label !== undefined && String(label).length > 0)
+                return String(label);
+        }
+        return root.operatorLabel.length > 0 ? root.operatorLabel : "=";
+    }
+
     property var includeValues: []
     property var excludeValues: []
 
     width: cardWidth
     height: cardHeight
-    padding: 6
+    padding: 5
 
     ColumnLayout {
         anchors.fill: parent
-        spacing: 5
+        spacing: 4
 
         RowLayout {
             Layout.fillWidth: true
-            Layout.preferredHeight: 18
+            Layout.preferredHeight: 16
             spacing: 6
 
             Label {
@@ -85,7 +94,7 @@ FilterCard {
             }
 
             Label {
-                Layout.preferredWidth: Math.min(240, Math.max(96, root.cardWidth * 0.36))
+                Layout.preferredWidth: Math.min(180, Math.max(80, root.cardWidth * 0.28))
                 text: root.textFilter.length > 0 ? root.textFilter : "Sem filtro"
                 color: root.textFilter.length > 0 ? Theme.accentStrong : Theme.mutedText
                 font.pixelSize: 11
@@ -100,12 +109,14 @@ FilterCard {
 
             AppComboBox {
                 id: advancedOperator
-                Layout.preferredWidth: 84
+                Layout.preferredWidth: 64
+                leftPadding: 8
+                rightPadding: 18
                 textRole: "label"
                 valueRole: "mode"
                 model: root.operatorModes
                 currentIndex: root.operatorIndex
-                displayText: currentIndex >= 0 && currentIndex < model.length ? model[currentIndex].label : root.operatorLabel
+                displayText: root.currentOperatorText()
                 onActivated: root.operatorModeRequested(currentValue)
             }
 
@@ -114,7 +125,7 @@ FilterCard {
                 Layout.fillWidth: true
                 enabled: root.operatorIndex >= 0 && !root.valuesLoading
                 model: root.visibleValues
-                displayText: root.valuesLoading ? "Carregando" : "Selecionar"
+                displayText: root.valuesLoading ? "Carregando" : "Valor"
                 onPressedChanged: {
                     if (pressed)
                         root.optionsRequested();
@@ -129,18 +140,18 @@ FilterCard {
             }
 
             ActionButton {
-                text: root.expandedValues ? "-" : "+"
-                implicitWidth: 36
+                text: root.expandedValues ? "Menos" : "Mais"
+                implicitWidth: 52
                 enabled: root.hasMoreValues || root.expandedValues
                 ToolTip.visible: hovered
-                ToolTip.text: root.expandedValues ? qsTr("Menos valores") : qsTr("Mais valores")
+                ToolTip.text: root.expandedValues ? qsTr("Mostrar menos valores") : qsTr("Mostrar mais valores")
                 ToolTip.delay: 0
                 onClicked: root.expandedValues = !root.expandedValues
             }
 
             ActionButton {
-                text: "\u2630"
-                implicitWidth: 44
+                text: "Lista"
+                implicitWidth: 56
                 enabled: !root.valuesLoading
                 ToolTip.visible: hovered
                 ToolTip.text: qsTr("Escolher valores")
@@ -153,8 +164,8 @@ FilterCard {
                 }
             }
             ActionButton {
-                text: "\u232b"
-                implicitWidth: 36
+                text: "X"
+                implicitWidth: 30
                 ToolTip.visible: hovered
                 ToolTip.text: qsTr("Limpar filtro")
                 ToolTip.delay: 0
@@ -166,8 +177,8 @@ FilterCard {
     Popup {
         id: multiSelectPopup
         x: Math.max(0, root.width - width)
-        y: 52
-        width: Math.min(520, Math.max(360, root.width - 12))
+        y: 46
+        width: Math.min(520, Math.max(380, root.width - 12))
         height: 420
         modal: false
         focus: true
@@ -189,7 +200,7 @@ FilterCard {
                 spacing: 8
 
                 Label {
-                    Layout.fillWidth: true
+                    Layout.preferredWidth: Math.max(120, multiSelectPopup.availableWidth * 0.34)
                     text: root.row.label !== undefined ? root.row.label : ""
                     color: Theme.text
                     font.pixelSize: 12
@@ -197,9 +208,18 @@ FilterCard {
                     elide: Text.ElideRight
                 }
 
+                Label {
+                    Layout.fillWidth: true
+                    text: "Marque incluir ou excluir"
+                    color: Theme.mutedText
+                    font.pixelSize: 11
+                    horizontalAlignment: Text.AlignRight
+                    elide: Text.ElideRight
+                }
+
                 ActionButton {
                     text: "Limpar"
-                    implicitWidth: 72
+                    implicitWidth: 64
                     onClicked: {
                         root.includeValues = [];
                         root.excludeValues = [];
@@ -207,25 +227,29 @@ FilterCard {
                 }
             }
 
-            GridLayout {
+            RowLayout {
                 Layout.fillWidth: true
-                columns: 3
-                columnSpacing: 8
+                spacing: 8
 
                 Label {
+                    Layout.fillWidth: true
                     text: "Valor"
                     color: Theme.mutedText
                     font.pixelSize: 11
                 }
                 Label {
+                    Layout.preferredWidth: 72
                     text: "Incluir"
                     color: Theme.mutedText
                     font.pixelSize: 11
+                    horizontalAlignment: Text.AlignHCenter
                 }
                 Label {
-                    text: "Diferente"
+                    Layout.preferredWidth: 72
+                    text: "Excluir"
                     color: Theme.mutedText
                     font.pixelSize: 11
+                    horizontalAlignment: Text.AlignHCenter
                 }
             }
 
@@ -264,39 +288,49 @@ FilterCard {
                                 elide: Text.ElideRight
                             }
 
-                            AppCheckBox {
-                                Layout.preferredWidth: 84
-                                text: ""
-                                checked: root.containsValue(root.includeValues, optionRow.modelData)
-                                onToggled: {
-                                    var includes = root.includeValues.slice();
-                                    var excludes = root.excludeValues.slice();
-                                    if (checked) {
-                                        root.addUnique(includes, optionRow.modelData);
-                                        root.removeValue(excludes, optionRow.modelData);
-                                    } else {
-                                        root.removeValue(includes, optionRow.modelData);
+                            Item {
+                                Layout.preferredWidth: 72
+                                Layout.preferredHeight: 24
+
+                                AppCheckBox {
+                                    anchors.centerIn: parent
+                                    text: ""
+                                    checked: root.containsValue(root.includeValues, optionRow.modelData)
+                                    onToggled: {
+                                        var includes = root.includeValues.slice();
+                                        var excludes = root.excludeValues.slice();
+                                        if (checked) {
+                                            root.addUnique(includes, optionRow.modelData);
+                                            root.removeValue(excludes, optionRow.modelData);
+                                        } else {
+                                            root.removeValue(includes, optionRow.modelData);
+                                        }
+                                        root.includeValues = includes;
+                                        root.excludeValues = excludes;
                                     }
-                                    root.includeValues = includes;
-                                    root.excludeValues = excludes;
                                 }
                             }
 
-                            AppCheckBox {
-                                Layout.preferredWidth: 84
-                                text: ""
-                                checked: root.containsValue(root.excludeValues, optionRow.modelData)
-                                onToggled: {
-                                    var includes = root.includeValues.slice();
-                                    var excludes = root.excludeValues.slice();
-                                    if (checked) {
-                                        root.addUnique(excludes, optionRow.modelData);
-                                        root.removeValue(includes, optionRow.modelData);
-                                    } else {
-                                        root.removeValue(excludes, optionRow.modelData);
+                            Item {
+                                Layout.preferredWidth: 72
+                                Layout.preferredHeight: 24
+
+                                AppCheckBox {
+                                    anchors.centerIn: parent
+                                    text: ""
+                                    checked: root.containsValue(root.excludeValues, optionRow.modelData)
+                                    onToggled: {
+                                        var includes = root.includeValues.slice();
+                                        var excludes = root.excludeValues.slice();
+                                        if (checked) {
+                                            root.addUnique(excludes, optionRow.modelData);
+                                            root.removeValue(includes, optionRow.modelData);
+                                        } else {
+                                            root.removeValue(excludes, optionRow.modelData);
+                                        }
+                                        root.includeValues = includes;
+                                        root.excludeValues = excludes;
                                     }
-                                    root.includeValues = includes;
-                                    root.excludeValues = excludes;
                                 }
                             }
                         }

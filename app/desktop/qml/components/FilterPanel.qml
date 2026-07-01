@@ -49,20 +49,9 @@ Rectangle {
                 }
             }
 
-            Label {
+            Item {
                 Layout.fillWidth: true
-                text: root.selectedTabIndex === 0 ? root.columnTabText : root.advancedTabText
-                color: Theme.text
-                font.pixelSize: 15
-                font.bold: true
-                horizontalAlignment: Text.AlignHCenter
-                elide: Text.ElideRight
             }
-        }
-
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: Theme.gap
 
             AppCheckBox {
                 text: "Excluir SCA/SES/STE"
