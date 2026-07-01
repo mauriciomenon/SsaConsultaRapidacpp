@@ -37,7 +37,7 @@ Flickable {
         if (role === "parent")
             return "Origem";
         if (role === "current")
-            return "Atual";
+            return "";
         if (role === "child")
             return "Derivada";
         if (role === "related")
@@ -61,7 +61,7 @@ Flickable {
         if (isTarget)
             return Theme.accentStrong;
         if (role === "parent")
-            return Theme.link;
+            return Theme.accentStrong;
         if (role === "child")
             return Theme.accentStrong;
         if (role === "related")
@@ -164,9 +164,12 @@ Flickable {
                 ctx.fillStyle = isTarget ? Theme.accentText : Theme.text;
                 ctx.textAlign = "center";
                 ctx.textBaseline = "middle";
-                ctx.font = "bold 10px " + Theme.fontFamily;
-                ctx.fillStyle = isTarget ? Theme.accentText : root.nodeStrokeColor(role, false);
-                ctx.fillText(root.roleLabel(role), cx, cy - 16);
+                const visibleRole = root.roleLabel(role);
+                if (visibleRole.length > 0) {
+                    ctx.font = "bold 10px " + Theme.fontFamily;
+                    ctx.fillStyle = isTarget ? Theme.accentText : root.nodeStrokeColor(role, false);
+                    ctx.fillText(visibleRole, cx, cy - 16);
+                }
                 ctx.font = "bold 14px " + Theme.fontFamily;
                 ctx.fillStyle = isTarget ? Theme.accentText : Theme.text;
                 ctx.fillText(ssa, cx, status.length > 0 ? cy - 1 : cy + 3);

@@ -16,7 +16,6 @@ Rectangle {
     readonly property int detailsLabelWidth: Theme.densityValue(root.density, 118, 132, 150)
     signal openRequested
     signal graphWindowRequested
-    signal copyMermaidRequested
     // Emitted when the user clicks a relation node: the main view loads that
     // SSA into the details panel (not open SAM).
     signal loadRelationRequested(string ssaNumber)
@@ -25,7 +24,7 @@ Rectangle {
         if (role === "parent")
             return "Origem";
         if (role === "current")
-            return "Atual";
+            return "";
         if (role === "child")
             return "Derivada";
         if (role === "related")
@@ -37,7 +36,7 @@ Rectangle {
         if (selected)
             return Theme.accent;
         if (role === "parent")
-            return Theme.link;
+            return Theme.accentStrong;
         if (role === "child")
             return Theme.accentStrong;
         if (role === "related")
@@ -69,7 +68,7 @@ Rectangle {
 
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: relationsLayout.implicitHeight
+            Layout.preferredHeight: relationsLayout.implicitHeight + 6
             visible: root.viewModel.relationCount > 0
             color: Theme.surface
             border.color: Theme.border
@@ -82,175 +81,165 @@ Rectangle {
                 anchors.margins: 8
                 spacing: 6
 
-                Flickable {
-                    id: relationsFlick
+                RowLayout {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: Theme.relationNodeHeight + 6
-                    clip: true
-                    contentWidth: relationsRow.width
-                    contentHeight: relationsRow.height
-                    boundsBehavior: Flickable.StopAtBounds
-                    flickableDirection: Flickable.HorizontalFlick
+                    Layout.preferredHeight: Theme.relationNodeHeight + 18
+                    spacing: 8
 
-                    Row {
-                        id: relationsRow
-                        spacing: 6
+                    Flickable {
+                        id: relationsFlick
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: Theme.relationNodeHeight + 18
+                        clip: true
+                        contentWidth: relationsRow.width
+                        contentHeight: relationsRow.height
+                        boundsBehavior: Flickable.StopAtBounds
+                        flickableDirection: Flickable.HorizontalFlick
 
-                        Repeater {
-                            model: root.viewModel.relations
+                        Row {
+                            id: relationsRow
+                            spacing: 6
 
-                            delegate: Row {
-                                id: relationRow
-                                required property int index
-                                required property var modelData
-                                spacing: 6
-                                height: relationBox.implicitHeight
+                            Repeater {
+                                model: root.viewModel.relations
 
-                                Label {
-                                    visible: relationRow.index > 0
-                                    text: relationRow.modelData.role === "related" ? "- -" : "->"
-                                    color: relationRow.modelData.role === "related" ? Theme.link : Theme.mutedText
-                                    font.bold: true
-                                    anchors.verticalCenter: parent.verticalCenter
-                                }
+                                delegate: Row {
+                                    id: relationRow
+                                    required property int index
+                                    required property var modelData
+                                    spacing: 6
+                                    height: relationBox.implicitHeight
 
-                                Rectangle {
-                                    id: relationBox
-                                    width: Math.max(Theme.relationNodeMinWidth + 18, relationText.implicitWidth + 26)
-                                    implicitHeight: Theme.relationNodeHeight + 8
-                                    radius: Theme.radius
-                                    color: root.relationFillColor(relationRow.modelData.role, relationRow.index === root.viewModel.currentRelationIndex)
-                                    border.color: root.relationBorderColor(relationRow.modelData.role, relationRow.index === root.viewModel.currentRelationIndex)
-
-                                    Column {
-                                        anchors.centerIn: parent
-                                        spacing: 1
-
-                                        Text {
-                                            text: root.relationBadge(relationRow.modelData.role)
-                                            color: relationRow.index === root.viewModel.currentRelationIndex ? Theme.accentStrong : root.relationBorderColor(relationRow.modelData.role, false)
-                                            font.pixelSize: 9
-                                            font.bold: true
-                                            horizontalAlignment: Text.AlignHCenter
-                                            width: relationBox.width - 12
-                                            elide: Text.ElideRight
-                                        }
-
-                                        Text {
-                                            id: relationText
-                                            text: relationRow.modelData.ssa
-                                            // The Current node sits on accentSoft. Pick the foreground that
-                                            // contrasts with that specific tint across all themes.
-                                            color: relationRow.index === root.viewModel.currentRelationIndex ? (Theme.isDarkTint(Theme.accentSoft) ? Theme.text : (Theme.dark ? Theme.accentText : Theme.text)) : Theme.text
-                                            font.bold: true
-                                            font.pixelSize: root.valueTextSize + 1
-                                            horizontalAlignment: Text.AlignHCenter
-                                            width: relationBox.width - 12
-                                        }
-
-                                        Text {
-                                            text: {
-                                                const status = relationRow.modelData.status !== undefined ? relationRow.modelData.status : "";
-                                                const kind = relationRow.modelData.kind !== undefined ? relationRow.modelData.kind : "";
-                                                if (status.length > 0 && kind.length > 0)
-                                                    return "<b>" + status + "</b> " + kind;
-                                                if (status.length > 0)
-                                                    return "<b>" + status + "</b>";
-                                                return kind;
-                                            }
-                                            color: relationRow.index === root.viewModel.currentRelationIndex ? (Theme.isDarkTint(Theme.accentSoft) ? Theme.mutedText : (Theme.dark ? Theme.accentText : Theme.text)) : Theme.mutedText
-                                            font.pixelSize: Math.max(10, root.valueTextSize - 2)
-                                            textFormat: Text.RichText
-                                            horizontalAlignment: Text.AlignHCenter
-                                            width: relationBox.width - 12
-                                            elide: Text.ElideRight
-                                        }
+                                    Label {
+                                        visible: relationRow.index > 0
+                                        text: relationRow.modelData.role === "related" ? "- -" : "->"
+                                        color: relationRow.modelData.role === "related" ? Theme.accentStrong : Theme.mutedText
+                                        font.bold: true
+                                        anchors.verticalCenter: parent.verticalCenter
                                     }
 
-                                    MouseArea {
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: {
-                                            if (relationRow.index > 0) {
-                                                root.loadRelationRequested(relationRow.modelData.ssa);
+                                    Rectangle {
+                                        id: relationBox
+                                        width: Math.max(Theme.relationNodeMinWidth + 18, relationText.implicitWidth + 26)
+                                        implicitHeight: Theme.relationNodeHeight + 14
+                                        radius: Theme.radius
+                                        color: root.relationFillColor(relationRow.modelData.role, relationRow.index === root.viewModel.currentRelationIndex)
+                                        border.color: root.relationBorderColor(relationRow.modelData.role, relationRow.index === root.viewModel.currentRelationIndex)
+
+                                        Column {
+                                            anchors.centerIn: parent
+                                            spacing: 1
+
+                                            Text {
+                                                text: root.relationBadge(relationRow.modelData.role)
+                                                visible: text.length > 0
+                                                color: relationRow.index === root.viewModel.currentRelationIndex ? Theme.accentStrong : root.relationBorderColor(relationRow.modelData.role, false)
+                                                font.pixelSize: 9
+                                                font.bold: true
+                                                horizontalAlignment: Text.AlignHCenter
+                                                width: relationBox.width - 12
+                                                elide: Text.ElideRight
+                                            }
+
+                                            Text {
+                                                id: relationText
+                                                text: relationRow.modelData.ssa
+                                                // The Current node sits on accentSoft. Pick the foreground that
+                                                // contrasts with that specific tint across all themes.
+                                                color: relationRow.index === root.viewModel.currentRelationIndex ? (Theme.isDarkTint(Theme.accentSoft) ? Theme.text : (Theme.dark ? Theme.accentText : Theme.text)) : Theme.text
+                                                font.bold: true
+                                                font.pixelSize: root.valueTextSize + 1
+                                                horizontalAlignment: Text.AlignHCenter
+                                                width: relationBox.width - 12
+                                            }
+
+                                            Text {
+                                                text: {
+                                                    const status = relationRow.modelData.status !== undefined ? relationRow.modelData.status : "";
+                                                    const kind = relationRow.modelData.role === "current" ? "" : relationRow.modelData.kind !== undefined ? relationRow.modelData.kind : "";
+                                                    if (status.length > 0 && kind.length > 0)
+                                                        return "<b>" + status + "</b> " + kind;
+                                                    if (status.length > 0)
+                                                        return "<b>" + status + "</b>";
+                                                    return kind;
+                                                }
+                                                color: relationRow.index === root.viewModel.currentRelationIndex ? (Theme.isDarkTint(Theme.accentSoft) ? Theme.mutedText : (Theme.dark ? Theme.accentText : Theme.text)) : Theme.mutedText
+                                                font.pixelSize: Math.max(10, root.valueTextSize - 2)
+                                                textFormat: Text.RichText
+                                                horizontalAlignment: Text.AlignHCenter
+                                                width: relationBox.width - 12
+                                                elide: Text.ElideRight
                                             }
                                         }
-                                        ToolTip.visible: containsMouse
-                                        ToolTip.delay: 0
-                                        ToolTip.text: {
-                                            const s = relationRow.modelData.ssa !== undefined ? relationRow.modelData.ssa : "";
-                                            const st = relationRow.modelData.status !== undefined ? relationRow.modelData.status : "";
-                                            const k = relationRow.modelData.kind !== undefined ? relationRow.modelData.kind : "";
-                                            return s + (st.length > 0 ? " [" + st + "]" : "") + (k.length > 0 ? " - " + k : "");
+
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: {
+                                                if (relationRow.index > 0) {
+                                                    root.loadRelationRequested(relationRow.modelData.ssa);
+                                                }
+                                            }
+                                            ToolTip.visible: containsMouse
+                                            ToolTip.delay: 0
+                                            ToolTip.text: {
+                                                const s = relationRow.modelData.ssa !== undefined ? relationRow.modelData.ssa : "";
+                                                const st = relationRow.modelData.status !== undefined ? relationRow.modelData.status : "";
+                                                const k = relationRow.modelData.kind !== undefined ? relationRow.modelData.kind : "";
+                                                return s + (st.length > 0 ? " [" + st + "]" : "") + (k.length > 0 ? " - " + k : "");
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
 
-                        // Navigation buttons aligned with the relation row.
-                        Row {
-                            spacing: 2
-                            height: Theme.relationNodeHeight
-                            leftPadding: 6
-
-                            ActionButton {
-                                text: "<"
-                                implicitWidth: 22
-                                implicitHeight: 22
-                                anchors.verticalCenter: parent.verticalCenter
-                                enabled: root.viewModel.canSelectPreviousRelation
-                                onClicked: root.viewModel.selectPreviousRelation()
-                            }
-                            Label {
-                                text: root.viewModel.relationCount > 0 ? (root.viewModel.currentRelationIndex + 1) + "/" + root.viewModel.relationCount : ""
-                                color: Theme.mutedText
-                                font.pixelSize: 11
-                                horizontalAlignment: Text.AlignHCenter
-                                verticalAlignment: Text.AlignVCenter
-                                width: 32
-                                height: 22
-                                anchors.verticalCenter: parent.verticalCenter
-                            }
-                            ActionButton {
-                                text: ">"
-                                implicitWidth: 22
-                                implicitHeight: 22
-                                anchors.verticalCenter: parent.verticalCenter
-                                enabled: root.viewModel.canSelectNextRelation
-                                onClicked: root.viewModel.selectNextRelation()
-                            }
-                            ActionButton {
-                                text: "Grafo"
-                                implicitWidth: 54
-                                implicitHeight: 22
-                                anchors.verticalCenter: parent.verticalCenter
-                                enabled: root.viewModel.selectedSsaNumber.length > 0
-                                onClicked: root.graphWindowRequested()
-                            }
-                            ActionButton {
-                                text: "Mermaid"
-                                implicitWidth: 70
-                                implicitHeight: 22
-                                anchors.verticalCenter: parent.verticalCenter
-                                enabled: root.viewModel.graphModel.nodeCount > 0
-                                ToolTip.visible: hovered
-                                ToolTip.text: "Copiar codigo Mermaid"
-                                ToolTip.delay: 0
-                                onClicked: root.copyMermaidRequested()
+                        // Thin themed scrollbar only when content overflows.
+                        ScrollBar.horizontal: ScrollBar {
+                            policy: relationsFlick.contentWidth > relationsFlick.width ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
+                            contentItem: Rectangle {
+                                implicitHeight: 2
+                                color: Theme.accent
+                                opacity: 0.7
+                                radius: 1
                             }
                         }
                     }
 
-                    // Thin themed scrollbar only when content overflows.
-                    ScrollBar.horizontal: ScrollBar {
-                        policy: relationsFlick.contentWidth > relationsFlick.width ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
-                        contentItem: Rectangle {
-                            implicitHeight: 2
-                            color: Theme.accent
-                            opacity: 0.7
-                            radius: 1
+                    Row {
+                        Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
+                        spacing: 2
+
+                        ActionButton {
+                            text: "<"
+                            implicitWidth: 26
+                            implicitHeight: 26
+                            enabled: root.viewModel.canSelectPreviousRelation
+                            onClicked: root.viewModel.selectPreviousRelation()
+                        }
+                        Label {
+                            text: root.viewModel.relationCount > 0 ? (root.viewModel.currentRelationIndex + 1) + "/" + root.viewModel.relationCount : ""
+                            color: Theme.mutedText
+                            font.pixelSize: 11
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                            width: 34
+                            height: 26
+                        }
+                        ActionButton {
+                            text: ">"
+                            implicitWidth: 26
+                            implicitHeight: 26
+                            enabled: root.viewModel.canSelectNextRelation
+                            onClicked: root.viewModel.selectNextRelation()
+                        }
+                        ActionButton {
+                            text: "Grafo"
+                            implicitWidth: 58
+                            implicitHeight: 26
+                            enabled: root.viewModel.selectedSsaNumber.length > 0
+                            onClicked: root.graphWindowRequested()
                         }
                     }
                 }

@@ -208,28 +208,6 @@ ApplicationWindow {
                         }
 
                         ActionButton {
-                            text: "Grafo"
-                            implicitWidth: 64
-                            implicitHeight: 26
-                            enabled: root.detailsViewModel && root.detailsViewModel.graphModel.nodeCount > 0 && root.showMermaid
-                            ToolTip.visible: hovered
-                            ToolTip.text: "Mostrar diagrama visual"
-                            ToolTip.delay: 0
-                            onClicked: root.showMermaid = false
-                        }
-
-                        ActionButton {
-                            text: "Mermaid"
-                            implicitWidth: 84
-                            implicitHeight: 26
-                            enabled: root.detailsViewModel && root.detailsViewModel.graphModel.nodeCount > 0 && !root.showMermaid
-                            ToolTip.visible: hovered
-                            ToolTip.text: "Mostrar codigo Mermaid"
-                            ToolTip.delay: 0
-                            onClicked: root.showMermaid = true
-                        }
-
-                        ActionButton {
                             text: "Copiar"
                             implicitWidth: 70
                             implicitHeight: 26

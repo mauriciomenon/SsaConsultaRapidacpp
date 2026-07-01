@@ -281,7 +281,7 @@ Rectangle {
                     anchors.leftMargin: 8
                     anchors.rightMargin: 8
                     text: cellDelegate.cellText
-                    color: cellDelegate.opensSam || cellDelegate.isDerivationLink || cellDelegate.opensDerivationGraph ? Theme.link : Theme.text
+                    color: cellDelegate.opensSam || cellDelegate.isDerivationLink || cellDelegate.opensDerivationGraph ? Theme.accentStrong : Theme.text
                     verticalAlignment: Text.AlignVCenter
                     elide: Text.ElideRight
                     font.pixelSize: table.cachedTextSize

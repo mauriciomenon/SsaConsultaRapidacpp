@@ -34,7 +34,7 @@ namespace ssa::presentation {
         };
         using RecordFields = std::vector<domain::SsaRecord::FieldView>;
 
-        [[nodiscard]] static RecordFields nonEmptyFields(const RecordFields& recordFields);
+        [[nodiscard]] static RecordFields orderedNonEmptyFields(const RecordFields& recordFields);
         [[nodiscard]] static std::vector<FieldEntry> buildEntries(const RecordFields& recordFields);
         [[nodiscard]] bool hasSameSchema(const RecordFields& recordFields) const;
         void updateValues(const RecordFields& recordFields);

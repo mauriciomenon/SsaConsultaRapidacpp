@@ -181,6 +181,56 @@ namespace {
             QCOMPARE(model.browse()->details()->graphModel()->target(), QString("202500001"));
         }
 
+        void details_fields_keep_python_priority_order() {
+            ssa::presentation::DetailsViewModel details;
+            details.setRecord(ssa::domain::SsaRecord{{{"responsavel_execucao", "DANILO NADAL"},
+                                                      {"descricao_ssa", "Descricao longa"},
+                                                      {"numero_ssa", "202500003"},
+                                                      {"qtd_derivadas", "2"},
+                                                      {"situacao", "APV"},
+                                                      {"solicitante", "CARLOS ORTIZ"},
+                                                      {"localizacao_codigo", "T075Q002"},
+                                                      {"setor_executor", "MEL4"},
+                                                      {"responsavel_programacao", "DANILO NADAL"},
+                                                      {"setor_emissor", "IEE3"}}});
+
+            auto* fields = details.fields();
+            QVERIFY(fields != nullptr);
+            QCOMPARE(fields->rowCount(), 10);
+            QCOMPARE(
+                fields->data(fields->index(0, 0), ssa::presentation::DetailsFieldsModel::LabelRole)
+                    .toString(),
+                QString("No SSA"));
+            QCOMPARE(
+                fields->data(fields->index(1, 0), ssa::presentation::DetailsFieldsModel::LabelRole)
+                    .toString(),
+                QString("Sit."));
+            QCOMPARE(
+                fields->data(fields->index(2, 0), ssa::presentation::DetailsFieldsModel::LabelRole)
+                    .toString(),
+                QString("Loc."));
+            QCOMPARE(
+                fields->data(fields->index(3, 0), ssa::presentation::DetailsFieldsModel::LabelRole)
+                    .toString(),
+                QString("Emis."));
+            QCOMPARE(
+                fields->data(fields->index(4, 0), ssa::presentation::DetailsFieldsModel::LabelRole)
+                    .toString(),
+                QString("Exec."));
+            QCOMPARE(
+                fields->data(fields->index(5, 0), ssa::presentation::DetailsFieldsModel::LabelRole)
+                    .toString(),
+                QString("Qtd. Derivadas"));
+            QCOMPARE(
+                fields->data(fields->index(8, 0), ssa::presentation::DetailsFieldsModel::LabelRole)
+                    .toString(),
+                QString("Resp. Programacao"));
+            QCOMPARE(
+                fields->data(fields->index(9, 0), ssa::presentation::DetailsFieldsModel::LabelRole)
+                    .toString(),
+                QString("Resp. Execucao"));
+        }
+
         void details_relation_navigation_indices_and_flags() {
             // FakeRepository returns nullopt for recordBySsaNumber, so
             // loadBySsaNumber will not change the record; but the index/flags

@@ -4,11 +4,57 @@
 
 #include <QString>
 
+#include <algorithm>
+#include <array>
 #include <string>
 #include <utility>
 #include <vector>
 
 namespace ssa::presentation {
+
+    namespace {
+
+        constexpr std::array<std::string_view, 30> kDetailsFieldOrder{{
+            "id",
+            "numero_ssa",
+            "situacao",
+            "localizacao_codigo",
+            "setor_emissor",
+            "setor_executor",
+            "qtd_derivadas",
+            "derivada_de",
+            "data_cadastro",
+            "semana_cadastro",
+            "descricao_ssa",
+            "grau_prioridade_emissao",
+            "grau_prioridade_planejamento",
+            "solicitante",
+            "responsavel_programacao",
+            "responsavel_execucao",
+            "descricao_localizacao",
+            "equipamento",
+            "servico_origem",
+            "sistema_origem",
+            "arquivo_origem",
+            "execucao_simples",
+            "semana_programada",
+            "semana_executada",
+            "status_execucao_prazo",
+            "num_reprogramacoes",
+            "total_de_reprogramacoes",
+            "execucao_parcial",
+            "justificativa",
+            "parciais",
+        }};
+
+        std::size_t detailsFieldRank(const std::string_view key) {
+            const auto it = std::find(kDetailsFieldOrder.begin(), kDetailsFieldOrder.end(), key);
+            return it == kDetailsFieldOrder.end()
+                       ? kDetailsFieldOrder.size()
+                       : static_cast<std::size_t>(std::distance(kDetailsFieldOrder.begin(), it));
+        }
+
+    } // namespace
 
     DetailsFieldsModel::DetailsFieldsModel(QObject* parent) : QAbstractListModel(parent) {
         for (const auto& column : domain::ColumnCatalog::all()) {
@@ -47,7 +93,7 @@ namespace ssa::presentation {
     }
 
     void DetailsFieldsModel::setRecord(const domain::SsaRecord& record) {
-        const auto recordFields = nonEmptyFields(record.fields());
+        const auto recordFields = orderedNonEmptyFields(record.fields());
         if (hasSameSchema(recordFields)) {
             updateValues(recordFields);
             if (!fields_.empty()) {
@@ -63,7 +109,7 @@ namespace ssa::presentation {
     }
 
     DetailsFieldsModel::RecordFields
-    DetailsFieldsModel::nonEmptyFields(const RecordFields& recordFields) {
+    DetailsFieldsModel::orderedNonEmptyFields(const RecordFields& recordFields) {
         RecordFields result;
         result.reserve(recordFields.size());
         for (const auto& field : recordFields) {
@@ -71,6 +117,9 @@ namespace ssa::presentation {
                 result.push_back(field);
             }
         }
+        std::stable_sort(result.begin(), result.end(), [](const auto& left, const auto& right) {
+            return detailsFieldRank(left.key) < detailsFieldRank(right.key);
+        });
         return result;
     }
 
