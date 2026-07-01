@@ -279,11 +279,15 @@ Rectangle {
                         elide: Text.ElideRight
                     }
 
-                    Text {
+                    TextEdit {
                         Layout.fillWidth: true
                         text: fieldDelegate.rowValue
                         color: Theme.text
-                        wrapMode: Text.Wrap
+                        readOnly: true
+                        selectByMouse: true
+                        selectedTextColor: Theme.accentText
+                        selectionColor: Theme.accent
+                        wrapMode: TextEdit.Wrap
                         font.pixelSize: root.valueTextSize
                         font.bold: true
                     }

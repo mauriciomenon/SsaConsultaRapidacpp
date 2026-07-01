@@ -332,6 +332,11 @@ Rectangle {
                     }
                     MenuSeparator {}
                     MenuItem {
+                        text: "Abrir SAM"
+                        enabled: cellDelegate.rowSsaNumber.length > 0
+                        onTriggered: root.openRequested()
+                    }
+                    MenuItem {
                         text: "Abrir tela de detalhes"
                         onTriggered: root.detailsWindowRequested()
                     }
