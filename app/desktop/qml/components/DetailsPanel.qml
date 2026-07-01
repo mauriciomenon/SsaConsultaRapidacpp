@@ -71,8 +71,8 @@ Rectangle {
 
                                 Label {
                                     visible: relationRow.index > 0
-                                    text: "->"
-                                    color: Theme.mutedText
+                                    text: relationRow.modelData.role === "related" ? "- -" : "->"
+                                    color: relationRow.modelData.role === "related" ? Theme.link : Theme.mutedText
                                     font.bold: true
                                     anchors.verticalCenter: parent.verticalCenter
                                 }
@@ -82,8 +82,8 @@ Rectangle {
                                     width: Math.max(Theme.relationNodeMinWidth, relationText.implicitWidth + 18)
                                     implicitHeight: Theme.relationNodeHeight
                                     radius: Theme.radius
-                                    color: relationRow.index === 0 ? Theme.accentSoft : relationRow.modelData.role === "related" ? Theme.surface : Theme.panelRaised
-                                    border.color: relationRow.index === 0 ? Theme.accent : relationRow.modelData.role === "related" ? Theme.link : Theme.border
+                                    color: relationRow.index === root.viewModel.currentRelationIndex ? Theme.accentSoft : relationRow.modelData.role === "related" ? Theme.surface : Theme.panelRaised
+                                    border.color: relationRow.index === root.viewModel.currentRelationIndex ? Theme.accent : relationRow.modelData.role === "related" ? Theme.link : relationRow.modelData.role === "child" ? Theme.accentStrong : Theme.border
 
                                     Column {
                                         anchors.centerIn: parent
@@ -94,7 +94,7 @@ Rectangle {
                                             text: relationRow.modelData.ssa
                                             // The Current node sits on accentSoft. Pick the foreground that
                                             // contrasts with that specific tint across all themes.
-                                            color: relationRow.index === 0 ? (Theme.isDarkTint(Theme.accentSoft) ? Theme.text : (Theme.dark ? Theme.accentText : Theme.text)) : Theme.text
+                                            color: relationRow.index === root.viewModel.currentRelationIndex ? (Theme.isDarkTint(Theme.accentSoft) ? Theme.text : (Theme.dark ? Theme.accentText : Theme.text)) : Theme.text
                                             font.bold: true
                                             font.pixelSize: root.valueTextSize
                                         }
@@ -109,7 +109,7 @@ Rectangle {
                                                     return "<b>" + status + "</b>";
                                                 return kind;
                                             }
-                                            color: relationRow.index === 0 ? (Theme.isDarkTint(Theme.accentSoft) ? Theme.mutedText : (Theme.dark ? Theme.accentText : Theme.text)) : Theme.mutedText
+                                            color: relationRow.index === root.viewModel.currentRelationIndex ? (Theme.isDarkTint(Theme.accentSoft) ? Theme.mutedText : (Theme.dark ? Theme.accentText : Theme.text)) : Theme.mutedText
                                             font.pixelSize: Math.max(10, root.valueTextSize - 2)
                                             textFormat: Text.RichText
                                         }

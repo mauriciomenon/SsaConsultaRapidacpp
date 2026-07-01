@@ -15,6 +15,20 @@ namespace ssa::presentation {
         constexpr qreal kYGap = 60;
         constexpr qreal kMargin = 8;
 
+        QString mermaidEscaped(QString value) {
+            value.replace(QStringLiteral("\\"), QStringLiteral("\\\\"));
+            value.replace(QStringLiteral("\""), QStringLiteral("\\\""));
+            value.replace(QStringLiteral("\n"), QStringLiteral("\\n"));
+            return value;
+        }
+
+        QString mermaidNodeLabel(const QString& ssa, const QString& status) {
+            if (status.isEmpty()) {
+                return mermaidEscaped(ssa);
+            }
+            return mermaidEscaped(ssa + QStringLiteral("\n") + status);
+        }
+
     } // namespace
 
     DerivadasGraphModel::DerivadasGraphModel(QObject* parent) : QAbstractListModel(parent) {}
@@ -76,7 +90,8 @@ namespace ssa::presentation {
             const auto role = map.value(QStringLiteral("role")).toString();
             const auto ssa = map.value(QStringLiteral("ssa")).toString();
             const bool isParent = role == QStringLiteral("parent") ||
-                                  (role.isEmpty() && kind == QStringLiteral("Derivada de"));
+                                  (role.isEmpty() && (kind == QStringLiteral("Origem") ||
+                                                      kind == QStringLiteral("Derivada de")));
             if (ssa.isEmpty() || !isParent) {
                 continue;
             }
@@ -101,7 +116,8 @@ namespace ssa::presentation {
             const bool isCurrent = role == QStringLiteral("current") ||
                                    (role.isEmpty() && kind == QStringLiteral("Atual"));
             const bool isParent = role == QStringLiteral("parent") ||
-                                  (role.isEmpty() && kind == QStringLiteral("Derivada de"));
+                                  (role.isEmpty() && (kind == QStringLiteral("Origem") ||
+                                                      kind == QStringLiteral("Derivada de")));
             if (ssa.isEmpty() || isCurrent || isParent) {
                 continue;
             }
@@ -201,6 +217,39 @@ namespace ssa::presentation {
         return QStringLiteral("Nos: %1 | Relacoes: %2")
             .arg(static_cast<int>(nodes_.size()))
             .arg(static_cast<int>(edges_.size()));
+    }
+
+    QString DerivadasGraphModel::mermaid() const {
+        if (nodes_.empty()) {
+            return QStringLiteral("flowchart LR\n");
+        }
+        QString result = QStringLiteral("flowchart LR\n");
+        std::unordered_map<std::string, QString> idBySsa;
+        idBySsa.reserve(nodes_.size());
+        for (std::size_t index = 0; index < nodes_.size(); ++index) {
+            const auto id = QStringLiteral("N%1").arg(static_cast<int>(index));
+            idBySsa.emplace(nodes_[index].ssa.toStdString(), id);
+            result += QStringLiteral("  %1[\"%2\"]\n")
+                          .arg(id, mermaidNodeLabel(nodes_[index].ssa, nodes_[index].status));
+        }
+        for (const auto& edge : edges_) {
+            const auto fromIt = idBySsa.find(edge.from.toStdString());
+            const auto toIt = idBySsa.find(edge.to.toStdString());
+            if (fromIt == idBySsa.end() || toIt == idBySsa.end()) {
+                continue;
+            }
+            result += edge.dashed
+                          ? QStringLiteral("  %1 -.-> %2\n").arg(fromIt->second, toIt->second)
+                          : QStringLiteral("  %1 --> %2\n").arg(fromIt->second, toIt->second);
+        }
+        result +=
+            QStringLiteral("  classDef target fill:#ffbf00,stroke:#4a3a00,stroke-width:2px\n");
+        for (std::size_t index = 0; index < nodes_.size(); ++index) {
+            if (nodes_[index].isTarget) {
+                result += QStringLiteral("  class N%1 target\n").arg(static_cast<int>(index));
+            }
+        }
+        return result;
     }
 
     qreal DerivadasGraphModel::graphWidth() const {

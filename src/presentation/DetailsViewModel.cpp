@@ -16,11 +16,11 @@ namespace ssa::presentation {
         QString relationKindLabel(const domain::SsaRelationKind kind) {
             switch (kind) {
             case domain::SsaRelationKind::Current:
-                return QStringLiteral("");
+                return QStringLiteral("Atual");
             case domain::SsaRelationKind::DerivedFrom:
-                return QStringLiteral("Der.");
+                return QStringLiteral("Origem");
             case domain::SsaRelationKind::Related:
-                return QStringLiteral("Rel.");
+                return QStringLiteral("Relacionada");
             }
             return {};
         }
@@ -72,7 +72,7 @@ namespace ssa::presentation {
                                   const std::vector<domain::SsaDerivadaEntry>& children) {
             for (const auto& child : children) {
                 QVariantMap item;
-                item.insert(QStringLiteral("kind"), QStringLiteral("Der."));
+                item.insert(QStringLiteral("kind"), QStringLiteral("Derivada"));
                 item.insert(QStringLiteral("role"), QStringLiteral("child"));
                 item.insert(QStringLiteral("ssa"), QString::fromStdString(child.number));
                 if (!child.situacao.empty()) {

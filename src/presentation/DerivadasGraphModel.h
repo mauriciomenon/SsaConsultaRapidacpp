@@ -18,6 +18,7 @@ namespace ssa::presentation {
         Q_OBJECT
         Q_PROPERTY(QString target READ target NOTIFY graphChanged)
         Q_PROPERTY(QString summary READ summary NOTIFY graphChanged)
+        Q_PROPERTY(QString mermaid READ mermaid NOTIFY graphChanged)
         Q_PROPERTY(qreal graphWidth READ graphWidth NOTIFY graphChanged)
         Q_PROPERTY(qreal graphHeight READ graphHeight NOTIFY graphChanged)
         Q_PROPERTY(int nodeCount READ rowCount NOTIFY graphChanged)
@@ -41,6 +42,7 @@ namespace ssa::presentation {
 
         [[nodiscard]] QString target() const;
         [[nodiscard]] QString summary() const;
+        [[nodiscard]] QString mermaid() const;
         [[nodiscard]] qreal graphWidth() const;
         [[nodiscard]] qreal graphHeight() const;
 

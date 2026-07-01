@@ -158,8 +158,7 @@ namespace {
             // The first relation is the Current node and must carry the
             // situacao status from the loaded record (FakeRepository sets APV).
             const auto current = relations.at(0).toMap();
-            // Current node has no kind label (only status is shown).
-            QCOMPARE(current.value("kind").toString(), QString(""));
+            QCOMPARE(current.value("kind").toString(), QString("Atual"));
             QCOMPARE(current.value("status").toString(), QString("APV"));
             QCOMPARE(current.value("ssa").toString(), QString("202500001"));
         }
@@ -357,6 +356,11 @@ namespace {
             QCOMPARE(edges.at(0).toMap().value("dashed"), false);
             // Second edge: target -> related (dashed)
             QCOMPARE(edges.at(1).toMap().value("dashed"), true);
+
+            const auto mermaid = model.mermaid();
+            QVERIFY(mermaid.contains(QStringLiteral("flowchart LR")));
+            QVERIFY(mermaid.contains(QStringLiteral("202500002\\nAPV")));
+            QVERIFY(mermaid.contains(QStringLiteral("-.->")));
         }
 
         void derivadas_graph_model_uses_details_view_model_relation_roles() {
@@ -370,8 +374,10 @@ namespace {
 
             const auto relations = details.relations();
             QCOMPARE(relations.size(), 3);
-            QCOMPARE(relations.at(1).toMap().value("kind").toString(), QString("Der."));
+            QCOMPARE(relations.at(0).toMap().value("kind").toString(), QString("Atual"));
+            QCOMPARE(relations.at(1).toMap().value("kind").toString(), QString("Origem"));
             QCOMPARE(relations.at(1).toMap().value("role").toString(), QString("parent"));
+            QCOMPARE(relations.at(2).toMap().value("kind").toString(), QString("Derivada"));
             QCOMPARE(relations.at(2).toMap().value("role").toString(), QString("child"));
 
             const auto* graph = details.graphModel();

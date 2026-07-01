@@ -11,6 +11,7 @@
 #include <QTimer>
 #include <QtConcurrent>
 
+#include <memory>
 #include <utility>
 
 namespace ssa::app::desktop {
@@ -55,6 +56,17 @@ namespace ssa::app::desktop {
                              });
         }
 
+        DesktopSmokeCaptureCompletion completeOnce(DesktopSmokeCaptureCompletion completion,
+                                                   const std::shared_ptr<bool>& done) {
+            return [completion = std::move(completion), done](const int status) {
+                if (*done) {
+                    return;
+                }
+                *done = true;
+                completion(status);
+            };
+        }
+
     } // namespace
 
     void DesktopSmokeScreenshotCapture::capture(QQuickWindow& window, const QString& outputPath,
@@ -65,9 +77,11 @@ namespace ssa::app::desktop {
             return;
         }
         const QPointer<QQuickWindow> guardedWindow{&window};
+        const auto done = std::make_shared<bool>(false);
+        auto completionOnce = completeOnce(std::move(completion), done);
         QObject::connect(
             &window, &QQuickWindow::frameSwapped, &window,
-            [guardedWindow, outputPath, screenshotDelayMs, completion = std::move(completion)] {
+            [guardedWindow, outputPath, screenshotDelayMs, completion = completionOnce] {
                 if (guardedWindow.isNull() || !guardedWindow->isVisible()) {
                     completion(2);
                     return;
@@ -87,6 +101,9 @@ namespace ssa::app::desktop {
             },
             Qt::SingleShotConnection);
         window.requestUpdate();
+        QTimer::singleShot(1500, &window, [guardedWindow, outputPath, completion = completionOnce] {
+            captureRenderedContent(guardedWindow, outputPath, completion);
+        });
     }
 
 } // namespace ssa::app::desktop

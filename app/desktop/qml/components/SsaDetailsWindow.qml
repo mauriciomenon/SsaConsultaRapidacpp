@@ -13,6 +13,7 @@ ApplicationWindow {
     objectName: DesktopSmokeObjectNames.detailsWindow
     property var detailsViewModel: null
     property string graphExportMessage: ""
+    property bool showMermaid: false
     signal graphNodeRequested(string ssaNumber)
     title: detailsViewModel && detailsViewModel.selectedSsaNumber.length > 0 ? "Detalhes da SSA " + detailsViewModel.selectedSsaNumber : "Detalhes da SSA"
     width: 760
@@ -76,11 +77,22 @@ ApplicationWindow {
                         }
 
                         ActionButton {
-                            text: "Exportar PNG"
-                            implicitWidth: 112
+                            text: root.showMermaid ? "Grafo" : "Mermaid"
+                            implicitWidth: 78
                             implicitHeight: 26
                             enabled: root.detailsViewModel && root.detailsViewModel.graphModel.nodeCount > 0
-                            onClicked: graphExportDialog.open()
+                            onClicked: root.showMermaid = !root.showMermaid
+                        }
+
+                        ActionButton {
+                            text: "PNG"
+                            implicitWidth: 54
+                            implicitHeight: 26
+                            enabled: root.detailsViewModel && root.detailsViewModel.graphModel.nodeCount > 0
+                            onClicked: {
+                                root.showMermaid = false;
+                                graphExportDialog.open();
+                            }
                         }
                     }
 
@@ -98,15 +110,32 @@ ApplicationWindow {
                         id: derivadasGraph
                         Layout.fillWidth: true
                         Layout.fillHeight: true
-                        visible: root.detailsViewModel && root.detailsViewModel.graphModel.nodeCount > 0
+                        visible: !root.showMermaid && root.detailsViewModel && root.detailsViewModel.graphModel.nodeCount > 0
                         graphModel: root.detailsViewModel ? root.detailsViewModel.graphModel : null
                         onNodeClicked: ssaNumber => root.graphNodeRequested(ssaNumber)
                         onExportFinished: succeeded => root.graphExportMessage = succeeded ? "Grafo exportado" : "Falha ao exportar grafo"
                     }
 
+                    TextArea {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        visible: root.showMermaid && root.detailsViewModel && root.detailsViewModel.graphModel.nodeCount > 0
+                        readOnly: true
+                        wrapMode: TextEdit.NoWrap
+                        text: root.detailsViewModel ? root.detailsViewModel.graphModel.mermaid : ""
+                        color: Theme.text
+                        selectedTextColor: Theme.accentText
+                        selectionColor: Theme.accent
+                        background: Rectangle {
+                            color: Theme.surface
+                            border.color: Theme.borderSoft
+                            radius: Theme.radius
+                        }
+                    }
+
                     Label {
                         visible: root.detailsViewModel && root.detailsViewModel.graphModel.nodeCount > 0
-                        text: root.graphExportMessage.length > 0 ? root.graphExportMessage : root.detailsViewModel ? root.detailsViewModel.graphModel.summary : ""
+                        text: root.graphExportMessage.length > 0 ? root.graphExportMessage : root.detailsViewModel ? root.detailsViewModel.graphModel.summary + " | Linha cheia: derivada | tracejada: relacionada" : ""
                         color: Theme.mutedText
                         font.pixelSize: 11
                     }
