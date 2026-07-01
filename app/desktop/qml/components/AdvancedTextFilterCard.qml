@@ -126,8 +126,8 @@ FilterCard {
             AppComboBox {
                 id: advancedValueSelector
                 Layout.minimumWidth: 96
+                Layout.fillWidth: true
                 Layout.preferredWidth: Math.max(108, root.cardWidth * 0.30)
-                Layout.maximumWidth: Math.max(124, root.cardWidth * 0.34)
                 leftPadding: 8
                 rightPadding: 20
                 popup.width: Math.min(560, Math.max(360, root.cardWidth * 0.86))

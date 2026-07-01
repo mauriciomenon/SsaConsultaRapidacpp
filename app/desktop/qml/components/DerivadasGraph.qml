@@ -39,9 +39,9 @@ Flickable {
         if (role === "current")
             return "";
         if (role === "child")
-            return "Derivada";
+            return "";
         if (role === "related")
-            return "Relacionada";
+            return "Relac.";
         return "SSA";
     }
 
@@ -125,12 +125,18 @@ Flickable {
             ctx.strokeStyle = Theme.border;
             const edgeList = model.edges();
             for (const edge of edgeList) {
-                const midX = (edge.fromX + edge.toX) / 2;
                 ctx.beginPath();
                 ctx.moveTo(edge.fromX, edge.fromY);
-                ctx.lineTo(midX, edge.fromY);
-                ctx.lineTo(midX, edge.toY);
-                ctx.lineTo(edge.toX, edge.toY);
+                if (edge.routeY !== undefined) {
+                    ctx.lineTo(edge.fromX, edge.routeY);
+                    ctx.lineTo(edge.toX, edge.routeY);
+                    ctx.lineTo(edge.toX, edge.toY);
+                } else {
+                    const midX = (edge.fromX + edge.toX) / 2;
+                    ctx.lineTo(midX, edge.fromY);
+                    ctx.lineTo(midX, edge.toY);
+                    ctx.lineTo(edge.toX, edge.toY);
+                }
                 if (edge.dashed) {
                     ctx.setLineDash([7, 6]);
                 } else {

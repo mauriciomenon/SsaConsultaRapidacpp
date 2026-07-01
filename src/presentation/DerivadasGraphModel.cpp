@@ -14,6 +14,7 @@ namespace ssa::presentation {
         constexpr qreal kXGap = 170;
         constexpr qreal kYGap = kNodeHeight + 9;
         constexpr qreal kMargin = 8;
+        constexpr qreal kDenseFanRouteTop = kMargin + kNodeHeight + 20;
 
         QString mermaidEscaped(QString value) {
             value.replace(QStringLiteral("\\"), QStringLiteral("\\\\"));
@@ -200,6 +201,9 @@ namespace ssa::presentation {
             edge.from = target_;
             edge.to = child;
             edge.dashed = dashed;
+            if (useHorizontalChildFan) {
+                edge.routeY = kDenseFanRouteTop;
+            }
             edges_.push_back(std::move(edge));
         }
 
@@ -209,6 +213,11 @@ namespace ssa::presentation {
         for (const auto& node : nodes_) {
             maxX = std::max(maxX, node.position.x() + kNodeWidth);
             maxY = std::max(maxY, node.position.y() + kNodeHeight);
+        }
+        for (const auto& edge : edges_) {
+            if (edge.routeY.has_value()) {
+                maxY = std::max(maxY, *edge.routeY);
+            }
         }
         graphWidth_ = maxX + kMargin;
         graphHeight_ = maxY + kMargin;
@@ -320,15 +329,23 @@ namespace ssa::presentation {
             if (fromIt == centerBySsa.end() || toIt == centerBySsa.end()) {
                 continue;
             }
-            const qreal midX = (fromIt->second.x() + toIt->second.x()) / 2.0;
+            const QString path = edge.routeY.has_value()
+                                     ? QStringLiteral("M %1 %2 V %3 H %4 V %5")
+                                           .arg(fromIt->second.x())
+                                           .arg(fromIt->second.y())
+                                           .arg(*edge.routeY)
+                                           .arg(toIt->second.x())
+                                           .arg(toIt->second.y())
+                                     : QStringLiteral("M %1 %2 H %3 V %4 H %5")
+                                           .arg(fromIt->second.x())
+                                           .arg(fromIt->second.y())
+                                           .arg((fromIt->second.x() + toIt->second.x()) / 2.0)
+                                           .arg(toIt->second.y())
+                                           .arg(toIt->second.x());
             result +=
-                QStringLiteral("  <path d=\"M %1 %2 H %3 V %4 H %5\" "
-                               "fill=\"none\" stroke=\"#8a8179\" stroke-width=\"1.5\"%6/>\n")
-                    .arg(fromIt->second.x())
-                    .arg(fromIt->second.y())
-                    .arg(midX)
-                    .arg(toIt->second.y())
-                    .arg(toIt->second.x())
+                QStringLiteral("  <path d=\"%1\" fill=\"none\" stroke=\"#8a8179\" "
+                               "stroke-width=\"1.5\"%2/>\n")
+                    .arg(path)
                     .arg(edge.dashed ? QStringLiteral(" stroke-dasharray=\"6 4\"") : QString{});
         }
 
@@ -393,11 +410,16 @@ namespace ssa::presentation {
                 continue;
             }
             QVariantMap entry;
+            entry.insert(QStringLiteral("from"), edge.from);
+            entry.insert(QStringLiteral("to"), edge.to);
             entry.insert(QStringLiteral("fromX"), fromIt->second.x());
             entry.insert(QStringLiteral("fromY"), fromIt->second.y());
             entry.insert(QStringLiteral("toX"), toIt->second.x());
             entry.insert(QStringLiteral("toY"), toIt->second.y());
             entry.insert(QStringLiteral("dashed"), edge.dashed);
+            if (edge.routeY.has_value()) {
+                entry.insert(QStringLiteral("routeY"), *edge.routeY);
+            }
             result.push_back(entry);
         }
         return result;

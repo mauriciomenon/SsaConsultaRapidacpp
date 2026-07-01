@@ -6,6 +6,7 @@
 #include <QStringList>
 #include <QVariantList>
 
+#include <optional>
 #include <unordered_map>
 #include <vector>
 
@@ -72,6 +73,7 @@ namespace ssa::presentation {
             QString from;
             QString to;
             bool dashed{false};
+            std::optional<qreal> routeY;
         };
 
         std::vector<GraphNode> nodes_;

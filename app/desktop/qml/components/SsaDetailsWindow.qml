@@ -98,8 +98,8 @@ ApplicationWindow {
 
             ActionButton {
                 text: "<"
-                implicitWidth: 34
-                implicitHeight: 26
+                implicitWidth: 26
+                implicitHeight: 24
                 enabled: root.navigationIndex > 0
                 ToolTip.visible: hovered
                 ToolTip.text: "Voltar no historico"
@@ -109,8 +109,8 @@ ApplicationWindow {
 
             ActionButton {
                 text: ">"
-                implicitWidth: 34
-                implicitHeight: 26
+                implicitWidth: 26
+                implicitHeight: 24
                 enabled: root.navigationIndex >= 0 && root.navigationIndex < root.navigationHistory.length - 1
                 ToolTip.visible: hovered
                 ToolTip.text: "Avancar no historico"

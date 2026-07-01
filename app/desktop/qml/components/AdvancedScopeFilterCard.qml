@@ -13,6 +13,7 @@ FilterCard {
 
     Layout.fillWidth: true
     Layout.preferredHeight: width < 760 ? 76 : 42
+    implicitHeight: width < 760 ? 76 : 42
     padding: 6
 
     property var selectedReprogrammingValues: []

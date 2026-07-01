@@ -26,10 +26,22 @@ Rectangle {
         if (role === "current")
             return "";
         if (role === "child")
-            return "Derivada";
+            return "";
         if (role === "related")
             return "Relac.";
         return "SSA";
+    }
+
+    function relationConnector(index, role) {
+        if (index <= 0)
+            return "";
+        const previous = root.viewModel.relations[index - 1];
+        const previousRole = previous !== undefined ? previous.role : "";
+        if (role === "related")
+            return "- -";
+        if (role === "child" && previousRole === "child")
+            return "";
+        return "->";
     }
 
     function relationBorderColor(role, selected) {
@@ -112,10 +124,11 @@ Rectangle {
 
                                     Label {
                                         visible: relationRow.index > 0
-                                        text: relationRow.modelData.role === "related" ? "- -" : "->"
+                                        text: root.relationConnector(relationRow.index, relationRow.modelData.role)
                                         color: relationRow.modelData.role === "related" ? Theme.mutedText : Theme.accentStrong
                                         font.bold: true
                                         anchors.verticalCenter: parent.verticalCenter
+                                        width: text.length > 0 ? implicitWidth : 2
                                     }
 
                                     Rectangle {
@@ -156,12 +169,9 @@ Rectangle {
                                             Text {
                                                 text: {
                                                     const status = relationRow.modelData.status !== undefined ? relationRow.modelData.status : "";
-                                                    const kind = relationRow.modelData.role === "current" ? "" : relationRow.modelData.kind !== undefined ? relationRow.modelData.kind : "";
-                                                    if (status.length > 0 && kind.length > 0)
-                                                        return "<b>" + status + "</b> " + kind;
                                                     if (status.length > 0)
                                                         return "<b>" + status + "</b>";
-                                                    return kind;
+                                                    return "";
                                                 }
                                                 color: relationRow.index === root.viewModel.currentRelationIndex ? (Theme.isDarkTint(Theme.accentSoft) ? Theme.mutedText : (Theme.dark ? Theme.accentText : Theme.text)) : Theme.mutedText
                                                 font.pixelSize: Math.max(10, root.valueTextSize - 2)
@@ -207,39 +217,48 @@ Rectangle {
                         }
                     }
 
-                    Row {
+                    Column {
                         Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
+                        Layout.preferredWidth: 62
                         spacing: 2
 
                         ActionButton {
-                            text: "<"
-                            implicitWidth: 26
-                            implicitHeight: 26
-                            enabled: root.viewModel.canSelectPreviousRelation
-                            onClicked: root.viewModel.selectPreviousRelation()
-                        }
-                        Label {
-                            text: root.viewModel.relationCount > 0 ? (root.viewModel.currentRelationIndex + 1) + "/" + root.viewModel.relationCount : ""
-                            color: Theme.mutedText
-                            font.pixelSize: 11
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
-                            width: 34
-                            height: 26
-                        }
-                        ActionButton {
-                            text: ">"
-                            implicitWidth: 26
-                            implicitHeight: 26
-                            enabled: root.viewModel.canSelectNextRelation
-                            onClicked: root.viewModel.selectNextRelation()
-                        }
-                        ActionButton {
                             text: "Grafo"
                             implicitWidth: 58
-                            implicitHeight: 26
+                            implicitHeight: 22
+                            font.pixelSize: 11
                             enabled: root.viewModel.selectedSsaNumber.length > 0
                             onClicked: root.graphWindowRequested()
+                        }
+
+                        Row {
+                            spacing: 2
+
+                            ActionButton {
+                                text: "<"
+                                implicitWidth: 22
+                                implicitHeight: 22
+                                font.pixelSize: 11
+                                enabled: root.viewModel.canSelectPreviousRelation
+                                onClicked: root.viewModel.selectPreviousRelation()
+                            }
+                            Label {
+                                text: root.viewModel.relationCount > 0 ? (root.viewModel.currentRelationIndex + 1) + "/" + root.viewModel.relationCount : ""
+                                color: Theme.mutedText
+                                font.pixelSize: 11
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                                width: 30
+                                height: 22
+                            }
+                            ActionButton {
+                                text: ">"
+                                implicitWidth: 22
+                                implicitHeight: 22
+                                font.pixelSize: 11
+                                enabled: root.viewModel.canSelectNextRelation
+                                onClicked: root.viewModel.selectNextRelation()
+                            }
                         }
                     }
                 }

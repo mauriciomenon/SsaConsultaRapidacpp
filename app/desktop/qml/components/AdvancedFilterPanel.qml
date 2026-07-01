@@ -25,18 +25,23 @@ Rectangle {
             width: parent.width
             spacing: 6
 
-            ColumnLayout {
+            Flow {
+                id: topFilterFlow
                 Layout.fillWidth: true
-                spacing: 4
+                Layout.preferredHeight: childrenRect.height
+                spacing: 6
 
                 AdvancedScopeFilterCard {
-                    Layout.fillWidth: true
+                    width: topFilterFlow.width >= 1180 ? Math.floor(topFilterFlow.width * 0.64) - 3 : topFilterFlow.width
+                    height: implicitHeight
                     filterViewModel: root.filterViewModel
                     derivation: root.advanced.derivation
                     onApplyRequested: root.applyRequested()
                 }
 
                 AdvancedMacroFilterCard {
+                    width: topFilterFlow.width >= 1180 ? topFilterFlow.width - Math.floor(topFilterFlow.width * 0.64) - 3 : topFilterFlow.width
+                    height: implicitHeight
                     sectorHierarchy: root.advanced.sectorHierarchy
                     macro: root.advanced.macro
                     onApplyRequested: root.applyRequested()

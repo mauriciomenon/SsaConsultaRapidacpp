@@ -522,6 +522,16 @@ namespace {
                 QCOMPARE(model.nodeCenter(row).y(), targetY);
                 QVERIFY(model.nodeCenter(row - 1).x() < model.nodeCenter(row).x());
             }
+
+            const auto edges = model.edges();
+            QCOMPARE(edges.size(), 7);
+            for (const auto& edgeValue : edges) {
+                const auto edge = edgeValue.toMap();
+                QCOMPARE(edge.value("from").toString(), QString("202500100"));
+                QVERIFY(edge.value("to").toString().startsWith(QString("20250010")));
+                QVERIFY(edge.contains("routeY"));
+                QVERIFY(edge.value("routeY").toReal() > targetY);
+            }
         }
 
         void derivadas_graph_model_invalid_index_returns_empty() {
