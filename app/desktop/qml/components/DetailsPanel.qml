@@ -28,7 +28,7 @@ Rectangle {
         if (role === "child")
             return "Derivada";
         if (role === "related")
-            return "Relacionada";
+            return "Relac.";
         return "SSA";
     }
 
@@ -50,7 +50,7 @@ Rectangle {
         if (role === "parent")
             return Theme.surface;
         if (role === "child")
-            return Theme.panelRaised;
+            return Theme.accentSoft;
         if (role === "related")
             return Theme.window;
         return Theme.panelRaised;
@@ -113,7 +113,7 @@ Rectangle {
                                     Label {
                                         visible: relationRow.index > 0
                                         text: relationRow.modelData.role === "related" ? "- -" : "->"
-                                        color: relationRow.modelData.role === "related" ? Theme.accentStrong : Theme.mutedText
+                                        color: relationRow.modelData.role === "related" ? Theme.mutedText : Theme.accentStrong
                                         font.bold: true
                                         anchors.verticalCenter: parent.verticalCenter
                                     }

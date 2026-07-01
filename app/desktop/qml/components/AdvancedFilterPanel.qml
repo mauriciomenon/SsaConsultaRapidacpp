@@ -25,19 +25,20 @@ Rectangle {
             width: parent.width
             spacing: 6
 
-            RowLayout {
+            ColumnLayout {
                 Layout.fillWidth: true
-                spacing: 6
+                spacing: 4
+
+                AdvancedScopeFilterCard {
+                    Layout.fillWidth: true
+                    filterViewModel: root.filterViewModel
+                    derivation: root.advanced.derivation
+                    onApplyRequested: root.applyRequested()
+                }
 
                 AdvancedMacroFilterCard {
                     sectorHierarchy: root.advanced.sectorHierarchy
                     macro: root.advanced.macro
-                    onApplyRequested: root.applyRequested()
-                }
-
-                AdvancedScopeFilterCard {
-                    filterViewModel: root.filterViewModel
-                    derivation: root.advanced.derivation
                     onApplyRequested: root.applyRequested()
                 }
             }

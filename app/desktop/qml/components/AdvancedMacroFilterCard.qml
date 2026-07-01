@@ -33,7 +33,7 @@ FilterCard {
         }
         AppComboBox {
             id: macroSelector
-            Layout.fillWidth: true
+            Layout.preferredWidth: 260
             textRole: "label"
             valueRole: "value"
             model: root.macro.options

@@ -149,10 +149,11 @@ FilterCard {
 
             ActionButton {
                 text: root.expandedValues ? "-" : "+"
-                implicitWidth: 32
+                implicitWidth: 28
                 implicitHeight: Theme.controlHeight
                 padding: 0
                 font.bold: true
+                font.pixelSize: 14
                 enabled: root.hasMoreValues || root.expandedValues
                 ToolTip.visible: hovered
                 ToolTip.text: root.expandedValues ? "Voltar ao combo curto de Valor" : "Mostrar mais valores no combo de Valor; nao aplica filtro"
