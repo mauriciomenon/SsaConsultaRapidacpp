@@ -25,8 +25,9 @@ without porting Python architecture, and stabilize CI/flaky tests.
 - `Visible columns` / `Column widths`: column hide/show and width persistence
   are present. Remaining gap: persist reorder via `ColumnSettingsModel`; PyQt6
   `column_manager_dialog.py` supports drag-reorder.
-- `Details panel`: port `details_dialog_navigation.py` (next/prev SSA in
-  filtered list) and `details_normalization.py` (field display rules).
+- `Details panel`: field display rules remain under review. The current C++
+  path has dedicated details window, relation graph, Mermaid text, PNG export,
+  and relation-node navigation.
 - `Preferences/theme/density`: add theme dialog parity with
   `gui/ssa/gui_theme_dialog.py` (live preview).
 
@@ -47,12 +48,12 @@ without porting Python architecture, and stabilize CI/flaky tests.
 ## Long term (multiple PRs, no fixed order)
 
 ### Missing GUI features (parity with PyQt6)
-- `Details navigation`: next/prev SSA in current filtered list. Requires a
-  `DetailsNavigationUseCase` that owns the current row list without reloading.
-  Python ref: `gui/ssa/details_dialog_navigation.py`.
-- `Derivadas tree/graph`: full sync + graph view. Python ref:
-  `gui/ssa/derivadas_sync_controller.py`, `gui/ssa/details_graph_renderer.py`,
-  `armazenamento/derivadas_sync.py`. Tracked in `RECOVERY_BACKLOG.md`.
+- `Details navigation`: next/prev SSA in current filtered list exists in the
+  main details panel. Remaining gap: polish back/forward breadcrumbs in the
+  dedicated details window.
+- `Derivadas tree/graph`: graph view exists with clickable nodes, Mermaid text,
+  PNG export, and node statuses. Remaining gap: deeper multi-level derivada
+  traversal beyond the current direct-relation repository contract.
 - `Load other DB`: repository factory + command. Python ref:
   `gui/gui_ssa.py::load_other_database`.
 - `Context menus`: row context menus. Python ref:
@@ -72,8 +73,8 @@ commands are out of scope unless a REPL mode is explicitly added:
 - `Rescan/update data`: done. `IImportWorkflowPort::rescan` wired; QML invokes
   via Importacao menu, Manutencao menu, and toolbar button.
 - `Update derivadas`: `syncDerivadas` C++ impl complete; QML trigger added to
-  Importacao and Manutencao menus. Graph view still missing (tracked in
-  `RECOVERY_BACKLOG.md`).
+  Importacao and Manutencao menus. Graph view, Mermaid text, and PNG export are
+  present.
 
 ### Architectural improvements
 - Split `gui_ssa.py` (247 KB, single class) parity is already avoided; keep

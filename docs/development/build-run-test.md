@@ -55,7 +55,7 @@ the core of the quality gate.
 | qmllint (Qt) | QML linting | `qmllint -I build/dev <qml files>` |
 | qmlformat (Qt) | QML formatting | `qmlformat <qml files>` |
 | gitleaks | Secret scanning | `gitleaks dir . --redact --exit-code 1` |
-| trufflehog | Secret scanning | `trufflehog filesystem .` |
+| trufflehog | Secret scanning | New CLI: `trufflehog filesystem .`; legacy CLI on this Mac: `trufflehog --regex --entropy=False -x <exclude-file> file://$PWD` |
 | detect-secrets | Secret scanning | `detect-secrets --baseline .secrets.baseline` |
 | semgrep | SAST + security audit | `semgrep --config=p/c --config=p/security-audit` |
 
