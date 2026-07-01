@@ -39,7 +39,7 @@ Rectangle {
         const previousRole = previous !== undefined ? previous.role : "";
         if (role === "related")
             return "- -";
-        if (role === "child" && previousRole === "child")
+        if (role === "child" && previousRole !== "current")
             return "";
         return "->";
     }
@@ -219,11 +219,13 @@ Rectangle {
 
                     Column {
                         Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
-                        Layout.preferredWidth: 62
+                        Layout.minimumWidth: 80
+                        Layout.preferredWidth: 80
                         spacing: 2
 
                         ActionButton {
                             text: "Grafo"
+                            anchors.horizontalCenter: parent.horizontalCenter
                             implicitWidth: 58
                             implicitHeight: 22
                             font.pixelSize: 11
@@ -232,6 +234,7 @@ Rectangle {
                         }
 
                         Row {
+                            anchors.horizontalCenter: parent.horizontalCenter
                             spacing: 2
 
                             ActionButton {
