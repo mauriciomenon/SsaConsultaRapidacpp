@@ -259,6 +259,8 @@ set_target_properties(
   PROPERTIES MACOSX_BUNDLE TRUE
              MACOSX_BUNDLE_GUI_IDENTIFIER br.menon.ssa-consulta-rapida
              MACOSX_BUNDLE_BUNDLE_NAME "SSA Consulta Rapida"
+             MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
+             MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
              WIN32_EXECUTABLE TRUE)
 
 install(

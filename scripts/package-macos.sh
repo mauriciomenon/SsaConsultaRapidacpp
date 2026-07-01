@@ -29,6 +29,16 @@ Generated files:
 EOF
 }
 
+require_option_value() {
+  local option="$1"
+  local value="${2-}"
+  if [[ -z "${value}" || "${value}" == --* ]]; then
+    echo "${option} requires a value." >&2
+    show_help >&2
+    exit 1
+  fi
+}
+
 if [[ "${1-}" == "--help" || "${1-}" == "-h" ]]; then
   show_help
   exit 0
@@ -42,26 +52,32 @@ arch="$(uname -m)"
 dist_root=""
 version=""
 dmg_stage_root=""
+codesign_identity="${SSA_MACOS_CODESIGN_IDENTITY:--}"
 
 while [[ $# -gt 0 ]]; do
   case "${1}" in
     --preset)
+      require_option_value "${1}" "${2-}"
       preset="${2}"
       shift 2
       ;;
     --arch)
+      require_option_value "${1}" "${2-}"
       arch="${2}"
       shift 2
       ;;
     --dist-dir)
+      require_option_value "${1}" "${2-}"
       dist_root="${2}"
       shift 2
       ;;
     --project-root)
+      require_option_value "${1}" "${2-}"
       repo_root="${2}"
       shift 2
       ;;
     --version)
+      require_option_value "${1}" "${2-}"
       version="${2}"
       shift 2
       ;;
@@ -97,14 +113,20 @@ artifact_name="ssa_consulta_rapida-${version}-${arch}-macos"
 artifact_root="${dist_root}/${artifact_name}"
 zip_path="${dist_root}/${artifact_name}.zip"
 dmg_path="${dist_root}/${artifact_name}.dmg"
-dmg_stage_root="${artifact_root}/dmg"
+staging_id="${artifact_name}.$$.staging"
+staged_artifact_root="${dist_root}/.${staging_id}"
+staged_zip_path="${dist_root}/.${staging_id}.zip"
+staged_dmg_path="${dist_root}/.${staging_id}.dmg"
+dmg_stage_root="${staged_artifact_root}/dmg"
 
-cleanup_dmg_stage() {
-  if [[ -n "${dmg_stage_root}" && "${dmg_stage_root}" == "${artifact_root}/dmg" ]]; then
+cleanup_package_stage() {
+  if [[ -n "${dmg_stage_root}" && "${dmg_stage_root}" == "${staged_artifact_root}/dmg" ]]; then
     rm -rf "${dmg_stage_root}"
   fi
+  rm -rf "${staged_artifact_root}"
+  rm -f "${staged_zip_path}" "${staged_dmg_path}"
 }
-trap cleanup_dmg_stage EXIT
+trap cleanup_package_stage EXIT
 
 "${repo_root}/tools/configure-dev.sh" "${preset}"
 cmake --build --preset "${preset}"
@@ -118,12 +140,22 @@ if [[ ! -x "${executable}" ]]; then
   echo "Binary not found: ${executable}" >&2
   exit 1
 fi
+if ! command -v lipo >/dev/null 2>&1; then
+  echo "lipo not found. Cannot verify packaged binary architecture." >&2
+  exit 1
+fi
+binary_arches="$(lipo -archs "${executable}")"
+if [[ " ${binary_arches} " != *" ${arch} "* ]]; then
+  echo "Requested architecture ${arch}, but ${executable} contains: ${binary_arches}" >&2
+  exit 1
+fi
 
 mkdir -p "${dist_root}"
-rm -rf "${artifact_root}"
-mkdir -p "${artifact_root}"
-cp -R "${app_bundle}" "${artifact_root}/"
-bundle_copy="${artifact_root}/ssa_consulta_rapida.app"
+rm -rf "${staged_artifact_root}"
+rm -f "${staged_zip_path}" "${staged_dmg_path}"
+mkdir -p "${staged_artifact_root}"
+cp -R "${app_bundle}" "${staged_artifact_root}/"
+bundle_copy="${staged_artifact_root}/ssa_consulta_rapida.app"
 
 qml_module_dir="${build_dir}/SsaConsultaRapida"
 if [[ ! -d "${qml_module_dir}" ]]; then
@@ -143,8 +175,28 @@ else
   exit 1
 fi
 
-rm -f "${zip_path}" "${dmg_path}"
-ditto -c -k --sequesterRsrc --keepParent "${bundle_copy}" "${zip_path}"
+sql_drivers_dir="${bundle_copy}/Contents/PlugIns/sqldrivers"
+if [[ -d "${sql_drivers_dir}" ]]; then
+  while IFS= read -r -d '' sql_driver; do
+    if [[ "$(basename "${sql_driver}")" != "libqsqlite.dylib" ]]; then
+      rm -f -- "${sql_driver}"
+    fi
+  done < <(find "${sql_drivers_dir}" -maxdepth 1 -type f -name 'libqsql*.dylib' -print0)
+fi
+
+frameworks_dir="${bundle_copy}/Contents/Frameworks"
+if [[ -d "${frameworks_dir}" ]]; then
+  (
+    shopt -s nullglob
+    rm -f -- "${frameworks_dir}"/libiodbc*.dylib
+    rm -f -- "${frameworks_dir}"/libpq*.dylib
+    rm -f -- "${frameworks_dir}"/libmimer*.dylib
+  )
+fi
+
+codesign --force --deep --sign "${codesign_identity}" "${bundle_copy}"
+
+ditto -c -k --sequesterRsrc --keepParent "${bundle_copy}" "${staged_zip_path}"
 
 if ! command -v hdiutil >/dev/null 2>&1; then
   echo "hdiutil not found. Cannot generate required macOS DMG artifact." >&2
@@ -154,16 +206,24 @@ rm -rf "${dmg_stage_root}"
 mkdir -p "${dmg_stage_root}"
 cp -R "${bundle_copy}" "${dmg_stage_root}/"
 ln -s /Applications "${dmg_stage_root}/Applications"
-hdiutil create -volname "SSA Consulta Rapida Cpp" -srcfolder "${dmg_stage_root}" -ov -format UDZO "${dmg_path}" >/dev/null
+hdiutil create -volname "SSA Consulta Rapida Cpp" -srcfolder "${dmg_stage_root}" -ov -format UDZO "${staged_dmg_path}" >/dev/null
+rm -rf "${dmg_stage_root}"
+dmg_stage_root=""
 
-cat > "${artifact_root}/run-ssa_consulta_rapida.sh" <<'EOF_RUN'
+cat > "${staged_artifact_root}/run-ssa_consulta_rapida.sh" <<'EOF_RUN'
 #!/usr/bin/env bash
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 "${SCRIPT_DIR}/ssa_consulta_rapida.app/Contents/MacOS/ssa_consulta_rapida" "$@"
 EOF_RUN
-chmod +x "${artifact_root}/run-ssa_consulta_rapida.sh"
+chmod +x "${staged_artifact_root}/run-ssa_consulta_rapida.sh"
+
+rm -rf "${artifact_root}"
+mv "${staged_artifact_root}" "${artifact_root}"
+mv -f "${staged_zip_path}" "${zip_path}"
+mv -f "${staged_dmg_path}" "${dmg_path}"
+final_bundle="${artifact_root}/ssa_consulta_rapida.app"
 
 package_set_latest_link "${dist_root}" "${artifact_name}"
 package_set_latest_alias "${dist_root}" "latest.zip" "${artifact_name}.zip"
@@ -178,7 +238,7 @@ macOS artifacts generated:
   version: ${version}
   preset: ${preset}
   architecture: ${arch}
-  bundle: ${bundle_copy}
+  bundle: ${final_bundle}
   zip: ${zip_path}
   dmg: ${dmg_path}
   latest_zip: ${dist_root}/latest.zip
