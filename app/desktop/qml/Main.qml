@@ -230,12 +230,6 @@ ApplicationWindow {
                     onClicked: root.vm.actions.commands.openSamHome()
                 }
                 ActionButton {
-                    text: "Carregar Dados"
-                    enabled: !root.vm.browse.status.loading
-                    implicitWidth: 132
-                    onClicked: root.vm.browse.load()
-                }
-                ActionButton {
                     text: "Importar XLS"
                     enabled: !root.vm.actions.workflows.running
                     implicitWidth: 112
@@ -250,7 +244,7 @@ ApplicationWindow {
                     Layout.rightMargin: 12
                     leftPadding: 20
                     rightPadding: 20
-                    text: root.vm.actions.currentWeek.value
+                    text: root.vm.actions.currentWeek.value + "   " + root.vm.browse.totalRows + " / " + root.vm.browse.totalRowsAll + " SSAs"
                     color: Theme.accent
                     font.pixelSize: 15
                     font.bold: true
@@ -328,6 +322,7 @@ ApplicationWindow {
                     browseViewModel: root.vm.browse
                     density: root.vm.ui.density
                     onOpenRequested: root.vm.selectionFlow.openSelectedSsa()
+                    onGraphWindowRequested: detailsWindowLoader.active = true
                     onLoadRelationRequested: ssaNumber => root.vm.browse.loadDetailsBySsaNumber(ssaNumber)
                 }
             }
@@ -370,6 +365,7 @@ ApplicationWindow {
         smokeController: root.smokeController
         preferencesDialog: preferencesDialog
         filterPanel: filterPanel
+        onDetailsWindowRequested: detailsWindowLoader.active = true
     }
 
     FileWorkflowDialogs {

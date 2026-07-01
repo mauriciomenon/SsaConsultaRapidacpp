@@ -44,6 +44,17 @@ namespace ssa::app::desktop {
         return nullptr;
     }
 
+    QQuickWindow* DesktopSmokeWindowLocator::findDetailsWindow() {
+        for (QWindow* window : QGuiApplication::topLevelWindows()) {
+            auto* quickWindow = asQuickWindow(window);
+            if (quickWindow != nullptr && quickWindow->isVisible() &&
+                quickWindow->objectName() == smoke_object_names::detailsWindow) {
+                return quickWindow;
+            }
+        }
+        return nullptr;
+    }
+
     QQuickWindow* DesktopSmokeWindowLocator::captureWindow(QQmlApplicationEngine& engine,
                                                            const DesktopSmokeCaptureTarget target) {
         switch (target) {
@@ -53,6 +64,8 @@ namespace ssa::app::desktop {
             return findPreferencesDialog();
         case DesktopSmokeCaptureTarget::RootWindowWithAdvancedFilters:
             return rootWindow(engine);
+        case DesktopSmokeCaptureTarget::DetailsWindow:
+            return findDetailsWindow();
         }
         return nullptr;
     }

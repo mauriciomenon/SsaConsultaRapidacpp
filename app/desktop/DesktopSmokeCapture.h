@@ -14,10 +14,12 @@ namespace ssa::app::desktop {
         explicit DesktopSmokeController(QObject* parent = nullptr);
         void requestOpenPreferences();
         void requestOpenAdvancedFilters();
+        void requestOpenDetailsWindow();
 
       signals:
         void openPreferencesRequested();
         void openAdvancedFiltersRequested();
+        void openDetailsWindowRequested();
     };
 
     class DesktopSmokeCapture final {

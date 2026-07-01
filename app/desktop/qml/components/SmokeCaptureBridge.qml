@@ -8,6 +8,7 @@ QtObject {
     required property var smokeController
     required property var preferencesDialog
     required property var filterPanel
+    signal detailsWindowRequested
 
     readonly property Connections controllerConnections: Connections {
         target: root.smokeController
@@ -18,6 +19,10 @@ QtObject {
 
         function onOpenAdvancedFiltersRequested() {
             root.filterPanel.showAdvancedFilters();
+        }
+
+        function onOpenDetailsWindowRequested() {
+            root.detailsWindowRequested();
         }
     }
 }

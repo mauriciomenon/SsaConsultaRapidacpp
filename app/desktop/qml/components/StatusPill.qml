@@ -35,19 +35,12 @@ Rectangle {
         }
 
         Label {
-            visible: root.browse !== null
-            text: root.browse.totalRows + " / " + root.browse.totalRowsAll + " SSAs"
-            color: Theme.mutedText
-            font.pixelSize: 11
-        }
-
-        Item {
             Layout.fillWidth: true
         }
 
         Label {
             visible: root.weekModel !== null
-            text: root.weekModel !== null ? root.weekModel.headerLabel : ""
+            text: root.weekModel !== null ? root.weekModel.dateTimeLabel : ""
             color: Theme.mutedText
             font.pixelSize: 11
         }

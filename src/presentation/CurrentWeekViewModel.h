@@ -7,28 +7,28 @@ class QTimer;
 
 namespace ssa::presentation {
 
-    // Live header label: ISO week + current date/time, refreshed each minute.
+    // ISO week stays separate from the live date/time shown in the status bar.
     class CurrentWeekViewModel final : public QObject {
         Q_OBJECT
         Q_PROPERTY(QString value READ value CONSTANT)
         Q_PROPERTY(QString label READ label CONSTANT)
-        Q_PROPERTY(QString headerLabel READ headerLabel NOTIFY headerLabelChanged)
+        Q_PROPERTY(QString dateTimeLabel READ dateTimeLabel NOTIFY dateTimeLabelChanged)
 
       public:
         explicit CurrentWeekViewModel(QObject* parent = nullptr);
 
         [[nodiscard]] QString value() const;
         [[nodiscard]] QString label() const;
-        [[nodiscard]] QString headerLabel() const;
+        [[nodiscard]] QString dateTimeLabel() const;
 
       signals:
-        void headerLabelChanged();
+        void dateTimeLabelChanged();
 
       private:
-        void refreshHeaderLabel();
+        void refreshDateTimeLabel();
 
         QString value_;
-        QString headerLabel_;
+        QString dateTimeLabel_;
         QTimer* timer_{nullptr};
     };
 

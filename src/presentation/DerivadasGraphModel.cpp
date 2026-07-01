@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <unordered_set>
+#include <utility>
 
 namespace ssa::presentation {
 
@@ -9,7 +10,7 @@ namespace ssa::presentation {
 
         // Mirrors gui/ssa/details_dialog_constants.py
         constexpr qreal kNodeWidth = 100;
-        constexpr qreal kNodeHeight = 30;
+        constexpr qreal kNodeHeight = 42;
         constexpr qreal kXGap = 170;
         constexpr qreal kYGap = 60;
         constexpr qreal kMargin = 8;
@@ -37,6 +38,7 @@ namespace ssa::presentation {
         // an ancestor (ancestor -> target); Related are dashed lateral edges.
         // Node order: ancestors first (depth 0..n-1), then target, then children.
         std::unordered_map<std::string, int> seenIndex;
+        std::unordered_map<std::string, QString> statusBySsa;
         std::vector<QString> orderedSsa;
         std::vector<int> orderedDepth;
 
@@ -52,6 +54,15 @@ namespace ssa::presentation {
             orderedSsa.push_back(ssa);
             orderedDepth.push_back(depth);
         };
+
+        for (const auto& entry : relations) {
+            const auto map = entry.toMap();
+            const auto ssa = map.value(QStringLiteral("ssa")).toString();
+            const auto status = map.value(QStringLiteral("status")).toString();
+            if (!ssa.isEmpty() && !status.isEmpty()) {
+                statusBySsa.insert_or_assign(ssa.toStdString(), status);
+            }
+        }
 
         // First pass: collect ancestors (DerivedFrom) then target, then children
         // (related nodes). Depth is heuristic from the relation kind since the
@@ -80,7 +91,7 @@ namespace ssa::presentation {
         }
         appendNode(target_, targetDepth);
 
-        std::vector<QString> children;
+        std::vector<std::pair<QString, bool>> children;
         std::unordered_set<std::string> seenChildren;
         for (const auto& entry : relations) {
             const auto map = entry.toMap();
@@ -95,7 +106,9 @@ namespace ssa::presentation {
                 continue;
             }
             if (seenChildren.insert(ssa.toStdString()).second) {
-                children.push_back(ssa);
+                const bool isRelated = role == QStringLiteral("related") ||
+                                       (role.isEmpty() && kind == QStringLiteral("Relacionada"));
+                children.emplace_back(ssa, isRelated);
                 appendNode(ssa, targetDepth + 1);
             }
         }
@@ -104,6 +117,10 @@ namespace ssa::presentation {
         for (std::size_t index = 0; index < orderedSsa.size(); ++index) {
             GraphNode node;
             node.ssa = orderedSsa[index];
+            if (const auto statusIt = statusBySsa.find(node.ssa.toStdString());
+                statusIt != statusBySsa.end()) {
+                node.status = statusIt->second;
+            }
             node.isTarget = node.ssa == target_;
             const qreal x = kMargin + orderedDepth[index] * kXGap;
             const qreal y = kMargin + static_cast<qreal>(index) * kYGap;
@@ -118,11 +135,11 @@ namespace ssa::presentation {
             edge.to = target_;
             edges_.push_back(std::move(edge));
         }
-        for (const auto& child : children) {
+        for (const auto& [child, dashed] : children) {
             GraphEdge edge;
             edge.from = target_;
             edge.to = child;
-            edge.dashed = true;
+            edge.dashed = dashed;
             edges_.push_back(std::move(edge));
         }
 
@@ -233,6 +250,13 @@ namespace ssa::presentation {
             return {};
         }
         return nodes_[index].ssa;
+    }
+
+    QString DerivadasGraphModel::nodeStatus(const int index) const {
+        if (index < 0 || index >= static_cast<int>(nodes_.size())) {
+            return {};
+        }
+        return nodes_[index].status;
     }
 
     bool DerivadasGraphModel::nodeIsTarget(const int index) const {

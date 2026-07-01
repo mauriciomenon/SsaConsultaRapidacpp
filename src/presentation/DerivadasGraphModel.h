@@ -48,6 +48,7 @@ namespace ssa::presentation {
         Q_INVOKABLE [[nodiscard]] QVariantList edges() const;
         Q_INVOKABLE [[nodiscard]] QPointF nodeCenter(int index) const;
         Q_INVOKABLE [[nodiscard]] QString nodeSsa(int index) const;
+        Q_INVOKABLE [[nodiscard]] QString nodeStatus(int index) const;
         Q_INVOKABLE [[nodiscard]] bool nodeIsTarget(int index) const;
 
       signals:
@@ -56,6 +57,7 @@ namespace ssa::presentation {
       private:
         struct GraphNode {
             QString ssa;
+            QString status;
             QPointF position;
             bool isTarget{false};
         };

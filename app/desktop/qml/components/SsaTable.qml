@@ -246,9 +246,10 @@ Rectangle {
                     anchors.left: parent.left
                     anchors.top: parent.top
                     anchors.bottom: parent.bottom
-                    width: 3
+                    width: 1
                     visible: cellDelegate.isSelected
                     color: Theme.accent
+                    opacity: 0.35
                 }
                 // Thin themed divider on top and bottom edges of the selected
                 // row, giving a subtle highlight without heavy borders.

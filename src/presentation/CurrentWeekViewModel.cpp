@@ -10,11 +10,11 @@ namespace ssa::presentation {
         int isoYear = 0;
         const int isoWeek = QDate::currentDate().weekNumber(&isoYear);
         value_ = QString::number(isoYear * 100 + isoWeek);
-        refreshHeaderLabel();
+        refreshDateTimeLabel();
 
         timer_ = new QTimer(this);
         timer_->setInterval(60 * 1000);
-        connect(timer_, &QTimer::timeout, this, &CurrentWeekViewModel::refreshHeaderLabel);
+        connect(timer_, &QTimer::timeout, this, &CurrentWeekViewModel::refreshDateTimeLabel);
         timer_->start();
     }
 
@@ -26,17 +26,16 @@ namespace ssa::presentation {
         return value_;
     }
 
-    QString CurrentWeekViewModel::headerLabel() const {
-        return headerLabel_;
+    QString CurrentWeekViewModel::dateTimeLabel() const {
+        return dateTimeLabel_;
     }
 
-    void CurrentWeekViewModel::refreshHeaderLabel() {
+    void CurrentWeekViewModel::refreshDateTimeLabel() {
         const auto now = QDateTime::currentDateTime();
-        const auto newLabel =
-            QStringLiteral("%1 - %2").arg(now.toString(QStringLiteral("dd/MM/yyyy HH:mm")), value_);
-        if (newLabel != headerLabel_) {
-            headerLabel_ = newLabel;
-            emit headerLabelChanged();
+        const auto newLabel = now.toString(QStringLiteral("dd/MM/yyyy HH:mm"));
+        if (newLabel != dateTimeLabel_) {
+            dateTimeLabel_ = newLabel;
+            emit dateTimeLabelChanged();
         }
     }
 

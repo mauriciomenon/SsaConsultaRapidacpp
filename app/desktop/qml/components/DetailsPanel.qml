@@ -13,7 +13,9 @@ Rectangle {
     readonly property int titleTextSize: Theme.densityValue(root.density, 14, 16, 18)
     readonly property int labelTextSize: Theme.densityValue(root.density, 12, 13, 14)
     readonly property int valueTextSize: Theme.densityValue(root.density, 12, 13, 15)
+    readonly property int detailsLabelWidth: Theme.densityValue(root.density, 118, 132, 150)
     signal openRequested
+    signal graphWindowRequested
     // Emitted when the user clicks a relation node: the main view loads that
     // SSA into the details panel (not open SAM).
     signal loadRelationRequested(string ssaNumber)
@@ -80,8 +82,8 @@ Rectangle {
                                     width: Math.max(Theme.relationNodeMinWidth, relationText.implicitWidth + 18)
                                     implicitHeight: Theme.relationNodeHeight
                                     radius: Theme.radius
-                                    color: relationRow.index === 0 ? Theme.accentSoft : Theme.panelRaised
-                                    border.color: relationRow.index === 0 ? Theme.accent : Theme.border
+                                    color: relationRow.index === 0 ? Theme.accentSoft : relationRow.modelData.role === "related" ? Theme.surface : Theme.panelRaised
+                                    border.color: relationRow.index === 0 ? Theme.accent : relationRow.modelData.role === "related" ? Theme.link : Theme.border
 
                                     Column {
                                         anchors.centerIn: parent
@@ -149,6 +151,16 @@ Rectangle {
                                 enabled: root.viewModel.canSelectPreviousRelation
                                 onClicked: root.viewModel.selectPreviousRelation()
                             }
+                            Label {
+                                text: root.viewModel.relationCount > 0 ? (root.viewModel.currentRelationIndex + 1) + "/" + root.viewModel.relationCount : ""
+                                color: Theme.mutedText
+                                font.pixelSize: 11
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                                width: 32
+                                height: 22
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
                             ActionButton {
                                 text: ">"
                                 implicitWidth: 22
@@ -156,6 +168,14 @@ Rectangle {
                                 anchors.verticalCenter: parent.verticalCenter
                                 enabled: root.viewModel.canSelectNextRelation
                                 onClicked: root.viewModel.selectNextRelation()
+                            }
+                            ActionButton {
+                                text: "Grafo"
+                                implicitWidth: 54
+                                implicitHeight: 22
+                                anchors.verticalCenter: parent.verticalCenter
+                                enabled: root.viewModel.selectedSsaNumber.length > 0
+                                onClicked: root.graphWindowRequested()
                             }
                         }
                     }
@@ -193,14 +213,14 @@ Rectangle {
                 property string rowValue: value === undefined || value === null ? "" : String(value)
 
                 width: detailsList.width
-                spacing: 2
+                spacing: 0
 
                 RowLayout {
                     width: parent.width
-                    spacing: Theme.gap
+                    spacing: 4
 
                     Label {
-                        Layout.preferredWidth: Theme.detailsLabelWidth
+                        Layout.preferredWidth: root.detailsLabelWidth
                         font.pixelSize: root.labelTextSize
                         font.bold: true
                         text: fieldDelegate.label + ":"

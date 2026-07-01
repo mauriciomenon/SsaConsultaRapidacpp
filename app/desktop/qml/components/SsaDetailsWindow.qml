@@ -10,6 +10,7 @@ import SsaConsultaRapida
 // relation graph and the SSA fields. Mirrors the Python details_dialog.
 ApplicationWindow {
     id: root
+    objectName: DesktopSmokeObjectNames.detailsWindow
     property var detailsViewModel: null
     property string graphExportMessage: ""
     signal graphNodeRequested(string ssaNumber)

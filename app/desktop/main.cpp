@@ -50,6 +50,9 @@ int main(int argc, char* argv[]) {
                                         "Open preferences before screenshot smoke capture."));
     parser.addOption(QCommandLineOption(QStringList{"open-advanced-filters"},
                                         "Open advanced filters before screenshot smoke capture."));
+    parser.addOption(
+        QCommandLineOption(QStringList{"open-details-window"},
+                           "Open details graph window before screenshot smoke capture."));
     parser.process(app);
 
     std::unique_ptr<ssa::app::desktop::DesktopApplicationRuntime> runtime;

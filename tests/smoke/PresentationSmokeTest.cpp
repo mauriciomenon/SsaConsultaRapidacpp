@@ -327,9 +327,11 @@ namespace {
         void derivadas_graph_model_builds_target_ancestor_and_child_layout() {
             ssa::presentation::DerivadasGraphModel model;
             QVariantList relations;
-            relations.push_back(QVariantMap{{"kind", "Atual"}, {"ssa", "202500002"}});
+            relations.push_back(
+                QVariantMap{{"kind", "Atual"}, {"ssa", "202500002"}, {"status", "APV"}});
             relations.push_back(QVariantMap{{"kind", "Derivada de"}, {"ssa", "202500001"}});
-            relations.push_back(QVariantMap{{"kind", "Relacionada"}, {"ssa", "202500003"}});
+            relations.push_back(
+                QVariantMap{{"kind", "Relacionada"}, {"ssa", "202500003"}, {"status", "STE"}});
 
             QSignalSpy spy(&model, &ssa::presentation::DerivadasGraphModel::graphChanged);
             model.buildFromRelations(QStringLiteral("202500002"), relations);
@@ -345,13 +347,15 @@ namespace {
             QCOMPARE(model.nodeIsTarget(0), false);
             QCOMPARE(model.nodeSsa(1), QString("202500002"));
             QCOMPARE(model.nodeIsTarget(1), true);
+            QCOMPARE(model.nodeStatus(1), QString("APV"));
             QCOMPARE(model.nodeSsa(2), QString("202500003"));
+            QCOMPARE(model.nodeStatus(2), QString("STE"));
 
             const auto edges = model.edges();
             QCOMPARE(edges.size(), 2);
             // First edge: ancestor -> target (solid)
             QCOMPARE(edges.at(0).toMap().value("dashed"), false);
-            // Second edge: target -> child (dashed)
+            // Second edge: target -> related (dashed)
             QCOMPARE(edges.at(1).toMap().value("dashed"), true);
         }
 
@@ -377,10 +381,12 @@ namespace {
             QCOMPARE(graph->nodeIsTarget(0), false);
             QCOMPARE(graph->nodeSsa(1), QString("202500003"));
             QCOMPARE(graph->nodeIsTarget(1), true);
+            QCOMPARE(graph->nodeStatus(1), QString("APV"));
             QCOMPARE(graph->nodeSsa(2), QString("202500004"));
+            QCOMPARE(graph->nodeStatus(2), QString("STE"));
             QCOMPARE(graph->edges().size(), 2);
             QCOMPARE(graph->edges().at(0).toMap().value("dashed"), false);
-            QCOMPARE(graph->edges().at(1).toMap().value("dashed"), true);
+            QCOMPARE(graph->edges().at(1).toMap().value("dashed"), false);
         }
 
         void derivadas_graph_model_clears_on_empty_target() {
@@ -426,7 +432,9 @@ namespace {
                                      {QVariantMap{{"kind", "Atual"}, {"ssa", "202500001"}}});
 
             QCOMPARE(model.nodeSsa(-1), QString());
+            QCOMPARE(model.nodeStatus(-1), QString());
             QCOMPARE(model.nodeSsa(99), QString());
+            QCOMPARE(model.nodeStatus(99), QString());
             QCOMPARE(model.nodeIsTarget(-1), false);
             QVERIFY(model.nodeCenter(-1).isNull());
         }
@@ -958,6 +966,10 @@ namespace {
                      model.actions()->currentWeek()->label());
             QVERIFY(
                 model.actions()->currentWeek()->value().contains(QRegularExpression("^\\d{6}$")));
+            QVERIFY(model.actions()->currentWeek()->dateTimeLabel().contains(
+                QRegularExpression("^\\d{2}/\\d{2}/\\d{4} \\d{2}:\\d{2}$")));
+            QVERIFY(!model.actions()->currentWeek()->dateTimeLabel().contains(
+                model.actions()->currentWeek()->value()));
         }
 
         void preferences_save_failure_reports_store_error() {

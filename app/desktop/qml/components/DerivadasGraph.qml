@@ -52,7 +52,7 @@ Flickable {
         height: root.contentHeight
 
         readonly property real nodeWidth: 100
-        readonly property real nodeHeight: 30
+        readonly property real nodeHeight: 42
 
         function nodeAt(pointX, pointY) {
             const model = root.graphModel;
@@ -109,6 +109,7 @@ Flickable {
             for (let i = 0; i < count; ++i) {
                 const center = model.nodeCenter(i);
                 const ssa = model.nodeSsa(i);
+                const status = model.nodeStatus(i);
                 const isTarget = model.nodeIsTarget(i);
                 const cx = center.x;
                 const cy = center.y;
@@ -127,7 +128,11 @@ Flickable {
                 ctx.font = "bold 12px " + Theme.fontFamily;
                 ctx.textAlign = "center";
                 ctx.textBaseline = "middle";
-                ctx.fillText(ssa, cx, cy);
+                ctx.fillText(ssa, cx, status.length > 0 ? cy - 7 : cy);
+                if (status.length > 0) {
+                    ctx.font = "bold 11px " + Theme.fontFamily;
+                    ctx.fillText(status, cx, cy + 9);
+                }
             }
         }
 
