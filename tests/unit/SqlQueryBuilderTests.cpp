@@ -31,6 +31,34 @@ TEST_CASE("sql query builder rejects unknown visible columns") {
     REQUIRE_THROWS_AS(ssa::query::SqlQueryBuilder{}.build(request), std::invalid_argument);
 }
 
+TEST_CASE("sql query builder selects and orders derived count column as expression") {
+    ssa::domain::SsaPageRequest request;
+    request.visibleColumns = {"numero_ssa",
+                              std::string{ssa::domain::ColumnCatalog::derivedCountColumnKey()}};
+    request.sort.columnKey = std::string{ssa::domain::ColumnCatalog::derivedCountColumnKey()};
+    request.sort.ascending = false;
+
+    const auto queries = ssa::query::SqlQueryBuilder{}.build(request);
+
+    REQUIRE(queries.page.sql.find("\"qtd_derivadas\"") != std::string::npos);
+    REQUIRE(queries.page.sql.find("COUNT(*)") != std::string::npos);
+    REQUIRE(queries.page.sql.find("LEFT JOIN") != std::string::npos);
+    REQUIRE(queries.page.sql.find("GROUP BY TRIM(COALESCE(\"derivada_de\", ''))") !=
+            std::string::npos);
+    const auto orderBy = queries.page.sql.find(" ORDER BY ");
+    REQUIRE(orderBy != std::string::npos);
+    REQUIRE(queries.page.sql.find("COALESCE(\"derived_counts\".\"qtd_derivadas\", 0)", orderBy) !=
+            std::string::npos);
+}
+
+TEST_CASE("sql query builder rejects distinct values for derived count column") {
+    ssa::domain::DistinctValuesRequest request;
+    request.columnKey = std::string{ssa::domain::ColumnCatalog::derivedCountColumnKey()};
+
+    REQUIRE_THROWS_AS(ssa::query::SqlQueryBuilder{}.buildDistinctValues(request),
+                      std::invalid_argument);
+}
+
 TEST_CASE("sql query builder rejects unsafe table identifiers") {
     ssa::domain::SsaPageRequest request;
 

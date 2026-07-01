@@ -69,6 +69,18 @@ namespace {
         return path;
     }
 
+    void executeSql(const std::filesystem::path& path, const char* sql) {
+        sqlite3* db = nullptr;
+        REQUIRE(sqlite3_open(path.string().c_str(), &db) == SQLITE_OK);
+        char* error = nullptr;
+        const int rc = sqlite3_exec(db, sql, nullptr, nullptr, &error);
+        if (error != nullptr) {
+            sqlite3_free(error);
+        }
+        sqlite3_close(db);
+        REQUIRE(rc == SQLITE_OK);
+    }
+
     struct SqliteFixture {
         std::filesystem::path path{createFixture()};
 
@@ -152,6 +164,34 @@ TEST_CASE_METHOD(SqliteRepositoryFixture, "sqlite repository returns details and
     request.columnKey = "setor_executor";
     const auto values = repository.distinctValues(request);
     REQUIRE_FALSE(values.empty());
+}
+
+TEST_CASE_METHOD(SqliteRepositoryFixture,
+                 "sqlite repository projects derived count virtual column") {
+    executeSql(path, R"SQL(
+        INSERT INTO ssa_table VALUES
+            ('202500004','APV','202500002','LOC-5','Tomada dagua','EQ-E',202501,'2025-01-05','Ajustar valvula','Ajuste','SEM','SMM','Ari','Beto','Clio','SAM','SYS','e.xlsx','2025-01-05','I','J',202502,202503,0,0);
+    )SQL");
+
+    ssa::domain::SsaPageRequest request;
+    request.pageSize = 10;
+    request.excludeScaSesSte = false;
+    request.visibleColumns = {"numero_ssa",
+                              std::string{ssa::domain::ColumnCatalog::derivedCountColumnKey()}};
+
+    const auto page = repository.page(request);
+
+    const auto parent = std::ranges::find_if(page.rows, [](const ssa::domain::SsaRecord& row) {
+        return row.valueOf("numero_ssa") == "202500002";
+    });
+    REQUIRE(parent != page.rows.end());
+    REQUIRE(parent->valueOf("qtd_derivadas") == "1");
+
+    const auto child = std::ranges::find_if(page.rows, [](const ssa::domain::SsaRecord& row) {
+        return row.valueOf("numero_ssa") == "202500004";
+    });
+    REQUIRE(child != page.rows.end());
+    REQUIRE(child->valueOf("qtd_derivadas") == "0");
 }
 
 TEST_CASE_METHOD(SqliteRepositoryFixture,

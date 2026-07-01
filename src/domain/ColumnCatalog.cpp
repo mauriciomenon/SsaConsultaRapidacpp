@@ -16,6 +16,7 @@ namespace ssa::domain {
         constexpr std::string_view kStatusColumnKey = "situacao";
         constexpr std::string_view kExecutorColumnKey = "setor_executor";
         constexpr std::string_view kDerivationColumnKey = "derivada_de";
+        constexpr std::string_view kDerivedCountColumnKey = "qtd_derivadas";
         constexpr std::array<std::string_view, 3> kExcludedStatusCodes{"SCA", "SES", "STE"};
         constexpr std::array<std::string_view, 3> kWeekColumnKeys{
             "semana_cadastro", "semana_programada", "semana_executada"};
@@ -51,7 +52,7 @@ namespace ssa::domain {
         }};
         constexpr std::string_view kStatusLastSortCode = "STE";
 
-        const std::array<ColumnDef, 84> kColumns{{
+        const std::array<ColumnDef, 85> kColumns{{
             {"id", "ID", "", Integer, false, false, 80},
             {"numero_ssa", "No SSA", "", Text, true, true, 110},
             {"situacao", "Sit.", "Situacao", Text, true, true, 80},
@@ -65,6 +66,7 @@ namespace ssa::domain {
             {"descricao_execucao", "Descricao Execucao", "", Text, true, true, 360},
             {"setor_emissor", "Emis.", "Emissao", Text, true, true, 90},
             {"setor_executor", "Exec.", "Executor", Text, true, true, 90},
+            {"qtd_derivadas", "Der. Qtde", "Derivadas", Integer, true, false, 82},
             {"solicitante", "Solicitante", "", Text, true, true, 180},
             {"responsavel_programacao", "Resp. Programacao", "", Text, true, true, 180},
             {"responsavel_execucao", "Resp. Execucao", "", Text, true, true, 180},
@@ -162,7 +164,9 @@ namespace ssa::domain {
         }
 
         std::vector<std::string> buildOrderedFilterColumnKeys() {
-            auto keys = keysMatching([](const ColumnDef& column) { return column.key != "id"; });
+            auto keys = keysMatching([](const ColumnDef& column) {
+                return column.key != "id" && !ColumnCatalog::isDerivedCountColumn(column.key);
+            });
             const auto status = std::string{ColumnCatalog::statusColumnKey()};
             const auto statusIt = std::ranges::find(keys, status);
             if (statusIt != keys.end() && statusIt != keys.begin()) {
@@ -185,6 +189,14 @@ namespace ssa::domain {
 
     std::span<const ColumnDef> ColumnCatalog::all() {
         return kColumns;
+    }
+
+    std::vector<ColumnDef> ColumnCatalog::storageColumns() {
+        std::vector<ColumnDef> result;
+        std::ranges::copy_if(kColumns, std::back_inserter(result), [](const ColumnDef& column) {
+            return !ColumnCatalog::isDerivedCountColumn(column.key);
+        });
+        return result;
     }
 
     std::vector<ColumnDef> ColumnCatalog::defaultVisible() {
@@ -266,6 +278,10 @@ namespace ssa::domain {
         return kDerivationColumnKey;
     }
 
+    std::string_view ColumnCatalog::derivedCountColumnKey() {
+        return kDerivedCountColumnKey;
+    }
+
     std::span<const std::string_view> ColumnCatalog::excludedStatusCodes() {
         return kExcludedStatusCodes;
     }
@@ -308,6 +324,10 @@ namespace ssa::domain {
 
     bool ColumnCatalog::isReprogrammingColumn(const std::string_view key) {
         return std::ranges::find(kReprogrammingColumnKeys, key) != kReprogrammingColumnKeys.end();
+    }
+
+    bool ColumnCatalog::isDerivedCountColumn(const std::string_view key) {
+        return key == kDerivedCountColumnKey;
     }
 
     const ColumnDef* ColumnCatalog::find(const std::string_view key) {

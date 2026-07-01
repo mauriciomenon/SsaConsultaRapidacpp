@@ -127,8 +127,9 @@ namespace ssa::infra::sqlite {
         std::vector<std::string>
         createFilterIndexesSql(const std::string& tableName,
                                const std::vector<domain::ColumnDef>& columns) {
-            static constexpr std::string_view filterColumns[] = {
-                "situacao", "setor_executor", "semana_programada", "semana_executada"};
+            static constexpr std::string_view filterColumns[] = {"situacao", "setor_executor",
+                                                                 "derivada_de", "semana_programada",
+                                                                 "semana_executada"};
             std::unordered_set<std::string_view> present;
             for (const auto& column : columns) {
                 present.insert(column.key);

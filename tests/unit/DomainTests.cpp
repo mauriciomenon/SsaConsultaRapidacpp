@@ -23,7 +23,19 @@ TEST_CASE("column catalog exposes visible and general-search contracts") {
     REQUIRE(ssa::domain::ColumnCatalog::defaultFilterColumnKey() == "situacao");
     REQUIRE(ssa::domain::ColumnCatalog::contains("numero_ssa"));
     REQUIRE(ssa::domain::ColumnCatalog::contains("situacao"));
+    REQUIRE(ssa::domain::ColumnCatalog::contains("qtd_derivadas"));
     REQUIRE_FALSE(ssa::domain::ColumnCatalog::contains("unknown_column"));
+
+    REQUIRE(std::ranges::find(visible, "qtd_derivadas") != visible.end());
+    REQUIRE(std::ranges::find(search, "qtd_derivadas") == search.end());
+    REQUIRE(
+        std::ranges::find(ssa::domain::ColumnCatalog::orderedFilterColumnKeys(), "qtd_derivadas") ==
+        ssa::domain::ColumnCatalog::orderedFilterColumnKeys().end());
+
+    const auto storage = ssa::domain::ColumnCatalog::storageColumns();
+    REQUIRE(std::ranges::none_of(storage, [](const ssa::domain::ColumnDef& column) {
+        return column.key == "qtd_derivadas";
+    }));
 }
 
 TEST_CASE("column catalog exposes expanded advanced filter fields") {

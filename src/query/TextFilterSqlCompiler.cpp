@@ -197,6 +197,9 @@ namespace ssa::query {
         void appendColumnTerms(std::ostringstream& where, std::vector<std::string>& bindings,
                                const std::string& key, const std::vector<SearchTerm>& terms,
                                bool& hasCondition) {
+            if (domain::ColumnCatalog::isDerivedCountColumn(key)) {
+                throw std::invalid_argument("filters are not supported for derived count");
+            }
             appendInclusiveColumnTerms(where, bindings, key, terms, hasCondition);
             appendExclusiveColumnTerms(where, bindings, key, terms, hasCondition);
         }

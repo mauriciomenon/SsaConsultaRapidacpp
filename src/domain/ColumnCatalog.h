@@ -29,6 +29,7 @@ namespace ssa::domain {
     class ColumnCatalog final {
       public:
         [[nodiscard]] static std::span<const ColumnDef> all();
+        [[nodiscard]] static std::vector<ColumnDef> storageColumns();
         [[nodiscard]] static std::vector<ColumnDef> defaultVisible();
         [[nodiscard]] static std::vector<std::string> defaultVisibleKeys();
         [[nodiscard]] static std::vector<std::string>
@@ -42,6 +43,7 @@ namespace ssa::domain {
         [[nodiscard]] static std::string_view statusColumnKey();
         [[nodiscard]] static std::string_view executorColumnKey();
         [[nodiscard]] static std::string_view derivationColumnKey();
+        [[nodiscard]] static std::string_view derivedCountColumnKey();
         [[nodiscard]] static std::span<const std::string_view> excludedStatusCodes();
         [[nodiscard]] static std::span<const std::string_view> weekColumnKeys();
         [[nodiscard]] static std::string_view defaultAdvancedWeekColumnKey();
@@ -53,6 +55,7 @@ namespace ssa::domain {
         [[nodiscard]] static bool isQuickSectorFilterColumn(std::string_view key);
         [[nodiscard]] static bool isStatusExclusionFilterColumn(std::string_view key);
         [[nodiscard]] static bool isReprogrammingColumn(std::string_view key);
+        [[nodiscard]] static bool isDerivedCountColumn(std::string_view key);
         [[nodiscard]] static const ColumnDef* find(std::string_view key);
         [[nodiscard]] static bool contains(std::string_view key);
     };
