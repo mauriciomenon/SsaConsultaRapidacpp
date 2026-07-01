@@ -33,4 +33,5 @@ cmake-build-debug/
 .envrc
 
 .deps-cache/
+.deepsec/
 cmake/*.bak.*
