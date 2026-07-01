@@ -3,6 +3,7 @@
 #include "domain/ColumnCatalog.h"
 #include "query/SqlQueryText.h"
 
+#include <array>
 #include <limits>
 #include <sstream>
 #include <stdexcept>
@@ -119,21 +120,6 @@ namespace ssa::query {
             return sql.str();
         }
 
-        std::string distinctValuesOrderSql(const std::string& column) {
-            std::ostringstream sql;
-            sql << " ORDER BY CASE UPPER(" << column << ")"
-                << " WHEN 'IEE3' THEN 0"
-                << " WHEN 'IEE1' THEN 1"
-                << " WHEN 'IEE2' THEN 2"
-                << " WHEN 'IEE4' THEN 3"
-                << " WHEN 'MEL1' THEN 4"
-                << " WHEN 'MEL2' THEN 5"
-                << " WHEN 'MEL3' THEN 6"
-                << " WHEN 'MEL4' THEN 7"
-                << " ELSE 100 END, " << column << " COLLATE NOCASE ASC, " << column << " ASC";
-            return sql.str();
-        }
-
         std::string singleQuotedSqlLiteral(const std::string& value) {
             std::string literal{"'"};
             for (const char ch : value) {
@@ -145,6 +131,39 @@ namespace ssa::query {
             }
             literal.push_back('\'');
             return literal;
+        }
+
+        std::string asciiCodeSegmentCondition(const std::string& expression,
+                                              const std::string_view code) {
+            const auto codeLiteral = singleQuotedSqlLiteral(std::string{code});
+            const auto nextChar =
+                "SUBSTR(UPPER(" + expression + "), " + std::to_string(code.size() + 1) + ", 1)";
+            return "UPPER(" + expression + ") = " + codeLiteral + " OR (UPPER(" + expression +
+                   ") LIKE " + singleQuotedSqlLiteral(std::string{code} + "%") + " AND NOT (" +
+                   nextChar + " BETWEEN 'A' AND 'Z') AND NOT (" + nextChar +
+                   " BETWEEN '0' AND '9'))";
+        }
+
+        bool isNumericDistinctColumn(const std::string_view columnKey) {
+            const auto* column = domain::ColumnCatalog::find(columnKey);
+            return column != nullptr && column->type == domain::ColumnType::Integer;
+        }
+
+        std::string distinctValuesOrderSql(const std::string& column, const bool numericColumn) {
+            std::ostringstream sql;
+            constexpr std::array<std::string_view, 8> orderedValues{"IEE3", "IEE1", "IEE2", "IEE4",
+                                                                    "MEL1", "MEL2", "MEL3", "MEL4"};
+            sql << " ORDER BY CASE";
+            for (std::size_t index = 0; index < orderedValues.size(); ++index) {
+                sql << " WHEN " << asciiCodeSegmentCondition(column, orderedValues[index])
+                    << " THEN " << index;
+            }
+            sql << " ELSE 100 END";
+            if (numericColumn) {
+                sql << ", CAST(" << column << " AS INTEGER) ASC";
+            }
+            sql << ", " << column << " COLLATE NOCASE ASC, " << column << " ASC";
+            return sql.str();
         }
 
         std::string orderByExpression(const std::string& sortKey) {
@@ -272,7 +291,8 @@ namespace ssa::query {
         sql << "SELECT DISTINCT " << projection << " FROM " << quoteTableIdentifier(tableName_)
             << " ";
         sql << "WHERE " << distinctValuesWhereSql(projection, where);
-        sql << distinctValuesOrderSql(projection) << " LIMIT ?";
+        sql << distinctValuesOrderSql(projection, isNumericDistinctColumn(request.columnKey))
+            << " LIMIT ?";
         auto bindings = std::move(where.bindings);
         bindings.push_back(std::to_string(request.limit));
         return {sql.str(), std::move(bindings)};

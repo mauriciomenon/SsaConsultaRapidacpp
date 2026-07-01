@@ -75,6 +75,20 @@ TEST_CASE("column value priority policy orders display values") {
                                                "ANA", "BRUNO", "MEG2"});
 }
 
+TEST_CASE("column value priority policy orders responsible names and numeric values") {
+    std::vector<std::string> people{"MARIA",     "IEE2 BRUNO", "MEL1 CAIO", "IEE3 ANA",
+                                    "IEE1 DORA", "MEL4 EVA",   "IEE4 BIA"};
+    std::ranges::sort(people, ssa::domain::columnValueLessForDisplay);
+
+    REQUIRE(people == std::vector<std::string>{"IEE3 ANA", "IEE1 DORA", "IEE2 BRUNO", "IEE4 BIA",
+                                               "MEL1 CAIO", "MEL4 EVA", "MARIA"});
+
+    std::vector<std::string> numbers{"1", "12", "2", "9", "7", "3"};
+    std::ranges::sort(numbers, ssa::domain::columnValueLessForDisplay);
+
+    REQUIRE(numbers == std::vector<std::string>{"1", "2", "3", "7", "9", "12"});
+}
+
 TEST_CASE("sector hierarchy expands divisions and orders known sectors") {
     const auto smin = ssa::domain::SectorHierarchy::sectorsForDivision("smin");
     REQUIRE(smin == std::vector<std::string>{"IEE1", "IEE2", "IEE3", "IEE4"});

@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <array>
+#include <limits>
+#include <optional>
 #include <string>
 
 namespace ssa::domain {
@@ -44,6 +46,24 @@ namespace ssa::domain {
             return result;
         }
 
+        std::optional<unsigned long long> parseUnsignedInteger(const std::string_view value) {
+            if (value.empty()) {
+                return std::nullopt;
+            }
+            unsigned long long result = 0;
+            for (const char ch : value) {
+                if (ch < '0' || ch > '9') {
+                    return std::nullopt;
+                }
+                const auto digit = static_cast<unsigned long long>(ch - '0');
+                if (result > (std::numeric_limits<unsigned long long>::max() - digit) / 10) {
+                    return std::nullopt;
+                }
+                result = result * 10 + digit;
+            }
+            return result;
+        }
+
         int priorityRank(const std::string_view value) {
             for (std::size_t index = 0; index < kOrderedPriorityValues.size(); ++index) {
                 if (matchesAsciiCodeSegmentCaseInsensitive(value, kOrderedPriorityValues[index])) {
@@ -68,6 +88,11 @@ namespace ssa::domain {
         const int rightRank = priorityRank(right);
         if (leftRank != rightRank) {
             return leftRank < rightRank;
+        }
+        const auto leftNumber = parseUnsignedInteger(left);
+        const auto rightNumber = parseUnsignedInteger(right);
+        if (leftNumber.has_value() && rightNumber.has_value() && *leftNumber != *rightNumber) {
+            return *leftNumber < *rightNumber;
         }
         const auto leftUpper = uppercaseAsciiCopy(left);
         const auto rightUpper = uppercaseAsciiCopy(right);

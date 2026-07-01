@@ -9,6 +9,7 @@
 #include <QDir>
 #include <QTemporaryFile>
 
+#include <algorithm>
 #include <filesystem>
 #include <sqlite3.h>
 #include <string>
@@ -176,6 +177,30 @@ TEST_CASE_METHOD(SqliteRepositoryFixture, "sqlite repository returns details and
     const auto values = repository.distinctValues(request);
     REQUIRE(values == std::vector<std::string>{"IEE3", "IEE1", "IEE4", "MEL1", "MEL2", "AAA",
                                                "MEG2", "SMM", "STE"});
+}
+
+TEST_CASE_METHOD(SqliteRepositoryFixture,
+                 "sqlite repository orders responsible and numeric distinct values for display") {
+    executeSql(path, R"SQL(
+        INSERT INTO ssa_table VALUES
+            ('202500020','APV','','LOC-20','Area','EQ-X',202501,'2025-01-20','A','A','SEM','MEG2','Ana','Bruno','IEE2 BRUNO','SAM','SYS','x.xlsx','2025-01-20','A','B',202502,202503,12,12),
+            ('202500021','APV','','LOC-21','Area','EQ-X',202501,'2025-01-21','A','A','SEM','MEG2','Ana','Bruno','MARIA','SAM','SYS','x.xlsx','2025-01-21','A','B',202502,202503,2,2),
+            ('202500022','APV','','LOC-22','Area','EQ-X',202501,'2025-01-22','A','A','SEM','MEG2','Ana','Bruno','IEE3 ANA','SAM','SYS','x.xlsx','2025-01-22','A','B',202502,202503,7,7),
+            ('202500023','APV','','LOC-23','Area','EQ-X',202501,'2025-01-23','A','A','SEM','MEG2','Ana','Bruno','MEL1 CAIO','SAM','SYS','x.xlsx','2025-01-23','A','B',202502,202503,3,3),
+            ('202500024','APV','','LOC-24','Area','EQ-X',202501,'2025-01-24','A','A','SEM','MEG2','Ana','Bruno','IEE1 DORA','SAM','SYS','x.xlsx','2025-01-24','A','B',202502,202503,9,9);
+    )SQL");
+
+    ssa::domain::DistinctValuesRequest peopleRequest;
+    peopleRequest.columnKey = "responsavel_execucao";
+    const auto people = repository.distinctValues(peopleRequest);
+    REQUIRE(
+        std::ranges::search(people, std::vector<std::string>{"IEE3 ANA", "IEE1 DORA", "IEE2 BRUNO"})
+            .begin() == people.begin());
+
+    ssa::domain::DistinctValuesRequest numericRequest;
+    numericRequest.columnKey = "num_reprogramacoes";
+    const auto numbers = repository.distinctValues(numericRequest);
+    REQUIRE(numbers == std::vector<std::string>{"0", "1", "2", "3", "7", "9", "12"});
 }
 
 TEST_CASE_METHOD(SqliteRepositoryFixture,
