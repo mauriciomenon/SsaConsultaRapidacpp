@@ -74,15 +74,15 @@ FilterCard {
 
     width: cardWidth
     height: cardHeight
-    padding: 4
+    padding: 3
 
     ColumnLayout {
         anchors.fill: parent
-        spacing: 3
+        spacing: 2
 
         RowLayout {
             Layout.fillWidth: true
-            Layout.preferredHeight: 16
+            Layout.preferredHeight: 14
             spacing: 6
 
             Label {
@@ -94,7 +94,7 @@ FilterCard {
             }
 
             Label {
-                Layout.preferredWidth: Math.min(180, Math.max(80, root.cardWidth * 0.28))
+                Layout.preferredWidth: Math.min(150, Math.max(72, root.cardWidth * 0.22))
                 text: root.textFilter.length > 0 ? root.textFilter : "Sem filtro"
                 color: root.textFilter.length > 0 ? Theme.accentStrong : Theme.mutedText
                 font.pixelSize: 11
@@ -109,7 +109,7 @@ FilterCard {
 
             AppComboBox {
                 id: advancedOperator
-                Layout.preferredWidth: 44
+                Layout.preferredWidth: 36
                 leftPadding: 0
                 rightPadding: 0
                 indicator: null
@@ -124,11 +124,13 @@ FilterCard {
 
             AppComboBox {
                 id: advancedValueSelector
-                Layout.minimumWidth: 110
+                Layout.minimumWidth: 112
                 Layout.preferredWidth: Math.max(120, root.cardWidth * 0.34)
-                Layout.maximumWidth: Math.max(140, root.cardWidth * 0.42)
-                popup.width: Math.max(260, root.cardWidth * 0.64)
-                enabled: root.operatorIndex >= 0 && !root.valuesLoading
+                Layout.maximumWidth: Math.max(136, root.cardWidth * 0.38)
+                leftPadding: 8
+                rightPadding: 20
+                popup.width: Math.min(560, Math.max(360, root.cardWidth * 0.86))
+                enabled: root.operatorIndex >= 0
                 model: root.visibleValues
                 displayText: root.valuesLoading ? "Carregando" : "Valor"
                 onPressedChanged: {
@@ -146,23 +148,25 @@ FilterCard {
 
             ActionButton {
                 text: root.expandedValues ? "-" : "+"
-                implicitWidth: 34
+                implicitWidth: 32
+                implicitHeight: Theme.controlHeight
                 padding: 0
                 font.bold: true
                 enabled: root.hasMoreValues || root.expandedValues
                 ToolTip.visible: hovered
-                ToolTip.text: root.expandedValues ? "Mostrar menos valores" : "Mostrar mais valores"
+                ToolTip.text: root.expandedValues ? "Reduzir a lista de valores do combo" : "Mostrar mais valores no combo"
                 ToolTip.delay: 0
                 onClicked: root.expandedValues = !root.expandedValues
             }
 
             ActionButton {
                 text: "..."
-                implicitWidth: 34
+                implicitWidth: 32
+                implicitHeight: Theme.controlHeight
                 padding: 0
-                enabled: !root.valuesLoading
+                enabled: root.operatorIndex >= 0
                 ToolTip.visible: hovered
-                ToolTip.text: "Escolher valores"
+                ToolTip.text: "Escolher valores para incluir ou excluir"
                 ToolTip.delay: 0
                 onClicked: {
                     if (root.allValues.length === 0)
@@ -173,7 +177,8 @@ FilterCard {
             }
             ActionButton {
                 text: "x"
-                implicitWidth: 30
+                implicitWidth: 32
+                implicitHeight: Theme.controlHeight
                 padding: 0
                 font.bold: true
                 ToolTip.visible: hovered
@@ -187,9 +192,9 @@ FilterCard {
     Popup {
         id: multiSelectPopup
         x: Math.max(0, root.width - width)
-        y: 46
-        width: Math.min(520, Math.max(380, root.width - 12))
-        height: 420
+        y: 40
+        width: Math.min(620, Math.max(420, root.width + 80))
+        height: 380
         modal: false
         focus: true
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
@@ -210,7 +215,7 @@ FilterCard {
                 spacing: 8
 
                 Label {
-                    Layout.preferredWidth: Math.max(120, multiSelectPopup.availableWidth * 0.34)
+                    Layout.preferredWidth: Math.max(130, multiSelectPopup.availableWidth * 0.30)
                     text: root.row.label !== undefined ? root.row.label : ""
                     color: Theme.text
                     font.pixelSize: 12
@@ -220,7 +225,7 @@ FilterCard {
 
                 Label {
                     Layout.fillWidth: true
-                    text: "Marque incluir ou excluir"
+                    text: "Incluir usa =valor. Excluir usa !valor."
                     color: Theme.mutedText
                     font.pixelSize: 11
                     horizontalAlignment: Text.AlignRight
@@ -248,14 +253,14 @@ FilterCard {
                     font.pixelSize: 11
                 }
                 Label {
-                    Layout.preferredWidth: 72
+                    Layout.preferredWidth: 58
                     text: "Incluir"
                     color: Theme.mutedText
                     font.pixelSize: 11
                     horizontalAlignment: Text.AlignHCenter
                 }
                 Label {
-                    Layout.preferredWidth: 72
+                    Layout.preferredWidth: 58
                     text: "Excluir"
                     color: Theme.mutedText
                     font.pixelSize: 11
@@ -299,7 +304,7 @@ FilterCard {
                             }
 
                             Item {
-                                Layout.preferredWidth: 72
+                                Layout.preferredWidth: 58
                                 Layout.preferredHeight: 24
 
                                 AppCheckBox {
@@ -322,7 +327,7 @@ FilterCard {
                             }
 
                             Item {
-                                Layout.preferredWidth: 72
+                                Layout.preferredWidth: 58
                                 Layout.preferredHeight: 24
 
                                 AppCheckBox {

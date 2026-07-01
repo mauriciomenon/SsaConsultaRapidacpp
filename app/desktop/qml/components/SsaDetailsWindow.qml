@@ -19,10 +19,10 @@ ApplicationWindow {
     signal graphNodeRequested(string ssaNumber)
     signal copyTextRequested(string text)
     title: detailsViewModel && detailsViewModel.selectedSsaNumber.length > 0 ? "Detalhes da SSA " + detailsViewModel.selectedSsaNumber : "Detalhes da SSA"
-    width: 920
-    height: 780
-    minimumWidth: 680
-    minimumHeight: 620
+    width: 1040
+    height: 860
+    minimumWidth: 760
+    minimumHeight: 700
     visible: false
     color: Theme.window
     font.family: Theme.fontFamily
@@ -184,8 +184,8 @@ ApplicationWindow {
             }
 
             Rectangle {
-                SplitView.preferredHeight: 275
-                SplitView.minimumHeight: 200
+                SplitView.preferredHeight: 345
+                SplitView.minimumHeight: 240
                 color: Theme.panel
                 border.color: Theme.border
                 radius: Theme.radius

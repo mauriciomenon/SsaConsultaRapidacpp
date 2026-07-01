@@ -17,13 +17,13 @@ Rectangle {
 
     ScrollView {
         anchors.fill: parent
-        anchors.margins: 12
+        anchors.margins: 8
         clip: true
         contentWidth: availableWidth
 
         ColumnLayout {
             width: parent.width
-            spacing: Theme.gap
+            spacing: 6
 
             AdvancedTextFilterGrid {
                 filterViewModel: root.filterViewModel
