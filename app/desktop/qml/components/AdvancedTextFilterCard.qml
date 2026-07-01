@@ -74,11 +74,11 @@ FilterCard {
 
     width: cardWidth
     height: cardHeight
-    padding: 5
+    padding: 4
 
     ColumnLayout {
         anchors.fill: parent
-        spacing: 4
+        spacing: 3
 
         RowLayout {
             Layout.fillWidth: true
@@ -147,6 +147,8 @@ FilterCard {
             ActionButton {
                 text: root.expandedValues ? "-" : "+"
                 implicitWidth: 34
+                padding: 0
+                font.bold: true
                 enabled: root.hasMoreValues || root.expandedValues
                 ToolTip.visible: hovered
                 ToolTip.text: root.expandedValues ? "Mostrar menos valores" : "Mostrar mais valores"
@@ -157,6 +159,7 @@ FilterCard {
             ActionButton {
                 text: "..."
                 implicitWidth: 34
+                padding: 0
                 enabled: !root.valuesLoading
                 ToolTip.visible: hovered
                 ToolTip.text: "Escolher valores"
@@ -171,6 +174,8 @@ FilterCard {
             ActionButton {
                 text: "x"
                 implicitWidth: 30
+                padding: 0
+                font.bold: true
                 ToolTip.visible: hovered
                 ToolTip.text: "Limpar filtro"
                 ToolTip.delay: 0

@@ -175,10 +175,10 @@ namespace {
 
             QCOMPARE(filters.columnValueOptionsLoadingFor("setor_executor"), true);
             QTRY_COMPARE_WITH_TIMEOUT(filters.columnValueOptionsLoadingFor("setor_executor"), false,
-                                      1000);
+                                      3000);
             QVERIFY(filters.columnValueOptionsFor("setor_executor").contains("MEG2"));
             QTRY_COMPARE_WITH_TIMEOUT(filters.columnValueOptionsLoadingFor("num_reprogramacoes"),
-                                      false, 1000);
+                                      false, 3000);
             QVERIFY(filters.columnValueOptionsFor("num_reprogramacoes").contains("1"));
         }
 

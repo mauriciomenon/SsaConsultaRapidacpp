@@ -18,10 +18,10 @@ ApplicationWindow {
     property int navigationIndex: -1
     signal graphNodeRequested(string ssaNumber)
     title: detailsViewModel && detailsViewModel.selectedSsaNumber.length > 0 ? "Detalhes da SSA " + detailsViewModel.selectedSsaNumber : "Detalhes da SSA"
-    width: 760
-    height: 675
-    minimumWidth: 520
-    minimumHeight: 480
+    width: 920
+    height: 780
+    minimumWidth: 680
+    minimumHeight: 620
     visible: false
     color: Theme.window
     font.family: Theme.fontFamily
@@ -110,9 +110,10 @@ ApplicationWindow {
 
             Label {
                 Layout.fillWidth: true
-                text: root.breadcrumbText()
+                text: root.navigationHistory.length > 0 ? "Historico " + (root.navigationIndex + 1) + "/" + root.navigationHistory.length + ": " + root.breadcrumbText() : ""
                 color: Theme.mutedText
-                font.pixelSize: 11
+                font.pixelSize: 12
+                font.bold: true
                 elide: Text.ElideMiddle
                 verticalAlignment: Text.AlignVCenter
             }
@@ -155,11 +156,25 @@ ApplicationWindow {
                         }
 
                         ActionButton {
-                            text: root.showMermaid ? "Grafo" : "Mermaid"
-                            implicitWidth: 78
+                            text: "Grafo"
+                            implicitWidth: 64
                             implicitHeight: 26
-                            enabled: root.detailsViewModel && root.detailsViewModel.graphModel.nodeCount > 0
-                            onClicked: root.showMermaid = !root.showMermaid
+                            enabled: root.detailsViewModel && root.detailsViewModel.graphModel.nodeCount > 0 && root.showMermaid
+                            ToolTip.visible: hovered
+                            ToolTip.text: "Mostrar diagrama visual"
+                            ToolTip.delay: 0
+                            onClicked: root.showMermaid = false
+                        }
+
+                        ActionButton {
+                            text: "Mermaid"
+                            implicitWidth: 84
+                            implicitHeight: 26
+                            enabled: root.detailsViewModel && root.detailsViewModel.graphModel.nodeCount > 0 && !root.showMermaid
+                            ToolTip.visible: hovered
+                            ToolTip.text: "Mostrar codigo Mermaid"
+                            ToolTip.delay: 0
+                            onClicked: root.showMermaid = true
                         }
 
                         ActionButton {

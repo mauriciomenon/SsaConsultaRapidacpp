@@ -71,3 +71,15 @@ A feature is only marked `Present` when it has:
 - GUI and/or CLI adapter coverage when applicable;
 - no direct SQL in QML or presentation;
 - no Qt dependency in `domain`, `query`, or `ports`.
+
+## 0.8.0 GUI Notes
+
+- `qtd_derivadas` remains an internal virtual column key/SQL alias, not an
+  imported spreadsheet schema column.
+- The table label for that key is `Qtd. Derivadas`, and cells with values
+  greater than zero open the dedicated details/graph window.
+- Relation navigation distinguishes `Origem`, `Atual`, `Derivada`, and
+  `Relacionada` in the details relation strip.
+- The dedicated details window can be opened in multiple independent
+  instances, has breadcrumb navigation, exposes Mermaid explicitly, and keeps
+  PNG export.

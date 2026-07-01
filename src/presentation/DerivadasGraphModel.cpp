@@ -9,8 +9,8 @@ namespace ssa::presentation {
     namespace {
 
         // Mirrors gui/ssa/details_dialog_constants.py
-        constexpr qreal kNodeWidth = 100;
-        constexpr qreal kNodeHeight = 42;
+        constexpr qreal kNodeWidth = 118;
+        constexpr qreal kNodeHeight = 52;
         constexpr qreal kXGap = 170;
         constexpr qreal kYGap = kNodeHeight + 9;
         constexpr qreal kMargin = 8;

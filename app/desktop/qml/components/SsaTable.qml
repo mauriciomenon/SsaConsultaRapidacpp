@@ -235,6 +235,7 @@ Rectangle {
                 readonly property bool opensSam: columnConfig.opensSam === true
                 readonly property string cellText: displayValue === undefined || displayValue === "" ? "-" : String(displayValue)
                 readonly property bool isDerivationLink: columnConfig.key === "derivada_de" && cellText !== "-"
+                readonly property bool opensDerivationGraph: columnConfig.key === "qtd_derivadas" && Number(cellText) > 0
 
                 // Overlap by 1px to the right to eliminate subpixel gaps
                 // between adjacent cells that show the table background.
@@ -277,23 +278,25 @@ Rectangle {
                     anchors.leftMargin: 8
                     anchors.rightMargin: 8
                     text: cellDelegate.cellText
-                    color: cellDelegate.opensSam || cellDelegate.isDerivationLink ? Theme.link : Theme.text
+                    color: cellDelegate.opensSam || cellDelegate.isDerivationLink || cellDelegate.opensDerivationGraph ? Theme.link : Theme.text
                     verticalAlignment: Text.AlignVCenter
                     elide: Text.ElideRight
                     font.pixelSize: table.cachedTextSize
-                    font.bold: cellDelegate.opensSam || cellDelegate.isDerivationLink
-                    font.underline: cellDelegate.opensSam || cellDelegate.isDerivationLink
+                    font.bold: cellDelegate.opensSam || cellDelegate.isDerivationLink || cellDelegate.opensDerivationGraph
+                    font.underline: cellDelegate.opensSam || cellDelegate.isDerivationLink || cellDelegate.opensDerivationGraph
                 }
 
                 MouseArea {
                     anchors.fill: parent
-                    cursorShape: cellDelegate.opensSam || cellDelegate.isDerivationLink ? Qt.PointingHandCursor : Qt.ArrowCursor
+                    cursorShape: cellDelegate.opensSam || cellDelegate.isDerivationLink || cellDelegate.opensDerivationGraph ? Qt.PointingHandCursor : Qt.ArrowCursor
                     onClicked: {
                         root.viewModel.selectRow(cellDelegate.row);
                         if (cellDelegate.opensSam) {
                             root.openRequested();
                         } else if (cellDelegate.isDerivationLink) {
                             root.navigateToRelationRequested(cellDelegate.cellText);
+                        } else if (cellDelegate.opensDerivationGraph) {
+                            root.detailsWindowRequested();
                         }
                     }
                     onDoubleClicked: {

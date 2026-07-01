@@ -96,6 +96,25 @@ TEST_CASE("json preferences store keeps default columns when saved list is inval
     REQUIRE(loaded.visibleColumns == ssa::domain::ColumnCatalog::defaultVisibleKeys());
 }
 
+TEST_CASE("json preferences store migrates legacy derived count visibility") {
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+
+    const auto path = std::filesystem::path{directory.path().toStdString()} / "prefs.json";
+    QFile file(QString::fromStdString(path.string()));
+    REQUIRE(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    file.write(
+        R"JSON({"schema_version":1,"visible_columns":["numero_ssa","setor_executor","situacao"]})JSON");
+    file.close();
+
+    const ssa::infra::preferences::JsonUserPreferencesStore store(path);
+    const auto loaded = store.load();
+
+    REQUIRE(loaded.schemaVersion == 2);
+    REQUIRE(loaded.visibleColumns ==
+            std::vector<std::string>{"numero_ssa", "setor_executor", "qtd_derivadas", "situacao"});
+}
+
 TEST_CASE("json preferences store drops invalid column filters") {
     QTemporaryDir directory;
     REQUIRE(directory.isValid());

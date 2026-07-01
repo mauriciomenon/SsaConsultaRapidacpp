@@ -7,11 +7,17 @@
 #include <QJsonArray>
 #include <QJsonObject>
 
+#include <algorithm>
+#include <iterator>
 #include <stdexcept>
 
 namespace ssa::infra::preferences {
 
     namespace {
+        constexpr int kCurrentPreferencesSchemaVersion = 2;
+        constexpr std::string_view kExecutorColumnKey = "setor_executor";
+        constexpr std::string_view kDerivedCountColumnKey = "qtd_derivadas";
+
         std::vector<std::string> readVisibleColumns(const QJsonObject& root,
                                                     std::vector<std::string> defaults) {
             const QJsonArray visibleColumns = root.value("visible_columns").toArray();
@@ -28,6 +34,21 @@ namespace ssa::infra::preferences {
                 }
             }
             return parsedColumns.empty() ? std::move(defaults) : std::move(parsedColumns);
+        }
+
+        void migrateDerivedCountColumn(ports::UserPreferencesSnapshot& snapshot) {
+            if (snapshot.schemaVersion >= kCurrentPreferencesSchemaVersion) {
+                return;
+            }
+            auto& columns = snapshot.visibleColumns;
+            if (std::ranges::find(columns, std::string{kDerivedCountColumnKey}) != columns.end()) {
+                return;
+            }
+            const auto executor = std::ranges::find(columns, std::string{kExecutorColumnKey});
+            if (executor == columns.end()) {
+                return;
+            }
+            columns.insert(std::next(executor), std::string{kDerivedCountColumnKey});
         }
 
         std::map<std::string, int> readColumnWidths(const QJsonObject& root) {
@@ -119,6 +140,8 @@ namespace ssa::infra::preferences {
         snapshot.filters = FilterPreferencesJsonCodec{}.filtersFromObject(root, snapshot.filters);
         snapshot.visibleColumns =
             readVisibleColumns(root, domain::ColumnCatalog::defaultVisibleKeys());
+        migrateDerivedCountColumn(snapshot);
+        snapshot.schemaVersion = std::max(snapshot.schemaVersion, kCurrentPreferencesSchemaVersion);
         snapshot.columnWidths = readColumnWidths(root);
         return snapshot;
     }

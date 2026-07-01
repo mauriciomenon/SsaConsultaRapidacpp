@@ -244,7 +244,7 @@ ApplicationWindow {
                     Layout.rightMargin: 12
                     leftPadding: 20
                     rightPadding: 20
-                    text: root.vm.actions.currentWeek.value + "   " + root.vm.browse.totalRows + " / " + root.vm.browse.totalRowsAll + " SSAs"
+                    text: root.vm.actions.currentWeek.value + "          " + root.vm.browse.totalRows + " / " + root.vm.browse.totalRowsAll + " SSAs"
                     color: Theme.accent
                     font.pixelSize: 15
                     font.bold: true

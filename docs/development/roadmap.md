@@ -26,8 +26,9 @@ without porting Python architecture, and stabilize CI/flaky tests.
   are present. Remaining gap: persist reorder via `ColumnSettingsModel`; PyQt6
   `column_manager_dialog.py` supports drag-reorder.
 - `Details panel`: field display rules remain under review. The current C++
-  path has dedicated details window, relation graph, Mermaid text, PNG export,
-  and relation-node navigation.
+  path has dedicated details window, relation graph, explicit Mermaid view,
+  PNG export, relation badges, breadcrumb navigation, and relation-node
+  navigation.
 - `Preferences/theme/density`: add theme dialog parity with
   `gui/ssa/gui_theme_dialog.py` (live preview).
 
@@ -49,11 +50,12 @@ without porting Python architecture, and stabilize CI/flaky tests.
 
 ### Missing GUI features (parity with PyQt6)
 - `Details navigation`: next/prev SSA in current filtered list exists in the
-  main details panel. Remaining gap: polish back/forward breadcrumbs in the
-  dedicated details window.
-- `Derivadas tree/graph`: graph view exists with clickable nodes, Mermaid text,
-  PNG export, and node statuses. Remaining gap: deeper multi-level derivada
-  traversal beyond the current direct-relation repository contract.
+  main details panel. The dedicated details window has independent instances,
+  breadcrumb navigation, clickable graph nodes, and relation badges.
+- `Derivadas tree/graph`: graph view exists with clickable nodes, explicit
+  Mermaid text, PNG export, node statuses, and table access from
+  `Qtd. Derivadas`. Remaining gap: deeper multi-level derivada traversal
+  beyond the current direct-relation repository contract.
 - `Load other DB`: repository factory + command. Python ref:
   `gui/gui_ssa.py::load_other_database`.
 - `Context menus`: row context menus. Python ref:

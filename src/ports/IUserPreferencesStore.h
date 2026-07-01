@@ -38,7 +38,7 @@ namespace ssa::ports {
         std::string density{"compact"};
         std::string sortColumnKey{"numero_ssa"};
         FilterPreferencesSnapshot filters;
-        int schemaVersion{1};
+        int schemaVersion{2};
         int pageSize{domain::kDefaultPageSize};
         int detailsPanelWidth{ports::kDefaultDetailsPanelWidth};
         bool detailsVisible{true};

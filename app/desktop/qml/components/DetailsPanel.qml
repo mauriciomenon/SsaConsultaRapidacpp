@@ -20,6 +20,42 @@ Rectangle {
     // SSA into the details panel (not open SAM).
     signal loadRelationRequested(string ssaNumber)
 
+    function relationBadge(role) {
+        if (role === "parent")
+            return "Origem";
+        if (role === "current")
+            return "Atual";
+        if (role === "child")
+            return "Derivada";
+        if (role === "related")
+            return "Relacionada";
+        return "SSA";
+    }
+
+    function relationBorderColor(role, selected) {
+        if (selected)
+            return Theme.accent;
+        if (role === "parent")
+            return Theme.link;
+        if (role === "child")
+            return Theme.accentStrong;
+        if (role === "related")
+            return Theme.mutedText;
+        return Theme.border;
+    }
+
+    function relationFillColor(role, selected) {
+        if (selected)
+            return Theme.accentSoft;
+        if (role === "parent")
+            return Theme.surface;
+        if (role === "child")
+            return Theme.panelRaised;
+        if (role === "related")
+            return Theme.window;
+        return Theme.panelRaised;
+    }
+
     color: Theme.panel
     border.color: Theme.border
     radius: Theme.radius
@@ -79,15 +115,25 @@ Rectangle {
 
                                 Rectangle {
                                     id: relationBox
-                                    width: Math.max(Theme.relationNodeMinWidth, relationText.implicitWidth + 18)
-                                    implicitHeight: Theme.relationNodeHeight
+                                    width: Math.max(Theme.relationNodeMinWidth + 18, relationText.implicitWidth + 26)
+                                    implicitHeight: Theme.relationNodeHeight + 8
                                     radius: Theme.radius
-                                    color: relationRow.index === root.viewModel.currentRelationIndex ? Theme.accentSoft : relationRow.modelData.role === "related" ? Theme.surface : Theme.panelRaised
-                                    border.color: relationRow.index === root.viewModel.currentRelationIndex ? Theme.accent : relationRow.modelData.role === "related" ? Theme.link : relationRow.modelData.role === "child" ? Theme.accentStrong : Theme.border
+                                    color: root.relationFillColor(relationRow.modelData.role, relationRow.index === root.viewModel.currentRelationIndex)
+                                    border.color: root.relationBorderColor(relationRow.modelData.role, relationRow.index === root.viewModel.currentRelationIndex)
 
                                     Column {
                                         anchors.centerIn: parent
                                         spacing: 1
+
+                                        Text {
+                                            text: root.relationBadge(relationRow.modelData.role)
+                                            color: relationRow.index === root.viewModel.currentRelationIndex ? Theme.accentStrong : root.relationBorderColor(relationRow.modelData.role, false)
+                                            font.pixelSize: 9
+                                            font.bold: true
+                                            horizontalAlignment: Text.AlignHCenter
+                                            width: relationBox.width - 12
+                                            elide: Text.ElideRight
+                                        }
 
                                         Text {
                                             id: relationText
@@ -96,7 +142,9 @@ Rectangle {
                                             // contrasts with that specific tint across all themes.
                                             color: relationRow.index === root.viewModel.currentRelationIndex ? (Theme.isDarkTint(Theme.accentSoft) ? Theme.text : (Theme.dark ? Theme.accentText : Theme.text)) : Theme.text
                                             font.bold: true
-                                            font.pixelSize: root.valueTextSize
+                                            font.pixelSize: root.valueTextSize + 1
+                                            horizontalAlignment: Text.AlignHCenter
+                                            width: relationBox.width - 12
                                         }
 
                                         Text {
@@ -112,6 +160,9 @@ Rectangle {
                                             color: relationRow.index === root.viewModel.currentRelationIndex ? (Theme.isDarkTint(Theme.accentSoft) ? Theme.mutedText : (Theme.dark ? Theme.accentText : Theme.text)) : Theme.mutedText
                                             font.pixelSize: Math.max(10, root.valueTextSize - 2)
                                             textFormat: Text.RichText
+                                            horizontalAlignment: Text.AlignHCenter
+                                            width: relationBox.width - 12
+                                            elide: Text.ElideRight
                                         }
                                     }
 

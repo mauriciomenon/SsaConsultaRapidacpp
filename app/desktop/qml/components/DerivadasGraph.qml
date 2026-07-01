@@ -51,8 +51,8 @@ Flickable {
         width: root.contentWidth
         height: root.contentHeight
 
-        readonly property real nodeWidth: 100
-        readonly property real nodeHeight: 42
+        readonly property real nodeWidth: 118
+        readonly property real nodeHeight: 52
 
         function nodeAt(pointX, pointY) {
             const model = root.graphModel;
@@ -125,13 +125,13 @@ Flickable {
                 ctx.stroke();
 
                 ctx.fillStyle = isTarget ? Theme.accentText : Theme.text;
-                ctx.font = "bold 12px " + Theme.fontFamily;
+                ctx.font = "bold 14px " + Theme.fontFamily;
                 ctx.textAlign = "center";
                 ctx.textBaseline = "middle";
                 ctx.fillText(ssa, cx, status.length > 0 ? cy - 7 : cy);
                 if (status.length > 0) {
-                    ctx.font = "bold 11px " + Theme.fontFamily;
-                    ctx.fillText(status, cx, cy + 9);
+                    ctx.font = "bold 13px " + Theme.fontFamily;
+                    ctx.fillText(status, cx, cy + 11);
                 }
             }
         }
