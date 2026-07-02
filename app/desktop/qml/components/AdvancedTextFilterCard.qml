@@ -18,10 +18,10 @@ FilterCard {
     required property string operatorLabel
     required property real cardWidth
     required property real cardHeight
-    property bool expandedValues: false
     readonly property int compactValueLimit: 18
     readonly property int choiceColumnWidth: 52
-    readonly property int commandWidth: 42
+    readonly property int commandWidth: 30
+    property string popupFilterText: ""
 
     signal optionsRequested
     signal operatorModeRequested(string mode)
@@ -71,22 +71,35 @@ FilterCard {
         return root.operatorLabel.length > 0 ? root.operatorLabel : "=";
     }
 
+    function filteredPopupValues() {
+        const needle = root.popupFilterText.trim().toLocaleLowerCase();
+        if (needle.length === 0)
+            return root.allValues;
+        var result = [];
+        for (var index = 0; index < root.allValues.length; ++index) {
+            const value = String(root.allValues[index]);
+            if (value.toLocaleLowerCase().indexOf(needle) >= 0)
+                result.push(value);
+        }
+        return result;
+    }
+
     property var includeValues: []
     property var excludeValues: []
 
     width: cardWidth
     height: cardHeight
-    padding: 2
+    padding: 3
     color: "transparent"
     border.color: "transparent"
 
     ColumnLayout {
         anchors.fill: parent
-        spacing: 2
+        spacing: 3
 
         RowLayout {
             Layout.fillWidth: true
-            Layout.preferredHeight: 15
+            Layout.preferredHeight: 16
             spacing: 4
 
             Label {
@@ -110,11 +123,13 @@ FilterCard {
 
         RowLayout {
             Layout.fillWidth: true
-            spacing: 3
+            Layout.preferredHeight: 28
+            spacing: 4
 
             AppComboBox {
                 id: advancedOperator
-                Layout.preferredWidth: 30
+                Layout.preferredWidth: 32
+                Layout.preferredHeight: 28
                 leftPadding: 0
                 rightPadding: 0
                 indicator: null
@@ -132,12 +147,16 @@ FilterCard {
                 Layout.minimumWidth: 82
                 Layout.fillWidth: true
                 Layout.preferredWidth: Math.max(96, root.cardWidth * 0.32)
+                Layout.preferredHeight: 28
                 leftPadding: 7
-                rightPadding: 18
+                rightPadding: 16
                 popup.width: Math.min(560, Math.max(360, root.cardWidth * 0.86))
                 enabled: root.operatorIndex >= 0
                 model: root.visibleValues
-                displayText: root.valuesLoading ? "Carregando" : "Valor"
+                displayText: "Valor"
+                ToolTip.visible: hovered && root.valuesLoading
+                ToolTip.text: "Carregando valores"
+                ToolTip.delay: 0
                 onPressedChanged: {
                     if (pressed)
                         root.optionsRequested();
@@ -152,30 +171,17 @@ FilterCard {
             }
 
             ActionButton {
-                text: root.expandedValues ? "-" : "+"
-                implicitWidth: 24
-                implicitHeight: 26
-                padding: 0
-                font.bold: true
-                font.pixelSize: 14
-                enabled: root.hasMoreValues || root.expandedValues
-                ToolTip.visible: hovered
-                ToolTip.text: root.expandedValues ? "Voltar ao combo curto de Valor" : "Mostrar mais valores no combo de Valor; nao aplica filtro"
-                ToolTip.delay: 0
-                onClicked: root.expandedValues = !root.expandedValues
-            }
-
-            ActionButton {
-                text: "Enter"
+                text: "..."
                 implicitWidth: root.commandWidth
-                implicitHeight: 26
+                implicitHeight: 28
                 padding: 0
-                font.pixelSize: 10
+                font.pixelSize: 12
                 enabled: root.operatorIndex >= 0
                 ToolTip.visible: hovered
                 ToolTip.text: "Selecionar valores para incluir ou excluir"
                 ToolTip.delay: 0
                 onClicked: {
+                    root.popupFilterText = "";
                     if (root.allValues.length === 0)
                         root.optionsRequested();
                     root.resetPopupSelections();
@@ -183,12 +189,12 @@ FilterCard {
                 }
             }
             ActionButton {
-                text: "Del"
-                implicitWidth: 34
-                implicitHeight: 26
+                text: "X"
+                implicitWidth: 28
+                implicitHeight: 28
                 padding: 0
                 font.bold: true
-                font.pixelSize: 10
+                font.pixelSize: 12
                 ToolTip.visible: hovered
                 ToolTip.text: "Limpar filtro"
                 ToolTip.delay: 0
@@ -250,6 +256,15 @@ FilterCard {
                 }
             }
 
+            AppTextField {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 28
+                text: root.popupFilterText
+                placeholderText: "Buscar valor"
+                font.pixelSize: 11
+                onTextEdited: root.popupFilterText = text
+            }
+
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 8
@@ -295,7 +310,7 @@ FilterCard {
                     }
 
                     Repeater {
-                        model: root.allValues
+                        model: root.filteredPopupValues()
 
                         RowLayout {
                             id: optionRow

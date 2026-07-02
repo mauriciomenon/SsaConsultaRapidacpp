@@ -149,18 +149,37 @@ namespace ssa::query {
             return column != nullptr && column->type == domain::ColumnType::Integer;
         }
 
+        constexpr std::array<std::string_view, 8> kOrderedPriorityValues{
+            "IEE3", "IEE1", "IEE2", "IEE4", "MEL1", "MEL2", "MEL3", "MEL4"};
+
+        std::string priorityCaseSql(const std::string& expression) {
+            std::ostringstream sql;
+            sql << "CASE";
+            for (std::size_t index = 0; index < kOrderedPriorityValues.size(); ++index) {
+                sql << " WHEN "
+                    << asciiCodeSegmentCondition(expression, kOrderedPriorityValues[index])
+                    << " THEN " << index;
+            }
+            sql << " ELSE 100 END";
+            return sql.str();
+        }
+
         std::string distinctValuesOrderSql(const std::string& column, const bool numericColumn) {
             std::ostringstream sql;
             constexpr std::array<std::string_view, 8> orderedValues{"IEE3", "IEE1", "IEE2", "IEE4",
                                                                     "MEL1", "MEL2", "MEL3", "MEL4"};
-            sql << " ORDER BY CASE";
-            for (std::size_t index = 0; index < orderedValues.size(); ++index) {
-                sql << " WHEN " << asciiCodeSegmentCondition(column, orderedValues[index])
-                    << " THEN " << index;
-            }
-            sql << " ELSE 100 END";
             if (numericColumn) {
-                sql << ", CAST(" << column << " AS INTEGER) ASC";
+                sql << " ORDER BY CAST(" << column << " AS INTEGER) ASC";
+            } else {
+                const auto executor =
+                    "TRIM(COALESCE(" +
+                    quoteColumnIdentifier(std::string{domain::ColumnCatalog::executorColumnKey()}) +
+                    ", ''))";
+                const auto issuer =
+                    "TRIM(COALESCE(" + quoteColumnIdentifier("setor_emissor") + ", ''))";
+                sql << " ORDER BY " << priorityCaseSql(column) << " ASC, MIN("
+                    << priorityCaseSql(executor) << ") ASC, MIN(" << priorityCaseSql(issuer)
+                    << ") ASC";
             }
             sql << ", " << column << " COLLATE NOCASE ASC, " << column << " ASC";
             return sql.str();
@@ -288,9 +307,9 @@ namespace ssa::query {
         expression.requiredTerms = request.filter.generalTerms;
         auto where = predicateBuilder_.build(expression, request.filter);
         std::ostringstream sql;
-        sql << "SELECT DISTINCT " << projection << " FROM " << quoteTableIdentifier(tableName_)
-            << " ";
+        sql << "SELECT " << projection << " FROM " << quoteTableIdentifier(tableName_) << " ";
         sql << "WHERE " << distinctValuesWhereSql(projection, where);
+        sql << " GROUP BY " << projection;
         sql << distinctValuesOrderSql(projection, isNumericDistinctColumn(request.columnKey))
             << " LIMIT ?";
         auto bindings = std::move(where.bindings);

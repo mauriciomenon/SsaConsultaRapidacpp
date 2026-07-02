@@ -14,7 +14,7 @@ namespace ssa::presentation {
         constexpr qreal kNodeHeight = 52;
         constexpr qreal kXGap = 145;
         constexpr qreal kYGap = kNodeHeight + 52;
-        constexpr int kMaxChildrenPerRow = 7;
+        constexpr int kMaxChildrenPerRow = 4;
         constexpr qreal kChildRowGap = kNodeHeight + 34;
         constexpr qreal kMargin = 8;
 

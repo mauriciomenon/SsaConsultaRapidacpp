@@ -71,7 +71,7 @@ FilterCard {
             height: 26
             model: root.filterViewModel.sector.selectorValues
             currentIndex: root.filterViewModel.sector.selectorIndex
-            displayText: currentIndex <= 0 ? "Todos" : currentText
+            displayText: root.filterViewModel.sector.quickSector.length > 0 ? root.filterViewModel.sector.quickSector : "Todos"
             onActivated: {
                 root.filterViewModel.sector.quickSector = sectorSelector.currentText;
                 root.applyRequested();
@@ -116,10 +116,11 @@ FilterCard {
         }
         AppComboBox {
             id: reprogrammingModeSelector
-            width: 86
+            width: 74
             height: 26
-            leftPadding: 8
-            rightPadding: 22
+            leftPadding: 0
+            rightPadding: 0
+            indicator: null
             popup.width: 170
             model: root.derivation.reprogrammingModeOptions
             currentIndex: Math.max(0, root.derivation.reprogrammingModeOptions.indexOf(root.derivation.reprogrammingMode))
@@ -144,11 +145,11 @@ FilterCard {
             onAccepted: root.applyRequested()
         }
         ActionButton {
-            text: "Enter"
-            implicitWidth: 38
+            text: "..."
+            implicitWidth: 30
             implicitHeight: 26
             padding: 0
-            font.pixelSize: 10
+            font.pixelSize: 12
             ToolTip.visible: hovered
             ToolTip.text: "Selecionar valores de reprogramacao"
             ToolTip.delay: 0
@@ -160,11 +161,11 @@ FilterCard {
             }
         }
         ActionButton {
-            text: "Del"
+            text: "X"
             implicitWidth: 28
             implicitHeight: 26
             padding: 0
-            font.pixelSize: 10
+            font.pixelSize: 12
             ToolTip.visible: hovered
             ToolTip.text: "Limpar valores de reprogramacao"
             ToolTip.delay: 0

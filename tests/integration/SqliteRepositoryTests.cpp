@@ -187,7 +187,9 @@ TEST_CASE_METHOD(SqliteRepositoryFixture,
             ('202500021','APV','','LOC-21','Area','EQ-X',202501,'2025-01-21','A','A','SEM','MEG2','Ana','Bruno','MARIA','SAM','SYS','x.xlsx','2025-01-21','A','B',202502,202503,2,2),
             ('202500022','APV','','LOC-22','Area','EQ-X',202501,'2025-01-22','A','A','SEM','MEG2','Ana','Bruno','IEE3 ANA','SAM','SYS','x.xlsx','2025-01-22','A','B',202502,202503,7,7),
             ('202500023','APV','','LOC-23','Area','EQ-X',202501,'2025-01-23','A','A','SEM','MEG2','Ana','Bruno','MEL1 CAIO','SAM','SYS','x.xlsx','2025-01-23','A','B',202502,202503,3,3),
-            ('202500024','APV','','LOC-24','Area','EQ-X',202501,'2025-01-24','A','A','SEM','MEG2','Ana','Bruno','IEE1 DORA','SAM','SYS','x.xlsx','2025-01-24','A','B',202502,202503,9,9);
+            ('202500024','APV','','LOC-24','Area','EQ-X',202501,'2025-01-24','A','A','SEM','MEG2','Ana','Bruno','IEE1 DORA','SAM','SYS','x.xlsx','2025-01-24','A','B',202502,202503,9,9),
+            ('202500025','APV','','LOC-25','Area','EQ-X',202501,'2025-01-25','A','A','SEM','IEE3','Ana','Bruno','ZE IEE3','SAM','SYS','x.xlsx','2025-01-25','A','B',202502,202503,1,1),
+            ('202500026','APV','','LOC-26','Area','EQ-X',202501,'2025-01-26','A','A','SEM','IEE1','Ana','Bruno','ZE IEE1','SAM','SYS','x.xlsx','2025-01-26','A','B',202502,202503,0,0);
     )SQL");
 
     ssa::domain::DistinctValuesRequest peopleRequest;
@@ -196,6 +198,8 @@ TEST_CASE_METHOD(SqliteRepositoryFixture,
     REQUIRE(
         std::ranges::search(people, std::vector<std::string>{"IEE3 ANA", "IEE1 DORA", "IEE2 BRUNO"})
             .begin() == people.begin());
+    REQUIRE(std::ranges::search(people, std::vector<std::string>{"ZE IEE3", "ZE IEE1"}).begin() !=
+            people.end());
 
     ssa::domain::DistinctValuesRequest numericRequest;
     numericRequest.columnKey = "num_reprogramacoes";

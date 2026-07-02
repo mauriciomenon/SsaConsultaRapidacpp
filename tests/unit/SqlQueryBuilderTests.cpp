@@ -219,10 +219,14 @@ TEST_CASE("sql query builder orders distinct values by display priority before l
 
     const auto query = ssa::query::SqlQueryBuilder{}.buildDistinctValues(request);
 
-    REQUIRE(query.sql.find("SELECT DISTINCT") != std::string::npos);
+    REQUIRE(query.sql.find("SELECT TRIM") != std::string::npos);
+    REQUIRE(query.sql.find("GROUP BY TRIM") != std::string::npos);
     REQUIRE(query.sql.find("LIKE 'IEE3%'") != std::string::npos);
     REQUIRE(query.sql.find("SUBSTR(UPPER(TRIM(COALESCE(\"responsavel_execucao\", ''))), 5, 1)") !=
             std::string::npos);
+    REQUIRE(
+        query.sql.find("MIN(CASE WHEN UPPER(TRIM(COALESCE(\"setor_executor\", ''))) = 'IEE3'") !=
+        std::string::npos);
     REQUIRE(query.sql.find("THEN 0") != std::string::npos);
     REQUIRE(query.sql.find("THEN 1") != std::string::npos);
     REQUIRE(query.sql.find("COLLATE NOCASE ASC") != std::string::npos);
@@ -236,6 +240,7 @@ TEST_CASE("sql query builder orders numeric distinct values numerically") {
 
     const auto query = ssa::query::SqlQueryBuilder{}.buildDistinctValues(request);
 
+    REQUIRE(query.sql.find("GROUP BY TRIM") != std::string::npos);
     REQUIRE(query.sql.find("CAST(TRIM(COALESCE(\"num_reprogramacoes\", '')) AS INTEGER) ASC") !=
             std::string::npos);
     REQUIRE(query.bindings.back() == "25");

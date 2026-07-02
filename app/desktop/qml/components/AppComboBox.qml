@@ -9,7 +9,7 @@ ComboBox {
 
     implicitHeight: Theme.controlHeight
     leftPadding: 10
-    rightPadding: 28
+    rightPadding: 22
     font.family: Theme.fontFamily
     font.pixelSize: 12
 
@@ -36,12 +36,37 @@ ComboBox {
         }
     }
 
-    indicator: Text {
+    indicator: Canvas {
+        id: comboIndicator
+        width: 8
+        height: 5
         x: root.width - width - 9
         y: Math.round((root.height - height) / 2)
-        text: "v"
-        color: root.enabled ? Theme.mutedText : Theme.border
-        font.bold: true
+
+        onPaint: {
+            const ctx = getContext("2d");
+            ctx.reset();
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(width, 0);
+            ctx.lineTo(width / 2, height);
+            ctx.closePath();
+            ctx.fillStyle = root.enabled ? Theme.mutedText : Theme.border;
+            ctx.fill();
+        }
+
+        Connections {
+            target: Theme
+            function onThemeNameChanged() {
+                comboIndicator.requestPaint();
+            }
+        }
+        Connections {
+            target: root
+            function onEnabledChanged() {
+                comboIndicator.requestPaint();
+            }
+        }
     }
 
     contentItem: Text {
@@ -50,6 +75,7 @@ ComboBox {
         text: root.displayText
         color: root.enabled ? Theme.text : Theme.mutedText
         font: root.font
+        horizontalAlignment: Text.AlignHCenter
         verticalAlignment: Text.AlignVCenter
         elide: Text.ElideRight
     }

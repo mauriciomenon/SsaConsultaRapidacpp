@@ -11,7 +11,7 @@ namespace ssa::ports {
 
     struct FilterPreferencesSnapshot {
         std::string searchText;
-        std::string quickSector;
+        std::string quickSector{"IEE3"};
         std::map<std::string, std::string> columnFilters;
         std::map<std::string, std::string> advancedTextFilters;
         std::string advancedWeekColumnKey{"semana_programada"};

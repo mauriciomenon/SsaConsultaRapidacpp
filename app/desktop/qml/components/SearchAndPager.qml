@@ -167,6 +167,7 @@ Rectangle {
                 Layout.preferredWidth: 180
                 model: root.filterViewModel.sector.selectorValues
                 currentIndex: root.filterViewModel.sector.selectorIndex
+                displayText: root.filterViewModel.sector.quickSector.length > 0 ? root.filterViewModel.sector.quickSector : "Todos"
                 implicitHeight: Theme.controlHeight - 4
                 font.pixelSize: 11
                 font.bold: false

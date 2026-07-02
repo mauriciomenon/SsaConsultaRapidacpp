@@ -225,11 +225,6 @@ ApplicationWindow {
                 spacing: Theme.gap
 
                 ActionButton {
-                    text: "Abrir SAM"
-                    implicitWidth: 116
-                    onClicked: root.vm.actions.commands.openSamHome()
-                }
-                ActionButton {
                     text: "Importar XLS"
                     enabled: !root.vm.actions.workflows.running
                     implicitWidth: 112
@@ -240,13 +235,13 @@ ApplicationWindow {
                 }
                 Label {
                     Layout.preferredHeight: Theme.controlHeight
-                    Layout.leftMargin: 12
-                    Layout.rightMargin: 12
-                    leftPadding: 20
-                    rightPadding: 20
-                    text: root.vm.actions.currentWeek.value + "          " + root.vm.browse.totalRows + " / " + root.vm.browse.totalRowsAll + " SSAs"
+                    Layout.leftMargin: 18
+                    Layout.rightMargin: 18
+                    leftPadding: 26
+                    rightPadding: 26
+                    text: root.vm.actions.currentWeek.value
                     color: Theme.accent
-                    font.pixelSize: 15
+                    font.pixelSize: 16
                     font.bold: true
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
@@ -258,6 +253,23 @@ ApplicationWindow {
                 }
                 Item {
                     Layout.fillWidth: true
+                }
+                Label {
+                    Layout.preferredHeight: Theme.controlHeight
+                    Layout.rightMargin: 4
+                    leftPadding: 16
+                    rightPadding: 16
+                    text: root.vm.browse.totalRows + " / " + root.vm.browse.totalRowsAll + " SSAs"
+                    color: Theme.accent
+                    font.pixelSize: 12
+                    font.bold: false
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                    background: Rectangle {
+                        color: Theme.window
+                        border.color: Theme.border
+                        radius: Theme.radius
+                    }
                 }
                 ActionButton {
                     text: "Preferencias"

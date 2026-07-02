@@ -17,7 +17,8 @@ Current fields:
 - `sort_ascending`: boolean direction for the current table sort.
 - `visible_columns`: ordered list of column keys.
 - `column_widths`: object keyed by column key with integer widths.
-- `quick_sector`: string used by the executor shortcut filter.
+- `quick_sector`: string used by the executor shortcut filter. Legacy schema v1 files with an
+  empty value migrate to `IEE3`; schema v2 may keep it empty after manual clearing.
 - `exclude_sca_ses_ste`: boolean for the `SCA/SES/STE` exclusion.
 - `column_filters`: object keyed by column key with filter text.
 - `advanced_text_filters`: object keyed by column key with advanced filter text.

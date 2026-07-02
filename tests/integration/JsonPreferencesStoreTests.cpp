@@ -111,6 +111,7 @@ TEST_CASE("json preferences store migrates legacy derived count visibility") {
     const auto loaded = store.load();
 
     REQUIRE(loaded.schemaVersion == 2);
+    REQUIRE(loaded.filters.quickSector == "IEE3");
     REQUIRE(loaded.visibleColumns ==
             std::vector<std::string>{"numero_ssa", "setor_executor", "qtd_derivadas", "situacao"});
 }

@@ -51,6 +51,14 @@ namespace ssa::infra::preferences {
             columns.insert(std::next(executor), std::string{kDerivedCountColumnKey});
         }
 
+        void migrateDefaultQuickSector(ports::UserPreferencesSnapshot& snapshot) {
+            if (snapshot.schemaVersion >= kCurrentPreferencesSchemaVersion ||
+                !snapshot.filters.quickSector.empty()) {
+                return;
+            }
+            snapshot.filters.quickSector = ports::FilterPreferencesSnapshot{}.quickSector;
+        }
+
         std::map<std::string, int> readColumnWidths(const QJsonObject& root) {
             std::map<std::string, int> widths;
             const QJsonObject columnWidths = root.value("column_widths").toObject();
@@ -141,6 +149,7 @@ namespace ssa::infra::preferences {
         snapshot.visibleColumns =
             readVisibleColumns(root, domain::ColumnCatalog::defaultVisibleKeys());
         migrateDerivedCountColumn(snapshot);
+        migrateDefaultQuickSector(snapshot);
         snapshot.schemaVersion = std::max(snapshot.schemaVersion, kCurrentPreferencesSchemaVersion);
         snapshot.columnWidths = readColumnWidths(root);
         return snapshot;

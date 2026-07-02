@@ -531,9 +531,9 @@ namespace {
                 QVERIFY(model.nodeCenter(row).y() > targetY);
                 QVERIFY(model.nodeCenter(row).x() > targetX);
             }
-            QVERIFY(model.nodeCenter(1).x() < model.nodeCenter(7).x());
-            QVERIFY(model.nodeCenter(8).x() == model.nodeCenter(1).x());
-            QVERIFY(model.nodeCenter(8).y() > model.nodeCenter(1).y());
+            QVERIFY(model.nodeCenter(1).x() < model.nodeCenter(4).x());
+            QVERIFY(model.nodeCenter(5).x() == model.nodeCenter(1).x());
+            QVERIFY(model.nodeCenter(5).y() > model.nodeCenter(1).y());
 
             const auto edges = model.edges();
             QCOMPARE(edges.size(), 10);
@@ -1252,9 +1252,11 @@ namespace {
             auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(
                 std::make_shared<CapturingImportPort>(), nullptr, nullptr, derivadasPort);
             ssa::presentation::MainViewModel model(service, commands, nullptr, nullptr, workflows);
+            QSignalSpy pageSpy(model.browse(), &ssa::presentation::BrowseViewModel::pageChanged);
 
             model.browse()->load();
             QTRY_COMPARE_WITH_TIMEOUT(repository->countCalls(), std::size_t{1}, 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(pageSpy.count(), 1, 1000);
 
             model.actions()->workflows()->syncDerivadas();
 
