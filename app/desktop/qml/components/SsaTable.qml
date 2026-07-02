@@ -59,8 +59,9 @@ Rectangle {
                         readonly property string columnKey: hasColumnKey ? modelData.key : ""
                         readonly property int modelWidth: modelData.width !== undefined && modelData.width !== null ? modelData.width : root.fallbackColumnWidth
                         readonly property string effectiveLabel: {
+                            const shortLabel = modelData.label !== undefined ? modelData.label : "";
                             const full = modelData.labelFull !== undefined ? modelData.labelFull : "";
-                            return full.length > 0 ? full : (modelData.label !== undefined ? modelData.label : "");
+                            return shortLabel.length > 0 ? shortLabel : full;
                         }
                         property int dragStartWidth: 0
                         property real dragStartX: 0
@@ -88,7 +89,12 @@ Rectangle {
                             elide: Text.ElideRight
                         }
 
+                        ToolTip.visible: headerMouseArea.containsMouse
+                        ToolTip.text: headerCell.modelData.labelFull !== undefined && headerCell.modelData.labelFull.length > 0 ? headerCell.modelData.labelFull : headerCell.effectiveLabel
+                        ToolTip.delay: 500
+
                         MouseArea {
+                            id: headerMouseArea
                             anchors.fill: parent
                             anchors.rightMargin: 8
                             acceptedButtons: Qt.LeftButton | Qt.RightButton

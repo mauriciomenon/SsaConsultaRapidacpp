@@ -258,6 +258,7 @@ Rectangle {
                             anchors.horizontalCenter: parent.horizontalCenter
                             implicitWidth: 24
                             implicitHeight: 19
+                            padding: 0
                             font.pixelSize: 10
                             ToolTip.visible: hovered
                             ToolTip.text: "Abrir grafo"
@@ -274,6 +275,7 @@ Rectangle {
                                 text: "<"
                                 implicitWidth: 20
                                 implicitHeight: 19
+                                padding: 0
                                 font.pixelSize: 10
                                 enabled: root.viewModel.canSelectPreviousRelation
                                 onClicked: root.viewModel.selectPreviousRelation()
@@ -291,6 +293,7 @@ Rectangle {
                                 text: ">"
                                 implicitWidth: 20
                                 implicitHeight: 19
+                                padding: 0
                                 font.pixelSize: 10
                                 enabled: root.viewModel.canSelectNextRelation
                                 onClicked: root.viewModel.selectNextRelation()
@@ -340,6 +343,7 @@ Rectangle {
 
                     TextEdit {
                         Layout.fillWidth: true
+                        Layout.preferredHeight: fieldDelegate.longField ? Math.max(root.valueTextSize + 5, contentHeight) : root.valueTextSize + 5
                         Layout.maximumHeight: fieldDelegate.longField ? 10000 : root.valueTextSize + 5
                         text: fieldDelegate.rowValue
                         color: Theme.text

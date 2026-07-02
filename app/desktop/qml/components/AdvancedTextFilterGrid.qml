@@ -15,8 +15,8 @@ GridView {
     clip: true
     interactive: false
     model: root.textFilters.cardStates
-    cellWidth: width >= 1500 ? Math.floor(width / 4) : (width >= 1040 ? Math.floor(width / 3) : (width >= 700 ? Math.floor(width / 2) : width))
-    cellHeight: 52
+    cellWidth: width >= 960 ? Math.floor(width / 4) : (width >= 720 ? Math.floor(width / 3) : (width >= 520 ? Math.floor(width / 2) : width))
+    cellHeight: 48
 
     function preloadOptions() {
         root.filterViewModel.preloadAdvancedColumnValueOptions();

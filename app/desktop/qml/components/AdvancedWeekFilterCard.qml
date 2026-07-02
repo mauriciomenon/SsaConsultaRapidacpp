@@ -28,7 +28,7 @@ FilterCard {
 
     GridLayout {
         anchors.fill: parent
-        columns: 6
+        columns: root.intervalVisible ? 6 : 8
         columnSpacing: 6
         rowSpacing: 0
 

@@ -364,9 +364,9 @@ QtObject {
     readonly property int detailsLabelWidth: 190
     readonly property int relationNodeMinWidth: 92
     readonly property int relationNodeHeight: 40
-    readonly property int bottomPaneMinHeight: 300
-    readonly property int bottomPaneMaxHeight: 390
-    readonly property real bottomPaneHeightRatio: 0.37
+    readonly property int bottomPaneMinHeight: 320
+    readonly property int bottomPaneMaxHeight: 430
+    readonly property real bottomPaneHeightRatio: 0.4
 
     readonly property var themeOptions: ["system", "ssa-dark", "classico", "mint-light", "paper", "solarized-light", "windows7", "catppuccin", "dark", "dracula", "grayscale", "gruvbox", "nord", "solarized-dark", "tokyo-night"]
 

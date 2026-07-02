@@ -100,6 +100,7 @@ ApplicationWindow {
                 text: "<"
                 implicitWidth: 26
                 implicitHeight: 24
+                padding: 0
                 enabled: root.navigationIndex > 0
                 ToolTip.visible: hovered
                 ToolTip.text: "Voltar no historico"
@@ -111,6 +112,7 @@ ApplicationWindow {
                 text: ">"
                 implicitWidth: 26
                 implicitHeight: 24
+                padding: 0
                 enabled: root.navigationIndex >= 0 && root.navigationIndex < root.navigationHistory.length - 1
                 ToolTip.visible: hovered
                 ToolTip.text: "Avancar no historico"
@@ -325,6 +327,7 @@ ApplicationWindow {
 
                             TextEdit {
                                 Layout.fillWidth: true
+                                Layout.preferredHeight: Math.max(18, contentHeight)
                                 text: fieldDelegate.rowValue
                                 color: Theme.text
                                 readOnly: true

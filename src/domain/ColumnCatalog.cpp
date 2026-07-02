@@ -60,7 +60,7 @@ namespace ssa::domain {
             {"descricao_execucao", "Descricao Execucao", "", Text, true, true, 360},
             {"setor_emissor", "Emis.", "Emissao", Text, true, true, 90},
             {"setor_executor", "Exec.", "Executor", Text, true, true, 90},
-            {"qtd_derivadas", "Qtd Der.", "Qtd Derivadas", Integer, true, false, 76},
+            {"qtd_derivadas", "Qtd Der.", "Qtd Derivadas", Integer, true, false, 86},
             {"solicitante", "Solicitante", "", Text, true, true, 180},
             {"responsavel_programacao", "Resp. Programacao", "", Text, true, true, 180},
             {"responsavel_execucao", "Resp. Execucao", "", Text, true, true, 180},
