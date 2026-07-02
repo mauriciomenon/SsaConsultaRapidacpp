@@ -14,6 +14,8 @@ Rectangle {
     readonly property int labelTextSize: Theme.densityValue(root.density, 12, 13, 14)
     readonly property int valueTextSize: Theme.densityValue(root.density, 12, 13, 15)
     readonly property int detailsLabelWidth: Theme.densityValue(root.density, 104, 116, 132)
+    readonly property int relationNodeHeight: Theme.densityValue(root.density, 32, 36, 40)
+    readonly property int relationNodeMinWidth: Theme.densityValue(root.density, 78, 86, 94)
     signal openRequested
     signal graphWindowRequested
     // Emitted when the user clicks a relation node: the main view loads that
@@ -93,8 +95,8 @@ Rectangle {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 6
-        spacing: 4
+        anchors.margins: 5
+        spacing: 3
 
         Rectangle {
             Layout.fillWidth: true
@@ -108,18 +110,18 @@ Rectangle {
             ColumnLayout {
                 id: relationsLayout
                 anchors.fill: parent
-                anchors.margins: 6
-                spacing: 4
+                anchors.margins: 5
+                spacing: 3
 
                 RowLayout {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: Theme.relationNodeHeight + 12
-                    spacing: 6
+                    Layout.preferredHeight: root.relationNodeHeight + 9
+                    spacing: 5
 
                     Flickable {
                         id: relationsFlick
                         Layout.fillWidth: true
-                        Layout.preferredHeight: Theme.relationNodeHeight + 12
+                        Layout.preferredHeight: root.relationNodeHeight + 9
                         clip: true
                         contentWidth: relationsRow.width
                         contentHeight: relationsRow.height
@@ -137,7 +139,7 @@ Rectangle {
                                     id: relationRow
                                     required property int index
                                     required property var modelData
-                                    spacing: 6
+                                    spacing: 5
                                     width: relationConnectorLabel.width + relationBox.width + spacing
                                     height: relationBox.implicitHeight
 
@@ -153,8 +155,8 @@ Rectangle {
 
                                     Rectangle {
                                         id: relationBox
-                                        width: Math.max(Theme.relationNodeMinWidth + 18, relationText.implicitWidth + 26)
-                                        implicitHeight: Theme.relationNodeHeight + 8
+                                        width: Math.max(root.relationNodeMinWidth + 14, relationText.implicitWidth + 22)
+                                        implicitHeight: root.relationNodeHeight + 6
                                         radius: Theme.radius
                                         color: root.relationFillColor(relationRow.modelData.role, relationRow.index === root.viewModel.currentRelationIndex)
                                         border.color: root.relationBorderColor(relationRow.modelData.role, relationRow.index === root.viewModel.currentRelationIndex)
@@ -249,17 +251,17 @@ Rectangle {
 
                     Column {
                         Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
-                        Layout.minimumWidth: 64
-                        Layout.preferredWidth: 64
+                        Layout.minimumWidth: 54
+                        Layout.preferredWidth: 54
                         spacing: 1
 
                         ActionButton {
-                            text: "G"
+                            text: "Grafo"
                             anchors.horizontalCenter: parent.horizontalCenter
-                            implicitWidth: 24
+                            implicitWidth: 42
                             implicitHeight: 19
                             padding: 0
-                            font.pixelSize: 10
+                            font.pixelSize: 9
                             ToolTip.visible: hovered
                             ToolTip.text: "Abrir grafo"
                             ToolTip.delay: 0

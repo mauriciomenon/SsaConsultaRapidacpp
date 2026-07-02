@@ -139,10 +139,24 @@ Flickable {
             for (const edge of edgeList) {
                 ctx.beginPath();
                 ctx.moveTo(edge.fromX, edge.fromY);
-                const midX = (edge.fromX + edge.toX) / 2;
-                ctx.lineTo(midX, edge.fromY);
-                ctx.lineTo(midX, edge.toY);
+                const routeX = edge.routeX !== undefined ? edge.routeX : (edge.fromX + edge.toX) / 2;
+                ctx.lineTo(routeX, edge.fromY);
+                ctx.lineTo(routeX, edge.toY);
                 ctx.lineTo(edge.toX, edge.toY);
+                if (edge.dashed) {
+                    ctx.setLineDash([7, 6]);
+                } else {
+                    ctx.setLineDash([]);
+                }
+                ctx.stroke();
+                ctx.setLineDash([]);
+
+                const direction = edge.fromX <= edge.toX ? 1 : -1;
+                ctx.beginPath();
+                ctx.moveTo(edge.toX, edge.toY);
+                ctx.lineTo(edge.toX - direction * 5, edge.toY - 4);
+                ctx.moveTo(edge.toX, edge.toY);
+                ctx.lineTo(edge.toX - direction * 5, edge.toY + 4);
                 if (edge.dashed) {
                     ctx.setLineDash([7, 6]);
                 } else {

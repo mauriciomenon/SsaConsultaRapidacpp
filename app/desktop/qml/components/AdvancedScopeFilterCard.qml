@@ -61,7 +61,7 @@ FilterCard {
         spacing: 5
 
         FilterFieldLabel {
-            width: 40
+            width: 34
             height: 26
             text: "Setor"
         }
@@ -84,12 +84,12 @@ FilterCard {
         }
 
         FilterFieldLabel {
-            width: 42
+            width: 36
             height: 26
             text: "Deriv."
         }
         AppComboBox {
-            width: 104
+            width: 88
             height: 26
             model: root.derivation.derivationModeOptions
             currentIndex: Math.max(0, root.derivation.derivationModeOptions.indexOf(root.derivation.derivationMode))
@@ -99,9 +99,9 @@ FilterCard {
             }
         }
         AppCheckBox {
-            width: 92
+            width: 76
             height: 26
-            text: "So reprog."
+            text: "Reprog."
             checked: root.derivation.onlyReprogrammed
             onToggled: {
                 root.derivation.onlyReprogrammed = checked;
@@ -110,20 +110,20 @@ FilterCard {
         }
 
         FilterFieldLabel {
-            width: 32
+            width: 28
             height: 26
             text: "Qtd."
         }
         AppComboBox {
             id: reprogrammingModeSelector
-            width: 108
+            width: 86
             height: 26
             leftPadding: 8
             rightPadding: 22
             popup.width: 170
             model: root.derivation.reprogrammingModeOptions
             currentIndex: Math.max(0, root.derivation.reprogrammingModeOptions.indexOf(root.derivation.reprogrammingMode))
-            displayText: currentText === "lte" ? "<= Menor" : currentText === "gte" ? ">= Maior" : "= Igual"
+            displayText: currentText === "lte" ? "<=" : currentText === "gte" ? ">=" : "="
             onActivated: {
                 root.derivation.reprogrammingMode = currentText;
                 root.applyRequested();
@@ -135,7 +135,7 @@ FilterCard {
             }
         }
         AppTextField {
-            width: 76
+            width: 58
             height: 26
             text: root.derivation.reprogrammingEqualsFilter
             placeholderText: "0, 1..."
@@ -145,7 +145,7 @@ FilterCard {
         }
         ActionButton {
             text: "Enter"
-            implicitWidth: 42
+            implicitWidth: 38
             implicitHeight: 26
             padding: 0
             font.pixelSize: 10
@@ -161,7 +161,7 @@ FilterCard {
         }
         ActionButton {
             text: "Del"
-            implicitWidth: 34
+            implicitWidth: 28
             implicitHeight: 26
             padding: 0
             font.pixelSize: 10
@@ -174,7 +174,7 @@ FilterCard {
             }
         }
         Label {
-            width: Math.max(120, root.width - 806)
+            width: Math.max(80, root.width - 690)
             height: 26
             visible: root.derivation.reprogrammingValues.length > 0
             text: "Valores: " + root.derivation.reprogrammingValues.join(", ")

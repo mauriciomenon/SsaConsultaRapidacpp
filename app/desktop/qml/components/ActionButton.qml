@@ -40,6 +40,9 @@ Button {
     contentItem: Text {
         text: control.text
         color: !control.enabled ? Theme.mutedText : (control.danger ? Theme.text : control.quietAccent && !control.down ? Theme.accentStrong : Theme.accentText)
+        font.family: control.font.family
+        font.pixelSize: control.font.pixelSize
+        font.bold: control.font.bold
         horizontalAlignment: Text.AlignHCenter
         verticalAlignment: Text.AlignVCenter
         elide: Text.ElideRight

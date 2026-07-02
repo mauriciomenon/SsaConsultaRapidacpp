@@ -1,6 +1,7 @@
 #include "presentation/DerivadasGraphModel.h"
 
 #include <algorithm>
+#include <cmath>
 #include <unordered_set>
 #include <utility>
 
@@ -13,6 +14,8 @@ namespace ssa::presentation {
         constexpr qreal kNodeHeight = 52;
         constexpr qreal kXGap = 145;
         constexpr qreal kYGap = kNodeHeight + 52;
+        constexpr int kMaxChildrenPerRow = 7;
+        constexpr qreal kChildRowGap = kNodeHeight + 34;
         constexpr qreal kMargin = 8;
 
         QString mermaidEscaped(QString value) {
@@ -35,6 +38,19 @@ namespace ssa::presentation {
             value.replace(QStringLiteral(">"), QStringLiteral("&gt;"));
             value.replace(QStringLiteral("\""), QStringLiteral("&quot;"));
             return value;
+        }
+
+        int childColumnCount(const std::size_t childCount) {
+            if (childCount == 0) {
+                return 0;
+            }
+            return std::min(kMaxChildrenPerRow, static_cast<int>(childCount));
+        }
+
+        qreal routeXBetween(const qreal fromX, const qreal toX) {
+            const qreal distance = std::abs(toX - fromX);
+            const qreal offset = std::min<qreal>(28.0, distance / 2.0);
+            return toX + (fromX <= toX ? -offset : offset);
         }
 
     } // namespace
@@ -150,11 +166,15 @@ namespace ssa::presentation {
                                   QPointF(kMargin + static_cast<qreal>(index) * kXGap, targetY));
         }
         positionBySsa.emplace(target_.toStdString(), QPointF(targetX, targetY));
+        const int childColumns = childColumnCount(children.size());
         for (int index = 0; index < static_cast<int>(children.size()); ++index) {
             const auto& child = children[static_cast<std::size_t>(index)].first;
+            const int row = childColumns > 0 ? index / childColumns : 0;
+            const int column = childColumns > 0 ? index % childColumns : 0;
             positionBySsa.emplace(
                 child.toStdString(),
-                QPointF(targetX + kXGap + static_cast<qreal>(index) * kXGap, targetY + kYGap));
+                QPointF(targetX + kXGap + static_cast<qreal>(column) * kXGap,
+                        targetY + kYGap + static_cast<qreal>(row) * kChildRowGap));
         }
 
         // Layout: ancestors stay on the target row; children fan out one level below
@@ -319,17 +339,29 @@ namespace ssa::presentation {
                 fromIt->second.x() + (leftToRight ? kNodeWidth / 2.0 : -kNodeWidth / 2.0);
             const qreal toX =
                 toIt->second.x() + (leftToRight ? -kNodeWidth / 2.0 : kNodeWidth / 2.0);
-            const qreal midX = (fromX + toX) / 2.0;
+            const qreal routeX = routeXBetween(fromX, toX);
             const QString path = QStringLiteral("M %1 %2 H %3 V %4 H %5")
                                      .arg(fromX)
                                      .arg(fromIt->second.y())
-                                     .arg(midX)
+                                     .arg(routeX)
                                      .arg(toIt->second.y())
                                      .arg(toX);
             result +=
                 QStringLiteral("  <path d=\"%1\" fill=\"none\" stroke=\"#8a8179\" "
                                "stroke-width=\"1.5\"%2/>\n")
                     .arg(path)
+                    .arg(edge.dashed ? QStringLiteral(" stroke-dasharray=\"6 4\"") : QString{});
+            const qreal direction = leftToRight ? 1.0 : -1.0;
+            const QString arrow = QStringLiteral("M %1 %2 L %3 %4 M %1 %2 L %3 %5")
+                                      .arg(toX)
+                                      .arg(toIt->second.y())
+                                      .arg(toX - direction * 5.0)
+                                      .arg(toIt->second.y() - 4.0)
+                                      .arg(toIt->second.y() + 4.0);
+            result +=
+                QStringLiteral("  <path d=\"%1\" fill=\"none\" stroke=\"#8a8179\" "
+                               "stroke-width=\"1.5\"%2/>\n")
+                    .arg(arrow)
                     .arg(edge.dashed ? QStringLiteral(" stroke-dasharray=\"6 4\"") : QString{});
         }
 
@@ -403,6 +435,9 @@ namespace ssa::presentation {
             entry.insert(QStringLiteral("toX"),
                          toIt->second.x() + (leftToRight ? -kNodeWidth / 2.0 : kNodeWidth / 2.0));
             entry.insert(QStringLiteral("toY"), toIt->second.y());
+            entry.insert(QStringLiteral("routeX"),
+                         routeXBetween(entry.value(QStringLiteral("fromX")).toReal(),
+                                       entry.value(QStringLiteral("toX")).toReal()));
             entry.insert(QStringLiteral("dashed"), edge.dashed);
             result.push_back(entry);
         }

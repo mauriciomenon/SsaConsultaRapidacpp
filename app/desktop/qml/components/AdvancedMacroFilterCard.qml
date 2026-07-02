@@ -34,12 +34,12 @@ FilterCard {
 
         FilterFieldLabel {
             text: "Macro"
-            Layout.preferredWidth: 46
+            Layout.preferredWidth: 44
             Layout.preferredHeight: 26
         }
         AppComboBox {
             id: macroSelector
-            Layout.preferredWidth: Math.min(300, Math.max(180, root.width * 0.38))
+            Layout.preferredWidth: Math.min(250, Math.max(160, root.width - 58))
             Layout.preferredHeight: 26
             textRole: "label"
             valueRole: "value"

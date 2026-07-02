@@ -30,9 +30,11 @@ Rectangle {
                 Layout.fillWidth: true
                 Layout.preferredHeight: childrenRect.height
                 spacing: 5
+                readonly property bool compactPair: width >= 960
+                readonly property int scopeWidth: compactPair ? Math.min(650, width - 305) : width
 
                 AdvancedScopeFilterCard {
-                    width: topFilterFlow.width >= 1180 ? Math.floor(topFilterFlow.width * 0.62) - 3 : topFilterFlow.width
+                    width: topFilterFlow.compactPair ? topFilterFlow.scopeWidth : topFilterFlow.width
                     height: implicitHeight
                     filterViewModel: root.filterViewModel
                     derivation: root.advanced.derivation
@@ -40,7 +42,7 @@ Rectangle {
                 }
 
                 AdvancedMacroFilterCard {
-                    width: topFilterFlow.width >= 1180 ? topFilterFlow.width - Math.floor(topFilterFlow.width * 0.62) - 3 : topFilterFlow.width
+                    width: topFilterFlow.compactPair ? topFilterFlow.width - topFilterFlow.scopeWidth - topFilterFlow.spacing : topFilterFlow.width
                     height: implicitHeight
                     sectorHierarchy: root.advanced.sectorHierarchy
                     macro: root.advanced.macro

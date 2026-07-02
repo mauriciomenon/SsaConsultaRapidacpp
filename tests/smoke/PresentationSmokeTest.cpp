@@ -517,24 +517,26 @@ namespace {
             ssa::presentation::DerivadasGraphModel model;
             QVariantList relations;
             relations.push_back(QVariantMap{{"role", "current"}, {"ssa", "202500100"}});
-            for (int index = 0; index < 7; ++index) {
+            for (int index = 0; index < 10; ++index) {
                 relations.push_back(QVariantMap{
                     {"role", "child"}, {"ssa", QStringLiteral("20250010%1").arg(index + 1)}});
             }
 
             model.buildFromRelations(QStringLiteral("202500100"), relations);
 
-            QCOMPARE(model.rowCount(), 8);
+            QCOMPARE(model.rowCount(), 11);
             const auto targetY = model.nodeCenter(0).y();
             const auto targetX = model.nodeCenter(0).x();
             for (int row = 1; row < model.rowCount(); ++row) {
                 QVERIFY(model.nodeCenter(row).y() > targetY);
                 QVERIFY(model.nodeCenter(row).x() > targetX);
-                QVERIFY(model.nodeCenter(row - 1).x() < model.nodeCenter(row).x());
             }
+            QVERIFY(model.nodeCenter(1).x() < model.nodeCenter(7).x());
+            QVERIFY(model.nodeCenter(8).x() == model.nodeCenter(1).x());
+            QVERIFY(model.nodeCenter(8).y() > model.nodeCenter(1).y());
 
             const auto edges = model.edges();
-            QCOMPARE(edges.size(), 7);
+            QCOMPARE(edges.size(), 10);
             for (const auto& edgeValue : edges) {
                 const auto edge = edgeValue.toMap();
                 QCOMPARE(edge.value("from").toString(), QString("202500100"));
@@ -542,6 +544,8 @@ namespace {
                 QVERIFY(edge.value("fromX").toReal() > targetX);
                 QVERIFY(edge.value("toX").toReal() > edge.value("fromX").toReal());
                 QVERIFY(edge.value("toY").toReal() > edge.value("fromY").toReal());
+                QVERIFY(edge.value("routeX").toReal() > edge.value("fromX").toReal());
+                QVERIFY(edge.value("routeX").toReal() < edge.value("toX").toReal());
             }
         }
 
