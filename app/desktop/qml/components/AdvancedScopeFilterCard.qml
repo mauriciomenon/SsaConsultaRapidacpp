@@ -99,9 +99,9 @@ FilterCard {
             }
         }
         AppCheckBox {
-            width: 78
+            width: 92
             height: 26
-            text: "Reprog."
+            text: "So reprog."
             checked: root.derivation.onlyReprogrammed
             onToggled: {
                 root.derivation.onlyReprogrammed = checked;
@@ -110,9 +110,9 @@ FilterCard {
         }
 
         FilterFieldLabel {
-            width: 48
+            width: 32
             height: 26
-            text: "Reprog."
+            text: "Qtd."
         }
         AppComboBox {
             id: reprogrammingModeSelector
@@ -144,12 +144,12 @@ FilterCard {
             onAccepted: root.applyRequested()
         }
         ActionButton {
-            text: "Enter"
-            implicitWidth: 46
+            text: "Sel"
+            implicitWidth: 34
             implicitHeight: 26
             padding: 0
             ToolTip.visible: hovered
-            ToolTip.text: "Escolher valores de reprogramacao"
+            ToolTip.text: "Selecionar valores de reprogramacao"
             ToolTip.delay: 0
             onClicked: {
                 root.reloadReprogrammingOptionState();
@@ -159,8 +159,8 @@ FilterCard {
             }
         }
         ActionButton {
-            text: "Del"
-            implicitWidth: 32
+            text: "X"
+            implicitWidth: 30
             implicitHeight: 26
             padding: 0
             ToolTip.visible: hovered
@@ -172,7 +172,7 @@ FilterCard {
             }
         }
         Label {
-            width: Math.max(0, root.width - 812)
+            width: Math.max(0, root.width - 798)
             height: 26
             visible: root.derivation.reprogrammingValues.length > 0
             text: "Valores: " + root.derivation.reprogrammingValues.join(", ")

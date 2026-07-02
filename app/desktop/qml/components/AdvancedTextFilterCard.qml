@@ -21,7 +21,7 @@ FilterCard {
     property bool expandedValues: false
     readonly property int compactValueLimit: 18
     readonly property int choiceColumnWidth: 52
-    readonly property int commandWidth: root.cardWidth < 300 ? 34 : 42
+    readonly property int commandWidth: 34
 
     signal optionsRequested
     signal operatorModeRequested(string mode)
@@ -86,7 +86,7 @@ FilterCard {
 
         RowLayout {
             Layout.fillWidth: true
-            Layout.preferredHeight: 13
+            Layout.preferredHeight: 15
             spacing: 4
 
             Label {
@@ -114,7 +114,7 @@ FilterCard {
 
             AppComboBox {
                 id: advancedOperator
-                Layout.preferredWidth: 30
+                Layout.preferredWidth: 34
                 leftPadding: 0
                 rightPadding: 0
                 indicator: null
@@ -129,9 +129,9 @@ FilterCard {
 
             AppComboBox {
                 id: advancedValueSelector
-                Layout.minimumWidth: 72
+                Layout.minimumWidth: 96
                 Layout.fillWidth: true
-                Layout.preferredWidth: Math.max(86, root.cardWidth * 0.28)
+                Layout.preferredWidth: Math.max(120, root.cardWidth * 0.38)
                 leftPadding: 7
                 rightPadding: 18
                 popup.width: Math.min(560, Math.max(360, root.cardWidth * 0.86))
@@ -153,7 +153,7 @@ FilterCard {
 
             ActionButton {
                 text: root.expandedValues ? "-" : "+"
-                implicitWidth: 22
+                implicitWidth: 26
                 implicitHeight: 26
                 padding: 0
                 font.bold: true
@@ -166,14 +166,14 @@ FilterCard {
             }
 
             ActionButton {
-                text: "Enter"
+                text: "Sel"
                 implicitWidth: root.commandWidth
                 implicitHeight: 26
                 padding: 0
                 font.pixelSize: 11
                 enabled: root.operatorIndex >= 0
                 ToolTip.visible: hovered
-                ToolTip.text: "Escolher valores para incluir ou excluir"
+                ToolTip.text: "Selecionar valores para incluir ou excluir"
                 ToolTip.delay: 0
                 onClicked: {
                     if (root.allValues.length === 0)
@@ -183,7 +183,7 @@ FilterCard {
                 }
             }
             ActionButton {
-                text: "Del"
+                text: "X"
                 implicitWidth: 30
                 implicitHeight: 26
                 padding: 0
