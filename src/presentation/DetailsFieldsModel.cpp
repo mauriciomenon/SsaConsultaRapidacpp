@@ -84,11 +84,14 @@ namespace ssa::presentation {
                                                                       ? domain::ColumnType::Text
                                                                       : column->second.type);
         }
+        if (role == KeyRole) {
+            return QString::fromStdString(field.key);
+        }
         return {};
     }
 
     QHash<int, QByteArray> DetailsFieldsModel::roleNames() const {
-        return {{LabelRole, "label"}, {ValueRole, "value"}};
+        return {{LabelRole, "label"}, {ValueRole, "value"}, {KeyRole, "key"}};
     }
 
     void DetailsFieldsModel::setRecord(const domain::SsaRecord& record) {

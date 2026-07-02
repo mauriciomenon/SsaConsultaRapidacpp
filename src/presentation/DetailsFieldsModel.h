@@ -16,7 +16,7 @@ namespace ssa::presentation {
         Q_OBJECT
 
       public:
-        enum Role : std::uint16_t { LabelRole = Qt::UserRole + 1, ValueRole };
+        enum Role : std::uint16_t { LabelRole = Qt::UserRole + 1, ValueRole, KeyRole };
 
         explicit DetailsFieldsModel(QObject* parent = nullptr);
 

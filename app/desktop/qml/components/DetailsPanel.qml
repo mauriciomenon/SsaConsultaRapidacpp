@@ -13,7 +13,7 @@ Rectangle {
     readonly property int titleTextSize: Theme.densityValue(root.density, 14, 16, 18)
     readonly property int labelTextSize: Theme.densityValue(root.density, 12, 13, 14)
     readonly property int valueTextSize: Theme.densityValue(root.density, 12, 13, 15)
-    readonly property int detailsLabelWidth: Theme.densityValue(root.density, 118, 132, 150)
+    readonly property int detailsLabelWidth: Theme.densityValue(root.density, 104, 116, 132)
     signal openRequested
     signal graphWindowRequested
     // Emitted when the user clicks a relation node: the main view loads that
@@ -68,6 +68,10 @@ Rectangle {
         return Theme.panelRaised;
     }
 
+    function isLongField(key) {
+        return key === "descricao_ssa" || key === "descricao_execucao" || key === "justificativa" || key === "parciais";
+    }
+
     color: Theme.panel
     border.color: Theme.border
     radius: Theme.radius
@@ -75,8 +79,8 @@ Rectangle {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 10
-        spacing: Theme.gap
+        anchors.margins: 6
+        spacing: 4
 
         Rectangle {
             Layout.fillWidth: true
@@ -90,18 +94,18 @@ Rectangle {
             ColumnLayout {
                 id: relationsLayout
                 anchors.fill: parent
-                anchors.margins: 8
-                spacing: 6
+                anchors.margins: 6
+                spacing: 4
 
                 RowLayout {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: Theme.relationNodeHeight + 18
-                    spacing: 8
+                    Layout.preferredHeight: Theme.relationNodeHeight + 12
+                    spacing: 6
 
                     Flickable {
                         id: relationsFlick
                         Layout.fillWidth: true
-                        Layout.preferredHeight: Theme.relationNodeHeight + 18
+                        Layout.preferredHeight: Theme.relationNodeHeight + 12
                         clip: true
                         contentWidth: relationsRow.width
                         contentHeight: relationsRow.height
@@ -110,7 +114,7 @@ Rectangle {
 
                         Row {
                             id: relationsRow
-                            spacing: 6
+                            spacing: 5
 
                             Repeater {
                                 model: root.viewModel.relations
@@ -120,9 +124,11 @@ Rectangle {
                                     required property int index
                                     required property var modelData
                                     spacing: 6
+                                    width: relationConnectorLabel.width + relationBox.width + spacing
                                     height: relationBox.implicitHeight
 
                                     Label {
+                                        id: relationConnectorLabel
                                         visible: relationRow.index > 0
                                         text: root.relationConnector(relationRow.index, relationRow.modelData.role)
                                         color: relationRow.modelData.role === "related" ? Theme.mutedText : Theme.accentStrong
@@ -134,7 +140,7 @@ Rectangle {
                                     Rectangle {
                                         id: relationBox
                                         width: Math.max(Theme.relationNodeMinWidth + 18, relationText.implicitWidth + 26)
-                                        implicitHeight: Theme.relationNodeHeight + 14
+                                        implicitHeight: Theme.relationNodeHeight + 8
                                         radius: Theme.radius
                                         color: root.relationFillColor(relationRow.modelData.role, relationRow.index === root.viewModel.currentRelationIndex)
                                         border.color: root.relationBorderColor(relationRow.modelData.role, relationRow.index === root.viewModel.currentRelationIndex)
@@ -221,13 +227,13 @@ Rectangle {
                         Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
                         Layout.minimumWidth: 80
                         Layout.preferredWidth: 80
-                        spacing: 2
+                        spacing: 1
 
                         ActionButton {
                             text: "Grafo"
                             anchors.horizontalCenter: parent.horizontalCenter
                             implicitWidth: 58
-                            implicitHeight: 22
+                            implicitHeight: 21
                             font.pixelSize: 11
                             enabled: root.viewModel.selectedSsaNumber.length > 0
                             onClicked: root.graphWindowRequested()
@@ -240,7 +246,7 @@ Rectangle {
                             ActionButton {
                                 text: "<"
                                 implicitWidth: 22
-                                implicitHeight: 22
+                                implicitHeight: 21
                                 font.pixelSize: 11
                                 enabled: root.viewModel.canSelectPreviousRelation
                                 onClicked: root.viewModel.selectPreviousRelation()
@@ -252,12 +258,12 @@ Rectangle {
                                 horizontalAlignment: Text.AlignHCenter
                                 verticalAlignment: Text.AlignVCenter
                                 width: 30
-                                height: 22
+                                height: 21
                             }
                             ActionButton {
                                 text: ">"
                                 implicitWidth: 22
-                                implicitHeight: 22
+                                implicitHeight: 21
                                 font.pixelSize: 11
                                 enabled: root.viewModel.canSelectNextRelation
                                 onClicked: root.viewModel.selectNextRelation()
@@ -282,19 +288,22 @@ Rectangle {
 
             delegate: Column {
                 id: fieldDelegate
+                required property string key
                 required property string label
                 required property var value
                 property string rowValue: value === undefined || value === null ? "" : String(value)
+                property bool longField: root.isLongField(key)
 
                 width: detailsList.width
                 spacing: 0
 
                 RowLayout {
                     width: parent.width
-                    spacing: 4
+                    spacing: 5
 
                     Label {
                         Layout.preferredWidth: root.detailsLabelWidth
+                        Layout.alignment: Qt.AlignTop
                         font.pixelSize: root.labelTextSize
                         font.bold: true
                         text: fieldDelegate.label + ":"
@@ -304,6 +313,7 @@ Rectangle {
 
                     TextEdit {
                         Layout.fillWidth: true
+                        Layout.maximumHeight: fieldDelegate.longField ? Math.max(42, root.valueTextSize * 4) : root.valueTextSize + 5
                         text: fieldDelegate.rowValue
                         color: Theme.text
                         readOnly: true
@@ -313,6 +323,7 @@ Rectangle {
                         wrapMode: TextEdit.Wrap
                         font.pixelSize: root.valueTextSize
                         font.bold: true
+                        clip: true
                     }
                 }
 

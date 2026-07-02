@@ -203,6 +203,10 @@ namespace {
                     .toString(),
                 QString("No SSA"));
             QCOMPARE(
+                fields->data(fields->index(0, 0), ssa::presentation::DetailsFieldsModel::KeyRole)
+                    .toString(),
+                QString("numero_ssa"));
+            QCOMPARE(
                 fields->data(fields->index(1, 0), ssa::presentation::DetailsFieldsModel::LabelRole)
                     .toString(),
                 QString("Sit."));
@@ -222,6 +226,10 @@ namespace {
                 fields->data(fields->index(5, 0), ssa::presentation::DetailsFieldsModel::LabelRole)
                     .toString(),
                 QString("Qtd. Derivadas"));
+            QCOMPARE(
+                fields->data(fields->index(5, 0), ssa::presentation::DetailsFieldsModel::KeyRole)
+                    .toString(),
+                QString("qtd_derivadas"));
             QCOMPARE(
                 fields->data(fields->index(8, 0), ssa::presentation::DetailsFieldsModel::LabelRole)
                     .toString(),
