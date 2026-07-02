@@ -11,7 +11,7 @@ namespace ssa::presentation {
         // Mirrors gui/ssa/details_dialog_constants.py
         constexpr qreal kNodeWidth = 118;
         constexpr qreal kNodeHeight = 52;
-        constexpr qreal kXGap = 170;
+        constexpr qreal kXGap = 145;
         constexpr qreal kYGap = kNodeHeight + 9;
         constexpr qreal kMargin = 8;
         constexpr qreal kDenseFanRouteTop = kMargin + kNodeHeight + 20;

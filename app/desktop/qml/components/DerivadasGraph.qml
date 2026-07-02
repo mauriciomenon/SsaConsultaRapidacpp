@@ -37,7 +37,7 @@ Flickable {
         if (role === "parent")
             return "Origem";
         if (role === "current")
-            return "";
+            return "Atual";
         if (role === "child")
             return "";
         if (role === "related")
@@ -63,7 +63,19 @@ Flickable {
         if (role === "parent")
             return Theme.accentStrong;
         if (role === "child")
+            return Theme.accent;
+        if (role === "related")
+            return Theme.mutedText;
+        return Theme.border;
+    }
+
+    function nodeStripeColor(role, isTarget) {
+        if (isTarget)
             return Theme.accentStrong;
+        if (role === "parent")
+            return Theme.accentStrong;
+        if (role === "child")
+            return Theme.accent;
         if (role === "related")
             return Theme.mutedText;
         return Theme.border;
@@ -166,6 +178,9 @@ Flickable {
                 ctx.lineWidth = isTarget ? 1.2 : 0.9;
                 ctx.strokeStyle = root.nodeStrokeColor(role, isTarget);
                 ctx.stroke();
+
+                ctx.fillStyle = root.nodeStripeColor(role, isTarget);
+                ctx.fillRect(x0 + 5, y0 + 7, 3, canvas.nodeHeight - 14);
 
                 ctx.fillStyle = isTarget ? Theme.accentText : Theme.text;
                 ctx.textAlign = "center";

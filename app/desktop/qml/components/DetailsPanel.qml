@@ -24,7 +24,7 @@ Rectangle {
         if (role === "parent")
             return "Origem";
         if (role === "current")
-            return "";
+            return "Atual";
         if (role === "child")
             return "";
         if (role === "related")
@@ -37,10 +37,12 @@ Rectangle {
             return "";
         const previous = root.viewModel.relations[index - 1];
         const previousRole = previous !== undefined ? previous.role : "";
+        if (previousRole === "current" && role === "child")
+            return "|-";
+        if (previousRole === "child" && role === "child")
+            return "|-";
         if (role === "related")
             return "- -";
-        if (role === "child" && previousRole !== "current")
-            return "";
         return "->";
     }
 
@@ -50,7 +52,19 @@ Rectangle {
         if (role === "parent")
             return Theme.accentStrong;
         if (role === "child")
+            return Theme.accent;
+        if (role === "related")
+            return Theme.mutedText;
+        return Theme.border;
+    }
+
+    function relationAccentColor(role, selected) {
+        if (selected)
             return Theme.accentStrong;
+        if (role === "parent")
+            return Theme.accentStrong;
+        if (role === "child")
+            return Theme.accent;
         if (role === "related")
             return Theme.mutedText;
         return Theme.border;
@@ -144,6 +158,16 @@ Rectangle {
                                         radius: Theme.radius
                                         color: root.relationFillColor(relationRow.modelData.role, relationRow.index === root.viewModel.currentRelationIndex)
                                         border.color: root.relationBorderColor(relationRow.modelData.role, relationRow.index === root.viewModel.currentRelationIndex)
+
+                                        Rectangle {
+                                            width: 3
+                                            height: parent.height - 8
+                                            anchors.left: parent.left
+                                            anchors.leftMargin: 4
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            radius: 1
+                                            color: root.relationAccentColor(relationRow.modelData.role, relationRow.index === root.viewModel.currentRelationIndex)
+                                        }
 
                                         Column {
                                             anchors.centerIn: parent

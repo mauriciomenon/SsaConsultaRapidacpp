@@ -19,9 +19,9 @@ ApplicationWindow {
     signal graphNodeRequested(string ssaNumber)
     signal copyTextRequested(string text)
     title: detailsViewModel && detailsViewModel.selectedSsaNumber.length > 0 ? "Detalhes da SSA " + detailsViewModel.selectedSsaNumber : "Detalhes da SSA"
-    width: 1040
-    height: 860
-    minimumWidth: 760
+    width: 1180
+    height: 900
+    minimumWidth: 880
     minimumHeight: 700
     visible: false
     color: Theme.window
@@ -54,7 +54,7 @@ ApplicationWindow {
         nextHistory.push(ssaNumber);
         root.navigationHistory = nextHistory;
         root.navigationIndex = root.navigationHistory.length - 1;
-        root.graphExportMessage = "Caminho: " + root.breadcrumbText();
+        root.graphExportMessage = "Historico: " + root.breadcrumbText();
     }
 
     function navigateHistory(offset) {
@@ -68,13 +68,13 @@ ApplicationWindow {
         if (!root.detailsViewModel.loadBySsaNumber(ssaNumber))
             return;
         root.navigationIndex = nextIndex;
-        root.graphExportMessage = "Caminho: " + root.breadcrumbText();
+        root.graphExportMessage = "Historico: " + root.breadcrumbText();
     }
 
     function breadcrumbText() {
         if (root.navigationHistory.length === 0)
             return "";
-        return root.navigationHistory.join(" > ");
+        return root.navigationHistory.join(" / ");
     }
 
     onDetailsViewModelChanged: root.resetNavigationHistory()
@@ -133,7 +133,7 @@ ApplicationWindow {
                     height: 26
 
                     Label {
-                        text: root.navigationHistory.length > 0 ? "Caminho " + (root.navigationIndex + 1) + "/" + root.navigationHistory.length : ""
+                        text: root.navigationHistory.length > 0 ? "Historico " + (root.navigationIndex + 1) + "/" + root.navigationHistory.length : ""
                         color: Theme.mutedText
                         font.pixelSize: 12
                         font.bold: true
@@ -275,7 +275,7 @@ ApplicationWindow {
 
                     Label {
                         visible: root.detailsViewModel && root.detailsViewModel.graphModel.nodeCount > 0
-                        text: root.graphExportMessage.length > 0 ? root.graphExportMessage : root.detailsViewModel ? root.detailsViewModel.graphModel.summary + " | Linha cheia: derivada | tracejada: relacionada" : ""
+                        text: root.graphExportMessage.length > 0 ? root.graphExportMessage : root.detailsViewModel ? root.detailsViewModel.graphModel.summary + " | Cheia: derivada | tracejada: relacionada | faixa: papel da SSA" : ""
                         color: Theme.mutedText
                         font.pixelSize: 11
                     }
