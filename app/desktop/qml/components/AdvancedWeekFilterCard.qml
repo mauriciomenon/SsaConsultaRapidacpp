@@ -1,6 +1,7 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Layouts
 import SsaConsultaRapida
 
@@ -11,7 +12,7 @@ FilterCard {
     signal applyRequested
 
     Layout.fillWidth: true
-    Layout.preferredHeight: 112
+    Layout.preferredHeight: 88
 
     function fieldBorder(valid, control) {
         if (!valid)
@@ -23,7 +24,7 @@ FilterCard {
         anchors.fill: parent
         columns: 6
         columnSpacing: Theme.gap
-        rowSpacing: 6
+        rowSpacing: 4
 
         FilterFieldLabel {
             text: "Semana"
@@ -162,12 +163,15 @@ FilterCard {
             Layout.fillWidth: true
             ActionButton {
                 text: "Aplicar"
-                implicitWidth: 90
+                implicitWidth: 78
                 onClicked: root.applyRequested()
             }
             ActionButton {
-                text: "Limpar avancados"
-                implicitWidth: 140
+                text: "Limpar"
+                implicitWidth: 70
+                ToolTip.visible: hovered
+                ToolTip.text: "Limpar filtros avancados"
+                ToolTip.delay: 0
                 onClicked: root.advanced.clear()
             }
         }

@@ -20,6 +20,7 @@ FilterCard {
     required property real cardHeight
     property bool expandedValues: false
     readonly property int compactValueLimit: 18
+    readonly property int choiceColumnWidth: 52
 
     signal optionsRequested
     signal operatorModeRequested(string mode)
@@ -106,11 +107,11 @@ FilterCard {
 
         RowLayout {
             Layout.fillWidth: true
-            spacing: 6
+            spacing: 4
 
             AppComboBox {
                 id: advancedOperator
-                Layout.preferredWidth: 36
+                Layout.preferredWidth: 32
                 leftPadding: 0
                 rightPadding: 0
                 indicator: null
@@ -125,7 +126,7 @@ FilterCard {
 
             AppComboBox {
                 id: advancedValueSelector
-                Layout.minimumWidth: 96
+                Layout.minimumWidth: 88
                 Layout.fillWidth: true
                 Layout.preferredWidth: Math.max(108, root.cardWidth * 0.30)
                 leftPadding: 8
@@ -149,7 +150,7 @@ FilterCard {
 
             ActionButton {
                 text: root.expandedValues ? "-" : "+"
-                implicitWidth: 28
+                implicitWidth: 24
                 implicitHeight: Theme.controlHeight
                 padding: 0
                 font.bold: true
@@ -163,9 +164,10 @@ FilterCard {
 
             ActionButton {
                 text: "Enter"
-                implicitWidth: 44
+                implicitWidth: 42
                 implicitHeight: Theme.controlHeight
                 padding: 0
+                font.pixelSize: 11
                 enabled: root.operatorIndex >= 0
                 ToolTip.visible: hovered
                 ToolTip.text: "Escolher valores para incluir ou excluir"
@@ -179,10 +181,11 @@ FilterCard {
             }
             ActionButton {
                 text: "Del"
-                implicitWidth: 34
+                implicitWidth: 32
                 implicitHeight: Theme.controlHeight
                 padding: 0
                 font.bold: true
+                font.pixelSize: 11
                 ToolTip.visible: hovered
                 ToolTip.text: "Limpar filtro"
                 ToolTip.delay: 0
@@ -196,7 +199,7 @@ FilterCard {
         x: Math.max(0, root.width - width)
         y: 40
         width: Math.min(620, Math.max(420, root.width + 80))
-        height: 380
+        height: 360
         modal: false
         focus: true
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
@@ -227,7 +230,7 @@ FilterCard {
 
                 Label {
                     Layout.fillWidth: true
-                    text: "Incluir usa =valor. Excluir usa !valor."
+                    text: "Incluir (=valor) ou excluir (!valor)"
                     color: Theme.mutedText
                     font.pixelSize: 11
                     horizontalAlignment: Text.AlignRight
@@ -255,14 +258,14 @@ FilterCard {
                     font.pixelSize: 11
                 }
                 Label {
-                    Layout.preferredWidth: 58
+                    Layout.preferredWidth: root.choiceColumnWidth
                     text: "Incluir"
                     color: Theme.mutedText
                     font.pixelSize: 11
                     horizontalAlignment: Text.AlignHCenter
                 }
                 Label {
-                    Layout.preferredWidth: 58
+                    Layout.preferredWidth: root.choiceColumnWidth
                     text: "Excluir"
                     color: Theme.mutedText
                     font.pixelSize: 11
@@ -299,6 +302,7 @@ FilterCard {
 
                             Label {
                                 Layout.fillWidth: true
+                                Layout.preferredHeight: 22
                                 text: optionRow.modelData
                                 color: Theme.text
                                 font.pixelSize: 11
@@ -306,8 +310,8 @@ FilterCard {
                             }
 
                             Item {
-                                Layout.preferredWidth: 58
-                                Layout.preferredHeight: 24
+                                Layout.preferredWidth: root.choiceColumnWidth
+                                Layout.preferredHeight: 22
 
                                 AppCheckBox {
                                     anchors.centerIn: parent
@@ -329,8 +333,8 @@ FilterCard {
                             }
 
                             Item {
-                                Layout.preferredWidth: 58
-                                Layout.preferredHeight: 24
+                                Layout.preferredWidth: root.choiceColumnWidth
+                                Layout.preferredHeight: 22
 
                                 AppCheckBox {
                                     anchors.centerIn: parent

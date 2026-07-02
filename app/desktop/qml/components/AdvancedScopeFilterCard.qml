@@ -80,16 +80,6 @@ FilterCard {
                 text: modelData.length === 0 ? "Todos" : modelData
             }
         }
-        AppCheckBox {
-            width: 84
-            height: Theme.controlHeight
-            text: "Reprog."
-            checked: root.derivation.onlyReprogrammed
-            onToggled: {
-                root.derivation.onlyReprogrammed = checked;
-                root.applyRequested();
-            }
-        }
 
         FilterFieldLabel {
             width: 42
@@ -103,6 +93,16 @@ FilterCard {
             currentIndex: Math.max(0, root.derivation.derivationModeOptions.indexOf(root.derivation.derivationMode))
             onActivated: {
                 root.derivation.derivationMode = currentText;
+                root.applyRequested();
+            }
+        }
+        AppCheckBox {
+            width: 84
+            height: Theme.controlHeight
+            text: "Reprog."
+            checked: root.derivation.onlyReprogrammed
+            onToggled: {
+                root.derivation.onlyReprogrammed = checked;
                 root.applyRequested();
             }
         }
