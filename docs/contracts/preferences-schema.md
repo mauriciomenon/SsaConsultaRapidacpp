@@ -1,6 +1,6 @@
 # Preferences Schema
 
-## Version 3
+## Version 4
 
 Runtime file: `ssa_cpp_preferences.json`.
 
@@ -17,8 +17,10 @@ Current fields:
 - `sort_ascending`: boolean direction for the current table sort.
 - `visible_columns`: ordered list of column keys.
 - `column_widths`: object keyed by column key with integer widths.
-- `quick_sector`: string used by the executor shortcut filter. Empty means no quick sector
-  filter. Distinct value lists still prioritize known sector families in display order.
+- `quick_sector`: string used by the executor shortcut filter. The default startup value is
+  `IEE3`. Empty means no quick sector filter only when the user or a saved manual state explicitly
+  clears it. Distinct value lists still prioritize known sector families in display order without
+  hiding other values.
 - `exclude_sca_ses_ste`: boolean for the `SCA/SES/STE` exclusion.
 - `column_filters`: object keyed by column key with filter text.
 - `advanced_text_filters`: object keyed by column key with advanced filter text.
@@ -56,5 +58,5 @@ Current fields:
 
 ## Migrations
 
-- Version 2 to 3: clears the rejected automatic `quick_sector=IEE3` default only when it is the
-  only active filter. Manual states with other filters keep their quick sector.
+- Version 3 to 4: restores the default `quick_sector=IEE3` when a saved empty quick sector is the
+  only active filter. Manual states with other filters keep their quick sector state.

@@ -14,7 +14,7 @@
 namespace ssa::infra::preferences {
 
     namespace {
-        constexpr int kCurrentPreferencesSchemaVersion = 3;
+        constexpr int kCurrentPreferencesSchemaVersion = 4;
         constexpr std::string_view kExecutorColumnKey = "setor_executor";
         constexpr std::string_view kDerivedCountColumnKey = "qtd_derivadas";
 
@@ -62,12 +62,12 @@ namespace ssa::infra::preferences {
                    filters.onlyReprogrammed;
         }
 
-        void migrateRejectedDefaultQuickSector(ports::UserPreferencesSnapshot& snapshot) {
+        void migrateDefaultQuickSector(ports::UserPreferencesSnapshot& snapshot) {
             if (snapshot.schemaVersion >= kCurrentPreferencesSchemaVersion ||
-                snapshot.filters.quickSector != "IEE3" || hasManualFilterState(snapshot.filters)) {
+                !snapshot.filters.quickSector.empty() || hasManualFilterState(snapshot.filters)) {
                 return;
             }
-            snapshot.filters.quickSector.clear();
+            snapshot.filters.quickSector = "IEE3";
         }
 
         std::map<std::string, int> readColumnWidths(const QJsonObject& root) {
@@ -160,7 +160,7 @@ namespace ssa::infra::preferences {
         snapshot.visibleColumns =
             readVisibleColumns(root, domain::ColumnCatalog::defaultVisibleKeys());
         migrateDerivedCountColumn(snapshot);
-        migrateRejectedDefaultQuickSector(snapshot);
+        migrateDefaultQuickSector(snapshot);
         snapshot.schemaVersion = std::max(snapshot.schemaVersion, kCurrentPreferencesSchemaVersion);
         snapshot.columnWidths = readColumnWidths(root);
         return snapshot;

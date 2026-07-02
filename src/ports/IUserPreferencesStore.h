@@ -11,7 +11,7 @@ namespace ssa::ports {
 
     struct FilterPreferencesSnapshot {
         std::string searchText;
-        std::string quickSector;
+        std::string quickSector{"IEE3"};
         std::map<std::string, std::string> columnFilters;
         std::map<std::string, std::string> advancedTextFilters;
         std::string advancedWeekColumnKey{"semana_programada"};
@@ -38,7 +38,7 @@ namespace ssa::ports {
         std::string density{"compact"};
         std::string sortColumnKey{"numero_ssa"};
         FilterPreferencesSnapshot filters;
-        int schemaVersion{3};
+        int schemaVersion{4};
         int pageSize{domain::kDefaultPageSize};
         int detailsPanelWidth{ports::kDefaultDetailsPanelWidth};
         bool detailsVisible{true};

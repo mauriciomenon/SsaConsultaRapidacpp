@@ -110,13 +110,13 @@ TEST_CASE("json preferences store migrates legacy derived count visibility") {
     const ssa::infra::preferences::JsonUserPreferencesStore store(path);
     const auto loaded = store.load();
 
-    REQUIRE(loaded.schemaVersion == 3);
-    REQUIRE(loaded.filters.quickSector.empty());
+    REQUIRE(loaded.schemaVersion == 4);
+    REQUIRE(loaded.filters.quickSector == "IEE3");
     REQUIRE(loaded.visibleColumns ==
             std::vector<std::string>{"numero_ssa", "setor_executor", "qtd_derivadas", "situacao"});
 }
 
-TEST_CASE("json preferences store clears rejected quick sector default when it is alone") {
+TEST_CASE("json preferences store restores default quick sector when it is alone") {
     QTemporaryDir directory;
     REQUIRE(directory.isValid());
 
@@ -124,17 +124,17 @@ TEST_CASE("json preferences store clears rejected quick sector default when it i
     QFile file(QString::fromStdString(path.string()));
     REQUIRE(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
     file.write(
-        R"JSON({"schema_version":2,"quick_sector":"IEE3","visible_columns":["numero_ssa","setor_executor","qtd_derivadas"]})JSON");
+        R"JSON({"schema_version":3,"quick_sector":"","visible_columns":["numero_ssa","setor_executor","qtd_derivadas"]})JSON");
     file.close();
 
     const ssa::infra::preferences::JsonUserPreferencesStore store(path);
     const auto loaded = store.load();
 
-    REQUIRE(loaded.schemaVersion == 3);
-    REQUIRE(loaded.filters.quickSector.empty());
+    REQUIRE(loaded.schemaVersion == 4);
+    REQUIRE(loaded.filters.quickSector == "IEE3");
 }
 
-TEST_CASE("json preferences store keeps explicit quick sector when other filters exist") {
+TEST_CASE("json preferences store keeps empty quick sector when other filters exist") {
     QTemporaryDir directory;
     REQUIRE(directory.isValid());
 
@@ -142,14 +142,14 @@ TEST_CASE("json preferences store keeps explicit quick sector when other filters
     QFile file(QString::fromStdString(path.string()));
     REQUIRE(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
     file.write(
-        R"JSON({"schema_version":2,"quick_sector":"IEE3","search_text":"manual","visible_columns":["numero_ssa","setor_executor","qtd_derivadas"]})JSON");
+        R"JSON({"schema_version":3,"quick_sector":"","search_text":"manual","visible_columns":["numero_ssa","setor_executor","qtd_derivadas"]})JSON");
     file.close();
 
     const ssa::infra::preferences::JsonUserPreferencesStore store(path);
     const auto loaded = store.load();
 
-    REQUIRE(loaded.schemaVersion == 3);
-    REQUIRE(loaded.filters.quickSector == "IEE3");
+    REQUIRE(loaded.schemaVersion == 4);
+    REQUIRE(loaded.filters.quickSector.empty());
     REQUIRE(loaded.filters.searchText == "manual");
 }
 
