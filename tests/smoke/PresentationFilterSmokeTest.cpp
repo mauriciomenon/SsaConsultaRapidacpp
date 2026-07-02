@@ -341,7 +341,7 @@ namespace {
 
             week->setIssueYearFilter("2026");
             derivation->setOnlyReprogrammed(true);
-            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->filters()->activeFilterEntries().size(), 3,
+            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->filters()->activeFilterEntries().size(), 2,
                                       1000);
 
             const auto issueYearEntry =
@@ -363,8 +363,7 @@ namespace {
             request = repository->requests().back();
             QVERIFY(!request.advancedFilters.issueYear.has_value());
             QCOMPARE(request.advancedFilters.onlyReprogrammed, false);
-            QCOMPARE(model.browse()->filters()->activeFilterEntries().size(), 1);
-            QVERIFY(!activeFilterEntry(model.browse()->filters(), "quick_sector").isEmpty());
+            QCOMPARE(model.browse()->filters()->activeFilterEntries().size(), 0);
         }
 
         void advanced_submodels_update_shared_filter_state() {

@@ -110,10 +110,47 @@ TEST_CASE("json preferences store migrates legacy derived count visibility") {
     const ssa::infra::preferences::JsonUserPreferencesStore store(path);
     const auto loaded = store.load();
 
-    REQUIRE(loaded.schemaVersion == 2);
-    REQUIRE(loaded.filters.quickSector == "IEE3");
+    REQUIRE(loaded.schemaVersion == 3);
+    REQUIRE(loaded.filters.quickSector.empty());
     REQUIRE(loaded.visibleColumns ==
             std::vector<std::string>{"numero_ssa", "setor_executor", "qtd_derivadas", "situacao"});
+}
+
+TEST_CASE("json preferences store clears rejected quick sector default when it is alone") {
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+
+    const auto path = std::filesystem::path{directory.path().toStdString()} / "prefs.json";
+    QFile file(QString::fromStdString(path.string()));
+    REQUIRE(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    file.write(
+        R"JSON({"schema_version":2,"quick_sector":"IEE3","visible_columns":["numero_ssa","setor_executor","qtd_derivadas"]})JSON");
+    file.close();
+
+    const ssa::infra::preferences::JsonUserPreferencesStore store(path);
+    const auto loaded = store.load();
+
+    REQUIRE(loaded.schemaVersion == 3);
+    REQUIRE(loaded.filters.quickSector.empty());
+}
+
+TEST_CASE("json preferences store keeps explicit quick sector when other filters exist") {
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+
+    const auto path = std::filesystem::path{directory.path().toStdString()} / "prefs.json";
+    QFile file(QString::fromStdString(path.string()));
+    REQUIRE(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    file.write(
+        R"JSON({"schema_version":2,"quick_sector":"IEE3","search_text":"manual","visible_columns":["numero_ssa","setor_executor","qtd_derivadas"]})JSON");
+    file.close();
+
+    const ssa::infra::preferences::JsonUserPreferencesStore store(path);
+    const auto loaded = store.load();
+
+    REQUIRE(loaded.schemaVersion == 3);
+    REQUIRE(loaded.filters.quickSector == "IEE3");
+    REQUIRE(loaded.filters.searchText == "manual");
 }
 
 TEST_CASE("json preferences store drops invalid column filters") {

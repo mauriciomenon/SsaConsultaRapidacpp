@@ -546,6 +546,11 @@ namespace {
                 QVERIFY(edge.value("toY").toReal() > edge.value("fromY").toReal());
                 QVERIFY(edge.value("routeX").toReal() > edge.value("fromX").toReal());
                 QVERIFY(edge.value("routeX").toReal() < edge.value("toX").toReal());
+                QVERIFY(edge.contains("routeY"));
+                QVERIFY(edge.contains("approachX"));
+                QVERIFY(edge.value("routeY").toReal() > edge.value("fromY").toReal());
+                QVERIFY(edge.value("routeY").toReal() < edge.value("toY").toReal());
+                QVERIFY(edge.value("approachX").toReal() < edge.value("toX").toReal());
             }
         }
 

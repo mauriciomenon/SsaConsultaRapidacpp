@@ -53,6 +53,23 @@ namespace ssa::presentation {
             return toX + (fromX <= toX ? -offset : offset);
         }
 
+        qreal sourceExitX(const qreal fromX, const qreal toX) {
+            const qreal direction = fromX <= toX ? 1.0 : -1.0;
+            return fromX + direction * 26.0;
+        }
+
+        qreal targetApproachX(const qreal fromX, const qreal toX) {
+            const qreal direction = fromX <= toX ? 1.0 : -1.0;
+            return toX - direction * 14.0;
+        }
+
+        std::optional<qreal> lowerLaneY(const qreal fromY, const qreal toY) {
+            if (toY <= fromY + kNodeHeight / 2.0) {
+                return std::nullopt;
+            }
+            return toY - kNodeHeight / 2.0 - 16.0;
+        }
+
     } // namespace
 
     DerivadasGraphModel::DerivadasGraphModel(QObject* parent) : QAbstractListModel(parent) {}
@@ -340,12 +357,22 @@ namespace ssa::presentation {
             const qreal toX =
                 toIt->second.x() + (leftToRight ? -kNodeWidth / 2.0 : kNodeWidth / 2.0);
             const qreal routeX = routeXBetween(fromX, toX);
-            const QString path = QStringLiteral("M %1 %2 H %3 V %4 H %5")
-                                     .arg(fromX)
-                                     .arg(fromIt->second.y())
-                                     .arg(routeX)
-                                     .arg(toIt->second.y())
-                                     .arg(toX);
+            const auto laneY = lowerLaneY(fromIt->second.y(), toIt->second.y());
+            const QString path = laneY.has_value()
+                                     ? QStringLiteral("M %1 %2 H %3 V %4 H %5 V %6 H %7")
+                                           .arg(fromX)
+                                           .arg(fromIt->second.y())
+                                           .arg(sourceExitX(fromX, toX))
+                                           .arg(laneY.value())
+                                           .arg(targetApproachX(fromX, toX))
+                                           .arg(toIt->second.y())
+                                           .arg(toX)
+                                     : QStringLiteral("M %1 %2 H %3 V %4 H %5")
+                                           .arg(fromX)
+                                           .arg(fromIt->second.y())
+                                           .arg(routeX)
+                                           .arg(toIt->second.y())
+                                           .arg(toX);
             result +=
                 QStringLiteral("  <path d=\"%1\" fill=\"none\" stroke=\"#8a8179\" "
                                "stroke-width=\"1.5\"%2/>\n")
@@ -435,9 +462,18 @@ namespace ssa::presentation {
             entry.insert(QStringLiteral("toX"),
                          toIt->second.x() + (leftToRight ? -kNodeWidth / 2.0 : kNodeWidth / 2.0));
             entry.insert(QStringLiteral("toY"), toIt->second.y());
-            entry.insert(QStringLiteral("routeX"),
-                         routeXBetween(entry.value(QStringLiteral("fromX")).toReal(),
-                                       entry.value(QStringLiteral("toX")).toReal()));
+            const qreal fromX = entry.value(QStringLiteral("fromX")).toReal();
+            const qreal fromY = entry.value(QStringLiteral("fromY")).toReal();
+            const qreal toX = entry.value(QStringLiteral("toX")).toReal();
+            const qreal toY = entry.value(QStringLiteral("toY")).toReal();
+            const auto laneY = lowerLaneY(fromY, toY);
+            if (laneY.has_value()) {
+                entry.insert(QStringLiteral("routeX"), sourceExitX(fromX, toX));
+                entry.insert(QStringLiteral("routeY"), laneY.value());
+                entry.insert(QStringLiteral("approachX"), targetApproachX(fromX, toX));
+            } else {
+                entry.insert(QStringLiteral("routeX"), routeXBetween(fromX, toX));
+            }
             entry.insert(QStringLiteral("dashed"), edge.dashed);
             result.push_back(entry);
         }

@@ -189,7 +189,11 @@ TEST_CASE_METHOD(SqliteRepositoryFixture,
             ('202500023','APV','','LOC-23','Area','EQ-X',202501,'2025-01-23','A','A','SEM','MEG2','Ana','Bruno','MEL1 CAIO','SAM','SYS','x.xlsx','2025-01-23','A','B',202502,202503,3,3),
             ('202500024','APV','','LOC-24','Area','EQ-X',202501,'2025-01-24','A','A','SEM','MEG2','Ana','Bruno','IEE1 DORA','SAM','SYS','x.xlsx','2025-01-24','A','B',202502,202503,9,9),
             ('202500025','APV','','LOC-25','Area','EQ-X',202501,'2025-01-25','A','A','SEM','IEE3','Ana','Bruno','ZE IEE3','SAM','SYS','x.xlsx','2025-01-25','A','B',202502,202503,1,1),
-            ('202500026','APV','','LOC-26','Area','EQ-X',202501,'2025-01-26','A','A','SEM','IEE1','Ana','Bruno','ZE IEE1','SAM','SYS','x.xlsx','2025-01-26','A','B',202502,202503,0,0);
+            ('202500026','APV','','LOC-26','Area','EQ-X',202501,'2025-01-26','A','A','SEM','IEE1','Ana','Bruno','ZE IEE1','SAM','SYS','x.xlsx','2025-01-26','A','B',202502,202503,0,0),
+            ('202500027','APV','','LOC-27','Area','EQ-X',202501,'2025-01-27','A','A','SEM','IEE3','Ana','Bruno','CARLOS SETOR','SAM','SYS','x.xlsx','2025-01-27','A','B',202502,202503,4,4),
+            ('202500028','APV','','LOC-28','Area','EQ-X',202501,'2025-01-28','A','A','SEM','IEE1','Ana','Bruno','ALAN SETOR','SAM','SYS','x.xlsx','2025-01-28','A','B',202502,202503,5,5),
+            ('202500029','APV','','LOC-29','Area','EQ-X',202501,'2025-01-29','A','A','SEM','MEL1','Ana','Bruno','BRUNO SETOR','SAM','SYS','x.xlsx','2025-01-29','A','B',202502,202503,6,6),
+            ('202500030','APV','','LOC-30','Area','EQ-X',202501,'2025-01-30','A','A','SEM','AAA','Ana','Bruno','AARON SETOR','SAM','SYS','x.xlsx','2025-01-30','A','B',202502,202503,8,8);
     )SQL");
 
     ssa::domain::DistinctValuesRequest peopleRequest;
@@ -198,13 +202,28 @@ TEST_CASE_METHOD(SqliteRepositoryFixture,
     REQUIRE(
         std::ranges::search(people, std::vector<std::string>{"IEE3 ANA", "IEE1 DORA", "IEE2 BRUNO"})
             .begin() == people.begin());
-    REQUIRE(std::ranges::search(people, std::vector<std::string>{"ZE IEE3", "ZE IEE1"}).begin() !=
-            people.end());
+    const auto zeIee3 = std::ranges::find(people, "ZE IEE3");
+    const auto zeIee1 = std::ranges::find(people, "ZE IEE1");
+    REQUIRE(zeIee3 != people.end());
+    REQUIRE(zeIee1 != people.end());
+    REQUIRE(zeIee3 < zeIee1);
+    const auto carlos = std::ranges::find(people, "CARLOS SETOR");
+    const auto alan = std::ranges::find(people, "ALAN SETOR");
+    const auto bruno = std::ranges::find(people, "BRUNO SETOR");
+    const auto aaron = std::ranges::find(people, "AARON SETOR");
+    REQUIRE(carlos != people.end());
+    REQUIRE(alan != people.end());
+    REQUIRE(bruno != people.end());
+    REQUIRE(aaron != people.end());
+    REQUIRE(carlos < alan);
+    REQUIRE(alan < bruno);
+    REQUIRE(bruno < aaron);
 
     ssa::domain::DistinctValuesRequest numericRequest;
     numericRequest.columnKey = "num_reprogramacoes";
     const auto numbers = repository.distinctValues(numericRequest);
-    REQUIRE(numbers == std::vector<std::string>{"0", "1", "2", "3", "7", "9", "12"});
+    REQUIRE(numbers ==
+            std::vector<std::string>{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "12"});
 }
 
 TEST_CASE_METHOD(SqliteRepositoryFixture,

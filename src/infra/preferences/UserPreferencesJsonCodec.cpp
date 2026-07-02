@@ -14,7 +14,7 @@
 namespace ssa::infra::preferences {
 
     namespace {
-        constexpr int kCurrentPreferencesSchemaVersion = 2;
+        constexpr int kCurrentPreferencesSchemaVersion = 3;
         constexpr std::string_view kExecutorColumnKey = "setor_executor";
         constexpr std::string_view kDerivedCountColumnKey = "qtd_derivadas";
 
@@ -51,12 +51,23 @@ namespace ssa::infra::preferences {
             columns.insert(std::next(executor), std::string{kDerivedCountColumnKey});
         }
 
-        void migrateDefaultQuickSector(ports::UserPreferencesSnapshot& snapshot) {
+        bool hasManualFilterState(const ports::FilterPreferencesSnapshot& filters) {
+            return !filters.searchText.empty() || !filters.columnFilters.empty() ||
+                   !filters.advancedTextFilters.empty() || !filters.advancedYear.empty() ||
+                   !filters.advancedWeek.empty() || !filters.issueYear.empty() ||
+                   !filters.executionYear.empty() || !filters.reprogrammingEquals.empty() ||
+                   !filters.reprogrammingValues.empty() || !filters.issueWeekStart.empty() ||
+                   !filters.issueWeekEnd.empty() || !filters.executionWeekStart.empty() ||
+                   !filters.executionWeekEnd.empty() || filters.derivationMode != "all" ||
+                   filters.onlyReprogrammed;
+        }
+
+        void migrateRejectedDefaultQuickSector(ports::UserPreferencesSnapshot& snapshot) {
             if (snapshot.schemaVersion >= kCurrentPreferencesSchemaVersion ||
-                !snapshot.filters.quickSector.empty()) {
+                snapshot.filters.quickSector != "IEE3" || hasManualFilterState(snapshot.filters)) {
                 return;
             }
-            snapshot.filters.quickSector = ports::FilterPreferencesSnapshot{}.quickSector;
+            snapshot.filters.quickSector.clear();
         }
 
         std::map<std::string, int> readColumnWidths(const QJsonObject& root) {
@@ -149,7 +160,7 @@ namespace ssa::infra::preferences {
         snapshot.visibleColumns =
             readVisibleColumns(root, domain::ColumnCatalog::defaultVisibleKeys());
         migrateDerivedCountColumn(snapshot);
-        migrateDefaultQuickSector(snapshot);
+        migrateRejectedDefaultQuickSector(snapshot);
         snapshot.schemaVersion = std::max(snapshot.schemaVersion, kCurrentPreferencesSchemaVersion);
         snapshot.columnWidths = readColumnWidths(root);
         return snapshot;

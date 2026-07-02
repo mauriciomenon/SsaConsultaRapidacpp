@@ -22,6 +22,9 @@ FilterCard {
     readonly property string reprogrammingColumnKey: "num_reprogramacoes"
     property var reprogrammingValueOptions: []
     property bool reprogrammingValueOptionsLoading: false
+    readonly property int scopeControlHeight: 22
+    readonly property int scopeButtonWidth: 24
+    readonly property int scopeFontSize: 11
 
     function reloadReprogrammingOptionState() {
         reprogrammingValueOptions = root.filterViewModel.columnValueOptionsFor(reprogrammingColumnKey);
@@ -58,17 +61,19 @@ FilterCard {
     Flow {
         id: scopeFlow
         anchors.fill: parent
-        spacing: 5
+        spacing: 4
 
         FilterFieldLabel {
-            width: 34
-            height: 26
+            width: 32
+            height: root.scopeControlHeight
             text: "Setor"
+            font.pixelSize: root.scopeFontSize
         }
         AppComboBox {
             id: sectorSelector
-            width: 118
-            height: 26
+            width: 112
+            height: root.scopeControlHeight
+            font.pixelSize: root.scopeFontSize
             model: root.filterViewModel.sector.selectorValues
             currentIndex: root.filterViewModel.sector.selectorIndex
             displayText: root.filterViewModel.sector.quickSector.length > 0 ? root.filterViewModel.sector.quickSector : "Todos"
@@ -85,12 +90,14 @@ FilterCard {
 
         FilterFieldLabel {
             width: 36
-            height: 26
+            height: root.scopeControlHeight
             text: "Deriv."
+            font.pixelSize: root.scopeFontSize
         }
         AppComboBox {
-            width: 88
-            height: 26
+            width: 78
+            height: root.scopeControlHeight
+            font.pixelSize: root.scopeFontSize
             model: root.derivation.derivationModeOptions
             currentIndex: Math.max(0, root.derivation.derivationModeOptions.indexOf(root.derivation.derivationMode))
             onActivated: {
@@ -99,9 +106,10 @@ FilterCard {
             }
         }
         AppCheckBox {
-            width: 76
-            height: 26
+            width: 78
+            height: root.scopeControlHeight
             text: "Reprog."
+            font.pixelSize: root.scopeFontSize
             checked: root.derivation.onlyReprogrammed
             onToggled: {
                 root.derivation.onlyReprogrammed = checked;
@@ -110,14 +118,16 @@ FilterCard {
         }
 
         FilterFieldLabel {
-            width: 28
-            height: 26
+            width: 24
+            height: root.scopeControlHeight
             text: "Qtd."
+            font.pixelSize: root.scopeFontSize
         }
         AppComboBox {
             id: reprogrammingModeSelector
-            width: 74
-            height: 26
+            width: 62
+            height: root.scopeControlHeight
+            font.pixelSize: root.scopeFontSize
             leftPadding: 0
             rightPadding: 0
             indicator: null
@@ -136,8 +146,9 @@ FilterCard {
             }
         }
         AppTextField {
-            width: 58
-            height: 26
+            width: 54
+            height: root.scopeControlHeight
+            font.pixelSize: root.scopeFontSize
             text: root.derivation.reprogrammingEqualsFilter
             placeholderText: "0, 1..."
             inputMethodHints: Qt.ImhDigitsOnly
@@ -146,10 +157,10 @@ FilterCard {
         }
         ActionButton {
             text: "..."
-            implicitWidth: 30
-            implicitHeight: 26
+            implicitWidth: root.scopeButtonWidth
+            implicitHeight: root.scopeControlHeight
             padding: 0
-            font.pixelSize: 12
+            font.pixelSize: root.scopeFontSize
             ToolTip.visible: hovered
             ToolTip.text: "Selecionar valores de reprogramacao"
             ToolTip.delay: 0
@@ -162,10 +173,10 @@ FilterCard {
         }
         ActionButton {
             text: "X"
-            implicitWidth: 28
-            implicitHeight: 26
+            implicitWidth: root.scopeButtonWidth
+            implicitHeight: root.scopeControlHeight
             padding: 0
-            font.pixelSize: 12
+            font.pixelSize: root.scopeFontSize
             ToolTip.visible: hovered
             ToolTip.text: "Limpar valores de reprogramacao"
             ToolTip.delay: 0
@@ -176,7 +187,7 @@ FilterCard {
         }
         Label {
             width: Math.max(80, root.width - 690)
-            height: 26
+            height: root.scopeControlHeight
             visible: root.derivation.reprogrammingValues.length > 0
             text: "Valores: " + root.derivation.reprogrammingValues.join(", ")
             color: Theme.accentStrong
