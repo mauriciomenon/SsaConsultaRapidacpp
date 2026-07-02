@@ -12,9 +12,8 @@ namespace ssa::presentation {
         constexpr qreal kNodeWidth = 118;
         constexpr qreal kNodeHeight = 52;
         constexpr qreal kXGap = 145;
-        constexpr qreal kYGap = kNodeHeight + 9;
+        constexpr qreal kYGap = kNodeHeight + 52;
         constexpr qreal kMargin = 8;
-        constexpr qreal kDenseFanRouteTop = kMargin + kNodeHeight + 20;
 
         QString mermaidEscaped(QString value) {
             value.replace(QStringLiteral("\\"), QStringLiteral("\\\\"));
@@ -144,28 +143,22 @@ namespace ssa::presentation {
 
         std::unordered_map<std::string, QPointF> positionBySsa;
         positionBySsa.reserve(orderedSsa.size());
-        const bool useHorizontalChildFan = children.size() >= 4;
-        if (useHorizontalChildFan) {
-            const qreal targetY = kMargin;
-            for (int index = 0; index < static_cast<int>(ancestors.size()); ++index) {
-                positionBySsa.emplace(
-                    ancestors[index].toStdString(),
-                    QPointF(kMargin + static_cast<qreal>(index) * kXGap, targetY));
-            }
+        const qreal targetX = kMargin + static_cast<qreal>(targetDepth) * kXGap;
+        const qreal targetY = kMargin;
+        for (int index = 0; index < static_cast<int>(ancestors.size()); ++index) {
+            positionBySsa.emplace(ancestors[index].toStdString(),
+                                  QPointF(kMargin + static_cast<qreal>(index) * kXGap, targetY));
+        }
+        positionBySsa.emplace(target_.toStdString(), QPointF(targetX, targetY));
+        for (int index = 0; index < static_cast<int>(children.size()); ++index) {
+            const auto& child = children[static_cast<std::size_t>(index)].first;
             positionBySsa.emplace(
-                target_.toStdString(),
-                QPointF(kMargin + static_cast<qreal>(targetDepth) * kXGap, targetY));
-            for (int index = 0; index < static_cast<int>(children.size()); ++index) {
-                const auto& child = children[static_cast<std::size_t>(index)].first;
-                positionBySsa.emplace(
-                    child.toStdString(),
-                    QPointF(kMargin + static_cast<qreal>(targetDepth + index + 1) * kXGap,
-                            targetY));
-            }
+                child.toStdString(),
+                QPointF(targetX + kXGap + static_cast<qreal>(index) * kXGap, targetY + kYGap));
         }
 
-        // Layout: normal mode stacks relation nodes vertically; dense child
-        // sets fan out horizontally to keep the graph readable in wide windows.
+        // Layout: ancestors stay on the target row; children fan out one level below
+        // the target so sibling derivadas are not read as a chain.
         for (std::size_t index = 0; index < orderedSsa.size(); ++index) {
             GraphNode node;
             node.ssa = orderedSsa[index];
@@ -201,9 +194,6 @@ namespace ssa::presentation {
             edge.from = target_;
             edge.to = child;
             edge.dashed = dashed;
-            if (useHorizontalChildFan) {
-                edge.routeY = kDenseFanRouteTop;
-            }
             edges_.push_back(std::move(edge));
         }
 
@@ -213,11 +203,6 @@ namespace ssa::presentation {
         for (const auto& node : nodes_) {
             maxX = std::max(maxX, node.position.x() + kNodeWidth);
             maxY = std::max(maxY, node.position.y() + kNodeHeight);
-        }
-        for (const auto& edge : edges_) {
-            if (edge.routeY.has_value()) {
-                maxY = std::max(maxY, *edge.routeY);
-            }
         }
         graphWidth_ = maxX + kMargin;
         graphHeight_ = maxY + kMargin;
@@ -329,19 +314,18 @@ namespace ssa::presentation {
             if (fromIt == centerBySsa.end() || toIt == centerBySsa.end()) {
                 continue;
             }
-            const QString path = edge.routeY.has_value()
-                                     ? QStringLiteral("M %1 %2 V %3 H %4 V %5")
-                                           .arg(fromIt->second.x())
-                                           .arg(fromIt->second.y())
-                                           .arg(*edge.routeY)
-                                           .arg(toIt->second.x())
-                                           .arg(toIt->second.y())
-                                     : QStringLiteral("M %1 %2 H %3 V %4 H %5")
-                                           .arg(fromIt->second.x())
-                                           .arg(fromIt->second.y())
-                                           .arg((fromIt->second.x() + toIt->second.x()) / 2.0)
-                                           .arg(toIt->second.y())
-                                           .arg(toIt->second.x());
+            const bool leftToRight = fromIt->second.x() <= toIt->second.x();
+            const qreal fromX =
+                fromIt->second.x() + (leftToRight ? kNodeWidth / 2.0 : -kNodeWidth / 2.0);
+            const qreal toX =
+                toIt->second.x() + (leftToRight ? -kNodeWidth / 2.0 : kNodeWidth / 2.0);
+            const qreal midX = (fromX + toX) / 2.0;
+            const QString path = QStringLiteral("M %1 %2 H %3 V %4 H %5")
+                                     .arg(fromX)
+                                     .arg(fromIt->second.y())
+                                     .arg(midX)
+                                     .arg(toIt->second.y())
+                                     .arg(toX);
             result +=
                 QStringLiteral("  <path d=\"%1\" fill=\"none\" stroke=\"#8a8179\" "
                                "stroke-width=\"1.5\"%2/>\n")
@@ -412,14 +396,14 @@ namespace ssa::presentation {
             QVariantMap entry;
             entry.insert(QStringLiteral("from"), edge.from);
             entry.insert(QStringLiteral("to"), edge.to);
-            entry.insert(QStringLiteral("fromX"), fromIt->second.x());
+            const bool leftToRight = fromIt->second.x() <= toIt->second.x();
+            entry.insert(QStringLiteral("fromX"),
+                         fromIt->second.x() + (leftToRight ? kNodeWidth / 2.0 : -kNodeWidth / 2.0));
             entry.insert(QStringLiteral("fromY"), fromIt->second.y());
-            entry.insert(QStringLiteral("toX"), toIt->second.x());
+            entry.insert(QStringLiteral("toX"),
+                         toIt->second.x() + (leftToRight ? -kNodeWidth / 2.0 : kNodeWidth / 2.0));
             entry.insert(QStringLiteral("toY"), toIt->second.y());
             entry.insert(QStringLiteral("dashed"), edge.dashed);
-            if (edge.routeY.has_value()) {
-                entry.insert(QStringLiteral("routeY"), *edge.routeY);
-            }
             result.push_back(entry);
         }
         return result;

@@ -225,7 +225,7 @@ namespace {
             QCOMPARE(
                 fields->data(fields->index(5, 0), ssa::presentation::DetailsFieldsModel::LabelRole)
                     .toString(),
-                QString("Qtd. Derivadas"));
+                QString("Qtd Der."));
             QCOMPARE(
                 fields->data(fields->index(5, 0), ssa::presentation::DetailsFieldsModel::KeyRole)
                     .toString(),
@@ -507,12 +507,13 @@ namespace {
             QVERIFY(xAncestor1 < xTarget);
             QVERIFY(xTarget < xChild);
 
-            // y increases with index (each node is one row down)
-            QVERIFY(model.nodeCenter(0).y() < model.nodeCenter(1).y());
-            QVERIFY(model.nodeCenter(1).y() < model.nodeCenter(2).y());
+            // ancestors and target stay on the same row; child relations are one level below.
+            QCOMPARE(model.nodeCenter(0).y(), model.nodeCenter(1).y());
+            QCOMPARE(model.nodeCenter(1).y(), model.nodeCenter(2).y());
+            QVERIFY(model.nodeCenter(3).y() > model.nodeCenter(2).y());
         }
 
-        void derivadas_graph_model_fans_many_children_horizontally() {
+        void derivadas_graph_model_fans_many_children_below_target() {
             ssa::presentation::DerivadasGraphModel model;
             QVariantList relations;
             relations.push_back(QVariantMap{{"role", "current"}, {"ssa", "202500100"}});
@@ -524,10 +525,11 @@ namespace {
             model.buildFromRelations(QStringLiteral("202500100"), relations);
 
             QCOMPARE(model.rowCount(), 8);
-            QVERIFY(model.graphWidth() > model.graphHeight());
             const auto targetY = model.nodeCenter(0).y();
+            const auto targetX = model.nodeCenter(0).x();
             for (int row = 1; row < model.rowCount(); ++row) {
-                QCOMPARE(model.nodeCenter(row).y(), targetY);
+                QVERIFY(model.nodeCenter(row).y() > targetY);
+                QVERIFY(model.nodeCenter(row).x() > targetX);
                 QVERIFY(model.nodeCenter(row - 1).x() < model.nodeCenter(row).x());
             }
 
@@ -537,8 +539,9 @@ namespace {
                 const auto edge = edgeValue.toMap();
                 QCOMPARE(edge.value("from").toString(), QString("202500100"));
                 QVERIFY(edge.value("to").toString().startsWith(QString("20250010")));
-                QVERIFY(edge.contains("routeY"));
-                QVERIFY(edge.value("routeY").toReal() > targetY);
+                QVERIFY(edge.value("fromX").toReal() > targetX);
+                QVERIFY(edge.value("toX").toReal() > edge.value("fromX").toReal());
+                QVERIFY(edge.value("toY").toReal() > edge.value("fromY").toReal());
             }
         }
 

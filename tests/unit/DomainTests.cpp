@@ -33,8 +33,8 @@ TEST_CASE("column catalog exposes visible and general-search contracts") {
         ssa::domain::ColumnCatalog::orderedFilterColumnKeys().end());
     const auto* derivedCount = ssa::domain::ColumnCatalog::find("qtd_derivadas");
     REQUIRE(derivedCount != nullptr);
-    REQUIRE(derivedCount->label == "Qtd. Derivadas");
-    REQUIRE(derivedCount->labelFull == "Qtd. Derivadas");
+    REQUIRE(derivedCount->label == "Qtd Der.");
+    REQUIRE(derivedCount->labelFull == "Qtd Derivadas");
 
     const auto storage = ssa::domain::ColumnCatalog::storageColumns();
     REQUIRE(std::ranges::none_of(storage, [](const ssa::domain::ColumnDef& column) {

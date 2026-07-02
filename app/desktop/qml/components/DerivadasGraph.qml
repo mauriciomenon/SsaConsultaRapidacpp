@@ -37,7 +37,7 @@ Flickable {
         if (role === "parent")
             return "Origem";
         if (role === "current")
-            return "Atual";
+            return "";
         if (role === "child")
             return "";
         if (role === "related")
@@ -139,16 +139,10 @@ Flickable {
             for (const edge of edgeList) {
                 ctx.beginPath();
                 ctx.moveTo(edge.fromX, edge.fromY);
-                if (edge.routeY !== undefined) {
-                    ctx.lineTo(edge.fromX, edge.routeY);
-                    ctx.lineTo(edge.toX, edge.routeY);
-                    ctx.lineTo(edge.toX, edge.toY);
-                } else {
-                    const midX = (edge.fromX + edge.toX) / 2;
-                    ctx.lineTo(midX, edge.fromY);
-                    ctx.lineTo(midX, edge.toY);
-                    ctx.lineTo(edge.toX, edge.toY);
-                }
+                const midX = (edge.fromX + edge.toX) / 2;
+                ctx.lineTo(midX, edge.fromY);
+                ctx.lineTo(midX, edge.toY);
+                ctx.lineTo(edge.toX, edge.toY);
                 if (edge.dashed) {
                     ctx.setLineDash([7, 6]);
                 } else {

@@ -24,7 +24,7 @@ Rectangle {
         if (role === "parent")
             return "Origem";
         if (role === "current")
-            return "Atual";
+            return "";
         if (role === "child")
             return "";
         if (role === "related")
@@ -217,7 +217,7 @@ Rectangle {
                                             hoverEnabled: true
                                             cursorShape: Qt.PointingHandCursor
                                             onClicked: {
-                                                if (relationRow.index > 0) {
+                                                if (relationRow.modelData.ssa !== root.viewModel.selectedSsaNumber) {
                                                     root.loadRelationRequested(relationRow.modelData.ssa);
                                                 }
                                             }
@@ -249,16 +249,19 @@ Rectangle {
 
                     Column {
                         Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
-                        Layout.minimumWidth: 80
-                        Layout.preferredWidth: 80
+                        Layout.minimumWidth: 64
+                        Layout.preferredWidth: 64
                         spacing: 1
 
                         ActionButton {
-                            text: "Grafo"
+                            text: "G"
                             anchors.horizontalCenter: parent.horizontalCenter
-                            implicitWidth: 58
-                            implicitHeight: 21
-                            font.pixelSize: 11
+                            implicitWidth: 24
+                            implicitHeight: 19
+                            font.pixelSize: 10
+                            ToolTip.visible: hovered
+                            ToolTip.text: "Abrir grafo"
+                            ToolTip.delay: 0
                             enabled: root.viewModel.selectedSsaNumber.length > 0
                             onClicked: root.graphWindowRequested()
                         }
@@ -269,9 +272,9 @@ Rectangle {
 
                             ActionButton {
                                 text: "<"
-                                implicitWidth: 22
-                                implicitHeight: 21
-                                font.pixelSize: 11
+                                implicitWidth: 20
+                                implicitHeight: 19
+                                font.pixelSize: 10
                                 enabled: root.viewModel.canSelectPreviousRelation
                                 onClicked: root.viewModel.selectPreviousRelation()
                             }
@@ -281,14 +284,14 @@ Rectangle {
                                 font.pixelSize: 11
                                 horizontalAlignment: Text.AlignHCenter
                                 verticalAlignment: Text.AlignVCenter
-                                width: 30
-                                height: 21
+                                width: 24
+                                height: 19
                             }
                             ActionButton {
                                 text: ">"
-                                implicitWidth: 22
-                                implicitHeight: 21
-                                font.pixelSize: 11
+                                implicitWidth: 20
+                                implicitHeight: 19
+                                font.pixelSize: 10
                                 enabled: root.viewModel.canSelectNextRelation
                                 onClicked: root.viewModel.selectNextRelation()
                             }
@@ -337,7 +340,7 @@ Rectangle {
 
                     TextEdit {
                         Layout.fillWidth: true
-                        Layout.maximumHeight: fieldDelegate.longField ? Math.max(42, root.valueTextSize * 4) : root.valueTextSize + 5
+                        Layout.maximumHeight: fieldDelegate.longField ? 10000 : root.valueTextSize + 5
                         text: fieldDelegate.rowValue
                         color: Theme.text
                         readOnly: true
