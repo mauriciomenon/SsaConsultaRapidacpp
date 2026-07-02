@@ -40,7 +40,7 @@ Rectangle {
         if (previousRole === "current" && role === "child")
             return "|-";
         if (previousRole === "child" && role === "child")
-            return "|-";
+            return "";
         if (role === "related")
             return "- -";
         return "->";
