@@ -8,7 +8,8 @@ Current fields:
 
 - `schema_version`: integer.
 - `page_size`: integer from 10 to 500.
-- `theme`: `system`, `light`, `dark`, or `gruvbox`.
+- `theme`: one of the values accepted by `UserPreferenceDefaults`, including `system`,
+  `ssa-dark`, `light`, `dark`, and `gruvbox`.
 - `density`: `compact`, `normal`, or `comfortable`.
 - `details_visible`: boolean controlling the right details panel.
 - `details_panel_width`: integer from 320 to 1200.

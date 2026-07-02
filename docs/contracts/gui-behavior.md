@@ -44,8 +44,8 @@
 
 ## Visual Customization
 
-- Theme values are `system`, `light`, `dark`, and `gruvbox`. `system` follows the platform color
-  scheme when Qt exposes it.
+- Theme values are accepted by `UserPreferenceDefaults`, including `system`, `ssa-dark`, `light`,
+  `dark`, and `gruvbox`. `system` follows the platform color scheme when Qt exposes it.
 - Density values are `compact`, `normal`, and `comfortable`; density changes presentation sizing,
   not query behavior.
 - Visible columns are ordered by `ColumnCatalog`; preferences only choose inclusion and width.

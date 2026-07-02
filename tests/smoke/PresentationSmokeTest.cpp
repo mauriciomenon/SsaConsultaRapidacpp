@@ -1000,7 +1000,7 @@ namespace {
                 "grayscale",  "windows7", "classico",       "gruvbox",
                 "dark",       "dracula",  "solarized-dark", "solarized-light",
                 "mint-light", "paper",    "tokyo-night",    "catppuccin",
-                "nord",
+                "nord",       "ssa-dark",
             };
 
             auto repository = std::make_shared<FakeRepository>();

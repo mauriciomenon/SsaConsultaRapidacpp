@@ -93,12 +93,35 @@ QtObject {
                 accentText: "#282828",
                 accentSoft: "#504945",
                 accentStrong: "#fecc55",
-                link: "#a8c998",
+                link: "#fecc55",
                 danger: "#ff7d6d",
                 dangerSoft: "#3a2220",
                 dangerStrong: "#ffa090",
                 rowAlt: "#32302f",
                 rowSelected: "#504945"
+            },
+            "ssa-dark": {
+                isDark: true,
+                window: "#222936",
+                surface: "#27303d",
+                panel: "#2e3542",
+                panelRaised: "#384252",
+                header: "#2b3442",
+                tableHeader: "#323b49",
+                border: "#596577",
+                borderSoft: "#465264",
+                text: "#edf2f8",
+                mutedText: "#c6d0dc",
+                accent: "#8fc9d8",
+                accentText: "#18202b",
+                accentSoft: "#445f6c",
+                accentStrong: "#a8dce8",
+                link: "#a8dce8",
+                danger: "#e58f8f",
+                dangerSoft: "#4a3038",
+                dangerStrong: "#ffb0b0",
+                rowAlt: "#29323f",
+                rowSelected: "#465a66"
             },
             "dark": {
                 isDark: true,
@@ -345,7 +368,7 @@ QtObject {
     readonly property int bottomPaneMaxHeight: 390
     readonly property real bottomPaneHeightRatio: 0.37
 
-    readonly property var themeOptions: ["system", "classico", "mint-light", "paper", "solarized-light", "windows7", "catppuccin", "dark", "dracula", "grayscale", "gruvbox", "nord", "solarized-dark", "tokyo-night"]
+    readonly property var themeOptions: ["system", "ssa-dark", "classico", "mint-light", "paper", "solarized-light", "windows7", "catppuccin", "dark", "dracula", "grayscale", "gruvbox", "nord", "solarized-dark", "tokyo-night"]
 
     function densityValue(density, compactValue, normalValue, comfortableValue) {
         if (density === "normal") {

@@ -17,12 +17,13 @@ Button {
     font.bold: false
     implicitWidth: 100
     opacity: enabled ? 1.0 : 0.8
-    readonly property color normalBackground: Theme.gruvbox ? Theme.panelRaised : Theme.accent
+    readonly property bool quietAccent: Theme.gruvbox || Theme.themeName === "ssa-dark"
+    readonly property color normalBackground: control.quietAccent ? Theme.panelRaised : Theme.accent
     readonly property color hoverBackground: Theme.accentSoft
-    readonly property color downBackground: Theme.gruvbox ? Theme.accent : Theme.accentStrong
+    readonly property color downBackground: control.quietAccent ? Theme.accent : Theme.accentStrong
     readonly property color dangerBackground: control.down ? Theme.dangerStrong : control.hovered ? Theme.danger : Theme.dangerSoft
     readonly property color dangerBorder: control.down ? Theme.dangerStrong : control.hovered ? Theme.dangerStrong : Theme.border
-    readonly property color normalBorder: Theme.gruvbox ? Theme.border : (control.hovered ? Theme.accentStrong : Theme.accent)
+    readonly property color normalBorder: control.quietAccent ? Theme.border : (control.hovered ? Theme.accentStrong : Theme.accent)
 
     background: Rectangle {
         color: !control.enabled ? Theme.rowAlt : control.danger ? control.dangerBackground : control.down ? control.downBackground : control.hovered ? control.hoverBackground : control.normalBackground
@@ -38,7 +39,7 @@ Button {
 
     contentItem: Text {
         text: control.text
-        color: !control.enabled ? Theme.mutedText : (control.danger ? Theme.text : Theme.gruvbox && !control.down ? Theme.accentStrong : Theme.accentText)
+        color: !control.enabled ? Theme.mutedText : (control.danger ? Theme.text : control.quietAccent && !control.down ? Theme.accentStrong : Theme.accentText)
         horizontalAlignment: Text.AlignHCenter
         verticalAlignment: Text.AlignVCenter
         elide: Text.ElideRight
