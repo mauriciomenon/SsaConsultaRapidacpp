@@ -14,7 +14,9 @@ FilterCard {
     Layout.fillWidth: true
     Layout.preferredHeight: implicitHeight
     implicitHeight: Math.max(Theme.controlHeight + padding * 2, scopeFlow.childrenRect.height + padding * 2)
-    padding: 6
+    padding: 2
+    color: "transparent"
+    border.color: "transparent"
 
     property var selectedReprogrammingValues: []
     readonly property string reprogrammingColumnKey: "num_reprogramacoes"
@@ -56,17 +58,17 @@ FilterCard {
     Flow {
         id: scopeFlow
         anchors.fill: parent
-        spacing: 6
+        spacing: 5
 
         FilterFieldLabel {
-            width: 38
-            height: Theme.controlHeight
+            width: 40
+            height: 26
             text: "Setor"
         }
         AppComboBox {
             id: sectorSelector
-            width: 112
-            height: Theme.controlHeight
+            width: 118
+            height: 26
             model: root.filterViewModel.sector.selectorValues
             currentIndex: root.filterViewModel.sector.selectorIndex
             displayText: currentIndex <= 0 ? "Todos" : currentText
@@ -83,12 +85,12 @@ FilterCard {
 
         FilterFieldLabel {
             width: 42
-            height: Theme.controlHeight
+            height: 26
             text: "Deriv."
         }
         AppComboBox {
-            width: 92
-            height: Theme.controlHeight
+            width: 104
+            height: 26
             model: root.derivation.derivationModeOptions
             currentIndex: Math.max(0, root.derivation.derivationModeOptions.indexOf(root.derivation.derivationMode))
             onActivated: {
@@ -97,8 +99,8 @@ FilterCard {
             }
         }
         AppCheckBox {
-            width: 84
-            height: Theme.controlHeight
+            width: 78
+            height: 26
             text: "Reprog."
             checked: root.derivation.onlyReprogrammed
             onToggled: {
@@ -108,14 +110,14 @@ FilterCard {
         }
 
         FilterFieldLabel {
-            width: 46
-            height: Theme.controlHeight
+            width: 48
+            height: 26
             text: "Reprog."
         }
         AppComboBox {
             id: reprogrammingModeSelector
-            width: 106
-            height: Theme.controlHeight
+            width: 108
+            height: 26
             leftPadding: 8
             rightPadding: 22
             popup.width: 170
@@ -134,7 +136,7 @@ FilterCard {
         }
         AppTextField {
             width: 76
-            height: Theme.controlHeight
+            height: 26
             text: root.derivation.reprogrammingEqualsFilter
             placeholderText: "0, 1..."
             inputMethodHints: Qt.ImhDigitsOnly
@@ -143,8 +145,9 @@ FilterCard {
         }
         ActionButton {
             text: "Enter"
-            implicitWidth: 58
-            implicitHeight: Theme.controlHeight
+            implicitWidth: 46
+            implicitHeight: 26
+            padding: 0
             ToolTip.visible: hovered
             ToolTip.text: "Escolher valores de reprogramacao"
             ToolTip.delay: 0
@@ -157,8 +160,9 @@ FilterCard {
         }
         ActionButton {
             text: "Del"
-            implicitWidth: 40
-            implicitHeight: Theme.controlHeight
+            implicitWidth: 32
+            implicitHeight: 26
+            padding: 0
             ToolTip.visible: hovered
             ToolTip.text: "Limpar valores de reprogramacao"
             ToolTip.delay: 0
@@ -168,8 +172,8 @@ FilterCard {
             }
         }
         Label {
-            width: Math.max(0, root.width - 734)
-            height: Theme.controlHeight
+            width: Math.max(0, root.width - 812)
+            height: 26
             visible: root.derivation.reprogrammingValues.length > 0
             text: "Valores: " + root.derivation.reprogrammingValues.join(", ")
             color: Theme.accentStrong

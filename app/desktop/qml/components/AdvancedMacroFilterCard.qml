@@ -12,8 +12,11 @@ FilterCard {
     signal applyRequested
 
     Layout.fillWidth: true
-    Layout.preferredHeight: root.macro.reportRows.length > 0 ? 156 : 36
-    implicitHeight: root.macro.reportRows.length > 0 ? 156 : 36
+    Layout.preferredHeight: root.macro.reportRows.length > 0 ? 132 : 30
+    implicitHeight: root.macro.reportRows.length > 0 ? 132 : 30
+    padding: 2
+    color: "transparent"
+    border.color: "transparent"
 
     function macroIndex() {
         for (var index = 0; index < root.macro.options.length; ++index) {
@@ -31,10 +34,13 @@ FilterCard {
 
         FilterFieldLabel {
             text: "Macro"
+            Layout.preferredWidth: 46
+            Layout.preferredHeight: 26
         }
         AppComboBox {
             id: macroSelector
-            Layout.preferredWidth: Math.min(360, Math.max(220, root.width * 0.42))
+            Layout.preferredWidth: Math.min(300, Math.max(180, root.width * 0.38))
+            Layout.preferredHeight: 26
             textRole: "label"
             valueRole: "value"
             model: root.macro.options

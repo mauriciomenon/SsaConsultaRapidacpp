@@ -12,7 +12,13 @@ FilterCard {
     signal applyRequested
 
     Layout.fillWidth: true
-    Layout.preferredHeight: 88
+    Layout.preferredHeight: intervalVisible ? 66 : 36
+    padding: 2
+    color: "transparent"
+    border.color: "transparent"
+    property bool intervalExpanded: false
+    readonly property bool intervalActive: week.issueWeekStartFilter.length > 0 || week.issueWeekEndFilter.length > 0 || week.executionWeekStartFilter.length > 0 || week.executionWeekEndFilter.length > 0
+    readonly property bool intervalVisible: intervalExpanded || intervalActive
 
     function fieldBorder(valid, control) {
         if (!valid)
@@ -23,21 +29,25 @@ FilterCard {
     GridLayout {
         anchors.fill: parent
         columns: 6
-        columnSpacing: Theme.gap
-        rowSpacing: 4
+        columnSpacing: 6
+        rowSpacing: 0
 
         FilterFieldLabel {
             text: "Semana"
+            Layout.preferredWidth: 58
+            Layout.preferredHeight: 26
         }
         AppComboBox {
-            Layout.fillWidth: true
+            Layout.preferredWidth: Math.min(360, Math.max(220, root.width * 0.28))
+            Layout.preferredHeight: 26
             model: root.week.weekColumnKeys
             currentIndex: Math.max(0, root.week.weekColumnKeys.indexOf(root.week.weekColumnKey))
             onActivated: root.week.weekColumnKey = currentText
         }
         AppTextField {
             id: genericYearField
-            Layout.preferredWidth: 80
+            Layout.preferredWidth: 72
+            Layout.preferredHeight: 26
             placeholderText: "Ano"
             text: root.week.yearFilter
             inputMethodHints: Qt.ImhDigitsOnly
@@ -52,7 +62,8 @@ FilterCard {
         }
         AppTextField {
             id: genericWeekField
-            Layout.preferredWidth: 80
+            Layout.preferredWidth: 72
+            Layout.preferredHeight: 26
             placeholderText: "Sem."
             text: root.week.weekFilter
             inputMethodHints: Qt.ImhDigitsOnly
@@ -67,7 +78,8 @@ FilterCard {
         }
         AppTextField {
             id: issueYearField
-            Layout.preferredWidth: 96
+            Layout.preferredWidth: 90
+            Layout.preferredHeight: 26
             placeholderText: "Ano Emis."
             text: root.week.issueYearFilter
             inputMethodHints: Qt.ImhDigitsOnly
@@ -82,7 +94,8 @@ FilterCard {
         }
         AppTextField {
             id: executionYearField
-            Layout.preferredWidth: 96
+            Layout.preferredWidth: 90
+            Layout.preferredHeight: 26
             placeholderText: "Ano Exec."
             text: root.week.executionYearFilter
             inputMethodHints: Qt.ImhDigitsOnly
@@ -95,13 +108,29 @@ FilterCard {
                 radius: Theme.radius
             }
         }
+        ActionButton {
+            text: "Int."
+            implicitWidth: 42
+            implicitHeight: 26
+            padding: 0
+            font.pixelSize: 11
+            ToolTip.visible: hovered
+            ToolTip.text: "Mostrar filtros de intervalo AnoSemana"
+            ToolTip.delay: 0
+            onClicked: root.intervalExpanded = !root.intervalExpanded
+        }
 
         FilterFieldLabel {
             text: "Intervalo"
+            Layout.preferredWidth: 58
+            Layout.preferredHeight: 26
+            visible: root.intervalVisible
         }
         AppTextField {
             id: issueWeekStartField
-            Layout.fillWidth: true
+            Layout.preferredWidth: 122
+            Layout.preferredHeight: 26
+            visible: root.intervalVisible
             placeholderText: "Emissao inicio"
             text: root.week.issueWeekStartFilter
             inputMethodHints: Qt.ImhDigitsOnly
@@ -116,7 +145,9 @@ FilterCard {
         }
         AppTextField {
             id: issueWeekEndField
-            Layout.fillWidth: true
+            Layout.preferredWidth: 122
+            Layout.preferredHeight: 26
+            visible: root.intervalVisible
             placeholderText: "Emissao fim"
             text: root.week.issueWeekEndFilter
             inputMethodHints: Qt.ImhDigitsOnly
@@ -131,7 +162,9 @@ FilterCard {
         }
         AppTextField {
             id: executionWeekStartField
-            Layout.fillWidth: true
+            Layout.preferredWidth: 122
+            Layout.preferredHeight: 26
+            visible: root.intervalVisible
             placeholderText: "Execucao inicio"
             text: root.week.executionWeekStartFilter
             inputMethodHints: Qt.ImhDigitsOnly
@@ -146,7 +179,9 @@ FilterCard {
         }
         AppTextField {
             id: executionWeekEndField
-            Layout.fillWidth: true
+            Layout.preferredWidth: 122
+            Layout.preferredHeight: 26
+            visible: root.intervalVisible
             placeholderText: "Execucao fim"
             text: root.week.executionWeekEndFilter
             inputMethodHints: Qt.ImhDigitsOnly
@@ -161,14 +196,19 @@ FilterCard {
         }
         RowLayout {
             Layout.fillWidth: true
+            Layout.preferredHeight: 26
             ActionButton {
                 text: "Aplicar"
-                implicitWidth: 78
+                implicitWidth: 66
+                implicitHeight: 26
+                padding: 0
                 onClicked: root.applyRequested()
             }
             ActionButton {
                 text: "Limpar"
-                implicitWidth: 70
+                implicitWidth: 58
+                implicitHeight: 26
+                padding: 0
                 ToolTip.visible: hovered
                 ToolTip.text: "Limpar filtros avancados"
                 ToolTip.delay: 0

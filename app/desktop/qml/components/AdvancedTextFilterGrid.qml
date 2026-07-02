@@ -15,8 +15,8 @@ GridView {
     clip: true
     interactive: false
     model: root.textFilters.cardStates
-    cellWidth: width >= 1280 ? Math.floor(width / 4) : (width >= 900 ? Math.floor(width / 3) : (width >= 620 ? Math.floor(width / 2) : width))
-    cellHeight: 56
+    cellWidth: width >= 1320 ? Math.floor(width / 4) : (width >= 900 ? Math.floor(width / 3) : (width >= 620 ? Math.floor(width / 2) : width))
+    cellHeight: 44
 
     function preloadOptions() {
         root.filterViewModel.preloadAdvancedColumnValueOptions();
@@ -56,8 +56,8 @@ GridView {
         textFilter: modelData.textFilter
         operatorIndex: modelData.operatorIndex
         operatorLabel: modelData.operatorLabel
-        cardWidth: root.cellWidth - 6
-        cardHeight: root.cellHeight - 6
+        cardWidth: root.cellWidth - 4
+        cardHeight: root.cellHeight - 3
 
         Component.onCompleted: reloadOptionState()
         onExpandedValuesChanged: reloadOptionState()

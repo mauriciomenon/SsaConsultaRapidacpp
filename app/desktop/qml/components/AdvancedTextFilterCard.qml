@@ -21,6 +21,7 @@ FilterCard {
     property bool expandedValues: false
     readonly property int compactValueLimit: 18
     readonly property int choiceColumnWidth: 52
+    readonly property int commandWidth: root.cardWidth < 300 ? 34 : 42
 
     signal optionsRequested
     signal operatorModeRequested(string mode)
@@ -75,7 +76,9 @@ FilterCard {
 
     width: cardWidth
     height: cardHeight
-    padding: 3
+    padding: 2
+    color: "transparent"
+    border.color: "transparent"
 
     ColumnLayout {
         anchors.fill: parent
@@ -83,8 +86,8 @@ FilterCard {
 
         RowLayout {
             Layout.fillWidth: true
-            Layout.preferredHeight: 14
-            spacing: 6
+            Layout.preferredHeight: 13
+            spacing: 4
 
             Label {
                 Layout.fillWidth: true
@@ -107,11 +110,11 @@ FilterCard {
 
         RowLayout {
             Layout.fillWidth: true
-            spacing: 4
+            spacing: 3
 
             AppComboBox {
                 id: advancedOperator
-                Layout.preferredWidth: 32
+                Layout.preferredWidth: 30
                 leftPadding: 0
                 rightPadding: 0
                 indicator: null
@@ -126,11 +129,11 @@ FilterCard {
 
             AppComboBox {
                 id: advancedValueSelector
-                Layout.minimumWidth: 88
+                Layout.minimumWidth: 72
                 Layout.fillWidth: true
-                Layout.preferredWidth: Math.max(108, root.cardWidth * 0.30)
-                leftPadding: 8
-                rightPadding: 20
+                Layout.preferredWidth: Math.max(86, root.cardWidth * 0.28)
+                leftPadding: 7
+                rightPadding: 18
                 popup.width: Math.min(560, Math.max(360, root.cardWidth * 0.86))
                 enabled: root.operatorIndex >= 0
                 model: root.visibleValues
@@ -150,8 +153,8 @@ FilterCard {
 
             ActionButton {
                 text: root.expandedValues ? "-" : "+"
-                implicitWidth: 24
-                implicitHeight: Theme.controlHeight
+                implicitWidth: 22
+                implicitHeight: 26
                 padding: 0
                 font.bold: true
                 font.pixelSize: 14
@@ -164,8 +167,8 @@ FilterCard {
 
             ActionButton {
                 text: "Enter"
-                implicitWidth: 42
-                implicitHeight: Theme.controlHeight
+                implicitWidth: root.commandWidth
+                implicitHeight: 26
                 padding: 0
                 font.pixelSize: 11
                 enabled: root.operatorIndex >= 0
@@ -181,8 +184,8 @@ FilterCard {
             }
             ActionButton {
                 text: "Del"
-                implicitWidth: 32
-                implicitHeight: Theme.controlHeight
+                implicitWidth: 30
+                implicitHeight: 26
                 padding: 0
                 font.bold: true
                 font.pixelSize: 11
