@@ -144,10 +144,11 @@ FilterCard {
             onAccepted: root.applyRequested()
         }
         ActionButton {
-            text: "Sel"
-            implicitWidth: 34
+            text: "Enter"
+            implicitWidth: 42
             implicitHeight: 26
             padding: 0
+            font.pixelSize: 10
             ToolTip.visible: hovered
             ToolTip.text: "Selecionar valores de reprogramacao"
             ToolTip.delay: 0
@@ -159,10 +160,11 @@ FilterCard {
             }
         }
         ActionButton {
-            text: "X"
-            implicitWidth: 30
+            text: "Del"
+            implicitWidth: 34
             implicitHeight: 26
             padding: 0
+            font.pixelSize: 10
             ToolTip.visible: hovered
             ToolTip.text: "Limpar valores de reprogramacao"
             ToolTip.delay: 0
@@ -172,7 +174,7 @@ FilterCard {
             }
         }
         Label {
-            width: Math.max(0, root.width - 798)
+            width: Math.max(120, root.width - 806)
             height: 26
             visible: root.derivation.reprogrammingValues.length > 0
             text: "Valores: " + root.derivation.reprogrammingValues.join(", ")

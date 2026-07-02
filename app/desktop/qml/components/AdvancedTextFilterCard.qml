@@ -21,7 +21,7 @@ FilterCard {
     property bool expandedValues: false
     readonly property int compactValueLimit: 18
     readonly property int choiceColumnWidth: 52
-    readonly property int commandWidth: 34
+    readonly property int commandWidth: 42
 
     signal optionsRequested
     signal operatorModeRequested(string mode)
@@ -114,7 +114,7 @@ FilterCard {
 
             AppComboBox {
                 id: advancedOperator
-                Layout.preferredWidth: 34
+                Layout.preferredWidth: 30
                 leftPadding: 0
                 rightPadding: 0
                 indicator: null
@@ -129,9 +129,9 @@ FilterCard {
 
             AppComboBox {
                 id: advancedValueSelector
-                Layout.minimumWidth: 96
+                Layout.minimumWidth: 82
                 Layout.fillWidth: true
-                Layout.preferredWidth: Math.max(120, root.cardWidth * 0.38)
+                Layout.preferredWidth: Math.max(96, root.cardWidth * 0.32)
                 leftPadding: 7
                 rightPadding: 18
                 popup.width: Math.min(560, Math.max(360, root.cardWidth * 0.86))
@@ -153,7 +153,7 @@ FilterCard {
 
             ActionButton {
                 text: root.expandedValues ? "-" : "+"
-                implicitWidth: 26
+                implicitWidth: 24
                 implicitHeight: 26
                 padding: 0
                 font.bold: true
@@ -166,11 +166,11 @@ FilterCard {
             }
 
             ActionButton {
-                text: "Sel"
+                text: "Enter"
                 implicitWidth: root.commandWidth
                 implicitHeight: 26
                 padding: 0
-                font.pixelSize: 11
+                font.pixelSize: 10
                 enabled: root.operatorIndex >= 0
                 ToolTip.visible: hovered
                 ToolTip.text: "Selecionar valores para incluir ou excluir"
@@ -183,12 +183,12 @@ FilterCard {
                 }
             }
             ActionButton {
-                text: "X"
-                implicitWidth: 30
+                text: "Del"
+                implicitWidth: 34
                 implicitHeight: 26
                 padding: 0
                 font.bold: true
-                font.pixelSize: 11
+                font.pixelSize: 10
                 ToolTip.visible: hovered
                 ToolTip.text: "Limpar filtro"
                 ToolTip.delay: 0
