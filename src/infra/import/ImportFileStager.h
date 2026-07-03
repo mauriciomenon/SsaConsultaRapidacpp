@@ -34,7 +34,7 @@ namespace ssa::infra::importing {
         };
 
         struct StagedDestinationRequest {
-            const std::filesystem::path& source;
+            std::filesystem::path source;
             std::string_view batchPrefix;
             std::size_t fileIndex{0};
         };
