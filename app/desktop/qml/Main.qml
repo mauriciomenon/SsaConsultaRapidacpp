@@ -138,7 +138,7 @@ ApplicationWindow {
                 onTriggered: preferencesDialog.open()
             }
             MenuItem {
-                text: "Painel de detalhes"
+                text: "Ocultar detalhes"
                 checkable: true
                 checked: root.vm.ui.detailsVisible
                 onTriggered: root.vm.ui.detailsVisible = checked
@@ -276,12 +276,6 @@ ApplicationWindow {
                 ActionButton {
                     text: "Preferencias"
                     onClicked: preferencesDialog.open()
-                }
-                ActionButton {
-                    text: "Cancelar"
-                    enabled: root.vm.browse.status.loading
-                    danger: true
-                    onClicked: root.vm.requestFlow.cancelCurrentRequest()
                 }
             }
         }

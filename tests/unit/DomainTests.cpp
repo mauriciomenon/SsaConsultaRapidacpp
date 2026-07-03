@@ -27,6 +27,10 @@ TEST_CASE("column catalog exposes visible and general-search contracts") {
     REQUIRE_FALSE(ssa::domain::ColumnCatalog::contains("unknown_column"));
 
     REQUIRE(std::ranges::find(visible, "qtd_derivadas") != visible.end());
+    REQUIRE(std::ranges::find(visible, "equipamento") == visible.end());
+    REQUIRE(std::ranges::find(visible, "descricao_localizacao") == visible.end());
+    REQUIRE(std::ranges::find(visible, "grau_prioridade_emissao") == visible.end());
+    REQUIRE(std::ranges::find(visible, "grau_prioridade_planejamento") == visible.end());
     REQUIRE(std::ranges::find(search, "qtd_derivadas") == search.end());
     REQUIRE(
         std::ranges::find(ssa::domain::ColumnCatalog::orderedFilterColumnKeys(), "qtd_derivadas") ==

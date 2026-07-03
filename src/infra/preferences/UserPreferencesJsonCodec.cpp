@@ -17,6 +17,10 @@ namespace ssa::infra::preferences {
         constexpr int kCurrentPreferencesSchemaVersion = 4;
         constexpr std::string_view kExecutorColumnKey = "setor_executor";
         constexpr std::string_view kDerivedCountColumnKey = "qtd_derivadas";
+        constexpr std::array<std::string_view, 3> kLegacyHiddenVisibleColumns{
+            "equipamento", "grau_prioridade_emissao", "grau_prioridade_planejamento"};
+        constexpr std::array<std::string_view, 1> kLegacyVisibleColumnsToDrop{
+            "descricao_localizacao"};
 
         std::vector<std::string> readVisibleColumns(const QJsonObject& root,
                                                     std::vector<std::string> defaults) {
@@ -28,7 +32,11 @@ namespace ssa::infra::preferences {
             for (const auto& value : visibleColumns) {
                 if (value.isString()) {
                     const auto key = value.toString().toStdString();
-                    if (domain::ColumnCatalog::contains(key)) {
+                    if (domain::ColumnCatalog::contains(key) &&
+                        std::ranges::find(kLegacyHiddenVisibleColumns, key) ==
+                            kLegacyHiddenVisibleColumns.end() &&
+                        std::ranges::find(kLegacyVisibleColumnsToDrop, key) ==
+                            kLegacyVisibleColumnsToDrop.end()) {
                         parsedColumns.push_back(key);
                     }
                 }

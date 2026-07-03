@@ -96,6 +96,39 @@ TEST_CASE("json preferences store keeps default columns when saved list is inval
     REQUIRE(loaded.visibleColumns == ssa::domain::ColumnCatalog::defaultVisibleKeys());
 }
 
+TEST_CASE("json preferences store prunes legacy hidden visible columns on load") {
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+
+    const auto path = std::filesystem::path{directory.path().toStdString()} / "prefs.json";
+    QFile file(QString::fromStdString(path.string()));
+    REQUIRE(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    file.write(
+        R"JSON({"visible_columns":["numero_ssa","equipamento","grau_prioridade_emissao","grau_prioridade_planejamento","situacao"]})JSON");
+    file.close();
+
+    const ssa::infra::preferences::JsonUserPreferencesStore store(path);
+    const auto loaded = store.load();
+
+    REQUIRE(loaded.visibleColumns == std::vector<std::string>{"numero_ssa", "situacao"});
+}
+
+TEST_CASE("json preferences store prunes legacy description location visibility on load") {
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+
+    const auto path = std::filesystem::path{directory.path().toStdString()} / "prefs.json";
+    QFile file(QString::fromStdString(path.string()));
+    REQUIRE(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    file.write(R"JSON({"visible_columns":["numero_ssa","descricao_localizacao","situacao"]})JSON");
+    file.close();
+
+    const ssa::infra::preferences::JsonUserPreferencesStore store(path);
+    const auto loaded = store.load();
+
+    REQUIRE(loaded.visibleColumns == std::vector<std::string>{"numero_ssa", "situacao"});
+}
+
 TEST_CASE("json preferences store migrates legacy derived count visibility") {
     QTemporaryDir directory;
     REQUIRE(directory.isValid());
