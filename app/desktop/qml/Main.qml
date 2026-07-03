@@ -138,8 +138,10 @@ ApplicationWindow {
                 onTriggered: preferencesDialog.open()
             }
             MenuItem {
-                text: root.vm.ui.detailsVisible ? "Ocultar detalhes" : "Mostrar detalhes"
-                onTriggered: root.vm.ui.detailsVisible = !root.vm.ui.detailsVisible
+                text: "Painel de detalhes"
+                checkable: true
+                checked: root.vm.ui.detailsVisible
+                onTriggered: root.vm.ui.detailsVisible = checked
             }
             MenuItem {
                 text: "Janela de detalhes (grafo)"
