@@ -64,31 +64,6 @@ FilterCard {
         spacing: 4
 
         FilterFieldLabel {
-            width: 32
-            height: root.scopeControlHeight
-            text: "Setor"
-            font.pixelSize: root.scopeFontSize
-        }
-        AppComboBox {
-            id: sectorSelector
-            width: 112
-            height: root.scopeControlHeight
-            font.pixelSize: root.scopeFontSize
-            model: root.filterViewModel.sector.selectorValues
-            currentIndex: root.filterViewModel.sector.selectorIndex
-            displayText: root.filterViewModel.sector.quickSector.length > 0 ? root.filterViewModel.sector.quickSector : "Todos"
-            onActivated: {
-                root.filterViewModel.sector.quickSector = sectorSelector.currentText;
-                root.applyRequested();
-            }
-            delegate: ItemDelegate {
-                required property string modelData
-                width: sectorSelector.width
-                text: modelData.length === 0 ? "Todos" : modelData
-            }
-        }
-
-        FilterFieldLabel {
             width: 36
             height: root.scopeControlHeight
             text: "Deriv."
