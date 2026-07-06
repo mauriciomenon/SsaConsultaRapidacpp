@@ -12,13 +12,14 @@ FilterCard {
     id: root
     required property var filterViewModel
     required property var derivation
+    required property real cardWidth
+    required property real cardHeight
     signal applyRequested
 
-    // Constant height - never derived from childrenRect (binding loop lesson,
-    // see RECOVERY_BACKLOG [QML-LAYOUT-LOOP]).
-    Layout.fillWidth: false
-    Layout.preferredHeight: 70
-    implicitHeight: 70
+    // Constant height received from parent - never derived from childrenRect
+    // (binding loop lesson, see RECOVERY_BACKLOG [QML-LAYOUT-LOOP]).
+    width: cardWidth
+    height: cardHeight
     padding: 3
     color: "transparent"
     border.color: "transparent"

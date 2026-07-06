@@ -2,21 +2,25 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Layouts
+import SsaConsultaRapida
 
-GridView {
+// Flow-based grid so each cell can carry its own height (the Macro card needs
+// up to 132px for its report table; GridView enforces a uniform cellHeight and
+// cannot host heterogeneous cards). Mirrors the previous GridView cellWidth
+// formula so text filter cards keep their layout.
+Item {
     id: root
     required property var filterViewModel
     required property var textFilters
-    readonly property var emptyValues: []
+    required property var advanced
+    signal applyRequested
 
     Layout.fillWidth: true
-    Layout.preferredHeight: Math.max(cellHeight, contentHeight)
-    Layout.minimumWidth: 0
-    clip: true
-    interactive: false
-    model: root.textFilters.cardStates
-    cellWidth: width >= 960 ? Math.floor(width / 4) : (width >= 720 ? Math.floor(width / 3) : (width >= 520 ? Math.floor(width / 2) : width))
-    cellHeight: 56
+    Layout.preferredHeight: gridFlow.childrenRect.height
+    readonly property int cellWidth: width >= 960 ? Math.floor(width / 4) : (width >= 720 ? Math.floor(width / 3) : (width >= 520 ? Math.floor(width / 2) : width))
+    readonly property int textCellHeight: 56
+    readonly property int reprogrammingCellHeight: 70
+    readonly property int macroCellHeight: root.advanced.macro.reportRows.length > 0 ? 132 : 30
 
     function preloadOptions() {
         root.filterViewModel.preloadAdvancedColumnValueOptions();
@@ -26,68 +30,107 @@ GridView {
 
     Connections {
         target: root.filterViewModel
-
         function onColumnValueOptionsReset() {
             root.preloadOptions();
         }
     }
 
-    delegate: AdvancedTextFilterCard {
-        id: filterCardDelegate
-        required property var modelData
-        property var loadedValueOptions: root.emptyValues
-        property var visibleValueOptions: root.emptyValues
-        property bool moreValueOptions: false
-        property bool valueOptionsLoading: false
+    Flow {
+        id: gridFlow
+        anchors.fill: parent
+        spacing: 0
 
-        function reloadOptionState() {
-            loadedValueOptions = root.filterViewModel.columnValueOptionsFor(modelData.key);
-            valueOptionsLoading = root.filterViewModel.columnValueOptionsLoadingFor(modelData.key);
-            moreValueOptions = root.filterViewModel.hasMoreColumnValueOptionsFor(modelData.key, compactValueLimit);
-            visibleValueOptions = root.filterViewModel.columnValuePreviewOptionsFor(modelData.key, compactValueLimit, false);
-        }
+        // Text filter cards (14 cells: Setor emissor, ..., Situacao parcial).
+        Repeater {
+            model: root.textFilters.cardStates
 
-        row: modelData
-        operatorModes: root.textFilters.operatorModes
-        allValues: loadedValueOptions
-        visibleValues: visibleValueOptions
-        hasMoreValues: moreValueOptions
-        valuesLoading: valueOptionsLoading
-        textFilter: modelData.textFilter
-        operatorIndex: modelData.operatorIndex
-        operatorLabel: modelData.operatorLabel
-        cardWidth: root.cellWidth - 4
-        cardHeight: root.cellHeight - 4
+            AdvancedTextFilterCard {
+                id: textDelegate
+                required property var modelData
+                readonly property var rowData: textDelegate.modelData
+                property var loadedValueOptions: []
+                property var visibleValueOptions: []
+                property bool moreValueOptions: false
+                property bool valueOptionsLoading: false
 
-        Component.onCompleted: reloadOptionState()
+                function reloadOptionState() {
+                    loadedValueOptions = root.filterViewModel.columnValueOptionsFor(rowData.key);
+                    valueOptionsLoading = root.filterViewModel.columnValueOptionsLoadingFor(rowData.key);
+                    moreValueOptions = root.filterViewModel.hasMoreColumnValueOptionsFor(rowData.key, compactValueLimit);
+                    visibleValueOptions = root.filterViewModel.columnValuePreviewOptionsFor(rowData.key, compactValueLimit, false);
+                }
 
-        Connections {
-            target: root.filterViewModel
-            function onColumnValueOptionsChangedFor(key) {
-                if (key === filterCardDelegate.modelData.key)
-                    filterCardDelegate.reloadOptionState();
+                cardWidth: root.cellWidth - 4
+                cardHeight: root.textCellHeight - 4
+                row: textDelegate.rowData
+                operatorModes: root.textFilters.operatorModes
+                allValues: loadedValueOptions
+                visibleValues: visibleValueOptions
+                hasMoreValues: moreValueOptions
+                valuesLoading: valueOptionsLoading
+                textFilter: rowData.textFilter !== undefined ? rowData.textFilter : ""
+                operatorIndex: rowData.operatorIndex !== undefined ? rowData.operatorIndex : -1
+                operatorLabel: rowData.operatorLabel !== undefined ? rowData.operatorLabel : ""
+
+                Component.onCompleted: reloadOptionState()
+
+                Connections {
+                    target: root.filterViewModel
+                    function onColumnValueOptionsChangedFor(key) {
+                        if (key === textDelegate.rowData.key)
+                            textDelegate.reloadOptionState();
+                    }
+                    function onColumnValueOptionsReset() {
+                        textDelegate.reloadOptionState();
+                    }
+                }
+
+                onOptionsRequested: {
+                    if (loadedValueOptions.length === 0 && !valueOptionsLoading)
+                        root.filterViewModel.refreshColumnValueOptionsFor(rowData.key);
+                }
+                onOperatorModeRequested: function (mode) {
+                    root.textFilters.setOperatorMode(rowData.key, mode);
+                }
+                onSelectedValueRequested: function (value) {
+                    root.textFilters.updateFilterWithSelectedValue(rowData.key, value);
+                }
+                onLoadedValuesReplacementRequested: function (mode) {
+                    root.textFilters.replaceWithOperatorValueList(rowData.key, loadedValueOptions, mode);
+                }
+                onMixedValuesReplacementRequested: function (includeValues, excludeValues) {
+                    root.textFilters.replaceWithOperatorValueLists(rowData.key, includeValues, excludeValues);
+                }
+                onTextFilterClearRequested: root.textFilters.clearTextFilterAndApply(rowData.key)
             }
-            function onColumnValueOptionsReset() {
-                filterCardDelegate.reloadOptionState();
+        }
+
+        // Macro card (single cell, after Situacao parcial).
+        Repeater {
+            model: 1
+
+            AdvancedMacroFilterCard {
+                required property int index
+                cardWidth: root.cellWidth - 4
+                cardHeight: root.macroCellHeight
+                sectorHierarchy: root.advanced.sectorHierarchy
+                macro: root.advanced.macro
+                onApplyRequested: root.applyRequested()
             }
         }
 
-        onOptionsRequested: {
-            if (loadedValueOptions.length === 0 && !valueOptionsLoading)
-                root.filterViewModel.refreshColumnValueOptionsFor(modelData.key);
+        // Reprogramming card (single cell, after Macro).
+        Repeater {
+            model: 1
+
+            AdvancedReprogrammingFilterCard {
+                required property int index
+                cardWidth: root.cellWidth - 4
+                cardHeight: root.reprogrammingCellHeight
+                filterViewModel: root.filterViewModel
+                derivation: root.advanced.derivation
+                onApplyRequested: root.applyRequested()
+            }
         }
-        onOperatorModeRequested: function (mode) {
-            root.textFilters.setOperatorMode(modelData.key, mode);
-        }
-        onSelectedValueRequested: function (value) {
-            root.textFilters.updateFilterWithSelectedValue(modelData.key, value);
-        }
-        onLoadedValuesReplacementRequested: function (mode) {
-            root.textFilters.replaceWithOperatorValueList(modelData.key, loadedValueOptions, mode);
-        }
-        onMixedValuesReplacementRequested: function (includeValues, excludeValues) {
-            root.textFilters.replaceWithOperatorValueLists(modelData.key, includeValues, excludeValues);
-        }
-        onTextFilterClearRequested: root.textFilters.clearTextFilterAndApply(modelData.key)
     }
 }

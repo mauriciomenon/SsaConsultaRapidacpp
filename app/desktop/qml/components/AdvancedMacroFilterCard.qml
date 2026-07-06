@@ -9,11 +9,12 @@ FilterCard {
     id: root
     required property var sectorHierarchy
     required property var macro
+    required property real cardWidth
+    required property real cardHeight
     signal applyRequested
 
-    Layout.fillWidth: true
-    Layout.preferredHeight: root.macro.reportRows.length > 0 ? 132 : 30
-    implicitHeight: root.macro.reportRows.length > 0 ? 132 : 30
+    width: cardWidth
+    height: cardHeight
     padding: 2
     color: "transparent"
     border.color: "transparent"

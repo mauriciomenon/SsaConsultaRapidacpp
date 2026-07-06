@@ -25,42 +25,11 @@ Rectangle {
             width: parent.width
             spacing: 5
 
-            Flow {
-                id: topFilterFlow
-                Layout.fillWidth: true
-                Layout.preferredHeight: childrenRect.height
-                spacing: 5
-                // Mirrors AdvancedTextFilterGrid.cellWidth so the macro card's
-                // right edge aligns with the last grid cell below.
-                readonly property int textFilterCellWidth: width >= 960 ? Math.floor(width / 4) : (width >= 720 ? Math.floor(width / 3) : (width >= 520 ? Math.floor(width / 2) : width))
-
-                AdvancedMacroFilterCard {
-                    width: topFilterFlow.textFilterCellWidth
-                    height: implicitHeight
-                    sectorHierarchy: root.advanced.sectorHierarchy
-                    macro: root.advanced.macro
-                    onApplyRequested: root.applyRequested()
-                }
-            }
-
             AdvancedTextFilterGrid {
                 filterViewModel: root.filterViewModel
                 textFilters: root.advanced.text
-            }
-
-            Flow {
-                id: reprogrammingFlow
-                Layout.fillWidth: true
-                Layout.preferredHeight: childrenRect.height
-                spacing: 5
-
-                AdvancedReprogrammingFilterCard {
-                    width: topFilterFlow.textFilterCellWidth
-                    height: implicitHeight
-                    filterViewModel: root.filterViewModel
-                    derivation: root.advanced.derivation
-                    onApplyRequested: root.applyRequested()
-                }
+                advanced: root.advanced
+                onApplyRequested: root.applyRequested()
             }
 
             AdvancedWeekFilterCard {
