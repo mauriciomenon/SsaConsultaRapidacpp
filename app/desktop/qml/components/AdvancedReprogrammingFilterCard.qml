@@ -110,7 +110,7 @@ FilterCard {
                 leftPadding: 0
                 rightPadding: 0
                 indicator: null
-                popup.width: 170
+                popup.width: 96
                 model: root.derivation.reprogrammingModeOptions
                 currentIndex: Math.max(0, root.derivation.reprogrammingModeOptions.indexOf(root.derivation.reprogrammingMode))
                 displayText: currentText === "lte" ? "<=" : currentText === "gte" ? ">=" : "="
@@ -121,7 +121,7 @@ FilterCard {
                 delegate: ItemDelegate {
                     required property string modelData
                     width: operatorSelector.popup.width
-                    text: modelData === "lte" ? "<= Menor ou igual" : modelData === "gte" ? ">= Maior ou igual" : "= Igual"
+                    text: modelData === "lte" ? "<=" : modelData === "gte" ? ">=" : "="
                 }
                 ToolTip.visible: hovered
                 ToolTip.text: "Operador: = Igual / <= Menor ou igual / >= Maior ou igual"
