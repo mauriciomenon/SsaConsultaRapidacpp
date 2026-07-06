@@ -341,7 +341,7 @@ namespace ssa::presentation::filterpanel {
         input_.years.issue.clear();
         input_.years.execution.clear();
         input_.reprogramming.equals.clear();
-        input_.reprogramming.mode = QStringLiteral("eq");
+        input_.reprogramming.mode = QStringLiteral("gte");
         input_.reprogramming.values.clear();
         input_.weekRanges.issueStart.clear();
         input_.weekRanges.issueEnd.clear();

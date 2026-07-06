@@ -59,6 +59,21 @@ Rectangle {
                 textFilters: root.advanced.text
             }
 
+            Flow {
+                id: reprogrammingFlow
+                Layout.fillWidth: true
+                Layout.preferredHeight: childrenRect.height
+                spacing: 5
+
+                AdvancedReprogrammingFilterCard {
+                    width: topFilterFlow.textFilterCellWidth
+                    height: implicitHeight
+                    filterViewModel: root.filterViewModel
+                    derivation: root.advanced.derivation
+                    onApplyRequested: root.applyRequested()
+                }
+            }
+
             AdvancedWeekFilterCard {
                 week: root.advanced.week
                 advanced: root.advanced

@@ -85,7 +85,7 @@ namespace ssa::presentation::filterpanel {
 
             struct Reprogramming {
                 QString equals;
-                QString mode{QStringLiteral("eq")};
+                QString mode{QStringLiteral("gte")};
                 QString values;
                 bool only{false};
 
