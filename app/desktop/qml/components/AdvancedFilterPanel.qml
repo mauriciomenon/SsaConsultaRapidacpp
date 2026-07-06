@@ -40,7 +40,6 @@ Rectangle {
                 AdvancedScopeFilterCard {
                     width: topFilterFlow.scopeWidth
                     height: implicitHeight
-                    filterViewModel: root.filterViewModel
                     derivation: root.advanced.derivation
                     onApplyRequested: root.applyRequested()
                 }
