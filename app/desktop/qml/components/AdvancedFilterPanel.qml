@@ -30,22 +30,12 @@ Rectangle {
                 Layout.fillWidth: true
                 Layout.preferredHeight: childrenRect.height
                 spacing: 5
-                readonly property bool compactPair: width >= 960
                 // Mirrors AdvancedTextFilterGrid.cellWidth so the macro card's
                 // right edge aligns with the last grid cell below.
                 readonly property int textFilterCellWidth: width >= 960 ? Math.floor(width / 4) : (width >= 720 ? Math.floor(width / 3) : (width >= 520 ? Math.floor(width / 2) : width))
-                readonly property int macroWidth: compactPair ? textFilterCellWidth : width
-                readonly property int scopeWidth: compactPair ? width - macroWidth - spacing : width
-
-                AdvancedScopeFilterCard {
-                    width: topFilterFlow.scopeWidth
-                    height: implicitHeight
-                    derivation: root.advanced.derivation
-                    onApplyRequested: root.applyRequested()
-                }
 
                 AdvancedMacroFilterCard {
-                    width: topFilterFlow.macroWidth
+                    width: topFilterFlow.textFilterCellWidth
                     height: implicitHeight
                     sectorHierarchy: root.advanced.sectorHierarchy
                     macro: root.advanced.macro

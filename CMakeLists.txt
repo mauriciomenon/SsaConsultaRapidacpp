@@ -211,7 +211,6 @@ qt_add_qml_module(
   app/desktop/qml/components/AdvancedFilterPanel.qml
   app/desktop/qml/components/AdvancedMacroFilterCard.qml
   app/desktop/qml/components/AdvancedReprogrammingFilterCard.qml
-  app/desktop/qml/components/AdvancedScopeFilterCard.qml
   app/desktop/qml/components/AdvancedTextFilterCard.qml
   app/desktop/qml/components/AdvancedTextFilterGrid.qml
   app/desktop/qml/components/AdvancedWeekFilterCard.qml
