@@ -31,10 +31,14 @@ Rectangle {
                 Layout.preferredHeight: childrenRect.height
                 spacing: 5
                 readonly property bool compactPair: width >= 960
-                readonly property int scopeWidth: compactPair ? Math.min(650, width - 305) : width
+                // Mirrors AdvancedTextFilterGrid.cellWidth so the macro card's
+                // right edge aligns with the last grid cell below.
+                readonly property int textFilterCellWidth: width >= 960 ? Math.floor(width / 4) : (width >= 720 ? Math.floor(width / 3) : (width >= 520 ? Math.floor(width / 2) : width))
+                readonly property int macroWidth: compactPair ? textFilterCellWidth : width
+                readonly property int scopeWidth: compactPair ? width - macroWidth - spacing : width
 
                 AdvancedScopeFilterCard {
-                    width: topFilterFlow.compactPair ? topFilterFlow.scopeWidth : topFilterFlow.width
+                    width: topFilterFlow.scopeWidth
                     height: implicitHeight
                     filterViewModel: root.filterViewModel
                     derivation: root.advanced.derivation
@@ -42,7 +46,7 @@ Rectangle {
                 }
 
                 AdvancedMacroFilterCard {
-                    width: topFilterFlow.compactPair ? topFilterFlow.width - topFilterFlow.scopeWidth - topFilterFlow.spacing : topFilterFlow.width
+                    width: topFilterFlow.macroWidth
                     height: implicitHeight
                     sectorHierarchy: root.advanced.sectorHierarchy
                     macro: root.advanced.macro
