@@ -214,6 +214,8 @@ qt_add_qml_module(
   app/desktop/qml/components/AdvancedTextFilterCard.qml
   app/desktop/qml/components/AdvancedTextFilterGrid.qml
   app/desktop/qml/components/AdvancedWeekFilterCard.qml
+  app/desktop/qml/components/AdvancedWeekEmissionCard.qml
+  app/desktop/qml/components/AdvancedWeekExecutionCard.qml
   app/desktop/qml/components/DetailsPanel.qml
   app/desktop/qml/components/DerivadasGraph.qml
   app/desktop/qml/components/ColumnFilterPanel.qml

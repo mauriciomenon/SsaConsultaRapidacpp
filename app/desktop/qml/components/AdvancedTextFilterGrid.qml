@@ -18,9 +18,11 @@ Item {
     Layout.fillWidth: true
     Layout.preferredHeight: gridFlow.childrenRect.height
     readonly property int cellWidth: width >= 960 ? Math.floor(width / 4) : (width >= 720 ? Math.floor(width / 3) : (width >= 520 ? Math.floor(width / 2) : width))
+    // Text and reprogramming cards share the same compact height so their
+    // titles land on the same baseline. Macro grows only when its report
+    // table is visible.
     readonly property int textCellHeight: 56
-    readonly property int reprogrammingCellHeight: 70
-    readonly property int macroCellHeight: root.advanced.macro.reportRows.length > 0 ? 132 : 30
+    readonly property int macroCellHeight: root.advanced.macro.reportRows.length > 0 ? 132 : textCellHeight - 4
 
     function preloadOptions() {
         root.filterViewModel.preloadAdvancedColumnValueOptions();
@@ -126,9 +128,35 @@ Item {
             AdvancedReprogrammingFilterCard {
                 required property int index
                 cardWidth: root.cellWidth - 4
-                cardHeight: root.reprogrammingCellHeight
+                cardHeight: root.textCellHeight - 4
                 filterViewModel: root.filterViewModel
                 derivation: root.advanced.derivation
+                onApplyRequested: root.applyRequested()
+            }
+        }
+
+        // Emission week card (single cell). YYYYWW range on semana_cadastro.
+        Repeater {
+            model: 1
+
+            AdvancedWeekEmissionCard {
+                required property int index
+                cardWidth: root.cellWidth - 4
+                cardHeight: root.textCellHeight - 4
+                week: root.advanced.week
+                onApplyRequested: root.applyRequested()
+            }
+        }
+
+        // Execution week card (single cell). YYYYWW range on semana_executada.
+        Repeater {
+            model: 1
+
+            AdvancedWeekExecutionCard {
+                required property int index
+                cardWidth: root.cellWidth - 4
+                cardHeight: root.textCellHeight - 4
+                week: root.advanced.week
                 onApplyRequested: root.applyRequested()
             }
         }

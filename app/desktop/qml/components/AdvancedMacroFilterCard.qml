@@ -5,6 +5,10 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import SsaConsultaRapida
 
+// Same skeleton as AdvancedTextFilterCard (ColumnLayout with two RowLayouts)
+// so the "Macro" title lands on the same baseline as the other filter cards.
+// The report table, when visible, is an extra child of the ColumnLayout and
+// does not affect the title position.
 FilterCard {
     id: root
     required property var sectorHierarchy
@@ -15,7 +19,7 @@ FilterCard {
 
     width: cardWidth
     height: cardHeight
-    padding: 2
+    padding: 3
     color: "transparent"
     border.color: "transparent"
 
@@ -27,41 +31,75 @@ FilterCard {
         return 0;
     }
 
-    GridLayout {
+    ColumnLayout {
         anchors.fill: parent
-        columns: 3
-        columnSpacing: Theme.gap
-        rowSpacing: 4
+        spacing: 3
 
-        FilterFieldLabel {
-            text: "Macro"
-            Layout.preferredWidth: 44
-            Layout.preferredHeight: 26
-        }
-        AppComboBox {
-            id: macroSelector
-            Layout.preferredWidth: Math.min(250, Math.max(160, root.width - 58))
-            Layout.preferredHeight: 26
-            textRole: "label"
-            valueRole: "value"
-            model: root.macro.options
-            currentIndex: root.macroIndex()
-            onActivated: {
-                root.macro.selectedMacro = currentValue;
-                root.applyRequested();
+        RowLayout {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 16
+            spacing: 4
+
+            Label {
+                Layout.fillWidth: true
+                text: "Macro"
+                color: Theme.text
+                font.pixelSize: 12
+                elide: Text.ElideRight
+            }
+
+            Label {
+                Layout.preferredWidth: Math.min(96, Math.max(60, root.cardWidth * 0.16))
+                visible: root.macro.reportTitle.length > 0
+                text: root.macro.reportText.length > 0 ? root.macro.reportText : ""
+                color: Theme.accentStrong
+                font.pixelSize: 11
+                horizontalAlignment: Text.AlignRight
+                elide: Text.ElideRight
             }
         }
-        Label {
+
+        RowLayout {
             Layout.fillWidth: true
-            visible: root.macro.reportTitle.length > 0
-            text: root.macro.reportTitle + ": " + root.macro.reportText
-            color: Theme.accentStrong
-            font.pixelSize: 11
-            elide: Text.ElideRight
+            Layout.preferredHeight: 28
+            spacing: 4
+
+            AppComboBox {
+                id: macroSelector
+                Layout.minimumWidth: 82
+                Layout.fillWidth: true
+                Layout.preferredHeight: 28
+                leftPadding: 7
+                rightPadding: 16
+                textRole: "label"
+                valueRole: "value"
+                model: root.macro.options
+                currentIndex: root.macroIndex()
+                displayText: root.macro.selectedMacro.length > 0 ? root.macro.selectedMacro : "Macro"
+                onActivated: {
+                    root.macro.selectedMacro = currentValue;
+                    root.applyRequested();
+                }
+            }
+
+            ActionButton {
+                text: "X"
+                implicitWidth: 28
+                implicitHeight: 28
+                padding: 0
+                font.bold: true
+                font.pixelSize: 12
+                ToolTip.visible: hovered
+                ToolTip.text: "Limpar macro"
+                ToolTip.delay: 0
+                onClicked: {
+                    root.macro.selectedMacro = "";
+                    root.applyRequested();
+                }
+            }
         }
 
         ColumnLayout {
-            Layout.columnSpan: 3
             Layout.fillWidth: true
             Layout.fillHeight: true
             spacing: 2
@@ -71,21 +109,31 @@ FilterCard {
                 Layout.fillWidth: true
                 spacing: 6
 
-                FilterFieldLabel {
+                Label {
                     Layout.preferredWidth: 92
                     text: "Setor/Div"
+                    color: Theme.text
+                    font.pixelSize: 11
+                    elide: Text.ElideRight
                 }
-                FilterFieldLabel {
+                Label {
                     Layout.preferredWidth: 58
                     text: "Semana"
+                    color: Theme.text
+                    font.pixelSize: 11
                 }
-                FilterFieldLabel {
+                Label {
                     Layout.fillWidth: true
                     text: "Pessoa"
+                    color: Theme.text
+                    font.pixelSize: 11
+                    elide: Text.ElideRight
                 }
-                FilterFieldLabel {
+                Label {
                     Layout.preferredWidth: 42
                     text: "SSAs"
+                    color: Theme.text
+                    font.pixelSize: 11
                 }
             }
 

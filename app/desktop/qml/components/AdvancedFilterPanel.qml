@@ -32,10 +32,35 @@ Rectangle {
                 onApplyRequested: root.applyRequested()
             }
 
-            AdvancedWeekFilterCard {
-                week: root.advanced.week
-                advanced: root.advanced
-                onApplyRequested: root.applyRequested()
+            RowLayout {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 30
+                spacing: 6
+
+                Item {
+                    Layout.fillWidth: true
+                }
+
+                ActionButton {
+                    text: "Limpar"
+                    implicitWidth: 64
+                    implicitHeight: 26
+                    padding: 0
+                    font.pixelSize: 11
+                    ToolTip.visible: hovered
+                    ToolTip.text: "Limpar filtros avancados"
+                    ToolTip.delay: 0
+                    onClicked: root.advanced.clear()
+                }
+
+                ActionButton {
+                    text: "Aplicar"
+                    implicitWidth: 88
+                    implicitHeight: 26
+                    padding: 0
+                    font.pixelSize: 11
+                    onClicked: root.applyRequested()
+                }
             }
         }
     }
