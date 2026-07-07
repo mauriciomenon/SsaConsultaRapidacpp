@@ -62,7 +62,7 @@ FilterCard {
 
             Label {
                 Layout.fillWidth: true
-                text: "Execucao"
+                text: "Execucao (AnoSemana)"
                 color: Theme.text
                 font.pixelSize: 12
                 elide: Text.ElideRight
@@ -86,10 +86,10 @@ FilterCard {
 
             AppTextField {
                 id: rangeStartField
-                Layout.minimumWidth: 78
+                Layout.minimumWidth: 70
                 Layout.fillWidth: true
                 Layout.preferredHeight: 28
-                placeholderText: "De (202610)"
+                placeholderText: "De"
                 text: root.week.executionWeekStartFilter
                 inputMethodHints: Qt.ImhDigitsOnly
                 onTextEdited: root.week.executionWeekStartFilter = text
@@ -104,10 +104,10 @@ FilterCard {
 
             AppTextField {
                 id: rangeEndField
-                Layout.minimumWidth: 78
+                Layout.minimumWidth: 70
                 Layout.fillWidth: true
                 Layout.preferredHeight: 28
-                placeholderText: "Ate (202610)"
+                placeholderText: "Ate"
                 text: root.week.executionWeekEndFilter
                 inputMethodHints: Qt.ImhDigitsOnly
                 onTextEdited: root.week.executionWeekEndFilter = text
