@@ -15,7 +15,9 @@
 namespace ssa::infra::preferences {
 
     namespace {
-        constexpr int kCurrentPreferencesSchemaVersion = 7;
+        constexpr int kCurrentPreferencesSchemaVersion = 8;
+        constexpr std::string_view kDerivationColumnKey = "derivada_de";
+        constexpr int kDerivationColumnWidth = 90;
         constexpr std::string_view kExecutorColumnKey = "setor_executor";
         constexpr std::string_view kDerivedCountColumnKey = "qtd_derivadas";
         constexpr std::array<std::string_view, 3> kLegacyHiddenVisibleColumns{
@@ -44,7 +46,7 @@ namespace ssa::infra::preferences {
             {"setor_emissor", 82, 72},
             {"setor_executor", 84, 72},
             {"qtd_derivadas", 72, 70},
-            {"derivada_de", 82, 78},
+            {"derivada_de", 82, kDerivationColumnWidth},
             {"data_cadastro", 112, 100},
             {"semana_cadastro", 90, 84},
             {"descricao_ssa", 560, 640},
@@ -55,7 +57,7 @@ namespace ssa::infra::preferences {
             {"semana_executada", 95, 86},
         }};
         constexpr std::array<WidthMigration, 1> kSchema7WidthMigrations{{
-            {"derivada_de", 96, 78},
+            {"derivada_de", 96, kDerivationColumnWidth},
         }};
 
         std::vector<std::string> readVisibleColumns(const QJsonObject& root,
@@ -143,7 +145,7 @@ namespace ssa::infra::preferences {
         }
 
         void migrateSchema7ColumnWidths(ports::UserPreferencesSnapshot& snapshot) {
-            if (snapshot.schemaVersion >= kCurrentPreferencesSchemaVersion) {
+            if (snapshot.schemaVersion >= 7) {
                 return;
             }
             for (const auto& migration : kSchema7WidthMigrations) {
@@ -151,6 +153,16 @@ namespace ssa::infra::preferences {
                 if (width != snapshot.columnWidths.end() && width->second == migration.oldWidth) {
                     width->second = migration.newWidth;
                 }
+            }
+        }
+
+        void migrateSchema8DerivationWidth(ports::UserPreferencesSnapshot& snapshot) {
+            if (snapshot.schemaVersion >= kCurrentPreferencesSchemaVersion) {
+                return;
+            }
+            const auto width = snapshot.columnWidths.find(std::string{kDerivationColumnKey});
+            if (width != snapshot.columnWidths.end() && width->second > kDerivationColumnWidth) {
+                width->second = kDerivationColumnWidth;
             }
         }
 
@@ -293,6 +305,7 @@ namespace ssa::infra::preferences {
         migrateDefaultColumnWidths(snapshot);
         migrateSchema6ColumnWidths(snapshot);
         migrateSchema7ColumnWidths(snapshot);
+        migrateSchema8DerivationWidth(snapshot);
         snapshot.schemaVersion = std::max(snapshot.schemaVersion, kCurrentPreferencesSchemaVersion);
         return snapshot;
     }
