@@ -250,6 +250,27 @@ TEST_CASE("spreadsheet import workflow full rescan replaces existing rows") {
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
+TEST_CASE("spreadsheet import workflow reports empty full rescan write failure") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "missing-parent" / "ssas.db";
+    std::filesystem::create_directories(inputDirectory);
+
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+    ssa::ports::RescanRequest request;
+    request.mode = ssa::ports::RescanMode::Full;
+
+    ssa::ports::WorkflowResult result;
+    REQUIRE_NOTHROW(result = port.rescan(request));
+
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
+    REQUIRE(result.message.find("error=") != std::string::npos);
+}
+
 TEST_CASE("spreadsheet import workflow reports legacy xls when converter is unavailable") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());

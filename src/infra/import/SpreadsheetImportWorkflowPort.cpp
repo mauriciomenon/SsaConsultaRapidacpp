@@ -66,9 +66,14 @@ namespace ssa::infra::importing {
         if (files.xlsxFiles.empty()) {
             if (replaceAll) {
                 ResolvedSsaImportRows emptyRows;
-                const auto summary = writer_.write(emptyRows, 0, 0, true);
-                return {ports::WorkflowStatus::Succeeded,
-                        workflowMessage(operation, files, summary)};
+                try {
+                    const auto summary = writer_.write(emptyRows, 0, 0, true);
+                    return {ports::WorkflowStatus::Succeeded,
+                            workflowMessage(operation, files, summary)};
+                } catch (const std::exception& exc) {
+                    return {ports::WorkflowStatus::Failed,
+                            workflowMessage(operation, files, {}, {1, exc.what()})};
+                }
             }
             return {ports::WorkflowStatus::Rejected, rejectedMessage(operation, files)};
         }
