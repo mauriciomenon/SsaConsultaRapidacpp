@@ -1,8 +1,7 @@
 #include "presentation/MainPreferenceFlowCoordinator.h"
 
-#include "domain/ColumnCatalog.h"
+#include "presentation/FilterPreferencesNormalizer.h"
 #include "presentation/UserPreferencesCoordinator.h"
-#include "query/TextFilterToken.h"
 
 #include <QCoreApplication>
 #include <QVariantMap>
@@ -102,61 +101,6 @@ namespace ssa::presentation {
             return true;
         }
 
-        void normalizeQuickSector(ports::FilterPreferencesSnapshot& filters) {
-            const auto executorKey = std::string{domain::ColumnCatalog::executorColumnKey()};
-            if (filters.quickSector.empty()) {
-                return;
-            }
-            auto& executorExpression = filters.advancedTextFilters[executorKey];
-            auto tokens = query::parseTextFilterTokens(executorExpression);
-            query::addTextFilterValue(tokens, filters.quickSector,
-                                      query::TextFilterOperator::Equals);
-            executorExpression = query::joinTextFilterTokens(tokens);
-            filters.quickSector.clear();
-        }
-
-        void normalizeColumnOverlap(ports::FilterPreferencesSnapshot& filters) {
-            for (const auto& [key, value] : filters.advancedTextFilters) {
-                filters.columnFilters.erase(key);
-            }
-        }
-
-        bool includesExcludedStatus(const std::map<std::string, std::string>& textFilters) {
-            const auto statusKey = std::string{domain::ColumnCatalog::statusColumnKey()};
-            const auto filter = textFilters.find(statusKey);
-            if (filter == textFilters.end()) {
-                return false;
-            }
-            const auto tokens = query::parseTextFilterTokens(filter->second);
-            const auto excluded = domain::ColumnCatalog::excludedStatusCodes();
-            return std::ranges::any_of(tokens.ordered, [excluded](const auto& token) {
-                return token.filterOperator == query::TextFilterOperator::Equals &&
-                       std::ranges::find(excluded, std::string_view{token.value}) != excluded.end();
-            });
-        }
-
-        void normalizeStatusExclusion(ports::FilterPreferencesSnapshot& filters) {
-            if (!filters.excludeScaSesSte) {
-                return;
-            }
-            if (!includesExcludedStatus(filters.advancedTextFilters) &&
-                !includesExcludedStatus(filters.columnFilters)) {
-                return;
-            }
-            filters.excludeScaSesSte = false;
-        }
-
-        void normalizeFilters(ports::FilterPreferencesSnapshot& filters) {
-            normalizeQuickSector(filters);
-            normalizeColumnOverlap(filters);
-            normalizeStatusExclusion(filters);
-        }
-
-        void normalizeSavedFilters(std::vector<ports::SavedFilterSnapshot>& filters) {
-            for (auto& saved : filters) {
-                normalizeFilters(saved.filters);
-            }
-        }
     } // namespace
 
     MainPreferenceFlowCoordinator::MainPreferenceFlowCoordinator(
@@ -183,8 +127,8 @@ namespace ssa::presentation {
         snapshot.visibleColumns = columns_.visibleKeys();
         snapshot.columnWidths = columns_.columnWidths();
         snapshot.savedFilters = savedFilters_;
-        normalizeFilters(snapshot.filters);
-        normalizeSavedFilters(snapshot.savedFilters);
+        normalizeFilterPreferences(snapshot.filters);
+        normalizeSavedFilterPreferences(snapshot.savedFilters);
         return snapshot;
     }
 
@@ -205,7 +149,7 @@ namespace ssa::presentation {
         browse_.applyPreferences(snapshot);
         columns_.applyPreferences(snapshot);
         auto storedSavedFilters = snapshot.savedFilters;
-        normalizeSavedFilters(storedSavedFilters);
+        normalizeSavedFilterPreferences(storedSavedFilters);
         setSavedFilters(std::move(storedSavedFilters));
     }
 
@@ -249,7 +193,7 @@ namespace ssa::presentation {
             return;
         }
         auto snapshot = buildPreferencesSnapshot();
-        normalizeFilters(snapshot.filters);
+        normalizeFilterPreferences(snapshot.filters);
         if (!hasFilterState(snapshot.filters)) {
             emit this->statusMessageRequested("Aplique algum filtro antes de salvar");
             return;
@@ -288,7 +232,7 @@ namespace ssa::presentation {
         }
         auto snapshot = buildPreferencesSnapshot();
         snapshot.filters = filter->filters;
-        normalizeFilters(snapshot.filters);
+        normalizeFilterPreferences(snapshot.filters);
         snapshot.savedFilters = savedFilters_;
         applyStoredPreferences(snapshot);
         browse_.apply();
@@ -373,7 +317,7 @@ namespace ssa::presentation {
         }
         auto baseSnapshot = buildPreferencesSnapshot();
         presetService_.applyPresetPreservingSearch(result.snapshot, baseSnapshot);
-        normalizeFilters(baseSnapshot.filters);
+        normalizeFilterPreferences(baseSnapshot.filters);
         applyStoredPreferences(baseSnapshot);
         browse_.apply();
         emit this->statusErrorClearRequested();
@@ -401,7 +345,7 @@ namespace ssa::presentation {
     void MainPreferenceFlowCoordinator::setSavedFilters(
         std::vector<ports::SavedFilterSnapshot> filters) {
         sortSavedFilters(filters);
-        normalizeSavedFilters(filters);
+        normalizeSavedFilterPreferences(filters);
         if (sameSavedFilters(savedFilters_, filters)) {
             return;
         }

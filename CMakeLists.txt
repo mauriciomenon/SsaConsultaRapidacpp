@@ -151,6 +151,7 @@ add_library(
   src/presentation/FilterPanelSectorViewModel.cpp
   src/presentation/FilterPanelAdvancedState.cpp
   src/presentation/FilterPanelCanonicalizer.cpp
+  src/presentation/FilterPreferencesNormalizer.cpp
   src/presentation/FilterPanelStateHelpers.cpp
   src/presentation/FilterPanelState.cpp
   src/presentation/DetailsViewModel.cpp

@@ -4,6 +4,7 @@
 #include "presentation/AdvancedTextFilterViewModel.h"
 #include "presentation/AdvancedWeekFilterViewModel.h"
 #include "presentation/FilterPanelAdvancedViewModel.h"
+#include "presentation/FilterPreferencesNormalizer.h"
 #include "presentation/MainViewModel.h"
 
 #include <QObject>
@@ -644,6 +645,25 @@ namespace {
             QCOMPARE(QString::fromStdString(saved.advancedTextFilters.at("setor_executor")),
                      QString("=IEE1"));
             QCOMPARE(QString::fromStdString(saved.advancedTextFilters.at("situacao")),
+                     QString("=SCA"));
+        }
+
+        void filter_preferences_normalizer_canonicalizes_snapshot_without_viewmodel() {
+            ssa::ports::FilterPreferencesSnapshot filters;
+            filters.quickSector = "IEE3";
+            filters.columnFilters = {{"setor_executor", "=IEE1"}, {"situacao", "=APV"}};
+            filters.advancedTextFilters = {{"situacao", "=SCA"}};
+            filters.excludeScaSesSte = true;
+
+            ssa::presentation::normalizeFilterPreferences(filters);
+
+            QVERIFY(filters.quickSector.empty());
+            QVERIFY(filters.columnFilters.empty());
+            QVERIFY(!filters.columnFilters.contains("situacao"));
+            QVERIFY(!filters.excludeScaSesSte);
+            QCOMPARE(QString::fromStdString(filters.advancedTextFilters.at("setor_executor")),
+                     QString("=IEE3"));
+            QCOMPARE(QString::fromStdString(filters.advancedTextFilters.at("situacao")),
                      QString("=SCA"));
         }
 
