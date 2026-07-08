@@ -88,6 +88,35 @@ TEST_CASE("json preferences store saves user preference snapshot") {
     REQUIRE(loaded.filters.onlyReprogrammed);
 }
 
+TEST_CASE("json preferences store uses ssa dark theme for a clean profile") {
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+
+    const auto path = std::filesystem::path{directory.path().toStdString()} / "prefs.json";
+    const ssa::infra::preferences::JsonUserPreferencesStore store(path);
+    const auto loaded = store.load();
+
+    REQUIRE(loaded.theme == "ssa-dark");
+    REQUIRE(loaded.visibleColumns == ssa::domain::ColumnCatalog::defaultVisibleKeys());
+}
+
+TEST_CASE("json preferences store preserves existing valid manual theme") {
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+
+    const auto path = std::filesystem::path{directory.path().toStdString()} / "prefs.json";
+    QFile file(QString::fromStdString(path.string()));
+    REQUIRE(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    file.write(R"JSON({"schema_version":4,"theme":"gruvbox"})JSON");
+    file.close();
+
+    const ssa::infra::preferences::JsonUserPreferencesStore store(path);
+    const auto loaded = store.load();
+
+    REQUIRE(loaded.schemaVersion == 10);
+    REQUIRE(loaded.theme == "gruvbox");
+}
+
 TEST_CASE("json preferences store keeps default columns when saved list is invalid") {
     QTemporaryDir directory;
     REQUIRE(directory.isValid());
