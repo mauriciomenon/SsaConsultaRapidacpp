@@ -13,6 +13,17 @@ ComboBox {
     font.family: Theme.fontFamily
     font.pixelSize: 12
 
+    function clampedPopupX(popupWidth) {
+        const overlayRoot = Overlay.overlay !== null ? Overlay.overlay : (root.Window.window !== null ? root.Window.window.contentItem : null);
+        if (overlayRoot === null)
+            return 0;
+        const origin = root.mapToItem(overlayRoot, 0, 0);
+        const margin = 8;
+        const leftLimit = margin - origin.x;
+        const rightLimit = overlayRoot.width - origin.x - popupWidth - margin;
+        return Math.max(leftLimit, Math.min(0, rightLimit));
+    }
+
     delegate: ItemDelegate {
         id: delegateRoot
         required property int index
@@ -87,6 +98,7 @@ ComboBox {
     }
 
     popup: Popup {
+        x: root.clampedPopupX(width)
         y: root.height + 1
         width: root.width
         implicitHeight: Math.min(contentItem.implicitHeight, 260)
