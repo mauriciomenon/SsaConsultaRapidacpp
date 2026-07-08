@@ -31,6 +31,16 @@ Generated files:
 EOF
 }
 
+require_option_value() {
+  local option="$1"
+  local value="${2-}"
+  if [[ -z "${value}" || "${value}" == --* ]]; then
+    echo "${option} requires a value." >&2
+    show_help >&2
+    exit 1
+  fi
+}
+
 if [[ "${1-}" == "--help" || "${1-}" == "-h" ]]; then
   show_help
   exit 0
@@ -48,22 +58,27 @@ dist_root=""
 while [[ $# -gt 0 ]]; do
   case "${1}" in
     --preset)
+      require_option_value "${1}" "${2-}"
       preset="${2}"
       shift 2
       ;;
     --arch)
+      require_option_value "${1}" "${2-}"
       arch="${2}"
       shift 2
       ;;
     --dist-dir)
+      require_option_value "${1}" "${2-}"
       dist_root="${2}"
       shift 2
       ;;
     --project-root)
+      require_option_value "${1}" "${2-}"
       repo_root="${2}"
       shift 2
       ;;
     --version)
+      require_option_value "${1}" "${2-}"
       version="${2}"
       shift 2
       ;;
@@ -112,6 +127,7 @@ if [[ ! -x "${binary}" ]]; then
   exit 1
 fi
 
+rm -rf "${artifact_root}"
 mkdir -p "${artifact_root}/bin" "${artifact_root}/lib"
 rm -f "${archive_path}"
 cp "${binary}" "${artifact_root}/bin/"
