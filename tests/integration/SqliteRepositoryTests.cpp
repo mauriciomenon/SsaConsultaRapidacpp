@@ -252,6 +252,25 @@ TEST_CASE_METHOD(SqliteRepositoryFixture,
 }
 
 TEST_CASE_METHOD(SqliteRepositoryFixture,
+                 "sqlite repository orders status distinct values alphabetically") {
+    executeSql(path, R"SQL(
+        INSERT INTO ssa_table VALUES
+            ('202500031','STE','','LOC-31','Area','EQ-X',202501,'2025-01-31','A','A','SEM','IEE3','Ana','Bruno','Caio','SAM','SYS','x.xlsx','2025-01-31','A','B',202502,202503,0,0),
+            ('202500032','AAD','','LOC-32','Area','EQ-X',202501,'2025-02-01','A','A','SEM','IEE3','Ana','Bruno','Caio','SAM','SYS','x.xlsx','2025-02-01','A','B',202502,202503,0,0),
+            ('202500033','APV','','LOC-33','Area','EQ-X',202501,'2025-02-02','A','A','SEM','IEE3','Ana','Bruno','Caio','SAM','SYS','x.xlsx','2025-02-02','A','B',202502,202503,0,0),
+            ('202500034','ADM','','LOC-34','Area','EQ-X',202501,'2025-02-03','A','A','SEM','IEE3','Ana','Bruno','Caio','SAM','SYS','x.xlsx','2025-02-03','A','B',202502,202503,0,0);
+    )SQL");
+
+    ssa::domain::DistinctValuesRequest request;
+    request.columnKey = "situacao";
+    request.filter.excludeScaSesSte = false;
+
+    const auto values = repository.distinctValues(request);
+
+    REQUIRE(values == std::vector<std::string>{"AAD", "ADM", "APV", "SCA", "SES", "STE"});
+}
+
+TEST_CASE_METHOD(SqliteRepositoryFixture,
                  "sqlite repository projects derived count virtual column") {
     executeSql(path, R"SQL(
         INSERT INTO ssa_table VALUES

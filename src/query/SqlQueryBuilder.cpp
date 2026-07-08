@@ -1,6 +1,7 @@
 #include "query/SqlQueryBuilder.h"
 
 #include "domain/ColumnCatalog.h"
+#include "domain/ColumnValuePriorityPolicy.h"
 #include "query/SqlQueryText.h"
 
 #include <array>
@@ -164,11 +165,13 @@ namespace ssa::query {
             return sql.str();
         }
 
-        std::string distinctValuesOrderSql(const std::string& column, const bool numericColumn) {
+        std::string distinctValuesOrderSql(const std::string& column,
+                                           const std::string_view columnKey,
+                                           const bool numericColumn) {
             std::ostringstream sql;
             if (numericColumn) {
                 sql << " ORDER BY CAST(" << column << " AS INTEGER) ASC";
-            } else {
+            } else if (domain::usesPriorityValueOrder(columnKey)) {
                 const auto executor =
                     "TRIM(COALESCE(" +
                     quoteColumnIdentifier(std::string{domain::ColumnCatalog::executorColumnKey()}) +
@@ -178,6 +181,9 @@ namespace ssa::query {
                 sql << " ORDER BY " << priorityCaseSql(column) << " ASC, MIN("
                     << priorityCaseSql(executor) << ") ASC, MIN(" << priorityCaseSql(issuer)
                     << ") ASC";
+            } else {
+                sql << " ORDER BY " << column << " COLLATE NOCASE ASC, " << column << " ASC";
+                return sql.str();
             }
             sql << ", " << column << " COLLATE NOCASE ASC, " << column << " ASC";
             return sql.str();
@@ -308,7 +314,8 @@ namespace ssa::query {
         sql << "SELECT " << projection << " FROM " << quoteTableIdentifier(tableName_) << " ";
         sql << "WHERE " << distinctValuesWhereSql(projection, where);
         sql << " GROUP BY " << projection;
-        sql << distinctValuesOrderSql(projection, isNumericDistinctColumn(request.columnKey))
+        sql << distinctValuesOrderSql(projection, request.columnKey,
+                                      isNumericDistinctColumn(request.columnKey))
             << " LIMIT ?";
         auto bindings = std::move(where.bindings);
         bindings.push_back(std::to_string(request.limit));

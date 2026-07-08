@@ -46,12 +46,10 @@ namespace ssa::domain {
             std::string_view shortLabel;
         };
 
-        constexpr std::array<AdvancedFilterColumnDef, 13> kAdvancedFilterColumns{{
+        constexpr std::array<AdvancedFilterColumnDef, 11> kAdvancedFilterColumns{{
             {"setor_emissor", "Setor emissor", "Emis."},
             {"setor_executor", "Setor executor", "Exec."},
             {"situacao", "Situacao", "Sit."},
-            {"grau_prioridade_emissao", "Prioridade emissao", "Prior. Emis."},
-            {"grau_prioridade_planejamento", "Prioridade planejamento", "Prior. Plan."},
             {"solicitante", "Solicitante", "Solicit."},
             {"responsavel_programacao", "Responsavel programacao", "Resp. Plan."},
             {"responsavel_execucao", "Responsavel execucao", "Resp. Exec."},

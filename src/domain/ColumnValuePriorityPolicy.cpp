@@ -83,6 +83,11 @@ namespace ssa::domain {
         });
     }
 
+    bool usesPriorityValueOrder(const std::string_view columnKey) {
+        return columnKey == "setor_emissor" || columnKey == "setor_executor" ||
+               columnKey == "responsavel_programacao" || columnKey == "responsavel_execucao";
+    }
+
     bool columnValueLessForDisplay(const std::string_view left, const std::string_view right) {
         const int leftRank = priorityRank(left);
         const int rightRank = priorityRank(right);

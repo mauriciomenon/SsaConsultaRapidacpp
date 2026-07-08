@@ -70,7 +70,7 @@ TEST_CASE("column catalog exposes expanded advanced filter fields") {
         return std::ranges::find(keys, key) != keys.end();
     };
 
-    REQUIRE(keys.size() == 13);
+    REQUIRE(keys.size() == 11);
     REQUIRE(containsKey("setor_emissor"));
     REQUIRE(containsKey("setor_executor"));
     REQUIRE(containsKey("solicitante"));
@@ -80,6 +80,8 @@ TEST_CASE("column catalog exposes expanded advanced filter fields") {
     REQUIRE(containsKey("situacao_da_parcial"));
     REQUIRE_FALSE(containsKey("execucao_simples"));
     REQUIRE_FALSE(containsKey("equipamento"));
+    REQUIRE_FALSE(containsKey("grau_prioridade_emissao"));
+    REQUIRE_FALSE(containsKey("grau_prioridade_planejamento"));
     REQUIRE_FALSE(containsKey("servico_origem"));
     REQUIRE_FALSE(containsKey("sistema_origem"));
     REQUIRE_FALSE(containsKey("justificativa"));
@@ -106,6 +108,15 @@ TEST_CASE("column value priority policy orders display values") {
 
     REQUIRE(values == std::vector<std::string>{"IEE3", "IEE1", "IEE2", "IEE4", "MEL1", "MEL3",
                                                "ANA", "BRUNO", "MEG2"});
+}
+
+TEST_CASE("column value priority policy is limited to sector and responsible fields") {
+    CHECK(ssa::domain::usesPriorityValueOrder("setor_emissor"));
+    CHECK(ssa::domain::usesPriorityValueOrder("setor_executor"));
+    CHECK(ssa::domain::usesPriorityValueOrder("responsavel_programacao"));
+    CHECK(ssa::domain::usesPriorityValueOrder("responsavel_execucao"));
+    CHECK_FALSE(ssa::domain::usesPriorityValueOrder("situacao"));
+    CHECK_FALSE(ssa::domain::usesPriorityValueOrder("grau_prioridade_emissao"));
 }
 
 TEST_CASE("column value priority policy orders responsible names and numeric values") {
