@@ -80,7 +80,8 @@ namespace {
             QCOMPARE(repository->requests().size(), std::size_t{0});
             QTRY_COMPARE_WITH_TIMEOUT(model.browse()->filters()->activeFilterEntries().size(), 3,
                                       1000);
-            QVERIFY(!activeFilterEntry(model.browse()->filters(), "quick_sector").isEmpty());
+            QVERIFY(!activeFilterEntry(model.browse()->filters(), "advanced_text", "setor_executor")
+                         .isEmpty());
             QVERIFY(!activeFilterEntry(model.browse()->filters(), "column", "responsavel_execucao")
                          .isEmpty());
             QVERIFY(!activeFilterEntry(model.browse()->filters(), "advanced_text", "situacao")
@@ -94,7 +95,11 @@ namespace {
 
             QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{1}, 1000);
             const auto request = repository->requests().back();
-            QCOMPARE(QString::fromStdString(request.quickSector), QString("MEG2"));
+            QCOMPARE(QString::fromStdString(request.quickSector), QString(""));
+            QVERIFY(request.advancedFilters.textFilters.contains("setor_executor"));
+            QCOMPARE(
+                QString::fromStdString(request.advancedFilters.textFilters.at("setor_executor")),
+                QString("=MEG2"));
             QVERIFY(request.columnFilters.contains("responsavel_execucao"));
             QCOMPARE(QString::fromStdString(request.columnFilters.at("responsavel_execucao")),
                      QString("Ana"));
@@ -129,11 +134,12 @@ namespace {
             QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{1}, 1000);
             auto request = repository->requests().back();
             QVERIFY(!request.advancedFilters.textFilters.contains("situacao"));
-            QCOMPARE(QString::fromStdString(request.quickSector), QString("MEG2"));
+            QCOMPARE(QString::fromStdString(request.quickSector), QString(""));
+            QVERIFY(request.advancedFilters.textFilters.contains("setor_executor"));
             QVERIFY(request.columnFilters.contains("responsavel_execucao"));
 
             const auto quickSectorEntry =
-                activeFilterEntry(model.browse()->filters(), "quick_sector");
+                activeFilterEntry(model.browse()->filters(), "advanced_text", "setor_executor");
             QVERIFY(!quickSectorEntry.isEmpty());
             QCOMPARE(model.browse()->filters()->removeActiveFilter(quickSectorEntry), true);
 
@@ -141,6 +147,7 @@ namespace {
             request = repository->requests().back();
             QCOMPARE(QString::fromStdString(request.quickSector), QString(""));
             QVERIFY(request.columnFilters.contains("responsavel_execucao"));
+            QVERIFY(!request.advancedFilters.textFilters.contains("setor_executor"));
             QVERIFY(!request.advancedFilters.textFilters.contains("situacao"));
         }
 
@@ -341,9 +348,13 @@ namespace {
 
             week->setIssueYearFilter("2026");
             derivation->setOnlyReprogrammed(true);
-            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->filters()->activeFilterEntries().size(), 3,
-                                      1000);
-            QVERIFY(!activeFilterEntry(model.browse()->filters(), "quick_sector").isEmpty());
+            QTRY_VERIFY_WITH_TIMEOUT(
+                !activeFilterEntry(model.browse()->filters(), "advanced_issue_year").isEmpty(),
+                1000);
+            QTRY_VERIFY_WITH_TIMEOUT(
+                !activeFilterEntry(model.browse()->filters(), "advanced_only_reprogrammed")
+                     .isEmpty(),
+                1000);
 
             const auto issueYearEntry =
                 activeFilterEntry(model.browse()->filters(), "advanced_issue_year");
@@ -364,9 +375,9 @@ namespace {
             request = repository->requests().back();
             QVERIFY(!request.advancedFilters.issueYear.has_value());
             QCOMPARE(request.advancedFilters.onlyReprogrammed, false);
-            const auto entries = model.browse()->filters()->activeFilterEntries();
-            QCOMPARE(entries.size(), 1);
-            QCOMPARE(entries.at(0).toMap().value("kind").toString(), QString("quick_sector"));
+            QVERIFY(activeFilterEntry(model.browse()->filters(), "advanced_issue_year").isEmpty());
+            QVERIFY(activeFilterEntry(model.browse()->filters(), "advanced_only_reprogrammed")
+                        .isEmpty());
         }
 
         void advanced_submodels_update_shared_filter_state() {
@@ -426,7 +437,8 @@ namespace {
             QCOMPARE(text->textFilter("situacao"), QString(""));
             QCOMPARE(week->issueYearFilter(), QString(""));
             QCOMPARE(derivation->onlyReprogrammed(), false);
-            QCOMPARE(filters.quickSector(), QString("MEG2"));
+            QCOMPARE(filters.quickSector(), QString(""));
+            QCOMPARE(text->textFilter("setor_executor"), QString(""));
             QCOMPARE(qobject_cast<ssa::presentation::FilterPanelSectorViewModel*>(filters.sector())
                          ->excludeScaSesSte(),
                      false);
@@ -492,7 +504,10 @@ namespace {
 
             QTRY_COMPARE_WITH_TIMEOUT(preferences->saveCount(), 1, 1000);
             QCOMPARE(QString::fromStdString(preferences->snapshot().filters.quickSector),
-                     QString("MEG2"));
+                     QString(""));
+            QCOMPARE(QString::fromStdString(
+                         preferences->snapshot().filters.advancedTextFilters.at("setor_executor")),
+                     QString("=MEG2"));
         }
 
         void status_shortcuts_toggle_advanced_status_filter_and_apply() {
@@ -584,7 +599,13 @@ namespace {
 
             QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{1}, 1000);
             QCOMPARE(model.browse()->search()->text(), QString("bomba"));
-            QCOMPARE(model.browse()->filters()->quickSector(), QString("MEG2"));
+            QCOMPARE(model.browse()->filters()->quickSector(), QString(""));
+            QVERIFY(repository->requests().back().advancedFilters.textFilters.contains(
+                "setor_executor"));
+            QCOMPARE(
+                QString::fromStdString(
+                    repository->requests().back().advancedFilters.textFilters.at("setor_executor")),
+                QString("=MEG2"));
 
             QMetaObject::invokeMethod(model.preferenceFlow(), "removeSavedFilter",
                                       Q_ARG(QString, QString("braba")));
@@ -621,7 +642,7 @@ namespace {
             QVERIFY(saved.columnFilters.empty());
             QVERIFY(!saved.excludeScaSesSte);
             QCOMPARE(QString::fromStdString(saved.advancedTextFilters.at("setor_executor")),
-                     QString("=IEE1,=IEE3"));
+                     QString("=IEE1"));
             QCOMPARE(QString::fromStdString(saved.advancedTextFilters.at("situacao")),
                      QString("=SCA"));
         }
@@ -641,7 +662,10 @@ namespace {
                 Q_ARG(QUrl, QUrl::fromLocalFile("/tmp/ssa-filter-preset.json")));
 
             QTRY_COMPARE_WITH_TIMEOUT(presets->saveCount(), 1, 1000);
-            QCOMPARE(QString::fromStdString(presets->saved().filters.quickSector), QString("MEG2"));
+            QCOMPARE(QString::fromStdString(presets->saved().filters.quickSector), QString(""));
+            QCOMPARE(QString::fromStdString(
+                         presets->saved().filters.advancedTextFilters.at("setor_executor")),
+                     QString("=MEG2"));
             QCOMPARE(QString::fromStdString(presets->saved().filters.searchText), QString(""));
         }
 
@@ -664,9 +688,13 @@ namespace {
 
             QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{1}, 1000);
             QCOMPARE(model.browse()->search()->text(), QString("manter busca"));
-            QCOMPARE(model.browse()->filters()->quickSector(), QString("MMU3"));
+            QCOMPARE(model.browse()->filters()->quickSector(), QString(""));
             QCOMPARE(model.browse()->filters()->columnFilters().at("situacao"),
                      std::string("=APV"));
+            QCOMPARE(
+                QString::fromStdString(
+                    repository->requests().back().advancedFilters.textFilters.at("setor_executor")),
+                QString("=MMU3"));
         }
 
         void filter_summary_removal_preserves_sort_and_visible_columns() {

@@ -104,15 +104,14 @@ namespace ssa::presentation {
 
         void normalizeQuickSector(ports::FilterPreferencesSnapshot& filters) {
             const auto executorKey = std::string{domain::ColumnCatalog::executorColumnKey()};
-            auto executor = filters.advancedTextFilters.find(executorKey);
-            if (filters.quickSector.empty() || executor == filters.advancedTextFilters.end() ||
-                executor->second.empty()) {
+            if (filters.quickSector.empty()) {
                 return;
             }
-            auto tokens = query::parseTextFilterTokens(executor->second);
+            auto& executorExpression = filters.advancedTextFilters[executorKey];
+            auto tokens = query::parseTextFilterTokens(executorExpression);
             query::addTextFilterValue(tokens, filters.quickSector,
                                       query::TextFilterOperator::Equals);
-            executor->second = query::joinTextFilterTokens(tokens);
+            executorExpression = query::joinTextFilterTokens(tokens);
             filters.quickSector.clear();
         }
 
