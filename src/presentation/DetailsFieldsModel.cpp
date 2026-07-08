@@ -76,6 +76,18 @@ namespace ssa::presentation {
         const auto& field = fields_.at(row);
         const auto column = columnsByKey_.find(field.key);
         if (role == LabelRole) {
+            if (field.key == "servico_origem") {
+                return QStringLiteral("Servico");
+            }
+            if (field.key == "sistema_origem") {
+                return QStringLiteral("Sistema");
+            }
+            if (field.key == "arquivo_origem") {
+                return QStringLiteral("Arquivo");
+            }
+            if (field.key == "origem") {
+                return QStringLiteral("Fonte");
+            }
             return QString::fromStdString(column == columnsByKey_.end() ? field.key
                                                                         : column->second.label);
         }

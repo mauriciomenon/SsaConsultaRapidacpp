@@ -100,7 +100,7 @@ Flickable {
         height: root.contentHeight
 
         readonly property real nodeWidth: 118
-        readonly property real nodeHeight: 52
+        readonly property real nodeHeight: 48
 
         function nodeAt(pointX, pointY) {
             const model = root.graphModel;
@@ -130,27 +130,18 @@ Flickable {
                 return;
             }
 
-            // Edges first (so nodes draw on top). Right-angle (L-shaped)
-            // connections: horizontal then vertical. Dashed = related,
-            // solid = derived.
+            // Edges first (so nodes draw on top). One bend per edge.
+            // Dashed = related, solid = derived.
             ctx.lineWidth = 0.9;
             ctx.strokeStyle = Theme.border;
             const edgeList = model.edges();
             for (const edge of edgeList) {
                 ctx.beginPath();
                 ctx.moveTo(edge.fromX, edge.fromY);
-                if (edge.routeY !== undefined && edge.approachX !== undefined) {
-                    ctx.lineTo(edge.routeX, edge.fromY);
-                    ctx.lineTo(edge.routeX, edge.routeY);
-                    ctx.lineTo(edge.approachX, edge.routeY);
-                    ctx.lineTo(edge.approachX, edge.toY);
-                    ctx.lineTo(edge.toX, edge.toY);
-                } else {
-                    const routeX = edge.routeX !== undefined ? edge.routeX : (edge.fromX + edge.toX) / 2;
-                    ctx.lineTo(routeX, edge.fromY);
-                    ctx.lineTo(routeX, edge.toY);
-                    ctx.lineTo(edge.toX, edge.toY);
-                }
+                const routeX = edge.routeX !== undefined ? edge.routeX : (edge.fromX + edge.toX) / 2;
+                ctx.lineTo(routeX, edge.fromY);
+                ctx.lineTo(routeX, edge.toY);
+                ctx.lineTo(edge.toX, edge.toY);
                 if (edge.dashed) {
                     ctx.setLineDash([7, 6]);
                 } else {
@@ -203,16 +194,16 @@ Flickable {
                 ctx.textBaseline = "middle";
                 const visibleRole = root.roleLabel(role);
                 if (visibleRole.length > 0) {
-                    ctx.font = "bold 10px " + Theme.fontFamily;
+                    ctx.font = "bold 9px " + Theme.fontFamily;
                     ctx.fillStyle = isTarget ? Theme.accentText : root.nodeStrokeColor(role, false);
                     ctx.fillText(visibleRole, cx, cy - 16);
                 }
                 ctx.font = "bold 14px " + Theme.fontFamily;
                 ctx.fillStyle = isTarget ? Theme.accentText : Theme.text;
-                ctx.fillText(ssa, cx, status.length > 0 ? cy - 1 : cy + 3);
+                ctx.fillText(ssa, cx, status.length > 0 ? cy - 2 : cy + 3);
                 if (status.length > 0) {
-                    ctx.font = "bold 12px " + Theme.fontFamily;
-                    ctx.fillText(status, cx, cy + 16);
+                    ctx.font = "bold 11px " + Theme.fontFamily;
+                    ctx.fillText(status, cx + 1, cy + 13);
                 }
             }
         }

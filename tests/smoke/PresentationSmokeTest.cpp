@@ -429,6 +429,7 @@ namespace {
 
             const auto mermaid = model.mermaid();
             QVERIFY(mermaid.contains(QStringLiteral("flowchart LR")));
+            QVERIFY(mermaid.contains(QStringLiteral("202500002")));
             QVERIFY(mermaid.contains(QStringLiteral("202500002\\nAPV")));
             QVERIFY(mermaid.contains(QStringLiteral("-.->")));
 
@@ -436,6 +437,7 @@ namespace {
             QVERIFY(svg.contains(QStringLiteral("<svg")));
             QVERIFY(svg.contains(QStringLiteral("<path")));
             QVERIFY(svg.contains(QStringLiteral("202500002")));
+            QVERIFY(svg.contains(QStringLiteral("APV")));
             QVERIFY(svg.contains(QStringLiteral("stroke-dasharray")));
         }
 
@@ -546,11 +548,6 @@ namespace {
                 QVERIFY(edge.value("toY").toReal() > edge.value("fromY").toReal());
                 QVERIFY(edge.value("routeX").toReal() > edge.value("fromX").toReal());
                 QVERIFY(edge.value("routeX").toReal() < edge.value("toX").toReal());
-                QVERIFY(edge.contains("routeY"));
-                QVERIFY(edge.contains("approachX"));
-                QVERIFY(edge.value("routeY").toReal() > edge.value("fromY").toReal());
-                QVERIFY(edge.value("routeY").toReal() < edge.value("toY").toReal());
-                QVERIFY(edge.value("approachX").toReal() < edge.value("toX").toReal());
             }
         }
 

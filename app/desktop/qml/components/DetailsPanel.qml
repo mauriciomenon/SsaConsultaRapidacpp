@@ -14,7 +14,7 @@ Rectangle {
     readonly property int labelTextSize: Theme.densityValue(root.density, 12, 13, 14)
     readonly property int valueTextSize: Theme.densityValue(root.density, 12, 13, 15)
     readonly property int detailsLabelWidth: Theme.densityValue(root.density, 104, 116, 132)
-    readonly property int relationNodeHeight: Theme.densityValue(root.density, 32, 36, 40)
+    readonly property int relationNodeHeight: Theme.densityValue(root.density, 36, 40, 44)
     readonly property int relationNodeMinWidth: Theme.densityValue(root.density, 78, 86, 94)
     signal openRequested
     signal graphWindowRequested
@@ -115,13 +115,13 @@ Rectangle {
 
                 RowLayout {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: root.relationNodeHeight + 9
-                    spacing: 5
+                    Layout.preferredHeight: root.relationNodeHeight + 12
+                    spacing: 8
 
                     Flickable {
                         id: relationsFlick
                         Layout.fillWidth: true
-                        Layout.preferredHeight: root.relationNodeHeight + 9
+                        Layout.preferredHeight: root.relationNodeHeight + 12
                         clip: true
                         contentWidth: relationsRow.width
                         contentHeight: relationsRow.height
@@ -139,7 +139,7 @@ Rectangle {
                                     id: relationRow
                                     required property int index
                                     required property var modelData
-                                    spacing: 5
+                                    spacing: 8
                                     width: relationConnectorLabel.width + relationBox.width + spacing
                                     height: relationBox.implicitHeight
 
@@ -148,22 +148,22 @@ Rectangle {
                                         visible: relationRow.index > 0
                                         text: root.relationConnector(relationRow.index, relationRow.modelData.role)
                                         color: relationRow.modelData.role === "related" ? Theme.mutedText : Theme.accentStrong
-                                        font.bold: true
+                                        font.bold: false
                                         anchors.verticalCenter: parent.verticalCenter
                                         width: text.length > 0 ? implicitWidth : 2
                                     }
 
                                     Rectangle {
                                         id: relationBox
-                                        width: Math.max(root.relationNodeMinWidth + 14, relationText.implicitWidth + 22)
-                                        implicitHeight: root.relationNodeHeight + 6
+                                        width: Math.max(root.relationNodeMinWidth + 18, relationText.implicitWidth + 28)
+                                        implicitHeight: root.relationNodeHeight
                                         radius: Theme.radius
                                         color: root.relationFillColor(relationRow.modelData.role, relationRow.index === root.viewModel.currentRelationIndex)
                                         border.color: root.relationBorderColor(relationRow.modelData.role, relationRow.index === root.viewModel.currentRelationIndex)
 
                                         Rectangle {
                                             width: 3
-                                            height: parent.height - 8
+                                            height: parent.height - 10
                                             anchors.left: parent.left
                                             anchors.leftMargin: 4
                                             anchors.verticalCenter: parent.verticalCenter
@@ -173,14 +173,14 @@ Rectangle {
 
                                         Column {
                                             anchors.centerIn: parent
-                                            spacing: 1
+                                            spacing: 0
 
                                             Text {
                                                 text: root.relationBadge(relationRow.modelData.role)
                                                 visible: text.length > 0
                                                 color: relationRow.index === root.viewModel.currentRelationIndex ? Theme.accentStrong : root.relationBorderColor(relationRow.modelData.role, false)
-                                                font.pixelSize: 9
-                                                font.bold: true
+                                                font.pixelSize: 8
+                                                font.bold: false
                                                 horizontalAlignment: Text.AlignHCenter
                                                 width: relationBox.width - 12
                                                 elide: Text.ElideRight
@@ -192,7 +192,7 @@ Rectangle {
                                                 // The Current node sits on accentSoft. Pick the foreground that
                                                 // contrasts with that specific tint across all themes.
                                                 color: relationRow.index === root.viewModel.currentRelationIndex ? (Theme.isDarkTint(Theme.accentSoft) ? Theme.text : (Theme.dark ? Theme.accentText : Theme.text)) : Theme.text
-                                                font.bold: true
+                                                font.bold: false
                                                 font.pixelSize: root.valueTextSize + 1
                                                 horizontalAlignment: Text.AlignHCenter
                                                 width: relationBox.width - 12
@@ -201,13 +201,13 @@ Rectangle {
                                             Text {
                                                 text: {
                                                     const status = relationRow.modelData.status !== undefined ? relationRow.modelData.status : "";
-                                                    if (status.length > 0)
-                                                        return "<b>" + status + "</b>";
-                                                    return "";
+                                                    return status.length > 0 ? status : "";
                                                 }
+                                                visible: text.length > 0
                                                 color: relationRow.index === root.viewModel.currentRelationIndex ? (Theme.isDarkTint(Theme.accentSoft) ? Theme.mutedText : (Theme.dark ? Theme.accentText : Theme.text)) : Theme.mutedText
-                                                font.pixelSize: Math.max(10, root.valueTextSize - 2)
-                                                textFormat: Text.RichText
+                                                font.pixelSize: Math.max(9, root.valueTextSize - 3)
+                                                font.bold: false
+                                                textFormat: Text.PlainText
                                                 horizontalAlignment: Text.AlignHCenter
                                                 width: relationBox.width - 12
                                                 elide: Text.ElideRight
@@ -236,17 +236,6 @@ Rectangle {
                                 }
                             }
                         }
-
-                        // Thin themed scrollbar only when content overflows.
-                        ScrollBar.horizontal: ScrollBar {
-                            policy: relationsFlick.contentWidth > relationsFlick.width ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
-                            contentItem: Rectangle {
-                                implicitHeight: 2
-                                color: Theme.accent
-                                opacity: 0.7
-                                radius: 1
-                            }
-                        }
                     }
 
                     Column {
@@ -262,10 +251,10 @@ Rectangle {
                             implicitHeight: 19
                             padding: 0
                             font.pixelSize: 9
+                            enabled: root.viewModel.selectedSsaNumber.length > 0
                             ToolTip.visible: hovered
                             ToolTip.text: "Abrir grafo"
                             ToolTip.delay: 0
-                            enabled: root.viewModel.selectedSsaNumber.length > 0
                             onClicked: root.graphWindowRequested()
                         }
 
@@ -282,6 +271,7 @@ Rectangle {
                                 enabled: root.viewModel.canSelectPreviousRelation
                                 onClicked: root.viewModel.selectPreviousRelation()
                             }
+
                             Label {
                                 text: root.viewModel.relationCount > 0 ? (root.viewModel.currentRelationIndex + 1) + "/" + root.viewModel.relationCount : ""
                                 color: Theme.mutedText
@@ -291,6 +281,7 @@ Rectangle {
                                 width: 24
                                 height: 19
                             }
+
                             ActionButton {
                                 text: ">"
                                 implicitWidth: 20

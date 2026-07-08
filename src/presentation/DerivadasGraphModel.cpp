@@ -11,11 +11,11 @@ namespace ssa::presentation {
 
         // Mirrors gui/ssa/details_dialog_constants.py
         constexpr qreal kNodeWidth = 118;
-        constexpr qreal kNodeHeight = 52;
-        constexpr qreal kXGap = 145;
-        constexpr qreal kYGap = kNodeHeight + 52;
+        constexpr qreal kNodeHeight = 48;
+        constexpr qreal kXGap = 170;
+        constexpr qreal kYGap = kNodeHeight + 44;
         constexpr int kMaxChildrenPerRow = 4;
-        constexpr qreal kChildRowGap = kNodeHeight + 34;
+        constexpr qreal kChildRowGap = kNodeHeight + 28;
         constexpr qreal kMargin = 8;
 
         QString mermaidEscaped(QString value) {
@@ -23,13 +23,6 @@ namespace ssa::presentation {
             value.replace(QStringLiteral("\""), QStringLiteral("\\\""));
             value.replace(QStringLiteral("\n"), QStringLiteral("\\n"));
             return value;
-        }
-
-        QString mermaidNodeLabel(const QString& ssa, const QString& status) {
-            if (status.isEmpty()) {
-                return mermaidEscaped(ssa);
-            }
-            return mermaidEscaped(ssa + QStringLiteral("\n") + status);
         }
 
         QString svgEscaped(QString value) {
@@ -51,23 +44,6 @@ namespace ssa::presentation {
             const qreal distance = std::abs(toX - fromX);
             const qreal offset = std::min<qreal>(28.0, distance / 2.0);
             return toX + (fromX <= toX ? -offset : offset);
-        }
-
-        qreal sourceExitX(const qreal fromX, const qreal toX) {
-            const qreal direction = fromX <= toX ? 1.0 : -1.0;
-            return fromX + direction * 26.0;
-        }
-
-        qreal targetApproachX(const qreal fromX, const qreal toX) {
-            const qreal direction = fromX <= toX ? 1.0 : -1.0;
-            return toX - direction * 14.0;
-        }
-
-        std::optional<qreal> lowerLaneY(const qreal fromY, const qreal toY) {
-            if (toY <= fromY + kNodeHeight / 2.0) {
-                return std::nullopt;
-            }
-            return toY - kNodeHeight / 2.0 - 16.0;
         }
 
     } // namespace
@@ -304,8 +280,11 @@ namespace ssa::presentation {
         for (std::size_t index = 0; index < nodes_.size(); ++index) {
             const auto id = QStringLiteral("N%1").arg(static_cast<int>(index));
             idBySsa.emplace(nodes_[index].ssa.toStdString(), id);
-            result += QStringLiteral("  %1[\"%2\"]\n")
-                          .arg(id, mermaidNodeLabel(nodes_[index].ssa, nodes_[index].status));
+            const auto label = nodes_[index].status.isEmpty()
+                                   ? mermaidEscaped(nodes_[index].ssa)
+                                   : mermaidEscaped(nodes_[index].ssa) + QStringLiteral("\\n") +
+                                         mermaidEscaped(nodes_[index].status);
+            result += QStringLiteral("  %1[\"%2\"]\n").arg(id, label);
         }
         for (const auto& edge : edges_) {
             const auto fromIt = idBySsa.find(edge.from.toStdString());
@@ -357,22 +336,12 @@ namespace ssa::presentation {
             const qreal toX =
                 toIt->second.x() + (leftToRight ? -kNodeWidth / 2.0 : kNodeWidth / 2.0);
             const qreal routeX = routeXBetween(fromX, toX);
-            const auto laneY = lowerLaneY(fromIt->second.y(), toIt->second.y());
-            const QString path = laneY.has_value()
-                                     ? QStringLiteral("M %1 %2 H %3 V %4 H %5 V %6 H %7")
-                                           .arg(fromX)
-                                           .arg(fromIt->second.y())
-                                           .arg(sourceExitX(fromX, toX))
-                                           .arg(laneY.value())
-                                           .arg(targetApproachX(fromX, toX))
-                                           .arg(toIt->second.y())
-                                           .arg(toX)
-                                     : QStringLiteral("M %1 %2 H %3 V %4 H %5")
-                                           .arg(fromX)
-                                           .arg(fromIt->second.y())
-                                           .arg(routeX)
-                                           .arg(toIt->second.y())
-                                           .arg(toX);
+            const QString path = QStringLiteral("M %1 %2 H %3 V %4 H %5")
+                                     .arg(fromX)
+                                     .arg(fromIt->second.y())
+                                     .arg(routeX)
+                                     .arg(toIt->second.y())
+                                     .arg(toX);
             result +=
                 QStringLiteral("  <path d=\"%1\" fill=\"none\" stroke=\"#8a8179\" "
                                "stroke-width=\"1.5\"%2/>\n")
@@ -412,15 +381,14 @@ namespace ssa::presentation {
                                "font-family=\"sans-serif\" font-size=\"14\" font-weight=\"700\" "
                                "fill=\"%3\">%4</text>\n")
                     .arg(node.position.x() + kNodeWidth / 2.0)
-                    .arg(node.position.y() + 22)
+                    .arg(node.position.y() + 21)
                     .arg(textColor, svgEscaped(node.ssa));
             if (!node.status.isEmpty()) {
-                result += QStringLiteral(
-                              "  <text x=\"%1\" y=\"%2\" text-anchor=\"middle\" "
-                              "font-family=\"sans-serif\" font-size=\"12\" font-weight=\"700\" "
-                              "fill=\"%3\">%4</text>\n")
+                result += QStringLiteral("  <text x=\"%1\" y=\"%2\" text-anchor=\"middle\" "
+                                         "font-family=\"sans-serif\" font-size=\"10\" "
+                                         "font-weight=\"600\" fill=\"%3\">%4</text>\n")
                               .arg(node.position.x() + kNodeWidth / 2.0)
-                              .arg(node.position.y() + 40)
+                              .arg(node.position.y() + 37)
                               .arg(textColor, svgEscaped(node.status));
             }
         }
@@ -463,17 +431,8 @@ namespace ssa::presentation {
                          toIt->second.x() + (leftToRight ? -kNodeWidth / 2.0 : kNodeWidth / 2.0));
             entry.insert(QStringLiteral("toY"), toIt->second.y());
             const qreal fromX = entry.value(QStringLiteral("fromX")).toReal();
-            const qreal fromY = entry.value(QStringLiteral("fromY")).toReal();
             const qreal toX = entry.value(QStringLiteral("toX")).toReal();
-            const qreal toY = entry.value(QStringLiteral("toY")).toReal();
-            const auto laneY = lowerLaneY(fromY, toY);
-            if (laneY.has_value()) {
-                entry.insert(QStringLiteral("routeX"), sourceExitX(fromX, toX));
-                entry.insert(QStringLiteral("routeY"), laneY.value());
-                entry.insert(QStringLiteral("approachX"), targetApproachX(fromX, toX));
-            } else {
-                entry.insert(QStringLiteral("routeX"), routeXBetween(fromX, toX));
-            }
+            entry.insert(QStringLiteral("routeX"), routeXBetween(fromX, toX));
             entry.insert(QStringLiteral("dashed"), edge.dashed);
             result.push_back(entry);
         }

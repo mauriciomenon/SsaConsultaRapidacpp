@@ -12,13 +12,11 @@ ApplicationWindow {
     id: root
     objectName: DesktopSmokeObjectNames.detailsWindow
     property var detailsViewModel: null
-    property string graphExportMessage: ""
-    property var navigationHistory: []
-    property int navigationIndex: -1
+    property string graphStatusMessage: ""
     signal graphNodeRequested(string ssaNumber)
     signal copyTextRequested(string text)
     title: detailsViewModel && detailsViewModel.selectedSsaNumber.length > 0 ? "Detalhes da SSA " + detailsViewModel.selectedSsaNumber : "Detalhes da SSA"
-    width: 1180
+    width: 885
     height: 900
     minimumWidth: 880
     minimumHeight: 700
@@ -34,149 +32,24 @@ ApplicationWindow {
         return root.detailsViewModel ? root.detailsViewModel.selectedSsaNumber : "";
     }
 
-    function resetNavigationHistory() {
-        const ssaNumber = root.currentSsaNumber();
-        root.navigationHistory = ssaNumber.length > 0 ? [ssaNumber] : [];
-        root.navigationIndex = root.navigationHistory.length - 1;
-    }
-
     function navigateToSsa(ssaNumber) {
         if (!root.detailsViewModel || ssaNumber.length === 0)
             return;
         if (ssaNumber === root.currentSsaNumber()) {
-            root.graphExportMessage = "SSA ja aberta";
+            root.graphStatusMessage = "SSA ja aberta";
             return;
         }
-        if (!root.detailsViewModel.loadBySsaNumber(ssaNumber))
+        if (!root.detailsViewModel.loadBySsaNumber(ssaNumber)) {
+            root.graphStatusMessage = "Falha ao carregar SSA";
             return;
-        const nextHistory = root.navigationHistory.slice(0, root.navigationIndex + 1);
-        nextHistory.push(ssaNumber);
-        root.navigationHistory = nextHistory;
-        root.navigationIndex = root.navigationHistory.length - 1;
-        root.graphExportMessage = "Historico: " + root.breadcrumbText();
+        }
+        root.graphStatusMessage = "";
     }
-
-    function navigateHistory(offset) {
-        root.navigateHistoryTo(root.navigationIndex + offset);
-    }
-
-    function navigateHistoryTo(nextIndex) {
-        if (!root.detailsViewModel || nextIndex < 0 || nextIndex >= root.navigationHistory.length)
-            return;
-        const ssaNumber = root.navigationHistory[nextIndex];
-        if (!root.detailsViewModel.loadBySsaNumber(ssaNumber))
-            return;
-        root.navigationIndex = nextIndex;
-        root.graphExportMessage = "Historico: " + root.breadcrumbText();
-    }
-
-    function breadcrumbText() {
-        if (root.navigationHistory.length === 0)
-            return "";
-        return root.navigationHistory.join(" / ");
-    }
-
-    onDetailsViewModelChanged: root.resetNavigationHistory()
 
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: 8
         spacing: Theme.gap
-
-        Label {
-            Layout.fillWidth: true
-            text: root.detailsViewModel ? root.detailsViewModel.title : ""
-            color: Theme.text
-            font.bold: true
-            font.pixelSize: 16
-        }
-
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: 6
-
-            ActionButton {
-                text: "<"
-                implicitWidth: 26
-                implicitHeight: 24
-                padding: 0
-                enabled: root.navigationIndex > 0
-                ToolTip.visible: hovered
-                ToolTip.text: "Voltar no historico"
-                ToolTip.delay: 0
-                onClicked: root.navigateHistory(-1)
-            }
-
-            ActionButton {
-                text: ">"
-                implicitWidth: 26
-                implicitHeight: 24
-                padding: 0
-                enabled: root.navigationIndex >= 0 && root.navigationIndex < root.navigationHistory.length - 1
-                ToolTip.visible: hovered
-                ToolTip.text: "Avancar no historico"
-                ToolTip.delay: 0
-                onClicked: root.navigateHistory(1)
-            }
-
-            Flickable {
-                Layout.fillWidth: true
-                Layout.preferredHeight: 26
-                clip: true
-                contentWidth: historyRow.width
-                contentHeight: historyRow.height
-                boundsBehavior: Flickable.StopAtBounds
-                flickableDirection: Flickable.HorizontalFlick
-
-                Row {
-                    id: historyRow
-                    spacing: 5
-                    height: 26
-
-                    Label {
-                        text: root.navigationHistory.length > 0 ? "Historico " + (root.navigationIndex + 1) + "/" + root.navigationHistory.length : ""
-                        color: Theme.mutedText
-                        font.pixelSize: 12
-                        font.bold: true
-                        verticalAlignment: Text.AlignVCenter
-                        height: 24
-                    }
-
-                    Repeater {
-                        model: root.navigationHistory
-
-                        delegate: Rectangle {
-                            id: historyChip
-                            required property int index
-                            required property string modelData
-                            width: Math.max(76, historyText.implicitWidth + 18)
-                            height: 24
-                            radius: Theme.radius
-                            color: historyChip.index === root.navigationIndex ? Theme.accentSoft : Theme.surface
-                            border.color: historyChip.index === root.navigationIndex ? Theme.accent : Theme.border
-
-                            Text {
-                                id: historyText
-                                anchors.centerIn: parent
-                                text: historyChip.modelData
-                                color: historyChip.index === root.navigationIndex ? Theme.accentStrong : Theme.text
-                                font.pixelSize: 12
-                                font.bold: historyChip.index === root.navigationIndex
-                                elide: Text.ElideRight
-                                width: historyChip.width - 10
-                                horizontalAlignment: Text.AlignHCenter
-                            }
-
-                            MouseArea {
-                                anchors.fill: parent
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: root.navigateHistoryTo(historyChip.index)
-                            }
-                        }
-                    }
-                }
-            }
-        }
 
         SplitView {
             Layout.fillWidth: true
@@ -191,8 +64,8 @@ ApplicationWindow {
             }
 
             Rectangle {
-                SplitView.preferredHeight: 345
-                SplitView.minimumHeight: 240
+                SplitView.preferredHeight: 290
+                SplitView.minimumHeight: 210
                 color: Theme.panel
                 border.color: Theme.border
                 radius: Theme.radius
@@ -251,12 +124,12 @@ ApplicationWindow {
                         visible: root.detailsViewModel && root.detailsViewModel.graphModel.nodeCount > 0
                         graphModel: root.detailsViewModel ? root.detailsViewModel.graphModel : null
                         onNodeClicked: ssaNumber => root.navigateToSsa(ssaNumber)
-                        onExportFinished: succeeded => root.graphExportMessage = succeeded ? "Grafo exportado" : "Falha ao exportar grafo"
+                        onExportFinished: succeeded => root.graphStatusMessage = succeeded ? "Grafo exportado" : "Falha ao exportar grafo"
                     }
 
                     Label {
                         visible: root.detailsViewModel && root.detailsViewModel.graphModel.nodeCount > 0
-                        text: root.graphExportMessage.length > 0 ? root.graphExportMessage : root.detailsViewModel ? root.detailsViewModel.graphModel.summary + " | Cheia: derivada | tracejada: relacionada | faixa: papel da SSA" : ""
+                        text: root.graphStatusMessage.length > 0 ? root.graphStatusMessage : root.detailsViewModel ? root.detailsViewModel.graphModel.summary + " | Cheia: derivada | tracejada: relacionada | faixa: papel da SSA" : ""
                         color: Theme.mutedText
                         font.pixelSize: 11
                     }
@@ -298,7 +171,7 @@ ApplicationWindow {
                             Label {
                                 Layout.preferredWidth: Theme.detailsLabelWidth
                                 font.pixelSize: 13
-                                font.bold: true
+                                font.bold: false
                                 text: fieldDelegate.label + ":"
                                 color: Theme.text
                                 elide: Text.ElideRight
@@ -315,7 +188,7 @@ ApplicationWindow {
                                 selectionColor: Theme.accent
                                 wrapMode: TextEdit.Wrap
                                 font.pixelSize: 13
-                                font.bold: true
+                                font.bold: false
                             }
                         }
 

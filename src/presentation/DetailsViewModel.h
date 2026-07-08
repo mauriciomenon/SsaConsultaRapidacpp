@@ -44,6 +44,7 @@ namespace ssa::presentation {
         void clearRecord();
         // Loads a single SSA by number from the repository (if wired) and
         // displays it. Returns false if not found or no service attached.
+        Q_INVOKABLE
         bool loadBySsaNumber(const QString& ssaNumber);
         [[nodiscard]] int currentRelationIndex() const;
         [[nodiscard]] bool canSelectNextRelation() const;
