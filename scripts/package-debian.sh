@@ -32,6 +32,16 @@ Requirements (Debian/Ubuntu host):
 EOF
 }
 
+require_option_value() {
+  local option="$1"
+  local value="${2-}"
+  if [[ -z "${value}" || "${value}" == --* ]]; then
+    echo "${option} requires a value." >&2
+    show_help >&2
+    exit 1
+  fi
+}
+
 if [[ "${1-}" == "--help" || "${1-}" == "-h" ]]; then
   show_help
   exit 0
@@ -49,22 +59,27 @@ dist_root=""
 while [[ $# -gt 0 ]]; do
   case "${1}" in
     --preset)
+      require_option_value "${1}" "${2-}"
       preset="${2}"
       shift 2
       ;;
     --arch)
+      require_option_value "${1}" "${2-}"
       arch="${2}"
       shift 2
       ;;
     --dist-dir)
+      require_option_value "${1}" "${2-}"
       dist_root="${2}"
       shift 2
       ;;
     --project-root)
+      require_option_value "${1}" "${2-}"
       repo_root="${2}"
       shift 2
       ;;
     --version)
+      require_option_value "${1}" "${2-}"
       version="${2}"
       shift 2
       ;;
@@ -100,6 +115,9 @@ build_dir="${repo_root}/build/${preset}"
 artifact_name="ssa_consulta_rapida-${version}-${arch}-linux"
 artifact_root="${dist_root}/${artifact_name}"
 deb_path="${dist_root}/${artifact_name}.deb"
+stage_root="${dist_root}/.${artifact_name}.staging.$$"
+stage_artifact_root="${stage_root}/${artifact_name}"
+stage_deb_path="${stage_root}/${artifact_name}.deb"
 
 # Map uname arch to Debian arch when running on non-dpkg hosts is not needed:
 # this script is meant to run on a Debian/Ubuntu host where dpkg exists.
@@ -226,19 +244,22 @@ exit 0
 EOF_POSTINST
 chmod 0755 "${pkgroot}/DEBIAN/postinst"
 
-mkdir -p "${dist_root}"
-rm -f "${deb_path}"
+mkdir -p "${stage_root}"
 if command -v fakeroot >/dev/null 2>&1; then
-  fakeroot dpkg-deb --build --root-owner-group "${pkgroot}" "${deb_path}"
+  fakeroot dpkg-deb --build --root-owner-group "${pkgroot}" "${stage_deb_path}"
 else
-  dpkg-deb --build --root-owner-group "${pkgroot}" "${deb_path}"
+  dpkg-deb --build --root-owner-group "${pkgroot}" "${stage_deb_path}"
 fi
 
 # Keep an extracted copy under dist/linux/<arch>/ for convenience.
+mkdir -p "${stage_artifact_root}"
+cp -R "${install_prefix}" "${stage_artifact_root}/usr"
+cp "${pkgroot}/DEBIAN/control" "${stage_artifact_root}/control"
+
 rm -rf "${artifact_root}"
-mkdir -p "${artifact_root}"
-cp -R "${install_prefix}" "${artifact_root}/usr"
-cp "${pkgroot}/DEBIAN/control" "${artifact_root}/control"
+mv "${stage_artifact_root}" "${artifact_root}"
+mv "${stage_deb_path}" "${deb_path}"
+rmdir "${stage_root}"
 
 package_set_latest_link "${dist_root}" "${artifact_name}"
 package_set_latest_alias "${dist_root}" "latest.deb" "${artifact_name}.deb"
