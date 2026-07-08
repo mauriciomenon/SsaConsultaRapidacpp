@@ -11,6 +11,11 @@ RowLayout {
     signal filterSubmitted(string key, string value)
     signal filterCleared(string key)
 
+    function focusInput() {
+        rowFilterInput.forceActiveFocus();
+        rowFilterInput.selectAll();
+    }
+
     height: Theme.controlHeight
     spacing: Theme.gap
 

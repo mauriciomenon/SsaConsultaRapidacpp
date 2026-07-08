@@ -103,7 +103,7 @@ FilterCard {
             spacing: 4
 
             Label {
-                Layout.fillWidth: true
+                Layout.preferredWidth: Math.min(180, Math.max(72, implicitWidth + 8))
                 text: root.row.label !== undefined ? root.row.label : ""
                 color: Theme.text
                 font.pixelSize: 12
@@ -111,12 +111,12 @@ FilterCard {
             }
 
             Label {
-                Layout.preferredWidth: Math.min(96, Math.max(60, root.cardWidth * 0.16))
+                Layout.fillWidth: true
                 visible: root.textFilter.length > 0
                 text: root.textFilter
                 color: Theme.accentStrong
                 font.pixelSize: 11
-                horizontalAlignment: Text.AlignRight
+                horizontalAlignment: Text.AlignLeft
                 elide: Text.ElideRight
             }
         }

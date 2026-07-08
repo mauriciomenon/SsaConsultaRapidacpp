@@ -116,6 +116,10 @@ ApplicationWindow {
                 onTriggered: filterPanel.showAdvancedFilters()
             }
             MenuItem {
+                text: "Exportar lista"
+                onTriggered: fileDialogs.openExportResults()
+            }
+            MenuItem {
                 text: "Exportar filtros"
                 onTriggered: fileDialogs.openExportFilters()
             }
@@ -283,6 +287,7 @@ ApplicationWindow {
         SearchAndPager {
             Layout.fillWidth: true
             viewModel: root.vm.browse
+            preferenceFlow: root.vm.preferenceFlow
             density: root.vm.ui.density
             onExportRequested: fileDialogs.openExportResults()
             onSaveFiltersRequested: root.vm.preferenceFlow.savePreferences()

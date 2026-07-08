@@ -701,6 +701,14 @@ namespace {
             const auto unsortedHeader = headers[0].toMap();
             QCOMPARE(unsortedHeader.value("sorted").toBool(), false);
 
+            model.browse()->filters()->setColumnFilters({{"situacao", "APV"}});
+            const auto filteredHeaders = model.browse()->tableHeaders();
+            const auto filteredHeader = filteredHeaders[1].toMap();
+            QCOMPARE(filteredHeader.value("key").toString(), QString("situacao"));
+            QCOMPARE(filteredHeader.value("filtered").toBool(), true);
+            const auto unfilteredHeader = filteredHeaders[0].toMap();
+            QCOMPARE(unfilteredHeader.value("filtered").toBool(), false);
+
             model.browse()->sortByColumn(1);
             const auto descendingHeaders = model.browse()->tableHeaders();
             const auto descendingHeader = descendingHeaders[1].toMap();

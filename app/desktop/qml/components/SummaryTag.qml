@@ -11,11 +11,13 @@ Control {
     property string tooltipText: text
     property bool compact: false
     property int tagTextSize: 12
+    property int preferredTagWidth: 0
+    property color tagAccent: Theme.accent
     signal removeRequested
 
     // No artificial width cap: show the full text and only elide when the
     // container (ScrollView in FilterSummaryBar) runs out of room.
-    implicitWidth: tagLabel.implicitWidth + removeButton.implicitWidth + 26
+    implicitWidth: Math.max(preferredTagWidth, tagLabel.implicitWidth + removeButton.implicitWidth + 26)
     implicitHeight: compact ? 24 : 26
     padding: 0
     hoverEnabled: true
@@ -27,7 +29,7 @@ Control {
 
     background: Rectangle {
         color: Theme.surface
-        border.color: Theme.accent
+        border.color: root.tagAccent
         radius: Theme.radius
     }
 

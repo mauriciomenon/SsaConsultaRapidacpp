@@ -9,6 +9,7 @@ Rectangle {
     id: root
     required property var filterViewModel
     required property var columnViewModel
+    property int focusRequest: filterViewModel.focusColumnRequest
     readonly property string filterPlaceholder: "Filtro"
     readonly property string filterSyntaxHint: "Virgula combina alternativas; ! exclui; = exato; ^ inicio; $ fim; ~ contem"
 
@@ -28,6 +29,31 @@ Rectangle {
             clip: true
             spacing: 6
             model: root.columnViewModel.rows
+
+            function rowIndexForKey(key) {
+                for (let index = 0; index < count; ++index) {
+                    const row = model[index];
+                    if (row && row.key === key) {
+                        return index;
+                    }
+                }
+                return -1;
+            }
+
+            function focusRowForKey(key) {
+                const index = rowIndexForKey(key);
+                if (index < 0) {
+                    return;
+                }
+                currentIndex = index;
+                positionViewAtIndex(index, ListView.Contain);
+                Qt.callLater(function () {
+                    const item = itemAtIndex(index);
+                    if (item) {
+                        item.focusInput();
+                    }
+                });
+            }
 
             delegate: ColumnFilterRow {
                 required property var modelData
@@ -71,6 +97,11 @@ Rectangle {
                 implicitWidth: 120
                 onClicked: root.filterViewModel.resetFilters()
             }
+        }
+    }
+    onFocusRequestChanged: {
+        if (root.filterViewModel.columnKey.length > 0) {
+            columnFilterList.focusRowForKey(root.filterViewModel.columnKey);
         }
     }
 }

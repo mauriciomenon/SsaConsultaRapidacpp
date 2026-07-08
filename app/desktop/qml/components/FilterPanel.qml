@@ -9,6 +9,7 @@ Rectangle {
     id: root
     required property var filterViewModel
     property int selectedTabIndex: 1
+    property int focusColumnRequest: filterViewModel.focusColumnRequest
     readonly property var advanced: filterViewModel.advanced
     readonly property string columnTabText: "Por coluna"
     readonly property string advancedTabText: "Avancados"
@@ -16,6 +17,10 @@ Rectangle {
 
     function showAdvancedFilters() {
         selectedTabIndex = 1;
+    }
+
+    function showColumnFilters() {
+        selectedTabIndex = 0;
     }
 
     color: Theme.surface
@@ -78,5 +83,9 @@ Rectangle {
                 onApplyRequested: root.applyRequested()
             }
         }
+    }
+
+    onFocusColumnRequestChanged: {
+        root.showColumnFilters();
     }
 }

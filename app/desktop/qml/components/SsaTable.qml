@@ -81,7 +81,7 @@ Rectangle {
                             anchors.rightMargin: 10
                             anchors.topMargin: 4
                             anchors.bottomMargin: 4
-                            text: headerCell.effectiveLabel + (headerCell.modelData.sorted ? (headerCell.modelData.sortAscending ? "  ^" : "  v") : "")
+                            text: headerCell.effectiveLabel + (headerCell.modelData.filtered === true ? " [f]" : "") + (headerCell.modelData.sorted ? (headerCell.modelData.sortAscending ? "  ^" : "  v") : "")
                             color: Theme.accentStrong
                             font.bold: true
                             font.pixelSize: root.textSize
@@ -115,6 +115,12 @@ Rectangle {
                                 enabled: headerCell.hasColumnKey
                                 onTriggered: root.viewModel.setFilterPanelFocusColumn(headerCell.columnKey)
                             }
+                            MenuItem {
+                                text: "Ocultar coluna"
+                                enabled: headerCell.hasColumnKey && root.columnFlow !== null && root.columnFlow.canHideColumn(headerCell.columnKey)
+                                onTriggered: root.columnFlow.setColumnVisibleAndApply(headerCell.columnKey, false)
+                            }
+                            MenuSeparator {}
                             MenuItem {
                                 text: "Configurar colunas"
                                 onTriggered: root.configureColumnsRequested()
