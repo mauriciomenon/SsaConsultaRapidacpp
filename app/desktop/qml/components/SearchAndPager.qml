@@ -337,11 +337,13 @@ Rectangle {
             AppComboBox {
                 id: sectorFilter
 
-                Layout.preferredWidth: 65
+                Layout.preferredWidth: 104
                 model: root.filterViewModel.sector.selectorValues
                 currentIndex: root.filterViewModel.sector.selectorIndex
                 displayText: root.filterViewModel.sector.quickSector.length > 0 ? root.filterViewModel.sector.quickSector : "Todos"
                 implicitHeight: Theme.controlHeight - 4
+                leftPadding: 6
+                rightPadding: 18
                 font.pixelSize: 11
                 font.bold: false
                 onActivated: {

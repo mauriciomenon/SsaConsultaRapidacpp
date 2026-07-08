@@ -50,7 +50,7 @@ Rectangle {
 
     function relationBorderColor(role, selected) {
         if (selected)
-            return Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.5);
+            return Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.32);
         if (role === "parent")
             return Theme.accentStrong;
         if (role === "child")
@@ -160,12 +160,13 @@ Rectangle {
                                         radius: Theme.radius
                                         color: root.relationFillColor(relationRow.modelData.role, relationRow.index === root.viewModel.currentRelationIndex)
                                         border.color: root.relationBorderColor(relationRow.modelData.role, relationRow.index === root.viewModel.currentRelationIndex)
+                                        border.width: 1
 
                                         Rectangle {
-                                            width: 3
-                                            height: parent.height - 10
+                                            width: 2
+                                            height: parent.height - 12
                                             anchors.left: parent.left
-                                            anchors.leftMargin: 4
+                                            anchors.leftMargin: 5
                                             anchors.verticalCenter: parent.verticalCenter
                                             radius: 1
                                             color: root.relationAccentColor(relationRow.modelData.role, relationRow.index === root.viewModel.currentRelationIndex)
