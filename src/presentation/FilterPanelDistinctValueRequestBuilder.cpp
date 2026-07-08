@@ -3,6 +3,9 @@
 #include "domain/ColumnCatalog.h"
 #include "query/SearchParser.h"
 
+#include <map>
+#include <string>
+
 namespace ssa::presentation {
 
     namespace {
