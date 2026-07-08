@@ -90,19 +90,34 @@ FilterCard {
     }
 
     function popupX(width) {
-        const origin = root.mapToItem(Overlay.overlay, 0, 0);
+        const overlayRoot = Overlay.overlay;
+        if (overlayRoot === null)
+            return 0;
+        const origin = root.mapToItem(overlayRoot, 0, 0);
         const margin = 8;
-        const leftLimit = margin - origin.x;
-        const rightLimit = Overlay.overlay.width - origin.x - width - margin;
-        return Math.max(leftLimit, Math.min(0, rightLimit));
+        const boundsWidth = root.Window.window !== null ? root.Window.window.width : overlayRoot.width;
+        const rightLimit = boundsWidth - width - margin;
+        return Math.max(margin, Math.min(origin.x, rightLimit));
     }
 
     function popupY(height) {
-        const origin = root.mapToItem(Overlay.overlay, 0, 0);
-        const preferredY = root.height + 2;
-        const bottomLimit = Overlay.overlay.height - origin.y - height - 8;
-        const topLimit = 8 - origin.y;
-        return Math.max(topLimit, Math.min(preferredY, bottomLimit));
+        const overlayRoot = Overlay.overlay;
+        if (overlayRoot === null)
+            return root.height + 2;
+        const origin = root.mapToItem(overlayRoot, 0, 0);
+        const margin = 8;
+        const preferredY = origin.y + root.height + 2;
+        const boundsHeight = root.Window.window !== null ? root.Window.window.height : overlayRoot.height;
+        const bottomLimit = boundsHeight - height - margin;
+        return Math.max(margin, Math.min(preferredY, bottomLimit));
+    }
+
+    function popupHeight(preferredHeight) {
+        const overlayRoot = Overlay.overlay;
+        if (overlayRoot === null)
+            return preferredHeight;
+        const boundsHeight = root.Window.window !== null ? root.Window.window.height : overlayRoot.height;
+        return Math.max(120, Math.min(preferredHeight, boundsHeight - 16));
     }
 
     property var includeValues: []
@@ -226,14 +241,41 @@ FilterCard {
 
     Popup {
         id: multiSelectPopup
+        parent: Overlay.overlay
         x: root.popupX(width)
         y: root.popupY(height)
         width: root.multiSelectPopupWidth
-        height: 360
+        height: root.popupHeight(360)
         modal: false
         focus: true
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
         padding: 10
+
+        function updatePopupParent() {
+            if (Overlay.overlay !== null)
+                parent = Overlay.overlay;
+        }
+
+        function updatePopupPosition() {
+            updatePopupParent();
+            x = root.popupX(width);
+            y = root.popupY(height);
+        }
+
+        onAboutToShow: updatePopupPosition()
+        onOpened: updatePopupPosition()
+        onVisibleChanged: {
+            if (visible)
+                updatePopupPosition();
+        }
+        onWidthChanged: {
+            if (visible)
+                updatePopupPosition();
+        }
+        onHeightChanged: {
+            if (visible)
+                updatePopupPosition();
+        }
 
         background: Rectangle {
             color: Theme.panelRaised

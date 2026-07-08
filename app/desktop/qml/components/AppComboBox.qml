@@ -14,7 +14,7 @@ ComboBox {
     font.pixelSize: 12
 
     function clampedPopupX(popupWidth) {
-        const overlayRoot = Overlay.overlay !== null ? Overlay.overlay : (root.Window.window !== null ? root.Window.window.contentItem : null);
+        const overlayRoot = Overlay.overlay;
         if (overlayRoot === null)
             return 0;
         const origin = root.mapToItem(overlayRoot, 0, 0);
@@ -103,6 +103,16 @@ ComboBox {
         width: root.width
         implicitHeight: Math.min(contentItem.implicitHeight, 260)
         padding: 1
+
+        function updatePopupX() {
+            x = root.clampedPopupX(width);
+        }
+
+        onAboutToShow: updatePopupX()
+        onWidthChanged: {
+            if (visible)
+                updatePopupX();
+        }
 
         contentItem: ListView {
             clip: true
