@@ -1,6 +1,8 @@
 #include "infra/export/CsvExportPort.h"
 #include "ports/ISsaRepository.h"
 
+#include <QTemporaryDir>
+
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
@@ -83,10 +85,13 @@ namespace {
 } // namespace
 
 TEST_CASE("csv export port writes filtered list") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
     const auto repository = std::make_shared<FakeRepository>();
     ssa::infra::exporting::CsvExportPort port(repository);
-    const auto outputPath = std::filesystem::temp_directory_path() / "ssa_cpp_export_test.csv";
-    std::filesystem::remove(outputPath);
+    const auto outputPath =
+        std::filesystem::path{tempDir.path().toStdString()} / "ssa_cpp_export_test.csv";
 
     ssa::ports::ExportFilteredListRequest request;
     request.outputPath = outputPath;
@@ -96,13 +101,16 @@ TEST_CASE("csv export port writes filtered list") {
 
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
     REQUIRE(readFile(outputPath) == "No SSA,Descricao SSA\n202500001,\"A,B\"\n202500002,Plain\n");
-    std::filesystem::remove(outputPath);
 }
 
 TEST_CASE("csv export port rejects existing output file") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
     const auto repository = std::make_shared<FakeRepository>();
     ssa::infra::exporting::CsvExportPort port(repository);
-    const auto outputPath = std::filesystem::temp_directory_path() / "ssa_cpp_export_existing.csv";
+    const auto outputPath =
+        std::filesystem::path{tempDir.path().toStdString()} / "ssa_cpp_export_existing.csv";
     {
         std::ofstream output(outputPath);
         output << "existing\n";
@@ -114,15 +122,17 @@ TEST_CASE("csv export port rejects existing output file") {
     const auto result = port.exportFilteredList(request);
 
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
-    std::filesystem::remove(outputPath);
 }
 
 TEST_CASE("csv export port rejects directory output") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
     const auto repository = std::make_shared<FakeRepository>();
     ssa::infra::exporting::CsvExportPort port(repository);
 
     ssa::ports::ExportFilteredListRequest request;
-    request.outputPath = std::filesystem::temp_directory_path();
+    request.outputPath = std::filesystem::path{tempDir.path().toStdString()};
 
     const auto result = port.exportFilteredList(request);
 
@@ -130,10 +140,13 @@ TEST_CASE("csv export port rejects directory output") {
 }
 
 TEST_CASE("csv export port exports complete filtered list from any current page") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
     const auto repository = std::make_shared<FakeRepository>();
     ssa::infra::exporting::CsvExportPort port(repository);
-    const auto outputPath = std::filesystem::temp_directory_path() / "ssa_cpp_export_page.csv";
-    std::filesystem::remove(outputPath);
+    const auto outputPath =
+        std::filesystem::path{tempDir.path().toStdString()} / "ssa_cpp_export_page.csv";
 
     ssa::ports::ExportFilteredListRequest request;
     request.outputPath = outputPath;
@@ -147,5 +160,4 @@ TEST_CASE("csv export port exports complete filtered list from any current page"
     // Export must emit the COMPLETE filtered list regardless of the current page,
     // not just the rows of page 1. Both rows must appear in the file.
     REQUIRE(readFile(outputPath) == "No SSA,Descricao SSA\n202500001,\"A,B\"\n202500002,Plain\n");
-    std::filesystem::remove(outputPath);
 }
