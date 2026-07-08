@@ -8,11 +8,11 @@ namespace ssa::infra::preferences {
 
     class UserPreferencesJsonCodec final {
       public:
-        [[nodiscard]] ports::UserPreferencesSnapshot
-        snapshotFromDocument(const QJsonDocument& document) const;
+        [[nodiscard]] static ports::UserPreferencesSnapshot
+        snapshotFromDocument(const QJsonDocument& document);
 
-        [[nodiscard]] QJsonDocument
-        documentFromSnapshot(const ports::UserPreferencesSnapshot& snapshot) const;
+        [[nodiscard]] static QJsonDocument
+        documentFromSnapshot(const ports::UserPreferencesSnapshot& snapshot);
     };
 
 } // namespace ssa::infra::preferences

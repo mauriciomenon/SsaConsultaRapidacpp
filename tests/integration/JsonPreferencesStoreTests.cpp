@@ -26,6 +26,10 @@ TEST_CASE("json preferences store saves user preference snapshot") {
     snapshot.sortAscending = true;
     snapshot.visibleColumns = {"numero_ssa", "situacao"};
     snapshot.columnWidths = {{"numero_ssa", 140}};
+    snapshot.savedFilters = {ssa::ports::SavedFilterSnapshot{
+        .name = "braba",
+        .filters =
+            ssa::ports::FilterPreferencesSnapshot{.searchText = "svp", .quickSector = "MEG2"}}};
     snapshot.filters.searchText = "isolamento";
     snapshot.filters.quickSector = "IEE3";
     snapshot.filters.excludeScaSesSte = false;
@@ -58,6 +62,10 @@ TEST_CASE("json preferences store saves user preference snapshot") {
     REQUIRE(loaded.sortAscending);
     REQUIRE(loaded.visibleColumns == std::vector<std::string>{"numero_ssa", "situacao"});
     REQUIRE(loaded.columnWidths.at("numero_ssa") == 140);
+    REQUIRE(loaded.savedFilters.size() == 1);
+    REQUIRE(loaded.savedFilters.front().name == "braba");
+    REQUIRE(loaded.savedFilters.front().filters.searchText == "svp");
+    REQUIRE(loaded.savedFilters.front().filters.quickSector == "MEG2");
     REQUIRE(loaded.filters.searchText == "isolamento");
     REQUIRE(loaded.filters.quickSector == "IEE3");
     REQUIRE_FALSE(loaded.filters.excludeScaSesSte);
@@ -143,7 +151,7 @@ TEST_CASE("json preferences store migrates legacy derived count visibility") {
     const ssa::infra::preferences::JsonUserPreferencesStore store(path);
     const auto loaded = store.load();
 
-    REQUIRE(loaded.schemaVersion == 4);
+    REQUIRE(loaded.schemaVersion == 6);
     REQUIRE(loaded.filters.quickSector == "IEE3");
     REQUIRE(loaded.visibleColumns ==
             std::vector<std::string>{"numero_ssa", "setor_executor", "qtd_derivadas", "situacao"});
@@ -163,7 +171,7 @@ TEST_CASE("json preferences store restores default quick sector when it is alone
     const ssa::infra::preferences::JsonUserPreferencesStore store(path);
     const auto loaded = store.load();
 
-    REQUIRE(loaded.schemaVersion == 4);
+    REQUIRE(loaded.schemaVersion == 6);
     REQUIRE(loaded.filters.quickSector == "IEE3");
 }
 
@@ -181,9 +189,41 @@ TEST_CASE("json preferences store keeps empty quick sector when other filters ex
     const ssa::infra::preferences::JsonUserPreferencesStore store(path);
     const auto loaded = store.load();
 
-    REQUIRE(loaded.schemaVersion == 4);
+    REQUIRE(loaded.schemaVersion == 6);
     REQUIRE(loaded.filters.quickSector.empty());
     REQUIRE(loaded.filters.searchText == "manual");
+}
+
+TEST_CASE("json preferences store migrates only legacy default table widths") {
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+
+    const auto path = std::filesystem::path{directory.path().toStdString()} / "prefs.json";
+    QFile file(QString::fromStdString(path.string()));
+    REQUIRE(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    file.write(
+        R"JSON({"schema_version":4,"column_widths":{"numero_ssa":110,"situacao":80,"localizacao_codigo":120,"setor_emissor":90,"setor_executor":91,"qtd_derivadas":72,"derivada_de":82,"data_cadastro":120,"semana_cadastro":95,"descricao_ssa":360,"solicitante":180,"responsavel_programacao":180,"responsavel_execucao":180,"semana_programada":95,"semana_executada":95}})JSON");
+    file.close();
+
+    const ssa::infra::preferences::JsonUserPreferencesStore store(path);
+    const auto loaded = store.load();
+
+    REQUIRE(loaded.schemaVersion == 6);
+    REQUIRE(loaded.columnWidths.at("numero_ssa") == 98);
+    REQUIRE(loaded.columnWidths.at("situacao") == 60);
+    REQUIRE(loaded.columnWidths.at("localizacao_codigo") == 84);
+    REQUIRE(loaded.columnWidths.at("setor_emissor") == 72);
+    REQUIRE(loaded.columnWidths.at("setor_executor") == 91);
+    REQUIRE(loaded.columnWidths.at("qtd_derivadas") == 70);
+    REQUIRE(loaded.columnWidths.at("derivada_de") == 96);
+    REQUIRE(loaded.columnWidths.at("data_cadastro") == 100);
+    REQUIRE(loaded.columnWidths.at("semana_cadastro") == 84);
+    REQUIRE(loaded.columnWidths.at("descricao_ssa") == 640);
+    REQUIRE(loaded.columnWidths.at("solicitante") == 240);
+    REQUIRE(loaded.columnWidths.at("responsavel_programacao") == 250);
+    REQUIRE(loaded.columnWidths.at("responsavel_execucao") == 250);
+    REQUIRE(loaded.columnWidths.at("semana_programada") == 86);
+    REQUIRE(loaded.columnWidths.at("semana_executada") == 86);
 }
 
 TEST_CASE("json preferences store drops invalid column filters") {

@@ -31,14 +31,20 @@ namespace ssa::ports {
         bool onlyReprogrammed{false};
     };
 
+    struct SavedFilterSnapshot {
+        std::string name;
+        FilterPreferencesSnapshot filters;
+    };
+
     struct UserPreferencesSnapshot {
         std::vector<std::string> visibleColumns;
         std::map<std::string, int> columnWidths;
+        std::vector<SavedFilterSnapshot> savedFilters;
         std::string theme{"gruvbox"};
         std::string density{"compact"};
         std::string sortColumnKey{"numero_ssa"};
         FilterPreferencesSnapshot filters;
-        int schemaVersion{4};
+        int schemaVersion{5};
         int pageSize{domain::kDefaultPageSize};
         int detailsPanelWidth{ports::kDefaultDetailsPanelWidth};
         bool detailsVisible{true};

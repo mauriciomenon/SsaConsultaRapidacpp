@@ -39,6 +39,16 @@ TEST_CASE("column catalog exposes visible and general-search contracts") {
     REQUIRE(derivedCount != nullptr);
     REQUIRE(derivedCount->label == "Qtd Der.");
     REQUIRE(derivedCount->labelFull == "Qtd Derivadas");
+    REQUIRE(ssa::domain::ColumnCatalog::find("numero_ssa")->defaultWidth == 98);
+    REQUIRE(ssa::domain::ColumnCatalog::find("situacao")->defaultWidth == 60);
+    REQUIRE(ssa::domain::ColumnCatalog::find("localizacao_codigo")->defaultWidth == 84);
+    REQUIRE(ssa::domain::ColumnCatalog::find("setor_emissor")->defaultWidth == 72);
+    REQUIRE(ssa::domain::ColumnCatalog::find("setor_executor")->defaultWidth == 72);
+    REQUIRE(ssa::domain::ColumnCatalog::find("descricao_ssa")->defaultWidth == 640);
+    REQUIRE(ssa::domain::ColumnCatalog::find("solicitante")->defaultWidth == 240);
+    REQUIRE(ssa::domain::ColumnCatalog::find("responsavel_programacao")->defaultWidth == 250);
+    REQUIRE(ssa::domain::ColumnCatalog::find("responsavel_execucao")->defaultWidth == 250);
+    REQUIRE(ssa::domain::ColumnCatalog::find("semana_executada")->defaultWidth == 86);
 
     const auto storage = ssa::domain::ColumnCatalog::storageColumns();
     REQUIRE(std::ranges::none_of(storage, [](const ssa::domain::ColumnDef& column) {
@@ -52,7 +62,7 @@ TEST_CASE("column catalog exposes expanded advanced filter fields") {
         return std::ranges::find(keys, key) != keys.end();
     };
 
-    REQUIRE(keys.size() == 14);
+    REQUIRE(keys.size() == 13);
     REQUIRE(containsKey("setor_emissor"));
     REQUIRE(containsKey("setor_executor"));
     REQUIRE(containsKey("solicitante"));
@@ -60,6 +70,7 @@ TEST_CASE("column catalog exposes expanded advanced filter fields") {
     REQUIRE(containsKey("responsavel_execucao"));
     REQUIRE(containsKey("status_execucao_prazo"));
     REQUIRE(containsKey("situacao_da_parcial"));
+    REQUIRE_FALSE(containsKey("execucao_simples"));
     REQUIRE_FALSE(containsKey("equipamento"));
     REQUIRE_FALSE(containsKey("servico_origem"));
     REQUIRE_FALSE(containsKey("sistema_origem"));

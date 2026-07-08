@@ -8,19 +8,52 @@
 #include <QJsonObject>
 
 #include <algorithm>
+#include <array>
 #include <iterator>
 #include <stdexcept>
 
 namespace ssa::infra::preferences {
 
     namespace {
-        constexpr int kCurrentPreferencesSchemaVersion = 4;
+        constexpr int kCurrentPreferencesSchemaVersion = 6;
         constexpr std::string_view kExecutorColumnKey = "setor_executor";
         constexpr std::string_view kDerivedCountColumnKey = "qtd_derivadas";
         constexpr std::array<std::string_view, 3> kLegacyHiddenVisibleColumns{
             "equipamento", "grau_prioridade_emissao", "grau_prioridade_planejamento"};
         constexpr std::array<std::string_view, 1> kLegacyVisibleColumnsToDrop{
             "descricao_localizacao"};
+        struct WidthMigration {
+            std::string_view key;
+            int oldWidth{0};
+            int newWidth{0};
+        };
+        constexpr std::array<WidthMigration, 8> kSchema5WidthMigrations{{
+            {"localizacao_codigo", 120, 104},
+            {"setor_emissor", 90, 82},
+            {"setor_executor", 90, 84},
+            {"data_cadastro", 120, 112},
+            {"semana_cadastro", 95, 90},
+            {"descricao_ssa", 360, 560},
+            {"solicitante", 180, 220},
+            {"responsavel_programacao", 180, 240},
+        }};
+        constexpr std::array<WidthMigration, 15> kSchema6WidthMigrations{{
+            {"numero_ssa", 110, 98},
+            {"situacao", 80, 60},
+            {"localizacao_codigo", 104, 84},
+            {"setor_emissor", 82, 72},
+            {"setor_executor", 84, 72},
+            {"qtd_derivadas", 72, 70},
+            {"derivada_de", 82, 96},
+            {"data_cadastro", 112, 100},
+            {"semana_cadastro", 90, 84},
+            {"descricao_ssa", 560, 640},
+            {"solicitante", 220, 240},
+            {"responsavel_programacao", 240, 250},
+            {"responsavel_execucao", 240, 250},
+            {"semana_programada", 95, 86},
+            {"semana_executada", 95, 86},
+        }};
 
         std::vector<std::string> readVisibleColumns(const QJsonObject& root,
                                                     std::vector<std::string> defaults) {
@@ -78,6 +111,34 @@ namespace ssa::infra::preferences {
             snapshot.filters.quickSector = "IEE3";
         }
 
+        void migrateDefaultColumnWidths(ports::UserPreferencesSnapshot& snapshot) {
+            if (snapshot.schemaVersion >= 5) {
+                return;
+            }
+            for (const auto& migration : kSchema5WidthMigrations) {
+                const auto width = snapshot.columnWidths.find(std::string{migration.key});
+                if (width != snapshot.columnWidths.end() && width->second == migration.oldWidth) {
+                    width->second = migration.newWidth;
+                }
+            }
+            if (const auto width = snapshot.columnWidths.find("responsavel_execucao");
+                width != snapshot.columnWidths.end() && width->second == 180) {
+                width->second = 240;
+            }
+        }
+
+        void migrateSchema6ColumnWidths(ports::UserPreferencesSnapshot& snapshot) {
+            if (snapshot.schemaVersion >= kCurrentPreferencesSchemaVersion) {
+                return;
+            }
+            for (const auto& migration : kSchema6WidthMigrations) {
+                const auto width = snapshot.columnWidths.find(std::string{migration.key});
+                if (width != snapshot.columnWidths.end() && width->second == migration.oldWidth) {
+                    width->second = migration.newWidth;
+                }
+            }
+        }
+
         std::map<std::string, int> readColumnWidths(const QJsonObject& root) {
             std::map<std::string, int> widths;
             const QJsonObject columnWidths = root.value("column_widths").toObject();
@@ -124,6 +185,48 @@ namespace ssa::infra::preferences {
             return columnWidths;
         }
 
+        std::vector<ports::SavedFilterSnapshot> readSavedFilters(const QJsonObject& root) {
+            std::vector<ports::SavedFilterSnapshot> filters;
+            const QJsonArray savedFilters = root.value("saved_filters").toArray();
+            filters.reserve(static_cast<std::size_t>(savedFilters.size()));
+            for (const auto& value : savedFilters) {
+                if (!value.isObject()) {
+                    continue;
+                }
+                const auto object = value.toObject();
+                auto name = object.value("name").toString().trimmed().toStdString();
+                if (name.empty()) {
+                    continue;
+                }
+                ports::SavedFilterSnapshot saved;
+                saved.name = std::move(name);
+                saved.filters = FilterPreferencesJsonCodec{}.filtersFromObject(
+                    object.value("filters").toObject(), saved.filters);
+                filters.push_back(std::move(saved));
+            }
+            std::ranges::sort(filters, [](const auto& lhs, const auto& rhs) {
+                return QString::fromStdString(lhs.name).localeAwareCompare(
+                           QString::fromStdString(rhs.name)) < 0;
+            });
+            return filters;
+        }
+
+        QJsonArray savedFiltersToJson(const std::vector<ports::SavedFilterSnapshot>& filters) {
+            QJsonArray savedFilters;
+            for (const auto& filter : filters) {
+                if (filter.name.empty()) {
+                    continue;
+                }
+                QJsonObject item;
+                QJsonObject filterObject;
+                item.insert("name", QString::fromStdString(filter.name));
+                FilterPreferencesJsonCodec{}.writeFilters(filterObject, filter.filters);
+                item.insert("filters", filterObject);
+                savedFilters.append(item);
+            }
+            return savedFilters;
+        }
+
         void writeWindowPreferences(QJsonObject& root,
                                     const ports::UserPreferencesSnapshot& snapshot) {
             root.insert("schema_version", snapshot.schemaVersion);
@@ -141,12 +244,13 @@ namespace ssa::infra::preferences {
             root.insert("sort_ascending", snapshot.sortAscending);
             root.insert("visible_columns", visibleColumnsToJson(snapshot.visibleColumns));
             root.insert("column_widths", columnWidthsToJson(snapshot.columnWidths));
+            root.insert("saved_filters", savedFiltersToJson(snapshot.savedFilters));
         }
 
     } // namespace
 
     ports::UserPreferencesSnapshot
-    UserPreferencesJsonCodec::snapshotFromDocument(const QJsonDocument& document) const {
+    UserPreferencesJsonCodec::snapshotFromDocument(const QJsonDocument& document) {
         if (!document.isObject()) {
             throw std::runtime_error("invalid preferences json");
         }
@@ -169,13 +273,16 @@ namespace ssa::infra::preferences {
             readVisibleColumns(root, domain::ColumnCatalog::defaultVisibleKeys());
         migrateDerivedCountColumn(snapshot);
         migrateDefaultQuickSector(snapshot);
-        snapshot.schemaVersion = std::max(snapshot.schemaVersion, kCurrentPreferencesSchemaVersion);
         snapshot.columnWidths = readColumnWidths(root);
+        snapshot.savedFilters = readSavedFilters(root);
+        migrateDefaultColumnWidths(snapshot);
+        migrateSchema6ColumnWidths(snapshot);
+        snapshot.schemaVersion = std::max(snapshot.schemaVersion, kCurrentPreferencesSchemaVersion);
         return snapshot;
     }
 
-    QJsonDocument UserPreferencesJsonCodec::documentFromSnapshot(
-        const ports::UserPreferencesSnapshot& snapshot) const {
+    QJsonDocument
+    UserPreferencesJsonCodec::documentFromSnapshot(const ports::UserPreferencesSnapshot& snapshot) {
         QJsonObject root;
         writeWindowPreferences(root, snapshot);
         writeColumnPreferences(root, snapshot);
