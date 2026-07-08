@@ -3,7 +3,7 @@ pragma Singleton
 import QtQuick
 
 QtObject {
-    property string themeName: "gruvbox"
+    property string themeName: "ssa-dark"
 
     readonly property bool gruvbox: themeName === "gruvbox"
 
