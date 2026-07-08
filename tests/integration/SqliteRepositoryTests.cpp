@@ -13,6 +13,7 @@
 #include <filesystem>
 #include <sqlite3.h>
 #include <string>
+#include <vector>
 
 namespace {
 
