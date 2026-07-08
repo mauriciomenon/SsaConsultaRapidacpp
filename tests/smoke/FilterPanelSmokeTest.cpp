@@ -950,7 +950,26 @@ namespace {
             QVERIFY(!filters.statusShortcutSelected("STE"));
         }
 
-        void clear_status_shortcuts_preserves_status_exclusions() {
+        void status_shortcut_from_existing_exclusion_disables_code() {
+            auto repository = std::make_shared<FilterPanelRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::FilterPanelViewModel filters(service);
+            auto* advanced =
+                qobject_cast<ssa::presentation::FilterPanelAdvancedViewModel*>(filters.advanced());
+            QVERIFY(advanced != nullptr);
+            auto* text =
+                qobject_cast<ssa::presentation::AdvancedTextFilterViewModel*>(advanced->text());
+            QVERIFY(text != nullptr);
+
+            text->setTextFilter("situacao", "!STE");
+
+            filters.toggleStatusShortcut("STE");
+
+            QCOMPARE(text->textFilter("situacao"), QString(""));
+            QVERIFY(!filters.statusShortcutSelected("STE"));
+        }
+
+        void clear_status_shortcuts_removes_shortcut_exclusions() {
             auto repository = std::make_shared<FilterPanelRepository>();
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
             ssa::presentation::FilterPanelViewModel filters(service);
@@ -968,7 +987,7 @@ namespace {
 
             filters.clearStatusShortcuts();
 
-            QCOMPARE(text->textFilter("situacao"), QString("!STE"));
+            QCOMPARE(text->textFilter("situacao"), QString(""));
             QVERIFY(!filters.columnFilters().contains("situacao"));
             QVERIFY(!filters.statusShortcutSelected("APV"));
             QVERIFY(!filters.statusShortcutSelected("STE"));

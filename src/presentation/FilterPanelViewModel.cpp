@@ -345,7 +345,9 @@ namespace ssa::presentation {
                 : advancedExpression);
         query::TextFilterTokenSet remainingTokens;
         for (const auto& token : tokens.ordered) {
-            if (token.filterOperator == query::TextFilterOperator::Different) {
+            const bool isShortcutValue = std::ranges::any_of(
+                kStatusShortcutValues, [&token](const auto value) { return token.value == value; });
+            if (!isShortcutValue) {
                 query::addTextFilterValue(remainingTokens, token.value, token.filterOperator);
             }
         }
