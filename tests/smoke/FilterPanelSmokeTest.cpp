@@ -1,3 +1,4 @@
+#include "domain/ColumnCatalog.h"
 #include "domain/SsaTypes.h"
 #include "presentation/AdvancedMacroFilterViewModel.h"
 #include "presentation/AdvancedSectorHierarchyViewModel.h"
@@ -159,6 +160,21 @@ namespace {
         Q_OBJECT
 
       private slots:
+        void column_filter_rows_start_with_catalog_labels_and_empty_values() {
+            ssa::presentation::filterpanel::FilterPanelState state;
+            ssa::presentation::ColumnFilterViewModel columns(state);
+
+            const auto rows = columns.rows();
+            QVERIFY(!rows.isEmpty());
+
+            const auto first = rows.front().toMap();
+            const auto key = first.value("key").toString().toStdString();
+            const auto* column = ssa::domain::ColumnCatalog::find(key);
+            QVERIFY(column != nullptr);
+            QCOMPARE(first.value("label").toString(), QString::fromStdString(column->label));
+            QCOMPARE(first.value("value").toString(), QString{});
+        }
+
         void quick_sector_options_are_loaded_from_distinct_executor_values() {
             auto repository = std::make_shared<FilterPanelRepository>();
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
