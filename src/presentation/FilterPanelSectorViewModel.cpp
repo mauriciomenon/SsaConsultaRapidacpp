@@ -1,6 +1,7 @@
 #include "presentation/FilterPanelSectorViewModel.h"
 
 #include "domain/ColumnCatalog.h"
+#include "presentation/FilterPanelCanonicalizer.h"
 #include "query/TextFilterToken.h"
 
 #include <QSet>
@@ -50,7 +51,7 @@ namespace ssa::presentation {
 
     void FilterPanelSectorViewModel::setQuickSector(const QString& value) {
         const auto normalizedValue = value.trimmed();
-        if (!state_.setExecutorShortcut(normalizedValue)) {
+        if (!filterpanel::setExecutorShortcut(state_, normalizedValue)) {
             return;
         }
         if (selectorValueSet_.contains(quickSector())) {

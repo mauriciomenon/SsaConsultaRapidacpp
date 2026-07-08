@@ -1,6 +1,7 @@
 #include "presentation/FilterPanelViewModel.h"
 
 #include "domain/ColumnCatalog.h"
+#include "presentation/FilterPanelCanonicalizer.h"
 #include "presentation/FilterPanelStateHelpers.h"
 #include "query/SsaQueryService.h"
 #include "query/TextFilterToken.h"
@@ -63,7 +64,7 @@ namespace ssa::presentation {
         connect(advanced_, &FilterPanelAdvancedViewModel::applyRequested, this,
                 &FilterPanelViewModel::applyRequested);
         connect(&columns_, &ColumnFilterViewModel::stateChanged, this, [this]() {
-            if (state_.clearStatusExclusionIfStatusIncludesExcluded()) {
+            if (filterpanel::clearStatusExclusionIfStatusIncludesExcluded(state_)) {
                 sector_.refreshFromState();
             }
             advanced_->refreshFromState();
@@ -132,7 +133,7 @@ namespace ssa::presentation {
             return;
         }
         sector_.setExcludeScaSesSte(value);
-        if (state_.clearStatusExclusionIfStatusIncludesExcluded()) {
+        if (filterpanel::clearStatusExclusionIfStatusIncludesExcluded(state_)) {
             sector_.refreshFromState();
         }
         publishFilterStateChange();
@@ -454,7 +455,7 @@ namespace ssa::presentation {
         if (!state_.setColumnFilters(std::move(filters))) {
             return;
         }
-        if (state_.clearStatusExclusionIfStatusIncludesExcluded()) {
+        if (filterpanel::clearStatusExclusionIfStatusIncludesExcluded(state_)) {
             sector_.refreshFromState();
         }
         advanced_->refreshFromState();
@@ -614,8 +615,9 @@ namespace ssa::presentation {
     }
 
     bool FilterPanelViewModel::normalizeAdvancedFilterOverlap() {
-        const bool columnsChanged = state_.removeColumnFiltersShadowedByAdvancedText();
-        const bool exclusionChanged = state_.clearStatusExclusionIfStatusIncludesExcluded();
+        const bool columnsChanged = filterpanel::removeColumnFiltersShadowedByAdvancedText(state_);
+        const bool exclusionChanged =
+            filterpanel::clearStatusExclusionIfStatusIncludesExcluded(state_);
         if (columnsChanged) {
             columns_.refreshFromState();
         }

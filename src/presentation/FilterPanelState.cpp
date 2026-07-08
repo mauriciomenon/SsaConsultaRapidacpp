@@ -1,12 +1,11 @@
 #include "presentation/FilterPanelState.h"
 
 #include "domain/ColumnCatalog.h"
+#include "presentation/FilterPanelCanonicalizer.h"
 #include "presentation/FilterPanelStateHelpers.h"
-#include "query/TextFilterToken.h"
 
 #include <QStringList>
 
-#include <algorithm>
 #include <map>
 #include <string>
 #include <utility>
@@ -129,89 +128,6 @@ namespace ssa::presentation::filterpanel {
         return columnFilters_.erase(normalizedKey) > 0;
     }
 
-    bool FilterPanelState::removeColumnFiltersShadowedByAdvancedText() {
-        bool changed = false;
-        for (const auto& [key, value] : advanced_.textFilters()) {
-            changed = columnFilters_.erase(key) > 0 || changed;
-        }
-        return changed;
-    }
-
-    bool FilterPanelState::clearStatusExclusionIfStatusIncludesExcluded() {
-        if (!excludeScaSesSte_) {
-            return false;
-        }
-
-        const auto statusKey = std::string{domain::ColumnCatalog::statusColumnKey()};
-        query::TextFilterTokenSet tokens = query::parseTextFilterTokens(
-            advanced_.textFilter(QString::fromStdString(statusKey)).toStdString());
-        if (const auto columnFilter = columnFilters_.find(statusKey);
-            columnFilter != columnFilters_.end()) {
-            const auto columnTokens = query::parseTextFilterTokens(columnFilter->second);
-            for (const auto& token : columnTokens.ordered) {
-                query::addTextFilterValue(tokens, token.value, token.filterOperator);
-            }
-        }
-
-        const auto excluded = domain::ColumnCatalog::excludedStatusCodes();
-        const bool includesExcluded =
-            std::ranges::any_of(tokens.ordered, [excluded](const auto& token) {
-                return token.filterOperator == query::TextFilterOperator::Equals &&
-                       std::ranges::find(excluded, std::string_view{token.value}) != excluded.end();
-            });
-        if (!includesExcluded) {
-            return false;
-        }
-        excludeScaSesSte_ = false;
-        return true;
-    }
-
-    bool FilterPanelState::foldQuickSectorIntoAdvancedExecutor() {
-        const auto executorKey =
-            QString::fromStdString(std::string{domain::ColumnCatalog::executorColumnKey()});
-        const auto executorExpression = advanced_.textFilter(executorKey);
-        if (quickSector_.trimmed().isEmpty() || executorExpression.trimmed().isEmpty()) {
-            return false;
-        }
-        const auto mergedExpression =
-            QString::fromStdString(filterpanel::executorFilterWithQuickSector(
-                executorExpression.toStdString(), quickSector_.toStdString()));
-        advanced_.setTextFilter(executorKey, mergedExpression);
-        quickSector_.clear();
-        return true;
-    }
-
-    bool FilterPanelState::setExecutorShortcut(QString value) {
-        value = value.trimmed().toUpper();
-        const auto executorKey =
-            QString::fromStdString(std::string{domain::ColumnCatalog::executorColumnKey()});
-        bool changed = setQuickSector({});
-        if (value.isEmpty()) {
-            return clearExecutorShortcut() || changed;
-        }
-        query::TextFilterTokenSet tokens;
-        query::addTextFilterValue(tokens, value.toStdString(), query::TextFilterOperator::Equals);
-        changed = advanced_.setTextFilter(
-                      executorKey, QString::fromStdString(query::joinTextFilterTokens(tokens))) ||
-                  changed;
-        changed = removeColumnFilter(executorKey) || changed;
-        return changed;
-    }
-
-    bool FilterPanelState::clearExecutorShortcut() {
-        const auto executorKey =
-            QString::fromStdString(std::string{domain::ColumnCatalog::executorColumnKey()});
-        bool changed = setQuickSector({});
-        const auto tokens =
-            query::parseTextFilterTokens(advanced_.textFilter(executorKey).toStdString());
-        if (tokens.ordered.size() == 1 &&
-            tokens.ordered.front().filterOperator == query::TextFilterOperator::Equals) {
-            changed = advanced_.removeTextFilter(executorKey) || changed;
-        }
-        changed = removeColumnFilter(executorKey) || changed;
-        return changed;
-    }
-
     domain::AdvancedFilterSpec FilterPanelState::advancedFilters() const {
         return advanced_.filters();
     }
@@ -247,19 +163,9 @@ namespace ssa::presentation::filterpanel {
         quickSector_ = nextQuickSector;
         excludeScaSesSte_ = nextExcludeScaSesSte;
         columnFilters_ = nextColumnFilters;
-        if (!quickSector_.trimmed().isEmpty()) {
-            if (advanced_
-                    .textFilter(QString::fromStdString(
-                        std::string{domain::ColumnCatalog::executorColumnKey()}))
-                    .trimmed()
-                    .isEmpty()) {
-                setExecutorShortcut(quickSector_);
-            } else {
-                foldQuickSectorIntoAdvancedExecutor();
-            }
-        }
-        removeColumnFiltersShadowedByAdvancedText();
-        clearStatusExclusionIfStatusIncludesExcluded();
+        foldLegacyQuickSector(*this);
+        removeColumnFiltersShadowedByAdvancedText(*this);
+        clearStatusExclusionIfStatusIncludesExcluded(*this);
         return true;
     }
 

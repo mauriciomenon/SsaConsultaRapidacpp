@@ -150,6 +150,7 @@ add_library(
   src/presentation/FilterPanelDistinctValueRequestBuilder.cpp
   src/presentation/FilterPanelSectorViewModel.cpp
   src/presentation/FilterPanelAdvancedState.cpp
+  src/presentation/FilterPanelCanonicalizer.cpp
   src/presentation/FilterPanelStateHelpers.cpp
   src/presentation/FilterPanelState.cpp
   src/presentation/DetailsViewModel.cpp
