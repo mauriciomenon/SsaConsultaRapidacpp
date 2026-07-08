@@ -34,16 +34,36 @@ jobs:
       # Checkout project source
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
-      # Scan code using project's configuration on https://semgrep.dev/manage
-      - uses: returntocorp/semgrep-action@fcd5ab7459e8d91cb1777481980d1b18b4fc6735
+      # Managed scan uses Semgrep.dev secrets and runs only on trusted events.
+      - name: Semgrep managed scan
+        if: github.event_name != 'pull_request'
+        uses: returntocorp/semgrep-action@fcd5ab7459e8d91cb1777481980d1b18b4fc6735
         with:
           publishToken: ${{ secrets.SEMGREP_APP_TOKEN }}
           publishDeployment: ${{ secrets.SEMGREP_DEPLOYMENT_ID }}
           generateSarif: "1"
 
-      # Upload SARIF file generated in previous step
+      # Pull requests from forks do not receive repository secrets.
+      - name: Semgrep pull request scan
+        if: github.event_name == 'pull_request'
+        uses: returntocorp/semgrep-action@fcd5ab7459e8d91cb1777481980d1b18b4fc6735
+        with:
+          config: p/c
+          generateSarif: "1"
+
+      - name: Check SARIF file
+        id: sarif
+        if: always()
+        run: |
+          if [[ -f semgrep.sarif ]]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Upload SARIF file generated in previous step.
       - name: Upload SARIF file
         uses: github/codeql-action/upload-sarif@b0c4fd77f6c559021d78430ec4d0d169ae74a4eb
         with:
           sarif_file: semgrep.sarif
-        if: always()
+        if: always() && steps.sarif.outputs.exists == 'true'
