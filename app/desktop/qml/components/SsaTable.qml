@@ -78,8 +78,8 @@ Rectangle {
 
                         Text {
                             anchors.fill: parent
-                            anchors.leftMargin: 10
-                            anchors.rightMargin: 10
+                            anchors.leftMargin: 8
+                            anchors.rightMargin: 8
                             anchors.topMargin: 4
                             anchors.bottomMargin: 4
                             text: headerCell.effectiveLabel + (headerCell.modelData.filtered === true ? " [f]" : "") + (headerCell.modelData.sorted ? (headerCell.modelData.sortAscending ? "  ^" : "  v") : "")
