@@ -22,6 +22,16 @@ Options:
 EOF
 }
 
+require_option_value() {
+  local option="$1"
+  local value="${2-}"
+  if [[ -z "${value}" || "${value}" == --* ]]; then
+    echo "${option} requires a value." >&2
+    show_help >&2
+    exit 1
+  fi
+}
+
 if [[ "${1-}" == "--help" || "${1-}" == "-h" ]]; then
   show_help
   exit 0
@@ -52,26 +62,32 @@ launch_mode="screenshot"
 while [[ $# -gt 0 ]]; do
   case "${1}" in
     --project-root)
+      require_option_value "${1}" "${2-}"
       project_root="${2}"
       shift 2
       ;;
     --preset)
+      require_option_value "${1}" "${2-}"
       preset="${2}"
       shift 2
       ;;
     --config-src)
+      require_option_value "${1}" "${2-}"
       custom_config_src="${2}"
       shift 2
       ;;
     --screenshot)
+      require_option_value "${1}" "${2-}"
       screenshot="${2}"
       shift 2
       ;;
     --runtime-dir)
+      require_option_value "${1}" "${2-}"
       runtime_dir="${2}"
       shift 2
       ;;
     --config-dir)
+      require_option_value "${1}" "${2-}"
       config_dir="${2}"
       shift 2
       ;;
