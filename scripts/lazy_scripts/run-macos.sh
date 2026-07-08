@@ -30,6 +30,16 @@ if [[ $# -lt 1 ]]; then
   exit 1
 fi
 
+require_option_value() {
+  local option="$1"
+  local value="${2-}"
+  if [[ -z "${value}" || "${value}" == --* ]]; then
+    echo "Missing value for ${option}." >&2
+    show_help >&2
+    exit 1
+  fi
+}
+
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/../.." && pwd)"
 db_path="$1"
@@ -43,18 +53,22 @@ screenshot=""
 while [[ $# -gt 0 ]]; do
   case "${1}" in
     --project-root)
+      require_option_value "${1}" "${2-}"
       project_root="${2}"
       shift 2
       ;;
     --preset)
+      require_option_value "${1}" "${2-}"
       preset="${2}"
       shift 2
       ;;
     --config-dir)
+      require_option_value "${1}" "${2-}"
       config_dir="${2}"
       shift 2
       ;;
     --screenshot)
+      require_option_value "${1}" "${2-}"
       screenshot="${2}"
       shift 2
       ;;
