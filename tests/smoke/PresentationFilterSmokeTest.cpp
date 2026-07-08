@@ -13,6 +13,8 @@
 #include <QVariantMap>
 #include <QtTest>
 
+#include <algorithm>
+#include <iterator>
 #include <memory>
 #include <string>
 
@@ -338,9 +340,10 @@ namespace {
             QVERIFY(keysText != nullptr);
 
             QStringList keys;
-            for (const auto& row : keysText->rows()) {
-                keys.push_back(row.toMap().value(QStringLiteral("key")).toString());
-            }
+            const auto rows = keysText->rows();
+            std::ranges::transform(rows, std::back_inserter(keys), [](const auto& row) {
+                return row.toMap().value(QStringLiteral("key")).toString();
+            });
             QCOMPARE(keys.size(), 13);
 
             for (const auto& key : keys) {
