@@ -24,6 +24,18 @@ namespace {
     using ssa::tests::presentation_smoke::FakePreferences;
     using ssa::tests::presentation_smoke::FakeRepository;
 
+    [[nodiscard]] QVariantMap
+    cardStateFor(const ssa::presentation::AdvancedTextFilterViewModel& textFilters,
+                 const QString& key) {
+        for (const auto& state : textFilters.cardStates()) {
+            const auto map = state.toMap();
+            if (map.value(QStringLiteral("key")).toString() == key) {
+                return map;
+            }
+        }
+        return {};
+    }
+
     class PresentationFilterSmokeTest final : public QObject {
         Q_OBJECT
 
@@ -311,6 +323,74 @@ namespace {
 
             QCOMPARE(text->textFilter("situacao"), QString("=SCA,=SES,!STE"));
             QCOMPARE(text->operatorModeFor("situacao"), QString("mixed"));
+        }
+
+        void every_advanced_text_filter_syncs_column_summary_and_request() {
+            auto keysRepository = std::make_shared<FakeRepository>();
+            auto keysService = std::make_shared<ssa::query::SsaQueryService>(keysRepository);
+            auto keysCommands = std::make_shared<FakeCommands>();
+            ssa::presentation::MainViewModel keysModel(keysService, keysCommands);
+            auto* keysAdvanced = qobject_cast<ssa::presentation::FilterPanelAdvancedViewModel*>(
+                keysModel.browse()->filters()->advanced());
+            QVERIFY(keysAdvanced != nullptr);
+            auto* keysText =
+                qobject_cast<ssa::presentation::AdvancedTextFilterViewModel*>(keysAdvanced->text());
+            QVERIFY(keysText != nullptr);
+
+            QStringList keys;
+            for (const auto& row : keysText->rows()) {
+                keys.push_back(row.toMap().value(QStringLiteral("key")).toString());
+            }
+            QCOMPARE(keys.size(), 13);
+
+            for (const auto& key : keys) {
+                auto repository = std::make_shared<FakeRepository>();
+                auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+                auto commands = std::make_shared<FakeCommands>();
+                ssa::presentation::MainViewModel model(service, commands);
+                auto* advanced = qobject_cast<ssa::presentation::FilterPanelAdvancedViewModel*>(
+                    model.browse()->filters()->advanced());
+                QVERIFY(advanced != nullptr);
+                auto* text =
+                    qobject_cast<ssa::presentation::AdvancedTextFilterViewModel*>(advanced->text());
+                QVERIFY(text != nullptr);
+
+                model.browse()->filters()->setColumnFilters({{key.toStdString(), "OLD"}});
+                text->setTextFilter(key, "=IN,!OUT");
+
+                QVERIFY2(!model.browse()->filters()->columnFilters().contains(key.toStdString()),
+                         qPrintable(QString("column filter was not cleared for %1").arg(key)));
+                QCOMPARE(text->textFilter(key), QString("=IN,!OUT"));
+                QCOMPARE(cardStateFor(*text, key).value("textFilter").toString(),
+                         QString("=IN,!OUT"));
+
+                QTRY_VERIFY_WITH_TIMEOUT(
+                    !activeFilterEntry(model.browse()->filters(), "advanced_text", key).isEmpty(),
+                    1000);
+                const auto entry =
+                    activeFilterEntry(model.browse()->filters(), "advanced_text", key);
+                QVERIFY2(!entry.isEmpty(),
+                         qPrintable(QString("summary entry missing for %1").arg(key)));
+
+                model.browse()->apply();
+                QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{1}, 1000);
+                auto request = repository->requests().back();
+                QVERIFY2(!request.columnFilters.contains(key.toStdString()),
+                         qPrintable(QString("request still has column filter for %1").arg(key)));
+                QVERIFY2(request.advancedFilters.textFilters.contains(key.toStdString()),
+                         qPrintable(QString("request missing advanced filter for %1").arg(key)));
+                QCOMPARE(QString::fromStdString(
+                             request.advancedFilters.textFilters.at(key.toStdString())),
+                         QString("=IN,!OUT"));
+
+                QCOMPARE(model.browse()->filters()->removeActiveFilter(entry), true);
+                QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{2}, 1000);
+                request = repository->requests().back();
+                QVERIFY2(!request.advancedFilters.textFilters.contains(key.toStdString()),
+                         qPrintable(QString("advanced filter was not removed for %1").arg(key)));
+                QVERIFY2(!request.columnFilters.contains(key.toStdString()),
+                         qPrintable(QString("column filter was restored for %1").arg(key)));
+            }
         }
 
         void advanced_text_filter_clear_preserves_selected_operator() {
