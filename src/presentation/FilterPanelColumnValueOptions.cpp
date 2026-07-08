@@ -1,8 +1,5 @@
 #include "presentation/FilterPanelColumnValueOptions.h"
 
-#include "domain/ColumnValuePriorityPolicy.h"
-
-#include <algorithm>
 #include <map>
 #include <string>
 #include <utility>
@@ -14,9 +11,7 @@ namespace ssa::presentation {
 
         constexpr std::size_t kMaxColumnValueOptionCacheEntries = 24;
 
-        QStringList toColumnValueDisplayList(const std::vector<std::string>& values) {
-            auto orderedValues = values;
-            std::ranges::sort(orderedValues, domain::columnValueLessForDisplay);
+        QStringList toColumnValueDisplayList(const std::vector<std::string>& orderedValues) {
             QStringList displayValues;
             displayValues.reserve(static_cast<int>(orderedValues.size()));
             for (const auto& value : orderedValues) {

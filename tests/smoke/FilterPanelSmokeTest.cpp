@@ -293,7 +293,7 @@ namespace {
             }));
         }
 
-        void column_value_options_display_priority_then_alphabetical_values() {
+        void column_value_options_preserve_repository_display_order() {
             ssa::presentation::FilterPanelColumnValueOptions options;
 
             options.store({"MEL3", "ANA", "IEE2", "IEE3", "MEL1", "BRUNO", "IEE4", "IEE1", "MEG2"},
@@ -301,7 +301,7 @@ namespace {
 
             QCOMPARE(options.optionsFor("setor_executor"),
                      QStringList(
-                         {"IEE3", "IEE1", "IEE2", "IEE4", "MEL1", "MEL3", "ANA", "BRUNO", "MEG2"}));
+                         {"MEL3", "ANA", "IEE2", "IEE3", "MEL1", "BRUNO", "IEE4", "IEE1", "MEG2"}));
         }
 
         void advanced_text_rows_cover_expanded_filter_fields() {
