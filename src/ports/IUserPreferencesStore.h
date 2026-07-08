@@ -40,7 +40,7 @@ namespace ssa::ports {
         std::vector<std::string> visibleColumns;
         std::map<std::string, int> columnWidths;
         std::vector<SavedFilterSnapshot> savedFilters;
-        std::string theme{"gruvbox"};
+        std::string theme{"ssa-dark"};
         std::string density{"compact"};
         std::string sortColumnKey{"numero_ssa"};
         FilterPreferencesSnapshot filters;

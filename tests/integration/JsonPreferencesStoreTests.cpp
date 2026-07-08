@@ -151,7 +151,7 @@ TEST_CASE("json preferences store migrates legacy derived count visibility") {
     const ssa::infra::preferences::JsonUserPreferencesStore store(path);
     const auto loaded = store.load();
 
-    REQUIRE(loaded.schemaVersion == 8);
+    REQUIRE(loaded.schemaVersion == 9);
     REQUIRE(loaded.filters.quickSector == "IEE3");
     REQUIRE(loaded.visibleColumns ==
             std::vector<std::string>{"numero_ssa", "setor_executor", "qtd_derivadas", "situacao"});
@@ -171,7 +171,7 @@ TEST_CASE("json preferences store restores default quick sector when it is alone
     const ssa::infra::preferences::JsonUserPreferencesStore store(path);
     const auto loaded = store.load();
 
-    REQUIRE(loaded.schemaVersion == 8);
+    REQUIRE(loaded.schemaVersion == 9);
     REQUIRE(loaded.filters.quickSector == "IEE3");
 }
 
@@ -189,7 +189,7 @@ TEST_CASE("json preferences store keeps empty quick sector when other filters ex
     const ssa::infra::preferences::JsonUserPreferencesStore store(path);
     const auto loaded = store.load();
 
-    REQUIRE(loaded.schemaVersion == 8);
+    REQUIRE(loaded.schemaVersion == 9);
     REQUIRE(loaded.filters.quickSector.empty());
     REQUIRE(loaded.filters.searchText == "manual");
 }
@@ -208,14 +208,14 @@ TEST_CASE("json preferences store migrates only legacy default table widths") {
     const ssa::infra::preferences::JsonUserPreferencesStore store(path);
     const auto loaded = store.load();
 
-    REQUIRE(loaded.schemaVersion == 8);
+    REQUIRE(loaded.schemaVersion == 9);
     REQUIRE(loaded.columnWidths.at("numero_ssa") == 98);
     REQUIRE(loaded.columnWidths.at("situacao") == 60);
     REQUIRE(loaded.columnWidths.at("localizacao_codigo") == 84);
     REQUIRE(loaded.columnWidths.at("setor_emissor") == 72);
     REQUIRE(loaded.columnWidths.at("setor_executor") == 91);
     REQUIRE(loaded.columnWidths.at("qtd_derivadas") == 70);
-    REQUIRE(loaded.columnWidths.at("derivada_de") == 90);
+    REQUIRE(loaded.columnWidths.at("derivada_de") == 74);
     REQUIRE(loaded.columnWidths.at("data_cadastro") == 100);
     REQUIRE(loaded.columnWidths.at("semana_cadastro") == 84);
     REQUIRE(loaded.columnWidths.at("descricao_ssa") == 640);
@@ -224,6 +224,24 @@ TEST_CASE("json preferences store migrates only legacy default table widths") {
     REQUIRE(loaded.columnWidths.at("responsavel_execucao") == 250);
     REQUIRE(loaded.columnWidths.at("semana_programada") == 86);
     REQUIRE(loaded.columnWidths.at("semana_executada") == 86);
+}
+
+TEST_CASE("json preferences store migrates legacy default visible column order") {
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+
+    const auto path = std::filesystem::path{directory.path().toStdString()} / "prefs.json";
+    QFile file(QString::fromStdString(path.string()));
+    REQUIRE(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    file.write(
+        R"JSON({"schema_version":8,"visible_columns":["numero_ssa","situacao","derivada_de","localizacao_codigo","semana_cadastro","data_cadastro","descricao_ssa","descricao_execucao","setor_emissor","setor_executor","qtd_derivadas","solicitante","responsavel_programacao","responsavel_execucao","semana_programada","semana_executada"]})JSON");
+    file.close();
+
+    const ssa::infra::preferences::JsonUserPreferencesStore store(path);
+    const auto loaded = store.load();
+
+    REQUIRE(loaded.schemaVersion == 9);
+    REQUIRE(loaded.visibleColumns == ssa::domain::ColumnCatalog::defaultVisibleKeys());
 }
 
 TEST_CASE("json preferences store compacts oversized derivation column width") {
@@ -240,8 +258,8 @@ TEST_CASE("json preferences store compacts oversized derivation column width") {
     const ssa::infra::preferences::JsonUserPreferencesStore store(path);
     const auto loaded = store.load();
 
-    REQUIRE(loaded.schemaVersion == 8);
-    REQUIRE(loaded.columnWidths.at("derivada_de") == 90);
+    REQUIRE(loaded.schemaVersion == 9);
+    REQUIRE(loaded.columnWidths.at("derivada_de") == 74);
     REQUIRE(loaded.columnWidths.at("descricao_ssa") == 640);
 }
 

@@ -22,6 +22,24 @@ namespace ssa::domain {
             "semana_cadastro", "semana_programada", "semana_executada"};
         constexpr std::array<std::string_view, 2> kReprogrammingColumnKeys{
             "num_reprogramacoes", "total_de_reprogramacoes"};
+        constexpr std::array<std::string_view, 16> kDefaultVisibleColumnKeys{{
+            "numero_ssa",
+            "situacao",
+            "localizacao_codigo",
+            "setor_emissor",
+            "setor_executor",
+            "qtd_derivadas",
+            "descricao_ssa",
+            "data_cadastro",
+            "derivada_de",
+            "semana_cadastro",
+            "solicitante",
+            "responsavel_programacao",
+            "responsavel_execucao",
+            "semana_programada",
+            "semana_executada",
+            "descricao_execucao",
+        }};
         struct AdvancedFilterColumnDef {
             std::string_view key;
             std::string_view label;
@@ -49,7 +67,7 @@ namespace ssa::domain {
             {"id", "ID", "", Integer, false, false, 80},
             {"numero_ssa", "No SSA", "", Text, true, true, 98},
             {"situacao", "Sit.", "Situacao", Text, true, true, 60},
-            {"derivada_de", "Der. de", "Derivada da SSA:", Text, true, true, 90},
+            {"derivada_de", "Der. de", "Derivada da SSA:", Text, true, true, 74},
             {"localizacao_codigo", "Loc.", "Localizacao", Text, true, true, 84},
             {"descricao_localizacao", "Desc. Loc.", "Descricao Local", Text, false, true, 220},
             {"equipamento", "Equip.", "Equipamento", Text, false, true, 150},
@@ -194,13 +212,22 @@ namespace ssa::domain {
 
     std::vector<ColumnDef> ColumnCatalog::defaultVisible() {
         std::vector<ColumnDef> result;
-        std::ranges::copy_if(kColumns, std::back_inserter(result),
-                             [](const ColumnDef& column) { return column.defaultVisible; });
+        result.reserve(kDefaultVisibleColumnKeys.size());
+        for (const auto key : kDefaultVisibleColumnKeys) {
+            if (const auto* column = find(key); column != nullptr && column->defaultVisible) {
+                result.push_back(*column);
+            }
+        }
         return result;
     }
 
     std::vector<std::string> ColumnCatalog::defaultVisibleKeys() {
-        return keysMatching([](const ColumnDef& column) { return column.defaultVisible; });
+        std::vector<std::string> result;
+        result.reserve(kDefaultVisibleColumnKeys.size());
+        for (const auto key : kDefaultVisibleColumnKeys) {
+            result.emplace_back(key);
+        }
+        return result;
     }
 
     std::vector<std::string> ColumnCatalog::visibleKeysOrDefault(std::vector<std::string> keys) {

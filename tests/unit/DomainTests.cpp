@@ -27,6 +27,12 @@ TEST_CASE("column catalog exposes visible and general-search contracts") {
     REQUIRE_FALSE(ssa::domain::ColumnCatalog::contains("unknown_column"));
 
     REQUIRE(std::ranges::find(visible, "qtd_derivadas") != visible.end());
+    REQUIRE(visible == std::vector<std::string>{
+                           "numero_ssa", "situacao", "localizacao_codigo", "setor_emissor",
+                           "setor_executor", "qtd_derivadas", "descricao_ssa", "data_cadastro",
+                           "derivada_de", "semana_cadastro", "solicitante",
+                           "responsavel_programacao", "responsavel_execucao", "semana_programada",
+                           "semana_executada", "descricao_execucao"});
     REQUIRE(std::ranges::find(visible, "equipamento") == visible.end());
     REQUIRE(std::ranges::find(visible, "descricao_localizacao") == visible.end());
     REQUIRE(std::ranges::find(visible, "grau_prioridade_emissao") == visible.end());
@@ -44,6 +50,7 @@ TEST_CASE("column catalog exposes visible and general-search contracts") {
     REQUIRE(ssa::domain::ColumnCatalog::find("localizacao_codigo")->defaultWidth == 84);
     REQUIRE(ssa::domain::ColumnCatalog::find("setor_emissor")->defaultWidth == 72);
     REQUIRE(ssa::domain::ColumnCatalog::find("setor_executor")->defaultWidth == 72);
+    REQUIRE(ssa::domain::ColumnCatalog::find("derivada_de")->defaultWidth == 74);
     REQUIRE(ssa::domain::ColumnCatalog::find("descricao_ssa")->defaultWidth == 640);
     REQUIRE(ssa::domain::ColumnCatalog::find("solicitante")->defaultWidth == 240);
     REQUIRE(ssa::domain::ColumnCatalog::find("responsavel_programacao")->defaultWidth == 250);

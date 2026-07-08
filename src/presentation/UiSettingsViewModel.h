@@ -73,7 +73,7 @@ namespace ssa::presentation {
         void emitDetailsWidthLayoutChanged();
         void schedulePreferencesSave();
 
-        QString theme_{"gruvbox"};
+        QString theme_{"ssa-dark"};
         QString systemTheme_{"light"};
         QString density_{"compact"};
         bool detailsVisible_{true};

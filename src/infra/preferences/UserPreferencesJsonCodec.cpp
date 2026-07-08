@@ -10,16 +10,35 @@
 #include <algorithm>
 #include <array>
 #include <iterator>
+#include <span>
 #include <stdexcept>
 
 namespace ssa::infra::preferences {
 
     namespace {
-        constexpr int kCurrentPreferencesSchemaVersion = 8;
+        constexpr int kCurrentPreferencesSchemaVersion = 9;
         constexpr std::string_view kDerivationColumnKey = "derivada_de";
-        constexpr int kDerivationColumnWidth = 90;
+        constexpr int kDerivationColumnWidth = 74;
         constexpr std::string_view kExecutorColumnKey = "setor_executor";
         constexpr std::string_view kDerivedCountColumnKey = "qtd_derivadas";
+        constexpr std::array<std::string_view, 16> kSchema8DefaultVisibleColumns{{
+            "numero_ssa",
+            "situacao",
+            "derivada_de",
+            "localizacao_codigo",
+            "semana_cadastro",
+            "data_cadastro",
+            "descricao_ssa",
+            "descricao_execucao",
+            "setor_emissor",
+            "setor_executor",
+            "qtd_derivadas",
+            "solicitante",
+            "responsavel_programacao",
+            "responsavel_execucao",
+            "semana_programada",
+            "semana_executada",
+        }};
         constexpr std::array<std::string_view, 3> kLegacyHiddenVisibleColumns{
             "equipamento", "grau_prioridade_emissao", "grau_prioridade_planejamento"};
         constexpr std::array<std::string_view, 1> kLegacyVisibleColumnsToDrop{
@@ -59,6 +78,22 @@ namespace ssa::infra::preferences {
         constexpr std::array<WidthMigration, 1> kSchema7WidthMigrations{{
             {"derivada_de", 96, kDerivationColumnWidth},
         }};
+        constexpr std::array<WidthMigration, 1> kSchema9WidthMigrations{{
+            {"derivada_de", 90, kDerivationColumnWidth},
+        }};
+
+        bool matchesVisibleColumns(const std::vector<std::string>& columns,
+                                   const std::span<const std::string_view> expected) {
+            if (columns.size() != expected.size()) {
+                return false;
+            }
+            for (std::size_t index = 0; index < expected.size(); ++index) {
+                if (columns[index] != expected[index]) {
+                    return false;
+                }
+            }
+            return true;
+        }
 
         std::vector<std::string> readVisibleColumns(const QJsonObject& root,
                                                     std::vector<std::string> defaults) {
@@ -163,6 +198,21 @@ namespace ssa::infra::preferences {
             const auto width = snapshot.columnWidths.find(std::string{kDerivationColumnKey});
             if (width != snapshot.columnWidths.end() && width->second > kDerivationColumnWidth) {
                 width->second = kDerivationColumnWidth;
+            }
+        }
+
+        void migrateSchema9DefaultColumns(ports::UserPreferencesSnapshot& snapshot) {
+            if (snapshot.schemaVersion >= 9) {
+                return;
+            }
+            if (matchesVisibleColumns(snapshot.visibleColumns, kSchema8DefaultVisibleColumns)) {
+                snapshot.visibleColumns = domain::ColumnCatalog::defaultVisibleKeys();
+            }
+            for (const auto& migration : kSchema9WidthMigrations) {
+                const auto width = snapshot.columnWidths.find(std::string{migration.key});
+                if (width != snapshot.columnWidths.end() && width->second == migration.oldWidth) {
+                    width->second = migration.newWidth;
+                }
             }
         }
 
@@ -306,6 +356,7 @@ namespace ssa::infra::preferences {
         migrateSchema6ColumnWidths(snapshot);
         migrateSchema7ColumnWidths(snapshot);
         migrateSchema8DerivationWidth(snapshot);
+        migrateSchema9DefaultColumns(snapshot);
         snapshot.schemaVersion = std::max(snapshot.schemaVersion, kCurrentPreferencesSchemaVersion);
         return snapshot;
     }
