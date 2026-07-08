@@ -21,6 +21,9 @@ FilterCard {
     readonly property int compactValueLimit: 18
     readonly property int choiceColumnWidth: 52
     readonly property int commandWidth: 30
+    readonly property bool wideValuePopup: row.key === "solicitante" || row.key === "responsavel_programacao" || row.key === "responsavel_execucao"
+    readonly property int valuePopupWidth: wideValuePopup ? 360 : 220
+    readonly property int multiSelectPopupWidth: wideValuePopup ? 520 : 360
     property string popupFilterText: ""
 
     signal optionsRequested
@@ -150,7 +153,7 @@ FilterCard {
                 Layout.preferredHeight: 28
                 leftPadding: 7
                 rightPadding: 16
-                popup.width: Math.min(560, Math.max(360, root.cardWidth * 0.86))
+                popup.width: root.valuePopupWidth
                 enabled: root.operatorIndex >= 0
                 model: root.visibleValues
                 displayText: "Valor"
@@ -207,7 +210,7 @@ FilterCard {
         id: multiSelectPopup
         x: Math.max(0, root.width - width)
         y: 40
-        width: Math.min(620, Math.max(420, root.width + 80))
+        width: root.multiSelectPopupWidth
         height: 360
         modal: false
         focus: true
@@ -229,7 +232,7 @@ FilterCard {
                 spacing: 8
 
                 Label {
-                    Layout.preferredWidth: Math.max(130, multiSelectPopup.availableWidth * 0.30)
+                    Layout.preferredWidth: root.wideValuePopup ? 150 : 112
                     text: root.row.label !== undefined ? root.row.label : ""
                     color: Theme.text
                     font.pixelSize: 12

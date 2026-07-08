@@ -50,7 +50,7 @@ Rectangle {
 
     function relationBorderColor(role, selected) {
         if (selected)
-            return Theme.accent;
+            return Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.5);
         if (role === "parent")
             return Theme.accentStrong;
         if (role === "child")
