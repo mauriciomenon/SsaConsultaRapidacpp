@@ -26,6 +26,30 @@ It must cover the Python GUI and CLI functional surface without porting the Pyth
 6. `SqliteSsaRepository` uses `SqlQueryBuilder` and returns domain records.
 7. `SsaTableModel` exposes the current page, column labels, and widths to QML.
 
+## CMake Targets
+
+The CMake graph is the source of truth for build ownership:
+
+- `ssa_core`: `src/domain` and `src/query`.
+- `ssa_application`: use cases in `src/application`, linked to `ssa_core`.
+- `ssa_infra`: SQLite, import/export, and JSON preferences, linked to `ssa_core`, SQLite,
+  Qt Core, and `miniz`.
+- `ssa_platform`: desktop path, URL, and external command adapters, linked to `ssa_core`,
+  Qt Core, and Qt Gui.
+- `ssa_presentation_tables`: table/detail formatting and Qt table models.
+- `ssa_presentation_models`: Qt view models, filter state, coordinators, and async browse flow.
+- `ssa_presentation`: interface aggregate for presentation targets.
+- `ssa_consulta_rapida`: Qt/QML desktop executable.
+- `ssa_cli`: CLI controller support library.
+- `ssa_consulta_rapida_cli`: CLI executable.
+- Test targets: `ssa_unit_tests`, `ssa_integration_tests`, `ssa_qt_presentation_tests`,
+  `ssa_qt_presentation_filter_tests`, `ssa_qt_filter_panel_tests`, and non-Windows
+  `ssa_mem_stress`.
+
+The GUI executable links presentation, infrastructure, and platform adapters at the composition
+root. QML stays below `app/desktop/qml` and must not own SQL, persistence, or filter business
+rules.
+
 ## Presentation Ownership
 
 - `MainViewModel` coordinates page requests, cancellation generation, preferences, and child view
@@ -49,3 +73,15 @@ It must cover the Python GUI and CLI functional surface without porting the Pyth
 - CLI commands must use `application` use cases, never `presentation` models.
 - Python mixins, headless PyQt fallbacks, and DataFrame-centric GUI filtering are not architectural
   inputs for this repo.
+
+## Runtime Contracts
+
+- Preferences are persisted through `IUserPreferencesStore` and encoded by
+  `UserPreferencesJsonCodec`; the current schema is documented in
+  `docs/contracts/preferences-schema.md`.
+- Column labels, default visibility, and default widths come from `ColumnCatalog`. Runtime
+  preferences may override them only after validation against the catalog.
+- Advanced text filters and status/executor shortcuts share the presentation filter state before
+  reaching query compilation. QML renders that state and calls view-model commands only.
+- Derivation data is represented by record fields such as `derivada_de` and `qtd_derivadas`;
+  graph ownership is split between domain graph rules and presentation/QML rendering.

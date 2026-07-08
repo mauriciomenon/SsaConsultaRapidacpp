@@ -19,6 +19,8 @@ config/ssa_cpp_preferences.json
 .antigravitycli/
 .clawpatch/
 docs_entrada/
+reports/
+docs/local/
 
 # Local tool dirs (never version)
 .vscode/

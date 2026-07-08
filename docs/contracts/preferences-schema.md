@@ -1,6 +1,6 @@
 # Preferences Schema
 
-## Version 4
+## Version 11
 
 Runtime file: `ssa_cpp_preferences.json`.
 
@@ -36,6 +36,7 @@ Current fields:
 - `execution_week_end`: string upper bound for execution `AnoSemana`, empty when disabled.
 - `derivation_mode`: `all`, `root`, or `derived`.
 - `only_reprogrammed`: boolean for reprogrammed-only filter.
+- `saved_filters`: ordered array of named filter snapshots.
 
 ## Rules
 
@@ -55,8 +56,20 @@ Current fields:
 - Empty `visible_columns` is treated as invalid and falls back to defaults because the table
   requires at least one visible column.
 - Future migrations require an ADR.
+- The current default visible table order is:
+  `numero_ssa`, `situacao`, `localizacao_codigo`, `setor_emissor`, `setor_executor`,
+  `qtd_derivadas`, `descricao_ssa`, `semana_cadastro`, `solicitante`, `derivada_de`,
+  `responsavel_programacao`, `responsavel_execucao`, `semana_programada`, `semana_executada`,
+  `descricao_execucao`.
+- `data_cadastro` remains a valid catalog column, but it is no longer visible by default.
+- `derivada_de` is displayed as `Der. de`, uses tooltip `Derivada da SSA:`, and defaults to
+  width 88 so an ordinary SSA number is not elided.
 
 ## Migrations
 
 - Version 3 to 4: restores the default `quick_sector=IEE3` when a saved empty quick sector is the
   only active filter. Manual states with other filters keep their quick sector state.
+- Version 10 to 11: migrates only exact old default visible column lists to the current default
+  order, removes `data_cadastro` from default visibility, moves `derivada_de` after
+  `solicitante`, and raises legacy default `derivada_de` width from 62 to 88. Manual column order
+  and non-default widths remain user-owned.
