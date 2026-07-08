@@ -113,7 +113,7 @@ TEST_CASE("json preferences store preserves existing valid manual theme") {
     const ssa::infra::preferences::JsonUserPreferencesStore store(path);
     const auto loaded = store.load();
 
-    REQUIRE(loaded.schemaVersion == 10);
+    REQUIRE(loaded.schemaVersion == 11);
     REQUIRE(loaded.theme == "gruvbox");
 }
 
@@ -180,7 +180,7 @@ TEST_CASE("json preferences store migrates legacy derived count visibility") {
     const ssa::infra::preferences::JsonUserPreferencesStore store(path);
     const auto loaded = store.load();
 
-    REQUIRE(loaded.schemaVersion == 10);
+    REQUIRE(loaded.schemaVersion == 11);
     REQUIRE(loaded.filters.quickSector == "IEE3");
     REQUIRE(loaded.visibleColumns ==
             std::vector<std::string>{"numero_ssa", "setor_executor", "qtd_derivadas", "situacao"});
@@ -200,7 +200,7 @@ TEST_CASE("json preferences store restores default quick sector when it is alone
     const ssa::infra::preferences::JsonUserPreferencesStore store(path);
     const auto loaded = store.load();
 
-    REQUIRE(loaded.schemaVersion == 10);
+    REQUIRE(loaded.schemaVersion == 11);
     REQUIRE(loaded.filters.quickSector == "IEE3");
 }
 
@@ -218,7 +218,7 @@ TEST_CASE("json preferences store keeps empty quick sector when other filters ex
     const ssa::infra::preferences::JsonUserPreferencesStore store(path);
     const auto loaded = store.load();
 
-    REQUIRE(loaded.schemaVersion == 10);
+    REQUIRE(loaded.schemaVersion == 11);
     REQUIRE(loaded.filters.quickSector.empty());
     REQUIRE(loaded.filters.searchText == "manual");
 }
@@ -237,14 +237,14 @@ TEST_CASE("json preferences store migrates only legacy default table widths") {
     const ssa::infra::preferences::JsonUserPreferencesStore store(path);
     const auto loaded = store.load();
 
-    REQUIRE(loaded.schemaVersion == 10);
+    REQUIRE(loaded.schemaVersion == 11);
     REQUIRE(loaded.columnWidths.at("numero_ssa") == 98);
     REQUIRE(loaded.columnWidths.at("situacao") == 60);
     REQUIRE(loaded.columnWidths.at("localizacao_codigo") == 84);
     REQUIRE(loaded.columnWidths.at("setor_emissor") == 68);
     REQUIRE(loaded.columnWidths.at("setor_executor") == 91);
     REQUIRE(loaded.columnWidths.at("qtd_derivadas") == 66);
-    REQUIRE(loaded.columnWidths.at("derivada_de") == 62);
+    REQUIRE(loaded.columnWidths.at("derivada_de") == 88);
     REQUIRE(loaded.columnWidths.at("data_cadastro") == 100);
     REQUIRE(loaded.columnWidths.at("semana_cadastro") == 84);
     REQUIRE(loaded.columnWidths.at("descricao_ssa") == 640);
@@ -269,7 +269,25 @@ TEST_CASE("json preferences store migrates legacy default visible column order")
     const ssa::infra::preferences::JsonUserPreferencesStore store(path);
     const auto loaded = store.load();
 
-    REQUIRE(loaded.schemaVersion == 10);
+    REQUIRE(loaded.schemaVersion == 11);
+    REQUIRE(loaded.visibleColumns == ssa::domain::ColumnCatalog::defaultVisibleKeys());
+}
+
+TEST_CASE("json preferences store migrates schema 10 default visible column order") {
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+
+    const auto path = std::filesystem::path{directory.path().toStdString()} / "prefs.json";
+    QFile file(QString::fromStdString(path.string()));
+    REQUIRE(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    file.write(
+        R"JSON({"schema_version":10,"visible_columns":["numero_ssa","situacao","localizacao_codigo","setor_emissor","setor_executor","qtd_derivadas","descricao_ssa","data_cadastro","derivada_de","semana_cadastro","solicitante","responsavel_programacao","responsavel_execucao","semana_programada","semana_executada","descricao_execucao"]})JSON");
+    file.close();
+
+    const ssa::infra::preferences::JsonUserPreferencesStore store(path);
+    const auto loaded = store.load();
+
+    REQUIRE(loaded.schemaVersion == 11);
     REQUIRE(loaded.visibleColumns == ssa::domain::ColumnCatalog::defaultVisibleKeys());
 }
 
@@ -287,8 +305,8 @@ TEST_CASE("json preferences store compacts oversized derivation column width") {
     const ssa::infra::preferences::JsonUserPreferencesStore store(path);
     const auto loaded = store.load();
 
-    REQUIRE(loaded.schemaVersion == 10);
-    REQUIRE(loaded.columnWidths.at("derivada_de") == 62);
+    REQUIRE(loaded.schemaVersion == 11);
+    REQUIRE(loaded.columnWidths.at("derivada_de") == 88);
     REQUIRE(loaded.columnWidths.at("descricao_ssa") == 640);
 }
 

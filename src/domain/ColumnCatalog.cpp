@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <iterator>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
@@ -22,7 +23,7 @@ namespace ssa::domain {
             "semana_cadastro", "semana_programada", "semana_executada"};
         constexpr std::array<std::string_view, 2> kReprogrammingColumnKeys{
             "num_reprogramacoes", "total_de_reprogramacoes"};
-        constexpr std::array<std::string_view, 16> kDefaultVisibleColumnKeys{{
+        constexpr std::array<std::string_view, 15> kDefaultVisibleColumnKeys{{
             "numero_ssa",
             "situacao",
             "localizacao_codigo",
@@ -30,10 +31,9 @@ namespace ssa::domain {
             "setor_executor",
             "qtd_derivadas",
             "descricao_ssa",
-            "data_cadastro",
-            "derivada_de",
             "semana_cadastro",
             "solicitante",
+            "derivada_de",
             "responsavel_programacao",
             "responsavel_execucao",
             "semana_programada",
@@ -72,8 +72,8 @@ namespace ssa::domain {
             {"setor_executor", "Exec.", "Executor", Text, true, true, 68},
             {"qtd_derivadas", "Qtd Der.", "Qtd Derivadas", Integer, true, false, 66},
             {"descricao_ssa", "Descricao SSA", "", Text, true, true, 640},
-            {"data_cadastro", "Cadastro", "", DateText, true, false, 100},
-            {"derivada_de", "Der. de", "Derivada da SSA:", Text, true, true, 62},
+            {"data_cadastro", "Cadastro", "", DateText, false, false, 100},
+            {"derivada_de", "Der. de", "Derivada da SSA:", Text, true, true, 88},
             {"semana_cadastro", "Sem. Cad.", "", Integer, true, true, 84},
             {"descricao_localizacao", "Desc. Loc.", "Descricao Local", Text, false, true, 220},
             {"equipamento", "Equip.", "Equipamento", Text, false, true, 150},
@@ -224,9 +224,8 @@ namespace ssa::domain {
     std::vector<std::string> ColumnCatalog::defaultVisibleKeys() {
         std::vector<std::string> result;
         result.reserve(kDefaultVisibleColumnKeys.size());
-        for (const auto key : kDefaultVisibleColumnKeys) {
-            result.emplace_back(key);
-        }
+        std::ranges::transform(kDefaultVisibleColumnKeys, std::back_inserter(result),
+                               [](const auto key) { return std::string{key}; });
         return result;
     }
 

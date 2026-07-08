@@ -16,9 +16,9 @@
 namespace ssa::infra::preferences {
 
     namespace {
-        constexpr int kCurrentPreferencesSchemaVersion = 10;
+        constexpr int kCurrentPreferencesSchemaVersion = 11;
         constexpr std::string_view kDerivationColumnKey = "derivada_de";
-        constexpr int kDerivationColumnWidth = 62;
+        constexpr int kDerivationColumnWidth = 88;
         constexpr std::string_view kExecutorColumnKey = "setor_executor";
         constexpr std::string_view kDerivedCountColumnKey = "qtd_derivadas";
         constexpr std::array<std::string_view, 16> kSchema8DefaultVisibleColumns{{
@@ -38,6 +38,24 @@ namespace ssa::infra::preferences {
             "responsavel_execucao",
             "semana_programada",
             "semana_executada",
+        }};
+        constexpr std::array<std::string_view, 16> kSchema10DefaultVisibleColumns{{
+            "numero_ssa",
+            "situacao",
+            "localizacao_codigo",
+            "setor_emissor",
+            "setor_executor",
+            "qtd_derivadas",
+            "descricao_ssa",
+            "data_cadastro",
+            "derivada_de",
+            "semana_cadastro",
+            "solicitante",
+            "responsavel_programacao",
+            "responsavel_execucao",
+            "semana_programada",
+            "semana_executada",
+            "descricao_execucao",
         }};
         constexpr std::array<std::string_view, 3> kLegacyHiddenVisibleColumns{
             "equipamento", "grau_prioridade_emissao", "grau_prioridade_planejamento"};
@@ -82,7 +100,10 @@ namespace ssa::infra::preferences {
             {"setor_emissor", 72, 68},
             {"setor_executor", 72, 68},
             {"qtd_derivadas", 70, 66},
-            {"derivada_de", 74, kDerivationColumnWidth},
+            {"derivada_de", 74, 62},
+        }};
+        constexpr std::array<WidthMigration, 1> kSchema11WidthMigrations{{
+            {"derivada_de", 62, kDerivationColumnWidth},
         }};
 
         bool matchesVisibleColumns(const std::vector<std::string>& columns,
@@ -214,10 +235,31 @@ namespace ssa::infra::preferences {
         }
 
         void migrateSchema10CompactColumns(ports::UserPreferencesSnapshot& snapshot) {
-            if (snapshot.schemaVersion >= kCurrentPreferencesSchemaVersion) {
+            if (snapshot.schemaVersion >= 10) {
                 return;
             }
             for (const auto& migration : kSchema10WidthMigrations) {
+                const auto width = snapshot.columnWidths.find(std::string{migration.key});
+                if (width != snapshot.columnWidths.end() && width->second == migration.oldWidth) {
+                    width->second = migration.newWidth;
+                }
+            }
+        }
+
+        void migrateSchema11DefaultColumns(ports::UserPreferencesSnapshot& snapshot) {
+            if (snapshot.schemaVersion >= kCurrentPreferencesSchemaVersion) {
+                return;
+            }
+            if (matchesVisibleColumns(snapshot.visibleColumns, kSchema10DefaultVisibleColumns)) {
+                snapshot.visibleColumns = domain::ColumnCatalog::defaultVisibleKeys();
+            }
+        }
+
+        void migrateSchema11DerivationWidth(ports::UserPreferencesSnapshot& snapshot) {
+            if (snapshot.schemaVersion >= kCurrentPreferencesSchemaVersion) {
+                return;
+            }
+            for (const auto& migration : kSchema11WidthMigrations) {
                 const auto width = snapshot.columnWidths.find(std::string{migration.key});
                 if (width != snapshot.columnWidths.end() && width->second == migration.oldWidth) {
                     width->second = migration.newWidth;
@@ -367,6 +409,8 @@ namespace ssa::infra::preferences {
         migrateSchema8DerivationWidth(snapshot);
         migrateSchema9DefaultColumns(snapshot);
         migrateSchema10CompactColumns(snapshot);
+        migrateSchema11DefaultColumns(snapshot);
+        migrateSchema11DerivationWidth(snapshot);
         snapshot.schemaVersion = std::max(snapshot.schemaVersion, kCurrentPreferencesSchemaVersion);
         return snapshot;
     }
