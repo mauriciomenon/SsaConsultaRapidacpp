@@ -267,7 +267,7 @@ Rectangle {
                     width: Math.min(parent.width, fittedContentWidth)
                     height: Theme.controlHeight
                     color: "transparent"
-                    border.color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.55)
+                    border.color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.36)
                     radius: Theme.radius
                     clip: true
 
