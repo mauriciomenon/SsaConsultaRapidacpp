@@ -468,7 +468,8 @@ namespace {
             QTRY_COMPARE_WITH_TIMEOUT(
                 cardStateFor(*text, "setor_executor").value("textFilter").toString(),
                 QString("=IEE3"), 1000);
-            QCOMPARE(text->textFilter("setor_executor"), QString(""));
+            QCOMPARE(text->textFilter("setor_executor"), QString("=IEE3"));
+            QCOMPARE(filters.quickSector(), QString(""));
         }
 
         void executor_advanced_edit_folds_quick_sector_into_single_filter() {
@@ -626,7 +627,7 @@ namespace {
             sector->setQuickSector("MEG2");
             sector->setExcludeScaSesSte(false);
 
-            QCOMPARE(filters.quickSector(), QString("MEG2"));
+            QCOMPARE(filters.quickSector(), QString(""));
             QCOMPARE(sector->excludeScaSesSte(), false);
             QCOMPARE(sector->quickSector(), QString("MEG2"));
             QCOMPARE(sector->excludeScaSesSte(), false);
@@ -675,17 +676,23 @@ namespace {
             text->setTextFilter("setor_executor", "=MAM2");
 
             QTRY_COMPARE_WITH_TIMEOUT(filters.activeFilterEntries().size(), 2, 1000);
-            QTRY_COMPARE_WITH_TIMEOUT(
-                filters.activeFilterEntries().at(0).toMap().value("kind").toString(),
-                QString("executor_combined"), 1000);
             const auto entries = filters.activeFilterEntries();
             QCOMPARE(entries.size(), 2);
-            QCOMPARE(entries.at(0).toMap().value("kind").toString(), QString("executor_combined"));
-            QCOMPARE(entries.at(0).toMap().value("key").toString(), QString("setor_executor"));
-            QVERIFY(entries.at(0).toMap().value("text").toString().contains("=MAM2"));
-            QVERIFY(entries.at(0).toMap().value("text").toString().contains("=MEG2"));
-            QCOMPARE(entries.at(1).toMap().value("kind").toString(), QString("column"));
-            QCOMPARE(entries.at(1).toMap().value("key").toString(), QString("situacao"));
+            QVariantMap executorEntry;
+            QVariantMap statusEntry;
+            for (const auto& entryValue : entries) {
+                const auto entry = entryValue.toMap();
+                if (entry.value("kind").toString() == "advanced_text" &&
+                    entry.value("key").toString() == "setor_executor") {
+                    executorEntry = entry;
+                } else if (entry.value("kind").toString() == "column" &&
+                           entry.value("key").toString() == "situacao") {
+                    statusEntry = entry;
+                }
+            }
+            QVERIFY(!executorEntry.isEmpty());
+            QVERIFY(!statusEntry.isEmpty());
+            QCOMPARE(text->textFilter("setor_executor"), QString("=MAM2"));
 
             QCOMPARE(filters.removeActiveFilter(
                          QVariantMap{{QStringLiteral("kind"), QStringLiteral("column")},
@@ -694,10 +701,107 @@ namespace {
 
             QVERIFY(!filters.columnFilters().contains("situacao"));
             QCOMPARE(text->textFilter("setor_executor"), QString("=MAM2"));
-            QCOMPARE(filters.quickSector(), QString("MEG2"));
+            QCOMPARE(filters.quickSector(), QString(""));
 
-            QCOMPARE(filters.removeActiveFilter(entries.at(0).toMap()), true);
+            QCOMPARE(filters.removeActiveFilter(executorEntry), true);
             QCOMPARE(text->textFilter("setor_executor"), QString(""));
+            QCOMPARE(filters.quickSector(), QString(""));
+        }
+
+        void executor_shortcut_writes_advanced_filter_and_single_chip() {
+            auto repository = std::make_shared<FilterPanelRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::FilterPanelViewModel filters(service);
+            auto* advanced =
+                qobject_cast<ssa::presentation::FilterPanelAdvancedViewModel*>(filters.advanced());
+            auto* sector =
+                qobject_cast<ssa::presentation::FilterPanelSectorViewModel*>(filters.sector());
+            QVERIFY(advanced != nullptr);
+            auto* text =
+                qobject_cast<ssa::presentation::AdvancedTextFilterViewModel*>(advanced->text());
+            QVERIFY(text != nullptr);
+            QVERIFY(sector != nullptr);
+
+            filters.setQuickSector("IEE3");
+
+            QTRY_COMPARE_WITH_TIMEOUT(text->textFilter("setor_executor"), QString("=IEE3"), 1000);
+            QCOMPARE(filters.quickSector(), QString(""));
+            QCOMPARE(sector->quickSector(), QString("IEE3"));
+            QCOMPARE(cardStateFor(*text, "setor_executor").value("textFilter").toString(),
+                     QString("=IEE3"));
+            QTRY_COMPARE_WITH_TIMEOUT(filters.activeFilterEntries().size(), 1, 1000);
+            const auto entry = filters.activeFilterEntries().at(0).toMap();
+            QCOMPARE(entry.value("kind").toString(), QString("advanced_text"));
+            QCOMPARE(entry.value("key").toString(), QString("setor_executor"));
+        }
+
+        void executor_shortcut_replaces_simple_shortcut_value() {
+            auto repository = std::make_shared<FilterPanelRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::FilterPanelViewModel filters(service);
+            auto* advanced =
+                qobject_cast<ssa::presentation::FilterPanelAdvancedViewModel*>(filters.advanced());
+            auto* sector =
+                qobject_cast<ssa::presentation::FilterPanelSectorViewModel*>(filters.sector());
+            QVERIFY(advanced != nullptr);
+            auto* text =
+                qobject_cast<ssa::presentation::AdvancedTextFilterViewModel*>(advanced->text());
+            QVERIFY(text != nullptr);
+            QVERIFY(sector != nullptr);
+
+            filters.setQuickSector("IEE3");
+            filters.setQuickSector("IEE1");
+
+            QTRY_COMPARE_WITH_TIMEOUT(text->textFilter("setor_executor"), QString("=IEE1"), 1000);
+            QCOMPARE(filters.quickSector(), QString(""));
+            QCOMPARE(sector->quickSector(), QString("IEE1"));
+            QTRY_COMPARE_WITH_TIMEOUT(filters.activeFilterEntries().size(), 1, 1000);
+        }
+
+        void executor_shortcut_clear_preserves_mixed_manual_filter() {
+            auto repository = std::make_shared<FilterPanelRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::FilterPanelViewModel filters(service);
+            auto* advanced =
+                qobject_cast<ssa::presentation::FilterPanelAdvancedViewModel*>(filters.advanced());
+            auto* sector =
+                qobject_cast<ssa::presentation::FilterPanelSectorViewModel*>(filters.sector());
+            QVERIFY(advanced != nullptr);
+            auto* text =
+                qobject_cast<ssa::presentation::AdvancedTextFilterViewModel*>(advanced->text());
+            QVERIFY(text != nullptr);
+            QVERIFY(sector != nullptr);
+
+            text->setTextFilter("setor_executor", "=IEE1,!IEE3");
+            sector->setQuickSector("");
+
+            QCOMPARE(text->textFilter("setor_executor"), QString("=IEE1,!IEE3"));
+            QCOMPARE(sector->quickSector(), QString(""));
+            QCOMPARE(filters.quickSector(), QString(""));
+            QTRY_COMPARE_WITH_TIMEOUT(filters.activeFilterEntries().size(), 1, 1000);
+        }
+
+        void executor_chip_removal_clears_advanced_filter_and_selector() {
+            auto repository = std::make_shared<FilterPanelRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::FilterPanelViewModel filters(service);
+            auto* advanced =
+                qobject_cast<ssa::presentation::FilterPanelAdvancedViewModel*>(filters.advanced());
+            auto* sector =
+                qobject_cast<ssa::presentation::FilterPanelSectorViewModel*>(filters.sector());
+            QVERIFY(advanced != nullptr);
+            auto* text =
+                qobject_cast<ssa::presentation::AdvancedTextFilterViewModel*>(advanced->text());
+            QVERIFY(text != nullptr);
+            QVERIFY(sector != nullptr);
+
+            filters.setQuickSector("IEE3");
+            QTRY_COMPARE_WITH_TIMEOUT(filters.activeFilterEntries().size(), 1, 1000);
+
+            QCOMPARE(filters.removeActiveFilter(filters.activeFilterEntries().at(0).toMap()), true);
+
+            QCOMPARE(text->textFilter("setor_executor"), QString(""));
+            QCOMPARE(sector->quickSector(), QString(""));
             QCOMPARE(filters.quickSector(), QString(""));
         }
 

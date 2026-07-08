@@ -38,6 +38,8 @@ namespace ssa::presentation::filterpanel {
         bool removeColumnFiltersShadowedByAdvancedText();
         bool clearStatusExclusionIfStatusIncludesExcluded();
         bool foldQuickSectorIntoAdvancedExecutor();
+        bool setExecutorShortcut(QString value);
+        bool clearExecutorShortcut();
 
         bool applyPreferences(const ports::UserPreferencesSnapshot& snapshot,
                               const QStringList& weekColumnKeys);

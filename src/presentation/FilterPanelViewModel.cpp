@@ -67,6 +67,7 @@ namespace ssa::presentation {
                 sector_.refreshFromState();
             }
             advanced_->refreshFromState();
+            sector_.refreshFromState();
             synchronizeFilterState(false);
         });
         connect(&columns_, &ColumnFilterViewModel::applyRequested, this,
@@ -107,9 +108,6 @@ namespace ssa::presentation {
         connect(&sector_, &FilterPanelSectorViewModel::stateChanged, this,
                 [this](const bool quickSectorChanged) {
                     if (quickSectorChanged) {
-                        if (!state_.quickSector().trimmed().isEmpty()) {
-                            state_.advanced().removeTextFilter(executorColumnKey());
-                        }
                         advanced_->refreshFromState();
                     }
                     publishFilterStateChange(quickSectorChanged);
@@ -315,8 +313,7 @@ namespace ssa::presentation {
 
         const auto nextExpression = QString::fromStdString(query::joinTextFilterTokens(tokens));
         const bool advancedChanged = state_.advanced().setTextFilter(statusKey, nextExpression);
-        const bool columnChanged =
-            nextExpression.trimmed().isEmpty() ? state_.removeColumnFilter(statusKey) : false;
+        const bool columnChanged = state_.removeColumnFilter(statusKey);
         if (!advancedChanged && !columnChanged) {
             return;
         }
@@ -388,6 +385,9 @@ namespace ssa::presentation {
             }
         } else if (action == "advanced_text") {
             didChange = state_.advanced().setTextFilter(key, {});
+            if (didChange && key.trimmed() == executorColumnKey()) {
+                sector_.refreshFromState();
+            }
         } else if (action == "advanced_year") {
             didChange = state_.advanced().setYear({});
         } else if (action == "advanced_week") {
@@ -459,6 +459,7 @@ namespace ssa::presentation {
         }
         advanced_->refreshFromState();
         columns_.refreshFromState();
+        sector_.refreshFromState();
         synchronizeFilterState(false);
     }
 

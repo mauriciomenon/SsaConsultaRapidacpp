@@ -50,11 +50,7 @@ namespace ssa::presentation {
 
     void FilterPanelSectorViewModel::setQuickSector(const QString& value) {
         const auto normalizedValue = value.trimmed();
-        const bool advancedExecutorChanged =
-            normalizedValue.isEmpty() && state_.quickSector().trimmed().isEmpty()
-                ? state_.advanced().removeTextFilter(executorColumnKey())
-                : false;
-        if (!state_.setQuickSector(normalizedValue) && !advancedExecutorChanged) {
+        if (!state_.setExecutorShortcut(normalizedValue)) {
             return;
         }
         if (selectorValueSet_.contains(quickSector())) {

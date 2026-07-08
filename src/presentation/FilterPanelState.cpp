@@ -181,6 +181,37 @@ namespace ssa::presentation::filterpanel {
         return true;
     }
 
+    bool FilterPanelState::setExecutorShortcut(QString value) {
+        value = value.trimmed().toUpper();
+        const auto executorKey =
+            QString::fromStdString(std::string{domain::ColumnCatalog::executorColumnKey()});
+        bool changed = setQuickSector({});
+        if (value.isEmpty()) {
+            return clearExecutorShortcut() || changed;
+        }
+        query::TextFilterTokenSet tokens;
+        query::addTextFilterValue(tokens, value.toStdString(), query::TextFilterOperator::Equals);
+        changed = advanced_.setTextFilter(
+                      executorKey, QString::fromStdString(query::joinTextFilterTokens(tokens))) ||
+                  changed;
+        changed = removeColumnFilter(executorKey) || changed;
+        return changed;
+    }
+
+    bool FilterPanelState::clearExecutorShortcut() {
+        const auto executorKey =
+            QString::fromStdString(std::string{domain::ColumnCatalog::executorColumnKey()});
+        bool changed = setQuickSector({});
+        const auto tokens =
+            query::parseTextFilterTokens(advanced_.textFilter(executorKey).toStdString());
+        if (tokens.ordered.size() == 1 &&
+            tokens.ordered.front().filterOperator == query::TextFilterOperator::Equals) {
+            changed = advanced_.removeTextFilter(executorKey) || changed;
+        }
+        changed = removeColumnFilter(executorKey) || changed;
+        return changed;
+    }
+
     domain::AdvancedFilterSpec FilterPanelState::advancedFilters() const {
         return advanced_.filters();
     }
@@ -216,7 +247,17 @@ namespace ssa::presentation::filterpanel {
         quickSector_ = nextQuickSector;
         excludeScaSesSte_ = nextExcludeScaSesSte;
         columnFilters_ = nextColumnFilters;
-        foldQuickSectorIntoAdvancedExecutor();
+        if (!quickSector_.trimmed().isEmpty()) {
+            if (advanced_
+                    .textFilter(QString::fromStdString(
+                        std::string{domain::ColumnCatalog::executorColumnKey()}))
+                    .trimmed()
+                    .isEmpty()) {
+                setExecutorShortcut(quickSector_);
+            } else {
+                foldQuickSectorIntoAdvancedExecutor();
+            }
+        }
         removeColumnFiltersShadowedByAdvancedText();
         clearStatusExclusionIfStatusIncludesExcluded();
         return true;
