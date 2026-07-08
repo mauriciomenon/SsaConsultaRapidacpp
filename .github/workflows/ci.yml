@@ -35,8 +35,10 @@ jobs:
         run: gitleaks dir . --redact --exit-code 1 --no-banner
       - name: Package macOS bundle (release + macdeployqt)
         run: |
-          export CMAKE_PREFIX_PATH="$(brew --prefix qt)"
-          export PATH="$(brew --prefix qt)/bin:$PATH"
+          CMAKE_PREFIX_PATH="$(brew --prefix qt)"
+          PATH="$(brew --prefix qt)/bin:$PATH"
+          export CMAKE_PREFIX_PATH
+          export PATH
           ./scripts/package-macos.sh --skip-tests
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
