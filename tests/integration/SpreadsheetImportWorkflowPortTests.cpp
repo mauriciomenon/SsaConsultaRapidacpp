@@ -325,6 +325,24 @@ TEST_CASE("import file stager counts legacy xls with existing xlsx without conve
     REQUIRE(result.xlsxFiles == std::vector<std::filesystem::path>{workbook});
 }
 
+TEST_CASE("import file stager reports unreadable input folder scan") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto inputPath = std::filesystem::path{tempDir.path().toStdString()} / "not-a-folder";
+    {
+        std::ofstream output(inputPath);
+        output << "not a directory";
+    }
+
+    const ssa::infra::importing::ImportFileStager stager(inputPath);
+
+    const auto result = stager.stageInputFiles();
+
+    REQUIRE(result.failedCopies == 1);
+    REQUIRE(result.xlsxFiles.empty());
+}
+
 #ifndef _WIN32
 TEST_CASE("spreadsheet import workflow converts staged xls before sqlite import") {
     QTemporaryDir tempDir;

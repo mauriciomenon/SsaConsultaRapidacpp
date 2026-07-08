@@ -100,12 +100,29 @@ namespace ssa::infra::importing {
 
     ImportStagingResult ImportFileStager::stageInputFiles() const {
         ImportStagingResult result;
-        if (!std::filesystem::exists(inputFolder_)) {
+        std::error_code error;
+        const bool inputExists = std::filesystem::exists(inputFolder_, error);
+        if (error) {
+            result.failedCopies = 1;
+            return result;
+        }
+        if (!inputExists) {
+            return result;
+        }
+        const bool inputIsDirectory = std::filesystem::is_directory(inputFolder_, error);
+        if (error || !inputIsDirectory) {
+            result.failedCopies = 1;
             return result;
         }
         std::vector<std::filesystem::path> candidates;
-        for (const auto& entry : std::filesystem::directory_iterator(inputFolder_)) {
-            if (!entry.is_regular_file()) {
+        std::filesystem::directory_iterator iterator{inputFolder_, error};
+        if (error) {
+            result.failedCopies = 1;
+            return result;
+        }
+        for (const auto& entry : iterator) {
+            if (!entry.is_regular_file(error) || error) {
+                error.clear();
                 continue;
             }
             candidates.push_back(entry.path());
@@ -120,10 +137,11 @@ namespace ssa::infra::importing {
             if (isLegacyXlsFile(path)) {
                 auto destination = path;
                 destination.replace_extension(".xlsx");
-                if (std::filesystem::exists(destination)) {
+                if (std::filesystem::exists(destination, error)) {
                     ++result.legacyXls;
                     continue;
                 }
+                error.clear();
                 stageLegacyFile({path, destination}, result);
                 continue;
             }
