@@ -288,7 +288,8 @@ namespace {
                                       false, 1000);
             const auto distinctRequests = repository->distinctRequests();
             QVERIFY(std::ranges::any_of(distinctRequests, [](const auto& request) {
-                return request.columnKey == "responsavel_execucao" && !request.orderByFrequency;
+                return request.columnKey == "responsavel_execucao" && !request.orderByFrequency &&
+                       request.limit == ssa::domain::kDefaultDistinctValuesLimit;
             }));
         }
 

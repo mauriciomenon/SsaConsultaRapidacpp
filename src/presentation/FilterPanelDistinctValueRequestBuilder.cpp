@@ -7,7 +7,6 @@ namespace ssa::presentation {
 
     namespace {
 
-        constexpr int kColumnValueLimit = 300;
         constexpr int kQuickSectorLimit = 500;
 
         domain::AdvancedFilterSpec advancedFiltersExcept(domain::AdvancedFilterSpec filters,
@@ -78,7 +77,7 @@ namespace ssa::presentation {
             state.excludeScaSesSte();
         request.filter.advanced = advancedFiltersExcept(state.advancedFilters(), request.columnKey);
         applyColumnTermsExcept(request.filter, state.columnFilters(), request.columnKey);
-        request.limit = kColumnValueLimit;
+        request.limit = domain::kDefaultDistinctValuesLimit;
         return request;
     }
 
