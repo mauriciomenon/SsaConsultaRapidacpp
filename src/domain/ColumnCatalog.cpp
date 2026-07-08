@@ -49,7 +49,7 @@ namespace ssa::domain {
             {"id", "ID", "", Integer, false, false, 80},
             {"numero_ssa", "No SSA", "", Text, true, true, 98},
             {"situacao", "Sit.", "Situacao", Text, true, true, 60},
-            {"derivada_de", "Derivada de", "Derivada de", Text, true, true, 96},
+            {"derivada_de", "Der. de", "Derivada da SSA:", Text, true, true, 78},
             {"localizacao_codigo", "Loc.", "Localizacao", Text, true, true, 84},
             {"descricao_localizacao", "Desc. Loc.", "Descricao Local", Text, false, true, 220},
             {"equipamento", "Equip.", "Equipamento", Text, false, true, 150},

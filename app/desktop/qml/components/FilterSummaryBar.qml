@@ -18,7 +18,7 @@ Rectangle {
     readonly property int activeTagCount: filterViewModel.activeFilterEntries.length + (hasSearch ? 1 : 0) + (hasActiveExclusion ? 1 : 0)
     readonly property bool compact: activeTagCount >= 2
     readonly property int tagTextSize: compact ? 11 : 12
-    readonly property color filterAccent: Theme.accent
+    readonly property color filterAccent: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.55)
 
     color: "transparent"
     border.color: "transparent"
@@ -124,6 +124,6 @@ Rectangle {
         anchors.right: parent.right
         anchors.bottom: parent.bottom
         height: 1
-        color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.55)
+        color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.45)
     }
 }

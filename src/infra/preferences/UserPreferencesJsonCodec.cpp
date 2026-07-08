@@ -15,7 +15,7 @@
 namespace ssa::infra::preferences {
 
     namespace {
-        constexpr int kCurrentPreferencesSchemaVersion = 6;
+        constexpr int kCurrentPreferencesSchemaVersion = 7;
         constexpr std::string_view kExecutorColumnKey = "setor_executor";
         constexpr std::string_view kDerivedCountColumnKey = "qtd_derivadas";
         constexpr std::array<std::string_view, 3> kLegacyHiddenVisibleColumns{
@@ -44,7 +44,7 @@ namespace ssa::infra::preferences {
             {"setor_emissor", 82, 72},
             {"setor_executor", 84, 72},
             {"qtd_derivadas", 72, 70},
-            {"derivada_de", 82, 96},
+            {"derivada_de", 82, 78},
             {"data_cadastro", 112, 100},
             {"semana_cadastro", 90, 84},
             {"descricao_ssa", 560, 640},
@@ -53,6 +53,9 @@ namespace ssa::infra::preferences {
             {"responsavel_execucao", 240, 250},
             {"semana_programada", 95, 86},
             {"semana_executada", 95, 86},
+        }};
+        constexpr std::array<WidthMigration, 1> kSchema7WidthMigrations{{
+            {"derivada_de", 96, 78},
         }};
 
         std::vector<std::string> readVisibleColumns(const QJsonObject& root,
@@ -104,8 +107,8 @@ namespace ssa::infra::preferences {
         }
 
         void migrateDefaultQuickSector(ports::UserPreferencesSnapshot& snapshot) {
-            if (snapshot.schemaVersion >= kCurrentPreferencesSchemaVersion ||
-                !snapshot.filters.quickSector.empty() || hasManualFilterState(snapshot.filters)) {
+            if (snapshot.schemaVersion >= 6 || !snapshot.filters.quickSector.empty() ||
+                hasManualFilterState(snapshot.filters)) {
                 return;
             }
             snapshot.filters.quickSector = "IEE3";
@@ -128,10 +131,22 @@ namespace ssa::infra::preferences {
         }
 
         void migrateSchema6ColumnWidths(ports::UserPreferencesSnapshot& snapshot) {
-            if (snapshot.schemaVersion >= kCurrentPreferencesSchemaVersion) {
+            if (snapshot.schemaVersion >= 6) {
                 return;
             }
             for (const auto& migration : kSchema6WidthMigrations) {
+                const auto width = snapshot.columnWidths.find(std::string{migration.key});
+                if (width != snapshot.columnWidths.end() && width->second == migration.oldWidth) {
+                    width->second = migration.newWidth;
+                }
+            }
+        }
+
+        void migrateSchema7ColumnWidths(ports::UserPreferencesSnapshot& snapshot) {
+            if (snapshot.schemaVersion >= kCurrentPreferencesSchemaVersion) {
+                return;
+            }
+            for (const auto& migration : kSchema7WidthMigrations) {
                 const auto width = snapshot.columnWidths.find(std::string{migration.key});
                 if (width != snapshot.columnWidths.end() && width->second == migration.oldWidth) {
                     width->second = migration.newWidth;
@@ -277,6 +292,7 @@ namespace ssa::infra::preferences {
         snapshot.savedFilters = readSavedFilters(root);
         migrateDefaultColumnWidths(snapshot);
         migrateSchema6ColumnWidths(snapshot);
+        migrateSchema7ColumnWidths(snapshot);
         snapshot.schemaVersion = std::max(snapshot.schemaVersion, kCurrentPreferencesSchemaVersion);
         return snapshot;
     }

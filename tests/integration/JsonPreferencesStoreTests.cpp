@@ -151,7 +151,7 @@ TEST_CASE("json preferences store migrates legacy derived count visibility") {
     const ssa::infra::preferences::JsonUserPreferencesStore store(path);
     const auto loaded = store.load();
 
-    REQUIRE(loaded.schemaVersion == 6);
+    REQUIRE(loaded.schemaVersion == 7);
     REQUIRE(loaded.filters.quickSector == "IEE3");
     REQUIRE(loaded.visibleColumns ==
             std::vector<std::string>{"numero_ssa", "setor_executor", "qtd_derivadas", "situacao"});
@@ -171,7 +171,7 @@ TEST_CASE("json preferences store restores default quick sector when it is alone
     const ssa::infra::preferences::JsonUserPreferencesStore store(path);
     const auto loaded = store.load();
 
-    REQUIRE(loaded.schemaVersion == 6);
+    REQUIRE(loaded.schemaVersion == 7);
     REQUIRE(loaded.filters.quickSector == "IEE3");
 }
 
@@ -189,7 +189,7 @@ TEST_CASE("json preferences store keeps empty quick sector when other filters ex
     const ssa::infra::preferences::JsonUserPreferencesStore store(path);
     const auto loaded = store.load();
 
-    REQUIRE(loaded.schemaVersion == 6);
+    REQUIRE(loaded.schemaVersion == 7);
     REQUIRE(loaded.filters.quickSector.empty());
     REQUIRE(loaded.filters.searchText == "manual");
 }
@@ -208,14 +208,14 @@ TEST_CASE("json preferences store migrates only legacy default table widths") {
     const ssa::infra::preferences::JsonUserPreferencesStore store(path);
     const auto loaded = store.load();
 
-    REQUIRE(loaded.schemaVersion == 6);
+    REQUIRE(loaded.schemaVersion == 7);
     REQUIRE(loaded.columnWidths.at("numero_ssa") == 98);
     REQUIRE(loaded.columnWidths.at("situacao") == 60);
     REQUIRE(loaded.columnWidths.at("localizacao_codigo") == 84);
     REQUIRE(loaded.columnWidths.at("setor_emissor") == 72);
     REQUIRE(loaded.columnWidths.at("setor_executor") == 91);
     REQUIRE(loaded.columnWidths.at("qtd_derivadas") == 70);
-    REQUIRE(loaded.columnWidths.at("derivada_de") == 96);
+    REQUIRE(loaded.columnWidths.at("derivada_de") == 78);
     REQUIRE(loaded.columnWidths.at("data_cadastro") == 100);
     REQUIRE(loaded.columnWidths.at("semana_cadastro") == 84);
     REQUIRE(loaded.columnWidths.at("descricao_ssa") == 640);

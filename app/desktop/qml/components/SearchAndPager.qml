@@ -226,14 +226,16 @@ Rectangle {
 
             ActionButton {
                 text: "<"
-                implicitWidth: 30
+                Layout.preferredWidth: 26
+                implicitWidth: 26
                 implicitHeight: Theme.controlHeight - 4
                 enabled: root.viewModel.pageNumber > 1
                 onClicked: root.viewModel.previousPage()
             }
             ActionButton {
                 text: ">"
-                implicitWidth: 30
+                Layout.preferredWidth: 26
+                implicitWidth: 26
                 implicitHeight: Theme.controlHeight - 4
                 enabled: root.viewModel.pageNumber < root.viewModel.pageCount
                 onClicked: root.viewModel.nextPage()

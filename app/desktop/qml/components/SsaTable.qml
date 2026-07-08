@@ -57,6 +57,7 @@ Rectangle {
                         required property var modelData
                         readonly property bool hasColumnKey: modelData.key !== undefined && modelData.key !== null && modelData.key !== ""
                         readonly property string columnKey: hasColumnKey ? modelData.key : ""
+                        readonly property bool centerText: columnKey === "situacao" || columnKey === "derivada_de" || columnKey === "localizacao_codigo" || columnKey === "setor_emissor" || columnKey === "setor_executor" || columnKey === "qtd_derivadas" || columnKey === "data_cadastro" || columnKey === "semana_cadastro" || columnKey === "semana_programada" || columnKey === "semana_executada"
                         readonly property int modelWidth: modelData.width !== undefined && modelData.width !== null ? modelData.width : root.fallbackColumnWidth
                         readonly property string effectiveLabel: {
                             const shortLabel = modelData.label !== undefined ? modelData.label : "";
@@ -85,6 +86,7 @@ Rectangle {
                             color: Theme.accentStrong
                             font.bold: true
                             font.pixelSize: root.textSize
+                            horizontalAlignment: headerCell.centerText ? Text.AlignHCenter : Text.AlignLeft
                             verticalAlignment: Text.AlignVCenter
                             elide: Text.ElideRight
                         }
@@ -246,6 +248,7 @@ Rectangle {
                 readonly property string rowSsaNumber: root.viewModel.tableModel.ssaNumberAt(cellDelegate.row)
                 readonly property bool isDerivationLink: columnConfig.key === "derivada_de" && hasCellText
                 readonly property bool opensDerivationGraph: columnConfig.key === "qtd_derivadas" && Number(cellText) > 0
+                readonly property bool centerText: columnConfig.key === "situacao" || columnConfig.key === "derivada_de" || columnConfig.key === "localizacao_codigo" || columnConfig.key === "setor_emissor" || columnConfig.key === "setor_executor" || columnConfig.key === "qtd_derivadas" || columnConfig.key === "data_cadastro" || columnConfig.key === "semana_cadastro" || columnConfig.key === "semana_programada" || columnConfig.key === "semana_executada"
 
                 // Overlap by 1px to the right to eliminate subpixel gaps
                 // between adjacent cells that show the table background.
@@ -289,6 +292,7 @@ Rectangle {
                     anchors.rightMargin: 8
                     text: cellDelegate.cellText
                     color: cellDelegate.opensSam || cellDelegate.isDerivationLink || cellDelegate.opensDerivationGraph ? Theme.accentStrong : Theme.text
+                    horizontalAlignment: cellDelegate.centerText ? Text.AlignHCenter : Text.AlignLeft
                     verticalAlignment: Text.AlignVCenter
                     elide: Text.ElideRight
                     font.pixelSize: table.cachedTextSize
