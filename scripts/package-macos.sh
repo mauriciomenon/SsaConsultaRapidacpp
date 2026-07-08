@@ -44,6 +44,7 @@ if [[ "${1-}" == "--help" || "${1-}" == "-h" ]]; then
   exit 0
 fi
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib/package_common.sh
 source "${script_dir}/lib/package_common.sh"
 repo_root="$(package_repo_root_from_script "${BASH_SOURCE[0]}")"
 preset="release"

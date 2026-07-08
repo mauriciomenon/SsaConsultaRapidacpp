@@ -25,4 +25,4 @@ repo_root="$(cd "${script_dir}/.." && pwd)"
 preset="dev"
 
 "${repo_root}/tools/configure-dev.sh" "${preset}"
-cmake --build --preset "${preset}"
+(cd "${repo_root}" && cmake --build --preset "${preset}")
