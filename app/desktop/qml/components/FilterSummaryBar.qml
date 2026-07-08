@@ -20,6 +20,47 @@ Rectangle {
     readonly property int tagTextSize: compact ? 11 : 12
     readonly property color filterAccent: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.26)
 
+    function estimatedTagWidth(text) {
+        return Math.max(92, Math.ceil(String(text).length * root.tagTextSize * 0.64) + 52);
+    }
+
+    function tagTexts() {
+        var texts = [];
+        if (root.hasSearch)
+            texts.push("Busca: '" + root.trimmedSearchText + "'");
+        if (root.hasActiveExclusion)
+            texts.push("Exc: SCA/SES/STE");
+        for (var index = 0; index < root.filterViewModel.activeFilterEntries.length; ++index)
+            texts.push(String(root.filterViewModel.activeFilterEntries[index].text));
+        return texts;
+    }
+
+    function totalEstimatedTagWidth() {
+        const texts = tagTexts();
+        var total = Math.max(0, texts.length - 1) * summaryTags.spacing;
+        for (var index = 0; index < texts.length; ++index)
+            total += estimatedTagWidth(texts[index]);
+        return total;
+    }
+
+    function preferredWidthForTag(text) {
+        if (root.activeTagCount <= 0)
+            return 0;
+        const natural = estimatedTagWidth(text);
+        const available = Math.max(0, summaryScroller.width - Math.max(0, root.activeTagCount - 1) * summaryTags.spacing);
+        if (totalEstimatedTagWidth() <= summaryScroller.width)
+            return natural;
+        const minWidth = Math.max(92, Math.min(150, Math.floor(available / root.activeTagCount)));
+        var extraNeed = 0;
+        const texts = tagTexts();
+        for (var index = 0; index < texts.length; ++index)
+            extraNeed += Math.max(0, estimatedTagWidth(texts[index]) - minWidth);
+        if (extraNeed <= 0)
+            return minWidth;
+        const extraAvailable = Math.max(0, available - minWidth * root.activeTagCount);
+        return minWidth + Math.floor(Math.max(0, natural - minWidth) * Math.min(1, extraAvailable / extraNeed));
+    }
+
     color: "transparent"
     border.color: "transparent"
     radius: 0
@@ -58,8 +99,7 @@ Rectangle {
             Item {
                 id: summaryContent
                 height: parent.availableHeight
-                width: Math.max(180, summaryTags.implicitWidth)
-                readonly property int tagSlotWidth: root.activeTagCount <= 0 ? 0 : Math.max(150, Math.min(430, Math.floor((summaryScroller.width - Math.max(0, root.activeTagCount - 1) * summaryTags.spacing) / Math.min(root.activeTagCount, 4))))
+                width: Math.max(summaryScroller.width, summaryTags.implicitWidth)
 
                 Label {
                     visible: !root.hasSearch && !root.hasFilterEntries && !root.hasActiveExclusion
@@ -82,7 +122,7 @@ Rectangle {
                         tooltipText: root.trimmedSearchText
                         compact: root.compact
                         tagTextSize: root.tagTextSize
-                        preferredTagWidth: summaryContent.tagSlotWidth
+                        preferredTagWidth: root.preferredWidthForTag(text)
                         tagAccent: root.filterAccent
                         onRemoveRequested: root.clearSearchRequested()
                     }
@@ -93,7 +133,7 @@ Rectangle {
                         tooltipText: "Excluindo SCA/SES/STE"
                         compact: root.compact
                         tagTextSize: root.tagTextSize
-                        preferredTagWidth: summaryContent.tagSlotWidth
+                        preferredTagWidth: root.preferredWidthForTag(text)
                         tagAccent: root.filterAccent
                         onRemoveRequested: {
                             root.filterViewModel.excludeScaSesSte = false;
@@ -109,7 +149,7 @@ Rectangle {
                             tooltipText: modelData.text
                             compact: root.compact
                             tagTextSize: root.tagTextSize
-                            preferredTagWidth: summaryContent.tagSlotWidth
+                            preferredTagWidth: root.preferredWidthForTag(text)
                             tagAccent: root.filterAccent
                             onRemoveRequested: root.filterViewModel.removeActiveFilter(modelData)
                         }

@@ -22,8 +22,10 @@ FilterCard {
     readonly property int choiceColumnWidth: 52
     readonly property int commandWidth: 30
     readonly property bool wideValuePopup: row.key === "solicitante" || row.key === "responsavel_programacao" || row.key === "responsavel_execucao" || row.key === "anomalia"
-    readonly property int valuePopupWidth: wideValuePopup ? 360 : 160
-    readonly property int multiSelectPopupWidth: wideValuePopup ? 520 : 280
+    readonly property int normalPopupWidth: 280
+    readonly property int widePopupWidth: 520
+    readonly property int valuePopupWidth: wideValuePopup ? widePopupWidth : normalPopupWidth
+    readonly property int multiSelectPopupWidth: valuePopupWidth
     property string popupFilterText: ""
 
     signal optionsRequested
@@ -89,9 +91,12 @@ FilterCard {
 
     function popupX(width) {
         const origin = root.mapToItem(Overlay.overlay, 0, 0);
-        const leftLimit = 8 - origin.x;
-        const rightLimit = Overlay.overlay.width - origin.x - width - 8;
-        return Math.max(leftLimit, Math.min(0, rightLimit));
+        const margin = 8;
+        const leftLimit = margin - origin.x;
+        const rightLimit = Overlay.overlay.width - origin.x - width - margin;
+        if (rightLimit >= 0)
+            return 0;
+        return Math.max(leftLimit, rightLimit);
     }
 
     function popupY(height) {

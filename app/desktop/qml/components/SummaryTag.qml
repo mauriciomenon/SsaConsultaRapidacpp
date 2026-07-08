@@ -13,11 +13,12 @@ Control {
     property int tagTextSize: 12
     property int preferredTagWidth: 0
     property color tagAccent: Theme.accent
+    readonly property int naturalWidth: tagLabel.implicitWidth + removeButton.implicitWidth + 26
     signal removeRequested
 
     // No artificial width cap: show the full text and only elide when the
     // container (ScrollView in FilterSummaryBar) runs out of room.
-    implicitWidth: Math.max(preferredTagWidth, tagLabel.implicitWidth + removeButton.implicitWidth + 26)
+    implicitWidth: preferredTagWidth > 0 ? preferredTagWidth : naturalWidth
     implicitHeight: compact ? 24 : 26
     padding: 0
     hoverEnabled: true

@@ -260,7 +260,7 @@ Rectangle {
                     readonly property int shortcutCount: root.filterViewModel.statusShortcutValues.length
                     readonly property real shortcutSpacing: 3
                     readonly property real preferredShortcutWidth: 48
-                    readonly property real minimumShortcutWidth: 40
+                    readonly property real minimumShortcutWidth: 38
                     readonly property real fittedShortcutWidth: shortcutCount > 0 ? Math.max(minimumShortcutWidth, Math.min(preferredShortcutWidth, Math.floor((parent.width - 8 - shortcutSpacing * (shortcutCount - 1)) / shortcutCount))) : preferredShortcutWidth
                     readonly property real fittedContentWidth: shortcutCount > 0 ? fittedShortcutWidth * shortcutCount + shortcutSpacing * (shortcutCount - 1) + 8 : 0
                     anchors.centerIn: parent
