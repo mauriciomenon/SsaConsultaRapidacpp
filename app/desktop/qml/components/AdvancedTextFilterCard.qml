@@ -333,6 +333,9 @@ FilterCard {
 
                                 AppCheckBox {
                                     anchors.centerIn: parent
+                                    width: 16
+                                    height: 16
+                                    spacing: 0
                                     text: ""
                                     checked: root.containsValue(root.includeValues, optionRow.modelData)
                                     onToggled: {
@@ -356,6 +359,9 @@ FilterCard {
 
                                 AppCheckBox {
                                     anchors.centerIn: parent
+                                    width: 16
+                                    height: 16
+                                    spacing: 0
                                     text: ""
                                     checked: root.containsValue(root.excludeValues, optionRow.modelData)
                                     onToggled: {
