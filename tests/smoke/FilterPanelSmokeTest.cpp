@@ -309,6 +309,42 @@ namespace {
             QVERIFY(!keys.contains("execucao_parcial"));
         }
 
+        void advanced_text_filter_state_syncs_for_all_text_filter_rows() {
+            auto repository = std::make_shared<FilterPanelRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::FilterPanelViewModel filters(service);
+            auto* advanced =
+                qobject_cast<ssa::presentation::FilterPanelAdvancedViewModel*>(filters.advanced());
+            QVERIFY(advanced != nullptr);
+            auto* text =
+                qobject_cast<ssa::presentation::AdvancedTextFilterViewModel*>(advanced->text());
+            auto* columns =
+                qobject_cast<ssa::presentation::ColumnFilterViewModel*>(filters.columns());
+            QVERIFY(text != nullptr);
+            QVERIFY(columns != nullptr);
+
+            for (const auto& row : text->rows()) {
+                const auto key = row.toMap().value("key").toString();
+                QVERIFY2(!key.isEmpty(), "advanced text row key must not be empty");
+
+                filters.setColumnFilters({{key.toStdString(), "OLD"}});
+                text->replaceWithOperatorValueLists(key, {"IN"}, {"OUT"});
+
+                QVERIFY2(!filters.columnFilters().contains(key.toStdString()),
+                         qPrintable(QString("column filter was not removed for %1").arg(key)));
+                QCOMPARE(text->textFilter(key), QString("=IN,!OUT"));
+                QCOMPARE(text->operatorModeFor(key), QString("mixed"));
+                QCOMPARE(cardStateFor(*text, key).value("textFilter").toString(),
+                         QString("=IN,!OUT"));
+
+                QVERIFY2(columns->applyFilterFor(key, "NEW"),
+                         qPrintable(QString("column filter apply failed for %1").arg(key)));
+                QCOMPARE(text->textFilter(key), QString(""));
+                QVERIFY2(filters.columnFilters().contains(key.toStdString()),
+                         qPrintable(QString("column filter was not applied for %1").arg(key)));
+            }
+        }
+
         void advanced_week_validation_accepts_empty_and_rejects_out_of_range_values() {
             auto repository = std::make_shared<FilterPanelRepository>();
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
