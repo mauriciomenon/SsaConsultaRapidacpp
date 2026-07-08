@@ -594,7 +594,7 @@ namespace {
                      QString("=MEG2"));
         }
 
-        void status_shortcuts_toggle_advanced_status_filter_and_apply() {
+        void status_shortcuts_cycle_include_exclude_and_disabled() {
             auto repository = std::make_shared<FakeRepository>();
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
             auto commands = std::make_shared<FakeCommands>();
@@ -619,6 +619,12 @@ namespace {
 
             QCOMPARE(text->textFilter("situacao"), QString("=APV,=STE"));
             QVERIFY(model.browse()->filters()->statusShortcutSelected("APV"));
+            QVERIFY(model.browse()->filters()->statusShortcutSelected("STE"));
+
+            model.browse()->filters()->toggleStatusShortcut("APV");
+
+            QCOMPARE(text->textFilter("situacao"), QString("=STE,!APV"));
+            QVERIFY(!model.browse()->filters()->statusShortcutSelected("APV"));
             QVERIFY(model.browse()->filters()->statusShortcutSelected("STE"));
 
             model.browse()->filters()->toggleStatusShortcut("APV");
@@ -651,9 +657,9 @@ namespace {
 
             model.browse()->filters()->toggleStatusShortcut("STE");
 
-            QCOMPARE(text->textFilter("situacao"), QString("=APV,=STE"));
+            QCOMPARE(text->textFilter("situacao"), QString("=APV"));
             QVERIFY(model.browse()->filters()->statusShortcutSelected("APV"));
-            QVERIFY(model.browse()->filters()->statusShortcutSelected("STE"));
+            QVERIFY(!model.browse()->filters()->statusShortcutSelected("STE"));
         }
 
         void named_saved_filter_persists_applies_and_removes_current_filters() {

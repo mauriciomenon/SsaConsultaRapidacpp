@@ -187,6 +187,9 @@ TEST_CASE_METHOD(SqliteRepositoryFixture, "sqlite repository returns details and
             ('202500011','APV','','LOC-11','Area','EQ-X',202501,'2025-01-11','A','A','SEM','IEE4','Ana','Bruno','Caio','SAM','SYS','x.xlsx','2025-01-11','A','B',202502,202503,0,0),
             ('202500012','APV','','LOC-12','Area','EQ-X',202501,'2025-01-12','A','A','SEM','MEL2','Ana','Bruno','Caio','SAM','SYS','x.xlsx','2025-01-12','A','B',202502,202503,0,0),
             ('202500013','APV','','LOC-13','Area','EQ-X',202501,'2025-01-13','A','A','SEM','IEE3','Ana','Bruno','Caio','SAM','SYS','x.xlsx','2025-01-13','A','B',202502,202503,0,0),
+            ('202500017','APV','','LOC-17','Area','EQ-X',202501,'2025-01-17','A','A','SEM','IEE2','Ana','Bruno','Caio','SAM','SYS','x.xlsx','2025-01-17','A','B',202502,202503,0,0),
+            ('202500018','APV','','LOC-18','Area','EQ-X',202501,'2025-01-18','A','A','SEM','MEL3','Ana','Bruno','Caio','SAM','SYS','x.xlsx','2025-01-18','A','B',202502,202503,0,0),
+            ('202500019','APV','','LOC-19','Area','EQ-X',202501,'2025-01-19','A','A','SEM','MEL4','Ana','Bruno','Caio','SAM','SYS','x.xlsx','2025-01-19','A','B',202502,202503,0,0),
             ('202500014','APV','','LOC-14','Area','EQ-X',202501,'2025-01-14','A','A','SEM','AAA','Ana','Bruno','Caio','SAM','SYS','x.xlsx','2025-01-14','A','B',202502,202503,0,0),
             ('202500015','APV','','LOC-15','Area','EQ-X',202501,'2025-01-15','A','A','SEM','MEL1','Ana','Bruno','Caio','SAM','SYS','x.xlsx','2025-01-15','A','B',202502,202503,0,0),
             ('202500016','APV','','LOC-16','Area','EQ-X',202501,'2025-01-16','A','A','SEM','IEE1','Ana','Bruno','Caio','SAM','SYS','x.xlsx','2025-01-16','A','B',202502,202503,0,0);
@@ -195,15 +198,15 @@ TEST_CASE_METHOD(SqliteRepositoryFixture, "sqlite repository returns details and
     ssa::domain::DistinctValuesRequest request;
     request.columnKey = "setor_executor";
     const auto values = repository.distinctValues(request);
-    REQUIRE(values == std::vector<std::string>{"IEE3", "IEE1", "IEE4", "MEL1", "MEL2", "AAA",
-                                               "MEG2", "SMM", "STE"});
+    REQUIRE(values == std::vector<std::string>{"IEE3", "IEE1", "IEE2", "IEE4", "MEL1", "MEL2",
+                                               "MEL3", "MEL4", "AAA", "MEG2", "SMM", "STE"});
 }
 
 TEST_CASE_METHOD(SqliteRepositoryFixture,
                  "sqlite repository orders responsible and numeric distinct values for display") {
     executeSql(path, R"SQL(
         INSERT INTO ssa_table VALUES
-            ('202500020','APV','','LOC-20','Area','EQ-X',202501,'2025-01-20','A','A','SEM','MEG2','Ana','Bruno','IEE2 BRUNO','SAM','SYS','x.xlsx','2025-01-20','A','B',202502,202503,12,12),
+            ('202500020','APV','','LOC-20','Area','EQ-X',202501,'2025-01-20','A','A','SEM','IEE2','Ana','Bruno','IEE2 BRUNO','SAM','SYS','x.xlsx','2025-01-20','A','B',202502,202503,12,12),
             ('202500021','APV','','LOC-21','Area','EQ-X',202501,'2025-01-21','A','A','SEM','MEG2','Ana','Bruno','MARIA','SAM','SYS','x.xlsx','2025-01-21','A','B',202502,202503,2,2),
             ('202500022','APV','','LOC-22','Area','EQ-X',202501,'2025-01-22','A','A','SEM','MEG2','Ana','Bruno','IEE3 ANA','SAM','SYS','x.xlsx','2025-01-22','A','B',202502,202503,7,7),
             ('202500023','APV','','LOC-23','Area','EQ-X',202501,'2025-01-23','A','A','SEM','MEG2','Ana','Bruno','MEL1 CAIO','SAM','SYS','x.xlsx','2025-01-23','A','B',202502,202503,3,3),
@@ -219,9 +222,10 @@ TEST_CASE_METHOD(SqliteRepositoryFixture,
     ssa::domain::DistinctValuesRequest peopleRequest;
     peopleRequest.columnKey = "responsavel_execucao";
     const auto people = repository.distinctValues(peopleRequest);
-    REQUIRE(
-        std::ranges::search(people, std::vector<std::string>{"IEE3 ANA", "IEE1 DORA", "IEE2 BRUNO"})
-            .begin() == people.begin());
+    REQUIRE(people == std::vector<std::string>{"IEE3 ANA", "IEE1 DORA", "IEE2 BRUNO", "MEL1 CAIO",
+                                               "CARLOS SETOR", "ZE IEE3", "ALAN SETOR", "ZE IEE1",
+                                               "BRUNO SETOR", "AARON SETOR", "Caio", "Eva", "MARIA",
+                                               "Mia", "Rui"});
     const auto zeIee3 = std::ranges::find(people, "ZE IEE3");
     const auto zeIee1 = std::ranges::find(people, "ZE IEE1");
     REQUIRE(zeIee3 != people.end());

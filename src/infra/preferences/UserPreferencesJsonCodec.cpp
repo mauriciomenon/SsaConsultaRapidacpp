@@ -16,7 +16,7 @@
 namespace ssa::infra::preferences {
 
     namespace {
-        constexpr int kCurrentPreferencesSchemaVersion = 11;
+        constexpr int kCurrentPreferencesSchemaVersion = 12;
         constexpr std::string_view kDerivationColumnKey = "derivada_de";
         constexpr int kDerivationColumnWidth = 88;
         constexpr std::string_view kExecutorColumnKey = "setor_executor";
@@ -247,7 +247,7 @@ namespace ssa::infra::preferences {
         }
 
         void migrateSchema11DefaultColumns(ports::UserPreferencesSnapshot& snapshot) {
-            if (snapshot.schemaVersion >= kCurrentPreferencesSchemaVersion) {
+            if (snapshot.schemaVersion >= 11) {
                 return;
             }
             if (matchesVisibleColumns(snapshot.visibleColumns, kSchema10DefaultVisibleColumns)) {
@@ -265,6 +265,35 @@ namespace ssa::infra::preferences {
                     width->second = migration.newWidth;
                 }
             }
+        }
+
+        void removeVisibleColumn(std::vector<std::string>& columns, const std::string_view key) {
+            const auto first = std::ranges::remove(columns, std::string{key}).begin();
+            columns.erase(first, columns.end());
+        }
+
+        void moveColumnAfter(std::vector<std::string>& columns, const std::string_view column,
+                             const std::string_view previous) {
+            auto columnIt = std::ranges::find(columns, std::string{column});
+            const auto previousIt = std::ranges::find(columns, std::string{previous});
+            if (columnIt == columns.end() || previousIt == columns.end() ||
+                std::next(previousIt) == columnIt) {
+                return;
+            }
+            std::string value = std::move(*columnIt);
+            columns.erase(columnIt);
+            const auto refreshedPrevious = std::ranges::find(columns, std::string{previous});
+            columns.insert(std::next(refreshedPrevious), std::move(value));
+        }
+
+        void migrateSchema12VisibleColumns(ports::UserPreferencesSnapshot& snapshot) {
+            if (snapshot.schemaVersion >= kCurrentPreferencesSchemaVersion) {
+                return;
+            }
+            removeVisibleColumn(snapshot.visibleColumns, "data_cadastro");
+            moveColumnAfter(snapshot.visibleColumns, "semana_cadastro", "descricao_ssa");
+            moveColumnAfter(snapshot.visibleColumns, "solicitante", "semana_cadastro");
+            moveColumnAfter(snapshot.visibleColumns, "derivada_de", "solicitante");
         }
 
         std::map<std::string, int> readColumnWidths(const QJsonObject& root) {
@@ -411,6 +440,7 @@ namespace ssa::infra::preferences {
         migrateSchema10CompactColumns(snapshot);
         migrateSchema11DefaultColumns(snapshot);
         migrateSchema11DerivationWidth(snapshot);
+        migrateSchema12VisibleColumns(snapshot);
         snapshot.schemaVersion = std::max(snapshot.schemaVersion, kCurrentPreferencesSchemaVersion);
         return snapshot;
     }

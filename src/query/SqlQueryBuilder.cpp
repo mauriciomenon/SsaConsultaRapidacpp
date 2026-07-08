@@ -166,8 +166,6 @@ namespace ssa::query {
 
         std::string distinctValuesOrderSql(const std::string& column, const bool numericColumn) {
             std::ostringstream sql;
-            constexpr std::array<std::string_view, 8> orderedValues{"IEE3", "IEE1", "IEE2", "IEE4",
-                                                                    "MEL1", "MEL2", "MEL3", "MEL4"};
             if (numericColumn) {
                 sql << " ORDER BY CAST(" << column << " AS INTEGER) ASC";
             } else {

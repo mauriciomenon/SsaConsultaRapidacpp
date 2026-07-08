@@ -297,20 +297,28 @@ namespace ssa::presentation {
             advancedExpression.empty() && columnFilter != state_.columnFilters().end()
                 ? columnFilter->second
                 : advancedExpression);
-        const bool selected = statusShortcutSelected(QString::fromStdString(normalizedCode));
-        if (selected) {
-            query::TextFilterTokenSet nextTokens;
-            for (const auto& token : tokens.ordered) {
-                if (token.value == normalizedCode &&
-                    token.filterOperator == query::TextFilterOperator::Equals) {
-                    continue;
-                }
-                query::addTextFilterValue(nextTokens, token.value, token.filterOperator);
+        const auto hasToken = [&tokens, &normalizedCode](const query::TextFilterOperator op) {
+            return std::ranges::any_of(tokens.ordered, [&normalizedCode, op](const auto& token) {
+                return token.value == normalizedCode && token.filterOperator == op;
+            });
+        };
+        const bool hasIncluded = hasToken(query::TextFilterOperator::Equals);
+        const bool hasExcluded = hasToken(query::TextFilterOperator::Different);
+        query::TextFilterTokenSet nextTokens;
+        for (const auto& token : tokens.ordered) {
+            if (token.value == normalizedCode) {
+                continue;
             }
-            tokens = std::move(nextTokens);
-        } else {
-            query::addTextFilterValue(tokens, normalizedCode, query::TextFilterOperator::Equals);
+            query::addTextFilterValue(nextTokens, token.value, token.filterOperator);
         }
+        if (hasIncluded) {
+            query::addTextFilterValue(nextTokens, normalizedCode,
+                                      query::TextFilterOperator::Different);
+        } else if (!hasExcluded) {
+            query::addTextFilterValue(nextTokens, normalizedCode,
+                                      query::TextFilterOperator::Equals);
+        }
+        tokens = std::move(nextTokens);
 
         const auto nextExpression = QString::fromStdString(query::joinTextFilterTokens(tokens));
         const bool advancedChanged = state_.advanced().setTextFilter(statusKey, nextExpression);
