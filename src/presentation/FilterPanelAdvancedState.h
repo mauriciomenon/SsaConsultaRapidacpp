@@ -19,6 +19,7 @@ namespace ssa::presentation::filterpanel {
         [[nodiscard]] QString textFilter(const QString& key) const;
         bool setTextFilter(const QString& key, QString value);
         [[nodiscard]] const std::map<std::string, std::string>& textFilters() const;
+        bool removeTextFilter(const QString& key);
 
         [[nodiscard]] const QString& weekColumnKey() const;
         bool setWeekColumnKey(const QString& value, const QStringList& validKeys);

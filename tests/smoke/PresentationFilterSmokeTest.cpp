@@ -86,8 +86,8 @@ namespace {
             QVERIFY(!activeFilterEntry(model.browse()->filters(), "advanced_text", "situacao")
                          .isEmpty());
             QVERIFY(model.browse()->filters()->activeFilterSummary().contains("MEG2"));
-            QVERIFY(model.browse()->filters()->activeFilterSummary().contains("responsavel"));
-            QVERIFY(model.browse()->filters()->activeFilterSummary().contains("Sit."));
+            QVERIFY(model.browse()->filters()->activeFilterSummary().contains("Resp. Exec"));
+            QVERIFY(model.browse()->filters()->activeFilterSummary().contains("Sit"));
             QVERIFY(model.browse()->filters()->activeFilterSummary().contains("APV"));
 
             model.browse()->apply();
@@ -206,8 +206,8 @@ namespace {
             filters.setColumnValue("APV");
             filters.addColumnFilter();
 
-            QCOMPARE(filters.activeFilters().contains("situacao:APV"), true);
-            QCOMPARE(filters.activeFilterSummary().contains("situacao:APV"), true);
+            QCOMPARE(filters.activeFilters().contains("Sit: APV"), true);
+            QCOMPARE(filters.activeFilterSummary().contains("Sit: APV"), true);
         }
 
         void advanced_filters_are_added_to_request_contract() {
@@ -493,6 +493,137 @@ namespace {
             QTRY_COMPARE_WITH_TIMEOUT(preferences->saveCount(), 1, 1000);
             QCOMPARE(QString::fromStdString(preferences->snapshot().filters.quickSector),
                      QString("MEG2"));
+        }
+
+        void status_shortcuts_toggle_advanced_status_filter_and_apply() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            ssa::presentation::MainViewModel model(service, commands);
+            auto* advanced = qobject_cast<ssa::presentation::FilterPanelAdvancedViewModel*>(
+                model.browse()->filters()->advanced());
+            QVERIFY(advanced != nullptr);
+            auto* text =
+                qobject_cast<ssa::presentation::AdvancedTextFilterViewModel*>(advanced->text());
+            QVERIFY(text != nullptr);
+
+            model.browse()->filters()->toggleStatusShortcut("APV");
+
+            QCOMPARE(text->textFilter("situacao"), QString("=APV"));
+            QVERIFY(model.browse()->filters()->statusShortcutSelected("APV"));
+            QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{1}, 1000);
+            QCOMPARE(QString::fromStdString(
+                         repository->requests().back().advancedFilters.textFilters.at("situacao")),
+                     QString("=APV"));
+
+            model.browse()->filters()->toggleStatusShortcut("STE");
+
+            QCOMPARE(text->textFilter("situacao"), QString("=APV,=STE"));
+            QVERIFY(model.browse()->filters()->statusShortcutSelected("APV"));
+            QVERIFY(model.browse()->filters()->statusShortcutSelected("STE"));
+
+            model.browse()->filters()->toggleStatusShortcut("APV");
+
+            QCOMPARE(text->textFilter("situacao"), QString("=STE"));
+            QVERIFY(!model.browse()->filters()->statusShortcutSelected("APV"));
+            QVERIFY(model.browse()->filters()->statusShortcutSelected("STE"));
+        }
+
+        void status_shortcuts_do_not_mark_excluded_status_values() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            ssa::presentation::MainViewModel model(service, commands);
+            auto* advanced = qobject_cast<ssa::presentation::FilterPanelAdvancedViewModel*>(
+                model.browse()->filters()->advanced());
+            QVERIFY(advanced != nullptr);
+            auto* text =
+                qobject_cast<ssa::presentation::AdvancedTextFilterViewModel*>(advanced->text());
+            QVERIFY(text != nullptr);
+
+            text->setTextFilter("situacao", "!STE");
+
+            QVERIFY(!model.browse()->filters()->statusShortcutSelected("STE"));
+
+            text->setTextFilter("situacao", "=APV,!STE");
+
+            QVERIFY(model.browse()->filters()->statusShortcutSelected("APV"));
+            QVERIFY(!model.browse()->filters()->statusShortcutSelected("STE"));
+
+            model.browse()->filters()->toggleStatusShortcut("STE");
+
+            QCOMPARE(text->textFilter("situacao"), QString("=APV,=STE"));
+            QVERIFY(model.browse()->filters()->statusShortcutSelected("APV"));
+            QVERIFY(model.browse()->filters()->statusShortcutSelected("STE"));
+        }
+
+        void named_saved_filter_persists_applies_and_removes_current_filters() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            auto preferences = std::make_shared<FakePreferences>();
+            ssa::presentation::MainViewModel model(service, commands, preferences);
+
+            model.browse()->search()->setText("bomba");
+            model.browse()->filters()->setQuickSector("MEG2");
+            QMetaObject::invokeMethod(model.preferenceFlow(), "saveCurrentFilter",
+                                      Q_ARG(QString, QString("braba")));
+
+            QTRY_COMPARE_WITH_TIMEOUT(preferences->saveCount(), 1, 1000);
+            QCOMPARE(preferences->snapshot().savedFilters.size(), std::size_t{1});
+            QCOMPARE(QString::fromStdString(preferences->snapshot().savedFilters.front().name),
+                     QString("braba"));
+            QCOMPARE(QString::fromStdString(
+                         preferences->snapshot().savedFilters.front().filters.searchText),
+                     QString("bomba"));
+
+            model.browse()->search()->setText("outra");
+            model.browse()->filters()->setQuickSector("MMU3");
+            QMetaObject::invokeMethod(model.preferenceFlow(), "applySavedFilter",
+                                      Q_ARG(QString, QString("braba")));
+
+            QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{1}, 1000);
+            QCOMPARE(model.browse()->search()->text(), QString("bomba"));
+            QCOMPARE(model.browse()->filters()->quickSector(), QString("MEG2"));
+
+            QMetaObject::invokeMethod(model.preferenceFlow(), "removeSavedFilter",
+                                      Q_ARG(QString, QString("braba")));
+
+            QTRY_COMPARE_WITH_TIMEOUT(preferences->snapshot().savedFilters.size(), std::size_t{0},
+                                      1000);
+        }
+
+        void named_saved_filter_normalizes_overlapping_filter_families() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            auto preferences = std::make_shared<FakePreferences>();
+            ssa::presentation::MainViewModel model(service, commands, preferences);
+            auto* advanced = qobject_cast<ssa::presentation::FilterPanelAdvancedViewModel*>(
+                model.browse()->filters()->advanced());
+            QVERIFY(advanced != nullptr);
+            auto* text =
+                qobject_cast<ssa::presentation::AdvancedTextFilterViewModel*>(advanced->text());
+            QVERIFY(text != nullptr);
+
+            model.browse()->filters()->setQuickSector("IEE3");
+            model.browse()->filters()->setColumnFilters({{"situacao", "=APV"}});
+            text->setTextFilter("setor_executor", "=IEE1");
+            text->setTextFilter("situacao", "=SCA");
+            model.browse()->filters()->setExcludeScaSesSte(true);
+            QMetaObject::invokeMethod(model.preferenceFlow(), "saveCurrentFilter",
+                                      Q_ARG(QString, QString("normalizado")));
+
+            QTRY_COMPARE_WITH_TIMEOUT(preferences->saveCount(), 1, 1000);
+            QCOMPARE(preferences->snapshot().savedFilters.size(), std::size_t{1});
+            const auto saved = preferences->snapshot().savedFilters.front().filters;
+            QVERIFY(saved.quickSector.empty());
+            QVERIFY(saved.columnFilters.empty());
+            QVERIFY(!saved.excludeScaSesSte);
+            QCOMPARE(QString::fromStdString(saved.advancedTextFilters.at("setor_executor")),
+                     QString("=IEE1,=IEE3"));
+            QCOMPARE(QString::fromStdString(saved.advancedTextFilters.at("situacao")),
+                     QString("=SCA"));
         }
 
         void filter_preset_export_uses_current_filters_without_search_text() {

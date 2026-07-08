@@ -32,6 +32,7 @@ namespace ssa::presentation {
     class FilterPanelViewModel final : public QObject {
         Q_OBJECT
         Q_PROPERTY(QStringList filterColumnKeys READ filterColumnKeys CONSTANT)
+        Q_PROPERTY(QStringList statusShortcutValues READ statusShortcutValues CONSTANT)
         Q_PROPERTY(QString columnKey READ columnKey WRITE setColumnKey NOTIFY changed)
         Q_PROPERTY(QString columnValue READ columnValue WRITE setColumnValue NOTIFY changed)
         Q_PROPERTY(
@@ -42,6 +43,7 @@ namespace ssa::presentation {
         Q_PROPERTY(QObject* sector READ sector CONSTANT)
         Q_PROPERTY(int columnValueOptionsVersion READ columnValueOptionsVersion NOTIFY
                        columnValueOptionsChanged)
+        Q_PROPERTY(int focusColumnRequest READ focusColumnRequest NOTIFY focusColumnRequestChanged)
         Q_PROPERTY(QStringList activeFilters READ activeFilters NOTIFY changed)
         Q_PROPERTY(QString activeFilterSummary READ activeFilterSummary NOTIFY changed)
         Q_PROPERTY(QVariantList activeFilterEntries READ activeFilterEntries NOTIFY changed)
@@ -55,6 +57,7 @@ namespace ssa::presentation {
         [[nodiscard]] bool excludeScaSesSte() const;
         void setExcludeScaSesSte(bool value);
         [[nodiscard]] QStringList filterColumnKeys() const;
+        [[nodiscard]] QStringList statusShortcutValues() const;
         [[nodiscard]] QString columnKey() const;
         void setColumnKey(const QString& value);
         [[nodiscard]] QString columnValue() const;
@@ -64,6 +67,7 @@ namespace ssa::presentation {
         [[nodiscard]] QObject* columns();
         [[nodiscard]] QObject* sector();
         [[nodiscard]] int columnValueOptionsVersion() const;
+        [[nodiscard]] int focusColumnRequest() const;
         [[nodiscard]] QStringList quickSectorOptions() const;
         [[nodiscard]] QStringList quickSectorSelectorValues() const;
         [[nodiscard]] int quickSectorSelectorIndex() const;
@@ -72,6 +76,7 @@ namespace ssa::presentation {
         [[nodiscard]] QVariantList activeFilterEntries() const;
         [[nodiscard]] std::map<std::string, std::string> columnFilters() const;
         [[nodiscard]] domain::AdvancedFilterSpec advancedFilters() const;
+        void requestColumnFocus(const QString& key);
         Q_INVOKABLE [[nodiscard]] bool hasFilterForColumn(const QString& key) const;
         Q_INVOKABLE [[nodiscard]] QStringList columnValueOptionsFor(const QString& key) const;
         Q_INVOKABLE [[nodiscard]] QStringList
@@ -79,6 +84,9 @@ namespace ssa::presentation {
         Q_INVOKABLE [[nodiscard]] bool hasMoreColumnValueOptionsFor(const QString& key,
                                                                     int limit) const;
         Q_INVOKABLE [[nodiscard]] bool columnValueOptionsLoadingFor(const QString& key) const;
+        Q_INVOKABLE [[nodiscard]] bool statusShortcutSelected(const QString& code) const;
+        Q_INVOKABLE void toggleStatusShortcut(const QString& code);
+        Q_INVOKABLE void clearStatusShortcuts();
         Q_INVOKABLE bool removeActiveFilter(const QVariantMap& entry);
         Q_INVOKABLE void refreshColumnValueOptions();
         Q_INVOKABLE void refreshColumnValueOptionsFor(const QString& key);
@@ -92,6 +100,7 @@ namespace ssa::presentation {
         void columnValueOptionsChanged();
         void columnValueOptionsChangedFor(QString key);
         void columnValueOptionsReset();
+        void focusColumnRequestChanged();
         void applyRequested();
 
       public slots:
@@ -111,6 +120,9 @@ namespace ssa::presentation {
         void scheduleColumnValueRefresh();
         void refreshQuickSectorOptions();
         void markActiveFiltersDirty();
+        void syncAdvancedQuickSector();
+        bool normalizeAdvancedFilterOverlap();
+        void handleAdvancedTextFilterApplied(const QString& key, const QString& expression);
 
         filterpanel::FilterPanelState state_;
         std::shared_ptr<query::SsaQueryService> queryService_;
@@ -127,6 +139,7 @@ namespace ssa::presentation {
         FilterPanelDistinctValuesController distinctValues_;
         QTimer activeFilterRefreshTimer_;
         std::uint64_t filterStateVersion_{0};
+        int focusColumnRequest_{0};
     };
 
 } // namespace ssa::presentation

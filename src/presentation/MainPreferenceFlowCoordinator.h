@@ -11,6 +11,7 @@
 #include <QObject>
 #include <QString>
 #include <QUrl>
+#include <QVariantList>
 
 #include <map>
 #include <memory>
@@ -28,6 +29,7 @@ namespace ssa::presentation {
 
     class MainPreferenceFlowCoordinator final : public QObject {
         Q_OBJECT
+        Q_PROPERTY(QVariantList savedFilters READ savedFilters NOTIFY savedFiltersChanged)
 
       public:
         MainPreferenceFlowCoordinator(BrowseViewModel& browse, UiSettingsViewModel& ui,
@@ -39,16 +41,22 @@ namespace ssa::presentation {
         ~MainPreferenceFlowCoordinator() override;
 
         [[nodiscard]] ports::UserPreferencesSnapshot buildPreferencesSnapshot() const;
+        [[nodiscard]] QVariantList savedFilters() const;
         void applyStoredPreferences(const ports::UserPreferencesSnapshot& snapshot);
         void scheduleSavePreferences();
         void saveAppliedColumnPreferences(std::vector<std::string> visibleColumns,
                                           std::map<std::string, int> columnWidths);
         void saveNowOrSchedule();
         Q_INVOKABLE void savePreferences();
+        Q_INVOKABLE QString suggestedFilterName() const;
+        Q_INVOKABLE void saveCurrentFilter(const QString& name);
+        Q_INVOKABLE void applySavedFilter(const QString& name);
+        Q_INVOKABLE void removeSavedFilter(const QString& name);
         Q_INVOKABLE void exportFilterPreset(const QUrl& outputUrl);
         Q_INVOKABLE void importFilterPreset(const QUrl& inputUrl);
 
       signals:
+        void savedFiltersChanged();
         void statusMessageRequested(const QString& message);
         void statusErrorRequested(const QString& message);
         void statusErrorClearRequested();
@@ -60,6 +68,7 @@ namespace ssa::presentation {
         void finishExportFilterPreset();
         void finishImportFilterPreset();
         void waitForPresetTasks();
+        void setSavedFilters(std::vector<ports::SavedFilterSnapshot> filters);
 
         BrowseViewModel& browse_;
         UiSettingsViewModel& ui_;
@@ -67,6 +76,7 @@ namespace ssa::presentation {
         UserPreferencesCoordinator& preferences_;
         std::shared_ptr<ports::IFilterPresetStore> presetStore_;
         application::FilterPresetService& presetService_;
+        std::vector<ports::SavedFilterSnapshot> savedFilters_;
         QFutureWatcher<QString> exportPresetWatcher_;
         QFutureWatcher<FilterPresetLoadResult> importPresetWatcher_;
     };

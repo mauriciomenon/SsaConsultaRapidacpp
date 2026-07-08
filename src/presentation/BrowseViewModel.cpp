@@ -173,7 +173,7 @@ namespace ssa::presentation {
     }
 
     void BrowseViewModel::setFilterPanelFocusColumn(const QString& key) {
-        filters_.setColumnKey(key);
+        filters_.requestColumnFocus(key);
     }
 
     bool BrowseViewModel::loadDetailsBySsaNumber(const QString& ssaNumber) {

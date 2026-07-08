@@ -99,7 +99,8 @@ namespace ssa::presentation {
           reportService_(
               std::make_unique<application::SsaExecutadasReportService>(std::move(queryService))),
           options_{
-              QVariantMap{{"label", tr("Nenhum")}, {"value", QString::fromLatin1(kNone)}},
+              QVariantMap{{"label", tr("Exibir o grafico e somente o grafico")},
+                          {"value", QString::fromLatin1(kNone)}},
               QVariantMap{{"label", tr("Baixar")}, {"value", QString::fromLatin1(kBaixar)}},
               QVariantMap{{"label", tr("SSA Executadas Setor")},
                           {"value", QString::fromLatin1(kExecutadasSetor)}},

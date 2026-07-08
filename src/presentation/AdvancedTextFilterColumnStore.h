@@ -52,8 +52,8 @@ namespace ssa::presentation {
         [[nodiscard]] QString operatorModeFor(const QString& key) const;
         bool setOperatorMode(const OperatorModeUpdate& update);
         void setExpression(const ExpressionUpdate& update);
-        [[nodiscard]] std::optional<QString>
-        expressionWithAddedValue(const AddValueRequest& request) const;
+        [[nodiscard]] static std::optional<QString>
+        expressionWithAddedValue(const AddValueRequest& request);
         [[nodiscard]] static QString
         expressionReplacingCurrentExpressionWithOperator(const OperatorExpressionRequest& request);
         [[nodiscard]] static QString

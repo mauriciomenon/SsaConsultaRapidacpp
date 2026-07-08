@@ -35,6 +35,9 @@ namespace ssa::presentation::filterpanel {
         bool setColumnFilters(std::map<std::string, std::string> filters);
         bool addColumnFilter(const QString& key, const QString& value);
         bool removeColumnFilter(const QString& key);
+        bool removeColumnFiltersShadowedByAdvancedText();
+        bool clearStatusExclusionIfStatusIncludesExcluded();
+        bool foldQuickSectorIntoAdvancedExecutor();
 
         bool applyPreferences(const ports::UserPreferencesSnapshot& snapshot,
                               const QStringList& weekColumnKeys);

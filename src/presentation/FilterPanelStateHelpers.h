@@ -37,6 +37,9 @@ namespace ssa::presentation::filterpanel {
                               const std::map<std::string, std::string>& columnFilters,
                               const domain::AdvancedFilterSpec& advanced);
 
+    [[nodiscard]] std::string executorFilterWithQuickSector(std::string_view expression,
+                                                            std::string_view quickSector);
+
     [[nodiscard]] bool hasFilterValue(const std::string& currentFilter,
                                       const std::string& candidateValue);
 

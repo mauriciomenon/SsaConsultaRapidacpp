@@ -74,6 +74,10 @@ namespace ssa::presentation::filterpanel {
         return input_.textFilters;
     }
 
+    bool FilterPanelAdvancedState::removeTextFilter(const QString& key) {
+        return setTextFilter(key, {});
+    }
+
     const QString& FilterPanelAdvancedState::weekColumnKey() const {
         return input_.genericWeek.columnKey;
     }

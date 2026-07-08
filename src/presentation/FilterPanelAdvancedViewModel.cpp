@@ -14,6 +14,8 @@ namespace ssa::presentation {
           macro_(state_, filterState, std::move(queryService), this) {
         connect(&text_, &AdvancedTextFilterViewModel::changed, this,
                 &FilterPanelAdvancedViewModel::publishChanged);
+        connect(&text_, &AdvancedTextFilterViewModel::expressionApplied, this,
+                &FilterPanelAdvancedViewModel::textFilterApplied);
         connect(&text_, &AdvancedTextFilterViewModel::applyRequested, this,
                 &FilterPanelAdvancedViewModel::applyRequested);
         connect(&week_, &AdvancedWeekFilterViewModel::changed, this,
@@ -48,6 +50,10 @@ namespace ssa::presentation {
 
     QObject* FilterPanelAdvancedViewModel::macro() {
         return &macro_;
+    }
+
+    void FilterPanelAdvancedViewModel::setQuickSector(const QString& value) {
+        text_.setQuickSector(value);
     }
 
     void FilterPanelAdvancedViewModel::clear() {

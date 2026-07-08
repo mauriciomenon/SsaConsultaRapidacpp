@@ -1,10 +1,14 @@
 #include "presentation/MainPreferenceFlowCoordinator.h"
 
+#include "domain/ColumnCatalog.h"
 #include "presentation/UserPreferencesCoordinator.h"
+#include "query/TextFilterToken.h"
 
 #include <QCoreApplication>
+#include <QVariantMap>
 #include <QtConcurrent>
 
+#include <algorithm>
 #include <filesystem>
 #include <stdexcept>
 #include <utility>
@@ -40,6 +44,120 @@ namespace ssa::presentation {
                 return {{}, QString::fromStdString(exc.what())};
             }
         }
+
+        bool hasFilterState(const ports::FilterPreferencesSnapshot& filters) {
+            return !filters.searchText.empty() || !filters.quickSector.empty() ||
+                   !filters.columnFilters.empty() || !filters.advancedTextFilters.empty() ||
+                   !filters.advancedYear.empty() || !filters.advancedWeek.empty() ||
+                   !filters.issueYear.empty() || !filters.executionYear.empty() ||
+                   !filters.reprogrammingEquals.empty() || !filters.reprogrammingValues.empty() ||
+                   !filters.issueWeekStart.empty() || !filters.issueWeekEnd.empty() ||
+                   !filters.executionWeekStart.empty() || !filters.executionWeekEnd.empty() ||
+                   filters.derivationMode != "all" || filters.excludeScaSesSte ||
+                   filters.onlyReprogrammed;
+        }
+
+        bool sameFilters(const ports::FilterPreferencesSnapshot& lhs,
+                         const ports::FilterPreferencesSnapshot& rhs) {
+            return lhs.searchText == rhs.searchText && lhs.quickSector == rhs.quickSector &&
+                   lhs.columnFilters == rhs.columnFilters &&
+                   lhs.advancedTextFilters == rhs.advancedTextFilters &&
+                   lhs.advancedWeekColumnKey == rhs.advancedWeekColumnKey &&
+                   lhs.advancedYear == rhs.advancedYear && lhs.advancedWeek == rhs.advancedWeek &&
+                   lhs.issueYear == rhs.issueYear && lhs.executionYear == rhs.executionYear &&
+                   lhs.reprogrammingEquals == rhs.reprogrammingEquals &&
+                   lhs.reprogrammingMode == rhs.reprogrammingMode &&
+                   lhs.reprogrammingValues == rhs.reprogrammingValues &&
+                   lhs.issueWeekStart == rhs.issueWeekStart &&
+                   lhs.issueWeekEnd == rhs.issueWeekEnd &&
+                   lhs.executionWeekStart == rhs.executionWeekStart &&
+                   lhs.executionWeekEnd == rhs.executionWeekEnd &&
+                   lhs.derivationMode == rhs.derivationMode &&
+                   lhs.excludeScaSesSte == rhs.excludeScaSesSte &&
+                   lhs.onlyReprogrammed == rhs.onlyReprogrammed;
+        }
+
+        QString normalizedName(const QString& name) {
+            return name.trimmed();
+        }
+
+        void sortSavedFilters(std::vector<ports::SavedFilterSnapshot>& filters) {
+            std::ranges::sort(filters, [](const auto& lhs, const auto& rhs) {
+                return QString::fromStdString(lhs.name).localeAwareCompare(
+                           QString::fromStdString(rhs.name)) < 0;
+            });
+        }
+
+        bool sameSavedFilters(const std::vector<ports::SavedFilterSnapshot>& lhs,
+                              const std::vector<ports::SavedFilterSnapshot>& rhs) {
+            if (lhs.size() != rhs.size()) {
+                return false;
+            }
+            for (std::size_t index = 0; index < lhs.size(); ++index) {
+                if (lhs[index].name != rhs[index].name ||
+                    !sameFilters(lhs[index].filters, rhs[index].filters)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        void normalizeQuickSector(ports::FilterPreferencesSnapshot& filters) {
+            const auto executorKey = std::string{domain::ColumnCatalog::executorColumnKey()};
+            auto executor = filters.advancedTextFilters.find(executorKey);
+            if (filters.quickSector.empty() || executor == filters.advancedTextFilters.end() ||
+                executor->second.empty()) {
+                return;
+            }
+            auto tokens = query::parseTextFilterTokens(executor->second);
+            query::addTextFilterValue(tokens, filters.quickSector,
+                                      query::TextFilterOperator::Equals);
+            executor->second = query::joinTextFilterTokens(tokens);
+            filters.quickSector.clear();
+        }
+
+        void normalizeColumnOverlap(ports::FilterPreferencesSnapshot& filters) {
+            for (const auto& [key, value] : filters.advancedTextFilters) {
+                filters.columnFilters.erase(key);
+            }
+        }
+
+        bool includesExcludedStatus(const std::map<std::string, std::string>& textFilters) {
+            const auto statusKey = std::string{domain::ColumnCatalog::statusColumnKey()};
+            const auto filter = textFilters.find(statusKey);
+            if (filter == textFilters.end()) {
+                return false;
+            }
+            const auto tokens = query::parseTextFilterTokens(filter->second);
+            const auto excluded = domain::ColumnCatalog::excludedStatusCodes();
+            return std::ranges::any_of(tokens.ordered, [excluded](const auto& token) {
+                return token.filterOperator == query::TextFilterOperator::Equals &&
+                       std::ranges::find(excluded, std::string_view{token.value}) != excluded.end();
+            });
+        }
+
+        void normalizeStatusExclusion(ports::FilterPreferencesSnapshot& filters) {
+            if (!filters.excludeScaSesSte) {
+                return;
+            }
+            if (!includesExcludedStatus(filters.advancedTextFilters) &&
+                !includesExcludedStatus(filters.columnFilters)) {
+                return;
+            }
+            filters.excludeScaSesSte = false;
+        }
+
+        void normalizeFilters(ports::FilterPreferencesSnapshot& filters) {
+            normalizeQuickSector(filters);
+            normalizeColumnOverlap(filters);
+            normalizeStatusExclusion(filters);
+        }
+
+        void normalizeSavedFilters(std::vector<ports::SavedFilterSnapshot>& filters) {
+            for (auto& saved : filters) {
+                normalizeFilters(saved.filters);
+            }
+        }
     } // namespace
 
     MainPreferenceFlowCoordinator::MainPreferenceFlowCoordinator(
@@ -65,7 +183,21 @@ namespace ssa::presentation {
         browse_.writePreferences(snapshot);
         snapshot.visibleColumns = columns_.visibleKeys();
         snapshot.columnWidths = columns_.columnWidths();
+        snapshot.savedFilters = savedFilters_;
+        normalizeFilters(snapshot.filters);
+        normalizeSavedFilters(snapshot.savedFilters);
         return snapshot;
+    }
+
+    QVariantList MainPreferenceFlowCoordinator::savedFilters() const {
+        QVariantList filters;
+        filters.reserve(static_cast<qsizetype>(savedFilters_.size()));
+        for (const auto& saved : savedFilters_) {
+            QVariantMap item;
+            item.insert(QStringLiteral("name"), QString::fromStdString(saved.name));
+            filters.push_back(item);
+        }
+        return filters;
     }
 
     void MainPreferenceFlowCoordinator::applyStoredPreferences(
@@ -73,6 +205,9 @@ namespace ssa::presentation {
         ui_.applyPreferences(snapshot);
         browse_.applyPreferences(snapshot);
         columns_.applyPreferences(snapshot);
+        auto storedSavedFilters = snapshot.savedFilters;
+        normalizeSavedFilters(storedSavedFilters);
+        setSavedFilters(std::move(storedSavedFilters));
     }
 
     void MainPreferenceFlowCoordinator::scheduleSavePreferences() {
@@ -94,6 +229,88 @@ namespace ssa::presentation {
     void MainPreferenceFlowCoordinator::savePreferences() {
         saveNowOrSchedule();
         emit this->statusMessageRequested("Salvamento solicitado");
+    }
+
+    QString MainPreferenceFlowCoordinator::suggestedFilterName() const {
+        const auto snapshot = buildPreferencesSnapshot();
+        const auto searchText = QString::fromStdString(snapshot.filters.searchText).trimmed();
+        if (!searchText.isEmpty()) {
+            return searchText;
+        }
+        if (!snapshot.filters.quickSector.empty()) {
+            return QString::fromStdString(snapshot.filters.quickSector);
+        }
+        return QStringLiteral("Filtro combinado %1").arg(savedFilters_.size() + 1);
+    }
+
+    void MainPreferenceFlowCoordinator::saveCurrentFilter(const QString& name) {
+        const auto filterName = normalizedName(name);
+        if (filterName.isEmpty()) {
+            emit this->statusErrorRequested("Informe um nome para salvar o filtro");
+            return;
+        }
+        auto snapshot = buildPreferencesSnapshot();
+        normalizeFilters(snapshot.filters);
+        if (!hasFilterState(snapshot.filters)) {
+            emit this->statusMessageRequested("Aplique algum filtro antes de salvar");
+            return;
+        }
+        const auto nameExists = std::ranges::any_of(savedFilters_, [&filterName](const auto& item) {
+            return QString::fromStdString(item.name).compare(filterName, Qt::CaseInsensitive) == 0;
+        });
+        if (nameExists) {
+            emit this->statusMessageRequested("Filtro salvo com este nome ja existe");
+            return;
+        }
+        const auto stateExists = std::ranges::any_of(savedFilters_, [&snapshot](const auto& item) {
+            return sameFilters(item.filters, snapshot.filters);
+        });
+        if (stateExists) {
+            emit this->statusMessageRequested("Este filtro ja esta salvo");
+            return;
+        }
+        savedFilters_.push_back(
+            ports::SavedFilterSnapshot{filterName.toStdString(), std::move(snapshot.filters)});
+        sortSavedFilters(savedFilters_);
+        emit savedFiltersChanged();
+        saveNowOrSchedule();
+        emit this->statusErrorClearRequested();
+        emit this->statusMessageRequested("Filtro salvo");
+    }
+
+    void MainPreferenceFlowCoordinator::applySavedFilter(const QString& name) {
+        const auto filterName = normalizedName(name);
+        const auto filter = std::ranges::find_if(savedFilters_, [&filterName](const auto& item) {
+            return QString::fromStdString(item.name) == filterName;
+        });
+        if (filter == savedFilters_.end()) {
+            emit this->statusErrorRequested("Filtro salvo nao encontrado");
+            return;
+        }
+        auto snapshot = buildPreferencesSnapshot();
+        snapshot.filters = filter->filters;
+        normalizeFilters(snapshot.filters);
+        snapshot.savedFilters = savedFilters_;
+        applyStoredPreferences(snapshot);
+        browse_.apply();
+        emit this->statusErrorClearRequested();
+        emit this->statusMessageRequested("Filtro aplicado");
+    }
+
+    void MainPreferenceFlowCoordinator::removeSavedFilter(const QString& name) {
+        const auto filterName = normalizedName(name);
+        const auto previousSize = savedFilters_.size();
+        std::erase_if(savedFilters_, [&filterName](const auto& item) {
+            return QString::fromStdString(item.name) == filterName;
+        });
+        if (savedFilters_.size() == previousSize) {
+            emit this->statusErrorRequested("Filtro salvo nao encontrado");
+            return;
+        }
+        emit savedFiltersChanged();
+        saveNowOrSchedule();
+        emit this->statusErrorClearRequested();
+        emit this->statusMessageRequested("Filtro removido");
     }
 
     void MainPreferenceFlowCoordinator::exportFilterPreset(const QUrl& outputUrl) {
@@ -157,6 +374,7 @@ namespace ssa::presentation {
         }
         auto baseSnapshot = buildPreferencesSnapshot();
         presetService_.applyPresetPreservingSearch(result.snapshot, baseSnapshot);
+        normalizeFilters(baseSnapshot.filters);
         applyStoredPreferences(baseSnapshot);
         browse_.apply();
         emit this->statusErrorClearRequested();
@@ -179,6 +397,17 @@ namespace ssa::presentation {
 
     void MainPreferenceFlowCoordinator::requestSaveFromSignal() {
         scheduleSavePreferences();
+    }
+
+    void MainPreferenceFlowCoordinator::setSavedFilters(
+        std::vector<ports::SavedFilterSnapshot> filters) {
+        sortSavedFilters(filters);
+        normalizeSavedFilters(filters);
+        if (sameSavedFilters(savedFilters_, filters)) {
+            return;
+        }
+        savedFilters_ = std::move(filters);
+        emit savedFiltersChanged();
     }
 
 } // namespace ssa::presentation

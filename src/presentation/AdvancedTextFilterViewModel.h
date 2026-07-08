@@ -41,13 +41,16 @@ namespace ssa::presentation {
         Q_INVOKABLE void replaceWithOperatorValueLists(const QString& key,
                                                        const QStringList& includeValues,
                                                        const QStringList& excludeValues);
+        void setQuickSector(QString value);
         void refreshFromState();
 
       signals:
         void changed();
         void applyRequested();
+        void expressionApplied(QString key, QString expression);
 
       private:
+        [[nodiscard]] QString effectiveTextFilter(const QString& key) const;
         bool publishExpression(const QString& key, const QString& expression,
                                bool inferOperatorMode = false);
         bool publishExpressionAndApply(const QString& key, const QString& expression,
@@ -65,6 +68,7 @@ namespace ssa::presentation {
         QVariantList operatorModes_;
         QHash<QString, int> operatorModeIndex_;
         AdvancedTextFilterColumnStore columns_;
+        QString quickSector_;
         int version_{0};
     };
 

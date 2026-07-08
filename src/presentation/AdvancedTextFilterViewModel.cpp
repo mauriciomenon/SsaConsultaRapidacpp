@@ -1,10 +1,21 @@
 #include "presentation/AdvancedTextFilterViewModel.h"
 
+#include "domain/ColumnCatalog.h"
 #include "presentation/AdvancedTextFilterRowModelFactory.h"
+#include "presentation/FilterPanelStateHelpers.h"
 
 #include <utility>
 
 namespace ssa::presentation {
+
+    namespace {
+
+        QString executorColumnKey() {
+            const auto key = domain::ColumnCatalog::executorColumnKey();
+            return QString::fromUtf8(key.data(), static_cast<qsizetype>(key.size()));
+        }
+
+    } // namespace
 
     AdvancedTextFilterViewModel::AdvancedTextFilterViewModel(
         filterpanel::FilterPanelAdvancedState& state, QObject* parent)
@@ -57,7 +68,7 @@ namespace ssa::presentation {
 
     void AdvancedTextFilterViewModel::setOperatorMode(const QString& key,
                                                       const QString& operatorMode) {
-        const auto currentExpression = textFilter(key);
+        const auto currentExpression = effectiveTextFilter(key);
         if (!columns_.setOperatorMode({.key = key,
                                        .operatorMode = operatorMode,
                                        .currentExpression = currentExpression})) {
@@ -79,6 +90,11 @@ namespace ssa::presentation {
     }
 
     bool AdvancedTextFilterViewModel::clearTextFilterAndApply(const QString& key) {
+        if (textFilter(key).trimmed().isEmpty() && !effectiveTextFilter(key).trimmed().isEmpty()) {
+            emit expressionApplied(key, {});
+            emit applyRequested();
+            return true;
+        }
         return publishExpressionAndApply(key, {}, true);
     }
 
@@ -86,7 +102,7 @@ namespace ssa::presentation {
                                                                     const QString& value) {
         const auto expression =
             columns_.expressionWithAddedValue({.key = key,
-                                               .currentExpression = textFilter(key),
+                                               .currentExpression = effectiveTextFilter(key),
                                                .value = value,
                                                .operatorMode = operatorModeFor(key)});
         if (!expression.has_value()) {
@@ -98,8 +114,9 @@ namespace ssa::presentation {
     void AdvancedTextFilterViewModel::replaceWithOperatorValueList(const QString& key,
                                                                    const QStringList& values,
                                                                    const QString& operatorMode) {
-        columns_.setOperatorMode(
-            {.key = key, .operatorMode = operatorMode, .currentExpression = textFilter(key)});
+        columns_.setOperatorMode({.key = key,
+                                  .operatorMode = operatorMode,
+                                  .currentExpression = effectiveTextFilter(key)});
         publishExpressionAndApply(key,
                                   AdvancedTextFilterColumnStore::expressionReplacingWithOperator(
                                       {.values = values, .operatorMode = operatorMode}),
@@ -115,10 +132,28 @@ namespace ssa::presentation {
             true);
     }
 
+    void AdvancedTextFilterViewModel::setQuickSector(QString value) {
+        value = value.trimmed();
+        if (quickSector_ == value) {
+            return;
+        }
+        quickSector_ = std::move(value);
+        publishChangedFor(executorColumnKey());
+    }
+
     void AdvancedTextFilterViewModel::refreshFromState() {
         if (columns_.refreshFrom(state_.textFilters())) {
             publishChanged();
         }
+    }
+
+    QString AdvancedTextFilterViewModel::effectiveTextFilter(const QString& key) const {
+        const auto expression = textFilter(key);
+        if (key.trimmed() != executorColumnKey() || quickSector_.trimmed().isEmpty()) {
+            return expression;
+        }
+        return QString::fromStdString(filterpanel::executorFilterWithQuickSector(
+            expression.toStdString(), quickSector_.toStdString()));
     }
 
     bool AdvancedTextFilterViewModel::publishExpression(const QString& key,
@@ -139,6 +174,7 @@ namespace ssa::presentation {
         if (!publishExpression(key, expression, inferOperatorMode)) {
             return false;
         }
+        emit expressionApplied(key, expression);
         emit applyRequested();
         return true;
     }
@@ -193,7 +229,7 @@ namespace ssa::presentation {
         } else if (mode == "mixed") {
             label = tr("Misto");
         }
-        state.insert("textFilter", textFilter(key));
+        state.insert("textFilter", effectiveTextFilter(key));
         state.insert("operatorIndex", operatorIndex);
         state.insert("operatorLabel", label);
         return state;

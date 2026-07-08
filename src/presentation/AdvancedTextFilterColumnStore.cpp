@@ -43,11 +43,8 @@ namespace ssa::presentation {
     }
 
     std::optional<QString>
-    AdvancedTextFilterColumnStore::expressionWithAddedValue(const AddValueRequest& request) const {
-        const auto columnEntry = columns_.find(request.key);
-        auto tokens = columnEntry != columns_.end()
-                          ? columnEntry->second.tokens
-                          : query::parseTextFilterTokens(request.currentExpression.toStdString());
+    AdvancedTextFilterColumnStore::expressionWithAddedValue(const AddValueRequest& request) {
+        auto tokens = query::parseTextFilterTokens(request.currentExpression.toStdString());
         auto filterOperator = query::textFilterOperatorFromMode(request.operatorMode.toStdString());
         if (!filterOperator.has_value() ||
             !query::addTextFilterValue(tokens, request.value.toStdString(), *filterOperator)) {

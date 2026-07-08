@@ -156,6 +156,26 @@ TEST_CASE_METHOD(SqliteRepositoryFixture, "sqlite repository excludes SCA SES ST
     REQUIRE(page.rows[0].valueOf("situacao") == "APV");
 }
 
+TEST_CASE_METHOD(SqliteRepositoryFixture,
+                 "sqlite repository applies positive and negative filters on same column") {
+    ssa::domain::SsaPageRequest request;
+    request.pageSize = 10;
+    request.columnFilters = {{"situacao", "=APV"}};
+    request.advancedFilters.textFilters = {{"situacao", "!STE"}};
+
+    const auto page = repository.page(request);
+
+    REQUIRE(page.totalRows == 1);
+    REQUIRE(page.rows.size() == 1);
+    REQUIRE(page.rows[0].valueOf("situacao") == "APV");
+
+    request.advancedFilters.textFilters = {{"situacao", "!APV"}};
+    const auto contradictoryPage = repository.page(request);
+
+    REQUIRE(contradictoryPage.totalRows == 0);
+    REQUIRE(contradictoryPage.rows.empty());
+}
+
 TEST_CASE_METHOD(SqliteRepositoryFixture, "sqlite repository returns details and distinct values") {
     const auto record = repository.recordBySsaNumber(ssa::domain::SsaNumber{"202500003"});
     REQUIRE(record.has_value());

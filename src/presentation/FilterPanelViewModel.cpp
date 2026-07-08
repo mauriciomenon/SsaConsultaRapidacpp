@@ -3,10 +3,12 @@
 #include "domain/ColumnCatalog.h"
 #include "presentation/FilterPanelStateHelpers.h"
 #include "query/SsaQueryService.h"
+#include "query/TextFilterToken.h"
 
 #include <QVariantMap>
 
 #include <algorithm>
+#include <array>
 #include <iterator>
 #include <map>
 #include <string>
@@ -16,6 +18,21 @@
 namespace ssa::presentation {
     namespace {
         constexpr int kActiveFilterRefreshDelayMs = 120;
+        constexpr std::array<std::string_view, 26> kStatusShortcutValues{{
+            "AAD", "AAT", "ACC", "ACS", "ADI", "ADM", "AIM", "ALE", "AMP",
+            "APG", "APL", "APV", "ASE", "ASL", "ASO", "SAD", "SAS", "SCA",
+            "SCC", "SCD", "SCS", "SEE", "SES", "SPG", "SRP", "STE",
+        }};
+
+        QString statusColumnKey() {
+            const auto key = domain::ColumnCatalog::statusColumnKey();
+            return QString::fromUtf8(key.data(), static_cast<qsizetype>(key.size()));
+        }
+
+        QString executorColumnKey() {
+            const auto key = domain::ColumnCatalog::executorColumnKey();
+            return QString::fromUtf8(key.data(), static_cast<qsizetype>(key.size()));
+        }
 
         QVariantMap summaryEntryMap(const filterpanel::FilterSummaryEntry& entry) {
             QVariantMap map;
@@ -35,12 +52,23 @@ namespace ssa::presentation {
         loadFilterCatalog();
         advanced_ = new FilterPanelAdvancedViewModel(state_.advanced(), state_, weekColumnKeys_,
                                                      queryService_, this);
-        connect(advanced_, &FilterPanelAdvancedViewModel::stateChanged, this,
-                [this]() { publishFilterStateChange(); });
+        syncAdvancedQuickSector();
+        connect(advanced_, &FilterPanelAdvancedViewModel::stateChanged, this, [this]() {
+            normalizeAdvancedFilterOverlap();
+            sector_.refreshFromState();
+            publishFilterStateChange();
+        });
+        connect(advanced_, &FilterPanelAdvancedViewModel::textFilterApplied, this,
+                &FilterPanelViewModel::handleAdvancedTextFilterApplied);
         connect(advanced_, &FilterPanelAdvancedViewModel::applyRequested, this,
                 &FilterPanelViewModel::applyRequested);
-        connect(&columns_, &ColumnFilterViewModel::stateChanged, this,
-                [this]() { synchronizeFilterState(false); });
+        connect(&columns_, &ColumnFilterViewModel::stateChanged, this, [this]() {
+            if (state_.clearStatusExclusionIfStatusIncludesExcluded()) {
+                sector_.refreshFromState();
+            }
+            advanced_->refreshFromState();
+            synchronizeFilterState(false);
+        });
         connect(&columns_, &ColumnFilterViewModel::applyRequested, this,
                 &FilterPanelViewModel::applyRequested);
         configureDistinctValueRefresh();
@@ -50,13 +78,14 @@ namespace ssa::presentation {
     }
 
     void FilterPanelViewModel::loadFilterCatalog() {
-        for (const auto& key : domain::ColumnCatalog::orderedFilterColumnKeys()) {
-            filterColumnKeys_.push_back(QString::fromStdString(key));
-        }
-        for (const auto key : domain::ColumnCatalog::weekColumnKeys()) {
-            weekColumnKeys_.push_back(
-                QString::fromUtf8(key.data(), static_cast<qsizetype>(key.size())));
-        }
+        std::ranges::transform(domain::ColumnCatalog::orderedFilterColumnKeys(),
+                               std::back_inserter(filterColumnKeys_),
+                               [](const auto& key) { return QString::fromStdString(key); });
+        std::ranges::transform(domain::ColumnCatalog::weekColumnKeys(),
+                               std::back_inserter(weekColumnKeys_), [](const auto key) {
+                                   return QString::fromUtf8(key.data(),
+                                                            static_cast<qsizetype>(key.size()));
+                               });
     }
 
     void FilterPanelViewModel::configureDistinctValueRefresh() {
@@ -77,12 +106,18 @@ namespace ssa::presentation {
                 [this](const std::vector<std::string>& values) { sector_.setOptions(values); });
         connect(&sector_, &FilterPanelSectorViewModel::stateChanged, this,
                 [this](const bool quickSectorChanged) {
+                    if (quickSectorChanged) {
+                        if (!state_.quickSector().trimmed().isEmpty()) {
+                            state_.advanced().removeTextFilter(executorColumnKey());
+                        }
+                        advanced_->refreshFromState();
+                    }
                     publishFilterStateChange(quickSectorChanged);
                 });
     }
 
     QString FilterPanelViewModel::quickSector() const {
-        return sector_.quickSector();
+        return state_.quickSector();
     }
 
     void FilterPanelViewModel::setQuickSector(const QString& value) {
@@ -94,17 +129,30 @@ namespace ssa::presentation {
     }
 
     void FilterPanelViewModel::setExcludeScaSesSte(bool value) {
-        const bool changed = sector_.excludeScaSesSte() != value;
-        if (!changed) {
+        const bool didChange = sector_.excludeScaSesSte() != value;
+        if (!didChange) {
             return;
         }
         sector_.setExcludeScaSesSte(value);
+        if (state_.clearStatusExclusionIfStatusIncludesExcluded()) {
+            sector_.refreshFromState();
+        }
         publishFilterStateChange();
         emit applyRequested();
     }
 
     QStringList FilterPanelViewModel::filterColumnKeys() const {
         return filterColumnKeys_;
+    }
+
+    QStringList FilterPanelViewModel::statusShortcutValues() const {
+        QStringList values;
+        values.reserve(static_cast<qsizetype>(kStatusShortcutValues.size()));
+        std::ranges::transform(
+            kStatusShortcutValues, std::back_inserter(values), [](const auto value) {
+                return QString::fromUtf8(value.data(), static_cast<qsizetype>(value.size()));
+            });
+        return values;
     }
 
     QString FilterPanelViewModel::columnKey() const {
@@ -173,6 +221,10 @@ namespace ssa::presentation {
         return columnValueOptions_.version();
     }
 
+    int FilterPanelViewModel::focusColumnRequest() const {
+        return focusColumnRequest_;
+    }
+
     QStringList FilterPanelViewModel::quickSectorOptions() const {
         return sector_.options();
     }
@@ -213,53 +265,160 @@ namespace ssa::presentation {
         return columnValueOptions_.loadingFor(key);
     }
 
+    bool FilterPanelViewModel::statusShortcutSelected(const QString& code) const {
+        const auto normalizedCode = code.trimmed().toUpper().toStdString();
+        if (normalizedCode.empty()) {
+            return false;
+        }
+        const auto statusKey = statusColumnKey();
+        const auto advancedExpression = state_.advanced().textFilter(statusKey).toStdString();
+        const auto columnFilter = state_.columnFilters().find(statusKey.toStdString());
+        const auto tokens = query::parseTextFilterTokens(
+            advancedExpression.empty() && columnFilter != state_.columnFilters().end()
+                ? columnFilter->second
+                : advancedExpression);
+        if (tokens.ordered.empty()) {
+            return false;
+        }
+        return std::ranges::any_of(tokens.ordered, [&normalizedCode](const auto& token) {
+            return token.filterOperator == query::TextFilterOperator::Equals &&
+                   token.value == normalizedCode;
+        });
+    }
+
+    void FilterPanelViewModel::toggleStatusShortcut(const QString& code) {
+        const auto normalizedCode = code.trimmed().toUpper().toStdString();
+        if (normalizedCode.empty()) {
+            return;
+        }
+        const auto statusKey = statusColumnKey();
+        const auto advancedExpression = state_.advanced().textFilter(statusKey).toStdString();
+        const auto columnFilter = state_.columnFilters().find(statusKey.toStdString());
+        auto tokens = query::parseTextFilterTokens(
+            advancedExpression.empty() && columnFilter != state_.columnFilters().end()
+                ? columnFilter->second
+                : advancedExpression);
+        const bool selected = statusShortcutSelected(QString::fromStdString(normalizedCode));
+        if (selected) {
+            query::TextFilterTokenSet nextTokens;
+            for (const auto& token : tokens.ordered) {
+                if (token.value == normalizedCode &&
+                    token.filterOperator == query::TextFilterOperator::Equals) {
+                    continue;
+                }
+                query::addTextFilterValue(nextTokens, token.value, token.filterOperator);
+            }
+            tokens = std::move(nextTokens);
+        } else {
+            query::addTextFilterValue(tokens, normalizedCode, query::TextFilterOperator::Equals);
+        }
+
+        const auto nextExpression = QString::fromStdString(query::joinTextFilterTokens(tokens));
+        const bool advancedChanged = state_.advanced().setTextFilter(statusKey, nextExpression);
+        const bool columnChanged =
+            nextExpression.trimmed().isEmpty() ? state_.removeColumnFilter(statusKey) : false;
+        if (!advancedChanged && !columnChanged) {
+            return;
+        }
+        if (columnChanged) {
+            columns_.refreshFromState();
+        }
+        normalizeAdvancedFilterOverlap();
+        advanced_->refreshFromState();
+        synchronizeFilterState(false);
+        emit applyRequested();
+    }
+
+    void FilterPanelViewModel::clearStatusShortcuts() {
+        const auto statusKey = statusColumnKey();
+        const auto advancedExpression = state_.advanced().textFilter(statusKey).toStdString();
+        const auto columnFilter = state_.columnFilters().find(statusKey.toStdString());
+        const auto tokens = query::parseTextFilterTokens(
+            advancedExpression.empty() && columnFilter != state_.columnFilters().end()
+                ? columnFilter->second
+                : advancedExpression);
+        query::TextFilterTokenSet remainingTokens;
+        for (const auto& token : tokens.ordered) {
+            if (token.filterOperator == query::TextFilterOperator::Different) {
+                query::addTextFilterValue(remainingTokens, token.value, token.filterOperator);
+            }
+        }
+        const bool advancedChanged = state_.advanced().setTextFilter(
+            statusKey, QString::fromStdString(query::joinTextFilterTokens(remainingTokens)));
+        const bool columnChanged = state_.removeColumnFilter(statusKey);
+        if (!advancedChanged && !columnChanged) {
+            return;
+        }
+        columns_.refreshFromState();
+        normalizeAdvancedFilterOverlap();
+        advanced_->refreshFromState();
+        synchronizeFilterState(false);
+        emit applyRequested();
+    }
+
+    void FilterPanelViewModel::requestColumnFocus(const QString& key) {
+        const bool didChange = state_.setColumnKey(key);
+        if (didChange) {
+            publishFilterStateChange();
+        }
+        ++focusColumnRequest_;
+        emit focusColumnRequestChanged();
+    }
+
     bool FilterPanelViewModel::removeActiveFilter(const QVariantMap& entry) {
         const auto action = entry.value(QStringLiteral("kind")).toString().trimmed();
         const auto key = entry.value(QStringLiteral("key")).toString();
-        bool changed = false;
+        bool didChange = false;
         if (action == "quick_sector") {
-            changed = state_.setQuickSector({});
-            if (changed) {
+            didChange = state_.setQuickSector({});
+            if (didChange) {
+                sector_.refreshFromState();
+            }
+        } else if (action == "executor_combined") {
+            const bool sectorChanged = state_.setQuickSector({});
+            const bool textChanged = state_.advanced().setTextFilter(executorColumnKey(), {});
+            didChange = sectorChanged || textChanged;
+            if (sectorChanged) {
                 sector_.refreshFromState();
             }
         } else if (action == "column") {
-            changed = state_.removeColumnFilter(key);
-            if (changed) {
+            didChange = state_.removeColumnFilter(key);
+            if (didChange) {
                 columns_.refreshFromState();
             }
         } else if (action == "advanced_text") {
-            changed = state_.advanced().setTextFilter(key, {});
+            didChange = state_.advanced().setTextFilter(key, {});
         } else if (action == "advanced_year") {
-            changed = state_.advanced().setYear({});
+            didChange = state_.advanced().setYear({});
         } else if (action == "advanced_week") {
-            changed = state_.advanced().setWeek({});
+            didChange = state_.advanced().setWeek({});
         } else if (action == "advanced_issue_year") {
-            changed = state_.advanced().setIssueYear({});
+            didChange = state_.advanced().setIssueYear({});
         } else if (action == "advanced_execution_year") {
-            changed = state_.advanced().setExecutionYear({});
+            didChange = state_.advanced().setExecutionYear({});
         } else if (action == "advanced_reprogramming") {
             const bool equalsChanged = state_.advanced().setReprogrammingEquals({});
             const bool valuesChanged = state_.advanced().setReprogrammingValues({});
-            changed = equalsChanged || valuesChanged;
+            didChange = equalsChanged || valuesChanged;
         } else if (action == "advanced_issue_week_range") {
             const bool startChanged = state_.advanced().setIssueWeekStart({});
             const bool endChanged = state_.advanced().setIssueWeekEnd({});
-            changed = startChanged || endChanged;
+            didChange = startChanged || endChanged;
         } else if (action == "advanced_execution_week_range") {
             const bool startChanged = state_.advanced().setExecutionWeekStart({});
             const bool endChanged = state_.advanced().setExecutionWeekEnd({});
-            changed = startChanged || endChanged;
+            didChange = startChanged || endChanged;
         } else if (action == "advanced_derivation_mode") {
-            changed = state_.advanced().setDerivationMode(QStringLiteral("all"));
+            didChange = state_.advanced().setDerivationMode(QStringLiteral("all"));
         } else if (action == "advanced_only_reprogrammed") {
-            changed = state_.advanced().setOnlyReprogrammed(false);
+            didChange = state_.advanced().setOnlyReprogrammed(false);
         }
 
-        if (!changed) {
+        if (!didChange) {
             return false;
         }
         advanced_->refreshFromState();
-        synchronizeFilterState(action == "quick_sector");
+        synchronizeFilterState(action == "quick_sector" || action == "executor_combined");
         emit applyRequested();
         return true;
     }
@@ -277,6 +436,7 @@ namespace ssa::presentation {
     }
 
     void FilterPanelViewModel::publishFilterStateChange(const bool quickSectorChanged) {
+        syncAdvancedQuickSector();
         ++filterStateVersion_;
         distinctValues_.invalidateColumnValueRequests();
         columnValueOptions_.clearLoading();
@@ -294,6 +454,10 @@ namespace ssa::presentation {
         if (!state_.setColumnFilters(std::move(filters))) {
             return;
         }
+        if (state_.clearStatusExclusionIfStatusIncludesExcluded()) {
+            sector_.refreshFromState();
+        }
+        advanced_->refreshFromState();
         columns_.refreshFromState();
         synchronizeFilterState(false);
     }
@@ -356,6 +520,8 @@ namespace ssa::presentation {
             return;
         }
         sector_.refreshFromState();
+        normalizeAdvancedFilterOverlap();
+        syncAdvancedQuickSector();
         advanced_->refreshFromState();
         columns_.refreshFromState();
         synchronizeFilterState(true);
@@ -375,6 +541,7 @@ namespace ssa::presentation {
     void FilterPanelViewModel::resetFilters() {
         state_.clear();
         sector_.refreshFromState();
+        syncAdvancedQuickSector();
         advanced_->refreshFromState();
         columns_.refreshFromState();
         synchronizeFilterState(true);
@@ -436,6 +603,54 @@ namespace ssa::presentation {
 
     void FilterPanelViewModel::markActiveFiltersDirty() {
         activeFiltersDirty_ = true;
+    }
+
+    void FilterPanelViewModel::syncAdvancedQuickSector() {
+        if (advanced_ == nullptr) {
+            return;
+        }
+        advanced_->setQuickSector(state_.quickSector());
+    }
+
+    bool FilterPanelViewModel::normalizeAdvancedFilterOverlap() {
+        const bool columnsChanged = state_.removeColumnFiltersShadowedByAdvancedText();
+        const bool exclusionChanged = state_.clearStatusExclusionIfStatusIncludesExcluded();
+        if (columnsChanged) {
+            columns_.refreshFromState();
+        }
+        if (exclusionChanged) {
+            sector_.refreshFromState();
+        }
+        return columnsChanged || exclusionChanged;
+    }
+
+    void FilterPanelViewModel::handleAdvancedTextFilterApplied(const QString& key,
+                                                               const QString& expression) {
+        if (key.trimmed() != executorColumnKey() || state_.quickSector().trimmed().isEmpty()) {
+            normalizeAdvancedFilterOverlap();
+            return;
+        }
+
+        bool didChange = false;
+        if (expression.trimmed().isEmpty()) {
+            didChange = state_.setQuickSector({});
+        } else {
+            const auto mergedExpression =
+                QString::fromStdString(filterpanel::executorFilterWithQuickSector(
+                    expression.toStdString(), state_.quickSector().toStdString()));
+            const bool textChanged = state_.advanced().setTextFilter(key, mergedExpression);
+            const bool sectorChanged = state_.setQuickSector({});
+            didChange = textChanged || sectorChanged;
+        }
+
+        if (!didChange) {
+            return;
+        }
+        sector_.refreshFromState();
+        syncAdvancedQuickSector();
+        normalizeAdvancedFilterOverlap();
+        advanced_->refreshFromState();
+        publishFilterStateChange(true);
     }
 
 } // namespace ssa::presentation

@@ -1,6 +1,7 @@
 #include "presentation/FilterPanelStateHelpers.h"
 
 #include "domain/ColumnCatalog.h"
+#include "query/TextFilterToken.h"
 
 #include <algorithm>
 #include <map>
@@ -51,6 +52,25 @@ namespace ssa::presentation::filterpanel {
             }
             entries.push_back(
                 {.text = std::move(part), .kind = std::string{request.kind}, .key = {}});
+        }
+
+        std::string shortColumnLabel(const std::string_view key) {
+            auto label = std::string{domain::ColumnCatalog::advancedFilterShortLabel(key)};
+            if (!label.empty() && label.back() == '.') {
+                label.pop_back();
+            }
+            return label;
+        }
+
+        void appendTextSummary(std::vector<FilterSummaryEntry>& entries, const std::string& key,
+                               const std::string& value, std::string kind) {
+            if (value.empty()) {
+                return;
+            }
+            std::string part{shortColumnLabel(key)};
+            part += ": ";
+            part += value;
+            entries.push_back({.text = std::move(part), .kind = std::move(kind), .key = key});
         }
 
     } // namespace
@@ -105,23 +125,32 @@ namespace ssa::presentation::filterpanel {
                               const std::map<std::string, std::string>& columnFilters,
                               const domain::AdvancedFilterSpec& advanced) {
         std::vector<FilterSummaryEntry> entries;
-        if (!quickSector.empty()) {
-            entries.push_back({.text = std::string(domain::ColumnCatalog::executorColumnKey()) +
-                                       ":" + std::string(quickSector),
-                               .kind = "quick_sector",
-                               .key = {}});
+        const auto executorKey = std::string{domain::ColumnCatalog::executorColumnKey()};
+        const auto executorFilter = advanced.textFilters.find(executorKey);
+        const bool hasExecutorText =
+            executorFilter != advanced.textFilters.end() && !executorFilter->second.empty();
+        if (!quickSector.empty() && hasExecutorText) {
+            appendTextSummary(entries, executorKey,
+                              executorFilterWithQuickSector(executorFilter->second, quickSector),
+                              "executor_combined");
+        } else if (!quickSector.empty()) {
+            entries.push_back(
+                {.text = shortColumnLabel(domain::ColumnCatalog::executorColumnKey()) + ": " +
+                         std::string(quickSector),
+                 .kind = "quick_sector",
+                 .key = {}});
         }
         for (const auto& [key, value] : columnFilters) {
-            auto part = key;
-            part += ":";
+            auto part = shortColumnLabel(key);
+            part += ": ";
             part += value;
             entries.push_back({.text = std::move(part), .kind = "column", .key = key});
         }
         for (const auto& [key, value] : advanced.textFilters) {
-            std::string part{std::string{domain::ColumnCatalog::advancedFilterShortLabel(key)}};
-            part += ":";
-            part += value;
-            entries.push_back({.text = std::move(part), .kind = "advanced_text", .key = key});
+            if (key == executorKey && !quickSector.empty()) {
+                continue;
+            }
+            appendTextSummary(entries, key, value, "advanced_text");
         }
         if (advanced.year.has_value()) {
             entries.push_back({.text = "ano:" + std::to_string(*advanced.year),
@@ -182,6 +211,13 @@ namespace ssa::presentation::filterpanel {
                 {.text = "somente reprogramadas", .kind = "advanced_only_reprogrammed", .key = {}});
         }
         return entries;
+    }
+
+    std::string executorFilterWithQuickSector(const std::string_view expression,
+                                              const std::string_view quickSector) {
+        auto tokens = query::parseTextFilterTokens(expression);
+        query::addTextFilterValue(tokens, quickSector, query::TextFilterOperator::Equals);
+        return query::joinTextFilterTokens(tokens);
     }
 
     bool hasFilterValue(const std::string& currentFilter, const std::string& candidateValue) {

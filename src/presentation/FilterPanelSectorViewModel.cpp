@@ -1,5 +1,8 @@
 #include "presentation/FilterPanelSectorViewModel.h"
 
+#include "domain/ColumnCatalog.h"
+#include "query/TextFilterToken.h"
+
 #include <QSet>
 
 namespace ssa::presentation {
@@ -15,6 +18,24 @@ namespace ssa::presentation {
             return list;
         }
 
+        QString executorColumnKey() {
+            const auto key = domain::ColumnCatalog::executorColumnKey();
+            return QString::fromUtf8(key.data(), static_cast<qsizetype>(key.size()));
+        }
+
+        QString effectiveQuickSector(const filterpanel::FilterPanelState& state) {
+            if (!state.quickSector().trimmed().isEmpty()) {
+                return state.quickSector();
+            }
+            const auto tokens = query::parseTextFilterTokens(
+                state.advanced().textFilter(executorColumnKey()).toStdString());
+            if (tokens.ordered.size() != 1 ||
+                tokens.ordered.front().filterOperator != query::TextFilterOperator::Equals) {
+                return {};
+            }
+            return QString::fromStdString(tokens.ordered.front().value);
+        }
+
     } // namespace
 
     FilterPanelSectorViewModel::FilterPanelSectorViewModel(filterpanel::FilterPanelState& state,
@@ -24,17 +45,22 @@ namespace ssa::presentation {
     }
 
     QString FilterPanelSectorViewModel::quickSector() const {
-        return state_.quickSector();
+        return effectiveQuickSector(state_);
     }
 
     void FilterPanelSectorViewModel::setQuickSector(const QString& value) {
-        if (!state_.setQuickSector(value)) {
+        const auto normalizedValue = value.trimmed();
+        const bool advancedExecutorChanged =
+            normalizedValue.isEmpty() && state_.quickSector().trimmed().isEmpty()
+                ? state_.advanced().removeTextFilter(executorColumnKey())
+                : false;
+        if (!state_.setQuickSector(normalizedValue) && !advancedExecutorChanged) {
             return;
         }
-        if (selectorValueSet_.contains(state_.quickSector())) {
+        if (selectorValueSet_.contains(quickSector())) {
             updateSelectorIndex();
         } else {
-            appendTransientSectorValue(state_.quickSector());
+            appendTransientSectorValue(quickSector());
         }
         emit stateChanged(true);
         emit changed();
@@ -85,7 +111,7 @@ namespace ssa::presentation {
         seen.insert("");
         indexes.insert("", 0);
 
-        const QString current = state_.quickSector();
+        const QString current = quickSector();
         int selectedIndex = 0;
         bool selectedIndexFound = current.isEmpty();
         for (const auto& value : options_) {
@@ -122,7 +148,7 @@ namespace ssa::presentation {
     }
 
     void FilterPanelSectorViewModel::updateSelectorIndex() {
-        const int selectedIndex = selectorValueIndex_.value(state_.quickSector(), 0);
+        const int selectedIndex = selectorValueIndex_.value(quickSector(), 0);
         if (selectorIndex_ == selectedIndex) {
             return;
         }

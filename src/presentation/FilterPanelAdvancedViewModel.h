@@ -40,6 +40,7 @@ namespace ssa::presentation {
         [[nodiscard]] QObject* derivation();
         [[nodiscard]] QObject* sectorHierarchy();
         [[nodiscard]] QObject* macro();
+        void setQuickSector(const QString& value);
         void refreshFromState();
 
       public slots:
@@ -49,6 +50,7 @@ namespace ssa::presentation {
         void changed();
         void stateChanged();
         void applyRequested();
+        void textFilterApplied(QString key, QString expression);
 
       private:
         void publishChanged();
