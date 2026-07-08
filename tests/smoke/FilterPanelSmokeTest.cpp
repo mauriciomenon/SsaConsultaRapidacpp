@@ -333,12 +333,14 @@ namespace {
                 return row.toMap().value("key").toString();
             });
 
-            QCOMPARE(keys.size(), 13);
+            QCOMPARE(keys.size(), 11);
             QVERIFY(keys.contains("setor_emissor"));
             QVERIFY(keys.contains("setor_executor"));
             QVERIFY(keys.contains("responsavel_execucao"));
             QVERIFY(keys.contains("status_execucao_prazo"));
             QVERIFY(keys.contains("situacao_da_parcial"));
+            QVERIFY(!keys.contains("grau_prioridade_emissao"));
+            QVERIFY(!keys.contains("grau_prioridade_planejamento"));
             QVERIFY(!keys.contains("execucao_simples"));
             QVERIFY(!keys.contains("equipamento"));
             QVERIFY(!keys.contains("servico_origem"));

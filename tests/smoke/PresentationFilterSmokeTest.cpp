@@ -344,7 +344,9 @@ namespace {
             std::ranges::transform(rows, std::back_inserter(keys), [](const auto& row) {
                 return row.toMap().value(QStringLiteral("key")).toString();
             });
-            QCOMPARE(keys.size(), 13);
+            QCOMPARE(keys.size(), 11);
+            QVERIFY(!keys.contains(QStringLiteral("grau_prioridade_emissao")));
+            QVERIFY(!keys.contains(QStringLiteral("grau_prioridade_planejamento")));
 
             for (const auto& key : keys) {
                 auto repository = std::make_shared<FakeRepository>();
