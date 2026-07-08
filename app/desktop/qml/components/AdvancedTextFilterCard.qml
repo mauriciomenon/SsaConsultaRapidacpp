@@ -94,9 +94,7 @@ FilterCard {
         const margin = 8;
         const leftLimit = margin - origin.x;
         const rightLimit = Overlay.overlay.width - origin.x - width - margin;
-        if (rightLimit >= 0)
-            return 0;
-        return Math.max(leftLimit, rightLimit);
+        return Math.max(leftLimit, Math.min(0, rightLimit));
     }
 
     function popupY(height) {
