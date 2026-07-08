@@ -31,6 +31,8 @@
 
 namespace {
 
+    constexpr std::size_t kExpectedAdvancedColumnValueLimit = 100000;
+
     [[nodiscard]] std::string currentYearWeek() {
         int isoYear = 0;
         const int isoWeek = QDate::currentDate().weekNumber(&isoYear);
@@ -289,8 +291,18 @@ namespace {
             const auto distinctRequests = repository->distinctRequests();
             QVERIFY(std::ranges::any_of(distinctRequests, [](const auto& request) {
                 return request.columnKey == "responsavel_execucao" && !request.orderByFrequency &&
-                       request.limit == ssa::domain::kDefaultDistinctValuesLimit;
+                       request.limit == kExpectedAdvancedColumnValueLimit;
             }));
+        }
+
+        void quick_sector_request_keeps_small_limit() {
+            ssa::presentation::filterpanel::FilterPanelState state;
+            ssa::presentation::FilterPanelDistinctValueRequestBuilder builder;
+
+            const auto request = builder.quickSectorRequest(state);
+
+            QCOMPARE(QString::fromStdString(request.columnKey), QString("setor_executor"));
+            QCOMPARE(request.limit, std::size_t{500});
         }
 
         void column_value_options_preserve_repository_display_order() {
