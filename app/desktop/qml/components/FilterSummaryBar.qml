@@ -48,7 +48,7 @@ Rectangle {
         ScrollView {
             id: summaryScroller
             readonly property int maxAvailableWidth: Math.max(220, root.width - clearSummaryButton.width - tagGroup.spacing - 12)
-            width: root.activeTagCount >= 4 ? maxAvailableWidth : Math.min(maxAvailableWidth, Math.max(180, root.activeTagCount * 230))
+            width: maxAvailableWidth
             height: parent.height
             clip: true
             contentHeight: availableHeight

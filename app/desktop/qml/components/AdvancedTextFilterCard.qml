@@ -21,9 +21,9 @@ FilterCard {
     readonly property int compactValueLimit: 18
     readonly property int choiceColumnWidth: 52
     readonly property int commandWidth: 30
-    readonly property bool wideValuePopup: row.key === "solicitante" || row.key === "responsavel_programacao" || row.key === "responsavel_execucao"
-    readonly property int valuePopupWidth: wideValuePopup ? 320 : 180
-    readonly property int multiSelectPopupWidth: wideValuePopup ? 440 : 300
+    readonly property bool wideValuePopup: row.key === "solicitante" || row.key === "responsavel_programacao" || row.key === "responsavel_execucao" || row.key === "anomalia"
+    readonly property int valuePopupWidth: wideValuePopup ? 360 : 160
+    readonly property int multiSelectPopupWidth: wideValuePopup ? 520 : 280
     property string popupFilterText: ""
 
     signal optionsRequested
@@ -85,6 +85,21 @@ FilterCard {
                 result.push(value);
         }
         return result;
+    }
+
+    function popupX(width) {
+        const origin = root.mapToItem(Overlay.overlay, 0, 0);
+        const leftLimit = 8 - origin.x;
+        const rightLimit = Overlay.overlay.width - origin.x - width - 8;
+        return Math.max(leftLimit, Math.min(0, rightLimit));
+    }
+
+    function popupY(height) {
+        const origin = root.mapToItem(Overlay.overlay, 0, 0);
+        const preferredY = root.height + 2;
+        const bottomLimit = Overlay.overlay.height - origin.y - height - 8;
+        const topLimit = 8 - origin.y;
+        return Math.max(topLimit, Math.min(preferredY, bottomLimit));
     }
 
     property var includeValues: []
@@ -208,8 +223,8 @@ FilterCard {
 
     Popup {
         id: multiSelectPopup
-        x: Math.max(0, root.width - width)
-        y: 40
+        x: root.popupX(width)
+        y: root.popupY(height)
         width: root.multiSelectPopupWidth
         height: 360
         modal: false
@@ -386,15 +401,22 @@ FilterCard {
                 }
             }
 
-            RowLayout {
+            Rectangle {
                 Layout.fillWidth: true
-                spacing: 8
+                Layout.preferredHeight: 42
+                color: "transparent"
 
-                Item {
-                    Layout.fillWidth: true
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    height: 1
+                    color: Theme.border
                 }
 
                 ActionButton {
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
                     text: "Aplicar"
                     implicitWidth: 88
                     enabled: !root.valuesLoading
