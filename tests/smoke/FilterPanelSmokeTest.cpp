@@ -105,6 +105,10 @@ namespace {
 
         ssa::ports::SsaReadResult readAll(const ssa::domain::SsaPageRequest& request,
                                           ssa::ports::SsaRecordConsumer consume) const override {
+            {
+                const std::scoped_lock lock(mutex_);
+                pageRequests_.push_back(request);
+            }
             const auto week = currentYearWeek();
             const std::vector<ssa::domain::SsaRecord> rows{
                 reportRecord("202600001", "MEG2", week, "ANA"),
@@ -139,10 +143,16 @@ namespace {
             return distinctRequests_;
         }
 
+        [[nodiscard]] std::vector<ssa::domain::SsaPageRequest> pageRequests() const {
+            const std::scoped_lock lock(mutex_);
+            return pageRequests_;
+        }
+
       private:
         std::chrono::milliseconds distinctDelay_;
         mutable std::mutex mutex_;
         mutable std::vector<ssa::domain::DistinctValuesRequest> distinctRequests_;
+        mutable std::vector<ssa::domain::SsaPageRequest> pageRequests_;
     };
 
     class FilterPanelSmokeTest final : public QObject {
@@ -450,6 +460,29 @@ namespace {
             QCOMPARE(second.value("group").toString(), QString("MEG2"));
             QCOMPARE(second.value("person").toString(), QString("ANA"));
             QCOMPARE(second.value("count").toInt(), 2);
+        }
+
+        void advanced_macro_request_uses_canonical_executor_filter() {
+            auto repository = std::make_shared<FilterPanelRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::FilterPanelViewModel filters(service);
+            auto* advanced =
+                qobject_cast<ssa::presentation::FilterPanelAdvancedViewModel*>(filters.advanced());
+            QVERIFY(advanced != nullptr);
+            auto* macro =
+                qobject_cast<ssa::presentation::AdvancedMacroFilterViewModel*>(advanced->macro());
+            QVERIFY(macro != nullptr);
+
+            filters.setQuickSector("MEG2");
+            macro->setSelectedMacro("ssas_executadas_setor");
+
+            const auto requests = repository->pageRequests();
+            QCOMPARE(requests.size(), std::size_t{1});
+            QCOMPARE(QString::fromStdString(requests.front().quickSector), QString(""));
+            QVERIFY(requests.front().advancedFilters.textFilters.contains("setor_executor"));
+            QCOMPARE(QString::fromStdString(
+                         requests.front().advancedFilters.textFilters.at("setor_executor")),
+                     QString("=MEG2"));
         }
 
         void quick_sector_is_visible_in_executor_advanced_filter() {
