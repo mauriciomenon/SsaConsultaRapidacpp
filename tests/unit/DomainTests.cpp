@@ -48,9 +48,9 @@ TEST_CASE("column catalog exposes visible and general-search contracts") {
     REQUIRE(ssa::domain::ColumnCatalog::find("numero_ssa")->defaultWidth == 98);
     REQUIRE(ssa::domain::ColumnCatalog::find("situacao")->defaultWidth == 60);
     REQUIRE(ssa::domain::ColumnCatalog::find("localizacao_codigo")->defaultWidth == 84);
-    REQUIRE(ssa::domain::ColumnCatalog::find("setor_emissor")->defaultWidth == 72);
-    REQUIRE(ssa::domain::ColumnCatalog::find("setor_executor")->defaultWidth == 72);
-    REQUIRE(ssa::domain::ColumnCatalog::find("derivada_de")->defaultWidth == 74);
+    REQUIRE(ssa::domain::ColumnCatalog::find("setor_emissor")->defaultWidth == 68);
+    REQUIRE(ssa::domain::ColumnCatalog::find("setor_executor")->defaultWidth == 68);
+    REQUIRE(ssa::domain::ColumnCatalog::find("derivada_de")->defaultWidth == 62);
     REQUIRE(ssa::domain::ColumnCatalog::find("descricao_ssa")->defaultWidth == 640);
     REQUIRE(ssa::domain::ColumnCatalog::find("solicitante")->defaultWidth == 240);
     REQUIRE(ssa::domain::ColumnCatalog::find("responsavel_programacao")->defaultWidth == 250);

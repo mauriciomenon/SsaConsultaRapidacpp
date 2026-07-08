@@ -226,16 +226,16 @@ Rectangle {
 
             ActionButton {
                 text: "<"
-                Layout.preferredWidth: 26
-                implicitWidth: 26
+                Layout.preferredWidth: 22
+                implicitWidth: 22
                 implicitHeight: Theme.controlHeight - 4
                 enabled: root.viewModel.pageNumber > 1
                 onClicked: root.viewModel.previousPage()
             }
             ActionButton {
                 text: ">"
-                Layout.preferredWidth: 26
-                implicitWidth: 26
+                Layout.preferredWidth: 22
+                implicitWidth: 22
                 implicitHeight: Theme.controlHeight - 4
                 enabled: root.viewModel.pageNumber < root.viewModel.pageCount
                 onClicked: root.viewModel.nextPage()
@@ -246,7 +246,7 @@ Rectangle {
                 to: 500
                 stepSize: 5
                 value: root.viewModel.pageSize
-                Layout.preferredWidth: 72
+                Layout.preferredWidth: 58
                 onValueModified: {
                     root.viewModel.pageSize = pageSizeSpin.value;
                 }
@@ -267,7 +267,7 @@ Rectangle {
                     width: Math.min(parent.width, fittedContentWidth)
                     height: Theme.controlHeight
                     color: "transparent"
-                    border.color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.36)
+                    border.color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.24)
                     radius: Theme.radius
                     clip: true
 
@@ -337,7 +337,7 @@ Rectangle {
             AppComboBox {
                 id: sectorFilter
 
-                Layout.preferredWidth: 108
+                Layout.preferredWidth: 65
                 model: root.filterViewModel.sector.selectorValues
                 currentIndex: root.filterViewModel.sector.selectorIndex
                 displayText: root.filterViewModel.sector.quickSector.length > 0 ? root.filterViewModel.sector.quickSector : "Todos"

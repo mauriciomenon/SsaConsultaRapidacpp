@@ -22,8 +22,8 @@ FilterCard {
     readonly property int choiceColumnWidth: 52
     readonly property int commandWidth: 30
     readonly property bool wideValuePopup: row.key === "solicitante" || row.key === "responsavel_programacao" || row.key === "responsavel_execucao"
-    readonly property int valuePopupWidth: wideValuePopup ? 360 : 220
-    readonly property int multiSelectPopupWidth: wideValuePopup ? 520 : 360
+    readonly property int valuePopupWidth: wideValuePopup ? 320 : 180
+    readonly property int multiSelectPopupWidth: wideValuePopup ? 440 : 300
     property string popupFilterText: ""
 
     signal optionsRequested

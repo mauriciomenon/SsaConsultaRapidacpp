@@ -82,13 +82,24 @@ Rectangle {
                             anchors.rightMargin: 8
                             anchors.topMargin: 4
                             anchors.bottomMargin: 4
-                            text: headerCell.effectiveLabel + (headerCell.modelData.filtered === true ? " [f]" : "") + (headerCell.modelData.sorted ? (headerCell.modelData.sortAscending ? "  ^" : "  v") : "")
+                            text: headerCell.effectiveLabel + (headerCell.modelData.sorted ? (headerCell.modelData.sortAscending ? "  ^" : "  v") : "")
                             color: Theme.accentStrong
                             font.bold: true
                             font.pixelSize: root.textSize
                             horizontalAlignment: headerCell.centerText ? Text.AlignHCenter : Text.AlignLeft
                             verticalAlignment: Text.AlignVCenter
                             elide: Text.ElideRight
+                        }
+
+                        Text {
+                            visible: headerCell.modelData.filtered === true
+                            anchors.right: parent.right
+                            anchors.rightMargin: 3
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "f"
+                            color: Theme.accentStrong
+                            font.bold: true
+                            font.pixelSize: Math.max(9, root.textSize - 3)
                         }
 
                         ToolTip.visible: headerMouseArea.containsMouse

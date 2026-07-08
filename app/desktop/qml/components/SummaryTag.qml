@@ -30,6 +30,7 @@ Control {
     background: Rectangle {
         color: Theme.surface
         border.color: root.tagAccent
+        border.width: 1
         radius: Theme.radius
     }
 

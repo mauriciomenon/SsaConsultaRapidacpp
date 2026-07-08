@@ -18,7 +18,7 @@ Rectangle {
     readonly property int activeTagCount: filterViewModel.activeFilterEntries.length + (hasSearch ? 1 : 0) + (hasActiveExclusion ? 1 : 0)
     readonly property bool compact: activeTagCount >= 2
     readonly property int tagTextSize: compact ? 11 : 12
-    readonly property color filterAccent: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.36)
+    readonly property color filterAccent: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.26)
 
     color: "transparent"
     border.color: "transparent"
@@ -48,7 +48,7 @@ Rectangle {
         ScrollView {
             id: summaryScroller
             readonly property int maxAvailableWidth: Math.max(220, root.width - clearSummaryButton.width - tagGroup.spacing - 12)
-            width: root.activeTagCount >= 4 ? maxAvailableWidth : Math.min(maxAvailableWidth, Math.max(220, root.activeTagCount * 260))
+            width: root.activeTagCount >= 4 ? maxAvailableWidth : Math.min(maxAvailableWidth, Math.max(180, root.activeTagCount * 230))
             height: parent.height
             clip: true
             contentHeight: availableHeight
@@ -58,8 +58,8 @@ Rectangle {
             Item {
                 id: summaryContent
                 height: parent.availableHeight
-                width: Math.max(220, summaryTags.implicitWidth)
-                readonly property int tagSlotWidth: root.activeTagCount <= 0 ? 0 : Math.max(180, Math.min(470, Math.floor((summaryScroller.width - Math.max(0, root.activeTagCount - 1) * summaryTags.spacing) / Math.min(root.activeTagCount, 4))))
+                width: Math.max(180, summaryTags.implicitWidth)
+                readonly property int tagSlotWidth: root.activeTagCount <= 0 ? 0 : Math.max(150, Math.min(430, Math.floor((summaryScroller.width - Math.max(0, root.activeTagCount - 1) * summaryTags.spacing) / Math.min(root.activeTagCount, 4))))
 
                 Label {
                     visible: !root.hasSearch && !root.hasFilterEntries && !root.hasActiveExclusion
@@ -124,6 +124,6 @@ Rectangle {
         anchors.right: parent.right
         anchors.bottom: parent.bottom
         height: 1
-        color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.32)
+        color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.18)
     }
 }

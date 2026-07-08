@@ -16,9 +16,9 @@
 namespace ssa::infra::preferences {
 
     namespace {
-        constexpr int kCurrentPreferencesSchemaVersion = 9;
+        constexpr int kCurrentPreferencesSchemaVersion = 10;
         constexpr std::string_view kDerivationColumnKey = "derivada_de";
-        constexpr int kDerivationColumnWidth = 74;
+        constexpr int kDerivationColumnWidth = 62;
         constexpr std::string_view kExecutorColumnKey = "setor_executor";
         constexpr std::string_view kDerivedCountColumnKey = "qtd_derivadas";
         constexpr std::array<std::string_view, 16> kSchema8DefaultVisibleColumns{{
@@ -78,8 +78,11 @@ namespace ssa::infra::preferences {
         constexpr std::array<WidthMigration, 1> kSchema7WidthMigrations{{
             {"derivada_de", 96, kDerivationColumnWidth},
         }};
-        constexpr std::array<WidthMigration, 1> kSchema9WidthMigrations{{
-            {"derivada_de", 90, kDerivationColumnWidth},
+        constexpr std::array<WidthMigration, 4> kSchema10WidthMigrations{{
+            {"setor_emissor", 72, 68},
+            {"setor_executor", 72, 68},
+            {"qtd_derivadas", 70, 66},
+            {"derivada_de", 74, kDerivationColumnWidth},
         }};
 
         bool matchesVisibleColumns(const std::vector<std::string>& columns,
@@ -208,7 +211,13 @@ namespace ssa::infra::preferences {
             if (matchesVisibleColumns(snapshot.visibleColumns, kSchema8DefaultVisibleColumns)) {
                 snapshot.visibleColumns = domain::ColumnCatalog::defaultVisibleKeys();
             }
-            for (const auto& migration : kSchema9WidthMigrations) {
+        }
+
+        void migrateSchema10CompactColumns(ports::UserPreferencesSnapshot& snapshot) {
+            if (snapshot.schemaVersion >= kCurrentPreferencesSchemaVersion) {
+                return;
+            }
+            for (const auto& migration : kSchema10WidthMigrations) {
                 const auto width = snapshot.columnWidths.find(std::string{migration.key});
                 if (width != snapshot.columnWidths.end() && width->second == migration.oldWidth) {
                     width->second = migration.newWidth;
@@ -357,6 +366,7 @@ namespace ssa::infra::preferences {
         migrateSchema7ColumnWidths(snapshot);
         migrateSchema8DerivationWidth(snapshot);
         migrateSchema9DefaultColumns(snapshot);
+        migrateSchema10CompactColumns(snapshot);
         snapshot.schemaVersion = std::max(snapshot.schemaVersion, kCurrentPreferencesSchemaVersion);
         return snapshot;
     }
