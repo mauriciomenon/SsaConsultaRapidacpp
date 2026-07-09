@@ -85,6 +85,11 @@ namespace ssa::presentation {
                                                                     int limit) const;
         Q_INVOKABLE [[nodiscard]] bool columnValueOptionsLoadingFor(const QString& key) const;
         Q_INVOKABLE [[nodiscard]] bool statusShortcutSelected(const QString& code) const;
+        // Returns the cycle state of a status shortcut value:
+        // 0 = None (not filtered), 1 = Included (=CODE), 2 = Excluded (!CODE).
+        // Dedicated contract so QML can render three visual states without
+        // parsing activeFilterSummary.
+        Q_INVOKABLE [[nodiscard]] int statusShortcutState(const QString& code) const;
         Q_INVOKABLE void toggleStatusShortcut(const QString& code);
         Q_INVOKABLE void clearStatusShortcuts();
         Q_INVOKABLE bool removeActiveFilter(const QVariantMap& entry);

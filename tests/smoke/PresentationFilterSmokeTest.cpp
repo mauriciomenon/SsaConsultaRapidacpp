@@ -612,6 +612,7 @@ namespace {
 
             QCOMPARE(text->textFilter("situacao"), QString("=APV"));
             QVERIFY(model.browse()->filters()->statusShortcutSelected("APV"));
+            QCOMPARE(model.browse()->filters()->statusShortcutState("APV"), 1);
             QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{1}, 1000);
             QCOMPARE(QString::fromStdString(
                          repository->requests().back().advancedFilters.textFilters.at("situacao")),
@@ -622,18 +623,24 @@ namespace {
             QCOMPARE(text->textFilter("situacao"), QString("=APV,=STE"));
             QVERIFY(model.browse()->filters()->statusShortcutSelected("APV"));
             QVERIFY(model.browse()->filters()->statusShortcutSelected("STE"));
+            QCOMPARE(model.browse()->filters()->statusShortcutState("APV"), 1);
+            QCOMPARE(model.browse()->filters()->statusShortcutState("STE"), 1);
 
             model.browse()->filters()->toggleStatusShortcut("APV");
 
             QCOMPARE(text->textFilter("situacao"), QString("=STE,!APV"));
             QVERIFY(!model.browse()->filters()->statusShortcutSelected("APV"));
             QVERIFY(model.browse()->filters()->statusShortcutSelected("STE"));
+            QCOMPARE(model.browse()->filters()->statusShortcutState("APV"), 2);
+            QCOMPARE(model.browse()->filters()->statusShortcutState("STE"), 1);
 
             model.browse()->filters()->toggleStatusShortcut("APV");
 
             QCOMPARE(text->textFilter("situacao"), QString("=STE"));
             QVERIFY(!model.browse()->filters()->statusShortcutSelected("APV"));
             QVERIFY(model.browse()->filters()->statusShortcutSelected("STE"));
+            QCOMPARE(model.browse()->filters()->statusShortcutState("APV"), 0);
+            QCOMPARE(model.browse()->filters()->statusShortcutState("STE"), 1);
         }
 
         void status_shortcuts_do_not_mark_excluded_status_values() {

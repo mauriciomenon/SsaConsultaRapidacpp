@@ -59,7 +59,7 @@ Rectangle {
                 text: root.viewModel.search.text
                 placeholderText: "Busca geral"
                 placeholderTextColor: Theme.mutedText
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontSizeBody
                 onTextEdited: root.viewModel.search.text = text
                 onAccepted: {
                     root.viewModel.search.apply();
@@ -128,7 +128,7 @@ Rectangle {
                                     Layout.leftMargin: 6
                                     text: savedFilterTag.filterName
                                     color: Theme.text
-                                    font.pixelSize: 11
+                                    font.pixelSize: Theme.fontSizeMicro
                                     font.bold: true
                                     elide: Text.ElideRight
                                     verticalAlignment: Text.AlignVCenter
@@ -140,7 +140,7 @@ Rectangle {
                                     Layout.preferredHeight: 22
                                     text: "x"
                                     padding: 0
-                                    font.pixelSize: 11
+                                    font.pixelSize: Theme.fontSizeMicro
                                     font.bold: true
                                     palette.buttonText: Theme.accentStrong
                                     ToolTip.visible: hovered
@@ -290,32 +290,36 @@ Rectangle {
                                 Button {
                                     id: statusShortcut
                                     required property string modelData
-                                    readonly property string filterState: root.filterViewModel.activeFilterSummary
-                                    readonly property bool selected: filterState.length >= 0 && root.filterViewModel.statusShortcutSelected(modelData)
+                                    // 0 = None, 1 = Included (=CODE), 2 = Excluded (!CODE).
+                                    readonly property int shortcutState: root.filterViewModel.statusShortcutState(modelData)
+                                    readonly property bool included: shortcutState === 1
+                                    readonly property bool excluded: shortcutState === 2
                                     width: statusShortcutFrame.fittedShortcutWidth
-                                    height: 24
+                                    height: Theme.statusShortcutHeight
                                     text: modelData
                                     checkable: false
                                     padding: 0
                                     font.family: Theme.fontFamily
-                                    font.pixelSize: 11
-                                    font.bold: selected
+                                    font.pixelSize: Theme.fontSizeMicro
+                                    font.bold: included || excluded
+                                    font.strikeout: excluded
                                     onClicked: root.filterViewModel.toggleStatusShortcut(modelData)
                                     ToolTip.visible: hovered
-                                    ToolTip.text: "Filtrar situacao " + modelData
+                                    ToolTip.text: included ? qsTr("Incluindo %1 - clicar exclui").arg(modelData) : excluded ? qsTr("Excluindo %1 - clicar remove").arg(modelData) : qsTr("Filtrar situacao %1").arg(modelData)
 
                                     background: Rectangle {
-                                        color: statusShortcut.selected ? Theme.accent : statusShortcut.hovered ? Theme.accentSoft : Theme.panelRaised
-                                        border.color: statusShortcut.selected ? Theme.accentStrong : Theme.border
+                                        color: statusShortcut.included ? Theme.accent : statusShortcut.excluded ? Theme.dangerSoft : statusShortcut.hovered ? Theme.accentSoft : Theme.panelRaised
+                                        border.color: statusShortcut.included ? Theme.accentStrong : statusShortcut.excluded ? Theme.danger : Theme.border
                                         radius: Theme.radius
                                     }
 
                                     contentItem: Text {
                                         text: statusShortcut.text
-                                        color: statusShortcut.selected ? Theme.accentText : Theme.text
+                                        color: statusShortcut.included ? Theme.accentText : statusShortcut.excluded ? Theme.dangerStrong : Theme.text
                                         font.family: statusShortcut.font.family
                                         font.pixelSize: statusShortcut.font.pixelSize
                                         font.bold: statusShortcut.font.bold
+                                        font.strikeout: statusShortcut.font.strikeout
                                         horizontalAlignment: Text.AlignHCenter
                                         verticalAlignment: Text.AlignVCenter
                                         elide: Text.ElideRight
@@ -329,7 +333,7 @@ Rectangle {
             Label {
                 text: "Setor:"
                 color: Theme.accent
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontSizeBody
                 font.bold: false
                 horizontalAlignment: Text.AlignRight
                 verticalAlignment: Text.AlignVCenter
@@ -344,7 +348,7 @@ Rectangle {
                 implicitHeight: Theme.controlHeight - 4
                 leftPadding: 6
                 rightPadding: 18
-                font.pixelSize: 11
+                font.pixelSize: Theme.fontSizeMicro
                 font.bold: false
                 onActivated: {
                     root.filterViewModel.sector.quickSector = sectorFilter.currentText;
@@ -374,7 +378,7 @@ Rectangle {
                 Layout.fillWidth: true
                 text: "Nome do filtro"
                 color: Theme.text
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontSizeBody
             }
 
             AppTextField {

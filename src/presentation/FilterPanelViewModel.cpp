@@ -285,6 +285,34 @@ namespace ssa::presentation {
         });
     }
 
+    int FilterPanelViewModel::statusShortcutState(const QString& code) const {
+        const auto normalizedCode = code.trimmed().toUpper().toStdString();
+        if (normalizedCode.empty()) {
+            return 0;
+        }
+        const auto statusKey = statusColumnKey();
+        const auto advancedExpression = state_.advanced().textFilter(statusKey).toStdString();
+        const auto columnFilter = state_.columnFilters().find(statusKey.toStdString());
+        const auto tokens = query::parseTextFilterTokens(
+            advancedExpression.empty() && columnFilter != state_.columnFilters().end()
+                ? columnFilter->second
+                : advancedExpression);
+        const auto hasOperator = [&tokens, &normalizedCode](const query::TextFilterOperator op) {
+            return std::ranges::any_of(tokens.ordered, [&normalizedCode, op](const auto& token) {
+                return token.value == normalizedCode && token.filterOperator == op;
+            });
+        };
+        // Included (=) wins over Excluded (!): a single value cannot hold both
+        // operators because TextFilterToken dedups by value.
+        if (hasOperator(query::TextFilterOperator::Equals)) {
+            return 1;
+        }
+        if (hasOperator(query::TextFilterOperator::Different)) {
+            return 2;
+        }
+        return 0;
+    }
+
     void FilterPanelViewModel::toggleStatusShortcut(const QString& code) {
         const auto normalizedCode = code.trimmed().toUpper().toStdString();
         if (normalizedCode.empty()) {
