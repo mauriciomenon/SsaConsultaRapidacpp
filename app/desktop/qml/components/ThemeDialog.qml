@@ -18,10 +18,10 @@ Window {
     modality: Qt.ApplicationModal
     flags: Qt.Window | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint
     color: Theme.window
-    minimumWidth: 520
-    minimumHeight: 420
-    width: 560
-    height: 460
+    minimumWidth: Theme.themeDialogMinWidth
+    minimumHeight: Theme.themeDialogMinHeight
+    width: Theme.clampedWindowDimension(Screen.desktopAvailableWidth, Theme.themeDialogPreferredWidth, Theme.themeDialogMinWidth)
+    height: Theme.clampedWindowDimension(Screen.desktopAvailableHeight, Theme.themeDialogPreferredHeight, Theme.themeDialogMinHeight)
 
     function open() {
         root.originalTheme = root.viewModel.ui.theme;
@@ -66,7 +66,7 @@ Window {
                 text: "Selecione um tema"
                 color: Theme.text
                 font.bold: true
-                font.pixelSize: 14
+                font.pixelSize: Theme.fontSizeTitle
             }
 
             RowLayout {
@@ -223,7 +223,7 @@ Window {
                                     anchors.verticalCenter: parent.verticalCenter
                                     text: parent.label
                                     color: Theme.text
-                                    font.pixelSize: 12
+                                    font.pixelSize: Theme.fontSizeBody
                                 }
                             }
                         }

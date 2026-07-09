@@ -16,10 +16,10 @@ ApplicationWindow {
     signal graphNodeRequested(string ssaNumber)
     signal copyTextRequested(string text)
     title: detailsViewModel && detailsViewModel.selectedSsaNumber.length > 0 ? "Detalhes da SSA " + detailsViewModel.selectedSsaNumber : "Detalhes da SSA"
-    width: 885
-    height: 900
-    minimumWidth: 880
-    minimumHeight: 700
+    width: Theme.clampedWindowDimension(Screen.desktopAvailableWidth, Theme.detailsWindowPreferredWidth, Theme.detailsWindowMinWidth)
+    height: Theme.clampedWindowDimension(Screen.desktopAvailableHeight, Theme.detailsWindowPreferredHeight, Theme.detailsWindowMinHeight)
+    minimumWidth: Theme.detailsWindowMinWidth
+    minimumHeight: Theme.detailsWindowMinHeight
     visible: false
     color: Theme.window
     font.family: Theme.fontFamily
@@ -84,7 +84,7 @@ ApplicationWindow {
                             text: "Grafo de derivadas"
                             color: Theme.accentStrong
                             font.bold: true
-                            font.pixelSize: 13
+                            font.pixelSize: Theme.fontSizeLabel
                         }
 
                         ActionButton {
@@ -131,7 +131,7 @@ ApplicationWindow {
                         visible: root.detailsViewModel && root.detailsViewModel.graphModel.nodeCount > 0
                         text: root.graphStatusMessage.length > 0 ? root.graphStatusMessage : root.detailsViewModel ? root.detailsViewModel.graphModel.summary + " | Cheia: derivada | tracejada: relacionada | faixa: papel da SSA" : ""
                         color: Theme.mutedText
-                        font.pixelSize: 11
+                        font.pixelSize: Theme.fontSizeMicro
                     }
                 }
             }
@@ -170,7 +170,7 @@ ApplicationWindow {
 
                             Label {
                                 Layout.preferredWidth: Theme.detailsLabelWidth
-                                font.pixelSize: 13
+                                font.pixelSize: Theme.fontSizeLabel
                                 font.bold: false
                                 text: fieldDelegate.label + ":"
                                 color: Theme.text
@@ -187,7 +187,7 @@ ApplicationWindow {
                                 selectedTextColor: Theme.accentText
                                 selectionColor: Theme.accent
                                 wrapMode: TextEdit.Wrap
-                                font.pixelSize: 13
+                                font.pixelSize: Theme.fontSizeLabel
                                 font.bold: false
                             }
                         }
