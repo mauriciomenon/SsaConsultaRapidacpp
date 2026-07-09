@@ -29,6 +29,10 @@ namespace ssa::domain {
     inline constexpr int kYearWeekMultiplier = 100;
     inline constexpr std::size_t kDefaultRequestPageSize = 100;
     inline constexpr std::size_t kDefaultDistinctValuesLimit = 500;
+    // Cap for advanced-filter distinct value dropdowns. High enough to surface
+    // every realistic responsavel/setor value, low enough to bound SQL cost and
+    // the QML paint of the value popup.
+    inline constexpr std::size_t kAdvancedDistinctValuesLimit = 5000;
 
     [[nodiscard]] inline int clampPageSize(const int value) {
         return std::clamp(value, kMinPageSize, kMaxPageSize);

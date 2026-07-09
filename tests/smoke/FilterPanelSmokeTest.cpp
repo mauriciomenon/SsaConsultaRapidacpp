@@ -31,8 +31,6 @@
 
 namespace {
 
-    constexpr std::size_t kExpectedAdvancedColumnValueLimit = 100000;
-
     [[nodiscard]] std::string currentYearWeek() {
         int isoYear = 0;
         const int isoWeek = QDate::currentDate().weekNumber(&isoYear);
@@ -291,7 +289,7 @@ namespace {
             const auto distinctRequests = repository->distinctRequests();
             QVERIFY(std::ranges::any_of(distinctRequests, [](const auto& request) {
                 return request.columnKey == "responsavel_execucao" && !request.orderByFrequency &&
-                       request.limit == kExpectedAdvancedColumnValueLimit;
+                       request.limit == ssa::domain::kAdvancedDistinctValuesLimit;
             }));
         }
 
