@@ -51,15 +51,11 @@ Item {
                 required property var modelData
                 readonly property var rowData: textDelegate.modelData
                 property var loadedValueOptions: []
-                property var visibleValueOptions: []
-                property bool moreValueOptions: false
                 property bool valueOptionsLoading: false
 
                 function reloadOptionState() {
                     loadedValueOptions = root.filterViewModel.columnValueOptionsFor(rowData.key);
                     valueOptionsLoading = root.filterViewModel.columnValueOptionsLoadingFor(rowData.key);
-                    moreValueOptions = root.filterViewModel.hasMoreColumnValueOptionsFor(rowData.key, compactValueLimit);
-                    visibleValueOptions = root.filterViewModel.columnValuePreviewOptionsFor(rowData.key, compactValueLimit, false);
                 }
 
                 cardWidth: root.cellWidth - 4
@@ -67,8 +63,7 @@ Item {
                 row: textDelegate.rowData
                 operatorModes: root.textFilters.operatorModes
                 allValues: loadedValueOptions
-                visibleValues: visibleValueOptions
-                hasMoreValues: moreValueOptions
+                visibleValues: loadedValueOptions
                 valuesLoading: valueOptionsLoading
                 textFilter: rowData.textFilter !== undefined ? rowData.textFilter : ""
                 operatorIndex: rowData.operatorIndex !== undefined ? rowData.operatorIndex : -1

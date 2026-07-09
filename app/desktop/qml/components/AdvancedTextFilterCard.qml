@@ -11,14 +11,12 @@ FilterCard {
     required property var operatorModes
     required property var allValues
     required property var visibleValues
-    required property bool hasMoreValues
     required property bool valuesLoading
     required property string textFilter
     required property int operatorIndex
     required property string operatorLabel
     required property real cardWidth
     required property real cardHeight
-    readonly property int compactValueLimit: 18
     readonly property int choiceColumnWidth: 52
     readonly property int commandWidth: 30
     readonly property bool wideValuePopup: row.key === "solicitante" || row.key === "responsavel_programacao" || row.key === "responsavel_execucao" || row.key === "anomalia"
