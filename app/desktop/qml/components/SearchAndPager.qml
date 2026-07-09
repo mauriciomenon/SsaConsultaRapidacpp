@@ -23,6 +23,20 @@ Rectangle {
         }
     }
 
+    // Opens the save-filter dialog only when there is an active filter to
+    // save (mirrors the Python reference). If nothing is active, the dialog
+    // is not opened and the status message tells the user why.
+    function openSaveFilterDialog() {
+        if (root.preferenceFlow === null || !root.preferenceFlow.hasActiveFilter()) {
+            root.preferenceFlow.notifyNoActiveFilter();
+            return;
+        }
+        savedFilterName.text = root.preferenceFlow.suggestedFilterName();
+        saveFilterDialog.open();
+        savedFilterName.forceActiveFocus();
+        savedFilterName.selectAll();
+    }
+
     Component.onCompleted: Qt.callLater(root.focusSearchInput)
     onVisibleChanged: {
         if (visible) {
@@ -70,17 +84,6 @@ Rectangle {
                 implicitWidth: 82
                 implicitHeight: Theme.densityValue(root.density, 26, Theme.controlHeight, 34)
                 onClicked: root.viewModel.search.apply()
-            }
-            ActionButton {
-                text: "Salvar Filtros"
-                implicitWidth: 126
-                implicitHeight: Theme.densityValue(root.density, 26, Theme.controlHeight, 34)
-                onClicked: {
-                    savedFilterName.text = root.preferenceFlow.suggestedFilterName();
-                    saveFilterDialog.open();
-                    savedFilterName.forceActiveFocus();
-                    savedFilterName.selectAll();
-                }
             }
             ScrollView {
                 visible: root.preferenceFlow.savedFilters.length > 0
@@ -176,6 +179,11 @@ Rectangle {
                     id: filterMenu
                     y: filterMenuButton.height
 
+                    MenuItem {
+                        text: "Salvar Filtro"
+                        onTriggered: root.openSaveFilterDialog()
+                    }
+                    MenuSeparator {}
                     MenuItem {
                         text: "Exportar Lista"
                         onTriggered: root.exportRequested()
@@ -369,9 +377,9 @@ Rectangle {
         modal: true
         standardButtons: Dialog.Ok | Dialog.Cancel
         anchors.centerIn: Overlay.overlay
+        width: 360
 
-        ColumnLayout {
-            width: 360
+        contentItem: ColumnLayout {
             spacing: Theme.gap
 
             Label {

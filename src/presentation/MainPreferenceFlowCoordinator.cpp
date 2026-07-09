@@ -174,6 +174,17 @@ namespace ssa::presentation {
         emit this->statusMessageRequested("Salvamento solicitado");
     }
 
+    bool MainPreferenceFlowCoordinator::hasActiveFilter() const {
+        const auto snapshot = buildPreferencesSnapshot();
+        auto filters = snapshot.filters;
+        normalizeFilterPreferences(filters);
+        return hasFilterState(filters);
+    }
+
+    void MainPreferenceFlowCoordinator::notifyNoActiveFilter() {
+        emit this->statusMessageRequested("Aplique algum filtro antes de salvar");
+    }
+
     QString MainPreferenceFlowCoordinator::suggestedFilterName() const {
         const auto snapshot = buildPreferencesSnapshot();
         const auto searchText = QString::fromStdString(snapshot.filters.searchText).trimmed();

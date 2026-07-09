@@ -49,6 +49,14 @@ namespace ssa::presentation {
         void saveNowOrSchedule();
         Q_INVOKABLE void savePreferences();
         Q_INVOKABLE QString suggestedFilterName() const;
+        // True when the current filter state has at least one active filter
+        // (search/column/advanced/exclusion). Used by QML to validate BEFORE
+        // opening the save-filter dialog, mirroring the Python reference.
+        Q_INVOKABLE bool hasActiveFilter() const;
+        // Emits statusMessageRequested("Aplique algum filtro antes de salvar")
+        // so QML can call it when hasActiveFilter() is false, without opening
+        // the save dialog. Mirrors the Python QMessageBox.information flow.
+        Q_INVOKABLE void notifyNoActiveFilter();
         Q_INVOKABLE void saveCurrentFilter(const QString& name);
         Q_INVOKABLE void applySavedFilter(const QString& name);
         Q_INVOKABLE void removeSavedFilter(const QString& name);
