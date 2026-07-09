@@ -64,7 +64,7 @@ FilterCard {
                 Layout.fillWidth: true
                 text: "Execucao (AnoSemana)"
                 color: Theme.text
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontSizeBody
                 elide: Text.ElideRight
             }
 
@@ -73,7 +73,7 @@ FilterCard {
                 visible: root.week.executionWeekStartFilter.length > 0
                 text: root.week.executionWeekStartFilter + (root.week.executionWeekEndFilter.length > 0 ? ".." + root.week.executionWeekEndFilter : "+")
                 color: Theme.accentStrong
-                font.pixelSize: 11
+                font.pixelSize: Theme.fontSizeMicro
                 horizontalAlignment: Text.AlignRight
                 elide: Text.ElideRight
             }
@@ -81,14 +81,14 @@ FilterCard {
 
         RowLayout {
             Layout.fillWidth: true
-            Layout.preferredHeight: 28
+            Layout.preferredHeight: Theme.filterRowHeight
             spacing: 4
 
             AppTextField {
                 id: rangeStartField
                 Layout.minimumWidth: 70
                 Layout.fillWidth: true
-                Layout.preferredHeight: 28
+                Layout.preferredHeight: Theme.filterRowHeight
                 placeholderText: "De"
                 text: root.week.executionWeekStartFilter
                 inputMethodHints: Qt.ImhDigitsOnly
@@ -106,7 +106,7 @@ FilterCard {
                 id: rangeEndField
                 Layout.minimumWidth: 70
                 Layout.fillWidth: true
-                Layout.preferredHeight: 28
+                Layout.preferredHeight: Theme.filterRowHeight
                 placeholderText: "Ate"
                 text: root.week.executionWeekEndFilter
                 inputMethodHints: Qt.ImhDigitsOnly
@@ -123,10 +123,10 @@ FilterCard {
             ActionButton {
                 text: "X"
                 implicitWidth: 28
-                implicitHeight: 28
+                implicitHeight: Theme.filterRowHeight
                 padding: 0
                 font.bold: true
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontSizeBody
                 ToolTip.visible: hovered
                 ToolTip.text: "Limpar Execucao"
                 ToolTip.delay: 0

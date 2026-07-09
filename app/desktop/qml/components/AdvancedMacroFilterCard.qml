@@ -44,7 +44,7 @@ FilterCard {
                 Layout.fillWidth: true
                 text: "Macro"
                 color: Theme.text
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontSizeBody
                 elide: Text.ElideRight
             }
 
@@ -53,7 +53,7 @@ FilterCard {
                 visible: root.macro.reportTitle.length > 0
                 text: root.macro.reportText.length > 0 ? root.macro.reportText : ""
                 color: Theme.accentStrong
-                font.pixelSize: 11
+                font.pixelSize: Theme.fontSizeMicro
                 horizontalAlignment: Text.AlignRight
                 elide: Text.ElideRight
             }
@@ -61,14 +61,14 @@ FilterCard {
 
         RowLayout {
             Layout.fillWidth: true
-            Layout.preferredHeight: 28
+            Layout.preferredHeight: Theme.filterRowHeight
             spacing: 4
 
             AppComboBox {
                 id: macroSelector
-                Layout.minimumWidth: 82
+                Layout.minimumWidth: Theme.valueMinWidth
                 Layout.fillWidth: true
-                Layout.preferredHeight: 28
+                Layout.preferredHeight: Theme.filterRowHeight
                 leftPadding: 7
                 rightPadding: 16
                 textRole: "label"
@@ -85,10 +85,10 @@ FilterCard {
             ActionButton {
                 text: "X"
                 implicitWidth: 28
-                implicitHeight: 28
+                implicitHeight: Theme.filterRowHeight
                 padding: 0
                 font.bold: true
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontSizeBody
                 ToolTip.visible: hovered
                 ToolTip.text: "Limpar macro"
                 ToolTip.delay: 0
@@ -113,27 +113,27 @@ FilterCard {
                     Layout.preferredWidth: 92
                     text: "Setor/Div"
                     color: Theme.text
-                    font.pixelSize: 11
+                    font.pixelSize: Theme.fontSizeMicro
                     elide: Text.ElideRight
                 }
                 Label {
                     Layout.preferredWidth: 58
                     text: "Semana"
                     color: Theme.text
-                    font.pixelSize: 11
+                    font.pixelSize: Theme.fontSizeMicro
                 }
                 Label {
                     Layout.fillWidth: true
                     text: "Pessoa"
                     color: Theme.text
-                    font.pixelSize: 11
+                    font.pixelSize: Theme.fontSizeMicro
                     elide: Text.ElideRight
                 }
                 Label {
                     Layout.preferredWidth: 42
                     text: "SSAs"
                     color: Theme.text
-                    font.pixelSize: 11
+                    font.pixelSize: Theme.fontSizeMicro
                 }
             }
 
@@ -161,20 +161,20 @@ FilterCard {
                                 Layout.preferredWidth: 92
                                 text: reportRow.modelData.group
                                 color: Theme.text
-                                font.pixelSize: 11
+                                font.pixelSize: Theme.fontSizeMicro
                                 elide: Text.ElideRight
                             }
                             Label {
                                 Layout.preferredWidth: 58
                                 text: reportRow.modelData.week
                                 color: Theme.text
-                                font.pixelSize: 11
+                                font.pixelSize: Theme.fontSizeMicro
                             }
                             Label {
                                 Layout.fillWidth: true
                                 text: reportRow.modelData.person
                                 color: Theme.text
-                                font.pixelSize: 11
+                                font.pixelSize: Theme.fontSizeMicro
                                 elide: Text.ElideRight
                             }
                             Label {
@@ -182,7 +182,7 @@ FilterCard {
                                 horizontalAlignment: Text.AlignRight
                                 text: reportRow.modelData.count
                                 color: Theme.accentStrong
-                                font.pixelSize: 11
+                                font.pixelSize: Theme.fontSizeMicro
                             }
                         }
                     }

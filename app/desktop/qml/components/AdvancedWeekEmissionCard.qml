@@ -67,7 +67,7 @@ FilterCard {
                 Layout.fillWidth: true
                 text: "Emissao (AnoSemana)"
                 color: Theme.text
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontSizeBody
                 elide: Text.ElideRight
             }
 
@@ -76,7 +76,7 @@ FilterCard {
                 visible: root.week.issueWeekStartFilter.length > 0
                 text: root.week.issueWeekStartFilter + (root.week.issueWeekEndFilter.length > 0 ? ".." + root.week.issueWeekEndFilter : "+")
                 color: Theme.accentStrong
-                font.pixelSize: 11
+                font.pixelSize: Theme.fontSizeMicro
                 horizontalAlignment: Text.AlignRight
                 elide: Text.ElideRight
             }
@@ -84,14 +84,14 @@ FilterCard {
 
         RowLayout {
             Layout.fillWidth: true
-            Layout.preferredHeight: 28
+            Layout.preferredHeight: Theme.filterRowHeight
             spacing: 4
 
             AppTextField {
                 id: rangeStartField
                 Layout.minimumWidth: 70
                 Layout.fillWidth: true
-                Layout.preferredHeight: 28
+                Layout.preferredHeight: Theme.filterRowHeight
                 placeholderText: "De"
                 text: root.week.issueWeekStartFilter
                 inputMethodHints: Qt.ImhDigitsOnly
@@ -109,7 +109,7 @@ FilterCard {
                 id: rangeEndField
                 Layout.minimumWidth: 70
                 Layout.fillWidth: true
-                Layout.preferredHeight: 28
+                Layout.preferredHeight: Theme.filterRowHeight
                 placeholderText: "Ate"
                 text: root.week.issueWeekEndFilter
                 inputMethodHints: Qt.ImhDigitsOnly
@@ -126,10 +126,10 @@ FilterCard {
             ActionButton {
                 text: "X"
                 implicitWidth: 28
-                implicitHeight: 28
+                implicitHeight: Theme.filterRowHeight
                 padding: 0
                 font.bold: true
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontSizeBody
                 ToolTip.visible: hovered
                 ToolTip.text: "Limpar Emissao"
                 ToolTip.delay: 0

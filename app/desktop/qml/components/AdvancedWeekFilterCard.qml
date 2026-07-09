@@ -35,19 +35,19 @@ FilterCard {
         FilterFieldLabel {
             text: "Semana"
             Layout.preferredWidth: 58
-            Layout.preferredHeight: 26
+            Layout.preferredHeight: Theme.filterRowHeight
         }
         AppComboBox {
             Layout.preferredWidth: Math.min(360, Math.max(220, root.width * 0.28))
-            Layout.preferredHeight: 26
+            Layout.preferredHeight: Theme.filterRowHeight
             model: root.week.weekColumnKeys
             currentIndex: Math.max(0, root.week.weekColumnKeys.indexOf(root.week.weekColumnKey))
             onActivated: root.week.weekColumnKey = currentText
         }
         AppTextField {
             id: genericYearField
-            Layout.preferredWidth: 72
-            Layout.preferredHeight: 26
+            Layout.preferredWidth: Theme.weekFieldWidth
+            Layout.preferredHeight: Theme.filterRowHeight
             placeholderText: "Ano"
             text: root.week.yearFilter
             inputMethodHints: Qt.ImhDigitsOnly
@@ -62,8 +62,8 @@ FilterCard {
         }
         AppTextField {
             id: genericWeekField
-            Layout.preferredWidth: 72
-            Layout.preferredHeight: 26
+            Layout.preferredWidth: Theme.weekFieldWidth
+            Layout.preferredHeight: Theme.filterRowHeight
             placeholderText: "Sem."
             text: root.week.weekFilter
             inputMethodHints: Qt.ImhDigitsOnly
@@ -79,7 +79,7 @@ FilterCard {
         AppTextField {
             id: issueYearField
             Layout.preferredWidth: 90
-            Layout.preferredHeight: 26
+            Layout.preferredHeight: Theme.filterRowHeight
             placeholderText: "Ano Emis."
             text: root.week.issueYearFilter
             inputMethodHints: Qt.ImhDigitsOnly
@@ -95,7 +95,7 @@ FilterCard {
         AppTextField {
             id: executionYearField
             Layout.preferredWidth: 90
-            Layout.preferredHeight: 26
+            Layout.preferredHeight: Theme.filterRowHeight
             placeholderText: "Ano Exec."
             text: root.week.executionYearFilter
             inputMethodHints: Qt.ImhDigitsOnly
@@ -111,9 +111,9 @@ FilterCard {
         ActionButton {
             text: "Int."
             implicitWidth: 42
-            implicitHeight: 26
+            implicitHeight: Theme.filterRowHeight
             padding: 0
-            font.pixelSize: 11
+            font.pixelSize: Theme.fontSizeMicro
             ToolTip.visible: hovered
             ToolTip.text: "Mostrar filtros de intervalo AnoSemana"
             ToolTip.delay: 0
@@ -123,13 +123,13 @@ FilterCard {
         FilterFieldLabel {
             text: "Intervalo"
             Layout.preferredWidth: 58
-            Layout.preferredHeight: 26
+            Layout.preferredHeight: Theme.filterRowHeight
             visible: root.intervalVisible
         }
         AppTextField {
             id: issueWeekStartField
             Layout.preferredWidth: 122
-            Layout.preferredHeight: 26
+            Layout.preferredHeight: Theme.filterRowHeight
             visible: root.intervalVisible
             placeholderText: "Emissao inicio"
             text: root.week.issueWeekStartFilter
@@ -146,7 +146,7 @@ FilterCard {
         AppTextField {
             id: issueWeekEndField
             Layout.preferredWidth: 122
-            Layout.preferredHeight: 26
+            Layout.preferredHeight: Theme.filterRowHeight
             visible: root.intervalVisible
             placeholderText: "Emissao fim"
             text: root.week.issueWeekEndFilter
@@ -163,7 +163,7 @@ FilterCard {
         AppTextField {
             id: executionWeekStartField
             Layout.preferredWidth: 122
-            Layout.preferredHeight: 26
+            Layout.preferredHeight: Theme.filterRowHeight
             visible: root.intervalVisible
             placeholderText: "Execucao inicio"
             text: root.week.executionWeekStartFilter
@@ -180,7 +180,7 @@ FilterCard {
         AppTextField {
             id: executionWeekEndField
             Layout.preferredWidth: 122
-            Layout.preferredHeight: 26
+            Layout.preferredHeight: Theme.filterRowHeight
             visible: root.intervalVisible
             placeholderText: "Execucao fim"
             text: root.week.executionWeekEndFilter
@@ -196,18 +196,18 @@ FilterCard {
         }
         RowLayout {
             Layout.fillWidth: true
-            Layout.preferredHeight: 26
+            Layout.preferredHeight: Theme.filterRowHeight
             ActionButton {
                 text: "Aplicar"
                 implicitWidth: 66
-                implicitHeight: 26
+                implicitHeight: Theme.filterRowHeight
                 padding: 0
                 onClicked: root.applyRequested()
             }
             ActionButton {
                 text: "Limpar"
                 implicitWidth: 58
-                implicitHeight: 26
+                implicitHeight: Theme.filterRowHeight
                 padding: 0
                 ToolTip.visible: hovered
                 ToolTip.text: "Limpar filtros avancados"
