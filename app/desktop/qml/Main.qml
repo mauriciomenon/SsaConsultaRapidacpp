@@ -247,7 +247,7 @@ ApplicationWindow {
                     rightPadding: 26
                     text: root.vm.actions.currentWeek.value
                     color: Theme.accent
-                    font.pixelSize: 16
+                    font.pixelSize: Theme.fontSizeHeader
                     font.bold: true
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
@@ -267,7 +267,7 @@ ApplicationWindow {
                     rightPadding: 16
                     text: root.vm.browse.totalRows + " / " + root.vm.browse.totalRowsAll + " SSAs"
                     color: Theme.accent
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSizeBody
                     font.bold: false
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter

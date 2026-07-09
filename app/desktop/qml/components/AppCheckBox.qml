@@ -10,7 +10,7 @@ CheckBox {
         leftPadding: root.indicator.width + root.spacing
         text: root.text
         color: root.enabled ? Theme.text : Theme.mutedText
-        font.pixelSize: 11
+        font.pixelSize: Theme.fontSizeMicro
         font.weight: Font.Normal
         verticalAlignment: Text.AlignVCenter
         elide: Text.ElideRight

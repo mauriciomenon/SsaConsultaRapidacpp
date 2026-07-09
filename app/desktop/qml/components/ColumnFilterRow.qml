@@ -28,7 +28,7 @@ RowLayout {
         Layout.preferredWidth: 120
         text: root.row.label
         color: Theme.text
-        font.pixelSize: 13
+        font.pixelSize: Theme.fontSizeLabel
         elide: Text.ElideRight
     }
 
@@ -36,7 +36,7 @@ RowLayout {
         id: rowFilterInput
         Layout.fillWidth: true
         placeholderText: root.placeholderText
-        font.pixelSize: 12
+        font.pixelSize: Theme.fontSizeBody
         onAccepted: {
             if (text.trim() !== "")
                 root.filterSubmitted(root.row.key, text);

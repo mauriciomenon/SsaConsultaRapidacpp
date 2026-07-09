@@ -16,7 +16,7 @@ SpinBox {
     rightPadding: root.indicatorWidth + root.horizontalTextPadding
     editable: false
     font.family: Theme.fontFamily
-    font.pixelSize: 12
+    font.pixelSize: Theme.fontSizeBody
 
     TextMetrics {
         id: reservedDigitMetrics

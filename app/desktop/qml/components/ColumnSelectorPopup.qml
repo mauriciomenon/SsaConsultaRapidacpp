@@ -75,7 +75,7 @@ Popup {
                 text: "Colunas"
                 color: Theme.text
                 font.bold: true
-                font.pixelSize: 15
+                font.pixelSize: Theme.fontSizeTitle
                 elide: Text.ElideRight
             }
             ActionButton {

@@ -29,7 +29,7 @@ Rectangle {
         Label {
             text: root.status.error.length > 0 ? root.status.error : root.status.message
             color: root.status.error.length > 0 ? Theme.danger : Theme.text
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontSizeBody
             font.bold: false
             elide: Text.ElideRight
         }
@@ -42,7 +42,7 @@ Rectangle {
             visible: root.weekModel !== null
             text: root.weekModel !== null ? root.weekModel.dateTimeLabel : ""
             color: Theme.mutedText
-            font.pixelSize: 11
+            font.pixelSize: Theme.fontSizeMicro
         }
     }
 }

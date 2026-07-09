@@ -13,7 +13,7 @@ Button {
     rightInset: 0
 
     font.family: Theme.fontFamily
-    font.pixelSize: 12
+    font.pixelSize: Theme.fontSizeBody
     font.bold: false
     implicitWidth: 100
     opacity: enabled ? 1.0 : 0.8

@@ -180,7 +180,7 @@ Rectangle {
                                                 text: root.relationBadge(relationRow.modelData.role)
                                                 visible: text.length > 0
                                                 color: relationRow.index === root.viewModel.currentRelationIndex ? Theme.accentStrong : root.relationBorderColor(relationRow.modelData.role, false)
-                                                font.pixelSize: 8
+                                                font.pixelSize: Theme.fontSizeCaption
                                                 font.bold: false
                                                 horizontalAlignment: Text.AlignHCenter
                                                 width: relationBox.width - 12
@@ -251,7 +251,7 @@ Rectangle {
                             implicitWidth: 42
                             implicitHeight: 19
                             padding: 0
-                            font.pixelSize: 9
+                            font.pixelSize: Theme.fontSizeCaption
                             enabled: root.viewModel.selectedSsaNumber.length > 0
                             ToolTip.visible: hovered
                             ToolTip.text: "Abrir grafo"
@@ -268,7 +268,7 @@ Rectangle {
                                 implicitWidth: 20
                                 implicitHeight: 19
                                 padding: 0
-                                font.pixelSize: 10
+                                font.pixelSize: Theme.fontSizeCaption
                                 enabled: root.viewModel.canSelectPreviousRelation
                                 onClicked: root.viewModel.selectPreviousRelation()
                             }
@@ -276,7 +276,7 @@ Rectangle {
                             Label {
                                 text: root.viewModel.relationCount > 0 ? (root.viewModel.currentRelationIndex + 1) + "/" + root.viewModel.relationCount : ""
                                 color: Theme.mutedText
-                                font.pixelSize: 11
+                                font.pixelSize: Theme.fontSizeMicro
                                 horizontalAlignment: Text.AlignHCenter
                                 verticalAlignment: Text.AlignVCenter
                                 width: 24
@@ -288,7 +288,7 @@ Rectangle {
                                 implicitWidth: 20
                                 implicitHeight: 19
                                 padding: 0
-                                font.pixelSize: 10
+                                font.pixelSize: Theme.fontSizeCaption
                                 enabled: root.viewModel.canSelectNextRelation
                                 onClicked: root.viewModel.selectNextRelation()
                             }

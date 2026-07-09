@@ -78,7 +78,7 @@ Rectangle {
                     Layout.fillWidth: true
                     text: root.columnViewModel.activeFilterCount === 0 ? "Sem filtros por coluna" : root.columnViewModel.activeFilterCount + " filtros por coluna"
                     color: Theme.mutedText
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSizeBody
                     elide: Text.ElideRight
                 }
 
@@ -87,7 +87,7 @@ Rectangle {
                     visible: root.columnViewModel.activeFilterCount > 0
                     text: root.filterSyntaxHint
                     color: Theme.mutedText
-                    font.pixelSize: 10
+                    font.pixelSize: Theme.fontSizeCaption
                     elide: Text.ElideRight
                 }
             }
