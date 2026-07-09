@@ -13,20 +13,21 @@ Control {
     property int tagTextSize: 12
     property int preferredTagWidth: 0
     property color tagAccent: Theme.accent
-    readonly property int naturalWidth: tagLabel.implicitWidth + removeButton.implicitWidth + 26
+    readonly property int naturalWidth: tagLabel.implicitWidth + removeButton.implicitWidth + Theme.chipChromePadding
     signal removeRequested
 
-    // No artificial width cap: show the full text and only elide when the
-    // container (ScrollView in FilterSummaryBar) runs out of room.
+    // Tags use their natural width; the FilterSummaryBar ScrollView scrolls
+    // horizontally when the Row of tags exceeds the available width. There is
+    // no artificial per-tag cap or JS redistribution.
     implicitWidth: preferredTagWidth > 0 ? preferredTagWidth : naturalWidth
-    implicitHeight: compact ? 24 : 26
+    implicitHeight: root.compact ? Theme.chipHeightCompact : Theme.chipHeight
     padding: 0
     hoverEnabled: true
 
     ToolTip.visible: hovered && tooltipText.length > 0
     ToolTip.text: tooltipText
     ToolTip.delay: 0
-    ToolTip.timeout: 10000
+    ToolTip.timeout: Theme.chipRemoveTooltipTimeoutMs
 
     background: Rectangle {
         color: Theme.surface
@@ -36,12 +37,12 @@ Control {
     }
 
     contentItem: RowLayout {
-        spacing: 4
+        spacing: Theme.spacingSm
 
         Label {
             id: tagLabel
             Layout.fillWidth: true
-            Layout.leftMargin: 8
+            Layout.leftMargin: Theme.chipLabelMargin
             text: root.text
             color: Theme.text
             font.pixelSize: root.tagTextSize
@@ -52,8 +53,8 @@ Control {
 
         ToolButton {
             id: removeButton
-            Layout.preferredWidth: root.compact ? 22 : 24
-            Layout.preferredHeight: root.compact ? 22 : 24
+            Layout.preferredWidth: root.compact ? Theme.chipRemoveButtonSizeCompact : Theme.chipRemoveButtonSize
+            Layout.preferredHeight: root.compact ? Theme.chipRemoveButtonSizeCompact : Theme.chipRemoveButtonSize
             text: "x"
             padding: 0
             font.pixelSize: root.tagTextSize
