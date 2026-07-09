@@ -76,3 +76,8 @@
   2. **Macro card texto deve ir ao mesmo lugar que os demais**: o titulo da Macro card deve estar na MESMA posicao relativa que os titulos das text cards (canto superior esquerdo, mesma fonte/tamanho). Hoje esta em posicao diferente.
   3. **Reprogramming card com espaco maior**: a Reprogramacoes card tem espaco interno maior que as outras (provavelmente por causa do `cardHeight: 70` vs `textCellHeight: 56`). Padronizar a altura para `56` igual as outras, ou revisar o layout interno para nao sobrar espaco.
   Cuidado: cada refino deve ser slice separado e cirurgico, sem quebrar o reflow do Flow + Repeater do `AdvancedTextFilterGrid.qml`.
+
+## Consolidacao GUI QML/Qt (julho 2026) - pendentes
+
+- [PENDING] [TYPESCALE-POINTSIZE] Migrar TypeScale de `font.pixelSize` para `font.pointSize` para respeitar a escala de fonte/DPI do SO (acessibilidade - fonte grande). Impacto: revalidar todos os 36 QML em Retina/HiDPI e telas com fonte do SO em Large. Slice dedicado.
+- [PENDING] [F5-DEAD-PREVIEW-API] Apos commit `6ddb6ef` (dropdown usa `loadedValueOptions` direto), `FilterPanelViewModel::columnValuePreviewOptionsFor` e `hasMoreColumnValueOptionsFor` nao tem caller em QML (so em testes smoke). Remover do VM + ajustar testes que os usam como veiculo para testar reset/cache do `FilterPanelColumnValueOptions`. Slice dedicado - nao misturar com outras mudancas pois os testes validam comportamento real de reset.

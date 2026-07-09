@@ -56,6 +56,29 @@ Sem acentos/cedilha/emojis/emdash em codigo, chat e mensagens tecnicas.
 - Erro tratado por fronteira funcional, nao a cada poucas linhas.
 - Const/imutavel por default.
 
+## Padrao de popup (QML/Qt)
+
+Aplicar a TODO popup/dropdown do projeto:
+
+1. Ancorar ao canto do gatilho (direito ou esquerdo conforme o lado do
+   card) com clamp nas bordas da janela - nunca abre fora nem longe do
+   clique. Usar `Theme.clampedPopupX/Y` que ja fazem isso.
+2. Reparent para `Overlay.overlay` sempre que o popup precisar escapar de
+   parent com clip. X/Y em unica convencao (absoluta do overlay).
+3. Resolver X, Y e altura JUNTOS numa funcao so (`resolvePopupGeometry`),
+   nunca em tres bindings separados - evita bug de convencao de coordenada
+   mista (absoluto vs relativo).
+4. Largura data-driven, nunca magic number: medir o maior valor real do
+   campo em runtime (`sqlite SELECT MAX(LENGTH(col))`) e derivar a largura
+   por categoria de tipo de dado (`Theme.valuePopupCategory`:
+   code/name/anomalia). Nao inventar 240/520.
+5. Altura content-driven para combos: o popup tem a altura exata do numero
+   de itens (sem piso minimo fixo). Passar `minHeight: 0` para
+   `clampedPopupHeight`/`clampedPopupHeightBelow`.
+6. Validar posicionamento/altura com `console.info` + offscreen
+   (`QT_QPA_PLATFORM=offscreen`) antes de confiar na tela - a fonte da
+   verdade e o runtime, nao a visao. Ver skill `qml_runtime_measurement`.
+
 ## Testes
 
 - Catch2 para core/query/infra.
