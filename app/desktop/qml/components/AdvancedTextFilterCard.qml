@@ -17,13 +17,19 @@ FilterCard {
     required property string operatorLabel
     required property real cardWidth
     required property real cardHeight
-    readonly property int choiceColumnWidth: 52
-    readonly property int commandWidth: 30
-    readonly property bool wideValuePopup: row.key === "solicitante" || row.key === "responsavel_programacao" || row.key === "responsavel_execucao" || row.key === "anomalia"
-    readonly property int normalPopupWidth: 240
-    readonly property int widePopupWidth: 520
-    readonly property int valuePopupWidth: wideValuePopup ? widePopupWidth : normalPopupWidth
-    readonly property int multiSelectPopupWidth: valuePopupWidth
+    // Popup width derived from the column's data type (data-driven, see
+    // Theme.valuePopupCategory). Every category respects the multi-select
+    // structural floor (label + Incluir/Excluir columns + paddings) so the
+    // checkboxes never overlap.
+    readonly property string valuePopupCategory: Theme.valuePopupCategory(root.row.key)
+    readonly property int multiSelectPopupWidth: {
+        if (valuePopupCategory === "anomalia")
+            return Theme.popupAnomaliaWidth;
+        if (valuePopupCategory === "name")
+            return Theme.popupNameValueWidth;
+        // "code": short codes fit in the structural minimum width.
+        return Theme.popupMultiSelectMinWidth;
+    }
     property string popupFilterText: ""
 
     signal optionsRequested
@@ -91,31 +97,63 @@ FilterCard {
         const overlayRoot = Overlay.overlay;
         if (overlayRoot === null)
             return 0;
-        const origin = root.mapToItem(overlayRoot, 0, 0);
-        const margin = 8;
-        const boundsWidth = root.Window.window !== null ? root.Window.window.width : overlayRoot.width;
-        const rightLimit = boundsWidth - width - margin;
-        return Math.max(margin, Math.min(origin.x, rightLimit));
+        const origin = openMultiSelectButton.mapToItem(overlayRoot, 0, 0);
+        const win = Window.window;
+        const boundsWidth = win !== null ? win.width : overlayRoot.width;
+        return Theme.clampedPopupX(boundsWidth, origin.x + openMultiSelectButton.width, width);
     }
 
     function popupY(height) {
         const overlayRoot = Overlay.overlay;
         if (overlayRoot === null)
-            return root.height + 2;
-        const origin = root.mapToItem(overlayRoot, 0, 0);
-        const margin = 8;
-        const preferredY = origin.y + root.height + 2;
-        const boundsHeight = root.Window.window !== null ? root.Window.window.height : overlayRoot.height;
-        const bottomLimit = boundsHeight - height - margin;
-        return Math.max(margin, Math.min(preferredY, bottomLimit));
+            return openMultiSelectButton.height + Theme.shortcutGap;
+        const origin = openMultiSelectButton.mapToItem(overlayRoot, 0, 0);
+        const win = Window.window;
+        const boundsHeight = win !== null ? win.height : overlayRoot.height;
+        return Theme.clampedPopupY(boundsHeight, origin.y, openMultiSelectButton.height, height);
     }
 
     function popupHeight(preferredHeight) {
         const overlayRoot = Overlay.overlay;
         if (overlayRoot === null)
             return preferredHeight;
-        const boundsHeight = root.Window.window !== null ? root.Window.window.height : overlayRoot.height;
-        return Math.max(120, Math.min(preferredHeight, boundsHeight - 16));
+        const win = Window.window;
+        const boundsHeight = win !== null ? win.height : overlayRoot.height;
+        return Theme.clampedPopupHeight(boundsHeight, preferredHeight);
+    }
+
+    // Resolve X/Y/height together so the popup opens directly below the
+    // trigger when possible (shrinking height to fit), and only clamps Y up
+    // when opening below cannot fit at all.
+    function resolvePopupGeometry(preferredHeight) {
+        const overlayRoot = Overlay.overlay;
+        if (overlayRoot === null)
+            return ({
+                    x: 0,
+                    y: openMultiSelectButton.height + Theme.shortcutGap,
+                    h: preferredHeight
+                });
+        const origin = openMultiSelectButton.mapToItem(overlayRoot, 0, 0);
+        const win = Window.window;
+        const boundsWidth = win !== null ? win.width : overlayRoot.width;
+        const boundsHeight = win !== null ? win.height : overlayRoot.height;
+        const originRightX = origin.x + openMultiSelectButton.width;
+        const originBottomY = origin.y + openMultiSelectButton.height;
+        const x = Theme.clampedPopupX(boundsWidth, originRightX, multiSelectPopupWidth);
+        const belowHeight = Theme.clampedPopupHeightBelow(boundsHeight, originBottomY + Theme.shortcutGap, preferredHeight);
+        if (belowHeight > 0) {
+            return ({
+                    x: x,
+                    y: originBottomY + Theme.shortcutGap,
+                    h: belowHeight
+                });
+        }
+        // Cannot fit below even at min height: clamp Y to the window.
+        return ({
+                x: x,
+                y: Theme.clampedPopupY(boundsHeight, origin.y, openMultiSelectButton.height, preferredHeight),
+                h: Theme.clampedPopupHeight(boundsHeight, preferredHeight)
+            });
     }
 
     property var includeValues: []
@@ -140,7 +178,7 @@ FilterCard {
                 Layout.preferredWidth: Math.min(180, Math.max(72, implicitWidth + 8))
                 text: root.row.label !== undefined ? root.row.label : ""
                 color: Theme.text
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontSizeBody
                 elide: Text.ElideRight
             }
 
@@ -149,7 +187,7 @@ FilterCard {
                 visible: root.textFilter.length > 0
                 text: root.textFilter
                 color: Theme.accentStrong
-                font.pixelSize: 11
+                font.pixelSize: Theme.fontSizeMicro
                 horizontalAlignment: Text.AlignLeft
                 elide: Text.ElideRight
             }
@@ -157,17 +195,17 @@ FilterCard {
 
         RowLayout {
             Layout.fillWidth: true
-            Layout.preferredHeight: 28
+            Layout.preferredHeight: Theme.filterRowHeight
             spacing: 4
 
             AppComboBox {
                 id: advancedOperator
-                Layout.preferredWidth: 32
-                Layout.preferredHeight: 28
+                Layout.preferredWidth: Theme.operatorWidth
+                Layout.preferredHeight: Theme.filterRowHeight
                 leftPadding: 0
                 rightPadding: 0
                 indicator: null
-                popup.width: 96
+                popup.width: Theme.operatorPopupWidth
                 textRole: "label"
                 valueRole: "mode"
                 model: root.operatorModes
@@ -178,13 +216,13 @@ FilterCard {
 
             AppComboBox {
                 id: advancedValueSelector
-                Layout.minimumWidth: 82
+                Layout.minimumWidth: Theme.valueMinWidth
                 Layout.fillWidth: true
-                Layout.preferredWidth: Math.max(96, root.cardWidth * 0.32)
-                Layout.preferredHeight: 28
+                Layout.preferredWidth: Math.max(Theme.valuePreferredWidth, root.cardWidth * Theme.valuePreferredRatio)
+                Layout.preferredHeight: Theme.filterRowHeight
                 leftPadding: 7
                 rightPadding: 16
-                popup.width: root.valuePopupWidth
+                popup.width: root.multiSelectPopupWidth
                 enabled: root.operatorIndex >= 0
                 model: root.visibleValues
                 displayText: "Valor"
@@ -205,11 +243,12 @@ FilterCard {
             }
 
             ActionButton {
+                id: openMultiSelectButton
                 text: "..."
-                implicitWidth: root.commandWidth
-                implicitHeight: 28
+                implicitWidth: Theme.commandWidth
+                implicitHeight: Theme.filterRowHeight
                 padding: 0
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontSizeBody
                 enabled: root.operatorIndex >= 0
                 ToolTip.visible: hovered
                 ToolTip.text: "Selecionar valores para incluir ou excluir"
@@ -225,10 +264,10 @@ FilterCard {
             ActionButton {
                 text: "X"
                 implicitWidth: 28
-                implicitHeight: 28
+                implicitHeight: Theme.filterRowHeight
                 padding: 0
                 font.bold: true
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontSizeBody
                 ToolTip.visible: hovered
                 ToolTip.text: "Limpar filtro"
                 ToolTip.delay: 0
@@ -256,8 +295,10 @@ FilterCard {
 
         function updatePopupPosition() {
             updatePopupParent();
-            x = root.popupX(width);
-            y = root.popupY(height);
+            const g = root.resolvePopupGeometry(360);
+            x = g.x;
+            y = g.y;
+            height = g.h;
         }
 
         onAboutToShow: updatePopupPosition()
@@ -290,20 +331,11 @@ FilterCard {
                 spacing: 8
 
                 Label {
-                    Layout.preferredWidth: root.wideValuePopup ? 150 : 112
+                    Layout.fillWidth: true
                     text: root.row.label !== undefined ? root.row.label : ""
                     color: Theme.text
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSizeBody
                     font.bold: true
-                    elide: Text.ElideRight
-                }
-
-                Label {
-                    Layout.fillWidth: true
-                    text: "Incluir (=valor) ou excluir (!valor)"
-                    color: Theme.mutedText
-                    font.pixelSize: 11
-                    horizontalAlignment: Text.AlignRight
                     elide: Text.ElideRight
                 }
 
@@ -315,14 +347,24 @@ FilterCard {
                         root.excludeValues = [];
                     }
                 }
+
+                ActionButton {
+                    text: "Aplicar"
+                    implicitWidth: Theme.applyButtonWidth
+                    enabled: !root.valuesLoading
+                    onClicked: {
+                        root.mixedValuesReplacementRequested(root.includeValues, root.excludeValues);
+                        multiSelectPopup.close();
+                    }
+                }
             }
 
             AppTextField {
                 Layout.fillWidth: true
-                Layout.preferredHeight: 28
+                Layout.preferredHeight: Theme.filterRowHeight
                 text: root.popupFilterText
                 placeholderText: "Buscar valor"
-                font.pixelSize: 11
+                font.pixelSize: Theme.fontSizeMicro
                 onTextEdited: root.popupFilterText = text
             }
 
@@ -334,20 +376,20 @@ FilterCard {
                     Layout.fillWidth: true
                     text: "Valor"
                     color: Theme.mutedText
-                    font.pixelSize: 11
+                    font.pixelSize: Theme.fontSizeMicro
                 }
                 Label {
-                    Layout.preferredWidth: root.choiceColumnWidth
+                    Layout.preferredWidth: Theme.choiceColumnWidth
                     text: "Incluir"
                     color: Theme.mutedText
-                    font.pixelSize: 11
+                    font.pixelSize: Theme.fontSizeMicro
                     horizontalAlignment: Text.AlignHCenter
                 }
                 Label {
-                    Layout.preferredWidth: root.choiceColumnWidth
+                    Layout.preferredWidth: Theme.choiceColumnWidth
                     text: "Excluir"
                     color: Theme.mutedText
-                    font.pixelSize: 11
+                    font.pixelSize: Theme.fontSizeMicro
                     horizontalAlignment: Text.AlignHCenter
                 }
             }
@@ -366,7 +408,7 @@ FilterCard {
                         visible: root.valuesLoading || root.allValues.length === 0
                         text: root.valuesLoading ? "Carregando" : "Sem valores carregados"
                         color: Theme.mutedText
-                        font.pixelSize: 11
+                        font.pixelSize: Theme.fontSizeMicro
                         horizontalAlignment: Text.AlignHCenter
                     }
 
@@ -384,12 +426,12 @@ FilterCard {
                                 Layout.preferredHeight: 22
                                 text: optionRow.modelData
                                 color: Theme.text
-                                font.pixelSize: 11
+                                font.pixelSize: Theme.fontSizeMicro
                                 elide: Text.ElideRight
                             }
 
                             Item {
-                                Layout.preferredWidth: root.choiceColumnWidth
+                                Layout.preferredWidth: Theme.choiceColumnWidth
                                 Layout.preferredHeight: 22
 
                                 AppCheckBox {
@@ -415,7 +457,7 @@ FilterCard {
                             }
 
                             Item {
-                                Layout.preferredWidth: root.choiceColumnWidth
+                                Layout.preferredWidth: Theme.choiceColumnWidth
                                 Layout.preferredHeight: 22
 
                                 AppCheckBox {
@@ -440,32 +482,6 @@ FilterCard {
                                 }
                             }
                         }
-                    }
-                }
-            }
-
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.preferredHeight: 42
-                color: "transparent"
-
-                Rectangle {
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.top: parent.top
-                    height: 1
-                    color: Theme.border
-                }
-
-                ActionButton {
-                    anchors.right: parent.right
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "Aplicar"
-                    implicitWidth: 88
-                    enabled: !root.valuesLoading
-                    onClicked: {
-                        root.mixedValuesReplacementRequested(root.includeValues, root.excludeValues);
-                        multiSelectPopup.close();
                     }
                 }
             }

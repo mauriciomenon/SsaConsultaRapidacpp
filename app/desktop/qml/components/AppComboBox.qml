@@ -11,17 +11,26 @@ ComboBox {
     leftPadding: 10
     rightPadding: 22
     font.family: Theme.fontFamily
-    font.pixelSize: 12
+    font.pixelSize: Theme.fontSizeBody
 
     function clampedPopupX(popupWidth) {
         const overlayRoot = Overlay.overlay;
         if (overlayRoot === null)
             return 0;
         const origin = root.mapToItem(overlayRoot, 0, 0);
-        const margin = 8;
-        const leftLimit = margin - origin.x;
-        const rightLimit = overlayRoot.width - origin.x - popupWidth - margin;
-        return Math.max(leftLimit, Math.min(0, rightLimit));
+        const win = Window.window;
+        const boundsWidth = win !== null ? win.width : overlayRoot.width;
+        return Theme.clampedPopupX(boundsWidth, origin.x + root.width, popupWidth);
+    }
+
+    function clampedPopupY(popupHeight) {
+        const overlayRoot = Overlay.overlay;
+        if (overlayRoot === null)
+            return root.height + Theme.shortcutGap;
+        const origin = root.mapToItem(overlayRoot, 0, 0);
+        const win = Window.window;
+        const boundsHeight = win !== null ? win.height : overlayRoot.height;
+        return Theme.clampedPopupY(boundsHeight, origin.y, root.height, popupHeight);
     }
 
     delegate: ItemDelegate {
@@ -32,7 +41,7 @@ ComboBox {
         height: Theme.controlHeight
         text: root.textRole.length > 0 && modelData[root.textRole] !== undefined ? modelData[root.textRole] : modelData
         font.family: Theme.fontFamily
-        font.pixelSize: 12
+        font.pixelSize: Theme.fontSizeBody
         highlighted: root.highlightedIndex === index
 
         contentItem: Text {
@@ -97,24 +106,75 @@ ComboBox {
         radius: Theme.radius
     }
 
+    // Resolve X/Y/height together so the popup opens directly below the
+    // trigger when possible (shrinking height to fit), and only clamps Y up
+    // when opening below cannot fit at all.
+    function resolvePopupGeometry(preferredWidth, preferredHeight) {
+        const overlayRoot = Overlay.overlay;
+        if (overlayRoot === null)
+            return ({
+                    x: 0,
+                    y: root.height + Theme.shortcutGap,
+                    h: preferredHeight
+                });
+        const origin = root.mapToItem(overlayRoot, 0, 0);
+        const win = Window.window;
+        const boundsWidth = win !== null ? win.width : overlayRoot.width;
+        const boundsHeight = win !== null ? win.height : overlayRoot.height;
+        const originRightX = origin.x + root.width;
+        const originBottomY = origin.y + root.height;
+        const x = Theme.clampedPopupX(boundsWidth, originRightX, preferredWidth);
+        const belowHeight = Theme.clampedPopupHeightBelow(boundsHeight, originBottomY + Theme.shortcutGap, preferredHeight, 0);
+        if (belowHeight > 0) {
+            return ({
+                    x: x,
+                    y: originBottomY + Theme.shortcutGap,
+                    h: belowHeight
+                });
+        }
+        return ({
+                x: x,
+                y: Theme.clampedPopupY(boundsHeight, origin.y, root.height, preferredHeight),
+                h: Theme.clampedPopupHeight(boundsHeight, preferredHeight, 0)
+            });
+    }
+
     popup: Popup {
+        id: comboPopup
+        parent: Overlay.overlay
         x: root.clampedPopupX(width)
-        y: root.height + 1
+        y: root.clampedPopupY(height)
         width: root.width
-        implicitHeight: Math.min(contentItem.implicitHeight, 260)
+        implicitHeight: contentListView.implicitHeight
         padding: 1
 
-        function updatePopupX() {
-            x = root.clampedPopupX(width);
+        function updatePopupPosition() {
+            const g = root.resolvePopupGeometry(width, contentListView.implicitHeight > 0 ? contentListView.implicitHeight : height);
+            x = g.x;
+            y = g.y;
+            height = g.h;
         }
 
-        onAboutToShow: updatePopupX()
+        onAboutToShow: updatePopupPosition()
+        onOpened: updatePopupPosition()
         onWidthChanged: {
             if (visible)
-                updatePopupX();
+                updatePopupPosition();
+        }
+        onHeightChanged: {
+            if (visible)
+                updatePopupPosition();
+        }
+        Connections {
+            target: contentListView
+            function onImplicitHeightChanged() {
+                if (root.popup.visible)
+                    comboPopup.updatePopupPosition();
+            }
         }
 
         contentItem: ListView {
+            id: contentListView
             clip: true
             implicitHeight: contentHeight
             model: root.popup.visible ? root.delegateModel : null
