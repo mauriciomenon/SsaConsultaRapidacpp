@@ -368,6 +368,141 @@ QtObject {
     readonly property int bottomPaneMaxHeight: 430
     readonly property real bottomPaneHeightRatio: 0.4
 
+    // ---------------------------------------------------------------------------
+    // TypeScale - modular scale (base 12px, ratio 8:9 = 1.125, data-dense UI).
+    // Every font.pixelSize in the app must reference one of these. No literal
+    // font sizes in component bodies.
+    // Base 12px is intentional for the dense SSA table UI. Future migration to
+    // font.pointSize (OS DPI-aware) is tracked in RECOVERY_BACKLOG.md.
+    // ---------------------------------------------------------------------------
+    readonly property int fontSizeCaption: 10 // ms(-2) - badges, micro metadata
+    readonly property int fontSizeMicro: 11 // ms(-1) - secondary value labels
+    readonly property int fontSizeBody: 12 // ms(0) - body, inputs, base
+    readonly property int fontSizeLabel: 13 // ms(1) - primary field labels
+    readonly property int fontSizeTitle: 14 // ms(2) - card/section titles
+    readonly property int fontSizeHeader: 16 // ms(3) - header/title text
+
+    // ---------------------------------------------------------------------------
+    // SpacingScale - every margin/padding/spacing references these. Replaces
+    // the ~16 distinct literals (0..26) that were scattered across components.
+    // ---------------------------------------------------------------------------
+    readonly property int spacingNone: 0
+    readonly property int spacingXs: 2
+    readonly property int spacingSm: 4
+    readonly property int spacingMd: gap // 8 - alias of the canonical gap
+    readonly property int spacingLg: 12
+    readonly property int spacingXl: 16
+    readonly property int spacingXxl: 22
+
+    // ---------------------------------------------------------------------------
+    // ControlHeights - unified row/control heights. Ends the 26 vs 28 vs 24
+    // misalignment between filter cards placed side by side in the grid.
+    // ---------------------------------------------------------------------------
+    readonly property int filterRowHeight: controlHeight - 2 // 28 - all filter cards
+    readonly property int chipHeight: 26 // summary tag at normal density
+    readonly property int chipHeightCompact: 24 // summary tag when >= 2 chips
+    readonly property int statusShortcutHeight: 24 // status shortcut button
+
+    // ---------------------------------------------------------------------------
+    // PopupMetrics - widths/heights/margins for value popups.
+    // Widths are DATA-DRIVEN: measured from real max field widths in the SSA
+    // database (run measurement via sqlite SELECT MAX(LENGTH(col)) before
+    // changing these numbers). Three categories by data type, not by column:
+    //   - code: short fixed codes (setor/situacao/localizacao/status), max 15 chars
+    //   - name: long person names (solicitante/responsavel_*), max 43 chars
+    //   - anomalia: code + long description, up to 78 chars (own category)
+    // The "code" and "name" widths are NOT fixed here; callers derive them
+    // from the trigger control width (combo Valor) or the card width so the
+    // popup matches its source. Only anomalia (which needs a fixed minimum to
+    // show the full sentence) has a fixed width here.
+    // ---------------------------------------------------------------------------
+    readonly property int popupMargin: 8 // edge margin when clamping to window
+    readonly property int popupAnomaliaWidth: 520 // anomalia (up to 78 chars) - fixed minimum
+    // Name columns (solicitante/responsavel_*) hold up to 43 chars. Width
+    // derived from measured max: 43 chars * ~6.6px avg glyph + multi-select
+    // structural floor, whichever is larger. Capped at popupAnomaliaWidth so
+    // name popups never exceed the anomalia width.
+    readonly property int popupNameValueWidth: Math.min(popupAnomaliaWidth, Math.max(popupMultiSelectMinWidth, 43 * popupGlyphWidthPx + popupMultiSelectMinWidth - 90))
+    readonly property int popupMaxHeight: 360 // hard cap so popups fit small windows
+    readonly property int popupPreferredHeight: 360 // preferred multi-select height
+    readonly property int popupMinContentHeight: 120 // min height for list popups (multi-select)
+    // Average glyph width for fontSizeMicro (11px). Measured from the SSA
+    // data: a 43-char name renders ~284px wide, so ~6.6px/char at this font.
+    readonly property real popupGlyphWidthPx: 6.6
+    // Minimum width of the multi-select popup so its fixed content always fits:
+    // value label (~90) + Incluir column (choiceColumnWidth) + Excluir column
+    // (choiceColumnWidth) + spacing (3 gaps) + popup padding (2*10).
+    readonly property int popupMultiSelectMinWidth: 90 + choiceColumnWidth * 2 + 8 * 3 + 10 * 2
+
+    // ---------------------------------------------------------------------------
+    // FilterMetrics - geometry of the advanced filter cards. Replaces literals
+    // like choiceColumnWidth: 52, commandWidth: 30, operatorWidth: 32.
+    // ---------------------------------------------------------------------------
+    readonly property int filterCardPadding: 3 // inner padding of advanced cards
+    readonly property int choiceColumnWidth: 52 // Incluir/Excluir checkbox column
+    readonly property int commandWidth: 30 // "..." action button width
+    readonly property int operatorWidth: 32 // operator combo (=, !=)
+    readonly property int operatorPopupWidth: 96 // operator combo popup width
+    readonly property int valueMinWidth: 82 // value combo minimum width
+    readonly property int valuePreferredWidth: 96 // value combo preferred floor
+    readonly property real valuePreferredRatio: 0.32 // value combo share of cardWidth
+    readonly property int actionButtonWidth: 28 // X clear button width
+    readonly property int applyButtonWidth: 88 // "Aplicar" button in popups
+    readonly property int weekFieldWidth: 72 // week/year field in week filter cards
+
+    // ---------------------------------------------------------------------------
+    // ChipMetrics - summary tag sizing. chipTextFactor/chipChromePadding back
+    // the legacy JS estimator and are removed once Slice 6 lands the symmetric
+    // QML implicit-width algorithm.
+    // ---------------------------------------------------------------------------
+    readonly property int chipMinWidth: 92
+    readonly property int chipMaxWidth: 430
+    readonly property int chipChromePadding: 26 // label+button chrome allowance in SummaryTag
+    readonly property int chipRemoveButtonSize: 24
+    readonly property int chipRemoveButtonSizeCompact: 22
+    readonly property int chipLabelMargin: 8
+    readonly property int chipRemoveTooltipTimeoutMs: 10000
+
+    // ---------------------------------------------------------------------------
+    // FilterSummaryBarMetrics - active-filter summary bar geometry.
+    // ---------------------------------------------------------------------------
+    readonly property int summaryMinWidth: 220 // minimum scroll area for the tag row
+    readonly property int summaryClearButtonOffset: 12 // clearance after the clear button
+    readonly property int summaryTagSpacing: 6 // spacing between summary tags
+    readonly property int summaryClearButtonWidth: 46
+    readonly property int summaryLeftMargin: 4
+
+    // ---------------------------------------------------------------------------
+    // WindowMetrics - clamp windows/dialogs to the available desktop area so
+    // they never overflow small laptop screens (e.g. 1366x768).
+    // ---------------------------------------------------------------------------
+    readonly property int windowEdgeMargin: 24 // clearance from desktop edge
+    readonly property int detailsWindowPreferredWidth: 885
+    readonly property int detailsWindowPreferredHeight: 900
+    readonly property int detailsWindowMinWidth: 880
+    readonly property int detailsWindowMinHeight: 700
+    readonly property int themeDialogPreferredWidth: 560
+    readonly property int themeDialogPreferredHeight: 460
+    readonly property int themeDialogMinWidth: 520
+    readonly property int themeDialogMinHeight: 420
+
+    // Clamp a preferred dimension to the available desktop area, leaving room
+    // for windowEdgeMargin on both sides.
+    function clampedWindowDimension(available, preferred, minimum) {
+        const capped = Math.min(preferred, available - windowEdgeMargin * 2);
+        return Math.max(minimum, capped);
+    }
+
+    // ---------------------------------------------------------------------------
+    // StatusShortcutMetrics - status shortcut strip geometry. Replaces the
+    // 48/38/3/8/2 literals in SearchAndPager.qml.
+    // ---------------------------------------------------------------------------
+    readonly property int shortcutPreferredWidth: 48
+    readonly property int shortcutMinWidth: 38
+    readonly property int shortcutSpacing: 3
+    readonly property int shortcutInset: 8 // outer inset of the shortcut frame
+    readonly property int shortcutGap: 2 // popup y offset below the strip
+
     readonly property var themeOptions: ["system", "ssa-dark", "classico", "mint-light", "paper", "solarized-light", "windows7", "catppuccin", "dark", "dracula", "grayscale", "gruvbox", "nord", "solarized-dark", "tokyo-night"]
 
     function densityValue(density, compactValue, normalValue, comfortableValue) {
@@ -375,6 +510,65 @@ QtObject {
             return normalValue;
         }
         return density === "comfortable" ? comfortableValue : compactValue;
+    }
+
+    // ---------------------------------------------------------------------------
+    // Popup clamping helpers. Single source of truth for keeping popups inside
+    // the window/overlay. All return values are ABSOLUTE overlay coordinates
+    // (callers must parent the popup to Overlay.overlay). Replaces the 3
+    // divergent implementations that lived in AdvancedTextFilterCard,
+    // AppComboBox and AdvancedReprogrammingFilterCard.
+    // Callers resolve their own attached Overlay/Window (only valid in the
+    // component scope) and pass primitives here, so the singleton never touches
+    // attached properties it does not own.
+    // ---------------------------------------------------------------------------
+    // Horizontal: align the popup's RIGHT edge with the trigger's RIGHT edge
+    // (originRightX), shifting left only when it would overflow the window.
+    function clampedPopupX(boundsWidth, originRightX, popupWidth) {
+        const preferredX = originRightX - popupWidth;
+        const leftLimit = popupMargin;
+        const rightLimit = boundsWidth - popupWidth - popupMargin;
+        return Math.max(leftLimit, Math.min(preferredX, rightLimit));
+    }
+
+    // Vertical: open directly below the trigger, clamped to the window.
+    function clampedPopupY(boundsHeight, originY, originHeight, popupHeight) {
+        const preferredY = originY + originHeight + shortcutGap;
+        const bottomLimit = boundsHeight - popupHeight - popupMargin;
+        const topLimit = popupMargin;
+        return Math.max(topLimit, Math.min(preferredY, bottomLimit));
+    }
+
+    function clampedPopupHeight(boundsHeight, preferredHeight, minHeight) {
+        const minH = minHeight !== undefined ? minHeight : popupMinContentHeight;
+        return Math.max(minH, Math.min(preferredHeight, boundsHeight - popupMargin * 2));
+    }
+
+    // Height cap when the popup must open BELOW a trigger at originBottomY:
+    // prefer opening below over clamping Y up. Falls back to preferredHeight
+    // when there is plenty of room, otherwise shrinks to what fits below
+    // (down to minHeight). Returns -1 if opening below cannot fit at all
+    // (caller should then clamp Y up instead).
+    function clampedPopupHeightBelow(boundsHeight, originBottomY, preferredHeight, minHeight) {
+        const minH = minHeight !== undefined ? minHeight : popupMinContentHeight;
+        const availableBelow = boundsHeight - originBottomY - popupMargin;
+        if (availableBelow < minH)
+            return -1;
+        return Math.max(minH, Math.min(preferredHeight, availableBelow));
+    }
+
+    // Classify an advanced-filter column into a popup-width category based on
+    // the data type it holds (measured from real max field widths). Categories:
+    //   "code"     - short fixed codes (setor/situacao/localizacao/status)
+    //   "name"     - long person names (solicitante/responsavel_*)
+    //   "anomalia" - code + long description (own fixed width)
+    // Single source of truth: add new columns here, not in each QML card.
+    function valuePopupCategory(columnKey) {
+        if (columnKey === "anomalia")
+            return "anomalia";
+        if (columnKey === "solicitante" || columnKey === "responsavel_programacao" || columnKey === "responsavel_execucao")
+            return "name";
+        return "code";
     }
 
     // Relative luminance of a color (sRGB), clamped to [0,1]. Used to pick a
