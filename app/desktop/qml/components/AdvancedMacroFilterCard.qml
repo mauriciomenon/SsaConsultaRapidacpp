@@ -49,7 +49,7 @@ FilterCard {
             }
 
             Label {
-                Layout.preferredWidth: Math.min(96, Math.max(60, root.cardWidth * 0.16))
+                Layout.preferredWidth: Math.max(96, Math.round(root.cardWidth * 0.5))
                 visible: root.macro.reportTitle.length > 0
                 text: root.macro.reportText.length > 0 ? root.macro.reportText : ""
                 color: Theme.accentStrong

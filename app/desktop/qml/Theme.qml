@@ -433,6 +433,9 @@ QtObject {
     // value label (~90) + Incluir column (choiceColumnWidth) + Excluir column
     // (choiceColumnWidth) + spacing (3 gaps) + popup padding (2*10).
     readonly property int popupMultiSelectMinWidth: 90 + choiceColumnWidth * 2 + 8 * 3 + 10 * 2
+    // Limpar and Aplicar action buttons in the multi-select popup share one
+    // width so the header stays balanced.
+    readonly property int popupActionButtonWidth: 64
 
     // ---------------------------------------------------------------------------
     // FilterMetrics - geometry of the advanced filter cards. Replaces literals

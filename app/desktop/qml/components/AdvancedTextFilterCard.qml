@@ -30,6 +30,17 @@ FilterCard {
         // "code": short codes fit in the structural minimum width.
         return Theme.popupMultiSelectMinWidth;
     }
+    // Combo "Valor" (single-select) width by category. Narrower than the
+    // multi-select popup because it has no Incluir/Excluir columns - just the
+    // value text. Keeps a 4-char setor combo narrow instead of stretching.
+    readonly property int valueComboPreferredWidth: {
+        if (valuePopupCategory === "anomalia")
+            return Math.min(Theme.popupAnomaliaWidth, Math.max(Theme.valuePreferredWidth, 78 * Theme.popupGlyphWidthPx));
+        if (valuePopupCategory === "name")
+            return Math.min(Theme.popupNameValueWidth, Math.max(Theme.valuePreferredWidth, 43 * Theme.popupGlyphWidthPx));
+        // "code": short codes - just enough for the value + "Valor" label.
+        return Theme.valuePreferredWidth;
+    }
     property string popupFilterText: ""
 
     signal optionsRequested
@@ -217,8 +228,10 @@ FilterCard {
             AppComboBox {
                 id: advancedValueSelector
                 Layout.minimumWidth: Theme.valueMinWidth
-                Layout.fillWidth: true
-                Layout.preferredWidth: Math.max(Theme.valuePreferredWidth, root.cardWidth * Theme.valuePreferredRatio)
+                // Combo Valor width follows the same data-driven category as the
+                // multi-select popup so a 4-char setor combo is narrow and a
+                // name combo is wide - no longer fillWidth stretching setor.
+                Layout.preferredWidth: root.valueComboPreferredWidth
                 Layout.preferredHeight: Theme.filterRowHeight
                 leftPadding: 7
                 rightPadding: 16
@@ -295,7 +308,15 @@ FilterCard {
 
         function updatePopupPosition() {
             updatePopupParent();
-            const g = root.resolvePopupGeometry(360);
+            // Height = fixed chrome (header + search + column header + paddings)
+            // plus one row per visible value, capped at popupMaxHeight so very
+            // long lists scroll instead of stretching the popup off-screen.
+            const visibleCount = root.filteredPopupValues().length;
+            const chromeHeight = 100; // header + search field + column header + paddings
+            const rowHeight = 22;
+            const required = chromeHeight + Math.max(1, visibleCount) * rowHeight;
+            const preferred = Math.min(required, Theme.popupMaxHeight);
+            const g = root.resolvePopupGeometry(preferred);
             x = g.x;
             y = g.y;
             height = g.h;
@@ -341,7 +362,7 @@ FilterCard {
 
                 ActionButton {
                     text: "Limpar"
-                    implicitWidth: 64
+                    implicitWidth: Theme.popupActionButtonWidth
                     onClicked: {
                         root.includeValues = [];
                         root.excludeValues = [];
@@ -350,7 +371,7 @@ FilterCard {
 
                 ActionButton {
                     text: "Aplicar"
-                    implicitWidth: Theme.applyButtonWidth
+                    implicitWidth: Theme.popupActionButtonWidth
                     enabled: !root.valuesLoading
                     onClicked: {
                         root.mixedValuesReplacementRequested(root.includeValues, root.excludeValues);
