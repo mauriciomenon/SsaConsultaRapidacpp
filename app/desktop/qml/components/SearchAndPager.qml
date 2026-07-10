@@ -298,8 +298,15 @@ Rectangle {
                                 Button {
                                     id: statusShortcut
                                     required property string modelData
+                                    // Depend on a NOTIFY-backed property so this re-evaluates after
+                                    // toggleStatusShortcut -> synchronizeFilterState -> changed().
+                                    // Q_INVOKABLE alone does not invalidate the binding.
+                                    readonly property string statusBindingKey: root.filterViewModel.activeFilterSummary
                                     // 0 = None, 1 = Included (=CODE), 2 = Excluded (!CODE).
-                                    readonly property int shortcutState: root.filterViewModel.statusShortcutState(modelData)
+                                    readonly property int shortcutState: {
+                                        void statusBindingKey;
+                                        return root.filterViewModel.statusShortcutState(modelData);
+                                    }
                                     readonly property bool included: shortcutState === 1
                                     readonly property bool excluded: shortcutState === 2
                                     width: statusShortcutFrame.fittedShortcutWidth
@@ -309,25 +316,25 @@ Rectangle {
                                     padding: 0
                                     font.family: Theme.fontFamily
                                     font.pixelSize: Theme.fontSizeMicro
-                                    font.bold: included || excluded
-                                    font.strikeout: excluded
+                                    // Excluded (!) keeps normal weight; only included is bold.
+                                    font.bold: included
                                     onClicked: root.filterViewModel.toggleStatusShortcut(modelData)
                                     ToolTip.visible: hovered
                                     ToolTip.text: included ? qsTr("Incluindo %1 - clicar exclui").arg(modelData) : excluded ? qsTr("Excluindo %1 - clicar remove").arg(modelData) : qsTr("Filtrar situacao %1").arg(modelData)
 
                                     background: Rectangle {
-                                        color: statusShortcut.included ? Theme.accent : statusShortcut.excluded ? Theme.dangerSoft : statusShortcut.hovered ? Theme.accentSoft : Theme.panelRaised
-                                        border.color: statusShortcut.included ? Theme.accentStrong : statusShortcut.excluded ? Theme.danger : Theme.border
+                                        // Excluded: same fill as none, Theme.mutedText border only (no danger/strikeout).
+                                        color: statusShortcut.included ? Theme.accent : statusShortcut.hovered ? Theme.accentSoft : Theme.panelRaised
+                                        border.color: statusShortcut.included ? Theme.accentStrong : statusShortcut.excluded ? Theme.mutedText : Theme.border
                                         radius: Theme.radius
                                     }
 
                                     contentItem: Text {
                                         text: statusShortcut.text
-                                        color: statusShortcut.included ? Theme.accentText : statusShortcut.excluded ? Theme.dangerStrong : Theme.text
+                                        color: statusShortcut.included ? Theme.accentText : Theme.text
                                         font.family: statusShortcut.font.family
                                         font.pixelSize: statusShortcut.font.pixelSize
                                         font.bold: statusShortcut.font.bold
-                                        font.strikeout: statusShortcut.font.strikeout
                                         horizontalAlignment: Text.AlignHCenter
                                         verticalAlignment: Text.AlignVCenter
                                         elide: Text.ElideRight

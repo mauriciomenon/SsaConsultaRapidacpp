@@ -15,14 +15,18 @@ Rectangle {
     readonly property bool hasSearch: trimmedSearchText.length > 0
     readonly property bool hasFilterEntries: filterViewModel.activeFilterEntries.length > 0
     readonly property bool hasActiveExclusion: filterViewModel.excludeScaSesSte
+    // Mirrors Python filtersSummaryFrame active_state: any search, chip, or SCA/SES/STE exclusion.
+    readonly property bool hasAnyActive: hasSearch || hasFilterEntries || hasActiveExclusion
     readonly property int activeTagCount: filterViewModel.activeFilterEntries.length + (hasSearch ? 1 : 0) + (hasActiveExclusion ? 1 : 0)
     readonly property bool compact: activeTagCount >= 2
     readonly property int tagTextSize: compact ? 11 : 12
     readonly property color filterAccent: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.26)
 
+    // Python _apply_frame_style: idle = input/panel border, active = accent.
     color: "transparent"
-    border.color: "transparent"
-    radius: 0
+    border.width: 1
+    border.color: hasAnyActive ? Theme.accent : Theme.borderSoft
+    radius: Theme.radius
     clip: false
 
     Row {
@@ -38,7 +42,7 @@ Rectangle {
             text: "x"
             implicitWidth: Theme.summaryClearButtonWidth
             implicitHeight: root.compact ? Theme.chipHeightCompact : Theme.chipHeight
-            enabled: root.hasSearch || root.hasFilterEntries || root.hasActiveExclusion
+            enabled: root.hasAnyActive
             ToolTip.visible: hovered
             ToolTip.text: "Limpar filtros"
             ToolTip.delay: 0
@@ -61,7 +65,7 @@ Rectangle {
                 width: Math.max(summaryScroller.width, summaryTags.implicitWidth)
 
                 Label {
-                    visible: !root.hasSearch && !root.hasFilterEntries && !root.hasActiveExclusion
+                    visible: !root.hasAnyActive
                     anchors.fill: parent
                     text: "Sem filtros manuais"
                     color: Theme.mutedText
@@ -113,13 +117,5 @@ Rectangle {
                 }
             }
         }
-    }
-
-    Rectangle {
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.bottom: parent.bottom
-        height: 1
-        color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.18)
     }
 }
