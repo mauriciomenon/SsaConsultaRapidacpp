@@ -236,17 +236,11 @@ namespace {
             QTRY_COMPARE_WITH_TIMEOUT(filters.columnValueOptionsLoadingFor("setor_executor"), false,
                                       1000);
             QVERIFY(filters.columnValueOptionsFor("setor_executor").contains("MEG2"));
-            QVERIFY(
-                filters.columnValuePreviewOptionsFor("setor_executor", 2, false).contains("MEG2"));
-            QCOMPARE(filters.hasMoreColumnValueOptionsFor("setor_executor", 1), true);
 
             filters.setColumnValue("APV");
 
             QCOMPARE(resetSpy.count(), 1);
             QCOMPARE(filters.columnValueOptionsFor("setor_executor"), QStringList{});
-            QCOMPARE(filters.columnValuePreviewOptionsFor("setor_executor", 1, false),
-                     QStringList{});
-            QCOMPARE(filters.hasMoreColumnValueOptionsFor("setor_executor", 1), false);
 
             filters.refreshColumnValueOptionsFor("setor_executor");
             QTRY_COMPARE_WITH_TIMEOUT(filters.columnValueOptionsLoadingFor("setor_executor"), false,
@@ -266,8 +260,6 @@ namespace {
             filters.setColumnValue("APV");
 
             QCOMPARE(filters.columnValueOptionsFor("setor_executor"), QStringList{});
-            QVERIFY(
-                !filters.columnValuePreviewOptionsFor("setor_executor", 1, false).contains("MEG2"));
             QTRY_COMPARE_WITH_TIMEOUT(filters.columnValueOptionsLoadingFor("setor_executor"), false,
                                       3000);
 

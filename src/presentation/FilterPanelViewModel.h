@@ -79,10 +79,6 @@ namespace ssa::presentation {
         void requestColumnFocus(const QString& key);
         Q_INVOKABLE [[nodiscard]] bool hasFilterForColumn(const QString& key) const;
         Q_INVOKABLE [[nodiscard]] QStringList columnValueOptionsFor(const QString& key) const;
-        Q_INVOKABLE [[nodiscard]] QStringList
-        columnValuePreviewOptionsFor(const QString& key, int limit, bool expanded) const;
-        Q_INVOKABLE [[nodiscard]] bool hasMoreColumnValueOptionsFor(const QString& key,
-                                                                    int limit) const;
         Q_INVOKABLE [[nodiscard]] bool columnValueOptionsLoadingFor(const QString& key) const;
         Q_INVOKABLE [[nodiscard]] bool statusShortcutSelected(const QString& code) const;
         // Returns the cycle state of a status shortcut value:

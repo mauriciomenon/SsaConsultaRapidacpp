@@ -31,22 +31,6 @@ namespace ssa::presentation {
         return found == cache_.end() ? QStringList{} : found->second.options;
     }
 
-    QStringList FilterPanelColumnValueOptions::previewOptionsFor(const QString& key,
-                                                                 const int limit,
-                                                                 const bool expanded) const {
-        const auto found = findTrimmed(key);
-        auto values = found == cache_.end() ? QStringList{} : found->second.previewSource;
-        if (expanded || limit <= 0 || values.size() <= limit) {
-            return values;
-        }
-        return values.sliced(0, std::min(limit, static_cast<int>(values.size())));
-    }
-
-    bool FilterPanelColumnValueOptions::hasMoreOptionsFor(const QString& key,
-                                                          const int limit) const {
-        return limit > 0 && optionsFor(key).size() > limit;
-    }
-
     bool FilterPanelColumnValueOptions::loadingFor(const QString& key) const {
         return loadingKeys_.contains(key.trimmed());
     }
@@ -72,7 +56,7 @@ namespace ssa::presentation {
         const auto normalizedKey = key.trimmed();
         loadingKeys_.remove(normalizedKey);
         auto displayList = toColumnValueDisplayList(options);
-        cache_[normalizedKey] = {options, displayList, displayList, stateVersion};
+        cache_[normalizedKey] = {options, displayList, stateVersion};
         trim(normalizedKey);
         touchVersion();
     }

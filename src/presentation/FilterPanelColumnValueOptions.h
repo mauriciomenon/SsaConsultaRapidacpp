@@ -15,9 +15,6 @@ namespace ssa::presentation {
       public:
         [[nodiscard]] int version() const;
         [[nodiscard]] QStringList optionsFor(const QString& key) const;
-        [[nodiscard]] QStringList previewOptionsFor(const QString& key, int limit,
-                                                    bool expanded) const;
-        [[nodiscard]] bool hasMoreOptionsFor(const QString& key, int limit) const;
         [[nodiscard]] bool loadingFor(const QString& key) const;
         [[nodiscard]] bool hasFreshOptions(const QString& key, std::uint64_t stateVersion) const;
 
@@ -31,7 +28,6 @@ namespace ssa::presentation {
         struct CacheEntry final {
             std::vector<std::string> source;
             QStringList options;
-            QStringList previewSource;
             std::uint64_t stateVersion{0};
         };
 

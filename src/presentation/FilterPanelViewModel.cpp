@@ -243,23 +243,6 @@ namespace ssa::presentation {
         return columnValueOptions_.optionsFor(key);
     }
 
-    QStringList FilterPanelViewModel::columnValuePreviewOptionsFor(const QString& key,
-                                                                   const int limit,
-                                                                   const bool expanded) const {
-        if (!columnValueOptions_.hasFreshOptions(key, filterStateVersion_)) {
-            return {};
-        }
-        return columnValueOptions_.previewOptionsFor(key, limit, expanded);
-    }
-
-    bool FilterPanelViewModel::hasMoreColumnValueOptionsFor(const QString& key,
-                                                            const int limit) const {
-        if (!columnValueOptions_.hasFreshOptions(key, filterStateVersion_)) {
-            return false;
-        }
-        return columnValueOptions_.hasMoreOptionsFor(key, limit);
-    }
-
     bool FilterPanelViewModel::columnValueOptionsLoadingFor(const QString& key) const {
         return columnValueOptions_.loadingFor(key);
     }
