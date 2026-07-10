@@ -62,6 +62,16 @@ Rectangle {
             onClicked: root.clearAllRequested()
         }
 
+        Label {
+            visible: !root.hasAnyActive
+            height: parent.height
+            text: qsTr("Nenhum filtro ativo")
+            color: Theme.mutedText
+            font.pixelSize: Theme.fontSizeLabel
+            elide: Text.ElideRight
+            verticalAlignment: Text.AlignVCenter
+        }
+
         ScrollView {
             id: summaryScroller
             visible: root.hasAnyActive
@@ -77,56 +87,46 @@ Rectangle {
                 id: summaryContent
                 height: parent.availableHeight
                 width: Math.max(summaryScroller.width, summaryTags.implicitWidth)
+            }
 
-                Label {
-                    visible: !root.hasAnyActive
-                    anchors.fill: parent
-                    text: qsTr("Nenhum filtro ativo")
-                    color: Theme.mutedText
-                    font.pixelSize: Theme.fontSizeLabel
-                    elide: Text.ElideRight
-                    verticalAlignment: Text.AlignVCenter
+            Row {
+                id: summaryTags
+                height: parent.height
+                spacing: Theme.summaryTagSpacing
+
+                SummaryTag {
+                    visible: root.hasSearch
+                    text: "Busca: '" + root.trimmedSearchText + "'"
+                    tooltipText: root.trimmedSearchText
+                    compact: root.compact
+                    tagTextSize: root.tagTextSize
+                    tagAccent: root.filterAccent
+                    onRemoveRequested: root.clearSearchRequested()
                 }
 
-                Row {
-                    id: summaryTags
-                    height: parent.height
-                    spacing: Theme.summaryTagSpacing
+                SummaryTag {
+                    visible: root.hasActiveExclusion
+                    text: "Exc: SCA/SES/STE"
+                    tooltipText: "Excluindo SCA/SES/STE"
+                    compact: root.compact
+                    tagTextSize: root.tagTextSize
+                    tagAccent: root.filterAccent
+                    onRemoveRequested: {
+                        root.filterViewModel.excludeScaSesSte = false;
+                    }
+                }
 
-                    SummaryTag {
-                        visible: root.hasSearch
-                        text: "Busca: '" + root.trimmedSearchText + "'"
-                        tooltipText: root.trimmedSearchText
+                Repeater {
+                    model: root.filterViewModel.activeFilterEntries
+
+                    delegate: SummaryTag {
+                        required property var modelData
+                        text: modelData.text
+                        tooltipText: modelData.text
                         compact: root.compact
                         tagTextSize: root.tagTextSize
                         tagAccent: root.filterAccent
-                        onRemoveRequested: root.clearSearchRequested()
-                    }
-
-                    SummaryTag {
-                        visible: root.hasActiveExclusion
-                        text: "Exc: SCA/SES/STE"
-                        tooltipText: "Excluindo SCA/SES/STE"
-                        compact: root.compact
-                        tagTextSize: root.tagTextSize
-                        tagAccent: root.filterAccent
-                        onRemoveRequested: {
-                            root.filterViewModel.excludeScaSesSte = false;
-                        }
-                    }
-
-                    Repeater {
-                        model: root.filterViewModel.activeFilterEntries
-
-                        delegate: SummaryTag {
-                            required property var modelData
-                            text: modelData.text
-                            tooltipText: modelData.text
-                            compact: root.compact
-                            tagTextSize: root.tagTextSize
-                            tagAccent: root.filterAccent
-                            onRemoveRequested: root.filterViewModel.removeActiveFilter(modelData)
-                        }
+                        onRemoveRequested: root.filterViewModel.removeActiveFilter(modelData)
                     }
                 }
             }

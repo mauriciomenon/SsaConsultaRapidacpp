@@ -281,6 +281,37 @@ ApplicationWindow {
                     text: "Preferencias"
                     onClicked: preferencesDialog.open()
                 }
+
+                // Theme cycle button: small circle filled with the current
+                // theme's accent color. Click cycles to the next theme.
+                Button {
+                    Layout.preferredWidth: 14
+                    Layout.preferredHeight: 14
+                    implicitWidth: 14
+                    implicitHeight: 14
+                    padding: 0
+                    topInset: 0
+                    bottomInset: 0
+                    leftInset: 0
+                    rightInset: 0
+                    text: ""
+                    ToolTip.text: qsTr("Tema")
+                    ToolTip.visible: hovered
+                    ToolTip.delay: 400
+                    background: Rectangle {
+                        radius: 7
+                        color: Theme.accent
+                        border.color: Theme.border
+                        border.width: 1
+                    }
+                    onClicked: {
+                        var order = Theme.themeOptions;
+                        var current = Theme.themeName;
+                        var idx = order.indexOf(current);
+                        var nextIdx = idx < 0 ? 0 : (idx + 1) % order.length;
+                        root.vm.ui.setTheme(order[nextIdx]);
+                    }
+                }
             }
         }
 
