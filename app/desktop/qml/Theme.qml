@@ -442,6 +442,37 @@ QtObject {
     // like choiceColumnWidth: 52, commandWidth: 30, operatorWidth: 32.
     // ---------------------------------------------------------------------------
     readonly property int filterCardPadding: 3 // inner padding of advanced cards
+    // Grid layout of the advanced filter cards. resolveGridLayout is the
+    // SINGLE source of truth: given the available width it returns how many
+    // columns fit, the gap between cards, and the exact card width that fills
+    // the row with no trailing empty space. AdvancedTextFilterGrid consumes
+    // it and never recomputes columns/spacing/cardWidth on its own.
+    readonly property int filterCardMinSpacing: 16 // gap at narrowest layout
+    readonly property int filterCardMaxSpacing: 100 // gap at widest layout
+    readonly property int filterCardMinWidth: 180 // floor so internal buttons fit
+    readonly property int filterCardMaxColumns: 5
+
+    // Resolve grid geometry: pick the most columns N that fit with each card
+    // at least filterCardMinWidth (and at most filterCardMaxColumns), then
+    // derive the exact cardWidth so N*cardWidth + (N-1)*spacing == width.
+    // Spacing scales with the total width (2%), clamped to [min,max].
+    function resolveGridLayout(availableWidth) {
+        const spacing = Math.max(filterCardMinSpacing, Math.min(filterCardMaxSpacing, Math.round(availableWidth * 0.02)));
+        let columns = 1;
+        for (let n = filterCardMaxColumns; n >= 1; --n) {
+            const w = Math.floor((availableWidth - (n - 1) * spacing) / n);
+            if (w >= filterCardMinWidth) {
+                columns = n;
+                break;
+            }
+        }
+        const cardWidth = Math.floor((availableWidth - (columns - 1) * spacing) / columns);
+        return ({
+                columns: columns,
+                spacing: spacing,
+                cardWidth: cardWidth
+            });
+    }
     readonly property int choiceColumnWidth: 52 // Incluir/Excluir checkbox column
     readonly property int commandWidth: 30 // "..." action button width
     readonly property int operatorWidth: 32 // operator combo (=, !=)

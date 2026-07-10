@@ -30,17 +30,6 @@ FilterCard {
         // "code": short codes fit in the structural minimum width.
         return Theme.popupMultiSelectMinWidth;
     }
-    // Combo "Valor" (single-select) width by category. Narrower than the
-    // multi-select popup because it has no Incluir/Excluir columns - just the
-    // value text. Keeps a 4-char setor combo narrow instead of stretching.
-    readonly property int valueComboPreferredWidth: {
-        if (valuePopupCategory === "anomalia")
-            return Math.min(Theme.popupAnomaliaWidth, Math.max(Theme.valuePreferredWidth, 78 * Theme.popupGlyphWidthPx));
-        if (valuePopupCategory === "name")
-            return Math.min(Theme.popupNameValueWidth, Math.max(Theme.valuePreferredWidth, 43 * Theme.popupGlyphWidthPx));
-        // "code": short codes - just enough for the value + "Valor" label.
-        return Theme.valuePreferredWidth;
-    }
     property string popupFilterText: ""
 
     signal optionsRequested
@@ -228,10 +217,8 @@ FilterCard {
             AppComboBox {
                 id: advancedValueSelector
                 Layout.minimumWidth: Theme.valueMinWidth
-                // Combo Valor width follows the same data-driven category as the
-                // multi-select popup so a 4-char setor combo is narrow and a
-                // name combo is wide - no longer fillWidth stretching setor.
-                Layout.preferredWidth: root.valueComboPreferredWidth
+                Layout.fillWidth: true
+                Layout.preferredWidth: Math.max(Theme.valuePreferredWidth, root.cardWidth * Theme.valuePreferredRatio)
                 Layout.preferredHeight: Theme.filterRowHeight
                 leftPadding: 7
                 rightPadding: 16

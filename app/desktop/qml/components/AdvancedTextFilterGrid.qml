@@ -17,7 +17,9 @@ Item {
 
     Layout.fillWidth: true
     Layout.preferredHeight: gridFlow.childrenRect.height
-    readonly property int cellWidth: width >= 960 ? Math.floor(width / 4) : (width >= 720 ? Math.floor(width / 3) : (width >= 520 ? Math.floor(width / 2) : width))
+    // Single source of truth: Theme.resolveGridLayout picks columns, gap and
+    // cardWidth together so cards fill the row with no trailing empty space.
+    readonly property var gridLayout: Theme.resolveGridLayout(root.width)
     // Text and reprogramming cards share the same compact height so their
     // titles land on the same baseline. Macro grows only when its report
     // table is visible.
@@ -40,7 +42,7 @@ Item {
     Flow {
         id: gridFlow
         anchors.fill: parent
-        spacing: 0
+        spacing: root.gridLayout.spacing
 
         // Text filter cards (14 cells: Setor emissor, ..., Situacao parcial).
         Repeater {
@@ -58,7 +60,7 @@ Item {
                     valueOptionsLoading = root.filterViewModel.columnValueOptionsLoadingFor(rowData.key);
                 }
 
-                cardWidth: root.cellWidth - 4
+                cardWidth: root.gridLayout.cardWidth
                 cardHeight: root.textCellHeight - 4
                 row: textDelegate.rowData
                 operatorModes: root.textFilters.operatorModes
@@ -108,7 +110,7 @@ Item {
 
             AdvancedMacroFilterCard {
                 required property int index
-                cardWidth: root.cellWidth - 4
+                cardWidth: root.gridLayout.cardWidth
                 cardHeight: root.macroCellHeight
                 sectorHierarchy: root.advanced.sectorHierarchy
                 macro: root.advanced.macro
@@ -122,7 +124,7 @@ Item {
 
             AdvancedReprogrammingFilterCard {
                 required property int index
-                cardWidth: root.cellWidth - 4
+                cardWidth: root.gridLayout.cardWidth
                 cardHeight: root.textCellHeight - 4
                 filterViewModel: root.filterViewModel
                 derivation: root.advanced.derivation
@@ -136,7 +138,7 @@ Item {
 
             AdvancedWeekEmissionCard {
                 required property int index
-                cardWidth: root.cellWidth - 4
+                cardWidth: root.gridLayout.cardWidth
                 cardHeight: root.textCellHeight - 4
                 week: root.advanced.week
                 onApplyRequested: root.applyRequested()
@@ -149,7 +151,7 @@ Item {
 
             AdvancedWeekExecutionCard {
                 required property int index
-                cardWidth: root.cellWidth - 4
+                cardWidth: root.gridLayout.cardWidth
                 cardHeight: root.textCellHeight - 4
                 week: root.advanced.week
                 onApplyRequested: root.applyRequested()
