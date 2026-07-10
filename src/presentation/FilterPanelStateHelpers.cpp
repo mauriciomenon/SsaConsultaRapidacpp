@@ -62,6 +62,45 @@ namespace ssa::presentation::filterpanel {
             return label;
         }
 
+        // Render a text-filter token expression (=value,!value) into a
+        // friendly chip label: included values first (comma-joined), then an
+        // "Exc:" group for excluded values. Mirrors the Python reference
+        // (filter_summary_advanced.add_adv with op handling).
+        // Example: "=IEE3,!SES,!STE" -> "IEE3, Exc: SES, STE".
+        std::string formatTextFilterValue(const std::string& value) {
+            const auto tokens = query::parseTextFilterTokens(value);
+            if (tokens.ordered.empty()) {
+                return value;
+            }
+            std::string included;
+            std::string excluded;
+            for (const auto& token : tokens.ordered) {
+                if (token.filterOperator == query::TextFilterOperator::Equals) {
+                    if (!included.empty()) {
+                        included += ", ";
+                    }
+                    included += token.value;
+                } else {
+                    if (!excluded.empty()) {
+                        excluded += ", ";
+                    }
+                    excluded += token.value;
+                }
+            }
+            std::string result;
+            if (!included.empty()) {
+                result = std::move(included);
+            }
+            if (!excluded.empty()) {
+                if (!result.empty()) {
+                    result += ", ";
+                }
+                result += "Exc: ";
+                result += std::move(excluded);
+            }
+            return result;
+        }
+
         void appendTextSummary(std::vector<FilterSummaryEntry>& entries, const std::string& key,
                                const std::string& value, std::string kind) {
             if (value.empty()) {
@@ -69,7 +108,7 @@ namespace ssa::presentation::filterpanel {
             }
             std::string part{shortColumnLabel(key)};
             part += ": ";
-            part += value;
+            part += formatTextFilterValue(value);
             entries.push_back({.text = std::move(part), .kind = std::move(kind), .key = key});
         }
 
@@ -143,7 +182,7 @@ namespace ssa::presentation::filterpanel {
         for (const auto& [key, value] : columnFilters) {
             auto part = shortColumnLabel(key);
             part += ": ";
-            part += value;
+            part += formatTextFilterValue(value);
             entries.push_back({.text = std::move(part), .kind = "column", .key = key});
         }
         for (const auto& [key, value] : advanced.textFilters) {
