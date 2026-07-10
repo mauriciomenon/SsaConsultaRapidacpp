@@ -92,6 +92,10 @@ namespace ssa::presentation {
         Q_INVOKABLE void refreshColumnValueOptions();
         Q_INVOKABLE void refreshColumnValueOptionsFor(const QString& key);
         Q_INVOKABLE void preloadAdvancedColumnValueOptions();
+        // Debounced preload: collapses rapid filter changes (e.g. clicking
+        // multiple status shortcuts) into a single 12-column preload after a
+        // short delay, instead of firing 12 serial SQL queries per click.
+        Q_INVOKABLE void schedulePreloadAdvancedColumnValueOptions();
         void setColumnFilters(std::map<std::string, std::string> filters);
         void applyPreferences(const ports::UserPreferencesSnapshot& snapshot);
         void writePreferences(ports::UserPreferencesSnapshot& snapshot) const;
@@ -139,6 +143,7 @@ namespace ssa::presentation {
         FilterPanelColumnValueOptions columnValueOptions_;
         FilterPanelDistinctValuesController distinctValues_;
         QTimer activeFilterRefreshTimer_;
+        QTimer preloadDebounceTimer_;
         std::uint64_t filterStateVersion_{0};
         int focusColumnRequest_{0};
     };

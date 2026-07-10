@@ -64,6 +64,7 @@ Rectangle {
 
         ScrollView {
             id: summaryScroller
+            visible: root.hasAnyActive
             readonly property int maxAvailableWidth: Math.max(Theme.summaryMinWidth, root.width - clearSummaryButton.width - tagGroup.spacing - Theme.summaryClearButtonOffset)
             width: maxAvailableWidth
             height: parent.height
@@ -80,7 +81,7 @@ Rectangle {
                 Label {
                     visible: !root.hasAnyActive
                     anchors.fill: parent
-                    text: "Sem filtros manuais"
+                    text: qsTr("Nenhum filtro ativo")
                     color: Theme.mutedText
                     font.pixelSize: Theme.fontSizeLabel
                     elide: Text.ElideRight

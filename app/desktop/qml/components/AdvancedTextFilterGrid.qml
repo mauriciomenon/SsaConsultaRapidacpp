@@ -35,7 +35,9 @@ Item {
     Connections {
         target: root.filterViewModel
         function onColumnValueOptionsReset() {
-            root.preloadOptions();
+            // Debounced: collapses rapid filter toggles into a single preload
+            // instead of firing 12 serial SQL queries on every click.
+            root.filterViewModel.schedulePreloadAdvancedColumnValueOptions();
         }
     }
 

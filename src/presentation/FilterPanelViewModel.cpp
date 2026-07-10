@@ -19,6 +19,7 @@
 namespace ssa::presentation {
     namespace {
         constexpr int kActiveFilterRefreshDelayMs = 120;
+        constexpr int kPreloadDebounceMs = 300;
         constexpr std::array<std::string_view, 26> kStatusShortcutValues{{
             "AAD", "AAT", "ACC", "ACS", "ADI", "ADM", "AIM", "ALE", "AMP",
             "APG", "APL", "APV", "ASE", "ASL", "ASO", "SAD", "SAS", "SCA",
@@ -97,6 +98,10 @@ namespace ssa::presentation {
             refreshActiveFilters();
             emit changed();
         });
+        preloadDebounceTimer_.setInterval(kPreloadDebounceMs);
+        preloadDebounceTimer_.setSingleShot(true);
+        connect(&preloadDebounceTimer_, &QTimer::timeout, this,
+                [this]() { preloadAdvancedColumnValueOptions(); });
         connect(&distinctValues_, &FilterPanelDistinctValuesController::columnValueOptionsReady,
                 this,
                 [this](const std::vector<std::string>& values, const QString& key,
@@ -505,6 +510,10 @@ namespace ssa::presentation {
         emit columnValueOptionsChangedFor(normalizedKey);
         distinctValues_.preloadColumnValueOptionsFor(QStringList{normalizedKey},
                                                      filterStateVersion_);
+    }
+
+    void FilterPanelViewModel::schedulePreloadAdvancedColumnValueOptions() {
+        preloadDebounceTimer_.start();
     }
 
     void FilterPanelViewModel::preloadAdvancedColumnValueOptions() {

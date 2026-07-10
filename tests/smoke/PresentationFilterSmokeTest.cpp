@@ -633,6 +633,21 @@ namespace {
             QVERIFY(model.browse()->filters()->statusShortcutSelected("STE"));
             QCOMPARE(model.browse()->filters()->statusShortcutState("APV"), 2);
             QCOMPARE(model.browse()->filters()->statusShortcutState("STE"), 1);
+            // Verify the friendly "Exc:" label reaches activeFilterEntries (Python-style
+            // formatting).
+            {
+                bool foundExcLabel = false;
+                const auto entries = model.browse()->filters()->activeFilterEntries();
+                for (const auto& entry : entries) {
+                    const auto text = entry.toMap().value("text").toString();
+                    if (text.contains("Exc:") && text.contains("APV")) {
+                        foundExcLabel = true;
+                        break;
+                    }
+                }
+                QVERIFY2(foundExcLabel,
+                         "activeFilterEntries should contain 'Exc: APV' after exclusion");
+            }
 
             model.browse()->filters()->toggleStatusShortcut("APV");
 

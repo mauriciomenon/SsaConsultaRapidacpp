@@ -323,15 +323,18 @@ Rectangle {
                                     ToolTip.text: included ? qsTr("Incluindo %1 - clicar exclui").arg(modelData) : excluded ? qsTr("Excluindo %1 - clicar remove").arg(modelData) : qsTr("Filtrar situacao %1").arg(modelData)
 
                                     background: Rectangle {
-                                        // Excluded: same fill as none, Theme.mutedText border only (no danger/strikeout).
-                                        color: statusShortcut.included ? Theme.accent : statusShortcut.hovered ? Theme.accentSoft : Theme.panelRaised
-                                        border.color: statusShortcut.included ? Theme.accentStrong : statusShortcut.excluded ? Theme.mutedText : Theme.border
+                                        // Included: accent fill. Excluded: invert text/bg colors for
+                                        // clear visual distinction without extra borders/danger.
+                                        // None: default panel.
+                                        color: statusShortcut.included ? Theme.accent : statusShortcut.excluded ? Theme.mutedText : statusShortcut.hovered ? Theme.accentSoft : Theme.panelRaised
+                                        border.color: statusShortcut.included ? Theme.accentStrong : Theme.border
                                         radius: Theme.radius
                                     }
 
                                     contentItem: Text {
                                         text: statusShortcut.text
-                                        color: statusShortcut.included ? Theme.accentText : Theme.text
+                                        // Excluded: text color inverts to the panel (dark on light bg).
+                                        color: statusShortcut.included ? Theme.accentText : statusShortcut.excluded ? Theme.panel : Theme.text
                                         font.family: statusShortcut.font.family
                                         font.pixelSize: statusShortcut.font.pixelSize
                                         font.bold: statusShortcut.font.bold
