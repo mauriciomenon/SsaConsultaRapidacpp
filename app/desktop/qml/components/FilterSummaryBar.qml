@@ -17,14 +17,27 @@ Rectangle {
     readonly property bool hasActiveExclusion: filterViewModel.excludeScaSesSte
     // Mirrors Python filtersSummaryFrame active_state: any search, chip, or SCA/SES/STE exclusion.
     readonly property bool hasAnyActive: hasSearch || hasFilterEntries || hasActiveExclusion
+    // True when any chip carries Exc: (status !CODE, SCA/SES/STE, etc.).
+    readonly property bool hasExclusionFilter: {
+        if (hasActiveExclusion)
+            return true;
+        const entries = filterViewModel.activeFilterEntries;
+        for (let i = 0; i < entries.length; ++i) {
+            const text = String(entries[i].text || "");
+            if (text.indexOf("Exc:") >= 0)
+                return true;
+        }
+        return false;
+    }
     readonly property int activeTagCount: filterViewModel.activeFilterEntries.length + (hasSearch ? 1 : 0) + (hasActiveExclusion ? 1 : 0)
     readonly property bool compact: activeTagCount >= 2
     readonly property int tagTextSize: compact ? 11 : 12
     readonly property color filterAccent: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.26)
 
     // Python _apply_frame_style: idle = input/panel border, active = accent.
+    // Exclusion (!) uses double border width; drawn inside bounds (no layout shift).
     color: "transparent"
-    border.width: 1
+    border.width: hasAnyActive && hasExclusionFilter ? Theme.summaryBorderWidthExcluded : Theme.summaryBorderWidth
     border.color: hasAnyActive ? Theme.accent : Theme.borderSoft
     radius: Theme.radius
     clip: false

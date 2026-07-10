@@ -505,6 +505,10 @@ QtObject {
     readonly property int summaryTagSpacing: 6 // spacing between summary tags
     readonly property int summaryClearButtonWidth: 46
     readonly property int summaryLeftMargin: 4
+    // Frame border: normal vs thicker when any exclusion (!) is active.
+    // Border is drawn inside the bar bounds so status-shortcut spacing is untouched.
+    readonly property int summaryBorderWidth: 1
+    readonly property int summaryBorderWidthExcluded: 2
 
     // ---------------------------------------------------------------------------
     // WindowMetrics - clamp windows/dialogs to the available desktop area so
