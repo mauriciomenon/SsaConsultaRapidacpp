@@ -11,8 +11,10 @@
 
 #include <algorithm>
 #include <chrono>
+#include <condition_variable>
 #include <filesystem>
 #include <future>
+#include <mutex>
 #include <sqlite3.h>
 #include <stop_token>
 #include <string>
@@ -382,6 +384,19 @@ TEST_CASE_METHOD(SqliteRepositoryFixture,
             return std::optional<std::string>{};
         });
     });
+    struct ReleaseGuard final {
+        std::mutex& mutex;
+        std::condition_variable& condition;
+        bool& release;
+
+        ~ReleaseGuard() {
+            {
+                const std::scoped_lock lock(mutex);
+                release = true;
+            }
+            condition.notify_one();
+        }
+    } releaseGuard{mutex, releaseCondition, release};
     {
         std::unique_lock lock(mutex);
         REQUIRE(enteredCondition.wait_for(lock, std::chrono::seconds{1}, [&] { return entered; }));
