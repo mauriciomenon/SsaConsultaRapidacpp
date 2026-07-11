@@ -25,6 +25,15 @@ Item {
     readonly property int textCellHeight: 56
     readonly property int macroCellHeight: root.advanced.macro.reportRows.length > 0 ? 132 : textCellHeight - 4
 
+    function openSmokeValues(columnKey, values) {
+        for (var index = 0; index < gridFlow.children.length; ++index) {
+            const child = gridFlow.children[index];
+            if (child.key === columnKey)
+                return child.openSmokeValues(values);
+        }
+        return null;
+    }
+
     Flow {
         id: gridFlow
         anchors.fill: parent

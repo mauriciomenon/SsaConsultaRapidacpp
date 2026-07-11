@@ -23,6 +23,7 @@ Popup {
     property var includeValues: []
     property var excludeValues: []
     readonly property var filteredValues: root.filterValues()
+    property alias optionList: optionList
 
     parent: Overlay.overlay
     x: 0
@@ -124,6 +125,15 @@ Popup {
         root.filterText = "";
         root.resetSelections();
         root.open();
+    }
+
+    function activeDelegateCount() {
+        var count = 0;
+        for (var index = 0; index < optionList.count; ++index) {
+            if (optionList.itemAtIndex(index) !== null)
+                ++count;
+        }
+        return count;
     }
 
     onFilteredValuesChanged: {
@@ -233,6 +243,8 @@ Popup {
             }
 
             ListView {
+                id: optionList
+                objectName: "advancedTextValueOptionList_" + root.columnKey
                 anchors.fill: parent
                 clip: true
                 spacing: 2

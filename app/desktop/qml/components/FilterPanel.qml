@@ -23,6 +23,11 @@ Rectangle {
         selectedTabIndex = 0;
     }
 
+    function openSmokeValues(columnKey, values) {
+        root.showAdvancedFilters();
+        return advancedPanel.openSmokeValues(columnKey, values);
+    }
+
     color: Theme.surface
     border.color: Theme.border
     radius: Theme.radius
@@ -78,6 +83,7 @@ Rectangle {
             }
 
             AdvancedFilterPanel {
+                id: advancedPanel
                 filterViewModel: root.filterViewModel
                 advanced: root.advanced
                 onApplyRequested: root.applyRequested()

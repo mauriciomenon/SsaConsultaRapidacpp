@@ -50,6 +50,8 @@ int main(int argc, char* argv[]) {
                                         "Open preferences before screenshot smoke capture."));
     parser.addOption(QCommandLineOption(QStringList{"open-advanced-filters"},
                                         "Open advanced filters before screenshot smoke capture."));
+    parser.addOption(QCommandLineOption(QStringList{"smoke-advanced-popup"},
+                                        "Open the advanced value popup with smoke data."));
     parser.addOption(
         QCommandLineOption(QStringList{"open-details-window"},
                            "Open details graph window before screenshot smoke capture."));

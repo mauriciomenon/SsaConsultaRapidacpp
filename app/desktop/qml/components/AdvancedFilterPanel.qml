@@ -14,6 +14,10 @@ Rectangle {
     border.color: "transparent"
     radius: 0
 
+    function openSmokeValues(columnKey, values) {
+        return textFilterGrid.openSmokeValues(columnKey, values);
+    }
+
     ScrollView {
         anchors.fill: parent
         anchors.margins: 6
@@ -21,6 +25,7 @@ Rectangle {
         contentWidth: availableWidth
 
         AdvancedTextFilterGrid {
+            id: textFilterGrid
             width: parent.width
             filterViewModel: root.filterViewModel
             textFilters: root.advanced.text

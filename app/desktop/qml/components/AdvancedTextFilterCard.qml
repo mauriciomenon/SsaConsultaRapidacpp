@@ -34,6 +34,13 @@ FilterCard {
         return root.operatorLabel.length > 0 ? root.operatorLabel : "=";
     }
 
+    function openSmokeValues(values) {
+        root.allValues = values;
+        root.maxValueLength = String(values[values.length - 1]).length;
+        valuePopup.openForCurrentFilter();
+        return valuePopup;
+    }
+
     width: cardWidth
     height: cardHeight
     padding: 3
@@ -148,6 +155,7 @@ FilterCard {
 
     AdvancedTextValuePopup {
         id: valuePopup
+        objectName: "advancedTextValuePopup_" + root.key
         trigger: openMultiSelectButton
         columnKey: root.key
         columnLabel: root.label
