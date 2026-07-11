@@ -11,15 +11,14 @@ Control {
     property string tooltipText: text
     property bool compact: false
     property int tagTextSize: 12
-    property int preferredTagWidth: 0
+    property real preferredTagWidth: naturalWidth
     property color tagAccent: Theme.accent
     readonly property int naturalWidth: tagLabel.implicitWidth + removeButton.implicitWidth + Theme.chipChromePadding
     signal removeRequested
 
-    // Tags use their natural width; the FilterSummaryBar ScrollView scrolls
-    // horizontally when the Row of tags exceeds the available width. There is
-    // no artificial per-tag cap or JS redistribution.
-    implicitWidth: preferredTagWidth > 0 ? preferredTagWidth : naturalWidth
+    Layout.minimumWidth: naturalWidth
+    Layout.preferredWidth: preferredTagWidth
+    implicitWidth: preferredTagWidth
     implicitHeight: root.compact ? Theme.chipHeightCompact : Theme.chipHeight
     padding: 0
     hoverEnabled: true

@@ -16,6 +16,7 @@
 #include <QTest>
 #include <QtQml/qqml.h>
 
+#include <algorithm>
 #include <atomic>
 #include <memory>
 #include <optional>
@@ -92,6 +93,11 @@ namespace {
             const QDir components(root.filePath("app/desktop/qml/components"));
             QVERIFY(qmlRegisterType(QUrl::fromLocalFile(components.filePath("ActionButton.qml")),
                                     "SsaConsultaRapida", 1, 0, "ActionButton") >= 0);
+            QVERIFY(qmlRegisterType(QUrl::fromLocalFile(components.filePath("SummaryTag.qml")),
+                                    "SsaConsultaRapida", 1, 0, "SummaryTag") >= 0);
+            QVERIFY(
+                qmlRegisterType(QUrl::fromLocalFile(components.filePath("FilterSummaryBar.qml")),
+                                "SsaConsultaRapida", 1, 0, "FilterSummaryBar") >= 0);
             QVERIFY(qmlRegisterType(QUrl::fromLocalFile(components.filePath("AppTextField.qml")),
                                     "SsaConsultaRapida", 1, 0, "AppTextField") >= 0);
             QVERIFY(qmlRegisterType(QUrl::fromLocalFile(components.filePath("AppCheckBox.qml")),
@@ -305,6 +311,102 @@ namespace {
             QTRY_COMPARE_WITH_TIMEOUT(harness->property("detailsCount").toInt(), 1, 1000);
             QCOMPARE(harness->property("selectionCount").toInt(), 1);
             QCOMPARE(harness->property("currentRow").toInt(), 0);
+        }
+
+        void filter_summary_distributes_surplus_and_preserves_natural_widths() {
+            QQmlEngine engine;
+            QQmlComponent component(&engine);
+            component.setData(R"QML(
+                import QtQuick
+                import QtQuick.Controls
+                import SsaConsultaRapida
+
+                Item {
+                    width: 900
+                    height: 44
+
+                    QtObject {
+                        id: filters
+                        property bool excludeScaSesSte: false
+                        property var activeFilterEntries: [
+                            { text: "Exec: IEE3, MEL4", kind: "column", key: "setor_executor" },
+                            { text: "Sit: SEE", kind: "column", key: "situacao" }
+                        ]
+
+                        function removeActiveFilter(entry) {}
+                    }
+
+                    FilterSummaryBar {
+                        id: summary
+                        objectName: "filterSummaryBar"
+                        anchors.fill: parent
+                        filterViewModel: filters
+                        searchText: "!G097"
+                    }
+                }
+            )QML",
+                              QUrl(QStringLiteral("inmemory:/FilterSummaryBarHarness.qml")));
+            QTRY_VERIFY_WITH_TIMEOUT(component.status() != QQmlComponent::Loading, 1000);
+            QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+
+            QQuickWindow window;
+            window.setGeometry(0, 0, 900, 44);
+            std::unique_ptr<QObject> harness(component.create());
+            QVERIFY2(harness != nullptr, qPrintable(component.errorString()));
+            auto* harnessItem = qobject_cast<QQuickItem*>(harness.get());
+            QVERIFY(harnessItem != nullptr);
+            harnessItem->setParentItem(window.contentItem());
+            window.show();
+
+            QTRY_VERIFY_WITH_TIMEOUT(window.isExposed(), 1000);
+            auto* summary = harness->findChild<QQuickItem*>(QStringLiteral("filterSummaryBar"));
+            QVERIFY(summary != nullptr);
+
+            const auto visibleTags = [&]() {
+                QList<QQuickItem*> tags;
+                QList<QQuickItem*> pending{summary};
+                while (!pending.isEmpty()) {
+                    auto* item = pending.takeLast();
+                    pending.append(item->childItems());
+                    if (item != summary && item->isVisible() &&
+                        item->property("naturalWidth").isValid()) {
+                        tags.append(item);
+                    }
+                }
+                std::ranges::sort(tags, [](const QQuickItem* left, const QQuickItem* right) {
+                    return left->mapToScene({0, 0}).x() < right->mapToScene({0, 0}).x();
+                });
+                return tags;
+            };
+
+            QTRY_COMPARE_WITH_TIMEOUT(visibleTags().size(), 3, 1000);
+            const auto wideTags = visibleTags();
+            std::vector<qreal> widths;
+            widths.reserve(static_cast<std::size_t>(wideTags.size()));
+            for (const auto* tag : wideTags) {
+                const qreal naturalWidth = tag->property("naturalWidth").toReal();
+                QVERIFY2(tag->width() > naturalWidth,
+                         "wide summary did not distribute available width");
+                widths.push_back(tag->width());
+            }
+            const auto [minimumWidth, maximumWidth] = std::ranges::minmax_element(widths);
+            QVERIFY2(*maximumWidth - *minimumWidth <= 1.0,
+                     "wide summary did not distribute final widths symmetrically");
+
+            harnessItem->setWidth(320);
+            window.setWidth(320);
+            QTRY_COMPARE_WITH_TIMEOUT(summary->width(), 320, 1000);
+            const auto narrowTags = visibleTags();
+            QCOMPARE(narrowTags.size(), 3);
+            qreal narrowContentWidth = 0;
+            for (const auto* tag : narrowTags) {
+                const qreal naturalWidth = tag->property("naturalWidth").toReal();
+                QVERIFY2(tag->width() + 1.0 >= naturalWidth,
+                         "narrow summary compressed a tag below its natural width");
+                narrowContentWidth += tag->width();
+            }
+            QVERIFY2(narrowContentWidth > summary->width(),
+                     "narrow summary did not preserve overflowing natural widths");
         }
     };
 
