@@ -47,7 +47,7 @@ ComboBox {
         contentItem: Text {
             text: delegateRoot.text
             textFormat: Text.PlainText
-            color: delegateRoot.highlighted ? Theme.accentStrong : Theme.text
+            color: delegateRoot.highlighted ? (Theme.refinedNativeTheme ? Theme.readableText(Theme.accentSoft) : Theme.accentStrong) : Theme.text
             verticalAlignment: Text.AlignVCenter
             elide: Text.ElideRight
         }

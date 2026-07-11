@@ -24,9 +24,19 @@ Button {
     readonly property color dangerBackground: control.down ? Theme.dangerStrong : control.hovered ? Theme.danger : Theme.dangerSoft
     readonly property color dangerBorder: control.down ? Theme.dangerStrong : control.hovered ? Theme.dangerStrong : Theme.border
     readonly property color normalBorder: control.quietAccent ? Theme.border : (control.hovered ? Theme.accentStrong : Theme.accent)
+    readonly property color effectiveBackground: !control.enabled ? Theme.rowAlt : control.danger ? control.dangerBackground : control.down ? control.downBackground : control.hovered ? control.hoverBackground : control.normalBackground
+    readonly property color effectiveForeground: {
+        if (!control.enabled)
+            return Theme.mutedText;
+        if (!Theme.refinedNativeTheme)
+            return control.danger ? Theme.text : control.quietAccent && !control.down ? Theme.accentStrong : Theme.accentText;
+        if (!control.danger && control.quietAccent && !control.hovered && !control.down)
+            return Theme.accentStrong;
+        return Theme.readableText(control.effectiveBackground);
+    }
 
     background: Rectangle {
-        color: !control.enabled ? Theme.rowAlt : control.danger ? control.dangerBackground : control.down ? control.downBackground : control.hovered ? control.hoverBackground : control.normalBackground
+        color: control.effectiveBackground
         border.color: !control.enabled ? Theme.border : control.danger ? control.dangerBorder : control.normalBorder
         border.width: 1
         radius: Theme.radius
@@ -39,7 +49,7 @@ Button {
 
     contentItem: Text {
         text: control.text
-        color: !control.enabled ? Theme.mutedText : (control.danger ? Theme.text : control.quietAccent && !control.down ? Theme.accentStrong : Theme.accentText)
+        color: control.effectiveForeground
         font.family: control.font.family
         font.pixelSize: control.font.pixelSize
         font.bold: control.font.bold

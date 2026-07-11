@@ -5,8 +5,11 @@
 #include "presentation/SsaTableModel.h"
 #include "query/SsaQueryService.h"
 
+#include <QColor>
 #include <QDir>
 #include <QFileInfo>
+#include <QJSValue>
+#include <QObject>
 #include <QPointer>
 #include <QQmlComponent>
 #include <QQmlContext>
@@ -18,6 +21,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <memory>
 #include <optional>
 #include <stop_token>
@@ -407,6 +411,137 @@ namespace {
             }
             QVERIFY2(narrowContentWidth > summary->width(),
                      "narrow summary did not preserve overflowing natural widths");
+        }
+
+        void native_theme_palettes_are_restrained_and_accessible() {
+            QQmlEngine engine;
+            QQmlComponent component(&engine);
+            component.setData(R"QML(
+                import QtQuick
+                import SsaConsultaRapida
+
+                QtObject {
+                    readonly property var allPalettes: Theme.palettes
+                    readonly property var allOptions: Theme.themeOptions
+                }
+            )QML",
+                              QUrl(QStringLiteral("inmemory:/ThemePaletteHarness.qml")));
+            QTRY_VERIFY_WITH_TIMEOUT(component.status() != QQmlComponent::Loading, 1000);
+            QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+
+            std::unique_ptr<QObject> harness(component.create());
+            QVERIFY2(harness != nullptr, qPrintable(component.errorString()));
+            const auto palettesValue = harness->property("allPalettes").value<QJSValue>();
+            const auto optionsValue = harness->property("allOptions").value<QJSValue>();
+            QVERIFY(palettesValue.isObject());
+            QVERIFY(optionsValue.isArray());
+            const QVariantMap palettes = palettesValue.toVariant().toMap();
+            const QVariantList options = optionsValue.toVariant().toList();
+
+            const QStringList nativeThemes{
+                QStringLiteral("grayscale"),       QStringLiteral("windows7"),
+                QStringLiteral("classico"),        QStringLiteral("gruvbox"),
+                QStringLiteral("ssa-dark"),        QStringLiteral("dark"),
+                QStringLiteral("dracula"),         QStringLiteral("solarized-dark"),
+                QStringLiteral("solarized-light"), QStringLiteral("mint-light"),
+                QStringLiteral("paper"),           QStringLiteral("tokyo-night"),
+                QStringLiteral("catppuccin"),      QStringLiteral("nord"),
+            };
+            const QStringList backgroundRoles{
+                QStringLiteral("window"), QStringLiteral("surface"),
+                QStringLiteral("panel"),  QStringLiteral("panelRaised"),
+                QStringLiteral("header"), QStringLiteral("tableHeader"),
+                QStringLiteral("rowAlt"), QStringLiteral("rowSelected"),
+            };
+            const QStringList interactiveBackgroundRoles{
+                QStringLiteral("accent"),       QStringLiteral("accentSoft"),
+                QStringLiteral("dangerSoft"),   QStringLiteral("danger"),
+                QStringLiteral("dangerStrong"),
+            };
+            QCOMPARE(nativeThemes.size(), 14);
+
+            int pythonThemeCount = 0;
+            for (const QVariant& option : options) {
+                if (option.toString().endsWith(QStringLiteral("py"))) {
+                    ++pythonThemeCount;
+                }
+            }
+            QCOMPARE(pythonThemeCount, 13);
+
+            const auto linearChannel = [](const qreal channel) {
+                return channel <= 0.04045 ? channel / 12.92
+                                          : std::pow((channel + 0.055) / 1.055, 2.4);
+            };
+            const auto luminance = [&linearChannel](const QColor& color) {
+                return 0.2126 * linearChannel(color.redF()) +
+                       0.7152 * linearChannel(color.greenF()) +
+                       0.0722 * linearChannel(color.blueF());
+            };
+            const auto contrast = [&luminance](const QColor& first, const QColor& second) {
+                const qreal lighter = std::max(luminance(first), luminance(second));
+                const qreal darker = std::min(luminance(first), luminance(second));
+                return (lighter + 0.05) / (darker + 0.05);
+            };
+
+            for (const QString& themeName : nativeThemes) {
+                QVERIFY2(palettes.contains(themeName), qPrintable("missing palette: " + themeName));
+                const QVariantMap palette = palettes.value(themeName).toMap();
+                const bool isDark = palette.value(QStringLiteral("isDark")).toBool();
+                const QColor text{palette.value(QStringLiteral("text")).toString()};
+                const QColor mutedText{palette.value(QStringLiteral("mutedText")).toString()};
+                const QColor accent{palette.value(QStringLiteral("accent")).toString()};
+                const QColor accentText{palette.value(QStringLiteral("accentText")).toString()};
+                const QColor link{palette.value(QStringLiteral("link")).toString()};
+                const QColor window{palette.value(QStringLiteral("window")).toString()};
+                QVERIFY(text.isValid());
+                QVERIFY(mutedText.isValid());
+                QVERIFY(accent.isValid());
+                QVERIFY(accentText.isValid());
+                QVERIFY(link.isValid());
+                QVERIFY(window.isValid());
+                QVERIFY2(accent.hslSaturationF() <= 0.55,
+                         qPrintable(themeName + " accent is too saturated"));
+                QVERIFY2(contrast(accentText, accent) >= 4.5,
+                         qPrintable(themeName + " accent contrast is below WCAG AA"));
+                QVERIFY2(contrast(link, window) >= 4.5,
+                         qPrintable(themeName + " link contrast is below WCAG AA"));
+
+                const QColor panelRaised{palette.value(QStringLiteral("panelRaised")).toString()};
+                for (const QString& role : interactiveBackgroundRoles) {
+                    const QColor background{palette.value(role).toString()};
+                    QVERIFY2(background.isValid(),
+                             qPrintable(themeName + " invalid role: " + role));
+                    const qreal bestContrast =
+                        std::max({contrast(text, background), contrast(accentText, background),
+                                  contrast(panelRaised, background)});
+                    QVERIFY2(bestContrast >= 4.5,
+                             qPrintable(themeName + " has no AA foreground for " + role));
+                }
+
+                for (const QString& role : backgroundRoles) {
+                    const QColor background{palette.value(role).toString()};
+                    QVERIFY2(background.isValid(),
+                             qPrintable(themeName + " invalid role: " + role));
+                    QVERIFY2(contrast(text, background) >= 4.5,
+                             qPrintable(themeName + " text contrast failed on " + role));
+                    QVERIFY2(contrast(mutedText, background) >= 4.5,
+                             qPrintable(themeName + " muted contrast failed on " + role));
+                    if (isDark) {
+                        QVERIFY2(luminance(background) >= 0.02,
+                                 qPrintable(themeName + " contains a crushed dark surface"));
+                    } else {
+                        QVERIFY2(luminance(background) <= 0.94,
+                                 qPrintable(themeName + " contains a glaring light surface"));
+                    }
+                }
+
+                QVERIFY2(palette.value(QStringLiteral("window")) !=
+                             palette.value(QStringLiteral("surface")),
+                         qPrintable(themeName + " lacks window/surface depth"));
+                QVERIFY2(palette.value(QStringLiteral("panel")) !=
+                             palette.value(QStringLiteral("panelRaised")),
+                         qPrintable(themeName + " lacks raised-panel depth"));
+            }
         }
     };
 
