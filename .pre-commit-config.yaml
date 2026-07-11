@@ -83,7 +83,7 @@ repos:
       - id: detect-secrets
         name: detect-secrets
         description: Secret scanning; blocks commits on findings.
-        entry: bash -c 'detect-secrets scan --baseline .secrets.baseline' --
+        entry: detect-secrets-hook --baseline .secrets.baseline
         language: system
         pass_filenames: false
         stages: [manual]

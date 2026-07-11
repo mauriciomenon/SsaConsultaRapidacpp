@@ -3,6 +3,7 @@
 #include "domain/SsaTypes.h"
 
 #include <QClipboard>
+#include <QDebug>
 #include <QGuiApplication>
 
 #include <utility>
@@ -37,9 +38,15 @@ namespace ssa::presentation {
     }
 
     MainViewModel::~MainViewModel() {
-        auto finalSnapshot = preferencesFlow_.buildPreferencesSnapshot();
-        preferencesFlow_.shutdown();
-        preferences_.shutdown(std::move(finalSnapshot));
+        try {
+            auto finalSnapshot = preferencesFlow_.buildPreferencesSnapshot();
+            preferencesFlow_.shutdown();
+            preferences_.shutdown(std::move(finalSnapshot));
+        } catch (const std::exception& exc) {
+            qWarning() << "Failed to persist preferences on shutdown:" << exc.what();
+        } catch (...) {
+            qWarning() << "Failed to persist preferences on shutdown: unknown error";
+        }
     }
 
     void MainViewModel::connectPreferenceFlows() {

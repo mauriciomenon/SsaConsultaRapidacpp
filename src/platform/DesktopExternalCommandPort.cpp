@@ -1,5 +1,8 @@
 #include "platform/DesktopExternalCommandPort.h"
 
+#include <QCoreApplication>
+#include <QThread>
+
 #include <map>
 
 namespace ssa::platform {
@@ -11,6 +14,11 @@ namespace ssa::platform {
 
     ports::ExternalCommandResult
     DesktopExternalCommandPort::execute(const ports::ExternalCommand& command) {
+        if (QCoreApplication::instance() == nullptr ||
+            QCoreApplication::instance()->thread() != QThread::currentThread()) {
+            return {ports::ExternalCommandStatus::Rejected,
+                    "external commands must run on the GUI thread"};
+        }
         using Handler = ports::ExternalCommandResult (DesktopExternalCommandPort::*)(
             const ports::ExternalCommand&);
         static const std::map<ports::ExternalCommandKind, Handler> kHandlers{

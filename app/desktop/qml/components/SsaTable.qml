@@ -360,8 +360,8 @@ Rectangle {
                             if (cellContextMenu.parent !== menuParent)
                                 cellContextMenu.parent = menuParent;
                             const menuPosition = cellDelegate.mapToItem(menuParent, mouse.x, mouse.y);
-                            cellContextMenu.x = menuPosition.x;
-                            cellContextMenu.y = menuPosition.y;
+                            cellContextMenu.x = Theme.clampedPopupX(menuParent.width, menuPosition.x + cellContextMenu.width, cellContextMenu.width);
+                            cellContextMenu.y = Theme.clampedPopupY(menuParent.height, menuPosition.y, 0, cellContextMenu.height);
                             cellContextMenu.open();
                             return;
                         }
