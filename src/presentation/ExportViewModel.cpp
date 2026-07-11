@@ -43,12 +43,18 @@ namespace ssa::presentation {
             ownedExportThreadPool_->setMaxThreadCount(1);
             exportThreadPool_ = ownedExportThreadPool_.get();
         }
-        connect(&exportWatcher_, &QFutureWatcher<ports::WorkflowResult>::finished, this,
-                [this] { applyResult(exportWatcher_.result()); });
+        connect(&exportWatcher_, &QFutureWatcher<void>::finished, this,
+                &ExportViewModel::finishExport);
     }
 
     ExportViewModel::~ExportViewModel() {
-        exportWatcher_.waitForFinished();
+        disconnect(&exportWatcher_, nullptr, this, nullptr);
+        exportStopSource_.request_stop();
+        exportWatcher_.cancel();
+        if (exportWatcher_.isRunning()) {
+            exportWatcher_.waitForFinished();
+        }
+        resultState_.reset();
         if (ownedExportThreadPool_) {
             ownedExportThreadPool_->waitForDone();
         }
@@ -92,9 +98,47 @@ namespace ssa::presentation {
         emit runningChanged();
 
         const std::shared_ptr<application::SsaWorkflowService> workflows = workflows_;
-        exportWatcher_.setFuture(QtConcurrent::run(exportThreadPool_, [workflows, request] {
-            return workflows->exportFilteredList(request);
-        }));
+        const auto state = std::make_shared<ResultState>();
+        resultState_ = state;
+        exportStopSource_ = std::stop_source{};
+        const auto stopToken = exportStopSource_.get_token();
+        exportWatcher_.setFuture(
+            QtConcurrent::run(exportThreadPool_, [workflows, request, state, stopToken] {
+                try {
+                    auto result = workflows->exportFilteredList(request, stopToken);
+                    const std::scoped_lock lock(state->mutex);
+                    state->result = std::move(result);
+                } catch (...) {
+                    const std::scoped_lock lock(state->mutex);
+                    state->error = std::current_exception();
+                }
+            }));
+    }
+
+    void ExportViewModel::finishExport() {
+        std::optional<ports::WorkflowResult> result;
+        std::exception_ptr error;
+        if (resultState_) {
+            const std::scoped_lock lock(resultState_->mutex);
+            result = std::move(resultState_->result);
+            error = resultState_->error;
+        }
+        resultState_.reset();
+        if (error) {
+            try {
+                std::rethrow_exception(error);
+            } catch (const std::exception& exception) {
+                applyResult({ports::WorkflowStatus::Failed, exception.what()});
+            } catch (...) {
+                applyResult({ports::WorkflowStatus::Failed, "unknown export error"});
+            }
+            return;
+        }
+        if (!result) {
+            applyResult({ports::WorkflowStatus::Failed, "export produced no result"});
+            return;
+        }
+        applyResult(*result);
     }
 
     void ExportViewModel::applyResult(const ports::WorkflowResult& result) {

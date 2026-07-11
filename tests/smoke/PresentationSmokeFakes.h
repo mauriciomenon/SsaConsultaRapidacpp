@@ -35,7 +35,8 @@ namespace ssa::tests::presentation_smoke {
         explicit FakeRepository(FakeRepositoryConfig config = {})
             : delay_(config.delay), totalRows_(config.totalRows), rowCount_(config.rowCount) {}
 
-        ssa::domain::SsaPageResult page(const ssa::domain::SsaPageRequest& request) const override {
+        ssa::domain::SsaPageResult page(const ssa::domain::SsaPageRequest& request,
+                                        std::stop_token = {}) const override {
             if (delay_.count() > 0) {
                 std::this_thread::sleep_for(delay_);
             }
@@ -57,28 +58,34 @@ namespace ssa::tests::presentation_smoke {
             return {rows, totalRows_, request.pageIndex, request.pageSize};
         }
 
-        std::size_t count(const ssa::domain::SsaPageRequest&) const override {
+        std::size_t count(const ssa::domain::SsaPageRequest&, std::stop_token = {}) const override {
             const std::scoped_lock lock(mutex_);
             ++countCalls_;
             return totalRows_;
         }
 
         std::optional<ssa::domain::SsaRecord>
-        recordBySsaNumber(const ssa::domain::SsaNumber&) const override {
+        recordBySsaNumber(const ssa::domain::SsaNumber&, std::stop_token = {}) const override {
             return std::nullopt;
         }
         std::vector<ssa::domain::SsaDerivadaEntry>
-        derivadasDiretas(const ssa::domain::SsaNumber&) const override {
+        derivadasDiretas(const ssa::domain::SsaNumber&, std::stop_token = {}) const override {
             return {};
         }
 
-        std::vector<std::string>
-        distinctValues(const ssa::domain::DistinctValuesRequest&) const override {
+        std::vector<std::string> distinctValues(const ssa::domain::DistinctValuesRequest&,
+                                                std::stop_token = {}) const override {
             return {};
+        }
+
+        [[nodiscard]] std::size_t maxValueLength(std::string_view,
+                                                 std::stop_token = {}) const override {
+            return 0;
         }
 
         ssa::ports::SsaReadResult readAll(const ssa::domain::SsaPageRequest& request,
-                                          ssa::ports::SsaRecordConsumer consume) const override {
+                                          ssa::ports::SsaRecordConsumer consume,
+                                          std::stop_token = {}) const override {
             auto pageResult = page(request);
             std::size_t rowCount = 0;
             for (const auto& row : pageResult.rows) {

@@ -15,6 +15,8 @@
 
 #include <map>
 #include <memory>
+#include <mutex>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -24,7 +26,7 @@ namespace ssa::presentation {
 
     struct FilterPresetLoadResult {
         ports::FilterPresetSnapshot snapshot;
-        QString error;
+        std::string error;
     };
 
     class MainPreferenceFlowCoordinator final : public QObject {
@@ -42,6 +44,7 @@ namespace ssa::presentation {
 
         [[nodiscard]] ports::UserPreferencesSnapshot buildPreferencesSnapshot() const;
         [[nodiscard]] QVariantList savedFilters() const;
+        void shutdown();
         void applyStoredPreferences(const ports::UserPreferencesSnapshot& snapshot);
         void scheduleSavePreferences();
         void saveAppliedColumnPreferences(std::vector<std::string> visibleColumns,
@@ -73,9 +76,19 @@ namespace ssa::presentation {
         void requestSaveFromSignal();
 
       private:
+        struct ExportPresetTaskState final {
+            std::mutex mutex;
+            std::string error;
+        };
+
+        struct ImportPresetTaskState final {
+            std::mutex mutex;
+            std::optional<ports::FilterPresetSnapshot> snapshot;
+            std::string error;
+        };
+
         void finishExportFilterPreset();
         void finishImportFilterPreset();
-        void waitForPresetTasks();
         void setSavedFilters(std::vector<ports::SavedFilterSnapshot> filters);
 
         BrowseViewModel& browse_;
@@ -85,8 +98,11 @@ namespace ssa::presentation {
         std::shared_ptr<ports::IFilterPresetStore> presetStore_;
         application::FilterPresetService& presetService_;
         std::vector<ports::SavedFilterSnapshot> savedFilters_;
-        QFutureWatcher<QString> exportPresetWatcher_;
-        QFutureWatcher<FilterPresetLoadResult> importPresetWatcher_;
+        QFutureWatcher<void> exportPresetWatcher_;
+        QFutureWatcher<void> importPresetWatcher_;
+        std::shared_ptr<ExportPresetTaskState> exportPresetTask_;
+        std::shared_ptr<ImportPresetTaskState> importPresetTask_;
+        bool shuttingDown_{false};
     };
 
 } // namespace ssa::presentation

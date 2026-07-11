@@ -22,6 +22,21 @@ namespace ssa::presentation::filterpanel {
             return true;
         }
 
+        template <typename Parser>
+        bool setValidated(QString& target, QString value, Parser parser) {
+            value = value.trimmed();
+            if (!value.isEmpty() && !parser(value.toStdString()).has_value()) {
+                return false;
+            }
+            return setTrimmed(target, std::move(value));
+        }
+
+        template <typename Parser>
+        QString validatedPreference(const std::string& stored, Parser parser) {
+            auto value = QString::fromStdString(stored).trimmed();
+            return value.isEmpty() || parser(value.toStdString()).has_value() ? value : QString{};
+        }
+
         std::vector<int> parsePositiveIntList(const QString& value) {
             std::vector<int> result;
             for (const auto& part : value.split(QStringLiteral(","), Qt::SkipEmptyParts)) {
@@ -97,7 +112,7 @@ namespace ssa::presentation::filterpanel {
     }
 
     bool FilterPanelAdvancedState::setYear(QString value) {
-        return setTrimmed(input_.genericWeek.year, std::move(value));
+        return setValidated(input_.genericWeek.year, std::move(value), domain::parseFilterYear);
     }
 
     const QString& FilterPanelAdvancedState::week() const {
@@ -105,7 +120,7 @@ namespace ssa::presentation::filterpanel {
     }
 
     bool FilterPanelAdvancedState::setWeek(QString value) {
-        return setTrimmed(input_.genericWeek.week, std::move(value));
+        return setValidated(input_.genericWeek.week, std::move(value), domain::parseIsoWeek);
     }
 
     const QString& FilterPanelAdvancedState::issueYear() const {
@@ -113,7 +128,7 @@ namespace ssa::presentation::filterpanel {
     }
 
     bool FilterPanelAdvancedState::setIssueYear(QString value) {
-        return setTrimmed(input_.years.issue, std::move(value));
+        return setValidated(input_.years.issue, std::move(value), domain::parseFilterYear);
     }
 
     const QString& FilterPanelAdvancedState::executionYear() const {
@@ -121,7 +136,7 @@ namespace ssa::presentation::filterpanel {
     }
 
     bool FilterPanelAdvancedState::setExecutionYear(QString value) {
-        return setTrimmed(input_.years.execution, std::move(value));
+        return setValidated(input_.years.execution, std::move(value), domain::parseFilterYear);
     }
 
     const QString& FilterPanelAdvancedState::reprogrammingEquals() const {
@@ -159,7 +174,8 @@ namespace ssa::presentation::filterpanel {
     }
 
     bool FilterPanelAdvancedState::setIssueWeekStart(QString value) {
-        return setTrimmed(input_.weekRanges.issueStart, std::move(value));
+        return setValidated(input_.weekRanges.issueStart, std::move(value),
+                            domain::parseIsoYearWeek);
     }
 
     const QString& FilterPanelAdvancedState::issueWeekEnd() const {
@@ -167,7 +183,7 @@ namespace ssa::presentation::filterpanel {
     }
 
     bool FilterPanelAdvancedState::setIssueWeekEnd(QString value) {
-        return setTrimmed(input_.weekRanges.issueEnd, std::move(value));
+        return setValidated(input_.weekRanges.issueEnd, std::move(value), domain::parseIsoYearWeek);
     }
 
     const QString& FilterPanelAdvancedState::executionWeekStart() const {
@@ -175,7 +191,8 @@ namespace ssa::presentation::filterpanel {
     }
 
     bool FilterPanelAdvancedState::setExecutionWeekStart(QString value) {
-        return setTrimmed(input_.weekRanges.executionStart, std::move(value));
+        return setValidated(input_.weekRanges.executionStart, std::move(value),
+                            domain::parseIsoYearWeek);
     }
 
     const QString& FilterPanelAdvancedState::executionWeekEnd() const {
@@ -183,7 +200,8 @@ namespace ssa::presentation::filterpanel {
     }
 
     bool FilterPanelAdvancedState::setExecutionWeekEnd(QString value) {
-        return setTrimmed(input_.weekRanges.executionEnd, std::move(value));
+        return setValidated(input_.weekRanges.executionEnd, std::move(value),
+                            domain::parseIsoYearWeek);
     }
 
     const QString& FilterPanelAdvancedState::derivationMode() const {
@@ -222,10 +240,14 @@ namespace ssa::presentation::filterpanel {
         input.genericWeek.columnKey = weekColumnKeys.contains(requestedWeekColumn)
                                           ? requestedWeekColumn
                                           : input_.genericWeek.columnKey;
-        input.genericWeek.year = QString::fromStdString(snapshot.filters.advancedYear).trimmed();
-        input.genericWeek.week = QString::fromStdString(snapshot.filters.advancedWeek).trimmed();
-        input.years.issue = QString::fromStdString(snapshot.filters.issueYear).trimmed();
-        input.years.execution = QString::fromStdString(snapshot.filters.executionYear).trimmed();
+        input.genericWeek.year =
+            validatedPreference(snapshot.filters.advancedYear, domain::parseFilterYear);
+        input.genericWeek.week =
+            validatedPreference(snapshot.filters.advancedWeek, domain::parseIsoWeek);
+        input.years.issue =
+            validatedPreference(snapshot.filters.issueYear, domain::parseFilterYear);
+        input.years.execution =
+            validatedPreference(snapshot.filters.executionYear, domain::parseFilterYear);
         input.reprogramming.equals =
             QString::fromStdString(snapshot.filters.reprogrammingEquals).trimmed();
         input.reprogramming.mode = QString::fromStdString(
@@ -233,12 +255,13 @@ namespace ssa::presentation::filterpanel {
         input.reprogramming.values =
             QString::fromStdString(snapshot.filters.reprogrammingValues).trimmed();
         input.weekRanges.issueStart =
-            QString::fromStdString(snapshot.filters.issueWeekStart).trimmed();
-        input.weekRanges.issueEnd = QString::fromStdString(snapshot.filters.issueWeekEnd).trimmed();
+            validatedPreference(snapshot.filters.issueWeekStart, domain::parseIsoYearWeek);
+        input.weekRanges.issueEnd =
+            validatedPreference(snapshot.filters.issueWeekEnd, domain::parseIsoYearWeek);
         input.weekRanges.executionStart =
-            QString::fromStdString(snapshot.filters.executionWeekStart).trimmed();
+            validatedPreference(snapshot.filters.executionWeekStart, domain::parseIsoYearWeek);
         input.weekRanges.executionEnd =
-            QString::fromStdString(snapshot.filters.executionWeekEnd).trimmed();
+            validatedPreference(snapshot.filters.executionWeekEnd, domain::parseIsoYearWeek);
         input.derivationMode = QString::fromStdString(
             domain::normalizedDerivationMode(snapshot.filters.derivationMode));
         input.reprogramming.only = snapshot.filters.onlyReprogrammed;
@@ -286,18 +309,21 @@ namespace ssa::presentation::filterpanel {
         domain::AdvancedFilterSpec filters;
         filters.weekColumnKey = input_.genericWeek.columnKey.trimmed().toStdString();
         filters.textFilters = input_.textFilters;
-        filters.year = parsePositiveInt(input_.genericWeek.year);
-        filters.week = parsePositiveInt(input_.genericWeek.week);
-        filters.issueYear = parsePositiveInt(input_.years.issue);
-        filters.executionYear = parsePositiveInt(input_.years.execution);
+        filters.year = domain::parseFilterYear(input_.genericWeek.year.toStdString());
+        filters.week = domain::parseIsoWeek(input_.genericWeek.week.toStdString());
+        filters.issueYear = domain::parseFilterYear(input_.years.issue.toStdString());
+        filters.executionYear = domain::parseFilterYear(input_.years.execution.toStdString());
         filters.reprogrammingEquals = parsePositiveInt(input_.reprogramming.equals);
         filters.reprogrammingValues = parsePositiveIntList(input_.reprogramming.values);
         filters.reprogrammingComparison =
             domain::numericComparisonModeFromString(input_.reprogramming.mode.toStdString());
-        filters.issueWeekStart = parsePositiveInt(input_.weekRanges.issueStart);
-        filters.issueWeekEnd = parsePositiveInt(input_.weekRanges.issueEnd);
-        filters.executionWeekStart = parsePositiveInt(input_.weekRanges.executionStart);
-        filters.executionWeekEnd = parsePositiveInt(input_.weekRanges.executionEnd);
+        filters.issueWeekStart =
+            domain::parseIsoYearWeek(input_.weekRanges.issueStart.toStdString());
+        filters.issueWeekEnd = domain::parseIsoYearWeek(input_.weekRanges.issueEnd.toStdString());
+        filters.executionWeekStart =
+            domain::parseIsoYearWeek(input_.weekRanges.executionStart.toStdString());
+        filters.executionWeekEnd =
+            domain::parseIsoYearWeek(input_.weekRanges.executionEnd.toStdString());
         filters.derivationMode = derivationModeFromString(input_.derivationMode);
         filters.onlyReprogrammed = input_.reprogramming.only;
         return filters;
@@ -310,20 +336,20 @@ namespace ssa::presentation::filterpanel {
         }
         const auto normalizedWeekColumn = input_.genericWeek.columnKey.trimmed().toStdString();
         if (normalizedKey == normalizedWeekColumn &&
-            (parsePositiveInt(input_.genericWeek.year).has_value() ||
-             parsePositiveInt(input_.genericWeek.week).has_value())) {
+            (domain::parseFilterYear(input_.genericWeek.year.toStdString()).has_value() ||
+             domain::parseIsoWeek(input_.genericWeek.week.toStdString()).has_value())) {
             return true;
         }
         if (normalizedKey == domain::ColumnCatalog::issueWeekColumnKey() &&
-            (parsePositiveInt(input_.years.issue).has_value() ||
-             parsePositiveInt(input_.weekRanges.issueStart).has_value() ||
-             parsePositiveInt(input_.weekRanges.issueEnd).has_value())) {
+            (domain::parseFilterYear(input_.years.issue.toStdString()).has_value() ||
+             domain::parseIsoYearWeek(input_.weekRanges.issueStart.toStdString()).has_value() ||
+             domain::parseIsoYearWeek(input_.weekRanges.issueEnd.toStdString()).has_value())) {
             return true;
         }
         if (normalizedKey == domain::ColumnCatalog::executionWeekColumnKey() &&
-            (parsePositiveInt(input_.years.execution).has_value() ||
-             parsePositiveInt(input_.weekRanges.executionStart).has_value() ||
-             parsePositiveInt(input_.weekRanges.executionEnd).has_value())) {
+            (domain::parseFilterYear(input_.years.execution.toStdString()).has_value() ||
+             domain::parseIsoYearWeek(input_.weekRanges.executionStart.toStdString()).has_value() ||
+             domain::parseIsoYearWeek(input_.weekRanges.executionEnd.toStdString()).has_value())) {
             return true;
         }
         if (normalizedKey == domain::ColumnCatalog::derivationColumnKey() &&

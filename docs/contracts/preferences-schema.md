@@ -1,6 +1,6 @@
 # Preferences Schema
 
-## Version 11
+## Version 12
 
 Runtime file: `ssa_cpp_preferences.json`.
 
@@ -43,6 +43,10 @@ Current fields:
 - Code defaults are the source of fallback.
 - Runtime preferences override defaults only when valid.
 - Invalid files must fail clearly at the persistence boundary.
+- Missing, non-integer, non-positive, and future schema versions are invalid.
+- Preference and filter preset JSON files are limited to 1 MiB.
+- At most 200 saved filters are accepted. Names are limited to 128 characters and filter
+  expressions are limited to 4096 characters.
 - Column widths are clamped by the presentation model to the supported UI range.
 - Visible column preferences must be reconciled against `ColumnCatalog`.
 - Column filter preferences must be reconciled against `ColumnCatalog`.
@@ -73,3 +77,5 @@ Current fields:
   order, removes `data_cadastro` from default visibility, moves `derivada_de` after
   `solicitante`, and raises legacy default `derivada_de` width from 62 to 88. Manual column order
   and non-default widths remain user-owned.
+- Version 11 to 12: removes `data_cadastro` from the legacy default visibility and places
+  `semana_cadastro`, `solicitante`, and `derivada_de` in the current default order.

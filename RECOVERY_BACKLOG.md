@@ -7,11 +7,6 @@
 
 ## Varredura de codigo (junho 2026) - pendentes
 
-### Concorrencia (mesma classe do bug TSan resolvido)
-- [HIGH] [C1] `PageQueryCoordinator` (PageQueryResult, payload mais pesado) nao tem `waitForFinished`+processEvents no destructor. Mesmo race do ResultStore<T> que fixei em 3 outros coordinators.
-- [HIGH] [C2] `WorkflowCommandRunner` (WorkflowResult com std::string) sem drain no destructor. Idem.
-- [MED] [C3] `MainPreferenceFlowCoordinator` watchers QString/FilterPresetLoadResult ainda nao-triviais - so apliquei o meio-fix (processEvents). Migrar para void-watcher + shared_ptr como nos outros 2.
-
 ### Performance estrutural (deferido - exige migration/schema)
 - [MED] [P1] `readAll` paginado em export/macro = O(N^2) OFFSET paging. Macro herda pageSize=100. Usar path `pageSize==0` (streaming) que ja existe.
 - [MED] [P2] status-last CASE sort (`UPPER(COALESCE(...))<>'STE'` por linha) nao-sargable, forca full-sort. Generated column `_status_is_ste` + composite index resolveria, mas exige migration robusta para DBs antigos (CREATE TABLE IF NOT EXISTS nao recria). Revertido - precisa de ALTER TABLE idempotente + fallback no builder.
@@ -39,7 +34,7 @@
 - [RESOLVED] [TSan] Data race em `QArrayDataPointer<char16_t>::deref()` corrigido. Causa raiz: `QFutureWatcher<T>` com T nao-trivial tem race no `ResultStore` durante teardown concorrente com o worker reportando resultado; alem disso `QtConcurrent::run` com cancel+setFuture imediato race o vtable do runnable. Correcoes aplicadas:
   - `UserPreferencesCoordinator`: migrado para `QFutureWatcher<void>` + erro em `std::string` protegido por mutex.
   - `FilterPanelDistinctValueFetcher`: migrado para `QFutureWatcher<void>` + resultado via `shared_ptr` guarded por mutex; requests concorrentes agora enfileirados (pending) em vez de cancel+setFuture imediato.
-  - `MainPreferenceFlowCoordinator`: adicionado `processEvents()` apos `waitForFinished` para drenar o signal finished antes do teardown.
+  - `MainPreferenceFlowCoordinator`, `PageQueryCoordinator` e `WorkflowCommandRunner`: migrados para `QFutureWatcher<void>` com estado compartilhado sincronizado; teardown sem `processEvents()`.
   Validado: dev-tsan 100/100 (2x consecutivas).
 
 - [COVERAGE] Analise de gaps de cobertura (78.15% linhas agregado, meta 90%).
@@ -79,5 +74,11 @@
 
 ## Consolidacao GUI QML/Qt (julho 2026) - pendentes
 
+- [PENDING] [GUI-CONTRACT-WEEK-DERIVATION] Decidir se a GUI deve restaurar o filtro generico de semana e o seletor de derivacao descritos em `docs/contracts/gui-behavior.md`. O runtime atual expoe apenas os cards de emissao e execucao e nao oferece controle visual para `derivationMode`. Nao alterar o layout ate uma decisao de produto explicita.
 - [PENDING] [TYPESCALE-POINTSIZE] Migrar TypeScale de `font.pixelSize` para `font.pointSize` para respeitar a escala de fonte/DPI do SO (acessibilidade - fonte grande). Impacto: revalidar todos os 36 QML em Retina/HiDPI e telas com fonte do SO em Large. Slice dedicado.
 - [PENDING] [F5-DEAD-PREVIEW-API] Apos commit `6ddb6ef` (dropdown usa `loadedValueOptions` direto), `FilterPanelViewModel::columnValuePreviewOptionsFor` e `hasMoreColumnValueOptionsFor` nao tem caller em QML (so em testes smoke). Remover do VM + ajustar testes que os usam como veiculo para testar reset/cache do `FilterPanelColumnValueOptions`. Slice dedicado - nao misturar com outras mudancas pois os testes validam comportamento real de reset.
+
+## Cobertura de seguranca consolidada (julho 2026)
+
+- Scanners removidos de Python, Node e DAST nao foram restaurados porque o repositorio nao possui superficie Python, Node ou servico HTTP implantado. A cobertura aplicavel permanece em `semgrep.yml`, `devskim.yml`, `defender-for-devops.yml`, `codeql.yml`, `dependency-review.yml` e `ci.yml`, com PR e agenda onde suportado.
+- [EXTERNAL] Criar/configurar o environment GitHub `release` com revisores obrigatorios. O YAML referencia esse environment, mas a protecao efetiva depende da configuracao no repositorio GitHub.

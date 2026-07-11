@@ -10,9 +10,13 @@
 #include <QTemporaryFile>
 
 #include <algorithm>
+#include <chrono>
 #include <filesystem>
+#include <future>
 #include <sqlite3.h>
+#include <stop_token>
 #include <string>
+#include <system_error>
 #include <vector>
 
 namespace {
@@ -204,6 +208,33 @@ TEST_CASE_METHOD(SqliteRepositoryFixture, "sqlite repository returns details and
 }
 
 TEST_CASE_METHOD(SqliteRepositoryFixture,
+                 "sqlite repository measures trimmed maximum value length") {
+    executeSql(path, R"SQL(
+        UPDATE ssa_table
+        SET responsavel_execucao = '  Longest Name  '
+        WHERE numero_ssa = '202500003';
+    )SQL");
+
+    REQUIRE(repository.maxValueLength("responsavel_execucao") == 12);
+    REQUIRE(repository.maxValueLength("situacao") == 3);
+    REQUIRE_THROWS_AS(repository.maxValueLength("unknown_column"), std::invalid_argument);
+    REQUIRE_THROWS_AS(repository.maxValueLength("qtd_derivadas"), std::invalid_argument);
+}
+
+TEST_CASE_METHOD(SqliteRepositoryFixture,
+                 "sqlite repository rejects maximum length query with stopped token") {
+    std::stop_source stopSource;
+    stopSource.request_stop();
+
+    try {
+        static_cast<void>(repository.maxValueLength("situacao", stopSource.get_token()));
+        FAIL("stopped maximum length query did not report cancellation");
+    } catch (const std::system_error& error) {
+        REQUIRE(error.code() == std::make_error_code(std::errc::operation_canceled));
+    }
+}
+
+TEST_CASE_METHOD(SqliteRepositoryFixture,
                  "sqlite repository orders responsible and numeric distinct values for display") {
     executeSql(path, R"SQL(
         INSERT INTO ssa_table VALUES
@@ -331,6 +362,44 @@ TEST_CASE_METHOD(SqliteRepositoryFixture,
     REQUIRE(count == 4);
 }
 
+TEST_CASE_METHOD(SqliteRepositoryFixture,
+                 "sqlite repository keeps page reads available while streaming export") {
+    ssa::domain::SsaPageRequest request;
+    request.excludeScaSesSte = false;
+    request.pageSize = 0;
+    std::mutex mutex;
+    std::condition_variable enteredCondition;
+    std::condition_variable releaseCondition;
+    bool entered = false;
+    bool release = false;
+
+    auto exportRead = std::async(std::launch::async, [&] {
+        return repository.readAll(request, [&](const ssa::domain::SsaRecord&) {
+            std::unique_lock lock(mutex);
+            entered = true;
+            enteredCondition.notify_one();
+            releaseCondition.wait(lock, [&] { return release; });
+            return std::optional<std::string>{};
+        });
+    });
+    {
+        std::unique_lock lock(mutex);
+        REQUIRE(enteredCondition.wait_for(lock, std::chrono::seconds{1}, [&] { return entered; }));
+    }
+
+    auto count = std::async(std::launch::async, [&] { return repository.count(request); });
+    const bool countReady =
+        count.wait_for(std::chrono::milliseconds{100}) == std::future_status::ready;
+    {
+        const std::scoped_lock lock(mutex);
+        release = true;
+    }
+    releaseCondition.notify_one();
+    REQUIRE(exportRead.get().ok());
+    REQUIRE(countReady);
+    REQUIRE(count.get() > 0);
+}
+
 TEST_CASE_METHOD(SqliteRepositoryFixture, "sqlite repository applies advanced filters") {
     ssa::domain::SsaPageRequest request;
     request.pageSize = 10;
@@ -364,6 +433,111 @@ TEST_CASE_METHOD(SqliteRepositoryFixture,
     REQUIRE(page.totalRows == 1);
     REQUIRE(page.rows.size() == 1);
     REQUIRE(page.rows[0].valueOf("numero_ssa") == "202500003");
+}
+
+TEST_CASE_METHOD(SqliteRepositoryFixture,
+                 "sqlite repository rejects a query with a stopped token") {
+    std::stop_source stopSource;
+    stopSource.request_stop();
+
+    ssa::domain::SsaPageRequest request;
+    request.excludeScaSesSte = false;
+
+    try {
+        static_cast<void>(repository.count(request, stopSource.get_token()));
+        FAIL("stopped query did not report cancellation");
+    } catch (const std::system_error& error) {
+        REQUIRE(error.code() == std::make_error_code(std::errc::operation_canceled));
+    }
+}
+
+TEST_CASE_METHOD(SqliteRepositoryFixture,
+                 "sqlite repository rejects every remaining read with a stopped token") {
+    std::stop_source stopSource;
+    stopSource.request_stop();
+    const auto token = stopSource.get_token();
+    ssa::domain::SsaPageRequest request;
+
+    const auto requireCanceled = [](auto&& operation) {
+        try {
+            operation();
+            FAIL("stopped read did not report cancellation");
+        } catch (const std::system_error& error) {
+            REQUIRE(error.code() == std::make_error_code(std::errc::operation_canceled));
+        }
+    };
+
+    requireCanceled([&] {
+        static_cast<void>(repository.recordBySsaNumber(ssa::domain::SsaNumber{"202500003"}, token));
+    });
+    requireCanceled([&] {
+        static_cast<void>(repository.derivadasDiretas(ssa::domain::SsaNumber{"202500003"}, token));
+    });
+    requireCanceled([&] {
+        static_cast<void>(repository.readAll(
+            request, [](const ssa::domain::SsaRecord&) { return std::nullopt; }, token));
+    });
+}
+
+TEST_CASE_METHOD(SqliteRepositoryFixture,
+                 "sqlite repository interrupts a running query after stop") {
+    executeSql(path, R"SQL(
+        CREATE TABLE slow_query_control (max_value INTEGER NOT NULL);
+        INSERT INTO slow_query_control VALUES (100000000);
+        CREATE VIEW slow_ssa_table AS
+        WITH RECURSIVE counter(value) AS (
+            VALUES(1)
+            UNION ALL
+            SELECT value + 1 FROM counter
+            WHERE value < (SELECT max_value FROM slow_query_control)
+        )
+        SELECT value AS numero_ssa FROM counter;
+    )SQL");
+    ssa::infra::sqlite::SqliteSsaRepository slowRepository(
+        path, ssa::query::SqlQueryBuilder{"slow_ssa_table"});
+    ssa::domain::SsaPageRequest request;
+    request.excludeScaSesSte = false;
+    std::stop_source stopSource;
+
+    auto query = std::async(std::launch::async, [&] {
+        try {
+            static_cast<void>(slowRepository.page(request, stopSource.get_token()));
+            return std::error_code{};
+        } catch (const std::system_error& error) {
+            return error.code();
+        }
+    });
+    REQUIRE(query.wait_for(std::chrono::milliseconds{10}) == std::future_status::timeout);
+
+    stopSource.request_stop();
+
+    REQUIRE(query.wait_for(std::chrono::seconds{2}) == std::future_status::ready);
+    REQUIRE(query.get() == std::make_error_code(std::errc::operation_canceled));
+
+    executeSql(path, "UPDATE slow_query_control SET max_value = 1;");
+    REQUIRE(slowRepository.count(request) == 1);
+
+    executeSql(path, "UPDATE slow_query_control SET max_value = 100000000;");
+    std::stop_source readStopSource;
+    auto read = std::async(std::launch::async, [&] {
+        try {
+            static_cast<void>(slowRepository.readAll(
+                request, [](const ssa::domain::SsaRecord&) { return std::nullopt; },
+                readStopSource.get_token()));
+            return std::error_code{};
+        } catch (const std::system_error& error) {
+            return error.code();
+        }
+    });
+    REQUIRE(read.wait_for(std::chrono::milliseconds{10}) == std::future_status::timeout);
+
+    readStopSource.request_stop();
+
+    REQUIRE(read.wait_for(std::chrono::seconds{2}) == std::future_status::ready);
+    REQUIRE(read.get() == std::make_error_code(std::errc::operation_canceled));
+
+    executeSql(path, "UPDATE slow_query_control SET max_value = 1;");
+    REQUIRE(slowRepository.count(request) == 1);
 }
 
 TEST_CASE("sqlite maintenance port runs vacuum analyze") {

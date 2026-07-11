@@ -36,6 +36,12 @@ namespace ssa::presentation {
         connectWorkflowRefresh();
     }
 
+    MainViewModel::~MainViewModel() {
+        auto finalSnapshot = preferencesFlow_.buildPreferencesSnapshot();
+        preferencesFlow_.shutdown();
+        preferences_.shutdown(std::move(finalSnapshot));
+    }
+
     void MainViewModel::connectPreferenceFlows() {
         connect(&browse_, &BrowseViewModel::preferencesSaveRequested, &preferencesFlow_,
                 &MainPreferenceFlowCoordinator::requestSaveFromSignal);

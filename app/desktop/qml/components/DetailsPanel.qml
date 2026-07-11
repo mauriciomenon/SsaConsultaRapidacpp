@@ -8,15 +8,12 @@ import SsaConsultaRapida
 Rectangle {
     id: root
     required property var viewModel
-    required property var browseViewModel
     property string density: "normal"
-    readonly property int titleTextSize: Theme.densityValue(root.density, 14, 16, 18)
     readonly property int labelTextSize: Theme.densityValue(root.density, 12, 13, 14)
     readonly property int valueTextSize: Theme.densityValue(root.density, 12, 13, 15)
     readonly property int detailsLabelWidth: Theme.densityValue(root.density, 104, 116, 132)
     readonly property int relationNodeHeight: Theme.densityValue(root.density, 36, 40, 44)
     readonly property int relationNodeMinWidth: Theme.densityValue(root.density, 78, 86, 94)
-    signal openRequested
     signal graphWindowRequested
     // Emitted when the user clicks a relation node: the main view loads that
     // SSA into the details panel (not open SAM).
@@ -190,6 +187,7 @@ Rectangle {
                                             Text {
                                                 id: relationText
                                                 text: relationRow.modelData.ssa
+                                                textFormat: Text.PlainText
                                                 // The Current node sits on accentSoft. Pick the foreground that
                                                 // contrasts with that specific tint across all themes.
                                                 color: relationRow.index === root.viewModel.currentRelationIndex ? (Theme.isDarkTint(Theme.accentSoft) ? Theme.text : (Theme.dark ? Theme.accentText : Theme.text)) : Theme.text
@@ -340,6 +338,7 @@ Rectangle {
                         Layout.preferredHeight: fieldDelegate.longField ? Math.max(root.valueTextSize + 5, contentHeight) : root.valueTextSize + 5
                         Layout.maximumHeight: fieldDelegate.longField ? 10000 : root.valueTextSize + 5
                         text: fieldDelegate.rowValue
+                        textFormat: TextEdit.PlainText
                         color: Theme.text
                         readOnly: true
                         selectByMouse: true

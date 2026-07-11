@@ -9,6 +9,7 @@ CheckBox {
     contentItem: Text {
         leftPadding: root.indicator.width + root.spacing
         text: root.text
+        textFormat: Text.PlainText
         color: root.enabled ? Theme.text : Theme.mutedText
         font.pixelSize: Theme.fontSizeMicro
         font.weight: Font.Normal

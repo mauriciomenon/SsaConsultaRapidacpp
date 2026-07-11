@@ -51,7 +51,10 @@ FilterCard {
             placeholderText: "Ano"
             text: root.week.yearFilter
             inputMethodHints: Qt.ImhDigitsOnly
-            onTextEdited: root.week.yearFilter = text
+            onTextEdited: {
+                if (root.week.isYearValid(text))
+                    root.week.yearFilter = text;
+            }
             onAccepted: root.applyRequested()
             background: Rectangle {
                 color: Theme.panelRaised
@@ -67,7 +70,10 @@ FilterCard {
             placeholderText: "Sem."
             text: root.week.weekFilter
             inputMethodHints: Qt.ImhDigitsOnly
-            onTextEdited: root.week.weekFilter = text
+            onTextEdited: {
+                if (root.week.isWeekValid(text))
+                    root.week.weekFilter = text;
+            }
             onAccepted: root.applyRequested()
             background: Rectangle {
                 color: Theme.panelRaised
@@ -83,7 +89,10 @@ FilterCard {
             placeholderText: "Ano Emis."
             text: root.week.issueYearFilter
             inputMethodHints: Qt.ImhDigitsOnly
-            onTextEdited: root.week.issueYearFilter = text
+            onTextEdited: {
+                if (root.week.isYearValid(text))
+                    root.week.issueYearFilter = text;
+            }
             onAccepted: root.applyRequested()
             background: Rectangle {
                 color: Theme.panelRaised
@@ -99,7 +108,10 @@ FilterCard {
             placeholderText: "Ano Exec."
             text: root.week.executionYearFilter
             inputMethodHints: Qt.ImhDigitsOnly
-            onTextEdited: root.week.executionYearFilter = text
+            onTextEdited: {
+                if (root.week.isYearValid(text))
+                    root.week.executionYearFilter = text;
+            }
             onAccepted: root.applyRequested()
             background: Rectangle {
                 color: Theme.panelRaised
@@ -134,7 +146,10 @@ FilterCard {
             placeholderText: "Emissao inicio"
             text: root.week.issueWeekStartFilter
             inputMethodHints: Qt.ImhDigitsOnly
-            onTextEdited: root.week.issueWeekStartFilter = text
+            onTextEdited: {
+                if (root.week.isYearWeekValid(text))
+                    root.week.issueWeekStartFilter = text;
+            }
             onAccepted: root.applyRequested()
             background: Rectangle {
                 color: Theme.panelRaised
@@ -151,7 +166,10 @@ FilterCard {
             placeholderText: "Emissao fim"
             text: root.week.issueWeekEndFilter
             inputMethodHints: Qt.ImhDigitsOnly
-            onTextEdited: root.week.issueWeekEndFilter = text
+            onTextEdited: {
+                if (root.week.isYearWeekValid(text))
+                    root.week.issueWeekEndFilter = text;
+            }
             onAccepted: root.applyRequested()
             background: Rectangle {
                 color: Theme.panelRaised
@@ -168,7 +186,10 @@ FilterCard {
             placeholderText: "Execucao inicio"
             text: root.week.executionWeekStartFilter
             inputMethodHints: Qt.ImhDigitsOnly
-            onTextEdited: root.week.executionWeekStartFilter = text
+            onTextEdited: {
+                if (root.week.isYearWeekValid(text))
+                    root.week.executionWeekStartFilter = text;
+            }
             onAccepted: root.applyRequested()
             background: Rectangle {
                 color: Theme.panelRaised
@@ -185,7 +206,10 @@ FilterCard {
             placeholderText: "Execucao fim"
             text: root.week.executionWeekEndFilter
             inputMethodHints: Qt.ImhDigitsOnly
-            onTextEdited: root.week.executionWeekEndFilter = text
+            onTextEdited: {
+                if (root.week.isYearWeekValid(text))
+                    root.week.executionWeekEndFilter = text;
+            }
             onAccepted: root.applyRequested()
             background: Rectangle {
                 color: Theme.panelRaised

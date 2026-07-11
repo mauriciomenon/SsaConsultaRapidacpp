@@ -16,6 +16,7 @@ namespace ssa::infra::importing {
         std::size_t failedLegacyXls{0};
         std::size_t unsupported{0};
         std::size_t failedCopies{0};
+        std::string rejectionReason;
     };
 
     class ImportFileStager final {

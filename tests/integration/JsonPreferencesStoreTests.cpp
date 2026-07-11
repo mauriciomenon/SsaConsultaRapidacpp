@@ -1,13 +1,67 @@
 #include "domain/ColumnCatalog.h"
 #include "infra/preferences/JsonFilterPresetStore.h"
+#include "infra/preferences/JsonPersistenceSupport.h"
 #include "infra/preferences/JsonUserPreferencesStore.h"
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <QFile>
+#include <QIODevice>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QTemporaryDir>
 
 #include <filesystem>
+#include <string>
+#include <utility>
+
+namespace {
+
+    constexpr qsizetype kOneMebibyte = 1024 * 1024;
+
+    class ShortWriteDevice final : public QIODevice {
+      public:
+        explicit ShortWriteDevice(const qint64 firstWriteBytes)
+            : firstWriteBytes_(firstWriteBytes) {}
+
+      protected:
+        qint64 readData(char*, qint64) override {
+            return -1;
+        }
+
+        qint64 writeData(const char*, const qint64 maximumSize) override {
+            if (!wroteOnce_) {
+                wroteOnce_ = true;
+                return std::min(firstWriteBytes_, maximumSize);
+            }
+            setErrorString("simulated short write failure");
+            return -1;
+        }
+
+      private:
+        qint64 firstWriteBytes_ = 0;
+        bool wroteOnce_ = false;
+    };
+
+    void writeBytes(const std::filesystem::path& path, const QByteArray& payload) {
+        QFile file(QString::fromStdString(path.string()));
+        REQUIRE(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        REQUIRE(file.write(payload) == payload.size());
+        file.close();
+    }
+
+    void writeObject(const std::filesystem::path& path, const QJsonObject& object) {
+        writeBytes(path, QJsonDocument(object).toJson(QJsonDocument::Compact));
+    }
+
+    QByteArray readBytes(const std::filesystem::path& path) {
+        QFile file(QString::fromStdString(path.string()));
+        REQUIRE(file.open(QIODevice::ReadOnly));
+        return file.readAll();
+    }
+
+} // namespace
 
 TEST_CASE("json preferences store saves user preference snapshot") {
     QTemporaryDir directory;
@@ -88,6 +142,233 @@ TEST_CASE("json preferences store saves user preference snapshot") {
     REQUIRE(loaded.filters.onlyReprogrammed);
 }
 
+TEST_CASE("user preference snapshots and saved documents use schema 12") {
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+
+    const auto path = std::filesystem::path{directory.path().toStdString()} / "prefs.json";
+    const ssa::infra::preferences::JsonUserPreferencesStore store(path);
+    ssa::ports::UserPreferencesSnapshot snapshot;
+
+    REQUIRE(snapshot.schemaVersion == 12);
+    REQUIRE(snapshot.schemaVersion == ssa::ports::kCurrentUserPreferencesSchemaVersion);
+    snapshot.schemaVersion = 3;
+    store.save(snapshot);
+
+    QJsonParseError parseError;
+    const auto document = QJsonDocument::fromJson(readBytes(path), &parseError);
+    REQUIRE(parseError.error == QJsonParseError::NoError);
+    REQUIRE(document.object().value("schema_version").toInt() ==
+            ssa::ports::kCurrentUserPreferencesSchemaVersion);
+    REQUIRE(store.load().schemaVersion == ssa::ports::kCurrentUserPreferencesSchemaVersion);
+}
+
+TEST_CASE("json preferences store rejects missing invalid and future schemas") {
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+
+    const auto path = std::filesystem::path{directory.path().toStdString()} / "prefs.json";
+    const ssa::infra::preferences::JsonUserPreferencesStore store(path);
+
+    SECTION("missing") {
+        writeObject(path, QJsonObject{{"theme", "ssa-dark"}});
+        REQUIRE_THROWS(store.load());
+    }
+    SECTION("invalid type") {
+        writeObject(path, QJsonObject{{"schema_version", "12"}});
+        REQUIRE_THROWS(store.load());
+    }
+    SECTION("invalid value") {
+        writeObject(path, QJsonObject{{"schema_version", 0}});
+        REQUIRE_THROWS(store.load());
+    }
+    SECTION("future") {
+        writeObject(path, QJsonObject{{"schema_version", 13}});
+        REQUIRE_THROWS(store.load());
+    }
+}
+
+TEST_CASE("json filter preset store rejects missing invalid and future schemas") {
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+
+    const auto path = std::filesystem::path{directory.path().toStdString()} / "preset.json";
+    const ssa::infra::preferences::JsonFilterPresetStore store;
+
+    SECTION("missing") {
+        writeObject(path, QJsonObject{{"quick_sector", "IEE3"}});
+        REQUIRE_THROWS(store.load(path));
+    }
+    SECTION("invalid type") {
+        writeObject(path, QJsonObject{{"schema_version", "1"}});
+        REQUIRE_THROWS(store.load(path));
+    }
+    SECTION("invalid value") {
+        writeObject(path, QJsonObject{{"schema_version", 0}});
+        REQUIRE_THROWS(store.load(path));
+    }
+    SECTION("future") {
+        writeObject(path, QJsonObject{{"schema_version", 2}});
+        REQUIRE_THROWS(store.load(path));
+    }
+}
+
+TEST_CASE("json preference stores reject files larger than one mebibyte") {
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+
+    SECTION("user preferences") {
+        const auto path = std::filesystem::path{directory.path().toStdString()} / "prefs.json";
+        writeObject(path,
+                    QJsonObject{{"schema_version", 12}, {"padding", QString(kOneMebibyte, 'x')}});
+        const ssa::infra::preferences::JsonUserPreferencesStore store(path);
+        REQUIRE_THROWS(store.load());
+    }
+    SECTION("filter preset") {
+        const auto path = std::filesystem::path{directory.path().toStdString()} / "preset.json";
+        writeObject(path,
+                    QJsonObject{{"schema_version", 1}, {"padding", QString(kOneMebibyte, 'x')}});
+        const ssa::infra::preferences::JsonFilterPresetStore store;
+        REQUIRE_THROWS(store.load(path));
+    }
+}
+
+TEST_CASE("oversized json replacement preserves the previous file") {
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+
+    SECTION("user preferences") {
+        const auto path = std::filesystem::path{directory.path().toStdString()} / "prefs.json";
+        const QByteArray original{R"JSON({"schema_version":12,"theme":"gruvbox"})JSON"};
+        writeBytes(path, original);
+        const ssa::infra::preferences::JsonUserPreferencesStore store(path);
+        ssa::ports::UserPreferencesSnapshot snapshot;
+        const std::string boundaryExpression(ssa::ports::kMaxFilterExpressionLength, 'x');
+        for (int index = 0; index < 200; ++index) {
+            ssa::ports::SavedFilterSnapshot saved;
+            saved.name = "filter-" + std::to_string(index);
+            saved.filters.searchText = boundaryExpression;
+            saved.filters.quickSector = boundaryExpression;
+            snapshot.savedFilters.push_back(std::move(saved));
+        }
+
+        try {
+            store.save(snapshot);
+            FAIL("oversized preferences payload must be rejected");
+        } catch (const std::runtime_error& error) {
+            REQUIRE(std::string{error.what()}.find("size limit") != std::string::npos);
+        }
+        REQUIRE(readBytes(path) == original);
+    }
+    SECTION("filter preset") {
+        const auto path = std::filesystem::path{directory.path().toStdString()} / "preset.json";
+        const QByteArray original{R"JSON({"schema_version":1,"quick_sector":"IEE3"})JSON"};
+        writeBytes(path, original);
+        const ssa::infra::preferences::JsonFilterPresetStore store;
+        ssa::ports::FilterPresetSnapshot snapshot;
+        snapshot.filters.searchText.assign(static_cast<std::size_t>(kOneMebibyte), 'x');
+
+        REQUIRE_THROWS(store.save(path, snapshot));
+        REQUIRE(readBytes(path) == original);
+    }
+}
+
+TEST_CASE("json persistence rejects a short write before commit") {
+    ShortWriteDevice output(3);
+    REQUIRE(output.open(QIODevice::WriteOnly));
+
+    REQUIRE_THROWS(ssa::infra::preferences::json_persistence::writeFully(
+        output, QByteArray{"payload"}, "preferences file", std::filesystem::path{"prefs.json"}));
+}
+
+TEST_CASE("json preferences store enforces saved filter count and name limits") {
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+
+    const auto path = std::filesystem::path{directory.path().toStdString()} / "prefs.json";
+    const ssa::infra::preferences::JsonUserPreferencesStore store(path);
+
+    SECTION("more than 200 filters on save") {
+        ssa::ports::UserPreferencesSnapshot snapshot;
+        for (int index = 0; index < 201; ++index) {
+            snapshot.savedFilters.push_back({"filter-" + std::to_string(index), {}});
+        }
+        REQUIRE_THROWS(store.save(snapshot));
+    }
+    SECTION("more than 200 filters on load") {
+        QJsonArray filters;
+        for (int index = 0; index < 201; ++index) {
+            filters.append(
+                QJsonObject{{"name", QString("filter-%1").arg(index)}, {"filters", QJsonObject{}}});
+        }
+        writeObject(path, QJsonObject{{"schema_version", 12}, {"saved_filters", filters}});
+        REQUIRE_THROWS(store.load());
+    }
+    SECTION("name longer than 128 characters on save") {
+        ssa::ports::UserPreferencesSnapshot snapshot;
+        snapshot.savedFilters.push_back({std::string(129, 'n'), {}});
+        REQUIRE_THROWS(store.save(snapshot));
+    }
+    SECTION("name longer than 128 characters on load") {
+        const QJsonArray filters{
+            QJsonObject{{"name", QString(129, 'n')}, {"filters", QJsonObject{}}}};
+        writeObject(path, QJsonObject{{"schema_version", 12}, {"saved_filters", filters}});
+        REQUIRE_THROWS(store.load());
+    }
+}
+
+TEST_CASE("json preference codecs reject filter expressions longer than 4096 characters") {
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+
+    const std::string oversizedExpression(4097, 'x');
+
+    SECTION("user preferences save") {
+        const auto path = std::filesystem::path{directory.path().toStdString()} / "prefs.json";
+        const ssa::infra::preferences::JsonUserPreferencesStore store(path);
+        ssa::ports::UserPreferencesSnapshot snapshot;
+        snapshot.filters.advancedTextFilters = {{"situacao", oversizedExpression}};
+        REQUIRE_THROWS(store.save(snapshot));
+    }
+    SECTION("user preferences load") {
+        const auto path = std::filesystem::path{directory.path().toStdString()} / "prefs.json";
+        const ssa::infra::preferences::JsonUserPreferencesStore store(path);
+        writeObject(path, QJsonObject{{"schema_version", 12},
+                                      {"advanced_text_filters",
+                                       QJsonObject{{"situacao", QString(4097, 'x')}}}});
+        REQUIRE_THROWS(store.load());
+    }
+    SECTION("filter preset save") {
+        const auto path = std::filesystem::path{directory.path().toStdString()} / "preset.json";
+        const ssa::infra::preferences::JsonFilterPresetStore store;
+        ssa::ports::FilterPresetSnapshot snapshot;
+        snapshot.filters.columnFilters = {{"situacao", oversizedExpression}};
+        REQUIRE_THROWS(store.save(path, snapshot));
+    }
+    SECTION("filter preset load") {
+        const auto path = std::filesystem::path{directory.path().toStdString()} / "preset.json";
+        const ssa::infra::preferences::JsonFilterPresetStore store;
+        writeObject(path,
+                    QJsonObject{{"schema_version", 1},
+                                {"column_filters", QJsonObject{{"situacao", QString(4097, 'x')}}}});
+        REQUIRE_THROWS(store.load(path));
+    }
+}
+
+TEST_CASE("json preference codecs count expression limits as unicode characters") {
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+
+    const auto path = std::filesystem::path{directory.path().toStdString()} / "prefs.json";
+    const ssa::infra::preferences::JsonUserPreferencesStore store(path);
+    const QString expression(4096, QChar{0x00E9});
+    ssa::ports::UserPreferencesSnapshot snapshot;
+    snapshot.filters.advancedTextFilters = {{"situacao", expression.toStdString()}};
+
+    REQUIRE_NOTHROW(store.save(snapshot));
+    REQUIRE(store.load().filters.advancedTextFilters.at("situacao") == expression.toStdString());
+}
+
 TEST_CASE("json preferences store uses ssa dark theme for a clean profile") {
     QTemporaryDir directory;
     REQUIRE(directory.isValid());
@@ -124,7 +405,7 @@ TEST_CASE("json preferences store keeps default columns when saved list is inval
     const auto path = std::filesystem::path{directory.path().toStdString()} / "prefs.json";
     QFile file(QString::fromStdString(path.string()));
     REQUIRE(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
-    file.write(R"JSON({"visible_columns":[1,false,null]})JSON");
+    file.write(R"JSON({"schema_version":12,"visible_columns":[1,false,null]})JSON");
     file.close();
 
     const ssa::infra::preferences::JsonUserPreferencesStore store(path);
@@ -141,7 +422,7 @@ TEST_CASE("json preferences store prunes legacy hidden visible columns on load")
     QFile file(QString::fromStdString(path.string()));
     REQUIRE(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
     file.write(
-        R"JSON({"visible_columns":["numero_ssa","equipamento","grau_prioridade_emissao","grau_prioridade_planejamento","situacao"]})JSON");
+        R"JSON({"schema_version":12,"visible_columns":["numero_ssa","equipamento","grau_prioridade_emissao","grau_prioridade_planejamento","situacao"]})JSON");
     file.close();
 
     const ssa::infra::preferences::JsonUserPreferencesStore store(path);
@@ -157,7 +438,8 @@ TEST_CASE("json preferences store prunes legacy description location visibility 
     const auto path = std::filesystem::path{directory.path().toStdString()} / "prefs.json";
     QFile file(QString::fromStdString(path.string()));
     REQUIRE(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
-    file.write(R"JSON({"visible_columns":["numero_ssa","descricao_localizacao","situacao"]})JSON");
+    file.write(
+        R"JSON({"schema_version":12,"visible_columns":["numero_ssa","descricao_localizacao","situacao"]})JSON");
     file.close();
 
     const ssa::infra::preferences::JsonUserPreferencesStore store(path);
@@ -344,7 +626,8 @@ TEST_CASE("json preferences store drops invalid column filters") {
     const auto path = std::filesystem::path{directory.path().toStdString()} / "prefs.json";
     QFile file(QString::fromStdString(path.string()));
     REQUIRE(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
-    file.write(R"JSON({"column_filters":{"missing":"x","situacao":"APV"}})JSON");
+    file.write(
+        R"JSON({"schema_version":12,"column_filters":{"missing":"x","situacao":"APV"}})JSON");
     file.close();
 
     const ssa::infra::preferences::JsonUserPreferencesStore store(path);
@@ -361,7 +644,8 @@ TEST_CASE("json preferences store drops invalid advanced text filters") {
     const auto path = std::filesystem::path{directory.path().toStdString()} / "prefs.json";
     QFile file(QString::fromStdString(path.string()));
     REQUIRE(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
-    file.write(R"JSON({"advanced_text_filters":{"missing":"x","setor_executor":"=MEG2"}})JSON");
+    file.write(
+        R"JSON({"schema_version":12,"advanced_text_filters":{"missing":"x","setor_executor":"=MEG2"}})JSON");
     file.close();
 
     const ssa::infra::preferences::JsonUserPreferencesStore store(path);

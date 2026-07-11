@@ -15,20 +15,21 @@ namespace ssa::presentation {
       public:
         [[nodiscard]] int version() const;
         [[nodiscard]] QStringList optionsFor(const QString& key) const;
+        [[nodiscard]] std::size_t maxValueLengthFor(const QString& key) const;
         [[nodiscard]] bool loadingFor(const QString& key) const;
         [[nodiscard]] bool hasFreshOptions(const QString& key, std::uint64_t stateVersion) const;
 
         void clearLoading();
         void markLoading(const QString& key);
         void store(const std::vector<std::string>& options, const QString& key,
-                   std::uint64_t stateVersion);
+                   std::uint64_t stateVersion, std::size_t maxValueLength = 0);
         void touchVersion();
 
       private:
         struct CacheEntry final {
-            std::vector<std::string> source;
             QStringList options;
             std::uint64_t stateVersion{0};
+            std::size_t maxValueLength{0};
         };
 
         [[nodiscard]] std::map<QString, CacheEntry>::const_iterator

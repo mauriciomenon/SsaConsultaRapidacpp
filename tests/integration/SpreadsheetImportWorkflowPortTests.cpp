@@ -85,6 +85,13 @@ xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
         return value;
     }
 
+    void createSparseFile(const std::filesystem::path& path, const std::uintmax_t size) {
+        std::ofstream output(path, std::ios::binary);
+        REQUIRE(output.good());
+        output.close();
+        std::filesystem::resize_file(path, size);
+    }
+
 #ifndef _WIN32
     std::filesystem::path writeFakeSoffice(const std::filesystem::path& directory) {
         const auto executable = directory / "fake-soffice";
@@ -221,6 +228,78 @@ TEST_CASE("spreadsheet import workflow reports xlsx read failure cause") {
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
     REQUIRE(result.message.find("failed=1") != std::string::npos);
     REQUIRE(result.message.find("error=cannot read xlsx zip package") != std::string::npos);
+}
+
+TEST_CASE("spreadsheet import workflow rejects more than 64 files before staging") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+    ssa::ports::ImportExternalFilesRequest request;
+    for (std::size_t index = 0; index < 65; ++index) {
+        request.files.push_back(root / ("source_" + std::to_string(index) + ".xlsx"));
+    }
+
+    const auto result = port.importExternalFiles(request);
+
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
+    REQUIRE(result.message.find("too_many_files max=64") != std::string::npos);
+    REQUIRE_FALSE(std::filesystem::exists(inputDirectory));
+    REQUIRE_FALSE(std::filesystem::exists(dbPath));
+}
+
+TEST_CASE("spreadsheet import workflow rejects files larger than 128 MiB before staging") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    constexpr std::uintmax_t maxFileBytes = 128ULL * 1024ULL * 1024ULL;
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto source = root / "oversized.xlsx";
+    const auto blockedInputPath = root / "input-is-a-file";
+    const auto dbPath = root / "data" / "ssas.db";
+    createSparseFile(source, maxFileBytes + 1);
+    createSparseFile(blockedInputPath, 1);
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(blockedInputPath, dbPath,
+                                                              importColumns());
+    ssa::ports::ImportExternalFilesRequest request;
+    request.files = {source};
+
+    const auto result = port.importExternalFiles(request);
+
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
+    REQUIRE(result.message.find("file_too_large max_bytes=134217728") != std::string::npos);
+    REQUIRE_FALSE(std::filesystem::exists(dbPath));
+}
+
+TEST_CASE("spreadsheet import workflow rejects batches larger than 1 GiB before staging") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    constexpr std::uintmax_t maxFileBytes = 128ULL * 1024ULL * 1024ULL;
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto sourceDirectory = root / "source";
+    const auto blockedInputPath = root / "input-is-a-file";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(sourceDirectory);
+    createSparseFile(blockedInputPath, 1);
+    ssa::ports::ImportExternalFilesRequest request;
+    for (std::size_t index = 0; index < 9; ++index) {
+        const auto source = sourceDirectory / ("part_" + std::to_string(index) + ".xlsx");
+        createSparseFile(source, maxFileBytes);
+        request.files.push_back(source);
+    }
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(blockedInputPath, dbPath,
+                                                              importColumns());
+
+    const auto result = port.importExternalFiles(request);
+
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
+    REQUIRE(result.message.find("batch_too_large max_bytes=1073741824") != std::string::npos);
+    REQUIRE_FALSE(std::filesystem::exists(dbPath));
 }
 
 TEST_CASE("spreadsheet import workflow full rescan replaces existing rows") {

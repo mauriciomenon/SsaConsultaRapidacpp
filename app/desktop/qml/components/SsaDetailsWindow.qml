@@ -13,7 +13,6 @@ ApplicationWindow {
     objectName: DesktopSmokeObjectNames.detailsWindow
     property var detailsViewModel: null
     property string graphStatusMessage: ""
-    signal graphNodeRequested(string ssaNumber)
     signal copyTextRequested(string text)
     title: detailsViewModel && detailsViewModel.selectedSsaNumber.length > 0 ? "Detalhes da SSA " + detailsViewModel.selectedSsaNumber : "Detalhes da SSA"
     width: Theme.clampedWindowDimension(Screen.desktopAvailableWidth, Theme.detailsWindowPreferredWidth, Theme.detailsWindowMinWidth)
@@ -181,6 +180,7 @@ ApplicationWindow {
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: Math.max(18, contentHeight)
                                 text: fieldDelegate.rowValue
+                                textFormat: TextEdit.PlainText
                                 color: Theme.text
                                 readOnly: true
                                 selectByMouse: true

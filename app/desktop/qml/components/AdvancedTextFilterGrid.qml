@@ -1,7 +1,6 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
-import QtQuick.Layouts
 import SsaConsultaRapida
 
 // Flow-based grid so each cell can carry its own height (the Macro card needs
@@ -15,8 +14,8 @@ Item {
     required property var advanced
     signal applyRequested
 
-    Layout.fillWidth: true
-    Layout.preferredHeight: gridFlow.childrenRect.height
+    implicitHeight: gridFlow.childrenRect.height
+    height: implicitHeight
     // Single source of truth: Theme.resolveGridLayout picks columns, gap and
     // cardWidth together so cards fill the row with no trailing empty space.
     readonly property var gridLayout: Theme.resolveGridLayout(root.width)
@@ -26,21 +25,6 @@ Item {
     readonly property int textCellHeight: 56
     readonly property int macroCellHeight: root.advanced.macro.reportRows.length > 0 ? 132 : textCellHeight - 4
 
-    function preloadOptions() {
-        root.filterViewModel.preloadAdvancedColumnValueOptions();
-    }
-
-    Component.onCompleted: root.preloadOptions()
-
-    Connections {
-        target: root.filterViewModel
-        function onColumnValueOptionsReset() {
-            // Debounced: collapses rapid filter toggles into a single preload
-            // instead of firing 12 serial SQL queries on every click.
-            root.filterViewModel.schedulePreloadAdvancedColumnValueOptions();
-        }
-    }
-
     Flow {
         id: gridFlow
         anchors.fill: parent
@@ -48,37 +32,34 @@ Item {
 
         // Text filter cards (14 cells: Setor emissor, ..., Situacao parcial).
         Repeater {
-            model: root.textFilters.cardStates
+            model: root.textFilters
 
             AdvancedTextFilterCard {
                 id: textDelegate
-                required property var modelData
-                readonly property var rowData: textDelegate.modelData
                 property var loadedValueOptions: []
                 property bool valueOptionsLoading: false
+                property int loadedMaxValueLength: 0
 
                 function reloadOptionState() {
-                    loadedValueOptions = root.filterViewModel.columnValueOptionsFor(rowData.key);
-                    valueOptionsLoading = root.filterViewModel.columnValueOptionsLoadingFor(rowData.key);
+                    loadedValueOptions = root.filterViewModel.columnValueOptionsFor(textDelegate.key);
+                    valueOptionsLoading = root.filterViewModel.columnValueOptionsLoadingFor(textDelegate.key);
+                    loadedMaxValueLength = root.filterViewModel.columnValueMaxLengthFor(textDelegate.key);
                 }
 
                 cardWidth: root.gridLayout.cardWidth
                 cardHeight: root.textCellHeight - 4
-                row: textDelegate.rowData
                 operatorModes: root.textFilters.operatorModes
                 allValues: loadedValueOptions
                 visibleValues: loadedValueOptions
                 valuesLoading: valueOptionsLoading
-                textFilter: rowData.textFilter !== undefined ? rowData.textFilter : ""
-                operatorIndex: rowData.operatorIndex !== undefined ? rowData.operatorIndex : -1
-                operatorLabel: rowData.operatorLabel !== undefined ? rowData.operatorLabel : ""
+                maxValueLength: loadedMaxValueLength
 
                 Component.onCompleted: reloadOptionState()
 
                 Connections {
                     target: root.filterViewModel
                     function onColumnValueOptionsChangedFor(key) {
-                        if (key === textDelegate.rowData.key)
+                        if (key === textDelegate.key)
                             textDelegate.reloadOptionState();
                     }
                     function onColumnValueOptionsReset() {
@@ -88,21 +69,18 @@ Item {
 
                 onOptionsRequested: {
                     if (loadedValueOptions.length === 0 && !valueOptionsLoading)
-                        root.filterViewModel.refreshColumnValueOptionsFor(rowData.key);
+                        root.filterViewModel.refreshColumnValueOptionsFor(textDelegate.key);
                 }
                 onOperatorModeRequested: function (mode) {
-                    root.textFilters.setOperatorMode(rowData.key, mode);
+                    root.textFilters.setOperatorMode(textDelegate.key, mode);
                 }
                 onSelectedValueRequested: function (value) {
-                    root.textFilters.updateFilterWithSelectedValue(rowData.key, value);
-                }
-                onLoadedValuesReplacementRequested: function (mode) {
-                    root.textFilters.replaceWithOperatorValueList(rowData.key, loadedValueOptions, mode);
+                    root.textFilters.updateFilterWithSelectedValue(textDelegate.key, value);
                 }
                 onMixedValuesReplacementRequested: function (includeValues, excludeValues) {
-                    root.textFilters.replaceWithOperatorValueLists(rowData.key, includeValues, excludeValues);
+                    root.textFilters.replaceWithOperatorValueLists(textDelegate.key, includeValues, excludeValues);
                 }
-                onTextFilterClearRequested: root.textFilters.clearTextFilterAndApply(rowData.key)
+                onTextFilterClearRequested: root.textFilters.clearTextFilterAndApply(textDelegate.key)
             }
         }
 
@@ -114,7 +92,6 @@ Item {
                 required property int index
                 cardWidth: root.gridLayout.cardWidth
                 cardHeight: root.macroCellHeight
-                sectorHierarchy: root.advanced.sectorHierarchy
                 macro: root.advanced.macro
                 onApplyRequested: root.applyRequested()
             }

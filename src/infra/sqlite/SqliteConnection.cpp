@@ -2,6 +2,7 @@
 
 #include <exception>
 #include <stdexcept>
+#include <system_error>
 
 namespace ssa::infra::sqlite {
 
@@ -106,6 +107,10 @@ namespace ssa::infra::sqlite {
         hasCurrentRow_ = false;
         if (rc == SQLITE_DONE) {
             return false;
+        }
+        if (rc == SQLITE_INTERRUPT) {
+            throw std::system_error(std::make_error_code(std::errc::operation_canceled),
+                                    "sqlite query canceled");
         }
         throw std::runtime_error("sqlite statement execution failed");
     }

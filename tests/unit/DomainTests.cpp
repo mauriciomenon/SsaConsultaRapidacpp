@@ -7,6 +7,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <limits>
 #include <memory>
 #include <ranges>
 #include <stdexcept>
@@ -183,4 +184,31 @@ TEST_CASE("ssa record rejects schema and value count mismatch") {
 
 TEST_CASE("page count rejects zero page size") {
     REQUIRE_THROWS_AS(ssa::domain::pageCount(10, 0), std::invalid_argument);
+}
+
+TEST_CASE("advanced filter year week arithmetic validates bounds before composing") {
+    ssa::domain::AdvancedFilterSpec filters;
+    filters.year = 2999;
+    filters.week = 53;
+
+    REQUIRE(filters.exactYearWeek().has_value());
+    CHECK(*filters.exactYearWeek() == std::int64_t{299953});
+    CHECK(*filters.yearStartWeek() == std::int64_t{299901});
+    CHECK(*filters.yearEndWeek() == std::int64_t{299953});
+
+    filters.year = 1899;
+    CHECK_FALSE(filters.exactYearWeek().has_value());
+    CHECK_FALSE(filters.yearStartWeek().has_value());
+    CHECK_FALSE(filters.yearEndWeek().has_value());
+
+    filters.year = 3000;
+    CHECK_FALSE(filters.exactYearWeek().has_value());
+
+    filters.year = std::numeric_limits<int>::max();
+    CHECK_FALSE(filters.exactYearWeek().has_value());
+    CHECK_FALSE(filters.yearStartWeek().has_value());
+
+    filters.year = 2026;
+    filters.week = 54;
+    CHECK_FALSE(filters.exactYearWeek().has_value());
 }

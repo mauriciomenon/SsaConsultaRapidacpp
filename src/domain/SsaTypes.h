@@ -3,6 +3,7 @@
 #include "domain/ColumnCatalog.h"
 
 #include <algorithm>
+#include <charconv>
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
@@ -27,6 +28,8 @@ namespace ssa::domain {
     inline constexpr int kFirstIsoWeek = 1;
     inline constexpr int kLastIsoWeek = 53;
     inline constexpr int kYearWeekMultiplier = 100;
+    inline constexpr int kMinFilterYear = 1900;
+    inline constexpr int kMaxFilterYear = 2999;
     inline constexpr std::size_t kDefaultRequestPageSize = 100;
     inline constexpr std::size_t kDefaultDistinctValuesLimit = 500;
     // Cap for advanced-filter distinct value dropdowns. High enough to surface
@@ -51,6 +54,74 @@ namespace ssa::domain {
 
     [[nodiscard]] inline bool shouldApplyStatusLastTieBreaker(const std::string_view columnKey) {
         return columnKey == kSsaNumberColumnKey;
+    }
+
+    [[nodiscard]] inline bool isValidFilterYear(const int year) {
+        return year >= kMinFilterYear && year <= kMaxFilterYear;
+    }
+
+    [[nodiscard]] inline bool isValidIsoWeek(const int week) {
+        return week >= kFirstIsoWeek && week <= kLastIsoWeek;
+    }
+
+    [[nodiscard]] inline std::optional<int> parseDecimalDigits(const std::string_view value) {
+        if (value.empty() || !std::ranges::all_of(value, [](const char character) {
+                return character >= '0' && character <= '9';
+            })) {
+            return std::nullopt;
+        }
+        int parsed = 0;
+        const auto [end, error] =
+            std::from_chars(value.data(), value.data() + value.size(), parsed);
+        if (error != std::errc{} || end != value.data() + value.size()) {
+            return std::nullopt;
+        }
+        return parsed;
+    }
+
+    [[nodiscard]] inline std::optional<int> parseFilterYear(const std::string_view value) {
+        if (value.size() != 4) {
+            return std::nullopt;
+        }
+        const auto year = parseDecimalDigits(value);
+        return year.has_value() && isValidFilterYear(*year) ? year : std::nullopt;
+    }
+
+    [[nodiscard]] inline std::optional<int> parseIsoWeek(const std::string_view value) {
+        if (value.empty() || value.size() > 2) {
+            return std::nullopt;
+        }
+        const auto week = parseDecimalDigits(value);
+        return week.has_value() && isValidIsoWeek(*week) ? week : std::nullopt;
+    }
+
+    [[nodiscard]] inline std::optional<std::int64_t> composeIsoYearWeek(const int year,
+                                                                        const int week) {
+        if (!isValidFilterYear(year) || !isValidIsoWeek(week)) {
+            return std::nullopt;
+        }
+        return (static_cast<std::int64_t>(year) * kYearWeekMultiplier) + week;
+    }
+
+    [[nodiscard]] inline bool isValidIsoYearWeek(const std::int64_t value) {
+        const auto year = static_cast<int>(value / kYearWeekMultiplier);
+        const auto week = static_cast<int>(value % kYearWeekMultiplier);
+        const auto composed = composeIsoYearWeek(year, week);
+        return composed.has_value() && *composed == value;
+    }
+
+    [[nodiscard]] inline std::optional<int> parseIsoYearWeek(const std::string_view value) {
+        if (value.size() != 6) {
+            return std::nullopt;
+        }
+        const auto year = parseFilterYear(value.substr(0, 4));
+        const auto week = parseIsoWeek(value.substr(4, 2));
+        if (!year.has_value() || !week.has_value()) {
+            return std::nullopt;
+        }
+        const auto composed = composeIsoYearWeek(*year, *week);
+        return composed.has_value() ? std::optional<int>{static_cast<int>(*composed)}
+                                    : std::nullopt;
     }
 
     class SsaNumber final {
@@ -149,25 +220,25 @@ namespace ssa::domain {
         DerivationFilterMode derivationMode{DerivationFilterMode::All};
         bool onlyReprogrammed{false};
 
-        [[nodiscard]] std::optional<int> exactYearWeek() const {
+        [[nodiscard]] std::optional<std::int64_t> exactYearWeek() const {
             if (!year.has_value() || !week.has_value()) {
                 return std::nullopt;
             }
-            return (*year * kYearWeekMultiplier) + *week;
+            return composeIsoYearWeek(*year, *week);
         }
 
-        [[nodiscard]] std::optional<int> yearStartWeek() const {
+        [[nodiscard]] std::optional<std::int64_t> yearStartWeek() const {
             if (!year.has_value()) {
                 return std::nullopt;
             }
-            return (*year * kYearWeekMultiplier) + kFirstIsoWeek;
+            return composeIsoYearWeek(*year, kFirstIsoWeek);
         }
 
-        [[nodiscard]] std::optional<int> yearEndWeek() const {
+        [[nodiscard]] std::optional<std::int64_t> yearEndWeek() const {
             if (!year.has_value()) {
                 return std::nullopt;
             }
-            return (*year * kYearWeekMultiplier) + kLastIsoWeek;
+            return composeIsoYearWeek(*year, kLastIsoWeek);
         }
     };
 

@@ -3,6 +3,7 @@
 #include "domain/ColumnCatalog.h"
 #include "domain/SsaTypes.h"
 #include "infra/preferences/FilterPreferencesJsonCodec.h"
+#include "infra/preferences/JsonPersistenceSupport.h"
 
 #include <QJsonArray>
 #include <QJsonObject>
@@ -16,7 +17,6 @@
 namespace ssa::infra::preferences {
 
     namespace {
-        constexpr int kCurrentPreferencesSchemaVersion = 12;
         constexpr std::string_view kDerivationColumnKey = "derivada_de";
         constexpr int kDerivationColumnWidth = 88;
         constexpr std::string_view kExecutorColumnKey = "setor_executor";
@@ -142,7 +142,7 @@ namespace ssa::infra::preferences {
         }
 
         void migrateDerivedCountColumn(ports::UserPreferencesSnapshot& snapshot) {
-            if (snapshot.schemaVersion >= kCurrentPreferencesSchemaVersion) {
+            if (snapshot.schemaVersion >= ports::kCurrentUserPreferencesSchemaVersion) {
                 return;
             }
             auto& columns = snapshot.visibleColumns;
@@ -216,7 +216,7 @@ namespace ssa::infra::preferences {
         }
 
         void migrateSchema8DerivationWidth(ports::UserPreferencesSnapshot& snapshot) {
-            if (snapshot.schemaVersion >= kCurrentPreferencesSchemaVersion) {
+            if (snapshot.schemaVersion >= ports::kCurrentUserPreferencesSchemaVersion) {
                 return;
             }
             const auto width = snapshot.columnWidths.find(std::string{kDerivationColumnKey});
@@ -256,7 +256,7 @@ namespace ssa::infra::preferences {
         }
 
         void migrateSchema11DerivationWidth(ports::UserPreferencesSnapshot& snapshot) {
-            if (snapshot.schemaVersion >= kCurrentPreferencesSchemaVersion) {
+            if (snapshot.schemaVersion >= ports::kCurrentUserPreferencesSchemaVersion) {
                 return;
             }
             for (const auto& migration : kSchema11WidthMigrations) {
@@ -287,7 +287,7 @@ namespace ssa::infra::preferences {
         }
 
         void migrateSchema12VisibleColumns(ports::UserPreferencesSnapshot& snapshot) {
-            if (snapshot.schemaVersion >= kCurrentPreferencesSchemaVersion) {
+            if (snapshot.schemaVersion >= ports::kCurrentUserPreferencesSchemaVersion) {
                 return;
             }
             removeVisibleColumn(snapshot.visibleColumns, "data_cadastro");
@@ -345,18 +345,24 @@ namespace ssa::infra::preferences {
         std::vector<ports::SavedFilterSnapshot> readSavedFilters(const QJsonObject& root) {
             std::vector<ports::SavedFilterSnapshot> filters;
             const QJsonArray savedFilters = root.value("saved_filters").toArray();
+            if (savedFilters.size() > static_cast<qsizetype>(ports::kMaxSavedFilterCount)) {
+                throw std::runtime_error("too many saved filters");
+            }
             filters.reserve(static_cast<std::size_t>(savedFilters.size()));
             for (const auto& value : savedFilters) {
                 if (!value.isObject()) {
                     continue;
                 }
                 const auto object = value.toObject();
-                auto name = object.value("name").toString().trimmed().toStdString();
-                if (name.empty()) {
+                const auto jsonName = object.value("name").toString().trimmed();
+                if (jsonName.isEmpty()) {
                     continue;
                 }
+                if (jsonName.size() > static_cast<qsizetype>(ports::kMaxSavedFilterNameLength)) {
+                    throw std::runtime_error("saved filter name too long");
+                }
                 ports::SavedFilterSnapshot saved;
-                saved.name = std::move(name);
+                saved.name = jsonName.toStdString();
                 saved.filters = FilterPreferencesJsonCodec{}.filtersFromObject(
                     object.value("filters").toObject(), saved.filters);
                 filters.push_back(std::move(saved));
@@ -369,14 +375,21 @@ namespace ssa::infra::preferences {
         }
 
         QJsonArray savedFiltersToJson(const std::vector<ports::SavedFilterSnapshot>& filters) {
+            if (filters.size() > ports::kMaxSavedFilterCount) {
+                throw std::runtime_error("too many saved filters");
+            }
             QJsonArray savedFilters;
             for (const auto& filter : filters) {
                 if (filter.name.empty()) {
                     continue;
                 }
+                const auto name = QString::fromStdString(filter.name);
+                if (name.size() > static_cast<qsizetype>(ports::kMaxSavedFilterNameLength)) {
+                    throw std::runtime_error("saved filter name too long");
+                }
                 QJsonObject item;
                 QJsonObject filterObject;
-                item.insert("name", QString::fromStdString(filter.name));
+                item.insert("name", name);
                 FilterPreferencesJsonCodec{}.writeFilters(filterObject, filter.filters);
                 item.insert("filters", filterObject);
                 savedFilters.append(item);
@@ -386,7 +399,7 @@ namespace ssa::infra::preferences {
 
         void writeWindowPreferences(QJsonObject& root,
                                     const ports::UserPreferencesSnapshot& snapshot) {
-            root.insert("schema_version", snapshot.schemaVersion);
+            root.insert("schema_version", ports::kCurrentUserPreferencesSchemaVersion);
             root.insert("page_size", domain::clampPageSize(snapshot.pageSize));
             root.insert("theme", QString::fromStdString(snapshot.theme));
             root.insert("density", QString::fromStdString(snapshot.density));
@@ -415,7 +428,8 @@ namespace ssa::infra::preferences {
         ports::UserPreferencesSnapshot snapshot;
         const QJsonObject root = document.object();
 
-        snapshot.schemaVersion = root.value("schema_version").toInt(snapshot.schemaVersion);
+        snapshot.schemaVersion = json_persistence::schemaVersion(
+            root, ports::kCurrentUserPreferencesSchemaVersion, "preferences file");
         snapshot.pageSize = domain::clampPageSize(root.value("page_size").toInt(snapshot.pageSize));
         snapshot.theme =
             root.value("theme").toString(QString::fromStdString(snapshot.theme)).toStdString();
@@ -441,7 +455,7 @@ namespace ssa::infra::preferences {
         migrateSchema11DefaultColumns(snapshot);
         migrateSchema11DerivationWidth(snapshot);
         migrateSchema12VisibleColumns(snapshot);
-        snapshot.schemaVersion = std::max(snapshot.schemaVersion, kCurrentPreferencesSchemaVersion);
+        snapshot.schemaVersion = ports::kCurrentUserPreferencesSchemaVersion;
         return snapshot;
     }
 

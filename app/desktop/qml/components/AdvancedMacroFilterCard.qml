@@ -11,7 +11,6 @@ import SsaConsultaRapida
 // does not affect the title position.
 FilterCard {
     id: root
-    required property var sectorHierarchy
     required property var macro
     required property real cardWidth
     required property real cardHeight
@@ -160,6 +159,7 @@ FilterCard {
                             Label {
                                 Layout.preferredWidth: 92
                                 text: reportRow.modelData.group
+                                textFormat: Text.PlainText
                                 color: Theme.text
                                 font.pixelSize: Theme.fontSizeMicro
                                 elide: Text.ElideRight
@@ -167,12 +167,14 @@ FilterCard {
                             Label {
                                 Layout.preferredWidth: 58
                                 text: reportRow.modelData.week
+                                textFormat: Text.PlainText
                                 color: Theme.text
                                 font.pixelSize: Theme.fontSizeMicro
                             }
                             Label {
                                 Layout.fillWidth: true
                                 text: reportRow.modelData.person
+                                textFormat: Text.PlainText
                                 color: Theme.text
                                 font.pixelSize: Theme.fontSizeMicro
                                 elide: Text.ElideRight
@@ -181,6 +183,7 @@ FilterCard {
                                 Layout.preferredWidth: 42
                                 horizontalAlignment: Text.AlignRight
                                 text: reportRow.modelData.count
+                                textFormat: Text.PlainText
                                 color: Theme.accentStrong
                                 font.pixelSize: Theme.fontSizeMicro
                             }

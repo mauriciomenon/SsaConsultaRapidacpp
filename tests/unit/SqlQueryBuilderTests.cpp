@@ -173,6 +173,35 @@ TEST_CASE("sql query builder compiles advanced text and range filters") {
     REQUIRE(queries.page.sql.find("SMM") == std::string::npos);
 }
 
+TEST_CASE("sql query builder rejects invalid advanced date filters") {
+    ssa::domain::SsaPageRequest request;
+
+    SECTION("generic year") {
+        request.advancedFilters.year = 3000;
+        REQUIRE_THROWS_AS(ssa::query::SqlQueryBuilder{}.build(request), std::invalid_argument);
+    }
+
+    SECTION("generic week") {
+        request.advancedFilters.week = 54;
+        REQUIRE_THROWS_AS(ssa::query::SqlQueryBuilder{}.build(request), std::invalid_argument);
+    }
+
+    SECTION("issue year") {
+        request.advancedFilters.issueYear = 1899;
+        REQUIRE_THROWS_AS(ssa::query::SqlQueryBuilder{}.build(request), std::invalid_argument);
+    }
+
+    SECTION("issue year week") {
+        request.advancedFilters.issueWeekStart = 20261;
+        REQUIRE_THROWS_AS(ssa::query::SqlQueryBuilder{}.build(request), std::invalid_argument);
+    }
+
+    SECTION("execution year week") {
+        request.advancedFilters.executionWeekEnd = 202654;
+        REQUIRE_THROWS_AS(ssa::query::SqlQueryBuilder{}.build(request), std::invalid_argument);
+    }
+}
+
 TEST_CASE("sql query builder compiles reprogramming multi-select as bound values") {
     ssa::domain::SsaPageRequest request;
     request.advancedFilters.reprogrammingValues = {1, 3, 5};
@@ -244,6 +273,18 @@ TEST_CASE("sql query builder orders numeric distinct values numerically") {
     REQUIRE(query.sql.find("CAST(TRIM(COALESCE(\"num_reprogramacoes\", '')) AS INTEGER) ASC") !=
             std::string::npos);
     REQUIRE(query.bindings.back() == "25");
+}
+
+TEST_CASE("sql query builder measures the maximum trimmed column value length") {
+    const auto query = ssa::query::SqlQueryBuilder{}.buildMaxValueLength("responsavel_execucao");
+
+    REQUIRE(query.sql ==
+            R"(SELECT MAX(LENGTH(TRIM(COALESCE("responsavel_execucao", '')))) FROM "ssa_table")");
+    REQUIRE(query.bindings.empty());
+    REQUIRE_THROWS_AS(ssa::query::SqlQueryBuilder{}.buildMaxValueLength("unknown_column"),
+                      std::invalid_argument);
+    REQUIRE_THROWS_AS(ssa::query::SqlQueryBuilder{}.buildMaxValueLength("qtd_derivadas"),
+                      std::invalid_argument);
 }
 
 TEST_CASE("sql query builder rejects overflowing page offsets") {

@@ -7,10 +7,13 @@
 #include <QObject>
 
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <exception>
 #include <memory>
 #include <mutex>
+#include <stop_token>
 #include <string>
 #include <vector>
 
@@ -24,16 +27,25 @@ namespace ssa::presentation {
             std::shared_ptr<query::SsaQueryService> queryService, QObject* parent = nullptr);
         ~FilterPanelDistinctValueFetcher() override;
 
-        void requestValues(const domain::DistinctValuesRequest& request,
-                           std::uint64_t requestToken);
+        void requestValues(const domain::DistinctValuesRequest& request, std::uint64_t requestToken,
+                           bool measureMaxValueLength);
         void clearPendingRequests();
 
       signals:
-        void valuesReady(std::uint64_t requestToken, std::vector<std::string> values);
+        void valuesReady(std::uint64_t requestToken, std::vector<std::string> values,
+                         std::size_t maxValueLength);
 
       private:
+        struct FetchResult final {
+            std::vector<std::string> values;
+            std::size_t maxValueLength{0};
+            std::exception_ptr error;
+            bool canceled{false};
+        };
+
         void onWatcherFinished();
-        void startWorker(const domain::DistinctValuesRequest& request, std::uint64_t requestToken);
+        void startWorker(const domain::DistinctValuesRequest& request, std::uint64_t requestToken,
+                         bool measureMaxValueLength);
 
         std::shared_ptr<query::SsaQueryService> queryService_;
         // void watcher: QFutureWatcher<T> for non-trivial T has a data race in
@@ -41,8 +53,9 @@ namespace ssa::presentation {
         // its result (TSan: race in vector<string> destruction). The result is
         // carried via a shared_ptr, guarded by resultMutex_.
         QFutureWatcher<void> watcher_;
+        std::stop_source activeStopSource_;
         std::shared_ptr<std::atomic_bool> activeCancelToken_;
-        std::shared_ptr<std::vector<std::string>> activeResult_;
+        std::shared_ptr<FetchResult> activeResult_;
         std::mutex resultMutex_;
         std::uint64_t activeRequestToken_{0};
         bool activeRequestInFlight_{false};
@@ -52,6 +65,7 @@ namespace ssa::presentation {
         struct PendingRequest final {
             domain::DistinctValuesRequest request;
             std::uint64_t requestToken{0};
+            bool measureMaxValueLength{false};
         };
 
         std::deque<PendingRequest> pendingRequests_;

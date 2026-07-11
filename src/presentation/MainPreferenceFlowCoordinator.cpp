@@ -3,7 +3,6 @@
 #include "presentation/FilterPreferencesNormalizer.h"
 #include "presentation/UserPreferencesCoordinator.h"
 
-#include <QCoreApplication>
 #include <QVariantMap>
 #include <QtConcurrent>
 
@@ -23,14 +22,16 @@ namespace ssa::presentation {
 #endif
         }
 
-        QString savePresetFile(const std::shared_ptr<ports::IFilterPresetStore>& store,
-                               const std::filesystem::path& path,
-                               const ports::FilterPresetSnapshot& snapshot) {
+        std::string savePresetFile(const std::shared_ptr<ports::IFilterPresetStore>& store,
+                                   const std::filesystem::path& path,
+                                   const ports::FilterPresetSnapshot& snapshot) {
             try {
                 store->save(path, snapshot);
                 return {};
             } catch (const std::exception& exc) {
-                return QString::fromStdString(exc.what());
+                return exc.what();
+            } catch (...) {
+                return "Erro desconhecido ao exportar filtros";
             }
         }
 
@@ -40,7 +41,9 @@ namespace ssa::presentation {
             try {
                 return {store->load(path), {}};
             } catch (const std::exception& exc) {
-                return {{}, QString::fromStdString(exc.what())};
+                return {{}, exc.what()};
+            } catch (...) {
+                return {{}, "Erro desconhecido ao importar filtros"};
             }
         }
 
@@ -80,6 +83,10 @@ namespace ssa::presentation {
             return name.trimmed();
         }
 
+        bool savedFilterNameEquals(const ports::SavedFilterSnapshot& filter, const QString& name) {
+            return QString::fromStdString(filter.name).compare(name, Qt::CaseInsensitive) == 0;
+        }
+
         void sortSavedFilters(std::vector<ports::SavedFilterSnapshot>& filters) {
             std::ranges::sort(filters, [](const auto& lhs, const auto& rhs) {
                 return QString::fromStdString(lhs.name).localeAwareCompare(
@@ -110,14 +117,31 @@ namespace ssa::presentation {
         application::FilterPresetService& presetService, QObject* parent)
         : QObject(parent), browse_(browse), ui_(ui), columns_(columns), preferences_(preferences),
           presetStore_(std::move(presetStore)), presetService_(presetService) {
-        connect(&exportPresetWatcher_, &QFutureWatcher<QString>::finished, this,
+        connect(&exportPresetWatcher_, &QFutureWatcher<void>::finished, this,
                 &MainPreferenceFlowCoordinator::finishExportFilterPreset);
-        connect(&importPresetWatcher_, &QFutureWatcher<FilterPresetLoadResult>::finished, this,
+        connect(&importPresetWatcher_, &QFutureWatcher<void>::finished, this,
                 &MainPreferenceFlowCoordinator::finishImportFilterPreset);
     }
 
     MainPreferenceFlowCoordinator::~MainPreferenceFlowCoordinator() {
-        waitForPresetTasks();
+        shutdown();
+    }
+
+    void MainPreferenceFlowCoordinator::shutdown() {
+        if (shuttingDown_) {
+            return;
+        }
+        shuttingDown_ = true;
+        disconnect(&exportPresetWatcher_, nullptr, this, nullptr);
+        disconnect(&importPresetWatcher_, nullptr, this, nullptr);
+        if (exportPresetWatcher_.isRunning()) {
+            exportPresetWatcher_.waitForFinished();
+        }
+        if (importPresetWatcher_.isRunning()) {
+            importPresetWatcher_.waitForFinished();
+        }
+        exportPresetTask_.reset();
+        importPresetTask_.reset();
     }
 
     ports::UserPreferencesSnapshot MainPreferenceFlowCoordinator::buildPreferencesSnapshot() const {
@@ -154,11 +178,17 @@ namespace ssa::presentation {
     }
 
     void MainPreferenceFlowCoordinator::scheduleSavePreferences() {
+        if (shuttingDown_) {
+            return;
+        }
         preferences_.scheduleSave([this] { return buildPreferencesSnapshot(); });
     }
 
     void MainPreferenceFlowCoordinator::saveAppliedColumnPreferences(
         std::vector<std::string> visibleColumns, std::map<std::string, int> columnWidths) {
+        if (shuttingDown_) {
+            return;
+        }
         auto snapshot = buildPreferencesSnapshot();
         snapshot.visibleColumns = std::move(visibleColumns);
         snapshot.columnWidths = std::move(columnWidths);
@@ -166,10 +196,16 @@ namespace ssa::presentation {
     }
 
     void MainPreferenceFlowCoordinator::saveNowOrSchedule() {
+        if (shuttingDown_) {
+            return;
+        }
         preferences_.saveNowOrSchedule(buildPreferencesSnapshot());
     }
 
     void MainPreferenceFlowCoordinator::savePreferences() {
+        if (shuttingDown_) {
+            return;
+        }
         saveNowOrSchedule();
         emit this->statusMessageRequested("Salvamento solicitado");
     }
@@ -182,6 +218,9 @@ namespace ssa::presentation {
     }
 
     void MainPreferenceFlowCoordinator::notifyNoActiveFilter() {
+        if (shuttingDown_) {
+            return;
+        }
         emit this->statusMessageRequested("Aplique algum filtro antes de salvar");
     }
 
@@ -198,9 +237,20 @@ namespace ssa::presentation {
     }
 
     void MainPreferenceFlowCoordinator::saveCurrentFilter(const QString& name) {
+        if (shuttingDown_) {
+            return;
+        }
         const auto filterName = normalizedName(name);
         if (filterName.isEmpty()) {
             emit this->statusErrorRequested("Informe um nome para salvar o filtro");
+            return;
+        }
+        if (filterName.size() > static_cast<qsizetype>(ports::kMaxSavedFilterNameLength)) {
+            emit this->statusErrorRequested("Nome do filtro excede 128 caracteres");
+            return;
+        }
+        if (savedFilters_.size() >= ports::kMaxSavedFilterCount) {
+            emit this->statusErrorRequested("Limite de 200 filtros salvos atingido");
             return;
         }
         auto snapshot = buildPreferencesSnapshot();
@@ -210,7 +260,7 @@ namespace ssa::presentation {
             return;
         }
         const auto nameExists = std::ranges::any_of(savedFilters_, [&filterName](const auto& item) {
-            return QString::fromStdString(item.name).compare(filterName, Qt::CaseInsensitive) == 0;
+            return savedFilterNameEquals(item, filterName);
         });
         if (nameExists) {
             emit this->statusMessageRequested("Filtro salvo com este nome ja existe");
@@ -233,9 +283,12 @@ namespace ssa::presentation {
     }
 
     void MainPreferenceFlowCoordinator::applySavedFilter(const QString& name) {
+        if (shuttingDown_) {
+            return;
+        }
         const auto filterName = normalizedName(name);
         const auto filter = std::ranges::find_if(savedFilters_, [&filterName](const auto& item) {
-            return QString::fromStdString(item.name) == filterName;
+            return savedFilterNameEquals(item, filterName);
         });
         if (filter == savedFilters_.end()) {
             emit this->statusErrorRequested("Filtro salvo nao encontrado");
@@ -252,10 +305,13 @@ namespace ssa::presentation {
     }
 
     void MainPreferenceFlowCoordinator::removeSavedFilter(const QString& name) {
+        if (shuttingDown_) {
+            return;
+        }
         const auto filterName = normalizedName(name);
         const auto previousSize = savedFilters_.size();
         std::erase_if(savedFilters_, [&filterName](const auto& item) {
-            return QString::fromStdString(item.name) == filterName;
+            return savedFilterNameEquals(item, filterName);
         });
         if (savedFilters_.size() == previousSize) {
             emit this->statusErrorRequested("Filtro salvo nao encontrado");
@@ -268,6 +324,9 @@ namespace ssa::presentation {
     }
 
     void MainPreferenceFlowCoordinator::exportFilterPreset(const QUrl& outputUrl) {
+        if (shuttingDown_) {
+            return;
+        }
         if (!presetStore_) {
             emit this->statusErrorRequested("Exportacao de filtros nao configurada");
             return;
@@ -282,15 +341,23 @@ namespace ssa::presentation {
         }
 
         const auto store = presetStore_;
+        const auto task = std::make_shared<ExportPresetTaskState>();
+        exportPresetTask_ = task;
         exportPresetWatcher_.setFuture(QtConcurrent::run(
             [store, path = localFilePath(outputUrl),
-             snapshot = presetService_.createPresetWithClearedSearch(buildPreferencesSnapshot())] {
-                return savePresetFile(store, path, snapshot);
+             snapshot = presetService_.createPresetWithClearedSearch(buildPreferencesSnapshot()),
+             task] {
+                auto error = savePresetFile(store, path, snapshot);
+                const std::scoped_lock lock(task->mutex);
+                task->error = std::move(error);
             }));
         emit this->statusMessageRequested("Exportando filtros");
     }
 
     void MainPreferenceFlowCoordinator::importFilterPreset(const QUrl& inputUrl) {
+        if (shuttingDown_) {
+            return;
+        }
         if (!presetStore_) {
             emit this->statusErrorRequested("Importacao de filtros nao configurada");
             return;
@@ -305,25 +372,53 @@ namespace ssa::presentation {
         }
 
         const auto store = presetStore_;
-        importPresetWatcher_.setFuture(QtConcurrent::run(
-            [store, path = localFilePath(inputUrl)] { return loadPresetFile(store, path); }));
+        const auto task = std::make_shared<ImportPresetTaskState>();
+        importPresetTask_ = task;
+        importPresetWatcher_.setFuture(
+            QtConcurrent::run([store, path = localFilePath(inputUrl), task] {
+                auto result = loadPresetFile(store, path);
+                const std::scoped_lock lock(task->mutex);
+                task->snapshot = std::move(result.snapshot);
+                task->error = std::move(result.error);
+            }));
         emit this->statusMessageRequested("Importando filtros");
     }
 
     void MainPreferenceFlowCoordinator::finishExportFilterPreset() {
-        const auto error = exportPresetWatcher_.future().result();
-        if (error.isEmpty()) {
+        if (shuttingDown_) {
+            return;
+        }
+        std::string error;
+        const auto task = exportPresetTask_;
+        if (task) {
+            const std::scoped_lock lock(task->mutex);
+            error = task->error;
+        }
+        exportPresetTask_.reset();
+        if (error.empty()) {
             emit this->statusErrorClearRequested();
             emit this->statusMessageRequested("Filtros exportados");
         } else {
-            emit this->statusErrorRequested(error);
+            emit this->statusErrorRequested(QString::fromStdString(error));
         }
     }
 
     void MainPreferenceFlowCoordinator::finishImportFilterPreset() {
-        const auto result = importPresetWatcher_.future().result();
-        if (!result.error.isEmpty()) {
-            emit this->statusErrorRequested(result.error);
+        if (shuttingDown_) {
+            return;
+        }
+        FilterPresetLoadResult result;
+        const auto task = importPresetTask_;
+        if (task) {
+            const std::scoped_lock lock(task->mutex);
+            if (task->snapshot) {
+                result.snapshot = *task->snapshot;
+            }
+            result.error = task->error;
+        }
+        importPresetTask_.reset();
+        if (!result.error.empty()) {
+            emit this->statusErrorRequested(QString::fromStdString(result.error));
             return;
         }
         auto baseSnapshot = buildPreferencesSnapshot();
@@ -335,21 +430,10 @@ namespace ssa::presentation {
         emit this->statusMessageRequested("Filtros importados");
     }
 
-    void MainPreferenceFlowCoordinator::waitForPresetTasks() {
-        // Wait for the workers AND pump the event loop so the queued 'finished'
-        // signals are handled (and their ResultStore results consumed) before the
-        // watchers' destructors run. Without processEvents the QFutureInterface<T>
-        // result can race teardown (TSan: data race in ResultStore clear).
-        if (exportPresetWatcher_.isRunning()) {
-            exportPresetWatcher_.waitForFinished();
-        }
-        if (importPresetWatcher_.isRunning()) {
-            importPresetWatcher_.waitForFinished();
-        }
-        QCoreApplication::processEvents();
-    }
-
     void MainPreferenceFlowCoordinator::requestSaveFromSignal() {
+        if (shuttingDown_) {
+            return;
+        }
         scheduleSavePreferences();
     }
 

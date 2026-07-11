@@ -19,7 +19,8 @@ namespace ssa::presentation {
 
     AdvancedTextFilterViewModel::AdvancedTextFilterViewModel(
         filterpanel::FilterPanelAdvancedState& state, QObject* parent)
-        : QObject(parent), state_(state), rows_(AdvancedTextFilterRowModelFactory{}.buildRows()),
+        : QAbstractListModel(parent), state_(state),
+          rows_(AdvancedTextFilterRowModelFactory{}.buildRows()),
           operatorModes_{{QVariantMap{{"label", QStringLiteral("=")}, {"mode", "equals"}}},
                          {QVariantMap{{"label", QStringLiteral("\u2260")}, {"mode", "different"}}}},
           operatorModeIndex_{{"equals", 0}, {"different", 1}} {
@@ -41,8 +42,41 @@ namespace ssa::presentation {
         return operatorModes_;
     }
 
-    int AdvancedTextFilterViewModel::version() const {
-        return version_;
+    int AdvancedTextFilterViewModel::rowCount(const QModelIndex& parent) const {
+        return parent.isValid() ? 0 : static_cast<int>(cardStates_.size());
+    }
+
+    QVariant AdvancedTextFilterViewModel::data(const QModelIndex& index, const int role) const {
+        if (!index.isValid() || index.column() != 0 || index.row() < 0 ||
+            index.row() >= cardStates_.size()) {
+            return {};
+        }
+        const auto state = cardStates_.at(index.row()).toMap();
+        switch (role) {
+        case KeyRole:
+            return state.value(QStringLiteral("key"));
+        case LabelRole:
+            return state.value(QStringLiteral("label"));
+        case LabelShortRole:
+            return state.value(QStringLiteral("labelShort"));
+        case TextFilterRole:
+            return state.value(QStringLiteral("textFilter"));
+        case OperatorIndexRole:
+            return state.value(QStringLiteral("operatorIndex"));
+        case OperatorLabelRole:
+            return state.value(QStringLiteral("operatorLabel"));
+        default:
+            return {};
+        }
+    }
+
+    QHash<int, QByteArray> AdvancedTextFilterViewModel::roleNames() const {
+        return {{KeyRole, "key"},
+                {LabelRole, "label"},
+                {LabelShortRole, "labelShort"},
+                {TextFilterRole, "textFilter"},
+                {OperatorIndexRole, "operatorIndex"},
+                {OperatorLabelRole, "operatorLabel"}};
     }
 
     QString AdvancedTextFilterViewModel::operatorModeFor(const QString& key) const {
@@ -100,7 +134,7 @@ namespace ssa::presentation {
 
     bool AdvancedTextFilterViewModel::updateFilterWithSelectedValue(const QString& key,
                                                                     const QString& value) {
-        const auto expression =
+        auto expression =
             columns_.expressionWithAddedValue({.key = key,
                                                .currentExpression = effectiveTextFilter(key),
                                                .value = value,
@@ -148,7 +182,7 @@ namespace ssa::presentation {
     }
 
     QString AdvancedTextFilterViewModel::effectiveTextFilter(const QString& key) const {
-        const auto expression = textFilter(key);
+        auto expression = textFilter(key);
         if (key.trimmed() != executorColumnKey() || quickSector_.trimmed().isEmpty()) {
             return expression;
         }
@@ -181,13 +215,14 @@ namespace ssa::presentation {
 
     void AdvancedTextFilterViewModel::publishChanged() {
         rebuildCardStates();
-        ++version_;
         emit changed();
     }
 
     void AdvancedTextFilterViewModel::publishChangedFor(const QString& key) {
-        updateCardState(key);
-        ++version_;
+        const int row = updateCardState(key);
+        if (row >= 0) {
+            emit dataChanged(index(row, 0), index(row, 0), kDynamicRoles);
+        }
         emit changed();
     }
 
@@ -201,19 +236,30 @@ namespace ssa::presentation {
             indexes.insert(key, static_cast<int>(states.size()));
             states.push_back(state);
         }
+        if (states.size() != cardStates_.size()) {
+            beginResetModel();
+            cardStates_ = std::move(states);
+            cardStateIndex_ = std::move(indexes);
+            endResetModel();
+            return;
+        }
         cardStates_ = std::move(states);
         cardStateIndex_ = std::move(indexes);
+        if (!cardStates_.empty()) {
+            emit dataChanged(index(0, 0), index(rowCount() - 1, 0), kDynamicRoles);
+        }
     }
 
-    void AdvancedTextFilterViewModel::updateCardState(const QString& key) {
+    int AdvancedTextFilterViewModel::updateCardState(const QString& key) {
         const auto index = cardStateIndex_.constFind(key);
         if (index == cardStateIndex_.constEnd() || index.value() < 0 ||
             index.value() >= cardStates_.size()) {
             rebuildCardStates();
-            return;
+            return -1;
         }
         const auto state = createCardState(cardStates_.at(index.value()).toMap());
         cardStates_[index.value()] = state;
+        return index.value();
     }
 
     QVariantMap AdvancedTextFilterViewModel::createCardState(const QVariantMap& baseState) const {

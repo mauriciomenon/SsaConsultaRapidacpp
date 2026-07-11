@@ -6,6 +6,8 @@
 
 namespace ssa::ports {
 
+    inline constexpr int kCurrentFilterPresetSchemaVersion = 1;
+
     struct FilterPresetSnapshot {
         FilterPreferencesSnapshot filters;
     };

@@ -12,32 +12,42 @@ namespace ssa::query {
         }
     }
 
-    domain::SsaPageResult SsaQueryService::search(const domain::SsaPageRequest& request) const {
-        return repository_->page(request);
+    domain::SsaPageResult SsaQueryService::search(const domain::SsaPageRequest& request,
+                                                  std::stop_token stopToken) const {
+        return repository_->page(request, std::move(stopToken));
     }
 
-    std::size_t SsaQueryService::count(const domain::SsaPageRequest& request) const {
-        return repository_->count(request);
+    std::size_t SsaQueryService::count(const domain::SsaPageRequest& request,
+                                       std::stop_token stopToken) const {
+        return repository_->count(request, std::move(stopToken));
     }
 
-    std::optional<domain::SsaRecord>
-    SsaQueryService::details(const domain::SsaNumber& number) const {
-        return repository_->recordBySsaNumber(number);
+    std::optional<domain::SsaRecord> SsaQueryService::details(const domain::SsaNumber& number,
+                                                              std::stop_token stopToken) const {
+        return repository_->recordBySsaNumber(number, std::move(stopToken));
     }
 
     std::vector<domain::SsaDerivadaEntry>
-    SsaQueryService::derivadasDiretas(const domain::SsaNumber& number) const {
-        return repository_->derivadasDiretas(number);
+    SsaQueryService::derivadasDiretas(const domain::SsaNumber& number,
+                                      std::stop_token stopToken) const {
+        return repository_->derivadasDiretas(number, std::move(stopToken));
     }
 
     std::vector<std::string>
-    SsaQueryService::distinctValues(const domain::DistinctValuesRequest& request) const {
-        return repository_->distinctValues(request);
+    SsaQueryService::distinctValues(const domain::DistinctValuesRequest& request,
+                                    std::stop_token stopToken) const {
+        return repository_->distinctValues(request, std::move(stopToken));
+    }
+
+    std::size_t SsaQueryService::maxValueLength(const std::string_view columnKey,
+                                                std::stop_token stopToken) const {
+        return repository_->maxValueLength(columnKey, std::move(stopToken));
     }
 
     ports::SsaReadResult SsaQueryService::readAll(const domain::SsaPageRequest& request,
-                                                  ports::SsaRecordConsumer consume) const {
-        return repository_->readAll(request, std::move(consume));
+                                                  ports::SsaRecordConsumer consume,
+                                                  std::stop_token stopToken) const {
+        return repository_->readAll(request, std::move(consume), std::move(stopToken));
     }
 
 } // namespace ssa::query

@@ -16,6 +16,8 @@ FilterCard {
     required property real cardWidth
     required property real cardHeight
     signal applyRequested
+    property string rangeStartDraft: root.week.executionWeekStartFilter
+    property string rangeEndDraft: root.week.executionWeekEndFilter
 
     width: cardWidth
     height: cardHeight
@@ -42,13 +44,26 @@ FilterCard {
     }
 
     function submit() {
-        if (rangeStartField.text.length > 0 && rangeEndField.text.length === 0) {
+        if (!root.week.isYearWeekValid(root.rangeStartDraft) || !root.week.isYearWeekValid(root.rangeEndDraft))
+            return;
+        if (root.rangeStartDraft.length > 0 && root.rangeEndDraft.length === 0) {
             root.week.executionWeekEndFilter = String(root.currentYearWeek());
         } else {
-            root.week.executionWeekEndFilter = rangeEndField.text;
+            root.week.executionWeekEndFilter = root.rangeEndDraft;
         }
-        root.week.executionWeekStartFilter = rangeStartField.text;
+        root.week.executionWeekStartFilter = root.rangeStartDraft;
         root.applyRequested();
+    }
+
+    Connections {
+        target: root.week
+
+        function onChanged() {
+            if (!rangeStartField.activeFocus)
+                root.rangeStartDraft = root.week.executionWeekStartFilter;
+            if (!rangeEndField.activeFocus)
+                root.rangeEndDraft = root.week.executionWeekEndFilter;
+        }
     }
 
     ColumnLayout {
@@ -90,9 +105,9 @@ FilterCard {
                 Layout.fillWidth: true
                 Layout.preferredHeight: Theme.filterRowHeight
                 placeholderText: "De"
-                text: root.week.executionWeekStartFilter
+                text: root.rangeStartDraft
                 inputMethodHints: Qt.ImhDigitsOnly
-                onTextEdited: root.week.executionWeekStartFilter = text
+                onTextEdited: root.rangeStartDraft = text
                 onAccepted: root.submit()
                 background: Rectangle {
                     color: Theme.panelRaised
@@ -108,9 +123,9 @@ FilterCard {
                 Layout.fillWidth: true
                 Layout.preferredHeight: Theme.filterRowHeight
                 placeholderText: "Ate"
-                text: root.week.executionWeekEndFilter
+                text: root.rangeEndDraft
                 inputMethodHints: Qt.ImhDigitsOnly
-                onTextEdited: root.week.executionWeekEndFilter = text
+                onTextEdited: root.rangeEndDraft = text
                 onAccepted: root.submit()
                 background: Rectangle {
                     color: Theme.panelRaised
@@ -131,6 +146,8 @@ FilterCard {
                 ToolTip.text: "Limpar Execucao"
                 ToolTip.delay: 0
                 onClicked: {
+                    root.rangeStartDraft = "";
+                    root.rangeEndDraft = "";
                     root.week.executionWeekStartFilter = "";
                     root.week.executionWeekEndFilter = "";
                     root.applyRequested();

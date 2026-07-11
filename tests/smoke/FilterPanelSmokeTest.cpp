@@ -66,25 +66,26 @@ namespace {
         explicit FilterPanelRepository(std::chrono::milliseconds distinctDelay = {})
             : distinctDelay_(distinctDelay) {}
 
-        ssa::domain::SsaPageResult page(const ssa::domain::SsaPageRequest& request) const override {
+        ssa::domain::SsaPageResult page(const ssa::domain::SsaPageRequest& request,
+                                        std::stop_token = {}) const override {
             return {{}, 0, request.pageIndex, request.pageSize};
         }
 
-        std::size_t count(const ssa::domain::SsaPageRequest&) const override {
+        std::size_t count(const ssa::domain::SsaPageRequest&, std::stop_token = {}) const override {
             return 0;
         }
 
         std::optional<ssa::domain::SsaRecord>
-        recordBySsaNumber(const ssa::domain::SsaNumber&) const override {
+        recordBySsaNumber(const ssa::domain::SsaNumber&, std::stop_token = {}) const override {
             return std::nullopt;
         }
         std::vector<ssa::domain::SsaDerivadaEntry>
-        derivadasDiretas(const ssa::domain::SsaNumber&) const override {
+        derivadasDiretas(const ssa::domain::SsaNumber&, std::stop_token = {}) const override {
             return {};
         }
 
-        std::vector<std::string>
-        distinctValues(const ssa::domain::DistinctValuesRequest& request) const override {
+        std::vector<std::string> distinctValues(const ssa::domain::DistinctValuesRequest& request,
+                                                std::stop_token = {}) const override {
             if (distinctDelay_.count() > 0) {
                 std::this_thread::sleep_for(distinctDelay_);
             }
@@ -104,8 +105,14 @@ namespace {
             return {};
         }
 
+        [[nodiscard]] std::size_t maxValueLength(std::string_view,
+                                                 std::stop_token = {}) const override {
+            return 0;
+        }
+
         ssa::ports::SsaReadResult readAll(const ssa::domain::SsaPageRequest& request,
-                                          ssa::ports::SsaRecordConsumer consume) const override {
+                                          ssa::ports::SsaRecordConsumer consume,
+                                          std::stop_token = {}) const override {
             {
                 const std::scoped_lock lock(mutex_);
                 pageRequests_.push_back(request);
@@ -205,24 +212,28 @@ namespace {
             QCOMPARE(filters.columnKey(), QString("situacao"));
         }
 
-        void advanced_value_options_preload_queues_visible_card_values() {
-            for (int iteration = 0; iteration < 10; ++iteration) {
-                auto repository = std::make_shared<FilterPanelRepository>();
-                auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
-                ssa::presentation::FilterPanelViewModel filters(service);
+        void advanced_value_options_wait_for_explicit_request() {
+            auto repository = std::make_shared<FilterPanelRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::FilterPanelViewModel filters(service);
 
-                filters.preloadAdvancedColumnValueOptions();
+            QTest::qWait(400);
+            const auto hasAdvancedRequest = [repository] {
+                const auto requests = repository->distinctRequests();
+                return std::ranges::any_of(requests, [](const auto& request) {
+                    return request.limit == ssa::domain::kAdvancedDistinctValuesLimit;
+                });
+            };
+            QVERIFY(!hasAdvancedRequest());
 
-                QCOMPARE(filters.columnValueOptionsLoadingFor("setor_executor"), true);
-                QTRY_VERIFY_WITH_TIMEOUT(
-                    filters.columnValueOptionsFor("setor_executor").contains("MEG2"), 10000);
-                QCOMPARE(filters.columnValueOptionsLoadingFor("setor_executor"), false);
-                QVERIFY(filters.columnValueOptionsFor("setor_executor").contains("MEG2"));
-                QTRY_VERIFY_WITH_TIMEOUT(
-                    filters.columnValueOptionsFor("num_reprogramacoes").contains("1"), 10000);
-                QCOMPARE(filters.columnValueOptionsLoadingFor("num_reprogramacoes"), false);
-                QVERIFY(filters.columnValueOptionsFor("num_reprogramacoes").contains("1"));
-            }
+            filters.setColumnValue("APV");
+            QTest::qWait(400);
+            QVERIFY(!hasAdvancedRequest());
+
+            filters.refreshColumnValueOptionsFor("setor_executor");
+            QTRY_COMPARE_WITH_TIMEOUT(filters.columnValueOptionsLoadingFor("setor_executor"), false,
+                                      1000);
+            QVERIFY(hasAdvancedRequest());
         }
 
         void column_value_options_reset_hides_stale_cache_after_filter_change() {
@@ -263,7 +274,7 @@ namespace {
             QTRY_COMPARE_WITH_TIMEOUT(filters.columnValueOptionsLoadingFor("setor_executor"), false,
                                       3000);
 
-            filters.preloadAdvancedColumnValueOptions();
+            filters.refreshColumnValueOptionsFor("setor_executor");
             QTRY_COMPARE_WITH_TIMEOUT(filters.columnValueOptionsLoadingFor("setor_executor"), false,
                                       3000);
             QVERIFY(filters.columnValueOptionsFor("setor_executor").contains("MEG2"));
@@ -668,6 +679,64 @@ namespace {
             QCOMPARE(derivationRequest->filter.advanced.derivationMode,
                      ssa::domain::DerivationFilterMode::All);
             QVERIFY(derivationRequest->filter.advanced.executionYear.has_value());
+        }
+
+        void advanced_week_state_rejects_invalid_year_and_week_inputs() {
+            ssa::presentation::filterpanel::FilterPanelAdvancedState state;
+            ssa::presentation::AdvancedWeekFilterViewModel week(
+                state, {"semana_programada", "semana_cadastro", "semana_executada"});
+            QSignalSpy changedSpy(&week, &ssa::presentation::AdvancedWeekFilterViewModel::changed);
+
+            week.setIssueYearFilter("2");
+            week.setExecutionYearFilter("3000");
+            week.setWeekFilter("54");
+
+            QCOMPARE(week.issueYearFilter(), QString());
+            QCOMPARE(week.executionYearFilter(), QString());
+            QCOMPARE(week.weekFilter(), QString());
+            QCOMPARE(changedSpy.count(), 0);
+            QVERIFY(!state.filters().issueYear.has_value());
+            QVERIFY(!state.filters().executionYear.has_value());
+            QVERIFY(!state.filters().week.has_value());
+
+            week.setIssueYearFilter("1900");
+            week.setExecutionYearFilter("2999");
+            week.setWeekFilter("53");
+
+            QCOMPARE(state.filters().issueYear, std::optional<int>{1900});
+            QCOMPARE(state.filters().executionYear, std::optional<int>{2999});
+            QCOMPARE(state.filters().week, std::optional<int>{53});
+            QCOMPARE(changedSpy.count(), 3);
+        }
+
+        void advanced_week_state_publishes_only_complete_year_week_ranges() {
+            ssa::presentation::filterpanel::FilterPanelAdvancedState state;
+            ssa::presentation::AdvancedWeekFilterViewModel week(
+                state, {"semana_programada", "semana_cadastro", "semana_executada"});
+            QSignalSpy changedSpy(&week, &ssa::presentation::AdvancedWeekFilterViewModel::changed);
+
+            week.setIssueWeekStartFilter("20261");
+            week.setIssueWeekEndFilter("202600");
+            week.setExecutionWeekStartFilter("189953");
+            week.setExecutionWeekEndFilter("300001");
+
+            QCOMPARE(week.issueWeekStartFilter(), QString());
+            QCOMPARE(week.issueWeekEndFilter(), QString());
+            QCOMPARE(week.executionWeekStartFilter(), QString());
+            QCOMPARE(week.executionWeekEndFilter(), QString());
+            QCOMPARE(changedSpy.count(), 0);
+
+            week.setIssueWeekStartFilter("190001");
+            week.setIssueWeekEndFilter("202653");
+            week.setExecutionWeekStartFilter("202601");
+            week.setExecutionWeekEndFilter("299953");
+
+            const auto filters = state.filters();
+            QCOMPARE(filters.issueWeekStart, std::optional<int>{190001});
+            QCOMPARE(filters.issueWeekEnd, std::optional<int>{202653});
+            QCOMPARE(filters.executionWeekStart, std::optional<int>{202601});
+            QCOMPARE(filters.executionWeekEnd, std::optional<int>{299953});
+            QCOMPARE(changedSpy.count(), 4);
         }
 
         void sector_submodel_owns_sector_ui_state() {

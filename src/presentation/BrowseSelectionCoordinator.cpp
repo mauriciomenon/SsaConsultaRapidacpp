@@ -8,7 +8,7 @@ namespace ssa::presentation {
         : QObject(parent), details_(details), tableModel_(tableModel) {}
 
     void BrowseSelectionCoordinator::selectRow(const int row) {
-        const auto record = tableModel_.recordAt(row);
+        const auto* record = tableModel_.recordAt(row);
         if (!record) {
             details_.clearRecord();
             if (currentRow_ != kNoSelection) {

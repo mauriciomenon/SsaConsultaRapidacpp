@@ -24,11 +24,47 @@ Rectangle {
     readonly property var tableColumns: root.viewModel.tableHeaders
     property int previewColumnIndex: -1
     property int previewColumnWidth: 0
+    property string contextCellText: ""
+    property string contextSsaNumber: ""
 
     color: Theme.surface
     border.color: Theme.border
     radius: Theme.radius
     clip: true
+
+    Menu {
+        id: cellContextMenu
+        parent: root
+
+        MenuItem {
+            text: "Copiar celula"
+            onTriggered: root.copyTextRequested(root.contextCellText)
+        }
+        MenuItem {
+            text: "Copiar numero SSA"
+            enabled: root.contextSsaNumber.length > 0
+            onTriggered: root.copyTextRequested(root.contextSsaNumber)
+        }
+        MenuItem {
+            text: "Copiar diagrama SVG"
+            enabled: root.viewModel.details.graphModel.nodeCount > 0
+            onTriggered: root.copyDerivationSvgRequested()
+        }
+        MenuSeparator {}
+        MenuItem {
+            text: "Abrir SAM"
+            enabled: root.contextSsaNumber.length > 0
+            onTriggered: root.openRequested()
+        }
+        MenuItem {
+            text: "Abrir tela de detalhes"
+            onTriggered: root.detailsWindowRequested()
+        }
+        MenuItem {
+            text: "Alterar colunas visiveis"
+            onTriggered: root.configureColumnsRequested()
+        }
+    }
 
     Column {
         anchors.fill: parent
@@ -256,7 +292,6 @@ Rectangle {
                 readonly property bool opensSam: columnConfig.opensSam === true
                 readonly property bool hasCellText: displayValue !== undefined && displayValue !== null && String(displayValue).length > 0
                 readonly property string cellText: hasCellText ? String(displayValue) : ""
-                readonly property string rowSsaNumber: root.viewModel.tableModel.ssaNumberAt(cellDelegate.row)
                 readonly property bool isDerivationLink: columnConfig.key === "derivada_de" && hasCellText
                 readonly property bool opensDerivationGraph: columnConfig.key === "qtd_derivadas" && Number(cellText) > 0
                 readonly property bool centerText: columnConfig.key === "situacao" || columnConfig.key === "derivada_de" || columnConfig.key === "localizacao_codigo" || columnConfig.key === "setor_emissor" || columnConfig.key === "setor_executor" || columnConfig.key === "qtd_derivadas" || columnConfig.key === "data_cadastro" || columnConfig.key === "semana_cadastro" || columnConfig.key === "semana_programada" || columnConfig.key === "semana_executada"
@@ -302,6 +337,7 @@ Rectangle {
                     anchors.leftMargin: 8
                     anchors.rightMargin: 8
                     text: cellDelegate.cellText
+                    textFormat: Text.PlainText
                     color: cellDelegate.opensSam || cellDelegate.isDerivationLink || cellDelegate.opensDerivationGraph ? Theme.accentStrong : Theme.text
                     horizontalAlignment: cellDelegate.centerText ? Text.AlignHCenter : Text.AlignLeft
                     verticalAlignment: Text.AlignVCenter
@@ -318,7 +354,15 @@ Rectangle {
                     onClicked: function (mouse) {
                         root.viewModel.selectRow(cellDelegate.row);
                         if (mouse.button === Qt.RightButton) {
-                            cellContextMenu.popup();
+                            root.contextCellText = cellDelegate.cellText;
+                            root.contextSsaNumber = root.viewModel.tableModel.ssaNumberAt(cellDelegate.row);
+                            const menuParent = Overlay.overlay !== null ? Overlay.overlay : root;
+                            if (cellContextMenu.parent !== menuParent)
+                                cellContextMenu.parent = menuParent;
+                            const menuPosition = cellDelegate.mapToItem(menuParent, mouse.x, mouse.y);
+                            cellContextMenu.x = menuPosition.x;
+                            cellContextMenu.y = menuPosition.y;
+                            cellContextMenu.open();
                             return;
                         }
                         if (cellDelegate.opensSam) {
@@ -331,40 +375,9 @@ Rectangle {
                     }
                     onDoubleClicked: {
                         root.viewModel.selectRow(cellDelegate.row);
+                        if (cellDelegate.opensSam || cellDelegate.isDerivationLink || cellDelegate.opensDerivationGraph)
+                            return;
                         root.detailsWindowRequested();
-                    }
-                }
-
-                Menu {
-                    id: cellContextMenu
-
-                    MenuItem {
-                        text: "Copiar celula"
-                        onTriggered: root.copyTextRequested(cellDelegate.cellText)
-                    }
-                    MenuItem {
-                        text: "Copiar numero SSA"
-                        enabled: cellDelegate.rowSsaNumber.length > 0
-                        onTriggered: root.copyTextRequested(cellDelegate.rowSsaNumber)
-                    }
-                    MenuItem {
-                        text: "Copiar diagrama SVG"
-                        enabled: root.viewModel.details.graphModel.nodeCount > 0
-                        onTriggered: root.copyDerivationSvgRequested()
-                    }
-                    MenuSeparator {}
-                    MenuItem {
-                        text: "Abrir SAM"
-                        enabled: cellDelegate.rowSsaNumber.length > 0
-                        onTriggered: root.openRequested()
-                    }
-                    MenuItem {
-                        text: "Abrir tela de detalhes"
-                        onTriggered: root.detailsWindowRequested()
-                    }
-                    MenuItem {
-                        text: "Alterar colunas visiveis"
-                        onTriggered: root.configureColumnsRequested()
                     }
                 }
             }

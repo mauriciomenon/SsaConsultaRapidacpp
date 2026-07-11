@@ -3,11 +3,17 @@
 #include "domain/SsaTypes.h"
 #include "ports/UserPreferenceDefaults.h"
 
+#include <cstddef>
 #include <map>
 #include <string>
 #include <vector>
 
 namespace ssa::ports {
+
+    inline constexpr int kCurrentUserPreferencesSchemaVersion = 12;
+    inline constexpr std::size_t kMaxSavedFilterCount = 200;
+    inline constexpr std::size_t kMaxSavedFilterNameLength = 128;
+    inline constexpr std::size_t kMaxFilterExpressionLength = 4096;
 
     struct FilterPreferencesSnapshot {
         std::string searchText;
@@ -44,7 +50,7 @@ namespace ssa::ports {
         std::string density{"compact"};
         std::string sortColumnKey{"numero_ssa"};
         FilterPreferencesSnapshot filters;
-        int schemaVersion{5};
+        int schemaVersion{kCurrentUserPreferencesSchemaVersion};
         int pageSize{domain::kDefaultPageSize};
         int detailsPanelWidth{ports::kDefaultDetailsPanelWidth};
         bool detailsVisible{true};

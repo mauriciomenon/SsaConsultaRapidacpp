@@ -11,8 +11,8 @@ namespace {
 
     class FakeRepository final : public ssa::ports::ISsaRepository {
       public:
-        [[nodiscard]] ssa::domain::SsaPageResult
-        page(const ssa::domain::SsaPageRequest& request) const override {
+        [[nodiscard]] ssa::domain::SsaPageResult page(const ssa::domain::SsaPageRequest& request,
+                                                      std::stop_token = {}) const override {
             lastRequest = request;
             ssa::domain::SsaPageResult result;
             result.pageIndex = request.pageIndex;
@@ -22,32 +22,39 @@ namespace {
             return result;
         }
 
-        [[nodiscard]] std::size_t count(const ssa::domain::SsaPageRequest& request) const override {
+        [[nodiscard]] std::size_t count(const ssa::domain::SsaPageRequest& request,
+                                        std::stop_token = {}) const override {
             lastRequest = request;
             return 1;
         }
 
         [[nodiscard]] std::optional<ssa::domain::SsaRecord>
-        recordBySsaNumber(const ssa::domain::SsaNumber& id) const override {
+        recordBySsaNumber(const ssa::domain::SsaNumber& id, std::stop_token = {}) const override {
             if (id.value() != "202500001") {
                 return std::nullopt;
             }
             return ssa::domain::SsaRecord{{{"numero_ssa", id.value()}}};
         }
         std::vector<ssa::domain::SsaDerivadaEntry>
-        derivadasDiretas(const ssa::domain::SsaNumber&) const override {
+        derivadasDiretas(const ssa::domain::SsaNumber&, std::stop_token = {}) const override {
             return {};
         }
 
         [[nodiscard]] std::vector<std::string>
-        distinctValues(const ssa::domain::DistinctValuesRequest& request) const override {
+        distinctValues(const ssa::domain::DistinctValuesRequest& request,
+                       std::stop_token = {}) const override {
             (void)request;
             return {};
         }
 
-        [[nodiscard]] ssa::ports::SsaReadResult
-        readAll(const ssa::domain::SsaPageRequest& request,
-                ssa::ports::SsaRecordConsumer consume) const override {
+        [[nodiscard]] std::size_t maxValueLength(std::string_view,
+                                                 std::stop_token = {}) const override {
+            return 0;
+        }
+
+        [[nodiscard]] ssa::ports::SsaReadResult readAll(const ssa::domain::SsaPageRequest& request,
+                                                        ssa::ports::SsaRecordConsumer consume,
+                                                        std::stop_token = {}) const override {
             auto pageResult = page(request);
             std::size_t rowCount = 0;
             for (const auto& row : pageResult.rows) {

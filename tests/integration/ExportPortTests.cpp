@@ -9,13 +9,15 @@
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+#include <stop_token>
+#include <system_error>
 
 namespace {
 
     class FakeRepository final : public ssa::ports::ISsaRepository {
       public:
-        [[nodiscard]] ssa::domain::SsaPageResult
-        page(const ssa::domain::SsaPageRequest& request) const override {
+        [[nodiscard]] ssa::domain::SsaPageResult page(const ssa::domain::SsaPageRequest& request,
+                                                      std::stop_token = {}) const override {
             ssa::domain::SsaPageResult result;
             result.pageIndex = request.pageIndex;
             result.pageSize = request.pageSize;
@@ -31,30 +33,40 @@ namespace {
             return result;
         }
 
-        [[nodiscard]] std::size_t count(const ssa::domain::SsaPageRequest& request) const override {
+        [[nodiscard]] std::size_t count(const ssa::domain::SsaPageRequest& request,
+                                        std::stop_token = {}) const override {
             (void)request;
             return 2;
         }
 
         [[nodiscard]] std::optional<ssa::domain::SsaRecord>
-        recordBySsaNumber(const ssa::domain::SsaNumber& id) const override {
+        recordBySsaNumber(const ssa::domain::SsaNumber& id, std::stop_token = {}) const override {
             (void)id;
             return std::nullopt;
         }
         std::vector<ssa::domain::SsaDerivadaEntry>
-        derivadasDiretas(const ssa::domain::SsaNumber&) const override {
+        derivadasDiretas(const ssa::domain::SsaNumber&, std::stop_token = {}) const override {
             return {};
         }
 
         [[nodiscard]] std::vector<std::string>
-        distinctValues(const ssa::domain::DistinctValuesRequest& request) const override {
+        distinctValues(const ssa::domain::DistinctValuesRequest& request,
+                       std::stop_token = {}) const override {
             (void)request;
             return {};
         }
 
+        [[nodiscard]] std::size_t maxValueLength(std::string_view,
+                                                 std::stop_token = {}) const override {
+            return 0;
+        }
+
         [[nodiscard]] ssa::ports::SsaReadResult
-        readAll(const ssa::domain::SsaPageRequest& request,
-                ssa::ports::SsaRecordConsumer consume) const override {
+        readAll(const ssa::domain::SsaPageRequest& request, ssa::ports::SsaRecordConsumer consume,
+                const std::stop_token stopToken = {}) const override {
+            if (stopToken.stop_requested()) {
+                throw std::system_error(std::make_error_code(std::errc::operation_canceled));
+            }
             std::size_t rowCount = 0;
             auto allRowsRequest = request;
             allRowsRequest.pageIndex = 0;
@@ -160,4 +172,21 @@ TEST_CASE("csv export port exports complete filtered list from any current page"
     // Export must emit the COMPLETE filtered list regardless of the current page,
     // not just the rows of page 1. Both rows must appear in the file.
     REQUIRE(readFile(outputPath) == "No SSA,Descricao SSA\n202500001,\"A,B\"\n202500002,Plain\n");
+}
+
+TEST_CASE("csv export port propagates a stopped token to the repository") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto repository = std::make_shared<FakeRepository>();
+    ssa::infra::exporting::CsvExportPort port(repository);
+    ssa::ports::ExportFilteredListRequest request;
+    request.outputPath =
+        std::filesystem::path{tempDir.path().toStdString()} / "ssa_cpp_export_canceled.csv";
+    std::stop_source stopSource;
+    stopSource.request_stop();
+
+    const auto result = port.exportFilteredList(request, stopSource.get_token());
+
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
 }

@@ -45,9 +45,19 @@ jobs:
 
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-
-        # Fetch all history for reliable blame/git info
       - run: git fetch --unshallow 2>/dev/null || true
+      - uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730
+        with:
+          version: "6.11.0"
+          cache: true
+      - name: Install CMake build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build libsqlite3-dev libgl1-mesa-dev sqlite3
+      - name: Configure CMake analysis build
+        run: cmake --preset dev
+      - name: Build CMake analysis target
+        run: cmake --build --preset dev
 
       - name: Analyze with SonarCloud
 
@@ -63,8 +73,6 @@ jobs:
             -Dsonar.sources=src,app,lib
             -Dsonar.tests=tests
             -Dsonar.cfamily.buildMode=cmake
-            -Dsonar.cfamily.cmake.command=cmake --preset dev
-            -Dsonar.cfamily.cmake.buildCommand=cmake --build --preset dev
             -Dsonar.verbose=false
             -Dsonar.scm.provider=git
           projectBaseDir: .

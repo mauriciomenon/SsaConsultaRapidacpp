@@ -63,6 +63,10 @@ namespace ssa::infra::importing {
     SpreadsheetImportWorkflowPort::importDiscoveredFiles(const ImportStagingResult& files,
                                                          const bool replaceAll) const {
         constexpr const char* operation = "import_xlsx_to_sqlite";
+        if (!files.rejectionReason.empty()) {
+            return {ports::WorkflowStatus::Rejected,
+                    std::string{operation} + " " + files.rejectionReason};
+        }
         if (files.xlsxFiles.empty()) {
             if (replaceAll) {
                 ResolvedSsaImportRows emptyRows;

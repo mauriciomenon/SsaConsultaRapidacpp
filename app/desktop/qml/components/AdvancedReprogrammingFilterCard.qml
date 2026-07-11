@@ -16,35 +16,6 @@ FilterCard {
     required property real cardHeight
     signal applyRequested
 
-    function clampedPopupX(popupWidth) {
-        const overlayRoot = Overlay.overlay;
-        if (overlayRoot === null)
-            return 0;
-        const origin = openValuesButton.mapToItem(overlayRoot, 0, 0);
-        const win = Window.window;
-        const boundsWidth = win !== null ? win.width : overlayRoot.width;
-        return Theme.clampedPopupX(boundsWidth, origin.x + openValuesButton.width, popupWidth);
-    }
-
-    function clampedPopupY(popupHeight) {
-        const overlayRoot = Overlay.overlay;
-        if (overlayRoot === null)
-            return openValuesButton.height + Theme.shortcutGap;
-        const origin = openValuesButton.mapToItem(overlayRoot, 0, 0);
-        const win = Window.window;
-        const boundsHeight = win !== null ? win.height : overlayRoot.height;
-        return Theme.clampedPopupY(boundsHeight, origin.y, openValuesButton.height, popupHeight);
-    }
-
-    function clampedPopupHeight(preferredHeight) {
-        const overlayRoot = Overlay.overlay;
-        if (overlayRoot === null)
-            return preferredHeight;
-        const win = Window.window;
-        const boundsHeight = win !== null ? win.height : overlayRoot.height;
-        return Theme.clampedPopupHeight(boundsHeight, preferredHeight);
-    }
-
     // Resolve X/Y/height together so the popup opens directly below the
     // trigger when possible (shrinking height to fit), and only clamps Y up
     // when opening below cannot fit at all.
@@ -90,11 +61,14 @@ FilterCard {
     readonly property string allWithReprogLabel: "Todas com Reprog."
     property var reprogrammingValueOptions: []
     property bool reprogrammingValueOptionsLoading: false
+    property int reprogrammingMaxValueLength: 0
     property var selectedReprogrammingValues: []
+    readonly property int reprogrammingPopupWidth: Theme.valuePopupWidth(root.reprogrammingColumnKey, root.reprogrammingMaxValueLength, Overlay.overlay !== null ? Overlay.overlay.width : 0)
 
     function reloadReprogrammingOptionState() {
         reprogrammingValueOptions = root.filterViewModel.columnValueOptionsFor(reprogrammingColumnKey);
         reprogrammingValueOptionsLoading = root.filterViewModel.columnValueOptionsLoadingFor(reprogrammingColumnKey);
+        reprogrammingMaxValueLength = root.filterViewModel.columnValueMaxLengthFor(reprogrammingColumnKey);
     }
 
     function currentValueText() {
@@ -153,6 +127,7 @@ FilterCard {
                 Layout.preferredWidth: Math.min(96, Math.max(60, root.width * 0.16))
                 visible: root.currentValueText().length > 0
                 text: root.currentValueText()
+                textFormat: Text.PlainText
                 color: Theme.accentStrong
                 font.pixelSize: Theme.fontSizeMicro
                 horizontalAlignment: Text.AlignRight
@@ -200,7 +175,7 @@ FilterCard {
                 Layout.preferredHeight: Theme.filterRowHeight
                 leftPadding: 7
                 rightPadding: 16
-                popup.width: Math.min(360, Math.max(220, root.width * 0.86))
+                popup.width: root.reprogrammingPopupWidth
                 model: [root.allWithReprogLabel].concat(root.reprogrammingValueOptions)
                 displayText: root.currentValueText().length > 0 ? root.currentValueText() : "Valor"
                 enabled: root.reprogrammingValueOptions.length > 0 || root.derivation.onlyReprogrammed
@@ -234,9 +209,6 @@ FilterCard {
                 ToolTip.text: "Selecionar valores de reprogramacao"
                 ToolTip.delay: 0
                 onClicked: {
-                    root.reloadReprogrammingOptionState();
-                    root.filterViewModel.refreshColumnValueOptionsFor(root.reprogrammingColumnKey);
-                    root.selectedReprogrammingValues = root.derivation.reprogrammingValues.slice();
                     valuesPopup.open();
                 }
             }
@@ -262,23 +234,30 @@ FilterCard {
     Popup {
         id: valuesPopup
         parent: Overlay.overlay
-        x: root.clampedPopupX(width)
-        y: root.clampedPopupY(height)
-        width: root.cardWidth
-        height: root.clampedPopupHeight(Theme.popupPreferredHeight)
+        x: 0
+        y: 0
+        width: root.reprogrammingPopupWidth
+        height: 0
         modal: false
         focus: true
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
         padding: 10
 
         function updatePopupPosition() {
-            const g = root.resolvePopupGeometry(root.cardWidth, Theme.popupPreferredHeight);
+            const g = root.resolvePopupGeometry(root.reprogrammingPopupWidth, Theme.popupPreferredHeight);
             x = g.x;
             y = g.y;
             height = g.h;
         }
 
-        onAboutToShow: updatePopupPosition()
+        onAboutToShow: {
+            root.reloadReprogrammingOptionState();
+            if (root.reprogrammingValueOptions.length === 0 && !root.reprogrammingValueOptionsLoading)
+                root.filterViewModel.refreshColumnValueOptionsFor(root.reprogrammingColumnKey);
+            root.selectedReprogrammingValues = root.derivation.reprogrammingValues.slice();
+            updatePopupPosition();
+        }
+        onOpened: updatePopupPosition()
         onWidthChanged: {
             if (visible)
                 updatePopupPosition();
@@ -316,34 +295,34 @@ FilterCard {
                 color: Theme.border
             }
 
-            ScrollView {
+            Item {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                clip: true
 
-                ColumnLayout {
-                    width: valuesPopup.availableWidth - 4
+                Label {
+                    anchors.centerIn: parent
+                    visible: root.reprogrammingValueOptions.length === 0
+                    text: root.reprogrammingValueOptionsLoading ? "Carregando" : "Sem valores"
+                    color: Theme.mutedText
+                    font.pixelSize: Theme.fontSizeMicro
+                    horizontalAlignment: Text.AlignHCenter
+                }
+
+                ListView {
+                    anchors.fill: parent
+                    clip: true
                     spacing: 2
+                    reuseItems: true
+                    model: valuesPopup.visible ? root.reprogrammingValueOptions : null
+                    ScrollBar.vertical: ScrollBar {}
 
-                    Label {
-                        Layout.fillWidth: true
-                        visible: root.reprogrammingValueOptions.length === 0
-                        text: root.reprogrammingValueOptionsLoading ? "Carregando" : "Sem valores"
-                        color: Theme.mutedText
-                        font.pixelSize: Theme.fontSizeMicro
-                        horizontalAlignment: Text.AlignHCenter
-                    }
-
-                    Repeater {
-                        model: root.reprogrammingValueOptions
-
-                        AppCheckBox {
-                            required property string modelData
-                            Layout.fillWidth: true
-                            text: modelData
-                            checked: root.containsSelected(modelData)
-                            onToggled: root.toggleSelected(modelData, checked)
-                        }
+                    delegate: AppCheckBox {
+                        required property string modelData
+                        width: ListView.view.width
+                        height: 22
+                        text: modelData
+                        checked: root.containsSelected(modelData)
+                        onClicked: root.toggleSelected(modelData, checked)
                     }
                 }
             }

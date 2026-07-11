@@ -41,7 +41,6 @@ namespace ssa::presentation {
 
     void BrowseRequestCoordinator::cancelCurrentRequest() {
         pageQueries_.cancel();
-        pageLifecycle_.markRequestCanceled();
     }
 
     void BrowseRequestCoordinator::invalidateTotalRowsAll() {

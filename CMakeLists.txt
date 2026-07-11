@@ -213,6 +213,7 @@ qt_add_qml_module(
   app/desktop/qml/components/AdvancedFilterPanel.qml
   app/desktop/qml/components/AdvancedMacroFilterCard.qml
   app/desktop/qml/components/AdvancedReprogrammingFilterCard.qml
+  app/desktop/qml/components/AdvancedTextValuePopup.qml
   app/desktop/qml/components/AdvancedTextFilterCard.qml
   app/desktop/qml/components/AdvancedTextFilterGrid.qml
   app/desktop/qml/components/AdvancedWeekFilterCard.qml
@@ -230,7 +231,9 @@ qt_add_qml_module(
   app/desktop/qml/components/FilterPanel.qml
   app/desktop/qml/components/FilterSummaryBar.qml
   app/desktop/qml/components/ColumnConfigList.qml
+  app/desktop/qml/components/PagerQuickFilters.qml
   app/desktop/qml/components/PreferencesDialog.qml
+  app/desktop/qml/components/SavedFilterControls.qml
   app/desktop/qml/components/SearchAndPager.qml
   app/desktop/qml/components/SummaryTag.qml
   app/desktop/qml/components/SmokeCaptureBridge.qml

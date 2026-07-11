@@ -54,9 +54,7 @@ namespace ssa::presentation {
     }
 
     QHash<int, QByteArray> SsaTableModel::roleNames() const {
-        auto roles = QAbstractTableModel::roleNames();
-        roles[Qt::DisplayRole] = "displayValue";
-        return roles;
+        return {{Qt::DisplayRole, "displayValue"}};
     }
 
     void SsaTableModel::setPage(domain::SsaPageResult page, std::vector<std::string> columns,
@@ -155,8 +153,8 @@ namespace ssa::presentation {
     }
 
     QString SsaTableModel::ssaNumberAt(const int row) const {
-        const auto record = recordAt(row);
-        if (!record.has_value()) {
+        const auto* record = recordAt(row);
+        if (record == nullptr) {
             return {};
         }
         const auto value = record->valueOf(domain::kSsaNumberColumnKey);
@@ -177,15 +175,15 @@ namespace ssa::presentation {
         return rows_.size() == nextRowCount && columns_.hasSameMetadata(columns, displayColumns);
     }
 
-    std::optional<domain::SsaRecord> SsaTableModel::recordAt(const int row) const {
+    const domain::SsaRecord* SsaTableModel::recordAt(const int row) const noexcept {
         if (row < 0) {
-            return std::nullopt;
+            return nullptr;
         }
         const auto rowIndex = static_cast<std::size_t>(row);
         if (rowIndex >= rows_.size()) {
-            return std::nullopt;
+            return nullptr;
         }
-        return rows_[rowIndex];
+        return &rows_[rowIndex];
     }
 
     QStringList SsaTableModel::columnKeys() const {

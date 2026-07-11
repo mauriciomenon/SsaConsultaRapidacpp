@@ -1,8 +1,8 @@
 #include "infra/preferences/JsonFilterPresetStore.h"
 
 #include "infra/preferences/FilterPresetJsonCodec.h"
+#include "infra/preferences/JsonPersistenceSupport.h"
 
-#include <QFile>
 #include <QJsonDocument>
 
 #include <stdexcept>
@@ -21,13 +21,9 @@ namespace ssa::infra::preferences {
     } // namespace
 
     ports::FilterPresetSnapshot JsonFilterPresetStore::load(std::filesystem::path path) const {
-        QFile input(QString::fromStdString(path.string()));
-        if (!input.open(QIODevice::ReadOnly)) {
-            throw std::runtime_error("cannot read filter preset: " + path.string());
-        }
-
         QJsonParseError parseError;
-        const auto document = QJsonDocument::fromJson(input.readAll(), &parseError);
+        const auto document = QJsonDocument::fromJson(
+            json_persistence::readBounded(path, "filter preset"), &parseError);
         if (parseError.error != QJsonParseError::NoError) {
             throw std::runtime_error("invalid filter preset json: " + path.string() + ": " +
                                      parseError.errorString().toStdString());
@@ -42,16 +38,9 @@ namespace ssa::infra::preferences {
                                      const ports::FilterPresetSnapshot& snapshot) const {
         ensureParentDirectory(path);
 
-        QFile output(QString::fromStdString(path.string()));
-        if (!output.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-            throw std::runtime_error("cannot write filter preset: " + path.string());
-        }
         const auto payload =
             FilterPresetJsonCodec{}.documentFromSnapshot(snapshot).toJson(QJsonDocument::Compact);
-        if (output.write(payload) < 0) {
-            throw std::runtime_error("cannot write filter preset: " + path.string() + ": " +
-                                     output.errorString().toStdString());
-        }
+        json_persistence::writeAtomically(path, payload, "filter preset");
     }
 
 } // namespace ssa::infra::preferences

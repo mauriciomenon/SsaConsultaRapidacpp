@@ -9,8 +9,12 @@
 #include <QThreadPool>
 #include <QUrl>
 
+#include <exception>
 #include <functional>
 #include <memory>
+#include <mutex>
+#include <optional>
+#include <stop_token>
 
 namespace ssa::presentation {
 
@@ -42,6 +46,13 @@ namespace ssa::presentation {
         void exportFilteredList(const QUrl& outputUrl);
 
       private:
+        struct ResultState final {
+            std::mutex mutex;
+            std::optional<ports::WorkflowResult> result;
+            std::exception_ptr error;
+        };
+
+        void finishExport();
         void applyResult(const ports::WorkflowResult& result);
         void setExportState(QString status, QString message, bool succeeded);
 
@@ -49,7 +60,9 @@ namespace ssa::presentation {
         RequestFactory requestFactory_;
         std::unique_ptr<QThreadPool> ownedExportThreadPool_;
         QThreadPool* exportThreadPool_{nullptr};
-        QFutureWatcher<ports::WorkflowResult> exportWatcher_;
+        QFutureWatcher<void> exportWatcher_;
+        std::shared_ptr<ResultState> resultState_;
+        std::stop_source exportStopSource_;
         QString lastMessage_;
         QString lastStatus_{"idle"};
         bool lastSucceeded_{false};

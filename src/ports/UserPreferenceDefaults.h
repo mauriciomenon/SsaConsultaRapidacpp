@@ -9,10 +9,35 @@ namespace ssa::ports {
     inline constexpr int kMinDetailsPanelWidth = 320;
     inline constexpr int kMaxDetailsPanelWidth = 1200;
     inline constexpr int kDefaultDetailsPanelWidth = 560;
-    inline constexpr std::array<std::string_view, 16> kThemeValues{
-        "system",      "light",      "grayscale",      "windows7",        "classico",   "gruvbox",
-        "dark",        "dracula",    "solarized-dark", "solarized-light", "mint-light", "paper",
-        "tokyo-night", "catppuccin", "nord",           "ssa-dark"};
+    inline constexpr std::array<std::string_view, 29> kThemeValues{"system",
+                                                                   "light",
+                                                                   "grayscale",
+                                                                   "windows7",
+                                                                   "classico",
+                                                                   "gruvbox",
+                                                                   "dark",
+                                                                   "dracula",
+                                                                   "solarized-dark",
+                                                                   "solarized-light",
+                                                                   "mint-light",
+                                                                   "paper",
+                                                                   "tokyo-night",
+                                                                   "catppuccin",
+                                                                   "nord",
+                                                                   "ssa-dark",
+                                                                   "grayscalepy",
+                                                                   "windows7py",
+                                                                   "classicopy",
+                                                                   "gruvboxpy",
+                                                                   "darkpy",
+                                                                   "draculapy",
+                                                                   "solarized-darkpy",
+                                                                   "solarized-lightpy",
+                                                                   "mint-lightpy",
+                                                                   "paperpy",
+                                                                   "tokyo-nightpy",
+                                                                   "catppuccinpy",
+                                                                   "nordpy"};
     inline constexpr std::array<std::string_view, 3> kDensityValues{"compact", "normal",
                                                                     "comfortable"};
 

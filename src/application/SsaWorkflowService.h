@@ -3,6 +3,7 @@
 #include "ports/IWorkflowPorts.h"
 
 #include <memory>
+#include <stop_token>
 
 namespace ssa::application {
 
@@ -18,7 +19,8 @@ namespace ssa::application {
         importExternalFiles(const ports::ImportExternalFilesRequest& request) const;
         [[nodiscard]] ports::WorkflowResult rescan(const ports::RescanRequest& request) const;
         [[nodiscard]] ports::WorkflowResult
-        exportFilteredList(const ports::ExportFilteredListRequest& request) const;
+        exportFilteredList(const ports::ExportFilteredListRequest& request,
+                           std::stop_token stopToken = {}) const;
         [[nodiscard]] ports::WorkflowResult resetDatabase() const;
         [[nodiscard]] ports::WorkflowResult cleanData() const;
         [[nodiscard]] ports::WorkflowResult vacuumAnalyze() const;

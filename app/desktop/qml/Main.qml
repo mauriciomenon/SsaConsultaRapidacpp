@@ -309,7 +309,7 @@ ApplicationWindow {
                         var current = Theme.themeName;
                         var idx = order.indexOf(current);
                         var nextIdx = idx < 0 ? 0 : (idx + 1) % order.length;
-                        root.vm.ui.setTheme(order[nextIdx]);
+                        root.vm.ui.theme = order[nextIdx];
                     }
                 }
             }
@@ -365,9 +365,7 @@ ApplicationWindow {
 
                 sourceComponent: DetailsPanel {
                     viewModel: root.vm.browse.details
-                    browseViewModel: root.vm.browse
                     density: root.vm.ui.density
-                    onOpenRequested: root.vm.selectionFlow.openSelectedSsa()
                     onGraphWindowRequested: root.openDetailsWindow()
                     onLoadRelationRequested: ssaNumber => root.vm.browse.loadDetailsBySsaNumber(ssaNumber)
                 }

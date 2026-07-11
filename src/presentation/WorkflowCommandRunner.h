@@ -6,7 +6,11 @@
 #include <QObject>
 
 #include <QString>
+#include <exception>
+#include <functional>
 #include <memory>
+#include <mutex>
+#include <optional>
 #include <vector>
 
 namespace ssa::presentation {
@@ -17,6 +21,7 @@ namespace ssa::presentation {
       public:
         explicit WorkflowCommandRunner(std::shared_ptr<application::SsaWorkflowService> workflows,
                                        QObject* parent = nullptr);
+        ~WorkflowCommandRunner() override;
 
         [[nodiscard]] bool running() const;
         void importExternalFiles(const std::vector<QString>& files);
@@ -29,10 +34,18 @@ namespace ssa::presentation {
         void finished(ssa::ports::WorkflowResult result);
 
       private:
+        struct ResultState final {
+            std::mutex mutex;
+            std::optional<ports::WorkflowResult> result;
+            std::exception_ptr error;
+        };
+
+        void start(std::function<ports::WorkflowResult()> operation);
         void finish();
 
         std::shared_ptr<application::SsaWorkflowService> workflows_;
-        QFutureWatcher<ports::WorkflowResult> watcher_;
+        QFutureWatcher<void> watcher_;
+        std::shared_ptr<ResultState> resultState_;
         bool running_{false};
     };
 

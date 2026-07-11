@@ -667,7 +667,6 @@ QtObject {
     readonly property int gap: 8
     readonly property int cardGap: 10
     readonly property int controlHeight: 30
-    readonly property int panelPadding: 12
     readonly property int detailsLabelWidth: 190
     readonly property int relationNodeMinWidth: 92
     readonly property int relationNodeHeight: 40
@@ -693,13 +692,8 @@ QtObject {
     // SpacingScale - every margin/padding/spacing references these. Replaces
     // the ~16 distinct literals (0..26) that were scattered across components.
     // ---------------------------------------------------------------------------
-    readonly property int spacingNone: 0
-    readonly property int spacingXs: 2
     readonly property int spacingSm: 4
     readonly property int spacingMd: gap // 8 - alias of the canonical gap
-    readonly property int spacingLg: 12
-    readonly property int spacingXl: 16
-    readonly property int spacingXxl: 22
 
     // ---------------------------------------------------------------------------
     // ControlHeights - unified row/control heights. Ends the 26 vs 28 vs 24
@@ -725,10 +719,8 @@ QtObject {
     // ---------------------------------------------------------------------------
     readonly property int popupMargin: 8 // edge margin when clamping to window
     readonly property int popupAnomaliaWidth: 520 // anomalia (up to 78 chars) - fixed minimum
-    // Name columns (solicitante/responsavel_*) hold up to 43 chars. Width
-    // derived from measured max: 43 chars * ~6.6px avg glyph + multi-select
-    // structural floor, whichever is larger. Capped at popupAnomaliaWidth so
-    // name popups never exceed the anomalia width.
+    // Upper bound for standard code/name popups. The actual width is resolved
+    // from the runtime maximum value length by valuePopupWidth().
     readonly property int popupNameValueWidth: Math.min(popupAnomaliaWidth, Math.max(popupMultiSelectMinWidth, 43 * popupGlyphWidthPx + popupMultiSelectMinWidth - 90))
     readonly property int popupMaxHeight: 360 // hard cap so popups fit small windows
     readonly property int popupPreferredHeight: 360 // preferred multi-select height
@@ -748,7 +740,6 @@ QtObject {
     // FilterMetrics - geometry of the advanced filter cards. Replaces literals
     // like choiceColumnWidth: 52, commandWidth: 30, operatorWidth: 32.
     // ---------------------------------------------------------------------------
-    readonly property int filterCardPadding: 3 // inner padding of advanced cards
     // Grid layout of the advanced filter cards. resolveGridLayout is the
     // SINGLE source of truth: given the available width it returns how many
     // columns fit, the gap between cards, and the exact card width that fills
@@ -787,7 +778,6 @@ QtObject {
     readonly property int valueMinWidth: 82 // value combo minimum width
     readonly property int valuePreferredWidth: 96 // value combo preferred floor
     readonly property real valuePreferredRatio: 0.32 // value combo share of cardWidth
-    readonly property int actionButtonWidth: 28 // X clear button width
     readonly property int applyButtonWidth: 88 // "Aplicar" button in popups
     readonly property int weekFieldWidth: 72 // week/year field in week filter cards
 
@@ -796,8 +786,6 @@ QtObject {
     // the legacy JS estimator and are removed once Slice 6 lands the symmetric
     // QML implicit-width algorithm.
     // ---------------------------------------------------------------------------
-    readonly property int chipMinWidth: 92
-    readonly property int chipMaxWidth: 430
     readonly property int chipChromePadding: 26 // label+button chrome allowance in SummaryTag
     readonly property int chipRemoveButtonSize: 24
     readonly property int chipRemoveButtonSizeCompact: 22
@@ -839,13 +827,9 @@ QtObject {
     }
 
     // ---------------------------------------------------------------------------
-    // StatusShortcutMetrics - status shortcut strip geometry. Replaces the
-    // 48/38/3/8/2 literals in SearchAndPager.qml.
+    // StatusShortcutMetrics - status shortcut strip geometry.
     // ---------------------------------------------------------------------------
-    readonly property int shortcutPreferredWidth: 48
-    readonly property int shortcutMinWidth: 38
     readonly property int shortcutSpacing: 3
-    readonly property int shortcutInset: 8 // outer inset of the shortcut frame
     readonly property int shortcutGap: 2 // popup y offset below the strip
 
     readonly property var themeOptions: ["system", "ssa-dark", "classico", "mint-light", "paper", "solarized-light", "windows7", "catppuccin", "dark", "dracula", "grayscale", "gruvbox", "nord", "solarized-dark", "tokyo-night", "grayscalepy", "windows7py", "classicopy", "gruvboxpy", "darkpy", "draculapy", "solarized-darkpy", "solarized-lightpy", "mint-lightpy", "paperpy", "tokyo-nightpy", "catppuccinpy", "nordpy"]
@@ -914,6 +898,17 @@ QtObject {
         if (columnKey === "solicitante" || columnKey === "responsavel_programacao" || columnKey === "responsavel_execucao")
             return "name";
         return "code";
+    }
+
+    function valuePopupWidth(columnKey, maxValueLength, availableWidth) {
+        const category = valuePopupCategory(columnKey);
+        const normalizedLength = Math.max(0, Number(maxValueLength));
+        const measuredWidth = Math.ceil(normalizedLength * popupGlyphWidthPx + popupMultiSelectMinWidth - 90);
+        const categoryMaxWidth = category === "code" ? popupNameValueWidth : popupAnomaliaWidth;
+        let resolvedWidth = Math.min(categoryMaxWidth, Math.max(popupMultiSelectMinWidth, measuredWidth));
+        if (Number(availableWidth) > 0)
+            resolvedWidth = Math.min(resolvedWidth, Math.max(0, Number(availableWidth) - popupMargin * 2));
+        return Math.round(resolvedWidth);
     }
 
     // Relative luminance of a color (sRGB), clamped to [0,1]. Used to pick a

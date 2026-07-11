@@ -31,6 +31,11 @@ namespace ssa::presentation {
         return found == cache_.end() ? QStringList{} : found->second.options;
     }
 
+    std::size_t FilterPanelColumnValueOptions::maxValueLengthFor(const QString& key) const {
+        const auto found = findTrimmed(key);
+        return found == cache_.end() ? 0 : found->second.maxValueLength;
+    }
+
     bool FilterPanelColumnValueOptions::loadingFor(const QString& key) const {
         return loadingKeys_.contains(key.trimmed());
     }
@@ -51,12 +56,12 @@ namespace ssa::presentation {
     }
 
     void FilterPanelColumnValueOptions::store(const std::vector<std::string>& options,
-                                              const QString& key,
-                                              const std::uint64_t stateVersion) {
+                                              const QString& key, const std::uint64_t stateVersion,
+                                              const std::size_t maxValueLength) {
         const auto normalizedKey = key.trimmed();
         loadingKeys_.remove(normalizedKey);
         auto displayList = toColumnValueDisplayList(options);
-        cache_[normalizedKey] = {options, displayList, stateVersion};
+        cache_[normalizedKey] = {std::move(displayList), stateVersion, maxValueLength};
         trim(normalizedKey);
         touchVersion();
     }

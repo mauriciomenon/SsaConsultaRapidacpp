@@ -39,6 +39,7 @@ namespace ssa::presentation {
                       std::shared_ptr<ports::IFilterPresetStore> filterPresetStore = nullptr,
                       std::shared_ptr<application::SsaWorkflowService> workflowService = nullptr,
                       QObject* parent = nullptr);
+        ~MainViewModel() override;
 
         [[nodiscard]] BrowseViewModel* browse();
         [[nodiscard]] DesktopActionsViewModel* actions();

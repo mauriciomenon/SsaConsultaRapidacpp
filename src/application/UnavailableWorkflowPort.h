@@ -13,7 +13,8 @@ namespace ssa::application {
         importExternalFiles(const ports::ImportExternalFilesRequest& request) override;
         [[nodiscard]] ports::WorkflowResult rescan(const ports::RescanRequest& request) override;
         [[nodiscard]] ports::WorkflowResult
-        exportFilteredList(const ports::ExportFilteredListRequest& request) override;
+        exportFilteredList(const ports::ExportFilteredListRequest& request,
+                           std::stop_token stopToken = {}) override;
         [[nodiscard]] ports::WorkflowResult resetDatabase() override;
         [[nodiscard]] ports::WorkflowResult cleanData() override;
         [[nodiscard]] ports::WorkflowResult vacuumAnalyze() override;

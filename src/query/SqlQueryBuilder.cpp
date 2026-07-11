@@ -322,4 +322,16 @@ namespace ssa::query {
         return {sql.str(), std::move(bindings)};
     }
 
+    SqlQuery SqlQueryBuilder::buildMaxValueLength(const std::string_view columnKey) const {
+        const auto* column = domain::ColumnCatalog::find(columnKey);
+        if (column == nullptr || domain::ColumnCatalog::isDerivedCountColumn(columnKey)) {
+            throw std::invalid_argument("maximum value length is not supported for column: " +
+                                        std::string{columnKey});
+        }
+        const auto identifier = quoteColumnIdentifier(std::string{columnKey});
+        return {"SELECT MAX(LENGTH(TRIM(COALESCE(" + identifier + ", '')))) FROM " +
+                    quoteTableIdentifier(tableName_),
+                {}};
+    }
+
 } // namespace ssa::query

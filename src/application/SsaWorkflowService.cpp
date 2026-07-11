@@ -28,11 +28,12 @@ namespace ssa::application {
     }
 
     ports::WorkflowResult
-    SsaWorkflowService::exportFilteredList(const ports::ExportFilteredListRequest& request) const {
+    SsaWorkflowService::exportFilteredList(const ports::ExportFilteredListRequest& request,
+                                           std::stop_token stopToken) const {
         if (!exportPort_) {
             return notImplemented("export filtered list");
         }
-        return exportPort_->exportFilteredList(request);
+        return exportPort_->exportFilteredList(request, std::move(stopToken));
     }
 
     ports::WorkflowResult SsaWorkflowService::resetDatabase() const {

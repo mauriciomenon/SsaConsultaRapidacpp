@@ -78,10 +78,22 @@ namespace ssa::app::desktop {
         }
         const QPointer<QQuickWindow> guardedWindow{&window};
         const auto done = std::make_shared<bool>(false);
+        const auto captureStarted = std::make_shared<bool>(false);
+        const auto claimCapture = [captureStarted] {
+            if (*captureStarted) {
+                return false;
+            }
+            *captureStarted = true;
+            return true;
+        };
         auto completionOnce = completeOnce(std::move(completion), done);
         QObject::connect(
             &window, &QQuickWindow::frameSwapped, &window,
-            [guardedWindow, outputPath, screenshotDelayMs, completion = completionOnce] {
+            [guardedWindow, outputPath, screenshotDelayMs, completion = completionOnce,
+             claimCapture] {
+                if (!claimCapture()) {
+                    return;
+                }
                 if (guardedWindow.isNull() || !guardedWindow->isVisible()) {
                     completion(2);
                     return;
@@ -101,9 +113,13 @@ namespace ssa::app::desktop {
             },
             Qt::SingleShotConnection);
         window.requestUpdate();
-        QTimer::singleShot(1500, &window, [guardedWindow, outputPath, completion = completionOnce] {
-            captureRenderedContent(guardedWindow, outputPath, completion);
-        });
+        QTimer::singleShot(1500, &window,
+                           [guardedWindow, outputPath, completion = completionOnce, claimCapture] {
+                               if (!claimCapture()) {
+                                   return;
+                               }
+                               captureRenderedContent(guardedWindow, outputPath, completion);
+                           });
     }
 
 } // namespace ssa::app::desktop

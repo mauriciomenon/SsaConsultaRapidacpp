@@ -20,6 +20,7 @@ QtObject {
         }
         if (root.detailsOpenAttempts >= 30) {
             detailsOpenRetry.stop();
+            console.warn("Smoke capture: details window was not ready after 30 attempts");
             return;
         }
         root.detailsOpenAttempts += 1;

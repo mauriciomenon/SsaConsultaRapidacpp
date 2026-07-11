@@ -158,7 +158,8 @@ namespace ssa::infra::exporting {
 
         ports::WorkflowResult writeFilteredRows(std::ofstream& output,
                                                 const ports::ISsaRepository& repository,
-                                                const domain::SsaPageRequest& query) {
+                                                const domain::SsaPageRequest& query,
+                                                const std::stop_token& stopToken) {
             const auto& columns = query.visibleColumns;
             const auto result = repository.readAll(
                 query,
@@ -168,7 +169,8 @@ namespace ssa::infra::exporting {
                         return "failed while writing export output file";
                     }
                     return std::nullopt;
-                });
+                },
+                stopToken);
             if (!result.ok()) {
                 return failed(result.error);
             }
@@ -189,7 +191,8 @@ namespace ssa::infra::exporting {
     }
 
     ports::WorkflowResult
-    CsvExportPort::exportFilteredList(const ports::ExportFilteredListRequest& request) {
+    CsvExportPort::exportFilteredList(const ports::ExportFilteredListRequest& request,
+                                      std::stop_token stopToken) {
         try {
             const auto prepared = prepareExportRequest(request);
             if (!prepared.result.ok()) {
@@ -206,7 +209,7 @@ namespace ssa::infra::exporting {
             if (!output) {
                 return failed("failed while writing export output file");
             }
-            return writeFilteredRows(output, *repository_, prepared.query);
+            return writeFilteredRows(output, *repository_, prepared.query, stopToken);
         } catch (const std::exception& exc) {
             return failed(exc.what());
         }

@@ -11,6 +11,10 @@ namespace ssa::infra::importing {
 
     namespace {
 
+        constexpr std::size_t kMaxImportFiles = 64;
+        constexpr std::uintmax_t kMaxImportFileBytes = 128ULL * 1024ULL * 1024ULL;
+        constexpr std::uintmax_t kMaxImportBatchBytes = 1024ULL * 1024ULL * 1024ULL;
+
         std::string lowercaseExtension(const std::filesystem::path& path) {
             auto extension = path.extension().string();
             std::ranges::transform(extension, extension.begin(), [](const char ch) {
@@ -44,6 +48,28 @@ namespace ssa::infra::importing {
                    "_" + std::to_string(sequence.fetch_add(1, std::memory_order_relaxed));
         }
 
+        std::string preflightFiles(const std::vector<std::filesystem::path>& files) {
+            if (files.size() > kMaxImportFiles) {
+                return "too_many_files max=64";
+            }
+            std::uintmax_t totalBytes = 0;
+            for (const auto& file : files) {
+                std::error_code error;
+                const auto fileBytes = std::filesystem::file_size(file, error);
+                if (error) {
+                    return "file_size_unavailable";
+                }
+                if (fileBytes > kMaxImportFileBytes) {
+                    return "file_too_large max_bytes=134217728";
+                }
+                if (totalBytes > kMaxImportBatchBytes - fileBytes) {
+                    return "batch_too_large max_bytes=1073741824";
+                }
+                totalBytes += fileBytes;
+            }
+            return {};
+        }
+
     } // namespace
 
     ImportFileStager::ImportFileStager(std::filesystem::path inputFolder,
@@ -53,6 +79,10 @@ namespace ssa::infra::importing {
     ImportStagingResult
     ImportFileStager::stageExternalFiles(const std::vector<std::filesystem::path>& files) const {
         ImportStagingResult result;
+        result.rejectionReason = preflightFiles(files);
+        if (!result.rejectionReason.empty()) {
+            return result;
+        }
         std::error_code error;
         std::filesystem::create_directories(inputFolder_, error);
         if (error) {
@@ -128,6 +158,16 @@ namespace ssa::infra::importing {
             candidates.push_back(entry.path());
         }
         std::ranges::sort(candidates);
+
+        std::vector<std::filesystem::path> importCandidates;
+        std::ranges::copy_if(
+            candidates, std::back_inserter(importCandidates), [](const auto& path) {
+                return !isExcelLockFile(path) && (isLegacyXlsFile(path) || isXlsxFile(path));
+            });
+        result.rejectionReason = preflightFiles(importCandidates);
+        if (!result.rejectionReason.empty()) {
+            return result;
+        }
 
         for (const auto& path : candidates) {
             if (isExcelLockFile(path)) {

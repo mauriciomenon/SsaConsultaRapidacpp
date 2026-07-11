@@ -22,7 +22,7 @@ namespace ssa::presentation {
         std::shared_ptr<application::SsaWorkflowService> workflowService,
         ExportViewModel::RequestFactory requestFactory, StatusViewModel& status,
         UserPreferencesCoordinator& preferences, QObject* parent)
-        : QObject(parent), commands_(requireCommandPort(std::move(commandPort)), nullptr, this),
+        : QObject(parent), commands_(requireCommandPort(std::move(commandPort)), this),
           exports_(workflowService, std::move(requestFactory), nullptr, this),
           workflows_(std::move(workflowService), this), currentWeek_(this),
           statusCoordinator_(commands_, exports_, workflows_, status, preferences, this) {}

@@ -33,7 +33,7 @@
   "only_reprogrammed": false,
   "page_size": 50,
   "quick_sector": "",
-  "schema_version": 9,
+  "schema_version": 12,
   "sort_ascending": false,
   "sort_column_key": "numero_ssa",
   "theme": "ssa-dark",

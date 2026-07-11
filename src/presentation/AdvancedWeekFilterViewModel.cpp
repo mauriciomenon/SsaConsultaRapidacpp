@@ -6,13 +6,6 @@
 
 namespace ssa::presentation {
 
-    namespace {
-        constexpr int kYearTextLength = 4;
-        constexpr int kYearWeekTextLength = 6;
-        constexpr int kMinValidYear = 1900;
-        constexpr int kMaxValidYear = 2999;
-    } // namespace
-
     AdvancedWeekFilterViewModel::AdvancedWeekFilterViewModel(
         filterpanel::FilterPanelAdvancedState& state, QStringList weekColumnKeys, QObject* parent)
         : QObject(parent), state_(state), weekColumnKeys_(std::move(weekColumnKeys)) {}
@@ -125,10 +118,7 @@ namespace ssa::presentation {
         if (trimmed.isEmpty()) {
             return true;
         }
-        bool conversionOk = false;
-        const int year = trimmed.toInt(&conversionOk);
-        return conversionOk && trimmed.size() == kYearTextLength && year >= kMinValidYear &&
-               year <= kMaxValidYear;
+        return domain::parseFilterYear(trimmed.toStdString()).has_value();
     }
 
     bool AdvancedWeekFilterViewModel::isWeekValid(const QString& value) const {
@@ -136,9 +126,7 @@ namespace ssa::presentation {
         if (trimmed.isEmpty()) {
             return true;
         }
-        bool conversionOk = false;
-        const int week = trimmed.toInt(&conversionOk);
-        return conversionOk && week >= domain::kFirstIsoWeek && week <= domain::kLastIsoWeek;
+        return domain::parseIsoWeek(trimmed.toStdString()).has_value();
     }
 
     bool AdvancedWeekFilterViewModel::isYearWeekValid(const QString& value) const {
@@ -146,14 +134,7 @@ namespace ssa::presentation {
         if (trimmed.isEmpty()) {
             return true;
         }
-        bool conversionOk = false;
-        const int yearWeek = trimmed.toInt(&conversionOk);
-        if (!conversionOk || trimmed.size() != kYearWeekTextLength) {
-            return false;
-        }
-        const int week = yearWeek % domain::kYearWeekMultiplier;
-        return isYearValid(trimmed.first(kYearTextLength)) && week >= domain::kFirstIsoWeek &&
-               week <= domain::kLastIsoWeek;
+        return domain::parseIsoYearWeek(trimmed.toStdString()).has_value();
     }
 
     void AdvancedWeekFilterViewModel::refreshFromState() {

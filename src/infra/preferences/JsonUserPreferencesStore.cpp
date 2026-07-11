@@ -1,9 +1,9 @@
 #include "infra/preferences/JsonUserPreferencesStore.h"
 
 #include "domain/ColumnCatalog.h"
+#include "infra/preferences/JsonPersistenceSupport.h"
 #include "infra/preferences/UserPreferencesJsonCodec.h"
 
-#include <QFile>
 #include <QJsonDocument>
 
 #include <stdexcept>
@@ -23,13 +23,9 @@ namespace ssa::infra::preferences {
             return snapshot;
         }
 
-        QFile input(QString::fromStdString(path_.string()));
-        if (!input.open(QIODevice::ReadOnly)) {
-            throw std::runtime_error("cannot read preferences file: " + path_.string());
-        }
-
         QJsonParseError parseError;
-        const auto document = QJsonDocument::fromJson(input.readAll(), &parseError);
+        const auto document = QJsonDocument::fromJson(
+            json_persistence::readBounded(path_, "preferences file"), &parseError);
         if (parseError.error != QJsonParseError::NoError) {
             throw std::runtime_error("invalid preferences json: " + path_.string());
         }
@@ -43,16 +39,9 @@ namespace ssa::infra::preferences {
             throw std::runtime_error("cannot create preferences directory: " + error.message());
         }
 
-        QFile output(QString::fromStdString(path_.string()));
-        if (!output.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-            throw std::runtime_error("cannot write preferences file: " + path_.string());
-        }
-
         const auto document = UserPreferencesJsonCodec{}.documentFromSnapshot(snapshot);
-        if (output.write(document.toJson(QJsonDocument::Compact)) < 0) {
-            throw std::runtime_error("cannot write preferences file: " +
-                                     output.errorString().toStdString());
-        }
+        json_persistence::writeAtomically(path_, document.toJson(QJsonDocument::Compact),
+                                          "preferences file");
     }
 
 } // namespace ssa::infra::preferences

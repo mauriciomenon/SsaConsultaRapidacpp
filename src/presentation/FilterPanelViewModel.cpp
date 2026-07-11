@@ -19,7 +19,6 @@
 namespace ssa::presentation {
     namespace {
         constexpr int kActiveFilterRefreshDelayMs = 120;
-        constexpr int kPreloadDebounceMs = 300;
         constexpr std::array<std::string_view, 26> kStatusShortcutValues{{
             "AAD", "AAT", "ACC", "ACS", "ADI", "ADM", "AIM", "ALE", "AMP",
             "APG", "APL", "APV", "ASE", "ASL", "ASO", "SAD", "SAS", "SCA",
@@ -76,7 +75,6 @@ namespace ssa::presentation {
                 &FilterPanelViewModel::applyRequested);
         configureDistinctValueRefresh();
         refreshActiveFilters();
-        scheduleColumnValueRefresh();
         refreshQuickSectorOptions();
     }
 
@@ -98,15 +96,11 @@ namespace ssa::presentation {
             refreshActiveFilters();
             emit changed();
         });
-        preloadDebounceTimer_.setInterval(kPreloadDebounceMs);
-        preloadDebounceTimer_.setSingleShot(true);
-        connect(&preloadDebounceTimer_, &QTimer::timeout, this,
-                [this]() { preloadAdvancedColumnValueOptions(); });
         connect(&distinctValues_, &FilterPanelDistinctValuesController::columnValueOptionsReady,
                 this,
-                [this](const std::vector<std::string>& values, const QString& key,
-                       const std::uint64_t stateVersion) {
-                    setColumnValueOptions(values, key, stateVersion);
+                [this](const std::vector<std::string>& values, const std::size_t maxValueLength,
+                       const QString& key, const std::uint64_t stateVersion) {
+                    setColumnValueOptions(values, maxValueLength, key, stateVersion);
                 });
         connect(&distinctValues_, &FilterPanelDistinctValuesController::quickSectorOptionsReady,
                 this,
@@ -246,6 +240,13 @@ namespace ssa::presentation {
             return {};
         }
         return columnValueOptions_.optionsFor(key);
+    }
+
+    int FilterPanelViewModel::columnValueMaxLengthFor(const QString& key) const {
+        if (!columnValueOptions_.hasFreshOptions(key, filterStateVersion_)) {
+            return 0;
+        }
+        return static_cast<int>(columnValueOptions_.maxValueLengthFor(key));
     }
 
     bool FilterPanelViewModel::columnValueOptionsLoadingFor(const QString& key) const {
@@ -451,13 +452,14 @@ namespace ssa::presentation {
     }
 
     void FilterPanelViewModel::setColumnValueOptions(const std::vector<std::string>& options,
+                                                     const std::size_t maxValueLength,
                                                      const QString& key,
                                                      const std::uint64_t stateVersion) {
         if (stateVersion != 0 && stateVersion != filterStateVersion_) {
             return;
         }
         const auto normalizedKey = key.trimmed();
-        columnValueOptions_.store(options, normalizedKey, filterStateVersion_);
+        columnValueOptions_.store(options, normalizedKey, filterStateVersion_, maxValueLength);
         emit columnValueOptionsChanged();
         emit columnValueOptionsChangedFor(normalizedKey);
     }
@@ -471,7 +473,6 @@ namespace ssa::presentation {
         emit columnValueOptionsReset();
         emit columnValueOptionsChanged();
         scheduleActiveFilterRefresh();
-        scheduleColumnValueRefresh();
         if (!quickSectorChanged) {
             refreshQuickSectorOptions();
         }
@@ -490,10 +491,6 @@ namespace ssa::presentation {
         synchronizeFilterState(false);
     }
 
-    void FilterPanelViewModel::refreshColumnValueOptions() {
-        refreshColumnValueOptionsFor(state_.columnKey());
-    }
-
     void FilterPanelViewModel::refreshColumnValueOptionsFor(const QString& key) {
         const auto normalizedKey = key.trimmed();
         if (columnValueOptions_.loadingFor(normalizedKey)) {
@@ -508,39 +505,7 @@ namespace ssa::presentation {
         columnValueOptions_.markLoading(normalizedKey);
         emit columnValueOptionsChanged();
         emit columnValueOptionsChangedFor(normalizedKey);
-        distinctValues_.preloadColumnValueOptionsFor(QStringList{normalizedKey},
-                                                     filterStateVersion_);
-    }
-
-    void FilterPanelViewModel::schedulePreloadAdvancedColumnValueOptions() {
-        preloadDebounceTimer_.start();
-    }
-
-    void FilterPanelViewModel::preloadAdvancedColumnValueOptions() {
-        QStringList keys;
-        for (const auto key : domain::ColumnCatalog::advancedFilterKeys()) {
-            const auto qKey = QString::fromUtf8(key.data(), static_cast<qsizetype>(key.size()));
-            if (columnValueOptions_.loadingFor(qKey) ||
-                columnValueOptions_.hasFreshOptions(qKey, filterStateVersion_)) {
-                continue;
-            }
-            keys.push_back(qKey);
-        }
-
-        const QString reprogrammingKey = QStringLiteral("num_reprogramacoes");
-        if (!columnValueOptions_.loadingFor(reprogrammingKey) &&
-            !columnValueOptions_.hasFreshOptions(reprogrammingKey, filterStateVersion_)) {
-            keys.push_back(reprogrammingKey);
-        }
-        if (keys.empty()) {
-            return;
-        }
-        for (const auto& key : keys) {
-            columnValueOptions_.markLoading(key);
-            emit columnValueOptionsChangedFor(key);
-        }
-        emit columnValueOptionsChanged();
-        distinctValues_.preloadColumnValueOptionsFor(keys, filterStateVersion_);
+        distinctValues_.refreshColumnValueOptionsFor(normalizedKey, filterStateVersion_);
     }
 
     void FilterPanelViewModel::refreshQuickSectorOptions() {
@@ -617,15 +582,10 @@ namespace ssa::presentation {
     void FilterPanelViewModel::synchronizeFilterState(const bool refreshSectorOptions) {
         markActiveFiltersDirty();
         refreshActiveFilters();
-        scheduleColumnValueRefresh();
         if (refreshSectorOptions) {
             refreshQuickSectorOptions();
         }
         emit changed();
-    }
-
-    void FilterPanelViewModel::scheduleColumnValueRefresh() {
-        distinctValues_.scheduleColumnValueRefresh();
     }
 
     void FilterPanelViewModel::scheduleActiveFilterRefresh() {

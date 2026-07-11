@@ -11,7 +11,6 @@
 #include <QVariantList>
 
 #include <map>
-#include <optional>
 #include <string>
 #include <vector>
 
@@ -46,7 +45,7 @@ namespace ssa::presentation {
         Q_INVOKABLE [[nodiscard]] QVariantList tableColumns() const;
         Q_INVOKABLE [[nodiscard]] int fallbackColumnWidth() const;
         Q_INVOKABLE [[nodiscard]] QString ssaNumberAt(int row) const;
-        [[nodiscard]] std::optional<domain::SsaRecord> recordAt(int row) const;
+        [[nodiscard]] const domain::SsaRecord* recordAt(int row) const noexcept;
         [[nodiscard]] QStringList columnKeys() const;
 
       signals:

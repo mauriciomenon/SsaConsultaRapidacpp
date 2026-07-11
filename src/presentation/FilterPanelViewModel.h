@@ -79,6 +79,7 @@ namespace ssa::presentation {
         void requestColumnFocus(const QString& key);
         Q_INVOKABLE [[nodiscard]] bool hasFilterForColumn(const QString& key) const;
         Q_INVOKABLE [[nodiscard]] QStringList columnValueOptionsFor(const QString& key) const;
+        Q_INVOKABLE [[nodiscard]] int columnValueMaxLengthFor(const QString& key) const;
         Q_INVOKABLE [[nodiscard]] bool columnValueOptionsLoadingFor(const QString& key) const;
         Q_INVOKABLE [[nodiscard]] bool statusShortcutSelected(const QString& code) const;
         // Returns the cycle state of a status shortcut value:
@@ -89,13 +90,7 @@ namespace ssa::presentation {
         Q_INVOKABLE void toggleStatusShortcut(const QString& code);
         Q_INVOKABLE void clearStatusShortcuts();
         Q_INVOKABLE bool removeActiveFilter(const QVariantMap& entry);
-        Q_INVOKABLE void refreshColumnValueOptions();
         Q_INVOKABLE void refreshColumnValueOptionsFor(const QString& key);
-        Q_INVOKABLE void preloadAdvancedColumnValueOptions();
-        // Debounced preload: collapses rapid filter changes (e.g. clicking
-        // multiple status shortcuts) into a single 12-column preload after a
-        // short delay, instead of firing 12 serial SQL queries per click.
-        Q_INVOKABLE void schedulePreloadAdvancedColumnValueOptions();
         void setColumnFilters(std::map<std::string, std::string> filters);
         void applyPreferences(const ports::UserPreferencesSnapshot& snapshot);
         void writePreferences(ports::UserPreferencesSnapshot& snapshot) const;
@@ -118,11 +113,11 @@ namespace ssa::presentation {
         void refreshActiveFilters();
         void rebuildActiveFilters();
         void synchronizeFilterState(bool refreshSectorOptions);
-        void setColumnValueOptions(const std::vector<std::string>& options, const QString& key,
+        void setColumnValueOptions(const std::vector<std::string>& options,
+                                   std::size_t maxValueLength, const QString& key,
                                    std::uint64_t stateVersion);
         void publishFilterStateChange(bool quickSectorChanged = false);
         void scheduleActiveFilterRefresh();
-        void scheduleColumnValueRefresh();
         void refreshQuickSectorOptions();
         void markActiveFiltersDirty();
         void syncAdvancedQuickSector();
@@ -143,7 +138,6 @@ namespace ssa::presentation {
         FilterPanelColumnValueOptions columnValueOptions_;
         FilterPanelDistinctValuesController distinctValues_;
         QTimer activeFilterRefreshTimer_;
-        QTimer preloadDebounceTimer_;
         std::uint64_t filterStateVersion_{0};
         int focusColumnRequest_{0};
     };

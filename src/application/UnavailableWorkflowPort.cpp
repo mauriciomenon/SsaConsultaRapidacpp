@@ -14,8 +14,10 @@ namespace ssa::application {
     }
 
     ports::WorkflowResult
-    UnavailableWorkflowPort::exportFilteredList(const ports::ExportFilteredListRequest& request) {
+    UnavailableWorkflowPort::exportFilteredList(const ports::ExportFilteredListRequest& request,
+                                                std::stop_token stopToken) {
         (void)request;
+        (void)stopToken;
         return unavailable("export filtered list");
     }
 

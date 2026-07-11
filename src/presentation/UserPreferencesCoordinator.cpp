@@ -1,6 +1,5 @@
 #include "presentation/UserPreferencesCoordinator.h"
 
-#include <QCoreApplication>
 #include <QDebug>
 #include <QThread>
 #include <QtConcurrent>
@@ -20,22 +19,37 @@ namespace ssa::presentation {
     }
 
     UserPreferencesCoordinator::~UserPreferencesCoordinator() {
-        saveTimer_.stop();
-        if (!preferencesStore_) {
-            snapshotProvider_ = nullptr;
-            hasPendingSnapshot_ = false;
+        shutdown();
+    }
+
+    void UserPreferencesCoordinator::shutdown(
+        std::optional<ports::UserPreferencesSnapshot> finalSnapshot) {
+        if (shuttingDown_) {
             return;
         }
-        // Drain any in-flight save so it is not torn down concurrently. Using a
-        // void future avoids the ResultStore<QString> race entirely; we still wait
-        // for completion and pump events so the queued 'finished' signal is handled
-        // before the watcher's destructor runs.
-        if (watcher_.isRunning()) {
-            watcher_.waitForFinished();
-            QCoreApplication::processEvents();
+        if (!finalSnapshot && hasPendingSnapshot_) {
+            finalSnapshot = std::move(pendingSnapshot_);
         }
+        shuttingDown_ = true;
+        saveTimer_.stop();
+        disconnect(&saveTimer_, nullptr, this, nullptr);
+        disconnect(&watcher_, nullptr, this, nullptr);
         snapshotProvider_ = nullptr;
         hasPendingSnapshot_ = false;
+        if (watcher_.isRunning()) {
+            watcher_.waitForFinished();
+        }
+        activeTask_.reset();
+        if (!preferencesStore_ || !finalSnapshot) {
+            return;
+        }
+        try {
+            preferencesStore_->save(*finalSnapshot);
+        } catch (const std::exception& exc) {
+            qWarning() << "Failed to save final preferences snapshot:" << exc.what();
+        } catch (...) {
+            qWarning() << "Failed to save final preferences snapshot: unknown error";
+        }
     }
 
     ports::UserPreferencesSnapshot UserPreferencesCoordinator::loadInitial() const {
@@ -60,7 +74,7 @@ namespace ssa::presentation {
         if (!ensureOwnerThread("scheduleSave")) {
             return;
         }
-        if (!preferencesStore_) {
+        if (!preferencesStore_ || shuttingDown_) {
             return;
         }
         snapshotProvider_ = std::move(snapshotProvider);
@@ -69,6 +83,9 @@ namespace ssa::presentation {
 
     void UserPreferencesCoordinator::saveNowOrSchedule(ports::UserPreferencesSnapshot snapshot) {
         if (!ensureOwnerThread("saveNowOrSchedule")) {
+            return;
+        }
+        if (shuttingDown_) {
             return;
         }
         if (!preferencesStore_) {
@@ -89,7 +106,7 @@ namespace ssa::presentation {
         if (!ensureOwnerThread("flushPendingSave")) {
             return;
         }
-        if (!preferencesStore_ || watcher_.isRunning()) {
+        if (!preferencesStore_ || shuttingDown_ || watcher_.isRunning()) {
             return;
         }
         if (snapshotProvider_) {
@@ -104,14 +121,9 @@ namespace ssa::presentation {
         const auto store = preferencesStore_;
         auto snapshot = std::move(pendingSnapshot_);
         hasPendingSnapshot_ = false;
-        // Clear the previous error before launching the worker; do NOT hold the
-        // mutex across setFuture or the worker would deadlock on completion.
-        {
-            std::lock_guard<std::mutex> lock(errorMutex_);
-            lastSaveError_.clear();
-        }
-
-        watcher_.setFuture(QtConcurrent::run([store, snapshot = std::move(snapshot), this] {
+        const auto task = std::make_shared<SaveTaskState>();
+        activeTask_ = task;
+        watcher_.setFuture(QtConcurrent::run([store, snapshot = std::move(snapshot), task] {
             std::string error;
             try {
                 store->save(snapshot);
@@ -120,20 +132,22 @@ namespace ssa::presentation {
             } catch (...) {
                 error = "erro desconhecido";
             }
-            std::lock_guard<std::mutex> lock(errorMutex_);
-            lastSaveError_ = std::move(error);
+            const std::scoped_lock lock(task->mutex);
+            task->error = std::move(error);
         }));
     }
 
     void UserPreferencesCoordinator::finishSave() {
-        if (!ensureOwnerThread("finishSave")) {
+        if (!ensureOwnerThread("finishSave") || shuttingDown_) {
             return;
         }
         std::string error;
-        {
-            std::lock_guard<std::mutex> lock(errorMutex_);
-            error = lastSaveError_;
+        const auto task = activeTask_;
+        if (task) {
+            const std::scoped_lock lock(task->mutex);
+            error = task->error;
         }
+        activeTask_.reset();
         if (error.empty()) {
             emit saved();
         } else {

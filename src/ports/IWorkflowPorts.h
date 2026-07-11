@@ -3,6 +3,7 @@
 #include "domain/SsaTypes.h"
 
 #include <filesystem>
+#include <stop_token>
 #include <string>
 #include <vector>
 
@@ -59,7 +60,8 @@ namespace ssa::ports {
         virtual ~IExportPort() = default;
 
         [[nodiscard]] virtual WorkflowResult
-        exportFilteredList(const ExportFilteredListRequest& request) = 0;
+        exportFilteredList(const ExportFilteredListRequest& request,
+                           std::stop_token stopToken = {}) = 0;
     };
 
     class IDatabaseMaintenancePort {

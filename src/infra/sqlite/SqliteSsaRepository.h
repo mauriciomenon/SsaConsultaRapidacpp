@@ -8,6 +8,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <stop_token>
 
 namespace ssa::infra::sqlite {
 
@@ -18,31 +19,39 @@ namespace ssa::infra::sqlite {
         explicit SqliteSsaRepository(std::filesystem::path dbPath);
         SqliteSsaRepository(std::filesystem::path dbPath, query::SqlQueryBuilder queryBuilder);
 
-        [[nodiscard]] domain::SsaPageResult
-        page(const domain::SsaPageRequest& request) const override;
+        [[nodiscard]] domain::SsaPageResult page(const domain::SsaPageRequest& request,
+                                                 std::stop_token stopToken = {}) const override;
 
-        [[nodiscard]] std::size_t count(const domain::SsaPageRequest& request) const override;
+        [[nodiscard]] std::size_t count(const domain::SsaPageRequest& request,
+                                        std::stop_token stopToken = {}) const override;
 
         [[nodiscard]] std::optional<domain::SsaRecord>
-        recordBySsaNumber(const domain::SsaNumber& number) const override;
+        recordBySsaNumber(const domain::SsaNumber& number,
+                          std::stop_token stopToken = {}) const override;
 
         [[nodiscard]] std::vector<domain::SsaDerivadaEntry>
-        derivadasDiretas(const domain::SsaNumber& number) const override;
+        derivadasDiretas(const domain::SsaNumber& number,
+                         std::stop_token stopToken = {}) const override;
 
         [[nodiscard]] std::vector<std::string>
-        distinctValues(const domain::DistinctValuesRequest& request) const override;
+        distinctValues(const domain::DistinctValuesRequest& request,
+                       std::stop_token stopToken = {}) const override;
+
+        [[nodiscard]] std::size_t maxValueLength(std::string_view columnKey,
+                                                 std::stop_token stopToken = {}) const override;
 
         [[nodiscard]] ports::SsaReadResult readAll(const domain::SsaPageRequest& request,
-                                                   ports::SsaRecordConsumer consume) const override;
+                                                   ports::SsaRecordConsumer consume,
+                                                   std::stop_token stopToken = {}) const override;
 
       private:
         [[nodiscard]] SqliteConnection& connectionLocked(const std::scoped_lock<std::mutex>&) const;
         [[nodiscard]] static std::size_t executeCount(sqlite3* db, const query::SqlQuery& query);
         [[nodiscard]] static std::vector<domain::SsaRecord>
-        executeRows(sqlite3* db, const query::SqlQuery& query);
+        executeRows(sqlite3* db, const query::SqlQuery& query, const std::stop_token& stopToken);
         [[nodiscard]] static ports::SsaReadResult
         consumeRows(sqlite3* db, const query::SqlQuery& query,
-                    const ports::SsaRecordConsumer& consume);
+                    const ports::SsaRecordConsumer& consume, const std::stop_token& stopToken);
 
         std::filesystem::path dbPath_;
         query::SqlQueryBuilder queryBuilder_;

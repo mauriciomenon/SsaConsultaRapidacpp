@@ -4,10 +4,13 @@
 
 #include <QFutureWatcher>
 #include <QObject>
+#include <QPromise>
 #include <QString>
-#include <QThreadPool>
 
+#include <exception>
 #include <memory>
+#include <mutex>
+#include <optional>
 
 namespace ssa::presentation {
 
@@ -20,8 +23,8 @@ namespace ssa::presentation {
 
       public:
         explicit CommandViewModel(std::shared_ptr<ports::IExternalCommandPort> port,
-                                  QThreadPool* commandThreadPool = nullptr,
                                   QObject* parent = nullptr);
+        ~CommandViewModel() override;
 
         [[nodiscard]] QString lastMessage() const;
         [[nodiscard]] bool lastSucceeded() const;
@@ -41,17 +44,28 @@ namespace ssa::presentation {
         void openInstallationGuide();
 
       private:
+        struct ResultState final {
+            std::mutex mutex;
+            std::optional<ports::ExternalCommandResult> result;
+            std::exception_ptr error;
+            std::shared_ptr<QPromise<void>> completion;
+            bool completed{false};
+        };
+
         void applyResult(const ports::ExternalCommandResult& result);
         void executeCommand(const ports::ExternalCommand& command);
+        void finishCommand();
         void setCommandState(QString status, QString message, bool succeeded);
+        static void completeTask(const std::shared_ptr<ResultState>& task);
 
         std::shared_ptr<ports::IExternalCommandPort> port_;
-        QThreadPool* commandThreadPool_{nullptr};
-        QFutureWatcher<ports::ExternalCommandResult> commandWatcher_;
+        QFutureWatcher<void> watcher_;
+        std::shared_ptr<ResultState> activeTask_;
         QString lastMessage_;
         QString lastStatus_{"idle"};
         bool lastSucceeded_{false};
         bool running_{false};
+        bool shuttingDown_{false};
     };
 
 } // namespace ssa::presentation

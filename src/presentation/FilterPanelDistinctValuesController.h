@@ -6,7 +6,6 @@
 
 #include <QObject>
 #include <QString>
-#include <QTimer>
 
 #include <cstdint>
 #include <map>
@@ -28,25 +27,20 @@ namespace ssa::presentation {
                                             filterpanel::FilterPanelState& state,
                                             QObject* parent = nullptr);
 
-        void scheduleColumnValueRefresh();
-        void refreshColumnValueOptions();
-        Q_INVOKABLE void refreshColumnValueOptionsFor(const QString& key);
-        void preloadColumnValueOptionsFor(const QStringList& keys, std::uint64_t stateVersion);
+        void refreshColumnValueOptionsFor(const QString& key, std::uint64_t stateVersion = 0);
         void refreshQuickSectorOptions();
         void invalidateColumnValueRequests();
 
       signals:
-        void columnValueOptionsReady(std::vector<std::string> values, QString key,
-                                     std::uint64_t stateVersion);
+        void columnValueOptionsReady(std::vector<std::string> values, std::size_t maxValueLength,
+                                     QString key, std::uint64_t stateVersion);
         void quickSectorOptionsReady(std::vector<std::string> values);
 
       private:
         struct DistinctValueRequestContext {
             std::uint64_t token{0};
-            QString key;
 
-            std::uint64_t start(QString requestKey = {});
-            void invalidate();
+            std::uint64_t start();
             [[nodiscard]] bool accepts(std::uint64_t requestToken) const;
         };
 
@@ -56,8 +50,8 @@ namespace ssa::presentation {
         };
 
         void configureConnections();
-        void requestColumnValueOptionsFor(const QString& key, std::uint64_t stateVersion);
-        void onColumnValueOptionsReady(std::uint64_t requestToken, std::vector<std::string> values);
+        void onColumnValueOptionsReady(std::uint64_t requestToken, std::vector<std::string> values,
+                                       std::size_t maxValueLength);
         void onQuickSectorOptionsReady(std::uint64_t requestToken, std::vector<std::string> values);
 
         std::shared_ptr<query::SsaQueryService> queryService_;
@@ -66,7 +60,6 @@ namespace ssa::presentation {
         // Keep independent watchers so sector refreshes do not cancel column value refreshes.
         FilterPanelDistinctValueFetcher columnValueOptionsFetcher_;
         FilterPanelDistinctValueFetcher quickSectorOptionsFetcher_;
-        QTimer columnValueRefreshTimer_;
         DistinctValueRequestContext quickSectorRequest_;
         std::map<std::uint64_t, ColumnRequestContext> columnValueRequests_;
         std::uint64_t nextColumnValueRequestToken_{0};

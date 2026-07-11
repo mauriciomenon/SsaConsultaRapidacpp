@@ -12,7 +12,8 @@ namespace ssa::infra::exporting {
         explicit CsvExportPort(std::shared_ptr<ports::ISsaRepository> repository);
 
         [[nodiscard]] ports::WorkflowResult
-        exportFilteredList(const ports::ExportFilteredListRequest& request) override;
+        exportFilteredList(const ports::ExportFilteredListRequest& request,
+                           std::stop_token stopToken = {}) override;
 
       private:
         std::shared_ptr<ports::ISsaRepository> repository_;

@@ -10,6 +10,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 
 namespace ssa::presentation {
@@ -26,6 +27,7 @@ namespace ssa::presentation {
         [[nodiscard]] ports::UserPreferencesSnapshot loadInitial() const;
         void scheduleSave(std::function<ports::UserPreferencesSnapshot()> snapshotProvider);
         void saveNowOrSchedule(ports::UserPreferencesSnapshot snapshot);
+        void shutdown(std::optional<ports::UserPreferencesSnapshot> finalSnapshot = std::nullopt);
 
       signals:
         void saved();
@@ -36,6 +38,11 @@ namespace ssa::presentation {
         void finishSave();
 
       private:
+        struct SaveTaskState final {
+            std::mutex mutex;
+            std::string error;
+        };
+
         bool ensureOwnerThread(const char* operation);
 
         // Null store is a supported no-persistence mode for tests and temporary sessions.
@@ -49,9 +56,9 @@ namespace ssa::presentation {
         QTimer saveTimer_;
         std::function<ports::UserPreferencesSnapshot()> snapshotProvider_;
         ports::UserPreferencesSnapshot pendingSnapshot_;
-        std::mutex errorMutex_;
-        std::string lastSaveError_;
+        std::shared_ptr<SaveTaskState> activeTask_;
         bool hasPendingSnapshot_{false};
+        bool shuttingDown_{false};
     };
 
 } // namespace ssa::presentation

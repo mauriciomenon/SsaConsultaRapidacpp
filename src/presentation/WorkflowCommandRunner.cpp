@@ -4,6 +4,7 @@
 #include <QtConcurrent>
 
 #include <filesystem>
+#include <stdexcept>
 #include <utility>
 
 namespace ssa::presentation {
@@ -11,8 +12,15 @@ namespace ssa::presentation {
     WorkflowCommandRunner::WorkflowCommandRunner(
         std::shared_ptr<application::SsaWorkflowService> workflows, QObject* parent)
         : QObject(parent), workflows_(std::move(workflows)) {
-        connect(&watcher_, &QFutureWatcher<ports::WorkflowResult>::finished, this,
-                &WorkflowCommandRunner::finish);
+        connect(&watcher_, &QFutureWatcher<void>::finished, this, &WorkflowCommandRunner::finish);
+    }
+
+    WorkflowCommandRunner::~WorkflowCommandRunner() {
+        disconnect(&watcher_, nullptr, this, nullptr);
+        if (watcher_.isRunning()) {
+            watcher_.waitForFinished();
+        }
+        resultState_.reset();
     }
 
     bool WorkflowCommandRunner::running() const {
@@ -35,15 +43,10 @@ namespace ssa::presentation {
         for (const auto& path : files) {
             request.files.emplace_back(path.toStdString());
         }
-        running_ = true;
-        emit this->runningChanged(running_);
-
         auto workflows = workflows_;
-        watcher_.setFuture(
-            QtConcurrent::run(QThreadPool::globalInstance(),
-                              [workflows = std::move(workflows), request = std::move(request)] {
-                                  return workflows->importExternalFiles(request);
-                              }));
+        start([workflows = std::move(workflows), request = std::move(request)] {
+            return workflows->importExternalFiles(request);
+        });
     }
 
     void WorkflowCommandRunner::rescan(const ports::RescanMode mode) {
@@ -61,13 +64,8 @@ namespace ssa::presentation {
         request.allowFileDiscovery = true;
         request.optimized = mode == ports::RescanMode::Incremental;
 
-        running_ = true;
-        emit this->runningChanged(running_);
-
         auto workflows = workflows_;
-        watcher_.setFuture(QtConcurrent::run(
-            QThreadPool::globalInstance(),
-            [workflows = std::move(workflows), request] { return workflows->rescan(request); }));
+        start([workflows = std::move(workflows), request] { return workflows->rescan(request); });
     }
 
     void WorkflowCommandRunner::syncDerivadas() {
@@ -80,14 +78,8 @@ namespace ssa::presentation {
             return;
         }
 
-        running_ = true;
-        emit this->runningChanged(running_);
-
         auto workflows = workflows_;
-        watcher_.setFuture(
-            QtConcurrent::run(QThreadPool::globalInstance(), [workflows = std::move(workflows)] {
-                return workflows->syncDerivadas();
-            }));
+        start([workflows = std::move(workflows)] { return workflows->syncDerivadas(); });
     }
 
     void WorkflowCommandRunner::compactDatabase() {
@@ -100,21 +92,54 @@ namespace ssa::presentation {
             return;
         }
 
+        auto workflows = workflows_;
+        start([workflows = std::move(workflows)] { return workflows->vacuumAnalyze(); });
+    }
+
+    void WorkflowCommandRunner::start(std::function<ports::WorkflowResult()> operation) {
         running_ = true;
         emit this->runningChanged(running_);
-
-        auto workflows = workflows_;
-        watcher_.setFuture(
-            QtConcurrent::run(QThreadPool::globalInstance(), [workflows = std::move(workflows)] {
-                return workflows->vacuumAnalyze();
-            }));
+        const auto state = std::make_shared<ResultState>();
+        resultState_ = state;
+        watcher_.setFuture(QtConcurrent::run(QThreadPool::globalInstance(),
+                                             [state, operation = std::move(operation)] {
+                                                 try {
+                                                     auto result = operation();
+                                                     const std::scoped_lock lock(state->mutex);
+                                                     state->result = std::move(result);
+                                                 } catch (...) {
+                                                     const std::scoped_lock lock(state->mutex);
+                                                     state->error = std::current_exception();
+                                                 }
+                                             }));
     }
 
     void WorkflowCommandRunner::finish() {
-        const ports::WorkflowResult result = watcher_.result();
+        std::optional<ports::WorkflowResult> result;
+        std::exception_ptr error;
+        if (resultState_) {
+            const std::scoped_lock lock(resultState_->mutex);
+            result = std::move(resultState_->result);
+            error = resultState_->error;
+        }
+        resultState_.reset();
         running_ = false;
         emit this->runningChanged(running_);
-        emit this->finished(result);
+        if (error) {
+            try {
+                std::rethrow_exception(error);
+            } catch (const std::exception& exception) {
+                emit this->finished({ports::WorkflowStatus::Failed, exception.what()});
+            } catch (...) {
+                emit this->finished({ports::WorkflowStatus::Failed, "unknown workflow error"});
+            }
+            return;
+        }
+        if (!result) {
+            emit this->finished({ports::WorkflowStatus::Failed, "workflow produced no result"});
+            return;
+        }
+        emit this->finished(std::move(*result));
     }
 
 } // namespace ssa::presentation

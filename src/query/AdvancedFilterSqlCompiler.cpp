@@ -49,6 +49,12 @@ namespace ssa::query {
             if (!advanced.year.has_value() && !advanced.week.has_value()) {
                 return;
             }
+            if (advanced.year.has_value() && !domain::isValidFilterYear(*advanced.year)) {
+                throw std::invalid_argument("invalid advanced year filter");
+            }
+            if (advanced.week.has_value() && !domain::isValidIsoWeek(*advanced.week)) {
+                throw std::invalid_argument("invalid advanced week filter");
+            }
             if (!domain::ColumnCatalog::contains(advanced.weekColumnKey)) {
                 throw std::invalid_argument("unknown week column: " + advanced.weekColumnKey);
             }
@@ -81,10 +87,15 @@ namespace ssa::query {
             if (!year.has_value()) {
                 return;
             }
+            const auto startWeek = domain::composeIsoYearWeek(*year, domain::kFirstIsoWeek);
+            const auto endWeek = domain::composeIsoYearWeek(*year, domain::kLastIsoWeek);
+            if (!startWeek.has_value() || !endWeek.has_value()) {
+                throw std::invalid_argument("invalid year filter");
+            }
             appendSqlAndSeparator(where, hasCondition);
             where << numericValueExpression(columnKey) << " BETWEEN ? AND ?";
-            bindings.push_back(std::to_string((*year * 100) + domain::kFirstIsoWeek));
-            bindings.push_back(std::to_string((*year * 100) + domain::kLastIsoWeek));
+            bindings.push_back(std::to_string(*startWeek));
+            bindings.push_back(std::to_string(*endWeek));
             hasCondition = true;
         }
 
@@ -93,6 +104,10 @@ namespace ssa::query {
                                    const std::optional<int> endWeek, bool& hasCondition) {
             if (!startWeek.has_value() && !endWeek.has_value()) {
                 return;
+            }
+            if ((startWeek.has_value() && !domain::isValidIsoYearWeek(*startWeek)) ||
+                (endWeek.has_value() && !domain::isValidIsoYearWeek(*endWeek))) {
+                throw std::invalid_argument("invalid year-week range filter");
             }
             appendSqlAndSeparator(where, hasCondition);
             const auto numericColumn = numericValueExpression(columnKey);

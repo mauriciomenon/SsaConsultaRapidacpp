@@ -1,6 +1,7 @@
 #include "infra/preferences/FilterPresetJsonCodec.h"
 
 #include "infra/preferences/FilterPreferencesJsonCodec.h"
+#include "infra/preferences/JsonPersistenceSupport.h"
 
 #include <QJsonObject>
 
@@ -15,6 +16,8 @@ namespace ssa::infra::preferences {
         }
 
         const QJsonObject root = document.object();
+        (void)json_persistence::schemaVersion(root, ports::kCurrentFilterPresetSchemaVersion,
+                                              "filter preset");
         ports::FilterPresetSnapshot snapshot;
         snapshot.filters = FilterPreferencesJsonCodec{}.filtersFromObject(root, snapshot.filters);
         return snapshot;
@@ -23,7 +26,7 @@ namespace ssa::infra::preferences {
     QJsonDocument
     FilterPresetJsonCodec::documentFromSnapshot(const ports::FilterPresetSnapshot& snapshot) const {
         QJsonObject root;
-        root.insert("schema_version", 1);
+        root.insert("schema_version", ports::kCurrentFilterPresetSchemaVersion);
         FilterPreferencesJsonCodec{}.writeFilters(root, snapshot.filters);
         return QJsonDocument(root);
     }

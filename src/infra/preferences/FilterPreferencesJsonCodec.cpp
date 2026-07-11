@@ -5,6 +5,8 @@
 
 #include <array>
 #include <span>
+#include <stdexcept>
+#include <string>
 
 namespace ssa::infra::preferences {
 
@@ -26,6 +28,29 @@ namespace ssa::infra::preferences {
             {"execution_week_start", &ports::FilterPreferencesSnapshot::executionWeekStart},
             {"execution_week_end", &ports::FilterPreferencesSnapshot::executionWeekEnd},
         }};
+
+        void requireValidExpressionLength(const std::string& value, const char* field) {
+            if (QString::fromStdString(value).size() >
+                static_cast<qsizetype>(ports::kMaxFilterExpressionLength)) {
+                throw std::runtime_error(std::string{"filter expression too long: "} + field);
+            }
+        }
+
+        void validateExpressionLengths(const ports::FilterPreferencesSnapshot& filters) {
+            requireValidExpressionLength(filters.searchText, "search_text");
+            requireValidExpressionLength(filters.quickSector, "quick_sector");
+            for (const auto& [key, value] : filters.columnFilters) {
+                (void)key;
+                requireValidExpressionLength(value, "column_filters");
+            }
+            for (const auto& [key, value] : filters.advancedTextFilters) {
+                (void)key;
+                requireValidExpressionLength(value, "advanced_text_filters");
+            }
+            for (const auto& binding : kStringFilters) {
+                requireValidExpressionLength(filters.*(binding.field), binding.key);
+            }
+        }
 
         std::map<std::string, std::string> readFilterMap(const QJsonObject& root,
                                                          const char* keyName) {
@@ -93,11 +118,13 @@ namespace ssa::infra::preferences {
             jsonString(root, "derivation_mode", baseSnapshot.derivationMode));
         baseSnapshot.onlyReprogrammed =
             root.value("only_reprogrammed").toBool(baseSnapshot.onlyReprogrammed);
+        validateExpressionLengths(baseSnapshot);
         return baseSnapshot;
     }
 
     void FilterPreferencesJsonCodec::writeFilters(
         QJsonObject& root, const ports::FilterPreferencesSnapshot& filters) const {
+        validateExpressionLengths(filters);
         root.insert("search_text", QString::fromStdString(filters.searchText));
         root.insert("quick_sector", QString::fromStdString(filters.quickSector));
         root.insert("exclude_sca_ses_ste", filters.excludeScaSesSte);
