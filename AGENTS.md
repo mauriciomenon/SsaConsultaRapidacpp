@@ -204,9 +204,25 @@ Notas:
 Deve entregar report final por pedido:
 
 - Solicitacao original.
-- Status claro por pedido: entregue, parcial, ignorado.
+- Abrir com um status inequivoco: `ENTREGUE`, `PARCIAL` ou `NAO ACABOU`.
+- Apresentar matriz requisito por requisito com status e evidencia verificavel.
 - Evidencia de validacao local e visual (tela).
 - Pendencias e riscos residuais.
+- Separar sempre quatro estados: implementado no working tree, commitado no HEAD,
+  validado localmente nesta rodada e comprovado por servico externo.
+- Nunca chamar working tree dirty de entrega commitada. Informar branch, HEAD e
+  arquivos ainda nao versionados quando isso alterar o risco operacional.
+- Nomear a suite real executada e seu resultado. Nao descrever um conjunto de
+  testes embutidos em outra suite como uma suite dedicada.
+- Distinguir mecanismo implementado de contrato testado. Exemplo: latest-wins
+  exige provar inicio imediato e tambem que apenas a ultima operacao publica o
+  resultado terminal.
+- Distinguir CI estatico, AI review e protecao externa. Nao chamar workflows de
+  lint/security de CodeRabbit e nao inferir revisores de environment pelo YAML.
+- Marcar ferramenta ausente, quota, autenticacao e configuracao remota como
+  dependencia externa, nunca como validacao concluida.
+- Encerrar com resumo tecnico, proximas atividades e o bloco `Review Summary`
+  exigido pelas regras abaixo.
 
 # Rules
 
