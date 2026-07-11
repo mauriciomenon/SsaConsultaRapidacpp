@@ -1,14 +1,22 @@
 #include "DesktopSmokeCapture.h"
 
 #include "DesktopSmokeCaptureFileSystem.h"
+#include "DesktopSmokeScreenshotCapture.h"
+#include "DesktopSmokeWindowLocator.h"
 #include "DesktopSmokeWindowWaiter.h"
 
 #include <QCommandLineParser>
 #include <QCoreApplication>
+#include <QDebug>
+#include <QJsonDocument>
 #include <QPointer>
 #include <QQmlApplicationEngine>
+#include <QQuickWindow>
 #include <QTimer>
 #include <QUrl>
+
+#include <atomic>
+#include <memory>
 
 namespace ssa::app::desktop {
 
@@ -24,6 +32,8 @@ namespace ssa::app::desktop {
             bool openAdvancedPopup = false;
             bool openDetailsWindow = false;
             int screenshotDelayMs = defaultScreenshotDelayMs;
+            int windowWidth = 0;
+            int windowHeight = 0;
         };
 
         DesktopSmokeCaptureTarget targetForRequest(const bool openPreferences,
@@ -44,6 +54,8 @@ namespace ssa::app::desktop {
         bool parseCaptureOptions(const QCommandLineParser& parser,
                                  DesktopSmokeCaptureOptions& options) {
             bool delayParsed = true;
+            bool widthParsed = true;
+            bool heightParsed = true;
             options.screenshotPath = parser.value("screenshot");
             options.openPreferences = parser.isSet("open-preferences");
             options.openAdvancedFilters = parser.isSet("open-advanced-filters");
@@ -57,48 +69,109 @@ namespace ssa::app::desktop {
                 parser.isSet("screenshot-delay-ms")
                     ? parser.value("screenshot-delay-ms").toInt(&delayParsed)
                     : defaultScreenshotDelayMs;
-            return delayParsed && options.screenshotDelayMs >= 0 && requestedWindows <= 1;
+            options.windowWidth = parser.isSet("smoke-window-width")
+                                      ? parser.value("smoke-window-width").toInt(&widthParsed)
+                                      : 0;
+            options.windowHeight = parser.isSet("smoke-window-height")
+                                       ? parser.value("smoke-window-height").toInt(&heightParsed)
+                                       : 0;
+            return delayParsed && widthParsed && heightParsed && options.screenshotDelayMs >= 0 &&
+                   options.windowWidth >= 0 && options.windowHeight >= 0 && requestedWindows <= 1;
         }
 
-        void prepareCapture(QQmlApplicationEngine& engine, const QString& screenshotPath,
-                            const bool openPreferences, const bool openAdvancedFilters,
-                            const bool openAdvancedPopup, const bool openDetailsWindow,
-                            const int screenshotDelayMs,
+        void prepareCapture(QQmlApplicationEngine& engine,
+                            const DesktopSmokeCaptureOptions& options,
                             const QPointer<DesktopSmokeController>& controller,
                             const DesktopSmokeCaptureCompletion& completion) {
-            if (!DesktopSmokeCaptureFileSystem::ensureScreenshotDirectory(screenshotPath)) {
+            if (!DesktopSmokeCaptureFileSystem::ensureScreenshotDirectory(options.screenshotPath)) {
                 completion(smokeCaptureFailureExitCode);
                 return;
             }
-            if ((openPreferences || openAdvancedFilters || openDetailsWindow) &&
+            if ((options.openPreferences || options.openAdvancedFilters ||
+                 options.openAdvancedPopup || options.openDetailsWindow) &&
                 controller.isNull()) {
                 completion(smokeCaptureFailureExitCode);
                 return;
             }
-            if (openPreferences) {
+            auto* rootWindow = engine.rootObjects().isEmpty()
+                                   ? nullptr
+                                   : qobject_cast<QQuickWindow*>(engine.rootObjects().constFirst());
+            if ((options.windowWidth > 0 || options.windowHeight > 0) && rootWindow == nullptr) {
+                completion(smokeCaptureFailureExitCode);
+                return;
+            }
+            if (options.windowWidth > 0) {
+                rootWindow->setWidth(options.windowWidth);
+            }
+            if (options.windowHeight > 0) {
+                rootWindow->setHeight(options.windowHeight);
+            }
+            if (options.openAdvancedPopup) {
+                const QPointer<QQmlApplicationEngine> guardedEngine{&engine};
+                const auto metricsReported = std::make_shared<bool>(false);
+                QObject::connect(
+                    controller, &DesktopSmokeController::advancedPopupMetricsReady, &engine,
+                    [guardedEngine, screenshotPath = options.screenshotPath, completion,
+                     metricsReported](const QVariantMap& metrics) {
+                        *metricsReported = true;
+                        const auto json =
+                            QJsonDocument::fromVariant(metrics).toJson(QJsonDocument::Compact);
+                        qInfo().noquote() << "QML_POPUP_SMOKE" << json;
+                        if (!metrics.value(QStringLiteral("success")).toBool() ||
+                            guardedEngine.isNull()) {
+                            completion(smokeCaptureFailureExitCode);
+                            return;
+                        }
+                        DesktopSmokeWindowWaiter::capture(
+                            *guardedEngine, screenshotPath,
+                            DesktopSmokeCaptureTarget::RootWindowWithAdvancedFilters, completion);
+                    },
+                    Qt::SingleShotConnection);
+                QTimer::singleShot(5000, &engine, [completion, metricsReported] {
+                    if (!*metricsReported) {
+                        *metricsReported = true;
+                        completion(smokeCaptureFailureExitCode);
+                    }
+                });
+                controller->requestOpenAdvancedPopup();
+                return;
+            }
+            if (options.openDetailsWindow) {
+                const QPointer<QQmlApplicationEngine> guardedEngine{&engine};
+                QObject::connect(
+                    controller, &DesktopSmokeController::detailsReady, &engine,
+                    [guardedEngine, screenshotPath = options.screenshotPath, completion] {
+                        if (guardedEngine.isNull()) {
+                            completion(smokeCaptureFailureExitCode);
+                            return;
+                        }
+                        DesktopSmokeWindowWaiter::capture(*guardedEngine, screenshotPath,
+                                                          DesktopSmokeCaptureTarget::DetailsWindow,
+                                                          completion);
+                    },
+                    Qt::SingleShotConnection);
+                controller->requestOpenDetailsWindow();
+                return;
+            }
+            if (options.openPreferences) {
                 controller->requestOpenPreferences();
             }
-            if (openAdvancedFilters) {
+            if (options.openAdvancedFilters) {
                 controller->requestOpenAdvancedFilters();
-            }
-            if (openAdvancedPopup) {
-                controller->requestOpenAdvancedPopup();
-            }
-            if (openDetailsWindow) {
-                controller->requestOpenDetailsWindow();
             }
             const QPointer<QQmlApplicationEngine> guardedEngine{&engine};
             if (guardedEngine.isNull()) {
                 completion(smokeCaptureFailureExitCode);
                 return;
             }
-            const DesktopSmokeCaptureTarget target =
-                targetForRequest(openPreferences, openAdvancedFilters, openDetailsWindow);
-            QTimer::singleShot(screenshotDelayMs, guardedEngine,
-                               [guardedEngine, screenshotPath, target, completion] {
-                                   DesktopSmokeWindowWaiter::capture(*guardedEngine, screenshotPath,
-                                                                     target, completion);
-                               });
+            const DesktopSmokeCaptureTarget target = targetForRequest(
+                options.openPreferences, options.openAdvancedFilters, options.openDetailsWindow);
+            QTimer::singleShot(
+                options.screenshotDelayMs, guardedEngine,
+                [guardedEngine, screenshotPath = options.screenshotPath, target, completion] {
+                    DesktopSmokeWindowWaiter::capture(*guardedEngine, screenshotPath, target,
+                                                      completion);
+                });
         }
 
         void scheduleCapture(QQmlApplicationEngine& engine, DesktopSmokeController& controller,
@@ -111,10 +184,7 @@ namespace ssa::app::desktop {
                     completion(smokeCaptureFailureExitCode);
                     return;
                 }
-                prepareCapture(*guardedEngine, options.screenshotPath, options.openPreferences,
-                               options.openAdvancedFilters, options.openAdvancedPopup,
-                               options.openDetailsWindow, options.screenshotDelayMs,
-                               guardedController, completion);
+                prepareCapture(*guardedEngine, options, guardedController, completion);
             };
             if (!engine.rootObjects().isEmpty()) {
                 QTimer::singleShot(0, &engine, startCapture);
@@ -152,6 +222,18 @@ namespace ssa::app::desktop {
         emit openDetailsWindowRequested();
     }
 
+    void DesktopSmokeController::reportAdvancedPopupMetrics(const QVariantMap& metrics) {
+        emit advancedPopupMetricsReady(metrics);
+    }
+
+    void DesktopSmokeController::reportCaptureFailure() {
+        emit captureFailureReported();
+    }
+
+    void DesktopSmokeController::reportDetailsReady() {
+        emit detailsReady();
+    }
+
     void DesktopSmokeCapture::installIfRequested(const QCommandLineParser& parser,
                                                  QQmlApplicationEngine& engine,
                                                  DesktopSmokeController& controller) {
@@ -164,13 +246,20 @@ namespace ssa::app::desktop {
                                [] { QCoreApplication::exit(smokeCaptureFailureExitCode); });
             return;
         }
-        const DesktopSmokeCaptureCompletion completion = [](const int status) {
+        const auto completed = std::make_shared<std::atomic_bool>(false);
+        const DesktopSmokeCaptureCompletion completion = [completed](const int status) {
+            if (completed->exchange(true)) {
+                return;
+            }
             if (status == 0) {
                 QCoreApplication::quit();
             } else {
                 QCoreApplication::exit(status);
             }
         };
+        QObject::connect(
+            &controller, &DesktopSmokeController::captureFailureReported, &engine,
+            [completion] { completion(smokeCaptureFailureExitCode); }, Qt::SingleShotConnection);
         scheduleCapture(engine, controller, options, completion);
     }
 

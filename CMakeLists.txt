@@ -139,7 +139,6 @@ add_library(
   src/presentation/AdvancedTextFilterSnapshotSynchronizer.cpp
   src/presentation/AdvancedDerivationFilterViewModel.cpp
   src/presentation/AdvancedMacroFilterViewModel.cpp
-  src/presentation/AdvancedSectorHierarchyViewModel.cpp
   src/presentation/AdvancedTextFilterViewModel.cpp
   src/presentation/AdvancedWeekFilterViewModel.cpp
   src/presentation/FilterPanelAdvancedViewModel.cpp
@@ -324,12 +323,63 @@ if(SSA_BUILD_TESTS)
                                                           Qt6::Test)
   add_test(NAME ssa_qt_filter_panel_tests COMMAND ssa_qt_filter_panel_tests)
 
+  add_executable(ssa_qml_advanced_popup_tests
+                 tests/smoke/AdvancedPopupQmlTest.cpp)
+  target_link_libraries(
+    ssa_qml_advanced_popup_tests PRIVATE ssa_presentation Qt6::Qml Qt6::Quick
+                                         Qt6::QuickControls2 Qt6::Test)
+  add_test(NAME ssa_qml_advanced_popup_tests
+           COMMAND ssa_qml_advanced_popup_tests)
+  set_tests_properties(
+    ssa_qml_advanced_popup_tests
+    PROPERTIES TIMEOUT 10 RUN_SERIAL TRUE ENVIRONMENT
+               "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Basic")
+
   add_test(NAME ssa_cli_version COMMAND ssa_consulta_rapida_cli --version)
   set_tests_properties(
     ssa_cli_version PROPERTIES PASS_REGULAR_EXPRESSION
                                "ssa_consulta_rapida_cli ${PROJECT_VERSION}")
 
+  foreach(popup_width IN ITEMS 1580 1180)
+    add_test(
+      NAME ssa_qml_popup_smoke_${popup_width}
+      COMMAND
+        ${CMAKE_COMMAND} -E env QT_QPA_PLATFORM=offscreen
+        $<TARGET_FILE:ssa_consulta_rapida> --screenshot
+        ${CMAKE_CURRENT_BINARY_DIR}/popup-smoke-${popup_width}.png
+        --smoke-advanced-popup --smoke-window-width ${popup_width}
+        --smoke-window-height 940)
+    set_tests_properties(
+      ssa_qml_popup_smoke_${popup_width}
+      PROPERTIES TIMEOUT 15 RUN_SERIAL TRUE PASS_REGULAR_EXPRESSION
+                 "QML_POPUP_SMOKE.*success.*true")
+  endforeach()
+
+  add_test(
+    NAME ssa_qml_details_timeout
+    COMMAND
+      ${CMAKE_COMMAND} -DAPP=$<TARGET_FILE:ssa_consulta_rapida>
+      -DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/details-timeout-smoke -P
+      ${CMAKE_CURRENT_SOURCE_DIR}/cmake/RunDetailsTimeoutSmoke.cmake)
+  set_tests_properties(ssa_qml_details_timeout PROPERTIES TIMEOUT 10 RUN_SERIAL
+                                                          TRUE)
+
   if(NOT WIN32)
+    add_executable(ssa_advanced_popup_memory_probe
+                   tools/advanced_popup_memory_probe.cpp)
+    target_compile_definitions(
+      ssa_advanced_popup_memory_probe
+      PRIVATE SSA_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    target_link_libraries(ssa_advanced_popup_memory_probe
+                          PRIVATE Qt6::Qml Qt6::Quick Qt6::QuickControls2)
+    add_test(
+      NAME ssa_qml_popup_rss
+      COMMAND
+        ${CMAKE_COMMAND} -DPROBE=$<TARGET_FILE:ssa_advanced_popup_memory_probe>
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/RunPopupRssComparison.cmake)
+    set_tests_properties(ssa_qml_popup_rss PROPERTIES TIMEOUT 60 RUN_SERIAL
+                                                      TRUE)
+
     add_executable(ssa_mem_stress tools/mem_stress.cpp)
     target_link_libraries(ssa_mem_stress PRIVATE ssa_presentation ssa_infra
                                                  Qt6::Core)

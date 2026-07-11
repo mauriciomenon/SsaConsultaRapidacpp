@@ -67,6 +67,7 @@ namespace ssa::presentation {
         Q_INVOKABLE void importFilterPreset(const QUrl& inputUrl);
 
       signals:
+        void shutdownStarted();
         void savedFiltersChanged();
         void statusMessageRequested(const QString& message);
         void statusErrorRequested(const QString& message);

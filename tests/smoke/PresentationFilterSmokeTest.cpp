@@ -502,6 +502,20 @@ namespace {
             QCOMPARE(source.count("textFormat: Text.PlainText"), 4);
         }
 
+        void smoke_details_timeout_reports_capture_failure() {
+            QDir repositoryRoot = QFileInfo(QString::fromUtf8(__FILE__)).dir();
+            QVERIFY(repositoryRoot.cdUp());
+            QVERIFY(repositoryRoot.cdUp());
+            QFile qmlFile(
+                repositoryRoot.filePath("app/desktop/qml/components/SmokeCaptureBridge.qml"));
+            QVERIFY2(qmlFile.open(QIODevice::ReadOnly), qPrintable(qmlFile.errorString()));
+            const QByteArray source = qmlFile.readAll();
+
+            QVERIFY(source.contains("root.smokeController.reportCaptureFailure();"));
+            QVERIFY(source.contains("root.smokeController.reportDetailsReady();"));
+            QVERIFY(!source.contains("console.warn(\"Smoke capture: details window was not ready"));
+        }
+
         void column_filter_apply_signal_reloads_table_with_responsible_execution_filter() {
             auto repository = std::make_shared<FakeRepository>();
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);

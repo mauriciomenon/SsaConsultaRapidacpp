@@ -76,7 +76,6 @@
 
 - [PENDING] [GUI-CONTRACT-WEEK-DERIVATION] Decidir se a GUI deve restaurar o filtro generico de semana e o seletor de derivacao descritos em `docs/contracts/gui-behavior.md`. O runtime atual expoe apenas os cards de emissao e execucao e nao oferece controle visual para `derivationMode`. Nao alterar o layout ate uma decisao de produto explicita.
 - [PENDING] [TYPESCALE-POINTSIZE] Migrar TypeScale de `font.pixelSize` para `font.pointSize` para respeitar a escala de fonte/DPI do SO (acessibilidade - fonte grande). Impacto: revalidar todos os 36 QML em Retina/HiDPI e telas com fonte do SO em Large. Slice dedicado.
-- [PENDING] [F5-DEAD-PREVIEW-API] Apos commit `6ddb6ef` (dropdown usa `loadedValueOptions` direto), `FilterPanelViewModel::columnValuePreviewOptionsFor` e `hasMoreColumnValueOptionsFor` nao tem caller em QML (so em testes smoke). Remover do VM + ajustar testes que os usam como veiculo para testar reset/cache do `FilterPanelColumnValueOptions`. Slice dedicado - nao misturar com outras mudancas pois os testes validam comportamento real de reset.
 
 ## Cobertura de seguranca consolidada (julho 2026)
 

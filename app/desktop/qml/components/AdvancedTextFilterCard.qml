@@ -34,10 +34,9 @@ FilterCard {
         return root.operatorLabel.length > 0 ? root.operatorLabel : "=";
     }
 
-    function openSmokeValues(values) {
+    function prepareSmokeValues(values) {
         root.allValues = values;
         root.maxValueLength = String(values[values.length - 1]).length;
-        valuePopup.openForCurrentFilter();
         return valuePopup;
     }
 

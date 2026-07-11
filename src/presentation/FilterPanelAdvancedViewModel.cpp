@@ -10,7 +10,6 @@ namespace ssa::presentation {
         QObject* parent)
         : QObject(parent), state_(state), text_(state_, this),
           week_(state_, std::move(weekColumnKeys), this), derivation_(state_, this),
-          sectorHierarchy_(state_, this),
           macro_(state_, filterState, std::move(queryService), this) {
         connect(&text_, &AdvancedTextFilterViewModel::changed, this,
                 &FilterPanelAdvancedViewModel::publishChanged);
@@ -22,10 +21,6 @@ namespace ssa::presentation {
                 &FilterPanelAdvancedViewModel::publishChanged);
         connect(&derivation_, &AdvancedDerivationFilterViewModel::changed, this,
                 &FilterPanelAdvancedViewModel::publishChanged);
-        connect(&sectorHierarchy_, &AdvancedSectorHierarchyViewModel::changed, this, [this] {
-            text_.refreshFromState();
-            publishChanged();
-        });
         connect(&macro_, &AdvancedMacroFilterViewModel::changed, this, [this] {
             text_.refreshFromState();
             publishChanged();
@@ -44,10 +39,6 @@ namespace ssa::presentation {
         return &derivation_;
     }
 
-    QObject* FilterPanelAdvancedViewModel::sectorHierarchy() {
-        return &sectorHierarchy_;
-    }
-
     QObject* FilterPanelAdvancedViewModel::macro() {
         return &macro_;
     }
@@ -61,7 +52,6 @@ namespace ssa::presentation {
         text_.refreshFromState();
         week_.refreshFromState();
         derivation_.refreshFromState();
-        sectorHierarchy_.refreshFromState();
         macro_.refreshFromState();
         publishChanged();
         emit applyRequested();
@@ -71,7 +61,6 @@ namespace ssa::presentation {
         text_.refreshFromState();
         week_.refreshFromState();
         derivation_.refreshFromState();
-        sectorHierarchy_.refreshFromState();
         macro_.refreshFromState();
         publishChanged();
     }

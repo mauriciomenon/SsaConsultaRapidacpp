@@ -1,3 +1,4 @@
+#include "platform/DesktopExternalCommandPort.h"
 #include "platform/OpenPathPolicy.h"
 #include "platform/SamUrlBuilder.h"
 #include "platform/StartupOptions.h"
@@ -7,14 +8,17 @@
 
 #include <QCommandLineOption>
 #include <QCommandLineParser>
+#include <QCoreApplication>
 #include <QDir>
 
+#include <array>
 #include <atomic>
 #include <filesystem>
 #include <fstream>
 #include <random>
 #include <stdexcept>
 #include <string>
+#include <thread>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -239,4 +243,28 @@ TEST_CASE("open path policy accepts new paths under existing allowed roots") {
     REQUIRE(accepted.status == ssa::ports::ExternalCommandStatus::Succeeded);
     REQUIRE(acceptedNested.status == ssa::ports::ExternalCommandStatus::Succeeded);
     REQUIRE(rejectedEscape.status == ssa::ports::ExternalCommandStatus::Rejected);
+}
+
+TEST_CASE("desktop external command port rejects worker thread before dispatch") {
+    ssa::platform::DesktopExternalCommandPort commands(QUrl{"https://example.invalid/sam"});
+    ssa::ports::ExternalCommandResult result;
+    const auto executeInWorker = [&] {
+        std::thread worker([&] {
+            result = commands.execute(
+                ssa::ports::ExternalCommand{ssa::ports::ExternalCommandKind::OpenSamHome, {}});
+        });
+        worker.join();
+    };
+    if (QCoreApplication::instance() == nullptr) {
+        int argc = 1;
+        std::array<char, 15> applicationName{"ssa-unit-tests"};
+        std::array<char*, 2> arguments{applicationName.data(), nullptr};
+        QCoreApplication application(argc, arguments.data());
+        executeInWorker();
+    } else {
+        executeInWorker();
+    }
+
+    REQUIRE(result.status == ssa::ports::ExternalCommandStatus::Rejected);
+    REQUIRE(result.message == "external commands must run on the GUI thread");
 }

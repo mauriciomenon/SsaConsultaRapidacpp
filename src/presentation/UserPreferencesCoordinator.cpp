@@ -2,7 +2,7 @@
 
 #include <QDebug>
 #include <QThread>
-#include <QtConcurrent>
+#include <QtConcurrentRun>
 
 #include <utility>
 
@@ -31,6 +31,7 @@ namespace ssa::presentation {
             finalSnapshot = std::move(pendingSnapshot_);
         }
         shuttingDown_ = true;
+        emit shutdownStarted();
         saveTimer_.stop();
         disconnect(&saveTimer_, nullptr, this, nullptr);
         disconnect(&watcher_, nullptr, this, nullptr);

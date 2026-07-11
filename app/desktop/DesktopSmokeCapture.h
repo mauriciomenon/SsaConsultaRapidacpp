@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QObject>
+#include <QVariantMap>
 
 class QCommandLineParser;
 class QQmlApplicationEngine;
@@ -16,12 +17,18 @@ namespace ssa::app::desktop {
         void requestOpenAdvancedFilters();
         void requestOpenAdvancedPopup();
         void requestOpenDetailsWindow();
+        Q_INVOKABLE void reportCaptureFailure();
+        Q_INVOKABLE void reportDetailsReady();
+        Q_INVOKABLE void reportAdvancedPopupMetrics(const QVariantMap& metrics);
 
       signals:
         void openPreferencesRequested();
         void openAdvancedFiltersRequested();
         void openAdvancedPopupRequested();
         void openDetailsWindowRequested();
+        void captureFailureReported();
+        void detailsReady();
+        void advancedPopupMetricsReady(QVariantMap metrics);
     };
 
     class DesktopSmokeCapture final {

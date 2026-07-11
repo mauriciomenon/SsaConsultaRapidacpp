@@ -252,6 +252,29 @@ TEST_CASE("spreadsheet import workflow rejects more than 64 files before staging
     REQUIRE_FALSE(std::filesystem::exists(dbPath));
 }
 
+TEST_CASE("import file stager accepts exactly 64 files") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto sourceDirectory = root / "source";
+    const auto inputDirectory = root / "docs_entrada";
+    std::filesystem::create_directories(sourceDirectory);
+    std::vector<std::filesystem::path> files;
+    for (std::size_t index = 0; index < 64; ++index) {
+        const auto source = sourceDirectory / ("source_" + std::to_string(index) + ".xlsx");
+        createSparseFile(source, 0);
+        files.push_back(source);
+    }
+
+    const ssa::infra::importing::ImportFileStager stager(inputDirectory);
+    const auto result = stager.stageExternalFiles(files);
+
+    REQUIRE(result.rejectionReason.empty());
+    REQUIRE(result.failedCopies == 0);
+    REQUIRE(result.xlsxFiles.size() == 64);
+}
+
 TEST_CASE("spreadsheet import workflow rejects files larger than 128 MiB before staging") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());

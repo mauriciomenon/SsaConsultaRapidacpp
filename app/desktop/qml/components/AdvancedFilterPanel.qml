@@ -14,8 +14,12 @@ Rectangle {
     border.color: "transparent"
     radius: 0
 
-    function openSmokeValues(columnKey, values) {
-        return textFilterGrid.openSmokeValues(columnKey, values);
+    function prepareSmokeValues(columnKey, values) {
+        return textFilterGrid.prepareSmokeValues(columnKey, values);
+    }
+
+    function smokeGridGeometry() {
+        return textFilterGrid.smokeGeometry();
     }
 
     ScrollView {

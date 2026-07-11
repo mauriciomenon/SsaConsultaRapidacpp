@@ -30,6 +30,7 @@ namespace ssa::presentation {
         void shutdown(std::optional<ports::UserPreferencesSnapshot> finalSnapshot = std::nullopt);
 
       signals:
+        void shutdownStarted();
         void saved();
         void saveFailed(QString message);
 

@@ -1,7 +1,6 @@
 #include "domain/ColumnCatalog.h"
 #include "domain/SsaTypes.h"
 #include "presentation/AdvancedMacroFilterViewModel.h"
-#include "presentation/AdvancedSectorHierarchyViewModel.h"
 #include "presentation/AdvancedTextFilterViewModel.h"
 #include "presentation/AdvancedWeekFilterViewModel.h"
 #include "presentation/FilterPanelAdvancedViewModel.h"
@@ -411,26 +410,6 @@ namespace {
             QCOMPARE(week->isYearWeekValid("202653"), true);
             QCOMPARE(week->isYearWeekValid("202600"), false);
             QCOMPARE(week->isYearWeekValid("202654"), false);
-        }
-
-        void advanced_sector_hierarchy_updates_executor_filter() {
-            auto repository = std::make_shared<FilterPanelRepository>();
-            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
-            ssa::presentation::FilterPanelViewModel filters(service);
-            auto* advanced =
-                qobject_cast<ssa::presentation::FilterPanelAdvancedViewModel*>(filters.advanced());
-            QVERIFY(advanced != nullptr);
-            auto* hierarchy = qobject_cast<ssa::presentation::AdvancedSectorHierarchyViewModel*>(
-                advanced->sectorHierarchy());
-            auto* text =
-                qobject_cast<ssa::presentation::AdvancedTextFilterViewModel*>(advanced->text());
-            QVERIFY(hierarchy != nullptr);
-            QVERIFY(text != nullptr);
-
-            hierarchy->applyDivision("SMIN");
-
-            QCOMPARE(hierarchy->selectedDivision(), QString("SMIN"));
-            QCOMPARE(text->textFilter("setor_executor"), QString("=IEE1,=IEE2,=IEE3,=IEE4"));
         }
 
         void advanced_macro_baixar_updates_status_filter() {

@@ -10,6 +10,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QSaveFile>
 #include <QTemporaryDir>
 
 #include <filesystem>
@@ -18,7 +19,7 @@
 
 namespace {
 
-    constexpr qsizetype kOneMebibyte = 1024 * 1024;
+    constexpr qsizetype kOneMebibyte = qsizetype{1024} * 1024;
 
     class ShortWriteDevice final : public QIODevice {
       public:
@@ -279,6 +280,109 @@ TEST_CASE("json persistence rejects a short write before commit") {
 
     REQUIRE_THROWS(ssa::infra::preferences::json_persistence::writeFully(
         output, QByteArray{"payload"}, "preferences file", std::filesystem::path{"prefs.json"}));
+}
+
+TEST_CASE("json persistence reports commit failure and preserves the previous file") {
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+
+    const auto root = std::filesystem::path{directory.path().toStdString()};
+    const auto targetDirectory = root / "target";
+    std::filesystem::create_directories(targetDirectory);
+    const auto path = targetDirectory / "prefs.json";
+    const QByteArray original{R"JSON({"schema_version":12,"theme":"gruvbox"})JSON"};
+    writeBytes(path, original);
+
+    QSaveFile output(QString::fromStdString(path.string()));
+    output.setDirectWriteFallback(false);
+    REQUIRE(output.open(QIODevice::WriteOnly));
+    ssa::infra::preferences::json_persistence::writeFully(
+        output, QByteArray{R"JSON({"schema_version":12,"theme":"grayscalepy"})JSON"},
+        "preferences file", path);
+    output.cancelWriting();
+
+    REQUIRE_THROWS(
+        ssa::infra::preferences::json_persistence::commitOrThrow(output, "preferences file", path));
+    REQUIRE(readBytes(path) == original);
+}
+
+TEST_CASE("json persistence accepts exactly one mebibyte") {
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+
+    const auto path = std::filesystem::path{directory.path().toStdString()} / "boundary.json";
+    const QByteArray payload(kOneMebibyte, 'x');
+    writeBytes(path, payload);
+
+    REQUIRE(ssa::infra::preferences::json_persistence::readBounded(path, "boundary file") ==
+            payload);
+}
+
+TEST_CASE("json preferences store roundtrips every python theme through two save cycles") {
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+
+    const auto path = std::filesystem::path{directory.path().toStdString()} / "prefs.json";
+    const ssa::infra::preferences::JsonUserPreferencesStore store(path);
+    std::size_t pythonThemeCount = 0;
+
+    for (const auto theme : ssa::ports::kThemeValues) {
+        if (!theme.ends_with("py")) {
+            continue;
+        }
+        ++pythonThemeCount;
+        ssa::ports::UserPreferencesSnapshot first;
+        first.theme = theme;
+        first.pageSize = 25;
+        store.save(first);
+
+        auto second = store.load();
+        REQUIRE(second.schemaVersion == ssa::ports::kCurrentUserPreferencesSchemaVersion);
+        REQUIRE(second.theme == theme);
+        REQUIRE(second.pageSize == 25);
+
+        second.pageSize = 50;
+        store.save(second);
+        const auto third = store.load();
+        REQUIRE(third.schemaVersion == ssa::ports::kCurrentUserPreferencesSchemaVersion);
+        REQUIRE(third.theme == theme);
+        REQUIRE(third.pageSize == 50);
+    }
+
+    REQUIRE(pythonThemeCount == 13);
+}
+
+TEST_CASE("json preference limits accept their exact boundaries") {
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+
+    const auto path = std::filesystem::path{directory.path().toStdString()} / "prefs.json";
+    const ssa::infra::preferences::JsonUserPreferencesStore store(path);
+
+    SECTION("two hundred saved filters") {
+        ssa::ports::UserPreferencesSnapshot snapshot;
+        for (std::size_t index = 0; index < ssa::ports::kMaxSavedFilterCount; ++index) {
+            snapshot.savedFilters.push_back({"filter-" + std::to_string(index), {}});
+        }
+        REQUIRE_NOTHROW(store.save(snapshot));
+        REQUIRE(store.load().savedFilters.size() == ssa::ports::kMaxSavedFilterCount);
+    }
+    SECTION("saved filter name with 128 characters") {
+        ssa::ports::UserPreferencesSnapshot snapshot;
+        snapshot.savedFilters.push_back(
+            {std::string(ssa::ports::kMaxSavedFilterNameLength, 'n'), {}});
+        REQUIRE_NOTHROW(store.save(snapshot));
+        REQUIRE(store.load().savedFilters.front().name.size() ==
+                ssa::ports::kMaxSavedFilterNameLength);
+    }
+    SECTION("filter expression with 4096 characters") {
+        ssa::ports::UserPreferencesSnapshot snapshot;
+        snapshot.filters.advancedTextFilters = {
+            {"situacao", std::string(ssa::ports::kMaxFilterExpressionLength, 'x')}};
+        REQUIRE_NOTHROW(store.save(snapshot));
+        REQUIRE(store.load().filters.advancedTextFilters.at("situacao").size() ==
+                ssa::ports::kMaxFilterExpressionLength);
+    }
 }
 
 TEST_CASE("json preferences store enforces saved filter count and name limits") {

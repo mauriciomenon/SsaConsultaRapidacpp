@@ -10,6 +10,7 @@
 #include "presentation/ExportViewModel.h"
 #include "presentation/FilterPanelAdvancedViewModel.h"
 #include "presentation/FilterPanelViewModel.h"
+#include "presentation/MainPreferenceFlowCoordinator.h"
 #include "presentation/MainViewModel.h"
 #include "presentation/PageQueryCoordinator.h"
 #include "presentation/SsaRecordValueFormatter.h"
@@ -21,10 +22,10 @@
 #include <QRegularExpression>
 #include <QSignalSpy>
 #include <QString>
+#include <QTest>
 #include <QThread>
 #include <QUrl>
 #include <QVariantMap>
-#include <QtTest>
 
 #include <atomic>
 #include <chrono>
@@ -128,6 +129,58 @@ namespace {
         void save(std::filesystem::path, const ssa::ports::FilterPresetSnapshot&) const override {
             throw 42;
         }
+    };
+
+    class BlockingFilterPresetStore final : public ssa::ports::IFilterPresetStore {
+      public:
+        ssa::ports::FilterPresetSnapshot load(std::filesystem::path) const override {
+            std::unique_lock lock(mutex_);
+            importStarted_ = true;
+            condition_.notify_all();
+            condition_.wait(lock, [this] { return releaseImport_; });
+            return {};
+        }
+
+        void save(std::filesystem::path, const ssa::ports::FilterPresetSnapshot&) const override {
+            std::unique_lock lock(mutex_);
+            exportStarted_ = true;
+            condition_.notify_all();
+            condition_.wait(lock, [this] { return releaseExport_; });
+        }
+
+        [[nodiscard]] bool waitForImportStart(std::chrono::milliseconds timeout) const {
+            std::unique_lock lock(mutex_);
+            return condition_.wait_for(lock, timeout, [this] { return importStarted_; });
+        }
+
+        [[nodiscard]] bool waitForExportStart(std::chrono::milliseconds timeout) const {
+            std::unique_lock lock(mutex_);
+            return condition_.wait_for(lock, timeout, [this] { return exportStarted_; });
+        }
+
+        void releaseImport() const {
+            {
+                const std::scoped_lock lock(mutex_);
+                releaseImport_ = true;
+            }
+            condition_.notify_all();
+        }
+
+        void releaseExport() const {
+            {
+                const std::scoped_lock lock(mutex_);
+                releaseExport_ = true;
+            }
+            condition_.notify_all();
+        }
+
+      private:
+        mutable std::mutex mutex_;
+        mutable std::condition_variable condition_;
+        mutable bool importStarted_{false};
+        mutable bool exportStarted_{false};
+        mutable bool releaseImport_{false};
+        mutable bool releaseExport_{false};
     };
 
     class BlockingPreferencesStore final : public ssa::ports::IUserPreferencesStore {
@@ -969,6 +1022,20 @@ namespace {
             auto repository = std::make_shared<SlowCancelableRepository>();
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
             ssa::presentation::PageQueryCoordinator coordinator(service);
+            int succeededCount = 0;
+            int canceledCount = 0;
+            int failedCount = 0;
+            std::string completedSearch;
+            connect(&coordinator, &ssa::presentation::PageQueryCoordinator::succeeded, this,
+                    [&](const ssa::presentation::PageQueryResult&,
+                        const ssa::domain::SsaPageRequest& request) {
+                        ++succeededCount;
+                        completedSearch = request.searchText;
+                    });
+            connect(&coordinator, &ssa::presentation::PageQueryCoordinator::canceled, this,
+                    [&] { ++canceledCount; });
+            connect(&coordinator, &ssa::presentation::PageQueryCoordinator::failed, this,
+                    [&](const QString&) { ++failedCount; });
             ssa::domain::SsaPageRequest firstRequest;
             firstRequest.searchText = "first";
 
@@ -981,6 +1048,13 @@ namespace {
 
             QTRY_VERIFY_WITH_TIMEOUT(repository->secondStarted(), 150);
             QVERIFY(!repository->firstFinished());
+            QTRY_COMPARE_WITH_TIMEOUT(succeededCount, 1, 1000);
+            QCOMPARE(completedSearch, std::string{"second"});
+            QTRY_VERIFY_WITH_TIMEOUT(repository->firstFinished(), 1000);
+            QCoreApplication::processEvents();
+            QCOMPARE(succeededCount, 1);
+            QCOMPARE(canceledCount, 0);
+            QCOMPARE(failedCount, 0);
         }
 
         void column_settings_update_visible_columns_and_preferences() {
@@ -1473,6 +1547,52 @@ namespace {
             QCOMPARE(savedSpy.count(), 0);
         }
 
+        void preferences_destruction_waits_for_active_save_without_callback() {
+            auto preferences = std::make_shared<BlockingPreferencesStore>();
+            auto coordinator =
+                std::make_unique<ssa::presentation::UserPreferencesCoordinator>(preferences);
+            QSignalSpy savedSpy(coordinator.get(),
+                                &ssa::presentation::UserPreferencesCoordinator::saved);
+            QSignalSpy failedSpy(coordinator.get(),
+                                 &ssa::presentation::UserPreferencesCoordinator::saveFailed);
+            ssa::ports::UserPreferencesSnapshot snapshot;
+            snapshot.density = "active";
+
+            coordinator->saveNowOrSchedule(snapshot);
+            QVERIFY(preferences->waitForFirstSave(std::chrono::seconds{1}));
+            std::mutex releaseMutex;
+            std::condition_variable releaseCondition;
+            bool destructionCallbackEntered = false;
+            std::atomic_bool destructionFinished{false};
+            std::thread releaser([&] {
+                std::unique_lock lock(releaseMutex);
+                releaseCondition.wait(lock, [&] { return destructionCallbackEntered; });
+                preferences->releaseFirstSave();
+            });
+            connect(coordinator.get(),
+                    &ssa::presentation::UserPreferencesCoordinator::shutdownStarted, this, [&] {
+                        {
+                            const std::scoped_lock lock(releaseMutex);
+                            destructionCallbackEntered = true;
+                        }
+                        releaseCondition.notify_one();
+                    });
+            const auto coordinatorHolder =
+                std::make_shared<decltype(coordinator)>(std::move(coordinator));
+            QTimer::singleShot(0, QCoreApplication::instance(), [&, coordinatorHolder] {
+                coordinatorHolder->reset();
+                destructionFinished.store(true, std::memory_order_release);
+            });
+
+            QTRY_VERIFY_WITH_TIMEOUT(destructionFinished.load(std::memory_order_acquire), 1000);
+            releaser.join();
+            QCoreApplication::processEvents();
+
+            QCOMPARE(preferences->savedDensities(), std::vector<std::string>({"active"}));
+            QCOMPARE(savedSpy.count(), 0);
+            QCOMPARE(failedSpy.count(), 0);
+        }
+
         void filter_preset_completion_is_not_delivered_during_destruction() {
             auto repository = std::make_shared<FakeRepository>();
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
@@ -1491,6 +1611,104 @@ namespace {
             model.reset();
 
             QCOMPARE(statusSpy.count(), 1);
+        }
+
+        void filter_preset_export_destruction_waits_without_terminal_callback() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            auto presets = std::make_shared<BlockingFilterPresetStore>();
+            auto model = std::make_unique<ssa::presentation::MainViewModel>(service, commands,
+                                                                            nullptr, presets);
+            QSignalSpy statusSpy(model->preferenceFlow(), SIGNAL(statusMessageRequested(QString)));
+            QSignalSpy errorSpy(model->preferenceFlow(), SIGNAL(statusErrorRequested(QString)));
+
+            QVERIFY(QMetaObject::invokeMethod(
+                model->preferenceFlow(), "exportFilterPreset", Qt::DirectConnection,
+                Q_ARG(QUrl, QUrl::fromLocalFile("/tmp/ssa-filter-preset.json"))));
+            QVERIFY(presets->waitForExportStart(std::chrono::seconds{1}));
+            QCOMPARE(statusSpy.count(), 1);
+            std::mutex releaseMutex;
+            std::condition_variable releaseCondition;
+            bool destructionCallbackEntered = false;
+            std::atomic_bool destructionFinished{false};
+            std::thread releaser([&] {
+                std::unique_lock lock(releaseMutex);
+                releaseCondition.wait(lock, [&] { return destructionCallbackEntered; });
+                presets->releaseExport();
+            });
+            auto* preferenceFlow = qobject_cast<ssa::presentation::MainPreferenceFlowCoordinator*>(
+                model->preferenceFlow());
+            QVERIFY(preferenceFlow != nullptr);
+            connect(preferenceFlow,
+                    &ssa::presentation::MainPreferenceFlowCoordinator::shutdownStarted, this, [&] {
+                        {
+                            const std::scoped_lock lock(releaseMutex);
+                            destructionCallbackEntered = true;
+                        }
+                        releaseCondition.notify_one();
+                    });
+            const auto modelHolder = std::make_shared<decltype(model)>(std::move(model));
+            QTimer::singleShot(0, QCoreApplication::instance(), [&, modelHolder] {
+                modelHolder->reset();
+                destructionFinished.store(true, std::memory_order_release);
+            });
+
+            QTRY_VERIFY_WITH_TIMEOUT(destructionFinished.load(std::memory_order_acquire), 1000);
+            releaser.join();
+            QCoreApplication::processEvents();
+
+            QCOMPARE(statusSpy.count(), 1);
+            QCOMPARE(errorSpy.count(), 0);
+        }
+
+        void filter_preset_import_destruction_waits_without_terminal_callback() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            auto presets = std::make_shared<BlockingFilterPresetStore>();
+            auto model = std::make_unique<ssa::presentation::MainViewModel>(service, commands,
+                                                                            nullptr, presets);
+            QSignalSpy statusSpy(model->preferenceFlow(), SIGNAL(statusMessageRequested(QString)));
+            QSignalSpy errorSpy(model->preferenceFlow(), SIGNAL(statusErrorRequested(QString)));
+
+            QVERIFY(QMetaObject::invokeMethod(
+                model->preferenceFlow(), "importFilterPreset", Qt::DirectConnection,
+                Q_ARG(QUrl, QUrl::fromLocalFile("/tmp/ssa-filter-preset.json"))));
+            QVERIFY(presets->waitForImportStart(std::chrono::seconds{1}));
+            QCOMPARE(statusSpy.count(), 1);
+            std::mutex releaseMutex;
+            std::condition_variable releaseCondition;
+            bool destructionCallbackEntered = false;
+            std::atomic_bool destructionFinished{false};
+            std::thread releaser([&] {
+                std::unique_lock lock(releaseMutex);
+                releaseCondition.wait(lock, [&] { return destructionCallbackEntered; });
+                presets->releaseImport();
+            });
+            auto* preferenceFlow = qobject_cast<ssa::presentation::MainPreferenceFlowCoordinator*>(
+                model->preferenceFlow());
+            QVERIFY(preferenceFlow != nullptr);
+            connect(preferenceFlow,
+                    &ssa::presentation::MainPreferenceFlowCoordinator::shutdownStarted, this, [&] {
+                        {
+                            const std::scoped_lock lock(releaseMutex);
+                            destructionCallbackEntered = true;
+                        }
+                        releaseCondition.notify_one();
+                    });
+            const auto modelHolder = std::make_shared<decltype(model)>(std::move(model));
+            QTimer::singleShot(0, QCoreApplication::instance(), [&, modelHolder] {
+                modelHolder->reset();
+                destructionFinished.store(true, std::memory_order_release);
+            });
+
+            QTRY_VERIFY_WITH_TIMEOUT(destructionFinished.load(std::memory_order_acquire), 1000);
+            releaser.join();
+            QCoreApplication::processEvents();
+
+            QCOMPARE(statusSpy.count(), 1);
+            QCOMPARE(errorSpy.count(), 0);
         }
 
         void filter_preset_non_standard_export_exception_is_reported() {

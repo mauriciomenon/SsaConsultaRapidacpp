@@ -52,6 +52,14 @@ namespace ssa::infra::preferences::json_persistence {
         }
     }
 
+    inline void commitOrThrow(QSaveFile& output, const std::string_view subject,
+                              const std::filesystem::path& path) {
+        if (!output.commit()) {
+            throw std::runtime_error(errorMessage("cannot commit", subject, path) + ": " +
+                                     output.errorString().toStdString());
+        }
+    }
+
     inline void writeAtomically(const std::filesystem::path& path, const QByteArray& payload,
                                 const std::string_view subject) {
         if (payload.size() > kMaxJsonFileBytes) {
@@ -65,10 +73,7 @@ namespace ssa::infra::preferences::json_persistence {
         }
 
         writeFully(output, payload, subject, path);
-        if (!output.commit()) {
-            throw std::runtime_error(errorMessage("cannot commit", subject, path) + ": " +
-                                     output.errorString().toStdString());
-        }
+        commitOrThrow(output, subject, path);
     }
 
     [[nodiscard]] inline int schemaVersion(const QJsonObject& root, const int currentVersion,

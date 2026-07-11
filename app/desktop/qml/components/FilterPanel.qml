@@ -23,9 +23,13 @@ Rectangle {
         selectedTabIndex = 0;
     }
 
-    function openSmokeValues(columnKey, values) {
+    function prepareSmokeValues(columnKey, values) {
         root.showAdvancedFilters();
-        return advancedPanel.openSmokeValues(columnKey, values);
+        return advancedPanel.prepareSmokeValues(columnKey, values);
+    }
+
+    function smokeGridGeometry() {
+        return advancedPanel.smokeGridGeometry();
     }
 
     color: Theme.surface

@@ -27,6 +27,13 @@ Rectangle {
     property string contextCellText: ""
     property string contextSsaNumber: ""
 
+    function firstCellCenterForSmoke() {
+        const cell = table.itemAtCell(Qt.point(0, 0));
+        if (cell === null)
+            return Qt.point(-1, -1);
+        return cell.mapToItem(root, cell.width / 2, cell.height / 2);
+    }
+
     color: Theme.surface
     border.color: Theme.border
     radius: Theme.radius
@@ -374,7 +381,6 @@ Rectangle {
                         }
                     }
                     onDoubleClicked: {
-                        root.viewModel.selectRow(cellDelegate.row);
                         if (cellDelegate.opensSam || cellDelegate.isDerivationLink || cellDelegate.opensDerivationGraph)
                             return;
                         root.detailsWindowRequested();

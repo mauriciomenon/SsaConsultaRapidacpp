@@ -4,7 +4,7 @@
 #include "presentation/UserPreferencesCoordinator.h"
 
 #include <QVariantMap>
-#include <QtConcurrent>
+#include <QtConcurrentRun>
 
 #include <algorithm>
 #include <filesystem>
@@ -132,6 +132,7 @@ namespace ssa::presentation {
             return;
         }
         shuttingDown_ = true;
+        emit shutdownStarted();
         disconnect(&exportPresetWatcher_, nullptr, this, nullptr);
         disconnect(&importPresetWatcher_, nullptr, this, nullptr);
         if (exportPresetWatcher_.isRunning()) {
