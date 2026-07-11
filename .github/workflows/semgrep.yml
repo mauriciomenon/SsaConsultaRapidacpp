@@ -1,21 +1,10 @@
-# This workflow uses actions that are not certified by GitHub.
-# They are provided by a third-party and are governed by
-# separate terms of service, privacy policy, and support
-# documentation.
-
-# This workflow file requires a free account on Semgrep.dev to
-# manage rules, file ignores, notifications, and more.
-#
-# See https://semgrep.dev/docs
-
-name: Semgrep
+name: semgrep
 
 on:
   push:
-    branches: [ "master" ]
+    branches: ["master"]
   pull_request:
-    # The branches below must be a subset of the branches above
-    branches: [ "master" ]
+    branches: ["master"]
   schedule:
     - cron: '18 15 * * 5'
 
@@ -28,42 +17,35 @@ jobs:
       contents: read # for actions/checkout to fetch code
       security-events: write # for github/codeql-action/upload-sarif to upload SARIF results
       actions: read # only required for a private repository by github/codeql-action/upload-sarif to get the Action run status
-    name: Scan
+    name: Scan C, C++, and QML policies
     runs-on: ubuntu-latest
     steps:
-      # Checkout project source
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-
-      # Managed scan uses Semgrep.dev secrets and runs only on trusted events.
-      - name: Semgrep managed scan
-        if: github.event_name != 'pull_request'
-        uses: returntocorp/semgrep-action@fcd5ab7459e8d91cb1777481980d1b18b4fc6735
-        with:
-          publishToken: ${{ secrets.SEMGREP_APP_TOKEN }}
-          publishDeployment: ${{ secrets.SEMGREP_DEPLOYMENT_ID }}
-          generateSarif: "1"
-
-      # Pull requests from forks do not receive repository secrets.
-      - name: Semgrep pull request scan
-        if: github.event_name == 'pull_request'
-        uses: returntocorp/semgrep-action@fcd5ab7459e8d91cb1777481980d1b18b4fc6735
-        with:
-          config: p/c
-          generateSarif: "1"
-
-      - name: Check SARIF file
-        id: sarif
-        if: always()
+      - name: Test project QML policies
         run: |
-          if [[ -f semgrep.sarif ]]; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      # Upload SARIF file generated in previous step.
+          set -euo pipefail
+          docker run --rm \
+            -v "$PWD:/src" \
+            -w /src \
+            semgrep/semgrep:1.169.0@sha256:2b33f46ba66cf8cc2ad59ccfa7d22951fd00c632c38f1339e84ec8e6e641a942 \
+            semgrep test .semgrep
+      - name: Run Semgrep CE
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            -v "$PWD:/src" \
+            -w /src \
+            semgrep/semgrep:1.169.0@sha256:2b33f46ba66cf8cc2ad59ccfa7d22951fd00c632c38f1339e84ec8e6e641a942 \
+            semgrep scan \
+            --config p/c \
+            --config p/security-audit \
+            --config .semgrep/qml.yml \
+            --error \
+            --metrics=off \
+            --sarif-output=/src/semgrep.sarif \
+            src app tests tools
       - name: Upload SARIF file
+        if: always() && hashFiles('semgrep.sarif') != ''
         uses: github/codeql-action/upload-sarif@b0c4fd77f6c559021d78430ec4d0d169ae74a4eb
         with:
           sarif_file: semgrep.sarif
-        if: always() && steps.sarif.outputs.exists == 'true'

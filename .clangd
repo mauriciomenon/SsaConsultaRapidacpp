@@ -1,0 +1,11 @@
+CompileFlags:
+  CompilationDatabase: build/dev
+
+Diagnostics:
+  ClangTidy:
+    FastCheckFilter: Strict
+  MissingIncludes: Strict
+  UnusedIncludes: Strict
+
+Index:
+  Background: Build

@@ -1,0 +1,45 @@
+# Semgrep unit tests pair this file with qml.qml in the same directory.
+rules:
+  - id: qml-no-direct-external-url
+    languages: [generic]
+    severity: ERROR
+    message: Route external URLs through the GUI-thread C++ command port.
+    pattern: Qt.openUrlExternally(...)
+
+  - id: qml-no-dynamic-qml-object
+    languages: [generic]
+    severity: ERROR
+    message: Use a declared Component and Loader instead of dynamic QML source strings.
+    pattern: Qt.createQmlObject(...)
+
+  - id: qml-no-dynamic-component-url
+    languages: [generic]
+    severity: ERROR
+    message: Use a declared Component and Loader instead of dynamic component URLs.
+    pattern: Qt.createComponent(...)
+
+  - id: qml-no-eval
+    languages: [generic]
+    severity: ERROR
+    message: Do not execute dynamic JavaScript with eval in QML.
+    pattern: eval(...)
+
+  - id: qml-no-rich-text
+    languages: [generic]
+    severity: ERROR
+    message: Keep QML text plain unless a reviewed component explicitly sanitizes markup.
+    pattern: |
+      textFormat: Text.RichText
+
+  - id: qml-value-popup-must-stay-virtualized
+    languages: [generic]
+    severity: ERROR
+    message: Keep value popup options virtualized with ListView.
+    paths:
+      include:
+        - "**/AdvancedTextValuePopup.qml"
+        - "**/qml.qml"
+    pattern: |
+      Repeater {
+        ...
+      }

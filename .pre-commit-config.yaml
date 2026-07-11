@@ -56,13 +56,22 @@ repos:
         stages: [manual]
 
       - id: qmllint
-        name: qmllint [advisory]
-        description: Lint QML files; advisory only, never blocks.
-        entry: bash -c 'qmllint "$@" || true' --
+        name: qmllint
+        description: Type-aware QML lint; blocks commits on findings.
+        entry: bash -c 'test -f build/dev/build.ninja || { echo "build/dev is not configured; run cmake --preset dev" >&2; exit 1; }; cmake --build --preset dev --target all_qmllint' --
         language: system
         files: \.qml$
         exclude: ^build/
-        stages: [manual]
+        pass_filenames: false
+
+      - id: semgrep-qml
+        name: semgrep QML policies
+        description: Incremental QML policy checks; requires Semgrep 1.169.0 or newer.
+        entry: semgrep scan --config .semgrep/qml.yml --error --metrics=off
+        language: system
+        files: \.qml$
+        exclude: ^build/|^\.semgrep/
+        pass_filenames: true
 
       - id: cmake-lint
         name: cmake-lint [advisory]
@@ -75,14 +84,30 @@ repos:
 
       - id: gitleaks
         name: gitleaks (secrets)
-        description: Secret scanning; blocks commits on findings.
-        entry: bash -c 'gitleaks dir . --redact --no-banner --exit-code 1' --
+        description: Staged secret scan; blocks commits on findings.
+        entry: gitleaks git --staged --redact --no-banner --exit-code 1 .
         language: system
         pass_filenames: false
+
+      - id: gitleaks-full
+        name: gitleaks full history
+        description: Full repository secret scan for manual verification.
+        entry: gitleaks git --redact --no-banner --exit-code 1 .
+        language: system
+        pass_filenames: false
+        stages: [manual]
 
       - id: detect-secrets
         name: detect-secrets
         description: Secret scanning; blocks commits on findings.
         entry: detect-secrets-hook --baseline .secrets.baseline
         language: system
+        pass_filenames: true
+
+      - id: trufflehog
+        name: trufflehog staged files
+        description: Verified staged-file scan; may call verifier APIs and block the commit.
+        entry: trufflehog filesystem --results=verified,unknown --fail --fail-on-scan-errors --no-update
+        language: system
+        exclude: ^build/|^dist/|^\.semgrep/
         pass_filenames: true

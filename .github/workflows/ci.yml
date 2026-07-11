@@ -12,8 +12,10 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
       - name: Install dependencies
-        run: brew install qt cmake ninja sqlite llvm gitleaks
+        run: brew install qt cmake ninja sqlite llvm clazy reviewdog gitleaks
       - name: Configure
         run: cmake --preset dev -DCMAKE_PREFIX_PATH="$(brew --prefix qt)"
       - name: Build
@@ -21,7 +23,7 @@ jobs:
       - name: Test
         run: ctest --preset dev --output-on-failure
       - name: QML lint
-        run: qmllint -I build/dev app/desktop/qml/Main.qml app/desktop/qml/Theme.qml app/desktop/qml/components/*.qml
+        run: cmake --build --preset dev --target all_qmllint
       - name: C++ format
         run: find src app tests tools -type f \( -name '*.cpp' -o -name '*.h' \) -print0 | xargs -0 "$(brew --prefix llvm)/bin/clang-format" --dry-run --Werror
       - name: C++ tidy
@@ -31,6 +33,43 @@ jobs:
             -header-filter="$PWD/(src|app|tools)/.*" \
             -extra-arg=-isysroot -extra-arg="$SDKROOT" \
             "$PWD/(src|app|tools)/.*\\.(cpp|h)$"
+      - name: Qt static analysis on changed lines
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          sdk="$(xcrun --sdk macosx --show-sdk-path)"
+          resource="$("$(brew --prefix llvm)/bin/clang" -print-resource-dir)"
+          find src app tools -type f -name '*.cpp' -print0 | xargs -0 \
+            clazy-standalone -p build/dev -checks=level0,level1 --only-qt \
+            --header-filter="$PWD/(src|app|tools)/.*" \
+            --ignore-dirs='/(build|_deps)/' \
+            --extra-arg="-resource-dir=$resource" \
+            --extra-arg=-isysroot --extra-arg="$sdk" \
+            --extra-arg=-isystem --extra-arg="$sdk/usr/include/c++/v1" \
+            2>&1 | tee build/dev/clazy.log
+          if [[ "${EVENT_NAME}" == "pull_request" ]]; then
+            reporter="github-pr-annotations"
+            diff_command="git diff --no-ext-diff ${PR_BASE_SHA} ${PR_HEAD_SHA}"
+          else
+            reporter="github-annotations"
+            if [[ "${PUSH_BEFORE_SHA}" == "0000000000000000000000000000000000000000" ]]; then
+              diff_command="git show --format= --no-ext-diff ${GITHUB_SHA}"
+            else
+              diff_command="git diff --no-ext-diff ${PUSH_BEFORE_SHA} ${GITHUB_SHA}"
+            fi
+          fi
+          reviewdog \
+            -efm='%f:%l:%c: %t%*[^:]: %m' \
+            -name=clazy \
+            -reporter="${reporter}" \
+            -filter-mode=added \
+            -diff="${diff_command}" \
+            -fail-level=warning \
+            < build/dev/clazy.log
       - name: Secret scan
         run: gitleaks dir . --redact --exit-code 1 --no-banner
       - name: Package macOS bundle (release + macdeployqt)
@@ -66,7 +105,7 @@ jobs:
       - name: Test
         run: ctest --preset dev --output-on-failure
       - name: QML lint
-        run: qmllint -I build/dev app/desktop/qml/Main.qml app/desktop/qml/Theme.qml app/desktop/qml/components/*.qml
+        run: cmake --build --preset dev --target all_qmllint
       - name: Memory regression smoke
         run: |
           set -e
@@ -92,6 +131,8 @@ jobs:
     env:
       QT_QPA_PLATFORM: offscreen
     steps:
+      # Clazy is intentionally centralized in the macOS job. The Windows job
+      # remains the MSVC compile/runtime contract for platform-specific code.
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
       - name: Set up Developer PowerShell for VS 2022
         uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756
@@ -120,5 +161,7 @@ jobs:
             -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
       - name: Build
         run: cmake --build --preset dev
+      - name: QML lint
+        run: cmake --build --preset dev --target all_qmllint
       - name: Test
         run: ctest --preset dev --output-on-failure

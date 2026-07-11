@@ -58,6 +58,21 @@
   - `functionStatic`/`constParameterReference`/`useStlAlgorithm` (varios - baixo impacto)
   Enderecar em ciclo dedicado de hardening de dominio, nao junto a mudancas funcionais.
 
+- [STYLE] [CLAZY-BASELINE] Scan `level0,level1` encontrou 32 warnings unicos
+  preexistentes. Principais grupos: 8 `range-loop-detach`, 5 includes diretos de
+  modulos Qt, 9 tipos/getters moc, 7 `QString` globais estaticas, 2 `QString::arg`
+  e 1 lambda sem contexto. O gate reviewdog filtra apenas linhas alteradas para
+  impedir nova divida. Corrigir a baseline em slice C++ dedicado, com QtTest
+  focado por grupo.
+
+- [PARTIAL] [SEMGREP-CPP-PARSER] Semgrep CE 1.169.0 conclui o scan sem finding,
+  mas emite 63 diagnosticos de parser no C++/Qt: 46 `PartialParsing`, 16
+  `Other syntax error` e 1 `Syntax error`. Macros Qt, preprocessamento e C++
+  moderno reduzem a cobertura semantica. Manter clang-tidy, clazy, cppcheck e
+  CodeQL como compensacao. As seis regras QML locais possuem fixtures RED/GREEN
+  e passam integralmente; criar regra QQmlSA apenas quando existir contrato
+  semantico que a busca lexical nao represente com seguranca.
+
 - [PENDING] [L2] Avaliar FTS5 para general search (`%contains%`). A busca default (MatchMode::Contains) produz `LIKE '%text%'` colapsado em N colunas, que nao e sargable mesmo com indices. FTS5 (virtual table + triggers) tornaria o general search indexado. Mudanca maior: exige schema versionavel, populate do indice no import e manutencao em updates. Adiar ate dataset real demonstrar lentidao.
 - [PENDING] [L6] Bind de LIMIT/OFFSET como int64. Hoje bindings sao `std::vector<std::string>` (text) em todo o pipeline; SQLite coerciona em runtime sem custo real, mas o contrato deveria ser tipado. Exige variante de binding (text vs int64) atravessando SqlQuery/bindAll/fakes/testes. Ganho marginal; adiar ate outro refactor do query builder justificar o custo.
 - [PENDING] [L7] `recordBySsaNumber` com `SELECT *`. A tela de detalhes mostra todas as colunas, entao `SELECT *` e apropriado hoje. Reavaliar se a tela de detalhes passar a projetar um subconjunto.
