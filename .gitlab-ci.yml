@@ -35,8 +35,7 @@ linux-verify:
     - python -m pip install --disable-pip-version-check "aqtinstall==3.3.0"
     - >-
       if [ ! -f "$QT_ROOT/lib/cmake/Qt6/Qt6Config.cmake" ]; then
-        aqt install-qt linux desktop 6.11.0 linux_gcc_64
-        --outputdir "$CI_PROJECT_DIR/.cache/Qt";
+        aqt install-qt linux desktop 6.11.0 linux_gcc_64 --outputdir "$CI_PROJECT_DIR/.cache/Qt";
       fi
     - export PATH="$QT_ROOT/bin:$PATH"
     - export CMAKE_PREFIX_PATH="$QT_ROOT"
