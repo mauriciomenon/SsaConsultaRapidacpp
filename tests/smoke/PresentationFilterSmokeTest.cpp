@@ -37,6 +37,7 @@
 namespace {
 
     using ssa::tests::presentation_smoke::activeFilterEntry;
+    using ssa::tests::presentation_smoke::CapturingImportPort;
     using ssa::tests::presentation_smoke::FakeCommands;
     using ssa::tests::presentation_smoke::FakeFilterPresetStore;
     using ssa::tests::presentation_smoke::FakePreferences;
@@ -139,6 +140,79 @@ namespace {
         mutable std::mutex metricsMutex_;
         mutable std::thread::id distinctThread_;
         mutable std::thread::id maxLengthThread_;
+    };
+
+    class MutableDistinctRepository final : public ssa::ports::ISsaRepository {
+      public:
+        ssa::domain::SsaPageResult page(const ssa::domain::SsaPageRequest& request,
+                                        std::stop_token = {}) const override {
+            return {{}, 0, request.pageIndex, request.pageSize};
+        }
+
+        std::size_t count(const ssa::domain::SsaPageRequest&, std::stop_token = {}) const override {
+            return 0;
+        }
+
+        std::optional<ssa::domain::SsaRecord>
+        recordBySsaNumber(const ssa::domain::SsaNumber&, std::stop_token = {}) const override {
+            return std::nullopt;
+        }
+
+        std::vector<ssa::domain::SsaDerivadaEntry>
+        derivadasDiretas(const ssa::domain::SsaNumber&, std::stop_token = {}) const override {
+            return {};
+        }
+
+        std::vector<std::string> distinctValues(const ssa::domain::DistinctValuesRequest& request,
+                                                std::stop_token = {}) const override {
+            const std::scoped_lock lock(mutex_);
+            if (request.limit != ssa::domain::kAdvancedDistinctValuesLimit ||
+                request.columnKey != "situacao") {
+                return {};
+            }
+            ++advancedRequests_;
+            if (failedRequestsRemaining_ > 0) {
+                --failedRequestsRemaining_;
+                throw std::runtime_error("distinct failed once");
+            }
+            return values_;
+        }
+
+        std::size_t maxValueLength(std::string_view, std::stop_token = {}) const override {
+            const std::scoped_lock lock(mutex_);
+            std::size_t maximum = 0;
+            for (const auto& value : values_) {
+                maximum = (std::max)(maximum, value.size());
+            }
+            return maximum;
+        }
+
+        ssa::ports::SsaReadResult readAll(const ssa::domain::SsaPageRequest&,
+                                          ssa::ports::SsaRecordConsumer,
+                                          std::stop_token = {}) const override {
+            return {};
+        }
+
+        void failNextAdvancedRequest() {
+            const std::scoped_lock lock(mutex_);
+            ++failedRequestsRemaining_;
+        }
+
+        void setValues(std::vector<std::string> values) {
+            const std::scoped_lock lock(mutex_);
+            values_ = std::move(values);
+        }
+
+        [[nodiscard]] int advancedRequests() const {
+            const std::scoped_lock lock(mutex_);
+            return advancedRequests_;
+        }
+
+      private:
+        mutable std::mutex mutex_;
+        mutable std::vector<std::string> values_{"A", "Longest"};
+        mutable int failedRequestsRemaining_{0};
+        mutable int advancedRequests_{0};
     };
 
     class BlockingImportPort final : public ssa::ports::IImportWorkflowPort {
@@ -253,20 +327,67 @@ namespace {
             QCOMPARE(filterPanel.columnValueMaxLengthFor(QStringLiteral("situacao")), 12);
         }
 
-        void distinct_value_fetcher_reports_real_query_failure_with_empty_values() {
+        void filter_panel_retries_distinct_values_after_query_failure() {
+            auto repository = std::make_shared<MutableDistinctRepository>();
+            repository->failNextAdvancedRequest();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::FilterPanelViewModel filterPanel(service);
+            QTest::ignoreMessage(QtWarningMsg, "Column value query failed: distinct failed once");
+
+            filterPanel.refreshColumnValueOptionsFor(QStringLiteral("situacao"));
+
+            QTRY_VERIFY_WITH_TIMEOUT(
+                !filterPanel.columnValueOptionsLoadingFor(QStringLiteral("situacao")), 1000);
+            QCOMPARE(repository->advancedRequests(), 1);
+            QVERIFY(filterPanel.columnValueOptionsFor(QStringLiteral("situacao")).isEmpty());
+
+            filterPanel.refreshColumnValueOptionsFor(QStringLiteral("situacao"));
+
+            QTRY_COMPARE_WITH_TIMEOUT(repository->advancedRequests(), 2, 1000);
+            const QStringList expectedValues{QStringLiteral("A"), QStringLiteral("Longest")};
+            QTRY_COMPARE_WITH_TIMEOUT(filterPanel.columnValueOptionsFor(QStringLiteral("situacao")),
+                                      expectedValues, 1000);
+        }
+
+        void successful_workflow_invalidates_cached_distinct_values() {
+            auto repository = std::make_shared<MutableDistinctRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            auto importPort = std::make_shared<CapturingImportPort>();
+            auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(importPort);
+            ssa::presentation::MainViewModel model(service, commands, nullptr, nullptr, workflows);
+            auto* filters = model.browse()->filters();
+            const QStringList initialValues{QStringLiteral("A"), QStringLiteral("Longest")};
+
+            filters->refreshColumnValueOptionsFor(QStringLiteral("situacao"));
+            QTRY_COMPARE_WITH_TIMEOUT(filters->columnValueOptionsFor(QStringLiteral("situacao")),
+                                      initialValues, 1000);
+            QCOMPARE(repository->advancedRequests(), 1);
+            repository->setValues({"Updated"});
+
+            model.actions()->workflows()->rescanIncremental();
+            QTRY_COMPARE_WITH_TIMEOUT(model.actions()->workflows()->lastSucceeded(), true, 1000);
+            filters->refreshColumnValueOptionsFor(QStringLiteral("situacao"));
+
+            QTRY_COMPARE_WITH_TIMEOUT(repository->advancedRequests(), 2, 1000);
+            const QStringList updatedValues{QStringLiteral("Updated")};
+            QTRY_COMPARE_WITH_TIMEOUT(filters->columnValueOptionsFor(QStringLiteral("situacao")),
+                                      updatedValues, 1000);
+        }
+
+        void distinct_value_fetcher_reports_real_query_failure_separately() {
             auto repository = std::make_shared<BlockingPageRepository>(false, true);
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
             ssa::presentation::FilterPanelDistinctValueFetcher fetcher(service);
-            bool ready = false;
-            std::vector<std::string> values{"stale"};
-            std::size_t maxValueLength = 99;
-            connect(&fetcher, &ssa::presentation::FilterPanelDistinctValueFetcher::valuesReady,
-                    this,
-                    [&](std::uint64_t, std::vector<std::string> receivedValues,
-                        const std::size_t receivedMaxValueLength) {
-                        values = std::move(receivedValues);
-                        maxValueLength = receivedMaxValueLength;
-                        ready = true;
+            int readyCount = 0;
+            bool failed = false;
+            connect(
+                &fetcher, &ssa::presentation::FilterPanelDistinctValueFetcher::valuesReady, this,
+                [&](std::uint64_t, const std::vector<std::string>&, std::size_t) { ++readyCount; });
+            connect(&fetcher, &ssa::presentation::FilterPanelDistinctValueFetcher::valuesFailed,
+                    this, [&](const std::uint64_t requestToken) {
+                        QCOMPARE(requestToken, 1);
+                        failed = true;
                     });
             ssa::domain::DistinctValuesRequest request;
             request.columnKey = "situacao";
@@ -274,9 +395,8 @@ namespace {
 
             fetcher.requestValues(request, 1, true);
 
-            QTRY_VERIFY_WITH_TIMEOUT(ready, 1000);
-            QVERIFY(values.empty());
-            QCOMPARE(maxValueLength, 0);
+            QTRY_VERIFY_WITH_TIMEOUT(failed, 1000);
+            QCOMPARE(readyCount, 0);
         }
 
         void distinct_value_fetcher_destructor_drains_worker_without_callback() {
@@ -289,6 +409,8 @@ namespace {
                         this, [&](std::uint64_t, const std::vector<std::string>&, std::size_t) {
                             ++callbackCount;
                         });
+                connect(&fetcher, &ssa::presentation::FilterPanelDistinctValueFetcher::valuesFailed,
+                        this, [&](std::uint64_t) { ++callbackCount; });
                 ssa::domain::DistinctValuesRequest request;
                 request.columnKey = "situacao";
                 fetcher.requestValues(request, 1, true);

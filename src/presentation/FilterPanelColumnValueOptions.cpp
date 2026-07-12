@@ -50,6 +50,12 @@ namespace ssa::presentation {
         loadingKeys_.clear();
     }
 
+    void FilterPanelColumnValueOptions::clearLoadingFor(const QString& key) {
+        if (loadingKeys_.remove(key.trimmed())) {
+            touchVersion();
+        }
+    }
+
     void FilterPanelColumnValueOptions::markLoading(const QString& key) {
         loadingKeys_.insert(key.trimmed());
         touchVersion();

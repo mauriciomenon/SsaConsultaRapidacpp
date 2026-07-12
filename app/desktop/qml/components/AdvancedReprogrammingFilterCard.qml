@@ -63,6 +63,7 @@ FilterCard {
     property bool reprogrammingValueOptionsLoading: false
     property int reprogrammingMaxValueLength: 0
     property var selectedReprogrammingValues: []
+    property bool selectedOnlyReprogrammed: false
     readonly property int reprogrammingPopupWidth: Theme.valuePopupWidth(root.reprogrammingColumnKey, root.reprogrammingMaxValueLength, Overlay.overlay !== null ? Overlay.overlay.width : 0)
 
     function reloadReprogrammingOptionState() {
@@ -86,8 +87,11 @@ FilterCard {
     function toggleSelected(value, checked) {
         const values = selectedReprogrammingValues.slice();
         const index = values.indexOf(value);
-        if (checked && index < 0)
-            values.push(value);
+        if (checked) {
+            if (index < 0)
+                values.push(value);
+            selectedOnlyReprogrammed = false;
+        }
         if (!checked && index >= 0)
             values.splice(index, 1);
         selectedReprogrammingValues = values;
@@ -178,7 +182,6 @@ FilterCard {
                 popup.width: root.reprogrammingPopupWidth
                 model: [root.allWithReprogLabel].concat(root.reprogrammingValueOptions)
                 displayText: root.currentValueText().length > 0 ? root.currentValueText() : "Valor"
-                enabled: root.reprogrammingValueOptions.length > 0 || root.derivation.onlyReprogrammed
                 ToolTip.visible: hovered && root.reprogrammingValueOptionsLoading
                 ToolTip.text: "Carregando valores"
                 ToolTip.delay: 0
@@ -255,6 +258,7 @@ FilterCard {
             if (root.reprogrammingValueOptions.length === 0 && !root.reprogrammingValueOptionsLoading)
                 root.filterViewModel.refreshColumnValueOptionsFor(root.reprogrammingColumnKey);
             root.selectedReprogrammingValues = root.derivation.reprogrammingValues.slice();
+            root.selectedOnlyReprogrammed = root.derivation.onlyReprogrammed;
             updatePopupPosition();
         }
         onOpened: updatePopupPosition()
@@ -285,8 +289,12 @@ FilterCard {
             AppCheckBox {
                 Layout.fillWidth: true
                 text: root.allWithReprogLabel
-                checked: root.derivation.onlyReprogrammed
-                onToggled: root.derivation.onlyReprogrammed = checked
+                checked: root.selectedOnlyReprogrammed
+                onToggled: {
+                    root.selectedOnlyReprogrammed = checked;
+                    if (checked)
+                        root.selectedReprogrammingValues = [];
+                }
             }
 
             Rectangle {
@@ -339,8 +347,9 @@ FilterCard {
                     text: "Aplicar"
                     implicitWidth: Theme.applyButtonWidth
                     onClicked: {
-                        if (root.derivation.onlyReprogrammed)
+                        if (root.selectedOnlyReprogrammed)
                             root.selectedReprogrammingValues = [];
+                        root.derivation.onlyReprogrammed = root.selectedOnlyReprogrammed;
                         root.derivation.reprogrammingValues = root.selectedReprogrammingValues;
                         root.applyRequested();
                         valuesPopup.close();

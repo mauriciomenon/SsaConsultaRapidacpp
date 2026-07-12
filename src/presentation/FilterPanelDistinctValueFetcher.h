@@ -1,7 +1,6 @@
 #pragma once
 
 #include "domain/SsaTypes.h"
-#include "query/SsaQueryService.h"
 
 #include <QFutureWatcher>
 #include <QObject>
@@ -16,6 +15,10 @@
 #include <stop_token>
 #include <string>
 #include <vector>
+
+namespace ssa::query {
+    class SsaQueryService;
+}
 
 namespace ssa::presentation {
 
@@ -34,6 +37,7 @@ namespace ssa::presentation {
       signals:
         void valuesReady(std::uint64_t requestToken, std::vector<std::string> values,
                          std::size_t maxValueLength);
+        void valuesFailed(std::uint64_t requestToken);
 
       private:
         struct FetchResult final {

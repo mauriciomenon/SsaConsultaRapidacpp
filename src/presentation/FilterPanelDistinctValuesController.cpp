@@ -34,6 +34,8 @@ namespace ssa::presentation {
                        const std::size_t maxValueLength) {
                     onColumnValueOptionsReady(requestToken, std::move(values), maxValueLength);
                 });
+        connect(&columnValueOptionsFetcher_, &FilterPanelDistinctValueFetcher::valuesFailed, this,
+                &FilterPanelDistinctValuesController::onColumnValueOptionsFailed);
         connect(&quickSectorOptionsFetcher_, &FilterPanelDistinctValueFetcher::valuesReady, this,
                 [this](std::uint64_t requestToken, std::vector<std::string> values) {
                     onQuickSectorOptionsReady(requestToken, std::move(values));
@@ -83,6 +85,17 @@ namespace ssa::presentation {
         columnValueRequests_.erase(request);
         emit columnValueOptionsReady(std::move(values), maxValueLength, context.key,
                                      context.stateVersion);
+    }
+
+    void FilterPanelDistinctValuesController::onColumnValueOptionsFailed(
+        const std::uint64_t requestToken) {
+        const auto request = columnValueRequests_.find(requestToken);
+        if (request == columnValueRequests_.end()) {
+            return;
+        }
+        const auto context = request->second;
+        columnValueRequests_.erase(request);
+        emit columnValueOptionsFailed(context.key, context.stateVersion);
     }
 
     void FilterPanelDistinctValuesController::onQuickSectorOptionsReady(

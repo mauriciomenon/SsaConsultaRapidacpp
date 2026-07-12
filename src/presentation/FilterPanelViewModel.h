@@ -91,6 +91,7 @@ namespace ssa::presentation {
         Q_INVOKABLE void clearStatusShortcuts();
         Q_INVOKABLE bool removeActiveFilter(const QVariantMap& entry);
         Q_INVOKABLE void refreshColumnValueOptionsFor(const QString& key);
+        void invalidateDataSourceOptions();
         void setColumnFilters(std::map<std::string, std::string> filters);
         void applyPreferences(const ports::UserPreferencesSnapshot& snapshot);
         void writePreferences(ports::UserPreferencesSnapshot& snapshot) const;
@@ -117,6 +118,7 @@ namespace ssa::presentation {
                                    std::size_t maxValueLength, const QString& key,
                                    std::uint64_t stateVersion);
         void publishFilterStateChange(bool quickSectorChanged = false);
+        void invalidateColumnValueOptions();
         void scheduleActiveFilterRefresh();
         void refreshQuickSectorOptions();
         void markActiveFiltersDirty();

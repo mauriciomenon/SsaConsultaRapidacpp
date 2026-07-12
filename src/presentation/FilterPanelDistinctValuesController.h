@@ -34,6 +34,7 @@ namespace ssa::presentation {
       signals:
         void columnValueOptionsReady(std::vector<std::string> values, std::size_t maxValueLength,
                                      QString key, std::uint64_t stateVersion);
+        void columnValueOptionsFailed(QString key, std::uint64_t stateVersion);
         void quickSectorOptionsReady(std::vector<std::string> values);
 
       private:
@@ -52,6 +53,7 @@ namespace ssa::presentation {
         void configureConnections();
         void onColumnValueOptionsReady(std::uint64_t requestToken, std::vector<std::string> values,
                                        std::size_t maxValueLength);
+        void onColumnValueOptionsFailed(std::uint64_t requestToken);
         void onQuickSectorOptionsReady(std::uint64_t requestToken, std::vector<std::string> values);
 
         std::shared_ptr<query::SsaQueryService> queryService_;

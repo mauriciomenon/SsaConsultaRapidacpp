@@ -1,7 +1,9 @@
 #include "presentation/FilterPanelDistinctValueFetcher.h"
 
+#include "query/SsaQueryService.h"
+
 #include <QDebug>
-#include <QtConcurrent>
+#include <QtConcurrentRun>
 
 #include <algorithm>
 #include <atomic>
@@ -128,23 +130,20 @@ namespace ssa::presentation {
             activeResult_.reset();
         }
         if (!cancelled && !(result && result->canceled)) {
-            std::vector<std::string> values;
-            std::size_t maxValueLength = 0;
-            if (result) {
-                if (result->error) {
-                    try {
-                        std::rethrow_exception(result->error);
-                    } catch (const std::exception& error) {
-                        qWarning().noquote() << "Column value query failed:" << error.what();
-                    } catch (...) {
-                        qWarning() << "Column value query failed: unknown error";
-                    }
-                } else {
-                    values = std::move(result->values);
-                    maxValueLength = result->maxValueLength;
+            if (result && result->error) {
+                try {
+                    std::rethrow_exception(result->error);
+                } catch (const std::exception& error) {
+                    qWarning().noquote() << "Column value query failed:" << error.what();
+                } catch (...) {
+                    qWarning() << "Column value query failed: unknown error";
                 }
+                emit valuesFailed(activeRequestToken_);
+            } else {
+                auto values = result ? std::move(result->values) : std::vector<std::string>{};
+                const auto maxValueLength = result ? result->maxValueLength : 0;
+                emit valuesReady(activeRequestToken_, std::move(values), maxValueLength);
             }
-            emit this->valuesReady(activeRequestToken_, std::move(values), maxValueLength);
         }
         activeCancelToken_.reset();
         activeRequestInFlight_ = false;

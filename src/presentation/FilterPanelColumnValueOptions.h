@@ -20,6 +20,7 @@ namespace ssa::presentation {
         [[nodiscard]] bool hasFreshOptions(const QString& key, std::uint64_t stateVersion) const;
 
         void clearLoading();
+        void clearLoadingFor(const QString& key);
         void markLoading(const QString& key);
         void store(const std::vector<std::string>& options, const QString& key,
                    std::uint64_t stateVersion, std::size_t maxValueLength = 0);

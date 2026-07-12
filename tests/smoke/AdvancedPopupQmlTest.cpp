@@ -1,5 +1,7 @@
 #include "domain/SsaTypes.h"
 #include "ports/ISsaRepository.h"
+#include "presentation/AdvancedDerivationFilterViewModel.h"
+#include "presentation/FilterPanelAdvancedViewModel.h"
 #include "presentation/FilterPanelViewModel.h"
 #include "presentation/SsaColumnDisplayCatalog.h"
 #include "presentation/SsaTableModel.h"
@@ -57,6 +59,10 @@ namespace {
             if (request.limit == ssa::domain::kAdvancedDistinctValuesLimit) {
                 advancedRequests_.fetch_add(1, std::memory_order_relaxed);
             }
+            if (request.columnKey == "num_reprogramacoes") {
+                reprogrammingRequests_.fetch_add(1, std::memory_order_relaxed);
+                return {"0", "1", "3"};
+            }
             return {"APV"};
         }
 
@@ -74,8 +80,13 @@ namespace {
             return advancedRequests_.load(std::memory_order_relaxed);
         }
 
+        [[nodiscard]] int reprogrammingRequests() const {
+            return reprogrammingRequests_.load(std::memory_order_relaxed);
+        }
+
       private:
         mutable std::atomic<int> advancedRequests_{0};
+        mutable std::atomic<int> reprogrammingRequests_{0};
     };
 
     [[nodiscard]] QDir repositoryRoot() {
@@ -85,6 +96,58 @@ namespace {
         }
         return root;
     }
+
+    [[nodiscard]] QQuickItem* findQuickItemByProperty(QQuickItem* parent, const char* propertyName,
+                                                      const QString& expectedValue) {
+        for (auto* child : parent->childItems()) {
+            if (child->property(propertyName).toString() == expectedValue) {
+                return child;
+            }
+            if (auto* match = findQuickItemByProperty(child, propertyName, expectedValue)) {
+                return match;
+            }
+        }
+        return nullptr;
+    }
+
+    [[nodiscard]] QQuickItem* findOwnedQuickItemByProperty(QObject* parent,
+                                                           const char* propertyName,
+                                                           const QString& expectedValue) {
+        for (auto* object : parent->findChildren<QObject*>()) {
+            auto* item = qobject_cast<QQuickItem*>(object);
+            if (item != nullptr && item->property(propertyName).toString() == expectedValue) {
+                return item;
+            }
+        }
+        return nullptr;
+    }
+
+    [[nodiscard]] QPoint clickPointInWindow(const QQuickItem& item) {
+        return item.mapToScene(item.boundingRect().center()).toPoint();
+    }
+
+    constexpr auto kReprogrammingHarness = R"QML(
+        import QtQuick
+        import QtQuick.Controls
+        import SsaConsultaRapida
+
+        Item {
+            id: harness
+            width: 600
+            height: 500
+            property int applyCount: 0
+
+            AdvancedReprogrammingFilterCard {
+                x: 100
+                y: 100
+                filterViewModel: testFilterViewModel
+                derivation: testFilterViewModel.advanced.derivation
+                cardWidth: 360
+                cardHeight: 52
+                onApplyRequested: harness.applyCount += 1
+            }
+        }
+    )QML";
 
     class AdvancedPopupQmlTest final : public QObject {
         Q_OBJECT
@@ -116,8 +179,187 @@ namespace {
             QVERIFY(qmlRegisterType(
                         QUrl::fromLocalFile(components.filePath("AdvancedTextFilterCard.qml")),
                         "SsaConsultaRapida", 1, 0, "AdvancedTextFilterCard") >= 0);
+            QVERIFY(
+                qmlRegisterType(
+                    QUrl::fromLocalFile(components.filePath("AdvancedReprogrammingFilterCard.qml")),
+                    "SsaConsultaRapida", 1, 0, "AdvancedReprogrammingFilterCard") >= 0);
             QVERIFY(qmlRegisterType(QUrl::fromLocalFile(components.filePath("SsaTable.qml")),
                                     "SsaConsultaRapida", 1, 0, "SsaTable") >= 0);
+        }
+
+        void reprogramming_value_combo_loads_cold_cache_once() {
+            auto repository = std::make_shared<CountingRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::FilterPanelViewModel filters(service);
+            QQmlEngine engine;
+            engine.rootContext()->setContextProperty(QStringLiteral("testFilterViewModel"),
+                                                     &filters);
+            QQmlComponent component(&engine);
+            component.setData(kReprogrammingHarness,
+                              QUrl(QStringLiteral("inmemory:/ReprogrammingValueHarness.qml")));
+            QTRY_VERIFY_WITH_TIMEOUT(component.status() != QQmlComponent::Loading, 1000);
+            QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+
+            QQuickWindow window;
+            window.setGeometry(0, 0, 600, 500);
+            std::unique_ptr<QObject> harness(component.create());
+            QVERIFY2(harness != nullptr, qPrintable(component.errorString()));
+            auto* harnessItem = qobject_cast<QQuickItem*>(harness.get());
+            QVERIFY(harnessItem != nullptr);
+            harnessItem->setParentItem(window.contentItem());
+            window.show();
+
+            QTRY_VERIFY_WITH_TIMEOUT(window.isExposed(), 1000);
+            auto* valueSelector =
+                findQuickItemByProperty(harnessItem, "displayText", QStringLiteral("Valor"));
+            QVERIFY(valueSelector != nullptr);
+            QVERIFY(valueSelector->isEnabled());
+            QCOMPARE(repository->reprogrammingRequests(), 0);
+
+            QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier,
+                              clickPointInWindow(*valueSelector));
+
+            QTRY_COMPARE_WITH_TIMEOUT(repository->reprogrammingRequests(), 1, 1000);
+            const QStringList expectedValues{QStringLiteral("0"), QStringLiteral("1"),
+                                             QStringLiteral("3")};
+            QTRY_COMPARE_WITH_TIMEOUT(
+                filters.columnValueOptionsFor(QStringLiteral("num_reprogramacoes")), expectedValues,
+                1000);
+            QTRY_COMPARE_WITH_TIMEOUT(valueSelector->property("count").toInt(), 4, 1000);
+            QTest::keyClick(&window, Qt::Key_Escape);
+            QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier,
+                              clickPointInWindow(*valueSelector));
+            QCOMPARE(filters.columnValueOptionsLoadingFor(QStringLiteral("num_reprogramacoes")),
+                     false);
+            QCoreApplication::processEvents();
+            QCOMPARE(repository->reprogrammingRequests(), 1);
+        }
+
+        void reprogramming_only_checkbox_commits_only_when_apply_is_clicked() {
+            auto repository = std::make_shared<CountingRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::FilterPanelViewModel filters(service);
+            auto* advanced =
+                qobject_cast<ssa::presentation::FilterPanelAdvancedViewModel*>(filters.advanced());
+            QVERIFY(advanced != nullptr);
+            auto* derivation = qobject_cast<ssa::presentation::AdvancedDerivationFilterViewModel*>(
+                advanced->derivation());
+            QVERIFY(derivation != nullptr);
+            derivation->setReprogrammingValues({QStringLiteral("1")});
+            QQmlEngine engine;
+            engine.rootContext()->setContextProperty(QStringLiteral("testFilterViewModel"),
+                                                     &filters);
+            QQmlComponent component(&engine);
+            component.setData(kReprogrammingHarness,
+                              QUrl(QStringLiteral("inmemory:/ReprogrammingPopupHarness.qml")));
+            QTRY_VERIFY_WITH_TIMEOUT(component.status() != QQmlComponent::Loading, 1000);
+            QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+
+            QQuickWindow window;
+            window.setGeometry(0, 0, 600, 500);
+            std::unique_ptr<QObject> harness(component.create());
+            QVERIFY2(harness != nullptr, qPrintable(component.errorString()));
+            auto* harnessItem = qobject_cast<QQuickItem*>(harness.get());
+            QVERIFY(harnessItem != nullptr);
+            harnessItem->setParentItem(window.contentItem());
+            window.show();
+
+            QTRY_VERIFY_WITH_TIMEOUT(window.isExposed(), 1000);
+            auto* openButton = findQuickItemByProperty(harnessItem, "text", QStringLiteral("..."));
+            QVERIFY(openButton != nullptr);
+            QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier,
+                              clickPointInWindow(*openButton));
+            auto* onlyReprogrammed = findQuickItemByProperty(window.contentItem(), "text",
+                                                             QStringLiteral("Todas com Reprog."));
+            QTRY_VERIFY_WITH_TIMEOUT(onlyReprogrammed != nullptr && onlyReprogrammed->isVisible(),
+                                     1000);
+            QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier,
+                              clickPointInWindow(*onlyReprogrammed));
+            auto* card = findOwnedQuickItemByProperty(harness.get(), "reprogrammingColumnKey",
+                                                      QStringLiteral("num_reprogramacoes"));
+            QVERIFY(card != nullptr);
+            QVERIFY(card->property("selectedReprogrammingValues").toStringList().isEmpty());
+            QTest::keyClick(&window, Qt::Key_Escape);
+
+            QTRY_VERIFY_WITH_TIMEOUT(!onlyReprogrammed->isVisible(), 1000);
+            QCOMPARE(derivation->onlyReprogrammed(), false);
+            QCOMPARE(derivation->reprogrammingValues(), QStringList({QStringLiteral("1")}));
+            QCOMPARE(harness->property("applyCount").toInt(), 0);
+
+            QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier,
+                              clickPointInWindow(*openButton));
+            QTRY_VERIFY_WITH_TIMEOUT(onlyReprogrammed->isVisible(), 1000);
+            QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier,
+                              clickPointInWindow(*onlyReprogrammed));
+            auto* applyButton =
+                findQuickItemByProperty(window.contentItem(), "text", QStringLiteral("Aplicar"));
+            QVERIFY(applyButton != nullptr);
+            QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier,
+                              clickPointInWindow(*applyButton));
+
+            QTRY_COMPARE_WITH_TIMEOUT(harness->property("applyCount").toInt(), 1, 1000);
+            QCOMPARE(derivation->onlyReprogrammed(), true);
+            QVERIFY(derivation->reprogrammingValues().isEmpty());
+        }
+
+        void reprogramming_value_selection_replaces_only_reprogrammed_draft() {
+            auto repository = std::make_shared<CountingRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::FilterPanelViewModel filters(service);
+            auto* advanced =
+                qobject_cast<ssa::presentation::FilterPanelAdvancedViewModel*>(filters.advanced());
+            QVERIFY(advanced != nullptr);
+            auto* derivation = qobject_cast<ssa::presentation::AdvancedDerivationFilterViewModel*>(
+                advanced->derivation());
+            QVERIFY(derivation != nullptr);
+            derivation->setOnlyReprogrammed(true);
+            filters.refreshColumnValueOptionsFor(QStringLiteral("num_reprogramacoes"));
+            QTRY_COMPARE_WITH_TIMEOUT(repository->reprogrammingRequests(), 1, 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(
+                filters.columnValueOptionsFor(QStringLiteral("num_reprogramacoes"))
+                    .contains(QStringLiteral("1")),
+                1000);
+
+            QQmlEngine engine;
+            engine.rootContext()->setContextProperty(QStringLiteral("testFilterViewModel"),
+                                                     &filters);
+            QQmlComponent component(&engine);
+            component.setData(kReprogrammingHarness,
+                              QUrl(QStringLiteral("inmemory:/ReprogrammingDraftHarness.qml")));
+            QTRY_VERIFY_WITH_TIMEOUT(component.status() != QQmlComponent::Loading, 1000);
+            QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+
+            QQuickWindow window;
+            window.setGeometry(0, 0, 600, 500);
+            std::unique_ptr<QObject> harness(component.create());
+            QVERIFY2(harness != nullptr, qPrintable(component.errorString()));
+            auto* harnessItem = qobject_cast<QQuickItem*>(harness.get());
+            QVERIFY(harnessItem != nullptr);
+            harnessItem->setParentItem(window.contentItem());
+            window.show();
+
+            QTRY_VERIFY_WITH_TIMEOUT(window.isExposed(), 1000);
+            auto* openButton = findQuickItemByProperty(harnessItem, "text", QStringLiteral("..."));
+            QVERIFY(openButton != nullptr);
+            QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier,
+                              clickPointInWindow(*openButton));
+            auto* card = findOwnedQuickItemByProperty(harness.get(), "reprogrammingColumnKey",
+                                                      QStringLiteral("num_reprogramacoes"));
+            QVERIFY(card != nullptr);
+            QCOMPARE(card->property("selectedOnlyReprogrammed").toBool(), true);
+            QVERIFY(QMetaObject::invokeMethod(card, "toggleSelected", Qt::DirectConnection,
+                                              Q_ARG(QVariant, QVariant(QStringLiteral("1"))),
+                                              Q_ARG(QVariant, QVariant(true))));
+            QCOMPARE(card->property("selectedOnlyReprogrammed").toBool(), false);
+            auto* applyButton =
+                findQuickItemByProperty(window.contentItem(), "text", QStringLiteral("Aplicar"));
+            QVERIFY(applyButton != nullptr);
+            QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier,
+                              clickPointInWindow(*applyButton));
+
+            QTRY_COMPARE_WITH_TIMEOUT(harness->property("applyCount").toInt(), 1, 1000);
+            QCOMPARE(derivation->onlyReprogrammed(), false);
+            QCOMPARE(derivation->reprogrammingValues(), QStringList({QStringLiteral("1")}));
         }
 
         void about_to_show_requests_distinct_values_once() {

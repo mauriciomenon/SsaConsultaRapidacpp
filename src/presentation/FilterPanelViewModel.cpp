@@ -102,6 +102,16 @@ namespace ssa::presentation {
                        const QString& key, const std::uint64_t stateVersion) {
                     setColumnValueOptions(values, maxValueLength, key, stateVersion);
                 });
+        connect(&distinctValues_, &FilterPanelDistinctValuesController::columnValueOptionsFailed,
+                this, [this](const QString& key, const std::uint64_t stateVersion) {
+                    if (stateVersion != 0 && stateVersion != filterStateVersion_) {
+                        return;
+                    }
+                    const auto normalizedKey = key.trimmed();
+                    columnValueOptions_.clearLoadingFor(normalizedKey);
+                    emit columnValueOptionsChanged();
+                    emit columnValueOptionsChangedFor(normalizedKey);
+                });
         connect(&distinctValues_, &FilterPanelDistinctValuesController::quickSectorOptionsReady,
                 this,
                 [this](const std::vector<std::string>& values) { sector_.setOptions(values); });
@@ -466,16 +476,20 @@ namespace ssa::presentation {
 
     void FilterPanelViewModel::publishFilterStateChange(const bool quickSectorChanged) {
         syncAdvancedQuickSector();
+        invalidateColumnValueOptions();
+        scheduleActiveFilterRefresh();
+        if (!quickSectorChanged) {
+            refreshQuickSectorOptions();
+        }
+    }
+
+    void FilterPanelViewModel::invalidateColumnValueOptions() {
         ++filterStateVersion_;
         distinctValues_.invalidateColumnValueRequests();
         columnValueOptions_.clearLoading();
         columnValueOptions_.touchVersion();
         emit columnValueOptionsReset();
         emit columnValueOptionsChanged();
-        scheduleActiveFilterRefresh();
-        if (!quickSectorChanged) {
-            refreshQuickSectorOptions();
-        }
     }
 
     void FilterPanelViewModel::setColumnFilters(std::map<std::string, std::string> filters) {
@@ -506,6 +520,11 @@ namespace ssa::presentation {
         emit columnValueOptionsChanged();
         emit columnValueOptionsChangedFor(normalizedKey);
         distinctValues_.refreshColumnValueOptionsFor(normalizedKey, filterStateVersion_);
+    }
+
+    void FilterPanelViewModel::invalidateDataSourceOptions() {
+        invalidateColumnValueOptions();
+        refreshQuickSectorOptions();
     }
 
     void FilterPanelViewModel::refreshQuickSectorOptions() {

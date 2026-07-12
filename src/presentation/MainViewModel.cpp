@@ -68,6 +68,7 @@ namespace ssa::presentation {
                     if (actions_.workflows()->lastSucceeded()) {
                         pendingWorkflowRefreshMessage_ = actions_.workflows()->successMessage();
                         browse_.invalidateTotalRowsAll();
+                        browse_.filters()->invalidateDataSourceOptions();
                         browse_.apply();
                     }
                 });
