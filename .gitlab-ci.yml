@@ -29,7 +29,7 @@ linux-verify:
     - apt-get update
     - >-
       apt-get install -y --no-install-recommends
-      build-essential cmake ninja-build libsqlite3-dev sqlite3
+      build-essential cmake ninja-build libdbus-1-dev libsqlite3-dev sqlite3
       libgl1-mesa-dev libegl1 libopengl0 libxkbcommon-x11-0
       libxcb-cursor0 clang-format
     - python -m pip install --disable-pip-version-check "aqtinstall==3.3.0"
