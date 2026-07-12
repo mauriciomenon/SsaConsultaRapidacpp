@@ -24,8 +24,8 @@ definitions:
             apt-get install -y --no-install-recommends
             build-essential cmake ninja-build libdbus-1-dev libsqlite3-dev sqlite3
             libgl1-mesa-dev libegl1 libopengl0 libxkbcommon-x11-0
-            libxcb-cursor0 clang-format
-          - python -m pip install --disable-pip-version-check "aqtinstall==3.3.0"
+            libxcb-cursor0
+          - python -m pip install --disable-pip-version-check "aqtinstall==3.3.0" "clang-format==22.1.8"
           - >-
             if [ ! -f "$QT_ROOT/lib/cmake/Qt6/Qt6Config.cmake" ]; then
               aqt install-qt linux desktop 6.11.0 linux_gcc_64 --outputdir "$BITBUCKET_CLONE_DIR/.cache/Qt";
