@@ -94,4 +94,7 @@
 ## Cobertura de seguranca consolidada (julho 2026)
 
 - Scanners removidos de Python, Node e DAST nao foram restaurados porque o repositorio nao possui superficie Python, Node ou servico HTTP implantado. A cobertura aplicavel permanece em `semgrep.yml`, `devskim.yml`, `defender-for-devops.yml`, `codeql.yml`, `dependency-review.yml` e `ci.yml`, com PR e agenda onde suportado.
-- [EXTERNAL] Criar/configurar o environment GitHub `release` com revisores obrigatorios. O YAML referencia esse environment, mas a protecao efetiva depende da configuracao no repositorio GitHub.
+- [EXTERNAL] Aguardar a restauracao da conta GitHub, hoje bloqueada por HTTP 403,
+  antes de criar/configurar o environment GitHub `release` com revisores
+  obrigatorios. O YAML referencia esse environment, mas essa dependencia nao
+  bloqueia publicacao ou CI no GitLab e Bitbucket. Ver `ROUND_STATUS.md`.

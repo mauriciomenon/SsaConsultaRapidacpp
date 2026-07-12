@@ -128,5 +128,5 @@ docs: add detailed code review for CLI log-level and workflow aliases
 - Inclui trechos de código, pontos positivos e sugestões não-bloqueantes
 ```
 
-Este arquivo estará visível publicamente após o push em:
-https://github.com/mauriciomenon/SSA_Consulta_Rapida_Cpp/blob/main/docs/development/cli-log-level-and-workflow-aliases-review.md
+Este arquivo fica disponivel no repositorio GitLab primario em:
+https://gitlab.com/mauricio.menon/ssa_consulta_rapida_cpp/-/blob/master/docs/development/cli-log-level-and-workflow-aliases-review.md

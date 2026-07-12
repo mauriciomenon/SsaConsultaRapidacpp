@@ -4,6 +4,12 @@ Versao C++20 + Qt 6/QML da interface grafica do SSA Consulta Rapida.
 
 Esta base nao e um port linha-a-linha da GUI Python. Ela preserva contratos de uso e aparencia geral, mas separa dominio, consulta, infraestrutura e apresentacao.
 
+## Estado operacional
+
+Consulte [`ROUND_STATUS.md`](ROUND_STATUS.md) antes de avaliar sincronizacao,
+publicacao ou CI. Neste repositorio, `origin` aponta para GitLab, `bitbucket`
+aponta para Bitbucket e `gh` aponta para o mirror GitHub atualmente indisponivel.
+
 ## Comandos rapidos
 
 ### Binarios, CLI e arquivos gerados

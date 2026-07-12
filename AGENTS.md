@@ -3,6 +3,17 @@
 Aplicar sempre. Comunicacao em PT-BR ASCII. Codigo/comentarios em Ingles ASCII.
 Sem acentos/cedilha/emojis/emdash em codigo, chat e mensagens tecnicas.
 
+## Estado operacional e remotes
+
+- Ler `ROUND_STATUS.md` antes de interpretar sincronizacao, CI ou falha de push.
+- `origin` e GitLab, `bitbucket` e Bitbucket e `gh` e GitHub.
+- O branch principal e `master`.
+- `git rev-list origin/master...HEAD` mede GitLab, nao GitHub.
+- Um pedido de `commit` inclui push do branch e de novas tags para `origin` e
+  `bitbucket`, seguido de verificacao remota nos dois.
+- Nao publicar em `gh` enquanto o GitHub responder HTTP 403 por conta suspensa,
+  salvo autorizacao explicita posterior do usuario.
+
 ## Objetivo
 
 - Criar e manter uma versao C++/Qt/QML modular da GUI SSA Consulta Rapida.
@@ -161,7 +172,8 @@ Notas:
 2. Propor plano + diff previsto antes de editar (o menor patch possivel + solucao moderada).
 3. Implementar em slice pequeno.
 4. Validar localmente: `cmake --build --preset dev` + `ctest --preset dev` focado (insistir no caso de timeout).
-5. Commit atomico (um por slice), push, checar bots/checks.
+5. Commit atomico (um por slice), push para `origin` e `bitbucket`, verificar os
+   dois refs remotos e checar os respectivos pipelines dentro das cotas.
 6. Se houver itens nao bloqueantes: registrar em `RECOVERY_BACKLOG.md` (sem "arrumar tudo agora").
 7. Priorizar correcoes de risco real; evitar refatoracao transversal fora de escopo.
 8. Quando alterar arquivos de config (`CMakeLists.txt`, `CMakePresets.json`, `.clang-format`, `.clang-tidy`), fazer backup com timestamp.
