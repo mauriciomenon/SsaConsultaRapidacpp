@@ -1,0 +1,48 @@
+image: python:3.13-bookworm
+
+clone:
+  depth: 20
+
+definitions:
+  caches:
+    pip-packages: .cache/pip
+    qt-sdk: .cache/Qt
+  steps:
+    - step: &linux-verify
+        name: Linux build, test and QML lint
+        max-time: 60
+        caches:
+          - pip-packages
+          - qt-sdk
+        script:
+          - export DEBIAN_FRONTEND=noninteractive
+          - export QT_QPA_PLATFORM=offscreen
+          - export PIP_CACHE_DIR="$BITBUCKET_CLONE_DIR/.cache/pip"
+          - export QT_ROOT="$BITBUCKET_CLONE_DIR/.cache/Qt/6.11.0/gcc_64"
+          - apt-get update
+          - >-
+            apt-get install -y --no-install-recommends
+            build-essential cmake ninja-build libsqlite3-dev sqlite3
+            libgl1-mesa-dev libegl1 libopengl0 libxkbcommon-x11-0
+            libxcb-cursor0 clang-format
+          - python -m pip install --disable-pip-version-check "aqtinstall==3.3.0"
+          - >-
+            if [ ! -f "$QT_ROOT/lib/cmake/Qt6/Qt6Config.cmake" ]; then
+              aqt install-qt linux desktop 6.11.0 linux_gcc_64
+              --outputdir "$BITBUCKET_CLONE_DIR/.cache/Qt";
+            fi
+          - export PATH="$QT_ROOT/bin:$PATH"
+          - export CMAKE_PREFIX_PATH="$QT_ROOT"
+          - cmake --preset dev -DCMAKE_PREFIX_PATH="$QT_ROOT"
+          - cmake --build --preset dev --parallel 2
+          - ctest --preset dev --output-on-failure
+          - cmake --build --preset dev --target all_qmllint
+          - >-
+            find src app tests tools -type f
+            \( -name '*.cpp' -o -name '*.h' \) -print0
+            | xargs -0 clang-format --dry-run --Werror
+
+pipelines:
+  custom:
+    linux-verify:
+      - step: *linux-verify
