@@ -150,6 +150,10 @@ mkdir -p "${install_prefix}/lib/ssa_consulta_rapida/bin" \
 
 cp "${binary}" "${install_prefix}/lib/ssa_consulta_rapida/bin/ssa_consulta_rapida"
 chmod 0755 "${install_prefix}/lib/ssa_consulta_rapida/bin/ssa_consulta_rapida"
+cp "${repo_root}/THIRD_PARTY_NOTICES.md" \
+  "${install_prefix}/share/doc/ssa-consulta-rapida/"
+cp "${repo_root}/third_party/tinted-themes/LICENSE" \
+  "${install_prefix}/share/doc/ssa-consulta-rapida/TINTED_SCHEMES_LICENSE.txt"
 package_copy_runtime_libraries "${binary}" "${install_prefix}/lib/ssa_consulta_rapida/lib"
 # Deploy de plugins Qt + imports QML para o bundle ser autocontido.
 package_copy_qt_resources "${binary}" "${install_prefix}/lib/ssa_consulta_rapida"

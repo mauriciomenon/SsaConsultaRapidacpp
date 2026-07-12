@@ -89,6 +89,10 @@
 
 ## Consolidacao GUI QML/Qt (julho 2026) - pendentes
 
+- [PENDING] [THEME-PY-AA] Revisar em slice proprio os 18 contrastes AA legados
+  em `classicopy`, `darkpy`, `solarized-darkpy`, `solarized-lightpy`,
+  `mint-lightpy` e `paperpy`. Este ciclo preserva as paletas Python importadas
+  ipsis litteris e aplica o gate novo somente aos temas nativos adicionados.
 - [PENDING] [GUI-CONTRACT-WEEK-DERIVATION] Decidir se a GUI deve restaurar o filtro generico de semana e o seletor de derivacao descritos em `docs/contracts/gui-behavior.md`. O runtime atual expoe apenas os cards de emissao e execucao e nao oferece controle visual para `derivationMode`. Nao alterar o layout ate uma decisao de produto explicita.
 - [PENDING] [TYPESCALE-POINTSIZE] Migrar TypeScale de `font.pixelSize` para `font.pointSize` para respeitar a escala de fonte/DPI do SO (acessibilidade - fonte grande). Impacto: revalidar todos os 36 QML em Retina/HiDPI e telas com fonte do SO em Large. Slice dedicado.
 

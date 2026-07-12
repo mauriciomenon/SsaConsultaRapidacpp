@@ -152,6 +152,9 @@ pkgbuild_root="${build_dir}/_arch_stage"
 rm -rf "${pkgbuild_root}"
 mkdir -p "${pkgbuild_root}/src"
 cp "${binary}" "${pkgbuild_root}/src/ssa_consulta_rapida"
+cp "${repo_root}/THIRD_PARTY_NOTICES.md" "${pkgbuild_root}/src/"
+cp "${repo_root}/third_party/tinted-themes/LICENSE" \
+  "${pkgbuild_root}/src/TINTED_SCHEMES_LICENSE.txt"
 package_copy_runtime_libraries "${binary}" "${pkgbuild_root}/src"
 # Deploy de plugins Qt + imports QML (bundle autocontido).
 package_copy_qt_resources "${binary}" "${pkgbuild_root}/src"
@@ -221,6 +224,10 @@ Exec=ssa_consulta_rapida
 Categories=Utility;Office;
 Terminal=false
 DESKTOP
+  install -Dm0644 "\${srcdir}/THIRD_PARTY_NOTICES.md" \
+    "\${pkgdir}/usr/share/doc/ssa-consulta-rapida/THIRD_PARTY_NOTICES.md"
+  install -Dm0644 "\${srcdir}/TINTED_SCHEMES_LICENSE.txt" \
+    "\${pkgdir}/usr/share/licenses/ssa-consulta-rapida/TINTED_SCHEMES_LICENSE.txt"
 }
 EOF_PKGBUILD
 

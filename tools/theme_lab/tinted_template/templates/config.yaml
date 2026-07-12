@@ -1,0 +1,3 @@
+default:
+  filename: generated/{{ scheme-slug }}.json
+  supported-systems: [base16]

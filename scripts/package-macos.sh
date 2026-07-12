@@ -157,6 +157,11 @@ rm -f "${staged_zip_path}" "${staged_dmg_path}"
 mkdir -p "${staged_artifact_root}"
 cp -R "${app_bundle}" "${staged_artifact_root}/"
 bundle_copy="${staged_artifact_root}/ssa_consulta_rapida.app"
+notices_dir="${bundle_copy}/Contents/Resources/licenses"
+mkdir -p "${notices_dir}"
+cp "${repo_root}/THIRD_PARTY_NOTICES.md" "${notices_dir}/"
+cp "${repo_root}/third_party/tinted-themes/LICENSE" \
+  "${notices_dir}/TINTED_SCHEMES_LICENSE.txt"
 
 qml_module_dir="${build_dir}/SsaConsultaRapida"
 if [[ ! -d "${qml_module_dir}" ]]; then

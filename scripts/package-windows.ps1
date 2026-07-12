@@ -89,6 +89,8 @@ if (Test-Path $installerPath) {
 New-Item -ItemType Directory -Path $artifactDir -Force | Out-Null
 
 Copy-Item $binary (Join-Path $artifactDir "ssa_consulta_rapida.exe")
+Copy-Item (Join-Path $repoRoot "THIRD_PARTY_NOTICES.md") $artifactDir
+Copy-Item (Join-Path $repoRoot "third_party\tinted-themes\LICENSE") (Join-Path $artifactDir "TINTED_SCHEMES_LICENSE.txt")
 
 # Resolver windeployqt da MESMA Qt usada no build (ler CMakeCache.txt Qt6_DIR),
 # para evitar mismatch de versao entre as DLLs copiadas pelo windeployqt e o

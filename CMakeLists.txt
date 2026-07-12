@@ -276,6 +276,9 @@ install(
 
 install(TARGETS ssa_consulta_rapida_cli RUNTIME DESTINATION bin)
 
+install(FILES THIRD_PARTY_NOTICES.md third_party/tinted-themes/LICENSE
+        DESTINATION share/doc/ssa-consulta-rapida)
+
 if(SSA_BUILD_TESTS)
   enable_testing()
   include(CTest)
@@ -294,6 +297,31 @@ if(SSA_BUILD_TESTS)
     ssa_unit_tests PRIVATE ssa_application ssa_cli ssa_core ssa_platform
                            Catch2::Catch2WithMain)
   catch_discover_tests(ssa_unit_tests)
+
+  add_library(ssa_theme_lab_core STATIC tools/theme_lab/ThemePaletteLab.cpp)
+  target_include_directories(ssa_theme_lab_core
+                             PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+  target_link_libraries(ssa_theme_lab_core PUBLIC Qt6::Core Qt6::Gui)
+
+  add_executable(ssa_theme_lab tools/theme_lab/ThemePaletteLabMain.cpp)
+  target_link_libraries(ssa_theme_lab PRIVATE ssa_theme_lab_core)
+
+  add_executable(ssa_theme_lab_tests tests/unit/ThemePaletteLabTests.cpp)
+  target_link_libraries(ssa_theme_lab_tests PRIVATE ssa_theme_lab_core
+                                                    Catch2::Catch2WithMain)
+  catch_discover_tests(ssa_theme_lab_tests)
+
+  add_test(
+    NAME ssa_theme_lab_cli_generates_report
+    COMMAND
+      $<TARGET_FILE:ssa_theme_lab> --input
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/theme_lab --output
+      ${CMAKE_CURRENT_BINARY_DIR}/theme-lab-cli-report.json --limit 1
+      --source-commit test-fixture)
+  set_tests_properties(
+    ssa_theme_lab_cli_generates_report
+    PROPERTIES PASS_REGULAR_EXPRESSION
+               "THEME_LAB input=1 accepted=1 rejected=0 shortlisted=1")
 
   add_executable(
     ssa_integration_tests
@@ -334,6 +362,19 @@ if(SSA_BUILD_TESTS)
     ssa_qml_advanced_popup_tests
     PROPERTIES TIMEOUT 10 RUN_SERIAL TRUE ENVIRONMENT
                "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Basic")
+
+  add_executable(ssa_qml_theme_gallery_tests
+                 tests/smoke/ThemeGallerySmokeTest.cpp)
+  target_link_libraries(
+    ssa_qml_theme_gallery_tests PRIVATE Qt6::Qml Qt6::Quick Qt6::QuickControls2
+                                        Qt6::Test)
+  add_test(NAME ssa_qml_theme_gallery_tests COMMAND ssa_qml_theme_gallery_tests)
+  set_tests_properties(ssa_qml_theme_gallery_tests PROPERTIES TIMEOUT 30
+                                                              RUN_SERIAL TRUE)
+  set_property(
+    TEST ssa_qml_theme_gallery_tests
+    PROPERTY ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+             "QT_QUICK_CONTROLS_STYLE=Basic" "QT_SCALE_FACTOR=1")
 
   add_test(NAME ssa_cli_version COMMAND ssa_consulta_rapida_cli --version)
   set_tests_properties(

@@ -1,0 +1,25 @@
+diff --git a/tinted-builder-rust/Cargo.toml b/tinted-builder-rust/Cargo.toml
+index 267a0b6..e1d17cf 100644
+--- a/tinted-builder-rust/Cargo.toml
++++ b/tinted-builder-rust/Cargo.toml
+@@ -15,3 +15,3 @@ readme = "README.md"
+ [dependencies]
+-anyhow = "1.0.100"
++anyhow = "1.0.103"
+ clap = "4.5.51"
+diff --git a/tinted-builder/Cargo.toml b/tinted-builder/Cargo.toml
+index fa31689..7463cd5 100644
+--- a/tinted-builder/Cargo.toml
++++ b/tinted-builder/Cargo.toml
+@@ -16,4 +16,4 @@ rust-version = "1.74.0"
+ dirs = "6.0.0"
+-palette = "0.7.6"
+-quick-xml = { version = "0.38.3", features = ["serialize"] }
++palette = { version = "0.7.6", default-features = false, features = ["std"] }
++quick-xml = { version = "0.41.0", features = ["serialize"] }
+ regex = "1.12.2"
+@@ -31,3 +31,3 @@ serde_yaml = "0.9.34"
+ [dev-dependencies]
+-anyhow = "1.0.100"
++anyhow = "1.0.103"
+ strip-ansi-escapes = "0.2.1"

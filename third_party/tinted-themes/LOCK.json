@@ -1,0 +1,91 @@
+{
+  "schemaVersion": 1,
+  "catalog": {
+    "repository": "https://github.com/tinted-theming/schemes.git",
+    "commit": "2ccef2f4b22e3cab5a9292811f7133a07eeba4a7",
+    "branch": "spec-0.11",
+    "license": "MIT",
+    "licenseFile": "third_party/tinted-themes/LICENSE"
+  },
+  "builder": {
+    "repository": "https://github.com/tinted-theming/tinted-builder-rust.git",
+    "commit": "9055401be7e8a4b869c780589e6f41cffb87023c",
+    "version": "0.21.0",
+    "specVersion": "0.11.1",
+    "usage": "external-development-only"
+  },
+  "selection": [
+    {
+      "slug": "ayu-light",
+      "variant": "light",
+      "path": "base16/ayu-light.yaml",
+      "sha256": "37812ef9d5be55da62b148d8ca2c5b9b0b0b7ac9aadfdb0dcc22811047551d65"
+    },
+    {
+      "slug": "ayu-mirage",
+      "variant": "dark",
+      "path": "base16/ayu-mirage.yaml",
+      "sha256": "a1861ff0c9a1d3726646220b8b0769b340ec98c660cc74f9d867b9f3634536de"
+    },
+    {
+      "slug": "flexoki-dark",
+      "variant": "dark",
+      "path": "base16/flexoki-dark.yaml",
+      "sha256": "1cdfe249f9203bd7a9bef8c83a78ee6e2e3a86270cd280ced931356b844a067d"
+    },
+    {
+      "slug": "flexoki-light",
+      "variant": "light",
+      "path": "base16/flexoki-light.yaml",
+      "sha256": "72b785355c1fed44048da8be331b1019ac26b4ec1f4c72822e7160e58e918e22"
+    },
+    {
+      "slug": "kanagawa",
+      "variant": "dark",
+      "path": "base16/kanagawa.yaml",
+      "sha256": "f774f58d04d7fdc31aebd9e6890fb8a5bb4fa1b6a11e8da111d28aa9ead7dfcf"
+    },
+    {
+      "slug": "kanagawa-dragon",
+      "variant": "dark",
+      "path": "base16/kanagawa-dragon.yaml",
+      "sha256": "9ff5d81edcb9e5f6f478ab8257f7bfce3a7b62852570f06ba7ca03da0b3643a3"
+    },
+    {
+      "slug": "rose-pine",
+      "variant": "dark",
+      "path": "base16/rose-pine.yaml",
+      "sha256": "c9952108c3e5925780d02963c817c12ba225cc690621556fe3c98e4ee7bd89a1"
+    },
+    {
+      "slug": "rose-pine-moon",
+      "variant": "dark",
+      "path": "base16/rose-pine-moon.yaml",
+      "sha256": "989d05355c858f7401d14bb4ad97ff4111fc8511982715eea1449f306fcad8f7"
+    },
+    {
+      "slug": "rose-pine-dawn",
+      "variant": "light",
+      "path": "base16/rose-pine-dawn.yaml",
+      "sha256": "c28e1d00a4e57610188eb6c1325edde92215cb90dcfb8389e253cbd186a76eb6"
+    },
+    {
+      "slug": "primer-dark",
+      "variant": "dark",
+      "path": "base16/primer-dark.yaml",
+      "sha256": "46da6298e6cdca2634238be2b223b2f0d1b3ac59f80000b3d0c80f11a6db16a8"
+    },
+    {
+      "slug": "primer-light",
+      "variant": "light",
+      "path": "base16/primer-light.yaml",
+      "sha256": "a624e09526bd4626b7594f7cee6155646a804363576bebe72836efe685afe45f"
+    },
+    {
+      "slug": "oxocarbon-light",
+      "variant": "light",
+      "path": "base16/oxocarbon-light.yaml",
+      "sha256": "5457271832e5bf3af0a55b26125e7a311296f5865adbff92a2e903a4bc72d0e6"
+    }
+  ]
+}

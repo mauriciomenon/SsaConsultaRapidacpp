@@ -318,7 +318,7 @@ TEST_CASE("json persistence accepts exactly one mebibyte") {
             payload);
 }
 
-TEST_CASE("json preferences store roundtrips every python theme through two save cycles") {
+TEST_CASE("json preferences store roundtrips every supported theme through two save cycles") {
     QTemporaryDir directory;
     REQUIRE(directory.isValid());
 

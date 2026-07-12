@@ -446,6 +446,12 @@ namespace {
                 QStringLiteral("solarized-light"), QStringLiteral("mint-light"),
                 QStringLiteral("paper"),           QStringLiteral("tokyo-night"),
                 QStringLiteral("catppuccin"),      QStringLiteral("nord"),
+                QStringLiteral("ayu-light"),       QStringLiteral("ayu-mirage"),
+                QStringLiteral("flexoki-dark"),    QStringLiteral("flexoki-light"),
+                QStringLiteral("kanagawa"),        QStringLiteral("kanagawa-dragon"),
+                QStringLiteral("rose-pine"),       QStringLiteral("rose-pine-moon"),
+                QStringLiteral("rose-pine-dawn"),  QStringLiteral("primer-dark"),
+                QStringLiteral("primer-light"),    QStringLiteral("oxocarbon-light"),
             };
             const QStringList backgroundRoles{
                 QStringLiteral("window"), QStringLiteral("surface"),
@@ -458,7 +464,7 @@ namespace {
                 QStringLiteral("dangerSoft"),   QStringLiteral("danger"),
                 QStringLiteral("dangerStrong"),
             };
-            QCOMPARE(nativeThemes.size(), 14);
+            QCOMPARE(nativeThemes.size(), 26);
 
             int pythonThemeCount = 0;
             for (const QVariant& option : options) {
@@ -484,6 +490,8 @@ namespace {
             };
 
             for (const QString& themeName : nativeThemes) {
+                QVERIFY2(options.contains(themeName),
+                         qPrintable("missing theme option: " + themeName));
                 QVERIFY2(palettes.contains(themeName), qPrintable("missing palette: " + themeName));
                 const QVariantMap palette = palettes.value(themeName).toMap();
                 const bool isDark = palette.value(QStringLiteral("isDark")).toBool();

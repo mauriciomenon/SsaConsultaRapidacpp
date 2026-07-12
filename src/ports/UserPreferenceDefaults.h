@@ -9,7 +9,7 @@ namespace ssa::ports {
     inline constexpr int kMinDetailsPanelWidth = 320;
     inline constexpr int kMaxDetailsPanelWidth = 1200;
     inline constexpr int kDefaultDetailsPanelWidth = 560;
-    inline constexpr std::array<std::string_view, 29> kThemeValues{"system",
+    inline constexpr std::array<std::string_view, 41> kThemeValues{"system",
                                                                    "light",
                                                                    "grayscale",
                                                                    "windows7",
@@ -25,6 +25,18 @@ namespace ssa::ports {
                                                                    "catppuccin",
                                                                    "nord",
                                                                    "ssa-dark",
+                                                                   "ayu-light",
+                                                                   "ayu-mirage",
+                                                                   "flexoki-dark",
+                                                                   "flexoki-light",
+                                                                   "kanagawa",
+                                                                   "kanagawa-dragon",
+                                                                   "rose-pine",
+                                                                   "rose-pine-moon",
+                                                                   "rose-pine-dawn",
+                                                                   "primer-dark",
+                                                                   "primer-light",
+                                                                   "oxocarbon-light",
                                                                    "grayscalepy",
                                                                    "windows7py",
                                                                    "classicopy",
