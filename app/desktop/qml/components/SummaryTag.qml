@@ -43,6 +43,7 @@ Control {
             Layout.fillWidth: true
             Layout.leftMargin: Theme.chipLabelMargin
             text: root.text
+            textFormat: Text.PlainText
             color: Theme.text
             font.pixelSize: root.tagTextSize
             font.bold: true
@@ -61,6 +62,7 @@ Control {
             palette.buttonText: Theme.accentStrong
             ToolTip.visible: hovered
             ToolTip.text: "Remover filtro"
+            Accessible.name: "Remover filtro " + root.text
             onClicked: root.removeRequested()
 
             background: Rectangle {

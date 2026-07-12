@@ -12,7 +12,7 @@ namespace ssa::query {
     namespace {
 
         std::string numericValueExpression(const std::string& key) {
-            const auto column = quoteColumnIdentifier(key);
+            auto column = quoteColumnIdentifier(key);
             // Integer columns (semana_*, reprogramacoes) are stored natively as
             // INTEGER by the import writer, so filtering on the raw column keeps the
             // predicate sargable and lets the index (created at import time) be used.
@@ -129,7 +129,7 @@ namespace ssa::query {
                                             std::vector<std::string>& bindings,
                                             const domain::AdvancedFilterSpec& advanced,
                                             bool& hasCondition) {
-            if (advanced.reprogrammingValues.empty() && !advanced.reprogrammingEquals.has_value()) {
+            if (advanced.reprogrammingValues.empty()) {
                 return;
             }
             appendSqlAndSeparator(where, hasCondition);
@@ -147,15 +147,12 @@ namespace ssa::query {
                 }
                 where << ")";
             } else {
-                int value = advanced.reprogrammingEquals.value_or(0);
-                if (!advanced.reprogrammingValues.empty()) {
-                    const auto [minIt, maxIt] =
-                        std::ranges::minmax_element(advanced.reprogrammingValues);
-                    value = advanced.reprogrammingComparison ==
-                                    domain::NumericComparisonMode::LessOrEqual
-                                ? *maxIt
-                                : *minIt;
-                }
+                const auto [minIt, maxIt] =
+                    std::ranges::minmax_element(advanced.reprogrammingValues);
+                const int value =
+                    advanced.reprogrammingComparison == domain::NumericComparisonMode::LessOrEqual
+                        ? *maxIt
+                        : *minIt;
                 where << column << " "
                       << domain::numericComparisonOperator(advanced.reprogrammingComparison)
                       << " ?";

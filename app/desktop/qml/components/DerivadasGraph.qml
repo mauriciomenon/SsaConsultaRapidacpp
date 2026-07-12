@@ -9,8 +9,53 @@ import SsaConsultaRapida
 Flickable {
     id: root
     required property var graphModel
+    property int currentNodeIndex: graphModel && graphModel.nodeCount > 0 ? 0 : -1
     signal nodeClicked(string ssaNumber)
     signal exportFinished(bool succeeded)
+
+    activeFocusOnTab: true
+    Accessible.role: Accessible.Pane
+    Accessible.name: currentNodeIndex >= 0 ? "Grafo de derivacoes, SSA " + graphModel.nodeSsa(currentNodeIndex) : "Grafo de derivacoes vazio"
+
+    function ensureCurrentNodeVisible() {
+        if (!root.graphModel || root.currentNodeIndex < 0)
+            return;
+        const center = root.graphModel.nodeCenter(root.currentNodeIndex);
+        const maxX = Math.max(0, root.contentWidth - root.width);
+        const maxY = Math.max(0, root.contentHeight - root.height);
+        root.contentX = Math.max(0, Math.min(maxX, center.x - root.width / 2));
+        root.contentY = Math.max(0, Math.min(maxY, center.y - root.height / 2));
+    }
+
+    function moveCurrentNode(offset) {
+        if (!root.graphModel || root.graphModel.nodeCount === 0) {
+            root.currentNodeIndex = -1;
+            return;
+        }
+        root.currentNodeIndex = Math.max(0, Math.min(root.graphModel.nodeCount - 1, root.currentNodeIndex + offset));
+        root.ensureCurrentNodeVisible();
+    }
+
+    function activateCurrentNode() {
+        if (root.currentNodeIndex >= 0)
+            root.nodeClicked(root.graphModel.nodeSsa(root.currentNodeIndex));
+    }
+
+    Keys.onPressed: event => {
+        if (event.key === Qt.Key_Left || event.key === Qt.Key_Up) {
+            root.moveCurrentNode(-1);
+            event.accepted = true;
+        } else if (event.key === Qt.Key_Right || event.key === Qt.Key_Down) {
+            root.moveCurrentNode(1);
+            event.accepted = true;
+        } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+            root.activateCurrentNode();
+            event.accepted = true;
+        }
+    }
+
+    onActiveFocusChanged: canvas.requestPaint()
+    onCurrentNodeIndexChanged: canvas.requestPaint()
 
     function localPathFromUrl(fileUrl) {
         let path = decodeURIComponent(String(fileUrl));
@@ -185,6 +230,11 @@ Flickable {
                 ctx.lineWidth = isTarget ? 1.2 : 0.9;
                 ctx.strokeStyle = root.nodeStrokeColor(role, isTarget);
                 ctx.stroke();
+                if (root.activeFocus && i === root.currentNodeIndex) {
+                    ctx.lineWidth = 2.4;
+                    ctx.strokeStyle = Theme.accentStrong;
+                    ctx.stroke();
+                }
 
                 ctx.fillStyle = root.nodeStripeColor(role, isTarget);
                 ctx.fillRect(x0 + 5, y0 + 7, 3, canvas.nodeHeight - 14);
@@ -212,6 +262,7 @@ Flickable {
             anchors.fill: parent
             cursorShape: Qt.PointingHandCursor
             onClicked: mouse => {
+                root.forceActiveFocus();
                 const ssaNumber = canvas.nodeAt(mouse.x, mouse.y);
                 if (ssaNumber.length > 0) {
                     root.nodeClicked(ssaNumber);
@@ -223,6 +274,7 @@ Flickable {
     Connections {
         target: root.graphModel
         function onGraphChanged() {
+            root.currentNodeIndex = root.graphModel.nodeCount > 0 ? Math.min(root.currentNodeIndex < 0 ? 0 : root.currentNodeIndex, root.graphModel.nodeCount - 1) : -1;
             canvas.requestPaint();
         }
     }

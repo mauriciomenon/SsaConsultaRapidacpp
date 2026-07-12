@@ -1,7 +1,12 @@
 #include "domain/ColumnCatalog.h"
 #include "infra/import/ImportFileStager.h"
 #include "infra/import/SpreadsheetImportWorkflowPort.h"
+#include "infra/import/XlsxWorkbookReader.h"
+#include "infra/sqlite/SqliteConnection.h"
+#include "infra/sqlite/SqliteSsaImportWriter.h"
+#include "qt/FilesystemPath.h"
 
+#include <QDir>
 #include <QTemporaryDir>
 
 #include <catch2/catch_test_macros.hpp>
@@ -10,6 +15,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <stop_token>
 #include <string>
 #include <system_error>
 #include <vector>
@@ -27,7 +33,7 @@ namespace {
     }
 
     void writeWorkbook(const std::filesystem::path& path, const std::string& rowsXml) {
-        mz_zip_archive zip{};
+        mz_zip_archive zip = {};
         REQUIRE(mz_zip_writer_init_file(&zip, path.string().c_str(), 0) != 0);
         addZipEntry(zip, "[Content_Types].xml", R"(<?xml version="1.0" encoding="UTF-8"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -132,6 +138,88 @@ cp "$source" "$outdir/$stem.xlsx"
 
 } // namespace
 
+TEST_CASE("spreadsheet import workflow rejects a stopped token before staging") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+    ssa::ports::ImportExternalFilesRequest request;
+    request.files = {root / "source.xlsx"};
+    std::stop_source stopSource;
+    stopSource.request_stop();
+
+    const auto result = port.importExternalFiles(request, stopSource.get_token());
+
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
+    REQUIRE(result.message.find("canceled") != std::string::npos);
+    REQUIRE_FALSE(std::filesystem::exists(inputDirectory));
+    REQUIRE_FALSE(std::filesystem::exists(dbPath));
+}
+
+TEST_CASE("import file stager rejects a stopped token before copying") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const ssa::infra::importing::ImportFileStager stager(inputDirectory);
+    std::stop_source stopSource;
+    stopSource.request_stop();
+
+    const auto result = stager.stageExternalFiles({root / "source.xlsx"}, stopSource.get_token());
+
+    REQUIRE(result.rejectionReason == "canceled");
+    REQUIRE_FALSE(std::filesystem::exists(inputDirectory));
+}
+
+TEST_CASE("legacy converter rejects a stopped token before starting a process") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const ssa::infra::importing::LegacySpreadsheetConverter converter(root / "soffice");
+    std::stop_source stopSource;
+    stopSource.request_stop();
+
+    const auto result =
+        converter.convertToXlsx(root / "source.xls", root / "output.xlsx", stopSource.get_token());
+
+    REQUIRE(result.status == ssa::infra::importing::LegacySpreadsheetConversionStatus::Failed);
+    REQUIRE(result.message.find("canceled") != std::string::npos);
+    REQUIRE_FALSE(std::filesystem::exists(root / "output.xlsx"));
+}
+
+TEST_CASE("xlsx reader rejects a stopped token before opening the package") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    std::stop_source stopSource;
+    stopSource.request_stop();
+
+    REQUIRE_THROWS_AS(ssa::infra::importing::XlsxWorkbookReader::readFirstSheet(
+                          root / "missing.xlsx", stopSource.get_token()),
+                      std::system_error);
+}
+
+TEST_CASE("sqlite import writer rejects a stopped token before creating the database") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto dbPath = root / "data" / "ssas.db";
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(dbPath, importColumns());
+    std::stop_source stopSource;
+    stopSource.request_stop();
+
+    REQUIRE_THROWS_AS(writer.startSession(false, stopSource.get_token()), std::system_error);
+    REQUIRE_FALSE(std::filesystem::exists(dbPath));
+}
+
 TEST_CASE("spreadsheet import workflow stages xlsx and writes sqlite rows") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
@@ -167,6 +255,47 @@ TEST_CASE("spreadsheet import workflow stages xlsx and writes sqlite rows") {
     REQUIRE(scalarText(db, "SELECT setor_executor FROM ssa_table WHERE numero_ssa='202600001'") ==
             "MEL1");
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("spreadsheet import workflow preserves unicode paths") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto asciiWorkbook =
+        std::filesystem::path{tempDir.path().toStdString()} / "unicode-source.xlsx";
+    writeWorkbook(asciiWorkbook,
+                  row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                          inlineCell("C1", "Descricao da SSA")}) +
+                      row(2, {inlineCell("A2", "202600099"), inlineCell("B2", "APV"),
+                              inlineCell("C2", "Caminho unicode")}));
+
+    const QString unicodeRootText =
+        tempDir.filePath(QString::fromUtf8("importacao-unicode-\xE6\xBC\xA2"));
+    const auto unicodeRoot = ssa::qt::toFileSystemPath(unicodeRootText);
+    const auto workbook = ssa::qt::toFileSystemPath(
+        QDir(unicodeRootText).filePath(QString::fromUtf8("entrada-\xE6\xBC\xA2.xlsx")));
+    const auto inputDirectory = ssa::qt::toFileSystemPath(
+        QDir(unicodeRootText).filePath(QString::fromUtf8("documentos-\xE6\xBC\xA2")));
+    const auto dbPath = ssa::qt::toFileSystemPath(
+        QDir(unicodeRootText).filePath(QString::fromUtf8("dados-\xE6\xBC\xA2/ssas.db")));
+    std::filesystem::create_directories(unicodeRoot);
+    std::filesystem::create_directories(dbPath.parent_path());
+    std::filesystem::rename(asciiWorkbook, workbook);
+
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+    ssa::ports::ImportExternalFilesRequest request;
+    request.files = {workbook};
+
+    const auto result = port.importExternalFiles(request);
+
+    INFO(result.message);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE(result.message.find("rows=1") != std::string::npos);
+    ssa::infra::sqlite::SqliteConnection connection(dbPath);
+    REQUIRE(scalarInt(connection.handle(), "SELECT COUNT(*) FROM ssa_table") == 1);
+    REQUIRE(scalarText(connection.handle(), "SELECT numero_ssa FROM ssa_table LIMIT 1") ==
+            "202600099");
 }
 
 TEST_CASE("spreadsheet import workflow maps sparse xlsx cells by cell reference") {

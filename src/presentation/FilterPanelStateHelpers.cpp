@@ -96,7 +96,7 @@ namespace ssa::presentation::filterpanel {
                     result += ", ";
                 }
                 result += "Exc: ";
-                result += std::move(excluded);
+                result += excluded;
             }
             return result;
         }
@@ -211,24 +211,29 @@ namespace ssa::presentation::filterpanel {
                                .kind = "advanced_execution_year",
                                .key = {}});
         }
-        if (advanced.reprogrammingEquals.has_value()) {
-            entries.push_back(
-                {.text = std::string{"reprog"} +
-                         domain::numericComparisonOperator(advanced.reprogrammingComparison) +
-                         std::to_string(*advanced.reprogrammingEquals),
-                 .kind = "advanced_reprogramming",
-                 .key = {}});
-        }
         if (!advanced.reprogrammingValues.empty()) {
-            std::string values;
-            for (std::size_t index = 0; index < advanced.reprogrammingValues.size(); ++index) {
-                if (index > 0) {
-                    values += ",";
+            std::string summary;
+            if (advanced.reprogrammingComparison == domain::NumericComparisonMode::Equals) {
+                summary = "reprog valores:";
+                for (std::size_t index = 0; index < advanced.reprogrammingValues.size(); ++index) {
+                    if (index > 0) {
+                        summary += ",";
+                    }
+                    summary += std::to_string(advanced.reprogrammingValues[index]);
                 }
-                values += std::to_string(advanced.reprogrammingValues[index]);
+            } else {
+                const auto [minIt, maxIt] =
+                    std::ranges::minmax_element(advanced.reprogrammingValues);
+                const int threshold =
+                    advanced.reprogrammingComparison == domain::NumericComparisonMode::LessOrEqual
+                        ? *maxIt
+                        : *minIt;
+                summary = std::string{"reprog"} +
+                          domain::numericComparisonOperator(advanced.reprogrammingComparison) +
+                          std::to_string(threshold);
             }
             entries.push_back(
-                {.text = "reprog valores:" + values, .kind = "advanced_reprogramming", .key = {}});
+                {.text = std::move(summary), .kind = "advanced_reprogramming", .key = {}});
         }
         appendRangeSummary(entries, {.label = "emissao",
                                      .kind = "advanced_issue_week_range",

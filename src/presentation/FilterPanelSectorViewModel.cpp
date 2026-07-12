@@ -6,6 +6,8 @@
 
 #include <QSet>
 
+#include <utility>
+
 namespace ssa::presentation {
 
     namespace {
@@ -87,13 +89,29 @@ namespace ssa::presentation {
         return selectorIndex_;
     }
 
+    QString FilterPanelSectorViewModel::optionsError() const {
+        return optionsError_;
+    }
+
     void FilterPanelSectorViewModel::setOptions(const std::vector<std::string>& values) {
+        if (!optionsError_.isEmpty()) {
+            optionsError_.clear();
+            emit optionsErrorChanged();
+        }
         if (optionSource_ == values) {
             return;
         }
         optionSource_ = values;
         options_ = toStringList(values);
         rebuildSelectorValues();
+    }
+
+    void FilterPanelSectorViewModel::setOptionsError(const QString& message) {
+        if (optionsError_ == message) {
+            return;
+        }
+        optionsError_ = message;
+        emit optionsErrorChanged();
     }
 
     void FilterPanelSectorViewModel::refreshSelector() {
@@ -111,7 +129,7 @@ namespace ssa::presentation {
         const QString current = quickSector();
         int selectedIndex = 0;
         bool selectedIndexFound = current.isEmpty();
-        for (const auto& value : options_) {
+        for (const auto& value : std::as_const(options_)) {
             if (!seen.contains(value)) {
                 values.push_back(value);
                 seen.insert(value);

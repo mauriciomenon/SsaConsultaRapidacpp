@@ -1,3 +1,5 @@
+#include "AdvancedTextFilterTestSupport.h"
+
 #include "domain/ColumnCatalog.h"
 #include "domain/SsaTypes.h"
 #include "presentation/AdvancedMacroFilterViewModel.h"
@@ -46,18 +48,6 @@ namespace {
             {"semana_executada", week},
             {"responsavel_execucao", responsible},
         }};
-    }
-
-    [[nodiscard]] QVariantMap
-    cardStateFor(const ssa::presentation::AdvancedTextFilterViewModel& textFilters,
-                 const QString& key) {
-        for (const auto& state : textFilters.cardStates()) {
-            const auto map = state.toMap();
-            if (map.value("key").toString() == key) {
-                return map;
-            }
-        }
-        return {};
     }
 
     class FilterPanelRepository final : public ssa::ports::ISsaRepository {
@@ -327,11 +317,7 @@ namespace {
                 qobject_cast<ssa::presentation::AdvancedTextFilterViewModel*>(advanced->text());
             QVERIFY(text != nullptr);
 
-            QStringList keys;
-            const auto rows = text->rows();
-            std::ranges::transform(rows, std::back_inserter(keys), [](const QVariant& row) {
-                return row.toMap().value("key").toString();
-            });
+            const auto keys = ssa::tests::advancedTextFilterKeys(*text);
 
             QCOMPARE(keys.size(), 11);
             QVERIFY(keys.contains("setor_emissor"));
@@ -364,8 +350,7 @@ namespace {
             QVERIFY(text != nullptr);
             QVERIFY(columns != nullptr);
 
-            for (const auto& row : text->rows()) {
-                const auto key = row.toMap().value("key").toString();
+            for (const auto& key : ssa::tests::advancedTextFilterKeys(*text)) {
                 QVERIFY2(!key.isEmpty(), "advanced text row key must not be empty");
 
                 filters.setColumnFilters({{key.toStdString(), "OLD"}});
@@ -375,7 +360,9 @@ namespace {
                          qPrintable(QString("column filter was not removed for %1").arg(key)));
                 QCOMPARE(text->textFilter(key), QString("=IN,!OUT"));
                 QCOMPARE(text->operatorModeFor(key), QString("mixed"));
-                QCOMPARE(cardStateFor(*text, key).value("textFilter").toString(),
+                QCOMPARE(ssa::tests::advancedTextFilterCardState(*text, key)
+                             .value("textFilter")
+                             .toString(),
                          QString("=IN,!OUT"));
 
                 QVERIFY2(columns->applyFilterFor(key, "NEW"),
@@ -462,7 +449,8 @@ namespace {
             macro->setSelectedMacro("ssas_executadas_setor");
 
             QCOMPARE(macro->reportTitle(), QString("SSA Executadas Setor"));
-            QCOMPARE(macro->reportRows().size(), 2);
+            QTRY_COMPARE_WITH_TIMEOUT(macro->reportRows().size(), 2, 1000);
+            QVERIFY(!macro->reportLoading());
             const auto first = macro->reportRows().at(0).toMap();
             QCOMPARE(first.value("group").toString(), QString("MAM2"));
             QCOMPARE(first.value("person").toString(), QString("BRUNO"));
@@ -471,6 +459,28 @@ namespace {
             QCOMPARE(second.value("group").toString(), QString("MEG2"));
             QCOMPARE(second.value("person").toString(), QString("ANA"));
             QCOMPARE(second.value("count").toInt(), 2);
+        }
+
+        void advanced_macro_report_preserves_iso_weeks_across_year_boundaries() {
+            const auto verifyRange = [](const QDate& date, const int expectedStart,
+                                        const int expectedEnd) {
+                auto repository = std::make_shared<FilterPanelRepository>();
+                auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+                ssa::presentation::filterpanel::FilterPanelState state;
+                ssa::presentation::AdvancedMacroFilterViewModel macro(
+                    state.advanced(), state, service, nullptr, [date] { return date; });
+
+                macro.setSelectedMacro("ssas_executadas_setor");
+
+                QTRY_COMPARE_WITH_TIMEOUT(repository->pageRequests().size(), std::size_t{1}, 1000);
+                const auto request = repository->pageRequests().front();
+                QCOMPARE(request.advancedFilters.executionWeekStart,
+                         std::optional<int>{expectedStart});
+                QCOMPARE(request.advancedFilters.executionWeekEnd, std::optional<int>{expectedEnd});
+            };
+
+            verifyRange(QDate(2021, 1, 15), 202053, 202104);
+            verifyRange(QDate(2018, 12, 15), 201848, 201901);
         }
 
         void advanced_macro_request_uses_canonical_executor_filter() {
@@ -487,6 +497,7 @@ namespace {
             filters.setQuickSector("MEG2");
             macro->setSelectedMacro("ssas_executadas_setor");
 
+            QTRY_COMPARE_WITH_TIMEOUT(repository->pageRequests().size(), std::size_t{1}, 1000);
             const auto requests = repository->pageRequests();
             QCOMPARE(requests.size(), std::size_t{1});
             QCOMPARE(QString::fromStdString(requests.front().quickSector), QString(""));
@@ -510,7 +521,9 @@ namespace {
             filters.setQuickSector("IEE3");
 
             QTRY_COMPARE_WITH_TIMEOUT(
-                cardStateFor(*text, "setor_executor").value("textFilter").toString(),
+                ssa::tests::advancedTextFilterCardState(*text, "setor_executor")
+                    .value("textFilter")
+                    .toString(),
                 QString("=IEE3"), 1000);
             QCOMPARE(text->textFilter("setor_executor"), QString("=IEE3"));
             QCOMPARE(filters.quickSector(), QString(""));
@@ -533,7 +546,9 @@ namespace {
 
             QTRY_COMPARE_WITH_TIMEOUT(filters.quickSector(), QString(""), 1000);
             QCOMPARE(text->textFilter("setor_executor"), QString("=IEE3,=IEE1"));
-            QCOMPARE(cardStateFor(*text, "setor_executor").value("textFilter").toString(),
+            QCOMPARE(ssa::tests::advancedTextFilterCardState(*text, "setor_executor")
+                         .value("textFilter")
+                         .toString(),
                      QString("=IEE3,=IEE1"));
             QTRY_COMPARE_WITH_TIMEOUT(filters.activeFilterEntries().size(), 1, 1000);
             const auto entry = filters.activeFilterEntries().at(0).toMap();
@@ -558,7 +573,9 @@ namespace {
 
             QTRY_COMPARE_WITH_TIMEOUT(filters.quickSector(), QString(""), 1000);
             QCOMPARE(text->textFilter("setor_executor"), QString(""));
-            QCOMPARE(cardStateFor(*text, "setor_executor").value("textFilter").toString(),
+            QCOMPARE(ssa::tests::advancedTextFilterCardState(*text, "setor_executor")
+                         .value("textFilter")
+                         .toString(),
                      QString(""));
         }
 
@@ -644,7 +661,7 @@ namespace {
             QVERIFY(!executionWeekRequest->filter.advanced.executionWeekStart.has_value());
             QVERIFY(!executionWeekRequest->filter.advanced.executionWeekEnd.has_value());
             QVERIFY(executionWeekRequest->filter.advanced.issueYear.has_value());
-            QCOMPARE(executionWeekRequest->filter.advanced.onlyReprogrammed, true);
+            QCOMPARE(executionWeekRequest->filter.advanced.onlyReprogrammed, false);
 
             const auto reprogrammingRequest =
                 builder.columnValuesRequestFor(state, "num_reprogramacoes");
@@ -829,7 +846,9 @@ namespace {
             QTRY_COMPARE_WITH_TIMEOUT(text->textFilter("setor_executor"), QString("=IEE3"), 1000);
             QCOMPARE(filters.quickSector(), QString(""));
             QCOMPARE(sector->quickSector(), QString("IEE3"));
-            QCOMPARE(cardStateFor(*text, "setor_executor").value("textFilter").toString(),
+            QCOMPARE(ssa::tests::advancedTextFilterCardState(*text, "setor_executor")
+                         .value("textFilter")
+                         .toString(),
                      QString("=IEE3"));
             QTRY_COMPARE_WITH_TIMEOUT(filters.activeFilterEntries().size(), 1, 1000);
             const auto entry = filters.activeFilterEntries().at(0).toMap();
@@ -926,7 +945,7 @@ namespace {
             QVERIFY(filters.columnFilters().contains("situacao"));
             QCOMPARE(text->textFilter("responsavel_execucao"), QString("=BRUNO"));
             QTRY_COMPARE_WITH_TIMEOUT(filters.activeFilterEntries().size(), 2, 1000);
-            QVERIFY(!cardStateFor(*text, "responsavel_execucao")
+            QVERIFY(!ssa::tests::advancedTextFilterCardState(*text, "responsavel_execucao")
                          .value("textFilter")
                          .toString()
                          .isEmpty());

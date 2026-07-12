@@ -2,6 +2,7 @@
 
 #include <sqlite3.h>
 
+#include <chrono>
 #include <filesystem>
 #include <string>
 
@@ -17,7 +18,8 @@ namespace ssa::infra::sqlite {
       public:
         explicit SqliteConnection(const std::filesystem::path& dbPath,
                                   SqliteOpenMode mode = SqliteOpenMode::ReadOnly,
-                                  int busyTimeoutMs = 3000);
+                                  std::chrono::milliseconds busyTimeout = std::chrono::milliseconds{
+                                      3000});
         ~SqliteConnection();
 
         SqliteConnection(const SqliteConnection&) = delete;
@@ -57,7 +59,7 @@ namespace ssa::infra::sqlite {
         void requireCurrentRow() const;
 
         sqlite3_stmt* statement_{nullptr};
-        bool hasCurrentRow_{false};
+        bool hasCurrentRow_ = false;
     };
 
 } // namespace ssa::infra::sqlite

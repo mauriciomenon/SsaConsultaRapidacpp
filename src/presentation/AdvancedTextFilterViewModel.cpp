@@ -30,14 +30,6 @@ namespace ssa::presentation {
         }
     }
 
-    const QVariantList& AdvancedTextFilterViewModel::rows() const {
-        return rows_;
-    }
-
-    const QVariantList& AdvancedTextFilterViewModel::cardStates() const {
-        return cardStates_;
-    }
-
     const QVariantList& AdvancedTextFilterViewModel::operatorModes() const {
         return operatorModes_;
     }
@@ -83,23 +75,6 @@ namespace ssa::presentation {
         return columns_.operatorModeFor(key);
     }
 
-    QString AdvancedTextFilterViewModel::operatorLabelFor(const QString& key) const {
-        const auto mode = operatorModeFor(key);
-        const auto index = operatorModeIndex_.constFind(mode);
-        if (index == operatorModeIndex_.constEnd()) {
-            return mode == "mixed" ? tr("Misto") : QString{};
-        }
-        if (index.value() < 0 || index.value() >= operatorModes_.size()) {
-            return {};
-        }
-        return operatorModes_.at(index.value()).toMap().value("label").toString();
-    }
-
-    int AdvancedTextFilterViewModel::operatorIndexFor(const QString& key) const {
-        const auto modeEntry = operatorModeIndex_.constFind(operatorModeFor(key));
-        return modeEntry == operatorModeIndex_.constEnd() ? -1 : modeEntry.value();
-    }
-
     void AdvancedTextFilterViewModel::setOperatorMode(const QString& key,
                                                       const QString& operatorMode) {
         const auto currentExpression = effectiveTextFilter(key);
@@ -143,18 +118,6 @@ namespace ssa::presentation {
             return false;
         }
         return publishExpressionAndApply(key, *expression, true);
-    }
-
-    void AdvancedTextFilterViewModel::replaceWithOperatorValueList(const QString& key,
-                                                                   const QStringList& values,
-                                                                   const QString& operatorMode) {
-        columns_.setOperatorMode({.key = key,
-                                  .operatorMode = operatorMode,
-                                  .currentExpression = effectiveTextFilter(key)});
-        publishExpressionAndApply(key,
-                                  AdvancedTextFilterColumnStore::expressionReplacingWithOperator(
-                                      {.values = values, .operatorMode = operatorMode}),
-                                  false);
     }
 
     void AdvancedTextFilterViewModel::replaceWithOperatorValueLists(
@@ -230,7 +193,7 @@ namespace ssa::presentation {
         QVariantList states;
         QHash<QString, int> indexes;
         states.reserve(rows_.size());
-        for (const auto& row : rows_) {
+        for (const auto& row : std::as_const(rows_)) {
             auto state = createCardState(row.toMap());
             const auto key = state.value("key").toString();
             indexes.insert(key, static_cast<int>(states.size()));

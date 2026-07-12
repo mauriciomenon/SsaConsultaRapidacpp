@@ -1,7 +1,12 @@
 #include "SsaCliController.h"
 #include "ports/IWorkflowPorts.h"
+#include "qt/FilesystemPath.h"
 
 #include <catch2/catch_test_macros.hpp>
+
+#include <QDir>
+#include <QFile>
+#include <QTemporaryDir>
 
 #include <fstream>
 #include <iostream>
@@ -12,31 +17,32 @@ namespace {
     class CapturingImportPort final : public ssa::ports::IImportWorkflowPort {
       public:
         [[nodiscard]] ssa::ports::WorkflowResult
-        importExternalFiles(const ssa::ports::ImportExternalFilesRequest& request) override {
+        importExternalFiles(const ssa::ports::ImportExternalFilesRequest& request,
+                            std::stop_token = {}) override {
             (void)request;
             return {ssa::ports::WorkflowStatus::NotImplemented,
                     "import external files workflow adapter is unavailable"};
         }
 
-        [[nodiscard]] ssa::ports::WorkflowResult
-        rescan(const ssa::ports::RescanRequest& request) override {
+        [[nodiscard]] ssa::ports::WorkflowResult rescan(const ssa::ports::RescanRequest& request,
+                                                        std::stop_token = {}) override {
             lastRequest = request;
             called = true;
             return {ssa::ports::WorkflowStatus::Succeeded, "rescan requested"};
         }
 
         ssa::ports::RescanRequest lastRequest;
-        bool called{false};
+        bool called = false;
     };
 
     class CapturingDerivadasPort final : public ssa::ports::IDerivadasPort {
       public:
-        [[nodiscard]] ssa::ports::WorkflowResult syncDerivadas() override {
+        [[nodiscard]] ssa::ports::WorkflowResult syncDerivadas(std::stop_token = {}) override {
             called = true;
             return {ssa::ports::WorkflowStatus::Succeeded, "sync derivadas requested"};
         }
 
-        bool called{false};
+        bool called = false;
     };
 
     std::shared_ptr<ssa::application::SsaBrowseService>
@@ -57,7 +63,7 @@ namespace {
     std::string existingDatabaseArgument() {
         const auto path = std::filesystem::temp_directory_path() / "ssa_cli_controller_test.db";
         {
-            std::ofstream database{path};
+            std::ofstream database(path);
         }
         return path.string();
     }
@@ -144,6 +150,39 @@ TEST_CASE("cli exposes explicit incremental rescan") {
     REQUIRE(importPort->called);
     REQUIRE(importPort->lastRequest.mode == ssa::ports::RescanMode::Incremental);
     REQUIRE_FALSE(importPort->lastRequest.optimized);
+}
+
+TEST_CASE("cli preserves unicode database and import paths") {
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+
+    const QString unicodeRoot = directory.filePath(QString::fromUtf8("cli-unicode-\xE6\xBC\xA2"));
+    const QString databasePath = QDir(unicodeRoot).filePath(QStringLiteral("ssas.db"));
+    const QString docsPath =
+        QDir(unicodeRoot).filePath(QString::fromUtf8("documentos-\xE6\xBC\xA2"));
+    REQUIRE(QDir{}.mkpath(docsPath));
+    QFile database(databasePath);
+    REQUIRE(database.open(QIODevice::WriteOnly));
+    database.close();
+
+    auto importPort = std::make_shared<CapturingImportPort>();
+    auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(importPort);
+    std::filesystem::path capturedDatabasePath;
+    std::filesystem::path capturedDocsPath;
+    const ssa::app::cli::SsaCliController controller{
+        unusedBrowseFactory, [workflows] { return workflows; },
+        [&](const std::filesystem::path& databaseValue, const std::filesystem::path& docsValue) {
+            capturedDatabasePath = databaseValue;
+            capturedDocsPath = docsValue;
+            return workflows;
+        }};
+
+    const int exitCode = controller.run(
+        {"ssa", "--incremental-rescan", "--db", databasePath, "--docs-dir", docsPath});
+
+    REQUIRE(exitCode == 0);
+    REQUIRE(capturedDatabasePath == ssa::qt::toFileSystemPath(databasePath));
+    REQUIRE(capturedDocsPath == ssa::qt::toFileSystemPath(docsPath));
 }
 
 TEST_CASE("cli lets optimized override standard import strategy") {

@@ -11,6 +11,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <system_error>
 #include <utility>
 #include <vector>
 
@@ -22,6 +23,13 @@ namespace ssa::infra::importing {
         constexpr std::size_t kMaxWorksheetCells = 5'000'000;
         constexpr int kSpreadsheetColumnBase = 26;
         constexpr qsizetype kDefaultSharedStringReserve = 256;
+
+        void throwIfImportCanceled(const std::stop_token& stopToken) {
+            if (stopToken.stop_requested()) {
+                throw std::system_error(std::make_error_code(std::errc::operation_canceled),
+                                        "xlsx read canceled");
+            }
+        }
 
         QByteArray xmlBytes(const std::string& xml) {
             return QByteArray::fromRawData(xml.data(), static_cast<qsizetype>(xml.size()));
@@ -90,9 +98,12 @@ namespace ssa::infra::importing {
 
         class XmlReadBudget final {
           public:
+            explicit XmlReadBudget(std::stop_token stopToken) : stopToken_(std::move(stopToken)) {}
+
             void record(const QXmlStreamReader& reader) {
                 constexpr std::size_t kMaxXmlTokens = 20'000'000;
                 constexpr int kMaxXmlDepth = 64;
+                throwIfImportCanceled(stopToken_);
                 ++tokenCount_;
                 if (reader.isStartElement()) {
                     ++depth_;
@@ -105,8 +116,9 @@ namespace ssa::infra::importing {
             }
 
           private:
-            std::size_t tokenCount_{0};
-            int depth_{0};
+            std::stop_token stopToken_;
+            std::size_t tokenCount_ = 0;
+            int depth_ = 0;
         };
 
         class XmlTextBudget final {
@@ -120,7 +132,7 @@ namespace ssa::infra::importing {
             }
 
           private:
-            qsizetype totalCharacters_{0};
+            qsizetype totalCharacters_ = 0;
         };
 
         void recordXmlToken(const QXmlStreamReader& reader, XmlReadBudget& budget) {
@@ -223,8 +235,10 @@ namespace ssa::infra::importing {
 
         class SheetRowsParser final {
           public:
-            SheetRowsParser(const std::string& xml, const std::vector<std::string>& sharedStrings)
-                : reader_(xmlBytes(xml)), sharedStrings_(sharedStrings) {}
+            SheetRowsParser(const std::string& xml, const std::vector<std::string>& sharedStrings,
+                            std::stop_token stopToken)
+                : reader_(xmlBytes(xml)), sharedStrings_(sharedStrings),
+                  readBudget_(std::move(stopToken)) {}
 
             [[nodiscard]] std::vector<std::vector<std::string>> parse() {
                 while (!reader_.atEnd()) {
@@ -243,7 +257,7 @@ namespace ssa::infra::importing {
                 if (reader_.hasError()) {
                     throw std::runtime_error("cannot parse xlsx worksheet");
                 }
-                return std::move(rows_);
+                return rows_;
             }
 
           private:
@@ -256,7 +270,7 @@ namespace ssa::infra::importing {
                 const auto expectedRows =
                     absoluteRowSlotsFromDimensionRef(reader_.attributes().value("ref"));
                 if (expectedRows > 0) {
-                    rows_.reserve(std::min(expectedRows, kMaxWorksheetRows));
+                    rows_.reserve((std::min)(expectedRows, kMaxWorksheetRows));
                 }
             }
 
@@ -292,7 +306,7 @@ namespace ssa::infra::importing {
 
             void finishRow() {
                 if (currentRowIndex_) {
-                    rows_.resize(std::max(rows_.size(), *currentRowIndex_ + 1));
+                    rows_.resize((std::max)(rows_.size(), *currentRowIndex_ + 1));
                     rows_[*currentRowIndex_] = std::move(currentRow_);
                 } else {
                     rows_.push_back(std::move(currentRow_));
@@ -309,30 +323,37 @@ namespace ssa::infra::importing {
             const std::vector<std::string>& sharedStrings_;
             std::vector<std::vector<std::string>> rows_;
             std::vector<std::string> currentRow_;
-            bool inRow_{false};
-            std::optional<std::size_t> currentRowIndex_;
-            std::size_t nextColumnIndex_{0};
-            std::size_t expectedColumns_{0};
-            std::size_t totalCells_{0};
+            bool inRow_ = false;
+            std::optional<std::size_t> currentRowIndex_ = std::nullopt;
+            std::size_t nextColumnIndex_ = 0;
+            std::size_t expectedColumns_ = 0;
+            std::size_t totalCells_ = 0;
             XmlReadBudget readBudget_;
             XmlTextBudget textBudget_;
         };
 
     } // namespace
 
-    SpreadsheetTable XlsxWorkbookReader::readFirstSheet(const std::filesystem::path& filePath) {
+    SpreadsheetTable XlsxWorkbookReader::readFirstSheet(const std::filesystem::path& filePath,
+                                                        const std::stop_token stopToken) {
+        throwIfImportCanceled(stopToken);
         XlsxPackage package(filePath);
         const auto workbook = package.textEntry("xl/workbook.xml", true);
-        const auto relationshipId = relationshipIdForFirstWorkbookSheet(workbook);
+        const auto relationshipId = relationshipIdForFirstWorkbookSheet(workbook, stopToken);
+        throwIfImportCanceled(stopToken);
         const auto relationships = package.textEntry("xl/_rels/workbook.xml.rels", true);
-        const auto worksheetEntry = worksheetEntryForRelationship({relationships, relationshipId});
+        const auto worksheetEntry =
+            worksheetEntryForRelationship({relationships, relationshipId}, stopToken);
         const auto sharedStrings =
-            parseSharedStrings(package.textEntry("xl/sharedStrings.xml", false));
+            parseSharedStrings(package.textEntry("xl/sharedStrings.xml", false), stopToken);
+        throwIfImportCanceled(stopToken);
         const auto sheetXml = package.textEntry(worksheetEntry, true);
-        return SpreadsheetTable{filePath, parseSheetRows(sheetXml, sharedStrings)};
+        return SpreadsheetTable{filePath, parseSheetRows(sheetXml, sharedStrings, stopToken)};
     }
 
-    std::vector<std::string> XlsxWorkbookReader::parseSharedStrings(const std::string& xml) {
+    std::vector<std::string>
+    XlsxWorkbookReader::parseSharedStrings(const std::string& xml,
+                                           const std::stop_token stopToken) {
         std::vector<std::string> values;
         if (xml.empty()) {
             return values;
@@ -342,7 +363,7 @@ namespace ssa::infra::importing {
         current.reserve(kDefaultSharedStringReserve);
         bool inString = false;
         int phoneticDepth = 0;
-        XmlReadBudget budget;
+        XmlReadBudget budget(stopToken);
         XmlTextBudget textBudget;
         while (!reader.atEnd()) {
             reader.readNext();
@@ -353,7 +374,7 @@ namespace ssa::infra::importing {
                 const auto count = reader.attributes().value("uniqueCount").toInt(&parsed);
                 if (parsed && count > 0) {
                     values.reserve(
-                        static_cast<std::size_t>(std::min(count, kMaxReservedSharedStrings)));
+                        static_cast<std::size_t>((std::min)(count, kMaxReservedSharedStrings)));
                 }
             }
             if (reader.isStartElement() && reader.name() == "si") {
@@ -380,9 +401,12 @@ namespace ssa::infra::importing {
         return values;
     }
 
-    std::string XlsxWorkbookReader::relationshipIdForFirstWorkbookSheet(const std::string& xml) {
+    std::string
+    XlsxWorkbookReader::relationshipIdForFirstWorkbookSheet(const std::string& xml,
+                                                            const std::stop_token stopToken) {
         QXmlStreamReader reader(xmlBytes(xml));
         while (!reader.atEnd()) {
+            throwIfImportCanceled(stopToken);
             reader.readNext();
             if (!reader.isStartElement() || reader.name() != "sheet") {
                 continue;
@@ -397,9 +421,11 @@ namespace ssa::infra::importing {
     }
 
     std::string
-    XlsxWorkbookReader::worksheetEntryForRelationship(const WorksheetRelationshipRequest& request) {
+    XlsxWorkbookReader::worksheetEntryForRelationship(const WorksheetRelationshipRequest& request,
+                                                      const std::stop_token stopToken) {
         QXmlStreamReader reader(xmlBytes(request.xml));
         while (!reader.atEnd()) {
+            throwIfImportCanceled(stopToken);
             reader.readNext();
             if (!reader.isStartElement() || reader.name() != "Relationship") {
                 continue;
@@ -422,8 +448,9 @@ namespace ssa::infra::importing {
 
     std::vector<std::vector<std::string>>
     XlsxWorkbookReader::parseSheetRows(const std::string& xml,
-                                       const std::vector<std::string>& sharedStrings) {
-        return SheetRowsParser{xml, sharedStrings}.parse();
+                                       const std::vector<std::string>& sharedStrings,
+                                       const std::stop_token stopToken) {
+        return SheetRowsParser{xml, sharedStrings, stopToken}.parse();
     }
 
 } // namespace ssa::infra::importing

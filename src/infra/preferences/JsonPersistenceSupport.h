@@ -5,6 +5,8 @@
 #include <QJsonObject>
 #include <QSaveFile>
 
+#include "qt/FilesystemPath.h"
+
 #include <filesystem>
 #include <stdexcept>
 #include <string>
@@ -17,12 +19,12 @@ namespace ssa::infra::preferences::json_persistence {
     [[nodiscard]] inline std::string errorMessage(const std::string_view operation,
                                                   const std::string_view subject,
                                                   const std::filesystem::path& path) {
-        return std::string{operation} + " " + std::string{subject} + ": " + path.string();
+        return std::string{operation} + " " + std::string{subject} + ": " + qt::toUtf8(path);
     }
 
     [[nodiscard]] inline QByteArray readBounded(const std::filesystem::path& path,
                                                 const std::string_view subject) {
-        QFile input(QString::fromStdString(path.string()));
+        QFile input(qt::toQString(path));
         if (!input.open(QIODevice::ReadOnly)) {
             throw std::runtime_error(errorMessage("cannot read", subject, path));
         }
@@ -66,7 +68,7 @@ namespace ssa::infra::preferences::json_persistence {
             throw std::runtime_error(errorMessage("size limit exceeded for", subject, path));
         }
 
-        QSaveFile output(QString::fromStdString(path.string()));
+        QSaveFile output(qt::toQString(path));
         output.setDirectWriteFallback(false);
         if (!output.open(QIODevice::WriteOnly)) {
             throw std::runtime_error(errorMessage("cannot write", subject, path));

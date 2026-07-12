@@ -18,7 +18,6 @@ namespace ssa::presentation {
 
     class SsaTableModel final : public QAbstractTableModel {
         Q_OBJECT
-        Q_PROPERTY(int visibleColumnCount READ visibleColumnCount NOTIFY columnsChanged)
         Q_PROPERTY(QVariantList columnWidths READ columnWidths NOTIFY columnsChanged)
         Q_PROPERTY(QVariantList tableColumns READ tableColumns NOTIFY columnsChanged)
         Q_PROPERTY(int fallbackColumnWidth READ fallbackColumnWidth CONSTANT)
@@ -37,7 +36,6 @@ namespace ssa::presentation {
                      std::vector<SsaDisplayColumn> displayColumns,
                      SsaTableDisplayValues displayValues);
         void setColumnWidths(const std::map<std::string, int>& widths);
-        Q_INVOKABLE [[nodiscard]] int visibleColumnCount() const;
         Q_INVOKABLE [[nodiscard]] QString columnKey(int column) const;
         Q_INVOKABLE [[nodiscard]] QString columnLabel(int column) const;
         Q_INVOKABLE [[nodiscard]] int columnWidth(int column) const;

@@ -31,7 +31,6 @@ namespace ssa::presentation {
 
     class FilterPanelViewModel final : public QObject {
         Q_OBJECT
-        Q_PROPERTY(QStringList filterColumnKeys READ filterColumnKeys CONSTANT)
         Q_PROPERTY(QStringList statusShortcutValues READ statusShortcutValues CONSTANT)
         Q_PROPERTY(QString columnKey READ columnKey WRITE setColumnKey NOTIFY changed)
         Q_PROPERTY(QString columnValue READ columnValue WRITE setColumnValue NOTIFY changed)
@@ -41,12 +40,10 @@ namespace ssa::presentation {
         Q_PROPERTY(QObject* advanced READ advanced CONSTANT)
         Q_PROPERTY(QObject* columns READ columns CONSTANT)
         Q_PROPERTY(QObject* sector READ sector CONSTANT)
-        Q_PROPERTY(int columnValueOptionsVersion READ columnValueOptionsVersion NOTIFY
-                       columnValueOptionsChanged)
         Q_PROPERTY(int focusColumnRequest READ focusColumnRequest NOTIFY focusColumnRequestChanged)
-        Q_PROPERTY(QStringList activeFilters READ activeFilters NOTIFY changed)
         Q_PROPERTY(QString activeFilterSummary READ activeFilterSummary NOTIFY changed)
         Q_PROPERTY(QVariantList activeFilterEntries READ activeFilterEntries NOTIFY changed)
+        Q_PROPERTY(bool hasExclusionFilter READ hasExclusionFilter NOTIFY changed)
 
       public:
         explicit FilterPanelViewModel(std::shared_ptr<query::SsaQueryService> queryService,
@@ -56,7 +53,6 @@ namespace ssa::presentation {
         void setQuickSector(const QString& value);
         [[nodiscard]] bool excludeScaSesSte() const;
         void setExcludeScaSesSte(bool value);
-        [[nodiscard]] QStringList filterColumnKeys() const;
         [[nodiscard]] QStringList statusShortcutValues() const;
         [[nodiscard]] QString columnKey() const;
         void setColumnKey(const QString& value);
@@ -66,7 +62,6 @@ namespace ssa::presentation {
         [[nodiscard]] QObject* advanced() const;
         [[nodiscard]] QObject* columns();
         [[nodiscard]] QObject* sector();
-        [[nodiscard]] int columnValueOptionsVersion() const;
         [[nodiscard]] int focusColumnRequest() const;
         [[nodiscard]] QStringList quickSectorOptions() const;
         [[nodiscard]] QStringList quickSectorSelectorValues() const;
@@ -74,6 +69,7 @@ namespace ssa::presentation {
         [[nodiscard]] QStringList activeFilters() const;
         [[nodiscard]] QString activeFilterSummary() const;
         [[nodiscard]] QVariantList activeFilterEntries() const;
+        [[nodiscard]] bool hasExclusionFilter() const;
         [[nodiscard]] std::map<std::string, std::string> columnFilters() const;
         [[nodiscard]] domain::AdvancedFilterSpec advancedFilters() const;
         void requestColumnFocus(const QString& key);
@@ -81,6 +77,7 @@ namespace ssa::presentation {
         Q_INVOKABLE [[nodiscard]] QStringList columnValueOptionsFor(const QString& key) const;
         Q_INVOKABLE [[nodiscard]] int columnValueMaxLengthFor(const QString& key) const;
         Q_INVOKABLE [[nodiscard]] bool columnValueOptionsLoadingFor(const QString& key) const;
+        Q_INVOKABLE [[nodiscard]] QString columnValueOptionsErrorFor(const QString& key) const;
         Q_INVOKABLE [[nodiscard]] bool statusShortcutSelected(const QString& code) const;
         // Returns the cycle state of a status shortcut value:
         // 0 = None (not filtered), 1 = Included (=CODE), 2 = Excluded (!CODE).
@@ -91,6 +88,7 @@ namespace ssa::presentation {
         Q_INVOKABLE void clearStatusShortcuts();
         Q_INVOKABLE bool removeActiveFilter(const QVariantMap& entry);
         Q_INVOKABLE void refreshColumnValueOptionsFor(const QString& key);
+        Q_INVOKABLE void retryQuickSectorOptions();
         void invalidateDataSourceOptions();
         void setColumnFilters(std::map<std::string, std::string> filters);
         void applyPreferences(const ports::UserPreferencesSnapshot& snapshot);
@@ -98,7 +96,6 @@ namespace ssa::presentation {
 
       signals:
         void changed();
-        void columnValueOptionsChanged();
         void columnValueOptionsChangedFor(QString key);
         void columnValueOptionsReset();
         void focusColumnRequestChanged();
@@ -128,7 +125,6 @@ namespace ssa::presentation {
 
         filterpanel::FilterPanelState state_;
         std::shared_ptr<query::SsaQueryService> queryService_;
-        QStringList filterColumnKeys_;
         QStringList weekColumnKeys_;
         ColumnFilterViewModel columns_;
         FilterPanelSectorViewModel sector_;

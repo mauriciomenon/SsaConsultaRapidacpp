@@ -7,17 +7,26 @@ on:
 permissions:
   contents: read
 
+env:
+  QT_VERSION: "6.11.0"
+
 jobs:
   macos:
     runs-on: macos-15
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           fetch-depth: 0
+      - uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730
+        with:
+          version: ${{ env.QT_VERSION }}
+          arch: clang_64
+          cache: true
       - name: Install dependencies
-        run: brew install qt cmake ninja sqlite llvm clazy reviewdog gitleaks
+        run: brew install cmake ninja sqlite llvm clazy reviewdog gitleaks
       - name: Configure
-        run: cmake --preset dev -DCMAKE_PREFIX_PATH="$(brew --prefix qt)"
+        run: cmake --preset dev -DCMAKE_PREFIX_PATH="$(qtpaths --query QT_INSTALL_PREFIX)"
       - name: Build
         run: cmake --build --preset dev
       - name: Test
@@ -74,25 +83,27 @@ jobs:
         run: gitleaks dir . --redact --exit-code 1 --no-banner
       - name: Package macOS bundle (release + macdeployqt)
         run: |
-          CMAKE_PREFIX_PATH="$(brew --prefix qt)"
-          PATH="$(brew --prefix qt)/bin:$PATH"
+          CMAKE_PREFIX_PATH="$(qtpaths --query QT_INSTALL_PREFIX)"
+          PATH="${CMAKE_PREFIX_PATH}/bin:$PATH"
           export CMAKE_PREFIX_PATH
           export PATH
-          ./scripts/package-macos.sh --skip-tests
+          ./scripts/package-macos.sh
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ssa-consulta-rapida-macos
           path: dist/macos/arm64/ssa_consulta_rapida-*-arm64-macos.zip
+          if-no-files-found: error
 
   linux:
     runs-on: ubuntu-24.04
+    timeout-minutes: 60
     env:
       QT_QPA_PLATFORM: offscreen
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
       - uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730
         with:
-          version: "6.11.0"
+          version: ${{ env.QT_VERSION }}
           cache: true
       - name: Install dependencies
         run: |
@@ -108,26 +119,18 @@ jobs:
         run: cmake --build --preset dev --target all_qmllint
       - name: Memory regression smoke
         run: |
-          set -e
-          trap 'rm -f /tmp/mem_fixture.db mem_smoke.tsv' EXIT
+          set -euo pipefail
+          trap 'rm -f /tmp/mem_fixture.db' EXIT
           sqlite3 /tmp/mem_fixture.db < tools/generate_mem_fixture.sql
-          ./build/dev/ssa_mem_stress --db /tmp/mem_fixture.db --pages 40 --page-size 50 > mem_smoke.tsv
-          awk -F'\t' '
-            NR==2 {
-              if (NF < 3 || $3 !~ /^[0-9]+$/) { print "FAIL: invalid memory column format at row 2"; exit 1 }
-              start=$3
-            }
-            END {
-              if (NR < 2 || NF < 3 || $3 !~ /^[0-9]+$/) { print "FAIL: missing or invalid data rows"; exit 1 }
-              delta=$3-start
-              printf "startup=%dKB final=%dKB delta=%dKB\n", start, $3, delta
-              if (delta > 2048) { print "FAIL: delta exceeds 2MB budget"; exit 1 }
-              print "PASS: delta within 2MB budget"
-            }
-          ' mem_smoke.tsv
+          ./build/dev/ssa_mem_stress \
+            --db /tmp/mem_fixture.db \
+            --pages 40 \
+            --page-size 50 \
+            --max-footprint-delta-kb 2048
 
   windows:
     runs-on: windows-latest
+    timeout-minutes: 75
     env:
       QT_QPA_PLATFORM: offscreen
     steps:
@@ -140,7 +143,7 @@ jobs:
           arch: x64
       - uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730
         with:
-          version: "6.11.0"
+          version: ${{ env.QT_VERSION }}
           arch: win64_msvc2022_64
           cache: true
       - name: Cache vcpkg

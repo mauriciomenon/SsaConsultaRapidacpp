@@ -1,6 +1,8 @@
 #include "presentation/ExportViewModel.h"
 
-#include <QtConcurrent>
+#include "qt/FilesystemPath.h"
+
+#include <QtConcurrentRun>
 
 #include <filesystem>
 #include <stdexcept>
@@ -90,7 +92,7 @@ namespace ssa::presentation {
         }
 
         ports::ExportFilteredListRequest request;
-        request.outputPath = std::filesystem::path{outputUrl.toLocalFile().toStdString()};
+        request.outputPath = qt::toFileSystemPath(outputUrl.toLocalFile());
         request.query = requestFactory_();
         request.query.pageIndex = 0;
 

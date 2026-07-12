@@ -10,32 +10,130 @@ on:
         description: "Versao da tag existente a publicar (exemplo: 1.2.3)"
         required: true
 
+permissions:
+  contents: read
+
+env:
+  QT_VERSION: "6.11.0"
+
 jobs:
-  # ---------------------------------------------------------------
-  # macOS: arm64 e amd64. Entregavel: .dmg + .zip com .app bundle.
-  # ---------------------------------------------------------------
+  resolve:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      ref: ${{ steps.release.outputs.ref }}
+      tag: ${{ steps.release.outputs.tag }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Resolve and validate release tag
+        id: release
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
+            if [[ "${INPUT_VERSION}" == v* ]]; then
+              tag="${INPUT_VERSION}"
+            else
+              tag="v${INPUT_VERSION}"
+            fi
+          else
+            tag="${REF_NAME}"
+          fi
+
+          if [[ ! "${tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "release tag must match vX.Y.Z" >&2
+            exit 1
+          fi
+          if ! git show-ref --verify --quiet "refs/tags/${tag}"; then
+            echo "release tag does not exist: ${tag}" >&2
+            exit 1
+          fi
+          if ! git rev-parse --verify "${tag}^{commit}" >/dev/null; then
+            echo "release tag does not point to a commit: ${tag}" >&2
+            exit 1
+          fi
+
+          version="${tag#v}"
+          cmake_version="$(python3 - "${tag}" <<'PY'
+          import re
+          import subprocess
+          import sys
+
+          tag = sys.argv[1]
+          source = subprocess.run(
+              ["git", "show", f"{tag}:CMakeLists.txt"],
+              check=True,
+              capture_output=True,
+              text=True,
+          ).stdout
+          project = re.search(
+              r"project\s*\(\s*SSAConsultaRapidaCpp\b(?P<body>.*?)\)",
+              source,
+              flags=re.IGNORECASE | re.DOTALL,
+          )
+          version = None if project is None else re.search(
+              r"\bVERSION\s+([0-9]+\.[0-9]+\.[0-9]+)\b",
+              project.group("body"),
+              flags=re.IGNORECASE,
+          )
+          if version is None:
+              print("could not read project version from CMakeLists.txt", file=sys.stderr)
+              raise SystemExit(1)
+          print(version.group(1))
+          PY
+          )"
+          if [[ "${cmake_version}" != "${version}" ]]; then
+            echo "tag ${tag} does not match CMake project version ${cmake_version}" >&2
+            exit 1
+          fi
+
+          {
+            echo "ref=refs/tags/${tag}"
+            echo "tag=${tag}"
+            echo "version=${version}"
+          } >> "${GITHUB_OUTPUT}"
+
   macos:
+    needs: resolve
     permissions:
       contents: read
     strategy:
       fail-fast: false
       matrix:
         include:
-          - runner: macos-14
+          - runner: macos-15
             arch: arm64
           - runner: macos-15-intel
             arch: x86_64
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-      - name: Install Qt + deps
-        run: brew install qt cmake ninja sqlite gitleaks
+        with:
+          ref: ${{ needs.resolve.outputs.ref }}
+          persist-credentials: false
+      - uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730
+        with:
+          version: ${{ env.QT_VERSION }}
+          arch: clang_64
+          cache: true
+      - name: Install dependencies
+        run: brew install cmake ninja sqlite gitleaks
       - name: Package macOS (.app/.dmg/.zip)
+        env:
+          RELEASE_VERSION: ${{ needs.resolve.outputs.version }}
         run: |
-          qt_prefix="$(brew --prefix qt)"
+          qt_prefix="$(qtpaths --query QT_INSTALL_PREFIX)"
           export CMAKE_PREFIX_PATH="${qt_prefix}"
-          export PATH="${qt_prefix}/bin:$PATH"
-          ./scripts/package-macos.sh --skip-tests
+          export PATH="${qt_prefix}/bin:${PATH}"
+          ./scripts/package-macos.sh --version "${RELEASE_VERSION}"
       - name: Normalize arch folder to arm64/amd64
         run: |
           src="dist/macos/${{ matrix.arch }}"
@@ -45,18 +143,23 @@ jobs:
             rm -rf "${dst}"
             mv "${src}" "${dst}"
           fi
+      - name: Validate macOS artifacts
+        env:
+          RELEASE_VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+          test "$(find dist/macos -type f -name "ssa_consulta_rapida-${RELEASE_VERSION}-*-macos.dmg" | wc -l | tr -d ' ')" -eq 1
+          test "$(find dist/macos -type f -name "ssa_consulta_rapida-${RELEASE_VERSION}-*-macos.zip" | wc -l | tr -d ' ')" -eq 1
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: release-macos-${{ matrix.arch == 'x86_64' && 'amd64' || 'arm64' }}
           path: |
             dist/macos/**/*.dmg
             dist/macos/**/*.zip
+          if-no-files-found: error
 
-  # ---------------------------------------------------------------
-  # Windows: amd64 (x64 host) e arm64 (windows-11-arm runner).
-  # Entregavel: .zip portatil + .exe (NSIS).
-  # ---------------------------------------------------------------
   windows:
+    needs: resolve
     permissions:
       contents: read
     strategy:
@@ -74,17 +177,21 @@ jobs:
             vcpkg_triplet: arm64-windows
             qt_arch: win64_msvc2022_arm64
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
     env:
       QT_QPA_PLATFORM: offscreen
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ needs.resolve.outputs.ref }}
+          persist-credentials: false
       - name: Set up Developer PowerShell for VS 2022
         uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756
         with:
           arch: ${{ matrix.msvc_arch }}
       - uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730
         with:
-          version: "6.11.0"
+          version: ${{ env.QT_VERSION }}
           arch: ${{ matrix.qt_arch }}
           cache: true
       - name: Cache vcpkg
@@ -94,26 +201,39 @@ jobs:
             C:\Users\runneradmin\.cache\vcpkg
             C:\vcpkg\installed
           key: ${{ runner.os }}-${{ matrix.artifact }}-vcpkg-sqlite3
-      - name: Install SQLite via vcpkg
-        run: vcpkg install sqlite3:${{ matrix.vcpkg_triplet }}
+      - name: Install package dependencies
+        shell: pwsh
+        run: |
+          vcpkg install sqlite3:${{ matrix.vcpkg_triplet }}
+          choco upgrade nsis --version=3.12.0 --yes --no-progress
       - name: Package Windows (.zip/.exe)
         shell: pwsh
         run: |
-          .\scripts\package-windows.ps1 -SkipTests -Arch ${{ matrix.artifact }} `
+          .\scripts\package-windows.ps1 -Arch ${{ matrix.artifact }} `
+            -Version "${{ needs.resolve.outputs.version }}" `
             -CmakeExtraArgs "-DCMAKE_PREFIX_PATH=$env:Qt6_DIR" `
             "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" `
             "-DVCPKG_TARGET_TRIPLET=${{ matrix.vcpkg_triplet }}"
+      - name: Validate Windows artifacts
+        shell: pwsh
+        run: |
+          $root = "dist/windows/${{ matrix.artifact }}"
+          $prefix = "ssa_consulta_rapida-${{ needs.resolve.outputs.version }}-${{ matrix.artifact }}-windows"
+          $zip = @(Get-ChildItem -Path $root -File -Filter "$prefix.zip")
+          $installer = @(Get-ChildItem -Path $root -File -Filter "$prefix-installer.exe")
+          if ($zip.Count -ne 1 -or $installer.Count -ne 1) {
+            throw "Expected one Windows zip and one installer, found $($zip.Count) zip and $($installer.Count) installer"
+          }
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: release-windows-${{ matrix.artifact }}
           path: |
             dist/windows/**/*.zip
             dist/windows/**/*-installer.exe
+          if-no-files-found: error
 
-  # ---------------------------------------------------------------
-  # Debian/Ubuntu: amd64 e arm64. Entregavel: .deb
-  # ---------------------------------------------------------------
   debian:
+    needs: resolve
     permissions:
       contents: read
     strategy:
@@ -125,15 +245,19 @@ jobs:
           - runner: ubuntu-24.04-arm
             arch: arm64
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
     env:
       QT_QPA_PLATFORM: offscreen
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ needs.resolve.outputs.ref }}
+          persist-credentials: false
       - uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730
         with:
-          version: "6.11.0"
+          version: ${{ env.QT_VERSION }}
           cache: true
-      - name: Install deps
+      - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build libsqlite3-dev libgl1-mesa-dev \
@@ -141,17 +265,20 @@ jobs:
       - name: Package Debian (.deb)
         run: |
           export CMAKE_PREFIX_PATH="${Qt6_DIR}"
-          ./scripts/package-debian.sh --skip-tests --arch "${{ matrix.arch }}"
+          ./scripts/package-debian.sh \
+            --version "${{ needs.resolve.outputs.version }}" \
+            --arch "${{ matrix.arch }}"
+      - name: Validate Debian artifact
+        run: |
+          test -f "dist/linux/${{ matrix.arch }}/ssa_consulta_rapida-${{ needs.resolve.outputs.version }}-${{ matrix.arch }}-linux.deb"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: release-debian-${{ matrix.arch }}
           path: dist/linux/${{ matrix.arch }}/*.deb
+          if-no-files-found: error
 
-  # ---------------------------------------------------------------
-  # Arch/Artix: amd64 e arm64. Entregavel: .pkg.tar.zst
-  # makepkg recusa root, por isso rodamos via usuario builder.
-  # ---------------------------------------------------------------
   arch:
+    needs: resolve
     permissions:
       contents: read
     strategy:
@@ -163,80 +290,88 @@ jobs:
           - runner: ubuntu-24.04-arm
             arch: aarch64
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
     container: archlinux@sha256:d9abf957599bddf27955a0dd82b4457dcfaace50525bb773f6c7518f8015e7e4
     env:
       QT_QPA_PLATFORM: offscreen
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-      - name: Install deps + builder user (Arch)
+        with:
+          ref: ${{ needs.resolve.outputs.ref }}
+          persist-credentials: false
+      - name: Install dependencies and builder user
         run: |
-          # Init keyring + atualiza antes de instalar pacotes.
           pacman-key --init
           pacman-key --populate archlinux
           pacman -Syu --noconfirm --needed archlinux-keyring
           pacman -S --noconfirm --needed base-devel cmake ninja \
             qt6-base qt6-declarative qt6-tools qt6-shadertools sqlite zstd
-          # makepkg se recusa a rodar como root.
           id builder >/dev/null 2>&1 || useradd -m -G wheel -s /bin/bash builder
           echo "builder ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/builder
           chown -R builder:builder "${GITHUB_WORKSPACE:-$(pwd)}"
+      - uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730
+        with:
+          version: ${{ env.QT_VERSION }}
+          arch: linux_gcc_64
+          cache: true
+      - name: Validate pinned Qt version
+        run: test "$(qtpaths --qt-version)" = "${QT_VERSION}"
       - name: Package Arch (.pkg.tar.zst)
         run: |
-          su builder -c "./scripts/package-arch.sh --skip-tests --arch '${{ matrix.arch }}'"
+          ./scripts/package-arch.sh \
+            --version '${{ needs.resolve.outputs.version }}' \
+            --arch '${{ matrix.arch }}'
+      - name: Validate Arch artifact
+        run: |
+          test -f "dist/linux/${{ matrix.arch }}/ssa_consulta_rapida-${{ needs.resolve.outputs.version }}-${{ matrix.arch }}-linux.pkg.tar.zst"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: release-arch-${{ matrix.arch }}
           path: dist/linux/${{ matrix.arch }}/*.pkg.tar.zst
+          if-no-files-found: error
 
-  # ---------------------------------------------------------------
-  # Release: reune todos os artifacts e publica no GitHub Release.
-  # ---------------------------------------------------------------
   publish:
-    needs: [macos, windows, debian, arch]
+    needs: [resolve, macos, windows, debian, arch]
     permissions:
       contents: write
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     environment:
       name: release
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        with:
-          fetch-depth: 0
-      - name: Validate release tag
-        id: ver
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          INPUT_VERSION: ${{ inputs.version }}
-          REF_NAME: ${{ github.ref_name }}
-        run: |
-          if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
-            tag="v${INPUT_VERSION}"
-          else
-            tag="${REF_NAME}"
-          fi
-          if [[ ! "${tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "release tag must match vX.Y.Z" >&2
-            exit 1
-          fi
-          git rev-parse --verify --quiet "refs/tags/${tag}" >/dev/null
-          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
-          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           path: release-assets
           merge-multiple: true
-      - name: Collect release files
+      - name: Validate and collect release files
         run: |
+          set -euo pipefail
+          require_count() {
+            local pattern="$1"
+            local expected="$2"
+            local actual
+            actual="$(find release-assets -type f -name "${pattern}" | wc -l | tr -d ' ')"
+            if [[ "${actual}" -ne "${expected}" ]]; then
+              echo "expected ${expected} ${pattern} assets, found ${actual}" >&2
+              exit 1
+            fi
+          }
+          require_count '*.dmg' 2
+          require_count '*.zip' 4
+          require_count '*-installer.exe' 2
+          require_count '*.deb' 2
+          require_count '*.pkg.tar.zst' 2
+
           mkdir -p staging
           find release-assets -type f \( \
             -name '*.dmg' -o -name '*.zip' -o -name '*.deb' -o \
             -name '*.pkg.tar.zst' -o -name '*-installer.exe' \) \
             -exec cp {} staging/ \;
-          ls -la staging/
+          test "$(find staging -maxdepth 1 -type f | wc -l | tr -d ' ')" -eq 12
       - name: Create GitHub Release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65
         with:
-          tag_name: ${{ steps.ver.outputs.tag }}
-          name: SSA Consulta Rapida ${{ steps.ver.outputs.version }}
+          tag_name: ${{ needs.resolve.outputs.tag }}
+          name: SSA Consulta Rapida ${{ needs.resolve.outputs.version }}
           generate_release_notes: true
           files: staging/*

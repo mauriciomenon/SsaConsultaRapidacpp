@@ -7,6 +7,7 @@
 #include "SsaCliWorkflowRunner.h"
 #include "application/SsaBrowseService.h"
 #include "domain/ColumnCatalog.h"
+#include "qt/FilesystemPath.h"
 
 #include <QCommandLineOption>
 #include <QCommandLineParser>
@@ -159,7 +160,7 @@ namespace {
 
         if (const auto defaultDatabase = findDefaultDatabaseFromCurrentDirectory()) {
             std::cerr << "Detected project database:\n"
-                      << "  " << defaultDatabase->string() << '\n';
+                      << "  " << ssa::qt::toUtf8(*defaultDatabase) << '\n';
         } else {
             std::cerr << "No project database was found from the current directory.\n"
                       << "Place the database at <repo>/data/ssas.db or pass an explicit path.\n";
@@ -313,7 +314,7 @@ namespace ssa::app::cli {
 
         ports::ExportFilteredListRequest request;
         request.query = SsaCliRequestMapper::pageRequest(parser, outputColumns);
-        request.outputPath = std::filesystem::path{parser.value("export").toStdString()};
+        request.outputPath = ssa::qt::toFileSystemPath(parser.value("export"));
         const auto result = workflows->exportFilteredList(request);
         std::cerr << result.message << '\n';
         return result.ok() ? 0 : 1;

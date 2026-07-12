@@ -17,7 +17,7 @@ namespace ssa::ports {
     };
 
     struct WorkflowResult {
-        WorkflowStatus status{WorkflowStatus::NotImplemented};
+        WorkflowStatus status = WorkflowStatus::NotImplemented;
         std::string message;
 
         [[nodiscard]] bool ok() const {
@@ -27,7 +27,7 @@ namespace ssa::ports {
 
     struct ImportExternalFilesRequest {
         std::vector<std::filesystem::path> files;
-        bool optimized{true};
+        bool optimized = true;
     };
 
     enum class RescanMode {
@@ -36,9 +36,9 @@ namespace ssa::ports {
     };
 
     struct RescanRequest {
-        RescanMode mode{RescanMode::Incremental};
-        bool allowFileDiscovery{true};
-        bool optimized{true};
+        RescanMode mode = RescanMode::Incremental;
+        bool allowFileDiscovery = true;
+        bool optimized = true;
     };
 
     struct ExportFilteredListRequest {
@@ -51,8 +51,10 @@ namespace ssa::ports {
         virtual ~IImportWorkflowPort() = default;
 
         [[nodiscard]] virtual WorkflowResult
-        importExternalFiles(const ImportExternalFilesRequest& request) = 0;
-        [[nodiscard]] virtual WorkflowResult rescan(const RescanRequest& request) = 0;
+        importExternalFiles(const ImportExternalFilesRequest& request,
+                            std::stop_token stopToken = {}) = 0;
+        [[nodiscard]] virtual WorkflowResult rescan(const RescanRequest& request,
+                                                    std::stop_token stopToken = {}) = 0;
     };
 
     class IExportPort {
@@ -68,16 +70,16 @@ namespace ssa::ports {
       public:
         virtual ~IDatabaseMaintenancePort() = default;
 
-        [[nodiscard]] virtual WorkflowResult resetDatabase() = 0;
-        [[nodiscard]] virtual WorkflowResult cleanData() = 0;
-        [[nodiscard]] virtual WorkflowResult vacuumAnalyze() = 0;
+        [[nodiscard]] virtual WorkflowResult resetDatabase(std::stop_token stopToken = {}) = 0;
+        [[nodiscard]] virtual WorkflowResult cleanData(std::stop_token stopToken = {}) = 0;
+        [[nodiscard]] virtual WorkflowResult vacuumAnalyze(std::stop_token stopToken = {}) = 0;
     };
 
     class IDerivadasPort {
       public:
         virtual ~IDerivadasPort() = default;
 
-        [[nodiscard]] virtual WorkflowResult syncDerivadas() = 0;
+        [[nodiscard]] virtual WorkflowResult syncDerivadas(std::stop_token stopToken = {}) = 0;
     };
 
 } // namespace ssa::ports

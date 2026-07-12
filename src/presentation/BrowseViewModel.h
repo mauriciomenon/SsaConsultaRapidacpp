@@ -28,7 +28,6 @@ namespace ssa::presentation {
         Q_PROPERTY(SsaTableModel* tableModel READ tableModel CONSTANT)
         Q_PROPERTY(int pageNumber READ pageNumber NOTIFY pageChanged)
         Q_PROPERTY(int pageCount READ pageCount NOTIFY pageChanged)
-        Q_PROPERTY(QString pageSummary READ pageSummary NOTIFY pageChanged)
         Q_PROPERTY(qlonglong totalRows READ totalRows NOTIFY pageChanged)
         Q_PROPERTY(qlonglong totalRowsAll READ totalRowsAll NOTIFY pageChanged)
         Q_PROPERTY(int pageSize READ pageSize WRITE setPageSize NOTIFY pageChanged)
@@ -50,7 +49,6 @@ namespace ssa::presentation {
         [[nodiscard]] SsaTableModel* tableModel();
         [[nodiscard]] int pageNumber() const;
         [[nodiscard]] int pageCount() const;
-        [[nodiscard]] QString pageSummary() const;
         [[nodiscard]] qlonglong totalRows() const;
         [[nodiscard]] qlonglong totalRowsAll() const;
         [[nodiscard]] int pageSize() const;
@@ -65,11 +63,8 @@ namespace ssa::presentation {
         [[nodiscard]] const std::vector<std::string>& visibleColumns() const;
         [[nodiscard]] const std::map<std::string, int>& columnWidths() const;
         Q_INVOKABLE void setFilterPanelFocusColumn(const QString& key);
-        // Loads a single SSA by number into the details panel (used when
-        // navigating to a related/derived SSA from the details view).
-        Q_INVOKABLE bool loadDetailsBySsaNumber(const QString& ssaNumber);
-        Q_INVOKABLE DetailsViewModel* createDetailsWindowModel(const QString& ssaNumber,
-                                                               QObject* parent);
+        Q_INVOKABLE ssa::presentation::DetailsViewModel*
+        createDetailsWindowModel(const QString& ssaNumber, QObject* parent);
 
         void applyPreferences(const ports::UserPreferencesSnapshot& snapshot);
         void writePreferences(ports::UserPreferencesSnapshot& snapshot) const;

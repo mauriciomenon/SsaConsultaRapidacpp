@@ -53,21 +53,6 @@ namespace ssa::presentation {
         return QString::fromStdString(query::joinTextFilterTokens(tokens));
     }
 
-    QString AdvancedTextFilterColumnStore::expressionReplacingCurrentExpressionWithOperator(
-        const OperatorExpressionRequest& request) {
-        const auto filterOperator =
-            query::textFilterOperatorFromMode(request.operatorMode.toStdString());
-        if (!filterOperator.has_value()) {
-            return request.currentExpression;
-        }
-        const auto tokens = query::parseTextFilterTokens(request.currentExpression.toStdString());
-        query::TextFilterTokenSet replaced;
-        for (const auto& token : tokens.ordered) {
-            query::addTextFilterValue(replaced, token.value, *filterOperator);
-        }
-        return QString::fromStdString(query::joinTextFilterTokens(replaced));
-    }
-
     QString AdvancedTextFilterColumnStore::expressionReplacingWithOperator(
         const OperatorValueListRequest& request) {
         const auto filterOperator =

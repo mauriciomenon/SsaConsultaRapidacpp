@@ -1,12 +1,15 @@
 #include "infra/import/LegacySpreadsheetConverter.h"
 
+#include "qt/FilesystemPath.h"
+
+#include <QDeadlineTimer>
 #include <QDir>
 #include <QProcess>
 #include <QStandardPaths>
 #include <QString>
+#include <QtGlobal>
 
 #include <chrono>
-#include <cstdlib>
 #include <system_error>
 #include <utility>
 
@@ -14,26 +17,10 @@ namespace ssa::infra::importing {
 
     namespace {
 
-        QString pathToQString(const std::filesystem::path& path) {
-#ifdef _WIN32
-            return QString::fromStdWString(path.wstring());
-#else
-            const auto& native = path.native();
-            return QFile::decodeName(native.data());
-#endif
-        }
-
-        std::filesystem::path qStringToPath(const QString& path) {
-#ifdef _WIN32
-            return std::filesystem::path{path.toStdWString()};
-#else
-            return std::filesystem::path{QFile::encodeName(path).constData()};
-#endif
-        }
-
         std::filesystem::path executableFromEnvironment() {
-            if (const char* value = std::getenv("SSA_SOFFICE_PATH"); value != nullptr) {
-                return std::filesystem::path{value};
+            const auto value = qEnvironmentVariable("SSA_SOFFICE_PATH");
+            if (!value.isEmpty()) {
+                return qt::toFileSystemPath(value);
             }
             return {};
         }
@@ -50,7 +37,7 @@ namespace ssa::infra::importing {
             for (const auto& name : names) {
                 const auto found = QStandardPaths::findExecutable(name);
                 if (!found.isEmpty()) {
-                    return qStringToPath(found);
+                    return qt::toFileSystemPath(found);
                 }
             }
             return {};
@@ -99,7 +86,11 @@ namespace ssa::infra::importing {
 
     LegacySpreadsheetConversionResult
     LegacySpreadsheetConverter::convertToXlsx(const std::filesystem::path& source,
-                                              const std::filesystem::path& destination) const {
+                                              const std::filesystem::path& destination,
+                                              const std::stop_token stopToken) const {
+        if (stopToken.stop_requested()) {
+            return {LegacySpreadsheetConversionStatus::Failed, {}, "xls conversion canceled"};
+        }
         const auto executable = resolvedExecutable();
         if (executable.empty()) {
             return {LegacySpreadsheetConversionStatus::ToolUnavailable,
@@ -117,14 +108,31 @@ namespace ssa::infra::importing {
         std::filesystem::remove(destination, error);
 
         QProcess process;
-        process.setProgram(pathToQString(executable));
+        process.setProgram(qt::toQString(executable));
         process.setArguments(QStringList{
             QStringLiteral("--headless"), QStringLiteral("--convert-to"), QStringLiteral("xlsx"),
-            QStringLiteral("--outdir"), pathToQString(destination.parent_path()),
-            QStringLiteral("--"), pathToQString(source)});
+            QStringLiteral("--outdir"), qt::toQString(destination.parent_path()),
+            QStringLiteral("--"), qt::toQString(source)});
         process.start();
-        constexpr int kConversionTimeoutMs = 180000;
-        if (!process.waitForStarted() || !process.waitForFinished(kConversionTimeoutMs)) {
+        QDeadlineTimer conversionDeadline(std::chrono::minutes{3});
+        while (process.state() == QProcess::Starting && !conversionDeadline.hasExpired() &&
+               !stopToken.stop_requested()) {
+            process.waitForStarted(100);
+        }
+        while (process.state() == QProcess::Running && !conversionDeadline.hasExpired() &&
+               !stopToken.stop_requested()) {
+            process.waitForFinished(100);
+        }
+        if (stopToken.stop_requested()) {
+            process.kill();
+            if (!process.waitForFinished(5000)) {
+                return {LegacySpreadsheetConversionStatus::Failed,
+                        {},
+                        "xls conversion canceled but process did not terminate"};
+            }
+            return {LegacySpreadsheetConversionStatus::Failed, {}, "xls conversion canceled"};
+        }
+        if (process.state() != QProcess::NotRunning) {
             process.kill();
             if (!process.waitForFinished(30000)) {
                 return {LegacySpreadsheetConversionStatus::Failed,
@@ -142,6 +150,10 @@ namespace ssa::infra::importing {
 
         std::string moveMessage;
         const auto generated = generatedXlsxPath(source, destination);
+        if (stopToken.stop_requested()) {
+            std::filesystem::remove(generated, error);
+            return {LegacySpreadsheetConversionStatus::Failed, {}, "xls conversion canceled"};
+        }
         if (!moveGeneratedFile(generated, destination, moveMessage)) {
             return {LegacySpreadsheetConversionStatus::Failed, {}, moveMessage};
         }

@@ -18,6 +18,7 @@
 
 #include <QChar>
 #include <QCoreApplication>
+#include <QElapsedTimer>
 #include <QObject>
 #include <QRegularExpression>
 #include <QSignalSpy>
@@ -93,138 +94,6 @@ namespace {
       private:
         std::atomic_bool started_{false};
         std::atomic_bool finished_{false};
-    };
-
-    class CompletedFilterPresetStore final : public ssa::ports::IFilterPresetStore {
-      public:
-        ssa::ports::FilterPresetSnapshot load(std::filesystem::path) const override {
-            {
-                const std::scoped_lock lock(mutex_);
-                loadCompleted_ = true;
-            }
-            loadCompletedCondition_.notify_all();
-            return {};
-        }
-
-        void save(std::filesystem::path, const ssa::ports::FilterPresetSnapshot&) const override {}
-
-        [[nodiscard]] bool waitForLoadCompletion(std::chrono::milliseconds timeout) const {
-            std::unique_lock lock(mutex_);
-            return loadCompletedCondition_.wait_for(lock, timeout,
-                                                    [this] { return loadCompleted_; });
-        }
-
-      private:
-        mutable std::mutex mutex_;
-        mutable std::condition_variable loadCompletedCondition_;
-        mutable bool loadCompleted_{false};
-    };
-
-    class NonStandardThrowingPresetStore final : public ssa::ports::IFilterPresetStore {
-      public:
-        ssa::ports::FilterPresetSnapshot load(std::filesystem::path) const override {
-            throw 41;
-        }
-
-        void save(std::filesystem::path, const ssa::ports::FilterPresetSnapshot&) const override {
-            throw 42;
-        }
-    };
-
-    class BlockingFilterPresetStore final : public ssa::ports::IFilterPresetStore {
-      public:
-        ssa::ports::FilterPresetSnapshot load(std::filesystem::path) const override {
-            std::unique_lock lock(mutex_);
-            importStarted_ = true;
-            condition_.notify_all();
-            condition_.wait(lock, [this] { return releaseImport_; });
-            return {};
-        }
-
-        void save(std::filesystem::path, const ssa::ports::FilterPresetSnapshot&) const override {
-            std::unique_lock lock(mutex_);
-            exportStarted_ = true;
-            condition_.notify_all();
-            condition_.wait(lock, [this] { return releaseExport_; });
-        }
-
-        [[nodiscard]] bool waitForImportStart(std::chrono::milliseconds timeout) const {
-            std::unique_lock lock(mutex_);
-            return condition_.wait_for(lock, timeout, [this] { return importStarted_; });
-        }
-
-        [[nodiscard]] bool waitForExportStart(std::chrono::milliseconds timeout) const {
-            std::unique_lock lock(mutex_);
-            return condition_.wait_for(lock, timeout, [this] { return exportStarted_; });
-        }
-
-        void releaseImport() const {
-            {
-                const std::scoped_lock lock(mutex_);
-                releaseImport_ = true;
-            }
-            condition_.notify_all();
-        }
-
-        void releaseExport() const {
-            {
-                const std::scoped_lock lock(mutex_);
-                releaseExport_ = true;
-            }
-            condition_.notify_all();
-        }
-
-      private:
-        mutable std::mutex mutex_;
-        mutable std::condition_variable condition_;
-        mutable bool importStarted_{false};
-        mutable bool exportStarted_{false};
-        mutable bool releaseImport_{false};
-        mutable bool releaseExport_{false};
-    };
-
-    class BlockingPreferencesStore final : public ssa::ports::IUserPreferencesStore {
-      public:
-        ssa::ports::UserPreferencesSnapshot load() const override {
-            return {};
-        }
-
-        void save(const ssa::ports::UserPreferencesSnapshot& snapshot) const override {
-            std::unique_lock lock(mutex_);
-            const auto call = ++saveCalls_;
-            if (call == 1) {
-                firstSaveStarted_ = true;
-                condition_.notify_all();
-                condition_.wait(lock, [this] { return releaseFirstSave_; });
-            }
-            savedDensities_.push_back(snapshot.density);
-        }
-
-        [[nodiscard]] bool waitForFirstSave(std::chrono::milliseconds timeout) const {
-            std::unique_lock lock(mutex_);
-            return condition_.wait_for(lock, timeout, [this] { return firstSaveStarted_; });
-        }
-
-        void releaseFirstSave() const {
-            {
-                const std::scoped_lock lock(mutex_);
-                releaseFirstSave_ = true;
-            }
-            condition_.notify_all();
-        }
-
-        [[nodiscard]] std::vector<std::string> savedDensities() const {
-            const std::scoped_lock lock(mutex_);
-            return savedDensities_;
-        }
-
-      private:
-        mutable std::mutex mutex_;
-        mutable std::condition_variable condition_;
-        mutable std::vector<std::string> savedDensities_;
-        mutable int saveCalls_{0};
-        mutable bool firstSaveStarted_{false};
-        mutable bool releaseFirstSave_{false};
     };
 
     class SlowCancelableRepository final : public ssa::ports::ISsaRepository {
@@ -351,6 +220,149 @@ namespace {
         std::map<std::string, std::vector<ssa::domain::SsaDerivadaEntry>> children_;
     };
 
+    class SlowDetailsRepository final : public ssa::ports::ISsaRepository {
+      public:
+        ssa::domain::SsaPageResult page(const ssa::domain::SsaPageRequest& request,
+                                        std::stop_token = {}) const override {
+            return {{}, 0, request.pageIndex, request.pageSize};
+        }
+
+        std::size_t count(const ssa::domain::SsaPageRequest&, std::stop_token = {}) const override {
+            return 0;
+        }
+
+        std::optional<ssa::domain::SsaRecord>
+        recordBySsaNumber(const ssa::domain::SsaNumber&, std::stop_token = {}) const override {
+            return std::nullopt;
+        }
+
+        std::vector<ssa::domain::SsaDerivadaEntry>
+        derivadasDiretas(const ssa::domain::SsaNumber& number,
+                         const std::stop_token stopToken = {}) const override {
+            if (number.value() == "error") {
+                throw std::runtime_error("relation query failed");
+            }
+            if (number.value() == "202500001") {
+                firstStarted_.store(true, std::memory_order_release);
+                const auto deadline =
+                    std::chrono::steady_clock::now() + std::chrono::milliseconds{500};
+                while (!stopToken.stop_requested() && std::chrono::steady_clock::now() < deadline) {
+                    std::this_thread::yield();
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds{200});
+                firstFinished_.store(true, std::memory_order_release);
+                if (stopToken.stop_requested()) {
+                    throw std::system_error(std::make_error_code(std::errc::operation_canceled));
+                }
+                return {{"old-child", "APV"}};
+            }
+            secondStarted_.store(true, std::memory_order_release);
+            return {{"new-child", "SES"}};
+        }
+
+        std::vector<std::string> distinctValues(const ssa::domain::DistinctValuesRequest&,
+                                                std::stop_token = {}) const override {
+            return {};
+        }
+
+        std::size_t maxValueLength(std::string_view, std::stop_token = {}) const override {
+            return 0;
+        }
+
+        ssa::ports::SsaReadResult readAll(const ssa::domain::SsaPageRequest&,
+                                          ssa::ports::SsaRecordConsumer,
+                                          std::stop_token = {}) const override {
+            return {};
+        }
+
+        [[nodiscard]] bool firstStarted() const {
+            return firstStarted_.load(std::memory_order_acquire);
+        }
+
+        [[nodiscard]] bool firstFinished() const {
+            return firstFinished_.load(std::memory_order_acquire);
+        }
+
+        [[nodiscard]] bool secondStarted() const {
+            return secondStarted_.load(std::memory_order_acquire);
+        }
+
+      private:
+        mutable std::atomic_bool firstStarted_{false};
+        mutable std::atomic_bool firstFinished_{false};
+        mutable std::atomic_bool secondStarted_{false};
+    };
+
+    class SlowRelationNavigationRepository final : public ssa::ports::ISsaRepository {
+      public:
+        ssa::domain::SsaPageResult page(const ssa::domain::SsaPageRequest& request,
+                                        std::stop_token = {}) const override {
+            return {{}, 0, request.pageIndex, request.pageSize};
+        }
+
+        std::size_t count(const ssa::domain::SsaPageRequest&, std::stop_token = {}) const override {
+            return 0;
+        }
+
+        std::optional<ssa::domain::SsaRecord>
+        recordBySsaNumber(const ssa::domain::SsaNumber& number,
+                          const std::stop_token stopToken = {}) const override {
+            if (number.value() == "old") {
+                firstStarted_.store(true, std::memory_order_release);
+                const auto deadline =
+                    std::chrono::steady_clock::now() + std::chrono::milliseconds{500};
+                while (!stopToken.stop_requested() && std::chrono::steady_clock::now() < deadline) {
+                    std::this_thread::yield();
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds{200});
+                firstFinished_.store(true, std::memory_order_release);
+                if (stopToken.stop_requested()) {
+                    throw std::system_error(std::make_error_code(std::errc::operation_canceled));
+                }
+            } else {
+                secondStarted_.store(true, std::memory_order_release);
+            }
+            return ssa::domain::SsaRecord{{{"numero_ssa", number.value()}, {"situacao", "APV"}}};
+        }
+
+        std::vector<ssa::domain::SsaDerivadaEntry>
+        derivadasDiretas(const ssa::domain::SsaNumber&, std::stop_token = {}) const override {
+            return {};
+        }
+
+        std::vector<std::string> distinctValues(const ssa::domain::DistinctValuesRequest&,
+                                                std::stop_token = {}) const override {
+            return {};
+        }
+
+        std::size_t maxValueLength(std::string_view, std::stop_token = {}) const override {
+            return 0;
+        }
+
+        ssa::ports::SsaReadResult readAll(const ssa::domain::SsaPageRequest&,
+                                          ssa::ports::SsaRecordConsumer,
+                                          std::stop_token = {}) const override {
+            return {};
+        }
+
+        [[nodiscard]] bool firstStarted() const {
+            return firstStarted_.load(std::memory_order_acquire);
+        }
+
+        [[nodiscard]] bool firstFinished() const {
+            return firstFinished_.load(std::memory_order_acquire);
+        }
+
+        [[nodiscard]] bool secondStarted() const {
+            return secondStarted_.load(std::memory_order_acquire);
+        }
+
+      private:
+        mutable std::atomic_bool firstStarted_{false};
+        mutable std::atomic_bool firstFinished_{false};
+        mutable std::atomic_bool secondStarted_{false};
+    };
+
     class PresentationSmokeTest final : public QObject {
         Q_OBJECT
 
@@ -400,7 +412,7 @@ namespace {
             QTRY_COMPARE_WITH_TIMEOUT(model.browse()->tableModel()->rowCount(), 1, 1000);
             QCOMPARE(model.browse()->totalRows(), 1);
             QCOMPARE(model.browse()->details()->selectedSsa(), QString("202500001"));
-            QVERIFY(pageSpy.count() >= 1);
+            QVERIFY(pageSpy.size() >= 1);
             QCOMPARE(model.browse()->status()->loading(), false);
             QCOMPARE(model.browse()->tableModel()->columnLabel(0), QString("No SSA"));
             QVERIFY(model.browse()->tableModel()->columnWidth(0) > 0);
@@ -510,7 +522,7 @@ namespace {
 
         void details_relation_navigation_indices_and_flags() {
             // FakeRepository returns nullopt for recordBySsaNumber, so
-            // loadBySsaNumber will not change the record; but the index/flags
+            // the async relation load will not change the record; but the index/flags
             // logic must still respond. Use a DetailsViewModel with a service.
             auto repository = std::make_shared<FakeRepository>();
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
@@ -558,11 +570,95 @@ namespace {
             QCOMPARE(details.relationCount(), 2);
             details.selectPreviousRelation();
 
-            QCOMPARE(details.selectedSsa(), QString("202500001"));
-            QCOMPARE(details.relationCount(), 1);
+            QTRY_COMPARE_WITH_TIMEOUT(details.selectedSsa(), QString("202500001"), 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(!details.relationLoading(), 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(details.relationCount(), 1, 1000);
             QCOMPARE(details.currentRelationIndex(), 0);
             QVERIFY(!details.canSelectNextRelation());
             QVERIFY(!details.canSelectPreviousRelation());
+        }
+
+        void details_relation_query_is_async_latest_wins_and_discards_stale_result() {
+            auto repository = std::make_shared<SlowDetailsRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::DetailsViewModel details(service);
+            QElapsedTimer elapsed;
+            elapsed.start();
+
+            details.setRecord(
+                ssa::domain::SsaRecord{{{"numero_ssa", "202500001"}, {"situacao", "APV"}}});
+
+            QVERIFY(elapsed.elapsed() < 100);
+            QVERIFY(details.relationLoading());
+            QTRY_VERIFY_WITH_TIMEOUT(repository->firstStarted(), 1000);
+
+            details.setRecord(
+                ssa::domain::SsaRecord{{{"numero_ssa", "202500002"}, {"situacao", "APV"}}});
+
+            QTRY_VERIFY_WITH_TIMEOUT(repository->secondStarted(), 1000);
+            QVERIFY(!repository->firstFinished());
+            QTRY_VERIFY_WITH_TIMEOUT(!details.relationLoading(), 1000);
+            QCOMPARE(details.relationError(), QString());
+            QCOMPARE(details.selectedSsaNumber(), QString("202500002"));
+            QCOMPARE(details.relationCount(), 2);
+            QCOMPARE(details.relations().at(1).toMap().value("ssa").toString(),
+                     QString("new-child"));
+            QTRY_VERIFY_WITH_TIMEOUT(repository->firstFinished(), 1000);
+            QCOMPARE(details.selectedSsaNumber(), QString("202500002"));
+            QCOMPARE(details.relationCount(), 2);
+        }
+
+        void details_relation_query_exposes_failure_without_erasing_local_record() {
+            auto repository = std::make_shared<SlowDetailsRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::DetailsViewModel details(service);
+
+            details.setRecord(
+                ssa::domain::SsaRecord{{{"numero_ssa", "error"}, {"situacao", "APV"}}});
+
+            QTRY_VERIFY_WITH_TIMEOUT(!details.relationLoading(), 1000);
+            QCOMPARE(details.relationError(), QString("relation query failed"));
+            QCOMPARE(details.selectedSsaNumber(), QString("error"));
+            QCOMPARE(details.relationCount(), 1);
+        }
+
+        void details_relation_navigation_load_is_async_latest_wins() {
+            auto repository = std::make_shared<SlowRelationNavigationRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::DetailsViewModel details(service);
+            QElapsedTimer elapsed;
+            elapsed.start();
+
+            details.requestLoadBySsaNumber(QStringLiteral("old"));
+
+            QVERIFY(elapsed.elapsed() < 100);
+            QVERIFY(details.relationLoading());
+            QTRY_VERIFY_WITH_TIMEOUT(repository->firstStarted(), 1000);
+
+            details.requestLoadBySsaNumber(QStringLiteral("new"));
+
+            QTRY_VERIFY_WITH_TIMEOUT(repository->secondStarted(), 1000);
+            QVERIFY(!repository->firstFinished());
+            QTRY_VERIFY_WITH_TIMEOUT(!details.relationLoading(), 1000);
+            QCOMPARE(details.selectedSsaNumber(), QString("new"));
+            QCOMPARE(details.relationError(), QString());
+            QTRY_VERIFY_WITH_TIMEOUT(repository->firstFinished(), 1000);
+            QCOMPARE(details.selectedSsaNumber(), QString("new"));
+        }
+
+        void details_window_model_starts_loading_without_blocking_the_gui_thread() {
+            auto repository = std::make_shared<SlowRelationNavigationRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            ssa::presentation::MainViewModel model(service, commands);
+            QElapsedTimer elapsed;
+            elapsed.start();
+
+            auto* details = model.browse()->createDetailsWindowModel(QStringLiteral("old"), &model);
+
+            QVERIFY(elapsed.elapsed() < 100);
+            QVERIFY(details->relationLoading());
+            QTRY_VERIFY_WITH_TIMEOUT(repository->firstStarted(), 1000);
         }
 
         void search_apply_signal_reloads_table() {
@@ -596,7 +692,7 @@ namespace {
             QCOMPARE(model.browse()->details()->selectedSsa(), QString("202500001"));
             QVERIFY(model.browse()->canSelectNextRow());
             QVERIFY(!model.browse()->canSelectPreviousRow());
-            QCOMPARE(rowSpy.count(), 1);
+            QCOMPARE(rowSpy.size(), 1);
 
             model.browse()->selectNextRow();
 
@@ -666,7 +762,7 @@ namespace {
 
             QCOMPARE(model.target(), QString("202500002"));
             QCOMPARE(model.rowCount(), 3);
-            QCOMPARE(spy.count(), 1);
+            QCOMPARE(spy.size(), 1);
             QVERIFY(model.graphWidth() > 0);
             QVERIFY(model.graphHeight() > 0);
 
@@ -689,12 +785,6 @@ namespace {
             // Second edge: target -> related (dashed)
             QCOMPARE(edges.at(1).toMap().value("dashed"), true);
 
-            const auto mermaid = model.mermaid();
-            QVERIFY(mermaid.contains(QStringLiteral("flowchart LR")));
-            QVERIFY(mermaid.contains(QStringLiteral("202500002")));
-            QVERIFY(mermaid.contains(QStringLiteral("202500002\\nAPV")));
-            QVERIFY(mermaid.contains(QStringLiteral("-.->")));
-
             const auto svg = model.svg();
             QVERIFY(svg.contains(QStringLiteral("<svg")));
             QVERIFY(svg.contains(QStringLiteral("<path")));
@@ -712,6 +802,7 @@ namespace {
             details.setRecord(ssa::domain::SsaRecord{
                 {{"numero_ssa", "202500003"}, {"situacao", "APV"}, {"derivada_de", "202500001"}}});
 
+            QTRY_COMPARE_WITH_TIMEOUT(details.relationCount(), 3, 1000);
             const auto relations = details.relations();
             QCOMPARE(relations.size(), 3);
             QCOMPARE(relations.at(0).toMap().value("kind").toString(), QString("Origem"));
@@ -1381,13 +1472,13 @@ namespace {
             QSignalSpy themeSpy(model.ui(), &ssa::presentation::UiSettingsViewModel::themeChanged);
             model.ui()->setTheme("dark");
             QCOMPARE(model.ui()->theme(), QString("dark"));
-            QVERIFY(themeSpy.count() >= 1);
+            QVERIFY(themeSpy.size() >= 1);
 
             // Simulate ThemeDialog::reject() restoring the original theme
             themeSpy.clear();
             model.ui()->setTheme(original);
             QCOMPARE(model.ui()->theme(), original);
-            QVERIFY(themeSpy.count() >= 1);
+            QVERIFY(themeSpy.size() >= 1);
         }
 
         void details_visibility_preference_is_saved() {
@@ -1477,282 +1568,12 @@ namespace {
             auto commands = std::make_shared<FakeCommands>();
             ssa::presentation::MainViewModel model(service, commands);
 
-            QCOMPARE(model.actions()->currentWeek()->value(),
-                     model.actions()->currentWeek()->label());
             QVERIFY(
                 model.actions()->currentWeek()->value().contains(QRegularExpression("^\\d{6}$")));
             QVERIFY(model.actions()->currentWeek()->dateTimeLabel().contains(
                 QRegularExpression("^\\d{2}/\\d{2}/\\d{4} \\d{2}:\\d{2}$")));
             QVERIFY(!model.actions()->currentWeek()->dateTimeLabel().contains(
                 model.actions()->currentWeek()->value()));
-        }
-
-        void preferences_save_failure_reports_store_error() {
-            auto preferences = std::make_shared<FakePreferences>();
-            preferences->failNextSave("disk full");
-            ssa::presentation::UserPreferencesCoordinator coordinator(preferences);
-            QSignalSpy failedSpy(&coordinator,
-                                 &ssa::presentation::UserPreferencesCoordinator::saveFailed);
-
-            coordinator.saveNowOrSchedule({});
-
-            QTRY_COMPARE_WITH_TIMEOUT(failedSpy.count(), 1, 1000);
-            const auto message = failedSpy.takeFirst().at(0).toString();
-            QVERIFY(message.contains("disk full"));
-            QCOMPARE(preferences->saveCount(), 0);
-        }
-
-        void preferences_save_rejects_wrong_thread_call_without_saving() {
-            auto preferences = std::make_shared<FakePreferences>();
-            ssa::presentation::UserPreferencesCoordinator coordinator(preferences);
-            QSignalSpy failedSpy(&coordinator,
-                                 &ssa::presentation::UserPreferencesCoordinator::saveFailed);
-
-            std::thread worker([&coordinator] { coordinator.saveNowOrSchedule({}); });
-            worker.join();
-
-            QTRY_COMPARE_WITH_TIMEOUT(failedSpy.count(), 1, 1000);
-            const auto message = failedSpy.takeFirst().at(0).toString();
-            QVERIFY(message.contains("thread"));
-            QCOMPARE(preferences->saveCount(), 0);
-        }
-
-        void main_view_model_destruction_flushes_latest_preferences_snapshot() {
-            auto repository = std::make_shared<FakeRepository>();
-            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
-            auto commands = std::make_shared<FakeCommands>();
-            auto preferences = std::make_shared<FakePreferences>();
-
-            {
-                ssa::presentation::MainViewModel model(service, commands, preferences);
-                model.ui()->setDensity("comfortable");
-            }
-
-            QCOMPARE(preferences->saveCount(), 1);
-            QCOMPARE(QString::fromStdString(preferences->snapshot().density),
-                     QString("comfortable"));
-        }
-
-        void preferences_shutdown_persists_latest_of_two_pending_snapshots_without_callback() {
-            auto preferences = std::make_shared<BlockingPreferencesStore>();
-            ssa::presentation::UserPreferencesCoordinator coordinator(preferences);
-            QSignalSpy savedSpy(&coordinator,
-                                &ssa::presentation::UserPreferencesCoordinator::saved);
-            ssa::ports::UserPreferencesSnapshot first;
-            first.density = "first";
-            ssa::ports::UserPreferencesSnapshot latest;
-            latest.density = "latest";
-
-            coordinator.saveNowOrSchedule(first);
-            QVERIFY(preferences->waitForFirstSave(std::chrono::seconds{1}));
-            coordinator.saveNowOrSchedule(latest);
-            std::thread releaser([preferences] {
-                std::this_thread::sleep_for(std::chrono::milliseconds{20});
-                preferences->releaseFirstSave();
-            });
-
-            coordinator.shutdown();
-            releaser.join();
-            QCoreApplication::processEvents();
-
-            QCOMPARE(preferences->savedDensities(), std::vector<std::string>({"first", "latest"}));
-            QCOMPARE(savedSpy.count(), 0);
-        }
-
-        void preferences_destruction_waits_for_active_save_without_callback() {
-            auto preferences = std::make_shared<BlockingPreferencesStore>();
-            auto coordinator =
-                std::make_unique<ssa::presentation::UserPreferencesCoordinator>(preferences);
-            QSignalSpy savedSpy(coordinator.get(),
-                                &ssa::presentation::UserPreferencesCoordinator::saved);
-            QSignalSpy failedSpy(coordinator.get(),
-                                 &ssa::presentation::UserPreferencesCoordinator::saveFailed);
-            ssa::ports::UserPreferencesSnapshot snapshot;
-            snapshot.density = "active";
-
-            coordinator->saveNowOrSchedule(snapshot);
-            QVERIFY(preferences->waitForFirstSave(std::chrono::seconds{1}));
-            std::mutex releaseMutex;
-            std::condition_variable releaseCondition;
-            bool destructionCallbackEntered = false;
-            std::atomic_bool destructionFinished{false};
-            std::thread releaser([&] {
-                std::unique_lock lock(releaseMutex);
-                releaseCondition.wait(lock, [&] { return destructionCallbackEntered; });
-                preferences->releaseFirstSave();
-            });
-            connect(coordinator.get(),
-                    &ssa::presentation::UserPreferencesCoordinator::shutdownStarted, this, [&] {
-                        {
-                            const std::scoped_lock lock(releaseMutex);
-                            destructionCallbackEntered = true;
-                        }
-                        releaseCondition.notify_one();
-                    });
-            const auto coordinatorHolder =
-                std::make_shared<decltype(coordinator)>(std::move(coordinator));
-            QTimer::singleShot(0, QCoreApplication::instance(), [&, coordinatorHolder] {
-                coordinatorHolder->reset();
-                destructionFinished.store(true, std::memory_order_release);
-            });
-
-            QTRY_VERIFY_WITH_TIMEOUT(destructionFinished.load(std::memory_order_acquire), 1000);
-            releaser.join();
-            QCoreApplication::processEvents();
-
-            QCOMPARE(preferences->savedDensities(), std::vector<std::string>({"active"}));
-            QCOMPARE(savedSpy.count(), 0);
-            QCOMPARE(failedSpy.count(), 0);
-        }
-
-        void filter_preset_completion_is_not_delivered_during_destruction() {
-            auto repository = std::make_shared<FakeRepository>();
-            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
-            auto commands = std::make_shared<FakeCommands>();
-            auto presets = std::make_shared<CompletedFilterPresetStore>();
-            auto model = std::make_unique<ssa::presentation::MainViewModel>(service, commands,
-                                                                            nullptr, presets);
-            QSignalSpy statusSpy(model->preferenceFlow(), SIGNAL(statusMessageRequested(QString)));
-
-            QMetaObject::invokeMethod(
-                model->preferenceFlow(), "importFilterPreset", Qt::DirectConnection,
-                Q_ARG(QUrl, QUrl::fromLocalFile("/tmp/ssa-filter-preset.json")));
-            QVERIFY(presets->waitForLoadCompletion(std::chrono::seconds{1}));
-            QCOMPARE(statusSpy.count(), 1);
-
-            model.reset();
-
-            QCOMPARE(statusSpy.count(), 1);
-        }
-
-        void filter_preset_export_destruction_waits_without_terminal_callback() {
-            auto repository = std::make_shared<FakeRepository>();
-            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
-            auto commands = std::make_shared<FakeCommands>();
-            auto presets = std::make_shared<BlockingFilterPresetStore>();
-            auto model = std::make_unique<ssa::presentation::MainViewModel>(service, commands,
-                                                                            nullptr, presets);
-            QSignalSpy statusSpy(model->preferenceFlow(), SIGNAL(statusMessageRequested(QString)));
-            QSignalSpy errorSpy(model->preferenceFlow(), SIGNAL(statusErrorRequested(QString)));
-
-            QVERIFY(QMetaObject::invokeMethod(
-                model->preferenceFlow(), "exportFilterPreset", Qt::DirectConnection,
-                Q_ARG(QUrl, QUrl::fromLocalFile("/tmp/ssa-filter-preset.json"))));
-            QVERIFY(presets->waitForExportStart(std::chrono::seconds{1}));
-            QCOMPARE(statusSpy.count(), 1);
-            std::mutex releaseMutex;
-            std::condition_variable releaseCondition;
-            bool destructionCallbackEntered = false;
-            std::atomic_bool destructionFinished{false};
-            std::thread releaser([&] {
-                std::unique_lock lock(releaseMutex);
-                releaseCondition.wait(lock, [&] { return destructionCallbackEntered; });
-                presets->releaseExport();
-            });
-            auto* preferenceFlow = qobject_cast<ssa::presentation::MainPreferenceFlowCoordinator*>(
-                model->preferenceFlow());
-            QVERIFY(preferenceFlow != nullptr);
-            connect(preferenceFlow,
-                    &ssa::presentation::MainPreferenceFlowCoordinator::shutdownStarted, this, [&] {
-                        {
-                            const std::scoped_lock lock(releaseMutex);
-                            destructionCallbackEntered = true;
-                        }
-                        releaseCondition.notify_one();
-                    });
-            const auto modelHolder = std::make_shared<decltype(model)>(std::move(model));
-            QTimer::singleShot(0, QCoreApplication::instance(), [&, modelHolder] {
-                modelHolder->reset();
-                destructionFinished.store(true, std::memory_order_release);
-            });
-
-            QTRY_VERIFY_WITH_TIMEOUT(destructionFinished.load(std::memory_order_acquire), 1000);
-            releaser.join();
-            QCoreApplication::processEvents();
-
-            QCOMPARE(statusSpy.count(), 1);
-            QCOMPARE(errorSpy.count(), 0);
-        }
-
-        void filter_preset_import_destruction_waits_without_terminal_callback() {
-            auto repository = std::make_shared<FakeRepository>();
-            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
-            auto commands = std::make_shared<FakeCommands>();
-            auto presets = std::make_shared<BlockingFilterPresetStore>();
-            auto model = std::make_unique<ssa::presentation::MainViewModel>(service, commands,
-                                                                            nullptr, presets);
-            QSignalSpy statusSpy(model->preferenceFlow(), SIGNAL(statusMessageRequested(QString)));
-            QSignalSpy errorSpy(model->preferenceFlow(), SIGNAL(statusErrorRequested(QString)));
-
-            QVERIFY(QMetaObject::invokeMethod(
-                model->preferenceFlow(), "importFilterPreset", Qt::DirectConnection,
-                Q_ARG(QUrl, QUrl::fromLocalFile("/tmp/ssa-filter-preset.json"))));
-            QVERIFY(presets->waitForImportStart(std::chrono::seconds{1}));
-            QCOMPARE(statusSpy.count(), 1);
-            std::mutex releaseMutex;
-            std::condition_variable releaseCondition;
-            bool destructionCallbackEntered = false;
-            std::atomic_bool destructionFinished{false};
-            std::thread releaser([&] {
-                std::unique_lock lock(releaseMutex);
-                releaseCondition.wait(lock, [&] { return destructionCallbackEntered; });
-                presets->releaseImport();
-            });
-            auto* preferenceFlow = qobject_cast<ssa::presentation::MainPreferenceFlowCoordinator*>(
-                model->preferenceFlow());
-            QVERIFY(preferenceFlow != nullptr);
-            connect(preferenceFlow,
-                    &ssa::presentation::MainPreferenceFlowCoordinator::shutdownStarted, this, [&] {
-                        {
-                            const std::scoped_lock lock(releaseMutex);
-                            destructionCallbackEntered = true;
-                        }
-                        releaseCondition.notify_one();
-                    });
-            const auto modelHolder = std::make_shared<decltype(model)>(std::move(model));
-            QTimer::singleShot(0, QCoreApplication::instance(), [&, modelHolder] {
-                modelHolder->reset();
-                destructionFinished.store(true, std::memory_order_release);
-            });
-
-            QTRY_VERIFY_WITH_TIMEOUT(destructionFinished.load(std::memory_order_acquire), 1000);
-            releaser.join();
-            QCoreApplication::processEvents();
-
-            QCOMPARE(statusSpy.count(), 1);
-            QCOMPARE(errorSpy.count(), 0);
-        }
-
-        void filter_preset_non_standard_export_exception_is_reported() {
-            auto repository = std::make_shared<FakeRepository>();
-            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
-            auto commands = std::make_shared<FakeCommands>();
-            auto presets = std::make_shared<NonStandardThrowingPresetStore>();
-            ssa::presentation::MainViewModel model(service, commands, nullptr, presets);
-            QSignalSpy errorSpy(model.preferenceFlow(), SIGNAL(statusErrorRequested(QString)));
-
-            QVERIFY(QMetaObject::invokeMethod(
-                model.preferenceFlow(), "exportFilterPreset", Qt::DirectConnection,
-                Q_ARG(QUrl, QUrl::fromLocalFile("/tmp/ssa-filter-preset.json"))));
-
-            QTRY_COMPARE_WITH_TIMEOUT(errorSpy.count(), 1, 1000);
-            QVERIFY(errorSpy.takeFirst().at(0).toString().contains("desconhecido"));
-        }
-
-        void filter_preset_non_standard_import_exception_is_reported() {
-            auto repository = std::make_shared<FakeRepository>();
-            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
-            auto commands = std::make_shared<FakeCommands>();
-            auto presets = std::make_shared<NonStandardThrowingPresetStore>();
-            ssa::presentation::MainViewModel model(service, commands, nullptr, presets);
-            QSignalSpy errorSpy(model.preferenceFlow(), SIGNAL(statusErrorRequested(QString)));
-
-            QVERIFY(QMetaObject::invokeMethod(
-                model.preferenceFlow(), "importFilterPreset", Qt::DirectConnection,
-                Q_ARG(QUrl, QUrl::fromLocalFile("/tmp/ssa-filter-preset.json"))));
-
-            QTRY_COMPARE_WITH_TIMEOUT(errorSpy.count(), 1, 1000);
-            QVERIFY(errorSpy.takeFirst().at(0).toString().contains("desconhecido"));
         }
 
         void rescan_incremental_uses_workflow_port_and_updates_status() {
@@ -1877,7 +1698,7 @@ namespace {
 
             model.browse()->load();
             QTRY_COMPARE_WITH_TIMEOUT(repository->countCalls(), std::size_t{1}, 1000);
-            QTRY_COMPARE_WITH_TIMEOUT(pageSpy.count(), 1, 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(pageSpy.size(), 1, 1000);
 
             model.actions()->workflows()->syncDerivadas();
 

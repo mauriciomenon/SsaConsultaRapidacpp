@@ -2,6 +2,7 @@
 
 #include "ports/IExternalCommandPort.h"
 
+#include <cstddef>
 #include <filesystem>
 #include <optional>
 #include <vector>
@@ -13,7 +14,8 @@ namespace ssa::platform {
         explicit OpenPathPolicy(std::vector<std::filesystem::path> allowedRoots);
 
         // Performs filesystem canonicalization; call from a background execution path.
-        [[nodiscard]] ports::ExternalCommandResult validate(const std::string& rawPath) const;
+        [[nodiscard]] ports::ExternalCommandResult
+        validate(const std::filesystem::path& rawPath) const;
 
       private:
         [[nodiscard]] static std::optional<std::filesystem::path>

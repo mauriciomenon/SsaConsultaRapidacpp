@@ -12,9 +12,6 @@ namespace ssa::presentation {
     class FilterPanelDistinctValueRequestBuilder final {
       public:
         [[nodiscard]] static std::optional<domain::DistinctValuesRequest>
-        columnValuesRequest(const filterpanel::FilterPanelState& state);
-
-        [[nodiscard]] static std::optional<domain::DistinctValuesRequest>
         columnValuesRequestFor(const filterpanel::FilterPanelState& state,
                                const std::string& columnKey);
 

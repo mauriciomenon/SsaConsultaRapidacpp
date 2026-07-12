@@ -1,5 +1,7 @@
 #include "infra/import/XlsxPackage.h"
 
+#include "qt/FilesystemPath.h"
+
 #include <QFile>
 #include <QString>
 
@@ -11,22 +13,9 @@
 
 namespace ssa::infra::importing {
 
-    namespace {
-
-        QString pathToQString(const std::filesystem::path& path) {
-#ifdef _WIN32
-            return QString::fromStdWString(path.wstring());
-#else
-            const auto& native = path.native();
-            return QFile::decodeName(native.data());
-#endif
-        }
-
-    } // namespace
-
     class XlsxPackage::Storage final {
       public:
-        explicit Storage(const std::filesystem::path& path) : file_(pathToQString(path)) {
+        explicit Storage(const std::filesystem::path& path) : file_(qt::toQString(path)) {
             if (!file_.open(QIODevice::ReadOnly)) {
                 throw std::runtime_error("cannot open xlsx file");
             }

@@ -250,13 +250,15 @@ namespace ssa::tests::presentation_smoke {
     class CapturingImportPort final : public ssa::ports::IImportWorkflowPort {
       public:
         ssa::ports::WorkflowResult
-        importExternalFiles(const ssa::ports::ImportExternalFilesRequest& request) override {
+        importExternalFiles(const ssa::ports::ImportExternalFilesRequest& request,
+                            std::stop_token = {}) override {
             const std::scoped_lock lock(mutex_);
             importRequests_.push_back(request);
             return {ssa::ports::WorkflowStatus::Succeeded, "import staged"};
         }
 
-        ssa::ports::WorkflowResult rescan(const ssa::ports::RescanRequest& request) override {
+        ssa::ports::WorkflowResult rescan(const ssa::ports::RescanRequest& request,
+                                          std::stop_token = {}) override {
             const std::scoped_lock lock(mutex_);
             requests_.push_back(request);
             return {ssa::ports::WorkflowStatus::Succeeded, "rescan requested"};
@@ -285,7 +287,7 @@ namespace ssa::tests::presentation_smoke {
                                                  "derivadas sync completed"})
             : nextResult_(std::move(result)) {}
 
-        ssa::ports::WorkflowResult syncDerivadas() override {
+        ssa::ports::WorkflowResult syncDerivadas(std::stop_token = {}) override {
             const std::scoped_lock lock(mutex_);
             ++syncCalls_;
             return nextResult_;
@@ -309,15 +311,15 @@ namespace ssa::tests::presentation_smoke {
 
     class CapturingMaintenancePort final : public ssa::ports::IDatabaseMaintenancePort {
       public:
-        ssa::ports::WorkflowResult resetDatabase() override {
+        ssa::ports::WorkflowResult resetDatabase(std::stop_token = {}) override {
             return {ssa::ports::WorkflowStatus::Succeeded, "reset database requested"};
         }
 
-        ssa::ports::WorkflowResult cleanData() override {
+        ssa::ports::WorkflowResult cleanData(std::stop_token = {}) override {
             return {ssa::ports::WorkflowStatus::Succeeded, "clean data requested"};
         }
 
-        ssa::ports::WorkflowResult vacuumAnalyze() override {
+        ssa::ports::WorkflowResult vacuumAnalyze(std::stop_token = {}) override {
             const std::scoped_lock lock(mutex_);
             ++vacuumAnalyzeCalls_;
             return nextResult_;

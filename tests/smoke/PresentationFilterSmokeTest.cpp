@@ -1,6 +1,8 @@
+#include "AdvancedTextFilterTestSupport.h"
 #include "PresentationSmokeFakes.h"
 
 #include "presentation/AdvancedDerivationFilterViewModel.h"
+#include "presentation/AdvancedMacroFilterViewModel.h"
 #include "presentation/AdvancedTextFilterViewModel.h"
 #include "presentation/AdvancedWeekFilterViewModel.h"
 #include "presentation/ExportViewModel.h"
@@ -16,8 +18,7 @@
 
 #include <QAbstractItemModel>
 #include <QCoreApplication>
-#include <QDir>
-#include <QFile>
+#include <QElapsedTimer>
 #include <QObject>
 #include <QSignalSpy>
 #include <QString>
@@ -166,6 +167,15 @@ namespace {
         std::vector<std::string> distinctValues(const ssa::domain::DistinctValuesRequest& request,
                                                 std::stop_token = {}) const override {
             const std::scoped_lock lock(mutex_);
+            if (request.columnKey == "setor_executor" &&
+                request.limit == ssa::domain::kDefaultDistinctValuesLimit) {
+                ++quickSectorRequests_;
+                if (failedQuickSectorRequestsRemaining_ > 0) {
+                    --failedQuickSectorRequestsRemaining_;
+                    throw std::runtime_error("quick sector failed once");
+                }
+                return {"MEG2", "MAM2"};
+            }
             if (request.limit != ssa::domain::kAdvancedDistinctValuesLimit ||
                 request.columnKey != "situacao") {
                 return {};
@@ -198,6 +208,11 @@ namespace {
             ++failedRequestsRemaining_;
         }
 
+        void failNextQuickSectorRequest() {
+            const std::scoped_lock lock(mutex_);
+            ++failedQuickSectorRequestsRemaining_;
+        }
+
         void setValues(std::vector<std::string> values) {
             const std::scoped_lock lock(mutex_);
             values_ = std::move(values);
@@ -208,21 +223,119 @@ namespace {
             return advancedRequests_;
         }
 
+        [[nodiscard]] int quickSectorRequests() const {
+            const std::scoped_lock lock(mutex_);
+            return quickSectorRequests_;
+        }
+
       private:
         mutable std::mutex mutex_;
         mutable std::vector<std::string> values_{"A", "Longest"};
         mutable int failedRequestsRemaining_{0};
         mutable int advancedRequests_{0};
+        mutable int failedQuickSectorRequestsRemaining_{0};
+        mutable int quickSectorRequests_{0};
+    };
+
+    class BlockingMacroReportRepository final : public ssa::ports::ISsaRepository {
+      public:
+        ssa::domain::SsaPageResult page(const ssa::domain::SsaPageRequest& request,
+                                        std::stop_token = {}) const override {
+            return {{}, 0, request.pageIndex, request.pageSize};
+        }
+
+        std::size_t count(const ssa::domain::SsaPageRequest&, std::stop_token = {}) const override {
+            return 0;
+        }
+
+        std::optional<ssa::domain::SsaRecord>
+        recordBySsaNumber(const ssa::domain::SsaNumber&, std::stop_token = {}) const override {
+            return std::nullopt;
+        }
+
+        std::vector<ssa::domain::SsaDerivadaEntry>
+        derivadasDiretas(const ssa::domain::SsaNumber&, std::stop_token = {}) const override {
+            return {};
+        }
+
+        std::vector<std::string> distinctValues(const ssa::domain::DistinctValuesRequest&,
+                                                std::stop_token = {}) const override {
+            return {};
+        }
+
+        std::size_t maxValueLength(std::string_view, std::stop_token = {}) const override {
+            return 0;
+        }
+
+        ssa::ports::SsaReadResult readAll(const ssa::domain::SsaPageRequest& request,
+                                          ssa::ports::SsaRecordConsumer consume,
+                                          const std::stop_token stopToken = {}) const override {
+            const int call = calls_.fetch_add(1, std::memory_order_acq_rel);
+            {
+                const std::scoped_lock lock(mutex_);
+                requests_.push_back(request);
+            }
+            if (call == 0) {
+                firstStarted_.store(true, std::memory_order_release);
+                const auto deadline =
+                    std::chrono::steady_clock::now() + std::chrono::milliseconds{500};
+                while (!stopToken.stop_requested() && std::chrono::steady_clock::now() < deadline) {
+                    std::this_thread::yield();
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds{200});
+                firstFinished_.store(true, std::memory_order_release);
+                if (stopToken.stop_requested()) {
+                    throw std::system_error(std::make_error_code(std::errc::operation_canceled));
+                }
+            } else {
+                secondStarted_.store(true, std::memory_order_release);
+            }
+            const ssa::domain::SsaRecord record{{{"numero_ssa", "202600001"},
+                                                 {"setor_executor", "MEG2"},
+                                                 {"semana_executada", "202601"},
+                                                 {"responsavel_execucao", "ANA"}}};
+            if (const auto error = consume(record); error.has_value()) {
+                return {0, *error};
+            }
+            return {1, {}};
+        }
+
+        [[nodiscard]] bool firstStarted() const {
+            return firstStarted_.load(std::memory_order_acquire);
+        }
+
+        [[nodiscard]] bool firstFinished() const {
+            return firstFinished_.load(std::memory_order_acquire);
+        }
+
+        [[nodiscard]] bool secondStarted() const {
+            return secondStarted_.load(std::memory_order_acquire);
+        }
+
+        [[nodiscard]] std::vector<ssa::domain::SsaPageRequest> requests() const {
+            const std::scoped_lock lock(mutex_);
+            return requests_;
+        }
+
+      private:
+        mutable std::atomic_int calls_{0};
+        mutable std::atomic_bool firstStarted_{false};
+        mutable std::atomic_bool firstFinished_{false};
+        mutable std::atomic_bool secondStarted_{false};
+        mutable std::mutex mutex_;
+        mutable std::vector<ssa::domain::SsaPageRequest> requests_;
     };
 
     class BlockingImportPort final : public ssa::ports::IImportWorkflowPort {
       public:
         ssa::ports::WorkflowResult
-        importExternalFiles(const ssa::ports::ImportExternalFilesRequest&) override {
+        importExternalFiles(const ssa::ports::ImportExternalFilesRequest&,
+                            std::stop_token = {}) override {
             return run();
         }
 
-        ssa::ports::WorkflowResult rescan(const ssa::ports::RescanRequest&) override {
+        ssa::ports::WorkflowResult rescan(const ssa::ports::RescanRequest&,
+                                          std::stop_token = {}) override {
             return run();
         }
 
@@ -253,18 +366,6 @@ namespace {
             throw std::runtime_error("export failed");
         }
     };
-
-    [[nodiscard]] QVariantMap
-    cardStateFor(const ssa::presentation::AdvancedTextFilterViewModel& textFilters,
-                 const QString& key) {
-        for (const auto& state : textFilters.cardStates()) {
-            const auto map = state.toMap();
-            if (map.value(QStringLiteral("key")).toString() == key) {
-                return map;
-            }
-        }
-        return {};
-    }
 
     void populateTableModel(ssa::presentation::SsaTableModel& model) {
         ssa::domain::SsaPageResult page;
@@ -340,6 +441,8 @@ namespace {
                 !filterPanel.columnValueOptionsLoadingFor(QStringLiteral("situacao")), 1000);
             QCOMPARE(repository->advancedRequests(), 1);
             QVERIFY(filterPanel.columnValueOptionsFor(QStringLiteral("situacao")).isEmpty());
+            QCOMPARE(filterPanel.columnValueOptionsErrorFor(QStringLiteral("situacao")),
+                     QString("distinct failed once"));
 
             filterPanel.refreshColumnValueOptionsFor(QStringLiteral("situacao"));
 
@@ -347,6 +450,106 @@ namespace {
             const QStringList expectedValues{QStringLiteral("A"), QStringLiteral("Longest")};
             QTRY_COMPARE_WITH_TIMEOUT(filterPanel.columnValueOptionsFor(QStringLiteral("situacao")),
                                       expectedValues, 1000);
+            QCOMPARE(filterPanel.columnValueOptionsErrorFor(QStringLiteral("situacao")), QString());
+        }
+
+        void quick_sector_distinct_failure_is_visible_and_retryable() {
+            auto repository = std::make_shared<MutableDistinctRepository>();
+            repository->failNextQuickSectorRequest();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            QTest::ignoreMessage(QtWarningMsg,
+                                 "Column value query failed: quick sector failed once");
+            ssa::presentation::FilterPanelViewModel filterPanel(service);
+            auto* sector =
+                qobject_cast<ssa::presentation::FilterPanelSectorViewModel*>(filterPanel.sector());
+            QVERIFY(sector != nullptr);
+
+            QTRY_COMPARE_WITH_TIMEOUT(sector->optionsError(), QString("quick sector failed once"),
+                                      1000);
+            QCOMPARE(repository->quickSectorRequests(), 1);
+
+            filterPanel.retryQuickSectorOptions();
+
+            QTRY_COMPARE_WITH_TIMEOUT(repository->quickSectorRequests(), 2, 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(sector->optionsError(), QString(), 1000);
+            QVERIFY(sector->selectorValues().contains(QStringLiteral("MEG2")));
+        }
+
+        void exclusion_summary_uses_filter_tokens_not_rendered_text() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::FilterPanelViewModel filterPanel(service);
+
+            filterPanel.setColumnFilters({{"descricao_ssa", "=Exc: literal"}});
+            QCOMPARE(filterPanel.hasExclusionFilter(), false);
+
+            auto* advanced = qobject_cast<ssa::presentation::FilterPanelAdvancedViewModel*>(
+                filterPanel.advanced());
+            QVERIFY(advanced != nullptr);
+            auto* text =
+                qobject_cast<ssa::presentation::AdvancedTextFilterViewModel*>(advanced->text());
+            QVERIFY(text != nullptr);
+            text->setTextFilter(QStringLiteral("situacao"), QStringLiteral("!APV"));
+
+            QCOMPARE(filterPanel.hasExclusionFilter(), true);
+        }
+
+        void reprogramming_values_mark_the_table_column_as_filtered() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::FilterPanelViewModel filterPanel(service);
+            auto* advanced = qobject_cast<ssa::presentation::FilterPanelAdvancedViewModel*>(
+                filterPanel.advanced());
+            QVERIFY(advanced != nullptr);
+            auto* derivation = qobject_cast<ssa::presentation::AdvancedDerivationFilterViewModel*>(
+                advanced->derivation());
+            QVERIFY(derivation != nullptr);
+
+            derivation->setReprogrammingValues({QStringLiteral("2")});
+
+            QCOMPARE(filterPanel.hasFilterForColumn(QStringLiteral("num_reprogramacoes")), true);
+        }
+
+        void macro_report_is_async_latest_wins_and_does_not_publish_filter_state() {
+            auto repository = std::make_shared<BlockingMacroReportRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::FilterPanelViewModel filterPanel(service);
+            auto* advanced = qobject_cast<ssa::presentation::FilterPanelAdvancedViewModel*>(
+                filterPanel.advanced());
+            QVERIFY(advanced != nullptr);
+            auto* macro =
+                qobject_cast<ssa::presentation::AdvancedMacroFilterViewModel*>(advanced->macro());
+            QVERIFY(macro != nullptr);
+            QSignalSpy filterStateSpy(
+                macro, &ssa::presentation::AdvancedMacroFilterViewModel::filterStateChanged);
+            QSignalSpy reportSpy(macro,
+                                 &ssa::presentation::AdvancedMacroFilterViewModel::reportChanged);
+            QElapsedTimer elapsed;
+            elapsed.start();
+
+            macro->setSelectedMacro(QStringLiteral("ssas_executadas_setor"));
+
+            QVERIFY(elapsed.elapsed() < 100);
+            QVERIFY(macro->reportLoading());
+            QTRY_VERIFY_WITH_TIMEOUT(repository->firstStarted(), 1000);
+
+            macro->setSelectedMacro(QStringLiteral("ssas_executadas_divisao"));
+
+            QTRY_VERIFY_WITH_TIMEOUT(repository->secondStarted(), 1000);
+            QVERIFY(!repository->firstFinished());
+            QTRY_VERIFY_WITH_TIMEOUT(!macro->reportLoading(), 1000);
+            QCOMPARE(macro->reportError(), QString());
+            QCOMPARE(macro->reportTitle(), QString("SSA Executadas Divisao"));
+            QCOMPARE(macro->reportRows().size(), 1);
+            QCOMPARE(macro->reportRows().front().toMap().value("group").toString(), QString("MEG"));
+            QCOMPARE(filterStateSpy.size(), 0);
+            QVERIFY(reportSpy.size() >= 2);
+            const auto requests = repository->requests();
+            QCOMPARE(requests.size(), std::size_t{2});
+            QCOMPARE(requests.at(0).pageSize, std::size_t{0});
+            QCOMPARE(requests.at(1).pageSize, std::size_t{0});
+            QTRY_VERIFY_WITH_TIMEOUT(repository->firstFinished(), 1000);
+            QCOMPARE(macro->reportTitle(), QString("SSA Executadas Divisao"));
         }
 
         void successful_workflow_invalidates_cached_distinct_values() {
@@ -543,99 +746,6 @@ namespace {
             QVERIFY(firstAddress != nullptr);
             QVERIFY(secondAddress != nullptr);
             QCOMPARE(firstAddress, secondAddress);
-        }
-
-        void ssa_table_owns_one_context_menu_outside_the_cell_delegate() {
-            QDir repositoryRoot = QFileInfo(QString::fromUtf8(__FILE__)).dir();
-            QVERIFY(repositoryRoot.cdUp());
-            QVERIFY(repositoryRoot.cdUp());
-            QFile qmlFile(repositoryRoot.filePath("app/desktop/qml/components/SsaTable.qml"));
-            QVERIFY2(qmlFile.open(QIODevice::ReadOnly), qPrintable(qmlFile.errorString()));
-            const QByteArray source = qmlFile.readAll();
-            const auto delegatePosition = source.indexOf("delegate: Rectangle");
-            const auto menuPosition = source.indexOf("id: cellContextMenu");
-
-            QVERIFY(delegatePosition >= 0);
-            QVERIFY(menuPosition >= 0);
-            QCOMPARE(source.count("id: cellContextMenu"), 1);
-            QVERIFY(menuPosition < delegatePosition);
-            QVERIFY(!source.contains("rowSsaNumber"));
-            QVERIFY(source.contains(
-                "const menuParent = Overlay.overlay !== null ? Overlay.overlay : root;"));
-            QVERIFY(source.contains("cellContextMenu.parent = menuParent;"));
-        }
-
-        void advanced_week_cards_reject_invalid_visible_values_before_apply() {
-            QDir repositoryRoot = QFileInfo(QString::fromUtf8(__FILE__)).dir();
-            QVERIFY(repositoryRoot.cdUp());
-            QVERIFY(repositoryRoot.cdUp());
-            const QStringList cardFiles{
-                "app/desktop/qml/components/AdvancedWeekEmissionCard.qml",
-                "app/desktop/qml/components/AdvancedWeekExecutionCard.qml",
-            };
-
-            for (const auto& cardFile : cardFiles) {
-                QFile qmlFile(repositoryRoot.filePath(cardFile));
-                QVERIFY2(qmlFile.open(QIODevice::ReadOnly), qPrintable(qmlFile.errorString()));
-                const QByteArray source = qmlFile.readAll();
-                const auto guardPosition =
-                    source.indexOf("if (!root.week.isYearWeekValid(root.rangeStartDraft)");
-                const auto applyPosition = source.indexOf("root.applyRequested();");
-
-                QVERIFY2(guardPosition >= 0, qPrintable(cardFile));
-                QVERIFY2(applyPosition > guardPosition, qPrintable(cardFile));
-            }
-        }
-
-        void advanced_week_cards_keep_intermediate_input_outside_the_view_model() {
-            QDir repositoryRoot = QFileInfo(QString::fromUtf8(__FILE__)).dir();
-            QVERIFY(repositoryRoot.cdUp());
-            QVERIFY(repositoryRoot.cdUp());
-            const QStringList cardFiles{
-                "app/desktop/qml/components/AdvancedWeekEmissionCard.qml",
-                "app/desktop/qml/components/AdvancedWeekExecutionCard.qml",
-            };
-
-            for (const auto& cardFile : cardFiles) {
-                QFile qmlFile(repositoryRoot.filePath(cardFile));
-                QVERIFY2(qmlFile.open(QIODevice::ReadOnly), qPrintable(qmlFile.errorString()));
-                const QByteArray source = qmlFile.readAll();
-
-                QVERIFY2(source.contains("property string rangeStartDraft"), qPrintable(cardFile));
-                QVERIFY2(source.contains("property string rangeEndDraft"), qPrintable(cardFile));
-                const auto startDraftPosition =
-                    source.indexOf("onTextEdited: root.rangeStartDraft = text");
-                const auto endDraftPosition =
-                    source.indexOf("onTextEdited: root.rangeEndDraft = text");
-                QVERIFY2(startDraftPosition >= 0, qPrintable(cardFile));
-                QVERIFY2(endDraftPosition >= 0, qPrintable(cardFile));
-            }
-        }
-
-        void macro_report_database_values_use_plain_text() {
-            QDir repositoryRoot = QFileInfo(QString::fromUtf8(__FILE__)).dir();
-            QVERIFY(repositoryRoot.cdUp());
-            QVERIFY(repositoryRoot.cdUp());
-            QFile qmlFile(
-                repositoryRoot.filePath("app/desktop/qml/components/AdvancedMacroFilterCard.qml"));
-            QVERIFY2(qmlFile.open(QIODevice::ReadOnly), qPrintable(qmlFile.errorString()));
-            const QByteArray source = qmlFile.readAll();
-
-            QCOMPARE(source.count("textFormat: Text.PlainText"), 4);
-        }
-
-        void smoke_details_timeout_reports_capture_failure() {
-            QDir repositoryRoot = QFileInfo(QString::fromUtf8(__FILE__)).dir();
-            QVERIFY(repositoryRoot.cdUp());
-            QVERIFY(repositoryRoot.cdUp());
-            QFile qmlFile(
-                repositoryRoot.filePath("app/desktop/qml/components/SmokeCaptureBridge.qml"));
-            QVERIFY2(qmlFile.open(QIODevice::ReadOnly), qPrintable(qmlFile.errorString()));
-            const QByteArray source = qmlFile.readAll();
-
-            QVERIFY(source.contains("root.smokeController.reportCaptureFailure();"));
-            QVERIFY(source.contains("root.smokeController.reportDetailsReady();"));
-            QVERIFY(!source.contains("console.warn(\"Smoke capture: details window was not ready"));
         }
 
         void column_filter_apply_signal_reloads_table_with_responsible_execution_filter() {
@@ -853,7 +963,6 @@ namespace {
             text->setTextFilter("setor_executor", "=SMM");
             week->setIssueYearFilter("2025");
             week->setExecutionYearFilter("2026");
-            derivation->setReprogrammingEqualsFilter("1");
             derivation->setReprogrammingMode("gte");
             derivation->setReprogrammingValues({"1", "3", "5"});
             week->setIssueWeekStartFilter("202501");
@@ -875,7 +984,6 @@ namespace {
             QVERIFY(request.advancedFilters.textFilters.at("setor_executor") == "=SMM");
             QCOMPARE(request.advancedFilters.issueYear.value_or(0), 2025);
             QCOMPARE(request.advancedFilters.executionYear.value_or(0), 2026);
-            QCOMPARE(request.advancedFilters.reprogrammingEquals.value_or(0), 1);
             QCOMPARE(request.advancedFilters.reprogrammingComparison,
                      ssa::domain::NumericComparisonMode::GreaterOrEqual);
             QVERIFY(request.advancedFilters.reprogrammingValues == (std::vector<int>{1, 3, 5}));
@@ -885,7 +993,7 @@ namespace {
             QCOMPARE(request.advancedFilters.executionWeekEnd.value_or(0), 202620);
             QCOMPARE(request.advancedFilters.derivationMode,
                      ssa::domain::DerivationFilterMode::DerivedOnly);
-            QCOMPARE(request.advancedFilters.onlyReprogrammed, true);
+            QCOMPARE(request.advancedFilters.onlyReprogrammed, false);
         }
 
         void advanced_text_filter_selection_builds_multi_value_terms() {
@@ -913,7 +1021,7 @@ namespace {
             text->setOperatorMode("situacao", "mixed");
             QCOMPARE(text->operatorModeFor("situacao"), QString("mixed"));
 
-            text->replaceWithOperatorValueList("situacao", {"APV", "ADM"}, "different");
+            text->replaceWithOperatorValueLists("situacao", {}, {"APV", "ADM"});
 
             QCOMPARE(text->textFilter("situacao"), QString("!APV,!ADM"));
 
@@ -935,11 +1043,7 @@ namespace {
                 qobject_cast<ssa::presentation::AdvancedTextFilterViewModel*>(keysAdvanced->text());
             QVERIFY(keysText != nullptr);
 
-            QStringList keys;
-            const auto rows = keysText->rows();
-            std::ranges::transform(rows, std::back_inserter(keys), [](const auto& row) {
-                return row.toMap().value(QStringLiteral("key")).toString();
-            });
+            const auto keys = ssa::tests::advancedTextFilterKeys(*keysText);
             QCOMPARE(keys.size(), 11);
             QVERIFY(!keys.contains(QStringLiteral("grau_prioridade_emissao")));
             QVERIFY(!keys.contains(QStringLiteral("grau_prioridade_planejamento")));
@@ -962,7 +1066,9 @@ namespace {
                 QVERIFY2(!model.browse()->filters()->columnFilters().contains(key.toStdString()),
                          qPrintable(QString("column filter was not cleared for %1").arg(key)));
                 QCOMPARE(text->textFilter(key), QString("=IN,!OUT"));
-                QCOMPARE(cardStateFor(*text, key).value("textFilter").toString(),
+                QCOMPARE(ssa::tests::advancedTextFilterCardState(*text, key)
+                             .value("textFilter")
+                             .toString(),
                          QString("=IN,!OUT"));
 
                 QTRY_VERIFY_WITH_TIMEOUT(

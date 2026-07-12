@@ -11,6 +11,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <stop_token>
 #include <vector>
 
 namespace ssa::presentation {
@@ -28,6 +29,7 @@ namespace ssa::presentation {
         void rescan(ports::RescanMode mode);
         void syncDerivadas();
         void compactDatabase();
+        void shutdown();
 
       signals:
         void runningChanged(bool running);
@@ -36,17 +38,19 @@ namespace ssa::presentation {
       private:
         struct ResultState final {
             std::mutex mutex;
-            std::optional<ports::WorkflowResult> result;
+            std::optional<ports::WorkflowResult> result = std::nullopt;
             std::exception_ptr error;
         };
 
-        void start(std::function<ports::WorkflowResult()> operation);
+        void start(std::function<ports::WorkflowResult(std::stop_token)> operation);
         void finish();
 
         std::shared_ptr<application::SsaWorkflowService> workflows_;
         QFutureWatcher<void> watcher_;
         std::shared_ptr<ResultState> resultState_;
-        bool running_{false};
+        std::stop_source stopSource_;
+        bool running_ = false;
+        bool shuttingDown_ = false;
     };
 
 } // namespace ssa::presentation

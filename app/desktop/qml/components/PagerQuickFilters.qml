@@ -14,6 +14,7 @@ RowLayout {
 
     ActionButton {
         text: "<"
+        Accessible.name: "Pagina anterior"
         Layout.preferredWidth: 22
         implicitWidth: 22
         implicitHeight: Theme.controlHeight - 4
@@ -22,6 +23,7 @@ RowLayout {
     }
     ActionButton {
         text: ">"
+        Accessible.name: "Proxima pagina"
         Layout.preferredWidth: 22
         implicitWidth: 22
         implicitHeight: Theme.controlHeight - 4
@@ -148,6 +150,8 @@ RowLayout {
         rightPadding: 18
         font.pixelSize: Theme.fontSizeMicro
         font.bold: false
+        ToolTip.visible: hovered && root.filterViewModel.sector.optionsError.length > 0
+        ToolTip.text: root.filterViewModel.sector.optionsError
         onActivated: {
             root.filterViewModel.sector.quickSector = sectorFilter.currentText;
             root.viewModel.apply();
@@ -157,5 +161,17 @@ RowLayout {
             width: sectorFilter.width
             text: modelData.length === 0 ? "Todos" : modelData
         }
+    }
+    ActionButton {
+        objectName: "quickSectorRetryButton"
+        visible: root.filterViewModel.sector.optionsError.length > 0
+        text: "!"
+        Layout.preferredWidth: 24
+        implicitWidth: 24
+        implicitHeight: Theme.controlHeight - 4
+        Accessible.name: "Tentar carregar setores novamente"
+        ToolTip.visible: hovered
+        ToolTip.text: root.filterViewModel.sector.optionsError
+        onClicked: root.filterViewModel.retryQuickSectorOptions()
     }
 }

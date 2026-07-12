@@ -17,6 +17,7 @@ FilterCard {
     required property string textFilter
     required property int operatorIndex
     required property string operatorLabel
+    property string valuesError: ""
     required property real cardWidth
     required property real cardHeight
     signal optionsRequested
@@ -134,6 +135,7 @@ FilterCard {
                 enabled: root.operatorIndex >= 0
                 ToolTip.visible: hovered
                 ToolTip.text: "Selecionar valores para incluir ou excluir"
+                Accessible.name: "Selecionar valores de " + root.label
                 ToolTip.delay: 0
                 onClicked: valuePopup.openForCurrentFilter()
             }
@@ -146,6 +148,7 @@ FilterCard {
                 font.pixelSize: Theme.fontSizeBody
                 ToolTip.visible: hovered
                 ToolTip.text: "Limpar filtro"
+                Accessible.name: "Limpar filtro " + root.label
                 ToolTip.delay: 0
                 onClicked: root.textFilterClearRequested()
             }
@@ -162,7 +165,9 @@ FilterCard {
         valuesLoading: root.valuesLoading
         maxValueLength: root.maxValueLength
         textFilter: root.textFilter
+        valuesError: root.valuesError
         onOptionsRequested: root.optionsRequested()
+        onOptionsRetryRequested: root.optionsRequested()
         onMixedValuesReplacementRequested: function (includeValues, excludeValues) {
             root.mixedValuesReplacementRequested(includeValues, excludeValues);
         }

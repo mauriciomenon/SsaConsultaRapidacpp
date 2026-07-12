@@ -10,7 +10,8 @@ ApplicationWindow {
     required property var mainViewModel
     property var smokeController: null
     property var vm: mainViewModel
-    readonly property int bottomPaneHeight: Theme.bottomPaneHeight(height)
+    readonly property int bottomPaneHeight: height <= 820 ? 200 : Theme.bottomPaneHeight(height)
+    readonly property int paneMinimumHeight: height <= 820 ? 200 : 280
 
     width: 1580
     height: 940
@@ -285,21 +286,22 @@ ApplicationWindow {
                 // Theme cycle button: small circle filled with the current
                 // theme's accent color. Click cycles to the next theme.
                 Button {
-                    Layout.preferredWidth: 14
-                    Layout.preferredHeight: 14
-                    implicitWidth: 14
-                    implicitHeight: 14
+                    Layout.preferredWidth: 28
+                    Layout.preferredHeight: 28
+                    implicitWidth: 28
+                    implicitHeight: 28
                     padding: 0
                     topInset: 0
                     bottomInset: 0
                     leftInset: 0
                     rightInset: 0
                     text: ""
+                    Accessible.name: "Alternar tema"
                     ToolTip.text: qsTr("Tema")
                     ToolTip.visible: hovered
                     ToolTip.delay: 400
                     background: Rectangle {
-                        radius: 7
+                        radius: 14
                         color: Theme.accent
                         border.color: Theme.border
                         border.width: 1
@@ -327,9 +329,11 @@ ApplicationWindow {
         }
 
         SsaTable {
+            id: mainTable
+            objectName: "mainSsaTable"
             Layout.fillWidth: true
             Layout.fillHeight: true
-            Layout.minimumHeight: 280
+            Layout.minimumHeight: root.paneMinimumHeight
             viewModel: root.vm.browse
             columnSettings: root.vm.columns
             columnFlow: root.vm.columnFlow
@@ -343,9 +347,11 @@ ApplicationWindow {
         }
 
         SplitView {
+            id: mainBottomPane
+            objectName: "mainBottomPane"
             Layout.fillWidth: true
             Layout.preferredHeight: root.bottomPaneHeight
-            Layout.minimumHeight: 280
+            Layout.minimumHeight: root.paneMinimumHeight
             orientation: Qt.Horizontal
             handle: Rectangle {
                 implicitWidth: 7
@@ -367,7 +373,7 @@ ApplicationWindow {
                     viewModel: root.vm.browse.details
                     density: root.vm.ui.density
                     onGraphWindowRequested: root.openDetailsWindow()
-                    onLoadRelationRequested: ssaNumber => root.vm.browse.loadDetailsBySsaNumber(ssaNumber)
+                    onLoadRelationRequested: ssaNumber => root.vm.browse.details.requestLoadBySsaNumber(ssaNumber)
                 }
             }
 
@@ -381,6 +387,8 @@ ApplicationWindow {
         }
 
         StatusPill {
+            id: mainStatusPill
+            objectName: "mainStatusPill"
             Layout.fillWidth: true
             status: root.vm.browse.status
             browse: root.vm.browse
@@ -407,6 +415,10 @@ ApplicationWindow {
 
     SmokeCaptureBridge {
         smokeController: root.smokeController
+        rootContentItem: root.contentItem
+        mainTable: mainTable
+        bottomPane: mainBottomPane
+        statusPill: mainStatusPill
         preferencesDialog: preferencesDialog
         filterPanel: filterPanel
         browseViewModel: root.vm.browse

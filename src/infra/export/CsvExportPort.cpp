@@ -1,13 +1,25 @@
 #include "infra/export/CsvExportPort.h"
 
 #include "domain/ColumnCatalog.h"
+#include "domain/SsaTypes.h"
+#include "ports/ISsaRepository.h"
+#include "qt/FilesystemPath.h"
 
+#include <QFile>
+#include <QTemporaryFile>
+
+#include <algorithm>
+#include <array>
+#include <cstddef>
+#include <exception>
 #include <filesystem>
-#include <fstream>
+#include <limits>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 namespace ssa::infra::exporting {
 
@@ -26,46 +38,79 @@ namespace ssa::infra::exporting {
             std::vector<std::string> headerLabels;
         };
 
-        void writeCsvValue(std::ofstream& output, const std::string_view value) {
-            const bool spreadsheetFormula =
-                !value.empty() && (value.front() == '=' || value.front() == '+' ||
-                                   value.front() == '-' || value.front() == '@');
+        bool isSpreadsheetFormulaPrefix(const std::string_view value) {
+            if (value.empty()) {
+                return false;
+            }
+            const auto first = static_cast<unsigned char>(value.front());
+            if (first <= 0x1F || first == 0x7F || value.front() == '=' || value.front() == '+' ||
+                value.front() == '-' || value.front() == '@') {
+                return true;
+            }
+            constexpr std::array<std::string_view, 4> kFullWidthFormulaPrefixes{
+                "\xEF\xBC\x9D", "\xEF\xBC\x8B", "\xEF\xBC\x8D", "\xEF\xBC\xA0"};
+            return std::ranges::any_of(kFullWidthFormulaPrefixes, [value](const auto prefix) {
+                return value.starts_with(prefix);
+            });
+        }
+
+        void appendCsvValue(std::string& output, const std::string_view value) {
+            const bool spreadsheetFormula = isSpreadsheetFormulaPrefix(value);
             if (!spreadsheetFormula && value.find_first_of("\",\n\r") == std::string::npos) {
-                output << value;
+                output.append(value);
                 return;
             }
-            output << '"';
+            output.push_back('"');
             if (spreadsheetFormula) {
-                output << '\'';
+                output.push_back('\'');
             }
             for (const char ch : value) {
                 if (ch == '"') {
-                    output << '"';
+                    output.push_back('"');
                 }
-                output << ch;
+                output.push_back(ch);
             }
-            output << '"';
+            output.push_back('"');
         }
 
-        void writeCsvRow(std::ofstream& output, const domain::SsaRecord& record,
+        void buildCsvRow(std::string& output, const domain::SsaRecord& record,
                          const std::vector<std::string>& columns) {
+            output.clear();
             for (std::size_t index = 0; index < columns.size(); ++index) {
                 if (index > 0) {
-                    output << ',';
+                    output.push_back(',');
                 }
-                writeCsvValue(output, record.valueOf(columns[index]));
+                appendCsvValue(output, record.valueOf(columns[index]));
             }
-            output << '\n';
+            output.push_back('\n');
         }
 
-        void writeCsvHeader(std::ofstream& output, const std::vector<std::string>& labels) {
+        std::string csvHeader(const std::vector<std::string>& labels) {
+            std::string output;
             for (std::size_t index = 0; index < labels.size(); ++index) {
                 if (index > 0) {
-                    output << ',';
+                    output.push_back(',');
                 }
-                writeCsvValue(output, labels[index]);
+                appendCsvValue(output, labels[index]);
             }
-            output << '\n';
+            output.push_back('\n');
+            return output;
+        }
+
+        bool writeFully(QFile& output, const std::string_view value) {
+            if (value.size() > static_cast<std::size_t>(std::numeric_limits<qint64>::max())) {
+                return false;
+            }
+            qint64 offset = 0;
+            const auto size = static_cast<qint64>(value.size());
+            while (offset < size) {
+                const qint64 written = output.write(value.data() + offset, size - offset);
+                if (written <= 0) {
+                    return false;
+                }
+                offset += written;
+            }
+            return true;
         }
 
         std::vector<std::string> exportColumns(std::vector<std::string> columns) {
@@ -156,16 +201,18 @@ namespace ssa::infra::exporting {
                     std::move(labels)};
         }
 
-        ports::WorkflowResult writeFilteredRows(std::ofstream& output,
+        ports::WorkflowResult writeFilteredRows(QFile& output,
                                                 const ports::ISsaRepository& repository,
                                                 const domain::SsaPageRequest& query,
                                                 const std::stop_token& stopToken) {
             const auto& columns = query.visibleColumns;
+            std::string rowBuffer;
             const auto result = repository.readAll(
                 query,
-                [&output, &columns](const domain::SsaRecord& row) -> std::optional<std::string> {
-                    writeCsvRow(output, row, columns);
-                    if (!output) {
+                [&output, &columns,
+                 &rowBuffer](const domain::SsaRecord& row) -> std::optional<std::string> {
+                    buildCsvRow(rowBuffer, row, columns);
+                    if (!writeFully(output, rowBuffer)) {
                         return "failed while writing export output file";
                     }
                     return std::nullopt;
@@ -173,9 +220,6 @@ namespace ssa::infra::exporting {
                 stopToken);
             if (!result.ok()) {
                 return failed(result.error);
-            }
-            if (!output) {
-                return failed("failed while writing export output file");
             }
             return {ports::WorkflowStatus::Succeeded,
                     "exported " + std::to_string(result.rowCount) + " rows"};
@@ -199,19 +243,32 @@ namespace ssa::infra::exporting {
                 return prepared.result;
             }
 
-            // C++20 has no portable exclusive ofstream open mode; pre-existing files are rejected
-            // above and packaging must run exports in user-chosen output directories.
-            std::ofstream output(prepared.outputPath);
-            if (!output.is_open() || !output) {
+            const auto outputPath = qt::toQString(prepared.outputPath);
+            QTemporaryFile output(outputPath + QStringLiteral(".XXXXXX.tmp"));
+            output.setAutoRemove(true);
+            if (!output.open()) {
                 return failed("failed to open export output file");
             }
-            writeCsvHeader(output, prepared.headerLabels);
-            if (!output) {
+            if (!writeFully(output, csvHeader(prepared.headerLabels))) {
                 return failed("failed while writing export output file");
             }
-            return writeFilteredRows(output, *repository_, prepared.query, stopToken);
+            auto result = writeFilteredRows(output, *repository_, prepared.query, stopToken);
+            if (!result.ok()) {
+                return result;
+            }
+            if (!output.flush()) {
+                return failed("failed while flushing export output file");
+            }
+            output.close();
+            if (!output.rename(outputPath)) {
+                return failed("export output file was created by another operation");
+            }
+            output.setAutoRemove(false);
+            return result;
         } catch (const std::exception& exc) {
             return failed(exc.what());
+        } catch (...) {
+            return failed("unknown export failure");
         }
     }
 

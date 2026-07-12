@@ -1,5 +1,7 @@
 #include "platform/StartupOptions.h"
 
+#include "qt/FilesystemPath.h"
+
 #include <QCoreApplication>
 #include <QDir>
 #include <QUrl>
@@ -14,13 +16,8 @@ namespace ssa::platform {
 
     namespace {
 
-        QString toQString(const std::filesystem::path& path) {
-            return QString::fromStdString(path.string());
-        }
-
         std::filesystem::path normalizedPath(const QString& value) {
-            return std::filesystem::absolute(std::filesystem::path{value.toStdString()})
-                .lexically_normal();
+            return std::filesystem::absolute(qt::toFileSystemPath(value)).lexically_normal();
         }
 
         void appendCandidateWithParents(std::vector<std::filesystem::path>& candidates,
@@ -44,13 +41,11 @@ namespace ssa::platform {
 
         std::optional<std::filesystem::path> findProjectRootWithDatabase() {
             std::vector<std::filesystem::path> candidates;
-            appendCandidateWithParents(candidates,
-                                       std::filesystem::path{QDir::currentPath().toStdString()});
+            appendCandidateWithParents(candidates, qt::toFileSystemPath(QDir::currentPath()));
             if (QCoreApplication::instance() != nullptr) {
                 const QString applicationDir = QCoreApplication::applicationDirPath();
                 if (!applicationDir.isEmpty()) {
-                    appendCandidateWithParents(candidates,
-                                               std::filesystem::path{applicationDir.toStdString()});
+                    appendCandidateWithParents(candidates, qt::toFileSystemPath(applicationDir));
                 }
             }
             for (const auto& candidate : candidates) {
@@ -63,7 +58,7 @@ namespace ssa::platform {
 
         QString defaultProjectRoot() {
             if (const auto discovered = findProjectRootWithDatabase()) {
-                return toQString(std::filesystem::weakly_canonical(*discovered));
+                return qt::toQString(std::filesystem::weakly_canonical(*discovered));
             }
             return QDir::currentPath();
         }
@@ -76,7 +71,7 @@ namespace ssa::platform {
             if (!std::filesystem::is_directory(path)) {
                 throw std::invalid_argument(std::string{label} + " is not a directory");
             }
-            return toQString(std::filesystem::weakly_canonical(path));
+            return qt::toQString(std::filesystem::weakly_canonical(path));
         }
 
         QString normalizedDatabasePath(const QString& value, const char* label,
@@ -90,9 +85,9 @@ namespace ssa::platform {
                 throw std::invalid_argument(std::string{label} + " directory does not exist");
             }
             if (std::filesystem::exists(path)) {
-                return toQString(std::filesystem::weakly_canonical(path));
+                return qt::toQString(std::filesystem::weakly_canonical(path));
             }
-            return toQString(path);
+            return qt::toQString(path);
         }
 
         QString normalizedOptionalDirectoryPath(const QString& value, const char* label) {
@@ -101,9 +96,9 @@ namespace ssa::platform {
                 throw std::invalid_argument(std::string{label} + " is not a directory");
             }
             if (std::filesystem::exists(path)) {
-                return toQString(std::filesystem::weakly_canonical(path));
+                return qt::toQString(std::filesystem::weakly_canonical(path));
             }
-            return toQString(path);
+            return qt::toQString(path);
         }
 
         QString normalizedOptionalUrl(const QString& value, const char* label) {

@@ -10,7 +10,7 @@ namespace ssa::infra::sqlite {
       public:
         explicit SqliteDerivadasPort(std::filesystem::path databasePath);
 
-        [[nodiscard]] ports::WorkflowResult syncDerivadas() override;
+        [[nodiscard]] ports::WorkflowResult syncDerivadas(std::stop_token stopToken = {}) override;
 
       private:
         std::filesystem::path databasePath_;

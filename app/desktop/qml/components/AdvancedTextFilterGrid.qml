@@ -55,11 +55,13 @@ Item {
                 property var loadedValueOptions: []
                 property bool valueOptionsLoading: false
                 property int loadedMaxValueLength: 0
+                property string valueOptionsError: ""
 
                 function reloadOptionState() {
                     loadedValueOptions = root.filterViewModel.columnValueOptionsFor(textDelegate.key);
                     valueOptionsLoading = root.filterViewModel.columnValueOptionsLoadingFor(textDelegate.key);
                     loadedMaxValueLength = root.filterViewModel.columnValueMaxLengthFor(textDelegate.key);
+                    valueOptionsError = root.filterViewModel.columnValueOptionsErrorFor(textDelegate.key);
                 }
 
                 cardWidth: root.gridLayout.cardWidth
@@ -69,6 +71,7 @@ Item {
                 visibleValues: loadedValueOptions
                 valuesLoading: valueOptionsLoading
                 maxValueLength: loadedMaxValueLength
+                valuesError: valueOptionsError
 
                 Component.onCompleted: reloadOptionState()
 

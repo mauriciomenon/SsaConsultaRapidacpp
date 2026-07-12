@@ -3,6 +3,7 @@
 #include "infra/import/LegacySpreadsheetConverter.h"
 
 #include <filesystem>
+#include <stop_token>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -11,11 +12,11 @@ namespace ssa::infra::importing {
 
     struct ImportStagingResult {
         std::vector<std::filesystem::path> xlsxFiles;
-        std::size_t legacyXls{0};
-        std::size_t convertedXls{0};
-        std::size_t failedLegacyXls{0};
-        std::size_t unsupported{0};
-        std::size_t failedCopies{0};
+        std::size_t legacyXls = 0;
+        std::size_t convertedXls = 0;
+        std::size_t failedLegacyXls = 0;
+        std::size_t unsupported = 0;
+        std::size_t failedCopies = 0;
         std::string rejectionReason;
     };
 
@@ -25,8 +26,9 @@ namespace ssa::infra::importing {
                                   LegacySpreadsheetConverter legacyConverter = {});
 
         [[nodiscard]] ImportStagingResult
-        stageExternalFiles(const std::vector<std::filesystem::path>& files) const;
-        [[nodiscard]] ImportStagingResult stageInputFiles() const;
+        stageExternalFiles(const std::vector<std::filesystem::path>& files,
+                           std::stop_token stopToken = {}) const;
+        [[nodiscard]] ImportStagingResult stageInputFiles(std::stop_token stopToken = {}) const;
 
       private:
         struct LegacyStageRequest {
@@ -37,10 +39,11 @@ namespace ssa::infra::importing {
         struct StagedDestinationRequest {
             std::filesystem::path source;
             std::string_view batchPrefix;
-            std::size_t fileIndex{0};
+            std::size_t fileIndex = 0;
         };
 
-        bool stageLegacyFile(const LegacyStageRequest& request, ImportStagingResult& result) const;
+        bool stageLegacyFile(const LegacyStageRequest& request, ImportStagingResult& result,
+                             std::stop_token stopToken) const;
         [[nodiscard]] std::filesystem::path
         stagedDestination(const StagedDestinationRequest& request) const;
 

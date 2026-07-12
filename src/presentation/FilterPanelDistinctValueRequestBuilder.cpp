@@ -30,7 +30,6 @@ namespace ssa::presentation {
                 filters.executionWeekEnd.reset();
             }
             if (domain::ColumnCatalog::isReprogrammingColumn(excludedColumnKey)) {
-                filters.reprogrammingEquals.reset();
                 filters.reprogrammingValues.clear();
                 filters.reprogrammingComparison = domain::NumericComparisonMode::Equals;
                 filters.onlyReprogrammed = false;
@@ -53,16 +52,6 @@ namespace ssa::presentation {
         }
 
     } // namespace
-
-    std::optional<domain::DistinctValuesRequest>
-    FilterPanelDistinctValueRequestBuilder::columnValuesRequest(
-        const filterpanel::FilterPanelState& state) {
-        const auto normalizedColumn = state.columnKey().trimmed();
-        if (normalizedColumn.isEmpty()) {
-            return std::nullopt;
-        }
-        return columnValuesRequestFor(state, normalizedColumn.toStdString());
-    }
 
     std::optional<domain::DistinctValuesRequest>
     FilterPanelDistinctValueRequestBuilder::columnValuesRequestFor(

@@ -31,6 +31,7 @@ namespace ssa::app::desktop {
             bool openAdvancedFilters = false;
             bool openAdvancedPopup = false;
             bool openDetailsWindow = false;
+            bool probeLayout = false;
             int screenshotDelayMs = defaultScreenshotDelayMs;
             int windowWidth = 0;
             int windowHeight = 0;
@@ -61,10 +62,12 @@ namespace ssa::app::desktop {
             options.openAdvancedFilters = parser.isSet("open-advanced-filters");
             options.openAdvancedPopup = parser.isSet("smoke-advanced-popup");
             options.openDetailsWindow = parser.isSet("open-details-window");
+            options.probeLayout = parser.isSet("smoke-layout");
             const int requestedWindows = static_cast<int>(options.openPreferences) +
                                          static_cast<int>(options.openAdvancedFilters) +
                                          static_cast<int>(options.openAdvancedPopup) +
-                                         static_cast<int>(options.openDetailsWindow);
+                                         static_cast<int>(options.openDetailsWindow) +
+                                         static_cast<int>(options.probeLayout);
             options.screenshotDelayMs =
                 parser.isSet("screenshot-delay-ms")
                     ? parser.value("screenshot-delay-ms").toInt(&delayParsed)
@@ -105,6 +108,41 @@ namespace ssa::app::desktop {
             }
             if (options.windowHeight > 0) {
                 rootWindow->setHeight(options.windowHeight);
+            }
+            if (options.probeLayout) {
+                if ((options.windowWidth > 0 && rootWindow->width() != options.windowWidth) ||
+                    (options.windowHeight > 0 && rootWindow->height() != options.windowHeight)) {
+                    completion(smokeCaptureFailureExitCode);
+                    return;
+                }
+                const QPointer<QQmlApplicationEngine> guardedEngine{&engine};
+                const auto metricsReported = std::make_shared<bool>(false);
+                QObject::connect(
+                    controller, &DesktopSmokeController::layoutMetricsReady, &engine,
+                    [guardedEngine, screenshotPath = options.screenshotPath, completion,
+                     metricsReported](const QVariantMap& metrics) {
+                        *metricsReported = true;
+                        const auto json =
+                            QJsonDocument::fromVariant(metrics).toJson(QJsonDocument::Compact);
+                        qInfo().noquote() << "QML_LAYOUT_SMOKE" << json;
+                        if (!metrics.value(QStringLiteral("success")).toBool() ||
+                            guardedEngine.isNull()) {
+                            completion(smokeCaptureFailureExitCode);
+                            return;
+                        }
+                        DesktopSmokeWindowWaiter::capture(*guardedEngine, screenshotPath,
+                                                          DesktopSmokeCaptureTarget::RootWindow,
+                                                          completion);
+                    },
+                    Qt::SingleShotConnection);
+                QTimer::singleShot(5000, &engine, [completion, metricsReported] {
+                    if (!*metricsReported) {
+                        *metricsReported = true;
+                        completion(smokeCaptureFailureExitCode);
+                    }
+                });
+                controller->requestLayoutProbe();
+                return;
             }
             if (options.openAdvancedPopup) {
                 const QPointer<QQmlApplicationEngine> guardedEngine{&engine};
@@ -222,8 +260,16 @@ namespace ssa::app::desktop {
         emit openDetailsWindowRequested();
     }
 
+    void DesktopSmokeController::requestLayoutProbe() {
+        emit layoutProbeRequested();
+    }
+
     void DesktopSmokeController::reportAdvancedPopupMetrics(const QVariantMap& metrics) {
         emit advancedPopupMetricsReady(metrics);
+    }
+
+    void DesktopSmokeController::reportLayoutMetrics(const QVariantMap& metrics) {
+        emit layoutMetricsReady(metrics);
     }
 
     void DesktopSmokeController::reportCaptureFailure() {

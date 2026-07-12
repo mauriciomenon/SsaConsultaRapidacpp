@@ -66,13 +66,6 @@ namespace ssa::presentation {
         return orchestrator_.pageCount();
     }
 
-    QString BrowseViewModel::pageSummary() const {
-        if (totalRows() == 0 || pageCount() == 0) {
-            return QStringLiteral("Sem resultados");
-        }
-        return QStringLiteral("Pagina %1 de %2").arg(pageNumber()).arg(pageCount());
-    }
-
     qlonglong BrowseViewModel::totalRows() const {
         return orchestrator_.totalRows();
     }
@@ -176,15 +169,11 @@ namespace ssa::presentation {
         filters_.requestColumnFocus(key);
     }
 
-    bool BrowseViewModel::loadDetailsBySsaNumber(const QString& ssaNumber) {
-        return details_.loadBySsaNumber(ssaNumber);
-    }
-
     DetailsViewModel* BrowseViewModel::createDetailsWindowModel(const QString& ssaNumber,
                                                                 QObject* parent) {
         auto* model = new DetailsViewModel(queryService_, parent);
         if (!ssaNumber.trimmed().isEmpty()) {
-            model->loadBySsaNumber(ssaNumber);
+            model->requestLoadBySsaNumber(ssaNumber);
         }
         return model;
     }

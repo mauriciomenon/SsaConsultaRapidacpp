@@ -39,7 +39,8 @@ namespace ssa::presentation::filterpanel {
 
         std::vector<int> parsePositiveIntList(const QString& value) {
             std::vector<int> result;
-            for (const auto& part : value.split(QStringLiteral(","), Qt::SkipEmptyParts)) {
+            const auto parts = value.split(QStringLiteral(","), Qt::SkipEmptyParts);
+            for (const auto& part : parts) {
                 const auto parsed = parsePositiveInt(part);
                 if (parsed.has_value() && std::ranges::find(result, *parsed) == result.end()) {
                     result.push_back(*parsed);
@@ -139,14 +140,6 @@ namespace ssa::presentation::filterpanel {
         return setValidated(input_.years.execution, std::move(value), domain::parseFilterYear);
     }
 
-    const QString& FilterPanelAdvancedState::reprogrammingEquals() const {
-        return input_.reprogramming.equals;
-    }
-
-    bool FilterPanelAdvancedState::setReprogrammingEquals(QString value) {
-        return setTrimmed(input_.reprogramming.equals, std::move(value));
-    }
-
     const QString& FilterPanelAdvancedState::reprogrammingMode() const {
         return input_.reprogramming.mode;
     }
@@ -166,7 +159,12 @@ namespace ssa::presentation::filterpanel {
     }
 
     bool FilterPanelAdvancedState::setReprogrammingValues(QString value) {
-        return setTrimmed(input_.reprogramming.values, std::move(value));
+        const bool changed = setTrimmed(input_.reprogramming.values, std::move(value));
+        if (!input_.reprogramming.values.isEmpty() && input_.reprogramming.only) {
+            input_.reprogramming.only = false;
+            return true;
+        }
+        return changed;
     }
 
     const QString& FilterPanelAdvancedState::issueWeekStart() const {
@@ -223,6 +221,9 @@ namespace ssa::presentation::filterpanel {
     }
 
     bool FilterPanelAdvancedState::setOnlyReprogrammed(const bool value) {
+        if (value && !input_.reprogramming.values.isEmpty()) {
+            return false;
+        }
         if (input_.reprogramming.only == value) {
             return false;
         }
@@ -248,8 +249,6 @@ namespace ssa::presentation::filterpanel {
             validatedPreference(snapshot.filters.issueYear, domain::parseFilterYear);
         input.years.execution =
             validatedPreference(snapshot.filters.executionYear, domain::parseFilterYear);
-        input.reprogramming.equals =
-            QString::fromStdString(snapshot.filters.reprogrammingEquals).trimmed();
         input.reprogramming.mode = QString::fromStdString(
             domain::normalizedNumericComparisonMode(snapshot.filters.reprogrammingMode));
         input.reprogramming.values =
@@ -264,7 +263,8 @@ namespace ssa::presentation::filterpanel {
             validatedPreference(snapshot.filters.executionWeekEnd, domain::parseIsoYearWeek);
         input.derivationMode = QString::fromStdString(
             domain::normalizedDerivationMode(snapshot.filters.derivationMode));
-        input.reprogramming.only = snapshot.filters.onlyReprogrammed;
+        input.reprogramming.only =
+            input.reprogramming.values.isEmpty() && snapshot.filters.onlyReprogrammed;
         return input;
     }
 
@@ -277,7 +277,6 @@ namespace ssa::presentation::filterpanel {
         snapshot.filters.advancedWeek = input.genericWeek.week.trimmed().toStdString();
         snapshot.filters.issueYear = input.years.issue.trimmed().toStdString();
         snapshot.filters.executionYear = input.years.execution.trimmed().toStdString();
-        snapshot.filters.reprogrammingEquals = input.reprogramming.equals.trimmed().toStdString();
         snapshot.filters.reprogrammingMode = domain::normalizedNumericComparisonMode(
             input.reprogramming.mode.trimmed().toStdString());
         snapshot.filters.reprogrammingValues = input.reprogramming.values.trimmed().toStdString();
@@ -287,7 +286,8 @@ namespace ssa::presentation::filterpanel {
             input.weekRanges.executionStart.trimmed().toStdString();
         snapshot.filters.executionWeekEnd = input.weekRanges.executionEnd.trimmed().toStdString();
         snapshot.filters.derivationMode = input.derivationMode.trimmed().toStdString();
-        snapshot.filters.onlyReprogrammed = input.reprogramming.only;
+        snapshot.filters.onlyReprogrammed =
+            input.reprogramming.values.isEmpty() && input.reprogramming.only;
     }
 
     bool FilterPanelAdvancedState::applyPreferences(const ports::UserPreferencesSnapshot& snapshot,
@@ -313,7 +313,6 @@ namespace ssa::presentation::filterpanel {
         filters.week = domain::parseIsoWeek(input_.genericWeek.week.toStdString());
         filters.issueYear = domain::parseFilterYear(input_.years.issue.toStdString());
         filters.executionYear = domain::parseFilterYear(input_.years.execution.toStdString());
-        filters.reprogrammingEquals = parsePositiveInt(input_.reprogramming.equals);
         filters.reprogrammingValues = parsePositiveIntList(input_.reprogramming.values);
         filters.reprogrammingComparison =
             domain::numericComparisonModeFromString(input_.reprogramming.mode.toStdString());
@@ -359,7 +358,7 @@ namespace ssa::presentation::filterpanel {
         }
         return domain::ColumnCatalog::isReprogrammingColumn(normalizedKey) &&
                (input_.reprogramming.only ||
-                parsePositiveInt(input_.reprogramming.equals).has_value());
+                !parsePositiveIntList(input_.reprogramming.values).empty());
     }
 
     void FilterPanelAdvancedState::clear() {
@@ -370,7 +369,6 @@ namespace ssa::presentation::filterpanel {
         input_.genericWeek.week.clear();
         input_.years.issue.clear();
         input_.years.execution.clear();
-        input_.reprogramming.equals.clear();
         input_.reprogramming.mode = QStringLiteral("gte");
         input_.reprogramming.values.clear();
         input_.weekRanges.issueStart.clear();

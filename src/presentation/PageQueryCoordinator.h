@@ -52,7 +52,8 @@ namespace ssa::presentation {
 
       signals:
         void started();
-        void succeeded(PageQueryResult result, domain::SsaPageRequest request);
+        void succeeded(ssa::presentation::PageQueryResult result,
+                       ssa::domain::SsaPageRequest request);
         void canceled();
         // Terminal state for a request superseded by a newer latest-wins request.
         // Explicit user cancellation is reported through canceled().

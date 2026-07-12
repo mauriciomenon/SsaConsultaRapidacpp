@@ -17,12 +17,15 @@ namespace ssa::infra::importing {
                                       LegacySpreadsheetConverter legacyConverter = {});
 
         [[nodiscard]] ports::WorkflowResult
-        importExternalFiles(const ports::ImportExternalFilesRequest& request) override;
-        [[nodiscard]] ports::WorkflowResult rescan(const ports::RescanRequest& request) override;
+        importExternalFiles(const ports::ImportExternalFilesRequest& request,
+                            std::stop_token stopToken = {}) override;
+        [[nodiscard]] ports::WorkflowResult rescan(const ports::RescanRequest& request,
+                                                   std::stop_token stopToken = {}) override;
 
       private:
         [[nodiscard]] ports::WorkflowResult importDiscoveredFiles(const ImportStagingResult& files,
-                                                                  bool replaceAll) const;
+                                                                  bool replaceAll,
+                                                                  std::stop_token stopToken) const;
 
         ImportFileStager stager_;
         XlsxWorkbookReader reader_;

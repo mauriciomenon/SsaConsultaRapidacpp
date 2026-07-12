@@ -2,6 +2,7 @@
 
 #include "presentation/FilterPreferencesNormalizer.h"
 #include "presentation/UserPreferencesCoordinator.h"
+#include "qt/FilesystemPath.h"
 
 #include <QVariantMap>
 #include <QtConcurrentRun>
@@ -15,11 +16,7 @@ namespace ssa::presentation {
 
     namespace {
         std::filesystem::path localFilePath(const QUrl& url) {
-#ifdef Q_OS_WIN
-            return std::filesystem::path{url.toLocalFile().toStdWString()};
-#else
-            return std::filesystem::path{url.toLocalFile().toStdString()};
-#endif
+            return qt::toFileSystemPath(url.toLocalFile());
         }
 
         std::string savePresetFile(const std::shared_ptr<ports::IFilterPresetStore>& store,
@@ -52,11 +49,10 @@ namespace ssa::presentation {
                    !filters.columnFilters.empty() || !filters.advancedTextFilters.empty() ||
                    !filters.advancedYear.empty() || !filters.advancedWeek.empty() ||
                    !filters.issueYear.empty() || !filters.executionYear.empty() ||
-                   !filters.reprogrammingEquals.empty() || !filters.reprogrammingValues.empty() ||
-                   !filters.issueWeekStart.empty() || !filters.issueWeekEnd.empty() ||
-                   !filters.executionWeekStart.empty() || !filters.executionWeekEnd.empty() ||
-                   filters.derivationMode != "all" || filters.excludeScaSesSte ||
-                   filters.onlyReprogrammed;
+                   !filters.reprogrammingValues.empty() || !filters.issueWeekStart.empty() ||
+                   !filters.issueWeekEnd.empty() || !filters.executionWeekStart.empty() ||
+                   !filters.executionWeekEnd.empty() || filters.derivationMode != "all" ||
+                   filters.excludeScaSesSte || filters.onlyReprogrammed;
         }
 
         bool sameFilters(const ports::FilterPreferencesSnapshot& lhs,
@@ -67,7 +63,6 @@ namespace ssa::presentation {
                    lhs.advancedWeekColumnKey == rhs.advancedWeekColumnKey &&
                    lhs.advancedYear == rhs.advancedYear && lhs.advancedWeek == rhs.advancedWeek &&
                    lhs.issueYear == rhs.issueYear && lhs.executionYear == rhs.executionYear &&
-                   lhs.reprogrammingEquals == rhs.reprogrammingEquals &&
                    lhs.reprogrammingMode == rhs.reprogrammingMode &&
                    lhs.reprogrammingValues == rhs.reprogrammingValues &&
                    lhs.issueWeekStart == rhs.issueWeekStart &&
@@ -227,7 +222,7 @@ namespace ssa::presentation {
 
     QString MainPreferenceFlowCoordinator::suggestedFilterName() const {
         const auto snapshot = buildPreferencesSnapshot();
-        const auto searchText = QString::fromStdString(snapshot.filters.searchText).trimmed();
+        auto searchText = QString::fromStdString(snapshot.filters.searchText).trimmed();
         if (!searchText.isEmpty()) {
             return searchText;
         }

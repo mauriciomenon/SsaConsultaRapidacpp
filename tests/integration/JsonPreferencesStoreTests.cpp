@@ -2,6 +2,7 @@
 #include "infra/preferences/JsonFilterPresetStore.h"
 #include "infra/preferences/JsonPersistenceSupport.h"
 #include "infra/preferences/JsonUserPreferencesStore.h"
+#include "qt/FilesystemPath.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -95,7 +96,6 @@ TEST_CASE("json preferences store saves user preference snapshot") {
     snapshot.filters.advancedWeek = "3";
     snapshot.filters.issueYear = "2026";
     snapshot.filters.executionYear = "2027";
-    snapshot.filters.reprogrammingEquals = "2";
     snapshot.filters.reprogrammingMode = "lte";
     snapshot.filters.reprogrammingValues = "1,3,5";
     snapshot.filters.issueWeekStart = "202601";
@@ -103,7 +103,7 @@ TEST_CASE("json preferences store saves user preference snapshot") {
     snapshot.filters.executionWeekStart = "202701";
     snapshot.filters.executionWeekEnd = "202720";
     snapshot.filters.derivationMode = "derived";
-    snapshot.filters.onlyReprogrammed = true;
+    snapshot.filters.onlyReprogrammed = false;
 
     store.save(snapshot);
     const auto loaded = store.load();
@@ -132,7 +132,6 @@ TEST_CASE("json preferences store saves user preference snapshot") {
     REQUIRE(loaded.filters.advancedWeek == "3");
     REQUIRE(loaded.filters.issueYear == "2026");
     REQUIRE(loaded.filters.executionYear == "2027");
-    REQUIRE(loaded.filters.reprogrammingEquals == "2");
     REQUIRE(loaded.filters.reprogrammingMode == "lte");
     REQUIRE(loaded.filters.reprogrammingValues == "1,3,5");
     REQUIRE(loaded.filters.issueWeekStart == "202601");
@@ -140,7 +139,109 @@ TEST_CASE("json preferences store saves user preference snapshot") {
     REQUIRE(loaded.filters.executionWeekStart == "202701");
     REQUIRE(loaded.filters.executionWeekEnd == "202720");
     REQUIRE(loaded.filters.derivationMode == "derived");
-    REQUIRE(loaded.filters.onlyReprogrammed);
+    REQUIRE_FALSE(loaded.filters.onlyReprogrammed);
+}
+
+TEST_CASE("json preferences preserve unicode file paths") {
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+
+    const auto path = ssa::qt::toFileSystemPath(
+        directory.filePath(QString::fromUtf8("preferencias-acao-\xE6\xBC\xA2.json")));
+    const ssa::infra::preferences::JsonUserPreferencesStore store(path);
+    ssa::ports::UserPreferencesSnapshot snapshot;
+    snapshot.theme = "gruvbox";
+
+    store.save(snapshot);
+
+    REQUIRE(std::filesystem::is_regular_file(path));
+    REQUIRE(store.load().theme == "gruvbox");
+}
+
+TEST_CASE("json preferences canonicalize legacy reprogramming filters") {
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+
+    const auto path = std::filesystem::path{directory.path().toStdString()} / "prefs.json";
+    const ssa::infra::preferences::JsonUserPreferencesStore store(path);
+
+    SECTION("visible values take priority over legacy equals and only") {
+        writeObject(path, QJsonObject{{"schema_version", 12},
+                                      {"reprogramming_values", "1,3"},
+                                      {"reprogramming_equals", "2"},
+                                      {"only_reprogrammed", true}});
+
+        const auto loaded = store.load();
+
+        REQUIRE(loaded.filters.reprogrammingValues == "1,3");
+        REQUIRE_FALSE(loaded.filters.onlyReprogrammed);
+    }
+
+    SECTION("legacy equals becomes the visible value filter") {
+        writeObject(path, QJsonObject{{"schema_version", 12},
+                                      {"reprogramming_equals", "2"},
+                                      {"only_reprogrammed", true}});
+
+        const auto loaded = store.load();
+
+        REQUIRE(loaded.filters.reprogrammingValues == "2");
+        REQUIRE_FALSE(loaded.filters.onlyReprogrammed);
+    }
+
+    SECTION("explicit empty visible values suppress legacy equals") {
+        writeObject(path, QJsonObject{{"schema_version", 12},
+                                      {"reprogramming_values", ""},
+                                      {"reprogramming_equals", "2"},
+                                      {"only_reprogrammed", true}});
+
+        const auto loaded = store.load();
+
+        REQUIRE(loaded.filters.reprogrammingValues.empty());
+        REQUIRE(loaded.filters.onlyReprogrammed);
+    }
+
+    SECTION("only remains active without a value filter") {
+        writeObject(path, QJsonObject{{"schema_version", 12}, {"only_reprogrammed", true}});
+
+        REQUIRE(store.load().filters.onlyReprogrammed);
+    }
+}
+
+TEST_CASE("json preferences stop writing legacy reprogramming equals") {
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+
+    const auto path = std::filesystem::path{directory.path().toStdString()} / "prefs.json";
+    const ssa::infra::preferences::JsonUserPreferencesStore store(path);
+    ssa::ports::UserPreferencesSnapshot snapshot;
+    snapshot.filters.reprogrammingValues = "2";
+    snapshot.filters.onlyReprogrammed = true;
+
+    store.save(snapshot);
+    const auto root = QJsonDocument::fromJson(readBytes(path)).object();
+
+    REQUIRE_FALSE(root.contains("reprogramming_equals"));
+    REQUIRE_FALSE(root.value("only_reprogrammed").toBool());
+}
+
+TEST_CASE("json preferences reject duplicate visible columns") {
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+
+    const auto path = std::filesystem::path{directory.path().toStdString()} / "prefs.json";
+    writeObject(
+        path, QJsonObject{{"schema_version", 12},
+                          {"visible_columns", QJsonArray{"numero_ssa", "situacao", "numero_ssa"}}});
+
+    const ssa::infra::preferences::JsonUserPreferencesStore store(path);
+
+    std::string error;
+    try {
+        (void)store.load();
+    } catch (const std::runtime_error& exc) {
+        error = exc.what();
+    }
+    REQUIRE(error == "duplicate visible column: numero_ssa");
 }
 
 TEST_CASE("user preference snapshots and saved documents use schema 12") {
@@ -783,4 +884,23 @@ TEST_CASE("json filter preset store saves only filter state") {
     REQUIRE(loaded.filters.advancedTextFilters.at("setor_executor") == "=MMU3");
     REQUIRE(loaded.filters.issueYear == "2026");
     REQUIRE(loaded.filters.onlyReprogrammed);
+}
+
+TEST_CASE("json filter preset store canonicalizes legacy reprogramming equals") {
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+
+    const auto path = std::filesystem::path{directory.path().toStdString()} / "preset.json";
+    writeObject(path, QJsonObject{{"schema_version", 1},
+                                  {"reprogramming_equals", "4"},
+                                  {"only_reprogrammed", true}});
+    const ssa::infra::preferences::JsonFilterPresetStore store;
+
+    const auto loaded = store.load(path);
+
+    REQUIRE(loaded.filters.reprogrammingValues == "4");
+    REQUIRE_FALSE(loaded.filters.onlyReprogrammed);
+    store.save(path, loaded);
+    REQUIRE_FALSE(
+        QJsonDocument::fromJson(readBytes(path)).object().contains("reprogramming_equals"));
 }

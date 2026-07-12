@@ -1,5 +1,7 @@
 #include "infra/sqlite/SqliteSsaRepository.h"
 
+#include "infra/sqlite/SqliteProgressHandler.h"
+
 #include <stdexcept>
 #include <stop_token>
 #include <string_view>
@@ -52,13 +54,6 @@ namespace ssa::infra::sqlite {
             sqlite3_free(error);
         }
 
-        void throwIfCanceled(const std::stop_token& stopToken) {
-            if (stopToken.stop_requested()) {
-                throw std::system_error(std::make_error_code(std::errc::operation_canceled),
-                                        "sqlite query canceled");
-            }
-        }
-
         class ReadTransaction final {
           public:
             explicit ReadTransaction(sqlite3* db) : db_(db) {
@@ -83,37 +78,7 @@ namespace ssa::infra::sqlite {
 
           private:
             sqlite3* db_;
-            bool active_{true};
-        };
-
-        class QueryProgressHandler final {
-          public:
-            QueryProgressHandler(sqlite3* db, std::stop_token stopToken)
-                : db_(db), stopToken_(std::move(stopToken)) {
-                throwIfCanceled(stopToken_);
-                if (stopToken_.stop_possible()) {
-                    sqlite3_progress_handler(db_, 1000, &QueryProgressHandler::shouldInterrupt,
-                                             this);
-                }
-            }
-
-            ~QueryProgressHandler() {
-                if (stopToken_.stop_possible()) {
-                    sqlite3_progress_handler(db_, 0, nullptr, nullptr);
-                }
-            }
-
-            QueryProgressHandler(const QueryProgressHandler&) = delete;
-            QueryProgressHandler& operator=(const QueryProgressHandler&) = delete;
-
-          private:
-            static int shouldInterrupt(void* context) {
-                const auto* handler = static_cast<const QueryProgressHandler*>(context);
-                return handler->stopToken_.stop_requested() ? 1 : 0;
-            }
-
-            sqlite3* db_;
-            std::stop_token stopToken_;
+            bool active_ = true;
         };
 
     } // namespace
@@ -131,7 +96,7 @@ namespace ssa::infra::sqlite {
         const std::scoped_lock lock(connectionMutex_);
         auto& sqlite = connectionLocked(lock);
         ReadTransaction transaction(sqlite.handle());
-        QueryProgressHandler progress(sqlite.handle(), stopToken);
+        SqliteProgressHandler progress(sqlite.handle(), stopToken);
 
         domain::SsaPageResult result;
         result.totalRows = executeCount(sqlite.handle(), queries.count);
@@ -148,7 +113,7 @@ namespace ssa::infra::sqlite {
         const auto countQuery = queryBuilder_.buildCount(request);
         const std::scoped_lock lock(connectionMutex_);
         auto& sqlite = connectionLocked(lock);
-        QueryProgressHandler progress(sqlite.handle(), stopToken);
+        SqliteProgressHandler progress(sqlite.handle(), stopToken);
         return executeCount(sqlite.handle(), countQuery);
     }
 
@@ -158,7 +123,7 @@ namespace ssa::infra::sqlite {
         const auto query = queryBuilder_.buildRecordBySsaNumber(number);
         const std::scoped_lock lock(connectionMutex_);
         auto& sqlite = connectionLocked(lock);
-        QueryProgressHandler progress(sqlite.handle(), stopToken);
+        SqliteProgressHandler progress(sqlite.handle(), stopToken);
         SqliteStatement statement(sqlite.handle(), query.record.sql);
         bindAll(statement, query.record.bindings);
         if (!statement.step()) {
@@ -174,7 +139,7 @@ namespace ssa::infra::sqlite {
         const auto query = queryBuilder_.buildDistinctValues(request);
         const std::scoped_lock lock(connectionMutex_);
         auto& sqlite = connectionLocked(lock);
-        QueryProgressHandler progress(sqlite.handle(), stopToken);
+        SqliteProgressHandler progress(sqlite.handle(), stopToken);
         SqliteStatement statement(sqlite.handle(), query.sql);
         bindAll(statement, query.bindings);
 
@@ -194,7 +159,7 @@ namespace ssa::infra::sqlite {
         const auto query = queryBuilder_.buildMaxValueLength(columnKey);
         const std::scoped_lock lock(connectionMutex_);
         auto& sqlite = connectionLocked(lock);
-        QueryProgressHandler progress(sqlite.handle(), stopToken);
+        SqliteProgressHandler progress(sqlite.handle(), stopToken);
         return executeCount(sqlite.handle(), query);
     }
 
@@ -205,7 +170,7 @@ namespace ssa::infra::sqlite {
                          " WHERE derivada_de = ? AND numero_ssa IS NOT NULL ORDER BY numero_ssa";
         const std::scoped_lock lock(connectionMutex_);
         auto& sqlite = connectionLocked(lock);
-        QueryProgressHandler progress(sqlite.handle(), stopToken);
+        SqliteProgressHandler progress(sqlite.handle(), stopToken);
         SqliteStatement statement(sqlite.handle(), sql);
         statement.bindTextOneBased(1, number.value());
         std::vector<domain::SsaDerivadaEntry> entries;
@@ -226,7 +191,7 @@ namespace ssa::infra::sqlite {
                                                       std::stop_token stopToken) const {
         SqliteConnection sqlite(dbPath_);
         ReadTransaction transaction(sqlite.handle());
-        QueryProgressHandler progress(sqlite.handle(), stopToken);
+        SqliteProgressHandler progress(sqlite.handle(), stopToken);
         // pageSize == 0 means unbounded streaming (single query, no LIMIT).
         // pageSize > 0 means paginated streaming: read in chunks so peak memory
         // stays bounded to one page even for large filtered result sets.

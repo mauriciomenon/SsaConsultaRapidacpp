@@ -1,7 +1,5 @@
 #include "presentation/UiSettingsViewModel.h"
 
-#include <algorithm>
-
 namespace ssa::presentation {
 
     UiSettingsViewModel::UiSettingsViewModel(QObject* parent) : QObject(parent) {
@@ -107,15 +105,6 @@ namespace ssa::presentation {
 
     int UiSettingsViewModel::detailsMaximumWidth() const {
         return detailsLayoutGeometry().maximumWidth;
-    }
-
-    int UiSettingsViewModel::detailsEffectiveWidth() const {
-        if (!detailsVisible_) {
-            return 0;
-        }
-        const int preferred = detailsPanelWidth_ > 0 ? detailsPanelWidth_ : detailsPreferredWidth();
-        const auto geometry = detailsLayoutGeometry();
-        return std::clamp(preferred, geometry.minimumWidth, geometry.maximumWidth);
     }
 
     void UiSettingsViewModel::applyPreferences(const ports::UserPreferencesSnapshot& snapshot) {

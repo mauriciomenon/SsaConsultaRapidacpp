@@ -2,6 +2,7 @@
 
 #include "infra/preferences/FilterPresetJsonCodec.h"
 #include "infra/preferences/JsonPersistenceSupport.h"
+#include "qt/FilesystemPath.h"
 
 #include <QJsonDocument>
 
@@ -25,11 +26,11 @@ namespace ssa::infra::preferences {
         const auto document = QJsonDocument::fromJson(
             json_persistence::readBounded(path, "filter preset"), &parseError);
         if (parseError.error != QJsonParseError::NoError) {
-            throw std::runtime_error("invalid filter preset json: " + path.string() + ": " +
+            throw std::runtime_error("invalid filter preset json: " + qt::toUtf8(path) + ": " +
                                      parseError.errorString().toStdString());
         }
         if (!document.isObject()) {
-            throw std::runtime_error("invalid filter preset json object: " + path.string());
+            throw std::runtime_error("invalid filter preset json object: " + qt::toUtf8(path));
         }
         return FilterPresetJsonCodec{}.snapshotFromDocument(document);
     }

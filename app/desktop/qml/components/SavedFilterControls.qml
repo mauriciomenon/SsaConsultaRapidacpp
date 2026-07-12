@@ -57,12 +57,25 @@ Item {
 
                     Control {
                         id: savedFilterTag
+                        required property int index
+                        objectName: "savedFilterTag-" + index
                         required property var modelData
                         readonly property string filterName: modelData.name !== undefined ? modelData.name : ""
                         implicitWidth: Math.min(120, tagLabel.implicitWidth + removeSavedFilter.implicitWidth + 26)
                         implicitHeight: 26
                         padding: 0
                         hoverEnabled: true
+                        activeFocusOnTab: true
+                        Accessible.role: Accessible.Button
+                        Accessible.name: "Aplicar filtro salvo " + savedFilterTag.filterName
+                        Accessible.onPressAction: savedFilterTag.applyFilter()
+                        Keys.onReturnPressed: savedFilterTag.applyFilter()
+                        Keys.onEnterPressed: savedFilterTag.applyFilter()
+                        Keys.onSpacePressed: savedFilterTag.applyFilter()
+
+                        function applyFilter() {
+                            root.preferenceFlow.applySavedFilter(savedFilterTag.filterName);
+                        }
 
                         ToolTip.visible: hovered && filterName.length > 0
                         ToolTip.text: filterName
@@ -82,6 +95,7 @@ Item {
                                 Layout.fillWidth: true
                                 Layout.leftMargin: 6
                                 text: savedFilterTag.filterName
+                                textFormat: Text.PlainText
                                 color: Theme.text
                                 font.pixelSize: Theme.fontSizeMicro
                                 font.bold: true
@@ -100,6 +114,7 @@ Item {
                                 palette.buttonText: Theme.accentStrong
                                 ToolTip.visible: hovered
                                 ToolTip.text: "Remover filtro salvo"
+                                Accessible.name: "Remover filtro salvo " + savedFilterTag.filterName
                                 onClicked: root.preferenceFlow.removeSavedFilter(savedFilterTag.filterName)
 
                                 background: Rectangle {
@@ -114,7 +129,10 @@ Item {
                             anchors.fill: parent
                             anchors.rightMargin: removeSavedFilter.width
                             hoverEnabled: true
-                            onClicked: root.preferenceFlow.applySavedFilter(savedFilterTag.filterName)
+                            onClicked: {
+                                savedFilterTag.forceActiveFocus();
+                                savedFilterTag.applyFilter();
+                            }
                         }
                     }
                 }
@@ -159,7 +177,6 @@ Item {
                     text: "Limpar Filtros"
                     onTriggered: {
                         root.filterViewModel.resetFilters();
-                        root.viewModel.apply();
                     }
                 }
             }

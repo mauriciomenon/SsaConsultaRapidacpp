@@ -1,6 +1,7 @@
 #include "infra/sqlite/SqliteDerivadasPort.h"
 
 #include "infra/sqlite/SqliteConnection.h"
+#include "infra/sqlite/SqliteProgressHandler.h"
 
 #include <sqlite3.h>
 
@@ -16,6 +17,10 @@ namespace ssa::infra::sqlite {
                     "derivadas sync completed; " + std::to_string(fixedRecords) + " records fixed"};
         }
 
+        ports::WorkflowResult canceled() {
+            return {ports::WorkflowStatus::Rejected, "sqlite derivadas sync canceled"};
+        }
+
         std::optional<ports::WorkflowResult> executeSyncSql(SqliteConnection& connection,
                                                             const char* sql) {
             char* error = nullptr;
@@ -23,6 +28,9 @@ namespace ssa::infra::sqlite {
             const std::string message = error == nullptr ? std::string{} : std::string{error};
             if (error != nullptr) {
                 sqlite3_free(error);
+            }
+            if (execRc == SQLITE_INTERRUPT) {
+                return canceled();
             }
             if (execRc != SQLITE_OK) {
                 return ports::WorkflowResult{ports::WorkflowStatus::Failed,
@@ -36,8 +44,12 @@ namespace ssa::infra::sqlite {
     SqliteDerivadasPort::SqliteDerivadasPort(std::filesystem::path databasePath)
         : databasePath_(std::move(databasePath)) {}
 
-    ports::WorkflowResult SqliteDerivadasPort::syncDerivadas() {
+    ports::WorkflowResult SqliteDerivadasPort::syncDerivadas(const std::stop_token stopToken) {
+        if (stopToken.stop_requested()) {
+            return canceled();
+        }
         SqliteConnection connection(databasePath_, SqliteOpenMode::ReadWrite);
+        SqliteProgressHandler progress(connection.handle(), stopToken);
         // Run inside an explicit immediate transaction: the original auto-commit
         // form issued the UPDATE as one implicit transaction per statement, and
         // the correlated NOT EXISTS subquery did a full table scan with an index

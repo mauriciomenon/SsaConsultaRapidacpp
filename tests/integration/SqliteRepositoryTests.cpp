@@ -2,11 +2,14 @@
 #include "infra/sqlite/SqliteConnection.h"
 #include "infra/sqlite/SqliteDerivadasPort.h"
 #include "infra/sqlite/SqliteMaintenancePort.h"
+#include "infra/sqlite/SqliteProgressHandler.h"
 #include "infra/sqlite/SqliteSsaRepository.h"
+#include "qt/FilesystemPath.h"
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <QDir>
+#include <QTemporaryDir>
 #include <QTemporaryFile>
 
 #include <algorithm>
@@ -15,6 +18,7 @@
 #include <filesystem>
 #include <future>
 #include <mutex>
+#include <semaphore>
 #include <sqlite3.h>
 #include <stop_token>
 #include <string>
@@ -89,8 +93,18 @@ namespace {
         REQUIRE(rc == SQLITE_OK);
     }
 
+    bool hasIndex(const std::filesystem::path& path, const char* indexName) {
+        ssa::infra::sqlite::SqliteConnection connection(path);
+        ssa::infra::sqlite::SqliteStatement statement(
+            connection.handle(),
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = ?");
+        statement.bindTextOneBased(1, indexName);
+        REQUIRE(statement.step());
+        return statement.columnInt64(0) == 1;
+    }
+
     struct SqliteFixture {
-        std::filesystem::path path{createFixture()};
+        std::filesystem::path path = createFixture();
 
         SqliteFixture() = default;
 
@@ -105,10 +119,65 @@ namespace {
     };
 
     struct SqliteRepositoryFixture : SqliteFixture {
-        ssa::infra::sqlite::SqliteSsaRepository repository{path};
+        SqliteRepositoryFixture() : repository(path) {}
+
+        ssa::infra::sqlite::SqliteSsaRepository repository;
     };
 
 } // namespace
+
+TEST_CASE("sqlite progress handler interrupts after entering sqlite and remains reusable") {
+    const SqliteFixture fixture;
+    ssa::infra::sqlite::SqliteConnection connection(fixture.path,
+                                                    ssa::infra::sqlite::SqliteOpenMode::ReadWrite);
+    std::stop_source stopSource;
+    std::binary_semaphore progressEntered(0);
+
+    auto query = std::async(std::launch::async, [&] {
+        ssa::infra::sqlite::SqliteProgressHandler progress(
+            connection.handle(), stopSource.get_token(), &progressEntered);
+        char* error = nullptr;
+        const int result = sqlite3_exec(
+            connection.handle(),
+            "WITH RECURSIVE numbers(value) AS (VALUES(0) UNION ALL SELECT value + 1 FROM "
+            "numbers WHERE value < 100000000) SELECT sum(value) FROM numbers",
+            nullptr, nullptr, &error);
+        sqlite3_free(error);
+        return result;
+    });
+
+    progressEntered.acquire();
+    stopSource.request_stop();
+
+    REQUIRE(query.wait_for(std::chrono::seconds{2}) == std::future_status::ready);
+    REQUIRE(query.get() == SQLITE_INTERRUPT);
+    ssa::infra::sqlite::SqliteStatement reuse(connection.handle(), "SELECT 1");
+    REQUIRE(reuse.step());
+    REQUIRE(reuse.columnInt64(0) == 1);
+}
+
+TEST_CASE("sqlite connection preserves unicode database paths") {
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+
+    const auto databasePath = ssa::qt::toFileSystemPath(
+        directory.filePath(QString::fromUtf8("dados-unicode-\xE6\xBC\xA2/ssas.db")));
+    std::filesystem::create_directories(databasePath.parent_path());
+    {
+        ssa::infra::sqlite::SqliteConnection connection(
+            databasePath, ssa::infra::sqlite::SqliteOpenMode::ReadWriteCreate);
+        REQUIRE(sqlite3_exec(connection.handle(),
+                             "CREATE TABLE unicode_probe(value TEXT);"
+                             "INSERT INTO unicode_probe VALUES('ok');",
+                             nullptr, nullptr, nullptr) == SQLITE_OK);
+    }
+
+    ssa::infra::sqlite::SqliteConnection reopened(databasePath);
+    ssa::infra::sqlite::SqliteStatement statement(reopened.handle(),
+                                                  "SELECT value FROM unicode_probe");
+    REQUIRE(statement.step());
+    REQUIRE(statement.columnText(0) == "ok");
+}
 
 TEST_CASE_METHOD(SqliteRepositoryFixture, "sqlite repository pages and filters rows") {
     ssa::domain::SsaPageRequest request;
@@ -437,7 +506,7 @@ TEST_CASE_METHOD(SqliteRepositoryFixture,
     request.advancedFilters.textFilters = {{"situacao", "=APV"}, {"setor_executor", "=SMM"}};
     request.advancedFilters.issueYear = 2025;
     request.advancedFilters.executionYear = 2025;
-    request.advancedFilters.reprogrammingEquals = 1;
+    request.advancedFilters.reprogrammingValues = {1};
     request.advancedFilters.issueWeekStart = 202501;
     request.advancedFilters.issueWeekEnd = 202501;
     request.advancedFilters.executionWeekStart = 202503;
@@ -559,9 +628,26 @@ TEST_CASE("sqlite maintenance port runs vacuum analyze") {
     const SqliteFixture fixture;
     ssa::infra::sqlite::SqliteMaintenancePort maintenance(fixture.path);
 
+    REQUIRE_FALSE(hasIndex(fixture.path, "idx_ssa_table_derivada_de"));
+
     const auto result = maintenance.vacuumAnalyze();
 
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE(hasIndex(fixture.path, "idx_ssa_table_derivada_de"));
+}
+
+TEST_CASE("sqlite maintenance rejects a stopped token before changing data") {
+    const SqliteFixture fixture;
+    ssa::infra::sqlite::SqliteMaintenancePort maintenance(fixture.path);
+    std::stop_source stopSource;
+    stopSource.request_stop();
+
+    const auto result = maintenance.resetDatabase(stopSource.get_token());
+    const ssa::infra::sqlite::SqliteSsaRepository repository(fixture.path);
+
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
+    REQUIRE(result.message.find("canceled") != std::string::npos);
+    REQUIRE(repository.count({}) == 4);
 }
 
 TEST_CASE("sqlite maintenance port resets table data") {
@@ -591,4 +677,20 @@ TEST_CASE("sqlite derivadas port clears orphan derivadas") {
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
     REQUIRE(after.has_value());
     REQUIRE(after->valueOf("derivada_de").empty());
+}
+
+TEST_CASE("sqlite derivadas rejects a stopped token before changing data") {
+    const SqliteFixture fixture;
+    ssa::infra::sqlite::SqliteDerivadasPort derivadasPort(fixture.path);
+    std::stop_source stopSource;
+    stopSource.request_stop();
+
+    const auto result = derivadasPort.syncDerivadas(stopSource.get_token());
+    const ssa::infra::sqlite::SqliteSsaRepository repository(fixture.path);
+    const auto record = repository.recordBySsaNumber(ssa::domain::SsaNumber{"202500003"});
+
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
+    REQUIRE(result.message.find("canceled") != std::string::npos);
+    REQUIRE(record.has_value());
+    REQUIRE(record->valueOf("derivada_de") == "202400001");
 }

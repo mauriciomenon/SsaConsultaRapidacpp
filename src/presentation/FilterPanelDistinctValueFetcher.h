@@ -4,6 +4,7 @@
 
 #include <QFutureWatcher>
 #include <QObject>
+#include <QString>
 
 #include <atomic>
 #include <cstddef>
@@ -37,7 +38,7 @@ namespace ssa::presentation {
       signals:
         void valuesReady(std::uint64_t requestToken, std::vector<std::string> values,
                          std::size_t maxValueLength);
-        void valuesFailed(std::uint64_t requestToken);
+        void valuesFailed(std::uint64_t requestToken, QString message);
 
       private:
         struct FetchResult final {

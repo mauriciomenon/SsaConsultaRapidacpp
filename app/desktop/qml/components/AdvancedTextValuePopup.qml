@@ -14,8 +14,10 @@ Popup {
     required property bool valuesLoading
     required property int maxValueLength
     required property string textFilter
+    property string valuesError: ""
 
     signal optionsRequested
+    signal optionsRetryRequested
     signal mixedValuesReplacementRequested(var includeValues, var excludeValues)
 
     readonly property int resolvedWidth: Theme.valuePopupWidth(root.columnKey, root.maxValueLength, Overlay.overlay !== null ? Overlay.overlay.width : 0)
@@ -141,7 +143,7 @@ Popup {
             root.updatePopupPosition();
     }
     onAboutToShow: {
-        if (root.allValues.length === 0 && !root.valuesLoading)
+        if (root.allValues.length === 0 && !root.valuesLoading && root.valuesError.length === 0)
             root.optionsRequested();
         root.updatePopupPosition();
     }
@@ -176,6 +178,7 @@ Popup {
 
             ActionButton {
                 text: "Limpar"
+                Accessible.name: "Limpar selecao de valores"
                 implicitWidth: Theme.popupActionButtonWidth
                 onClicked: {
                     root.includeValues = [];
@@ -186,7 +189,8 @@ Popup {
             ActionButton {
                 text: "Aplicar"
                 implicitWidth: Theme.popupActionButtonWidth
-                enabled: !root.valuesLoading
+                enabled: !root.valuesLoading && root.valuesError.length === 0
+                Accessible.name: "Aplicar selecao de valores"
                 onClicked: {
                     root.mixedValuesReplacementRequested(root.includeValues, root.excludeValues);
                     root.close();
@@ -233,13 +237,29 @@ Popup {
             Layout.fillWidth: true
             Layout.fillHeight: true
 
-            Label {
+            Column {
                 anchors.centerIn: parent
-                visible: root.valuesLoading || root.allValues.length === 0
-                text: root.valuesLoading ? "Carregando" : "Sem valores carregados"
-                color: Theme.mutedText
-                font.pixelSize: Theme.fontSizeMicro
-                horizontalAlignment: Text.AlignHCenter
+                visible: root.valuesLoading || root.valuesError.length > 0 || root.allValues.length === 0
+                spacing: 6
+
+                Label {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: root.valuesLoading ? "Carregando" : root.valuesError.length > 0 ? root.valuesError : "Sem valores carregados"
+                    textFormat: Text.PlainText
+                    color: root.valuesError.length > 0 ? Theme.danger : Theme.mutedText
+                    font.pixelSize: Theme.fontSizeMicro
+                    horizontalAlignment: Text.AlignHCenter
+                }
+
+                ActionButton {
+                    objectName: "advancedTextValueRetryButton_" + root.columnKey
+                    visible: root.valuesError.length > 0 && !root.valuesLoading
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: "Tentar novamente"
+                    implicitWidth: Theme.popupActionButtonWidth + 24
+                    Accessible.name: "Tentar carregar valores novamente"
+                    onClicked: root.optionsRetryRequested()
+                }
             }
 
             ListView {
@@ -279,6 +299,7 @@ Popup {
                             height: 16
                             spacing: 0
                             text: ""
+                            Accessible.name: "Incluir " + optionRow.modelData
                             checked: root.containsValue(root.includeValues, optionRow.modelData)
                             onClicked: {
                                 var includes = root.includeValues.slice();
@@ -305,6 +326,7 @@ Popup {
                             height: 16
                             spacing: 0
                             text: ""
+                            Accessible.name: "Excluir " + optionRow.modelData
                             checked: root.containsValue(root.excludeValues, optionRow.modelData)
                             onClicked: {
                                 var includes = root.includeValues.slice();

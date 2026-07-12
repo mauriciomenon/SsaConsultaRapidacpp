@@ -1,6 +1,7 @@
 #include "infra/import/SsaSpreadsheetMapper.h"
 
 #include "infra/import/SsaSpreadsheetHeaderCatalog.h"
+#include "qt/FilesystemPath.h"
 
 #include <QChar>
 #include <QString>
@@ -160,7 +161,7 @@ namespace ssa::infra::importing {
                 }
             }
             if (!row.empty() && valueFor(row, "arquivo_origem").empty()) {
-                row.emplace("arquivo_origem", table.sourcePath.filename().string());
+                row.emplace("arquivo_origem", qt::toUtf8(table.sourcePath.filename()));
             }
             if (valueFor(row, "numero_ssa").empty() && valueFor(row, "descricao_ssa").empty()) {
                 ++batch.skippedRows;

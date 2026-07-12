@@ -6,7 +6,7 @@ on:
   pull_request:
     branches: ["master"]
   schedule:
-    - cron: '18 15 * * 5'
+    - cron: "18 15 * * 5"
 
 permissions:
   contents: read
@@ -14,14 +14,19 @@ permissions:
 jobs:
   semgrep:
     permissions:
-      contents: read # for actions/checkout to fetch code
-      security-events: write # for github/codeql-action/upload-sarif to upload SARIF results
-      actions: read # only required for a private repository by github/codeql-action/upload-sarif to get the Action run status
+      actions: read
+      contents: read
+      security-events: write
     name: Scan C, C++, and QML policies
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
       - name: Test project QML policies
+        id: policy-tests
+        continue-on-error: true
         run: |
           set -euo pipefail
           docker run --rm \
@@ -29,7 +34,9 @@ jobs:
             -w /src \
             semgrep/semgrep:1.169.0@sha256:2b33f46ba66cf8cc2ad59ccfa7d22951fd00c632c38f1339e84ec8e6e641a942 \
             semgrep test .semgrep
-      - name: Run Semgrep CE
+      - name: Scan C and C++
+        id: cpp-scan
+        continue-on-error: true
         run: |
           set -euo pipefail
           docker run --rm \
@@ -39,13 +46,50 @@ jobs:
             semgrep scan \
             --config p/c \
             --config p/security-audit \
-            --config .semgrep/qml.yml \
+            --exclude '*.qml' \
             --error \
             --metrics=off \
-            --sarif-output=/src/semgrep.sarif \
+            --sarif-output=/src/semgrep-cpp.sarif \
             src app tests tools
-      - name: Upload SARIF file
-        if: always() && hashFiles('semgrep.sarif') != ''
+      - name: Scan QML with generic rules
+        id: qml-scan
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            -v "$PWD:/src" \
+            -w /src \
+            semgrep/semgrep:1.169.0@sha256:2b33f46ba66cf8cc2ad59ccfa7d22951fd00c632c38f1339e84ec8e6e641a942 \
+            semgrep scan \
+            --config .semgrep/qml.yml \
+            --include '*.qml' \
+            --error \
+            --metrics=off \
+            --sarif-output=/src/semgrep-qml.sarif \
+            app/desktop/qml
+      - name: Upload C and C++ SARIF
+        if: >-
+          always() && hashFiles('semgrep-cpp.sarif') != '' &&
+          (github.event_name != 'pull_request' ||
+          github.event.pull_request.head.repo.full_name == github.repository)
         uses: github/codeql-action/upload-sarif@b0c4fd77f6c559021d78430ec4d0d169ae74a4eb
         with:
-          sarif_file: semgrep.sarif
+          sarif_file: semgrep-cpp.sarif
+          category: semgrep-cpp
+      - name: Upload QML SARIF
+        if: >-
+          always() && hashFiles('semgrep-qml.sarif') != '' &&
+          (github.event_name != 'pull_request' ||
+          github.event.pull_request.head.repo.full_name == github.repository)
+        uses: github/codeql-action/upload-sarif@b0c4fd77f6c559021d78430ec4d0d169ae74a4eb
+        with:
+          sarif_file: semgrep-qml.sarif
+          category: semgrep-qml
+      - name: Enforce Semgrep results
+        if: >-
+          always() && (steps.policy-tests.outcome == 'failure' ||
+          steps.cpp-scan.outcome == 'failure' ||
+          steps.qml-scan.outcome == 'failure')
+        run: |
+          echo "Semgrep policy tests or scans reported findings or an execution failure." >&2
+          exit 1

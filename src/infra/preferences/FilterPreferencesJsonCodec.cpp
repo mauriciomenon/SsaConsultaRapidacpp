@@ -16,12 +16,11 @@ namespace ssa::infra::preferences {
             std::string ports::FilterPreferencesSnapshot::* field;
         };
 
-        constexpr std::array<StringFilterBinding, 10> kStringFilters{{
+        constexpr std::array<StringFilterBinding, 9> kStringFilters{{
             {"advanced_year", &ports::FilterPreferencesSnapshot::advancedYear},
             {"advanced_week", &ports::FilterPreferencesSnapshot::advancedWeek},
             {"issue_year", &ports::FilterPreferencesSnapshot::issueYear},
             {"execution_year", &ports::FilterPreferencesSnapshot::executionYear},
-            {"reprogramming_equals", &ports::FilterPreferencesSnapshot::reprogrammingEquals},
             {"reprogramming_values", &ports::FilterPreferencesSnapshot::reprogrammingValues},
             {"issue_week_start", &ports::FilterPreferencesSnapshot::issueWeekStart},
             {"issue_week_end", &ports::FilterPreferencesSnapshot::issueWeekEnd},
@@ -95,6 +94,21 @@ namespace ssa::infra::preferences {
                 root.insert(binding.key, QString::fromStdString(filters.*(binding.field)));
             }
         }
+
+        void canonicalizeReprogramming(const QJsonObject& root,
+                                       ports::FilterPreferencesSnapshot& filters) {
+            auto values = QString::fromStdString(filters.reprogrammingValues).trimmed();
+            if (!root.contains("reprogramming_values")) {
+                const auto legacyEquals =
+                    root.value("reprogramming_equals").toString().trimmed().toStdString();
+                requireValidExpressionLength(legacyEquals, "reprogramming_equals");
+                values = QString::fromStdString(legacyEquals);
+            }
+            filters.reprogrammingValues = values.toStdString();
+            if (!filters.reprogrammingValues.empty()) {
+                filters.onlyReprogrammed = false;
+            }
+        }
     } // namespace
 
     ports::FilterPreferencesSnapshot FilterPreferencesJsonCodec::filtersFromObject(
@@ -118,6 +132,7 @@ namespace ssa::infra::preferences {
             jsonString(root, "derivation_mode", baseSnapshot.derivationMode));
         baseSnapshot.onlyReprogrammed =
             root.value("only_reprogrammed").toBool(baseSnapshot.onlyReprogrammed);
+        canonicalizeReprogramming(root, baseSnapshot);
         validateExpressionLengths(baseSnapshot);
         return baseSnapshot;
     }
@@ -141,7 +156,8 @@ namespace ssa::infra::preferences {
                         domain::normalizedNumericComparisonMode(filters.reprogrammingMode)));
         root.insert("derivation_mode", QString::fromStdString(domain::normalizedDerivationMode(
                                            filters.derivationMode)));
-        root.insert("only_reprogrammed", filters.onlyReprogrammed);
+        root.insert("only_reprogrammed",
+                    filters.reprogrammingValues.empty() && filters.onlyReprogrammed);
     }
 
 } // namespace ssa::infra::preferences

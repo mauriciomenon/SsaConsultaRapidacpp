@@ -134,6 +134,9 @@ namespace ssa::infra::preferences {
                             kLegacyHiddenVisibleColumns.end() &&
                         std::ranges::find(kLegacyVisibleColumnsToDrop, key) ==
                             kLegacyVisibleColumnsToDrop.end()) {
+                        if (std::ranges::find(parsedColumns, key) != parsedColumns.end()) {
+                            throw std::runtime_error("duplicate visible column: " + key);
+                        }
                         parsedColumns.push_back(key);
                     }
                 }
@@ -160,11 +163,10 @@ namespace ssa::infra::preferences {
             return !filters.searchText.empty() || !filters.columnFilters.empty() ||
                    !filters.advancedTextFilters.empty() || !filters.advancedYear.empty() ||
                    !filters.advancedWeek.empty() || !filters.issueYear.empty() ||
-                   !filters.executionYear.empty() || !filters.reprogrammingEquals.empty() ||
-                   !filters.reprogrammingValues.empty() || !filters.issueWeekStart.empty() ||
-                   !filters.issueWeekEnd.empty() || !filters.executionWeekStart.empty() ||
-                   !filters.executionWeekEnd.empty() || filters.derivationMode != "all" ||
-                   filters.onlyReprogrammed;
+                   !filters.executionYear.empty() || !filters.reprogrammingValues.empty() ||
+                   !filters.issueWeekStart.empty() || !filters.issueWeekEnd.empty() ||
+                   !filters.executionWeekStart.empty() || !filters.executionWeekEnd.empty() ||
+                   filters.derivationMode != "all" || filters.onlyReprogrammed;
         }
 
         void migrateDefaultQuickSector(ports::UserPreferencesSnapshot& snapshot) {

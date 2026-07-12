@@ -208,17 +208,6 @@ namespace ssa::domain {
         return result;
     }
 
-    std::vector<ColumnDef> ColumnCatalog::defaultVisible() {
-        std::vector<ColumnDef> result;
-        result.reserve(kDefaultVisibleColumnKeys.size());
-        for (const auto key : kDefaultVisibleColumnKeys) {
-            if (const auto* column = find(key); column != nullptr && column->defaultVisible) {
-                result.push_back(*column);
-            }
-        }
-        return result;
-    }
-
     std::vector<std::string> ColumnCatalog::defaultVisibleKeys() {
         std::vector<std::string> result;
         result.reserve(kDefaultVisibleColumnKeys.size());

@@ -142,6 +142,7 @@ FilterCard {
                 padding: 0
                 font.bold: true
                 font.pixelSize: Theme.fontSizeBody
+                Accessible.name: "Limpar filtro de semana de execucao"
                 ToolTip.visible: hovered
                 ToolTip.text: "Limpar Execucao"
                 ToolTip.delay: 0

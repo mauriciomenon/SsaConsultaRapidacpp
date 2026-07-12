@@ -12,7 +12,6 @@
 #include <QFileInfo>
 #include <QJSValue>
 #include <QObject>
-#include <QPointer>
 #include <QQmlComponent>
 #include <QQmlContext>
 #include <QQmlEngine>
@@ -26,6 +25,7 @@
 #include <cmath>
 #include <memory>
 #include <optional>
+#include <stdexcept>
 #include <stop_token>
 #include <string>
 #include <string_view>
@@ -58,10 +58,20 @@ namespace {
                                                 std::stop_token = {}) const override {
             if (request.limit == ssa::domain::kAdvancedDistinctValuesLimit) {
                 advancedRequests_.fetch_add(1, std::memory_order_relaxed);
+                if (failNextAdvancedRequest_.exchange(false, std::memory_order_acq_rel)) {
+                    throw std::runtime_error("advanced values failed once");
+                }
             }
             if (request.columnKey == "num_reprogramacoes") {
                 reprogrammingRequests_.fetch_add(1, std::memory_order_relaxed);
                 return {"0", "1", "3"};
+            }
+            if (request.columnKey == "setor_executor") {
+                quickSectorRequests_.fetch_add(1, std::memory_order_relaxed);
+                if (failNextQuickSectorRequest_.exchange(false, std::memory_order_acq_rel)) {
+                    throw std::runtime_error("quick sector failed once");
+                }
+                return {"MEG2"};
             }
             return {"APV"};
         }
@@ -84,9 +94,24 @@ namespace {
             return reprogrammingRequests_.load(std::memory_order_relaxed);
         }
 
+        [[nodiscard]] int quickSectorRequests() const {
+            return quickSectorRequests_.load(std::memory_order_relaxed);
+        }
+
+        void failNextAdvancedRequest() {
+            failNextAdvancedRequest_.store(true, std::memory_order_release);
+        }
+
+        void failNextQuickSectorRequest() {
+            failNextQuickSectorRequest_.store(true, std::memory_order_release);
+        }
+
       private:
         mutable std::atomic<int> advancedRequests_{0};
         mutable std::atomic<int> reprogrammingRequests_{0};
+        mutable std::atomic<int> quickSectorRequests_{0};
+        mutable std::atomic_bool failNextAdvancedRequest_{false};
+        mutable std::atomic_bool failNextQuickSectorRequest_{false};
     };
 
     [[nodiscard]] QDir repositoryRoot() {
@@ -126,6 +151,17 @@ namespace {
         return item.mapToScene(item.boundingRect().center()).toPoint();
     }
 
+    [[nodiscard]] int countQuickItemsByObjectName(QQuickItem* parent, const QString& objectName) {
+        int count = 0;
+        for (auto* child : parent->childItems()) {
+            if (child->objectName() == objectName) {
+                ++count;
+            }
+            count += countQuickItemsByObjectName(child, objectName);
+        }
+        return count;
+    }
+
     constexpr auto kReprogrammingHarness = R"QML(
         import QtQuick
         import QtQuick.Controls
@@ -145,6 +181,131 @@ namespace {
                 cardWidth: 360
                 cardHeight: 52
                 onApplyRequested: harness.applyCount += 1
+            }
+        }
+    )QML";
+
+    constexpr auto kMacroReportHarness = R"QML(
+        import QtQuick
+        import QtQuick.Controls
+        import SsaConsultaRapida
+
+        Item {
+            id: harness
+            width: 420
+            height: 160
+
+            QtObject {
+                id: macroModel
+                property var options: []
+                property string selectedMacro: ""
+                property string reportTitle: "SSA Executadas Setor"
+                property string reportText: "5000 linhas"
+                property var reportRows: []
+                property bool reportLoading: false
+                property string reportError: ""
+            }
+
+            AdvancedMacroFilterCard {
+                objectName: "macroReportCard"
+                anchors.fill: parent
+                macro: macroModel
+                cardWidth: width
+                cardHeight: height
+            }
+
+            Component.onCompleted: {
+                const rows = [];
+                for (let index = 0; index < 5000; ++index) {
+                    rows.push({
+                        group: "MEG",
+                        week: "202601",
+                        person: "Pessoa " + index,
+                        count: 1
+                    });
+                }
+                macroModel.reportRows = rows;
+            }
+        }
+    )QML";
+
+    constexpr auto kAdvancedTextHarness = R"QML(
+        import QtQuick
+        import QtQuick.Controls
+        import SsaConsultaRapida
+
+        Item {
+            width: 600
+            height: 500
+
+            AdvancedTextFilterCard {
+                id: card
+                x: 100
+                y: 100
+                property var loadedValues: []
+                property bool loadedValuesLoading: false
+                property int loadedMaxValueLength: 0
+                property string loadedValuesError: ""
+
+                key: "situacao"
+                label: "Situacao"
+                operatorModes: [{ label: "=", mode: "equals" }]
+                allValues: loadedValues
+                visibleValues: loadedValues
+                valuesLoading: loadedValuesLoading
+                valuesError: loadedValuesError
+                maxValueLength: loadedMaxValueLength
+                textFilter: ""
+                operatorIndex: 0
+                operatorLabel: "="
+                cardWidth: 360
+                cardHeight: 52
+
+                function reloadOptionState() {
+                    loadedValues = filterViewModel.columnValueOptionsFor(key);
+                    loadedValuesLoading = filterViewModel.columnValueOptionsLoadingFor(key);
+                    loadedMaxValueLength = filterViewModel.columnValueMaxLengthFor(key);
+                    loadedValuesError = filterViewModel.columnValueOptionsErrorFor(key);
+                }
+
+                Connections {
+                    target: filterViewModel
+                    function onColumnValueOptionsChangedFor(key) {
+                        if (key === card.key)
+                            card.reloadOptionState();
+                    }
+                }
+
+                onOptionsRequested: {
+                    if (loadedValues.length === 0 && !loadedValuesLoading)
+                        filterViewModel.refreshColumnValueOptionsFor(key);
+                }
+            }
+        }
+    )QML";
+
+    constexpr auto kQuickSectorHarness = R"QML(
+        import QtQuick
+        import SsaConsultaRapida
+
+        Item {
+            width: 1000
+            height: 60
+
+            QtObject {
+                id: browseModel
+                property int pageNumber: 1
+                property int pageCount: 1
+                property int pageSize: 50
+                function previousPage() {}
+                function nextPage() {}
+                function apply() {}
+            }
+
+            PagerQuickFilters {
+                anchors.fill: parent
+                viewModel: browseModel
+                filterViewModel: testFilterViewModel
             }
         }
     )QML";
@@ -171,6 +332,8 @@ namespace {
                                     "SsaConsultaRapida", 1, 0, "AppCheckBox") >= 0);
             QVERIFY(qmlRegisterType(QUrl::fromLocalFile(components.filePath("AppComboBox.qml")),
                                     "SsaConsultaRapida", 1, 0, "AppComboBox") >= 0);
+            QVERIFY(qmlRegisterType(QUrl::fromLocalFile(components.filePath("AppSpinBox.qml")),
+                                    "SsaConsultaRapida", 1, 0, "AppSpinBox") >= 0);
             QVERIFY(qmlRegisterType(QUrl::fromLocalFile(components.filePath("FilterCard.qml")),
                                     "SsaConsultaRapida", 1, 0, "FilterCard") >= 0);
             QVERIFY(qmlRegisterType(
@@ -179,12 +342,29 @@ namespace {
             QVERIFY(qmlRegisterType(
                         QUrl::fromLocalFile(components.filePath("AdvancedTextFilterCard.qml")),
                         "SsaConsultaRapida", 1, 0, "AdvancedTextFilterCard") >= 0);
+            QVERIFY(qmlRegisterType(
+                        QUrl::fromLocalFile(components.filePath("ReprogrammingValuePopup.qml")),
+                        "SsaConsultaRapida", 1, 0, "ReprogrammingValuePopup") >= 0);
             QVERIFY(
                 qmlRegisterType(
                     QUrl::fromLocalFile(components.filePath("AdvancedReprogrammingFilterCard.qml")),
                     "SsaConsultaRapida", 1, 0, "AdvancedReprogrammingFilterCard") >= 0);
+            QVERIFY(qmlRegisterType(
+                        QUrl::fromLocalFile(components.filePath("AdvancedMacroFilterCard.qml")),
+                        "SsaConsultaRapida", 1, 0, "AdvancedMacroFilterCard") >= 0);
+            QVERIFY(qmlRegisterType(
+                        QUrl::fromLocalFile(components.filePath("DetailsRelationNavigator.qml")),
+                        "SsaConsultaRapida", 1, 0, "DetailsRelationNavigator") >= 0);
+            QVERIFY(
+                qmlRegisterType(QUrl::fromLocalFile(components.filePath("SavedFilterControls.qml")),
+                                "SsaConsultaRapida", 1, 0, "SavedFilterControls") >= 0);
+            QVERIFY(qmlRegisterType(QUrl::fromLocalFile(components.filePath("DerivadasGraph.qml")),
+                                    "SsaConsultaRapida", 1, 0, "DerivadasGraph") >= 0);
             QVERIFY(qmlRegisterType(QUrl::fromLocalFile(components.filePath("SsaTable.qml")),
                                     "SsaConsultaRapida", 1, 0, "SsaTable") >= 0);
+            QVERIFY(
+                qmlRegisterType(QUrl::fromLocalFile(components.filePath("PagerQuickFilters.qml")),
+                                "SsaConsultaRapida", 1, 0, "PagerQuickFilters") >= 0);
         }
 
         void reprogramming_value_combo_loads_cold_cache_once() {
@@ -343,14 +523,13 @@ namespace {
             QVERIFY(openButton != nullptr);
             QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier,
                               clickPointInWindow(*openButton));
-            auto* card = findOwnedQuickItemByProperty(harness.get(), "reprogrammingColumnKey",
-                                                      QStringLiteral("num_reprogramacoes"));
-            QVERIFY(card != nullptr);
-            QCOMPARE(card->property("selectedOnlyReprogrammed").toBool(), true);
-            QVERIFY(QMetaObject::invokeMethod(card, "toggleSelected", Qt::DirectConnection,
+            auto* popup = harness->findChild<QObject*>(QStringLiteral("reprogrammingValuePopup"));
+            QVERIFY(popup != nullptr);
+            QCOMPARE(popup->property("selectedOnlyReprogrammed").toBool(), true);
+            QVERIFY(QMetaObject::invokeMethod(popup, "toggleSelected", Qt::DirectConnection,
                                               Q_ARG(QVariant, QVariant(QStringLiteral("1"))),
                                               Q_ARG(QVariant, QVariant(true))));
-            QCOMPARE(card->property("selectedOnlyReprogrammed").toBool(), false);
+            QCOMPARE(popup->property("selectedOnlyReprogrammed").toBool(), false);
             auto* applyButton =
                 findQuickItemByProperty(window.contentItem(), "text", QStringLiteral("Aplicar"));
             QVERIFY(applyButton != nullptr);
@@ -362,6 +541,52 @@ namespace {
             QCOMPARE(derivation->reprogrammingValues(), QStringList({QStringLiteral("1")}));
         }
 
+        void reprogramming_popup_checkbox_remains_model_driven_after_click() {
+            auto repository = std::make_shared<CountingRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::FilterPanelViewModel filters(service);
+            QQmlEngine engine;
+            engine.rootContext()->setContextProperty(QStringLiteral("testFilterViewModel"),
+                                                     &filters);
+            QQmlComponent component(&engine);
+            component.setData(kReprogrammingHarness,
+                              QUrl(QStringLiteral("inmemory:/ReprogrammingReuseHarness.qml")));
+            QTRY_VERIFY_WITH_TIMEOUT(component.status() != QQmlComponent::Loading, 1000);
+            QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+
+            QQuickWindow window;
+            window.setGeometry(0, 0, 600, 500);
+            std::unique_ptr<QObject> harness(component.create());
+            QVERIFY2(harness != nullptr, qPrintable(component.errorString()));
+            auto* harnessItem = qobject_cast<QQuickItem*>(harness.get());
+            QVERIFY(harnessItem != nullptr);
+            harnessItem->setParentItem(window.contentItem());
+            window.show();
+
+            QTRY_VERIFY_WITH_TIMEOUT(window.isExposed(), 1000);
+            auto* openButton = findQuickItemByProperty(harnessItem, "text", QStringLiteral("..."));
+            QVERIFY(openButton != nullptr);
+            QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier,
+                              clickPointInWindow(*openButton));
+            auto* popup = harness->findChild<QObject*>(QStringLiteral("reprogrammingValuePopup"));
+            QVERIFY(popup != nullptr);
+            QTRY_VERIFY_WITH_TIMEOUT(popup->property("visible").toBool(), 1000);
+
+            QStringList options;
+            for (int index = 0; index < 100; ++index) {
+                options.push_back(QStringLiteral("value-%1").arg(index));
+            }
+            popup->setProperty("optionValues", options);
+            popup->setProperty("selectedValues", QStringList{});
+            auto* firstOption = findQuickItemByProperty(
+                window.contentItem(), "objectName", QStringLiteral("reprogrammingValueOption-0"));
+            QTRY_VERIFY_WITH_TIMEOUT(firstOption != nullptr && firstOption->isVisible(), 1000);
+            QVERIFY(QMetaObject::invokeMethod(firstOption, "click", Qt::DirectConnection));
+            QTRY_VERIFY_WITH_TIMEOUT(firstOption->property("checked").toBool(), 1000);
+            popup->setProperty("selectedValues", QStringList{});
+            QTRY_VERIFY_WITH_TIMEOUT(!firstOption->property("checked").toBool(), 1000);
+        }
+
         void about_to_show_requests_distinct_values_once() {
             auto repository = std::make_shared<CountingRepository>();
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
@@ -369,57 +594,7 @@ namespace {
             QQmlEngine engine;
             engine.rootContext()->setContextProperty(QStringLiteral("filterViewModel"), &filters);
             QQmlComponent component(&engine);
-            component.setData(R"QML(
-                import QtQuick
-                import QtQuick.Controls
-                import SsaConsultaRapida
-
-                Item {
-                    width: 600
-                    height: 500
-
-                    AdvancedTextFilterCard {
-                        id: card
-                        x: 100
-                        y: 100
-                        property var loadedValues: []
-                        property bool loadedValuesLoading: false
-                        property int loadedMaxValueLength: 0
-
-                        key: "situacao"
-                        label: "Situacao"
-                        operatorModes: [{ label: "=", mode: "equals" }]
-                        allValues: loadedValues
-                        visibleValues: loadedValues
-                        valuesLoading: loadedValuesLoading
-                        maxValueLength: loadedMaxValueLength
-                        textFilter: ""
-                        operatorIndex: 0
-                        operatorLabel: "="
-                        cardWidth: 360
-                        cardHeight: 52
-
-                        function reloadOptionState() {
-                            loadedValues = filterViewModel.columnValueOptionsFor(key);
-                            loadedValuesLoading = filterViewModel.columnValueOptionsLoadingFor(key);
-                            loadedMaxValueLength = filterViewModel.columnValueMaxLengthFor(key);
-                        }
-
-                        Connections {
-                            target: filterViewModel
-                            function onColumnValueOptionsChangedFor(key) {
-                                if (key === card.key)
-                                    card.reloadOptionState();
-                            }
-                        }
-
-                        onOptionsRequested: {
-                            if (loadedValues.length === 0 && !loadedValuesLoading)
-                                filterViewModel.refreshColumnValueOptionsFor(key);
-                        }
-                    }
-                }
-            )QML",
+            component.setData(kAdvancedTextHarness,
                               QUrl(QStringLiteral("inmemory:/AdvancedPopupHarness.qml")));
             QTRY_VERIFY_WITH_TIMEOUT(component.status() != QQmlComponent::Loading, 1000);
             QVERIFY2(component.isReady(), qPrintable(component.errorString()));
@@ -448,6 +623,128 @@ namespace {
             QTRY_VERIFY_WITH_TIMEOUT(popup->property("visible").toBool(), 1000);
             QTRY_VERIFY_WITH_TIMEOUT(!popup->property("valuesLoading").toBool(), 1000);
             QCOMPARE(repository->advancedRequests(), 1);
+        }
+
+        void distinct_value_error_is_visible_and_retryable_in_qml() {
+            auto repository = std::make_shared<CountingRepository>();
+            repository->failNextAdvancedRequest();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::FilterPanelViewModel filters(service);
+            QQmlEngine engine;
+            engine.rootContext()->setContextProperty(QStringLiteral("filterViewModel"), &filters);
+            QQmlComponent component(&engine);
+            component.setData(kAdvancedTextHarness,
+                              QUrl(QStringLiteral("inmemory:/AdvancedPopupRetryHarness.qml")));
+            QTRY_VERIFY_WITH_TIMEOUT(component.status() != QQmlComponent::Loading, 1000);
+            QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+
+            QQuickWindow window;
+            window.setGeometry(0, 0, 600, 500);
+            std::unique_ptr<QObject> harness(component.create());
+            QVERIFY2(harness != nullptr, qPrintable(component.errorString()));
+            auto* harnessItem = qobject_cast<QQuickItem*>(harness.get());
+            QVERIFY(harnessItem != nullptr);
+            harnessItem->setParentItem(window.contentItem());
+            window.show();
+
+            QTRY_VERIFY_WITH_TIMEOUT(window.isExposed(), 1000);
+            auto* popup =
+                harness->findChild<QObject*>(QStringLiteral("advancedTextValuePopup_situacao"));
+            QVERIFY(popup != nullptr);
+            QTest::ignoreMessage(QtWarningMsg,
+                                 "Column value query failed: advanced values failed once");
+            QVERIFY(QMetaObject::invokeMethod(popup, "openForCurrentFilter"));
+            QTRY_COMPARE_WITH_TIMEOUT(repository->advancedRequests(), 1, 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(popup->property("valuesError").toString(),
+                                      QString("advanced values failed once"), 1000);
+
+            auto* retryButton = findOwnedQuickItemByProperty(
+                popup, "objectName", QStringLiteral("advancedTextValueRetryButton_situacao"));
+            QTRY_VERIFY_WITH_TIMEOUT(retryButton != nullptr && retryButton->isVisible(), 1000);
+            QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier,
+                              clickPointInWindow(*retryButton));
+
+            QTRY_COMPARE_WITH_TIMEOUT(repository->advancedRequests(), 2, 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(popup->property("valuesError").toString(), QString(), 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(popup->property("allValues").toStringList().size(), 1, 1000);
+        }
+
+        void quick_sector_error_is_visible_and_retryable_in_qml() {
+            auto repository = std::make_shared<CountingRepository>();
+            repository->failNextQuickSectorRequest();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            QTest::ignoreMessage(QtWarningMsg,
+                                 "Column value query failed: quick sector failed once");
+            ssa::presentation::FilterPanelViewModel filters(service);
+            QTRY_COMPARE_WITH_TIMEOUT(filters.sector()->property("optionsError").toString(),
+                                      QString("quick sector failed once"), 1000);
+
+            QQmlEngine engine;
+            engine.rootContext()->setContextProperty(QStringLiteral("testFilterViewModel"),
+                                                     &filters);
+            QQmlComponent component(&engine);
+            component.setData(kQuickSectorHarness,
+                              QUrl(QStringLiteral("inmemory:/QuickSectorRetryHarness.qml")));
+            QTRY_VERIFY_WITH_TIMEOUT(component.status() != QQmlComponent::Loading, 1000);
+            QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+
+            QQuickWindow window;
+            window.setGeometry(0, 0, 1000, 100);
+            std::unique_ptr<QObject> harness(component.create());
+            QVERIFY2(harness != nullptr, qPrintable(component.errorString()));
+            auto* harnessItem = qobject_cast<QQuickItem*>(harness.get());
+            QVERIFY(harnessItem != nullptr);
+            harnessItem->setParentItem(window.contentItem());
+            window.show();
+
+            QTRY_VERIFY_WITH_TIMEOUT(window.isExposed(), 1000);
+            auto* retryButton = findOwnedQuickItemByProperty(
+                harness.get(), "objectName", QStringLiteral("quickSectorRetryButton"));
+            QTRY_VERIFY_WITH_TIMEOUT(retryButton != nullptr && retryButton->isVisible(), 1000);
+            QCOMPARE(repository->quickSectorRequests(), 1);
+            QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier,
+                              clickPointInWindow(*retryButton));
+
+            QTRY_COMPARE_WITH_TIMEOUT(repository->quickSectorRequests(), 2, 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(filters.sector()->property("optionsError").toString(),
+                                      QString(), 1000);
+            QVERIFY(filters.sector()->property("selectorValues").toStringList().contains("MEG2"));
+        }
+
+        void macro_report_virtualizes_five_thousand_rows() {
+            QQmlEngine engine;
+            QQmlComponent component(&engine);
+            component.setData(kMacroReportHarness,
+                              QUrl(QStringLiteral("inmemory:/MacroReportHarness.qml")));
+            QTRY_VERIFY_WITH_TIMEOUT(component.status() != QQmlComponent::Loading, 1000);
+            QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+
+            QQuickWindow window;
+            window.setGeometry(0, 0, 420, 160);
+            std::unique_ptr<QObject> harness(component.create());
+            QVERIFY2(harness != nullptr, qPrintable(component.errorString()));
+            auto* harnessItem = qobject_cast<QQuickItem*>(harness.get());
+            QVERIFY(harnessItem != nullptr);
+            harnessItem->setParentItem(window.contentItem());
+            window.show();
+
+            QTRY_VERIFY_WITH_TIMEOUT(window.isExposed(), 1000);
+            QQuickItem* reportList = nullptr;
+            QTRY_VERIFY_WITH_TIMEOUT(([&] {
+                                         reportList = harness->findChild<QQuickItem*>(
+                                             QStringLiteral("macroReportList"));
+                                         return reportList != nullptr;
+                                     })(),
+                                     1000);
+            QTRY_COMPARE_WITH_TIMEOUT(reportList->property("count").toInt(), 5000, 1000);
+            int delegateCount = 0;
+            QTRY_VERIFY_WITH_TIMEOUT(([&] {
+                                         delegateCount = countQuickItemsByObjectName(
+                                             reportList, QStringLiteral("macroReportRow"));
+                                         return delegateCount > 0;
+                                     })(),
+                                     1000);
+            QVERIFY(delegateCount < 100);
         }
 
         void table_double_click_selects_row_and_opens_details_once() {
@@ -504,6 +801,9 @@ namespace {
                         }]
                         property var tableModel: testTableModel
                         property int currentRow: -1
+                        property int totalRows: 2
+                        property bool canSelectNextRow: currentRow >= 0 && currentRow < 1
+                        property bool canSelectPreviousRow: currentRow > 0
                         property var details: detailsObject
 
                         function selectRow(row) {
@@ -513,10 +813,17 @@ namespace {
 
                         function sortByColumn(column) {}
                         function setFilterPanelFocusColumn(key) {}
+                        function selectNextRow() {
+                            selectRow(currentRow + 1);
+                        }
+                        function selectPreviousRow() {
+                            selectRow(currentRow - 1);
+                        }
                     }
 
                     SsaTable {
                         id: table
+                        objectName: "keyboardTable"
                         anchors.fill: parent
                         viewModel: viewModel
                         density: "compact"
@@ -557,6 +864,225 @@ namespace {
             QTRY_COMPARE_WITH_TIMEOUT(harness->property("detailsCount").toInt(), 1, 1000);
             QCOMPARE(harness->property("selectionCount").toInt(), 1);
             QCOMPARE(harness->property("currentRow").toInt(), 0);
+
+            auto* table = harness->findChild<QQuickItem*>(QStringLiteral("keyboardTable"));
+            QVERIFY(table != nullptr);
+            table->forceActiveFocus();
+            QTRY_VERIFY_WITH_TIMEOUT(table->hasActiveFocus(), 1000);
+            QTest::keyClick(&window, Qt::Key_Down);
+            QCOMPARE(harness->property("currentRow").toInt(), 1);
+            QTest::keyClick(&window, Qt::Key_Up);
+            QCOMPARE(harness->property("currentRow").toInt(), 0);
+            QTest::keyClick(&window, Qt::Key_Return);
+            QCOMPARE(harness->property("selectionCount").toInt(), 3);
+            QCOMPARE(harness->property("detailsCount").toInt(), 2);
+        }
+
+        void relation_navigator_activates_relation_from_keyboard() {
+            QQmlEngine engine;
+            QQmlComponent component(&engine);
+            component.setData(R"QML(
+                import QtQuick
+                import QtQuick.Controls
+                import SsaConsultaRapida
+
+                Item {
+                    id: harness
+                    width: 640
+                    height: 100
+                    property int loadCount: 0
+                    property string loadedSsa: ""
+
+                    QtObject {
+                        id: relationModel
+                        property var relations: [
+                            { ssa: "202600001", role: "current", status: "APV", kind: "Atual" },
+                            { ssa: "202600002", role: "child", status: "STE", kind: "Derivada" }
+                        ]
+                        property int relationCount: relations.length
+                        property bool relationLoading: false
+                        property string relationError: ""
+                        property string selectedSsaNumber: "202600001"
+                        property int currentRelationIndex: 0
+                        property bool canSelectPreviousRelation: currentRelationIndex > 0
+                        property bool canSelectNextRelation: currentRelationIndex + 1 < relationCount
+                        function selectPreviousRelation() {
+                            currentRelationIndex -= 1;
+                        }
+                        function selectNextRelation() {
+                            currentRelationIndex += 1;
+                        }
+                    }
+
+                    DetailsRelationNavigator {
+                        anchors.fill: parent
+                        viewModel: relationModel
+                        onLoadRelationRequested: ssaNumber => {
+                            harness.loadedSsa = ssaNumber;
+                            harness.loadCount += 1;
+                        }
+                    }
+                }
+            )QML",
+                              QUrl(QStringLiteral("inmemory:/RelationKeyboardHarness.qml")));
+            QTRY_VERIFY_WITH_TIMEOUT(component.status() != QQmlComponent::Loading, 1000);
+            QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+
+            QQuickWindow window;
+            window.setGeometry(0, 0, 640, 100);
+            std::unique_ptr<QObject> harness(component.create());
+            QVERIFY2(harness != nullptr, qPrintable(component.errorString()));
+            auto* harnessItem = qobject_cast<QQuickItem*>(harness.get());
+            QVERIFY(harnessItem != nullptr);
+            harnessItem->setParentItem(window.contentItem());
+            window.show();
+
+            QTRY_VERIFY_WITH_TIMEOUT(window.isExposed(), 1000);
+            auto* relation = findQuickItemByProperty(window.contentItem(), "objectName",
+                                                     QStringLiteral("relationNode-1"));
+            QTRY_VERIFY_WITH_TIMEOUT(relation != nullptr && relation->isVisible(), 1000);
+            relation->forceActiveFocus();
+            QTRY_VERIFY_WITH_TIMEOUT(relation->hasActiveFocus(), 1000);
+            QTest::keyClick(&window, Qt::Key_Return);
+
+            QTRY_COMPARE_WITH_TIMEOUT(harness->property("loadCount").toInt(), 1, 1000);
+            QCOMPARE(harness->property("loadedSsa").toString(), QString("202600002"));
+        }
+
+        void saved_filter_activates_from_keyboard() {
+            QQmlEngine engine;
+            QQmlComponent component(&engine);
+            component.setData(R"QML(
+                import QtQuick
+                import QtQuick.Controls
+                import SsaConsultaRapida
+
+                Item {
+                    id: harness
+                    width: 640
+                    height: 44
+                    property int applyCount: 0
+                    property string appliedName: ""
+
+                    QtObject {
+                        id: viewModel
+                    }
+                    QtObject {
+                        id: filterViewModel
+                        function resetFilters() {}
+                    }
+                    QtObject {
+                        id: preferenceFlow
+                        property var savedFilters: [{ name: "Filtro A" }]
+                        function applySavedFilter(name) {
+                            harness.appliedName = name;
+                            harness.applyCount += 1;
+                        }
+                        function removeSavedFilter(name) {}
+                    }
+
+                    SavedFilterControls {
+                        anchors.fill: parent
+                        viewModel: viewModel
+                        filterViewModel: filterViewModel
+                        preferenceFlow: preferenceFlow
+                    }
+                }
+            )QML",
+                              QUrl(QStringLiteral("inmemory:/SavedFilterKeyboardHarness.qml")));
+            QTRY_VERIFY_WITH_TIMEOUT(component.status() != QQmlComponent::Loading, 1000);
+            QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+
+            QQuickWindow window;
+            window.setGeometry(0, 0, 640, 44);
+            std::unique_ptr<QObject> harness(component.create());
+            QVERIFY2(harness != nullptr, qPrintable(component.errorString()));
+            auto* harnessItem = qobject_cast<QQuickItem*>(harness.get());
+            QVERIFY(harnessItem != nullptr);
+            harnessItem->setParentItem(window.contentItem());
+            window.show();
+
+            QTRY_VERIFY_WITH_TIMEOUT(window.isExposed(), 1000);
+            auto* savedFilter = findQuickItemByProperty(window.contentItem(), "objectName",
+                                                        QStringLiteral("savedFilterTag-0"));
+            QTRY_VERIFY_WITH_TIMEOUT(savedFilter != nullptr && savedFilter->isVisible(), 1000);
+            savedFilter->forceActiveFocus();
+            QTRY_VERIFY_WITH_TIMEOUT(savedFilter->hasActiveFocus(), 1000);
+            QTest::keyClick(&window, Qt::Key_Space);
+
+            QTRY_COMPARE_WITH_TIMEOUT(harness->property("applyCount").toInt(), 1, 1000);
+            QCOMPARE(harness->property("appliedName").toString(), QString("Filtro A"));
+        }
+
+        void derivation_graph_navigates_and_activates_from_keyboard() {
+            QQmlEngine engine;
+            QQmlComponent component(&engine);
+            component.setData(R"QML(
+                import QtQuick
+                import QtQuick.Controls
+                import SsaConsultaRapida
+
+                Item {
+                    id: harness
+                    width: 420
+                    height: 180
+                    property int clickCount: 0
+                    property string clickedSsa: ""
+
+                    QtObject {
+                        id: graphModel
+                        property int nodeCount: 2
+                        property real graphWidth: 900
+                        property real graphHeight: 120
+                        signal graphChanged
+                        function rowCount() { return nodeCount; }
+                        function edges() { return []; }
+                        function nodeCenter(index) { return Qt.point(80 + index * 720, 70); }
+                        function nodeSsa(index) { return index === 0 ? "202600001" : "202600002"; }
+                        function nodeStatus(index) { return index === 0 ? "APV" : "STE"; }
+                        function nodeRole(index) { return index === 0 ? "current" : "child"; }
+                        function nodeIsTarget(index) { return index === 0; }
+                    }
+
+                    DerivadasGraph {
+                        id: graph
+                        objectName: "keyboardGraph"
+                        anchors.fill: parent
+                        graphModel: graphModel
+                        onNodeClicked: ssaNumber => {
+                            harness.clickedSsa = ssaNumber;
+                            harness.clickCount += 1;
+                        }
+                    }
+                }
+            )QML",
+                              QUrl(QStringLiteral("inmemory:/GraphKeyboardHarness.qml")));
+            QTRY_VERIFY_WITH_TIMEOUT(component.status() != QQmlComponent::Loading, 1000);
+            QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+
+            QQuickWindow window;
+            window.setGeometry(0, 0, 420, 180);
+            std::unique_ptr<QObject> harness(component.create());
+            QVERIFY2(harness != nullptr, qPrintable(component.errorString()));
+            auto* harnessItem = qobject_cast<QQuickItem*>(harness.get());
+            QVERIFY(harnessItem != nullptr);
+            harnessItem->setParentItem(window.contentItem());
+            window.show();
+
+            QTRY_VERIFY_WITH_TIMEOUT(window.isExposed(), 1000);
+            auto* graph = harness->findChild<QQuickItem*>(QStringLiteral("keyboardGraph"));
+            QVERIFY(graph != nullptr);
+            graph->forceActiveFocus();
+            QTRY_VERIFY_WITH_TIMEOUT(graph->hasActiveFocus(), 1000);
+            QTest::keyClick(&window, Qt::Key_Right);
+            QCOMPARE(graph->property("currentNodeIndex").toInt(), 1);
+            QVERIFY(graph->property("contentX").toReal() > 0.0);
+            QVERIFY(graph->property("contentX").toReal() <=
+                    graph->property("contentWidth").toReal() - graph->width());
+            QTest::keyClick(&window, Qt::Key_Return);
+
+            QTRY_COMPARE_WITH_TIMEOUT(harness->property("clickCount").toInt(), 1, 1000);
+            QCOMPARE(harness->property("clickedSsa").toString(), QString("202600002"));
         }
 
         void filter_summary_distributes_surplus_and_preserves_natural_widths() {
@@ -574,6 +1100,7 @@ namespace {
                     QtObject {
                         id: filters
                         property bool excludeScaSesSte: false
+                        property bool hasExclusionFilter: false
                         property var activeFilterEntries: [
                             { text: "Exec: IEE3, MEL4", kind: "column", key: "setor_executor" },
                             { text: "Sit: SEE", kind: "column", key: "situacao" }

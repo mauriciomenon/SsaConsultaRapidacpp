@@ -18,13 +18,6 @@ namespace ssa::presentation {
         constexpr qreal kChildRowGap = kNodeHeight + 28;
         constexpr qreal kMargin = 8;
 
-        QString mermaidEscaped(QString value) {
-            value.replace(QStringLiteral("\\"), QStringLiteral("\\\\"));
-            value.replace(QStringLiteral("\""), QStringLiteral("\\\""));
-            value.replace(QStringLiteral("\n"), QStringLiteral("\\n"));
-            return value;
-        }
-
         QString svgEscaped(QString value) {
             value.replace(QStringLiteral("&"), QStringLiteral("&amp;"));
             value.replace(QStringLiteral("<"), QStringLiteral("&lt;"));
@@ -37,22 +30,21 @@ namespace ssa::presentation {
             if (childCount == 0) {
                 return 0;
             }
-            return std::min(kMaxChildrenPerRow, static_cast<int>(childCount));
+            return (std::min)(kMaxChildrenPerRow, static_cast<int>(childCount));
         }
 
         qreal routeXBetween(const qreal fromX, const qreal toX) {
             const qreal distance = std::abs(toX - fromX);
-            const qreal offset = std::min<qreal>(28.0, distance / 2.0);
+            const qreal offset = (std::min<qreal>)(28.0, distance / 2.0);
             return toX + (fromX <= toX ? -offset : offset);
         }
 
     } // namespace
 
-    DerivadasGraphModel::DerivadasGraphModel(QObject* parent) : QAbstractListModel(parent) {}
+    DerivadasGraphModel::DerivadasGraphModel(QObject* parent) : QObject(parent) {}
 
     void DerivadasGraphModel::buildFromRelations(const QString& target,
                                                  const QVariantList& relations) {
-        beginResetModel();
         nodes_.clear();
         edges_.clear();
         target_ = target.trimmed();
@@ -60,7 +52,6 @@ namespace ssa::presentation {
         if (target_.isEmpty()) {
             graphWidth_ = 0;
             graphHeight_ = 0;
-            endResetModel();
             emit graphChanged();
             return;
         }
@@ -214,50 +205,17 @@ namespace ssa::presentation {
         qreal maxX = 0;
         qreal maxY = 0;
         for (const auto& node : nodes_) {
-            maxX = std::max(maxX, node.position.x() + kNodeWidth);
-            maxY = std::max(maxY, node.position.y() + kNodeHeight);
+            maxX = (std::max)(maxX, node.position.x() + kNodeWidth);
+            maxY = (std::max)(maxY, node.position.y() + kNodeHeight);
         }
         graphWidth_ = maxX + kMargin;
         graphHeight_ = maxY + kMargin;
 
-        endResetModel();
         emit graphChanged();
     }
 
-    int DerivadasGraphModel::rowCount(const QModelIndex& parent) const {
-        if (parent.isValid()) {
-            return 0;
-        }
+    int DerivadasGraphModel::rowCount() const {
         return static_cast<int>(nodes_.size());
-    }
-
-    QVariant DerivadasGraphModel::data(const QModelIndex& index, const int role) const {
-        if (!index.isValid() || index.row() < 0 || index.row() >= static_cast<int>(nodes_.size())) {
-            return {};
-        }
-        const auto& node = nodes_[index.row()];
-        switch (role) {
-        case SsaRole:
-            return node.ssa;
-        case IsTargetRole:
-            return node.isTarget;
-        case PositionRole:
-            return QPointF(node.position.x() + kNodeWidth / 2.0,
-                           node.position.y() + kNodeHeight / 2.0);
-        case LabelRole:
-            return node.ssa;
-        case RoleRole:
-            return node.role;
-        default:
-            return {};
-        }
-    }
-
-    QHash<int, QByteArray> DerivadasGraphModel::roleNames() const {
-        return {
-            {SsaRole, "ssa"},     {IsTargetRole, "isTarget"}, {PositionRole, "nodeCenter"},
-            {LabelRole, "label"}, {RoleRole, "role"},
-        };
     }
 
     QString DerivadasGraphModel::target() const {
@@ -270,45 +228,9 @@ namespace ssa::presentation {
             .arg(static_cast<int>(edges_.size()));
     }
 
-    QString DerivadasGraphModel::mermaid() const {
-        if (nodes_.empty()) {
-            return QStringLiteral("flowchart LR\n");
-        }
-        QString result = QStringLiteral("flowchart LR\n");
-        std::unordered_map<std::string, QString> idBySsa;
-        idBySsa.reserve(nodes_.size());
-        for (std::size_t index = 0; index < nodes_.size(); ++index) {
-            const auto id = QStringLiteral("N%1").arg(static_cast<int>(index));
-            idBySsa.emplace(nodes_[index].ssa.toStdString(), id);
-            const auto label = nodes_[index].status.isEmpty()
-                                   ? mermaidEscaped(nodes_[index].ssa)
-                                   : mermaidEscaped(nodes_[index].ssa) + QStringLiteral("\\n") +
-                                         mermaidEscaped(nodes_[index].status);
-            result += QStringLiteral("  %1[\"%2\"]\n").arg(id, label);
-        }
-        for (const auto& edge : edges_) {
-            const auto fromIt = idBySsa.find(edge.from.toStdString());
-            const auto toIt = idBySsa.find(edge.to.toStdString());
-            if (fromIt == idBySsa.end() || toIt == idBySsa.end()) {
-                continue;
-            }
-            result += edge.dashed
-                          ? QStringLiteral("  %1 -.-> %2\n").arg(fromIt->second, toIt->second)
-                          : QStringLiteral("  %1 --> %2\n").arg(fromIt->second, toIt->second);
-        }
-        result +=
-            QStringLiteral("  classDef target fill:#ffbf00,stroke:#4a3a00,stroke-width:2px\n");
-        for (std::size_t index = 0; index < nodes_.size(); ++index) {
-            if (nodes_[index].isTarget) {
-                result += QStringLiteral("  class N%1 target\n").arg(static_cast<int>(index));
-            }
-        }
-        return result;
-    }
-
     QString DerivadasGraphModel::svg() const {
-        const qreal width = std::max<qreal>(graphWidth_, kNodeWidth + 2 * kMargin);
-        const qreal height = std::max<qreal>(graphHeight_, kNodeHeight + 2 * kMargin);
+        const qreal width = (std::max<qreal>)(graphWidth_, kNodeWidth + 2 * kMargin);
+        const qreal height = (std::max<qreal>)(graphHeight_, kNodeHeight + 2 * kMargin);
         QString result =
             QStringLiteral("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"%1\" height=\"%2\" "
                            "viewBox=\"0 0 %1 %2\">\n"
@@ -342,11 +264,10 @@ namespace ssa::presentation {
                                      .arg(routeX)
                                      .arg(toIt->second.y())
                                      .arg(toX);
-            result +=
-                QStringLiteral("  <path d=\"%1\" fill=\"none\" stroke=\"#8a8179\" "
-                               "stroke-width=\"1.5\"%2/>\n")
-                    .arg(path)
-                    .arg(edge.dashed ? QStringLiteral(" stroke-dasharray=\"6 4\"") : QString{});
+            const auto dash = edge.dashed ? QStringLiteral(" stroke-dasharray=\"6 4\"") : QString{};
+            result += QStringLiteral("  <path d=\"%1\" fill=\"none\" stroke=\"#8a8179\" "
+                                     "stroke-width=\"1.5\"%2/>\n")
+                          .arg(path, dash);
             const qreal direction = leftToRight ? 1.0 : -1.0;
             const QString arrow = QStringLiteral("M %1 %2 L %3 %4 M %1 %2 L %3 %5")
                                       .arg(toX)
@@ -354,11 +275,9 @@ namespace ssa::presentation {
                                       .arg(toX - direction * 5.0)
                                       .arg(toIt->second.y() - 4.0)
                                       .arg(toIt->second.y() + 4.0);
-            result +=
-                QStringLiteral("  <path d=\"%1\" fill=\"none\" stroke=\"#8a8179\" "
-                               "stroke-width=\"1.5\"%2/>\n")
-                    .arg(arrow)
-                    .arg(edge.dashed ? QStringLiteral(" stroke-dasharray=\"6 4\"") : QString{});
+            result += QStringLiteral("  <path d=\"%1\" fill=\"none\" stroke=\"#8a8179\" "
+                                     "stroke-width=\"1.5\"%2/>\n")
+                          .arg(arrow, dash);
         }
 
         for (const auto& node : nodes_) {

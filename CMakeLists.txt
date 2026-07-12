@@ -20,8 +20,10 @@ find_package(
              Qml
              Quick
              QuickControls2
-             Sql
-             Test)
+             Sql)
+if(SSA_BUILD_TESTS)
+  find_package(Qt6 6.6 REQUIRED COMPONENTS Test)
+endif()
 find_package(SQLite3 REQUIRED)
 
 if(TARGET SQLite3::SQLite3)
@@ -46,7 +48,6 @@ add_library(
   ssa_core STATIC
   src/domain/ColumnCatalog.cpp
   src/domain/ColumnValuePriorityPolicy.cpp
-  src/domain/SectorHierarchy.cpp
   src/domain/SsaRelationGraph.cpp
   src/query/SearchParser.cpp
   src/query/AdvancedFilterSqlCompiler.cpp
@@ -84,7 +85,6 @@ add_library(
   src/infra/sqlite/SqliteMaintenancePort.cpp
   src/infra/sqlite/SqliteSsaImportWriter.cpp
   src/infra/sqlite/SqliteSsaRepository.cpp
-  src/infra/sqlite/SqliteSchemaInspector.cpp
   src/infra/preferences/JsonUserPreferencesStore.cpp
   src/infra/preferences/JsonFilterPresetStore.cpp
   src/infra/preferences/FilterPreferencesJsonCodec.cpp
@@ -212,13 +212,14 @@ qt_add_qml_module(
   app/desktop/qml/components/AdvancedFilterPanel.qml
   app/desktop/qml/components/AdvancedMacroFilterCard.qml
   app/desktop/qml/components/AdvancedReprogrammingFilterCard.qml
+  app/desktop/qml/components/ReprogrammingValuePopup.qml
   app/desktop/qml/components/AdvancedTextValuePopup.qml
   app/desktop/qml/components/AdvancedTextFilterCard.qml
   app/desktop/qml/components/AdvancedTextFilterGrid.qml
-  app/desktop/qml/components/AdvancedWeekFilterCard.qml
   app/desktop/qml/components/AdvancedWeekEmissionCard.qml
   app/desktop/qml/components/AdvancedWeekExecutionCard.qml
   app/desktop/qml/components/DetailsPanel.qml
+  app/desktop/qml/components/DetailsRelationNavigator.qml
   app/desktop/qml/components/DerivadasGraph.qml
   app/desktop/qml/components/ColumnFilterPanel.qml
   app/desktop/qml/components/ColumnFilterRow.qml
@@ -296,7 +297,7 @@ if(SSA_BUILD_TESTS)
   target_link_libraries(
     ssa_unit_tests PRIVATE ssa_application ssa_cli ssa_core ssa_platform
                            Catch2::Catch2WithMain)
-  catch_discover_tests(ssa_unit_tests)
+  catch_discover_tests(ssa_unit_tests PROPERTIES TIMEOUT 15)
 
   add_library(ssa_theme_lab_core STATIC tools/theme_lab/ThemePaletteLab.cpp)
   target_include_directories(ssa_theme_lab_core
@@ -309,7 +310,7 @@ if(SSA_BUILD_TESTS)
   add_executable(ssa_theme_lab_tests tests/unit/ThemePaletteLabTests.cpp)
   target_link_libraries(ssa_theme_lab_tests PRIVATE ssa_theme_lab_core
                                                     Catch2::Catch2WithMain)
-  catch_discover_tests(ssa_theme_lab_tests)
+  catch_discover_tests(ssa_theme_lab_tests PROPERTIES TIMEOUT 15)
 
   add_test(
     NAME ssa_theme_lab_cli_generates_report
@@ -331,13 +332,14 @@ if(SSA_BUILD_TESTS)
     tests/integration/SqliteRepositoryTests.cpp)
   target_link_libraries(ssa_integration_tests PRIVATE ssa_infra
                                                       Catch2::Catch2WithMain)
-  catch_discover_tests(ssa_integration_tests)
+  catch_discover_tests(ssa_integration_tests PROPERTIES TIMEOUT 30)
 
   add_executable(ssa_qt_presentation_tests
                  tests/smoke/PresentationSmokeTest.cpp)
   target_link_libraries(ssa_qt_presentation_tests PRIVATE ssa_presentation
                                                           Qt6::Test)
   add_test(NAME ssa_qt_presentation_tests COMMAND ssa_qt_presentation_tests)
+  set_tests_properties(ssa_qt_presentation_tests PROPERTIES TIMEOUT 30)
 
   add_executable(ssa_qt_presentation_filter_tests
                  tests/smoke/PresentationFilterSmokeTest.cpp)
@@ -345,11 +347,36 @@ if(SSA_BUILD_TESTS)
                         PRIVATE ssa_presentation Qt6::Test)
   add_test(NAME ssa_qt_presentation_filter_tests
            COMMAND ssa_qt_presentation_filter_tests)
+  set_tests_properties(ssa_qt_presentation_filter_tests PROPERTIES TIMEOUT 30)
+
+  add_executable(ssa_qt_workflow_runner_tests
+                 tests/smoke/WorkflowCommandRunnerTest.cpp)
+  target_link_libraries(ssa_qt_workflow_runner_tests PRIVATE ssa_presentation
+                                                             Qt6::Test)
+  add_test(NAME ssa_qt_workflow_runner_tests
+           COMMAND ssa_qt_workflow_runner_tests)
+  set_tests_properties(ssa_qt_workflow_runner_tests PROPERTIES TIMEOUT 10)
+
+  add_executable(ssa_qt_current_week_tests
+                 tests/smoke/CurrentWeekViewModelTest.cpp)
+  target_link_libraries(ssa_qt_current_week_tests PRIVATE ssa_presentation
+                                                          Qt6::Test)
+  add_test(NAME ssa_qt_current_week_tests COMMAND ssa_qt_current_week_tests)
+  set_tests_properties(ssa_qt_current_week_tests PROPERTIES TIMEOUT 10)
+
+  add_executable(ssa_qt_preference_lifecycle_tests
+                 tests/smoke/PreferenceLifecycleTest.cpp)
+  target_link_libraries(ssa_qt_preference_lifecycle_tests
+                        PRIVATE ssa_presentation Qt6::Test)
+  add_test(NAME ssa_qt_preference_lifecycle_tests
+           COMMAND ssa_qt_preference_lifecycle_tests)
+  set_tests_properties(ssa_qt_preference_lifecycle_tests PROPERTIES TIMEOUT 15)
 
   add_executable(ssa_qt_filter_panel_tests tests/smoke/FilterPanelSmokeTest.cpp)
   target_link_libraries(ssa_qt_filter_panel_tests PRIVATE ssa_presentation
                                                           Qt6::Test)
   add_test(NAME ssa_qt_filter_panel_tests COMMAND ssa_qt_filter_panel_tests)
+  set_tests_properties(ssa_qt_filter_panel_tests PROPERTIES TIMEOUT 30)
 
   add_executable(ssa_qml_advanced_popup_tests
                  tests/smoke/AdvancedPopupQmlTest.cpp)
@@ -378,23 +405,34 @@ if(SSA_BUILD_TESTS)
 
   add_test(NAME ssa_cli_version COMMAND ssa_consulta_rapida_cli --version)
   set_tests_properties(
-    ssa_cli_version PROPERTIES PASS_REGULAR_EXPRESSION
+    ssa_cli_version PROPERTIES TIMEOUT 10 PASS_REGULAR_EXPRESSION
                                "ssa_consulta_rapida_cli ${PROJECT_VERSION}")
 
   foreach(popup_width IN ITEMS 1580 1180)
     add_test(
       NAME ssa_qml_popup_smoke_${popup_width}
       COMMAND
-        ${CMAKE_COMMAND} -E env QT_QPA_PLATFORM=offscreen
-        $<TARGET_FILE:ssa_consulta_rapida> --screenshot
-        ${CMAKE_CURRENT_BINARY_DIR}/popup-smoke-${popup_width}.png
-        --smoke-advanced-popup --smoke-window-width ${popup_width}
-        --smoke-window-height 940)
+        ${CMAKE_COMMAND} -DAPP=$<TARGET_FILE:ssa_consulta_rapida>
+        -DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/popup-smoke-${popup_width}
+        -DWIDTH=${popup_width} -DHEIGHT=940 -DMODE=popup -P
+        ${CMAKE_CURRENT_SOURCE_DIR}/cmake/RunHermeticGuiSmoke.cmake)
     set_tests_properties(
       ssa_qml_popup_smoke_${popup_width}
       PROPERTIES TIMEOUT 15 RUN_SERIAL TRUE PASS_REGULAR_EXPRESSION
                  "QML_POPUP_SMOKE.*success.*true")
   endforeach()
+
+  add_test(
+    NAME ssa_qml_layout_smoke_1180x760
+    COMMAND
+      ${CMAKE_COMMAND} -DAPP=$<TARGET_FILE:ssa_consulta_rapida>
+      -DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/layout-smoke-1180x760 -DWIDTH=1180
+      -DHEIGHT=760 -DMODE=layout -P
+      ${CMAKE_CURRENT_SOURCE_DIR}/cmake/RunHermeticGuiSmoke.cmake)
+  set_tests_properties(
+    ssa_qml_layout_smoke_1180x760
+    PROPERTIES TIMEOUT 15 RUN_SERIAL TRUE PASS_REGULAR_EXPRESSION
+               "QML_LAYOUT_SMOKE.*success.*true")
 
   add_test(
     NAME ssa_qml_details_timeout
@@ -427,14 +465,30 @@ if(SSA_BUILD_TESTS)
     add_test(
       NAME ssa_mem_stress_rejects_invalid_pages
       COMMAND
-        /bin/sh -c
-        "$<TARGET_FILE:ssa_mem_stress> --db missing.sqlite --pages abc 2>&1 | grep -q 'error: --pages must be a positive integer'"
-    )
+        ${CMAKE_COMMAND} -DAPP=$<TARGET_FILE:ssa_mem_stress> -DOPTION=--pages
+        -DVALUE=abc -DEXPECTED=error:\ --pages\ must\ be\ a\ positive\ integer
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/RunMemStressArgumentFailure.cmake)
+    set_tests_properties(ssa_mem_stress_rejects_invalid_pages PROPERTIES TIMEOUT
+                                                                         10)
     add_test(
       NAME ssa_mem_stress_rejects_invalid_page_size
       COMMAND
-        /bin/sh -c
-        "$<TARGET_FILE:ssa_mem_stress> --db missing.sqlite --page-size 0 2>&1 | grep -q 'error: --page-size must be a positive integer'"
-    )
+        ${CMAKE_COMMAND} -DAPP=$<TARGET_FILE:ssa_mem_stress>
+        -DOPTION=--page-size -DVALUE=0
+        -DEXPECTED=error:\ --page-size\ must\ be\ a\ positive\ integer -P
+        ${CMAKE_CURRENT_SOURCE_DIR}/cmake/RunMemStressArgumentFailure.cmake)
+    set_tests_properties(ssa_mem_stress_rejects_invalid_page_size
+                         PROPERTIES TIMEOUT 10)
+    set(MEM_STRESS_MAX_DELTA_ERROR
+        "error: --max-footprint-delta-kb must be a positive integer")
+    add_test(
+      NAME ssa_mem_stress_rejects_invalid_max_delta
+      COMMAND
+        ${CMAKE_COMMAND} -DAPP=$<TARGET_FILE:ssa_mem_stress>
+        -DOPTION=--max-footprint-delta-kb -DVALUE=0
+        "-DEXPECTED=${MEM_STRESS_MAX_DELTA_ERROR}" -P
+        ${CMAKE_CURRENT_SOURCE_DIR}/cmake/RunMemStressArgumentFailure.cmake)
+    set_tests_properties(ssa_mem_stress_rejects_invalid_max_delta
+                         PROPERTIES TIMEOUT 10)
   endif()
 endif()

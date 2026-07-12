@@ -1,5 +1,7 @@
 #include "SsaCliImportPaths.h"
 
+#include "qt/FilesystemPath.h"
+
 #include <QString>
 
 namespace ssa::app::cli {
@@ -8,7 +10,7 @@ namespace ssa::app::cli {
     SsaCliImportPaths::docsDirectory(const QCommandLineParser& parser,
                                      const std::filesystem::path& databaseFilePath) {
         if (parser.isSet("docs-dir")) {
-            return std::filesystem::path{parser.value("docs-dir").toStdString()};
+            return ssa::qt::toFileSystemPath(parser.value("docs-dir"));
         }
         const auto absoluteDatabasePath =
             std::filesystem::absolute(databaseFilePath).lexically_normal();

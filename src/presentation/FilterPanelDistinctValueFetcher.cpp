@@ -13,6 +13,20 @@
 
 namespace ssa::presentation {
 
+    namespace {
+
+        QString errorMessage(const std::exception_ptr& error) {
+            try {
+                std::rethrow_exception(error);
+            } catch (const std::exception& exception) {
+                return QString::fromUtf8(exception.what());
+            } catch (...) {
+                return QStringLiteral("Falha interna ao consultar valores");
+            }
+        }
+
+    } // namespace
+
     FilterPanelDistinctValueFetcher::FilterPanelDistinctValueFetcher(
         std::shared_ptr<query::SsaQueryService> queryService, QObject* parent)
         : QObject(parent), queryService_(std::move(queryService)) {
@@ -131,14 +145,9 @@ namespace ssa::presentation {
         }
         if (!cancelled && !(result && result->canceled)) {
             if (result && result->error) {
-                try {
-                    std::rethrow_exception(result->error);
-                } catch (const std::exception& error) {
-                    qWarning().noquote() << "Column value query failed:" << error.what();
-                } catch (...) {
-                    qWarning() << "Column value query failed: unknown error";
-                }
-                emit valuesFailed(activeRequestToken_);
+                const auto message = errorMessage(result->error);
+                qWarning().noquote() << "Column value query failed:" << message;
+                emit valuesFailed(activeRequestToken_, message);
             } else {
                 auto values = result ? std::move(result->values) : std::vector<std::string>{};
                 const auto maxValueLength = result ? result->maxValueLength : 0;

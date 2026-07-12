@@ -56,6 +56,8 @@ int main(int argc, char* argv[]) {
                                         "Set the root window width for smoke capture.", "pixels"));
     parser.addOption(QCommandLineOption(QStringList{"smoke-window-height"},
                                         "Set the root window height for smoke capture.", "pixels"));
+    parser.addOption(QCommandLineOption(QStringList{"smoke-layout"},
+                                        "Validate root layout bounds before smoke capture."));
     parser.addOption(
         QCommandLineOption(QStringList{"open-details-window"},
                            "Open details graph window before screenshot smoke capture."));

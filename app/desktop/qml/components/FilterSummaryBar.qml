@@ -18,18 +18,7 @@ Rectangle {
     readonly property bool hasActiveExclusion: filterViewModel.excludeScaSesSte
     // Mirrors Python filtersSummaryFrame active_state: any search, chip, or SCA/SES/STE exclusion.
     readonly property bool hasAnyActive: hasSearch || hasFilterEntries || hasActiveExclusion
-    // True when any chip carries Exc: (status !CODE, SCA/SES/STE, etc.).
-    readonly property bool hasExclusionFilter: {
-        if (hasActiveExclusion)
-            return true;
-        const entries = filterViewModel.activeFilterEntries;
-        for (let i = 0; i < entries.length; ++i) {
-            const text = String(entries[i].text || "");
-            if (text.indexOf("Exc:") >= 0)
-                return true;
-        }
-        return false;
-    }
+    readonly property bool hasExclusionFilter: filterViewModel.hasExclusionFilter
     readonly property int activeTagCount: filterViewModel.activeFilterEntries.length + (hasSearch ? 1 : 0) + (hasActiveExclusion ? 1 : 0)
     readonly property bool compact: activeTagCount >= 2
     readonly property int tagTextSize: compact ? 11 : 12
@@ -94,6 +83,7 @@ Rectangle {
             enabled: root.hasAnyActive
             ToolTip.visible: hovered
             ToolTip.text: "Limpar filtros"
+            Accessible.name: "Limpar todos os filtros"
             ToolTip.delay: 0
             onClicked: root.clearAllRequested()
         }

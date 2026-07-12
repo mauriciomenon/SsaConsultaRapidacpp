@@ -10,15 +10,17 @@ namespace ssa::application {
                                           public ports::IDerivadasPort {
       public:
         [[nodiscard]] ports::WorkflowResult
-        importExternalFiles(const ports::ImportExternalFilesRequest& request) override;
-        [[nodiscard]] ports::WorkflowResult rescan(const ports::RescanRequest& request) override;
+        importExternalFiles(const ports::ImportExternalFilesRequest& request,
+                            std::stop_token stopToken = {}) override;
+        [[nodiscard]] ports::WorkflowResult rescan(const ports::RescanRequest& request,
+                                                   std::stop_token stopToken = {}) override;
         [[nodiscard]] ports::WorkflowResult
         exportFilteredList(const ports::ExportFilteredListRequest& request,
                            std::stop_token stopToken = {}) override;
-        [[nodiscard]] ports::WorkflowResult resetDatabase() override;
-        [[nodiscard]] ports::WorkflowResult cleanData() override;
-        [[nodiscard]] ports::WorkflowResult vacuumAnalyze() override;
-        [[nodiscard]] ports::WorkflowResult syncDerivadas() override;
+        [[nodiscard]] ports::WorkflowResult resetDatabase(std::stop_token stopToken = {}) override;
+        [[nodiscard]] ports::WorkflowResult cleanData(std::stop_token stopToken = {}) override;
+        [[nodiscard]] ports::WorkflowResult vacuumAnalyze(std::stop_token stopToken = {}) override;
+        [[nodiscard]] ports::WorkflowResult syncDerivadas(std::stop_token stopToken = {}) override;
 
       private:
         [[nodiscard]] static ports::WorkflowResult unavailable(const char* operation);

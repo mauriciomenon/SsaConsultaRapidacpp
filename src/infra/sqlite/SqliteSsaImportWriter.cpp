@@ -2,15 +2,18 @@
 
 #include "domain/SsaTypes.h"
 #include "infra/sqlite/SqliteConnection.h"
+#include "infra/sqlite/SqliteProgressHandler.h"
 #include "query/SqlQueryText.h"
 
 #include <sqlite3.h>
 
+#include <array>
 #include <charconv>
 #include <memory>
 #include <sstream>
 #include <stdexcept>
 #include <string_view>
+#include <system_error>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -22,6 +25,11 @@ namespace ssa::infra::sqlite {
         void executeSql(sqlite3* db, const std::string& sql) {
             char* error = nullptr;
             const int rc = sqlite3_exec(db, sql.c_str(), nullptr, nullptr, &error);
+            if (rc == SQLITE_INTERRUPT) {
+                sqlite3_free(error);
+                throw std::system_error(std::make_error_code(std::errc::operation_canceled),
+                                        "sqlite import canceled");
+            }
             if (rc != SQLITE_OK) {
                 const std::string message = error == nullptr ? sqlite3_errmsg(db) : error;
                 sqlite3_free(error);
@@ -68,7 +76,7 @@ namespace ssa::infra::sqlite {
 
           private:
             sqlite3* db_;
-            bool active_{true};
+            bool active_ = true;
         };
 
         bool isIdColumnKey(const std::string& key) {
@@ -127,9 +135,10 @@ namespace ssa::infra::sqlite {
         std::vector<std::string>
         createFilterIndexesSql(const std::string& tableName,
                                const std::vector<domain::ColumnDef>& columns) {
-            static constexpr std::string_view filterColumns[] = {"situacao", "setor_executor",
-                                                                 "derivada_de", "semana_programada",
-                                                                 "semana_executada"};
+            static constexpr std::array filterColumns = {
+                std::string_view{"situacao"}, std::string_view{"setor_executor"},
+                std::string_view{"derivada_de"}, std::string_view{"semana_programada"},
+                std::string_view{"semana_executada"}};
             std::unordered_set<std::string_view> present;
             for (const auto& column : columns) {
                 present.insert(column.key);
@@ -283,9 +292,10 @@ namespace ssa::infra::sqlite {
     struct SqliteSsaImportWriter::WriteSession::Storage final {
         Storage(const std::filesystem::path& databasePath,
                 const std::vector<domain::ColumnDef>& configuredColumns, std::string tableName,
-                const bool replaceAll)
-            : connection(databasePath, SqliteOpenMode::ReadWriteCreate), columns(configuredColumns),
-              tableName(std::move(tableName)) {
+                const bool replaceAll, std::stop_token stopToken)
+            : connection(databasePath, SqliteOpenMode::ReadWriteCreate),
+              progress(connection.handle(), stopToken), stopToken(std::move(stopToken)),
+              columns(configuredColumns), tableName(std::move(tableName)) {
             auto* db = connection.handle();
             executeSql(db, createTableSql(this->tableName, columns));
             executeSql(db, createSsaNumberIndexSql(this->tableName));
@@ -305,6 +315,7 @@ namespace ssa::infra::sqlite {
 
         void write(const importing::ResolvedSsaImportRows& rows, const std::size_t fileCount,
                    const std::size_t skippedRows) {
+            throwIfCanceled(stopToken);
             if (finished) {
                 throw std::logic_error("sqlite import session is already finished");
             }
@@ -317,6 +328,7 @@ namespace ssa::infra::sqlite {
                                        *deleteExisting);
 
             for (const auto& row : rows.rows) {
+                throwIfCanceled(stopToken);
                 int bindIndex = 1;
                 for (const auto& column : columns) {
                     bindValue(*insert, bindIndex, column, rowValuePtr(row, column.key));
@@ -328,6 +340,7 @@ namespace ssa::infra::sqlite {
         }
 
         [[nodiscard]] importing::SsaImportWriteSummary finish() {
+            throwIfCanceled(stopToken);
             if (!finished) {
                 transaction->commit();
                 finished = true;
@@ -336,6 +349,8 @@ namespace ssa::infra::sqlite {
         }
 
         SqliteConnection connection;
+        SqliteProgressHandler progress;
+        std::stop_token stopToken;
         std::unique_ptr<WriteTransaction> transaction;
         std::vector<domain::ColumnDef> columns;
         std::string tableName;
@@ -343,7 +358,7 @@ namespace ssa::infra::sqlite {
         std::unique_ptr<SqliteStatement> insertNumber;
         std::unique_ptr<SqliteStatement> deleteExisting;
         importing::SsaImportWriteSummary summary;
-        bool finished{false};
+        bool finished = false;
     };
 
     SqliteSsaImportWriter::WriteSession::WriteSession(std::unique_ptr<Storage> storage)
@@ -369,16 +384,17 @@ namespace ssa::infra::sqlite {
     importing::SsaImportWriteSummary
     SqliteSsaImportWriter::write(const importing::ResolvedSsaImportRows& rows,
                                  const std::size_t fileCount, const std::size_t skippedRows,
-                                 const bool replaceAll) const {
-        auto session = startSession(replaceAll);
+                                 const bool replaceAll, std::stop_token stopToken) const {
+        auto session = startSession(replaceAll, std::move(stopToken));
         session.write(rows, fileCount, skippedRows);
         return session.finish();
     }
 
     SqliteSsaImportWriter::WriteSession
-    SqliteSsaImportWriter::startSession(const bool replaceAll) const {
-        return WriteSession{std::make_unique<WriteSession::Storage>(databasePath_, columns_,
-                                                                    tableName_, replaceAll)};
+    SqliteSsaImportWriter::startSession(const bool replaceAll, std::stop_token stopToken) const {
+        throwIfCanceled(stopToken);
+        return WriteSession{std::make_unique<WriteSession::Storage>(
+            databasePath_, columns_, tableName_, replaceAll, std::move(stopToken))};
     }
 
 } // namespace ssa::infra::sqlite

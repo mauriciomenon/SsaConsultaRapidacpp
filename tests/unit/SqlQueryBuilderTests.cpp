@@ -149,7 +149,7 @@ TEST_CASE("sql query builder compiles advanced text and range filters") {
     request.advancedFilters.textFilters = {{"situacao", "=APV"}, {"setor_executor", "=SMM"}};
     request.advancedFilters.issueYear = 2025;
     request.advancedFilters.executionYear = 2025;
-    request.advancedFilters.reprogrammingEquals = 1;
+    request.advancedFilters.reprogrammingValues = {1};
     request.advancedFilters.reprogrammingComparison =
         ssa::domain::NumericComparisonMode::GreaterOrEqual;
     request.advancedFilters.issueWeekStart = 202501;

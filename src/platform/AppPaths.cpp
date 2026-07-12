@@ -1,5 +1,7 @@
 #include "platform/AppPaths.h"
 
+#include "qt/FilesystemPath.h"
+
 #include <QDir>
 
 #include <filesystem>
@@ -10,24 +12,16 @@ namespace ssa::platform {
     AppPaths::AppPaths(QString projectRoot, QString configDir)
         : projectRoot_(std::move(projectRoot)), configDir_(std::move(configDir)) {}
 
-    QString AppPaths::projectRoot() const {
-        return projectRoot_;
-    }
-
-    QString AppPaths::configDir() const {
-        return configDir_;
-    }
-
     QString AppPaths::preferencesFile() const {
         return QDir(configDir_).filePath("ssa_cpp_preferences.json");
     }
 
     std::filesystem::path AppPaths::projectRootPath() const {
-        return std::filesystem::path{projectRoot_.toStdString()};
+        return qt::toFileSystemPath(projectRoot_);
     }
 
     std::filesystem::path AppPaths::configDirectoryPath() const {
-        return std::filesystem::path{configDir_.toStdString()};
+        return qt::toFileSystemPath(configDir_);
     }
 
     std::filesystem::path AppPaths::inputFolderPath() const {

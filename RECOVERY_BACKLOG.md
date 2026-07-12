@@ -8,19 +8,15 @@
 ## Varredura de codigo (junho 2026) - pendentes
 
 ### Performance estrutural (deferido - exige migration/schema)
-- [MED] [P1] `readAll` paginado em export/macro = O(N^2) OFFSET paging. Macro herda pageSize=100. Usar path `pageSize==0` (streaming) que ja existe.
 - [MED] [P2] status-last CASE sort (`UPPER(COALESCE(...))<>'STE'` por linha) nao-sargable, forca full-sort. Generated column `_status_is_ste` + composite index resolveria, mas exige migration robusta para DBs antigos (CREATE TABLE IF NOT EXISTS nao recria). Revertido - precisa de ALTER TABLE idempotente + fallback no builder.
 - [MED] [P4] Macro report agrupa em memoria (`map<ReportKey,set<string>>` so pra .size()). Deveria ser `GROUP BY ... COUNT(DISTINCT)` em SQL.
 - [MED] [P7] Eager date/string formatting: formata 500x12 celulas antes de exibir; QML so renderiza visiveis. Lazy exigiria repensar `SsaTableDisplayValues`/`displayCache_` - ciclo dedicado.
 
 ### Qualidade / duplicacao
 - [HIGH] [Q1] 5 copias de trim/trimCopy: SearchParser, SsaExecutadasReportService, SsaSpreadsheetMapper, FilterPanelStateHelpers, TextFilterToken. Unificar em helper Qt-free (ex: domain/StringView.h).
-- [MED] [Q2] 2 copias de uppercaseCopy: SectorHierarchy (private), SqlQueryText (exported). Unificar.
-- [MED] [Q3] `SectorHierarchy::orderedSectors` O(n^2) com std::find em loop - deveria usar unordered_set.
 - [MED] [Q4] `SsaImportConflictResolver` double-tracking (seenNumbers set + indexBySsa map) pra mesma condicao. Remover seenNumbers.
 
 ### Cleanup / low priority
-- [LOW] [L-Q1] `ColumnCatalog::defaultVisible()` morto (0 cobertura). So `defaultVisibleKeys()` e usado.
 - [LOW] [L-Q2] `emptyFiles`/`failedFiles` contadores mortos no import (failedFiles so pode ser 0 ou 1).
 - [LOW] [L-Q3] null checks redundantes em chaves vindas do proprio catalogo (AdvancedTextFilterRowModelFactory, ColumnFilterViewModel).
 - [LOW] [L-Q4] `tokenOperatorForStorage` microfuncao tautologica (Different?Different:Equals). Remover.
@@ -43,7 +39,6 @@
   - `query/SqlQueryText.cpp` (0%) - validacao/escape de identificadores SQL
   - `query/SqlQueryBuilder.cpp` (~6%) - gerador central de queries (testes unit existe mas nao cobre buildRows/buildCount)
   - `application/SsaBrowseService.cpp` (~1%) - servico de browse principal
-  - `domain/SectorHierarchy.cpp` (~6%) - logica de hierarquia de setores
   - `domain/ColumnValuePriorityPolicy.cpp` (~3%) - politica de prioridade de colunas
   - `infra/import/SsaSpreadsheetHeaderCatalog.cpp` (0%) - catalogo de headers de import
   - `infra/preferences/FilterPresetJsonCodec.cpp` (~1%) - codec JSON de presets

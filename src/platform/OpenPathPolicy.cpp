@@ -2,7 +2,10 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cwctype>
 #include <string>
+#include <system_error>
+#include <utility>
 #include <vector>
 
 #ifdef _WIN32
@@ -13,10 +16,15 @@ namespace ssa::platform {
 
     namespace {
 
-        bool containsControlCharacter(const std::string& value) {
-            return std::ranges::any_of(value, [](const char ch) {
+        bool containsControlCharacter(const std::filesystem::path& value) {
+#ifdef _WIN32
+            return std::ranges::any_of(value.native(),
+                                       [](const wchar_t ch) { return std::iswcntrl(ch) != 0; });
+#else
+            return std::ranges::any_of(value.native(), [](const char ch) {
                 return std::iscntrl(static_cast<unsigned char>(ch)) != 0;
             });
+#endif
         }
 
         bool samePathComponent(const std::filesystem::path& left,
@@ -100,7 +108,8 @@ namespace ssa::platform {
         return std::nullopt;
     }
 
-    ports::ExternalCommandResult OpenPathPolicy::validate(const std::string& rawPath) const {
+    ports::ExternalCommandResult
+    OpenPathPolicy::validate(const std::filesystem::path& rawPath) const {
         if (rawPath.empty()) {
             return {ports::ExternalCommandStatus::Rejected, "path is empty"};
         }
@@ -108,11 +117,10 @@ namespace ssa::platform {
             return {ports::ExternalCommandStatus::Rejected,
                     "path contains illegal control characters"};
         }
-        const std::filesystem::path raw{rawPath};
-        if (!raw.is_absolute()) {
+        if (!rawPath.is_absolute()) {
             return {ports::ExternalCommandStatus::Rejected, "path must be absolute"};
         }
-        const auto path = canonicalizePath(raw);
+        const auto path = canonicalizePath(rawPath);
         if (!path) {
             return {ports::ExternalCommandStatus::Rejected, "path cannot be resolved"};
         }

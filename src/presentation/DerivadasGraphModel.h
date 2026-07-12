@@ -1,6 +1,6 @@
 #pragma once
 
-#include <QAbstractListModel>
+#include <QObject>
 #include <QPointF>
 #include <QString>
 #include <QStringList>
@@ -15,11 +15,10 @@ namespace ssa::presentation {
     // Layout model for the derivadas relation graph, mirroring the Python
     // details_graph_renderer: nodes are SSAs, edges connect parent->child, the
     // target SSA is highlighted. Positions use a depth/index grid layout.
-    class DerivadasGraphModel final : public QAbstractListModel {
+    class DerivadasGraphModel final : public QObject {
         Q_OBJECT
         Q_PROPERTY(QString target READ target NOTIFY graphChanged)
         Q_PROPERTY(QString summary READ summary NOTIFY graphChanged)
-        Q_PROPERTY(QString mermaid READ mermaid NOTIFY graphChanged)
         Q_PROPERTY(QString svg READ svg NOTIFY graphChanged)
         Q_PROPERTY(qreal graphWidth READ graphWidth NOTIFY graphChanged)
         Q_PROPERTY(qreal graphHeight READ graphHeight NOTIFY graphChanged)
@@ -28,24 +27,13 @@ namespace ssa::presentation {
       public:
         explicit DerivadasGraphModel(QObject* parent = nullptr);
 
-        enum Roles {
-            SsaRole = Qt::UserRole + 1,
-            IsTargetRole,
-            PositionRole,
-            LabelRole,
-            RoleRole,
-        };
-
         // Target stays fixed; edges are derived from the relation list passed in.
         void buildFromRelations(const QString& target, const QVariantList& relations);
 
-        [[nodiscard]] int rowCount(const QModelIndex& parent = QModelIndex()) const override;
-        [[nodiscard]] QVariant data(const QModelIndex& index, int role) const override;
-        [[nodiscard]] QHash<int, QByteArray> roleNames() const override;
+        Q_INVOKABLE [[nodiscard]] int rowCount() const;
 
         [[nodiscard]] QString target() const;
         [[nodiscard]] QString summary() const;
-        [[nodiscard]] QString mermaid() const;
         [[nodiscard]] QString svg() const;
         [[nodiscard]] qreal graphWidth() const;
         [[nodiscard]] qreal graphHeight() const;
@@ -67,19 +55,19 @@ namespace ssa::presentation {
             QString status;
             QString role;
             QPointF position;
-            bool isTarget{false};
+            bool isTarget = false;
         };
         struct GraphEdge {
             QString from;
             QString to;
-            bool dashed{false};
+            bool dashed = false;
         };
 
         std::vector<GraphNode> nodes_;
         std::vector<GraphEdge> edges_;
         QString target_;
-        qreal graphWidth_{0};
-        qreal graphHeight_{0};
+        qreal graphWidth_ = 0;
+        qreal graphHeight_ = 0;
     };
 
 } // namespace ssa::presentation

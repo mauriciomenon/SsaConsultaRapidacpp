@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <stop_token>
 #include <string>
 
 namespace ssa::infra::importing {
@@ -12,7 +13,7 @@ namespace ssa::infra::importing {
     };
 
     struct LegacySpreadsheetConversionResult {
-        LegacySpreadsheetConversionStatus status{LegacySpreadsheetConversionStatus::Failed};
+        LegacySpreadsheetConversionStatus status = LegacySpreadsheetConversionStatus::Failed;
         std::filesystem::path outputPath;
         std::string message;
 
@@ -27,8 +28,8 @@ namespace ssa::infra::importing {
         explicit LegacySpreadsheetConverter(std::filesystem::path executablePath);
 
         [[nodiscard]] LegacySpreadsheetConversionResult
-        convertToXlsx(const std::filesystem::path& source,
-                      const std::filesystem::path& destination) const;
+        convertToXlsx(const std::filesystem::path& source, const std::filesystem::path& destination,
+                      std::stop_token stopToken = {}) const;
 
       private:
         [[nodiscard]] std::filesystem::path resolvedExecutable() const;

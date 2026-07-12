@@ -1,7 +1,9 @@
 #include "presentation/WorkflowCommandRunner.h"
 
+#include "qt/FilesystemPath.h"
+
 #include <QThreadPool>
-#include <QtConcurrent>
+#include <QtConcurrentRun>
 
 #include <filesystem>
 #include <stdexcept>
@@ -16,11 +18,21 @@ namespace ssa::presentation {
     }
 
     WorkflowCommandRunner::~WorkflowCommandRunner() {
+        shutdown();
+    }
+
+    void WorkflowCommandRunner::shutdown() {
+        if (shuttingDown_) {
+            return;
+        }
+        shuttingDown_ = true;
         disconnect(&watcher_, nullptr, this, nullptr);
+        stopSource_.request_stop();
         if (watcher_.isRunning()) {
             watcher_.waitForFinished();
         }
         resultState_.reset();
+        running_ = false;
     }
 
     bool WorkflowCommandRunner::running() const {
@@ -28,7 +40,7 @@ namespace ssa::presentation {
     }
 
     void WorkflowCommandRunner::importExternalFiles(const std::vector<QString>& files) {
-        if (running_) {
+        if (running_ || shuttingDown_) {
             return;
         }
         if (!workflows_) {
@@ -41,16 +53,17 @@ namespace ssa::presentation {
         request.optimized = true;
         request.files.reserve(files.size());
         for (const auto& path : files) {
-            request.files.emplace_back(path.toStdString());
+            request.files.emplace_back(qt::toFileSystemPath(path));
         }
         auto workflows = workflows_;
-        start([workflows = std::move(workflows), request = std::move(request)] {
-            return workflows->importExternalFiles(request);
+        start([workflows = std::move(workflows),
+               request = std::move(request)](const std::stop_token stopToken) {
+            return workflows->importExternalFiles(request, stopToken);
         });
     }
 
     void WorkflowCommandRunner::rescan(const ports::RescanMode mode) {
-        if (running_) {
+        if (running_ || shuttingDown_) {
             return;
         }
         if (!workflows_) {
@@ -65,11 +78,13 @@ namespace ssa::presentation {
         request.optimized = mode == ports::RescanMode::Incremental;
 
         auto workflows = workflows_;
-        start([workflows = std::move(workflows), request] { return workflows->rescan(request); });
+        start([workflows = std::move(workflows), request](const std::stop_token stopToken) {
+            return workflows->rescan(request, stopToken);
+        });
     }
 
     void WorkflowCommandRunner::syncDerivadas() {
-        if (running_) {
+        if (running_ || shuttingDown_) {
             return;
         }
         if (!workflows_) {
@@ -79,11 +94,13 @@ namespace ssa::presentation {
         }
 
         auto workflows = workflows_;
-        start([workflows = std::move(workflows)] { return workflows->syncDerivadas(); });
+        start([workflows = std::move(workflows)](const std::stop_token stopToken) {
+            return workflows->syncDerivadas(stopToken);
+        });
     }
 
     void WorkflowCommandRunner::compactDatabase() {
-        if (running_) {
+        if (running_ || shuttingDown_) {
             return;
         }
         if (!workflows_) {
@@ -93,18 +110,23 @@ namespace ssa::presentation {
         }
 
         auto workflows = workflows_;
-        start([workflows = std::move(workflows)] { return workflows->vacuumAnalyze(); });
+        start([workflows = std::move(workflows)](const std::stop_token stopToken) {
+            return workflows->vacuumAnalyze(stopToken);
+        });
     }
 
-    void WorkflowCommandRunner::start(std::function<ports::WorkflowResult()> operation) {
+    void
+    WorkflowCommandRunner::start(std::function<ports::WorkflowResult(std::stop_token)> operation) {
         running_ = true;
         emit this->runningChanged(running_);
         const auto state = std::make_shared<ResultState>();
         resultState_ = state;
+        stopSource_ = std::stop_source{};
+        const auto stopToken = stopSource_.get_token();
         watcher_.setFuture(QtConcurrent::run(QThreadPool::globalInstance(),
-                                             [state, operation = std::move(operation)] {
+                                             [state, operation = std::move(operation), stopToken] {
                                                  try {
-                                                     auto result = operation();
+                                                     auto result = operation(stopToken);
                                                      const std::scoped_lock lock(state->mutex);
                                                      state->result = std::move(result);
                                                  } catch (...) {
@@ -115,7 +137,7 @@ namespace ssa::presentation {
     }
 
     void WorkflowCommandRunner::finish() {
-        std::optional<ports::WorkflowResult> result;
+        std::optional<ports::WorkflowResult> result = std::nullopt;
         std::exception_ptr error;
         if (resultState_) {
             const std::scoped_lock lock(resultState_->mutex);

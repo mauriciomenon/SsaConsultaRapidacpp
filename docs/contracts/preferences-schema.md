@@ -29,7 +29,8 @@ Current fields:
 - `advanced_week`: string week filter, empty when disabled.
 - `issue_year`: string issue year filter over `semana_cadastro`, empty when disabled.
 - `execution_year`: string execution year filter over `semana_executada`, empty when disabled.
-- `reprogramming_equals`: string exact reprogramming count, empty when disabled.
+- `reprogramming_mode`: `eq`, `lte`, or `gte` comparison for selected values.
+- `reprogramming_values`: comma-separated reprogramming counts, empty when disabled.
 - `issue_week_start`: string lower bound for issue `AnoSemana`, empty when disabled.
 - `issue_week_end`: string upper bound for issue `AnoSemana`, empty when disabled.
 - `execution_week_start`: string lower bound for execution `AnoSemana`, empty when disabled.
@@ -49,6 +50,7 @@ Current fields:
   expressions are limited to 4096 characters.
 - Column widths are clamped by the presentation model to the supported UI range.
 - Visible column preferences must be reconciled against `ColumnCatalog`.
+- Duplicate visible column keys are invalid.
 - Column filter preferences must be reconciled against `ColumnCatalog`.
 - Advanced text filter preferences must be reconciled against `ColumnCatalog`.
 - Sort column preferences must be reconciled against `ColumnCatalog`.
@@ -60,6 +62,9 @@ Current fields:
 - Empty `visible_columns` is treated as invalid and falls back to defaults because the table
   requires at least one visible column.
 - Future migrations require an ADR.
+- `reprogramming_equals` is accepted only while reading legacy schema 12 documents. When
+  `reprogramming_values` is empty, its value is migrated to that field. Values take priority over
+  the legacy field and `only_reprogrammed`; new documents never write `reprogramming_equals`.
 - The current default visible table order is:
   `numero_ssa`, `situacao`, `localizacao_codigo`, `setor_emissor`, `setor_executor`,
   `qtd_derivadas`, `descricao_ssa`, `semana_cadastro`, `solicitante`, `derivada_de`,

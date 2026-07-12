@@ -1,5 +1,7 @@
 #include "platform/LocalOpenCommandHandler.h"
 
+#include "qt/FilesystemPath.h"
+
 #include <QDesktopServices>
 #include <QUrl>
 
@@ -11,11 +13,17 @@ namespace ssa::platform {
         : paths_(std::move(paths)), policy_(std::move(policy)) {}
 
     ports::ExternalCommandResult LocalOpenCommandHandler::openPath(const std::string& path) const {
+        const auto value = QString::fromUtf8(path.data(), static_cast<qsizetype>(path.size()));
+        return openFileSystemPath(qt::toFileSystemPath(value));
+    }
+
+    ports::ExternalCommandResult
+    LocalOpenCommandHandler::openFileSystemPath(const std::filesystem::path& path) const {
         auto validation = policy_.validate(path);
         if (!validation.ok()) {
             return validation;
         }
-        if (!QDesktopServices::openUrl(QUrl::fromLocalFile(QString::fromStdString(path)))) {
+        if (!QDesktopServices::openUrl(QUrl::fromLocalFile(qt::toQString(path)))) {
             return {ports::ExternalCommandStatus::Failed, "failed to open path"};
         }
         return {ports::ExternalCommandStatus::Succeeded, "path opened"};
@@ -35,7 +43,7 @@ namespace ssa::platform {
         if (path.empty()) {
             return {ports::ExternalCommandStatus::Rejected, "configured path is empty"};
         }
-        return openPath(path.string());
+        return openFileSystemPath(path);
     }
 
     std::optional<std::filesystem::path>

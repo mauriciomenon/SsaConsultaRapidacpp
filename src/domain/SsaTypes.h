@@ -210,7 +210,6 @@ namespace ssa::domain {
         std::optional<int> week;
         std::optional<int> issueYear;
         std::optional<int> executionYear;
-        std::optional<int> reprogrammingEquals;
         std::vector<int> reprogrammingValues;
         NumericComparisonMode reprogrammingComparison{NumericComparisonMode::Equals};
         std::optional<int> issueWeekStart;
@@ -246,7 +245,6 @@ namespace ssa::domain {
         return left.weekColumnKey == right.weekColumnKey && left.textFilters == right.textFilters &&
                left.year == right.year && left.week == right.week &&
                left.issueYear == right.issueYear && left.executionYear == right.executionYear &&
-               left.reprogrammingEquals == right.reprogrammingEquals &&
                left.reprogrammingValues == right.reprogrammingValues &&
                left.reprogrammingComparison == right.reprogrammingComparison &&
                left.issueWeekStart == right.issueWeekStart &&

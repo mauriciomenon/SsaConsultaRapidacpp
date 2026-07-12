@@ -4,6 +4,7 @@
 #include "query/SsaQueryService.h"
 
 #include <memory>
+#include <stop_token>
 #include <string>
 #include <vector>
 
@@ -35,7 +36,8 @@ namespace ssa::application {
         explicit SsaExecutadasReportService(std::shared_ptr<query::SsaQueryService> queryService);
 
         [[nodiscard]] ExecutadasReportResult
-        buildExecutadasReport(const domain::SsaPageRequest& request, bool byDivision) const;
+        buildExecutadasReport(const domain::SsaPageRequest& request, bool byDivision,
+                              std::stop_token stopToken = {}) const;
 
       private:
         std::shared_ptr<query::SsaQueryService> queryService_;

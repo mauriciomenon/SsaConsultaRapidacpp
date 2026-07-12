@@ -19,17 +19,6 @@ namespace ssa::presentation {
         filterpanel::FilterPanelAdvancedState& state, QObject* parent)
         : QObject(parent), state_(state) {}
 
-    QString AdvancedDerivationFilterViewModel::reprogrammingEqualsFilter() const {
-        return state_.reprogrammingEquals();
-    }
-
-    void AdvancedDerivationFilterViewModel::setReprogrammingEqualsFilter(const QString& value) {
-        if (!state_.setReprogrammingEquals(value)) {
-            return;
-        }
-        emit changed();
-    }
-
     QString AdvancedDerivationFilterViewModel::reprogrammingMode() const {
         return state_.reprogrammingMode();
     }

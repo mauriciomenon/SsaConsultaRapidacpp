@@ -21,7 +21,7 @@ namespace ssa::presentation {
                 &FilterPanelAdvancedViewModel::publishChanged);
         connect(&derivation_, &AdvancedDerivationFilterViewModel::changed, this,
                 &FilterPanelAdvancedViewModel::publishChanged);
-        connect(&macro_, &AdvancedMacroFilterViewModel::changed, this, [this] {
+        connect(&macro_, &AdvancedMacroFilterViewModel::filterStateChanged, this, [this] {
             text_.refreshFromState();
             publishChanged();
         });

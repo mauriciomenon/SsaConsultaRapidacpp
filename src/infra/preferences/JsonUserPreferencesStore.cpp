@@ -3,6 +3,7 @@
 #include "domain/ColumnCatalog.h"
 #include "infra/preferences/JsonPersistenceSupport.h"
 #include "infra/preferences/UserPreferencesJsonCodec.h"
+#include "qt/FilesystemPath.h"
 
 #include <QJsonDocument>
 
@@ -27,7 +28,7 @@ namespace ssa::infra::preferences {
         const auto document = QJsonDocument::fromJson(
             json_persistence::readBounded(path_, "preferences file"), &parseError);
         if (parseError.error != QJsonParseError::NoError) {
-            throw std::runtime_error("invalid preferences json: " + path_.string());
+            throw std::runtime_error("invalid preferences json: " + qt::toUtf8(path_));
         }
         return UserPreferencesJsonCodec{}.snapshotFromDocument(document);
     }

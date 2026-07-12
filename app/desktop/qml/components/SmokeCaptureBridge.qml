@@ -6,6 +6,10 @@ QtObject {
     id: root
 
     required property var smokeController
+    required property var rootContentItem
+    required property var mainTable
+    required property var bottomPane
+    required property var statusPill
     required property var preferencesDialog
     required property var filterPanel
     required property var browseViewModel
@@ -17,6 +21,60 @@ QtObject {
     property var popupSmokeClosedAfter: ({})
     property int popupSmokeStage: 0
     property int popupSmokeAttempts: 0
+    property int layoutSmokeAttempts: 0
+
+    function itemMetrics(item) {
+        const origin = item.mapToItem(root.rootContentItem, 0, 0);
+        return {
+            x: origin.x,
+            y: origin.y,
+            width: item.width,
+            height: item.height,
+            visible: item.visible
+        };
+    }
+
+    function itemInsideContent(metrics) {
+        const tolerance = 0.5;
+        return metrics.x >= -tolerance && metrics.y >= -tolerance && metrics.x + metrics.width <= root.rootContentItem.width + tolerance && metrics.y + metrics.height <= root.rootContentItem.height + tolerance;
+    }
+
+    function advanceLayoutSmoke() {
+        root.layoutSmokeAttempts += 1;
+        if (root.layoutSmokeAttempts > 500) {
+            layoutSmokeRetry.stop();
+            root.smokeController.reportLayoutMetrics({
+                success: false,
+                error: "layout readiness timeout"
+            });
+            return;
+        }
+        const table = root.itemMetrics(root.mainTable);
+        const bottom = root.itemMetrics(root.bottomPane);
+        const status = root.itemMetrics(root.statusPill);
+        if (root.rootContentItem.width <= 0 || root.rootContentItem.height <= 0 || table.height <= 0 || bottom.height <= 0 || status.height <= 0)
+            return;
+
+        layoutSmokeRetry.stop();
+        const tolerance = 0.5;
+        const success = root.itemInsideContent(table) && root.itemInsideContent(bottom) && root.itemInsideContent(status) && status.visible && table.height >= 200 && bottom.height >= 200 && table.y + table.height <= bottom.y + tolerance && bottom.y + bottom.height <= status.y + tolerance;
+        root.smokeController.reportLayoutMetrics({
+            success: success,
+            content: {
+                width: root.rootContentItem.width,
+                height: root.rootContentItem.height
+            },
+            table: table,
+            bottomPane: bottom,
+            status: status
+        });
+    }
+
+    readonly property Timer layoutSmokeRetry: Timer {
+        interval: 10
+        repeat: true
+        onTriggered: root.advanceLayoutSmoke()
+    }
 
     function popupMetrics(popup) {
         return {
@@ -150,6 +208,11 @@ QtObject {
         function onOpenDetailsWindowRequested() {
             root.detailsOpenAttempts = 0;
             root.requestDetailsWindowWhenReady();
+        }
+
+        function onLayoutProbeRequested() {
+            root.layoutSmokeAttempts = 0;
+            root.layoutSmokeRetry.start();
         }
     }
 }

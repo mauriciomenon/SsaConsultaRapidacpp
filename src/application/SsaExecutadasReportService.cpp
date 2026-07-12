@@ -51,27 +51,31 @@ namespace ssa::application {
 
     ExecutadasReportResult
     SsaExecutadasReportService::buildExecutadasReport(const domain::SsaPageRequest& request,
-                                                      const bool byDivision) const {
+                                                      const bool byDivision,
+                                                      const std::stop_token stopToken) const {
         if (!queryService_) {
             return {{}, false, "query service is unavailable"};
         }
 
         std::map<ReportKey, std::set<std::string>> grouped;
-        const auto result = queryService_->readAll(request, [&](const domain::SsaRecord& record) {
-            auto setor = upper(trim(std::string{record.valueOf("setor_executor")}));
-            auto week = trim(std::string{record.valueOf("semana_executada")});
-            auto person = trim(std::string{record.valueOf("responsavel_execucao")});
-            const auto ssa = trim(std::string{record.valueOf("numero_ssa")});
-            if (setor.empty() || week.empty() || ssa.empty()) {
+        const auto result = queryService_->readAll(
+            request,
+            [&](const domain::SsaRecord& record) {
+                auto setor = upper(trim(std::string{record.valueOf("setor_executor")}));
+                auto week = trim(std::string{record.valueOf("semana_executada")});
+                auto person = trim(std::string{record.valueOf("responsavel_execucao")});
+                const auto ssa = trim(std::string{record.valueOf("numero_ssa")});
+                if (setor.empty() || week.empty() || ssa.empty()) {
+                    return std::optional<std::string>{};
+                }
+                if (person.empty()) {
+                    person = "-";
+                }
+                const auto group = byDivision ? setor.substr(0, 3) : setor;
+                grouped[{group, week, person}].insert(ssa);
                 return std::optional<std::string>{};
-            }
-            if (person.empty()) {
-                person = "-";
-            }
-            const auto group = byDivision ? setor.substr(0, 3) : setor;
-            grouped[{group, week, person}].insert(ssa);
-            return std::optional<std::string>{};
-        });
+            },
+            stopToken);
         if (!result.ok()) {
             return {{}, false, result.error};
         }

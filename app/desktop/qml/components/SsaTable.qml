@@ -38,6 +38,27 @@ Rectangle {
     border.color: Theme.border
     radius: Theme.radius
     clip: true
+    activeFocusOnTab: true
+    Accessible.role: Accessible.Table
+    Accessible.name: "Tabela de SSAs"
+
+    Keys.onPressed: function (event) {
+        if (event.key === Qt.Key_Down) {
+            if (root.viewModel.currentRow < 0 && root.viewModel.totalRows > 0)
+                root.viewModel.selectRow(0);
+            else if (root.viewModel.canSelectNextRow)
+                root.viewModel.selectNextRow();
+            event.accepted = true;
+        } else if (event.key === Qt.Key_Up) {
+            if (root.viewModel.canSelectPreviousRow)
+                root.viewModel.selectPreviousRow();
+            event.accepted = true;
+        } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+            if (root.viewModel.currentRow >= 0)
+                root.detailsWindowRequested();
+            event.accepted = true;
+        }
+    }
 
     Menu {
         id: cellContextMenu
@@ -359,6 +380,7 @@ Rectangle {
                     acceptedButtons: Qt.LeftButton | Qt.RightButton
                     cursorShape: cellDelegate.opensSam || cellDelegate.isDerivationLink || cellDelegate.opensDerivationGraph ? Qt.PointingHandCursor : Qt.ArrowCursor
                     onClicked: function (mouse) {
+                        root.forceActiveFocus();
                         root.viewModel.selectRow(cellDelegate.row);
                         if (mouse.button === Qt.RightButton) {
                             root.contextCellText = cellDelegate.cellText;

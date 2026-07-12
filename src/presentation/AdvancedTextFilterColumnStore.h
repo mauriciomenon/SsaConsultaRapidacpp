@@ -24,18 +24,13 @@ namespace ssa::presentation {
         struct ExpressionUpdate {
             QString key;
             QString expression;
-            bool inferOperatorMode{false};
+            bool inferOperatorMode = false;
         };
 
         struct AddValueRequest {
             QString key;
             QString currentExpression;
             QString value;
-            QString operatorMode;
-        };
-
-        struct OperatorExpressionRequest {
-            QString currentExpression;
             QString operatorMode;
         };
 
@@ -54,8 +49,6 @@ namespace ssa::presentation {
         void setExpression(const ExpressionUpdate& update);
         [[nodiscard]] static std::optional<QString>
         expressionWithAddedValue(const AddValueRequest& request);
-        [[nodiscard]] static QString
-        expressionReplacingCurrentExpressionWithOperator(const OperatorExpressionRequest& request);
         [[nodiscard]] static QString
         expressionReplacingWithOperator(const OperatorValueListRequest& request);
         [[nodiscard]] static QString

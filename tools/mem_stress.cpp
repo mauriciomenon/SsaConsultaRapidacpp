@@ -4,6 +4,7 @@
 
 #include "infra/sqlite/SqliteSsaRepository.h"
 #include "presentation/BrowseViewModel.h"
+#include "qt/FilesystemPath.h"
 #include "query/SsaQueryService.h"
 
 #include <QCoreApplication>
@@ -69,6 +70,7 @@ int main(int argc, char** argv) {
     QString dbPath;
     int totalPages = 200;
     int pageSize = 50;
+    int maxFootprintDeltaKb = 0;
     auto parsePositiveInt = [](const QString& value, const char* option, int& output) -> bool {
         bool parsed = false;
         const int parsedValue = value.toInt(&parsed);
@@ -92,18 +94,23 @@ int main(int argc, char** argv) {
             if (!parsePositiveInt(args[++i], "--page-size", pageSize)) {
                 return 1;
             }
+        } else if (a == "--max-footprint-delta-kb" && i + 1 < args.size()) {
+            if (!parsePositiveInt(args[++i], "--max-footprint-delta-kb", maxFootprintDeltaKb)) {
+                return 1;
+            }
         }
     }
     if (dbPath.isEmpty()) {
-        std::fprintf(stderr, "usage: ssa_mem_stress --db <path> [--pages N] [--page-size N]\n");
+        std::fprintf(stderr, "usage: ssa_mem_stress --db <path> [--pages N] [--page-size N] "
+                             "[--max-footprint-delta-kb N]\n");
         return 1;
     }
 
-    std::filesystem::path dbFilePath{dbPath.toStdString()};
+    const auto dbFilePath = ssa::qt::toFileSystemPath(dbPath);
     std::error_code ec;
     if (!std::filesystem::exists(dbFilePath, ec)) {
-        std::fprintf(stderr, "error: database file does not exist: %s\n",
-                     dbFilePath.string().c_str());
+        const auto displayPath = ssa::qt::toUtf8(dbFilePath);
+        std::fprintf(stderr, "error: database file does not exist: %s\n", displayPath.c_str());
         return 1;
     }
 
@@ -156,8 +163,9 @@ int main(int argc, char** argv) {
     // macOS: phys_footprint (real app-owned memory). Linux: current resident
     // pages via /proc/self/statm. Other BSDs: peak RSS fallback (noted in
     // currentFootprintKb). Label reflects the common semantic, not raw RSS.
+    const auto startupFootprintKb = currentFootprintKb();
     std::printf("phase\tpages\tfootprint_kb\n");
-    std::printf("startup\t0\t%zu\n", currentFootprintKb());
+    std::printf("startup\t0\t%zu\n", startupFootprintKb);
     std::printf("firstpage\t1\t%zu\n", currentFootprintKb());
 
     int lastPageNumber = browse.pageNumber();
@@ -201,7 +209,23 @@ int main(int argc, char** argv) {
             std::fflush(stdout);
         }
     }
-    std::printf("final\t%d\t%zu\n", totalPages, currentFootprintKb());
+    const auto finalFootprintKb = currentFootprintKb();
+    std::printf("final\t%d\t%zu\n", totalPages, finalFootprintKb);
+
+    if (maxFootprintDeltaKb > 0) {
+        if (startupFootprintKb == 0 || finalFootprintKb == 0) {
+            std::fprintf(stderr, "error: footprint sampling failed\n");
+            return 2;
+        }
+        const auto footprintDeltaKb =
+            finalFootprintKb > startupFootprintKb ? finalFootprintKb - startupFootprintKb : 0;
+        std::printf("budget\t%zu\t%d\n", footprintDeltaKb, maxFootprintDeltaKb);
+        if (footprintDeltaKb > static_cast<std::size_t>(maxFootprintDeltaKb)) {
+            std::fprintf(stderr, "error: footprint delta %zu KB exceeds budget %d KB\n",
+                         footprintDeltaKb, maxFootprintDeltaKb);
+            return 2;
+        }
+    }
 
     return 0;
 }

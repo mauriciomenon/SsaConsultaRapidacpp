@@ -1,9 +1,13 @@
 #pragma once
 
-#include "ports/ISsaRepository.h"
 #include "ports/IWorkflowPorts.h"
 
 #include <memory>
+#include <stop_token>
+
+namespace ssa::ports {
+    class ISsaRepository;
+}
 
 namespace ssa::infra::exporting {
 

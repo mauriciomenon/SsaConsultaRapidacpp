@@ -29,8 +29,6 @@ namespace ssa::presentation {
             int detailsPreferredWidth READ detailsPreferredWidth NOTIFY detailsWidthLayoutChanged)
         Q_PROPERTY(
             int detailsMaximumWidth READ detailsMaximumWidth NOTIFY detailsWidthLayoutChanged)
-        Q_PROPERTY(
-            int detailsEffectiveWidth READ detailsEffectiveWidth NOTIFY detailsWidthLayoutChanged)
 
       public:
         explicit UiSettingsViewModel(QObject* parent = nullptr);
@@ -50,7 +48,6 @@ namespace ssa::presentation {
         [[nodiscard]] int detailsMinimumWidth() const;
         [[nodiscard]] int detailsPreferredWidth() const;
         [[nodiscard]] int detailsMaximumWidth() const;
-        [[nodiscard]] int detailsEffectiveWidth() const;
 
         void applyPreferences(const ports::UserPreferencesSnapshot& snapshot);
         void writePreferences(ports::UserPreferencesSnapshot& snapshot) const;
@@ -73,12 +70,12 @@ namespace ssa::presentation {
         void emitDetailsWidthLayoutChanged();
         void schedulePreferencesSave();
 
-        QString theme_{"ssa-dark"};
-        QString systemTheme_{"light"};
-        QString density_{"compact"};
-        bool detailsVisible_{true};
-        int detailsPanelWidth_{ports::kDefaultDetailsPanelWidth};
-        int detailsViewportWidth_{1280};
+        QString theme_ = "ssa-dark";
+        QString systemTheme_ = "light";
+        QString density_ = "compact";
+        bool detailsVisible_ = true;
+        int detailsPanelWidth_ = ports::kDefaultDetailsPanelWidth;
+        int detailsViewportWidth_ = 1280;
         QTimer preferencesSaveDebounce_;
     };
 

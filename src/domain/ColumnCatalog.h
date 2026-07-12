@@ -20,17 +20,16 @@ namespace ssa::domain {
         std::string key;
         std::string label;
         std::string labelFull;
-        ColumnType type{ColumnType::Text};
-        bool defaultVisible{false};
-        bool generalSearch{false};
-        int defaultWidth{0};
+        ColumnType type = ColumnType::Text;
+        bool defaultVisible = false;
+        bool generalSearch = false;
+        int defaultWidth = 0;
     };
 
     class ColumnCatalog final {
       public:
         [[nodiscard]] static std::span<const ColumnDef> all();
         [[nodiscard]] static std::vector<ColumnDef> storageColumns();
-        [[nodiscard]] static std::vector<ColumnDef> defaultVisible();
         [[nodiscard]] static std::vector<std::string> defaultVisibleKeys();
         [[nodiscard]] static std::vector<std::string>
         visibleKeysOrDefault(std::vector<std::string> keys);

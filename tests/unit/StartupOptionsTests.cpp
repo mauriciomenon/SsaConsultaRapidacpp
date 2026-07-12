@@ -3,6 +3,7 @@
 #include "platform/SamUrlBuilder.h"
 #include "platform/StartupOptions.h"
 #include "ports/IExternalCommandPort.h"
+#include "qt/FilesystemPath.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -10,6 +11,9 @@
 #include <QCommandLineParser>
 #include <QCoreApplication>
 #include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QTemporaryDir>
 
 #include <array>
 #include <atomic>
@@ -165,6 +169,27 @@ TEST_CASE("startup options accept database path aliases") {
                                        .string()));
 }
 
+TEST_CASE("startup options preserve unicode filesystem paths") {
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+
+    const QString projectRoot = directory.filePath(QString::fromUtf8("projeto-acao-\xE6\xBC\xA2"));
+    REQUIRE(QDir{}.mkpath(projectRoot));
+    const QString databasePath = QDir(projectRoot).filePath(QStringLiteral("dados.db"));
+    QFile database(databasePath);
+    REQUIRE(database.open(QIODevice::WriteOnly));
+    database.close();
+
+    QCommandLineParser parser;
+    addStartupOptions(parser);
+    REQUIRE(parser.parse({"ssa_test", "--project-root", projectRoot, "--db", databasePath}));
+
+    const auto options = ssa::platform::StartupOptions::fromParser(parser);
+
+    REQUIRE(options.projectRoot == QFileInfo(projectRoot).canonicalFilePath());
+    REQUIRE(options.databasePath == QFileInfo(databasePath).canonicalFilePath());
+}
+
 TEST_CASE("startup options reject invalid SAM URL") {
     QCommandLineParser parser;
     addStartupOptions(parser);
@@ -211,8 +236,8 @@ TEST_CASE("open path policy rejects paths outside allowed roots") {
 
     const ssa::platform::OpenPathPolicy policy({directories.root});
 
-    const auto accepted = policy.validate(insideFile.string());
-    const auto rejected = policy.validate(outsideFile.string());
+    const auto accepted = policy.validate(insideFile);
+    const auto rejected = policy.validate(outsideFile);
 
     REQUIRE(accepted.status == ssa::ports::ExternalCommandStatus::Succeeded);
     REQUIRE(rejected.status == ssa::ports::ExternalCommandStatus::Rejected);
@@ -227,7 +252,7 @@ TEST_CASE("open path policy rejects filesystem root as allowed root") {
 
     const ssa::platform::OpenPathPolicy policy({insideFile.root_path()});
 
-    const auto rejected = policy.validate(insideFile.string());
+    const auto rejected = policy.validate(insideFile);
 
     REQUIRE(rejected.status == ssa::ports::ExternalCommandStatus::Rejected);
 }
@@ -236,15 +261,30 @@ TEST_CASE("open path policy accepts new paths under existing allowed roots") {
     const TemporaryDirectoryPair directories;
     const ssa::platform::OpenPathPolicy policy({directories.root});
 
-    const auto accepted = policy.validate((directories.root / "new-file.txt").string());
-    const auto acceptedNested =
-        policy.validate((directories.root / "missing" / "new-file.txt").string());
+    const auto accepted = policy.validate(directories.root / "new-file.txt");
+    const auto acceptedNested = policy.validate(directories.root / "missing" / "new-file.txt");
     const auto rejectedEscape =
-        policy.validate((directories.root / "missing" / ".." / ".." / "blocked.txt").string());
+        policy.validate(directories.root / "missing" / ".." / ".." / "blocked.txt");
 
     REQUIRE(accepted.status == ssa::ports::ExternalCommandStatus::Succeeded);
     REQUIRE(acceptedNested.status == ssa::ports::ExternalCommandStatus::Succeeded);
     REQUIRE(rejectedEscape.status == ssa::ports::ExternalCommandStatus::Rejected);
+}
+
+TEST_CASE("open path policy preserves unicode filesystem paths") {
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+
+    const auto root = ssa::qt::toFileSystemPath(directory.path());
+    const auto child = ssa::qt::toFileSystemPath(
+        directory.filePath(QString::fromUtf8("arquivo-acao-\xE6\xBC\xA2.txt")));
+    QFile file(ssa::qt::toQString(child));
+    REQUIRE(file.open(QIODevice::WriteOnly));
+    file.close();
+
+    const ssa::platform::OpenPathPolicy policy({root});
+
+    REQUIRE(policy.validate(child).status == ssa::ports::ExternalCommandStatus::Succeeded);
 }
 
 TEST_CASE("desktop external command port rejects worker thread before dispatch") {

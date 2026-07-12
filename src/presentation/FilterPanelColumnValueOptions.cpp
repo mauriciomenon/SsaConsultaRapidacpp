@@ -22,10 +22,6 @@ namespace ssa::presentation {
 
     } // namespace
 
-    int FilterPanelColumnValueOptions::version() const {
-        return version_;
-    }
-
     QStringList FilterPanelColumnValueOptions::optionsFor(const QString& key) const {
         const auto found = findTrimmed(key);
         return found == cache_.end() ? QStringList{} : found->second.options;
@@ -40,6 +36,11 @@ namespace ssa::presentation {
         return loadingKeys_.contains(key.trimmed());
     }
 
+    QString FilterPanelColumnValueOptions::errorFor(const QString& key) const {
+        const auto found = errors_.find(key.trimmed());
+        return found == errors_.end() ? QString{} : found->second;
+    }
+
     bool FilterPanelColumnValueOptions::hasFreshOptions(const QString& key,
                                                         const std::uint64_t stateVersion) const {
         const auto found = findTrimmed(key);
@@ -48,17 +49,23 @@ namespace ssa::presentation {
 
     void FilterPanelColumnValueOptions::clearLoading() {
         loadingKeys_.clear();
+        errors_.clear();
     }
 
     void FilterPanelColumnValueOptions::clearLoadingFor(const QString& key) {
-        if (loadingKeys_.remove(key.trimmed())) {
-            touchVersion();
-        }
+        loadingKeys_.remove(key.trimmed());
     }
 
     void FilterPanelColumnValueOptions::markLoading(const QString& key) {
-        loadingKeys_.insert(key.trimmed());
-        touchVersion();
+        const auto normalizedKey = key.trimmed();
+        loadingKeys_.insert(normalizedKey);
+        errors_.erase(normalizedKey);
+    }
+
+    void FilterPanelColumnValueOptions::markFailed(const QString& key, const QString& message) {
+        const auto normalizedKey = key.trimmed();
+        loadingKeys_.remove(normalizedKey);
+        errors_[normalizedKey] = message;
     }
 
     void FilterPanelColumnValueOptions::store(const std::vector<std::string>& options,
@@ -66,14 +73,10 @@ namespace ssa::presentation {
                                               const std::size_t maxValueLength) {
         const auto normalizedKey = key.trimmed();
         loadingKeys_.remove(normalizedKey);
+        errors_.erase(normalizedKey);
         auto displayList = toColumnValueDisplayList(options);
         cache_[normalizedKey] = {std::move(displayList), stateVersion, maxValueLength};
         trim(normalizedKey);
-        touchVersion();
-    }
-
-    void FilterPanelColumnValueOptions::touchVersion() {
-        ++version_;
     }
 
     std::map<QString, FilterPanelColumnValueOptions::CacheEntry>::const_iterator

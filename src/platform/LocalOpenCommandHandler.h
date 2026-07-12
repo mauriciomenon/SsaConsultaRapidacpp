@@ -25,6 +25,8 @@ namespace ssa::platform {
 
       private:
         [[nodiscard]] ports::ExternalCommandResult
+        openFileSystemPath(const std::filesystem::path& path) const;
+        [[nodiscard]] ports::ExternalCommandResult
         openConfiguredPath(const std::filesystem::path& path) const;
         [[nodiscard]] std::optional<std::filesystem::path>
         configuredPathFor(ports::ExternalCommandKind kind) const;

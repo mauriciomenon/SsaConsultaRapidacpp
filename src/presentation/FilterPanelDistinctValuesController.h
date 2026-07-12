@@ -34,8 +34,9 @@ namespace ssa::presentation {
       signals:
         void columnValueOptionsReady(std::vector<std::string> values, std::size_t maxValueLength,
                                      QString key, std::uint64_t stateVersion);
-        void columnValueOptionsFailed(QString key, std::uint64_t stateVersion);
+        void columnValueOptionsFailed(QString key, std::uint64_t stateVersion, QString message);
         void quickSectorOptionsReady(std::vector<std::string> values);
+        void quickSectorOptionsFailed(QString message);
 
       private:
         struct DistinctValueRequestContext {
@@ -53,8 +54,9 @@ namespace ssa::presentation {
         void configureConnections();
         void onColumnValueOptionsReady(std::uint64_t requestToken, std::vector<std::string> values,
                                        std::size_t maxValueLength);
-        void onColumnValueOptionsFailed(std::uint64_t requestToken);
+        void onColumnValueOptionsFailed(std::uint64_t requestToken, const QString& message);
         void onQuickSectorOptionsReady(std::uint64_t requestToken, std::vector<std::string> values);
+        void onQuickSectorOptionsFailed(std::uint64_t requestToken, const QString& message);
 
         std::shared_ptr<query::SsaQueryService> queryService_;
         filterpanel::FilterPanelState& state_;

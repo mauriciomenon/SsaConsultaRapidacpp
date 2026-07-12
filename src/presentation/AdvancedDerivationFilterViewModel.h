@@ -10,8 +10,6 @@ namespace ssa::presentation {
 
     class AdvancedDerivationFilterViewModel final : public QObject {
         Q_OBJECT
-        Q_PROPERTY(QString reprogrammingEqualsFilter READ reprogrammingEqualsFilter WRITE
-                       setReprogrammingEqualsFilter NOTIFY changed)
         Q_PROPERTY(QString reprogrammingMode READ reprogrammingMode WRITE setReprogrammingMode
                        NOTIFY changed)
         Q_PROPERTY(QStringList reprogrammingModeOptions READ reprogrammingModeOptions CONSTANT)
@@ -27,8 +25,6 @@ namespace ssa::presentation {
         explicit AdvancedDerivationFilterViewModel(filterpanel::FilterPanelAdvancedState& state,
                                                    QObject* parent = nullptr);
 
-        [[nodiscard]] QString reprogrammingEqualsFilter() const;
-        void setReprogrammingEqualsFilter(const QString& value);
         [[nodiscard]] QString reprogrammingMode() const;
         void setReprogrammingMode(const QString& value);
         [[nodiscard]] QStringList reprogrammingModeOptions() const;

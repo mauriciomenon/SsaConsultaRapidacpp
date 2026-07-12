@@ -16,39 +16,6 @@ FilterCard {
     required property real cardHeight
     signal applyRequested
 
-    // Resolve X/Y/height together so the popup opens directly below the
-    // trigger when possible (shrinking height to fit), and only clamps Y up
-    // when opening below cannot fit at all.
-    function resolvePopupGeometry(preferredWidth, preferredHeight) {
-        const overlayRoot = Overlay.overlay;
-        if (overlayRoot === null)
-            return ({
-                    x: 0,
-                    y: openValuesButton.height + Theme.shortcutGap,
-                    h: preferredHeight
-                });
-        const origin = openValuesButton.mapToItem(overlayRoot, 0, 0);
-        const win = Window.window;
-        const boundsWidth = win !== null ? win.width : overlayRoot.width;
-        const boundsHeight = win !== null ? win.height : overlayRoot.height;
-        const originRightX = origin.x + openValuesButton.width;
-        const originBottomY = origin.y + openValuesButton.height;
-        const x = Theme.clampedPopupX(boundsWidth, originRightX, preferredWidth);
-        const belowHeight = Theme.clampedPopupHeightBelow(boundsHeight, originBottomY + Theme.shortcutGap, preferredHeight);
-        if (belowHeight > 0) {
-            return ({
-                    x: x,
-                    y: originBottomY + Theme.shortcutGap,
-                    h: belowHeight
-                });
-        }
-        return ({
-                x: x,
-                y: Theme.clampedPopupY(boundsHeight, origin.y, openValuesButton.height, preferredHeight),
-                h: Theme.clampedPopupHeight(boundsHeight, preferredHeight)
-            });
-    }
-
     // Constant height received from parent - never derived from childrenRect
     // (binding loop lesson, see RECOVERY_BACKLOG [QML-LAYOUT-LOOP]).
     width: cardWidth
@@ -62,8 +29,6 @@ FilterCard {
     property var reprogrammingValueOptions: []
     property bool reprogrammingValueOptionsLoading: false
     property int reprogrammingMaxValueLength: 0
-    property var selectedReprogrammingValues: []
-    property bool selectedOnlyReprogrammed: false
     readonly property int reprogrammingPopupWidth: Theme.valuePopupWidth(root.reprogrammingColumnKey, root.reprogrammingMaxValueLength, Overlay.overlay !== null ? Overlay.overlay.width : 0)
 
     function reloadReprogrammingOptionState() {
@@ -78,23 +43,6 @@ FilterCard {
         if (root.derivation.reprogrammingValues.length > 0)
             return root.derivation.reprogrammingValues.join(", ");
         return "";
-    }
-
-    function containsSelected(value) {
-        return selectedReprogrammingValues.indexOf(value) >= 0;
-    }
-
-    function toggleSelected(value, checked) {
-        const values = selectedReprogrammingValues.slice();
-        const index = values.indexOf(value);
-        if (checked) {
-            if (index < 0)
-                values.push(value);
-            selectedOnlyReprogrammed = false;
-        }
-        if (!checked && index >= 0)
-            values.splice(index, 1);
-        selectedReprogrammingValues = values;
     }
 
     Component.onCompleted: reloadReprogrammingOptionState()
@@ -208,6 +156,7 @@ FilterCard {
                 implicitHeight: Theme.filterRowHeight
                 padding: 0
                 font.pixelSize: Theme.fontSizeBody
+                Accessible.name: "Selecionar valores de reprogramacao"
                 ToolTip.visible: hovered
                 ToolTip.text: "Selecionar valores de reprogramacao"
                 ToolTip.delay: 0
@@ -222,6 +171,7 @@ FilterCard {
                 padding: 0
                 font.bold: true
                 font.pixelSize: Theme.fontSizeBody
+                Accessible.name: "Limpar filtro de reprogramacao"
                 ToolTip.visible: hovered
                 ToolTip.text: "Limpar filtro de reprogramacao"
                 ToolTip.delay: 0
@@ -234,128 +184,17 @@ FilterCard {
         }
     }
 
-    Popup {
+    ReprogrammingValuePopup {
         id: valuesPopup
-        parent: Overlay.overlay
-        x: 0
-        y: 0
-        width: root.reprogrammingPopupWidth
-        height: 0
-        modal: false
-        focus: true
-        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-        padding: 10
-
-        function updatePopupPosition() {
-            const g = root.resolvePopupGeometry(root.reprogrammingPopupWidth, Theme.popupPreferredHeight);
-            x = g.x;
-            y = g.y;
-            height = g.h;
-        }
-
-        onAboutToShow: {
-            root.reloadReprogrammingOptionState();
-            if (root.reprogrammingValueOptions.length === 0 && !root.reprogrammingValueOptionsLoading)
-                root.filterViewModel.refreshColumnValueOptionsFor(root.reprogrammingColumnKey);
-            root.selectedReprogrammingValues = root.derivation.reprogrammingValues.slice();
-            root.selectedOnlyReprogrammed = root.derivation.onlyReprogrammed;
-            updatePopupPosition();
-        }
-        onOpened: updatePopupPosition()
-        onWidthChanged: {
-            if (visible)
-                updatePopupPosition();
-        }
-
-        background: Rectangle {
-            color: Theme.panelRaised
-            border.color: Theme.border
-            radius: Theme.radius
-        }
-
-        ColumnLayout {
-            anchors.fill: parent
-            spacing: 8
-
-            Label {
-                Layout.fillWidth: true
-                text: "Reprogramacoes"
-                color: Theme.text
-                font.pixelSize: Theme.fontSizeBody
-                font.bold: true
-                elide: Text.ElideRight
-            }
-
-            AppCheckBox {
-                Layout.fillWidth: true
-                text: root.allWithReprogLabel
-                checked: root.selectedOnlyReprogrammed
-                onToggled: {
-                    root.selectedOnlyReprogrammed = checked;
-                    if (checked)
-                        root.selectedReprogrammingValues = [];
-                }
-            }
-
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.preferredHeight: 1
-                color: Theme.border
-            }
-
-            Item {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-
-                Label {
-                    anchors.centerIn: parent
-                    visible: root.reprogrammingValueOptions.length === 0
-                    text: root.reprogrammingValueOptionsLoading ? "Carregando" : "Sem valores"
-                    color: Theme.mutedText
-                    font.pixelSize: Theme.fontSizeMicro
-                    horizontalAlignment: Text.AlignHCenter
-                }
-
-                ListView {
-                    anchors.fill: parent
-                    clip: true
-                    spacing: 2
-                    reuseItems: true
-                    model: valuesPopup.visible ? root.reprogrammingValueOptions : null
-                    ScrollBar.vertical: ScrollBar {}
-
-                    delegate: AppCheckBox {
-                        required property string modelData
-                        width: ListView.view.width
-                        height: 22
-                        text: modelData
-                        checked: root.containsSelected(modelData)
-                        onClicked: root.toggleSelected(modelData, checked)
-                    }
-                }
-            }
-
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 8
-
-                Item {
-                    Layout.fillWidth: true
-                }
-
-                ActionButton {
-                    text: "Aplicar"
-                    implicitWidth: Theme.applyButtonWidth
-                    onClicked: {
-                        if (root.selectedOnlyReprogrammed)
-                            root.selectedReprogrammingValues = [];
-                        root.derivation.onlyReprogrammed = root.selectedOnlyReprogrammed;
-                        root.derivation.reprogrammingValues = root.selectedReprogrammingValues;
-                        root.applyRequested();
-                        valuesPopup.close();
-                    }
-                }
-            }
-        }
+        filterViewModel: root.filterViewModel
+        derivation: root.derivation
+        trigger: openValuesButton
+        columnKey: root.reprogrammingColumnKey
+        allWithReprogLabel: root.allWithReprogLabel
+        optionValues: root.reprogrammingValueOptions
+        optionsLoading: root.reprogrammingValueOptionsLoading
+        maxValueLength: root.reprogrammingMaxValueLength
+        onOptionsRequested: root.reloadReprogrammingOptionState()
+        onApplyRequested: root.applyRequested()
     }
 }

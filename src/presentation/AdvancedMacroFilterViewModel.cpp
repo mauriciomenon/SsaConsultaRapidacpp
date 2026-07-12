@@ -5,7 +5,10 @@
 
 #include <QDate>
 #include <QVariantMap>
+#include <QtConcurrentRun>
 
+#include <algorithm>
+#include <system_error>
 #include <utility>
 
 namespace ssa::presentation {
@@ -26,45 +29,17 @@ namespace ssa::presentation {
             int end{0};
         };
 
-        // Returns the inclusive range of ISO year-weeks (YYYYWW) overlapping the
-        // month of currentDate. The week encoding is year-major so BETWEEN works,
-        // BUT only when both bounds share the same ISO year: if Dec 31 falls in
-        // ISO week 1 of the next year, a naive [YYYY52, (YYYY+1)01] range would
-        // cross the boundary and pull in next-January rows. We anchor both bounds
-        // to the ISO year of a day safely inside the month (the 15th) so the
-        // range stays within a single ISO year and covers every week that the
-        // month touches.
         YearWeekRange executionWeekRangeForCurrentMonth(const QDate& currentDate) {
             const QDate firstOfMonth(currentDate.year(), currentDate.month(), 1);
             const QDate lastOfMonth(currentDate.year(), currentDate.month(),
                                     currentDate.daysInMonth());
-            // A mid-month day always belongs to a week fully inside the month, so
-            // its ISO year is the authoritative year for the whole range.
-            int anchorIsoYear = 0;
-            QDate(currentDate.year(), currentDate.month(), 15).weekNumber(&anchorIsoYear);
-
             int startIsoYear = 0;
             const int startWeek = firstOfMonth.weekNumber(&startIsoYear);
             int endIsoYear = 0;
             const int endWeek = lastOfMonth.weekNumber(&endIsoYear);
-
-            // Boundary weeks (first/last day) may belong to an adjacent ISO year;
-            // coerce them into the anchor year so the BETWEEN never crosses years.
-            const auto resolveWeek = [anchorIsoYear](const int isoYear, const int week) {
-                if (isoYear == anchorIsoYear) {
-                    return anchorIsoYear * domain::kYearWeekMultiplier + week;
-                }
-                // Day fell into the tail (previous ISO year, high week number) or
-                // the head (next ISO year, week 1) of the month. Clamp to the
-                // anchor year's first/last week respectively.
-                QDate lastOfAnchorYear(anchorIsoYear, 12, 28);
-                int lastAnchorIsoYear = 0;
-                const int lastAnchorWeek = lastOfAnchorYear.weekNumber(&lastAnchorIsoYear);
-                return anchorIsoYear * domain::kYearWeekMultiplier +
-                       (isoYear < anchorIsoYear ? 1 : lastAnchorWeek);
-            };
-            return YearWeekRange{resolveWeek(startIsoYear, startWeek),
-                                 resolveWeek(endIsoYear, endWeek)};
+            const int first = startIsoYear * domain::kYearWeekMultiplier + startWeek;
+            const int last = endIsoYear * domain::kYearWeekMultiplier + endWeek;
+            return {(std::min)(first, last), (std::max)(first, last)};
         }
 
         QVariantMap reportRowMap(const application::ExecutadasReportRow& row) {
@@ -87,6 +62,7 @@ namespace ssa::presentation {
             const auto weekRange = executionWeekRangeForCurrentMonth(currentDate);
             request.advancedFilters.executionWeekStart = weekRange.start;
             request.advancedFilters.executionWeekEnd = weekRange.end;
+            request.pageSize = 0;
             return request;
         }
     } // namespace
@@ -94,10 +70,12 @@ namespace ssa::presentation {
     AdvancedMacroFilterViewModel::AdvancedMacroFilterViewModel(
         filterpanel::FilterPanelAdvancedState& advancedState,
         const filterpanel::FilterPanelState& filterState,
-        std::shared_ptr<query::SsaQueryService> queryService, QObject* parent)
+        std::shared_ptr<query::SsaQueryService> queryService, QObject* parent,
+        CurrentDate currentDate)
         : QObject(parent), advancedState_(advancedState), filterState_(filterState),
           reportService_(
               std::make_unique<application::SsaExecutadasReportService>(std::move(queryService))),
+          currentDate_(std::move(currentDate)),
           options_{
               QVariantMap{{"label", tr("Exibir o grafico e somente o grafico")},
                           {"value", QString::fromLatin1(kNone)}},
@@ -107,6 +85,19 @@ namespace ssa::presentation {
               QVariantMap{{"label", tr("SSA Executadas Divisao")},
                           {"value", QString::fromLatin1(kExecutadasDivisao)}},
           } {}
+
+    AdvancedMacroFilterViewModel::~AdvancedMacroFilterViewModel() {
+        shuttingDown_ = true;
+        for (const auto& operation : reportOperations_) {
+            disconnect(&operation->watcher, nullptr, this, nullptr);
+        }
+        stopReportOperations();
+        for (const auto& operation : reportOperations_) {
+            if (operation->watcher.isRunning()) {
+                operation->watcher.waitForFinished();
+            }
+        }
+    }
 
     const QVariantList& AdvancedMacroFilterViewModel::options() const {
         return options_;
@@ -122,17 +113,24 @@ namespace ssa::presentation {
             return;
         }
         selectedMacro_ = normalized;
+        emit changed();
         if (selectedMacro_ == QString::fromLatin1(kBaixar)) {
+            stopReportOperations();
             applyBaixarPreset();
             clearReport();
+            emit filterStateChanged();
+            emit reportChanged();
         } else if (selectedMacro_ == QString::fromLatin1(kExecutadasSetor) ||
                    selectedMacro_ == QString::fromLatin1(kExecutadasDivisao)) {
             buildExecutadasReport(selectedMacro_);
             selectedMacro_.clear();
+            emit changed();
         } else {
+            stopReportOperations();
+            latestReportOperationId_ = 0;
             clearReport();
+            emit reportChanged();
         }
-        emit changed();
     }
 
     QString AdvancedMacroFilterViewModel::reportTitle() const {
@@ -147,9 +145,15 @@ namespace ssa::presentation {
         return reportRows_;
     }
 
-    void AdvancedMacroFilterViewModel::refreshFromState() {
-        emit changed();
+    bool AdvancedMacroFilterViewModel::reportLoading() const {
+        return reportLoading_;
     }
+
+    QString AdvancedMacroFilterViewModel::reportError() const {
+        return reportError_;
+    }
+
+    void AdvancedMacroFilterViewModel::refreshFromState() {}
 
     void AdvancedMacroFilterViewModel::applyBaixarPreset() {
         advancedState_.setTextFilter(QString::fromLatin1(kStatusColumn),
@@ -158,29 +162,124 @@ namespace ssa::presentation {
 
     void AdvancedMacroFilterViewModel::buildExecutadasReport(const QString& value) {
         const bool byDivision = value == QString::fromLatin1(kExecutadasDivisao);
+        stopReportOperations();
         reportTitle_ = byDivision ? tr("SSA Executadas Divisao") : tr("SSA Executadas Setor");
+        reportText_.clear();
         reportRows_.clear();
+        reportError_.clear();
+        reportLoading_ = true;
 
-        const auto currentDate = QDate::currentDate();
-        const auto request = reportRequestFromState(filterState_, currentDate);
-        const auto result = reportService_->buildExecutadasReport(request, byDivision);
-        if (!result.ok) {
-            reportText_ = QString::fromStdString(result.error);
+        const auto currentDate = currentDate_();
+        auto request = reportRequestFromState(filterState_, currentDate);
+        auto operation = std::make_unique<ReportOperation>();
+        operation->id = ++nextReportOperationId_;
+        operation->byDivision = byDivision;
+        operation->state = std::make_shared<ReportTaskState>();
+        const auto operationId = operation->id;
+        const auto service = reportService_.get();
+        const auto state = operation->state;
+        const auto stopToken = operation->stopSource.get_token();
+        connect(&operation->watcher, &QFutureWatcher<void>::finished, this,
+                [this, operationId] { finishExecutadasReport(operationId); });
+        auto* watcher = &operation->watcher;
+        latestReportOperationId_ = operationId;
+        reportOperations_.push_back(std::move(operation));
+        emit reportChanged();
+
+        watcher->setFuture(QtConcurrent::run(
+            [service, request = std::move(request), byDivision, stopToken, state] {
+                try {
+                    auto result = service->buildExecutadasReport(request, byDivision, stopToken);
+                    std::scoped_lock lock(state->mutex);
+                    state->result = std::move(result);
+                    state->canceled = stopToken.stop_requested();
+                } catch (const std::system_error& error) {
+                    std::scoped_lock lock(state->mutex);
+                    if (error.code() == std::make_error_code(std::errc::operation_canceled)) {
+                        state->canceled = true;
+                    } else {
+                        state->error = std::current_exception();
+                    }
+                } catch (...) {
+                    std::scoped_lock lock(state->mutex);
+                    state->error = std::current_exception();
+                }
+            }));
+    }
+
+    void AdvancedMacroFilterViewModel::finishExecutadasReport(const std::uint64_t operationId) {
+        const auto found =
+            std::ranges::find_if(reportOperations_, [operationId](const auto& operation) {
+                return operation->id == operationId;
+            });
+        if (found == reportOperations_.end()) {
             return;
         }
-        reportRows_.reserve(static_cast<int>(result.rows.size()));
-        for (const auto& row : result.rows) {
-            reportRows_.push_back(reportRowMap(row));
+        auto& operation = **found;
+        operation.completed = true;
+        if (!shuttingDown_ && operation.id == latestReportOperationId_) {
+            std::optional<application::ExecutadasReportResult> result = std::nullopt;
+            std::exception_ptr error;
+            bool canceled = false;
+            {
+                std::scoped_lock lock(operation.state->mutex);
+                result = std::move(operation.state->result);
+                error = operation.state->error;
+                canceled = operation.state->canceled;
+            }
+            reportLoading_ = false;
+            reportError_.clear();
+            if (!canceled && error) {
+                try {
+                    std::rethrow_exception(error);
+                } catch (const std::exception& exception) {
+                    reportError_ = QString::fromUtf8(exception.what());
+                } catch (...) {
+                    reportError_ = tr("Falha interna ao gerar relatorio");
+                }
+            } else if (!canceled && result) {
+                if (!result->ok) {
+                    reportError_ = QString::fromStdString(result->error);
+                } else {
+                    reportRows_.reserve(static_cast<int>(result->rows.size()));
+                    for (const auto& row : result->rows) {
+                        reportRows_.push_back(reportRowMap(row));
+                    }
+                }
+            }
+            if (!reportError_.isEmpty()) {
+                reportText_ = reportError_;
+            } else {
+                reportText_ =
+                    reportRows_.empty()
+                        ? tr("Nenhuma SSA baixada no mes vigente para o recorte atual.")
+                        : tr("%1 linhas agrupadas no mes vigente.").arg(reportRows_.size());
+            }
+            emit reportChanged();
         }
-        reportText_ = reportRows_.empty()
-                          ? tr("Nenhuma SSA baixada no mes vigente para o recorte atual.")
-                          : tr("%1 linhas agrupadas no mes vigente.").arg(reportRows_.size());
+        QMetaObject::invokeMethod(this, [this] { pruneCompletedReports(); }, Qt::QueuedConnection);
+    }
+
+    void AdvancedMacroFilterViewModel::stopReportOperations() {
+        for (const auto& operation : reportOperations_) {
+            if (!operation->completed) {
+                operation->stopSource.request_stop();
+                operation->watcher.cancel();
+            }
+        }
+    }
+
+    void AdvancedMacroFilterViewModel::pruneCompletedReports() {
+        std::erase_if(reportOperations_,
+                      [](const auto& operation) { return operation->completed; });
     }
 
     void AdvancedMacroFilterViewModel::clearReport() {
         reportTitle_.clear();
         reportText_.clear();
         reportRows_.clear();
+        reportError_.clear();
+        reportLoading_ = false;
     }
 
 } // namespace ssa::presentation

@@ -13,9 +13,9 @@ namespace ssa::infra::sqlite {
       public:
         explicit SqliteMaintenancePort(std::filesystem::path databasePath);
 
-        [[nodiscard]] ports::WorkflowResult resetDatabase() override;
-        [[nodiscard]] ports::WorkflowResult cleanData() override;
-        [[nodiscard]] ports::WorkflowResult vacuumAnalyze() override;
+        [[nodiscard]] ports::WorkflowResult resetDatabase(std::stop_token stopToken = {}) override;
+        [[nodiscard]] ports::WorkflowResult cleanData(std::stop_token stopToken = {}) override;
+        [[nodiscard]] ports::WorkflowResult vacuumAnalyze(std::stop_token stopToken = {}) override;
 
       private:
         [[nodiscard]] static std::optional<ports::WorkflowResult>

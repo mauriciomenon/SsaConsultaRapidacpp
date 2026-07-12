@@ -5,6 +5,7 @@
 
 #include <filesystem>
 #include <memory>
+#include <stop_token>
 #include <string>
 #include <vector>
 
@@ -43,8 +44,9 @@ namespace ssa::infra::sqlite {
         // to keep one transaction across batches.
         [[nodiscard]] importing::SsaImportWriteSummary
         write(const importing::ResolvedSsaImportRows& rows, std::size_t fileCount,
-              std::size_t skippedRows, bool replaceAll) const;
-        [[nodiscard]] WriteSession startSession(bool replaceAll) const;
+              std::size_t skippedRows, bool replaceAll, std::stop_token stopToken = {}) const;
+        [[nodiscard]] WriteSession startSession(bool replaceAll,
+                                                std::stop_token stopToken = {}) const;
 
       private:
         std::filesystem::path databasePath_;

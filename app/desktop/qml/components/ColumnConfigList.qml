@@ -68,6 +68,7 @@ Item {
                         CheckBox {
                             checked: columnDelegate.columnVisible
                             enabled: columnDelegate.columnVisibilityChangeEnabled
+                            Accessible.name: "Alternar visibilidade da coluna " + columnDelegate.columnLabel
                             onToggled: root.viewModel.setColumnVisibleByKey(columnDelegate.columnKey, checked)
                         }
                         Label {

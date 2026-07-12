@@ -10,6 +10,7 @@
 #include "infra/sqlite/SqliteMaintenancePort.h"
 #include "infra/sqlite/SqliteSsaRepository.h"
 #include "platform/DesktopExternalCommandPort.h"
+#include "qt/FilesystemPath.h"
 #include "query/SsaQueryService.h"
 
 #include <QUrl>
@@ -22,12 +23,8 @@ namespace ssa::app::desktop {
 
     namespace {
 
-        std::filesystem::path toFileSystemPath(const QString& path) {
-            return std::filesystem::path{path.toStdString()};
-        }
-
         std::filesystem::path databasePath(const ssa::platform::StartupOptions& options) {
-            return toFileSystemPath(options.databasePath);
+            return ssa::qt::toFileSystemPath(options.databasePath);
         }
 
         std::vector<ssa::domain::ColumnDef> importColumns() {
@@ -80,7 +77,7 @@ namespace ssa::app::desktop {
         const auto commands = createCommandPort(options, paths);
         const auto preferences =
             std::make_shared<ssa::infra::preferences::JsonUserPreferencesStore>(
-                toFileSystemPath(paths.preferencesFile()));
+                ssa::qt::toFileSystemPath(paths.preferencesFile()));
         const auto filterPresets =
             std::make_shared<ssa::infra::preferences::JsonFilterPresetStore>();
 

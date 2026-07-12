@@ -1,5 +1,7 @@
 #include "SsaCliDatabasePath.h"
 
+#include "qt/FilesystemPath.h"
+
 #include <stdexcept>
 #include <string>
 
@@ -10,12 +12,13 @@ namespace ssa::app::cli {
             throw std::invalid_argument("missing required --db");
         }
 
-        const std::filesystem::path dbPath{parser.value("db").toStdString()};
+        const auto dbPath = ssa::qt::toFileSystemPath(parser.value("db"));
         if (!std::filesystem::exists(dbPath)) {
-            throw std::invalid_argument("database path does not exist: " + dbPath.string());
+            throw std::invalid_argument("database path does not exist: " + ssa::qt::toUtf8(dbPath));
         }
         if (!std::filesystem::is_regular_file(dbPath)) {
-            throw std::invalid_argument("database path is not a regular file: " + dbPath.string());
+            throw std::invalid_argument("database path is not a regular file: " +
+                                        ssa::qt::toUtf8(dbPath));
         }
         return dbPath;
     }

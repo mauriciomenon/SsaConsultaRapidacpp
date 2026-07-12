@@ -43,6 +43,15 @@ namespace ssa::presentation {
             return map;
         }
 
+        bool containsExcludedToken(const std::map<std::string, std::string>& filters) {
+            return std::ranges::any_of(filters, [](const auto& filter) {
+                const auto tokens = query::parseTextFilterTokens(filter.second);
+                return std::ranges::any_of(tokens.ordered, [](const auto& token) {
+                    return token.filterOperator == query::TextFilterOperator::Different;
+                });
+            });
+        }
+
     } // namespace
 
     FilterPanelViewModel::FilterPanelViewModel(std::shared_ptr<query::SsaQueryService> queryService,
@@ -79,9 +88,6 @@ namespace ssa::presentation {
     }
 
     void FilterPanelViewModel::loadFilterCatalog() {
-        std::ranges::transform(domain::ColumnCatalog::orderedFilterColumnKeys(),
-                               std::back_inserter(filterColumnKeys_),
-                               [](const auto& key) { return QString::fromStdString(key); });
         std::ranges::transform(domain::ColumnCatalog::weekColumnKeys(),
                                std::back_inserter(weekColumnKeys_), [](const auto key) {
                                    return QString::fromUtf8(key.data(),
@@ -102,19 +108,21 @@ namespace ssa::presentation {
                        const QString& key, const std::uint64_t stateVersion) {
                     setColumnValueOptions(values, maxValueLength, key, stateVersion);
                 });
-        connect(&distinctValues_, &FilterPanelDistinctValuesController::columnValueOptionsFailed,
-                this, [this](const QString& key, const std::uint64_t stateVersion) {
-                    if (stateVersion != 0 && stateVersion != filterStateVersion_) {
-                        return;
-                    }
-                    const auto normalizedKey = key.trimmed();
-                    columnValueOptions_.clearLoadingFor(normalizedKey);
-                    emit columnValueOptionsChanged();
-                    emit columnValueOptionsChangedFor(normalizedKey);
-                });
+        connect(
+            &distinctValues_, &FilterPanelDistinctValuesController::columnValueOptionsFailed, this,
+            [this](const QString& key, const std::uint64_t stateVersion, const QString& message) {
+                if (stateVersion != 0 && stateVersion != filterStateVersion_) {
+                    return;
+                }
+                const auto normalizedKey = key.trimmed();
+                columnValueOptions_.markFailed(normalizedKey, message);
+                emit columnValueOptionsChangedFor(normalizedKey);
+            });
         connect(&distinctValues_, &FilterPanelDistinctValuesController::quickSectorOptionsReady,
                 this,
                 [this](const std::vector<std::string>& values) { sector_.setOptions(values); });
+        connect(&distinctValues_, &FilterPanelDistinctValuesController::quickSectorOptionsFailed,
+                &sector_, &FilterPanelSectorViewModel::setOptionsError);
         connect(&sector_, &FilterPanelSectorViewModel::stateChanged, this,
                 [this](const bool quickSectorChanged) {
                     if (quickSectorChanged) {
@@ -147,10 +155,6 @@ namespace ssa::presentation {
         }
         publishFilterStateChange();
         emit applyRequested();
-    }
-
-    QStringList FilterPanelViewModel::filterColumnKeys() const {
-        return filterColumnKeys_;
     }
 
     QStringList FilterPanelViewModel::statusShortcutValues() const {
@@ -213,6 +217,13 @@ namespace ssa::presentation {
         return activeFilterEntries_;
     }
 
+    bool FilterPanelViewModel::hasExclusionFilter() const {
+        if (state_.excludeScaSesSte() || containsExcludedToken(state_.columnFilters())) {
+            return true;
+        }
+        return containsExcludedToken(state_.advancedFilters().textFilters);
+    }
+
     std::map<std::string, std::string> FilterPanelViewModel::columnFilters() const {
         return state_.columnFilters();
     }
@@ -223,10 +234,6 @@ namespace ssa::presentation {
 
     bool FilterPanelViewModel::hasFilterForColumn(const QString& key) const {
         return state_.hasFilterForColumn(key);
-    }
-
-    int FilterPanelViewModel::columnValueOptionsVersion() const {
-        return columnValueOptions_.version();
     }
 
     int FilterPanelViewModel::focusColumnRequest() const {
@@ -261,6 +268,10 @@ namespace ssa::presentation {
 
     bool FilterPanelViewModel::columnValueOptionsLoadingFor(const QString& key) const {
         return columnValueOptions_.loadingFor(key);
+    }
+
+    QString FilterPanelViewModel::columnValueOptionsErrorFor(const QString& key) const {
+        return columnValueOptions_.errorFor(key);
     }
 
     bool FilterPanelViewModel::statusShortcutSelected(const QString& code) const {
@@ -435,9 +446,7 @@ namespace ssa::presentation {
         } else if (action == "advanced_execution_year") {
             didChange = state_.advanced().setExecutionYear({});
         } else if (action == "advanced_reprogramming") {
-            const bool equalsChanged = state_.advanced().setReprogrammingEquals({});
-            const bool valuesChanged = state_.advanced().setReprogrammingValues({});
-            didChange = equalsChanged || valuesChanged;
+            didChange = state_.advanced().setReprogrammingValues({});
         } else if (action == "advanced_issue_week_range") {
             const bool startChanged = state_.advanced().setIssueWeekStart({});
             const bool endChanged = state_.advanced().setIssueWeekEnd({});
@@ -470,7 +479,6 @@ namespace ssa::presentation {
         }
         const auto normalizedKey = key.trimmed();
         columnValueOptions_.store(options, normalizedKey, filterStateVersion_, maxValueLength);
-        emit columnValueOptionsChanged();
         emit columnValueOptionsChangedFor(normalizedKey);
     }
 
@@ -487,9 +495,7 @@ namespace ssa::presentation {
         ++filterStateVersion_;
         distinctValues_.invalidateColumnValueRequests();
         columnValueOptions_.clearLoading();
-        columnValueOptions_.touchVersion();
         emit columnValueOptionsReset();
-        emit columnValueOptionsChanged();
     }
 
     void FilterPanelViewModel::setColumnFilters(std::map<std::string, std::string> filters) {
@@ -511,19 +517,20 @@ namespace ssa::presentation {
             return;
         }
         if (columnValueOptions_.hasFreshOptions(normalizedKey, filterStateVersion_)) {
-            columnValueOptions_.touchVersion();
-            emit columnValueOptionsChanged();
             emit columnValueOptionsChangedFor(normalizedKey);
             return;
         }
         columnValueOptions_.markLoading(normalizedKey);
-        emit columnValueOptionsChanged();
         emit columnValueOptionsChangedFor(normalizedKey);
         distinctValues_.refreshColumnValueOptionsFor(normalizedKey, filterStateVersion_);
     }
 
     void FilterPanelViewModel::invalidateDataSourceOptions() {
         invalidateColumnValueOptions();
+        refreshQuickSectorOptions();
+    }
+
+    void FilterPanelViewModel::retryQuickSectorOptions() {
         refreshQuickSectorOptions();
     }
 

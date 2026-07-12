@@ -4,11 +4,18 @@
 #include "presentation/DerivadasGraphModel.h"
 #include "presentation/DetailsFieldsModel.h"
 
+#include <QFutureWatcher>
 #include <QObject>
 #include <QString>
 #include <QVariantList>
 
+#include <cstdint>
+#include <exception>
 #include <memory>
+#include <mutex>
+#include <optional>
+#include <stop_token>
+#include <vector>
 
 namespace ssa::query {
     class SsaQueryService;
@@ -24,6 +31,8 @@ namespace ssa::presentation {
         Q_PROPERTY(int fieldCount READ fieldCount NOTIFY changed)
         Q_PROPERTY(QVariantList relations READ relations NOTIFY changed)
         Q_PROPERTY(int relationCount READ relationCount NOTIFY changed)
+        Q_PROPERTY(bool relationLoading READ relationLoading NOTIFY relationStatusChanged)
+        Q_PROPERTY(QString relationError READ relationError NOTIFY relationStatusChanged)
         Q_PROPERTY(DerivadasGraphModel* graphModel READ graphModel CONSTANT)
         Q_PROPERTY(
             int currentRelationIndex READ currentRelationIndex NOTIFY relationNavigationChanged)
@@ -36,35 +45,60 @@ namespace ssa::presentation {
         explicit DetailsViewModel(QObject* parent = nullptr);
         explicit DetailsViewModel(std::shared_ptr<query::SsaQueryService> queryService,
                                   QObject* parent = nullptr);
+        ~DetailsViewModel() override;
 
         [[nodiscard]] QString title() const;
         [[nodiscard]] DetailsFieldsModel* fields();
         [[nodiscard]] int fieldCount() const;
         void setRecord(const domain::SsaRecord& record);
         void clearRecord();
-        // Loads a single SSA by number from the repository (if wired) and
-        // displays it. Returns false if not found or no service attached.
-        Q_INVOKABLE
-        bool loadBySsaNumber(const QString& ssaNumber);
+        Q_INVOKABLE void requestLoadBySsaNumber(const QString& ssaNumber);
         [[nodiscard]] int currentRelationIndex() const;
         [[nodiscard]] bool canSelectNextRelation() const;
         [[nodiscard]] bool canSelectPreviousRelation() const;
-
-      public slots:
-        void selectNextRelation();
-        void selectPreviousRelation();
+        [[nodiscard]] bool relationLoading() const;
+        [[nodiscard]] QString relationError() const;
         [[nodiscard]] QString selectedSsa() const;
         [[nodiscard]] QString selectedSsaNumber() const;
         [[nodiscard]] QVariantList relations() const;
         [[nodiscard]] int relationCount() const;
         [[nodiscard]] DerivadasGraphModel* graphModel();
 
+      public slots:
+        void selectNextRelation();
+        void selectPreviousRelation();
+
       signals:
         void changed();
         void relationNavigationChanged();
+        void relationStatusChanged();
 
       private:
+        enum class RelationQueryKind { DirectChildren, Record };
+
+        struct RelationQueryState final {
+            std::mutex mutex;
+            std::vector<domain::SsaDerivadaEntry> children;
+            std::optional<domain::SsaRecord> record = std::nullopt;
+            std::exception_ptr error;
+            bool canceled{false};
+        };
+
+        struct RelationQueryOperation final {
+            std::uint64_t id{0};
+            QString ssaNumber;
+            RelationQueryKind kind{RelationQueryKind::DirectChildren};
+            QFutureWatcher<void> watcher;
+            std::shared_ptr<RelationQueryState> state;
+            std::stop_source stopSource;
+            bool completed{false};
+        };
+
         void rebuildDerivadas(const domain::SsaRecord& record);
+        void startRelationQuery(const QString& ssaNumber, RelationQueryKind kind);
+        void finishRelationQuery(std::uint64_t operationId);
+        void stopRelationQueries();
+        void pruneCompletedQueries();
         void setCurrentRelationIndex(int index);
         void loadRelation(int index);
 
@@ -75,6 +109,12 @@ namespace ssa::presentation {
         DerivadasGraphModel graphModel_;
         std::shared_ptr<query::SsaQueryService> queryService_;
         int currentRelationIndex_{0};
+        std::vector<std::unique_ptr<RelationQueryOperation>> relationQueries_;
+        std::uint64_t latestRelationQueryId_{0};
+        std::uint64_t nextRelationQueryId_{0};
+        bool relationLoading_{false};
+        bool shuttingDown_{false};
+        QString relationError_;
     };
 
 } // namespace ssa::presentation

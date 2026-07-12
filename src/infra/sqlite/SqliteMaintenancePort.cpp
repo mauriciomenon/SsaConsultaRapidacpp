@@ -1,6 +1,7 @@
 #include "infra/sqlite/SqliteMaintenancePort.h"
 
 #include "infra/sqlite/SqliteConnection.h"
+#include "infra/sqlite/SqliteProgressHandler.h"
 
 #include <sqlite3.h>
 
@@ -15,13 +16,21 @@ namespace ssa::infra::sqlite {
             return {ports::WorkflowStatus::Succeeded, operation};
         }
 
+        ports::WorkflowResult canceled() {
+            return {ports::WorkflowStatus::Rejected, "sqlite maintenance canceled"};
+        }
+
     } // namespace
 
     SqliteMaintenancePort::SqliteMaintenancePort(std::filesystem::path databasePath)
         : databasePath_(std::move(databasePath)) {}
 
-    ports::WorkflowResult SqliteMaintenancePort::resetDatabase() {
+    ports::WorkflowResult SqliteMaintenancePort::resetDatabase(const std::stop_token stopToken) {
+        if (stopToken.stop_requested()) {
+            return canceled();
+        }
         SqliteConnection connection(databasePath_, SqliteOpenMode::ReadWrite);
+        SqliteProgressHandler progress(connection.handle(), stopToken);
         if (auto result = executeMaintenanceSql(connection, "DELETE FROM ssa_table")) {
             return *result;
         }
@@ -31,8 +40,12 @@ namespace ssa::infra::sqlite {
         return succeeded("database reset completed");
     }
 
-    ports::WorkflowResult SqliteMaintenancePort::cleanData() {
+    ports::WorkflowResult SqliteMaintenancePort::cleanData(const std::stop_token stopToken) {
+        if (stopToken.stop_requested()) {
+            return canceled();
+        }
         SqliteConnection connection(databasePath_, SqliteOpenMode::ReadWrite);
+        SqliteProgressHandler progress(connection.handle(), stopToken);
         if (auto result = executeMaintenanceSql(
                 connection, "DELETE FROM ssa_table WHERE TRIM(COALESCE(numero_ssa, '')) = ''")) {
             return *result;
@@ -43,8 +56,12 @@ namespace ssa::infra::sqlite {
         return succeeded("data cleanup completed");
     }
 
-    ports::WorkflowResult SqliteMaintenancePort::vacuumAnalyze() {
+    ports::WorkflowResult SqliteMaintenancePort::vacuumAnalyze(const std::stop_token stopToken) {
+        if (stopToken.stop_requested()) {
+            return canceled();
+        }
         SqliteConnection connection(databasePath_, SqliteOpenMode::ReadWrite);
+        SqliteProgressHandler progress(connection.handle(), stopToken);
         if (auto result = runOptimizationTasks(connection)) {
             return *result;
         }
@@ -59,6 +76,9 @@ namespace ssa::infra::sqlite {
         if (error != nullptr) {
             sqlite3_free(error);
         }
+        if (execRc == SQLITE_INTERRUPT) {
+            return canceled();
+        }
         if (execRc != SQLITE_OK) {
             return ports::WorkflowResult{ports::WorkflowStatus::Failed,
                                          "sqlite maintenance failed: " + message};
@@ -68,6 +88,11 @@ namespace ssa::infra::sqlite {
 
     std::optional<ports::WorkflowResult>
     SqliteMaintenancePort::runOptimizationTasks(SqliteConnection& connection) {
+        if (auto result = executeMaintenanceSql(
+                connection, "CREATE INDEX IF NOT EXISTS idx_ssa_table_derivada_de "
+                            "ON ssa_table (derivada_de)")) {
+            return result;
+        }
         if (auto result = executeMaintenanceSql(connection, "VACUUM")) {
             return result;
         }

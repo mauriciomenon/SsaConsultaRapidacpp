@@ -1,5 +1,7 @@
 #include "infra/sqlite/SqliteConnection.h"
 
+#include "qt/FilesystemPath.h"
+
 #include <exception>
 #include <stdexcept>
 #include <system_error>
@@ -30,8 +32,9 @@ namespace ssa::infra::sqlite {
     } // namespace
 
     SqliteConnection::SqliteConnection(const std::filesystem::path& dbPath,
-                                       const SqliteOpenMode mode, const int busyTimeoutMs) {
-        const auto path = dbPath.string();
+                                       const SqliteOpenMode mode,
+                                       const std::chrono::milliseconds busyTimeout) {
+        const auto path = qt::toUtf8(dbPath);
         const int rc = sqlite3_open_v2(path.c_str(), &db_, openFlags(mode), nullptr);
         if (rc != SQLITE_OK) {
             std::string message =
@@ -42,7 +45,7 @@ namespace ssa::infra::sqlite {
         if (db_ == nullptr) {
             throw std::runtime_error("cannot open sqlite database: null handle");
         }
-        sqlite3_busy_timeout(db_, busyTimeoutMs);
+        sqlite3_busy_timeout(db_, static_cast<int>(busyTimeout.count()));
     }
 
     SqliteConnection::~SqliteConnection() {
@@ -123,6 +126,10 @@ namespace ssa::infra::sqlite {
             resetAndClearBindings();
         } catch (...) {
             resetError = std::current_exception();
+        }
+        if (rc == SQLITE_INTERRUPT) {
+            throw std::system_error(std::make_error_code(std::errc::operation_canceled),
+                                    "sqlite query canceled");
         }
         if (rc != SQLITE_DONE) {
             throw std::runtime_error("sqlite statement execution failed");

@@ -10,8 +10,6 @@ namespace ssa::platform {
       public:
         AppPaths(QString projectRoot, QString configDir);
 
-        [[nodiscard]] QString projectRoot() const;
-        [[nodiscard]] QString configDir() const;
         [[nodiscard]] QString preferencesFile() const;
         [[nodiscard]] std::filesystem::path projectRootPath() const;
         [[nodiscard]] std::filesystem::path configDirectoryPath() const;

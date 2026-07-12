@@ -49,9 +49,10 @@ FilterCard {
 
             Label {
                 Layout.preferredWidth: Math.min(96, Math.max(60, root.cardWidth * 0.16))
-                visible: root.macro.reportTitle.length > 0
-                text: root.macro.reportText.length > 0 ? root.macro.reportText : ""
-                color: Theme.accentStrong
+                visible: root.macro.reportTitle.length > 0 || root.macro.reportLoading || root.macro.reportError.length > 0
+                text: root.macro.reportLoading ? "Carregando" : root.macro.reportText
+                textFormat: Text.PlainText
+                color: root.macro.reportError.length > 0 ? Theme.danger : Theme.accentStrong
                 font.pixelSize: Theme.fontSizeMicro
                 horizontalAlignment: Text.AlignRight
                 elide: Text.ElideRight
@@ -76,8 +77,10 @@ FilterCard {
                 currentIndex: root.macroIndex()
                 displayText: root.macro.selectedMacro.length > 0 ? root.macro.selectedMacro : "Macro"
                 onActivated: {
-                    root.macro.selectedMacro = currentValue;
-                    root.applyRequested();
+                    const selectedValue = currentValue;
+                    root.macro.selectedMacro = selectedValue;
+                    if (selectedValue === "ssas_para_baixar")
+                        root.applyRequested();
                 }
             }
 
@@ -91,6 +94,7 @@ FilterCard {
                 ToolTip.visible: hovered
                 ToolTip.text: "Limpar macro"
                 ToolTip.delay: 0
+                Accessible.name: "Limpar macro"
                 onClicked: {
                     root.macro.selectedMacro = "";
                     root.applyRequested();
@@ -102,7 +106,7 @@ FilterCard {
             Layout.fillWidth: true
             Layout.fillHeight: true
             spacing: 2
-            visible: root.macro.reportRows.length > 0
+            visible: root.macro.reportRows.length > 0 || root.macro.reportLoading || root.macro.reportError.length > 0
 
             RowLayout {
                 Layout.fillWidth: true
@@ -111,6 +115,7 @@ FilterCard {
                 Label {
                     Layout.preferredWidth: 92
                     text: "Setor/Div"
+                    textFormat: Text.PlainText
                     color: Theme.text
                     font.pixelSize: Theme.fontSizeMicro
                     elide: Text.ElideRight
@@ -118,12 +123,14 @@ FilterCard {
                 Label {
                     Layout.preferredWidth: 58
                     text: "Semana"
+                    textFormat: Text.PlainText
                     color: Theme.text
                     font.pixelSize: Theme.fontSizeMicro
                 }
                 Label {
                     Layout.fillWidth: true
                     text: "Pessoa"
+                    textFormat: Text.PlainText
                     color: Theme.text
                     font.pixelSize: Theme.fontSizeMicro
                     elide: Text.ElideRight
@@ -131,63 +138,72 @@ FilterCard {
                 Label {
                     Layout.preferredWidth: 42
                     text: "SSAs"
+                    textFormat: Text.PlainText
                     color: Theme.text
                     font.pixelSize: Theme.fontSizeMicro
                 }
             }
 
-            ScrollView {
+            Label {
+                Layout.fillWidth: true
+                visible: root.macro.reportLoading || root.macro.reportError.length > 0
+                text: root.macro.reportLoading ? "Carregando relatorio" : root.macro.reportError
+                textFormat: Text.PlainText
+                color: root.macro.reportError.length > 0 ? Theme.danger : Theme.mutedText
+                font.pixelSize: Theme.fontSizeMicro
+                horizontalAlignment: Text.AlignHCenter
+                elide: Text.ElideRight
+            }
+
+            ListView {
+                id: macroReportList
+                objectName: "macroReportList"
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 clip: true
-                ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                spacing: 2
+                reuseItems: true
+                model: root.macro.reportRows
+                ScrollBar.vertical: ScrollBar {}
 
-                ColumnLayout {
-                    width: parent.width
-                    spacing: 2
+                delegate: RowLayout {
+                    id: reportRow
+                    objectName: "macroReportRow"
+                    required property var modelData
+                    width: ListView.view.width
+                    height: 18
+                    spacing: 6
 
-                    Repeater {
-                        model: root.macro.reportRows
-
-                        RowLayout {
-                            id: reportRow
-                            required property var modelData
-
-                            width: parent.width
-                            spacing: 6
-
-                            Label {
-                                Layout.preferredWidth: 92
-                                text: reportRow.modelData.group
-                                textFormat: Text.PlainText
-                                color: Theme.text
-                                font.pixelSize: Theme.fontSizeMicro
-                                elide: Text.ElideRight
-                            }
-                            Label {
-                                Layout.preferredWidth: 58
-                                text: reportRow.modelData.week
-                                textFormat: Text.PlainText
-                                color: Theme.text
-                                font.pixelSize: Theme.fontSizeMicro
-                            }
-                            Label {
-                                Layout.fillWidth: true
-                                text: reportRow.modelData.person
-                                textFormat: Text.PlainText
-                                color: Theme.text
-                                font.pixelSize: Theme.fontSizeMicro
-                                elide: Text.ElideRight
-                            }
-                            Label {
-                                Layout.preferredWidth: 42
-                                horizontalAlignment: Text.AlignRight
-                                text: reportRow.modelData.count
-                                textFormat: Text.PlainText
-                                color: Theme.accentStrong
-                                font.pixelSize: Theme.fontSizeMicro
-                            }
-                        }
+                    Label {
+                        Layout.preferredWidth: 92
+                        text: reportRow.modelData.group
+                        textFormat: Text.PlainText
+                        color: Theme.text
+                        font.pixelSize: Theme.fontSizeMicro
+                        elide: Text.ElideRight
+                    }
+                    Label {
+                        Layout.preferredWidth: 58
+                        text: reportRow.modelData.week
+                        textFormat: Text.PlainText
+                        color: Theme.text
+                        font.pixelSize: Theme.fontSizeMicro
+                    }
+                    Label {
+                        Layout.fillWidth: true
+                        text: reportRow.modelData.person
+                        textFormat: Text.PlainText
+                        color: Theme.text
+                        font.pixelSize: Theme.fontSizeMicro
+                        elide: Text.ElideRight
+                    }
+                    Label {
+                        Layout.preferredWidth: 42
+                        horizontalAlignment: Text.AlignRight
+                        text: reportRow.modelData.count
+                        textFormat: Text.PlainText
+                        color: Theme.accentStrong
+                        font.pixelSize: Theme.fontSizeMicro
                     }
                 }
             }

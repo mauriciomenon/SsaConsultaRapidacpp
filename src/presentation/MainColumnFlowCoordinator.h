@@ -25,6 +25,7 @@ namespace ssa::presentation {
                                   SaveTrigger savePreferences,
                                   SaveAppliedColumnsTrigger saveAppliedColumns,
                                   QObject* parent = nullptr);
+        [[nodiscard]] Q_INVOKABLE bool canHideColumn(const QString& columnKey) const;
 
       public slots:
         void applyColumnSettings();
@@ -32,7 +33,6 @@ namespace ssa::presentation {
         void discardColumnSettings();
         [[nodiscard]] bool setColumnWidthAndApply(const QString& columnKey, int width);
         [[nodiscard]] bool setColumnVisibleAndApply(const QString& columnKey, bool visible);
-        [[nodiscard]] bool canHideColumn(const QString& columnKey) const;
 
       private:
         BrowseViewModel& browse_;

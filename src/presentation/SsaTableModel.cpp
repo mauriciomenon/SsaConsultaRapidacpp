@@ -115,10 +115,6 @@ namespace ssa::presentation {
         }
     }
 
-    int SsaTableModel::visibleColumnCount() const {
-        return columnCount();
-    }
-
     QString SsaTableModel::columnKey(const int column) const {
         if (!hasColumn(column)) {
             return {};

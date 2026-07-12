@@ -33,18 +33,33 @@ jobs:
   MSDO:
     # currently only windows latest is supported
     runs-on: windows-latest
+    timeout-minutes: 30
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
 
     steps:
-    - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-    - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9
-      with:
-        dotnet-version: |
-          5.0.x
-          6.0.x
-    - name: Run Microsoft Security DevOps
-      uses: microsoft/security-devops-action@e94440350ed10e2806d47cd0d7504a2c51abdbe9
-      id: msdo
-    - name: Upload results to Security tab
-      uses: github/codeql-action/upload-sarif@b0c4fd77f6c559021d78430ec4d0d169ae74a4eb
-      with:
-        sarif_file: ${{ steps.msdo.outputs.sarifFile }}
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9
+        with:
+          dotnet-version: |
+            5.0.x
+            6.0.x
+      - name: Run Microsoft Security DevOps
+        uses: microsoft/security-devops-action@e94440350ed10e2806d47cd0d7504a2c51abdbe9
+        id: msdo
+      - name: Upload results to Security tab
+        if: >-
+          always() && steps.msdo.outputs.sarifFile != '' &&
+          (github.event_name != 'pull_request' ||
+          github.event.pull_request.head.repo.full_name == github.repository)
+        uses: github/codeql-action/upload-sarif@b0c4fd77f6c559021d78430ec4d0d169ae74a4eb
+        with:
+          sarif_file: ${{ steps.msdo.outputs.sarifFile }}
+          category: microsoft-defender-devops
+      - name: Report skipped SARIF upload
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
+        run: Write-Output "SARIF upload is disabled for pull requests from forks."

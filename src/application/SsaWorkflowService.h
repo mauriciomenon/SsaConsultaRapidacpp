@@ -16,15 +16,17 @@ namespace ssa::application {
             std::shared_ptr<ports::IDerivadasPort> derivadasPort = nullptr);
 
         [[nodiscard]] ports::WorkflowResult
-        importExternalFiles(const ports::ImportExternalFilesRequest& request) const;
-        [[nodiscard]] ports::WorkflowResult rescan(const ports::RescanRequest& request) const;
+        importExternalFiles(const ports::ImportExternalFilesRequest& request,
+                            std::stop_token stopToken = {}) const;
+        [[nodiscard]] ports::WorkflowResult rescan(const ports::RescanRequest& request,
+                                                   std::stop_token stopToken = {}) const;
         [[nodiscard]] ports::WorkflowResult
         exportFilteredList(const ports::ExportFilteredListRequest& request,
                            std::stop_token stopToken = {}) const;
-        [[nodiscard]] ports::WorkflowResult resetDatabase() const;
-        [[nodiscard]] ports::WorkflowResult cleanData() const;
-        [[nodiscard]] ports::WorkflowResult vacuumAnalyze() const;
-        [[nodiscard]] ports::WorkflowResult syncDerivadas() const;
+        [[nodiscard]] ports::WorkflowResult resetDatabase(std::stop_token stopToken = {}) const;
+        [[nodiscard]] ports::WorkflowResult cleanData(std::stop_token stopToken = {}) const;
+        [[nodiscard]] ports::WorkflowResult vacuumAnalyze(std::stop_token stopToken = {}) const;
+        [[nodiscard]] ports::WorkflowResult syncDerivadas(std::stop_token stopToken = {}) const;
 
       private:
         [[nodiscard]] static ports::WorkflowResult notImplemented(const char* operation);

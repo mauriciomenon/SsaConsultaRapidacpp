@@ -31,8 +31,6 @@ namespace ssa::presentation::filterpanel {
         bool setIssueYear(QString value);
         [[nodiscard]] const QString& executionYear() const;
         bool setExecutionYear(QString value);
-        [[nodiscard]] const QString& reprogrammingEquals() const;
-        bool setReprogrammingEquals(QString value);
         [[nodiscard]] const QString& reprogrammingMode() const;
         bool setReprogrammingMode(const QString& value);
         [[nodiscard]] const QString& reprogrammingValues() const;
@@ -85,7 +83,6 @@ namespace ssa::presentation::filterpanel {
             };
 
             struct Reprogramming {
-                QString equals;
                 QString mode{QStringLiteral("gte")};
                 QString values;
                 bool only{false};

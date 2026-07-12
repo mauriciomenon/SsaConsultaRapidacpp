@@ -3,12 +3,14 @@
 namespace ssa::application {
 
     ports::WorkflowResult
-    UnavailableWorkflowPort::importExternalFiles(const ports::ImportExternalFilesRequest& request) {
+    UnavailableWorkflowPort::importExternalFiles(const ports::ImportExternalFilesRequest& request,
+                                                 std::stop_token) {
         (void)request;
         return unavailable("import external files");
     }
 
-    ports::WorkflowResult UnavailableWorkflowPort::rescan(const ports::RescanRequest& request) {
+    ports::WorkflowResult UnavailableWorkflowPort::rescan(const ports::RescanRequest& request,
+                                                          std::stop_token) {
         (void)request;
         return unavailable("rescan");
     }
@@ -21,19 +23,19 @@ namespace ssa::application {
         return unavailable("export filtered list");
     }
 
-    ports::WorkflowResult UnavailableWorkflowPort::resetDatabase() {
+    ports::WorkflowResult UnavailableWorkflowPort::resetDatabase(std::stop_token) {
         return unavailable("reset database");
     }
 
-    ports::WorkflowResult UnavailableWorkflowPort::cleanData() {
+    ports::WorkflowResult UnavailableWorkflowPort::cleanData(std::stop_token) {
         return unavailable("clean data");
     }
 
-    ports::WorkflowResult UnavailableWorkflowPort::vacuumAnalyze() {
+    ports::WorkflowResult UnavailableWorkflowPort::vacuumAnalyze(std::stop_token) {
         return unavailable("vacuum analyze");
     }
 
-    ports::WorkflowResult UnavailableWorkflowPort::syncDerivadas() {
+    ports::WorkflowResult UnavailableWorkflowPort::syncDerivadas(std::stop_token) {
         return unavailable("sync derivadas");
     }
 

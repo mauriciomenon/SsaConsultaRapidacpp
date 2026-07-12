@@ -38,11 +38,8 @@ ApplicationWindow {
             root.graphStatusMessage = "SSA ja aberta";
             return;
         }
-        if (!root.detailsViewModel.loadBySsaNumber(ssaNumber)) {
-            root.graphStatusMessage = "Falha ao carregar SSA";
-            return;
-        }
         root.graphStatusMessage = "";
+        root.detailsViewModel.requestLoadBySsaNumber(ssaNumber);
     }
 
     ColumnLayout {
@@ -110,8 +107,9 @@ ApplicationWindow {
                         visible: root.detailsViewModel && root.detailsViewModel.graphModel.nodeCount === 0
                         Layout.fillWidth: true
                         Layout.fillHeight: true
-                        text: "Sem relacoes de derivacao para esta SSA"
-                        color: Theme.mutedText
+                        text: root.detailsViewModel && root.detailsViewModel.relationLoading ? "Carregando detalhes" : root.detailsViewModel && root.detailsViewModel.relationError.length > 0 ? root.detailsViewModel.relationError : "Sem relacoes de derivacao para esta SSA"
+                        textFormat: Text.PlainText
+                        color: root.detailsViewModel && root.detailsViewModel.relationError.length > 0 ? Theme.danger : Theme.mutedText
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                     }
@@ -128,8 +126,9 @@ ApplicationWindow {
 
                     Label {
                         visible: root.detailsViewModel && root.detailsViewModel.graphModel.nodeCount > 0
-                        text: root.graphStatusMessage.length > 0 ? root.graphStatusMessage : root.detailsViewModel ? root.detailsViewModel.graphModel.summary + " | Cheia: derivada | tracejada: relacionada | faixa: papel da SSA" : ""
-                        color: Theme.mutedText
+                        text: root.detailsViewModel && root.detailsViewModel.relationLoading ? "Carregando detalhes" : root.detailsViewModel && root.detailsViewModel.relationError.length > 0 ? root.detailsViewModel.relationError : root.graphStatusMessage.length > 0 ? root.graphStatusMessage : root.detailsViewModel ? root.detailsViewModel.graphModel.summary + " | Cheia: derivada | tracejada: relacionada | faixa: papel da SSA" : ""
+                        textFormat: Text.PlainText
+                        color: root.detailsViewModel && root.detailsViewModel.relationError.length > 0 ? Theme.danger : Theme.mutedText
                         font.pixelSize: Theme.fontSizeMicro
                     }
                 }
