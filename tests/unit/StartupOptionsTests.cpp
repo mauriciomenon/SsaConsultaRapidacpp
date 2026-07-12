@@ -126,6 +126,8 @@ TEST_CASE("startup options use SAM default URL when omitted") {
 }
 
 TEST_CASE("startup options discover project root from current directory database") {
+    REQUIRE(QCoreApplication::instance() == nullptr);
+
     const TemporaryDirectoryPair directories;
     const auto dataDirectory = directories.root / "data";
     std::filesystem::create_directories(dataDirectory);

@@ -46,9 +46,13 @@ namespace ssa::platform {
             std::vector<std::filesystem::path> candidates;
             appendCandidateWithParents(candidates,
                                        std::filesystem::path{QDir::currentPath().toStdString()});
-            appendCandidateWithParents(
-                candidates,
-                std::filesystem::path{QCoreApplication::applicationDirPath().toStdString()});
+            if (QCoreApplication::instance() != nullptr) {
+                const QString applicationDir = QCoreApplication::applicationDirPath();
+                if (!applicationDir.isEmpty()) {
+                    appendCandidateWithParents(candidates,
+                                               std::filesystem::path{applicationDir.toStdString()});
+                }
+            }
             for (const auto& candidate : candidates) {
                 if (containsDefaultDatabase(candidate)) {
                     return candidate;
