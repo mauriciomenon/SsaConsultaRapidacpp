@@ -2,6 +2,10 @@
 
 ## Pendente (fora do escopo desta trilha)
 
+- [LOW] [QT-ROLENAMES-CACHE] Medir e, se houver ganho comprovado, armazenar
+  `roleNames()` estavel por modelo para evitar reconstrucoes pequenas. Nao
+  alterar o contrato Qt nem adicionar cache sem evidencia de hot path.
+
 - [PENDING] Implementar sincronizacao completa de derivadas com regras de negocio e fonte externa, incluindo modelagem de grafo/fluxo derivado.
 - [PENDING] Adicionar lacunas restantes de paridade da tabela: reorder persistido por drag de colunas, acoes de menu de contexto de linha e acao de reset de sort no header.
 - [LOW] [IMPORT-CONSOLIDATION-TOCTOU] A consolidacao rejeita diretorios

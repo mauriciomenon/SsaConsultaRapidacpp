@@ -63,6 +63,19 @@ without porting Python architecture, and stabilize CI/flaky tests.
   all-or-none, timer persistido, single-flight por instancia e cancelamento no
   shutdown.
 
+### Entregas da 0.9.3
+
+- Cancelamento terminal real em consultas, filtros distinct, exportacao,
+  workflows, validacao de banco, preferencias e presets.
+- Latest-wins sem publicacao stale, com retry preservado quando a aplicacao de
+  filtros falha.
+- Atomicidade SQLite antes/depois do commit, rollback verificado e testes de
+  morte por subprocesso com `integrity_check`.
+- Supervisor multiplataforma de arvores de processos, staging atomico e
+  limpeza de temporarios em copia, XLS e XLSX.
+- Shutdown responsivo com status contextual, `Cancelando...`, barreira de
+  terminais e confirmacao forcada sem espera na thread GUI.
+
 ## Long term (multiple PRs, no fixed order)
 
 ### Missing GUI features (parity with PyQt6)
@@ -120,6 +133,8 @@ commands are out of scope unless a REPL mode is explicitly added:
 - Consider `QtQuick.Controls` -> `QtQuick` native items where Controls adds
   overhead without value (e.g. `ScrollBar` already required Controls; audit
   other usages).
+- Avaliar cache estavel de `roleNames()` somente em ciclo de performance com
+  medicao de alocacao e sem alterar o contrato dos modelos Qt.
 
 ### Out of scope (per `docs/contracts/functional-coverage.md`)
 

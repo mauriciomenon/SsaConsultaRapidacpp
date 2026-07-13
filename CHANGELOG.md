@@ -2,6 +2,42 @@
 
 Mudancas relevantes deste projeto sao registradas neste arquivo.
 
+## 0.9.3 - 2026-07-13
+
+### Adicionado
+
+- Estados publicos `Idle`, `Running` e `Canceling`, com terminal `Canceled`
+  emitido somente depois que o trabalho realmente termina.
+- Cancelamento contextual no status e encerramento responsivo com confirmacao
+  forcada apos 10 segundos.
+- Supervisor unico de arvores de processos com process group em Unix/macOS e
+  Job Object em Windows.
+
+### Alterado
+
+- Consultas, valores distintos, exportacao, preferencias, presets, validacao
+  de banco e workflows observam stop sem bloquear a thread da GUI.
+- Mensagens publicas sao seguras; detalhes tecnicos ficam somente no log.
+- Versao do projeto, GUI, CLI e pacotes atualizada para 0.9.3.
+
+### Corrigido
+
+- Cancelamento nao publica terminal antecipado, duplicado ou stale.
+- Latest-wins cancela consultas distinct obsoletas e mantem apenas a ultima
+  intencao pendente, sem deixar popup em loading permanente.
+- Escritas SQLite abrem transacao antes de DDL e mutacoes persistentes;
+  rollback e verificado e manutencao opcional pos-commit nao altera o terminal.
+- Copia, conversao XLS e extracao XLSX removem temporarios parciais em falha
+  ou cancelamento.
+- Encerramento forcado impede novos starts, mata arvores registradas e nao
+  mascara falha de cleanup como sucesso.
+
+### Seguranca
+
+- Cancelamento antes do commit preserva o estado anterior; morte de processo
+  durante escrita deixa o banco integral, nunca parcialmente publicado.
+- Arquivos JSON sao publicados por `QSaveFile` e artefatos por rename atomico.
+
 ## 0.9.2 - 2026-07-13
 
 ### Adicionado

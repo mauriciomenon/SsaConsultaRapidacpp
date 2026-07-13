@@ -62,3 +62,20 @@ the UI and CLI must be able to show it.
   derivadas rules.
 - Help and About are local presentation surfaces and must not execute network,
   subprocess, database, or Git operations.
+
+## Supervised Process Contract
+
+- Every external process is started through `SupervisedProcess`; direct
+  `QProcess` lifecycle ownership is not allowed in presentation or QML.
+- Unix and macOS create a dedicated process session and terminate the complete
+  process group. Windows assigns the process at creation to a Job Object with
+  `KILL_ON_JOB_CLOSE`.
+- Startup is registered before `QProcess::start`. A force request prevents new
+  starts, reports `PendingStart` while registration finishes, and never blocks
+  the GUI thread.
+- Normal cancellation uses short polling, graceful termination, forced kill,
+  and confirmation before publishing `Canceled`.
+- Force shutdown latches every failed tree termination and exits with failure;
+  cleanup failure cannot be reported as a safe terminal.
+- Staged files are copied in blocks to a temporary destination. Publication is
+  one rename after complete success; cancel or failure removes the temporary.

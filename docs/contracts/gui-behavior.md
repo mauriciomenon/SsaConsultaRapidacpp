@@ -27,6 +27,26 @@
 - A FileDialog for selecting another SQLite database and a SAM refresh settings
   dialog backed by view-model commands.
 
+## Cancellation And Shutdown
+
+- Cancelable view models expose `running`, `canceling`, `canCancel`, and an
+  idempotent `cancel()` operation. Execution states are `Idle`, `Running`, and
+  `Canceling`.
+- A cancellation request changes visible status to `Cancelando...`; `Canceled`
+  is terminal only after the worker, SQLite operation, and external process
+  tree have finished.
+- The contextual status action requests cancellation from every active
+  cancelable owner. No new operation starts while its owner is canceling.
+- The first window close request keeps the event loop active and requests all
+  cancellations. The window closes automatically after every terminal.
+- After 10 seconds, another close request opens the force-shutdown dialog.
+  Confirmation requests process-tree termination without blocking the GUI.
+- Public errors never contain raw SQLite messages, exception text, or local
+  paths. The corresponding diagnostic is written only to the application log.
+- If applying filter state B fails, the controls keep B for retry or undo while
+  the table continues showing the last successful result with an explicit
+  failure message.
+
 ## Preserved Behavior
 
 - General search keeps the Python semantics documented in `query-contract.md`.
