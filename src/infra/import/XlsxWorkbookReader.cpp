@@ -338,16 +338,16 @@ namespace ssa::infra::importing {
                                                         const std::stop_token stopToken) {
         throwIfImportCanceled(stopToken);
         XlsxPackage package(filePath);
-        const auto workbook = package.textEntry("xl/workbook.xml", true);
+        const auto workbook = package.textEntry("xl/workbook.xml", true, stopToken);
         const auto relationshipId = relationshipIdForFirstWorkbookSheet(workbook, stopToken);
         throwIfImportCanceled(stopToken);
-        const auto relationships = package.textEntry("xl/_rels/workbook.xml.rels", true);
+        const auto relationships = package.textEntry("xl/_rels/workbook.xml.rels", true, stopToken);
         const auto worksheetEntry =
             worksheetEntryForRelationship({relationships, relationshipId}, stopToken);
-        const auto sharedStrings =
-            parseSharedStrings(package.textEntry("xl/sharedStrings.xml", false), stopToken);
+        const auto sharedStrings = parseSharedStrings(
+            package.textEntry("xl/sharedStrings.xml", false, stopToken), stopToken);
         throwIfImportCanceled(stopToken);
-        const auto sheetXml = package.textEntry(worksheetEntry, true);
+        const auto sheetXml = package.textEntry(worksheetEntry, true, stopToken);
         return SpreadsheetTable{filePath, parseSheetRows(sheetXml, sharedStrings, stopToken)};
     }
 

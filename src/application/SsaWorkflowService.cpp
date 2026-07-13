@@ -4,6 +4,24 @@
 
 namespace ssa::application {
 
+    namespace {
+
+        ports::WorkflowResult withCleanupStatus(ports::WorkflowResult result,
+                                                const bool cleanupSucceeded) {
+            if (cleanupSucceeded) {
+                return result;
+            }
+            result.warning = true;
+            result.message += "; temporary SAM artifacts could not be removed";
+            if (!result.diagnostic.empty()) {
+                result.diagnostic += "; ";
+            }
+            result.diagnostic += "SAM artifact cleanup failed";
+            return result;
+        }
+
+    } // namespace
+
     SsaWorkflowService::SsaWorkflowService(
         std::shared_ptr<ports::IImportWorkflowPort> importPort,
         std::shared_ptr<ports::IExportPort> exportPort,
@@ -76,23 +94,17 @@ namespace ssa::application {
 
         auto fetchResult = samPort_->fetch(request, stopToken);
         if (!fetchResult.ok()) {
-            samPort_->discardArtifacts();
-            return {fetchResult.status, std::move(fetchResult.message)};
+            return withCleanupStatus({fetchResult.status, std::move(fetchResult.message), false,
+                                      std::move(fetchResult.diagnostic)},
+                                     samPort_->discardArtifacts());
         }
         if (!importPort_) {
-            samPort_->discardArtifacts();
-            return notImplemented("SAM import");
+            return withCleanupStatus(notImplemented("SAM import"), samPort_->discardArtifacts());
         }
 
         auto result = importPort_->importExternalFiles(
             {.files = std::move(fetchResult.artifacts), .optimized = true}, stopToken);
-        if (!samPort_->discardArtifacts() && result.ok()) {
-            auto warningResult = result;
-            warningResult.warning = true;
-            warningResult.message += "; temporary SAM artifacts could not be removed";
-            return warningResult;
-        }
-        return result;
+        return withCleanupStatus(std::move(result), samPort_->discardArtifacts());
     }
 
     ports::WorkflowResult SsaWorkflowService::notImplemented(const char* operation) {

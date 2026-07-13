@@ -108,14 +108,26 @@ namespace ssa::infra::importing {
                                                          const bool replaceAll,
                                                          const std::stop_token& stopToken) const {
         constexpr const char* operation = "import_xlsx_to_sqlite";
+        if (files.rejectionReason == "staging_cleanup_failed") {
+            return {ports::WorkflowStatus::Failed, "import_xlsx_to_sqlite staging_cleanup_failed",
+                    false, files.diagnostic};
+        }
         if (stopToken.stop_requested()) {
             return canceled(operation);
         }
         if (!files.rejectionReason.empty()) {
             return {ports::WorkflowStatus::Rejected,
-                    std::string{operation} + " " + files.rejectionReason};
+                    std::string{operation} + " " + files.rejectionReason, false, files.diagnostic};
+        }
+        if (replaceAll && (files.failedCopies > 0 || files.failedLegacyXls > 0)) {
+            return {ports::WorkflowStatus::Failed, rejectedMessage(operation, files), false,
+                    files.diagnostic};
         }
         if (files.files.empty()) {
+            if (files.failedCopies > 0 || files.failedLegacyXls > 0) {
+                return {ports::WorkflowStatus::Failed, rejectedMessage(operation, files), false,
+                        files.diagnostic};
+            }
             if (replaceAll) {
                 try {
                     const auto summary =
@@ -133,7 +145,8 @@ namespace ssa::infra::importing {
                     return failed(operation, files, {}, 1, exc.what());
                 }
             }
-            return {ports::WorkflowStatus::Rejected, rejectedMessage(operation, files)};
+            return {ports::WorkflowStatus::Rejected, rejectedMessage(operation, files), false,
+                    files.diagnostic};
         }
 
         SsaImportWriteSummary totalSummary;
@@ -232,9 +245,26 @@ namespace ssa::infra::importing {
         }
         const auto consolidation = stager_.consolidate(manifest, stopToken);
         failedFiles += consolidation.failed;
+        auto diagnostic = files.diagnostic;
+        if (!consolidation.error.empty()) {
+            if (!diagnostic.empty()) {
+                diagnostic += "; ";
+            }
+            diagnostic += consolidation.error;
+        }
+        constexpr std::size_t kMaxDiagnosticBytes = 4'096;
+        if (diagnostic.size() > kMaxDiagnosticBytes) {
+            diagnostic.resize(kMaxDiagnosticBytes);
+        }
+        const auto consolidationState =
+            consolidation.failed > 0 ? std::string_view{"consolidation_failed"}
+            : consolidation.canceled ? std::string_view{"consolidation_canceled"}
+                                     : std::string_view{};
         return {ports::WorkflowStatus::Succeeded,
-                workflowMessage(operation, files, totalSummary, {failedFiles, consolidation.error}),
-                consolidation.failed > 0 || consolidation.canceled};
+                workflowMessage(operation, files, totalSummary, {failedFiles, consolidationState}),
+                files.failedCopies > 0 || files.failedLegacyXls > 0 || consolidation.failed > 0 ||
+                    consolidation.canceled,
+                std::move(diagnostic)};
     }
 
 } // namespace ssa::infra::importing

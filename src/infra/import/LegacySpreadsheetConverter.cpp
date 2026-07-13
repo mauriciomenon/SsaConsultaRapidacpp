@@ -1,16 +1,16 @@
 #include "infra/import/LegacySpreadsheetConverter.h"
 
+#include "infra/import/CancelableFileCopy.h"
+#include "platform/SupervisedProcess.h"
 #include "qt/FilesystemPath.h"
 
-#include <QDeadlineTimer>
 #include <QDir>
-#include <QProcess>
 #include <QStandardPaths>
 #include <QString>
+#include <QTemporaryDir>
 #include <QtGlobal>
 
 #include <chrono>
-#include <system_error>
 #include <utility>
 
 namespace ssa::infra::importing {
@@ -44,37 +44,10 @@ namespace ssa::infra::importing {
         }
 
         std::filesystem::path generatedXlsxPath(const std::filesystem::path& source,
-                                                const std::filesystem::path& destination) {
-            auto generated = destination.parent_path() / source.stem();
+                                                const std::filesystem::path& directory) {
+            auto generated = directory / source.stem();
             generated.replace_extension(".xlsx");
             return generated;
-        }
-
-        bool moveGeneratedFile(const std::filesystem::path& generated,
-                               const std::filesystem::path& destination, std::string& message) {
-            std::error_code error;
-            if (!std::filesystem::exists(generated)) {
-                message = "converted xls output was not created";
-                return false;
-            }
-            if (generated == destination) {
-                return true;
-            }
-            std::filesystem::remove(destination, error);
-            error.clear();
-            std::filesystem::rename(generated, destination, error);
-            if (!error) {
-                return true;
-            }
-            error.clear();
-            std::filesystem::copy_file(generated, destination,
-                                       std::filesystem::copy_options::overwrite_existing, error);
-            if (error) {
-                message = "cannot move converted xls output: " + error.message();
-                return false;
-            }
-            std::filesystem::remove(generated, error);
-            return true;
         }
 
     } // namespace
@@ -89,7 +62,7 @@ namespace ssa::infra::importing {
                                               const std::filesystem::path& destination,
                                               const std::stop_token stopToken) const {
         if (stopToken.stop_requested()) {
-            return {LegacySpreadsheetConversionStatus::Failed, {}, "xls conversion canceled"};
+            return {LegacySpreadsheetConversionStatus::Canceled, {}, "xls conversion canceled"};
         }
         const auto executable = resolvedExecutable();
         if (executable.empty()) {
@@ -103,59 +76,91 @@ namespace ssa::infra::importing {
         if (error) {
             return {LegacySpreadsheetConversionStatus::Failed,
                     {},
-                    "cannot create xls conversion directory: " + error.message()};
+                    "cannot create xls conversion directory",
+                    error.message()};
         }
-        std::filesystem::remove(destination, error);
-
-        QProcess process;
-        process.setProgram(qt::toQString(executable));
-        process.setArguments(QStringList{
-            QStringLiteral("--headless"), QStringLiteral("--convert-to"), QStringLiteral("xlsx"),
-            QStringLiteral("--outdir"), qt::toQString(destination.parent_path()),
-            QStringLiteral("--"), qt::toQString(source)});
-        process.start();
-        QDeadlineTimer conversionDeadline(std::chrono::minutes{3});
-        while (process.state() == QProcess::Starting && !conversionDeadline.hasExpired() &&
-               !stopToken.stop_requested()) {
-            process.waitForStarted(100);
-        }
-        while (process.state() == QProcess::Running && !conversionDeadline.hasExpired() &&
-               !stopToken.stop_requested()) {
-            process.waitForFinished(100);
-        }
-        if (stopToken.stop_requested()) {
-            process.kill();
-            if (!process.waitForFinished(5000)) {
-                return {LegacySpreadsheetConversionStatus::Failed,
-                        {},
-                        "xls conversion canceled but process did not terminate"};
-            }
-            return {LegacySpreadsheetConversionStatus::Failed, {}, "xls conversion canceled"};
-        }
-        if (process.state() != QProcess::NotRunning) {
-            process.kill();
-            if (!process.waitForFinished(30000)) {
-                return {LegacySpreadsheetConversionStatus::Failed,
-                        {},
-                        "xls conversion timed out and did not terminate"};
-            }
-            return {LegacySpreadsheetConversionStatus::Failed, {}, "xls conversion timed out"};
-        }
-        if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
-            const auto errorText = process.readAllStandardError();
+        QTemporaryDir conversionDirectory(
+            qt::toQString(destination.parent_path() / "ssa_xls_conversion_XXXXXX"));
+        if (!conversionDirectory.isValid()) {
             return {LegacySpreadsheetConversionStatus::Failed,
                     {},
-                    "xls conversion failed: " + errorText.toStdString()};
+                    "cannot create xls conversion temporary directory"};
+        }
+        const auto cleanupConversionDirectory = [&conversionDirectory]() -> std::string {
+            return conversionDirectory.remove()
+                       ? std::string{}
+                       : std::string{"cannot remove xls conversion temporary directory"};
+        };
+        const auto processResult = platform::SupervisedProcess::run(
+            {.program = qt::toQString(executable),
+             .arguments = {QStringLiteral("--headless"), QStringLiteral("--convert-to"),
+                           QStringLiteral("xlsx"), QStringLiteral("--outdir"),
+                           conversionDirectory.path(), QStringLiteral("--"), qt::toQString(source)},
+             .timeout = std::chrono::minutes{3}},
+            stopToken);
+        if (processResult.status == platform::SupervisedProcessStatus::Canceled) {
+            const auto cleanupDiagnostic = cleanupConversionDirectory();
+            if (!cleanupDiagnostic.empty()) {
+                return {LegacySpreadsheetConversionStatus::Failed,
+                        {},
+                        "cannot clean canceled xls conversion",
+                        cleanupDiagnostic};
+            }
+            return {LegacySpreadsheetConversionStatus::Canceled, {}, "xls conversion canceled"};
+        }
+        if (!processResult.ok()) {
+            auto diagnostic = processResult.diagnostic.toStdString();
+            const auto cleanupDiagnostic = cleanupConversionDirectory();
+            if (!cleanupDiagnostic.empty()) {
+                diagnostic += diagnostic.empty() ? cleanupDiagnostic : "; " + cleanupDiagnostic;
+            }
+            return {LegacySpreadsheetConversionStatus::Failed,
+                    {},
+                    "xls conversion failed",
+                    std::move(diagnostic)};
         }
 
-        std::string moveMessage;
-        const auto generated = generatedXlsxPath(source, destination);
-        if (stopToken.stop_requested()) {
-            std::filesystem::remove(generated, error);
-            return {LegacySpreadsheetConversionStatus::Failed, {}, "xls conversion canceled"};
+        const auto generated =
+            generatedXlsxPath(source, qt::toFileSystemPath(conversionDirectory.path()));
+        if (!std::filesystem::is_regular_file(generated, error) || error) {
+            auto diagnostic = error.message();
+            const auto cleanupDiagnostic = cleanupConversionDirectory();
+            if (!cleanupDiagnostic.empty()) {
+                diagnostic += diagnostic.empty() ? cleanupDiagnostic : "; " + cleanupDiagnostic;
+            }
+            return {LegacySpreadsheetConversionStatus::Failed,
+                    {},
+                    "converted xls output was not created",
+                    std::move(diagnostic)};
         }
-        if (!moveGeneratedFile(generated, destination, moveMessage)) {
-            return {LegacySpreadsheetConversionStatus::Failed, {}, moveMessage};
+        const auto copy = copyFileAtomically({generated, destination}, stopToken);
+        if (copy.status == FileCopyStatus::Canceled) {
+            const auto cleanupDiagnostic = cleanupConversionDirectory();
+            if (!cleanupDiagnostic.empty()) {
+                return {LegacySpreadsheetConversionStatus::Failed,
+                        {},
+                        "cannot clean canceled xls conversion",
+                        cleanupDiagnostic};
+            }
+            return {LegacySpreadsheetConversionStatus::Canceled, {}, "xls conversion canceled"};
+        }
+        if (!copy.ok()) {
+            auto diagnostic = copy.diagnostic;
+            const auto cleanupDiagnostic = cleanupConversionDirectory();
+            if (!cleanupDiagnostic.empty()) {
+                diagnostic += diagnostic.empty() ? cleanupDiagnostic : "; " + cleanupDiagnostic;
+            }
+            return {LegacySpreadsheetConversionStatus::Failed,
+                    {},
+                    "cannot publish converted xls output",
+                    std::move(diagnostic)};
+        }
+        const auto cleanupDiagnostic = cleanupConversionDirectory();
+        if (!cleanupDiagnostic.empty()) {
+            return {LegacySpreadsheetConversionStatus::Failed,
+                    {},
+                    "cannot clean xls conversion temporary directory",
+                    cleanupDiagnostic};
         }
         return {LegacySpreadsheetConversionStatus::Succeeded, destination, {}};
     }

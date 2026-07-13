@@ -1,5 +1,6 @@
 #include "infra/import/ImportFileStager.h"
 
+#include "infra/import/CancelableFileCopy.h"
 #include "qt/FilesystemPath.h"
 
 #include <algorithm>
@@ -31,6 +32,18 @@ namespace ssa::infra::importing {
         constexpr std::uintmax_t kMaxImportFileBytes = 128ULL * 1024ULL * 1024ULL;
         constexpr std::uintmax_t kMaxImportBatchBytes = 1024ULL * 1024ULL * 1024ULL;
         constexpr std::size_t kMaxDestinationAttempts = 10'000;
+        constexpr std::size_t kMaxDiagnosticBytes = 4'096;
+
+        void appendDiagnostic(std::string& destination, const std::string_view diagnostic) {
+            if (diagnostic.empty() || destination.size() >= kMaxDiagnosticBytes) {
+                return;
+            }
+            if (!destination.empty()) {
+                destination += "; ";
+            }
+            destination.append(diagnostic.substr(
+                0, (std::min)(diagnostic.size(), kMaxDiagnosticBytes - destination.size())));
+        }
 
         std::string lowercaseExtension(const std::filesystem::path& path) {
             auto extension = qt::toUtf8(path.extension());
@@ -195,6 +208,22 @@ namespace ssa::infra::importing {
             return false;
         }
 
+        void cancelStaging(ImportStagingResult& result) {
+            std::error_code error;
+            bool cleanupFailed = false;
+            for (const auto& staged : result.files) {
+                std::filesystem::remove(staged.workbookPath, error);
+                if (error) {
+                    cleanupFailed = true;
+                    appendDiagnostic(result.diagnostic,
+                                     "cannot remove canceled staged file: " + error.message());
+                }
+                error.clear();
+            }
+            result.files.clear();
+            result.rejectionReason = cleanupFailed ? "staging_cleanup_failed" : "canceled";
+        }
+
     } // namespace
 
     ImportFileStager::ImportFileStager(std::filesystem::path inputFolder,
@@ -225,12 +254,7 @@ namespace ssa::infra::importing {
         std::size_t fileIndex = 0;
         for (const auto& source : files) {
             if (stopToken.stop_requested()) {
-                for (const auto& staged : result.files) {
-                    std::filesystem::remove(staged.workbookPath, error);
-                    error.clear();
-                }
-                result.files.clear();
-                result.rejectionReason = "canceled";
+                cancelStaging(result);
                 return result;
             }
             if (isExcelLockFile(source)) {
@@ -249,7 +273,7 @@ namespace ssa::infra::importing {
                 xlsxDestination.replace_extension(".xlsx");
                 stageLegacyFile({source, xlsxDestination}, {xlsxDestination}, result, stopToken);
                 if (stopToken.stop_requested()) {
-                    result.rejectionReason = "canceled";
+                    cancelStaging(result);
                     return result;
                 }
                 continue;
@@ -260,14 +284,20 @@ namespace ssa::infra::importing {
             }
             const auto destination = stagedDestination({source, prefix, fileIndex});
             ++fileIndex;
-            std::filesystem::copy_file(source, destination,
-                                       std::filesystem::copy_options::overwrite_existing, error);
-            if (error) {
+            const auto copy = copyFileAtomically({source, destination}, stopToken);
+            if (copy.status == FileCopyStatus::Canceled) {
+                cancelStaging(result);
+                return result;
+            }
+            if (!copy.ok()) {
                 ++result.failedCopies;
-                error.clear();
+                appendDiagnostic(result.diagnostic, copy.diagnostic);
                 continue;
             }
             result.files.push_back({destination, {destination}});
+        }
+        if (stopToken.stop_requested()) {
+            cancelStaging(result);
         }
         return result;
     }
@@ -483,6 +513,11 @@ namespace ssa::infra::importing {
         const auto conversion =
             legacyConverter_.convertToXlsx(request.source, request.destination, stopToken);
         if (!conversion.ok()) {
+            if (conversion.status == LegacySpreadsheetConversionStatus::Canceled) {
+                result.rejectionReason = "canceled";
+            } else {
+                appendDiagnostic(result.diagnostic, conversion.diagnostic);
+            }
             ++result.failedLegacyXls;
             return false;
         }

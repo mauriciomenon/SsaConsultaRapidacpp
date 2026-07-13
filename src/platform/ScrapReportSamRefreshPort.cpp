@@ -1,12 +1,14 @@
 #include "platform/ScrapReportSamRefreshPort.h"
 
+#include "platform/SupervisedProcess.h"
+#include "qt/FilesystemPath.h"
+
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QProcess>
 #include <QRegularExpression>
 #include <QStandardPaths>
 #include <QTemporaryDir>
@@ -28,12 +30,12 @@ namespace ssa::platform {
             return {ports::WorkflowStatus::Rejected, std::move(message), {}};
         }
 
-        ports::SamFetchResult canceled(std::string message) {
-            return {ports::WorkflowStatus::Canceled, std::move(message), {}};
+        ports::SamFetchResult canceled(std::string message, std::string diagnostic = {}) {
+            return {ports::WorkflowStatus::Canceled, std::move(message), {}, std::move(diagnostic)};
         }
 
-        ports::SamFetchResult failed(std::string message) {
-            return {ports::WorkflowStatus::Failed, std::move(message), {}};
+        ports::SamFetchResult failed(std::string message, std::string diagnostic = {}) {
+            return {ports::WorkflowStatus::Failed, std::move(message), {}, std::move(diagnostic)};
         }
 
         bool isRegularFile(const std::filesystem::path& path) {
@@ -93,31 +95,12 @@ namespace ssa::platform {
             return std::nullopt;
         }
 
-        bool stopProcess(QProcess& process) {
-            process.terminate();
-            if (!process.waitForFinished(200)) {
-                process.kill();
-                if (!process.waitForFinished(1'000)) {
-                    return false;
-                }
-            }
-            return process.state() == QProcess::NotRunning;
-        }
-
-        std::string processFailureMessage(QProcess& process) {
-            auto message = process.errorString().trimmed();
-            const auto stderrText =
-                QString::fromLocal8Bit(process.readAllStandardError()).trimmed();
-            if (!stderrText.isEmpty()) {
-                message = stderrText.left(512);
-            }
-            return message.toStdString();
-        }
-
         bool validateManifest(const QString& manifestPath, const QString& artifactPath,
                               const QString& sector) {
+            constexpr qint64 kMaxManifestBytes = qint64{1024} * 1024;
             QFile file{manifestPath};
-            if (!file.open(QIODevice::ReadOnly)) {
+            if (!file.open(QIODevice::ReadOnly) || file.size() <= 0 ||
+                file.size() > kMaxManifestBytes) {
                 return false;
             }
             QJsonParseError error;
@@ -165,7 +148,7 @@ namespace ssa::platform {
 
         const auto uvExecutable = uvExecutable_.empty()
                                       ? QStandardPaths::findExecutable(QStringLiteral("uv"))
-                                      : QString::fromStdString(uvExecutable_.string());
+                                      : qt::toQString(uvExecutable_);
         if (uvExecutable.isEmpty() || !QFileInfo{uvExecutable}.isExecutable()) {
             return rejected("uv executable was not found");
         }
@@ -190,80 +173,65 @@ namespace ssa::platform {
             const auto manifestPath = QDir{outputDirectory}.filePath(QStringLiteral("result.json"));
             const auto artifactPath = QDir{outputDirectory}.filePath(QStringLiteral("result.xlsx"));
 
-            QProcess process;
-            process.setProgram(uvExecutable);
-            process.setWorkingDirectory(QString::fromStdString(request.scrapReportRoot.string()));
-            process.setArguments({QStringLiteral("run"),
-                                  QStringLiteral("--project"),
-                                  QString::fromStdString(request.scrapReportRoot.string()),
-                                  QStringLiteral("python"),
-                                  QStringLiteral("-m"),
-                                  QStringLiteral("scrap_report.cli"),
-                                  QStringLiteral("sam-api-flow"),
-                                  QStringLiteral("--profile"),
-                                  QStringLiteral("panorama"),
-                                  QStringLiteral("--base-url"),
-                                  QString::fromStdString(request.baseUrl),
-                                  QStringLiteral("--executor-sector"),
-                                  QString::fromStdString(sector),
-                                  QStringLiteral("--number-of-years"),
-                                  QStringLiteral("4"),
-                                  QStringLiteral("--limit"),
-                                  QStringLiteral("200"),
-                                  QStringLiteral("--include-details"),
-                                  QStringLiteral("--timeout-seconds"),
-                                  QStringLiteral("30"),
-                                  QStringLiteral("--ca-file"),
-                                  QString::fromStdString(request.caFile.string()),
-                                  QStringLiteral("--output-json"),
-                                  manifestPath,
-                                  QStringLiteral("--output-xlsx"),
-                                  artifactPath});
             const auto remainingBeforeStart = std::chrono::duration_cast<std::chrono::milliseconds>(
                 deadline - std::chrono::steady_clock::now());
             if (remainingBeforeStart <= 0ms) {
                 discardArtifacts();
                 return failed("SAM refresh timed out");
             }
-            process.start();
-            if (!process.waitForStarted(static_cast<int>(
-                    std::min(remainingBeforeStart, std::chrono::milliseconds{5s}).count()))) {
-                const auto message = processFailureMessage(process);
+            const auto processResult =
+                SupervisedProcess::run({.program = uvExecutable,
+                                        .arguments = {QStringLiteral("run"),
+                                                      QStringLiteral("--project"),
+                                                      qt::toQString(request.scrapReportRoot),
+                                                      QStringLiteral("python"),
+                                                      QStringLiteral("-m"),
+                                                      QStringLiteral("scrap_report.cli"),
+                                                      QStringLiteral("sam-api-flow"),
+                                                      QStringLiteral("--profile"),
+                                                      QStringLiteral("panorama"),
+                                                      QStringLiteral("--base-url"),
+                                                      QString::fromStdString(request.baseUrl),
+                                                      QStringLiteral("--executor-sector"),
+                                                      QString::fromStdString(sector),
+                                                      QStringLiteral("--number-of-years"),
+                                                      QStringLiteral("4"),
+                                                      QStringLiteral("--limit"),
+                                                      QStringLiteral("200"),
+                                                      QStringLiteral("--include-details"),
+                                                      QStringLiteral("--timeout-seconds"),
+                                                      QStringLiteral("30"),
+                                                      QStringLiteral("--ca-file"),
+                                                      qt::toQString(request.caFile),
+                                                      QStringLiteral("--output-json"),
+                                                      manifestPath,
+                                                      QStringLiteral("--output-xlsx"),
+                                                      artifactPath},
+                                        .workingDirectory = qt::toQString(request.scrapReportRoot),
+                                        .timeout = remainingBeforeStart},
+                                       stopToken);
+            if (processResult.status == SupervisedProcessStatus::Canceled) {
                 discardArtifacts();
-                return failed("could not start SAM refresh: " + message);
+                return canceled("SAM refresh was canceled", processResult.diagnostic.toStdString());
             }
-
-            while (process.state() != QProcess::NotRunning) {
-                process.readAllStandardOutput();
-                if (stopToken.stop_requested()) {
-                    const auto stopped = stopProcess(process);
-                    discardArtifacts();
-                    if (!stopped) {
-                        return failed("could not stop the canceled SAM refresh process");
-                    }
-                    return canceled("SAM refresh was canceled");
-                }
-                if (std::chrono::steady_clock::now() >= deadline) {
-                    const auto stopped = stopProcess(process);
-                    discardArtifacts();
-                    if (!stopped) {
-                        return failed("could not stop the timed out SAM refresh process");
-                    }
-                    return failed("SAM refresh timed out");
-                }
-                process.waitForFinished(25);
-            }
-            process.readAllStandardOutput();
-            if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
-                const auto message = processFailureMessage(process);
+            if (processResult.status == SupervisedProcessStatus::TimedOut) {
                 discardArtifacts();
-                return failed("SAM refresh process failed: " + message);
+                return failed("SAM refresh timed out", processResult.diagnostic.toStdString());
+            }
+            if (!processResult.ok()) {
+                discardArtifacts();
+                return failed("SAM refresh process failed", processResult.diagnostic.toStdString());
             }
             if (!validateManifest(manifestPath, artifactPath, QString::fromStdString(sector))) {
                 discardArtifacts();
                 return failed("SAM refresh returned an invalid manifest");
             }
-            artifacts.emplace_back(artifactPath.toStdString());
+            artifacts.emplace_back(qt::toFileSystemPath(artifactPath));
+        }
+
+        if (stopToken.stop_requested()) {
+            discardArtifacts();
+            return canceled("SAM refresh was canceled");
         }
 
         return {ports::WorkflowStatus::Succeeded, "SAM REST artifacts are ready",
@@ -271,9 +239,14 @@ namespace ssa::platform {
     }
 
     bool ScrapReportSamRefreshPort::discardArtifacts() {
-        const auto removed = !activeOutput_ || activeOutput_->remove();
+        if (!activeOutput_) {
+            return true;
+        }
+        if (!activeOutput_->remove()) {
+            return false;
+        }
         activeOutput_.reset();
-        return removed;
+        return true;
     }
 
 } // namespace ssa::platform

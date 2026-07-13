@@ -1,6 +1,7 @@
 #include "domain/ColumnCatalog.h"
 #include "infra/import/ImportFileStager.h"
 #include "infra/import/SpreadsheetImportWorkflowPort.h"
+#include "infra/import/XlsxPackage.h"
 #include "infra/import/XlsxWorkbookReader.h"
 #include "infra/sqlite/SqliteConnection.h"
 #include "infra/sqlite/SqliteSsaImportWriter.h"
@@ -19,6 +20,7 @@
 #include <filesystem>
 #include <fstream>
 #include <future>
+#include <latch>
 #include <stop_token>
 #include <string>
 #include <system_error>
@@ -158,6 +160,43 @@ cp "$source" "$outdir/$stem.xlsx"
                                      std::filesystem::perm_options::add);
         return executable;
     }
+
+    std::filesystem::path writeBlockingSoffice(const std::filesystem::path& directory) {
+        const auto executable = directory / "blocking-soffice";
+        std::ofstream script(executable);
+        script << R"SH(#!/bin/sh
+outdir=""
+source=""
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --outdir)
+            shift
+            outdir="$1"
+            ;;
+        --convert-to)
+            shift
+            ;;
+        --headless|--)
+            ;;
+        *)
+            source="$1"
+            ;;
+    esac
+    shift
+done
+base="$(basename "$source")"
+stem="${base%.*}"
+printf 'partial' > "$outdir/$stem.xlsx"
+while :; do sleep 1; done
+)SH";
+        script.close();
+        std::filesystem::permissions(executable,
+                                     std::filesystem::perms::owner_exec |
+                                         std::filesystem::perms::owner_read |
+                                         std::filesystem::perms::owner_write,
+                                     std::filesystem::perm_options::add);
+        return executable;
+    }
 #endif
 
 } // namespace
@@ -198,6 +237,90 @@ TEST_CASE("import file stager rejects a stopped token before copying") {
 
     REQUIRE(result.rejectionReason == "canceled");
     REQUIRE_FALSE(std::filesystem::exists(inputDirectory));
+}
+
+TEST_CASE("import file stager cancels a copy without publishing partial files") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    constexpr std::uintmax_t copyBytes = 128ULL * 1024ULL * 1024ULL;
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto source = root / "large-source.xlsx";
+    const auto inputDirectory = root / "docs_entrada";
+    createSparseFile(source, copyBytes);
+    const ssa::infra::importing::ImportFileStager stager(inputDirectory);
+    std::stop_source stopSource;
+
+    auto future = std::async(std::launch::async, [&] {
+        return stager.stageExternalFiles({source}, stopSource.get_token());
+    });
+    QElapsedTimer deadline;
+    deadline.start();
+    bool observedTemporary = false;
+    while (future.wait_for(std::chrono::milliseconds{0}) != std::future_status::ready &&
+           deadline.elapsed() < 3'000) {
+        std::error_code error;
+        for (std::filesystem::directory_iterator iterator(inputDirectory, error), end;
+             !error && iterator != end; iterator.increment(error)) {
+            if (iterator->path().filename().string().find(".part") != std::string::npos &&
+                iterator->file_size(error) > 0 && !error) {
+                observedTemporary = true;
+                stopSource.request_stop();
+                break;
+            }
+        }
+        QThread::msleep(1);
+    }
+    stopSource.request_stop();
+    const auto result = future.get();
+
+    REQUIRE(observedTemporary);
+    REQUIRE(result.rejectionReason == "canceled");
+    REQUIRE(result.files.empty());
+    REQUIRE(std::filesystem::exists(source));
+    REQUIRE(std::filesystem::is_empty(inputDirectory));
+}
+
+TEST_CASE("staging preserves prior diagnostics without misclassifying clean cancellation") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    constexpr std::uintmax_t copyBytes = 128ULL * 1024ULL * 1024ULL;
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto legacy = root / "broken.xls";
+    const auto largeSource = root / "large-source.xlsx";
+    const auto inputDirectory = root / "docs_entrada";
+    createSparseFile(legacy, 1);
+    createSparseFile(largeSource, copyBytes);
+    const ssa::infra::importing::ImportFileStager stager(
+        inputDirectory,
+        ssa::infra::importing::LegacySpreadsheetConverter(root / "missing-soffice"));
+    std::stop_source stopSource;
+    auto future = std::async(std::launch::async, [&] {
+        return stager.stageExternalFiles({legacy, largeSource}, stopSource.get_token());
+    });
+    QElapsedTimer deadline;
+    deadline.start();
+    while (future.wait_for(std::chrono::milliseconds{0}) != std::future_status::ready &&
+           deadline.elapsed() < 3'000) {
+        std::error_code error;
+        for (std::filesystem::directory_iterator iterator(inputDirectory, error), end;
+             !error && iterator != end; iterator.increment(error)) {
+            if (iterator->path().filename().string().find(".part") != std::string::npos &&
+                iterator->file_size(error) > 0 && !error) {
+                stopSource.request_stop();
+                break;
+            }
+        }
+        QThread::msleep(1);
+    }
+    stopSource.request_stop();
+    const auto result = future.get();
+
+    REQUIRE(result.rejectionReason == "canceled");
+    REQUIRE_FALSE(result.diagnostic.empty());
+    REQUIRE(result.files.empty());
+    REQUIRE(std::filesystem::is_empty(inputDirectory));
 }
 
 #ifndef _WIN32
@@ -277,10 +400,59 @@ TEST_CASE("legacy converter rejects a stopped token before starting a process") 
     const auto result =
         converter.convertToXlsx(root / "source.xls", root / "output.xlsx", stopSource.get_token());
 
-    REQUIRE(result.status == ssa::infra::importing::LegacySpreadsheetConversionStatus::Failed);
+    REQUIRE(result.status == ssa::infra::importing::LegacySpreadsheetConversionStatus::Canceled);
     REQUIRE(result.message.find("canceled") != std::string::npos);
     REQUIRE_FALSE(std::filesystem::exists(root / "output.xlsx"));
 }
+
+#ifndef _WIN32
+TEST_CASE("legacy converter cancellation preserves destination and removes temporary output") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto source = root / "source.xls";
+    const auto destination = root / "output.xlsx";
+    {
+        std::ofstream input(source);
+        input << "source";
+        std::ofstream previous(destination);
+        previous << "previous";
+    }
+    const ssa::infra::importing::LegacySpreadsheetConverter converter(writeBlockingSoffice(root));
+    std::stop_source stopSource;
+    auto operation = std::async(std::launch::async, [&] {
+        return converter.convertToXlsx(source, destination, stopSource.get_token());
+    });
+    QElapsedTimer deadline;
+    deadline.start();
+    bool observedTemporaryOutput = false;
+    while (operation.wait_for(std::chrono::milliseconds{0}) != std::future_status::ready &&
+           deadline.elapsed() < 3'000) {
+        std::error_code error;
+        for (std::filesystem::recursive_directory_iterator iterator(root, error), end;
+             !error && iterator != end; iterator.increment(error)) {
+            if (iterator->path().parent_path().filename().string().starts_with(
+                    "ssa_xls_conversion_") &&
+                iterator->path().extension() == ".xlsx") {
+                observedTemporaryOutput = true;
+                stopSource.request_stop();
+                break;
+            }
+        }
+        QThread::msleep(5);
+    }
+    stopSource.request_stop();
+    const auto result = operation.get();
+
+    REQUIRE(observedTemporaryOutput);
+    REQUIRE(result.status == ssa::infra::importing::LegacySpreadsheetConversionStatus::Canceled);
+    REQUIRE(readFile(destination) == "previous");
+    for (const auto& entry : std::filesystem::directory_iterator(root)) {
+        REQUIRE_FALSE(entry.path().filename().string().starts_with("ssa_xls_conversion_"));
+    }
+}
+#endif
 
 TEST_CASE("xlsx reader rejects a stopped token before opening the package") {
     QTemporaryDir tempDir;
@@ -293,6 +465,42 @@ TEST_CASE("xlsx reader rejects a stopped token before opening the package") {
     REQUIRE_THROWS_AS(ssa::infra::importing::XlsxWorkbookReader::readFirstSheet(
                           root / "missing.xlsx", stopSource.get_token()),
                       std::system_error);
+}
+
+TEST_CASE("xlsx extraction cancellation is prompt and a second read succeeds") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    constexpr std::size_t largeXmlBytes = std::size_t{24} * 1024 * 1024;
+    const auto workbook =
+        std::filesystem::path{tempDir.path().toStdString()} / "large-workbook.xlsx";
+    const auto rowsXml = "<!--" + std::string(largeXmlBytes, 'x') + "-->" +
+                         row(1, {inlineCell("A1", "Numero SSA")}) +
+                         row(2, {inlineCell("A2", "202600300")});
+    writeWorkbook(workbook, rowsXml);
+    ssa::infra::importing::XlsxPackage package(workbook);
+    std::stop_source stopSource;
+    std::latch extractionStarted{1};
+    auto operation = std::async(std::launch::async, [&] {
+        try {
+            extractionStarted.count_down();
+            static_cast<void>(
+                package.textEntry("xl/worksheets/sheet1.xml", true, stopSource.get_token()));
+            return std::error_code{};
+        } catch (const std::system_error& error) {
+            return error.code();
+        }
+    });
+
+    extractionStarted.wait();
+    QThread::msleep(1);
+    stopSource.request_stop();
+
+    REQUIRE(operation.wait_for(std::chrono::seconds{1}) == std::future_status::ready);
+    REQUIRE(operation.get() == std::make_error_code(std::errc::operation_canceled));
+    const auto secondRead = ssa::infra::importing::XlsxWorkbookReader::readFirstSheet(workbook);
+    REQUIRE(secondRead.rows.size() == 2);
+    REQUIRE(secondRead.rows.at(1).at(0) == "202600300");
 }
 
 TEST_CASE("sqlite import writer rejects a stopped token before creating the database") {
@@ -678,8 +886,8 @@ TEST_CASE("post commit consolidation failure stays visible and preserves the inp
     INFO(result.message);
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
     REQUIRE(result.warning);
-    REQUIRE(result.message.find("error=cannot create consolidation directory") !=
-            std::string::npos);
+    REQUIRE(result.message.find("error=consolidation_failed") != std::string::npos);
+    REQUIRE(result.diagnostic.find("cannot create consolidation directory") != std::string::npos);
     REQUIRE(std::filesystem::exists(workbook));
     sqlite3* db = nullptr;
     REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
@@ -1002,6 +1210,43 @@ TEST_CASE("spreadsheet import workflow full rescan replaces existing rows") {
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
+TEST_CASE("full rescan preserves database when legacy conversion fails") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    ssa::infra::importing::ResolvedSsaImportRows previous;
+    previous.rows.push_back({{"numero_ssa", "202600399"}, {"descricao_ssa", "Anterior"}});
+    previous.ssaNumbersForUpsertDelete.emplace_back("202600399");
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(dbPath, importColumns());
+    REQUIRE(writer.write(previous, 1, 0, false).rowsWritten == 1);
+    {
+        std::ofstream legacy(inputDirectory / "broken.xls");
+        legacy << "not a workbook";
+    }
+    writeWorkbook(inputDirectory / "valid.xlsx",
+                  row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Descricao da SSA")}) +
+                      row(2, {inlineCell("A2", "202600400"), inlineCell("B2", "Nova")}));
+    ssa::infra::importing::LegacySpreadsheetConverter converter(root / "missing-soffice");
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns(), converter);
+
+    const auto result = port.rescan({ssa::ports::RescanMode::Full});
+
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarText(db, "PRAGMA integrity_check") == "ok");
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 1);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600399'") == 1);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600400'") == 0);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
 #ifndef _WIN32
 TEST_CASE("full rescan rejects a symlinked processed directory without clearing the database") {
     QTemporaryDir tempDir;
@@ -1094,8 +1339,9 @@ TEST_CASE("spreadsheet import workflow reports legacy xls when converter is unav
 
     const auto result = port.importExternalFiles(request);
 
-    REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
     REQUIRE(result.message.find("legacy_xls=1") != std::string::npos);
+    REQUIRE_FALSE(result.diagnostic.empty());
 }
 
 TEST_CASE("import file stager counts legacy xls with existing xlsx without conversion") {

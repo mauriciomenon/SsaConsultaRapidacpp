@@ -2,6 +2,7 @@
 
 #include <filesystem>
 #include <memory>
+#include <stop_token>
 #include <string>
 
 namespace ssa::infra::importing {
@@ -16,7 +17,8 @@ namespace ssa::infra::importing {
         XlsxPackage(XlsxPackage&&) = delete;
         XlsxPackage& operator=(XlsxPackage&&) = delete;
 
-        [[nodiscard]] std::string textEntry(const std::string& entryName, bool required);
+        [[nodiscard]] std::string textEntry(const std::string& entryName, bool required,
+                                            std::stop_token stopToken = {});
 
       private:
         class Storage;

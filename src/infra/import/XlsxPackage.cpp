@@ -8,8 +8,8 @@
 #include <miniz.h>
 
 #include <cstring>
-#include <memory>
 #include <stdexcept>
+#include <system_error>
 
 namespace ssa::infra::importing {
 
@@ -46,7 +46,8 @@ namespace ssa::infra::importing {
         Storage(const Storage&) = delete;
         Storage& operator=(const Storage&) = delete;
 
-        [[nodiscard]] std::string textEntry(const std::string& entryName, const bool required) {
+        [[nodiscard]] std::string textEntry(const std::string& entryName, const bool required,
+                                            const std::stop_token stopToken) {
             constexpr mz_uint64 kMaxXmlEntryBytes = 32ULL * 1024ULL * 1024ULL;
             constexpr mz_uint64 kMaxTotalXmlBytes = 96ULL * 1024ULL * 1024ULL;
             const int fileIndex =
@@ -67,17 +68,45 @@ namespace ssa::infra::importing {
             if (extractedBytes_ + stat.m_uncomp_size > kMaxTotalXmlBytes) {
                 throw std::runtime_error("xlsx package XML payload too large");
             }
-            size_t size = 0;
-            using ZipHeapPtr = std::unique_ptr<void, decltype(&mz_free)>;
-            ZipHeapPtr data{
-                mz_zip_reader_extract_to_heap(&archive_, static_cast<mz_uint>(fileIndex), &size, 0),
-                &mz_free};
-            if (data == nullptr) {
+            struct ExtractionContext {
+                std::string text;
+                std::stop_token stopToken;
+                bool canceled = false;
+                bool failed = false;
+            } context{{}, stopToken};
+            if (stopToken.stop_requested()) {
+                throw std::system_error(std::make_error_code(std::errc::operation_canceled));
+            }
+            context.text.reserve(static_cast<std::size_t>(stat.m_uncomp_size));
+            const auto appendChunk = [](void* opaque, const mz_uint64 offset, const void* data,
+                                        const size_t size) -> size_t {
+                auto& extraction = *static_cast<ExtractionContext*>(opaque);
+                if (extraction.stopToken.stop_requested()) {
+                    extraction.canceled = true;
+                    return 0;
+                }
+                if (offset != extraction.text.size()) {
+                    extraction.failed = true;
+                    return 0;
+                }
+                try {
+                    extraction.text.append(static_cast<const char*>(data), size);
+                } catch (...) {
+                    extraction.failed = true;
+                    return 0;
+                }
+                return size;
+            };
+            const auto extracted = mz_zip_reader_extract_to_callback(
+                &archive_, static_cast<mz_uint>(fileIndex), appendChunk, &context, 0);
+            if (context.canceled || stopToken.stop_requested()) {
+                throw std::system_error(std::make_error_code(std::errc::operation_canceled));
+            }
+            if (extracted == 0 || context.failed) {
                 throw std::runtime_error("cannot extract xlsx entry: " + entryName);
             }
-            std::string text{static_cast<const char*>(data.get()), size};
-            extractedBytes_ += static_cast<mz_uint64>(size);
-            return text;
+            extractedBytes_ += static_cast<mz_uint64>(context.text.size());
+            return std::move(context.text);
         }
 
       private:
@@ -93,8 +122,9 @@ namespace ssa::infra::importing {
 
     XlsxPackage::~XlsxPackage() = default;
 
-    std::string XlsxPackage::textEntry(const std::string& entryName, const bool required) {
-        return storage_->textEntry(entryName, required);
+    std::string XlsxPackage::textEntry(const std::string& entryName, const bool required,
+                                       const std::stop_token stopToken) {
+        return storage_->textEntry(entryName, required, stopToken);
     }
 
 } // namespace ssa::infra::importing

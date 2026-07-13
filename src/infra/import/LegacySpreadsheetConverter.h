@@ -8,6 +8,7 @@ namespace ssa::infra::importing {
 
     enum class LegacySpreadsheetConversionStatus {
         Succeeded,
+        Canceled,
         ToolUnavailable,
         Failed,
     };
@@ -16,6 +17,7 @@ namespace ssa::infra::importing {
         LegacySpreadsheetConversionStatus status = LegacySpreadsheetConversionStatus::Failed;
         std::filesystem::path outputPath;
         std::string message;
+        std::string diagnostic;
 
         [[nodiscard]] bool ok() const {
             return status == LegacySpreadsheetConversionStatus::Succeeded;

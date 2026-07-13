@@ -49,6 +49,7 @@ namespace ssa::ports {
         WorkflowStatus status = WorkflowStatus::NotImplemented;
         std::string message;
         std::vector<std::filesystem::path> artifacts;
+        std::string diagnostic;
 
         [[nodiscard]] bool ok() const {
             return status == WorkflowStatus::Succeeded;

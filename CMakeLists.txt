@@ -69,9 +69,14 @@ add_library(
 target_include_directories(ssa_application PUBLIC src)
 target_link_libraries(ssa_application PUBLIC ssa_core)
 
+add_library(ssa_platform_process STATIC src/platform/SupervisedProcess.cpp)
+target_include_directories(ssa_platform_process PUBLIC src)
+target_link_libraries(ssa_platform_process PUBLIC Qt6::Core)
+
 add_library(
   ssa_infra STATIC
   src/infra/export/CsvExportPort.cpp
+  src/infra/import/CancelableFileCopy.cpp
   src/infra/import/ImportFileStager.cpp
   src/infra/import/LegacySpreadsheetConverter.cpp
   src/infra/import/SpreadsheetImportWorkflowPort.cpp
@@ -92,8 +97,8 @@ add_library(
   src/infra/preferences/FilterPresetJsonCodec.cpp
   src/infra/preferences/UserPreferencesJsonCodec.cpp)
 target_include_directories(ssa_infra PUBLIC src)
-target_link_libraries(ssa_infra PUBLIC ssa_core ${SSA_SQLITE_TARGET} Qt6::Core
-                                       miniz)
+target_link_libraries(ssa_infra PUBLIC ssa_core ssa_platform_process
+                                       ${SSA_SQLITE_TARGET} Qt6::Core miniz)
 
 add_library(
   ssa_platform STATIC
@@ -108,7 +113,8 @@ add_library(
   src/platform/SamUrlBuilder.cpp
   src/platform/StartupOptions.cpp)
 target_include_directories(ssa_platform PUBLIC src)
-target_link_libraries(ssa_platform PUBLIC ssa_core Qt6::Core Qt6::Gui)
+target_link_libraries(ssa_platform PUBLIC ssa_core ssa_platform_process
+                                          Qt6::Core Qt6::Gui)
 
 add_library(
   ssa_presentation_tables STATIC

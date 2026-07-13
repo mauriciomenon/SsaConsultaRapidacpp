@@ -3,12 +3,15 @@
 
 #include <QCoreApplication>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QProcess>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QThread>
 #include <QtConcurrentRun>
 
 #include <chrono>
@@ -19,6 +22,14 @@
 #include <string>
 #include <vector>
 
+#ifdef Q_OS_WIN
+#include <windows.h>
+#else
+#include <cerrno>
+#include <csignal>
+#include <unistd.h>
+#endif
+
 namespace {
 
     QString argumentValue(const QStringList& arguments, const QString& option) {
@@ -26,7 +37,7 @@ namespace {
         return index >= 0 && index + 1 < arguments.size() ? arguments.at(index + 1) : QString{};
     }
 
-    int runFakeUv(const QStringList& arguments) {
+    int runFakeUv(const QStringList& arguments, const QString& executablePath) {
         const auto sector = argumentValue(arguments, QStringLiteral("--executor-sector"));
         const auto project = argumentValue(arguments, QStringLiteral("--project"));
         const auto caFile = argumentValue(arguments, QStringLiteral("--ca-file"));
@@ -48,7 +59,26 @@ namespace {
             !arguments.contains(QStringLiteral("--include-details"))) {
             return 2;
         }
-        if (sector == QStringLiteral("BLOCK")) {
+        if (sector == QStringLiteral("NOISY")) {
+            const QByteArray noise(qsizetype{2} * 1024 * 1024, 'x');
+            std::fwrite(noise.constData(), 1, static_cast<std::size_t>(noise.size()), stdout);
+            std::fwrite(noise.constData(), 1, static_cast<std::size_t>(noise.size()), stderr);
+            std::fflush(stdout);
+            std::fflush(stderr);
+        } else if (sector == QStringLiteral("TREE")) {
+            const auto sentinelPath = qEnvironmentVariable("SSA_TEST_SENTINEL_PATH");
+            if (sentinelPath.isEmpty()) {
+                return 6;
+            }
+            QProcess descendant;
+            descendant.setProgram(executablePath);
+            descendant.setArguments({QStringLiteral("--sentinel-child"), sentinelPath});
+            descendant.start();
+            if (!descendant.waitForStarted(2'000)) {
+                return 7;
+            }
+            QThread::msleep(5'000);
+        } else if (sector == QStringLiteral("BLOCK")) {
             QThread::msleep(5000);
         }
         const auto manifestPath = argumentValue(arguments, QStringLiteral("--output-json"));
@@ -105,6 +135,38 @@ namespace {
         QFile file{path};
         QVERIFY(file.open(QIODevice::WriteOnly));
         QCOMPARE(file.write(content), content.size());
+    }
+
+    int runSentinelChild(const QString& path) {
+        QFile sentinel{path};
+        if (!sentinel.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            return 8;
+        }
+#ifdef Q_OS_WIN
+        const auto processId = static_cast<qulonglong>(GetCurrentProcessId());
+#else
+        const auto processId = static_cast<qulonglong>(getpid());
+#endif
+        if (sentinel.write(QByteArray::number(processId)) < 0 || !sentinel.flush()) {
+            return 9;
+        }
+        sentinel.close();
+        QThread::msleep(30'000);
+        return 0;
+    }
+
+    bool processExists(const qint64 processId) {
+#ifdef Q_OS_WIN
+        const auto process = OpenProcess(SYNCHRONIZE, FALSE, static_cast<DWORD>(processId));
+        if (process == nullptr) {
+            return false;
+        }
+        const auto status = WaitForSingleObject(process, 0);
+        CloseHandle(process);
+        return status == WAIT_TIMEOUT;
+#else
+        return ::kill(static_cast<pid_t>(processId), 0) == 0 || errno == EPERM;
+#endif
     }
 
     ssa::ports::SamRefreshRequest validRequest(const QTemporaryDir& root) {
@@ -270,6 +332,109 @@ namespace {
             QCOMPARE(future.result().status, ssa::ports::WorkflowStatus::Canceled);
         }
 
+        void port_cancellation_terminates_the_entire_process_tree() {
+            QTemporaryDir root;
+            QVERIFY(root.isValid());
+            auto request = validRequest(root);
+            request.executorSectors = {"TREE"};
+            request.processTimeout = std::chrono::seconds{10};
+            const auto sentinelPath = root.filePath(QStringLiteral("descendant.pid"));
+            QVERIFY(qputenv("SSA_TEST_SENTINEL_PATH", sentinelPath.toUtf8()));
+            ssa::platform::ScrapReportSamRefreshPort port(
+                QCoreApplication::applicationFilePath().toStdString());
+            std::stop_source stopSource;
+
+            auto future =
+                QtConcurrent::run([&] { return port.fetch(request, stopSource.get_token()); });
+            QElapsedTimer startupDeadline;
+            startupDeadline.start();
+            while (!QFileInfo::exists(sentinelPath) && startupDeadline.elapsed() < 3'000) {
+                QTest::qWait(10);
+            }
+            QVERIFY2(QFileInfo::exists(sentinelPath), "descendant did not start");
+            QFile sentinel{sentinelPath};
+            QVERIFY(sentinel.open(QIODevice::ReadOnly));
+            bool validPid = false;
+            const auto descendantPid = sentinel.readAll().trimmed().toLongLong(&validPid);
+            QVERIFY(validPid);
+            QVERIFY(processExists(descendantPid));
+
+            stopSource.request_stop();
+            future.waitForFinished();
+            qunsetenv("SSA_TEST_SENTINEL_PATH");
+
+            QCOMPARE(future.result().status, ssa::ports::WorkflowStatus::Canceled);
+            QElapsedTimer terminationDeadline;
+            terminationDeadline.start();
+            while (processExists(descendantPid) && terminationDeadline.elapsed() < 3'000) {
+                QTest::qWait(10);
+            }
+            QVERIFY2(!processExists(descendantPid),
+                     "descendant survived the cancellation terminal");
+        }
+
+        void port_drains_noisy_process_channels_without_unbounded_diagnostics() {
+            QTemporaryDir root;
+            QVERIFY(root.isValid());
+            auto request = validRequest(root);
+            request.executorSectors = {"NOISY"};
+            request.processTimeout = std::chrono::seconds{5};
+            ssa::platform::ScrapReportSamRefreshPort port(
+                QCoreApplication::applicationFilePath().toStdString());
+
+            const auto result = port.fetch(request);
+
+            QVERIFY(result.ok());
+            QVERIFY(result.diagnostic.empty());
+            QCOMPARE(result.artifacts.size(), std::size_t{1});
+        }
+
+        void port_does_not_start_when_token_is_already_stopped() {
+            QTemporaryDir root;
+            QVERIFY(root.isValid());
+            auto request = validRequest(root);
+            request.executorSectors = {"TREE"};
+            const auto sentinelPath = root.filePath(QStringLiteral("not-started.pid"));
+            QVERIFY(qputenv("SSA_TEST_SENTINEL_PATH", sentinelPath.toUtf8()));
+            ssa::platform::ScrapReportSamRefreshPort port(
+                QCoreApplication::applicationFilePath().toStdString());
+            std::stop_source stopSource;
+            stopSource.request_stop();
+
+            const auto result = port.fetch(request, stopSource.get_token());
+            qunsetenv("SSA_TEST_SENTINEL_PATH");
+
+            QCOMPARE(result.status, ssa::ports::WorkflowStatus::Canceled);
+            QVERIFY(!QFileInfo::exists(sentinelPath));
+        }
+
+#ifndef Q_OS_WIN
+        void port_retains_failed_cleanup_for_a_verified_retry() {
+            QTemporaryDir root;
+            QVERIFY(root.isValid());
+            auto request = validRequest(root);
+            request.executorSectors = {"IEE3"};
+            ssa::platform::ScrapReportSamRefreshPort port(
+                QCoreApplication::applicationFilePath().toStdString());
+            const auto fetch = port.fetch(request);
+            QVERIFY(fetch.ok());
+            QCOMPARE(fetch.artifacts.size(), std::size_t{1});
+            const auto outputDirectory = fetch.artifacts.front().parent_path();
+            std::filesystem::permissions(outputDirectory,
+                                         std::filesystem::perms::owner_read |
+                                             std::filesystem::perms::owner_exec,
+                                         std::filesystem::perm_options::replace);
+
+            QVERIFY(!port.discardArtifacts());
+            QVERIFY(std::filesystem::exists(outputDirectory));
+
+            std::filesystem::permissions(outputDirectory, std::filesystem::perms::owner_write,
+                                         std::filesystem::perm_options::add);
+            QVERIFY(port.discardArtifacts());
+            QVERIFY(!std::filesystem::exists(outputDirectory));
+        }
+#endif
+
         void service_imports_only_complete_fetch_and_discards_artifacts() {
             auto importPort = std::make_shared<CapturingImportPort>();
             auto samPort = std::make_shared<FakeSamPort>();
@@ -314,6 +479,27 @@ namespace {
             QVERIFY(result.ok());
             QVERIFY(result.warning);
             QVERIFY(result.message.find("could not be removed") != std::string::npos);
+            QVERIFY(result.diagnostic.find("cleanup") != std::string::npos);
+        }
+
+        void service_preserves_failed_and_canceled_results_when_cleanup_fails() {
+            for (const auto status :
+                 {ssa::ports::WorkflowStatus::Failed, ssa::ports::WorkflowStatus::Canceled}) {
+                auto importPort = std::make_shared<CapturingImportPort>();
+                auto samPort = std::make_shared<FakeSamPort>();
+                samPort->nextResult = {status, "primary result", {}};
+                samPort->discardSucceeds = false;
+                const ssa::application::SsaWorkflowService service(importPort, nullptr, nullptr,
+                                                                   nullptr, samPort);
+
+                const auto result = service.refreshSam({});
+
+                QCOMPARE(result.status, status);
+                QVERIFY(result.warning);
+                QVERIFY(result.message.find("primary result") != std::string::npos);
+                QVERIFY(result.diagnostic.find("cleanup") != std::string::npos);
+                QCOMPARE(importPort->calls, 0);
+            }
         }
     };
 
@@ -328,7 +514,10 @@ int main(int argc, char* argv[]) {
         return values;
     }();
     if (arguments.size() > 1 && arguments.at(1) == QStringLiteral("run")) {
-        return runFakeUv(arguments.mid(1));
+        return runFakeUv(arguments.mid(1), QFileInfo{arguments.first()}.absoluteFilePath());
+    }
+    if (arguments.size() == 3 && arguments.at(1) == QStringLiteral("--sentinel-child")) {
+        return runSentinelChild(arguments.at(2));
     }
     QCoreApplication application(argc, argv);
     SamRefreshWorkflowTests tests;
