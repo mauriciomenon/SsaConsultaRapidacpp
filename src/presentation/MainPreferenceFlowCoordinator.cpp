@@ -55,25 +55,6 @@ namespace ssa::presentation {
                    filters.excludeScaSesSte || filters.onlyReprogrammed;
         }
 
-        bool sameFilters(const ports::FilterPreferencesSnapshot& lhs,
-                         const ports::FilterPreferencesSnapshot& rhs) {
-            return lhs.searchText == rhs.searchText && lhs.quickSector == rhs.quickSector &&
-                   lhs.columnFilters == rhs.columnFilters &&
-                   lhs.advancedTextFilters == rhs.advancedTextFilters &&
-                   lhs.advancedWeekColumnKey == rhs.advancedWeekColumnKey &&
-                   lhs.advancedYear == rhs.advancedYear && lhs.advancedWeek == rhs.advancedWeek &&
-                   lhs.issueYear == rhs.issueYear && lhs.executionYear == rhs.executionYear &&
-                   lhs.reprogrammingMode == rhs.reprogrammingMode &&
-                   lhs.reprogrammingValues == rhs.reprogrammingValues &&
-                   lhs.issueWeekStart == rhs.issueWeekStart &&
-                   lhs.issueWeekEnd == rhs.issueWeekEnd &&
-                   lhs.executionWeekStart == rhs.executionWeekStart &&
-                   lhs.executionWeekEnd == rhs.executionWeekEnd &&
-                   lhs.derivationMode == rhs.derivationMode &&
-                   lhs.excludeScaSesSte == rhs.excludeScaSesSte &&
-                   lhs.onlyReprogrammed == rhs.onlyReprogrammed;
-        }
-
         QString normalizedName(const QString& name) {
             return name.trimmed();
         }
@@ -96,7 +77,7 @@ namespace ssa::presentation {
             }
             for (std::size_t index = 0; index < lhs.size(); ++index) {
                 if (lhs[index].name != rhs[index].name ||
-                    !sameFilters(lhs[index].filters, rhs[index].filters)) {
+                    lhs[index].filters != rhs[index].filters) {
                     return false;
                 }
             }
@@ -263,7 +244,7 @@ namespace ssa::presentation {
             return;
         }
         const auto stateExists = std::ranges::any_of(savedFilters_, [&snapshot](const auto& item) {
-            return sameFilters(item.filters, snapshot.filters);
+            return item.filters == snapshot.filters;
         });
         if (stateExists) {
             emit this->statusMessageRequested("Este filtro ja esta salvo");
@@ -290,11 +271,10 @@ namespace ssa::presentation {
             emit this->statusErrorRequested("Filtro salvo nao encontrado");
             return;
         }
-        auto snapshot = buildPreferencesSnapshot();
+        ports::UserPreferencesSnapshot snapshot;
         snapshot.filters = filter->filters;
         normalizeFilterPreferences(snapshot.filters);
-        snapshot.savedFilters = savedFilters_;
-        applyStoredPreferences(snapshot);
+        browse_.setFilterPreferences(snapshot);
         browse_.apply();
         emit this->statusErrorClearRequested();
         emit this->statusMessageRequested("Filtro aplicado");
@@ -420,7 +400,7 @@ namespace ssa::presentation {
         auto baseSnapshot = buildPreferencesSnapshot();
         presetService_.applyPresetPreservingSearch(result.snapshot, baseSnapshot);
         normalizeFilterPreferences(baseSnapshot.filters);
-        applyStoredPreferences(baseSnapshot);
+        browse_.setFilterPreferences(baseSnapshot);
         browse_.apply();
         emit this->statusErrorClearRequested();
         emit this->statusMessageRequested("Filtros importados");

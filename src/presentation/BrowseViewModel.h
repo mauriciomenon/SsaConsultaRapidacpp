@@ -36,6 +36,8 @@ namespace ssa::presentation {
         Q_PROPERTY(int currentRow READ currentRow NOTIFY currentRowChanged)
         Q_PROPERTY(bool canSelectNextRow READ canSelectNextRow NOTIFY currentRowChanged)
         Q_PROPERTY(bool canSelectPreviousRow READ canSelectPreviousRow NOTIFY currentRowChanged)
+        Q_PROPERTY(bool canUndoFilters READ canUndoFilters NOTIFY filterHistoryChanged)
+        Q_PROPERTY(int filterUndoDepth READ filterUndoDepth NOTIFY filterHistoryChanged)
         Q_PROPERTY(QVariantList tableHeaders READ tableHeaders NOTIFY tableHeadersChanged)
 
       public:
@@ -58,6 +60,9 @@ namespace ssa::presentation {
         [[nodiscard]] int currentRow() const;
         [[nodiscard]] bool canSelectNextRow() const;
         [[nodiscard]] bool canSelectPreviousRow() const;
+        [[nodiscard]] bool canUndoFilters() const;
+        [[nodiscard]] int filterUndoDepth() const;
+        Q_INVOKABLE QString filterHistoryText() const;
         [[nodiscard]] QVariantList tableHeaders() const;
         [[nodiscard]] domain::SsaPageRequest currentRequest() const;
         [[nodiscard]] const std::vector<std::string>& visibleColumns() const;
@@ -67,6 +72,7 @@ namespace ssa::presentation {
         createDetailsWindowModel(const QString& ssaNumber, QObject* parent);
 
         void applyPreferences(const ports::UserPreferencesSnapshot& snapshot);
+        void setFilterPreferences(const ports::UserPreferencesSnapshot& snapshot);
         void writePreferences(ports::UserPreferencesSnapshot& snapshot) const;
         void applyColumnSettings(std::vector<std::string> visibleColumns,
                                  std::map<std::string, int> columnWidths);
@@ -78,11 +84,14 @@ namespace ssa::presentation {
         void currentRowChanged(int row);
         void tableHeadersChanged();
         void preferencesSaveRequested();
+        void filterHistoryChanged();
 
       public slots:
         void load();
         void apply();
         void clearSearchAndResetPage();
+        void undoFilters();
+        void undoFilterLevels(int levels);
         void nextPage();
         void previousPage();
         void selectRow(int row);

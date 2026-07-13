@@ -36,6 +36,8 @@ namespace ssa::presentation {
         });
         connect(&orchestrator_, &BrowseOrchestrator::preferencesSaveRequested, this,
                 &BrowseViewModel::preferencesSaveRequested);
+        connect(&orchestrator_, &BrowseOrchestrator::filterHistoryChanged, this,
+                &BrowseViewModel::filterHistoryChanged);
     }
 
     SearchViewModel* BrowseViewModel::search() {
@@ -116,6 +118,18 @@ namespace ssa::presentation {
         return orchestrator_.hasPreviousPages();
     }
 
+    bool BrowseViewModel::canUndoFilters() const {
+        return orchestrator_.canUndoFilters();
+    }
+
+    int BrowseViewModel::filterUndoDepth() const {
+        return orchestrator_.filterUndoDepth();
+    }
+
+    QString BrowseViewModel::filterHistoryText() const {
+        return orchestrator_.filterHistoryText();
+    }
+
     QVariantList BrowseViewModel::tableHeaders() const {
         if (!tableHeadersDirty_) {
             return cachedTableHeaders_;
@@ -182,6 +196,10 @@ namespace ssa::presentation {
         orchestrator_.applyPreferences(snapshot);
     }
 
+    void BrowseViewModel::setFilterPreferences(const ports::UserPreferencesSnapshot& snapshot) {
+        orchestrator_.setFilterPreferences(snapshot);
+    }
+
     void BrowseViewModel::writePreferences(ports::UserPreferencesSnapshot& snapshot) const {
         orchestrator_.writePreferences(snapshot);
     }
@@ -205,6 +223,14 @@ namespace ssa::presentation {
 
     void BrowseViewModel::clearSearchAndResetPage() {
         orchestrator_.clearSearchAndResetPage();
+    }
+
+    void BrowseViewModel::undoFilters() {
+        orchestrator_.undoFilters();
+    }
+
+    void BrowseViewModel::undoFilterLevels(const int levels) {
+        orchestrator_.undoFilterLevels(levels);
     }
 
     void BrowseViewModel::nextPage() {

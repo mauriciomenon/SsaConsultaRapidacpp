@@ -48,13 +48,17 @@ Rectangle {
             spacing: Theme.gap
 
             ActionButton {
+                text: "Desfazer"
+                enabled: root.viewModel.canUndoFilters
+                implicitWidth: 88
+                implicitHeight: Theme.densityValue(root.density, 26, Theme.controlHeight, 34)
+                onClicked: root.viewModel.undoFilters()
+            }
+            ActionButton {
                 text: "Limpar"
                 implicitWidth: 88
                 implicitHeight: Theme.densityValue(root.density, 26, Theme.controlHeight, 34)
-                onClicked: {
-                    root.viewModel.search.clear();
-                    root.viewModel.search.apply();
-                }
+                onClicked: root.viewModel.search.clear()
             }
             AppTextField {
                 id: searchInput
@@ -94,10 +98,9 @@ Rectangle {
             searchText: root.viewModel.search.text
             onClearSearchRequested: {
                 root.viewModel.search.clear();
-                root.viewModel.search.apply();
             }
             onClearAllRequested: {
-                root.viewModel.search.clear();
+                root.viewModel.search.text = "";
                 root.filterViewModel.resetFilters();
             }
         }

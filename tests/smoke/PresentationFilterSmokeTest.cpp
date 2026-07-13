@@ -1388,6 +1388,243 @@ namespace {
             QVERIFY(!model.browse()->filters()->statusShortcutSelected("STE"));
         }
 
+        void filter_history_restores_requested_levels_and_consumes_states() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::BrowseViewModel browse(service);
+            ssa::ports::UserPreferencesSnapshot baseline;
+            baseline.filters.searchText = "A";
+            baseline.filters.columnFilters = {{"situacao", "=APV"}};
+            browse.applyPreferences(baseline);
+
+            auto stateB = baseline;
+            stateB.filters.searchText = "B";
+            stateB.filters.quickSector.clear();
+            stateB.filters.columnFilters = {{"situacao", "=STE"}};
+            stateB.filters.advancedTextFilters = {{"descricao_ssa", "=Bomba"}};
+            stateB.filters.advancedWeekColumnKey = "semana_executada";
+            stateB.filters.advancedYear = "2025";
+            stateB.filters.advancedWeek = "3";
+            stateB.filters.issueYear = "2026";
+            stateB.filters.executionYear = "2027";
+            stateB.filters.reprogrammingMode = "lte";
+            stateB.filters.reprogrammingValues = "1,3,5";
+            stateB.filters.issueWeekStart = "202601";
+            stateB.filters.issueWeekEnd = "202620";
+            stateB.filters.executionWeekStart = "202701";
+            stateB.filters.executionWeekEnd = "202720";
+            stateB.filters.derivationMode = "derived";
+            stateB.filters.excludeScaSesSte = false;
+            stateB.filters.onlyReprogrammed = false;
+            browse.search()->setText("B");
+            browse.filters()->applyPreferences(stateB);
+            browse.apply();
+            QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{1}, 1000);
+
+            auto stateC = stateB;
+            stateC.filters.searchText = "C";
+            stateC.filters.columnFilters = {{"situacao", "=SCA"}};
+            stateC.filters.advancedTextFilters = {{"descricao_ssa", "=Motor"}};
+            stateC.filters.advancedWeek = "4";
+            stateC.filters.reprogrammingValues = "2,4";
+            stateC.filters.derivationMode = "root";
+            browse.search()->setText("C");
+            browse.filters()->applyPreferences(stateC);
+            browse.apply();
+            QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{2}, 1000);
+            QCOMPARE(browse.filterUndoDepth(), 2);
+
+            QSignalSpy preferencesSaveSpy(
+                &browse, &ssa::presentation::BrowseViewModel::preferencesSaveRequested);
+            browse.undoFilterLevels(1);
+            QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{3}, 1000);
+            QCOMPARE(browse.search()->text(), QString("B"));
+            QCOMPARE(browse.filters()->columnFilters().at("situacao"), std::string("=STE"));
+            ssa::ports::UserPreferencesSnapshot restored;
+            browse.writePreferences(restored);
+            QVERIFY(restored.filters == stateB.filters);
+            QCOMPARE(browse.filterUndoDepth(), 1);
+            QCOMPARE(preferencesSaveSpy.count(), 1);
+
+            browse.undoFilters();
+            QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{4}, 1000);
+            QCOMPARE(browse.search()->text(), QString("A"));
+            QCOMPARE(browse.filterUndoDepth(), 0);
+            QCOMPARE(preferencesSaveSpy.count(), 2);
+
+            browse.undoFilterLevels(1);
+            QTest::qWait(50);
+            QCOMPARE(repository->requests().size(), std::size_t{4});
+            QCOMPARE(preferencesSaveSpy.count(), 2);
+        }
+
+        void filter_history_can_restore_two_levels_in_one_query() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::BrowseViewModel browse(service);
+            ssa::ports::UserPreferencesSnapshot state;
+            state.filters.searchText = "A";
+            browse.applyPreferences(state);
+
+            std::size_t expectedRequests = 0;
+            for (const auto* search : {"B", "C"}) {
+                browse.search()->setText(search);
+                browse.apply();
+                ++expectedRequests;
+                QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), expectedRequests, 1000);
+            }
+
+            browse.undoFilterLevels(2);
+
+            QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{3}, 1000);
+            QCOMPARE(browse.search()->text(), QString("A"));
+            QCOMPARE(browse.filterUndoDepth(), 0);
+        }
+
+        void filter_history_is_deduplicated_bounded_and_reset_by_preferences() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::BrowseViewModel browse(service);
+            ssa::ports::UserPreferencesSnapshot state;
+            state.filters.searchText = "0";
+            browse.applyPreferences(state);
+
+            browse.apply();
+            QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{1}, 1000);
+            QCOMPARE(browse.filterUndoDepth(), 0);
+
+            for (int index = 1; index <= 11; ++index) {
+                browse.search()->setText(QString::number(index));
+                browse.apply();
+                QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(),
+                                          static_cast<std::size_t>(index + 1), 1000);
+            }
+            QCOMPARE(browse.filterUndoDepth(), 10);
+
+            browse.apply();
+            QCOMPARE(browse.filterUndoDepth(), 10);
+
+            const auto requestCountBeforeUndo = repository->requests().size();
+            browse.undoFilterLevels(10);
+            QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), requestCountBeforeUndo + 1,
+                                      1000);
+            QTest::qWait(50);
+            QCOMPARE(repository->requests().size(), requestCountBeforeUndo + 1);
+            QCOMPARE(browse.search()->text(), QString("1"));
+            QCOMPARE(browse.filterUndoDepth(), 0);
+
+            state.filters.searchText = "baseline";
+            browse.applyPreferences(state);
+            QCOMPARE(browse.filterUndoDepth(), 0);
+            QCOMPARE(browse.canUndoFilters(), false);
+        }
+
+        void filter_history_text_contains_only_filter_conditions() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::BrowseViewModel browse(service);
+            ssa::ports::UserPreferencesSnapshot state;
+            state.filters.searchText = "A";
+            state.filters.quickSector = "MEG2";
+            state.filters.columnFilters = {{"situacao", "=APV"}};
+            browse.applyPreferences(state);
+
+            browse.search()->setText("B");
+            browse.apply();
+
+            const auto history = browse.filterHistoryText();
+            QVERIFY(history.contains("search=A"));
+            QVERIFY(history.contains("quickSector="));
+            QVERIFY(history.contains("situacao:=APV"));
+            QVERIFY(!history.contains("rows"));
+            QVERIFY(!history.contains("results"));
+        }
+
+        void clear_search_applies_once_and_is_undoable() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::BrowseViewModel browse(service);
+            ssa::ports::UserPreferencesSnapshot baseline;
+            baseline.filters.searchText = "active";
+            browse.applyPreferences(baseline);
+
+            browse.search()->clear();
+
+            QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{1}, 1000);
+            QCOMPARE(repository->requests().back().searchText, std::string());
+            QCOMPARE(browse.property("canUndoFilters").toBool(), true);
+        }
+
+        void clear_search_slot_clears_and_applies_once() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::BrowseViewModel browse(service);
+            ssa::ports::UserPreferencesSnapshot baseline;
+            baseline.filters.searchText = "active";
+            browse.applyPreferences(baseline);
+
+            browse.clearSearchAndResetPage();
+
+            QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{1}, 1000);
+            QCOMPARE(browse.search()->text(), QString());
+            QCOMPARE(repository->requests().back().searchText, std::string());
+        }
+
+        void applying_saved_filter_is_undoable() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            auto preferences = std::make_shared<FakePreferences>();
+            ssa::presentation::MainViewModel model(service, commands, preferences);
+
+            model.browse()->search()->setText("saved");
+            QMetaObject::invokeMethod(model.preferenceFlow(), "saveCurrentFilter",
+                                      Q_ARG(QString, QString("saved-filter")));
+
+            model.browse()->search()->setText("previous");
+            model.browse()->apply();
+            QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{1}, 1000);
+
+            QMetaObject::invokeMethod(model.preferenceFlow(), "applySavedFilter",
+                                      Q_ARG(QString, QString("saved-filter")));
+            QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{2}, 1000);
+            QCOMPARE(model.browse()->search()->text(), QString("saved"));
+            QCOMPARE(model.browse()->canUndoFilters(), true);
+
+            model.browse()->undoFilters();
+            QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{3}, 1000);
+            QCOMPARE(model.browse()->search()->text(), QString("previous"));
+        }
+
+        void filter_undo_starts_immediately_and_only_latest_request_publishes() {
+            auto repository = std::make_shared<FakeRepository>(
+                ssa::tests::presentation_smoke::FakeRepositoryConfig{
+                    .delay = std::chrono::milliseconds{300}});
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::BrowseViewModel browse(service);
+            ssa::ports::UserPreferencesSnapshot baseline;
+            baseline.filters.searchText = "A";
+            browse.applyPreferences(baseline);
+            QSignalSpy pageChangedSpy(&browse, &ssa::presentation::BrowseViewModel::pageChanged);
+
+            browse.search()->setText("B");
+            browse.apply();
+            QTRY_COMPARE_WITH_TIMEOUT(repository->startedRequests().size(), std::size_t{1}, 1000);
+
+            browse.undoFilters();
+
+            QTRY_COMPARE_WITH_TIMEOUT(repository->startedRequests().size(), std::size_t{2}, 150);
+            QCOMPARE(repository->requests().size(), std::size_t{0});
+            QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{2}, 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(pageChangedSpy.count(), 1, 1000);
+            const auto* published = browse.tableModel()->recordAt(0);
+            QVERIFY(published != nullptr);
+            QCOMPARE(std::string(published->valueOf("descricao_ssa")), std::string("A"));
+            QCOMPARE(repository->startedRequests().at(0).searchText, std::string("B"));
+            QCOMPARE(repository->startedRequests().at(1).searchText, std::string("A"));
+            QCOMPARE(browse.search()->text(), QString("A"));
+        }
+
         void named_saved_filter_persists_applies_and_removes_current_filters() {
             auto repository = std::make_shared<FakeRepository>();
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);

@@ -34,6 +34,8 @@ namespace ssa::ports {
         std::string derivationMode{"all"};
         bool excludeScaSesSte{domain::kDefaultExcludeScaSesSte};
         bool onlyReprogrammed{false};
+
+        bool operator==(const FilterPreferencesSnapshot&) const = default;
     };
 
     struct SavedFilterSnapshot {

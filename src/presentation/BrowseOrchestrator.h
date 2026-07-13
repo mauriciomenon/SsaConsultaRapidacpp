@@ -15,8 +15,10 @@
 
 #include <QObject>
 
+#include <deque>
 #include <map>
 #include <memory>
+#include <optional>
 #include <vector>
 
 namespace ssa::presentation {
@@ -41,11 +43,15 @@ namespace ssa::presentation {
         [[nodiscard]] int currentRow() const;
         [[nodiscard]] bool hasMorePages() const;
         [[nodiscard]] bool hasPreviousPages() const;
+        [[nodiscard]] bool canUndoFilters() const;
+        [[nodiscard]] int filterUndoDepth() const;
+        [[nodiscard]] QString filterHistoryText() const;
         [[nodiscard]] domain::SsaPageRequest currentRequest() const;
         [[nodiscard]] const std::vector<std::string>& visibleColumns() const;
         [[nodiscard]] const std::map<std::string, int>& columnWidths() const;
 
         void applyPreferences(const ports::UserPreferencesSnapshot& snapshot);
+        void setFilterPreferences(const ports::UserPreferencesSnapshot& snapshot);
         void writePreferences(ports::UserPreferencesSnapshot& snapshot) const;
         void applyColumnSettings(std::vector<std::string> visibleColumns,
                                  std::map<std::string, int> columnWidths);
@@ -56,11 +62,14 @@ namespace ssa::presentation {
         void sortChanged();
         void currentRowChanged(int row);
         void preferencesSaveRequested();
+        void filterHistoryChanged();
 
       public slots:
         void load();
         void apply();
         void clearSearchAndResetPage();
+        void undoFilters();
+        void undoFilterLevels(int levels);
         void nextPage();
         void previousPage();
         void selectRow(int row);
@@ -70,6 +79,8 @@ namespace ssa::presentation {
         void cancelCurrentRequest();
 
       private:
+        [[nodiscard]] ports::FilterPreferencesSnapshot currentFilters() const;
+
         SearchViewModel& search_;
         FilterPanelViewModel& filters_;
         StatusViewModel& status_;
@@ -78,6 +89,8 @@ namespace ssa::presentation {
         BrowseInputCoordinator inputCoordinator_;
         BrowseSelectionCoordinator selectionCoordinator_;
         BrowseRequestCoordinator requestCoordinator_;
+        std::optional<ports::FilterPreferencesSnapshot> appliedFilters_;
+        std::deque<ports::FilterPreferencesSnapshot> filterHistory_;
     };
 
 } // namespace ssa::presentation

@@ -37,6 +37,10 @@ namespace ssa::tests::presentation_smoke {
 
         ssa::domain::SsaPageResult page(const ssa::domain::SsaPageRequest& request,
                                         std::stop_token = {}) const override {
+            {
+                const std::scoped_lock lock(mutex_);
+                startedRequests_.push_back(request);
+            }
             if (delay_.count() > 0) {
                 std::this_thread::sleep_for(delay_);
             }
@@ -102,6 +106,11 @@ namespace ssa::tests::presentation_smoke {
             return requests_;
         }
 
+        [[nodiscard]] std::vector<ssa::domain::SsaPageRequest> startedRequests() const {
+            const std::scoped_lock lock(mutex_);
+            return startedRequests_;
+        }
+
         [[nodiscard]] std::size_t countCalls() const {
             const std::scoped_lock lock(mutex_);
             return countCalls_;
@@ -112,6 +121,7 @@ namespace ssa::tests::presentation_smoke {
         std::size_t totalRows_;
         std::size_t rowCount_;
         mutable std::mutex mutex_;
+        mutable std::vector<ssa::domain::SsaPageRequest> startedRequests_;
         mutable std::vector<ssa::domain::SsaPageRequest> requests_;
         mutable std::size_t countCalls_{0};
     };

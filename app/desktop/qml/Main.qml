@@ -109,6 +109,33 @@ ApplicationWindow {
             title: "Filtros"
 
             MenuItem {
+                text: "Desfazer ultimo filtro"
+                enabled: root.vm.browse.canUndoFilters
+                onTriggered: root.vm.browse.undoFilters()
+            }
+            Menu {
+                id: undoFilterMenu
+                title: "Voltar filtros"
+                enabled: root.vm.browse.canUndoFilters
+
+                Instantiator {
+                    model: root.vm.browse.filterUndoDepth
+                    delegate: MenuItem {
+                        required property int index
+                        text: index === 0 ? "Voltar 1 nivel" : "Voltar " + (index + 1) + " niveis"
+                        onTriggered: root.vm.browse.undoFilterLevels(index + 1)
+                    }
+                    onObjectAdded: (index, object) => undoFilterMenu.insertItem(index, object)
+                    onObjectRemoved: (index, object) => undoFilterMenu.removeItem(object)
+                }
+            }
+            MenuItem {
+                text: "Copiar historico de filtros"
+                enabled: root.vm.browse.canUndoFilters
+                onTriggered: root.vm.copyTextToClipboard(root.vm.browse.filterHistoryText())
+            }
+            MenuSeparator {}
+            MenuItem {
                 text: "Aplicar filtros"
                 onTriggered: root.vm.browse.apply()
             }

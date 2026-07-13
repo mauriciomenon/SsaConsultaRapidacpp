@@ -2,9 +2,8 @@
 
 namespace ssa::presentation {
 
-    BrowseInputCoordinator::BrowseInputCoordinator(BrowseQueryState& queryState,
-                                                   SearchViewModel& search, QObject* parent)
-        : QObject(parent), queryState_(queryState), search_(search) {}
+    BrowseInputCoordinator::BrowseInputCoordinator(BrowseQueryState& queryState, QObject* parent)
+        : QObject(parent), queryState_(queryState) {}
 
     bool BrowseInputCoordinator::setPageSize(const int value) {
         const auto previousPageSize = queryState_.pageSize();
@@ -17,11 +16,6 @@ namespace ssa::presentation {
     }
 
     void BrowseInputCoordinator::apply() {
-        queryState_.resetPage();
-    }
-
-    void BrowseInputCoordinator::clearSearchAndResetPage() {
-        search_.setText({});
         queryState_.resetPage();
     }
 
