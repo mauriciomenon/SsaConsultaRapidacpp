@@ -110,13 +110,14 @@ Aplicar a TODO popup/dropdown do projeto:
 - `ctest --preset dev --output-on-failure`
 - `clang-format --dry-run --Werror`
 - `clang-tidy` nos targets principais
-- `qmllint -I build/dev` nos arquivos QML
-- `qmlformat` nos arquivos QML
-- `cppcheck --enable=all --inconclusive --suppress=missingIncludeSystem`
+- `cmake --build --preset dev --target all_qmllint`
+- `bash -o pipefail -c 'qmlformat "$1" | diff -u "$1" -' -- <arquivo>` para validacao nao mutante
+- `pre-commit run cppcheck --hook-stage manual --files <arquivos de producao alterados>`
 - `semgrep --config=p/c --config=p/security-audit`
 - `gitleaks dir . --redact --exit-code 1`
-- `detect-secrets --baseline .secrets.baseline` quando baseline existir
-- `trufflehog filesystem .`
+- `detect-secrets-hook --baseline .secrets.baseline <arquivos alterados>`
+- `trufflehog git file://. --results=verified,unknown --fail --fail-on-scan-errors --no-update`
+- `trufflehog filesystem <arquivo alterado> --results=verified,unknown --fail --fail-on-scan-errors --no-update`
 - Verificar casos de regressao, concorrencia, perda de desempenho e locks.
 
 ## Procedimento de build, limpeza e distribuicao (canonico)
@@ -265,8 +266,8 @@ Deve entregar report final por pedido:
 
 ### TOOL SELECTION (C++/Qt/QML)
 
-- **Static analysis**: `clang-format --dry-run --Werror`, `clang-tidy -p build/dev`, `cppcheck --enable=all --inconclusive --suppress=missingIncludeSystem`, `qmllint -I build/dev`, `qmlformat`, `include-what-you-use` quando disponivel.
-- **Security**: `semgrep --config=p/c --config=p/security-audit`, `gitleaks dir . --redact`, `detect-secrets --baseline .secrets.baseline`, `trufflehog filesystem .`.
+- **Static analysis**: `clang-format --dry-run --Werror`, `clang-tidy -p build/dev`, `pre-commit run cppcheck --hook-stage manual --files <arquivos de producao alterados>`, `cmake --build --preset dev --target all_qmllint`, comparacao nao mutante com `bash -o pipefail -c 'qmlformat "$1" | diff -u "$1" -' -- <arquivo>`, `include-what-you-use` quando disponivel.
+- **Security**: `semgrep --config=p/c --config=p/security-audit`, `gitleaks dir . --redact`, `detect-secrets-hook --baseline .secrets.baseline <arquivos alterados>`, `trufflehog git file://. --results=verified,unknown --fail --fail-on-scan-errors --no-update` e `trufflehog filesystem <arquivo alterado> --results=verified,unknown --fail --fail-on-scan-errors --no-update`.
 - **PR review**: Code Rabbit (automatic via GitHub App).
 - **Local patch review**: `clawpatch` when configured (`.clawpatch/` present in repo).
 - **Dependency audit**: `snyk test --insecure` quando manifest existir.

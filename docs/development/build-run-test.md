@@ -36,7 +36,7 @@ what was already present, what was fixed, and what is newly available.
 brew install qt cmake ninja sqlite llvm clang-format cppcheck \
   include-what-you-use lcov pre-commit gitleaks trufflehog
 uv tool install cmakelang          # provides cmake-format and cmake-lint
-pip3 install detect-secrets        # or: uv tool install detect-secrets
+uv tool install detect-secrets
 ```
 
 Note: `include-what-you-use` exposes the binary `include-what-you-use` (the
@@ -51,19 +51,53 @@ the core of the quality gate.
 |---|---|---|
 | clang-format (LLVM) | C++ formatting | `clang-format --dry-run --Werror <files>` |
 | clang-tidy (LLVM) | C++ static analysis | `run-clang-tidy -p build/dev ...` |
-| cppcheck | C++ static analysis (fast) | `cppcheck --enable=all --inconclusive --suppress=missingIncludeSystem ...` |
-| qmllint (Qt) | QML linting | `qmllint -I build/dev <qml files>` |
-| qmlformat (Qt) | QML formatting | `qmlformat <qml files>` |
+| cppcheck | C++ static analysis (fast) | `pre-commit run cppcheck --hook-stage manual --files <changed production files>` |
+| qmllint (Qt) | QML linting | `cmake --build --preset dev --target all_qmllint` |
+| qmlformat (Qt) | QML formatting | `bash -o pipefail -c 'qmlformat "$1" \| diff -u "$1" -' -- <file>` |
 | gitleaks | Secret scanning | `gitleaks dir . --redact --exit-code 1` |
-| trufflehog | Secret scanning | New CLI: `trufflehog filesystem .`; legacy CLI on this Mac: `trufflehog --regex --entropy=False -x <exclude-file> file://$PWD` |
-| detect-secrets | Secret scanning | `detect-secrets --baseline .secrets.baseline` |
+| trufflehog | Secret scanning | `trufflehog git file://. ...`; use `trufflehog filesystem <changed-file> ...` for changed files |
+| detect-secrets | Secret scanning | `detect-secrets-hook --baseline .secrets.baseline <changed-files>` |
 | semgrep | SAST + security audit | `semgrep --config=p/c --config=p/security-audit` |
 
-### Fixed (already present, corrected this cycle)
+### Pre-commit conditions
 
-- `pre-commit` binary existed but no project hook config was wired. The CLI is
-  now available at version 4.6.0; a `.pre-commit-config.yaml` is the next step
-  (see "Next steps" below) to actually run linters on every commit.
+The repository already provides `.pre-commit-config.yaml`. Install the hook once
+with `pre-commit install`; all hooks use local system binaries and therefore
+require the corresponding tools on `PATH`.
+
+Default commit hooks follow these conditions:
+
+- clang-format, cmake-format, and qmlformat rewrite staged file types. Pre-commit
+  detects the diff and blocks until the formatted files are reviewed and staged.
+- shellcheck blocks on findings in changed shell scripts.
+- qmllint runs only when QML is staged, blocks on findings, and requires an
+  existing `build/dev/build.ninja` configuration.
+- the local Semgrep QML policy runs only when QML is staged, blocks on findings,
+  and requires Semgrep 1.169.0 or newer.
+- gitleaks, detect-secrets, and the changed-file TruffleHog hook block on secret
+  findings. TruffleHog may call verifier APIs and treats scan errors as failures.
+
+Run each manual hook with its intended scope:
+
+```bash
+production_files=()
+while IFS= read -r -d '' file; do
+  production_files+=("$file")
+done < <(git diff --name-only -z --diff-filter=ACMRT HEAD -- src app tools)
+if ((${#production_files[@]})); then
+  pre-commit run cppcheck --hook-stage manual --files "${production_files[@]}"
+fi
+pre-commit run cmake-lint --hook-stage manual --all-files
+pre-commit run gitleaks-full --hook-stage manual
+pre-commit run trufflehog-history --hook-stage manual
+```
+
+Cppcheck receives changed production files only; tests and generated build
+trees are excluded. Cmake-lint validates repository configuration files, while
+gitleaks and TruffleHog scan Git history independently.
+
+`detect-secrets scan --baseline .secrets.baseline` is a maintenance command: it
+updates baseline metadata and must not be used as a read-only verification gate.
 
 ### Newly installed this cycle
 
@@ -105,17 +139,11 @@ The script runs `ctest --preset dev-cov`, merges profraw via `llvm-profdata`,
 exports to lcov via `llvm-cov`, and renders HTML via `genhtml`. Requires the
 `dev-cov` preset (configure + build once first).
 
-### Next steps (configuration, not installation)
+### Known toolchain limitation
 
-The tools above are installed but not yet wired into the project config. Pending
-explicit approval, the remaining work is configuration only:
-
-1. `.pre-commit-config.yaml`: clang-format, cmake-format, shellcheck, qmlformat
-   run on every commit as advisory (never block); cppcheck/qmllint/cmake-lint/
-   detect-secrets run as manual advisory stages.
-2. IWYU: requires the Homebrew clang toolchain to match the build; since the
-   build uses Apple clang, IWYU shows `<array> not found`. Running IWYU would
-   require a separate build using Homebrew clang (blocked on the Apple-SDK issue).
+IWYU requires the Homebrew clang toolchain to match the build. Since the build
+uses Apple clang, IWYU shows `<array> not found`. Running IWYU would require a
+separate build using Homebrew clang, which is blocked on the Apple-SDK issue.
 
 ## Linux build container (Debian Trixie)
 
@@ -165,7 +193,12 @@ alternative if faster emulation is needed.
 cmake --preset dev -DCMAKE_PREFIX_PATH=/opt/homebrew/opt/qt
 cmake --build --preset dev
 ctest --preset dev --output-on-failure
-qmllint -I build/dev app/desktop/qml/Main.qml app/desktop/qml/Theme.qml app/desktop/qml/components/*.qml
+cmake --build --preset dev --target all_qmllint
+status=0
+while IFS= read -r file; do
+  bash -o pipefail -c 'qmlformat "$1" | diff -u "$1" -' -- "$file" || status=1
+done < <(git ls-files '*.qml')
+test "$status" -eq 0
 find src app tests -type f \( -name '*.cpp' -o -name '*.h' \) -print0 | \
   xargs -0 /opt/homebrew/opt/llvm/bin/clang-format --dry-run --Werror
 SDKROOT="$(xcrun --show-sdk-path)"
@@ -174,6 +207,19 @@ PATH="/opt/homebrew/opt/llvm/bin:$PATH" run-clang-tidy -p build/dev -quiet \
   -extra-arg=-isysroot -extra-arg="$SDKROOT" \
   "$PWD/(src|app)/.*\\.(cpp|h)$"
 gitleaks dir . --redact --exit-code 1 --no-banner
+changed_files=()
+while IFS= read -r -d '' file; do
+  changed_files+=("$file")
+done < <(git diff --name-only -z --diff-filter=ACMRT HEAD)
+if ((${#changed_files[@]})); then
+  detect-secrets-hook --baseline .secrets.baseline "${changed_files[@]}"
+  for file in "${changed_files[@]}"; do
+    trufflehog filesystem "$file" --results=verified,unknown --fail \
+      --fail-on-scan-errors --no-update
+  done
+fi
+trufflehog git file://. --results=verified,unknown --fail \
+  --fail-on-scan-errors --no-update
 ```
 
 ## macOS Package Smoke

@@ -2,53 +2,54 @@
 # Install once: pre-commit install
 # Run manually: pre-commit run --all-files
 #
-# POLICY: formatting hooks are advisory. Secret scanning blocks a commit.
+# POLICY: formatting, lint, and secret-scanning findings block a commit.
 #
 # Hooks that modify files (clang-format, cmake-format, qmlformat) still rewrite
-# in place; pre-commit reports them as "Passed" because of the || true wrapper,
-# and the changes end up unstaged for the user to review/amend.
+# in place. Pre-commit detects the resulting diff and asks the user to review
+# and stage it before the next commit attempt.
 
 repos:
   - repo: local
     hooks:
       - id: clang-format
-        name: clang-format (C++) [advisory]
-        description: Format C/C++ sources; advisory only, never blocks.
-        entry: bash -c 'clang-format -i "$@" || true' --
+        name: clang-format (C++)
+        description: Format C/C++ sources; formatting changes block the commit.
+        entry: clang-format -i
         language: system
         files: \.(cpp|h|hpp|cc)$
         exclude: ^build/|^build-dev/|^_deps/
 
       - id: cmake-format
-        name: cmake-format [advisory]
-        description: Format CMake files; advisory only, never blocks.
-        entry: bash -c 'cmake-format -i "$@" || true' --
+        name: cmake-format
+        description: Format CMake files; formatting changes block the commit.
+        entry: cmake-format -i
         language: system
         files: (CMakeLists\.txt|.*\.cmake)$
         exclude: ^build/
 
       - id: shellcheck
-        name: shellcheck (scripts) [advisory]
-        description: Lint shell scripts; advisory only, never blocks.
-        entry: bash -c 'shellcheck --exclude=SC1091 "$@" || true' --
+        name: shellcheck (scripts)
+        description: Lint shell scripts; findings block the commit.
+        entry: shellcheck --exclude=SC1091
         language: system
         files: ^scripts/.*\.sh$
 
       - id: qmlformat
-        name: qmlformat [advisory]
-        description: Format QML files; advisory only, never blocks.
-        entry: bash -c 'qmlformat -i "$@" || true' --
+        name: qmlformat
+        description: Format QML files; formatting changes block the commit.
+        entry: qmlformat -i
         language: system
         files: \.qml$
         exclude: ^build/
 
       - id: cppcheck
-        name: cppcheck [advisory]
-        description: Static analysis for C/C++; advisory only, never blocks.
+        name: cppcheck
+        description: Static analysis for changed production C/C++; findings block.
         entry: bash -c 'cppcheck --enable=warning,style --inconclusive
+          --error-exitcode=1
           --suppress=missingIncludeSystem --suppress=useStlAlgorithm
           --suppress=functionStatic --suppress=constParameterReference
-          --suppress=constVariableReference "$@" || true' --
+          --suppress=constVariableReference "$@"' --
         language: system
         files: \.(cpp|h|hpp|cc)$
         exclude: ^build/|^build-dev/|^_deps/|^tests/
@@ -74,9 +75,9 @@ repos:
         pass_filenames: true
 
       - id: cmake-lint
-        name: cmake-lint [advisory]
-        description: Lint CMake files; advisory only, never blocks.
-        entry: bash -c 'cmake-lint "$@" || true' --
+        name: cmake-lint
+        description: Lint CMake files; findings block.
+        entry: cmake-lint
         language: system
         files: (CMakeLists\.txt|.*\.cmake)$
         exclude: ^build/
@@ -107,7 +108,15 @@ repos:
       - id: trufflehog
         name: trufflehog staged files
         description: Verified staged-file scan; may call verifier APIs and block the commit.
-        entry: trufflehog filesystem --results=verified,unknown --fail --fail-on-scan-errors --no-update
+        entry: bash -c 'for file in "$@"; do trufflehog filesystem "$file" --results=verified,unknown --fail --fail-on-scan-errors --no-update || exit; done' --
         language: system
         exclude: ^build/|^dist/|^\.semgrep/
         pass_filenames: true
+
+      - id: trufflehog-history
+        name: trufflehog Git history
+        description: Full Git history secret scan for manual verification.
+        entry: trufflehog git file://. --results=verified,unknown --fail --fail-on-scan-errors --no-update
+        language: system
+        pass_filenames: false
+        stages: [manual]
