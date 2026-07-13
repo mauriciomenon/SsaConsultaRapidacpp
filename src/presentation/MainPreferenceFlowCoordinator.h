@@ -6,6 +6,7 @@
 #include "presentation/BrowseViewModel.h"
 #include "presentation/ColumnSettingsModel.h"
 #include "presentation/UiSettingsViewModel.h"
+#include "presentation/WorkflowCommandViewModel.h"
 
 #include <QFutureWatcher>
 #include <QObject>
@@ -36,6 +37,7 @@ namespace ssa::presentation {
       public:
         MainPreferenceFlowCoordinator(BrowseViewModel& browse, UiSettingsViewModel& ui,
                                       ColumnSettingsModel& columns,
+                                      WorkflowCommandViewModel& workflows,
                                       UserPreferencesCoordinator& preferences,
                                       std::shared_ptr<ports::IFilterPresetStore> presetStore,
                                       application::FilterPresetService& presetService,
@@ -95,6 +97,7 @@ namespace ssa::presentation {
         BrowseViewModel& browse_;
         UiSettingsViewModel& ui_;
         ColumnSettingsModel& columns_;
+        WorkflowCommandViewModel& workflows_;
         UserPreferencesCoordinator& preferences_;
         std::shared_ptr<ports::IFilterPresetStore> presetStore_;
         application::FilterPresetService& presetService_;

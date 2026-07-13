@@ -11,6 +11,9 @@
 #include <QQmlAbstractUrlInterceptor>
 #include <QQmlComponent>
 #include <QQmlEngine>
+#include <QQuickItem>
+#include <QQuickWindow>
+#include <QSignalSpy>
 #include <QTest>
 #include <QWindow>
 #include <QtQml/qqml.h>
@@ -152,6 +155,76 @@ namespace {
             QVERIFY(mainQml.contains(QStringLiteral("id: aboutDialogLoader")));
         }
 
+        void sam_menu_exposes_refresh_configuration() {
+            const QString mainQml = readSource(QStringLiteral("app/desktop/qml/Main.qml"));
+            QVERIFY(!mainQml.isEmpty());
+            QVERIFY(mainQml.contains(QStringLiteral("text: \"Atualizar agora\"")));
+            QVERIFY(mainQml.contains(QStringLiteral("text: \"Atualizacao automatica\"")));
+            QVERIFY(mainQml.contains(QStringLiteral("text: \"Configurar atualizacao\"")));
+            QVERIFY(mainQml.contains(QStringLiteral("id: samRefreshDialogLoader")));
+        }
+
+        void sam_refresh_dialog_renders_offscreen_screenshot() {
+            SourceQmlUrlInterceptor sourceInterceptor;
+            QQmlEngine engine;
+            engine.addUrlInterceptor(&sourceInterceptor);
+            engine.addImportPath(QStringLiteral(SSA_BUILD_DIR));
+            const QDir components(
+                repositoryRoot().filePath(QStringLiteral("app/desktop/qml/components")));
+            QQmlComponent component(&engine, QUrl::fromLocalFile(components.filePath(
+                                                 QStringLiteral("SamRefreshDialog.qml"))));
+            QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+            ssa::presentation::WorkflowCommandViewModel workflows(nullptr);
+            QVariantMap properties;
+            properties.insert(QStringLiteral("workflowViewModel"),
+                              QVariant::fromValue<QObject*>(&workflows));
+            const auto object =
+                std::unique_ptr<QObject>(component.createWithInitialProperties(properties));
+            QVERIFY2(object != nullptr, qPrintable(component.errorString()));
+            auto* window = qobject_cast<QQuickWindow*>(object.get());
+            QVERIFY(window != nullptr);
+            QSignalSpy frameSpy(window, &QQuickWindow::frameSwapped);
+
+            window->show();
+            window->requestUpdate();
+            QTRY_VERIFY_WITH_TIMEOUT(frameSpy.count() > 0, 1000);
+            const auto image = window->grabWindow();
+
+            auto* settingsGrid =
+                window->findChild<QQuickItem*>(QStringLiteral("samRefreshSettingsGrid"));
+            auto* baseUrlField = window->findChild<QQuickItem*>(QStringLiteral("samBaseUrlField"));
+            auto* intervalSpinBox =
+                window->findChild<QQuickItem*>(QStringLiteral("samIntervalSpinBox"));
+            QVERIFY(settingsGrid != nullptr);
+            QVERIFY(baseUrlField != nullptr);
+            QVERIFY(intervalSpinBox != nullptr);
+            auto* intervalContent =
+                qvariant_cast<QQuickItem*>(intervalSpinBox->property("contentItem"));
+            QVERIFY(intervalContent != nullptr);
+
+            const auto intervalTopLeft =
+                intervalSpinBox->mapToItem(window->contentItem(), QPointF{});
+            const QRectF intervalBounds{intervalTopLeft, intervalSpinBox->size()};
+            const QRectF windowBounds{QPointF{}, window->contentItem()->size()};
+            qInfo().nospace() << "VERIFY_SAM_DIALOG interval=" << intervalBounds
+                              << " content_width=" << intervalContent->width()
+                              << " content_implicit_width=" << intervalContent->implicitWidth()
+                              << " reference_width=" << baseUrlField->width()
+                              << " grid_width=" << settingsGrid->width()
+                              << " window=" << windowBounds;
+
+            QVERIFY(windowBounds.contains(intervalBounds));
+            QVERIFY(intervalSpinBox->width() >= 140.0);
+            QVERIFY(intervalContent->width() >= intervalContent->implicitWidth());
+
+            QVERIFY(!image.isNull());
+            QCOMPARE(image.size(), window->size());
+            const auto outputPath = QDir(QCoreApplication::applicationDirPath())
+                                        .filePath(QStringLiteral("sam-refresh-dialog.png"));
+            QVERIFY(image.save(outputPath));
+            window->hide();
+        }
+
         void main_window_opens_closes_and_reopens_help_and_about() {
             auto repository = std::make_shared<ssa::tests::presentation_smoke::FakeRepository>();
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
@@ -174,6 +247,8 @@ namespace {
                                                 QStringLiteral("Ajuda")));
             QVERIFY(dialogCanOpenCloseAndReopen(*mainWindow, "openAboutDialog",
                                                 QStringLiteral("Sobre")));
+            QVERIFY(dialogCanOpenCloseAndReopen(*mainWindow, "openSamRefreshDialog",
+                                                QStringLiteral("Atualizacao SAM")));
 
             auto* openDatabase =
                 mainWindow->findChild<QObject*>(QStringLiteral("openDatabaseMenuItem"));

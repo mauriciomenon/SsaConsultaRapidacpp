@@ -27,6 +27,7 @@ namespace ssa::presentation {
         [[nodiscard]] bool running() const;
         void importExternalFiles(const std::vector<QString>& files);
         void rescan(ports::RescanMode mode);
+        void refreshSam(ports::SamRefreshRequest request);
         void syncDerivadas();
         void compactDatabase();
         void shutdown();

@@ -88,11 +88,12 @@ namespace ssa::presentation {
 
     MainPreferenceFlowCoordinator::MainPreferenceFlowCoordinator(
         BrowseViewModel& browse, UiSettingsViewModel& ui, ColumnSettingsModel& columns,
-        UserPreferencesCoordinator& preferences,
+        WorkflowCommandViewModel& workflows, UserPreferencesCoordinator& preferences,
         std::shared_ptr<ports::IFilterPresetStore> presetStore,
         application::FilterPresetService& presetService, QObject* parent)
-        : QObject(parent), browse_(browse), ui_(ui), columns_(columns), preferences_(preferences),
-          presetStore_(std::move(presetStore)), presetService_(presetService) {
+        : QObject(parent), browse_(browse), ui_(ui), columns_(columns), workflows_(workflows),
+          preferences_(preferences), presetStore_(std::move(presetStore)),
+          presetService_(presetService) {
         connect(&exportPresetWatcher_, &QFutureWatcher<void>::finished, this,
                 &MainPreferenceFlowCoordinator::finishExportFilterPreset);
         connect(&importPresetWatcher_, &QFutureWatcher<void>::finished, this,
@@ -128,6 +129,7 @@ namespace ssa::presentation {
         snapshot.visibleColumns = columns_.visibleKeys();
         snapshot.columnWidths = columns_.columnWidths();
         snapshot.savedFilters = savedFilters_;
+        workflows_.writePreferences(snapshot);
         normalizeFilterPreferences(snapshot.filters);
         normalizeSavedFilterPreferences(snapshot.savedFilters);
         return snapshot;
@@ -149,6 +151,7 @@ namespace ssa::presentation {
         ui_.applyPreferences(snapshot);
         browse_.applyPreferences(snapshot);
         columns_.applyPreferences(snapshot);
+        workflows_.applyPreferences(snapshot);
         auto storedSavedFilters = snapshot.savedFilters;
         normalizeSavedFilterPreferences(storedSavedFilters);
         setSavedFilters(std::move(storedSavedFilters));

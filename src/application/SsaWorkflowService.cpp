@@ -8,9 +8,11 @@ namespace ssa::application {
         std::shared_ptr<ports::IImportWorkflowPort> importPort,
         std::shared_ptr<ports::IExportPort> exportPort,
         std::shared_ptr<ports::IDatabaseMaintenancePort> maintenancePort,
-        std::shared_ptr<ports::IDerivadasPort> derivadasPort)
+        std::shared_ptr<ports::IDerivadasPort> derivadasPort,
+        std::shared_ptr<ports::ISamRefreshPort> samPort)
         : importPort_(std::move(importPort)), exportPort_(std::move(exportPort)),
-          maintenancePort_(std::move(maintenancePort)), derivadasPort_(std::move(derivadasPort)) {}
+          maintenancePort_(std::move(maintenancePort)), derivadasPort_(std::move(derivadasPort)),
+          samPort_(std::move(samPort)) {}
 
     ports::WorkflowResult
     SsaWorkflowService::importExternalFiles(const ports::ImportExternalFilesRequest& request,
@@ -64,6 +66,33 @@ namespace ssa::application {
             return notImplemented("sync derivadas");
         }
         return derivadasPort_->syncDerivadas(std::move(stopToken));
+    }
+
+    ports::WorkflowResult SsaWorkflowService::refreshSam(const ports::SamRefreshRequest& request,
+                                                         std::stop_token stopToken) const {
+        if (!samPort_) {
+            return notImplemented("SAM refresh");
+        }
+
+        auto fetchResult = samPort_->fetch(request, stopToken);
+        if (!fetchResult.ok()) {
+            samPort_->discardArtifacts();
+            return {fetchResult.status, std::move(fetchResult.message)};
+        }
+        if (!importPort_) {
+            samPort_->discardArtifacts();
+            return notImplemented("SAM import");
+        }
+
+        auto result = importPort_->importExternalFiles(
+            {.files = std::move(fetchResult.artifacts), .optimized = true}, stopToken);
+        if (!samPort_->discardArtifacts() && result.ok()) {
+            auto warningResult = result;
+            warningResult.warning = true;
+            warningResult.message += "; temporary SAM artifacts could not be removed";
+            return warningResult;
+        }
+        return result;
     }
 
     ports::WorkflowResult SsaWorkflowService::notImplemented(const char* operation) {

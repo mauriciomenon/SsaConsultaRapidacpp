@@ -109,6 +109,23 @@ ApplicationWindow {
                 enabled: root.vm.browse.details.selectedSsaNumber.length > 0
                 onTriggered: root.vm.selectionFlow.openSelectedSsa()
             }
+            MenuSeparator {}
+            MenuItem {
+                text: "Atualizar agora"
+                enabled: root.vm.actions.workflows.samRefreshEnabled && !root.vm.actions.workflows.running
+                onTriggered: root.vm.actions.workflows.refreshSamNow()
+            }
+            MenuItem {
+                text: "Atualizacao automatica"
+                checkable: true
+                checked: root.vm.actions.workflows.samAutoRefreshEnabled
+                enabled: root.vm.actions.workflows.samRefreshEnabled
+                onTriggered: root.vm.actions.workflows.samAutoRefreshEnabled = checked
+            }
+            MenuItem {
+                text: "Configurar atualizacao"
+                onTriggered: root.openSamRefreshDialog()
+            }
         }
 
         Menu {
@@ -468,6 +485,16 @@ ApplicationWindow {
         }
     }
 
+    Loader {
+        id: samRefreshDialogLoader
+        active: false
+        sourceComponent: SamRefreshDialog {
+            visible: true
+            workflowViewModel: root.vm.actions.workflows
+            onClosing: samRefreshDialogLoader.active = false
+        }
+    }
+
     ColumnSelectorPopup {
         id: columnSelectorPopup
         viewModel: root.vm
@@ -507,6 +534,10 @@ ApplicationWindow {
 
     function openAboutDialog() {
         aboutDialogLoader.active = true;
+    }
+
+    function openSamRefreshDialog() {
+        samRefreshDialogLoader.active = true;
     }
 
     Component {

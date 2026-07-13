@@ -65,9 +65,9 @@ namespace ssa::presentation {
         UiSettingsViewModel ui_;
         UserPreferencesCoordinator preferences_;
         application::FilterPresetService filterPresetService_;
-        MainPreferenceFlowCoordinator preferencesFlow_;
         DatabaseSwitchViewModel databaseSwitch_;
         DesktopActionsViewModel actions_;
+        MainPreferenceFlowCoordinator preferencesFlow_;
         MainColumnFlowCoordinator columnsFlow_;
         MainSelectionFlowCoordinator selectionFlow_;
         MainRequestFlowCoordinator requestFlow_;

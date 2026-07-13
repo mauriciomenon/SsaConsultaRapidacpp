@@ -10,7 +10,7 @@
 
 namespace ssa::ports {
 
-    inline constexpr int kCurrentUserPreferencesSchemaVersion = 12;
+    inline constexpr int kCurrentUserPreferencesSchemaVersion = 13;
     inline constexpr std::size_t kMaxSavedFilterCount = 200;
     inline constexpr std::size_t kMaxSavedFilterNameLength = 128;
     inline constexpr std::size_t kMaxFilterExpressionLength = 4096;
@@ -43,6 +43,19 @@ namespace ssa::ports {
         FilterPreferencesSnapshot filters;
     };
 
+    struct SamRefreshPreferencesSnapshot {
+        std::string scrapReportRoot;
+        std::string caFile;
+        std::string baseUrl{"https://apps.itaipu.gov.br/SAM_SMA_API/rest/SSA_API"};
+        std::string executorSectors;
+        std::string scope{"consulta"};
+        int intervalMinutes{30'000};
+        bool enabled{false};
+        bool autoRefreshEnabled{false};
+
+        bool operator==(const SamRefreshPreferencesSnapshot&) const = default;
+    };
+
     struct UserPreferencesSnapshot {
         std::vector<std::string> visibleColumns;
         std::map<std::string, int> columnWidths;
@@ -51,6 +64,7 @@ namespace ssa::ports {
         std::string density{"compact"};
         std::string sortColumnKey{"numero_ssa"};
         FilterPreferencesSnapshot filters;
+        SamRefreshPreferencesSnapshot samRefresh;
         int schemaVersion{kCurrentUserPreferencesSchemaVersion};
         int pageSize{domain::kDefaultPageSize};
         int detailsPanelWidth{ports::kDefaultDetailsPanelWidth};

@@ -1,7 +1,10 @@
 #include "presentation/WorkflowCommandViewModel.h"
 
+#include "qt/FilesystemPath.h"
+
 #include <QUrl>
 
+#include <algorithm>
 #include <utility>
 #include <vector>
 
@@ -31,11 +34,13 @@ namespace ssa::presentation {
 
     WorkflowCommandViewModel::WorkflowCommandViewModel(
         std::shared_ptr<application::SsaWorkflowService> workflows, QObject* parent)
-        : QObject(parent), runner_(std::move(workflows), this) {
+        : QObject(parent), runner_(std::move(workflows), this), samRefreshTimer_(this) {
         connect(&runner_, &WorkflowCommandRunner::runningChanged, this,
                 &WorkflowCommandViewModel::setRunning);
         connect(&runner_, &WorkflowCommandRunner::finished, this,
                 &WorkflowCommandViewModel::applyResult);
+        connect(&samRefreshTimer_, &QTimer::timeout, this,
+                &WorkflowCommandViewModel::refreshSamNow);
     }
 
     QString WorkflowCommandViewModel::lastMessage() const {
@@ -69,6 +74,9 @@ namespace ssa::presentation {
         case Operation::CompactDatabase:
             return {tr("Compactando banco..."), tr("Banco compactado"),
                     tr("Falha ao compactar banco")};
+        case Operation::SamRefresh:
+            return {tr("Atualizando dados do SAM..."), tr("Atualizacao do SAM concluida"),
+                    tr("Falha ao atualizar dados do SAM")};
         }
         return {tr("Reescaneando dados..."), tr("Reescaneamento concluido"),
                 tr("Falha ao reescanear dados")};
@@ -84,6 +92,65 @@ namespace ssa::presentation {
 
     QString WorkflowCommandViewModel::failureMessage() const {
         return messagesForCurrentOperation().failure;
+    }
+
+    bool WorkflowCommandViewModel::samRefreshEnabled() const {
+        return samRefreshEnabled_;
+    }
+
+    bool WorkflowCommandViewModel::samAutoRefreshEnabled() const {
+        return samAutoRefreshEnabled_;
+    }
+
+    int WorkflowCommandViewModel::samIntervalMinutes() const {
+        return samIntervalMinutes_;
+    }
+
+    QString WorkflowCommandViewModel::samScrapReportRoot() const {
+        return samScrapReportRoot_;
+    }
+
+    QString WorkflowCommandViewModel::samCaFile() const {
+        return samCaFile_;
+    }
+
+    QString WorkflowCommandViewModel::samBaseUrl() const {
+        return samBaseUrl_;
+    }
+
+    QString WorkflowCommandViewModel::samExecutorSectors() const {
+        return samExecutorSectors_;
+    }
+
+    QString WorkflowCommandViewModel::samScope() const {
+        return samScope_;
+    }
+
+    void
+    WorkflowCommandViewModel::applyPreferences(const ports::UserPreferencesSnapshot& snapshot) {
+        const auto& preferences = snapshot.samRefresh;
+        samRefreshEnabled_ = preferences.enabled;
+        samAutoRefreshEnabled_ = preferences.autoRefreshEnabled;
+        samIntervalMinutes_ = std::clamp(preferences.intervalMinutes, 1, 30'000);
+        samScrapReportRoot_ = QString::fromStdString(preferences.scrapReportRoot);
+        samCaFile_ = QString::fromStdString(preferences.caFile);
+        samBaseUrl_ = QString::fromStdString(preferences.baseUrl);
+        samExecutorSectors_ = QString::fromStdString(preferences.executorSectors);
+        samScope_ = QString::fromStdString(preferences.scope);
+        syncSamRefreshTimer();
+        emit samRefreshSettingsChanged();
+    }
+
+    void
+    WorkflowCommandViewModel::writePreferences(ports::UserPreferencesSnapshot& snapshot) const {
+        snapshot.samRefresh.enabled = samRefreshEnabled_;
+        snapshot.samRefresh.autoRefreshEnabled = samAutoRefreshEnabled_;
+        snapshot.samRefresh.intervalMinutes = samIntervalMinutes_;
+        snapshot.samRefresh.scrapReportRoot = samScrapReportRoot_.toStdString();
+        snapshot.samRefresh.caFile = samCaFile_.toStdString();
+        snapshot.samRefresh.baseUrl = samBaseUrl_.toStdString();
+        snapshot.samRefresh.executorSectors = samExecutorSectors_.toStdString();
+        snapshot.samRefresh.scope = samScope_.toStdString();
     }
 
     void WorkflowCommandViewModel::importExternalFiles(const QVariantList& selectedFiles) {
@@ -128,6 +195,99 @@ namespace ssa::presentation {
         }
         operation_ = Operation::CompactDatabase;
         runner_.compactDatabase();
+    }
+
+    void WorkflowCommandViewModel::refreshSamNow() {
+        if (runner_.running()) {
+            return;
+        }
+        operation_ = Operation::SamRefresh;
+        runner_.refreshSam(samRefreshRequest());
+    }
+
+    void WorkflowCommandViewModel::setSamRefreshEnabled(const bool enabled) {
+        if (samRefreshEnabled_ == enabled) {
+            return;
+        }
+        samRefreshEnabled_ = enabled;
+        syncSamRefreshTimer();
+        emit samRefreshSettingsChanged();
+        emit preferencesSaveRequested();
+    }
+
+    void WorkflowCommandViewModel::setSamAutoRefreshEnabled(const bool enabled) {
+        if (samAutoRefreshEnabled_ == enabled) {
+            return;
+        }
+        samAutoRefreshEnabled_ = enabled;
+        syncSamRefreshTimer();
+        emit samRefreshSettingsChanged();
+        emit preferencesSaveRequested();
+    }
+
+    void WorkflowCommandViewModel::setSamIntervalMinutes(const int minutes) {
+        const auto value = std::clamp(minutes, 1, 30'000);
+        if (samIntervalMinutes_ == value) {
+            return;
+        }
+        samIntervalMinutes_ = value;
+        syncSamRefreshTimer();
+        emit samRefreshSettingsChanged();
+        emit preferencesSaveRequested();
+    }
+
+    void WorkflowCommandViewModel::setSamTextSetting(QString& target, const QString& value) {
+        if (target == value) {
+            return;
+        }
+        target = value;
+        emit samRefreshSettingsChanged();
+        emit preferencesSaveRequested();
+    }
+
+    void WorkflowCommandViewModel::setSamScrapReportRoot(const QString& path) {
+        setSamTextSetting(samScrapReportRoot_, path.trimmed());
+    }
+
+    void WorkflowCommandViewModel::setSamCaFile(const QString& path) {
+        setSamTextSetting(samCaFile_, path.trimmed());
+    }
+
+    void WorkflowCommandViewModel::setSamBaseUrl(const QString& url) {
+        setSamTextSetting(samBaseUrl_, url.trimmed());
+    }
+
+    void WorkflowCommandViewModel::setSamExecutorSectors(const QString& sectors) {
+        setSamTextSetting(samExecutorSectors_, sectors.trimmed());
+    }
+
+    void WorkflowCommandViewModel::setSamScope(const QString& scope) {
+        setSamTextSetting(samScope_, scope.trimmed());
+    }
+
+    void WorkflowCommandViewModel::syncSamRefreshTimer() {
+        samRefreshTimer_.setInterval(samIntervalMinutes_ * 60'000);
+        if (samRefreshEnabled_ && samAutoRefreshEnabled_) {
+            samRefreshTimer_.start();
+        } else {
+            samRefreshTimer_.stop();
+        }
+    }
+
+    ports::SamRefreshRequest WorkflowCommandViewModel::samRefreshRequest() const {
+        ports::SamRefreshRequest request;
+        request.enabled = samRefreshEnabled_;
+        request.scrapReportRoot = qt::toFileSystemPath(samScrapReportRoot_);
+        request.caFile = qt::toFileSystemPath(samCaFile_);
+        request.baseUrl = samBaseUrl_.toStdString();
+        const auto sectors = samExecutorSectors_.split(',', Qt::SkipEmptyParts);
+        request.executorSectors.reserve(static_cast<std::size_t>(sectors.size()));
+        for (const auto& sector : sectors) {
+            request.executorSectors.push_back(sector.trimmed().toStdString());
+        }
+        request.scope = samScope_.toStdString();
+        request.intervalMinutes = samIntervalMinutes_;
+        return request;
     }
 
     void WorkflowCommandViewModel::startRescan(const ports::RescanMode mode) {

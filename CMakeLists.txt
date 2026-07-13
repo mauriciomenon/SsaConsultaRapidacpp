@@ -102,6 +102,7 @@ add_library(
   src/platform/DesktopExternalCommandPort.cpp
   src/platform/LocalOpenCommandHandler.cpp
   src/platform/OpenPathPolicy.cpp
+  src/platform/ScrapReportSamRefreshPort.cpp
   src/platform/SystemThemeResolver.cpp
   src/platform/SamCommandHandler.cpp
   src/platform/SamUrlBuilder.cpp
@@ -239,6 +240,7 @@ qt_add_qml_module(
   app/desktop/qml/components/PagerQuickFilters.qml
   app/desktop/qml/components/PreferencesDialog.qml
   app/desktop/qml/components/SavedFilterControls.qml
+  app/desktop/qml/components/SamRefreshDialog.qml
   app/desktop/qml/components/SearchAndPager.qml
   app/desktop/qml/components/SummaryTag.qml
   app/desktop/qml/components/SmokeCaptureBridge.qml
@@ -364,6 +366,14 @@ if(SSA_BUILD_TESTS)
   add_test(NAME ssa_qt_workflow_runner_tests
            COMMAND ssa_qt_workflow_runner_tests)
   set_tests_properties(ssa_qt_workflow_runner_tests PROPERTIES TIMEOUT 10)
+
+  add_executable(ssa_qt_sam_refresh_tests
+                 tests/integration/SamRefreshWorkflowTests.cpp)
+  target_link_libraries(
+    ssa_qt_sam_refresh_tests PRIVATE ssa_application ssa_platform
+                                     Qt6::Concurrent Qt6::Test)
+  add_test(NAME ssa_qt_sam_refresh_tests COMMAND ssa_qt_sam_refresh_tests)
+  set_tests_properties(ssa_qt_sam_refresh_tests PROPERTIES TIMEOUT 15)
 
   add_executable(ssa_qt_database_switch_tests
                  tests/smoke/DatabaseSwitchViewModelTest.cpp)

@@ -104,6 +104,14 @@ TEST_CASE("json preferences store saves user preference snapshot") {
     snapshot.filters.executionWeekEnd = "202720";
     snapshot.filters.derivationMode = "derived";
     snapshot.filters.onlyReprogrammed = false;
+    snapshot.samRefresh.enabled = true;
+    snapshot.samRefresh.autoRefreshEnabled = true;
+    snapshot.samRefresh.intervalMinutes = 45;
+    snapshot.samRefresh.scrapReportRoot = "/opt/scrap_report";
+    snapshot.samRefresh.caFile = "/opt/certs/itaipu.pem";
+    snapshot.samRefresh.baseUrl = "https://apps.example.test/SAM/rest";
+    snapshot.samRefresh.executorSectors = "IEE3,MEL4";
+    snapshot.samRefresh.scope = "consulta";
 
     store.save(snapshot);
     const auto loaded = store.load();
@@ -140,6 +148,14 @@ TEST_CASE("json preferences store saves user preference snapshot") {
     REQUIRE(loaded.filters.executionWeekEnd == "202720");
     REQUIRE(loaded.filters.derivationMode == "derived");
     REQUIRE_FALSE(loaded.filters.onlyReprogrammed);
+    REQUIRE(loaded.samRefresh.enabled);
+    REQUIRE(loaded.samRefresh.autoRefreshEnabled);
+    REQUIRE(loaded.samRefresh.intervalMinutes == 45);
+    REQUIRE(loaded.samRefresh.scrapReportRoot == "/opt/scrap_report");
+    REQUIRE(loaded.samRefresh.caFile == "/opt/certs/itaipu.pem");
+    REQUIRE(loaded.samRefresh.baseUrl == "https://apps.example.test/SAM/rest");
+    REQUIRE(loaded.samRefresh.executorSectors == "IEE3,MEL4");
+    REQUIRE(loaded.samRefresh.scope == "consulta");
 }
 
 TEST_CASE("json preferences preserve unicode file paths") {
@@ -244,7 +260,7 @@ TEST_CASE("json preferences reject duplicate visible columns") {
     REQUIRE(error == "duplicate visible column: numero_ssa");
 }
 
-TEST_CASE("user preference snapshots and saved documents use schema 12") {
+TEST_CASE("user preference snapshots and saved documents use schema 13") {
     QTemporaryDir directory;
     REQUIRE(directory.isValid());
 
@@ -252,7 +268,7 @@ TEST_CASE("user preference snapshots and saved documents use schema 12") {
     const ssa::infra::preferences::JsonUserPreferencesStore store(path);
     ssa::ports::UserPreferencesSnapshot snapshot;
 
-    REQUIRE(snapshot.schemaVersion == 12);
+    REQUIRE(snapshot.schemaVersion == 13);
     REQUIRE(snapshot.schemaVersion == ssa::ports::kCurrentUserPreferencesSchemaVersion);
     snapshot.schemaVersion = 3;
     store.save(snapshot);
@@ -263,6 +279,24 @@ TEST_CASE("user preference snapshots and saved documents use schema 12") {
     REQUIRE(document.object().value("schema_version").toInt() ==
             ssa::ports::kCurrentUserPreferencesSchemaVersion);
     REQUIRE(store.load().schemaVersion == ssa::ports::kCurrentUserPreferencesSchemaVersion);
+}
+
+TEST_CASE("schema 12 preferences migrate to disabled SAM refresh defaults") {
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+
+    const auto path = std::filesystem::path{directory.path().toStdString()} / "prefs.json";
+    writeObject(path, QJsonObject{{"schema_version", 12}});
+    const ssa::infra::preferences::JsonUserPreferencesStore store(path);
+
+    const auto loaded = store.load();
+
+    REQUIRE_FALSE(loaded.samRefresh.enabled);
+    REQUIRE_FALSE(loaded.samRefresh.autoRefreshEnabled);
+    REQUIRE(loaded.samRefresh.intervalMinutes == 30'000);
+    REQUIRE(loaded.samRefresh.baseUrl == "https://apps.itaipu.gov.br/SAM_SMA_API/rest/SSA_API");
+    REQUIRE(loaded.samRefresh.scope == "consulta");
+    REQUIRE(loaded.schemaVersion == 13);
 }
 
 TEST_CASE("json preferences store rejects missing invalid and future schemas") {
@@ -285,7 +319,7 @@ TEST_CASE("json preferences store rejects missing invalid and future schemas") {
         REQUIRE_THROWS(store.load());
     }
     SECTION("future") {
-        writeObject(path, QJsonObject{{"schema_version", 13}});
+        writeObject(path, QJsonObject{{"schema_version", 14}});
         REQUIRE_THROWS(store.load());
     }
 }
@@ -599,7 +633,7 @@ TEST_CASE("json preferences store preserves existing valid manual theme") {
     const ssa::infra::preferences::JsonUserPreferencesStore store(path);
     const auto loaded = store.load();
 
-    REQUIRE(loaded.schemaVersion == 12);
+    REQUIRE(loaded.schemaVersion == ssa::ports::kCurrentUserPreferencesSchemaVersion);
     REQUIRE(loaded.theme == "gruvbox");
 }
 
@@ -667,7 +701,7 @@ TEST_CASE("json preferences store migrates legacy derived count visibility") {
     const ssa::infra::preferences::JsonUserPreferencesStore store(path);
     const auto loaded = store.load();
 
-    REQUIRE(loaded.schemaVersion == 12);
+    REQUIRE(loaded.schemaVersion == ssa::ports::kCurrentUserPreferencesSchemaVersion);
     REQUIRE(loaded.filters.quickSector == "IEE3");
     REQUIRE(loaded.visibleColumns ==
             std::vector<std::string>{"numero_ssa", "setor_executor", "qtd_derivadas", "situacao"});
@@ -687,7 +721,7 @@ TEST_CASE("json preferences store restores default quick sector when it is alone
     const ssa::infra::preferences::JsonUserPreferencesStore store(path);
     const auto loaded = store.load();
 
-    REQUIRE(loaded.schemaVersion == 12);
+    REQUIRE(loaded.schemaVersion == ssa::ports::kCurrentUserPreferencesSchemaVersion);
     REQUIRE(loaded.filters.quickSector == "IEE3");
 }
 
@@ -705,7 +739,7 @@ TEST_CASE("json preferences store keeps empty quick sector when other filters ex
     const ssa::infra::preferences::JsonUserPreferencesStore store(path);
     const auto loaded = store.load();
 
-    REQUIRE(loaded.schemaVersion == 12);
+    REQUIRE(loaded.schemaVersion == ssa::ports::kCurrentUserPreferencesSchemaVersion);
     REQUIRE(loaded.filters.quickSector.empty());
     REQUIRE(loaded.filters.searchText == "manual");
 }
@@ -724,7 +758,7 @@ TEST_CASE("json preferences store migrates only legacy default table widths") {
     const ssa::infra::preferences::JsonUserPreferencesStore store(path);
     const auto loaded = store.load();
 
-    REQUIRE(loaded.schemaVersion == 12);
+    REQUIRE(loaded.schemaVersion == ssa::ports::kCurrentUserPreferencesSchemaVersion);
     REQUIRE(loaded.columnWidths.at("numero_ssa") == 98);
     REQUIRE(loaded.columnWidths.at("situacao") == 60);
     REQUIRE(loaded.columnWidths.at("localizacao_codigo") == 84);
@@ -756,7 +790,7 @@ TEST_CASE("json preferences store migrates legacy default visible column order")
     const ssa::infra::preferences::JsonUserPreferencesStore store(path);
     const auto loaded = store.load();
 
-    REQUIRE(loaded.schemaVersion == 12);
+    REQUIRE(loaded.schemaVersion == ssa::ports::kCurrentUserPreferencesSchemaVersion);
     REQUIRE(loaded.visibleColumns == ssa::domain::ColumnCatalog::defaultVisibleKeys());
 }
 
@@ -774,7 +808,7 @@ TEST_CASE("json preferences store migrates schema 10 default visible column orde
     const ssa::infra::preferences::JsonUserPreferencesStore store(path);
     const auto loaded = store.load();
 
-    REQUIRE(loaded.schemaVersion == 12);
+    REQUIRE(loaded.schemaVersion == ssa::ports::kCurrentUserPreferencesSchemaVersion);
     REQUIRE(loaded.visibleColumns == ssa::domain::ColumnCatalog::defaultVisibleKeys());
 }
 
@@ -792,7 +826,7 @@ TEST_CASE("json preferences store removes cadastro and keeps requested detail co
     const ssa::infra::preferences::JsonUserPreferencesStore store(path);
     const auto loaded = store.load();
 
-    REQUIRE(loaded.schemaVersion == 12);
+    REQUIRE(loaded.schemaVersion == ssa::ports::kCurrentUserPreferencesSchemaVersion);
     REQUIRE(std::ranges::find(loaded.visibleColumns, "data_cadastro") ==
             loaded.visibleColumns.end());
     const auto description = std::ranges::find(loaded.visibleColumns, "descricao_ssa");
@@ -819,7 +853,7 @@ TEST_CASE("json preferences store compacts oversized derivation column width") {
     const ssa::infra::preferences::JsonUserPreferencesStore store(path);
     const auto loaded = store.load();
 
-    REQUIRE(loaded.schemaVersion == 12);
+    REQUIRE(loaded.schemaVersion == ssa::ports::kCurrentUserPreferencesSchemaVersion);
     REQUIRE(loaded.columnWidths.at("derivada_de") == 88);
     REQUIRE(loaded.columnWidths.at("descricao_ssa") == 640);
 }

@@ -20,12 +20,12 @@ namespace ssa::presentation {
                                  QObject* parent)
         : QObject(parent), browse_(std::move(queryService), this), columns_(this), ui_(this),
           preferences_(std::move(preferencesStore), this),
-          preferencesFlow_(browse_, ui_, columns_, preferences_, std::move(filterPresetStore),
-                           filterPresetService_),
           databaseSwitch_(std::move(databaseValidator), std::move(applicationLauncher), this),
           actions_(
               std::move(commandPort), std::move(workflowService),
               [this] { return browse_.currentRequest(); }, *browse_.status(), preferences_, this),
+          preferencesFlow_(browse_, ui_, columns_, *actions_.workflows(), preferences_,
+                           std::move(filterPresetStore), filterPresetService_),
           columnsFlow_(
               browse_, columns_,
               [preferencesFlow = &preferencesFlow_] { preferencesFlow->scheduleSavePreferences(); },
@@ -58,6 +58,8 @@ namespace ssa::presentation {
                 &MainPreferenceFlowCoordinator::requestSaveFromSignal);
         connect(&ui_, &UiSettingsViewModel::preferencesSaveRequested, &preferencesFlow_,
                 &MainPreferenceFlowCoordinator::requestSaveFromSignal);
+        connect(actions_.workflows(), &WorkflowCommandViewModel::preferencesSaveRequested,
+                &preferencesFlow_, &MainPreferenceFlowCoordinator::requestSaveFromSignal);
         connect(&preferencesFlow_, &MainPreferenceFlowCoordinator::statusMessageRequested,
                 browse_.status(), &StatusViewModel::setMessage);
         connect(&preferencesFlow_, &MainPreferenceFlowCoordinator::statusErrorRequested,

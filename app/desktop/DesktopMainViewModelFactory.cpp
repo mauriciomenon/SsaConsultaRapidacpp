@@ -12,6 +12,7 @@
 #include "infra/sqlite/SqliteSsaRepository.h"
 #include "platform/DesktopApplicationLauncher.h"
 #include "platform/DesktopExternalCommandPort.h"
+#include "platform/ScrapReportSamRefreshPort.h"
 #include "qt/FilesystemPath.h"
 #include "query/SsaQueryService.h"
 
@@ -51,8 +52,10 @@ namespace ssa::app::desktop {
                 std::make_shared<ssa::infra::sqlite::SqliteMaintenancePort>(databasePath(options));
             const auto derivadasPort =
                 std::make_shared<ssa::infra::sqlite::SqliteDerivadasPort>(databasePath(options));
+            const auto samRefreshPort =
+                std::make_shared<ssa::platform::ScrapReportSamRefreshPort>();
             return std::make_shared<ssa::application::SsaWorkflowService>(
-                importPort, exportPort, maintenancePort, derivadasPort);
+                importPort, exportPort, maintenancePort, derivadasPort, samRefreshPort);
         }
 
         std::shared_ptr<ssa::platform::DesktopExternalCommandPort>

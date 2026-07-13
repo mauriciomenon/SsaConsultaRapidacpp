@@ -399,6 +399,38 @@ namespace ssa::infra::preferences {
             return savedFilters;
         }
 
+        ports::SamRefreshPreferencesSnapshot readSamRefreshPreferences(const QJsonObject& root) {
+            ports::SamRefreshPreferencesSnapshot preferences;
+            const auto object = root.value("sam_refresh").toObject();
+            preferences.scrapReportRoot =
+                object.value("scrap_report_root").toString().toStdString();
+            preferences.caFile = object.value("ca_file").toString().toStdString();
+            preferences.baseUrl = object.value("base_url")
+                                      .toString(QString::fromStdString(preferences.baseUrl))
+                                      .toStdString();
+            preferences.executorSectors = object.value("executor_sectors").toString().toStdString();
+            preferences.scope = object.value("scope")
+                                    .toString(QString::fromStdString(preferences.scope))
+                                    .toStdString();
+            preferences.intervalMinutes = std::clamp(
+                object.value("interval_minutes").toInt(preferences.intervalMinutes), 1, 30'000);
+            preferences.enabled = object.value("enabled").toBool(false);
+            preferences.autoRefreshEnabled = object.value("auto_refresh_enabled").toBool(false);
+            return preferences;
+        }
+
+        QJsonObject
+        samRefreshPreferencesToJson(const ports::SamRefreshPreferencesSnapshot& preferences) {
+            return {{"scrap_report_root", QString::fromStdString(preferences.scrapReportRoot)},
+                    {"ca_file", QString::fromStdString(preferences.caFile)},
+                    {"base_url", QString::fromStdString(preferences.baseUrl)},
+                    {"executor_sectors", QString::fromStdString(preferences.executorSectors)},
+                    {"scope", QString::fromStdString(preferences.scope)},
+                    {"interval_minutes", std::clamp(preferences.intervalMinutes, 1, 30'000)},
+                    {"enabled", preferences.enabled},
+                    {"auto_refresh_enabled", preferences.autoRefreshEnabled}};
+        }
+
         void writeWindowPreferences(QJsonObject& root,
                                     const ports::UserPreferencesSnapshot& snapshot) {
             root.insert("schema_version", ports::kCurrentUserPreferencesSchemaVersion);
@@ -448,6 +480,7 @@ namespace ssa::infra::preferences {
         migrateDefaultQuickSector(snapshot);
         snapshot.columnWidths = readColumnWidths(root);
         snapshot.savedFilters = readSavedFilters(root);
+        snapshot.samRefresh = readSamRefreshPreferences(root);
         migrateDefaultColumnWidths(snapshot);
         migrateSchema6ColumnWidths(snapshot);
         migrateSchema7ColumnWidths(snapshot);
@@ -466,6 +499,7 @@ namespace ssa::infra::preferences {
         QJsonObject root;
         writeWindowPreferences(root, snapshot);
         writeColumnPreferences(root, snapshot);
+        root.insert("sam_refresh", samRefreshPreferencesToJson(snapshot.samRefresh));
         FilterPreferencesJsonCodec{}.writeFilters(root, snapshot.filters);
         return QJsonDocument(root);
     }

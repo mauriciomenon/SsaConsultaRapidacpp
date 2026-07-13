@@ -2,6 +2,7 @@
 
 #include "domain/SsaTypes.h"
 
+#include <chrono>
 #include <filesystem>
 #include <stop_token>
 #include <string>
@@ -31,6 +32,27 @@ namespace ssa::ports {
         bool optimized = true;
     };
 
+    struct SamRefreshRequest {
+        bool enabled = false;
+        std::filesystem::path scrapReportRoot;
+        std::filesystem::path caFile;
+        std::string baseUrl;
+        std::vector<std::string> executorSectors;
+        std::string scope = "consulta";
+        int intervalMinutes = 30'000;
+        std::chrono::milliseconds processTimeout{180'000};
+    };
+
+    struct SamFetchResult {
+        WorkflowStatus status = WorkflowStatus::NotImplemented;
+        std::string message;
+        std::vector<std::filesystem::path> artifacts;
+
+        [[nodiscard]] bool ok() const {
+            return status == WorkflowStatus::Succeeded;
+        }
+    };
+
     enum class RescanMode {
         Incremental,
         Full,
@@ -56,6 +78,15 @@ namespace ssa::ports {
                             std::stop_token stopToken = {}) = 0;
         [[nodiscard]] virtual WorkflowResult rescan(const RescanRequest& request,
                                                     std::stop_token stopToken = {}) = 0;
+    };
+
+    class ISamRefreshPort {
+      public:
+        virtual ~ISamRefreshPort() = default;
+
+        [[nodiscard]] virtual SamFetchResult fetch(const SamRefreshRequest& request,
+                                                   std::stop_token stopToken = {}) = 0;
+        virtual bool discardArtifacts() = 0;
     };
 
     class IExportPort {

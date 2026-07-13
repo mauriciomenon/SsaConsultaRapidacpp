@@ -1404,6 +1404,28 @@ namespace {
             QCOMPARE(QString::fromStdString(preferences->snapshot().theme), QString("tokyo-night"));
         }
 
+        void sam_refresh_preferences_are_loaded_and_saved() {
+            ssa::ports::UserPreferencesSnapshot initial;
+            initial.samRefresh.enabled = true;
+            initial.samRefresh.intervalMinutes = 45;
+            initial.samRefresh.baseUrl = "https://apps.example.test/SAM/rest";
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            auto preferences = std::make_shared<FakePreferences>(initial);
+            ssa::presentation::MainViewModel model(service, commands, preferences);
+
+            QCOMPARE(model.actions()->workflows()->samRefreshEnabled(), true);
+            QCOMPARE(model.actions()->workflows()->samIntervalMinutes(), 45);
+            QCOMPARE(model.actions()->workflows()->samBaseUrl(),
+                     QStringLiteral("https://apps.example.test/SAM/rest"));
+
+            model.actions()->workflows()->setSamIntervalMinutes(90);
+
+            QTRY_COMPARE_WITH_TIMEOUT(preferences->snapshot().samRefresh.intervalMinutes, 90, 1000);
+            QCOMPARE(preferences->snapshot().samRefresh.enabled, true);
+        }
+
         void pyqt_theme_catalog_is_accepted() {
             const QStringList themes{
                 "grayscale",

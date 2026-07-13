@@ -83,6 +83,23 @@ namespace ssa::presentation {
         });
     }
 
+    void WorkflowCommandRunner::refreshSam(ports::SamRefreshRequest request) {
+        if (running_ || shuttingDown_) {
+            return;
+        }
+        if (!workflows_) {
+            emit this->finished(
+                {ports::WorkflowStatus::Failed, "SAM refresh workflow is not configured"});
+            return;
+        }
+
+        auto workflows = workflows_;
+        start([workflows = std::move(workflows),
+               request = std::move(request)](const std::stop_token stopToken) {
+            return workflows->refreshSam(request, stopToken);
+        });
+    }
+
     void WorkflowCommandRunner::syncDerivadas() {
         if (running_ || shuttingDown_) {
             return;

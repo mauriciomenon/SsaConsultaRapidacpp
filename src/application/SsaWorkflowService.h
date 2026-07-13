@@ -13,7 +13,8 @@ namespace ssa::application {
             std::shared_ptr<ports::IImportWorkflowPort> importPort = nullptr,
             std::shared_ptr<ports::IExportPort> exportPort = nullptr,
             std::shared_ptr<ports::IDatabaseMaintenancePort> maintenancePort = nullptr,
-            std::shared_ptr<ports::IDerivadasPort> derivadasPort = nullptr);
+            std::shared_ptr<ports::IDerivadasPort> derivadasPort = nullptr,
+            std::shared_ptr<ports::ISamRefreshPort> samPort = nullptr);
 
         [[nodiscard]] ports::WorkflowResult
         importExternalFiles(const ports::ImportExternalFilesRequest& request,
@@ -27,6 +28,8 @@ namespace ssa::application {
         [[nodiscard]] ports::WorkflowResult cleanData(std::stop_token stopToken = {}) const;
         [[nodiscard]] ports::WorkflowResult vacuumAnalyze(std::stop_token stopToken = {}) const;
         [[nodiscard]] ports::WorkflowResult syncDerivadas(std::stop_token stopToken = {}) const;
+        [[nodiscard]] ports::WorkflowResult refreshSam(const ports::SamRefreshRequest& request,
+                                                       std::stop_token stopToken = {}) const;
 
       private:
         [[nodiscard]] static ports::WorkflowResult notImplemented(const char* operation);
@@ -35,6 +38,7 @@ namespace ssa::application {
         std::shared_ptr<ports::IExportPort> exportPort_;
         std::shared_ptr<ports::IDatabaseMaintenancePort> maintenancePort_;
         std::shared_ptr<ports::IDerivadasPort> derivadasPort_;
+        std::shared_ptr<ports::ISamRefreshPort> samPort_;
     };
 
 } // namespace ssa::application
