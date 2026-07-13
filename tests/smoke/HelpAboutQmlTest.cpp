@@ -7,6 +7,7 @@
 #include <QElapsedTimer>
 #include <QFile>
 #include <QGuiApplication>
+#include <QObject>
 #include <QPointer>
 #include <QQmlAbstractUrlInterceptor>
 #include <QQmlComponent>
@@ -88,6 +89,23 @@ namespace {
         return window.isNull();
     }
 
+    bool captureDialogScreenshot(QObject& dialog, const QString& fileName) {
+        auto* window = qobject_cast<QQuickWindow*>(&dialog);
+        if (window == nullptr) {
+            return false;
+        }
+        QSignalSpy frameSpy(window, &QQuickWindow::frameSwapped);
+        window->show();
+        window->requestUpdate();
+        if (frameSpy.isEmpty() && !frameSpy.wait(1000)) {
+            return false;
+        }
+        const auto image = window->grabWindow();
+        window->hide();
+        return !image.isNull() &&
+               image.save(QDir(QCoreApplication::applicationDirPath()).filePath(fileName));
+    }
+
     bool dialogCanOpenCloseAndReopen(QObject& mainWindow, const char* openMethod,
                                      const QString& title) {
         for (int attempt = 0; attempt < 2; ++attempt) {
@@ -129,6 +147,7 @@ namespace {
             QVERIFY(helpText.contains(QStringLiteral("=termo")));
             QVERIFY(helpText.contains(QStringLiteral("Filtros por coluna")));
             QVERIFY(helpText.contains(QStringLiteral("Filtros avancados")));
+            QVERIFY(captureDialogScreenshot(*dialog, QStringLiteral("help-dialog.png")));
         }
 
         void about_dialog_uses_runtime_application_version() {
@@ -142,6 +161,7 @@ namespace {
                      QStringLiteral("SSA Consulta Rapida"));
             QCOMPARE(dialog->property("authorName").toString(), QStringLiteral("Mauricio Menon"));
             QCOMPARE(dialog->property("productVersion").toString(), QStringLiteral("9.8.7-test"));
+            QVERIFY(captureDialogScreenshot(*dialog, QStringLiteral("about-dialog.png")));
         }
 
         void help_menu_keeps_installation_guide() {
