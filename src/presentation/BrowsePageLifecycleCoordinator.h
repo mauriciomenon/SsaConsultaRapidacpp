@@ -19,6 +19,7 @@ namespace ssa::presentation {
                                                 QObject* parent = nullptr);
 
         void markRequestStarted();
+        void markRequestCanceling();
         void markRequestReplaced();
         void markRequestSucceeded(PageQueryResult result, const domain::SsaPageRequest& request);
         void markRequestCanceled();

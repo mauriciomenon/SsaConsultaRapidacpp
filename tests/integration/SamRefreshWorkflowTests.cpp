@@ -267,7 +267,7 @@ namespace {
             stopSource.request_stop();
             future.waitForFinished();
 
-            QCOMPARE(future.result().status, ssa::ports::WorkflowStatus::Rejected);
+            QCOMPARE(future.result().status, ssa::ports::WorkflowStatus::Canceled);
         }
 
         void service_imports_only_complete_fetch_and_discards_artifacts() {

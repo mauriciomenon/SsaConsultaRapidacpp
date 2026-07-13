@@ -98,6 +98,9 @@ namespace {
 
     class SlowCancelableRepository final : public ssa::ports::ISsaRepository {
       public:
+        explicit SlowCancelableRepository(const bool failAfterStop = false)
+            : failAfterStop_(failAfterStop) {}
+
         ssa::domain::SsaPageResult page(const ssa::domain::SsaPageRequest& request,
                                         const std::stop_token stopToken = {}) const override {
             if (request.searchText == "first") {
@@ -107,6 +110,9 @@ namespace {
                 }
                 std::this_thread::sleep_for(std::chrono::milliseconds{300});
                 firstFinished_.store(true, std::memory_order_release);
+                if (failAfterStop_) {
+                    throw std::runtime_error("query failed after stop");
+                }
                 throw std::system_error(std::make_error_code(std::errc::operation_canceled));
             }
             secondStarted_.store(true, std::memory_order_release);
@@ -155,6 +161,7 @@ namespace {
         }
 
       private:
+        bool failAfterStop_{false};
         mutable std::atomic_bool firstStarted_{false};
         mutable std::atomic_bool firstFinished_{false};
         mutable std::atomic_bool secondStarted_{false};
@@ -1146,6 +1153,86 @@ namespace {
             QCOMPARE(succeededCount, 1);
             QCOMPARE(canceledCount, 0);
             QCOMPARE(failedCount, 0);
+        }
+
+        void page_query_cancel_is_terminal_and_blocks_new_work() {
+            auto repository = std::make_shared<SlowCancelableRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::PageQueryCoordinator coordinator(service);
+            int canceledCount = 0;
+            connect(&coordinator, &ssa::presentation::PageQueryCoordinator::canceled, this,
+                    [&] { ++canceledCount; });
+            ssa::domain::SsaPageRequest firstRequest;
+            firstRequest.searchText = "first";
+
+            coordinator.run(firstRequest);
+            QTRY_VERIFY_WITH_TIMEOUT(repository->firstStarted(), 1000);
+
+            QElapsedTimer elapsed;
+            elapsed.start();
+            coordinator.cancel();
+
+            QVERIFY(elapsed.elapsed() < 50);
+            QCOMPARE(coordinator.state(),
+                     ssa::presentation::PageQueryCoordinator::State::Canceling);
+            QCOMPARE(canceledCount, 0);
+
+            auto secondRequest = firstRequest;
+            secondRequest.searchText = "second";
+            coordinator.run(secondRequest);
+            QTest::qWait(50);
+            QVERIFY(!repository->secondStarted());
+            QCOMPARE(canceledCount, 0);
+
+            QTRY_VERIFY_WITH_TIMEOUT(repository->firstFinished(), 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(canceledCount, 1, 1000);
+            QCOMPARE(coordinator.state(), ssa::presentation::PageQueryCoordinator::State::Idle);
+        }
+
+        void page_query_cancel_does_not_mask_worker_failure() {
+            auto repository = std::make_shared<SlowCancelableRepository>(true);
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::PageQueryCoordinator coordinator(service);
+            int canceledCount = 0;
+            QString failure;
+            connect(&coordinator, &ssa::presentation::PageQueryCoordinator::canceled, this,
+                    [&] { ++canceledCount; });
+            connect(&coordinator, &ssa::presentation::PageQueryCoordinator::failed, this,
+                    [&](const QString& message) { failure = message; });
+            ssa::domain::SsaPageRequest request;
+            request.searchText = "first";
+
+            coordinator.run(request);
+            QTRY_VERIFY_WITH_TIMEOUT(repository->firstStarted(), 1000);
+            coordinator.cancel();
+
+            QTRY_COMPARE_WITH_TIMEOUT(failure, QString("query failed after stop"), 1000);
+            QCOMPARE(canceledCount, 0);
+            QCOMPARE(coordinator.state(), ssa::presentation::PageQueryCoordinator::State::Idle);
+        }
+
+        void page_query_terminal_slot_cannot_start_reentrant_work() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::PageQueryCoordinator coordinator(service);
+            int succeededCount = 0;
+            connect(
+                &coordinator, &ssa::presentation::PageQueryCoordinator::succeeded, this,
+                [&](const ssa::presentation::PageQueryResult&, const ssa::domain::SsaPageRequest&) {
+                    ++succeededCount;
+                    if (succeededCount == 1) {
+                        ssa::domain::SsaPageRequest secondRequest;
+                        secondRequest.searchText = "second";
+                        coordinator.run(secondRequest);
+                    }
+                });
+
+            coordinator.run({});
+
+            QTRY_COMPARE_WITH_TIMEOUT(succeededCount, 1, 1000);
+            QTest::qWait(50);
+            QCOMPARE(repository->requests().size(), std::size_t{1});
+            QCOMPARE(coordinator.state(), ssa::presentation::PageQueryCoordinator::State::Idle);
         }
 
         void column_settings_update_visible_columns_and_preferences() {

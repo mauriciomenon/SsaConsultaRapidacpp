@@ -12,6 +12,7 @@ namespace ssa::ports {
 
     enum class WorkflowStatus {
         Succeeded,
+        Canceled,
         NotImplemented,
         Rejected,
         Failed,

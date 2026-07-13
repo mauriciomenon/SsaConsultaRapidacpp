@@ -44,7 +44,7 @@ namespace ssa::infra::importing {
         }
 
         ports::WorkflowResult canceled(const char* operation) {
-            return {ports::WorkflowStatus::Rejected, std::string{operation} + " canceled"};
+            return {ports::WorkflowStatus::Canceled, std::string{operation} + " canceled"};
         }
 
     } // namespace

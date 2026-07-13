@@ -42,15 +42,20 @@ namespace ssa::presentation {
         Q_OBJECT
 
       public:
+        enum class State { Idle, Running, Canceling };
+        Q_ENUM(State)
+
         explicit PageQueryCoordinator(std::shared_ptr<query::SsaQueryService> queryService,
                                       QObject* parent = nullptr);
         ~PageQueryCoordinator() override;
 
+        [[nodiscard]] State state() const;
         void run(domain::SsaPageRequest request);
         void cancel();
         void invalidateTotalRowsAll();
 
       signals:
+        void stateChanged(ssa::presentation::PageQueryCoordinator::State state);
         void started();
         void succeeded(ssa::presentation::PageQueryResult result,
                        ssa::domain::SsaPageRequest request);
@@ -76,6 +81,7 @@ namespace ssa::presentation {
         void finishOperation(std::uint64_t operationId);
         void stopOperation(Operation& operation);
         void pruneCompletedOperations();
+        void setState(State state);
         [[nodiscard]] Operation* latestOperation();
 
         std::shared_ptr<query::SsaQueryService> queryService_;
@@ -86,6 +92,8 @@ namespace ssa::presentation {
         bool shuttingDown_{false};
         bool totalRowsAllKnown_{false};
         std::size_t totalRowsAll_{0};
+        State state_{State::Idle};
+        bool finishing_{false};
     };
 
 } // namespace ssa::presentation

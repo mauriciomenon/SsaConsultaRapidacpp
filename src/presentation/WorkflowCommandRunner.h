@@ -20,19 +20,27 @@ namespace ssa::presentation {
         Q_OBJECT
 
       public:
+        enum class State { Idle, Running, Canceling };
+        Q_ENUM(State)
+
         explicit WorkflowCommandRunner(std::shared_ptr<application::SsaWorkflowService> workflows,
                                        QObject* parent = nullptr);
         ~WorkflowCommandRunner() override;
 
+        [[nodiscard]] State state() const;
         [[nodiscard]] bool running() const;
+        [[nodiscard]] bool canceling() const;
+        [[nodiscard]] bool canCancel() const;
         void importExternalFiles(const std::vector<QString>& files);
         void rescan(ports::RescanMode mode);
         void refreshSam(ports::SamRefreshRequest request);
         void syncDerivadas();
         void compactDatabase();
+        void cancel();
         void shutdown();
 
       signals:
+        void stateChanged(ssa::presentation::WorkflowCommandRunner::State state);
         void runningChanged(bool running);
         void finished(ssa::ports::WorkflowResult result);
 
@@ -45,12 +53,13 @@ namespace ssa::presentation {
 
         void start(std::function<ports::WorkflowResult(std::stop_token)> operation);
         void finish();
+        void setState(State state);
 
         std::shared_ptr<application::SsaWorkflowService> workflows_;
         QFutureWatcher<void> watcher_;
         std::shared_ptr<ResultState> resultState_;
         std::stop_source stopSource_;
-        bool running_ = false;
+        State state_{State::Idle};
         bool shuttingDown_ = false;
     };
 

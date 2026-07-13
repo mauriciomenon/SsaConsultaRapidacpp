@@ -28,6 +28,10 @@ namespace ssa::platform {
             return {ports::WorkflowStatus::Rejected, std::move(message), {}};
         }
 
+        ports::SamFetchResult canceled(std::string message) {
+            return {ports::WorkflowStatus::Canceled, std::move(message), {}};
+        }
+
         ports::SamFetchResult failed(std::string message) {
             return {ports::WorkflowStatus::Failed, std::move(message), {}};
         }
@@ -153,7 +157,7 @@ namespace ssa::platform {
             return failed("could not remove previous SAM refresh artifacts");
         }
         if (stopToken.stop_requested()) {
-            return rejected("SAM refresh was canceled");
+            return canceled("SAM refresh was canceled");
         }
         if (const auto error = validateRequest(request)) {
             return rejected(*error);
@@ -237,7 +241,7 @@ namespace ssa::platform {
                     if (!stopped) {
                         return failed("could not stop the canceled SAM refresh process");
                     }
-                    return rejected("SAM refresh was canceled");
+                    return canceled("SAM refresh was canceled");
                 }
                 if (std::chrono::steady_clock::now() >= deadline) {
                     const auto stopped = stopProcess(process);

@@ -18,6 +18,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <utility>
 #include <vector>
 
@@ -123,6 +124,10 @@ namespace ssa::infra::exporting {
 
         ports::WorkflowResult failed(std::string message) {
             return {ports::WorkflowStatus::Failed, std::move(message)};
+        }
+
+        ports::WorkflowResult canceled() {
+            return {ports::WorkflowStatus::Canceled, "csv export canceled"};
         }
 
         bool samePathOrChildOf(const std::filesystem::path& path,
@@ -265,6 +270,11 @@ namespace ssa::infra::exporting {
             }
             output.setAutoRemove(false);
             return result;
+        } catch (const std::system_error& exc) {
+            if (exc.code() == std::make_error_code(std::errc::operation_canceled)) {
+                return canceled();
+            }
+            return failed(exc.what());
         } catch (const std::exception& exc) {
             return failed(exc.what());
         } catch (...) {

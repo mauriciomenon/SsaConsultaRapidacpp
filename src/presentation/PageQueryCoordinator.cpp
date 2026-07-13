@@ -32,8 +32,12 @@ namespace ssa::presentation {
         operations_.clear();
     }
 
+    PageQueryCoordinator::State PageQueryCoordinator::state() const {
+        return state_;
+    }
+
     void PageQueryCoordinator::run(domain::SsaPageRequest request) {
-        if (shuttingDown_) {
+        if (shuttingDown_ || state_ == State::Canceling || finishing_) {
             return;
         }
         auto* current = latestOperation();
@@ -54,13 +58,16 @@ namespace ssa::presentation {
     }
 
     void PageQueryCoordinator::cancel() {
+        if (state_ != State::Running) {
+            return;
+        }
         auto* operation = latestOperation();
         if (operation == nullptr || operation->explicitlyCanceled) {
             return;
         }
         operation->explicitlyCanceled = true;
+        setState(State::Canceling);
         stopOperation(*operation);
-        emit canceled();
     }
 
     void PageQueryCoordinator::invalidateTotalRowsAll() {
@@ -84,6 +91,7 @@ namespace ssa::presentation {
         auto* watcher = &operation->watcher;
         latestOperationId_ = operationId;
         operations_.push_back(std::move(operation));
+        setState(State::Running);
 
         auto displayColumns = columnCatalog_.resolveAll(request.visibleColumns);
         const bool needTotalRowsAll = !totalRowsAllKnown_;
@@ -152,8 +160,9 @@ namespace ssa::presentation {
         auto& operation = **found;
         operation.completed = true;
         const bool isLatest = operation.id == latestOperationId_;
-        if (!shuttingDown_ && isLatest && !operation.explicitlyCanceled &&
-            !operation.watcher.isCanceled()) {
+        if (!shuttingDown_ && isLatest &&
+            (operation.explicitlyCanceled || !operation.watcher.isCanceled())) {
+            finishing_ = true;
             try {
                 std::optional<PageQueryResult> result;
                 std::exception_ptr error;
@@ -164,6 +173,9 @@ namespace ssa::presentation {
                 }
                 if (error) {
                     std::rethrow_exception(error);
+                }
+                if (!result && operation.explicitlyCanceled && operation.watcher.isCanceled()) {
+                    result = PageQueryResult{.canceled = true};
                 }
                 if (!result) {
                     throw std::runtime_error("page query completed without a result");
@@ -183,11 +195,20 @@ namespace ssa::presentation {
                 }
             } catch (const std::length_error& exc) {
                 emit failed(QString::fromUtf8(exc.what()));
+            } catch (const std::system_error& exc) {
+                if (operation.explicitlyCanceled &&
+                    exc.code() == std::make_error_code(std::errc::operation_canceled)) {
+                    emit canceled();
+                } else {
+                    emit failed(QString::fromUtf8(exc.what()));
+                }
             } catch (const std::exception& exc) {
                 emit failed(QString::fromUtf8(exc.what()));
             } catch (...) {
                 emit failed("Falha interna ao consultar dados");
             }
+            finishing_ = false;
+            setState(State::Idle);
         }
         QMetaObject::invokeMethod(
             this, [this] { pruneCompletedOperations(); }, Qt::QueuedConnection);
@@ -203,6 +224,14 @@ namespace ssa::presentation {
 
     void PageQueryCoordinator::pruneCompletedOperations() {
         std::erase_if(operations_, [](const auto& operation) { return operation->completed; });
+    }
+
+    void PageQueryCoordinator::setState(const State state) {
+        if (state_ == state) {
+            return;
+        }
+        state_ = state;
+        emit stateChanged(state_);
     }
 
     PageQueryCoordinator::Operation* PageQueryCoordinator::latestOperation() {

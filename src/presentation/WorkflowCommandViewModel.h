@@ -18,7 +18,10 @@ namespace ssa::presentation {
         Q_PROPERTY(QString lastMessage READ lastMessage NOTIFY lastResultChanged)
         Q_PROPERTY(bool lastSucceeded READ lastSucceeded NOTIFY lastResultChanged)
         Q_PROPERTY(bool lastWarning READ lastWarning NOTIFY lastResultChanged)
+        Q_PROPERTY(bool lastCanceled READ lastCanceled NOTIFY lastResultChanged)
         Q_PROPERTY(bool running READ running NOTIFY runningChanged)
+        Q_PROPERTY(bool canceling READ canceling NOTIFY stateChanged)
+        Q_PROPERTY(bool canCancel READ canCancel NOTIFY stateChanged)
         Q_PROPERTY(bool samRefreshEnabled READ samRefreshEnabled WRITE setSamRefreshEnabled NOTIFY
                        samRefreshSettingsChanged)
         Q_PROPERTY(bool samAutoRefreshEnabled READ samAutoRefreshEnabled WRITE
@@ -43,7 +46,10 @@ namespace ssa::presentation {
         [[nodiscard]] QString lastMessage() const;
         [[nodiscard]] bool lastSucceeded() const;
         [[nodiscard]] bool lastWarning() const;
+        [[nodiscard]] bool lastCanceled() const;
         [[nodiscard]] bool running() const;
+        [[nodiscard]] bool canceling() const;
+        [[nodiscard]] bool canCancel() const;
         [[nodiscard]] QString runningMessage() const;
         [[nodiscard]] QString successMessage() const;
         [[nodiscard]] QString failureMessage() const;
@@ -61,6 +67,7 @@ namespace ssa::presentation {
       signals:
         void lastResultChanged();
         void runningChanged();
+        void stateChanged();
         void samRefreshSettingsChanged();
         void preferencesSaveRequested();
 
@@ -71,6 +78,7 @@ namespace ssa::presentation {
         void syncDerivadas();
         void compactDatabase();
         void refreshSamNow();
+        void cancel();
         void setSamRefreshEnabled(bool enabled);
         void setSamAutoRefreshEnabled(bool enabled);
         void setSamIntervalMinutes(int minutes);
@@ -85,12 +93,14 @@ namespace ssa::presentation {
             QString running;
             QString success;
             QString failure;
+            QString canceled;
         };
 
         void startRescan(ports::RescanMode mode);
         void applyResult(const ports::WorkflowResult& result);
-        void setRunning(bool running);
-        void setResult(QString message, bool succeeded, bool warning = false);
+        void handleRunnerStateChanged(WorkflowCommandRunner::State state);
+        void setResult(QString message, bool succeeded, bool warning = false,
+                       bool canceled = false);
         void syncSamRefreshTimer();
         void setSamTextSetting(QString& target, const QString& value);
         [[nodiscard]] ports::SamRefreshRequest samRefreshRequest() const;
@@ -109,7 +119,9 @@ namespace ssa::presentation {
         Operation operation_{Operation::Rescan};
         bool lastSucceeded_{false};
         bool lastWarning_{false};
+        bool lastCanceled_{false};
         bool running_{false};
+        bool canceling_{false};
         QTimer samRefreshTimer_;
         QString samScrapReportRoot_;
         QString samCaFile_;

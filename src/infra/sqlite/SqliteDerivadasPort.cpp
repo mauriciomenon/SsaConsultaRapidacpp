@@ -18,7 +18,7 @@ namespace ssa::infra::sqlite {
         }
 
         ports::WorkflowResult canceled() {
-            return {ports::WorkflowStatus::Rejected, "sqlite derivadas sync canceled"};
+            return {ports::WorkflowStatus::Canceled, "sqlite derivadas sync canceled"};
         }
 
         std::optional<ports::WorkflowResult> executeSyncSql(SqliteConnection& connection,

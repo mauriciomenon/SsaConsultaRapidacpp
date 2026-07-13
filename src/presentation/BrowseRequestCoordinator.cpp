@@ -14,6 +14,12 @@ namespace ssa::presentation {
           pageQueries_(std::move(queryService), this) {
         connect(&pageQueries_, &PageQueryCoordinator::started, this,
                 [this] { pageLifecycle_.markRequestStarted(); });
+        connect(&pageQueries_, &PageQueryCoordinator::stateChanged, this,
+                [this](const PageQueryCoordinator::State state) {
+                    if (state == PageQueryCoordinator::State::Canceling) {
+                        pageLifecycle_.markRequestCanceling();
+                    }
+                });
         connect(&pageQueries_, &PageQueryCoordinator::succeeded, this,
                 [this](PageQueryResult result, const domain::SsaPageRequest& request) {
                     pageLifecycle_.markRequestSucceeded(std::move(result), request);

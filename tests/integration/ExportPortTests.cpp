@@ -284,7 +284,7 @@ TEST_CASE("csv export port propagates a stopped token to the repository") {
 
     const auto result = port.exportFilteredList(request, stopSource.get_token());
 
-    REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Canceled);
     REQUIRE_FALSE(std::filesystem::exists(request.outputPath));
     REQUIRE(std::filesystem::is_empty(std::filesystem::path{tempDir.path().toStdString()}));
 }
@@ -355,7 +355,7 @@ TEST_CASE("csv export port removes partial output after midstream cancellation")
 
     const auto result = port.exportFilteredList(request, stopSource.get_token());
 
-    REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Canceled);
     REQUIRE_FALSE(std::filesystem::exists(request.outputPath));
     REQUIRE(std::filesystem::is_empty(std::filesystem::path{tempDir.path().toStdString()}));
 }

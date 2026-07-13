@@ -54,7 +54,7 @@ namespace ssa::presentation {
                 &ActionStatusCoordinator::onExportRunning);
         connect(&exports_, &ExportViewModel::lastResultChanged, this,
                 &ActionStatusCoordinator::onExportResult);
-        connect(&workflows_, &WorkflowCommandViewModel::runningChanged, this,
+        connect(&workflows_, &WorkflowCommandViewModel::stateChanged, this,
                 &ActionStatusCoordinator::onWorkflowRunning);
         connect(&workflows_, &WorkflowCommandViewModel::lastResultChanged, this,
                 &ActionStatusCoordinator::onWorkflowResult);
@@ -85,6 +85,10 @@ namespace ssa::presentation {
     }
 
     void ActionStatusCoordinator::onWorkflowResult() {
+        if (workflows_.lastCanceled()) {
+            clearAndSetError(status_, workflows_.lastMessage());
+            return;
+        }
         reportResult(status_, workflows_.lastSucceeded(), workflows_.lastMessage(),
                      {workflows_.successMessage(), workflows_.failureMessage()},
                      workflows_.lastWarning());

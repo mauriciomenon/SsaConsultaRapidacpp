@@ -174,7 +174,7 @@ TEST_CASE("spreadsheet import workflow rejects a stopped token before staging") 
 
     const auto result = port.importExternalFiles(request, stopSource.get_token());
 
-    REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Canceled);
     REQUIRE(result.message.find("canceled") != std::string::npos);
     REQUIRE_FALSE(std::filesystem::exists(inputDirectory));
     REQUIRE_FALSE(std::filesystem::exists(dbPath));

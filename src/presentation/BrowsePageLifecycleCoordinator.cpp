@@ -16,6 +16,12 @@ namespace ssa::presentation {
         status_.setMessage("Consultando dados...");
     }
 
+    void BrowsePageLifecycleCoordinator::markRequestCanceling() {
+        status_.setLoading(true);
+        status_.setError({});
+        status_.setMessage("Cancelando consulta...");
+    }
+
     void BrowsePageLifecycleCoordinator::markRequestReplaced() {
         status_.setLoading(true);
         status_.setMessage("Atualizando consulta...");

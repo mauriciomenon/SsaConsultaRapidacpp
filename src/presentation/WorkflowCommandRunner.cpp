@@ -32,15 +32,27 @@ namespace ssa::presentation {
             watcher_.waitForFinished();
         }
         resultState_.reset();
-        running_ = false;
+        state_ = State::Idle;
+    }
+
+    WorkflowCommandRunner::State WorkflowCommandRunner::state() const {
+        return state_;
     }
 
     bool WorkflowCommandRunner::running() const {
-        return running_;
+        return state_ != State::Idle;
+    }
+
+    bool WorkflowCommandRunner::canceling() const {
+        return state_ == State::Canceling;
+    }
+
+    bool WorkflowCommandRunner::canCancel() const {
+        return state_ == State::Running;
     }
 
     void WorkflowCommandRunner::importExternalFiles(const std::vector<QString>& files) {
-        if (running_ || shuttingDown_) {
+        if (running() || shuttingDown_) {
             return;
         }
         if (!workflows_) {
@@ -63,7 +75,7 @@ namespace ssa::presentation {
     }
 
     void WorkflowCommandRunner::rescan(const ports::RescanMode mode) {
-        if (running_ || shuttingDown_) {
+        if (running() || shuttingDown_) {
             return;
         }
         if (!workflows_) {
@@ -84,7 +96,7 @@ namespace ssa::presentation {
     }
 
     void WorkflowCommandRunner::refreshSam(ports::SamRefreshRequest request) {
-        if (running_ || shuttingDown_) {
+        if (running() || shuttingDown_) {
             return;
         }
         if (!workflows_) {
@@ -101,7 +113,7 @@ namespace ssa::presentation {
     }
 
     void WorkflowCommandRunner::syncDerivadas() {
-        if (running_ || shuttingDown_) {
+        if (running() || shuttingDown_) {
             return;
         }
         if (!workflows_) {
@@ -117,7 +129,7 @@ namespace ssa::presentation {
     }
 
     void WorkflowCommandRunner::compactDatabase() {
-        if (running_ || shuttingDown_) {
+        if (running() || shuttingDown_) {
             return;
         }
         if (!workflows_) {
@@ -134,12 +146,11 @@ namespace ssa::presentation {
 
     void
     WorkflowCommandRunner::start(std::function<ports::WorkflowResult(std::stop_token)> operation) {
-        running_ = true;
-        emit this->runningChanged(running_);
         const auto state = std::make_shared<ResultState>();
         resultState_ = state;
         stopSource_ = std::stop_source{};
         const auto stopToken = stopSource_.get_token();
+        setState(State::Running);
         watcher_.setFuture(QtConcurrent::run(QThreadPool::globalInstance(),
                                              [state, operation = std::move(operation), stopToken] {
                                                  try {
@@ -153,6 +164,14 @@ namespace ssa::presentation {
                                              }));
     }
 
+    void WorkflowCommandRunner::cancel() {
+        if (!canCancel() || shuttingDown_) {
+            return;
+        }
+        setState(State::Canceling);
+        stopSource_.request_stop();
+    }
+
     void WorkflowCommandRunner::finish() {
         std::optional<ports::WorkflowResult> result = std::nullopt;
         std::exception_ptr error;
@@ -162,8 +181,6 @@ namespace ssa::presentation {
             error = resultState_->error;
         }
         resultState_.reset();
-        running_ = false;
-        emit this->runningChanged(running_);
         if (error) {
             try {
                 std::rethrow_exception(error);
@@ -172,13 +189,24 @@ namespace ssa::presentation {
             } catch (...) {
                 emit this->finished({ports::WorkflowStatus::Failed, "unknown workflow error"});
             }
-            return;
-        }
-        if (!result) {
+        } else if (!result) {
             emit this->finished({ports::WorkflowStatus::Failed, "workflow produced no result"});
+        } else {
+            emit this->finished(std::move(*result));
+        }
+        setState(State::Idle);
+    }
+
+    void WorkflowCommandRunner::setState(const State state) {
+        if (state_ == state) {
             return;
         }
-        emit this->finished(std::move(*result));
+        const bool wasRunning = running();
+        state_ = state;
+        emit stateChanged(state_);
+        if (wasRunning != running()) {
+            emit runningChanged(running());
+        }
     }
 
 } // namespace ssa::presentation

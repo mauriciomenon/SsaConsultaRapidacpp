@@ -645,7 +645,7 @@ TEST_CASE("sqlite maintenance rejects a stopped token before changing data") {
     const auto result = maintenance.resetDatabase(stopSource.get_token());
     const ssa::infra::sqlite::SqliteSsaRepository repository(fixture.path);
 
-    REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Canceled);
     REQUIRE(result.message.find("canceled") != std::string::npos);
     REQUIRE(repository.count({}) == 4);
 }
@@ -689,7 +689,7 @@ TEST_CASE("sqlite derivadas rejects a stopped token before changing data") {
     const ssa::infra::sqlite::SqliteSsaRepository repository(fixture.path);
     const auto record = repository.recordBySsaNumber(ssa::domain::SsaNumber{"202500003"});
 
-    REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Canceled);
     REQUIRE(result.message.find("canceled") != std::string::npos);
     REQUIRE(record.has_value());
     REQUIRE(record->valueOf("derivada_de") == "202400001");

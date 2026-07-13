@@ -17,7 +17,7 @@ namespace ssa::infra::sqlite {
         }
 
         ports::WorkflowResult canceled() {
-            return {ports::WorkflowStatus::Rejected, "sqlite maintenance canceled"};
+            return {ports::WorkflowStatus::Canceled, "sqlite maintenance canceled"};
         }
 
     } // namespace

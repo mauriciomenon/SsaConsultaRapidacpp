@@ -35,8 +35,8 @@ namespace ssa::presentation {
     WorkflowCommandViewModel::WorkflowCommandViewModel(
         std::shared_ptr<application::SsaWorkflowService> workflows, QObject* parent)
         : QObject(parent), runner_(std::move(workflows), this), samRefreshTimer_(this) {
-        connect(&runner_, &WorkflowCommandRunner::runningChanged, this,
-                &WorkflowCommandViewModel::setRunning);
+        connect(&runner_, &WorkflowCommandRunner::stateChanged, this,
+                &WorkflowCommandViewModel::handleRunnerStateChanged);
         connect(&runner_, &WorkflowCommandRunner::finished, this,
                 &WorkflowCommandViewModel::applyResult);
         connect(&samRefreshTimer_, &QTimer::timeout, this,
@@ -55,8 +55,20 @@ namespace ssa::presentation {
         return lastWarning_;
     }
 
+    bool WorkflowCommandViewModel::lastCanceled() const {
+        return lastCanceled_;
+    }
+
     bool WorkflowCommandViewModel::running() const {
         return running_;
+    }
+
+    bool WorkflowCommandViewModel::canceling() const {
+        return canceling_;
+    }
+
+    bool WorkflowCommandViewModel::canCancel() const {
+        return runner_.canCancel();
     }
 
     WorkflowCommandViewModel::OperationMessages
@@ -64,26 +76,26 @@ namespace ssa::presentation {
         switch (operation_) {
         case Operation::Rescan:
             return {tr("Reescaneando dados..."), tr("Reescaneamento concluido"),
-                    tr("Falha ao reescanear dados")};
+                    tr("Falha ao reescanear dados"), tr("Reescaneamento cancelado")};
         case Operation::ImportExternalFiles:
             return {tr("Importando arquivos..."), tr("Importacao concluida"),
-                    tr("Falha ao importar arquivos")};
+                    tr("Falha ao importar arquivos"), tr("Importacao cancelada")};
         case Operation::SyncDerivadas:
             return {tr("Sincronizando derivadas..."), tr("Sincronizacao de derivadas concluida"),
-                    tr("Falha ao sincronizar derivadas")};
+                    tr("Falha ao sincronizar derivadas"), tr("Sincronizacao cancelada")};
         case Operation::CompactDatabase:
             return {tr("Compactando banco..."), tr("Banco compactado"),
-                    tr("Falha ao compactar banco")};
+                    tr("Falha ao compactar banco"), tr("Compactacao cancelada")};
         case Operation::SamRefresh:
             return {tr("Atualizando dados do SAM..."), tr("Atualizacao do SAM concluida"),
-                    tr("Falha ao atualizar dados do SAM")};
+                    tr("Falha ao atualizar dados do SAM"), tr("Atualizacao do SAM cancelada")};
         }
         return {tr("Reescaneando dados..."), tr("Reescaneamento concluido"),
-                tr("Falha ao reescanear dados")};
+                tr("Falha ao reescanear dados"), tr("Reescaneamento cancelado")};
     }
 
     QString WorkflowCommandViewModel::runningMessage() const {
-        return messagesForCurrentOperation().running;
+        return canceling_ ? tr("Cancelando...") : messagesForCurrentOperation().running;
     }
 
     QString WorkflowCommandViewModel::successMessage() const {
@@ -205,6 +217,10 @@ namespace ssa::presentation {
         runner_.refreshSam(samRefreshRequest());
     }
 
+    void WorkflowCommandViewModel::cancel() {
+        runner_.cancel();
+    }
+
     void WorkflowCommandViewModel::setSamRefreshEnabled(const bool enabled) {
         if (samRefreshEnabled_ == enabled) {
             return;
@@ -299,6 +315,10 @@ namespace ssa::presentation {
     }
 
     void WorkflowCommandViewModel::applyResult(const ports::WorkflowResult& result) {
+        if (result.status == ports::WorkflowStatus::Canceled) {
+            setResult(messagesForCurrentOperation().canceled, false, false, true);
+            return;
+        }
         if (result.ok()) {
             setResult(QString::fromStdString(result.message.empty() ? successMessage().toStdString()
                                                                     : result.message),
@@ -308,19 +328,24 @@ namespace ssa::presentation {
         setResult(QString::fromStdString(result.message), false);
     }
 
-    void WorkflowCommandViewModel::setRunning(const bool running) {
-        if (running_ == running) {
-            return;
+    void
+    WorkflowCommandViewModel::handleRunnerStateChanged(const WorkflowCommandRunner::State state) {
+        const bool running = state != WorkflowCommandRunner::State::Idle;
+        const bool canceling = state == WorkflowCommandRunner::State::Canceling;
+        if (running_ != running) {
+            running_ = running;
+            emit runningChanged();
         }
-        running_ = running;
-        emit runningChanged();
+        canceling_ = canceling;
+        emit stateChanged();
     }
 
     void WorkflowCommandViewModel::setResult(QString message, const bool succeeded,
-                                             const bool warning) {
+                                             const bool warning, const bool canceled) {
         lastMessage_ = std::move(message);
         lastSucceeded_ = succeeded;
         lastWarning_ = warning;
+        lastCanceled_ = canceled;
         emit lastResultChanged();
     }
 
