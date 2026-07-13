@@ -76,6 +76,10 @@ namespace ssa::presentation {
     }
 
     void ActionStatusCoordinator::onExportResult() {
+        if (exports_.lastStatus() == QStringLiteral("canceled")) {
+            clearAndSetError(status_, exports_.lastMessage());
+            return;
+        }
         reportResult(status_, exports_.lastSucceeded(), exports_.lastMessage(),
                      {kExportSuccessMessage, kExportFailedMessage});
     }

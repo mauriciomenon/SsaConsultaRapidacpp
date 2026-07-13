@@ -1,5 +1,6 @@
 #include "application/SsaWorkflowService.h"
 #include "platform/ScrapReportSamRefreshPort.h"
+#include "platform/SupervisedProcess.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -373,6 +374,44 @@ namespace {
                      "descendant survived the cancellation terminal");
         }
 
+        void forced_shutdown_terminates_every_registered_process_tree() {
+            QTemporaryDir root;
+            QVERIFY(root.isValid());
+            auto request = validRequest(root);
+            request.executorSectors = {"TREE"};
+            request.processTimeout = std::chrono::seconds{10};
+            const auto sentinelPath = root.filePath(QStringLiteral("forced-descendant.pid"));
+            QVERIFY(qputenv("SSA_TEST_SENTINEL_PATH", sentinelPath.toUtf8()));
+            ssa::platform::ScrapReportSamRefreshPort port(
+                QCoreApplication::applicationFilePath().toStdString());
+
+            auto future = QtConcurrent::run([&] { return port.fetch(request); });
+            QElapsedTimer startupDeadline;
+            startupDeadline.start();
+            while (!QFileInfo::exists(sentinelPath) && startupDeadline.elapsed() < 3'000) {
+                QTest::qWait(10);
+            }
+            QVERIFY2(QFileInfo::exists(sentinelPath), "descendant did not start");
+            QFile sentinel{sentinelPath};
+            QVERIFY(sentinel.open(QIODevice::ReadOnly));
+            bool validPid = false;
+            const auto descendantPid = sentinel.readAll().trimmed().toLongLong(&validPid);
+            QVERIFY(validPid);
+            QVERIFY(processExists(descendantPid));
+
+            QElapsedTimer forceStopTimer;
+            forceStopTimer.start();
+            QCOMPARE(ssa::platform::SupervisedProcess::requestForceStopAll(),
+                     ssa::platform::ForceStopRequestStatus::Ready);
+            QVERIFY(forceStopTimer.elapsed() < 50);
+            future.waitForFinished();
+            QVERIFY(ssa::platform::SupervisedProcess::forceStopAll());
+            qunsetenv("SSA_TEST_SENTINEL_PATH");
+
+            QVERIFY2(!processExists(descendantPid),
+                     "descendant survived the forced shutdown barrier");
+        }
+
         void port_drains_noisy_process_channels_without_unbounded_diagnostics() {
             QTemporaryDir root;
             QVERIFY(root.isValid());
@@ -500,6 +539,31 @@ namespace {
                 QVERIFY(result.diagnostic.find("cleanup") != std::string::npos);
                 QCOMPARE(importPort->calls, 0);
             }
+        }
+
+        void forced_shutdown_prevents_a_concurrent_process_start() {
+            QTemporaryDir root;
+            QVERIFY(root.isValid());
+            auto request = validRequest(root);
+            request.executorSectors = {"TREE"};
+            request.processTimeout = std::chrono::milliseconds{250};
+            const auto sentinelPath = root.filePath(QStringLiteral("startup-race.pid"));
+            QVERIFY(qputenv("SSA_TEST_SENTINEL_PATH", sentinelPath.toUtf8()));
+            ssa::platform::ScrapReportSamRefreshPort port(
+                QCoreApplication::applicationFilePath().toStdString());
+
+            auto future = QtConcurrent::run([&] { return port.fetch(request); });
+            QElapsedTimer forceStopTimer;
+            forceStopTimer.start();
+            QVERIFY(ssa::platform::SupervisedProcess::requestForceStopAll() !=
+                    ssa::platform::ForceStopRequestStatus::Failed);
+            QVERIFY(forceStopTimer.elapsed() < 50);
+            future.waitForFinished();
+            QVERIFY(ssa::platform::SupervisedProcess::forceStopAll());
+            qunsetenv("SSA_TEST_SENTINEL_PATH");
+
+            QCOMPARE(future.result().status, ssa::ports::WorkflowStatus::Canceled);
+            QVERIFY(!QFileInfo::exists(sentinelPath));
         }
     };
 

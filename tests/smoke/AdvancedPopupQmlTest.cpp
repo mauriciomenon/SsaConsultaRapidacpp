@@ -656,7 +656,7 @@ namespace {
             QVERIFY(QMetaObject::invokeMethod(popup, "openForCurrentFilter"));
             QTRY_COMPARE_WITH_TIMEOUT(repository->advancedRequests(), 1, 1000);
             QTRY_COMPARE_WITH_TIMEOUT(popup->property("valuesError").toString(),
-                                      QString("advanced values failed once"), 1000);
+                                      QString("Falha ao consultar valores"), 1000);
 
             auto* retryButton = findOwnedQuickItemByProperty(
                 popup, "objectName", QStringLiteral("advancedTextValueRetryButton_situacao"));
@@ -680,7 +680,7 @@ namespace {
                                  "Column value query failed: quick sector failed once");
             ssa::presentation::FilterPanelViewModel filters(service);
             QTRY_COMPARE_WITH_TIMEOUT(filters.sector()->property("optionsError").toString(),
-                                      QString("quick sector failed once"), 1000);
+                                      QString("Falha ao consultar valores"), 1000);
 
             QQmlEngine engine;
             engine.rootContext()->setContextProperty(QStringLiteral("testFilterViewModel"),

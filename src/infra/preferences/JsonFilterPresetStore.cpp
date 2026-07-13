@@ -21,10 +21,11 @@ namespace ssa::infra::preferences {
         }
     } // namespace
 
-    ports::FilterPresetSnapshot JsonFilterPresetStore::load(std::filesystem::path path) const {
+    ports::FilterPresetSnapshot JsonFilterPresetStore::load(std::filesystem::path path,
+                                                            const std::stop_token stopToken) const {
         QJsonParseError parseError;
         const auto document = QJsonDocument::fromJson(
-            json_persistence::readBounded(path, "filter preset"), &parseError);
+            json_persistence::readBounded(path, "filter preset", stopToken), &parseError);
         if (parseError.error != QJsonParseError::NoError) {
             throw std::runtime_error("invalid filter preset json: " + qt::toUtf8(path) + ": " +
                                      parseError.errorString().toStdString());
@@ -36,12 +37,14 @@ namespace ssa::infra::preferences {
     }
 
     void JsonFilterPresetStore::save(std::filesystem::path path,
-                                     const ports::FilterPresetSnapshot& snapshot) const {
+                                     const ports::FilterPresetSnapshot& snapshot,
+                                     const std::stop_token stopToken) const {
+        json_persistence::throwIfCanceled(stopToken);
         ensureParentDirectory(path);
 
         const auto payload =
             FilterPresetJsonCodec{}.documentFromSnapshot(snapshot).toJson(QJsonDocument::Compact);
-        json_persistence::writeAtomically(path, payload, "filter preset");
+        json_persistence::writeAtomically(path, payload, "filter preset", stopToken);
     }
 
 } // namespace ssa::infra::preferences

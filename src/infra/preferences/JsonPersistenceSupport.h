@@ -7,14 +7,24 @@
 
 #include "qt/FilesystemPath.h"
 
+#include <algorithm>
 #include <filesystem>
 #include <stdexcept>
+#include <stop_token>
 #include <string>
 #include <string_view>
+#include <system_error>
 
 namespace ssa::infra::preferences::json_persistence {
 
     inline constexpr qint64 kMaxJsonFileBytes = 1024LL * 1024LL;
+    inline constexpr qint64 kJsonIoBlockBytes = 64LL * 1024LL;
+
+    inline void throwIfCanceled(const std::stop_token& stopToken) {
+        if (stopToken.stop_requested()) {
+            throw std::system_error(std::make_error_code(std::errc::operation_canceled));
+        }
+    }
 
     [[nodiscard]] inline std::string errorMessage(const std::string_view operation,
                                                   const std::string_view subject,
@@ -23,29 +33,40 @@ namespace ssa::infra::preferences::json_persistence {
     }
 
     [[nodiscard]] inline QByteArray readBounded(const std::filesystem::path& path,
-                                                const std::string_view subject) {
+                                                const std::string_view subject,
+                                                const std::stop_token& stopToken = {}) {
+        throwIfCanceled(stopToken);
         QFile input(qt::toQString(path));
         if (!input.open(QIODevice::ReadOnly)) {
             throw std::runtime_error(errorMessage("cannot read", subject, path));
         }
 
-        QByteArray payload = input.read(kMaxJsonFileBytes + 1);
-        if (input.error() != QFileDevice::NoError) {
-            throw std::runtime_error(errorMessage("cannot read", subject, path) + ": " +
-                                     input.errorString().toStdString());
+        QByteArray payload;
+        payload.reserve(static_cast<qsizetype>(kMaxJsonFileBytes));
+        while (!input.atEnd()) {
+            throwIfCanceled(stopToken);
+            const auto block = input.read(kJsonIoBlockBytes);
+            if (input.error() != QFileDevice::NoError) {
+                throw std::runtime_error(errorMessage("cannot read", subject, path) + ": " +
+                                         input.errorString().toStdString());
+            }
+            payload.append(block);
+            if (payload.size() > kMaxJsonFileBytes) {
+                throw std::runtime_error(errorMessage("size limit exceeded for", subject, path));
+            }
         }
-        if (payload.size() > kMaxJsonFileBytes || !input.atEnd()) {
-            throw std::runtime_error(errorMessage("size limit exceeded for", subject, path));
-        }
+        throwIfCanceled(stopToken);
         return payload;
     }
 
     inline void writeFully(QIODevice& output, const QByteArray& payload,
-                           const std::string_view subject, const std::filesystem::path& path) {
+                           const std::string_view subject, const std::filesystem::path& path,
+                           const std::stop_token& stopToken = {}) {
         qint64 offset = 0;
         while (offset < payload.size()) {
-            const qint64 written =
-                output.write(payload.constData() + offset, payload.size() - offset);
+            throwIfCanceled(stopToken);
+            const auto blockSize = (std::min)(kJsonIoBlockBytes, payload.size() - offset);
+            const qint64 written = output.write(payload.constData() + offset, blockSize);
             if (written <= 0) {
                 throw std::runtime_error(errorMessage("cannot write", subject, path) + ": " +
                                          output.errorString().toStdString());
@@ -63,7 +84,9 @@ namespace ssa::infra::preferences::json_persistence {
     }
 
     inline void writeAtomically(const std::filesystem::path& path, const QByteArray& payload,
-                                const std::string_view subject) {
+                                const std::string_view subject,
+                                const std::stop_token& stopToken = {}) {
+        throwIfCanceled(stopToken);
         if (payload.size() > kMaxJsonFileBytes) {
             throw std::runtime_error(errorMessage("size limit exceeded for", subject, path));
         }
@@ -74,7 +97,8 @@ namespace ssa::infra::preferences::json_persistence {
             throw std::runtime_error(errorMessage("cannot write", subject, path));
         }
 
-        writeFully(output, payload, subject, path);
+        writeFully(output, payload, subject, path, stopToken);
+        throwIfCanceled(stopToken);
         commitOrThrow(output, subject, path);
     }
 

@@ -21,6 +21,8 @@ namespace ssa::app::desktop {
         void installSmokeCapture(const QCommandLineParser& parser, QQmlApplicationEngine& engine);
 
       private:
+        static void forceShutdown();
+
         ssa::platform::StartupOptions options_;
         ssa::platform::AppPaths paths_;
         ssa::platform::SystemThemeResolver systemThemeResolver_;

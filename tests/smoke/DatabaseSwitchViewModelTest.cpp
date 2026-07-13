@@ -12,6 +12,7 @@
 #include <atomic>
 #include <filesystem>
 #include <memory>
+#include <stdexcept>
 #include <string>
 
 namespace {
@@ -29,7 +30,14 @@ namespace {
             }
             if (stopToken.stop_requested()) {
                 stopObserved = true;
-                return {false, "Validacao do banco cancelada"};
+                validationCompleted = true;
+                return {ssa::ports::DatabaseValidationStatus::Canceled,
+                        "Validacao do banco cancelada",
+                        {}};
+            }
+            validationCompleted = true;
+            if (failAfterCompletion) {
+                throw std::runtime_error("late validation failure");
             }
             return result;
         }
@@ -38,8 +46,11 @@ namespace {
         mutable QThread* validationThread = nullptr;
         mutable std::atomic_int calls = 0;
         mutable std::atomic_bool stopObserved = false;
+        mutable std::atomic_bool validationCompleted = false;
         std::atomic_bool blocked = false;
-        ssa::ports::DatabaseValidationResult result{true, {}};
+        bool failAfterCompletion = false;
+        ssa::ports::DatabaseValidationResult result{
+            ssa::ports::DatabaseValidationStatus::Valid, {}, {}};
     };
 
     class FakeLauncher final : public ssa::ports::IApplicationLauncher {
@@ -89,7 +100,9 @@ namespace {
             const QTemporaryDir temporary;
             QVERIFY(temporary.isValid());
             auto validator = std::make_shared<FakeValidator>();
-            validator->result = {false, "O banco nao contem a tabela ssa_table"};
+            validator->result = {ssa::ports::DatabaseValidationStatus::Invalid,
+                                 "O banco nao contem a tabela ssa_table",
+                                 {}};
             auto launcher = std::make_shared<FakeLauncher>();
             ssa::presentation::DatabaseSwitchViewModel model(validator, launcher);
             QSignalSpy started(&model,
@@ -163,9 +176,90 @@ namespace {
             model.reset();
 
             QVERIFY(shutdownTimer.elapsed() < 500);
-            QVERIFY(validator->stopObserved.load());
+            QTRY_VERIFY_WITH_TIMEOUT(validator->stopObserved.load(), 1000);
             QCOMPARE(started.count(), 0);
             QCOMPARE(launcher->calls, 0);
+        }
+
+        void cancelIsImmediateIdempotentAndTerminalOnlyAfterValidationStops() {
+            const QTemporaryDir temporary;
+            QVERIFY(temporary.isValid());
+            auto validator = std::make_shared<FakeValidator>();
+            validator->blocked = true;
+            auto launcher = std::make_shared<FakeLauncher>();
+            ssa::presentation::DatabaseSwitchViewModel model(validator, launcher);
+
+            model.openDatabase(QUrl::fromLocalFile(temporary.filePath("valid.db")));
+            QTRY_VERIFY_WITH_TIMEOUT(model.running(), 1000);
+            QVERIFY(model.canCancel());
+
+            QElapsedTimer timer;
+            timer.start();
+            model.cancel();
+            model.cancel();
+
+            QVERIFY(timer.elapsed() < 50);
+            QVERIFY(model.running());
+            QVERIFY(model.canceling());
+            QVERIFY(!model.canCancel());
+            QTRY_VERIFY_WITH_TIMEOUT(validator->stopObserved.load(), 1000);
+            QCOMPARE(launcher->calls, 0);
+
+            validator->blocked = false;
+            QTRY_VERIFY_WITH_TIMEOUT(!model.running(), 3000);
+            QVERIFY(!model.canceling());
+            QVERIFY(!model.canCancel());
+            QVERIFY(model.errorMessage().isEmpty());
+            QCOMPARE(launcher->calls, 0);
+        }
+
+        void cancelAfterValidationBeforeTerminalDoesNotLaunchReplacement() {
+            const QTemporaryDir temporary;
+            QVERIFY(temporary.isValid());
+            auto validator = std::make_shared<FakeValidator>();
+            auto launcher = std::make_shared<FakeLauncher>();
+            ssa::presentation::DatabaseSwitchViewModel model(validator, launcher);
+
+            model.openDatabase(QUrl::fromLocalFile(temporary.filePath("valid.db")));
+            QElapsedTimer completionTimer;
+            completionTimer.start();
+            while (!validator->validationCompleted.load() && completionTimer.elapsed() < 1000) {
+                QThread::msleep(1);
+            }
+            QVERIFY(validator->validationCompleted.load());
+            QVERIFY(model.running());
+
+            model.cancel();
+
+            QVERIFY(model.canceling());
+            QTRY_VERIFY_WITH_TIMEOUT(!model.running(), 1000);
+            QCOMPARE(launcher->calls, 0);
+            QVERIFY(model.errorMessage().isEmpty());
+        }
+
+        void cancelAfterFailedValidationBeforeTerminalLogsAndDoesNotLaunch() {
+            const QTemporaryDir temporary;
+            QVERIFY(temporary.isValid());
+            auto validator = std::make_shared<FakeValidator>();
+            validator->failAfterCompletion = true;
+            auto launcher = std::make_shared<FakeLauncher>();
+            ssa::presentation::DatabaseSwitchViewModel model(validator, launcher);
+
+            model.openDatabase(QUrl::fromLocalFile(temporary.filePath("valid.db")));
+            QElapsedTimer completionTimer;
+            completionTimer.start();
+            while (!validator->validationCompleted.load() && completionTimer.elapsed() < 1000) {
+                QThread::msleep(1);
+            }
+            QVERIFY(validator->validationCompleted.load());
+            QTest::ignoreMessage(QtWarningMsg, "Database validation failed after cancellation: "
+                                               "late validation failure");
+
+            model.cancel();
+
+            QTRY_VERIFY_WITH_TIMEOUT(!model.running(), 1000);
+            QCOMPARE(launcher->calls, 0);
+            QVERIFY(model.errorMessage().isEmpty());
         }
     };
 

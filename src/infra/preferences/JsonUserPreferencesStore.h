@@ -10,8 +10,10 @@ namespace ssa::infra::preferences {
       public:
         explicit JsonUserPreferencesStore(std::filesystem::path path);
 
-        [[nodiscard]] ports::UserPreferencesSnapshot load() const override;
-        void save(const ports::UserPreferencesSnapshot& snapshot) const override;
+        [[nodiscard]] ports::UserPreferencesSnapshot
+        load(std::stop_token stopToken = {}) const override;
+        void save(const ports::UserPreferencesSnapshot& snapshot,
+                  std::stop_token stopToken = {}) const override;
 
       private:
         std::filesystem::path path_;

@@ -93,6 +93,8 @@ namespace ssa::presentation {
         void setColumnFilters(std::map<std::string, std::string> filters);
         void applyPreferences(const ports::UserPreferencesSnapshot& snapshot);
         void writePreferences(ports::UserPreferencesSnapshot& snapshot) const;
+        [[nodiscard]] bool backgroundWorkRunning() const;
+        void cancelBackgroundWork();
 
       signals:
         void changed();
@@ -100,6 +102,7 @@ namespace ssa::presentation {
         void columnValueOptionsReset();
         void focusColumnRequestChanged();
         void applyRequested();
+        void backgroundActivityChanged();
 
       public slots:
         void addColumnFilter();

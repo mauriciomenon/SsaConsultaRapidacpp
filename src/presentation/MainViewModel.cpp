@@ -35,22 +35,44 @@ namespace ssa::presentation {
                                                                 std::move(columnWidths));
               }),
           selectionFlow_(browse_, *actions_.commands()), requestFlow_(browse_) {
+        shutdownPoll_.setInterval(25);
+        connect(&shutdownPoll_, &QTimer::timeout, this, &MainViewModel::checkShutdownReady);
+        forceCloseTimer_.setSingleShot(true);
+        forceCloseTimer_.setInterval(10'000);
+        connect(&forceCloseTimer_, &QTimer::timeout, this, [this] {
+            forceCloseAvailable_ = true;
+            emit shutdownStateChanged();
+        });
+        connect(browse_.status(), &StatusViewModel::changed, this,
+                &MainViewModel::handleActivityStateChanged);
+        connect(actions_.workflows(), &WorkflowCommandViewModel::stateChanged, this,
+                &MainViewModel::handleActivityStateChanged);
+        connect(actions_.exports(), &ExportViewModel::stateChanged, this,
+                &MainViewModel::handleActivityStateChanged);
+        connect(&databaseSwitch_, &DatabaseSwitchViewModel::stateChanged, this,
+                &MainViewModel::handleActivityStateChanged);
+        connect(&preferences_, &UserPreferencesCoordinator::stateChanged, this,
+                &MainViewModel::handleActivityStateChanged);
+        connect(&preferencesFlow_, &MainPreferenceFlowCoordinator::stateChanged, this,
+                &MainViewModel::handleActivityStateChanged);
+        connect(&browse_, &BrowseViewModel::backgroundActivityChanged, this, [this] {
+            if (backgroundCanceling_ && !browse_.backgroundWorkRunning()) {
+                backgroundCanceling_ = false;
+            }
+            handleActivityStateChanged();
+        });
         connectPreferenceFlows();
         preferencesFlow_.applyStoredPreferences(preferences_.loadInitial());
         connectWorkflowRefresh();
     }
 
     MainViewModel::~MainViewModel() {
+        shutdownPoll_.stop();
+        forceCloseTimer_.stop();
+        requestCancelAll();
+        preferencesFlow_.shutdown();
+        preferences_.shutdown();
         databaseSwitch_.shutdown();
-        try {
-            auto finalSnapshot = preferencesFlow_.buildPreferencesSnapshot();
-            preferencesFlow_.shutdown();
-            preferences_.shutdown(std::move(finalSnapshot));
-        } catch (const std::exception& exc) {
-            qWarning() << "Failed to persist preferences on shutdown:" << exc.what();
-        } catch (...) {
-            qWarning() << "Failed to persist preferences on shutdown: unknown error";
-        }
     }
 
     void MainViewModel::connectPreferenceFlows() {
@@ -139,6 +161,114 @@ namespace ssa::presentation {
         clipboard->setText(text);
         browse_.status()->setMessage(QStringLiteral("Texto copiado"));
         return true;
+    }
+
+    bool MainViewModel::shutdownInProgress() const {
+        return shutdownInProgress_;
+    }
+
+    bool MainViewModel::shutdownReady() const {
+        return shutdownReady_;
+    }
+
+    bool MainViewModel::forceCloseAvailable() const {
+        return forceCloseAvailable_;
+    }
+
+    bool MainViewModel::canCancelActivity() {
+        if (shutdownInProgress_) {
+            return false;
+        }
+        const bool queryCancelable = browse_.status()->loading() &&
+                                     browse_.status()->message() != QStringLiteral("Cancelando...");
+        return queryCancelable || (browse_.backgroundWorkRunning() && !backgroundCanceling_) ||
+               actions_.workflows()->canCancel() || actions_.exports()->canCancel() ||
+               databaseSwitch_.canCancel() || preferences_.canCancel() ||
+               preferencesFlow_.canCancel();
+    }
+
+    bool MainViewModel::cancelingActivity() {
+        return backgroundCanceling_ || actions_.workflows()->canceling() ||
+               actions_.exports()->canceling() || databaseSwitch_.canceling() ||
+               preferences_.canceling() || preferencesFlow_.canceling() ||
+               (browse_.status()->loading() &&
+                browse_.status()->message() == QStringLiteral("Cancelando..."));
+    }
+
+    void MainViewModel::requestCancelAll() {
+        const bool hadActivity = hasActiveOperations();
+        backgroundCanceling_ = backgroundCanceling_ || browse_.backgroundWorkRunning();
+        browse_.cancelBackgroundWork();
+        actions_.workflows()->cancel();
+        actions_.exports()->cancel();
+        databaseSwitch_.cancel();
+        preferencesFlow_.cancel();
+        preferences_.cancel();
+        if (hadActivity) {
+            browse_.status()->setMessage(QStringLiteral("Cancelando..."));
+        }
+        emit activityStateChanged();
+    }
+
+    void MainViewModel::requestShutdown() {
+        if (shutdownInProgress_) {
+            return;
+        }
+        shutdownInProgress_ = true;
+        emit shutdownStateChanged();
+        std::optional<ports::UserPreferencesSnapshot> finalSnapshot;
+        try {
+            finalSnapshot.emplace(preferencesFlow_.buildPreferencesSnapshot());
+        } catch (const std::exception& exception) {
+            qWarning() << "Failed to build final preferences snapshot:" << exception.what();
+        } catch (...) {
+            qWarning() << "Failed to build final preferences snapshot: unknown error";
+        }
+        requestCancelAll();
+        preferencesFlow_.shutdown();
+        preferences_.beginShutdown(std::move(finalSnapshot));
+        checkShutdownReady();
+        if (!shutdownReady_) {
+            shutdownPoll_.start();
+            forceCloseTimer_.start();
+        }
+    }
+
+    void MainViewModel::requestForcedShutdown() {
+        if (!shutdownInProgress_ || !forceCloseAvailable_) {
+            return;
+        }
+        requestCancelAll();
+        emit forcedShutdownRequested();
+    }
+
+    bool MainViewModel::hasActiveOperations() {
+        return browse_.status()->loading() || actions_.workflows()->running() ||
+               actions_.exports()->running() || databaseSwitch_.running() ||
+               actions_.commands()->running() || preferences_.running() ||
+               preferencesFlow_.running() || browse_.backgroundWorkRunning();
+    }
+
+    void MainViewModel::handleActivityStateChanged() {
+        if (!hasActiveOperations() && !cancelingActivity() &&
+            browse_.status()->message() == QStringLiteral("Cancelando...")) {
+            browse_.status()->setMessage(QStringLiteral("Operacao cancelada"));
+            if (!browse_.status()->error().isEmpty()) {
+                browse_.status()->setError({});
+            }
+            return;
+        }
+        emit activityStateChanged();
+    }
+
+    void MainViewModel::checkShutdownReady() {
+        if (!shutdownInProgress_ || shutdownReady_ || hasActiveOperations()) {
+            return;
+        }
+        shutdownPoll_.stop();
+        forceCloseTimer_.stop();
+        shutdownReady_ = true;
+        emit shutdownStateChanged();
     }
 
 } // namespace ssa::presentation

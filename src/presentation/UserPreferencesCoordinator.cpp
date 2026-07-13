@@ -4,6 +4,7 @@
 #include <QThread>
 #include <QtConcurrentRun>
 
+#include <system_error>
 #include <utility>
 
 namespace ssa::presentation {
@@ -22,13 +23,10 @@ namespace ssa::presentation {
         shutdown();
     }
 
-    void UserPreferencesCoordinator::shutdown(
-        std::optional<ports::UserPreferencesSnapshot> finalSnapshot) {
+    void UserPreferencesCoordinator::shutdown() {
         if (shuttingDown_) {
+            disconnect(&watcher_, nullptr, this, nullptr);
             return;
-        }
-        if (!finalSnapshot && hasPendingSnapshot_) {
-            finalSnapshot = std::move(pendingSnapshot_);
         }
         shuttingDown_ = true;
         emit shutdownStarted();
@@ -37,20 +35,33 @@ namespace ssa::presentation {
         disconnect(&watcher_, nullptr, this, nullptr);
         snapshotProvider_ = nullptr;
         hasPendingSnapshot_ = false;
-        if (watcher_.isRunning()) {
-            watcher_.waitForFinished();
-        }
-        activeTask_.reset();
-        if (!preferencesStore_ || !finalSnapshot) {
+        finalSnapshot_.reset();
+        cancel();
+    }
+
+    void UserPreferencesCoordinator::beginShutdown(
+        std::optional<ports::UserPreferencesSnapshot> finalSnapshot) {
+        if (shuttingDown_) {
             return;
         }
-        try {
-            preferencesStore_->save(*finalSnapshot);
-        } catch (const std::exception& exc) {
-            qWarning() << "Failed to save final preferences snapshot:" << exc.what();
-        } catch (...) {
-            qWarning() << "Failed to save final preferences snapshot: unknown error";
+        shuttingDown_ = true;
+        emit shutdownStarted();
+        saveTimer_.stop();
+        disconnect(&saveTimer_, nullptr, this, nullptr);
+        snapshotProvider_ = nullptr;
+        hasPendingSnapshot_ = false;
+        finalSnapshot_ = std::move(finalSnapshot);
+        if (running_) {
+            cancel();
+            return;
         }
+        if (!preferencesStore_ || !finalSnapshot_) {
+            finishShutdown();
+            return;
+        }
+        auto snapshot = std::move(*finalSnapshot_);
+        finalSnapshot_.reset();
+        startSave(std::move(snapshot), true);
     }
 
     ports::UserPreferencesSnapshot UserPreferencesCoordinator::loadInitial() const {
@@ -58,6 +69,27 @@ namespace ssa::presentation {
             return {};
         }
         return preferencesStore_->load();
+    }
+
+    bool UserPreferencesCoordinator::running() const {
+        return running_;
+    }
+
+    bool UserPreferencesCoordinator::canceling() const {
+        return canceling_;
+    }
+
+    bool UserPreferencesCoordinator::canCancel() const {
+        return running_ && !canceling_;
+    }
+
+    void UserPreferencesCoordinator::cancel() {
+        if (!canCancel()) {
+            return;
+        }
+        canceling_ = true;
+        activeStopSource_.request_stop();
+        emit stateChanged();
     }
 
     bool UserPreferencesCoordinator::ensureOwnerThread(const char* operation) {
@@ -119,47 +151,94 @@ namespace ssa::presentation {
             return;
         }
 
-        const auto store = preferencesStore_;
         auto snapshot = std::move(pendingSnapshot_);
         hasPendingSnapshot_ = false;
+        startSave(std::move(snapshot), false);
+    }
+
+    void UserPreferencesCoordinator::startSave(ports::UserPreferencesSnapshot snapshot,
+                                               const bool finalSave) {
+        const auto store = preferencesStore_;
         const auto task = std::make_shared<SaveTaskState>();
+        task->finalSave = finalSave;
         activeTask_ = task;
-        watcher_.setFuture(QtConcurrent::run([store, snapshot = std::move(snapshot), task] {
-            std::string error;
-            try {
-                store->save(snapshot);
-            } catch (const std::exception& exc) {
-                error = exc.what();
-            } catch (...) {
-                error = "erro desconhecido";
-            }
-            const std::scoped_lock lock(task->mutex);
-            task->error = std::move(error);
-        }));
+        activeStopSource_ = std::stop_source{};
+        const auto stopToken = activeStopSource_.get_token();
+        running_ = true;
+        canceling_ = false;
+        emit stateChanged();
+        watcher_.setFuture(
+            QtConcurrent::run([store, snapshot = std::move(snapshot), task, stopToken] {
+                std::string error;
+                bool canceled = false;
+                try {
+                    store->save(snapshot, stopToken);
+                } catch (const std::system_error& exception) {
+                    if (exception.code() == std::errc::operation_canceled) {
+                        canceled = true;
+                    } else {
+                        error = exception.what();
+                    }
+                } catch (const std::exception& exc) {
+                    error = exc.what();
+                } catch (...) {
+                    error = "erro desconhecido";
+                }
+                const std::scoped_lock lock(task->mutex);
+                task->error = std::move(error);
+                task->canceled = canceled;
+            }));
     }
 
     void UserPreferencesCoordinator::finishSave() {
-        if (!ensureOwnerThread("finishSave") || shuttingDown_) {
+        if (!ensureOwnerThread("finishSave")) {
             return;
         }
         std::string error;
+        bool canceled = false;
+        bool finalSave = false;
         const auto task = activeTask_;
         if (task) {
             const std::scoped_lock lock(task->mutex);
             error = task->error;
+            canceled = task->canceled;
+            finalSave = task->finalSave;
         }
         activeTask_.reset();
-        if (error.empty()) {
+        running_ = false;
+        canceling_ = false;
+        emit stateChanged();
+        if (!canceled && error.empty() && !shuttingDown_) {
             emit saved();
-        } else {
+        } else if (!canceled && !error.empty()) {
             const auto message = QString::fromStdString(error);
             qWarning() << "Failed to save preferences:" << message;
-            emit this->saveFailed(
-                QStringLiteral("Falha interna ao salvar preferencias: %1").arg(message));
+            if (!shuttingDown_) {
+                emit this->saveFailed(QStringLiteral("Falha ao salvar preferencias"));
+            }
+        }
+        if (shuttingDown_) {
+            if (!finalSave && finalSnapshot_ && preferencesStore_) {
+                auto snapshot = std::move(*finalSnapshot_);
+                finalSnapshot_.reset();
+                startSave(std::move(snapshot), true);
+                return;
+            }
+            finishShutdown();
+            return;
         }
         if (hasPendingSnapshot_ || snapshotProvider_) {
             flushPendingSave();
         }
+    }
+
+    void UserPreferencesCoordinator::finishShutdown() {
+        if (shutdownFinished_) {
+            return;
+        }
+        shutdownFinished_ = true;
+        emit shutdownFinished();
+        emit stateChanged();
     }
 
 } // namespace ssa::presentation

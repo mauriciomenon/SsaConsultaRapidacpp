@@ -32,9 +32,11 @@ namespace ssa::presentation {
         void loadCurrentRequest();
         void cancelCurrentRequest();
         void invalidateTotalRowsAll();
+        [[nodiscard]] bool hasActiveOperations() const;
 
       signals:
         void pageChanged();
+        void activeOperationsChanged();
 
       private:
         [[nodiscard]] domain::SsaPageRequest buildRequest() const;

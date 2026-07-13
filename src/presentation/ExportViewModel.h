@@ -6,7 +6,6 @@
 #include <QFutureWatcher>
 #include <QObject>
 #include <QString>
-#include <QThreadPool>
 #include <QUrl>
 
 #include <exception>
@@ -24,6 +23,8 @@ namespace ssa::presentation {
         Q_PROPERTY(bool lastSucceeded READ lastSucceeded NOTIFY lastResultChanged)
         Q_PROPERTY(QString lastStatus READ lastStatus NOTIFY lastResultChanged)
         Q_PROPERTY(bool running READ running NOTIFY runningChanged)
+        Q_PROPERTY(bool canceling READ canceling NOTIFY stateChanged)
+        Q_PROPERTY(bool canCancel READ canCancel NOTIFY stateChanged)
 
       public:
         using RequestFactory = std::function<domain::SsaPageRequest()>;
@@ -37,13 +38,17 @@ namespace ssa::presentation {
         [[nodiscard]] bool lastSucceeded() const;
         [[nodiscard]] QString lastStatus() const;
         [[nodiscard]] bool running() const;
+        [[nodiscard]] bool canceling() const;
+        [[nodiscard]] bool canCancel() const;
 
       signals:
         void lastResultChanged();
         void runningChanged();
+        void stateChanged();
 
       public slots:
         void exportFilteredList(const QUrl& outputUrl);
+        void cancel();
 
       private:
         struct ResultState final {
@@ -58,7 +63,6 @@ namespace ssa::presentation {
 
         std::shared_ptr<application::SsaWorkflowService> workflows_;
         RequestFactory requestFactory_;
-        std::unique_ptr<QThreadPool> ownedExportThreadPool_;
         QThreadPool* exportThreadPool_{nullptr};
         QFutureWatcher<void> exportWatcher_;
         std::shared_ptr<ResultState> resultState_;
@@ -67,6 +71,7 @@ namespace ssa::presentation {
         QString lastStatus_{"idle"};
         bool lastSucceeded_{false};
         bool running_{false};
+        bool canceling_{false};
     };
 
 } // namespace ssa::presentation

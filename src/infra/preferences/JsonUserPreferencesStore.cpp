@@ -16,7 +16,9 @@ namespace ssa::infra::preferences {
     JsonUserPreferencesStore::JsonUserPreferencesStore(std::filesystem::path path)
         : path_(std::move(path)) {}
 
-    ports::UserPreferencesSnapshot JsonUserPreferencesStore::load() const {
+    ports::UserPreferencesSnapshot
+    JsonUserPreferencesStore::load(const std::stop_token stopToken) const {
+        json_persistence::throwIfCanceled(stopToken);
         ports::UserPreferencesSnapshot snapshot;
         snapshot.visibleColumns = domain::ColumnCatalog::defaultVisibleKeys();
 
@@ -26,14 +28,16 @@ namespace ssa::infra::preferences {
 
         QJsonParseError parseError;
         const auto document = QJsonDocument::fromJson(
-            json_persistence::readBounded(path_, "preferences file"), &parseError);
+            json_persistence::readBounded(path_, "preferences file", stopToken), &parseError);
         if (parseError.error != QJsonParseError::NoError) {
             throw std::runtime_error("invalid preferences json: " + qt::toUtf8(path_));
         }
         return UserPreferencesJsonCodec{}.snapshotFromDocument(document);
     }
 
-    void JsonUserPreferencesStore::save(const ports::UserPreferencesSnapshot& snapshot) const {
+    void JsonUserPreferencesStore::save(const ports::UserPreferencesSnapshot& snapshot,
+                                        const std::stop_token stopToken) const {
+        json_persistence::throwIfCanceled(stopToken);
         std::error_code error;
         std::filesystem::create_directories(path_.parent_path(), error);
         if (error) {
@@ -42,7 +46,7 @@ namespace ssa::infra::preferences {
 
         const auto document = UserPreferencesJsonCodec{}.documentFromSnapshot(snapshot);
         json_persistence::writeAtomically(path_, document.toJson(QJsonDocument::Compact),
-                                          "preferences file");
+                                          "preferences file", stopToken);
     }
 
 } // namespace ssa::infra::preferences

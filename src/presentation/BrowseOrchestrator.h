@@ -56,6 +56,7 @@ namespace ssa::presentation {
         void applyColumnSettings(std::vector<std::string> visibleColumns,
                                  std::map<std::string, int> columnWidths);
         void invalidateTotalRowsAll();
+        [[nodiscard]] bool hasActiveOperations() const;
 
       signals:
         void pageChanged();
@@ -63,6 +64,7 @@ namespace ssa::presentation {
         void currentRowChanged(int row);
         void preferencesSaveRequested();
         void filterHistoryChanged();
+        void activeOperationsChanged();
 
       public slots:
         void load();

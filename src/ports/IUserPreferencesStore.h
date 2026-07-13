@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <map>
+#include <stop_token>
 #include <string>
 #include <vector>
 
@@ -76,8 +77,10 @@ namespace ssa::ports {
       public:
         virtual ~IUserPreferencesStore() = default;
 
-        [[nodiscard]] virtual UserPreferencesSnapshot load() const = 0;
-        virtual void save(const UserPreferencesSnapshot& snapshot) const = 0;
+        [[nodiscard]] virtual UserPreferencesSnapshot
+        load(std::stop_token stopToken = {}) const = 0;
+        virtual void save(const UserPreferencesSnapshot& snapshot,
+                          std::stop_token stopToken = {}) const = 0;
     };
 
 } // namespace ssa::ports

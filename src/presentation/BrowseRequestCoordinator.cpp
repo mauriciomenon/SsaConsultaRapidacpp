@@ -12,6 +12,8 @@ namespace ssa::presentation {
         : QObject(parent), queryState_(queryState), search_(search), filters_(filters),
           tableModel_(tableModel), pageLifecycle_(queryState_, tableModel_, status, this),
           pageQueries_(std::move(queryService), this) {
+        connect(&pageQueries_, &PageQueryCoordinator::activeOperationsChanged, this,
+                &BrowseRequestCoordinator::activeOperationsChanged);
         connect(&pageQueries_, &PageQueryCoordinator::started, this,
                 [this] { pageLifecycle_.markRequestStarted(); });
         connect(&pageQueries_, &PageQueryCoordinator::stateChanged, this,
@@ -51,6 +53,10 @@ namespace ssa::presentation {
 
     void BrowseRequestCoordinator::invalidateTotalRowsAll() {
         pageQueries_.invalidateTotalRowsAll();
+    }
+
+    bool BrowseRequestCoordinator::hasActiveOperations() const {
+        return pageQueries_.hasActiveOperations();
     }
 
     domain::SsaPageRequest BrowseRequestCoordinator::buildRequest() const {

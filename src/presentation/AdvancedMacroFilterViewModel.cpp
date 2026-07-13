@@ -1,6 +1,7 @@
 #include "presentation/AdvancedMacroFilterViewModel.h"
 
 #include "domain/SsaTypes.h"
+#include "presentation/AsyncOperationErrorLog.h"
 #include "query/SsaQueryService.h"
 
 #include <QDate>
@@ -74,7 +75,7 @@ namespace ssa::presentation {
         CurrentDate currentDate)
         : QObject(parent), advancedState_(advancedState), filterState_(filterState),
           reportService_(
-              std::make_unique<application::SsaExecutadasReportService>(std::move(queryService))),
+              std::make_shared<application::SsaExecutadasReportService>(std::move(queryService))),
           currentDate_(std::move(currentDate)),
           options_{
               QVariantMap{{"label", tr("Exibir o grafico e somente o grafico")},
@@ -92,11 +93,6 @@ namespace ssa::presentation {
             disconnect(&operation->watcher, nullptr, this, nullptr);
         }
         stopReportOperations();
-        for (const auto& operation : reportOperations_) {
-            if (operation->watcher.isRunning()) {
-                operation->watcher.waitForFinished();
-            }
-        }
     }
 
     const QVariantList& AdvancedMacroFilterViewModel::options() const {
@@ -153,6 +149,15 @@ namespace ssa::presentation {
         return reportError_;
     }
 
+    bool AdvancedMacroFilterViewModel::hasActiveOperations() const {
+        return std::ranges::any_of(reportOperations_,
+                                   [](const auto& operation) { return !operation->completed; });
+    }
+
+    void AdvancedMacroFilterViewModel::cancel() {
+        stopReportOperations();
+    }
+
     void AdvancedMacroFilterViewModel::refreshFromState() {}
 
     void AdvancedMacroFilterViewModel::applyBaixarPreset() {
@@ -176,7 +181,7 @@ namespace ssa::presentation {
         operation->byDivision = byDivision;
         operation->state = std::make_shared<ReportTaskState>();
         const auto operationId = operation->id;
-        const auto service = reportService_.get();
+        const auto service = reportService_;
         const auto state = operation->state;
         const auto stopToken = operation->stopSource.get_token();
         connect(&operation->watcher, &QFutureWatcher<void>::finished, this,
@@ -184,6 +189,7 @@ namespace ssa::presentation {
         auto* watcher = &operation->watcher;
         latestReportOperationId_ = operationId;
         reportOperations_.push_back(std::move(operation));
+        emit activeOperationsChanged();
         emit reportChanged();
 
         watcher->setFuture(QtConcurrent::run(
@@ -217,6 +223,7 @@ namespace ssa::presentation {
         }
         auto& operation = **found;
         operation.completed = true;
+        emit activeOperationsChanged();
         if (!shuttingDown_ && operation.id == latestReportOperationId_) {
             std::optional<application::ExecutadasReportResult> result = std::nullopt;
             std::exception_ptr error;
@@ -225,11 +232,13 @@ namespace ssa::presentation {
                 std::scoped_lock lock(operation.state->mutex);
                 result = std::move(operation.state->result);
                 error = operation.state->error;
-                canceled = operation.state->canceled;
+                canceled = operation.state->canceled || operation.stopSource.stop_requested();
             }
             reportLoading_ = false;
             reportError_.clear();
-            if (!canceled && error) {
+            if (canceled) {
+                logAsyncOperationError("Macro report failed after cancellation:", error);
+            } else if (error) {
                 try {
                     std::rethrow_exception(error);
                 } catch (const std::exception& exception) {
@@ -247,13 +256,15 @@ namespace ssa::presentation {
                     }
                 }
             }
-            if (!reportError_.isEmpty()) {
-                reportText_ = reportError_;
-            } else {
-                reportText_ =
-                    reportRows_.empty()
-                        ? tr("Nenhuma SSA baixada no mes vigente para o recorte atual.")
-                        : tr("%1 linhas agrupadas no mes vigente.").arg(reportRows_.size());
+            if (!canceled) {
+                if (!reportError_.isEmpty()) {
+                    reportText_ = reportError_;
+                } else {
+                    reportText_ =
+                        reportRows_.empty()
+                            ? tr("Nenhuma SSA baixada no mes vigente para o recorte atual.")
+                            : tr("%1 linhas agrupadas no mes vigente.").arg(reportRows_.size());
+                }
             }
             emit reportChanged();
         }

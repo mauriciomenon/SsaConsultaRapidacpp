@@ -19,6 +19,8 @@ namespace ssa::presentation {
     class DatabaseSwitchViewModel final : public QObject {
         Q_OBJECT
         Q_PROPERTY(bool running READ running NOTIFY runningChanged)
+        Q_PROPERTY(bool canceling READ canceling NOTIFY stateChanged)
+        Q_PROPERTY(bool canCancel READ canCancel NOTIFY stateChanged)
         Q_PROPERTY(QString errorMessage READ errorMessage NOTIFY errorMessageChanged)
 
       public:
@@ -28,12 +30,16 @@ namespace ssa::presentation {
         ~DatabaseSwitchViewModel() override;
 
         [[nodiscard]] bool running() const;
+        [[nodiscard]] bool canceling() const;
+        [[nodiscard]] bool canCancel() const;
         [[nodiscard]] QString errorMessage() const;
         Q_INVOKABLE void openDatabase(const QUrl& url);
+        Q_INVOKABLE void cancel();
         void shutdown();
 
       signals:
         void runningChanged();
+        void stateChanged();
         void errorMessageChanged();
         void replacementStarted();
 
@@ -56,6 +62,7 @@ namespace ssa::presentation {
         std::filesystem::path pendingPath_;
         QString errorMessage_;
         bool running_ = false;
+        bool canceling_ = false;
         bool shuttingDown_ = false;
     };
 

@@ -39,6 +39,8 @@ namespace ssa::presentation {
         [[nodiscard]] QObject* macro();
         void setQuickSector(const QString& value);
         void refreshFromState();
+        [[nodiscard]] bool backgroundWorkRunning() const;
+        void cancelBackgroundWork();
 
       public slots:
         void clear();

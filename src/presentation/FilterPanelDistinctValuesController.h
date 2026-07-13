@@ -30,6 +30,8 @@ namespace ssa::presentation {
         void refreshColumnValueOptionsFor(const QString& key, std::uint64_t stateVersion = 0);
         void refreshQuickSectorOptions();
         void invalidateColumnValueRequests();
+        void cancel();
+        [[nodiscard]] bool running() const;
 
       signals:
         void columnValueOptionsReady(std::vector<std::string> values, std::size_t maxValueLength,
@@ -38,6 +40,7 @@ namespace ssa::presentation {
         void columnValueOptionsCanceled(QString key, std::uint64_t stateVersion);
         void quickSectorOptionsReady(std::vector<std::string> values);
         void quickSectorOptionsFailed(QString message);
+        void stateChanged();
 
       private:
         struct DistinctValueRequestContext {

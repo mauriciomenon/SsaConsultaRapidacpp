@@ -11,6 +11,7 @@
 #include "query/SsaQueryService.h"
 
 #include <QObject>
+#include <QPointer>
 #include <QVariantList>
 
 #include <map>
@@ -77,6 +78,8 @@ namespace ssa::presentation {
         void applyColumnSettings(std::vector<std::string> visibleColumns,
                                  std::map<std::string, int> columnWidths);
         void invalidateTotalRowsAll();
+        [[nodiscard]] bool backgroundWorkRunning() const;
+        void cancelBackgroundWork();
 
       signals:
         void pageChanged();
@@ -85,6 +88,7 @@ namespace ssa::presentation {
         void tableHeadersChanged();
         void preferencesSaveRequested();
         void filterHistoryChanged();
+        void backgroundActivityChanged();
 
       public slots:
         void load();
@@ -113,6 +117,7 @@ namespace ssa::presentation {
         mutable QVariantList cachedTableHeaders_;
         mutable bool tableHeadersDirty_{true};
         std::shared_ptr<query::SsaQueryService> queryService_;
+        std::vector<QPointer<DetailsViewModel>> detachedDetails_;
     };
 
 } // namespace ssa::presentation

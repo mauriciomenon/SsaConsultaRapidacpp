@@ -63,6 +63,8 @@ namespace ssa::presentation {
         [[nodiscard]] QVariantList relations() const;
         [[nodiscard]] int relationCount() const;
         [[nodiscard]] DerivadasGraphModel* graphModel();
+        [[nodiscard]] bool hasActiveOperations() const;
+        void cancel();
 
       public slots:
         void selectNextRelation();
@@ -72,6 +74,7 @@ namespace ssa::presentation {
         void changed();
         void relationNavigationChanged();
         void relationStatusChanged();
+        void activeOperationsChanged();
 
       private:
         enum class RelationQueryKind { DirectChildren, Record };

@@ -3,6 +3,7 @@
 #include "domain/ColumnCatalog.h"
 #include "infra/sqlite/SqliteConnection.h"
 #include "infra/sqlite/SqliteProgressHandler.h"
+#include "ports/OperationError.h"
 
 #include <algorithm>
 #include <cctype>
@@ -66,7 +67,9 @@ namespace ssa::infra::sqlite {
             for (const auto& expected : domain::ColumnCatalog::storageColumns()) {
                 const auto found = actual.find(expected.key);
                 if (found == actual.end()) {
-                    return {false, "Schema incompativel: coluna ausente " + expected.key};
+                    return {ports::DatabaseValidationStatus::Invalid,
+                            "Schema incompativel: coluna ausente " + expected.key,
+                            {}};
                 }
                 const auto expectedAffinity = expected.type == domain::ColumnType::Integer
                                                   ? SqliteAffinity::Integer
@@ -74,11 +77,12 @@ namespace ssa::infra::sqlite {
                 if (found->second != expectedAffinity) {
                     const auto name =
                         expectedAffinity == SqliteAffinity::Integer ? "INTEGER" : "TEXT";
-                    return {false, "Schema incompativel: " + expected.key +
-                                       " deve usar afinidade " + name};
+                    return {ports::DatabaseValidationStatus::Invalid,
+                            "Schema incompativel: " + expected.key + " deve usar afinidade " + name,
+                            {}};
                 }
             }
-            return {true, {}};
+            return {ports::DatabaseValidationStatus::Valid, {}, {}};
         }
 
         bool hasRecords(sqlite3* database) {
@@ -92,40 +96,54 @@ namespace ssa::infra::sqlite {
     SqliteDatabaseValidator::validate(const std::filesystem::path& path,
                                       const std::stop_token stopToken) const {
         if (stopToken.stop_requested()) {
-            return {false, "Validacao do banco cancelada"};
+            return {ports::DatabaseValidationStatus::Canceled, "Validacao do banco cancelada", {}};
         }
         std::error_code error;
         const bool exists = std::filesystem::exists(path, error);
         if (error || !exists) {
-            return {false, "O arquivo de banco nao existe"};
+            return {ports::DatabaseValidationStatus::Invalid, "O arquivo de banco nao existe", {}};
         }
         if (!std::filesystem::is_regular_file(path, error) || error) {
-            return {false, "O caminho selecionado nao e um arquivo regular"};
+            return {ports::DatabaseValidationStatus::Invalid,
+                    "O caminho selecionado nao e um arquivo regular",
+                    {}};
         }
 
         try {
             SqliteConnection connection(path, SqliteOpenMode::ReadOnly);
             SqliteProgressHandler progress(connection.handle(), stopToken);
             if (!hasValidHeader(connection.handle())) {
-                return {false, "O arquivo nao e um banco SQLite valido"};
+                return {ports::DatabaseValidationStatus::Invalid,
+                        "O arquivo nao e um banco SQLite valido",
+                        {}};
             }
             if (!hasSsaTable(connection.handle())) {
-                return {false, "O banco nao contem a tabela ssa_table"};
+                return {ports::DatabaseValidationStatus::Invalid,
+                        "O banco nao contem a tabela ssa_table",
+                        {}};
             }
-            if (auto result = validateSchema(connection.handle()); !result.valid) {
+            if (auto result = validateSchema(connection.handle()); !result.valid()) {
                 return result;
             }
             if (!hasRecords(connection.handle())) {
-                return {false, "A tabela ssa_table nao contem registros"};
+                return {ports::DatabaseValidationStatus::Invalid,
+                        "A tabela ssa_table nao contem registros",
+                        {}};
             }
-            return {true, {}};
+            return {ports::DatabaseValidationStatus::Valid, {}, {}};
         } catch (const std::system_error& exception) {
             if (exception.code() == std::errc::operation_canceled) {
-                return {false, "Validacao do banco cancelada"};
+                return {
+                    ports::DatabaseValidationStatus::Canceled, "Validacao do banco cancelada", {}};
             }
-            return {false, "O arquivo nao e um banco SQLite valido"};
-        } catch (const std::exception&) {
-            return {false, "O arquivo nao e um banco SQLite valido"};
+            return {ports::DatabaseValidationStatus::Invalid,
+                    "O arquivo nao e um banco SQLite valido", exception.what()};
+        } catch (const ports::OperationError& exception) {
+            return {ports::DatabaseValidationStatus::Invalid,
+                    "O arquivo nao e um banco SQLite valido", exception.diagnostic()};
+        } catch (const std::exception& exception) {
+            return {ports::DatabaseValidationStatus::Failed, "Falha ao validar o banco selecionado",
+                    exception.what()};
         }
     }
 

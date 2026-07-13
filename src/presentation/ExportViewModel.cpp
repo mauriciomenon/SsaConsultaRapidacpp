@@ -2,6 +2,7 @@
 
 #include "qt/FilesystemPath.h"
 
+#include <QThreadPool>
 #include <QtConcurrentRun>
 
 #include <filesystem>
@@ -43,9 +44,7 @@ namespace ssa::presentation {
         if (exportThreadPool != nullptr) {
             exportThreadPool_ = exportThreadPool;
         } else {
-            ownedExportThreadPool_ = std::make_unique<QThreadPool>();
-            ownedExportThreadPool_->setMaxThreadCount(1);
-            exportThreadPool_ = ownedExportThreadPool_.get();
+            exportThreadPool_ = QThreadPool::globalInstance();
         }
         connect(&exportWatcher_, &QFutureWatcher<void>::finished, this,
                 &ExportViewModel::finishExport);
@@ -55,13 +54,7 @@ namespace ssa::presentation {
         disconnect(&exportWatcher_, nullptr, this, nullptr);
         exportStopSource_.request_stop();
         exportWatcher_.cancel();
-        if (exportWatcher_.isRunning()) {
-            exportWatcher_.waitForFinished();
-        }
         resultState_.reset();
-        if (ownedExportThreadPool_) {
-            ownedExportThreadPool_->waitForDone();
-        }
     }
 
     QString ExportViewModel::lastMessage() const {
@@ -78,6 +71,14 @@ namespace ssa::presentation {
 
     bool ExportViewModel::running() const {
         return running_;
+    }
+
+    bool ExportViewModel::canceling() const {
+        return canceling_;
+    }
+
+    bool ExportViewModel::canCancel() const {
+        return running_ && !canceling_;
     }
 
     void ExportViewModel::exportFilteredList(const QUrl& outputUrl) {
@@ -100,6 +101,7 @@ namespace ssa::presentation {
 
         running_ = true;
         emit runningChanged();
+        emit stateChanged();
 
         const std::shared_ptr<application::SsaWorkflowService> workflows = workflows_;
         const auto state = std::make_shared<ResultState>();
@@ -117,6 +119,15 @@ namespace ssa::presentation {
                     state->error = std::current_exception();
                 }
             }));
+    }
+
+    void ExportViewModel::cancel() {
+        if (!canCancel()) {
+            return;
+        }
+        canceling_ = true;
+        emit stateChanged();
+        exportStopSource_.request_stop();
     }
 
     void ExportViewModel::finishExport() {
@@ -148,7 +159,9 @@ namespace ssa::presentation {
     void ExportViewModel::applyResult(const ports::WorkflowResult& result) {
         if (running_) {
             running_ = false;
+            canceling_ = false;
             emit runningChanged();
+            emit stateChanged();
         }
         setExportState(statusName(result.status), QString::fromStdString(result.message),
                        result.ok());

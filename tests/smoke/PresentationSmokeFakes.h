@@ -181,12 +181,13 @@ namespace ssa::tests::presentation_smoke {
         explicit FakePreferences(ssa::ports::UserPreferencesSnapshot initial = {})
             : snapshot_(std::move(initial)) {}
 
-        ssa::ports::UserPreferencesSnapshot load() const override {
+        ssa::ports::UserPreferencesSnapshot load(std::stop_token = {}) const override {
             const std::scoped_lock lock(mutex_);
             return snapshot_;
         }
 
-        void save(const ssa::ports::UserPreferencesSnapshot& snapshot) const override {
+        void save(const ssa::ports::UserPreferencesSnapshot& snapshot,
+                  std::stop_token = {}) const override {
             const std::scoped_lock lock(mutex_);
             if (!saveError_.empty()) {
                 auto saveError = saveError_;
@@ -221,13 +222,14 @@ namespace ssa::tests::presentation_smoke {
 
     class FakeFilterPresetStore final : public ssa::ports::IFilterPresetStore {
       public:
-        ssa::ports::FilterPresetSnapshot load(std::filesystem::path) const override {
+        ssa::ports::FilterPresetSnapshot load(std::filesystem::path,
+                                              std::stop_token = {}) const override {
             const std::scoped_lock lock(mutex_);
             return nextLoad_;
         }
 
-        void save(std::filesystem::path path,
-                  const ssa::ports::FilterPresetSnapshot& snapshot) const override {
+        void save(std::filesystem::path path, const ssa::ports::FilterPresetSnapshot& snapshot,
+                  std::stop_token = {}) const override {
             const std::scoped_lock lock(mutex_);
             savedPath_ = std::move(path);
             saved_ = snapshot;

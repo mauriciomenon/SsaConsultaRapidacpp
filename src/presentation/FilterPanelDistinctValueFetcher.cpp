@@ -1,6 +1,7 @@
 #include "presentation/FilterPanelDistinctValueFetcher.h"
 
 #include "ports/OperationError.h"
+#include "presentation/AsyncOperationErrorLog.h"
 #include "query/SsaQueryService.h"
 
 #include <QDebug>
@@ -49,8 +50,17 @@ namespace ssa::presentation {
     FilterPanelDistinctValueFetcher::~FilterPanelDistinctValueFetcher() {
         disconnect(&watcher_, nullptr, this, nullptr);
         clearPendingRequests();
-        if (watcher_.isRunning()) {
-            watcher_.waitForFinished();
+    }
+
+    bool FilterPanelDistinctValueFetcher::running() const {
+        return activeRequestInFlight_;
+    }
+
+    void FilterPanelDistinctValueFetcher::cancelRequests() {
+        const auto pending = std::move(pendingRequests_);
+        clearPendingRequests();
+        for (const auto& request : pending) {
+            emit this->valuesCanceled(request.requestToken);
         }
     }
 
@@ -100,6 +110,7 @@ namespace ssa::presentation {
                                                       const std::uint64_t requestToken,
                                                       const bool measureMaxValueLength) {
         activeRequestInFlight_ = true;
+        emit stateChanged();
         activeRequestToken_ = requestToken;
         activeStopSource_ = std::stop_source{};
         activeCancelToken_ = std::make_shared<std::atomic_bool>(false);
@@ -161,6 +172,9 @@ namespace ssa::presentation {
             activeResult_.reset();
         }
         if (cancelled || (result && result->canceled)) {
+            if (result && result->error) {
+                logAsyncOperationError("Column value query canceled after failure:", result->error);
+            }
             emit this->valuesCanceled(activeRequestToken_);
         } else {
             if (result && result->error) {
@@ -179,6 +193,8 @@ namespace ssa::presentation {
             auto pending = std::move(pendingRequests_.front());
             pendingRequests_.pop_front();
             startWorker(pending.request, pending.requestToken, pending.measureMaxValueLength);
+        } else {
+            emit stateChanged();
         }
     }
 

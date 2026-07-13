@@ -6,9 +6,16 @@
 
 namespace ssa::ports {
 
+    enum class DatabaseValidationStatus { Valid, Invalid, Canceled, Failed };
+
     struct DatabaseValidationResult {
-        bool valid = false;
+        DatabaseValidationStatus status{DatabaseValidationStatus::Invalid};
         std::string message;
+        std::string diagnostic;
+
+        [[nodiscard]] bool valid() const {
+            return status == DatabaseValidationStatus::Valid;
+        }
     };
 
     class IDatabaseValidator {

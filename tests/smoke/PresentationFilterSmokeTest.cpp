@@ -23,6 +23,7 @@
 #include <QObject>
 #include <QSignalSpy>
 #include <QString>
+#include <QThreadPool>
 #include <QVariantMap>
 #include <QtTest>
 
@@ -48,8 +49,10 @@ namespace {
     class BlockingPageRepository final : public ssa::ports::ISsaRepository {
       public:
         explicit BlockingPageRepository(const bool blockDistinct = false,
-                                        const bool failDistinct = false)
-            : blockDistinct_(blockDistinct), failDistinct_(failDistinct) {}
+                                        const bool failDistinct = false,
+                                        const bool failAfterDistinctCancel = false)
+            : blockDistinct_(blockDistinct), failDistinct_(failDistinct),
+              failAfterDistinctCancel_(failAfterDistinctCancel) {}
 
         ssa::domain::SsaPageResult page(const ssa::domain::SsaPageRequest&,
                                         const std::stop_token stopToken = {}) const override {
@@ -79,6 +82,7 @@ namespace {
         std::vector<std::string>
         distinctValues(const ssa::domain::DistinctValuesRequest&,
                        const std::stop_token stopToken = {}) const override {
+            distinctCalls_.fetch_add(1, std::memory_order_relaxed);
             {
                 const std::scoped_lock lock(metricsMutex_);
                 distinctThread_ = std::this_thread::get_id();
@@ -88,7 +92,11 @@ namespace {
                 while (!stopToken.stop_requested()) {
                     std::this_thread::yield();
                 }
+                std::this_thread::sleep_for(std::chrono::milliseconds{100});
                 metricsFinished_.store(true, std::memory_order_release);
+                if (failAfterDistinctCancel_) {
+                    throw std::runtime_error("distinct failed after cancel");
+                }
                 throw std::system_error(std::make_error_code(std::errc::operation_canceled));
             }
             metricsFinished_.store(true, std::memory_order_release);
@@ -127,6 +135,10 @@ namespace {
             return metricsFinished_.load(std::memory_order_acquire);
         }
 
+        [[nodiscard]] int distinctCalls() const {
+            return distinctCalls_.load(std::memory_order_relaxed);
+        }
+
         [[nodiscard]] bool metricsShareWorkerThread() const {
             const std::scoped_lock lock(metricsMutex_);
             return distinctThread_ != std::thread::id{} && distinctThread_ == maxLengthThread_;
@@ -135,10 +147,12 @@ namespace {
       private:
         bool blockDistinct_{false};
         bool failDistinct_{false};
+        bool failAfterDistinctCancel_{false};
         mutable std::atomic_bool started_{false};
         mutable std::atomic_bool finished_{false};
         mutable std::atomic_bool metricsStarted_{false};
         mutable std::atomic_bool metricsFinished_{false};
+        mutable std::atomic_int distinctCalls_{0};
         mutable std::mutex metricsMutex_;
         mutable std::thread::id distinctThread_;
         mutable std::thread::id maxLengthThread_;
@@ -618,6 +632,41 @@ namespace {
             QCOMPARE(macro->reportTitle(), QString("SSA Executadas Divisao"));
         }
 
+        void macro_report_destructor_is_non_blocking_and_keeps_worker_dependencies_alive() {
+            auto repository = std::make_shared<BlockingMacroReportRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            QElapsedTimer destructionTimer;
+            {
+                ssa::presentation::filterpanel::FilterPanelState state;
+                ssa::presentation::AdvancedMacroFilterViewModel macro(state.advanced(), state,
+                                                                      service);
+                macro.setSelectedMacro(QStringLiteral("ssas_executadas_setor"));
+                QTRY_VERIFY_WITH_TIMEOUT(repository->firstStarted(), 1000);
+                destructionTimer.start();
+            }
+
+            QVERIFY(destructionTimer.elapsed() < 50);
+            QTRY_VERIFY_WITH_TIMEOUT(repository->firstFinished(), 1000);
+        }
+
+        void cancelAfterMacroWorkerCompletedBeforeTerminalDoesNotPublishReport() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::filterpanel::FilterPanelState state;
+            ssa::presentation::AdvancedMacroFilterViewModel macro(state.advanced(), state, service);
+
+            macro.setSelectedMacro(QStringLiteral("ssas_executadas_setor"));
+            QVERIFY(QThreadPool::globalInstance()->waitForDone(1000));
+            QVERIFY(macro.reportLoading());
+
+            macro.cancel();
+
+            QTRY_VERIFY_WITH_TIMEOUT(!macro.reportLoading(), 1000);
+            QCOMPARE(macro.reportRows().size(), 0);
+            QCOMPARE(macro.reportText(), QString());
+            QCOMPARE(macro.reportError(), QString());
+        }
+
         void successful_workflow_invalidates_cached_distinct_values() {
             auto repository = std::make_shared<MutableDistinctRepository>();
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
@@ -672,10 +721,11 @@ namespace {
             QVERIFY(!failureMessage.contains("distinct failed"));
         }
 
-        void distinct_value_fetcher_destructor_drains_worker_without_callback() {
+        void distinct_value_fetcher_destructor_is_non_blocking_and_drops_callback() {
             auto repository = std::make_shared<BlockingPageRepository>(true, false);
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
             int callbackCount = 0;
+            QElapsedTimer destructionTimer;
             {
                 ssa::presentation::FilterPanelDistinctValueFetcher fetcher(service);
                 connect(&fetcher, &ssa::presentation::FilterPanelDistinctValueFetcher::valuesReady,
@@ -688,17 +738,20 @@ namespace {
                 request.columnKey = "situacao";
                 fetcher.requestValues(request, 1, true);
                 QTRY_VERIFY_WITH_TIMEOUT(repository->metricsStarted(), 1000);
+                destructionTimer.start();
             }
 
-            QVERIFY(repository->metricsFinished());
+            QVERIFY(destructionTimer.elapsed() < 50);
+            QTRY_VERIFY_WITH_TIMEOUT(repository->metricsFinished(), 1000);
             QCoreApplication::processEvents();
             QCOMPARE(callbackCount, 0);
         }
 
-        void page_query_destructor_drains_the_canceled_worker() {
+        void page_query_destructor_is_non_blocking_and_drops_callback() {
             auto repository = std::make_shared<BlockingPageRepository>();
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
             int callbackCount = 0;
+            QElapsedTimer destructionTimer;
 
             {
                 ssa::presentation::PageQueryCoordinator coordinator(service);
@@ -710,17 +763,20 @@ namespace {
                         [&callbackCount] { ++callbackCount; });
                 coordinator.run({});
                 QTRY_VERIFY_WITH_TIMEOUT(repository->started(), 1000);
+                destructionTimer.start();
             }
 
-            QVERIFY(repository->finished());
+            QVERIFY(destructionTimer.elapsed() < 50);
+            QTRY_VERIFY_WITH_TIMEOUT(repository->finished(), 1000);
             QCoreApplication::processEvents();
             QCOMPARE(callbackCount, 0);
         }
 
-        void workflow_runner_destructor_drains_the_worker() {
+        void workflow_runner_destructor_is_non_blocking_and_drops_callback() {
             auto importPort = std::make_shared<BlockingImportPort>();
             auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(importPort);
             int callbackCount = 0;
+            QElapsedTimer destructionTimer;
 
             {
                 ssa::presentation::WorkflowCommandRunner runner(workflows);
@@ -728,11 +784,84 @@ namespace {
                         [&callbackCount] { ++callbackCount; });
                 runner.rescan(ssa::ports::RescanMode::Incremental);
                 QTRY_VERIFY_WITH_TIMEOUT(importPort->started(), 1000);
+                destructionTimer.start();
             }
 
-            QVERIFY(importPort->finished());
+            QVERIFY(destructionTimer.elapsed() < 50);
+            QTRY_VERIFY_WITH_TIMEOUT(importPort->finished(), 1000);
             QCoreApplication::processEvents();
             QCOMPARE(callbackCount, 0);
+        }
+
+        void application_shutdown_waits_for_distinct_query_terminal() {
+            auto repository = std::make_shared<BlockingPageRepository>(true, false);
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            ssa::presentation::MainViewModel model(service, commands);
+
+            model.browse()->filters()->refreshColumnValueOptionsFor(QStringLiteral("situacao"));
+            QTRY_VERIFY_WITH_TIMEOUT(repository->metricsStarted(), 1000);
+            QVERIFY(model.canCancelActivity());
+
+            model.requestShutdown();
+
+            QVERIFY(!model.shutdownReady());
+            QVERIFY(!model.canCancelActivity());
+            QTRY_VERIFY_WITH_TIMEOUT(repository->metricsFinished(), 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(model.shutdownReady(), 1000);
+        }
+
+        void contextual_cancel_reports_canceling_until_distinct_terminal() {
+            auto repository = std::make_shared<BlockingPageRepository>(true, false);
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            ssa::presentation::MainViewModel model(service, commands);
+            model.browse()->filters()->refreshColumnValueOptionsFor(QStringLiteral("situacao"));
+            QTRY_VERIFY_WITH_TIMEOUT(repository->metricsStarted(), 1000);
+
+            model.requestCancelAll();
+
+            QVERIFY(model.cancelingActivity());
+            QVERIFY(!model.canCancelActivity());
+            QVERIFY(model.browse()->filters()->columnValueOptionsLoadingFor(
+                QStringLiteral("situacao")));
+            QTRY_VERIFY_WITH_TIMEOUT(repository->metricsFinished(), 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(!model.cancelingActivity(), 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(!model.browse()->filters()->columnValueOptionsLoadingFor(
+                                         QStringLiteral("situacao")),
+                                     1000);
+            QCOMPARE(model.browse()->status()->message(), QString("Operacao cancelada"));
+
+            const auto callsBeforeRetry = repository->distinctCalls();
+            model.browse()->filters()->refreshColumnValueOptionsFor(QStringLiteral("situacao"));
+            QTRY_VERIFY_WITH_TIMEOUT(repository->distinctCalls() > callsBeforeRetry, 1000);
+            QVERIFY(model.browse()->filters()->columnValueOptionsLoadingFor(
+                QStringLiteral("situacao")));
+            model.requestCancelAll();
+            QTRY_VERIFY_WITH_TIMEOUT(!model.browse()->filters()->columnValueOptionsLoadingFor(
+                                         QStringLiteral("situacao")),
+                                     1000);
+        }
+
+        void distinct_cancel_logs_a_concurrent_failure_without_publishing_it() {
+            QTest::ignoreMessage(QtWarningMsg,
+                                 "Column value query canceled after failure: distinct failed after "
+                                 "cancel");
+            auto repository = std::make_shared<BlockingPageRepository>(true, false, true);
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            ssa::presentation::MainViewModel model(service, commands);
+
+            model.browse()->filters()->refreshColumnValueOptionsFor(QStringLiteral("situacao"));
+            QTRY_VERIFY_WITH_TIMEOUT(repository->metricsStarted(), 1000);
+            model.requestCancelAll();
+
+            QTRY_VERIFY_WITH_TIMEOUT(repository->metricsFinished(), 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(!model.cancelingActivity(), 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(!model.browse()->filters()->columnValueOptionsLoadingFor(
+                                         QStringLiteral("situacao")),
+                                     1000);
+            QCOMPARE(model.browse()->status()->message(), QString("Operacao cancelada"));
         }
 
         void export_view_model_converts_port_exception_to_failure() {
@@ -1568,10 +1697,15 @@ namespace {
                 browse.apply();
                 QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(),
                                           static_cast<std::size_t>(index + 1), 1000);
+                QTRY_VERIFY_WITH_TIMEOUT(!browse.status()->loading(), 1000);
             }
             QCOMPARE(browse.filterUndoDepth(), 10);
 
+            const auto requestCountBeforeRepeatedApply = repository->requests().size();
             browse.apply();
+            QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(),
+                                      requestCountBeforeRepeatedApply + 1, 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(!browse.status()->loading(), 1000);
             QCOMPARE(browse.filterUndoDepth(), 10);
 
             const auto requestCountBeforeUndo = repository->requests().size();

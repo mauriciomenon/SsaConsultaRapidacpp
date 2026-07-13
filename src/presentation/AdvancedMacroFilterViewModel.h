@@ -50,12 +50,15 @@ namespace ssa::presentation {
         [[nodiscard]] const QVariantList& reportRows() const;
         [[nodiscard]] bool reportLoading() const;
         [[nodiscard]] QString reportError() const;
+        [[nodiscard]] bool hasActiveOperations() const;
         void refreshFromState();
+        void cancel();
 
       signals:
         void changed();
         void filterStateChanged();
         void reportChanged();
+        void activeOperationsChanged();
 
       private:
         struct ReportTaskState final {
@@ -83,7 +86,7 @@ namespace ssa::presentation {
 
         filterpanel::FilterPanelAdvancedState& advancedState_;
         const filterpanel::FilterPanelState& filterState_;
-        std::unique_ptr<application::SsaExecutadasReportService> reportService_;
+        std::shared_ptr<application::SsaExecutadasReportService> reportService_;
         CurrentDate currentDate_;
         QVariantList options_;
         QString selectedMacro_;

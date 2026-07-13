@@ -43,9 +43,6 @@ namespace ssa::presentation {
         shuttingDown_ = true;
         disconnect(&watcher_, nullptr, this, nullptr);
         completeTask(activeTask_);
-        if (watcher_.isRunning()) {
-            watcher_.waitForFinished();
-        }
         activeTask_.reset();
     }
 

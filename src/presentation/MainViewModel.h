@@ -17,6 +17,7 @@
 
 #include <QObject>
 #include <QString>
+#include <QTimer>
 
 #include <memory>
 
@@ -33,6 +34,11 @@ namespace ssa::presentation {
         Q_PROPERTY(QObject* selectionFlow READ selectionFlow CONSTANT)
         Q_PROPERTY(QObject* requestFlow READ requestFlow CONSTANT)
         Q_PROPERTY(QObject* preferenceFlow READ preferenceFlow CONSTANT)
+        Q_PROPERTY(bool shutdownInProgress READ shutdownInProgress NOTIFY shutdownStateChanged)
+        Q_PROPERTY(bool shutdownReady READ shutdownReady NOTIFY shutdownStateChanged)
+        Q_PROPERTY(bool forceCloseAvailable READ forceCloseAvailable NOTIFY shutdownStateChanged)
+        Q_PROPERTY(bool canCancelActivity READ canCancelActivity NOTIFY activityStateChanged)
+        Q_PROPERTY(bool cancelingActivity READ cancelingActivity NOTIFY activityStateChanged)
 
       public:
         MainViewModel(std::shared_ptr<query::SsaQueryService> queryService,
@@ -55,10 +61,26 @@ namespace ssa::presentation {
         [[nodiscard]] QObject* requestFlow();
         [[nodiscard]] QObject* preferenceFlow();
         Q_INVOKABLE bool copyTextToClipboard(const QString& text);
+        [[nodiscard]] bool shutdownInProgress() const;
+        [[nodiscard]] bool shutdownReady() const;
+        [[nodiscard]] bool forceCloseAvailable() const;
+        [[nodiscard]] bool canCancelActivity();
+        [[nodiscard]] bool cancelingActivity();
+        Q_INVOKABLE void requestCancelAll();
+        Q_INVOKABLE void requestShutdown();
+        Q_INVOKABLE void requestForcedShutdown();
+
+      signals:
+        void shutdownStateChanged();
+        void activityStateChanged();
+        void forcedShutdownRequested();
 
       private:
         void connectPreferenceFlows();
         void connectWorkflowRefresh();
+        void handleActivityStateChanged();
+        void checkShutdownReady();
+        [[nodiscard]] bool hasActiveOperations();
 
         BrowseViewModel browse_;
         ColumnSettingsModel columns_;
@@ -73,6 +95,12 @@ namespace ssa::presentation {
         MainRequestFlowCoordinator requestFlow_;
         QString pendingWorkflowRefreshMessage_;
         QString pendingWorkflowRefreshWarning_;
+        QTimer shutdownPoll_;
+        QTimer forceCloseTimer_;
+        bool shutdownInProgress_{false};
+        bool shutdownReady_{false};
+        bool forceCloseAvailable_{false};
+        bool backgroundCanceling_{false};
     };
 
 } // namespace ssa::presentation

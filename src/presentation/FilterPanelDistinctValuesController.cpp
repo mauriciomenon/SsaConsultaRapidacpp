@@ -29,6 +29,10 @@ namespace ssa::presentation {
     }
 
     void FilterPanelDistinctValuesController::configureConnections() {
+        connect(&columnValueOptionsFetcher_, &FilterPanelDistinctValueFetcher::stateChanged, this,
+                &FilterPanelDistinctValuesController::stateChanged);
+        connect(&quickSectorOptionsFetcher_, &FilterPanelDistinctValueFetcher::stateChanged, this,
+                &FilterPanelDistinctValuesController::stateChanged);
         connect(&columnValueOptionsFetcher_, &FilterPanelDistinctValueFetcher::valuesReady, this,
                 [this](std::uint64_t requestToken, std::vector<std::string> values,
                        const std::size_t maxValueLength) {
@@ -49,6 +53,15 @@ namespace ssa::presentation {
     void FilterPanelDistinctValuesController::invalidateColumnValueRequests() {
         columnValueRequests_.clear();
         columnValueOptionsFetcher_.clearPendingRequests();
+    }
+
+    void FilterPanelDistinctValuesController::cancel() {
+        columnValueOptionsFetcher_.cancelRequests();
+        quickSectorOptionsFetcher_.cancelRequests();
+    }
+
+    bool FilterPanelDistinctValuesController::running() const {
+        return columnValueOptionsFetcher_.running() || quickSectorOptionsFetcher_.running();
     }
 
     void FilterPanelDistinctValuesController::refreshColumnValueOptionsFor(

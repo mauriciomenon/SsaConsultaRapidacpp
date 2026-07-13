@@ -4,6 +4,7 @@
 
 #include <QVariantMap>
 
+#include <algorithm>
 #include <utility>
 
 namespace ssa::presentation {
@@ -38,6 +39,14 @@ namespace ssa::presentation {
                 &BrowseViewModel::preferencesSaveRequested);
         connect(&orchestrator_, &BrowseOrchestrator::filterHistoryChanged, this,
                 &BrowseViewModel::filterHistoryChanged);
+        connect(&filters_, &FilterPanelViewModel::backgroundActivityChanged, this,
+                &BrowseViewModel::backgroundActivityChanged);
+        connect(&details_, &DetailsViewModel::relationStatusChanged, this,
+                &BrowseViewModel::backgroundActivityChanged);
+        connect(&details_, &DetailsViewModel::activeOperationsChanged, this,
+                &BrowseViewModel::backgroundActivityChanged);
+        connect(&orchestrator_, &BrowseOrchestrator::activeOperationsChanged, this,
+                &BrowseViewModel::backgroundActivityChanged);
     }
 
     SearchViewModel* BrowseViewModel::search() {
@@ -186,6 +195,15 @@ namespace ssa::presentation {
     DetailsViewModel* BrowseViewModel::createDetailsWindowModel(const QString& ssaNumber,
                                                                 QObject* parent) {
         auto* model = new DetailsViewModel(queryService_, parent);
+        detachedDetails_.emplace_back(model);
+        connect(model, &DetailsViewModel::activeOperationsChanged, this,
+                &BrowseViewModel::backgroundActivityChanged);
+        connect(model, &QObject::destroyed, this, [this, model] {
+            std::erase_if(detachedDetails_, [model](const auto& details) {
+                return details.isNull() || details.data() == model;
+            });
+            emit backgroundActivityChanged();
+        });
         if (!ssaNumber.trimmed().isEmpty()) {
             model->requestLoadBySsaNumber(ssaNumber);
         }
@@ -211,6 +229,25 @@ namespace ssa::presentation {
 
     void BrowseViewModel::invalidateTotalRowsAll() {
         orchestrator_.invalidateTotalRowsAll();
+    }
+
+    bool BrowseViewModel::backgroundWorkRunning() const {
+        const bool detachedActive = std::ranges::any_of(detachedDetails_, [](const auto& details) {
+            return details && details->hasActiveOperations();
+        });
+        return orchestrator_.hasActiveOperations() || filters_.backgroundWorkRunning() ||
+               details_.hasActiveOperations() || detachedActive;
+    }
+
+    void BrowseViewModel::cancelBackgroundWork() {
+        orchestrator_.cancelCurrentRequest();
+        filters_.cancelBackgroundWork();
+        details_.cancel();
+        for (const auto& details : detachedDetails_) {
+            if (details) {
+                details->cancel();
+            }
+        }
     }
 
     void BrowseViewModel::load() {

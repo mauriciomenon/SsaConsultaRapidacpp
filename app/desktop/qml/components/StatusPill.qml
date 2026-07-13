@@ -8,6 +8,7 @@ Rectangle {
     required property var status
     property var browse: null
     property var weekModel: null
+    property var activityController: null
 
     Layout.preferredHeight: 32
     color: Theme.panel
@@ -44,6 +45,15 @@ Rectangle {
             text: root.weekModel !== null ? root.weekModel.dateTimeLabel : ""
             color: Theme.mutedText
             font.pixelSize: Theme.fontSizeMicro
+        }
+
+        Button {
+            objectName: "statusCancelButton"
+            visible: root.activityController !== null && (root.activityController.canCancelActivity || root.activityController.cancelingActivity)
+            enabled: root.activityController !== null && root.activityController.canCancelActivity
+            text: root.activityController !== null && root.activityController.cancelingActivity ? "Cancelando..." : "Cancelar"
+            flat: true
+            onClicked: root.activityController.requestCancelAll()
         }
     }
 }

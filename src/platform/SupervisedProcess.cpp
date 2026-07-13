@@ -1,9 +1,14 @@
 #include "platform/SupervisedProcess.h"
 
 #include <QProcess>
+#include <QThread>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
+#include <mutex>
+#include <optional>
+#include <set>
 #include <utility>
 
 #ifdef Q_OS_WIN
@@ -24,6 +29,90 @@ namespace ssa::platform {
         constexpr auto kPollInterval = 25ms;
         constexpr auto kGracePeriod = 500ms;
         constexpr auto kForcedStopTimeout = 5s;
+
+        std::mutex processRegistryMutex;
+        std::atomic_bool forceStopRequested{false};
+        std::atomic_bool forceStopFailed{false};
+        std::size_t processStartsInFlight = 0;
+
+#ifdef Q_OS_WIN
+        std::vector<HANDLE> processRegistry;
+
+        class RegisteredProcessTree final {
+          public:
+            explicit RegisteredProcessTree(const HANDLE job) : job_(job) {
+                const std::scoped_lock lock(processRegistryMutex);
+                processRegistry.push_back(job_);
+            }
+
+            ~RegisteredProcessTree() {
+                const std::scoped_lock lock(processRegistryMutex);
+                std::erase(processRegistry, job_);
+            }
+
+            RegisteredProcessTree(const RegisteredProcessTree&) = delete;
+            RegisteredProcessTree& operator=(const RegisteredProcessTree&) = delete;
+
+          private:
+            HANDLE job_ = nullptr;
+        };
+#else
+        std::set<qint64> processRegistry;
+
+        class RegisteredProcessTree final {
+          public:
+            explicit RegisteredProcessTree(const qint64 processGroup)
+                : processGroup_(processGroup) {
+                const std::scoped_lock lock(processRegistryMutex);
+                processRegistry.insert(processGroup_);
+            }
+
+            ~RegisteredProcessTree() {
+                const std::scoped_lock lock(processRegistryMutex);
+                processRegistry.erase(processGroup_);
+            }
+
+            RegisteredProcessTree(const RegisteredProcessTree&) = delete;
+            RegisteredProcessTree& operator=(const RegisteredProcessTree&) = delete;
+
+          private:
+            qint64 processGroup_{0};
+        };
+#endif
+
+        class ProcessStartRegistration final {
+          public:
+            ProcessStartRegistration() {
+                const std::scoped_lock lock(processRegistryMutex);
+                if (!forceStopRequested.load(std::memory_order_relaxed)) {
+                    ++processStartsInFlight;
+                    active_ = true;
+                }
+            }
+
+            ~ProcessStartRegistration() {
+                complete();
+            }
+
+            ProcessStartRegistration(const ProcessStartRegistration&) = delete;
+            ProcessStartRegistration& operator=(const ProcessStartRegistration&) = delete;
+
+            [[nodiscard]] bool allowed() const {
+                return active_;
+            }
+
+            void complete() {
+                if (!active_) {
+                    return;
+                }
+                const std::scoped_lock lock(processRegistryMutex);
+                --processStartsInFlight;
+                active_ = false;
+            }
+
+          private:
+            bool active_{false};
+        };
 
         void appendLimited(QByteArray& destination, const QByteArray& source) {
             const auto remaining = kDiagnosticLimit - destination.size();
@@ -199,13 +288,18 @@ namespace ssa::platform {
     } // namespace
 
     SupervisedProcessResult SupervisedProcess::run(const SupervisedProcessRequest& request,
-                                                   const std::stop_token stopToken) {
+                                                   const std::stop_token& stopToken) {
         if (stopToken.stop_requested()) {
             return {SupervisedProcessStatus::Canceled, -1, {}};
         }
         if (request.program.isEmpty() || request.timeout <= 0ms) {
             return {SupervisedProcessStatus::StartFailed, -1,
                     QStringLiteral("invalid supervised process request")};
+        }
+
+        ProcessStartRegistration startRegistration;
+        if (!startRegistration.allowed()) {
+            return {SupervisedProcessStatus::Canceled, -1, {}};
         }
 
         QProcess process;
@@ -241,7 +335,8 @@ namespace ssa::platform {
         const auto deadline = std::chrono::steady_clock::now() + request.timeout;
         process.start();
         while (process.state() == QProcess::Starting) {
-            if (stopToken.stop_requested()) {
+            const bool forced = forceStopRequested.load(std::memory_order_relaxed);
+            if (stopToken.stop_requested() || forced) {
                 process.waitForStarted(static_cast<int>(kPollInterval.count()));
                 const auto processGroup = process.processId();
 #ifdef Q_OS_WIN
@@ -249,6 +344,9 @@ namespace ssa::platform {
 #else
                 const auto stopped = terminateTree(process, processGroup);
 #endif
+                if (!stopped) {
+                    forceStopFailed.store(true, std::memory_order_relaxed);
+                }
                 return {stopped ? SupervisedProcessStatus::Canceled
                                 : SupervisedProcessStatus::FailedToStop,
                         process.exitCode(), diagnosticText(process, standardError, standardOutput)};
@@ -261,6 +359,9 @@ namespace ssa::platform {
 #else
                 const auto stopped = terminateTree(process, processGroup);
 #endif
+                if (!stopped) {
+                    forceStopFailed.store(true, std::memory_order_relaxed);
+                }
                 return {stopped ? SupervisedProcessStatus::TimedOut
                                 : SupervisedProcessStatus::FailedToStop,
                         process.exitCode(), diagnosticText(process, standardError, standardOutput)};
@@ -274,15 +375,25 @@ namespace ssa::platform {
                     diagnosticText(process, standardError, standardOutput)};
         }
         const auto processGroup = process.processId();
+#ifdef Q_OS_WIN
+        const RegisteredProcessTree registeredTree{job.get()};
+#else
+        const RegisteredProcessTree registeredTree{processGroup};
+#endif
+        startRegistration.complete();
 
         while (process.state() != QProcess::NotRunning) {
             drainProcess(process, standardError, standardOutput);
-            if (stopToken.stop_requested()) {
+            const bool forced = forceStopRequested.load(std::memory_order_relaxed);
+            if (stopToken.stop_requested() || forced) {
 #ifdef Q_OS_WIN
                 const auto stopped = terminateTree(process, job, processGroup);
 #else
                 const auto stopped = terminateTree(process, processGroup);
 #endif
+                if (!stopped) {
+                    forceStopFailed.store(true, std::memory_order_relaxed);
+                }
                 drainProcess(process, standardError, standardOutput);
                 return {stopped ? SupervisedProcessStatus::Canceled
                                 : SupervisedProcessStatus::FailedToStop,
@@ -294,6 +405,9 @@ namespace ssa::platform {
 #else
                 const auto stopped = terminateTree(process, processGroup);
 #endif
+                if (!stopped) {
+                    forceStopFailed.store(true, std::memory_order_relaxed);
+                }
                 drainProcess(process, standardError, standardOutput);
                 return {stopped ? SupervisedProcessStatus::TimedOut
                                 : SupervisedProcessStatus::FailedToStop,
@@ -303,6 +417,20 @@ namespace ssa::platform {
         }
         drainProcess(process, standardError, standardOutput);
 
+        if (forceStopRequested.load(std::memory_order_relaxed)) {
+#ifdef Q_OS_WIN
+            const auto stopped = terminateTree(process, job, processGroup);
+#else
+            const auto stopped = terminateTree(process, processGroup);
+#endif
+            if (!stopped) {
+                forceStopFailed.store(true, std::memory_order_relaxed);
+            }
+            return {stopped ? SupervisedProcessStatus::Canceled
+                            : SupervisedProcessStatus::FailedToStop,
+                    process.exitCode(), diagnosticText(process, standardError, standardOutput)};
+        }
+
 #ifdef Q_OS_WIN
         const auto residualTree = treeActive(job, processGroup);
         const auto stoppedResidual = !residualTree || terminateTree(process, job, processGroup);
@@ -311,6 +439,7 @@ namespace ssa::platform {
         const auto stoppedResidual = !residualTree || terminateTree(process, processGroup);
 #endif
         if (!stoppedResidual) {
+            forceStopFailed.store(true, std::memory_order_relaxed);
             return {SupervisedProcessStatus::FailedToStop, process.exitCode(),
                     diagnosticText(process, standardError, standardOutput)};
         }
@@ -323,6 +452,63 @@ namespace ssa::platform {
                     diagnosticText(process, standardError, standardOutput)};
         }
         return {SupervisedProcessStatus::Succeeded, process.exitCode(), {}};
+    }
+
+    ForceStopRequestStatus SupervisedProcess::requestForceStopAll() {
+        const std::scoped_lock lock(processRegistryMutex);
+        forceStopRequested.store(true, std::memory_order_relaxed);
+        bool stopped = true;
+#ifdef Q_OS_WIN
+        for (const auto job : processRegistry) {
+            stopped = TerminateJobObject(job, 1) != 0 && stopped;
+        }
+#else
+        for (const auto processGroup : processRegistry) {
+            if (::kill(-static_cast<pid_t>(processGroup), SIGKILL) != 0 && errno != ESRCH) {
+                stopped = false;
+            }
+        }
+#endif
+        if (!stopped) {
+            forceStopFailed.store(true, std::memory_order_relaxed);
+        }
+        if (forceStopFailed.load(std::memory_order_relaxed)) {
+            return ForceStopRequestStatus::Failed;
+        }
+        return processStartsInFlight == 0 ? ForceStopRequestStatus::Ready
+                                          : ForceStopRequestStatus::PendingStart;
+    }
+
+    bool SupervisedProcess::forceStopAll() {
+        if (requestForceStopAll() == ForceStopRequestStatus::Failed) {
+            return false;
+        }
+        const auto deadline = std::chrono::steady_clock::now() + kForcedStopTimeout;
+        while (std::chrono::steady_clock::now() < deadline) {
+            const bool active = [&] {
+                const std::scoped_lock lock(processRegistryMutex);
+#ifdef Q_OS_WIN
+                return processStartsInFlight > 0 ||
+                       std::ranges::any_of(processRegistry, [](const HANDLE job) {
+                           JOBOBJECT_BASIC_ACCOUNTING_INFORMATION information{};
+                           return QueryInformationJobObject(
+                                      job, JobObjectBasicAccountingInformation, &information,
+                                      sizeof(information), nullptr) != 0 &&
+                                  information.ActiveProcesses > 0;
+                       });
+#else
+                return processStartsInFlight > 0 ||
+                       std::ranges::any_of(processRegistry, treeActive);
+#endif
+            }();
+            if (!active) {
+                forceStopRequested.store(false, std::memory_order_relaxed);
+                forceStopFailed.store(false, std::memory_order_relaxed);
+                return true;
+            }
+            QThread::msleep(static_cast<unsigned long>(kPollInterval.count()));
+        }
+        return false;
     }
 
 } // namespace ssa::platform

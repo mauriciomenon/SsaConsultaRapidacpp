@@ -15,7 +15,9 @@
 #include <QTemporaryDir>
 
 #include <filesystem>
+#include <stop_token>
 #include <string>
+#include <system_error>
 #include <utility>
 
 namespace {
@@ -451,6 +453,38 @@ TEST_CASE("json persistence accepts exactly one mebibyte") {
 
     REQUIRE(ssa::infra::preferences::json_persistence::readBounded(path, "boundary file") ==
             payload);
+}
+
+TEST_CASE("json stores preserve committed files when canceled before publication") {
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+    const auto root = std::filesystem::path{directory.path().toStdString()};
+    std::stop_source stopSource;
+    stopSource.request_stop();
+
+    SECTION("user preferences") {
+        const auto path = root / "prefs.json";
+        const QByteArray original{R"JSON({"schema_version":13,"theme":"gruvbox"})JSON"};
+        writeBytes(path, original);
+        const ssa::infra::preferences::JsonUserPreferencesStore store(path);
+        ssa::ports::UserPreferencesSnapshot snapshot;
+        snapshot.theme = "ssa-dark";
+
+        REQUIRE_THROWS_AS(store.save(snapshot, stopSource.get_token()), std::system_error);
+        REQUIRE(readBytes(path) == original);
+    }
+
+    SECTION("filter preset") {
+        const auto path = root / "preset.json";
+        const QByteArray original{R"JSON({"schema_version":1,"quick_sector":"IEE3"})JSON"};
+        writeBytes(path, original);
+        const ssa::infra::preferences::JsonFilterPresetStore store;
+        ssa::ports::FilterPresetSnapshot snapshot;
+        snapshot.filters.quickSector = "MEL4";
+
+        REQUIRE_THROWS_AS(store.save(path, snapshot, stopSource.get_token()), std::system_error);
+        REQUIRE(readBytes(path) == original);
+    }
 }
 
 TEST_CASE("json preferences store roundtrips every supported theme through two save cycles") {

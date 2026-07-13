@@ -99,6 +99,10 @@ namespace ssa::presentation {
     }
 
     void FilterPanelViewModel::configureDistinctValueRefresh() {
+        connect(&distinctValues_, &FilterPanelDistinctValuesController::stateChanged, this,
+                &FilterPanelViewModel::backgroundActivityChanged);
+        connect(advanced_, &FilterPanelAdvancedViewModel::stateChanged, this,
+                &FilterPanelViewModel::backgroundActivityChanged);
         activeFilterRefreshTimer_.setInterval(kActiveFilterRefreshDelayMs);
         activeFilterRefreshTimer_.setSingleShot(true);
         connect(&activeFilterRefreshTimer_, &QTimer::timeout, this, [this]() {
@@ -142,6 +146,15 @@ namespace ssa::presentation {
                     }
                     publishFilterStateChange(quickSectorChanged);
                 });
+    }
+
+    bool FilterPanelViewModel::backgroundWorkRunning() const {
+        return distinctValues_.running() || advanced_->backgroundWorkRunning();
+    }
+
+    void FilterPanelViewModel::cancelBackgroundWork() {
+        distinctValues_.cancel();
+        advanced_->cancelBackgroundWork();
     }
 
     QString FilterPanelViewModel::quickSector() const {

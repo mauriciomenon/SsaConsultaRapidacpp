@@ -50,6 +50,7 @@ namespace ssa::presentation {
         ~PageQueryCoordinator() override;
 
         [[nodiscard]] State state() const;
+        [[nodiscard]] bool hasActiveOperations() const;
         void run(domain::SsaPageRequest request);
         void cancel();
         void invalidateTotalRowsAll();
@@ -64,6 +65,7 @@ namespace ssa::presentation {
         // Explicit user cancellation is reported through canceled().
         void replaced();
         void failed(QString message);
+        void activeOperationsChanged();
 
       private:
         struct Operation final {

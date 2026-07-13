@@ -88,11 +88,11 @@ TEST_CASE("database validator rejects missing and non-regular paths") {
     const ssa::infra::sqlite::SqliteDatabaseValidator validator;
 
     const auto missing = validator.validate(temporary.path() / "missing.db");
-    REQUIRE_FALSE(missing.valid);
+    REQUIRE(missing.status == ssa::ports::DatabaseValidationStatus::Invalid);
     REQUIRE(missing.message == "O arquivo de banco nao existe");
 
     const auto directory = validator.validate(temporary.path());
-    REQUIRE_FALSE(directory.valid);
+    REQUIRE(directory.status == ssa::ports::DatabaseValidationStatus::Invalid);
     REQUIRE(directory.message == "O caminho selecionado nao e um arquivo regular");
 }
 
@@ -106,13 +106,13 @@ TEST_CASE("database validator rejects invalid SQLite and missing table") {
     }
 
     const auto invalid = validator.validate(invalidPath);
-    REQUIRE_FALSE(invalid.valid);
+    REQUIRE(invalid.status == ssa::ports::DatabaseValidationStatus::Invalid);
     REQUIRE(invalid.message == "O arquivo nao e um banco SQLite valido");
 
     const auto missingTablePath = temporary.path() / "missing_table.db";
     executeSql(missingTablePath, "CREATE TABLE another_table (id INTEGER)");
     const auto missingTable = validator.validate(missingTablePath);
-    REQUIRE_FALSE(missingTable.valid);
+    REQUIRE(missingTable.status == ssa::ports::DatabaseValidationStatus::Invalid);
     REQUIRE(missingTable.message == "O banco nao contem a tabela ssa_table");
 }
 
@@ -123,13 +123,13 @@ TEST_CASE("database validator rejects incompatible and empty ssa_table") {
     const auto incompatiblePath = temporary.path() / "incompatible.db";
     executeSql(incompatiblePath, "CREATE TABLE ssa_table (id INTEGER PRIMARY KEY)");
     const auto incompatible = validator.validate(incompatiblePath);
-    REQUIRE_FALSE(incompatible.valid);
+    REQUIRE(incompatible.status == ssa::ports::DatabaseValidationStatus::Invalid);
     REQUIRE(incompatible.message == "Schema incompativel: coluna ausente numero_ssa");
 
     const auto emptyPath = temporary.path() / "empty.db";
     executeSql(emptyPath, compatibleSchema());
     const auto empty = validator.validate(emptyPath);
-    REQUIRE_FALSE(empty.valid);
+    REQUIRE(empty.status == ssa::ports::DatabaseValidationStatus::Invalid);
     REQUIRE(empty.message == "A tabela ssa_table nao contem registros");
 }
 
@@ -141,7 +141,7 @@ TEST_CASE("database validator rejects an incompatible column affinity") {
     const ssa::infra::sqlite::SqliteDatabaseValidator validator;
     const auto result = validator.validate(databasePath);
 
-    REQUIRE_FALSE(result.valid);
+    REQUIRE(result.status == ssa::ports::DatabaseValidationStatus::Invalid);
     REQUIRE(result.message == "Schema incompativel: numero_ssa deve usar afinidade TEXT");
 }
 
@@ -153,7 +153,7 @@ TEST_CASE("database validator reports a request canceled before SQLite opens") {
     const ssa::infra::sqlite::SqliteDatabaseValidator validator;
     const auto result = validator.validate(temporary.path() / "valid.db", stopSource.get_token());
 
-    REQUIRE_FALSE(result.valid);
+    REQUIRE(result.status == ssa::ports::DatabaseValidationStatus::Canceled);
     REQUIRE(result.message == "Validacao do banco cancelada");
 }
 
@@ -168,6 +168,6 @@ TEST_CASE("database validator accepts a populated compatible database read-only"
     const ssa::infra::sqlite::SqliteDatabaseValidator validator;
     const auto result = validator.validate(databasePath);
 
-    REQUIRE(result.valid);
+    REQUIRE(result.status == ssa::ports::DatabaseValidationStatus::Valid);
     REQUIRE(result.message.empty());
 }

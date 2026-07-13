@@ -2,6 +2,7 @@
 
 #include "domain/ColumnCatalog.h"
 #include "domain/SsaRelationGraph.h"
+#include "presentation/AsyncOperationErrorLog.h"
 #include "query/SsaQueryService.h"
 
 #include <QVariantMap>
@@ -124,11 +125,6 @@ namespace ssa::presentation {
             disconnect(&operation->watcher, nullptr, this, nullptr);
         }
         stopRelationQueries();
-        for (const auto& operation : relationQueries_) {
-            if (operation->watcher.isRunning()) {
-                operation->watcher.waitForFinished();
-            }
-        }
     }
 
     QString DetailsViewModel::title() const {
@@ -217,6 +213,7 @@ namespace ssa::presentation {
         auto* watcher = &operation->watcher;
         latestRelationQueryId_ = operationId;
         relationQueries_.push_back(std::move(operation));
+        emit activeOperationsChanged();
         relationLoading_ = true;
         relationError_.clear();
         emit relationStatusChanged();
@@ -255,6 +252,7 @@ namespace ssa::presentation {
         }
         auto& operation = **found;
         operation.completed = true;
+        emit activeOperationsChanged();
         const bool targetsCurrentRecord =
             operation.kind == RelationQueryKind::Record || operation.ssaNumber == selectedSsa_;
         if (!shuttingDown_ && operation.id == latestRelationQueryId_ && targetsCurrentRecord) {
@@ -267,9 +265,14 @@ namespace ssa::presentation {
                 children = std::move(operation.state->children);
                 record = std::move(operation.state->record);
                 error = operation.state->error;
-                canceled = operation.state->canceled;
+                canceled = operation.state->canceled || operation.stopSource.stop_requested();
             }
-            if (!canceled && error) {
+            if (canceled) {
+                logAsyncOperationError("Relation query failed after cancellation:", error);
+                relationLoading_ = false;
+                relationError_.clear();
+                emit relationStatusChanged();
+            } else if (error) {
                 relationLoading_ = false;
                 relationError_.clear();
                 try {
@@ -280,7 +283,7 @@ namespace ssa::presentation {
                     relationError_ = QStringLiteral("Falha interna ao consultar relacoes");
                 }
                 emit relationStatusChanged();
-            } else if (!canceled && operation.kind == RelationQueryKind::Record) {
+            } else if (operation.kind == RelationQueryKind::Record) {
                 if (!record) {
                     relationLoading_ = false;
                     relationError_ = QStringLiteral("SSA nao encontrada");
@@ -288,7 +291,7 @@ namespace ssa::presentation {
                 } else {
                     setRecord(*record);
                 }
-            } else if (!canceled) {
+            } else {
                 relationLoading_ = false;
                 relationError_.clear();
                 appendDirectChildren(relations_, children);
@@ -341,6 +344,15 @@ namespace ssa::presentation {
 
     QString DetailsViewModel::relationError() const {
         return relationError_;
+    }
+
+    void DetailsViewModel::cancel() {
+        stopRelationQueries();
+    }
+
+    bool DetailsViewModel::hasActiveOperations() const {
+        return std::ranges::any_of(relationQueries_,
+                                   [](const auto& operation) { return !operation->completed; });
     }
 
     void DetailsViewModel::selectNextRelation() {

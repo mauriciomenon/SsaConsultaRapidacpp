@@ -17,6 +17,12 @@ namespace ssa::platform {
         FailedToStop,
     };
 
+    enum class ForceStopRequestStatus {
+        Ready,
+        PendingStart,
+        Failed,
+    };
+
     struct SupervisedProcessRequest {
         QString program;
         QStringList arguments;
@@ -37,7 +43,9 @@ namespace ssa::platform {
     class SupervisedProcess final {
       public:
         [[nodiscard]] static SupervisedProcessResult run(const SupervisedProcessRequest& request,
-                                                         std::stop_token stopToken = {});
+                                                         const std::stop_token& stopToken = {});
+        [[nodiscard]] static ForceStopRequestStatus requestForceStopAll();
+        [[nodiscard]] static bool forceStopAll();
     };
 
 } // namespace ssa::platform

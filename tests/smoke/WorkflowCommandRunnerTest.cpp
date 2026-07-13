@@ -154,7 +154,7 @@ namespace {
                 QVERIFY(importPort->waitUntilStarted(std::chrono::seconds{1}));
             }
 
-            QVERIFY(importPort->canceled());
+            QTRY_VERIFY_WITH_TIMEOUT(importPort->canceled(), 1000);
             QCoreApplication::processEvents();
             QCOMPARE(callbacks, 0);
         }
@@ -170,7 +170,7 @@ namespace {
             runner.rescan(ssa::ports::RescanMode::Incremental);
 
             QCOMPARE(importPort->calls(), 1);
-            QVERIFY(importPort->canceled());
+            QTRY_VERIFY_WITH_TIMEOUT(importPort->canceled(), 1000);
             QVERIFY(!runner.running());
         }
 
@@ -188,7 +188,7 @@ namespace {
             runner.shutdown();
 
             QCOMPARE(samPort->calls(), 1);
-            QVERIFY(samPort->canceled());
+            QTRY_VERIFY_WITH_TIMEOUT(samPort->canceled(), 1000);
             QVERIFY(!runner.running());
         }
 

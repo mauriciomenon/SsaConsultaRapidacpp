@@ -29,7 +29,8 @@ namespace {
 
     class CompletedFilterPresetStore final : public ssa::ports::IFilterPresetStore {
       public:
-        ssa::ports::FilterPresetSnapshot load(std::filesystem::path) const override {
+        ssa::ports::FilterPresetSnapshot load(std::filesystem::path,
+                                              std::stop_token = {}) const override {
             {
                 const std::scoped_lock lock(mutex_);
                 loadCompleted_ = true;
@@ -38,7 +39,8 @@ namespace {
             return {};
         }
 
-        void save(std::filesystem::path, const ssa::ports::FilterPresetSnapshot&) const override {}
+        void save(std::filesystem::path, const ssa::ports::FilterPresetSnapshot&,
+                  std::stop_token = {}) const override {}
 
         [[nodiscard]] bool waitForLoadCompletion(const std::chrono::milliseconds timeout) const {
             std::unique_lock lock(mutex_);
@@ -54,30 +56,40 @@ namespace {
 
     class NonStandardThrowingPresetStore final : public ssa::ports::IFilterPresetStore {
       public:
-        ssa::ports::FilterPresetSnapshot load(std::filesystem::path) const override {
+        ssa::ports::FilterPresetSnapshot load(std::filesystem::path,
+                                              std::stop_token = {}) const override {
             throw 41;
         }
 
-        void save(std::filesystem::path, const ssa::ports::FilterPresetSnapshot&) const override {
+        void save(std::filesystem::path, const ssa::ports::FilterPresetSnapshot&,
+                  std::stop_token = {}) const override {
             throw 42;
         }
     };
 
     class BlockingFilterPresetStore final : public ssa::ports::IFilterPresetStore {
       public:
-        ssa::ports::FilterPresetSnapshot load(std::filesystem::path) const override {
+        ssa::ports::FilterPresetSnapshot load(std::filesystem::path,
+                                              const std::stop_token stopToken = {}) const override {
             std::unique_lock lock(mutex_);
             importStarted_ = true;
             condition_.notify_all();
             condition_.wait(lock, [this] { return releaseImport_; });
+            if (stopToken.stop_requested()) {
+                throw std::system_error(std::make_error_code(std::errc::operation_canceled));
+            }
             return {};
         }
 
-        void save(std::filesystem::path, const ssa::ports::FilterPresetSnapshot&) const override {
+        void save(std::filesystem::path, const ssa::ports::FilterPresetSnapshot&,
+                  const std::stop_token stopToken = {}) const override {
             std::unique_lock lock(mutex_);
             exportStarted_ = true;
             condition_.notify_all();
             condition_.wait(lock, [this] { return releaseExport_; });
+            if (stopToken.stop_requested()) {
+                throw std::system_error(std::make_error_code(std::errc::operation_canceled));
+            }
         }
 
         [[nodiscard]] bool waitForImportStart(const std::chrono::milliseconds timeout) const {
@@ -117,11 +129,12 @@ namespace {
 
     class BlockingPreferencesStore final : public ssa::ports::IUserPreferencesStore {
       public:
-        ssa::ports::UserPreferencesSnapshot load() const override {
+        ssa::ports::UserPreferencesSnapshot load(std::stop_token = {}) const override {
             return {};
         }
 
-        void save(const ssa::ports::UserPreferencesSnapshot& snapshot) const override {
+        void save(const ssa::ports::UserPreferencesSnapshot& snapshot,
+                  std::stop_token = {}) const override {
             std::unique_lock lock(mutex_);
             const auto call = ++saveCalls_;
             if (call == 1) {
@@ -173,7 +186,8 @@ namespace {
             coordinator.saveNowOrSchedule({});
 
             QTRY_COMPARE_WITH_TIMEOUT(failedSpy.size(), 1, 1000);
-            QVERIFY(failedSpy.takeFirst().at(0).toString().contains("disk full"));
+            QCOMPARE(failedSpy.takeFirst().at(0).toString(),
+                     QString("Falha ao salvar preferencias"));
             QCOMPARE(preferences->saveCount(), 0);
         }
 
@@ -191,7 +205,7 @@ namespace {
             QCOMPARE(preferences->saveCount(), 0);
         }
 
-        void main_view_model_destruction_flushes_latest_snapshot() {
+        void main_view_model_graceful_shutdown_flushes_latest_snapshot() {
             auto repository = std::make_shared<FakeRepository>();
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
             auto commands = std::make_shared<FakeCommands>();
@@ -200,6 +214,8 @@ namespace {
             {
                 ssa::presentation::MainViewModel model(service, commands, preferences);
                 model.ui()->setDensity("comfortable");
+                model.requestShutdown();
+                QTRY_VERIFY_WITH_TIMEOUT(model.shutdownReady(), 1000);
             }
 
             QCOMPARE(preferences->saveCount(), 1);
@@ -207,11 +223,13 @@ namespace {
                      QString("comfortable"));
         }
 
-        void shutdown_persists_latest_of_two_pending_snapshots_without_callback() {
+        void graceful_shutdown_persists_latest_snapshot_without_blocking() {
             auto preferences = std::make_shared<BlockingPreferencesStore>();
             ssa::presentation::UserPreferencesCoordinator coordinator(preferences);
             QSignalSpy savedSpy(&coordinator,
                                 &ssa::presentation::UserPreferencesCoordinator::saved);
+            QSignalSpy shutdownSpy(
+                &coordinator, &ssa::presentation::UserPreferencesCoordinator::shutdownFinished);
             ssa::ports::UserPreferencesSnapshot first;
             first.density = "first";
             ssa::ports::UserPreferencesSnapshot latest;
@@ -225,12 +243,74 @@ namespace {
                 preferences->releaseFirstSave();
             });
 
-            coordinator.shutdown();
+            coordinator.beginShutdown(latest);
             releaser.join();
-            QCoreApplication::processEvents();
+            QTRY_COMPARE_WITH_TIMEOUT(shutdownSpy.size(), 1, 1000);
 
             QCOMPARE(preferences->savedDensities(), std::vector<std::string>({"first", "latest"}));
             QCOMPARE(savedSpy.size(), 0);
+        }
+
+        void shutdown_without_valid_snapshot_preserves_preferences_file() {
+            auto preferences = std::make_shared<FakePreferences>();
+            ssa::presentation::UserPreferencesCoordinator coordinator(preferences);
+            QSignalSpy shutdownSpy(
+                &coordinator, &ssa::presentation::UserPreferencesCoordinator::shutdownFinished);
+
+            coordinator.beginShutdown(std::nullopt);
+
+            QTRY_COMPARE_WITH_TIMEOUT(shutdownSpy.size(), 1, 1000);
+            QCOMPARE(preferences->saveCount(), 0);
+        }
+
+        void preference_failure_exposes_safe_message_only() {
+            auto preferences = std::make_shared<FakePreferences>();
+            preferences->failNextSave("sqlite path=/private/preferences.json rc=13");
+            ssa::presentation::UserPreferencesCoordinator coordinator(preferences);
+            QSignalSpy failedSpy(&coordinator,
+                                 &ssa::presentation::UserPreferencesCoordinator::saveFailed);
+
+            coordinator.saveNowOrSchedule({});
+
+            QTRY_COMPARE_WITH_TIMEOUT(failedSpy.size(), 1, 1000);
+            const auto message = failedSpy.takeFirst().at(0).toString();
+            QCOMPARE(message, QString("Falha ao salvar preferencias"));
+            QVERIFY(!message.contains("/private"));
+            QVERIFY(!message.contains("rc=13"));
+        }
+
+        void preset_operation_is_contextually_cancelable_until_terminal() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            auto presets = std::make_shared<BlockingFilterPresetStore>();
+            ssa::presentation::MainViewModel model(service, commands, nullptr, presets);
+
+            QVERIFY(QMetaObject::invokeMethod(
+                model.preferenceFlow(), "exportFilterPreset", Qt::DirectConnection,
+                Q_ARG(QUrl, QUrl::fromLocalFile("/tmp/ssa-filter-preset.json"))));
+            QVERIFY(presets->waitForExportStart(std::chrono::seconds{1}));
+            QVERIFY(model.canCancelActivity());
+
+            model.requestCancelAll();
+
+            QVERIFY(model.cancelingActivity());
+            QVERIFY(!model.canCancelActivity());
+            presets->releaseExport();
+            QTRY_VERIFY_WITH_TIMEOUT(!model.cancelingActivity(), 1000);
+
+            QVERIFY(QMetaObject::invokeMethod(
+                model.preferenceFlow(), "importFilterPreset", Qt::DirectConnection,
+                Q_ARG(QUrl, QUrl::fromLocalFile("/tmp/ssa-filter-preset.json"))));
+            QVERIFY(presets->waitForImportStart(std::chrono::seconds{1}));
+            QVERIFY(model.canCancelActivity());
+
+            model.requestCancelAll();
+
+            QVERIFY(model.cancelingActivity());
+            QVERIFY(!model.canCancelActivity());
+            presets->releaseImport();
+            QTRY_VERIFY_WITH_TIMEOUT(!model.cancelingActivity(), 1000);
         }
 
         void destruction_waits_for_active_save_without_callback() {
@@ -389,7 +469,9 @@ namespace {
                 Q_ARG(QUrl, QUrl::fromLocalFile("/tmp/ssa-filter-preset.json"))));
 
             QTRY_COMPARE_WITH_TIMEOUT(errorSpy.size(), 1, 1000);
-            QVERIFY(errorSpy.takeFirst().at(0).toString().contains("desconhecido"));
+            const auto expected = exportPreset ? QString("Falha ao exportar filtros")
+                                               : QString("Falha ao importar filtros");
+            QCOMPARE(errorSpy.takeFirst().at(0).toString(), expected);
         }
     };
 

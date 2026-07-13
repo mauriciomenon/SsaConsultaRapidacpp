@@ -18,6 +18,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <stop_token>
 #include <string>
 #include <vector>
 
@@ -46,7 +47,11 @@ namespace ssa::presentation {
 
         [[nodiscard]] ports::UserPreferencesSnapshot buildPreferencesSnapshot() const;
         [[nodiscard]] QVariantList savedFilters() const;
+        [[nodiscard]] bool running() const;
+        [[nodiscard]] bool canceling() const;
+        [[nodiscard]] bool canCancel() const;
         void shutdown();
+        void cancel();
         void applyStoredPreferences(const ports::UserPreferencesSnapshot& snapshot);
         void scheduleSavePreferences();
         void saveAppliedColumnPreferences(std::vector<std::string> visibleColumns,
@@ -70,6 +75,7 @@ namespace ssa::presentation {
 
       signals:
         void shutdownStarted();
+        void stateChanged();
         void savedFiltersChanged();
         void statusMessageRequested(const QString& message);
         void statusErrorRequested(const QString& message);
@@ -82,12 +88,14 @@ namespace ssa::presentation {
         struct ExportPresetTaskState final {
             std::mutex mutex;
             std::string error;
+            bool canceled{false};
         };
 
         struct ImportPresetTaskState final {
             std::mutex mutex;
             std::optional<ports::FilterPresetSnapshot> snapshot;
             std::string error;
+            bool canceled{false};
         };
 
         void finishExportFilterPreset();
@@ -106,6 +114,8 @@ namespace ssa::presentation {
         QFutureWatcher<void> importPresetWatcher_;
         std::shared_ptr<ExportPresetTaskState> exportPresetTask_;
         std::shared_ptr<ImportPresetTaskState> importPresetTask_;
+        std::stop_source exportPresetStopSource_;
+        std::stop_source importPresetStopSource_;
         bool shuttingDown_{false};
     };
 

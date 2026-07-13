@@ -10,6 +10,7 @@ ApplicationWindow {
     required property var mainViewModel
     property var smokeController: null
     property var vm: mainViewModel
+    property bool shutdownCloseAccepted: false
     readonly property int bottomPaneHeight: height <= 820 ? 200 : Theme.bottomPaneHeight(height)
     readonly property int paneMinimumHeight: height <= 820 ? 200 : 280
 
@@ -21,6 +22,16 @@ ApplicationWindow {
     title: "Consulta Rapida de SSAs"
     color: Theme.window
     font.family: Theme.fontFamily
+
+    onClosing: function (close) {
+        if (root.shutdownCloseAccepted || root.vm.shutdownReady)
+            return;
+        close.accepted = false;
+        if (!root.vm.shutdownInProgress)
+            root.vm.requestShutdown();
+        else if (root.vm.forceCloseAvailable)
+            forceShutdownDialog.open();
+    }
 
     palette.toolTipBase: Theme.panelRaised
     palette.toolTipText: Theme.text
@@ -67,7 +78,7 @@ ApplicationWindow {
             MenuSeparator {}
             MenuItem {
                 text: "Sair"
-                onTriggered: Qt.quit()
+                onTriggered: root.close()
             }
         }
 
@@ -233,7 +244,7 @@ ApplicationWindow {
             MenuItem {
                 text: "Cancelar consulta"
                 enabled: root.vm.browse.status.loading
-                onTriggered: root.vm.requestFlow.cancelCurrentRequest()
+                onTriggered: root.vm.requestCancelAll()
             }
         }
 
@@ -452,6 +463,7 @@ ApplicationWindow {
             status: root.vm.browse.status
             browse: root.vm.browse
             weekModel: root.vm.actions.currentWeek
+            activityController: root.vm
             implicitHeight: 28
         }
     }
@@ -465,6 +477,66 @@ ApplicationWindow {
     ThemeDialog {
         id: themeDialog
         viewModel: root.vm
+    }
+
+    Dialog {
+        id: forceShutdownDialog
+        objectName: "forceShutdownDialog"
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        modal: true
+        width: 500
+        padding: 20
+
+        background: Rectangle {
+            color: Theme.panelRaised
+            border.color: Theme.border
+            border.width: 1
+            radius: Theme.radius
+        }
+
+        header: Label {
+            text: "Encerramento forcado"
+            color: Theme.text
+            font.bold: true
+            font.pixelSize: Theme.fontSizeTitle
+            padding: 20
+            bottomPadding: 8
+        }
+
+        contentItem: Label {
+            text: "Ainda existem operacoes encerrando. Forcar a saida agora?"
+            color: Theme.text
+            wrapMode: Text.WordWrap
+        }
+
+        footer: RowLayout {
+            spacing: Theme.spacingSm
+            layoutDirection: Qt.RightToLeft
+
+            ActionButton {
+                text: "Encerrar"
+                danger: true
+                onClicked: root.vm.requestForcedShutdown()
+            }
+
+            ActionButton {
+                text: "Continuar aguardando"
+                implicitWidth: 180
+                onClicked: forceShutdownDialog.close()
+            }
+        }
+    }
+
+    Connections {
+        target: root.vm
+
+        function onShutdownStateChanged() {
+            if (!root.vm.shutdownReady)
+                return;
+            root.shutdownCloseAccepted = true;
+            Qt.callLater(root.close);
+        }
     }
 
     Loader {

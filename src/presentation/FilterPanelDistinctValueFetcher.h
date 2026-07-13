@@ -33,13 +33,16 @@ namespace ssa::presentation {
 
         void requestValues(const domain::DistinctValuesRequest& request, std::uint64_t requestToken,
                            bool measureMaxValueLength);
+        void cancelRequests();
         void clearPendingRequests();
+        [[nodiscard]] bool running() const;
 
       signals:
         void valuesReady(std::uint64_t requestToken, std::vector<std::string> values,
                          std::size_t maxValueLength);
         void valuesFailed(std::uint64_t requestToken, QString message);
         void valuesCanceled(std::uint64_t requestToken);
+        void stateChanged();
 
       private:
         struct FetchResult final {

@@ -1,6 +1,7 @@
 #include "presentation/PageQueryCoordinator.h"
 
 #include "ports/OperationError.h"
+#include "presentation/AsyncOperationErrorLog.h"
 #include "presentation/SsaTablePageFormatter.h"
 
 #include <QDebug>
@@ -26,16 +27,16 @@ namespace ssa::presentation {
             disconnect(&operation->watcher, nullptr, this, nullptr);
             stopOperation(*operation);
         }
-        for (const auto& operation : operations_) {
-            if (operation->watcher.isRunning()) {
-                operation->watcher.waitForFinished();
-            }
-        }
         operations_.clear();
     }
 
     PageQueryCoordinator::State PageQueryCoordinator::state() const {
         return state_;
+    }
+
+    bool PageQueryCoordinator::hasActiveOperations() const {
+        return std::ranges::any_of(operations_,
+                                   [](const auto& operation) { return !operation->completed; });
     }
 
     void PageQueryCoordinator::run(domain::SsaPageRequest request) {
@@ -93,6 +94,7 @@ namespace ssa::presentation {
         auto* watcher = &operation->watcher;
         latestOperationId_ = operationId;
         operations_.push_back(std::move(operation));
+        emit activeOperationsChanged();
         setState(State::Running);
 
         auto displayColumns = columnCatalog_.resolveAll(request.visibleColumns);
@@ -161,6 +163,7 @@ namespace ssa::presentation {
         }
         auto& operation = **found;
         operation.completed = true;
+        emit activeOperationsChanged();
         const bool isLatest = operation.id == latestOperationId_;
         if (!shuttingDown_ && isLatest &&
             (operation.explicitlyCanceled || !operation.watcher.isCanceled())) {
@@ -173,27 +176,29 @@ namespace ssa::presentation {
                     result = std::move(operation.resultState->result);
                     error = operation.resultState->error;
                 }
-                if (error) {
-                    std::rethrow_exception(error);
-                }
-                if (!result && operation.explicitlyCanceled && operation.watcher.isCanceled()) {
-                    result = PageQueryResult{.canceled = true};
-                }
-                if (!result) {
-                    throw std::runtime_error("page query completed without a result");
-                }
                 // Cache the grand total as soon as it is computed, even when the
                 // request is later superseded/cancelled: the COUNT(*) over the
                 // whole table is stable for the session and re-running it on every
                 // keystroke is the expensive part.
-                if (result->totalRowsAllComputed) {
+                if (result && result->totalRowsAllComputed) {
                     totalRowsAll_ = result->totalRowsAll;
                     totalRowsAllKnown_ = true;
                 }
-                if (result->canceled) {
+                if (operation.explicitlyCanceled || operation.stopSource.stop_requested()) {
+                    logAsyncOperationError("Page query failed after cancellation:", error);
                     emit canceled();
                 } else {
-                    emit succeeded(std::move(*result), operation.request);
+                    if (error) {
+                        std::rethrow_exception(error);
+                    }
+                    if (!result) {
+                        throw std::runtime_error("page query completed without a result");
+                    }
+                    if (result->canceled) {
+                        emit canceled();
+                    } else {
+                        emit succeeded(std::move(*result), operation.request);
+                    }
                 }
             } catch (const ports::OperationError& exc) {
                 qWarning().noquote()

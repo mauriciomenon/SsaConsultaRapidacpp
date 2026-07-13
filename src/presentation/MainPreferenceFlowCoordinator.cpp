@@ -4,12 +4,14 @@
 #include "presentation/UserPreferencesCoordinator.h"
 #include "qt/FilesystemPath.h"
 
+#include <QDebug>
 #include <QVariantMap>
 #include <QtConcurrentRun>
 
 #include <algorithm>
 #include <filesystem>
 #include <stdexcept>
+#include <system_error>
 #include <utility>
 
 namespace ssa::presentation {
@@ -21,10 +23,17 @@ namespace ssa::presentation {
 
         std::string savePresetFile(const std::shared_ptr<ports::IFilterPresetStore>& store,
                                    const std::filesystem::path& path,
-                                   const ports::FilterPresetSnapshot& snapshot) {
+                                   const ports::FilterPresetSnapshot& snapshot,
+                                   const std::stop_token& stopToken, bool& canceled) {
             try {
-                store->save(path, snapshot);
+                store->save(path, snapshot, stopToken);
                 return {};
+            } catch (const std::system_error& exc) {
+                if (exc.code() == std::errc::operation_canceled) {
+                    canceled = true;
+                    return {};
+                }
+                return exc.what();
             } catch (const std::exception& exc) {
                 return exc.what();
             } catch (...) {
@@ -34,9 +43,16 @@ namespace ssa::presentation {
 
         FilterPresetLoadResult
         loadPresetFile(const std::shared_ptr<ports::IFilterPresetStore>& store,
-                       const std::filesystem::path& path) {
+                       const std::filesystem::path& path, const std::stop_token& stopToken,
+                       bool& canceled) {
             try {
-                return {store->load(path), {}};
+                return {store->load(path, stopToken), {}};
+            } catch (const std::system_error& exc) {
+                if (exc.code() == std::errc::operation_canceled) {
+                    canceled = true;
+                    return {};
+                }
+                return {{}, exc.what()};
             } catch (const std::exception& exc) {
                 return {{}, exc.what()};
             } catch (...) {
@@ -112,14 +128,29 @@ namespace ssa::presentation {
         emit shutdownStarted();
         disconnect(&exportPresetWatcher_, nullptr, this, nullptr);
         disconnect(&importPresetWatcher_, nullptr, this, nullptr);
-        if (exportPresetWatcher_.isRunning()) {
-            exportPresetWatcher_.waitForFinished();
+        cancel();
+    }
+
+    bool MainPreferenceFlowCoordinator::running() const {
+        return exportPresetWatcher_.isRunning() || importPresetWatcher_.isRunning();
+    }
+
+    bool MainPreferenceFlowCoordinator::canceling() const {
+        return (exportPresetWatcher_.isRunning() && exportPresetStopSource_.stop_requested()) ||
+               (importPresetWatcher_.isRunning() && importPresetStopSource_.stop_requested());
+    }
+
+    bool MainPreferenceFlowCoordinator::canCancel() const {
+        return running() && !canceling();
+    }
+
+    void MainPreferenceFlowCoordinator::cancel() {
+        if (!canCancel()) {
+            return;
         }
-        if (importPresetWatcher_.isRunning()) {
-            importPresetWatcher_.waitForFinished();
-        }
-        exportPresetTask_.reset();
-        importPresetTask_.reset();
+        exportPresetStopSource_.request_stop();
+        importPresetStopSource_.request_stop();
+        emit stateChanged();
     }
 
     ports::UserPreferencesSnapshot MainPreferenceFlowCoordinator::buildPreferencesSnapshot() const {
@@ -322,14 +353,19 @@ namespace ssa::presentation {
         const auto store = presetStore_;
         const auto task = std::make_shared<ExportPresetTaskState>();
         exportPresetTask_ = task;
+        exportPresetStopSource_ = std::stop_source{};
+        const auto stopToken = exportPresetStopSource_.get_token();
         exportPresetWatcher_.setFuture(QtConcurrent::run(
             [store, path = localFilePath(outputUrl),
              snapshot = presetService_.createPresetWithClearedSearch(buildPreferencesSnapshot()),
-             task] {
-                auto error = savePresetFile(store, path, snapshot);
+             task, stopToken] {
+                bool canceled = false;
+                auto error = savePresetFile(store, path, snapshot, stopToken, canceled);
                 const std::scoped_lock lock(task->mutex);
                 task->error = std::move(error);
+                task->canceled = canceled;
             }));
+        emit stateChanged();
         emit this->statusMessageRequested("Exportando filtros");
     }
 
@@ -353,13 +389,18 @@ namespace ssa::presentation {
         const auto store = presetStore_;
         const auto task = std::make_shared<ImportPresetTaskState>();
         importPresetTask_ = task;
+        importPresetStopSource_ = std::stop_source{};
+        const auto stopToken = importPresetStopSource_.get_token();
         importPresetWatcher_.setFuture(
-            QtConcurrent::run([store, path = localFilePath(inputUrl), task] {
-                auto result = loadPresetFile(store, path);
+            QtConcurrent::run([store, path = localFilePath(inputUrl), task, stopToken] {
+                bool canceled = false;
+                auto result = loadPresetFile(store, path, stopToken, canceled);
                 const std::scoped_lock lock(task->mutex);
                 task->snapshot = std::move(result.snapshot);
                 task->error = std::move(result.error);
+                task->canceled = canceled;
             }));
+        emit stateChanged();
         emit this->statusMessageRequested("Importando filtros");
     }
 
@@ -368,17 +409,24 @@ namespace ssa::presentation {
             return;
         }
         std::string error;
+        bool canceled = false;
         const auto task = exportPresetTask_;
         if (task) {
             const std::scoped_lock lock(task->mutex);
             error = task->error;
+            canceled = task->canceled;
         }
         exportPresetTask_.reset();
+        emit stateChanged();
+        if (canceled) {
+            return;
+        }
         if (error.empty()) {
             emit this->statusErrorClearRequested();
             emit this->statusMessageRequested("Filtros exportados");
         } else {
-            emit this->statusErrorRequested(QString::fromStdString(error));
+            qWarning().noquote() << "Filter preset export failed:" << QString::fromStdString(error);
+            emit this->statusErrorRequested("Falha ao exportar filtros");
         }
     }
 
@@ -387,6 +435,7 @@ namespace ssa::presentation {
             return;
         }
         FilterPresetLoadResult result;
+        bool canceled = false;
         const auto task = importPresetTask_;
         if (task) {
             const std::scoped_lock lock(task->mutex);
@@ -394,10 +443,17 @@ namespace ssa::presentation {
                 result.snapshot = *task->snapshot;
             }
             result.error = task->error;
+            canceled = task->canceled;
         }
         importPresetTask_.reset();
+        emit stateChanged();
+        if (canceled) {
+            return;
+        }
         if (!result.error.empty()) {
-            emit this->statusErrorRequested(QString::fromStdString(result.error));
+            qWarning().noquote() << "Filter preset import failed:"
+                                 << QString::fromStdString(result.error);
+            emit this->statusErrorRequested("Falha ao importar filtros");
             return;
         }
         auto baseSnapshot = buildPreferencesSnapshot();

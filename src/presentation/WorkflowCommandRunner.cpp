@@ -30,9 +30,6 @@ namespace ssa::presentation {
         shuttingDown_ = true;
         disconnect(&watcher_, nullptr, this, nullptr);
         stopSource_.request_stop();
-        if (watcher_.isRunning()) {
-            watcher_.waitForFinished();
-        }
         resultState_.reset();
         state_ = State::Idle;
     }

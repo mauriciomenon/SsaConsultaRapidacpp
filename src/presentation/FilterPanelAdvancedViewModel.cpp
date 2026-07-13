@@ -25,6 +25,10 @@ namespace ssa::presentation {
             text_.refreshFromState();
             publishChanged();
         });
+        connect(&macro_, &AdvancedMacroFilterViewModel::reportChanged, this,
+                &FilterPanelAdvancedViewModel::stateChanged);
+        connect(&macro_, &AdvancedMacroFilterViewModel::activeOperationsChanged, this,
+                &FilterPanelAdvancedViewModel::stateChanged);
     }
 
     QObject* FilterPanelAdvancedViewModel::text() {
@@ -63,6 +67,14 @@ namespace ssa::presentation {
         derivation_.refreshFromState();
         macro_.refreshFromState();
         publishChanged();
+    }
+
+    bool FilterPanelAdvancedViewModel::backgroundWorkRunning() const {
+        return macro_.hasActiveOperations();
+    }
+
+    void FilterPanelAdvancedViewModel::cancelBackgroundWork() {
+        macro_.cancel();
     }
 
     void FilterPanelAdvancedViewModel::publishChanged() {

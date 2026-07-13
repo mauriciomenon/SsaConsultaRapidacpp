@@ -1,7 +1,9 @@
 #include "presentation/DatabaseSwitchViewModel.h"
 
+#include "presentation/AsyncOperationErrorLog.h"
 #include "qt/FilesystemPath.h"
 
+#include <QDebug>
 #include <QThreadPool>
 #include <QtConcurrentRun>
 
@@ -24,6 +26,14 @@ namespace ssa::presentation {
 
     bool DatabaseSwitchViewModel::running() const {
         return running_;
+    }
+
+    bool DatabaseSwitchViewModel::canceling() const {
+        return canceling_;
+    }
+
+    bool DatabaseSwitchViewModel::canCancel() const {
+        return running_ && !canceling_;
     }
 
     QString DatabaseSwitchViewModel::errorMessage() const {
@@ -71,13 +81,20 @@ namespace ssa::presentation {
         }
         shuttingDown_ = true;
         disconnect(&watcher_, nullptr, this, nullptr);
-        validationStopSource_.request_stop();
-        if (watcher_.isRunning()) {
-            watcher_.waitForFinished();
-        }
+        cancel();
         validationState_.reset();
         pendingPath_.clear();
         running_ = false;
+        canceling_ = false;
+    }
+
+    void DatabaseSwitchViewModel::cancel() {
+        if (!canCancel()) {
+            return;
+        }
+        canceling_ = true;
+        emit stateChanged();
+        validationStopSource_.request_stop();
     }
 
     void DatabaseSwitchViewModel::finishValidation() {
@@ -90,6 +107,19 @@ namespace ssa::presentation {
         }
         validationState_.reset();
 
+        if (validation && !validation->diagnostic.empty()) {
+            qWarning().noquote() << "Database validation diagnostic:"
+                                 << QString::fromStdString(validation->diagnostic);
+        }
+
+        if (canceling_) {
+            logAsyncOperationError("Database validation failed after cancellation:", error);
+            pendingPath_.clear();
+            setRunning(false);
+            setErrorMessage({});
+            return;
+        }
+
         if (error) {
             setRunning(false);
             setErrorMessage(QStringLiteral("Falha ao validar o banco selecionado"));
@@ -100,7 +130,12 @@ namespace ssa::presentation {
             setErrorMessage(QStringLiteral("A validacao do banco nao retornou resultado"));
             return;
         }
-        if (!validation->valid) {
+        if (validation->status == ports::DatabaseValidationStatus::Canceled) {
+            setRunning(false);
+            setErrorMessage({});
+            return;
+        }
+        if (!validation->valid()) {
             setRunning(false);
             setErrorMessage(QString::fromStdString(validation->message));
             return;
@@ -121,7 +156,11 @@ namespace ssa::presentation {
             return;
         }
         running_ = isRunning;
+        if (!running_) {
+            canceling_ = false;
+        }
         emit runningChanged();
+        emit stateChanged();
     }
 
     void DatabaseSwitchViewModel::setErrorMessage(QString message) {

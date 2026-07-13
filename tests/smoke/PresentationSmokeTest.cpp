@@ -25,6 +25,7 @@
 #include <QString>
 #include <QTest>
 #include <QThread>
+#include <QThreadPool>
 #include <QUrl>
 #include <QVariantMap>
 
@@ -78,7 +79,7 @@ namespace {
             while (!stopToken.stop_requested()) {
                 std::this_thread::yield();
             }
-            std::this_thread::sleep_for(std::chrono::milliseconds{50});
+            std::this_thread::sleep_for(std::chrono::milliseconds{100});
             finished_.store(true, std::memory_order_release);
             return {ssa::ports::WorkflowStatus::Failed, "export canceled"};
         }
@@ -96,10 +97,50 @@ namespace {
         std::atomic_bool finished_{false};
     };
 
+    class DelayedTerminalExportPort final : public ssa::ports::IExportPort {
+      public:
+        ssa::ports::WorkflowResult
+        exportFilteredList(const ssa::ports::ExportFilteredListRequest&,
+                           const std::stop_token stopToken = {}) override {
+            started_.store(true, std::memory_order_release);
+            while (!stopToken.stop_requested()) {
+                std::this_thread::yield();
+            }
+            stopObserved_.store(true, std::memory_order_release);
+            std::unique_lock lock(mutex_);
+            condition_.wait(lock, [this] { return release_; });
+            return {ssa::ports::WorkflowStatus::Canceled, "Exportacao cancelada"};
+        }
+
+        void release() {
+            {
+                const std::scoped_lock lock(mutex_);
+                release_ = true;
+            }
+            condition_.notify_all();
+        }
+
+        [[nodiscard]] bool started() const {
+            return started_.load(std::memory_order_acquire);
+        }
+
+        [[nodiscard]] bool stopObserved() const {
+            return stopObserved_.load(std::memory_order_acquire);
+        }
+
+      private:
+        std::atomic_bool started_{false};
+        std::atomic_bool stopObserved_{false};
+        std::mutex mutex_;
+        std::condition_variable condition_;
+        bool release_{false};
+    };
+
     class SlowCancelableRepository final : public ssa::ports::ISsaRepository {
       public:
-        explicit SlowCancelableRepository(const bool failAfterStop = false)
-            : failAfterStop_(failAfterStop) {}
+        explicit SlowCancelableRepository(const bool failAfterStop = false,
+                                          const bool holdAfterStop = false)
+            : failAfterStop_(failAfterStop), holdAfterStop_(holdAfterStop) {}
 
         ssa::domain::SsaPageResult page(const ssa::domain::SsaPageRequest& request,
                                         const std::stop_token stopToken = {}) const override {
@@ -108,7 +149,12 @@ namespace {
                 while (!stopToken.stop_requested()) {
                     std::this_thread::yield();
                 }
-                std::this_thread::sleep_for(std::chrono::milliseconds{300});
+                if (holdAfterStop_) {
+                    std::unique_lock lock(firstMutex_);
+                    firstCondition_.wait(lock, [this] { return releaseFirst_; });
+                } else {
+                    std::this_thread::sleep_for(std::chrono::milliseconds{300});
+                }
                 firstFinished_.store(true, std::memory_order_release);
                 if (failAfterStop_) {
                     throw std::runtime_error("query failed after stop");
@@ -160,11 +206,23 @@ namespace {
             return secondStarted_.load(std::memory_order_acquire);
         }
 
+        void releaseFirst() {
+            {
+                const std::scoped_lock lock(firstMutex_);
+                releaseFirst_ = true;
+            }
+            firstCondition_.notify_all();
+        }
+
       private:
         bool failAfterStop_{false};
+        bool holdAfterStop_{false};
         mutable std::atomic_bool firstStarted_{false};
         mutable std::atomic_bool firstFinished_{false};
         mutable std::atomic_bool secondStarted_{false};
+        mutable std::mutex firstMutex_;
+        mutable std::condition_variable firstCondition_;
+        bool releaseFirst_{false};
     };
 
     class DetailsRelationRepository final : public ssa::ports::ISsaRepository {
@@ -321,6 +379,9 @@ namespace {
                 while (!stopToken.stop_requested() && std::chrono::steady_clock::now() < deadline) {
                     std::this_thread::yield();
                 }
+                if (stopToken.stop_requested()) {
+                    stopObserved_.store(true, std::memory_order_release);
+                }
                 std::this_thread::sleep_for(std::chrono::milliseconds{200});
                 firstFinished_.store(true, std::memory_order_release);
                 if (stopToken.stop_requested()) {
@@ -364,10 +425,15 @@ namespace {
             return secondStarted_.load(std::memory_order_acquire);
         }
 
+        [[nodiscard]] bool stopObserved() const {
+            return stopObserved_.load(std::memory_order_acquire);
+        }
+
       private:
         mutable std::atomic_bool firstStarted_{false};
         mutable std::atomic_bool firstFinished_{false};
         mutable std::atomic_bool secondStarted_{false};
+        mutable std::atomic_bool stopObserved_{false};
     };
 
     class PresentationSmokeTest final : public QObject {
@@ -651,6 +717,24 @@ namespace {
             QCOMPARE(details.relationError(), QString());
             QTRY_VERIFY_WITH_TIMEOUT(repository->firstFinished(), 1000);
             QCOMPARE(details.selectedSsaNumber(), QString("new"));
+        }
+
+        void cancelAfterDetailsWorkerCompletedBeforeTerminalDoesNotPublishRecord() {
+            auto repository = std::make_shared<DetailsRelationRepository>();
+            repository->setRecord("202500001", ssa::domain::SsaRecord{{{"numero_ssa", "202500001"},
+                                                                       {"situacao", "APV"}}});
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::DetailsViewModel details(service);
+
+            details.requestLoadBySsaNumber(QStringLiteral("202500001"));
+            QVERIFY(QThreadPool::globalInstance()->waitForDone(1000));
+            QVERIFY(details.relationLoading());
+
+            details.cancel();
+
+            QTRY_VERIFY_WITH_TIMEOUT(!details.relationLoading(), 1000);
+            QCOMPARE(details.selectedSsaNumber(), QString());
+            QCOMPARE(details.fieldCount(), 0);
         }
 
         void details_window_model_starts_loading_without_blocking_the_gui_thread() {
@@ -1116,6 +1200,29 @@ namespace {
             QCOMPARE(model.browse()->status()->message(), QString("Consulta cancelada"));
         }
 
+        void cancelAfterPageWorkerCompletedBeforeTerminalDoesNotPublishSuccess() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::PageQueryCoordinator coordinator(service);
+            QSignalSpy succeededSpy(&coordinator,
+                                    &ssa::presentation::PageQueryCoordinator::succeeded);
+            QSignalSpy canceledSpy(&coordinator,
+                                   &ssa::presentation::PageQueryCoordinator::canceled);
+
+            coordinator.run({});
+            QVERIFY(QThreadPool::globalInstance()->waitForDone(1000));
+            QCOMPARE(coordinator.state(), ssa::presentation::PageQueryCoordinator::State::Running);
+
+            coordinator.cancel();
+
+            QCOMPARE(coordinator.state(),
+                     ssa::presentation::PageQueryCoordinator::State::Canceling);
+            QTRY_COMPARE_WITH_TIMEOUT(coordinator.state(),
+                                      ssa::presentation::PageQueryCoordinator::State::Idle, 1000);
+            QCOMPARE(succeededSpy.size(), 0);
+            QCOMPARE(canceledSpy.size(), 1);
+        }
+
         void page_query_starts_latest_request_before_canceled_worker_finishes() {
             auto repository = std::make_shared<SlowCancelableRepository>();
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
@@ -1189,7 +1296,7 @@ namespace {
             QCOMPARE(coordinator.state(), ssa::presentation::PageQueryCoordinator::State::Idle);
         }
 
-        void page_query_cancel_does_not_mask_worker_failure() {
+        void page_query_cancel_logs_worker_failure_and_stays_canceled() {
             auto repository = std::make_shared<SlowCancelableRepository>(true);
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
             ssa::presentation::PageQueryCoordinator coordinator(service);
@@ -1204,12 +1311,12 @@ namespace {
 
             coordinator.run(request);
             QTRY_VERIFY_WITH_TIMEOUT(repository->firstStarted(), 1000);
-            QTest::ignoreMessage(QtWarningMsg, "Page query failed: query failed after stop");
+            QTest::ignoreMessage(QtWarningMsg,
+                                 "Page query failed after cancellation: query failed after stop");
             coordinator.cancel();
 
-            QTRY_COMPARE_WITH_TIMEOUT(failure, QString("Falha ao consultar dados"), 1000);
-            QVERIFY(!failure.contains("query failed after stop"));
-            QCOMPARE(canceledCount, 0);
+            QTRY_COMPARE_WITH_TIMEOUT(canceledCount, 1, 1000);
+            QVERIFY(failure.isEmpty());
             QCOMPARE(coordinator.state(), ssa::presentation::PageQueryCoordinator::State::Idle);
         }
 
@@ -1947,6 +2054,7 @@ namespace {
             auto workflows =
                 std::make_shared<ssa::application::SsaWorkflowService>(nullptr, exportPort);
             int callbackCount = 0;
+            QElapsedTimer destructionTimer;
             {
                 ssa::presentation::ExportViewModel viewModel(
                     workflows, [] { return ssa::domain::SsaPageRequest{}; });
@@ -1954,11 +2062,146 @@ namespace {
                         [&callbackCount] { ++callbackCount; });
                 viewModel.exportFilteredList(QUrl::fromLocalFile("/tmp/ssa-export-cancel.csv"));
                 QTRY_VERIFY_WITH_TIMEOUT(exportPort->started(), 1000);
+                destructionTimer.start();
             }
 
-            QVERIFY(exportPort->finished());
+            QVERIFY(destructionTimer.elapsed() < 50);
+            QTRY_VERIFY_WITH_TIMEOUT(exportPort->finished(), 1000);
             QCoreApplication::processEvents();
             QCOMPARE(callbackCount, 0);
+        }
+
+        void export_cancel_returnsImmediatelyAndWaitsForTheRealTerminal() {
+            auto exportPort = std::make_shared<DelayedTerminalExportPort>();
+            auto workflows =
+                std::make_shared<ssa::application::SsaWorkflowService>(nullptr, exportPort);
+            ssa::presentation::ExportViewModel viewModel(
+                workflows, [] { return ssa::domain::SsaPageRequest{}; });
+
+            viewModel.exportFilteredList(QUrl::fromLocalFile("/tmp/ssa-export-cancel.csv"));
+            QTRY_VERIFY_WITH_TIMEOUT(exportPort->started(), 1000);
+            QVERIFY(viewModel.canCancel());
+
+            QElapsedTimer timer;
+            timer.start();
+            viewModel.cancel();
+            viewModel.cancel();
+
+            QVERIFY(timer.elapsed() < 50);
+            QVERIFY(viewModel.running());
+            QVERIFY(viewModel.canceling());
+            QVERIFY(!viewModel.canCancel());
+            QTRY_VERIFY_WITH_TIMEOUT(exportPort->stopObserved(), 1000);
+
+            exportPort->release();
+            QTRY_VERIFY_WITH_TIMEOUT(!viewModel.running(), 1000);
+            QVERIFY(!viewModel.canceling());
+            QCOMPARE(viewModel.lastStatus(), QString("canceled"));
+        }
+
+        void export_cancel_is_not_reported_as_failure_in_global_status() {
+            auto exportPort = std::make_shared<DelayedTerminalExportPort>();
+            auto workflows =
+                std::make_shared<ssa::application::SsaWorkflowService>(nullptr, exportPort);
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            ssa::presentation::MainViewModel model(service, commands, nullptr, nullptr, workflows);
+            model.actions()->exports()->exportFilteredList(
+                QUrl::fromLocalFile("/tmp/ssa-export-cancel.csv"));
+            QTRY_VERIFY_WITH_TIMEOUT(exportPort->started(), 1000);
+
+            model.requestCancelAll();
+            exportPort->release();
+
+            QTRY_VERIFY_WITH_TIMEOUT(!model.actions()->exports()->running(), 1000);
+            QCOMPARE(model.browse()->status()->message(), QString("Exportacao cancelada"));
+            QCOMPARE(model.browse()->status()->error(), QString());
+        }
+
+        void application_shutdownKeepsEventsResponsiveUntilAllTerminals() {
+            auto exportPort = std::make_shared<DelayedTerminalExportPort>();
+            auto workflows =
+                std::make_shared<ssa::application::SsaWorkflowService>(nullptr, exportPort);
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            ssa::presentation::MainViewModel model(service, commands, nullptr, nullptr, workflows);
+            model.actions()->exports()->exportFilteredList(
+                QUrl::fromLocalFile("/tmp/ssa-shutdown-export.csv"));
+            QTRY_VERIFY_WITH_TIMEOUT(exportPort->started(), 1000);
+
+            bool eventDelivered = false;
+            QTimer::singleShot(0, this, [&eventDelivered] { eventDelivered = true; });
+            QElapsedTimer timer;
+            timer.start();
+            model.requestShutdown();
+
+            QVERIFY(timer.elapsed() < 50);
+            QVERIFY(model.shutdownInProgress());
+            QVERIFY(!model.shutdownReady());
+            QTRY_VERIFY_WITH_TIMEOUT(eventDelivered, 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(exportPort->stopObserved(), 1000);
+            QVERIFY(!model.shutdownReady());
+
+            exportPort->release();
+            QTRY_VERIFY_WITH_TIMEOUT(model.shutdownReady(), 1000);
+        }
+
+        void application_shutdown_waits_for_canceled_relation_terminal() {
+            auto repository = std::make_shared<SlowDetailsRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            ssa::presentation::MainViewModel model(service, commands);
+            model.browse()->details()->setRecord(
+                ssa::domain::SsaRecord{{{"numero_ssa", "202500001"}, {"situacao", "APV"}}});
+            QTRY_VERIFY_WITH_TIMEOUT(repository->firstStarted(), 1000);
+
+            model.requestShutdown();
+
+            QVERIFY(!model.shutdownReady());
+            QTRY_VERIFY_WITH_TIMEOUT(repository->firstFinished(), 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(model.shutdownReady(), 1000);
+        }
+
+        void application_shutdown_tracks_detached_details_window_query() {
+            auto repository = std::make_shared<SlowRelationNavigationRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            ssa::presentation::MainViewModel model(service, commands);
+            auto* details = model.browse()->createDetailsWindowModel(QStringLiteral("old"), &model);
+            QVERIFY(details != nullptr);
+            QTRY_VERIFY_WITH_TIMEOUT(repository->firstStarted(), 1000);
+
+            model.requestShutdown();
+
+            QVERIFY(!model.shutdownReady());
+            QTRY_VERIFY_WITH_TIMEOUT(repository->stopObserved(), 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(repository->firstFinished(), 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(model.shutdownReady(), 1000);
+        }
+
+        void application_shutdown_waits_for_stale_page_worker_terminal() {
+            auto repository = std::make_shared<SlowCancelableRepository>(false, true);
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            ssa::presentation::MainViewModel model(service, commands);
+            model.browse()->search()->setText(QStringLiteral("first"));
+            model.browse()->apply();
+            QTRY_VERIFY_WITH_TIMEOUT(repository->firstStarted(), 1000);
+            model.browse()->search()->setText(QStringLiteral("second"));
+            model.browse()->apply();
+            QTRY_VERIFY_WITH_TIMEOUT(repository->secondStarted(), 1000);
+            QVERIFY(!repository->firstFinished());
+
+            model.requestShutdown();
+            QTest::qWait(100);
+
+            const bool readyBeforeRelease = model.shutdownReady();
+            repository->releaseFirst();
+            QVERIFY(!readyBeforeRelease);
+            QTRY_VERIFY_WITH_TIMEOUT(repository->firstFinished(), 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(model.shutdownReady(), 1000);
         }
 
         void command_view_model_executes_port_on_owner_thread() {

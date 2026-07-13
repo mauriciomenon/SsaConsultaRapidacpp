@@ -20,6 +20,8 @@ namespace ssa::presentation {
           selectionCoordinator_(details, tableModel, this),
           requestCoordinator_(std::move(queryService), queryState_, search_, filters_, status,
                               tableModel, this) {
+        connect(&requestCoordinator_, &BrowseRequestCoordinator::activeOperationsChanged, this,
+                &BrowseOrchestrator::activeOperationsChanged);
         connect(&search_, &SearchViewModel::applyRequested, this, &BrowseOrchestrator::apply);
         connect(&search_, &SearchViewModel::textClearRequested, this,
                 &BrowseOrchestrator::clearSearchAndResetPage);
@@ -197,6 +199,10 @@ namespace ssa::presentation {
 
     void BrowseOrchestrator::invalidateTotalRowsAll() {
         requestCoordinator_.invalidateTotalRowsAll();
+    }
+
+    bool BrowseOrchestrator::hasActiveOperations() const {
+        return requestCoordinator_.hasActiveOperations();
     }
 
     void BrowseOrchestrator::load() {

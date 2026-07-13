@@ -184,6 +184,13 @@ namespace {
             QVERIFY(mainQml.contains(QStringLiteral("id: samRefreshDialogLoader")));
         }
 
+        void query_cancel_menu_uses_the_contextual_cancel_barrier() {
+            const QString mainQml = readSource(QStringLiteral("app/desktop/qml/Main.qml"));
+            QVERIFY(!mainQml.isEmpty());
+            QVERIFY(mainQml.contains(QStringLiteral("text: \"Cancelar consulta\"")));
+            QVERIFY(mainQml.contains(QStringLiteral("onTriggered: root.vm.requestCancelAll()")));
+        }
+
         void sam_refresh_dialog_renders_offscreen_screenshot() {
             SourceQmlUrlInterceptor sourceInterceptor;
             QQmlEngine engine;
@@ -288,6 +295,30 @@ namespace {
             QTRY_VERIFY_WITH_TIMEOUT(errorDialog->property("visible").toBool(), 1000);
             QVERIFY(errorDialog->property("text").toString().contains(
                 QStringLiteral("arquivo de banco local")));
+            QVERIFY(QMetaObject::invokeMethod(errorDialog, "close"));
+
+            auto* cancelButton =
+                mainWindow->findChild<QObject*>(QStringLiteral("statusCancelButton"));
+            auto* forceShutdownDialog =
+                mainWindow->findChild<QObject*>(QStringLiteral("forceShutdownDialog"));
+            QVERIFY(cancelButton != nullptr);
+            QVERIFY(forceShutdownDialog != nullptr);
+
+            viewModel.browse()->status()->setLoading(true);
+            QTRY_VERIFY_WITH_TIMEOUT(cancelButton->property("visible").toBool(), 1000);
+            QCOMPARE(cancelButton->property("text").toString(), QStringLiteral("Cancelar"));
+            QVERIFY(captureDialogScreenshot(*mainWindow, QStringLiteral("status-cancel.png")));
+
+            viewModel.requestCancelAll();
+            QTRY_COMPARE_WITH_TIMEOUT(cancelButton->property("text").toString(),
+                                      QStringLiteral("Cancelando..."), 1000);
+            QVERIFY(captureDialogScreenshot(*mainWindow, QStringLiteral("status-canceling.png")));
+
+            QVERIFY(QMetaObject::invokeMethod(forceShutdownDialog, "open"));
+            QTRY_VERIFY_WITH_TIMEOUT(forceShutdownDialog->property("visible").toBool(), 1000);
+            QVERIFY(captureDialogScreenshot(*mainWindow, QStringLiteral("force-shutdown.png")));
+            QVERIFY(QMetaObject::invokeMethod(forceShutdownDialog, "close"));
+            viewModel.browse()->status()->setLoading(false);
         }
     };
 
