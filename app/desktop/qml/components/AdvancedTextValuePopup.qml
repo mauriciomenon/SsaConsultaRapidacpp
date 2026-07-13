@@ -266,6 +266,7 @@ Popup {
                 id: optionList
                 objectName: "advancedTextValueOptionList_" + root.columnKey
                 anchors.fill: parent
+                visible: !root.valuesLoading && root.valuesError.length === 0 && root.allValues.length > 0
                 clip: true
                 spacing: 2
                 reuseItems: true

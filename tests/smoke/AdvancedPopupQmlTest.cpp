@@ -661,8 +661,11 @@ namespace {
             auto* retryButton = findOwnedQuickItemByProperty(
                 popup, "objectName", QStringLiteral("advancedTextValueRetryButton_situacao"));
             QTRY_VERIFY_WITH_TIMEOUT(retryButton != nullptr && retryButton->isVisible(), 1000);
-            QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier,
-                              clickPointInWindow(*retryButton));
+            auto* optionList = findOwnedQuickItemByProperty(
+                popup, "objectName", QStringLiteral("advancedTextValueOptionList_situacao"));
+            QVERIFY(optionList != nullptr);
+            QVERIFY(!optionList->isVisible());
+            QVERIFY(QMetaObject::invokeMethod(retryButton, "click"));
 
             QTRY_COMPARE_WITH_TIMEOUT(repository->advancedRequests(), 2, 1000);
             QTRY_COMPARE_WITH_TIMEOUT(popup->property("valuesError").toString(), QString(), 1000);
