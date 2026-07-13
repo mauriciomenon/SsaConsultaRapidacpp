@@ -214,4 +214,100 @@ namespace ssa::infra::sqlite {
         }
     }
 
+    SqliteWriteTransaction::SqliteWriteTransaction(sqlite3* db,
+                                                   const std::atomic_bool* busyCancellationObserved)
+        : db_(db), busyCancellationObserved_(busyCancellationObserved) {
+        if (db_ == nullptr) {
+            throw std::invalid_argument("sqlite transaction requires a connection");
+        }
+        char* error = nullptr;
+        const int rc = sqlite3_exec(db_, "BEGIN IMMEDIATE", nullptr, nullptr, &error);
+        const std::string detail = error == nullptr ? sqlite3_errmsg(db_) : error;
+        sqlite3_free(error);
+        if (isCanceledResult(rc, busyCancellationObserved_)) {
+            throw std::system_error(std::make_error_code(std::errc::operation_canceled),
+                                    "sqlite transaction canceled");
+        }
+        if (rc != SQLITE_OK) {
+            throw ports::OperationError("Falha ao iniciar a operacao no banco de dados",
+                                        sqliteErrorMessage(db_, "sqlite transaction begin", rc) +
+                                            " detail=" + detail);
+        }
+        if (sqlite3_get_autocommit(db_) != 0) {
+            throw ports::OperationError("Falha ao iniciar a operacao no banco de dados",
+                                        "sqlite transaction begin left autocommit enabled");
+        }
+        active_ = true;
+    }
+
+    SqliteWriteTransaction::~SqliteWriteTransaction() {
+        if (!active_) {
+            return;
+        }
+        char* error = nullptr;
+        const int rc = sqlite3_exec(db_, "ROLLBACK", nullptr, nullptr, &error);
+        if (rc != SQLITE_OK) {
+            sqlite3_log(rc, "sqlite transaction destructor rollback failed: %s",
+                        error == nullptr ? sqlite3_errmsg(db_) : error);
+        } else if (sqlite3_get_autocommit(db_) == 0) {
+            sqlite3_log(SQLITE_ERROR,
+                        "sqlite transaction destructor rollback left transaction active");
+        }
+        sqlite3_free(error);
+    }
+
+    void SqliteWriteTransaction::commit() {
+        if (!active_) {
+            throw std::logic_error("sqlite transaction is not active");
+        }
+        char* error = nullptr;
+        const int rc = sqlite3_exec(db_, "COMMIT", nullptr, nullptr, &error);
+        const std::string detail = error == nullptr ? sqlite3_errmsg(db_) : error;
+        sqlite3_free(error);
+        if (sqlite3_get_autocommit(db_) != 0) {
+            active_ = false;
+        }
+        if (isCanceledResult(rc, busyCancellationObserved_)) {
+            throw std::system_error(std::make_error_code(std::errc::operation_canceled),
+                                    "sqlite transaction commit canceled");
+        }
+        if (rc != SQLITE_OK) {
+            throw ports::OperationError("Falha ao confirmar a operacao no banco de dados",
+                                        sqliteErrorMessage(db_, "sqlite transaction commit", rc) +
+                                            " detail=" + detail);
+        }
+        if (sqlite3_get_autocommit(db_) == 0) {
+            throw ports::OperationError("Falha ao confirmar a operacao no banco de dados",
+                                        "sqlite transaction commit left transaction active");
+        }
+        active_ = false;
+    }
+
+    void SqliteWriteTransaction::rollback() {
+        if (!active_) {
+            return;
+        }
+        char* error = nullptr;
+        const int rc = sqlite3_exec(db_, "ROLLBACK", nullptr, nullptr, &error);
+        const std::string detail = error == nullptr ? sqlite3_errmsg(db_) : error;
+        sqlite3_free(error);
+        if (sqlite3_get_autocommit(db_) != 0) {
+            active_ = false;
+        }
+        if (rc != SQLITE_OK) {
+            throw ports::OperationError("Falha ao reverter a operacao no banco de dados",
+                                        sqliteErrorMessage(db_, "sqlite transaction rollback", rc) +
+                                            " detail=" + detail);
+        }
+        if (sqlite3_get_autocommit(db_) == 0) {
+            throw ports::OperationError("Falha ao reverter a operacao no banco de dados",
+                                        "sqlite transaction rollback left transaction active");
+        }
+        active_ = false;
+    }
+
+    bool SqliteWriteTransaction::active() const noexcept {
+        return active_;
+    }
+
 } // namespace ssa::infra::sqlite

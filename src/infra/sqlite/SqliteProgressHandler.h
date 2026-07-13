@@ -30,7 +30,7 @@ namespace ssa::infra::sqlite {
         }
 
         ~SqliteBusyHandler() {
-            sqlite3_busy_handler(db_, nullptr, nullptr);
+            disable();
         }
 
         SqliteBusyHandler(const SqliteBusyHandler&) = delete;
@@ -38,6 +38,14 @@ namespace ssa::infra::sqlite {
 
         [[nodiscard]] const std::atomic_bool* cancellationObserved() const noexcept {
             return &cancellationObserved_;
+        }
+
+        void disable() noexcept {
+            if (db_ == nullptr) {
+                return;
+            }
+            sqlite3_busy_handler(db_, nullptr, nullptr);
+            db_ = nullptr;
         }
 
       private:
@@ -84,13 +92,19 @@ namespace ssa::infra::sqlite {
         }
 
         ~SqliteProgressHandler() {
-            if (installed_) {
-                sqlite3_progress_handler(db_, 0, nullptr, nullptr);
-            }
+            disable();
         }
 
         SqliteProgressHandler(const SqliteProgressHandler&) = delete;
         SqliteProgressHandler& operator=(const SqliteProgressHandler&) = delete;
+
+        void disable() noexcept {
+            if (!installed_) {
+                return;
+            }
+            sqlite3_progress_handler(db_, 0, nullptr, nullptr);
+            installed_ = false;
+        }
 
       private:
         static int shouldInterrupt(void* context) noexcept {

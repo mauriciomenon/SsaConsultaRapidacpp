@@ -23,9 +23,9 @@ namespace ssa::infra::importing {
                                                    std::stop_token stopToken = {}) override;
 
       private:
-        [[nodiscard]] ports::WorkflowResult importDiscoveredFiles(const ImportStagingResult& files,
-                                                                  bool replaceAll,
-                                                                  std::stop_token stopToken) const;
+        [[nodiscard]] ports::WorkflowResult
+        importDiscoveredFiles(const ImportStagingResult& files, bool replaceAll,
+                              const std::stop_token& stopToken) const;
 
         ImportFileStager stager_;
         XlsxWorkbookReader reader_;

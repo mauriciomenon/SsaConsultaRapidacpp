@@ -2,6 +2,7 @@
 
 #include "infra/sqlite/SqliteConnection.h"
 #include "infra/sqlite/SqliteProgressHandler.h"
+#include "ports/OperationError.h"
 
 #include <sqlite3.h>
 
@@ -21,20 +22,31 @@ namespace ssa::infra::sqlite {
             return {ports::WorkflowStatus::Canceled, "sqlite derivadas sync canceled"};
         }
 
-        std::optional<ports::WorkflowResult> executeSyncSql(SqliteConnection& connection,
-                                                            const char* sql) {
+        ports::WorkflowResult failed(std::string diagnostic) {
+            return {ports::WorkflowStatus::Failed, "sqlite derivadas sync failed", false,
+                    std::move(diagnostic)};
+        }
+
+        std::optional<ports::WorkflowResult>
+        executeSyncSql(SqliteConnection& connection, const char* sql,
+                       const std::atomic_bool* canceledByBusy) {
             char* error = nullptr;
             const int execRc = sqlite3_exec(connection.handle(), sql, nullptr, nullptr, &error);
             const std::string message = error == nullptr ? std::string{} : std::string{error};
             if (error != nullptr) {
                 sqlite3_free(error);
             }
-            if (execRc == SQLITE_INTERRUPT) {
+            const bool busyCanceled = (execRc == SQLITE_BUSY || execRc == SQLITE_LOCKED) &&
+                                      canceledByBusy != nullptr &&
+                                      canceledByBusy->load(std::memory_order_relaxed);
+            if (execRc == SQLITE_INTERRUPT || busyCanceled) {
                 return canceled();
             }
             if (execRc != SQLITE_OK) {
-                return ports::WorkflowResult{ports::WorkflowStatus::Failed,
-                                             "sqlite derivadas sync failed: " + message};
+                return failed("sqlite derivadas sync failed: rc=" + std::to_string(execRc) +
+                              " extended_rc=" +
+                              std::to_string(sqlite3_extended_errcode(connection.handle())) +
+                              " message=" + message);
             }
             return std::nullopt;
         }
@@ -45,46 +57,68 @@ namespace ssa::infra::sqlite {
         : databasePath_(std::move(databasePath)) {}
 
     ports::WorkflowResult SqliteDerivadasPort::syncDerivadas(const std::stop_token stopToken) {
-        if (stopToken.stop_requested()) {
-            return canceled();
+        try {
+            SqliteConnection connection(databasePath_, SqliteOpenMode::ReadWrite);
+            SqliteBusyHandler busy(connection.handle(), stopToken);
+            SqliteProgressHandler progress(connection.handle(), stopToken);
+            SqliteWriteTransaction transaction(connection.handle(), busy.cancellationObserved());
+
+            auto rollback = [&](ports::WorkflowResult result) {
+                progress.disable();
+                busy.disable();
+                try {
+                    transaction.rollback();
+                } catch (const ports::OperationError& error) {
+                    result.status = ports::WorkflowStatus::Failed;
+                    result.message = "sqlite derivadas sync failed";
+                    result.diagnostic += "; " + error.diagnostic();
+                }
+                return result;
+            };
+
+            constexpr const char* operationSql =
+                "WITH orphan_refs AS (\n"
+                "    SELECT DISTINCT TRIM(derivada_de) AS orphan\n"
+                "    FROM ssa_table\n"
+                "    WHERE TRIM(COALESCE(derivada_de, '')) <> ''\n"
+                "      AND NOT EXISTS (\n"
+                "          SELECT 1 FROM ssa_table AS parents\n"
+                "          WHERE parents.numero_ssa = TRIM(ssa_table.derivada_de)\n"
+                "      )\n"
+                ")\n"
+                "UPDATE ssa_table\n"
+                "SET derivada_de = NULL\n"
+                "WHERE TRIM(COALESCE(derivada_de, '')) IN (SELECT orphan FROM orphan_refs)";
+            if (auto result =
+                    executeSyncSql(connection, operationSql, busy.cancellationObserved())) {
+                return rollback(std::move(*result));
+            }
+            const auto fixedRecords =
+                static_cast<std::size_t>(sqlite3_changes(connection.handle()));
+            if (stopToken.stop_requested()) {
+                return rollback(canceled());
+            }
+            try {
+                transaction.commit();
+            } catch (const std::system_error& error) {
+                if (error.code() == std::make_error_code(std::errc::operation_canceled)) {
+                    return rollback(canceled());
+                }
+                return rollback(failed(error.what()));
+            } catch (const ports::OperationError& error) {
+                return rollback(failed(error.diagnostic()));
+            }
+            return succeeded(fixedRecords);
+        } catch (const std::system_error& error) {
+            if (error.code() == std::make_error_code(std::errc::operation_canceled)) {
+                return canceled();
+            }
+            return failed(error.what());
+        } catch (const ports::OperationError& error) {
+            return failed(error.diagnostic());
+        } catch (const std::exception& error) {
+            return failed(error.what());
         }
-        SqliteConnection connection(databasePath_, SqliteOpenMode::ReadWrite);
-        SqliteProgressHandler progress(connection.handle(), stopToken);
-        // Run inside an explicit immediate transaction: the original auto-commit
-        // form issued the UPDATE as one implicit transaction per statement, and
-        // the correlated NOT EXISTS subquery did a full table scan with an index
-        // probe per non-blank row. Wrapping in BEGIN IMMEDIATE also serializes
-        // the write cleanly.
-        if (auto result = executeSyncSql(connection, "BEGIN IMMEDIATE")) {
-            return *result;
-        }
-        // Materialize the orphan derivada_de values once (using the numero_ssa
-        // index for the anti-join) instead of re-evaluating a correlated NOT
-        // EXISTS per row. The CTE resolves the set of broken references first,
-        // then the UPDATE joins against it - a single scan of the index plus one
-        // pass over candidates.
-        constexpr const char* operationSql =
-            "WITH orphan_refs AS (\n"
-            "    SELECT DISTINCT TRIM(derivada_de) AS orphan\n"
-            "    FROM ssa_table\n"
-            "    WHERE TRIM(COALESCE(derivada_de, '')) <> ''\n"
-            "      AND NOT EXISTS (\n"
-            "          SELECT 1 FROM ssa_table AS parents\n"
-            "          WHERE parents.numero_ssa = TRIM(ssa_table.derivada_de)\n"
-            "      )\n"
-            ")\n"
-            "UPDATE ssa_table\n"
-            "SET derivada_de = NULL\n"
-            "WHERE TRIM(COALESCE(derivada_de, '')) IN (SELECT orphan FROM orphan_refs)";
-        if (auto result = executeSyncSql(connection, operationSql)) {
-            executeSyncSql(connection, "ROLLBACK");
-            return *result;
-        }
-        const auto fixedRecords = static_cast<std::size_t>(sqlite3_changes(connection.handle()));
-        if (auto result = executeSyncSql(connection, "COMMIT")) {
-            return *result;
-        }
-        return succeeded(fixedRecords);
     }
 
 } // namespace ssa::infra::sqlite

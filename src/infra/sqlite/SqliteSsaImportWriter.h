@@ -25,6 +25,7 @@ namespace ssa::infra::sqlite {
             void write(const importing::ResolvedSsaImportRows& rows, std::size_t fileCount,
                        std::size_t skippedRows);
             [[nodiscard]] importing::SsaImportWriteSummary finish();
+            void rollback();
 
           private:
             friend class SqliteSsaImportWriter;

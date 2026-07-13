@@ -1,7 +1,9 @@
 #include "presentation/WorkflowCommandRunner.h"
 
+#include "ports/OperationError.h"
 #include "qt/FilesystemPath.h"
 
+#include <QDebug>
 #include <QThreadPool>
 #include <QtConcurrentRun>
 
@@ -69,7 +71,7 @@ namespace ssa::presentation {
         }
         auto workflows = workflows_;
         start([workflows = std::move(workflows),
-               request = std::move(request)](const std::stop_token stopToken) {
+               request = std::move(request)](const std::stop_token& stopToken) {
             return workflows->importExternalFiles(request, stopToken);
         });
     }
@@ -90,7 +92,7 @@ namespace ssa::presentation {
         request.optimized = mode == ports::RescanMode::Incremental;
 
         auto workflows = workflows_;
-        start([workflows = std::move(workflows), request](const std::stop_token stopToken) {
+        start([workflows = std::move(workflows), request](const std::stop_token& stopToken) {
             return workflows->rescan(request, stopToken);
         });
     }
@@ -107,7 +109,7 @@ namespace ssa::presentation {
 
         auto workflows = workflows_;
         start([workflows = std::move(workflows),
-               request = std::move(request)](const std::stop_token stopToken) {
+               request = std::move(request)](const std::stop_token& stopToken) {
             return workflows->refreshSam(request, stopToken);
         });
     }
@@ -123,7 +125,7 @@ namespace ssa::presentation {
         }
 
         auto workflows = workflows_;
-        start([workflows = std::move(workflows)](const std::stop_token stopToken) {
+        start([workflows = std::move(workflows)](const std::stop_token& stopToken) {
             return workflows->syncDerivadas(stopToken);
         });
     }
@@ -139,7 +141,7 @@ namespace ssa::presentation {
         }
 
         auto workflows = workflows_;
-        start([workflows = std::move(workflows)](const std::stop_token stopToken) {
+        start([workflows = std::move(workflows)](const std::stop_token& stopToken) {
             return workflows->vacuumAnalyze(stopToken);
         });
     }
@@ -184,14 +186,26 @@ namespace ssa::presentation {
         if (error) {
             try {
                 std::rethrow_exception(error);
-            } catch (const std::exception& exception) {
+            } catch (const ports::OperationError& exception) {
+                qWarning().noquote()
+                    << "Workflow failed:" << QString::fromStdString(exception.diagnostic());
                 emit this->finished({ports::WorkflowStatus::Failed, exception.what()});
+            } catch (const std::exception& exception) {
+                qWarning().noquote() << "Workflow failed:" << exception.what();
+                emit this->finished(
+                    {ports::WorkflowStatus::Failed, "Falha ao executar a operacao"});
             } catch (...) {
-                emit this->finished({ports::WorkflowStatus::Failed, "unknown workflow error"});
+                qWarning() << "Workflow failed: unknown exception";
+                emit this->finished(
+                    {ports::WorkflowStatus::Failed, "Falha ao executar a operacao"});
             }
         } else if (!result) {
             emit this->finished({ports::WorkflowStatus::Failed, "workflow produced no result"});
         } else {
+            if (!result->diagnostic.empty()) {
+                qWarning().noquote()
+                    << "Workflow diagnostic:" << QString::fromStdString(result->diagnostic);
+            }
             emit this->finished(std::move(*result));
         }
         setState(State::Idle);

@@ -333,6 +333,10 @@ if(SSA_BUILD_TESTS)
     PROPERTIES PASS_REGULAR_EXPRESSION
                "THEME_LAB input=1 accepted=1 rejected=0 shortlisted=1")
 
+  add_executable(ssa_sqlite_import_crash_probe
+                 tests/integration/SqliteImportCrashProbe.cpp)
+  target_link_libraries(ssa_sqlite_import_crash_probe PRIVATE ssa_infra)
+
   add_executable(
     ssa_integration_tests
     tests/integration/ExportPortTests.cpp
@@ -342,6 +346,12 @@ if(SSA_BUILD_TESTS)
     tests/integration/SqliteRepositoryTests.cpp)
   target_link_libraries(ssa_integration_tests PRIVATE ssa_infra
                                                       Catch2::Catch2WithMain)
+  target_compile_definitions(
+    ssa_integration_tests
+    PRIVATE
+      SSA_SQLITE_CRASH_PROBE_PATH="$<TARGET_FILE:ssa_sqlite_import_crash_probe>"
+  )
+  add_dependencies(ssa_integration_tests ssa_sqlite_import_crash_probe)
   catch_discover_tests(ssa_integration_tests PROPERTIES TIMEOUT 30)
 
   add_executable(ssa_qt_presentation_tests

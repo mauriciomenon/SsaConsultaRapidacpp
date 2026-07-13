@@ -7,7 +7,10 @@
 #include "qt/FilesystemPath.h"
 
 #include <QDir>
+#include <QElapsedTimer>
+#include <QProcess>
 #include <QTemporaryDir>
+#include <QThread>
 
 #include <catch2/catch_test_macros.hpp>
 #include <miniz.h>
@@ -15,6 +18,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <future>
 #include <stop_token>
 #include <string>
 #include <system_error>
@@ -303,6 +307,232 @@ TEST_CASE("sqlite import writer rejects a stopped token before creating the data
 
     REQUIRE_THROWS_AS(writer.startSession(false, stopSource.get_token()), std::system_error);
     REQUIRE_FALSE(std::filesystem::exists(dbPath));
+}
+
+TEST_CASE("sqlite import writer rolls back schema when a session is abandoned") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(dbPath.parent_path());
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(dbPath, importColumns());
+
+    {
+        auto session = writer.startSession(false);
+        session.rollback();
+        session.rollback();
+        REQUIRE_THROWS_AS(session.write({}, 0, 0), std::logic_error);
+        REQUIRE_THROWS_AS(session.finish(), std::logic_error);
+    }
+
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarText(db, "PRAGMA integrity_check") == "ok");
+    REQUIRE(scalarInt(
+                db, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='ssa_table'") ==
+            0);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("sqlite import cancellation rolls back rows and permits a second write") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(dbPath.parent_path());
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(dbPath, importColumns());
+    ssa::infra::importing::ResolvedSsaImportRows previous;
+    previous.rows.push_back({{"numero_ssa", "202600200"}, {"descricao_ssa", "Anterior"}});
+    previous.ssaNumbersForUpsertDelete.emplace_back("202600200");
+    REQUIRE(writer.write(previous, 1, 0, false).rowsWritten == 1);
+
+    ssa::infra::importing::ResolvedSsaImportRows replacement;
+    replacement.rows.push_back({{"numero_ssa", "202600201"}, {"descricao_ssa", "Nova"}});
+    replacement.ssaNumbersForUpsertDelete.emplace_back("202600201");
+    std::stop_source stopSource;
+    {
+        auto session = writer.startSession(true, stopSource.get_token());
+        session.write(replacement, 1, 0);
+        stopSource.request_stop();
+        REQUIRE_THROWS_AS(session.finish(), std::system_error);
+        REQUIRE_NOTHROW(session.rollback());
+        REQUIRE_THROWS_AS(session.write(replacement, 1, 0), std::logic_error);
+        REQUIRE_THROWS_AS(session.finish(), std::logic_error);
+    }
+
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarText(db, "PRAGMA integrity_check") == "ok");
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600200'") == 1);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600201'") == 0);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+
+    REQUIRE(writer.write(replacement, 1, 0, true).rowsWritten == 1);
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarText(db, "PRAGMA integrity_check") == "ok");
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600200'") == 0);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600201'") == 1);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("sqlite import stops promptly while locked and remains reusable") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto dbPath = std::filesystem::path{tempDir.path().toStdString()} / "ssas.db";
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(dbPath, importColumns());
+    ssa::infra::importing::ResolvedSsaImportRows previous;
+    previous.rows.push_back({{"numero_ssa", "202600205"}, {"descricao_ssa", "Anterior"}});
+    previous.ssaNumbersForUpsertDelete.emplace_back("202600205");
+    REQUIRE(writer.write(previous, 1, 0, false).rowsWritten == 1);
+
+    ssa::infra::sqlite::SqliteConnection blocker(dbPath,
+                                                 ssa::infra::sqlite::SqliteOpenMode::ReadWrite);
+    REQUIRE(sqlite3_exec(blocker.handle(), "BEGIN EXCLUSIVE", nullptr, nullptr, nullptr) ==
+            SQLITE_OK);
+
+    ssa::infra::importing::ResolvedSsaImportRows replacement;
+    replacement.rows.push_back({{"numero_ssa", "202600206"}, {"descricao_ssa", "Nova"}});
+    replacement.ssaNumbersForUpsertDelete.emplace_back("202600206");
+    std::stop_source stopSource;
+    auto operation = std::async(std::launch::async, [&] {
+        try {
+            static_cast<void>(writer.write(replacement, 1, 0, true, stopSource.get_token()));
+            return std::error_code{};
+        } catch (const std::system_error& error) {
+            return error.code();
+        }
+    });
+
+    REQUIRE(operation.wait_for(std::chrono::milliseconds{50}) == std::future_status::timeout);
+    stopSource.request_stop();
+    REQUIRE(operation.wait_for(std::chrono::milliseconds{500}) == std::future_status::ready);
+    REQUIRE(operation.get() == std::make_error_code(std::errc::operation_canceled));
+    REQUIRE(sqlite3_exec(blocker.handle(), "ROLLBACK", nullptr, nullptr, nullptr) == SQLITE_OK);
+
+    sqlite3* verification = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &verification) == SQLITE_OK);
+    REQUIRE(scalarInt(verification,
+                      "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600205'") == 1);
+    REQUIRE(scalarInt(verification,
+                      "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600206'") == 0);
+    REQUIRE(sqlite3_close(verification) == SQLITE_OK);
+    REQUIRE(writer.write(replacement, 1, 0, true).rowsWritten == 1);
+}
+
+TEST_CASE("sqlite import cancels a blocked commit and rolls back explicitly") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto dbPath = std::filesystem::path{tempDir.path().toStdString()} / "ssas.db";
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(dbPath, importColumns());
+    ssa::infra::importing::ResolvedSsaImportRows previous;
+    previous.rows.push_back({{"numero_ssa", "202600207"}, {"descricao_ssa", "Anterior"}});
+    previous.ssaNumbersForUpsertDelete.emplace_back("202600207");
+    REQUIRE(writer.write(previous, 1, 0, false).rowsWritten == 1);
+
+    sqlite3* reader = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &reader) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(reader, "PRAGMA journal_mode=DELETE", nullptr, nullptr, nullptr) ==
+            SQLITE_OK);
+    REQUIRE(sqlite3_exec(reader, "BEGIN", nullptr, nullptr, nullptr) == SQLITE_OK);
+    sqlite3_stmt* readStatement = nullptr;
+    REQUIRE(sqlite3_prepare_v2(reader, "SELECT COUNT(*) FROM ssa_table", -1, &readStatement,
+                               nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_step(readStatement) == SQLITE_ROW);
+
+    ssa::infra::importing::ResolvedSsaImportRows replacement;
+    replacement.rows.push_back({{"numero_ssa", "202600208"}, {"descricao_ssa", "Nova"}});
+    replacement.ssaNumbersForUpsertDelete.emplace_back("202600208");
+    std::stop_source stopSource;
+    auto operation = std::async(std::launch::async, [&] {
+        try {
+            static_cast<void>(writer.write(replacement, 1, 0, true, stopSource.get_token()));
+            return std::error_code{};
+        } catch (const std::system_error& error) {
+            return error.code();
+        }
+    });
+
+    REQUIRE(operation.wait_for(std::chrono::milliseconds{50}) == std::future_status::timeout);
+    stopSource.request_stop();
+    REQUIRE(operation.wait_for(std::chrono::milliseconds{500}) == std::future_status::ready);
+    REQUIRE(operation.get() == std::make_error_code(std::errc::operation_canceled));
+    REQUIRE(sqlite3_finalize(readStatement) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(reader, "ROLLBACK", nullptr, nullptr, nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_close(reader) == SQLITE_OK);
+
+    sqlite3* verification = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &verification) == SQLITE_OK);
+    REQUIRE(scalarText(verification, "PRAGMA integrity_check") == "ok");
+    REQUIRE(scalarInt(verification,
+                      "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600207'") == 1);
+    REQUIRE(scalarInt(verification,
+                      "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600208'") == 0);
+    REQUIRE(sqlite3_close(verification) == SQLITE_OK);
+    REQUIRE(writer.write(replacement, 1, 0, true).rowsWritten == 1);
+}
+
+TEST_CASE("sqlite import survives process death before and after commit") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    for (const bool commitBeforeKill : {false, true}) {
+        const auto scenario = commitBeforeKill ? "after" : "before";
+        const auto dbPath = root / scenario / "ssas.db";
+        const auto readyPath = root / scenario / "ready";
+        std::filesystem::create_directories(dbPath.parent_path());
+
+        sqlite3* seed = nullptr;
+        REQUIRE(sqlite3_open(dbPath.string().c_str(), &seed) == SQLITE_OK);
+        REQUIRE(sqlite3_exec(seed,
+                             "CREATE TABLE ssa_table(numero_ssa TEXT, descricao_ssa TEXT, "
+                             "id INTEGER PRIMARY KEY);"
+                             "INSERT INTO ssa_table(numero_ssa, descricao_ssa) "
+                             "VALUES('202600210', 'Anterior');",
+                             nullptr, nullptr, nullptr) == SQLITE_OK);
+        REQUIRE(sqlite3_close(seed) == SQLITE_OK);
+
+        QProcess child;
+        child.start(QString::fromUtf8(SSA_SQLITE_CRASH_PROBE_PATH),
+                    {ssa::qt::toQString(dbPath), ssa::qt::toQString(readyPath), scenario});
+        REQUIRE(child.waitForStarted(5000));
+        QElapsedTimer deadline;
+        deadline.start();
+        while (!std::filesystem::exists(readyPath) && deadline.elapsed() < 5000) {
+            QThread::msleep(10);
+        }
+        REQUIRE(std::filesystem::exists(readyPath));
+        child.kill();
+        REQUIRE(child.waitForFinished(5000));
+        REQUIRE(child.exitStatus() == QProcess::CrashExit);
+
+        sqlite3* db = nullptr;
+        REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+        REQUIRE(scalarText(db, "PRAGMA integrity_check") == "ok");
+        REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600210'") ==
+                (commitBeforeKill ? 0 : 1));
+        REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600211'") ==
+                (commitBeforeKill ? 1 : 0));
+        REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM sqlite_schema WHERE type='index' AND "
+                              "name='idx_ssa_table_numero_ssa'") == (commitBeforeKill ? 1 : 0));
+        REQUIRE(sqlite3_close(db) == SQLITE_OK);
+
+        const std::vector<ssa::domain::ColumnDef> columns{
+            {.key = "numero_ssa", .label = "Numero", .labelFull = "Numero"},
+            {.key = "descricao_ssa", .label = "Descricao", .labelFull = "Descricao"}};
+        const ssa::infra::sqlite::SqliteSsaImportWriter writer(dbPath, columns);
+        ssa::infra::importing::ResolvedSsaImportRows retry;
+        retry.rows.push_back({{"numero_ssa", "202600212"}, {"descricao_ssa", "Retry"}});
+        retry.ssaNumbersForUpsertDelete.emplace_back("202600212");
+        REQUIRE(writer.write(retry, 1, 0, true).rowsWritten == 1);
+        REQUIRE_FALSE(std::filesystem::exists(dbPath.string() + "-journal"));
+        REQUIRE_FALSE(std::filesystem::exists(dbPath.string() + "-wal"));
+        REQUIRE_FALSE(std::filesystem::exists(dbPath.string() + "-shm"));
+    }
 }
 
 TEST_CASE("spreadsheet import workflow stages xlsx and writes sqlite rows") {
@@ -635,7 +865,8 @@ TEST_CASE("spreadsheet import workflow reports xlsx read failure cause") {
 
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
     REQUIRE(result.message.find("failed=1") != std::string::npos);
-    REQUIRE(result.message.find("error=cannot read xlsx zip package") != std::string::npos);
+    REQUIRE(result.message.find("error=operation_failed") != std::string::npos);
+    REQUIRE(result.diagnostic.find("cannot read xlsx zip package") != std::string::npos);
 }
 
 TEST_CASE("spreadsheet import workflow rejects more than 64 files before staging") {

@@ -66,4 +66,25 @@ namespace ssa::infra::sqlite {
         bool hasCurrentRow_ = false;
     };
 
+    class SqliteWriteTransaction final {
+      public:
+        explicit SqliteWriteTransaction(sqlite3* db,
+                                        const std::atomic_bool* busyCancellationObserved = nullptr);
+        ~SqliteWriteTransaction();
+
+        SqliteWriteTransaction(const SqliteWriteTransaction&) = delete;
+        SqliteWriteTransaction& operator=(const SqliteWriteTransaction&) = delete;
+        SqliteWriteTransaction(SqliteWriteTransaction&&) = delete;
+        SqliteWriteTransaction& operator=(SqliteWriteTransaction&&) = delete;
+
+        void commit();
+        void rollback();
+        [[nodiscard]] bool active() const noexcept;
+
+      private:
+        sqlite3* db_{nullptr};
+        const std::atomic_bool* busyCancellationObserved_{nullptr};
+        bool active_{false};
+    };
+
 } // namespace ssa::infra::sqlite

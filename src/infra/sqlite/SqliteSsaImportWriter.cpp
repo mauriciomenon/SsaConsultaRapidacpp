@@ -3,6 +3,7 @@
 #include "domain/SsaTypes.h"
 #include "infra/sqlite/SqliteConnection.h"
 #include "infra/sqlite/SqliteProgressHandler.h"
+#include "ports/OperationError.h"
 #include "query/SqlQueryText.h"
 
 #include <sqlite3.h>
@@ -22,10 +23,14 @@ namespace ssa::infra::sqlite {
 
     namespace {
 
-        void executeSql(sqlite3* db, const std::string& sql) {
+        void executeSql(sqlite3* db, const std::string& sql,
+                        const std::atomic_bool* busyCancellationObserved = nullptr) {
             char* error = nullptr;
             const int rc = sqlite3_exec(db, sql.c_str(), nullptr, nullptr, &error);
-            if (rc == SQLITE_INTERRUPT) {
+            const bool busyCanceled = (rc == SQLITE_BUSY || rc == SQLITE_LOCKED) &&
+                                      busyCancellationObserved != nullptr &&
+                                      busyCancellationObserved->load(std::memory_order_relaxed);
+            if (rc == SQLITE_INTERRUPT || busyCanceled) {
                 sqlite3_free(error);
                 throw std::system_error(std::make_error_code(std::errc::operation_canceled),
                                         "sqlite import canceled");
@@ -33,7 +38,10 @@ namespace ssa::infra::sqlite {
             if (rc != SQLITE_OK) {
                 const std::string message = error == nullptr ? sqlite3_errmsg(db) : error;
                 sqlite3_free(error);
-                throw std::runtime_error("sqlite import command failed: " + message);
+                throw ports::OperationError(
+                    "Falha ao atualizar o banco de dados",
+                    "sqlite import command failed: rc=" + std::to_string(rc) + " extended_rc=" +
+                        std::to_string(sqlite3_extended_errcode(db)) + " message=" + message);
             }
             sqlite3_free(error);
         }
@@ -51,33 +59,6 @@ namespace ssa::infra::sqlite {
                 return std::isalnum(byte) != 0 || ch == '_';
             });
         }
-
-        class WriteTransaction final {
-          public:
-            explicit WriteTransaction(sqlite3* db) : db_(db) {
-                executeSql(db_, "BEGIN IMMEDIATE");
-            }
-
-            WriteTransaction(const WriteTransaction&) = delete;
-            WriteTransaction& operator=(const WriteTransaction&) = delete;
-            WriteTransaction(WriteTransaction&&) = delete;
-            WriteTransaction& operator=(WriteTransaction&&) = delete;
-
-            ~WriteTransaction() {
-                if (active_) {
-                    sqlite3_exec(db_, "ROLLBACK", nullptr, nullptr, nullptr);
-                }
-            }
-
-            void commit() {
-                executeSql(db_, "COMMIT");
-                active_ = false;
-            }
-
-          private:
-            sqlite3* db_;
-            bool active_ = true;
-        };
 
         bool isIdColumnKey(const std::string& key) {
             return key.size() == 2 && std::tolower(static_cast<unsigned char>(key[0])) == 'i' &&
@@ -290,35 +271,68 @@ namespace ssa::infra::sqlite {
     }
 
     struct SqliteSsaImportWriter::WriteSession::Storage final {
+        enum class State {
+            Active,
+            Committed,
+            RolledBack,
+        };
+
         Storage(const std::filesystem::path& databasePath,
                 const std::vector<domain::ColumnDef>& configuredColumns, std::string tableName,
                 const bool replaceAll, std::stop_token stopToken)
             : connection(databasePath, SqliteOpenMode::ReadWriteCreate),
-              progress(connection.handle(), stopToken), stopToken(std::move(stopToken)),
-              columns(configuredColumns), tableName(std::move(tableName)) {
+              busy(connection.handle(), stopToken), progress(connection.handle(), stopToken),
+              stopToken(std::move(stopToken)), columns(configuredColumns),
+              tableName(std::move(tableName)) {
             auto* db = connection.handle();
-            executeSql(db, createTableSql(this->tableName, columns));
-            executeSql(db, createSsaNumberIndexSql(this->tableName));
-            for (const auto& indexSql : createFilterIndexesSql(this->tableName, columns)) {
-                executeSql(db, indexSql);
+            transaction = std::make_unique<SqliteWriteTransaction>(db, busy.cancellationObserved());
+            try {
+                executeSql(db, createTableSql(this->tableName, columns),
+                           busy.cancellationObserved());
+                executeSql(db, createSsaNumberIndexSql(this->tableName),
+                           busy.cancellationObserved());
+                for (const auto& indexSql : createFilterIndexesSql(this->tableName, columns)) {
+                    executeSql(db, indexSql, busy.cancellationObserved());
+                }
+                prepareImportNumberTable(db);
+                if (replaceAll) {
+                    executeSql(db, "DELETE FROM " + query::quoteTableIdentifier(this->tableName),
+                               busy.cancellationObserved());
+                }
+                insert = std::make_unique<SqliteStatement>(db, insertSql(this->tableName, columns),
+                                                           busy.cancellationObserved());
+                insertNumber = std::make_unique<SqliteStatement>(db, insertImportNumberSql(),
+                                                                 busy.cancellationObserved());
+                deleteExisting = std::make_unique<SqliteStatement>(
+                    db, deleteExistingRowsSql(this->tableName), busy.cancellationObserved());
+            } catch (...) {
+                rollback();
+                throw;
             }
-            prepareImportNumberTable(db);
-            transaction = std::make_unique<WriteTransaction>(db);
-            if (replaceAll) {
-                executeSql(db, "DELETE FROM " + query::quoteTableIdentifier(this->tableName));
+        }
+
+        ~Storage() {
+            if (transaction == nullptr || !transaction->active()) {
+                return;
             }
-            insert = std::make_unique<SqliteStatement>(db, insertSql(this->tableName, columns));
-            insertNumber = std::make_unique<SqliteStatement>(db, insertImportNumberSql());
-            deleteExisting =
-                std::make_unique<SqliteStatement>(db, deleteExistingRowsSql(this->tableName));
+            progress.disable();
+            busy.disable();
+            try {
+                transaction->rollback();
+            } catch (const ports::OperationError& error) {
+                sqlite3_log(SQLITE_ERROR, "sqlite import rollback failed: %s",
+                            error.diagnostic().c_str());
+            } catch (const std::exception& error) {
+                sqlite3_log(SQLITE_ERROR, "sqlite import rollback failed: %s", error.what());
+            }
         }
 
         void write(const importing::ResolvedSsaImportRows& rows, const std::size_t fileCount,
                    const std::size_t skippedRows) {
-            throwIfCanceled(stopToken);
-            if (finished) {
-                throw std::logic_error("sqlite import session is already finished");
+            if (state != State::Active) {
+                throw std::logic_error("sqlite import session is closed");
             }
+            throwIfCanceled(stopToken);
             summary.files += fileCount;
             summary.skippedRows += skippedRows;
             summary.duplicateRows += rows.duplicateRows;
@@ -340,25 +354,42 @@ namespace ssa::infra::sqlite {
         }
 
         [[nodiscard]] importing::SsaImportWriteSummary finish() {
+            if (state == State::RolledBack) {
+                throw std::logic_error("sqlite import session was rolled back");
+            }
             throwIfCanceled(stopToken);
-            if (!finished) {
+            if (state == State::Active) {
                 transaction->commit();
-                finished = true;
+                state = State::Committed;
             }
             return summary;
         }
 
+        void rollback() {
+            if (state != State::Active) {
+                return;
+            }
+            state = State::RolledBack;
+            if (transaction == nullptr || !transaction->active()) {
+                return;
+            }
+            progress.disable();
+            busy.disable();
+            transaction->rollback();
+        }
+
         SqliteConnection connection;
+        SqliteBusyHandler busy;
         SqliteProgressHandler progress;
         std::stop_token stopToken;
-        std::unique_ptr<WriteTransaction> transaction;
+        std::unique_ptr<SqliteWriteTransaction> transaction;
         std::vector<domain::ColumnDef> columns;
         std::string tableName;
         std::unique_ptr<SqliteStatement> insert;
         std::unique_ptr<SqliteStatement> insertNumber;
         std::unique_ptr<SqliteStatement> deleteExisting;
         importing::SsaImportWriteSummary summary;
-        bool finished = false;
+        State state = State::Active;
     };
 
     SqliteSsaImportWriter::WriteSession::WriteSession(std::unique_ptr<Storage> storage)
@@ -379,6 +410,10 @@ namespace ssa::infra::sqlite {
 
     importing::SsaImportWriteSummary SqliteSsaImportWriter::WriteSession::finish() {
         return storage_->finish();
+    }
+
+    void SqliteSsaImportWriter::WriteSession::rollback() {
+        storage_->rollback();
     }
 
     importing::SsaImportWriteSummary

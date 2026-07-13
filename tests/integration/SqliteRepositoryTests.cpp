@@ -25,6 +25,7 @@
 #include <stop_token>
 #include <string>
 #include <system_error>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -711,6 +712,40 @@ TEST_CASE("sqlite maintenance port runs vacuum analyze") {
     REQUIRE(hasIndex(fixture.path, "idx_ssa_table_derivada_de"));
 }
 
+TEST_CASE("sqlite maintenance rolls back mutation when precommit index creation fails") {
+    const SqliteFixture fixture;
+    executeSql(fixture.path, "DROP TABLE ssa_table;"
+                             "CREATE TABLE ssa_table(numero_ssa TEXT);"
+                             "INSERT INTO ssa_table VALUES('202500099');");
+    ssa::infra::sqlite::SqliteMaintenancePort maintenance(fixture.path);
+
+    const auto result = maintenance.resetDatabase();
+
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
+    REQUIRE(result.message == "sqlite maintenance failed");
+    REQUIRE(result.diagnostic.find("no such column: derivada_de") != std::string::npos);
+    {
+        ssa::infra::sqlite::SqliteConnection connection(fixture.path);
+        ssa::infra::sqlite::SqliteStatement count(connection.handle(),
+                                                  "SELECT COUNT(*) FROM ssa_table");
+        REQUIRE(count.step());
+        ssa::infra::sqlite::SqliteStatement integrity(connection.handle(),
+                                                      "PRAGMA integrity_check");
+        REQUIRE(integrity.step());
+        REQUIRE(count.columnInt64(0) == 1);
+        REQUIRE(integrity.columnText(0) == "ok");
+    }
+
+    executeSql(fixture.path, "ALTER TABLE ssa_table ADD COLUMN derivada_de TEXT");
+    const auto retry = maintenance.resetDatabase();
+    REQUIRE(retry.status == ssa::ports::WorkflowStatus::Succeeded);
+    ssa::infra::sqlite::SqliteConnection retryConnection(fixture.path);
+    ssa::infra::sqlite::SqliteStatement retryCount(retryConnection.handle(),
+                                                   "SELECT COUNT(*) FROM ssa_table");
+    REQUIRE(retryCount.step());
+    REQUIRE(retryCount.columnInt64(0) == 0);
+}
+
 TEST_CASE("sqlite maintenance rejects a stopped token before changing data") {
     const SqliteFixture fixture;
     ssa::infra::sqlite::SqliteMaintenancePort maintenance(fixture.path);
@@ -725,6 +760,29 @@ TEST_CASE("sqlite maintenance rejects a stopped token before changing data") {
     REQUIRE(repository.count({}) == 4);
 }
 
+TEST_CASE("sqlite maintenance stops promptly while locked and remains reusable") {
+    const SqliteFixture fixture;
+    ssa::infra::sqlite::SqliteConnection blocker(fixture.path,
+                                                 ssa::infra::sqlite::SqliteOpenMode::ReadWrite);
+    REQUIRE(sqlite3_exec(blocker.handle(), "BEGIN EXCLUSIVE", nullptr, nullptr, nullptr) ==
+            SQLITE_OK);
+    ssa::infra::sqlite::SqliteMaintenancePort maintenance(fixture.path);
+    std::stop_source stopSource;
+    auto operation = std::async(std::launch::async,
+                                [&] { return maintenance.resetDatabase(stopSource.get_token()); });
+
+    REQUIRE(operation.wait_for(std::chrono::milliseconds{50}) == std::future_status::timeout);
+    stopSource.request_stop();
+    REQUIRE(operation.wait_for(std::chrono::milliseconds{500}) == std::future_status::ready);
+    REQUIRE(operation.get().status == ssa::ports::WorkflowStatus::Canceled);
+    REQUIRE(sqlite3_exec(blocker.handle(), "ROLLBACK", nullptr, nullptr, nullptr) == SQLITE_OK);
+
+    const ssa::infra::sqlite::SqliteSsaRepository repository(fixture.path);
+    REQUIRE(repository.count({}) == 4);
+    REQUIRE(maintenance.resetDatabase().status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE(repository.count({}) == 0);
+}
+
 TEST_CASE("sqlite maintenance port resets table data") {
     const SqliteFixture fixture;
     ssa::infra::sqlite::SqliteMaintenancePort maintenance(fixture.path);
@@ -734,6 +792,46 @@ TEST_CASE("sqlite maintenance port resets table data") {
 
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
     REQUIRE(repository.count({}) == 0);
+}
+
+TEST_CASE("sqlite maintenance keeps committed mutation when optional vacuum is canceled") {
+    const SqliteFixture fixture;
+    executeSql(fixture.path, "PRAGMA journal_mode=WAL;"
+                             "WITH RECURSIVE seq(value) AS ("
+                             "SELECT 1 UNION ALL SELECT value + 1 FROM seq WHERE value < 50000"
+                             ") INSERT INTO ssa_table(numero_ssa, descricao_ssa) "
+                             "SELECT printf('LOAD%06d', value), hex(zeroblob(512)) FROM seq;"
+                             "INSERT INTO ssa_table(numero_ssa) VALUES('');");
+    ssa::infra::sqlite::SqliteMaintenancePort maintenance(fixture.path);
+    std::stop_source stopSource;
+    auto operation = std::async(std::launch::async,
+                                [&] { return maintenance.cleanData(stopSource.get_token()); });
+
+    bool commitObserved = false;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
+    while (!commitObserved && std::chrono::steady_clock::now() < deadline) {
+        ssa::infra::sqlite::SqliteConnection observer(fixture.path);
+        ssa::infra::sqlite::SqliteStatement blankRows(
+            observer.handle(), "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa = ''");
+        REQUIRE(blankRows.step());
+        commitObserved = blankRows.columnInt64(0) == 0;
+        if (!commitObserved) {
+            std::this_thread::sleep_for(std::chrono::milliseconds{2});
+        }
+    }
+    REQUIRE(commitObserved);
+    REQUIRE(operation.wait_for(std::chrono::milliseconds{0}) == std::future_status::timeout);
+    stopSource.request_stop();
+    REQUIRE(operation.wait_for(std::chrono::milliseconds{500}) == std::future_status::ready);
+
+    const auto result = operation.get();
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE(result.warning);
+    REQUIRE(result.message.find("optimization canceled") != std::string::npos);
+    ssa::infra::sqlite::SqliteConnection verification(fixture.path);
+    ssa::infra::sqlite::SqliteStatement integrity(verification.handle(), "PRAGMA integrity_check");
+    REQUIRE(integrity.step());
+    REQUIRE(integrity.columnText(0) == "ok");
 }
 
 TEST_CASE("sqlite derivadas port clears orphan derivadas") {
@@ -768,4 +866,28 @@ TEST_CASE("sqlite derivadas rejects a stopped token before changing data") {
     REQUIRE(result.message.find("canceled") != std::string::npos);
     REQUIRE(record.has_value());
     REQUIRE(record->valueOf("derivada_de") == "202400001");
+}
+
+TEST_CASE("sqlite derivadas stops promptly while locked and remains reusable") {
+    const SqliteFixture fixture;
+    ssa::infra::sqlite::SqliteConnection blocker(fixture.path,
+                                                 ssa::infra::sqlite::SqliteOpenMode::ReadWrite);
+    REQUIRE(sqlite3_exec(blocker.handle(), "BEGIN EXCLUSIVE", nullptr, nullptr, nullptr) ==
+            SQLITE_OK);
+    ssa::infra::sqlite::SqliteDerivadasPort derivadas(fixture.path);
+    std::stop_source stopSource;
+    auto operation = std::async(std::launch::async,
+                                [&] { return derivadas.syncDerivadas(stopSource.get_token()); });
+
+    REQUIRE(operation.wait_for(std::chrono::milliseconds{50}) == std::future_status::timeout);
+    stopSource.request_stop();
+    REQUIRE(operation.wait_for(std::chrono::milliseconds{500}) == std::future_status::ready);
+    REQUIRE(operation.get().status == ssa::ports::WorkflowStatus::Canceled);
+    REQUIRE(sqlite3_exec(blocker.handle(), "ROLLBACK", nullptr, nullptr, nullptr) == SQLITE_OK);
+
+    REQUIRE(derivadas.syncDerivadas().status == ssa::ports::WorkflowStatus::Succeeded);
+    ssa::infra::sqlite::SqliteConnection verification(fixture.path);
+    ssa::infra::sqlite::SqliteStatement integrity(verification.handle(), "PRAGMA integrity_check");
+    REQUIRE(integrity.step());
+    REQUIRE(integrity.columnText(0) == "ok");
 }
