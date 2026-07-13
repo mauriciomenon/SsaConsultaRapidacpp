@@ -4,6 +4,19 @@
 
 - [PENDING] Implementar sincronizacao completa de derivadas com regras de negocio e fonte externa, incluindo modelagem de grafo/fluxo derivado.
 - [PENDING] Adicionar lacunas restantes de paridade da tabela: reorder persistido por drag de colunas, acoes de menu de contexto de linha e acao de reset de sort no header.
+- [LOW] [IMPORT-CONSOLIDATION-TOCTOU] A consolidacao rejeita diretorios
+  symlink e usa rename atomico sem sobrescrita, mas existe uma janela entre
+  `symlink_status()` e o rename por pathname. Um escritor local adversarial
+  poderia trocar o diretorio nesse intervalo. O workspace operacional e
+  confiavel na 0.9.2; hardening futuro deve vincular a identidade do diretorio
+  validado a operacao de movimentacao por handle, com desenho multiplataforma.
+- [LOW] [SAM-LIMIT-200] Cada rodada REST da 0.9.2 solicita no maximo 200
+  registros por setor. Avaliar paginacao do `scrap_report` antes de usar o
+  fluxo para setores que excedam esse volume.
+- [LOW] [SAM-SINGLE-FLIGHT-PROCESS] O single-flight da atualizacao SAM vale por
+  instancia da aplicacao. Duas instancias podem executar atualizacoes ao mesmo
+  tempo. Coordenacao entre processos fica adiada ate existir necessidade
+  operacional comprovada.
 
 ## Varredura de codigo (junho 2026) - pendentes
 

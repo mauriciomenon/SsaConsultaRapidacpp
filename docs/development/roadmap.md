@@ -8,6 +8,7 @@ without porting Python architecture, and stabilize CI/flaky tests.
 ## Short term (next 2-3 PRs, this branch base)
 
 ### Stabilization
+
 - Fix flaky `OpenPathPolicyTests` (tests 46-48) under parallel ctest. Likely a
   shared temp dir or filesystem race in `platform/OpenPathPolicy.cpp`. Repro:
   `ctest --preset dev -j8` fails, isolated `-R "open path policy"` passes.
@@ -15,6 +16,7 @@ without porting Python architecture, and stabilize CI/flaky tests.
   code analysis, no build/test.
 
 ### Close "Partial" GUI items
+
 - `SQL page load`: verify count+page atomicity under concurrent filters; add
   integration test with real `data/ssas.db` slice.
 - `General search`: audit `SearchParser` against
@@ -32,22 +34,39 @@ without porting Python architecture, and stabilize CI/flaky tests.
   `gui/ssa/gui_theme_dialog.py` (live preview).
 
 ### Close "Partial" / "Missing" CLI items
+
 - CLI flag parity is complete: `--log-level`, `--acao backfill`, `--cols`,
   `--export`, `--sort`/`--asc`/`--desc` are all Present (see
   `docs/contracts/functional-coverage.md`). The remaining Python CLI items
   (`v`, `m`, `r`, `clear`, `clearall`, `x`, `l/listar/filtros`)
-   are interactive REPL commands out of scope for the
-   flag-based C++ CLI. Note: `status-cli` maps to `--log-level` and is Present.
+  are interactive REPL commands out of scope for the
+  flag-based C++ CLI. Note: `status-cli` maps to `--log-level` and is Present.
 
 ### CI hygiene
+
 - Pin `install-qt-action` version; consider caching `build/dev` across runs.
 - Add `clang-tidy` summary to PR comments (currently fails silently in logs).
 - Memory regression smoke: `ssa_mem_stress` runs on Linux CI with fixture DB
   (done locally, needs CI validation).
 
+### Entregas da 0.9.2
+
+- Historico de ate 10 estados de filtros na GUI, retorno de varios niveis e
+  copia textual para a area de transferencia.
+- Ajuda baseada no contrato C++ e Sobre com versao de `PROJECT_VERSION`.
+- Troca assincrona para outro banco SQLite validado em modo somente leitura,
+  iniciando a nova instancia antes de encerrar a atual.
+- Consolidacao pos-commit das fontes efetivamente importadas em
+  `processadas/` e `processadas/nosurvivor/`, com nome unico e rename sem
+  sobrescrita.
+- Atualizacao SAM REST via `scrap_report`, com preflight explicito, importacao
+  all-or-none, timer persistido, single-flight por instancia e cancelamento no
+  shutdown.
+
 ## Long term (multiple PRs, no fixed order)
 
 ### Missing GUI features (parity with PyQt6)
+
 - `Details navigation`: next/prev SSA in current filtered list exists in the
   main details panel. The dedicated details window has independent instances,
   breadcrumb navigation, clickable graph nodes, and relation badges.
@@ -55,8 +74,6 @@ without porting Python architecture, and stabilize CI/flaky tests.
   Mermaid copy, PNG export, node statuses, and table access from
   `Qtd. Derivadas`. Remaining gap: deeper multi-level derivada traversal
   beyond the current direct-relation repository contract.
-- `Load other DB`: repository factory + command. Python ref:
-  `gui/gui_ssa.py::load_other_database`.
 - `Context menus`: row/cell menu exists for copy, SAM open, details window,
   visible columns, and derivation SVG copy. Remaining gap: broader Python
   action parity. Python ref: `gui/gui_ssa.py::show_context_menu`.
@@ -64,12 +81,15 @@ without porting Python architecture, and stabilize CI/flaky tests.
   column selector. Remaining gap: sort reset action.
 
 ### Missing CLI features (interactive REPL, out of scope)
+
 The C++ CLI is flag-based, not an interactive REPL. These Python interactive
 commands are out of scope unless a REPL mode is explicitly added:
+
 - `v` undo filter, `m`/`m z` pager, `r`/`clear`/`clearall` filter state,
   `x <term>` exclusion, `l/listar/filtros` listing.
 
 ### "Contract only" -> "Present" (completed)
+
 - `Import external XLS/XLSX`: done. `SpreadsheetImportWorkflowPort` wired in
   `DesktopMainViewModelFactory`; QML invokes via Importacao menu + FileDialog.
 - `Rescan/update data`: done. `IImportWorkflowPort::rescan` wired; QML invokes
@@ -78,7 +98,19 @@ commands are out of scope unless a REPL mode is explicitly added:
   Importacao and Manutencao menus. Graph view, Mermaid copy, and PNG export are
   present.
 
+### SAM depois da 0.9.2
+
+- Avaliar XPath/Playwright somente se o contrato REST deixar de atender o
+  fluxo operacional.
+- Definir contrato separado para credenciais com Keychain, Credential Manager
+  e Secret Service antes de aceitar escopos com usuario, senha ou token.
+- Avaliar paginacao do `scrap_report`. A 0.9.2 consulta no maximo 200 registros
+  por setor em cada rodada.
+- Se varias instancias da aplicacao forem executadas, cada uma possui seu
+  proprio single-flight. Coordenacao entre processos fica fora deste release.
+
 ### Architectural improvements
+
 - Split `gui_ssa.py` (247 KB, single class) parity is already avoided; keep
   enforcing via `AGENTS.md` "God class" prohibition and code review.
 - Add property-based tests for `SearchParser` and `SqlQueryBuilder` (Catch2
@@ -90,19 +122,20 @@ commands are out of scope unless a REPL mode is explicitly added:
   other usages).
 
 ### Out of scope (per `docs/contracts/functional-coverage.md`)
+
 - `--streamlit/--web`: not planned for C++ desktop repo.
 - Python `CacheManager` (5 buckets): C++ ADR 0002 explicitly avoids
   DataFrame-wide cache; do not port.
 
 ## Measurement anchors
 
-| Scenario | Baseline (2026-06-21) | Target |
-|---|---:|---:|
-| GUI physical footprint (offscreen) | 35.0 MB | < 35 MB |
-| GUI RSS (ps -o rss, inflated by Qt COW) | 82 MB | < 82 MB |
-| CLI RSS | 23 MB | < 23 MB |
-| Stress 200 pages, data path | 5.1 MB | < 6 MB |
-| ctest parallel pass rate | flaky (46-48) | 100% |
+| Scenario                                | Baseline (2026-06-21) |  Target |
+| --------------------------------------- | --------------------: | ------: |
+| GUI physical footprint (offscreen)      |               35.0 MB | < 35 MB |
+| GUI RSS (ps -o rss, inflated by Qt COW) |                 82 MB | < 82 MB |
+| CLI RSS                                 |                 23 MB | < 23 MB |
+| Stress 200 pages, data path             |                5.1 MB |  < 6 MB |
+| ctest parallel pass rate                |         flaky (46-48) |    100% |
 
 Re-measure after each merge with `ssa_mem_stress` (CMake target under
 `SSA_BUILD_TESTS`) and `vmmap --summary`.

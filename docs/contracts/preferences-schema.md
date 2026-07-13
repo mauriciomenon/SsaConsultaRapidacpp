@@ -1,6 +1,6 @@
 # Preferences Schema
 
-## Version 12
+## Version 13
 
 Runtime file: `ssa_cpp_preferences.json`.
 
@@ -38,6 +38,15 @@ Current fields:
 - `derivation_mode`: `all`, `root`, or `derived`.
 - `only_reprogrammed`: boolean for reprogrammed-only filter.
 - `saved_filters`: ordered array of named filter snapshots.
+- `sam_refresh`: optional object with the local SAM REST refresh settings:
+  - `scrap_report_root`: local path to the `scrap_report` project.
+  - `ca_file`: local path to the CA certificate file.
+  - `base_url`: HTTPS SAM REST base URL without credentials, query, or fragment.
+  - `executor_sectors`: comma-separated uppercase executor sectors.
+  - `scope`: fixed to `consulta` in 0.9.2.
+  - `interval_minutes`: integer from 1 to 30000.
+  - `enabled`: master feature switch, false by default.
+  - `auto_refresh_enabled`: persisted timer switch, false by default.
 
 ## Rules
 
@@ -48,6 +57,14 @@ Current fields:
 - Preference and filter preset JSON files are limited to 1 MiB.
 - At most 200 saved filters are accepted. Names are limited to 128 characters and filter
   expressions are limited to 4096 characters.
+- Missing `sam_refresh` uses safe defaults during migration. The feature and
+  its timer remain disabled.
+- SAM preferences may store local paths, the URL, sectors, scope, and interval.
+  They must never store a password, token, cookie, authorization header, or
+  other secret.
+- `interval_minutes` is clamped to 1 through 30000. Runtime preflight still
+  validates the referenced project, CA file, URL, sectors, and scope before
+  starting a process.
 - Column widths are clamped by the presentation model to the supported UI range.
 - Visible column preferences must be reconciled against `ColumnCatalog`.
 - Duplicate visible column keys are invalid.
@@ -84,3 +101,6 @@ Current fields:
   and non-default widths remain user-owned.
 - Version 11 to 12: removes `data_cadastro` from the legacy default visibility and places
   `semana_cadastro`, `solicitante`, and `derivada_de` in the current default order.
+- Version 12 to 13: adds the optional `sam_refresh` object. Existing documents
+  receive the canonical HTTPS base URL, scope `consulta`, interval 30000, empty
+  local paths and sectors, and disabled feature and timer switches.

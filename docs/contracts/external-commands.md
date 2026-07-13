@@ -28,23 +28,37 @@ the UI and CLI must be able to show it.
 - `OpenRedundantFolder`: open the configured redundant-files folder.
 - `OpenInstallationGuide`: open the configured installation documentation.
 
-## Future Port Families
+## Specialized Port Families
 
 - `IImportWorkflowPort`: external XLS/XLSX import, incremental rescan, full rescan, and input
-  consolidation. Contract exists in `src/ports/IWorkflowPorts.h`.
+  consolidation are implemented. Consolidation is owned by `ImportFileStager`
+  after a successful SQLite commit.
 - `IExportPort`: export the full filtered result set to supported output formats, starting at page
   1 of the filtered query. CSV export exists for CLI and GUI through `CsvExportPort`.
-- `IDatabaseMaintenancePort`: reset, clean data, load other database, vacuum/analyze, and backup.
-  SQLite reset, SQLite cleanup, and vacuum/analyze exist for CLI. Load-other-database and backup
-  remain future adapters.
+- `IDatabaseMaintenancePort`: reset, clean data, vacuum/analyze, and backup.
+  SQLite reset, SQLite cleanup, and vacuum/analyze exist for CLI. Backup remains
+  a future adapter.
+- `IDatabaseValidator` and `IApplicationLauncher`: validate another database in
+  read-only mode and start a replacement application instance with `--db`.
+  They are separate from database maintenance because the current connection
+  is never switched in place.
 - `IDerivadasPort`: sync derivadas and provide graph/tree data.
+- `ISamRefreshPort`: fetch a bounded all-sector REST batch through the local
+  `scrap_report` project and discard its temporary artifacts. The application
+  service imports only when every requested sector succeeds, through
+  `IImportWorkflowPort`. Each sector is limited to 200 records in 0.9.2.
 
 ## Layer Rules
 
 - `presentation` can build a command request, but cannot execute OS, SQLite maintenance, import, or
   export logic directly.
 - `platform` handles desktop integration such as opening URLs and paths.
-- Future import, export, DB maintenance, and derivadas adapters must live outside `presentation` and
+- Import, export, DB maintenance, and derivadas adapters must live outside `presentation` and
   be reached through their specialized ports.
+- SAM process execution belongs to `platform`; batch acceptance and import
+  orchestration belong to `application`; timer and visible settings belong to
+  `presentation`.
 - QML can only call view model methods. It cannot build command paths, SQL, import rules, or
   derivadas rules.
+- Help and About are local presentation surfaces and must not execute network,
+  subprocess, database, or Git operations.

@@ -55,7 +55,13 @@ rules.
 - `MainViewModel` coordinates page requests, cancellation generation, preferences, and child view
   models, including visual density and detail panel sizing state for QML.
 - `PageQueryCoordinator` owns asynchronous page execution for the GUI.
+- `BrowseOrchestrator` owns the volatile bounded history of applied filter
+  conditions. It never stores result pages in that history.
 - `UserPreferencesCoordinator` owns debounced preference saves for the GUI.
+- `DatabaseSwitchViewModel` owns asynchronous validation and replacement
+  process startup without changing the active repository in place.
+- `WorkflowCommandViewModel` owns SAM refresh settings, the per-instance timer,
+  and the visible single-flight state. Process execution remains in platform.
 - `ColumnSettingsModel` owns the editable presentation state for visible columns and widths.
 - `SsaTableModel` owns only the current page and column metadata exposed to QML.
 - Layout preferences such as detail panel visibility and width stay in presentation state and are
@@ -68,8 +74,9 @@ rules.
 - Functional coverage is tracked in `docs/contracts/functional-coverage.md`.
 - External command boundaries are tracked in `docs/contracts/external-commands.md`.
 - GUI and CLI adapters must share domain/query/use-case behavior instead of duplicating rules.
-- Import/rescan, derivadas, export, database maintenance, and CLI are planned features, but they
-  must enter through ports/use cases instead of direct QML or presentation calls.
+- Import/rescan with post-commit consolidation, derivadas, export, database
+  maintenance, alternate database startup, SAM REST refresh, and CLI enter
+  through ports and use cases instead of direct QML calls.
 - CLI commands must use `application` use cases, never `presentation` models.
 - Python mixins, headless PyQt fallbacks, and DataFrame-centric GUI filtering are not architectural
   inputs for this repo.
@@ -85,3 +92,9 @@ rules.
   reaching query compilation. QML renders that state and calls view-model commands only.
 - Derivation data is represented by record fields such as `derivada_de` and `qtd_derivadas`;
   graph ownership is split between domain graph rules and presentation/QML rendering.
+- Filter undo is runtime-only and bounded to 10 previously applied conditions.
+  Reapplying the current identical state does not add an entry; older
+  non-consecutive states may repeat.
+- SAM settings persist in the optional `sam_refresh` preference object. The
+  adapter executes `uv` without a shell, validates every manifest, and exposes
+  no credential field.
