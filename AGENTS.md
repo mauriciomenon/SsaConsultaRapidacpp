@@ -9,6 +9,10 @@ Sem acentos/cedilha/emojis/emdash em codigo, chat e mensagens tecnicas.
 - `origin` e GitLab, `bitbucket` e Bitbucket e `gh` e GitHub.
 - O branch principal e `master`.
 - `git rev-list origin/master...HEAD` mede GitLab, nao GitHub.
+- Todo `git fetch` ou `git pull` operacional deve usar o GitLab por `origin`.
+  Quando um pull for necessario, usar `git pull --ff-only origin master`.
+- Nunca executar `git pull bitbucket master` nem `git pull gh master`.
+  `bitbucket` e somente o mirror obrigatorio de publicacao.
 - Um pedido de `commit` inclui push do branch e de novas tags para `origin` e
   `bitbucket`, seguido de verificacao remota nos dois.
 - Nao publicar em `gh` enquanto o GitHub responder HTTP 403 por conta suspensa,

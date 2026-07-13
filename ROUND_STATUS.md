@@ -10,10 +10,22 @@ Ultima verificacao: 2026-07-12
 | Remote | Provedor | Funcao | Estado atual |
 | --- | --- | --- | --- |
 | `origin` | GitLab | Repositorio e CI primarios | Disponivel |
-| `bitbucket` | Bitbucket | Mirror obrigatorio de publicacao | Disponivel |
+| `bitbucket` | Bitbucket | Mirror obrigatorio de push; nao usar para pull | Disponivel |
 | `gh` | GitHub | Mirror inativo | HTTP 403 enquanto a conta esta suspensa |
 
 O branch deste repositorio e `master`, nao `dev` ou `main`.
+
+## Fonte de atualizacao local
+
+Todo fetch ou pull operacional vem do GitLab por `origin`. O comando padrao e:
+
+```bash
+git fetch origin master
+git pull --ff-only origin master
+```
+
+Nao executar `git pull bitbucket` nem `git pull gh`. O Bitbucket recebe os mesmos
+commits e tags por push, mas nao e a fonte de integracao do checkout local.
 
 `origin` nunca significa GitHub neste repositorio. Por exemplo:
 
