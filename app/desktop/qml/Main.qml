@@ -218,9 +218,18 @@ ApplicationWindow {
             title: "Ajuda"
 
             MenuItem {
+                text: "Ajuda"
+                onTriggered: root.openHelpDialog()
+            }
+            MenuItem {
                 text: "Guia de instalacao"
                 enabled: !root.vm.actions.commands.running
                 onTriggered: root.vm.actions.commands.openInstallationGuide()
+            }
+            MenuSeparator {}
+            MenuItem {
+                text: "Sobre"
+                onTriggered: root.openAboutDialog()
             }
         }
     }
@@ -435,6 +444,24 @@ ApplicationWindow {
         viewModel: root.vm
     }
 
+    Loader {
+        id: helpDialogLoader
+        active: false
+        sourceComponent: HelpDialog {
+            visible: true
+            onClosing: helpDialogLoader.active = false
+        }
+    }
+
+    Loader {
+        id: aboutDialogLoader
+        active: false
+        sourceComponent: AboutDialog {
+            visible: true
+            onClosing: aboutDialogLoader.active = false
+        }
+    }
+
     ColumnSelectorPopup {
         id: columnSelectorPopup
         viewModel: root.vm
@@ -466,6 +493,14 @@ ApplicationWindow {
             return;
         window.detailsViewModel = root.vm.browse.createDetailsWindowModel(ssaNumber, window);
         window.visible = true;
+    }
+
+    function openHelpDialog() {
+        helpDialogLoader.active = true;
+    }
+
+    function openAboutDialog() {
+        aboutDialogLoader.active = true;
     }
 
     Component {

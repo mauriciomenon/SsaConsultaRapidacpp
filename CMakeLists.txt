@@ -205,6 +205,7 @@ qt_add_qml_module(
   app/desktop/qml/Main.qml
   app/desktop/qml/Theme.qml
   app/desktop/qml/components/ActionButton.qml
+  app/desktop/qml/components/AboutDialog.qml
   app/desktop/qml/components/AppCheckBox.qml
   app/desktop/qml/components/AppComboBox.qml
   app/desktop/qml/components/AppSpinBox.qml
@@ -230,6 +231,7 @@ qt_add_qml_module(
   app/desktop/qml/components/FilterTabButton.qml
   app/desktop/qml/components/FilterPanel.qml
   app/desktop/qml/components/FilterSummaryBar.qml
+  app/desktop/qml/components/HelpDialog.qml
   app/desktop/qml/components/ColumnConfigList.qml
   app/desktop/qml/components/PagerQuickFilters.qml
   app/desktop/qml/components/PreferencesDialog.qml
@@ -245,6 +247,8 @@ qt_add_qml_module(
 target_link_libraries(
   ssa_consulta_rapida PRIVATE ssa_presentation ssa_infra ssa_platform
                               Qt6::Concurrent Qt6::Quick Qt6::QuickControls2)
+target_compile_definitions(ssa_consulta_rapida
+                           PRIVATE SSA_PROJECT_VERSION="${PROJECT_VERSION}")
 
 add_library(
   ssa_cli STATIC
@@ -402,6 +406,27 @@ if(SSA_BUILD_TESTS)
     TEST ssa_qml_theme_gallery_tests
     PROPERTY ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
              "QT_QUICK_CONTROLS_STYLE=Basic" "QT_SCALE_FACTOR=1")
+
+  add_executable(ssa_qml_help_about_tests tests/smoke/HelpAboutQmlTest.cpp)
+  target_compile_definitions(
+    ssa_qml_help_about_tests
+    PRIVATE SSA_BUILD_DIR="${CMAKE_BINARY_DIR}"
+            SSA_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+  target_link_libraries(
+    ssa_qml_help_about_tests PRIVATE ssa_presentation Qt6::Qml Qt6::Quick
+                                     Qt6::QuickControls2 Qt6::Test)
+  add_test(NAME ssa_qml_help_about_tests COMMAND ssa_qml_help_about_tests)
+  set_tests_properties(
+    ssa_qml_help_about_tests
+    PROPERTIES TIMEOUT 15 RUN_SERIAL TRUE ENVIRONMENT
+               "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Basic")
+
+  add_test(NAME ssa_gui_version COMMAND ssa_consulta_rapida --version)
+  set_tests_properties(
+    ssa_gui_version
+    PROPERTIES TIMEOUT 10 PASS_REGULAR_EXPRESSION
+               "SSA Consulta Rapida ${PROJECT_VERSION}" ENVIRONMENT
+               "QT_QPA_PLATFORM=offscreen")
 
   add_test(NAME ssa_cli_version COMMAND ssa_consulta_rapida_cli --version)
   set_tests_properties(

@@ -13,9 +13,14 @@
 #include <iostream>
 #include <memory>
 
+#ifndef SSA_PROJECT_VERSION
+#define SSA_PROJECT_VERSION "0.0.0"
+#endif
+
 int main(int argc, char* argv[]) {
     QGuiApplication app(argc, argv);
     QGuiApplication::setApplicationName("SSA Consulta Rapida");
+    QGuiApplication::setApplicationVersion(QString::fromUtf8(SSA_PROJECT_VERSION));
     QGuiApplication::setOrganizationName("Menon");
     QFont uiFont;
 #if defined(Q_OS_MACOS)
@@ -31,6 +36,7 @@ int main(int argc, char* argv[]) {
     QCommandLineParser parser;
     parser.setApplicationDescription("SSA Consulta Rapida C++/QML");
     parser.addHelpOption();
+    parser.addVersionOption();
     parser.addOption(QCommandLineOption(QStringList{"project-root"},
                                         "Project root used for default paths.", "path"));
     parser.addOption(QCommandLineOption(QStringList{"db", "database", "database-path"},
