@@ -10,8 +10,26 @@
 
 namespace ssa::infra::importing {
 
+    struct StagedImportFile {
+        std::filesystem::path workbookPath;
+        std::vector<std::filesystem::path> consolidationSources;
+    };
+
+    struct ImportManifestEntry {
+        std::vector<std::filesystem::path> sources;
+        bool hasValidRows = false;
+    };
+
+    struct ImportConsolidationResult {
+        std::size_t moved = 0;
+        std::size_t noSurvivor = 0;
+        std::size_t failed = 0;
+        bool canceled = false;
+        std::string error;
+    };
+
     struct ImportStagingResult {
-        std::vector<std::filesystem::path> xlsxFiles;
+        std::vector<StagedImportFile> files;
         std::size_t legacyXls = 0;
         std::size_t convertedXls = 0;
         std::size_t failedLegacyXls = 0;
@@ -28,7 +46,11 @@ namespace ssa::infra::importing {
         [[nodiscard]] ImportStagingResult
         stageExternalFiles(const std::vector<std::filesystem::path>& files,
                            std::stop_token stopToken = {}) const;
-        [[nodiscard]] ImportStagingResult stageInputFiles(std::stop_token stopToken = {}) const;
+        [[nodiscard]] ImportStagingResult stageInputFiles(std::stop_token stopToken = {},
+                                                          bool includeProcessed = false) const;
+        [[nodiscard]] ImportConsolidationResult
+        consolidate(const std::vector<ImportManifestEntry>& manifest,
+                    std::stop_token stopToken = {}) const;
 
       private:
         struct LegacyStageRequest {
@@ -42,8 +64,9 @@ namespace ssa::infra::importing {
             std::size_t fileIndex = 0;
         };
 
-        bool stageLegacyFile(const LegacyStageRequest& request, ImportStagingResult& result,
-                             std::stop_token stopToken) const;
+        bool stageLegacyFile(const LegacyStageRequest& request,
+                             std::vector<std::filesystem::path> consolidationSources,
+                             ImportStagingResult& result, std::stop_token stopToken) const;
         [[nodiscard]] std::filesystem::path
         stagedDestination(const StagedDestinationRequest& request) const;
 

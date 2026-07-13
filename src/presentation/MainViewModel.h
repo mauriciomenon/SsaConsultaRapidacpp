@@ -72,6 +72,7 @@ namespace ssa::presentation {
         MainSelectionFlowCoordinator selectionFlow_;
         MainRequestFlowCoordinator requestFlow_;
         QString pendingWorkflowRefreshMessage_;
+        QString pendingWorkflowRefreshWarning_;
     };
 
 } // namespace ssa::presentation

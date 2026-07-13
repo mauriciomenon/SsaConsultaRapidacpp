@@ -1612,6 +1612,30 @@ namespace {
                                       QString("Importacao concluida"), 1000);
         }
 
+        void import_success_with_warning_reloads_and_preserves_warning_detail() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            auto importPort = std::make_shared<CapturingImportPort>(ssa::ports::WorkflowResult{
+                ssa::ports::WorkflowStatus::Succeeded, "consolidation canceled", true});
+            auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(importPort);
+            ssa::presentation::MainViewModel model(service, commands, nullptr, nullptr, workflows);
+            QSignalSpy pageSpy(model.browse(), &ssa::presentation::BrowseViewModel::pageChanged);
+            QVariantList selectedFiles;
+            selectedFiles.push_back(QUrl::fromLocalFile("/tmp/entrada.xlsx"));
+
+            model.actions()->workflows()->importExternalFiles(selectedFiles);
+
+            QTRY_COMPARE_WITH_TIMEOUT(importPort->importRequests().size(), std::size_t{1}, 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(repository->countCalls(), std::size_t{1}, 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(pageSpy.size() >= 1, 1000);
+            QCOMPARE(model.actions()->workflows()->lastSucceeded(), true);
+            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->status()->message(),
+                                      QString("Importacao concluida"), 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->status()->error(),
+                                      QString("consolidation canceled"), 1000);
+        }
+
         void import_external_files_rejects_non_local_url() {
             auto repository = std::make_shared<FakeRepository>();
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);

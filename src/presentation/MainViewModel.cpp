@@ -71,6 +71,9 @@ namespace ssa::presentation {
                 [this] {
                     if (actions_.workflows()->lastSucceeded()) {
                         pendingWorkflowRefreshMessage_ = actions_.workflows()->successMessage();
+                        pendingWorkflowRefreshWarning_ = actions_.workflows()->lastWarning()
+                                                             ? actions_.workflows()->lastMessage()
+                                                             : QString{};
                         browse_.invalidateTotalRowsAll();
                         browse_.filters()->invalidateDataSourceOptions();
                         browse_.apply();
@@ -81,7 +84,9 @@ namespace ssa::presentation {
                 return;
             }
             browse_.status()->setMessage(pendingWorkflowRefreshMessage_);
+            browse_.status()->setError(pendingWorkflowRefreshWarning_);
             pendingWorkflowRefreshMessage_.clear();
+            pendingWorkflowRefreshWarning_.clear();
         });
     }
 

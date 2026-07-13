@@ -259,19 +259,23 @@ namespace ssa::tests::presentation_smoke {
 
     class CapturingImportPort final : public ssa::ports::IImportWorkflowPort {
       public:
+        explicit CapturingImportPort(ssa::ports::WorkflowResult result =
+                                         {ssa::ports::WorkflowStatus::Succeeded, "import staged"})
+            : nextResult_(std::move(result)) {}
+
         ssa::ports::WorkflowResult
         importExternalFiles(const ssa::ports::ImportExternalFilesRequest& request,
                             std::stop_token = {}) override {
             const std::scoped_lock lock(mutex_);
             importRequests_.push_back(request);
-            return {ssa::ports::WorkflowStatus::Succeeded, "import staged"};
+            return nextResult_;
         }
 
         ssa::ports::WorkflowResult rescan(const ssa::ports::RescanRequest& request,
                                           std::stop_token = {}) override {
             const std::scoped_lock lock(mutex_);
             requests_.push_back(request);
-            return {ssa::ports::WorkflowStatus::Succeeded, "rescan requested"};
+            return nextResult_;
         }
 
         [[nodiscard]] std::vector<ssa::ports::RescanRequest> requests() const {
@@ -288,6 +292,7 @@ namespace ssa::tests::presentation_smoke {
         mutable std::mutex mutex_;
         std::vector<ssa::ports::ImportExternalFilesRequest> importRequests_;
         std::vector<ssa::ports::RescanRequest> requests_;
+        ssa::ports::WorkflowResult nextResult_;
     };
 
     class CapturingDerivadasPort final : public ssa::ports::IDerivadasPort {

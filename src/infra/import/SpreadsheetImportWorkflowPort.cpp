@@ -15,11 +15,16 @@ namespace ssa::infra::importing {
             std::string_view error = {};
         };
 
+        struct PendingImportOutcome {
+            const StagedImportFile* file = nullptr;
+            bool hasValidRows = false;
+        };
+
         std::string workflowMessage(const char* operation, const ImportStagingResult& files,
                                     const SsaImportWriteSummary& writeSummary,
                                     const WorkflowFailure& failure = WorkflowFailure{}) {
             std::ostringstream output;
-            output << operation << " files=" << files.xlsxFiles.size()
+            output << operation << " files=" << files.files.size()
                    << " rows=" << writeSummary.rowsWritten
                    << " skipped=" << writeSummary.skippedRows
                    << " duplicates=" << writeSummary.duplicateRows
@@ -68,7 +73,8 @@ namespace ssa::infra::importing {
             return canceled("rescan");
         }
         const bool replaceAll = request.mode == ports::RescanMode::Full;
-        return importDiscoveredFiles(stager_.stageInputFiles(stopToken), replaceAll, stopToken);
+        return importDiscoveredFiles(stager_.stageInputFiles(stopToken, replaceAll), replaceAll,
+                                     stopToken);
     }
 
     ports::WorkflowResult
@@ -83,7 +89,7 @@ namespace ssa::infra::importing {
             return {ports::WorkflowStatus::Rejected,
                     std::string{operation} + " " + files.rejectionReason};
         }
-        if (files.xlsxFiles.empty()) {
+        if (files.files.empty()) {
             if (replaceAll) {
                 try {
                     const auto summary =
@@ -99,26 +105,25 @@ namespace ssa::infra::importing {
         }
 
         SsaImportWriteSummary totalSummary;
-        totalSummary.files = files.xlsxFiles.size();
+        totalSummary.files = files.files.size();
         std::unique_ptr<sqlite::SqliteSsaImportWriter::WriteSession> writeSession;
-        if (replaceAll) {
-            try {
-                writeSession = std::make_unique<sqlite::SqliteSsaImportWriter::WriteSession>(
-                    writer_.startSession(true, stopToken));
-            } catch (const std::exception& exc) {
-                return {ports::WorkflowStatus::Failed,
-                        workflowMessage(operation, files, totalSummary, {1, exc.what()})};
-            }
+        try {
+            writeSession = std::make_unique<sqlite::SqliteSsaImportWriter::WriteSession>(
+                writer_.startSession(replaceAll, stopToken));
+        } catch (const std::exception& exc) {
+            return {ports::WorkflowStatus::Failed,
+                    workflowMessage(operation, files, totalSummary, {1, exc.what()})};
         }
         std::size_t failedFiles = 0;
-        std::size_t emptyFiles = 0;
-        for (const auto& file : files.xlsxFiles) {
+        std::vector<PendingImportOutcome> pendingOutcomes;
+        pendingOutcomes.reserve(files.files.size());
+        for (const auto& file : files.files) {
             if (stopToken.stop_requested()) {
                 return canceled(operation);
             }
             SsaImportBatch batch;
             try {
-                batch = mapper_.map(reader_.readFirstSheet(file, stopToken));
+                batch = mapper_.map(reader_.readFirstSheet(file.workbookPath, stopToken));
             } catch (const std::system_error& error) {
                 if (error.code() == std::make_error_code(std::errc::operation_canceled)) {
                     return canceled(operation);
@@ -132,8 +137,8 @@ namespace ssa::infra::importing {
                 return {ports::WorkflowStatus::Failed,
                         workflowMessage(operation, files, totalSummary, {failedFiles, exc.what()})};
             }
+            pendingOutcomes.push_back({&file, !batch.rows.empty()});
             if (batch.rows.empty()) {
-                ++emptyFiles;
                 totalSummary.skippedRows += batch.skippedRows;
                 continue;
             }
@@ -142,10 +147,6 @@ namespace ssa::infra::importing {
                 conflictResolver_.resolveForDeleteInsertUpsertBySsaNumberKeepingUnkeyedRows(
                     singleBatch);
             try {
-                if (!writeSession) {
-                    writeSession = std::make_unique<sqlite::SqliteSsaImportWriter::WriteSession>(
-                        writer_.startSession(replaceAll, stopToken));
-                }
                 writeSession->write(resolved, 1, singleBatch.front().skippedRows);
             } catch (const std::system_error& error) {
                 if (error.code() == std::make_error_code(std::errc::operation_canceled)) {
@@ -161,28 +162,32 @@ namespace ssa::infra::importing {
                         workflowMessage(operation, files, totalSummary, {failedFiles, exc.what()})};
             }
         }
-        if (writeSession) {
-            try {
-                const auto writeSummary = writeSession->finish();
-                totalSummary.rowsWritten = writeSummary.rowsWritten;
-                totalSummary.skippedRows += writeSummary.skippedRows;
-                totalSummary.duplicateRows = writeSummary.duplicateRows;
-            } catch (const std::system_error& error) {
-                if (error.code() == std::make_error_code(std::errc::operation_canceled)) {
-                    return canceled(operation);
-                }
-                return {ports::WorkflowStatus::Failed,
-                        workflowMessage(operation, files, totalSummary, {1, error.what()})};
+        try {
+            const auto writeSummary = writeSession->finish();
+            totalSummary.rowsWritten = writeSummary.rowsWritten;
+            totalSummary.skippedRows += writeSummary.skippedRows;
+            totalSummary.duplicateRows = writeSummary.duplicateRows;
+        } catch (const std::system_error& error) {
+            if (error.code() == std::make_error_code(std::errc::operation_canceled)) {
+                return canceled(operation);
             }
-        }
-        if (totalSummary.rowsWritten == 0) {
-            return {ports::WorkflowStatus::Succeeded,
-                    workflowMessage(operation, files, totalSummary, {failedFiles})};
+            return {ports::WorkflowStatus::Failed,
+                    workflowMessage(operation, files, totalSummary, {1, error.what()})};
+        } catch (const std::exception& error) {
+            return {ports::WorkflowStatus::Failed,
+                    workflowMessage(operation, files, totalSummary, {1, error.what()})};
         }
 
-        (void)emptyFiles;
+        std::vector<ImportManifestEntry> manifest;
+        manifest.reserve(pendingOutcomes.size());
+        for (const auto& outcome : pendingOutcomes) {
+            manifest.push_back({outcome.file->consolidationSources, outcome.hasValidRows});
+        }
+        const auto consolidation = stager_.consolidate(manifest, stopToken);
+        failedFiles += consolidation.failed;
         return {ports::WorkflowStatus::Succeeded,
-                workflowMessage(operation, files, totalSummary, {failedFiles})};
+                workflowMessage(operation, files, totalSummary, {failedFiles, consolidation.error}),
+                consolidation.failed > 0 || consolidation.canceled};
     }
 
 } // namespace ssa::infra::importing

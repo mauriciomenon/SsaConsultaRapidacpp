@@ -1,3 +1,4 @@
+#include "platform/AppPaths.h"
 #include "platform/DesktopApplicationLauncher.h"
 #include "platform/DesktopExternalCommandPort.h"
 #include "platform/OpenPathPolicy.h"
@@ -108,6 +109,16 @@ namespace {
     };
 
 } // namespace
+
+TEST_CASE("app paths nest the redundant folder under processed files") {
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+    const ssa::platform::AppPaths paths(directory.path(), directory.filePath("config"));
+    const auto root = ssa::qt::toFileSystemPath(directory.path());
+
+    REQUIRE(paths.processedFolderPath() == root / "docs_entrada" / "processadas");
+    REQUIRE(paths.redundantFolderPath() == root / "docs_entrada" / "processadas" / "nosurvivor");
+}
 
 TEST_CASE("startup options accept configured absolute SAM URL") {
     QCommandLineParser parser;

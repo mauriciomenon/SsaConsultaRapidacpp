@@ -19,6 +19,7 @@ namespace ssa::ports {
     struct WorkflowResult {
         WorkflowStatus status = WorkflowStatus::NotImplemented;
         std::string message;
+        bool warning = false;
 
         [[nodiscard]] bool ok() const {
             return status == WorkflowStatus::Succeeded;

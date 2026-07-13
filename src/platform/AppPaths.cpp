@@ -33,7 +33,7 @@ namespace ssa::platform {
     }
 
     std::filesystem::path AppPaths::redundantFolderPath() const {
-        return inputFolderPath() / "nosurvivor";
+        return processedFolderPath() / "nosurvivor";
     }
 
     std::filesystem::path AppPaths::installationGuidePath() const {

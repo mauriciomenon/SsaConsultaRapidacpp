@@ -91,6 +91,26 @@ xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
         return value;
     }
 
+    std::string readFile(const std::filesystem::path& path) {
+        std::ifstream input(path, std::ios::binary);
+        return {std::istreambuf_iterator<char>{input}, std::istreambuf_iterator<char>{}};
+    }
+
+    std::size_t directWorkbookCount(const std::filesystem::path& directory) {
+        std::error_code error;
+        std::size_t count = 0;
+        for (std::filesystem::directory_iterator iterator(directory, error), end;
+             !error && iterator != end; iterator.increment(error)) {
+            const auto extension = iterator->path().extension();
+            if (iterator->is_regular_file(error) && (extension == ".xls" || extension == ".xlsx")) {
+                ++count;
+            }
+            error.clear();
+        }
+        REQUIRE_FALSE(error);
+        return count;
+    }
+
     void createSparseFile(const std::filesystem::path& path, const std::uintmax_t size) {
         std::ofstream output(path, std::ios::binary);
         REQUIRE(output.good());
@@ -176,6 +196,71 @@ TEST_CASE("import file stager rejects a stopped token before copying") {
     REQUIRE_FALSE(std::filesystem::exists(inputDirectory));
 }
 
+#ifndef _WIN32
+TEST_CASE("import file stager rejects a symlinked input directory") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto realInputDirectory = root / "real-input";
+    const auto inputDirectory = root / "docs_entrada";
+    const auto source = root / "source.xlsx";
+    std::filesystem::create_directories(realInputDirectory);
+    createSparseFile(source, 1);
+    std::filesystem::create_directory_symlink(realInputDirectory, inputDirectory);
+    const ssa::infra::importing::ImportFileStager stager(inputDirectory);
+
+    SECTION("external staging preserves its source") {
+        const auto result = stager.stageExternalFiles({source});
+
+        REQUIRE(result.rejectionReason == "input_directory_symlink");
+        REQUIRE(result.files.empty());
+        REQUIRE(std::filesystem::exists(source));
+        REQUIRE(std::filesystem::is_empty(realInputDirectory));
+    }
+
+    SECTION("input discovery does not traverse the target") {
+        const auto workbook = realInputDirectory / "inside.xlsx";
+        createSparseFile(workbook, 1);
+
+        const auto result = stager.stageInputFiles();
+
+        REQUIRE(result.rejectionReason == "input_directory_symlink");
+        REQUIRE(result.files.empty());
+        REQUIRE(std::filesystem::exists(workbook));
+    }
+
+    SECTION("consolidation preserves its source") {
+        const std::vector<ssa::infra::importing::ImportManifestEntry> manifest{{{source}, true}};
+
+        const auto result = stager.consolidate(manifest);
+
+        REQUIRE(result.failed == 1);
+        REQUIRE(result.error == "input_directory_symlink");
+        REQUIRE(std::filesystem::exists(source));
+        REQUIRE(std::filesystem::is_empty(realInputDirectory));
+    }
+}
+#endif
+
+TEST_CASE("import file consolidation observes cancellation with an empty source list") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto inputDirectory =
+        std::filesystem::path{tempDir.path().toStdString()} / "docs_entrada";
+    const ssa::infra::importing::ImportFileStager stager(inputDirectory);
+    const std::vector<ssa::infra::importing::ImportManifestEntry> manifest{{{}, true}};
+    std::stop_source stopSource;
+    stopSource.request_stop();
+
+    const auto result = stager.consolidate(manifest, stopSource.get_token());
+
+    REQUIRE(result.canceled);
+    REQUIRE(result.error == "consolidation canceled");
+    REQUIRE_FALSE(std::filesystem::exists(inputDirectory));
+}
+
 TEST_CASE("legacy converter rejects a stopped token before starting a process") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
@@ -255,6 +340,200 @@ TEST_CASE("spreadsheet import workflow stages xlsx and writes sqlite rows") {
     REQUIRE(scalarText(db, "SELECT setor_executor FROM ssa_table WHERE numero_ssa='202600001'") ==
             "MEL1");
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("incremental rescan consolidates only committed input workbooks") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto processedDirectory = inputDirectory / "processadas";
+    const auto noSurvivorDirectory = processedDirectory / "nosurvivor";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+
+    const auto validWorkbook = inputDirectory / "valid.xlsx";
+    writeWorkbook(validWorkbook,
+                  row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                          inlineCell("C1", "Descricao da SSA")}) +
+                      row(2, {inlineCell("A2", "202600120"), inlineCell("B2", "ASE"),
+                              inlineCell("C2", "Linha valida")}));
+    const auto emptyWorkbook = inputDirectory / "empty.xlsx";
+    writeWorkbook(emptyWorkbook,
+                  row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                          inlineCell("C1", "Descricao da SSA")}));
+    const auto unknown = inputDirectory / "pending.txt";
+    {
+        std::ofstream output(unknown);
+        output << "pending";
+    }
+
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+    const auto result = port.rescan({ssa::ports::RescanMode::Incremental});
+
+    INFO(result.message);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE_FALSE(result.warning);
+    REQUIRE(std::filesystem::exists(processedDirectory / "valid.xlsx"));
+    REQUIRE(std::filesystem::exists(noSurvivorDirectory / "empty.xlsx"));
+    REQUIRE(std::filesystem::exists(unknown));
+    REQUIRE_FALSE(std::filesystem::exists(validWorkbook));
+    REQUIRE_FALSE(std::filesystem::exists(emptyWorkbook));
+
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 1);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("incremental rescan preserves an existing destination with a unique name") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto processedDirectory = inputDirectory / "processadas";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(processedDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    const auto existing = processedDirectory / "same.xlsx";
+    {
+        std::ofstream output(existing, std::ios::binary);
+        output << "existing";
+    }
+    const auto workbook = inputDirectory / "same.xlsx";
+    writeWorkbook(workbook, row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                                    inlineCell("C1", "Descricao da SSA")}) +
+                                row(2, {inlineCell("A2", "202600121"), inlineCell("B2", "ASE"),
+                                        inlineCell("C2", "Novo arquivo")}));
+
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+    const auto result = port.rescan({ssa::ports::RescanMode::Incremental});
+
+    INFO(result.message);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE(readFile(existing) == "existing");
+    REQUIRE(std::filesystem::exists(processedDirectory / "same__1.xlsx"));
+    REQUIRE_FALSE(std::filesystem::exists(workbook));
+}
+
+TEST_CASE("post commit consolidation failure stays visible and preserves the input") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto processedPath = inputDirectory / "processadas";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    {
+        std::ofstream blockedDestination(processedPath);
+        blockedDestination << "not a directory";
+    }
+    const auto workbook = inputDirectory / "committed.xlsx";
+    writeWorkbook(workbook, row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                                    inlineCell("C1", "Descricao da SSA")}) +
+                                row(2, {inlineCell("A2", "202600124"), inlineCell("B2", "ASE"),
+                                        inlineCell("C2", "Commit antes do move")}));
+
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+    const auto result = port.rescan({ssa::ports::RescanMode::Incremental});
+
+    INFO(result.message);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE(result.warning);
+    REQUIRE(result.message.find("error=cannot create consolidation directory") !=
+            std::string::npos);
+    REQUIRE(std::filesystem::exists(workbook));
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600124'") == 1);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("sqlite commit failure prevents creation of a consolidation manifest") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    ssa::infra::importing::ResolvedSsaImportRows seedRows;
+    seedRows.rows.push_back({{"numero_ssa", "202600125"}, {"descricao_ssa", "Linha anterior"}});
+    seedRows.ssaNumbersForUpsertDelete.emplace_back("202600125");
+    const ssa::infra::sqlite::SqliteSsaImportWriter seedWriter(dbPath, importColumns());
+    REQUIRE(seedWriter.write(seedRows, 1, 0, false).rowsWritten == 1);
+
+    sqlite3* readLock = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &readLock) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(readLock, "PRAGMA journal_mode=DELETE", nullptr, nullptr, nullptr) ==
+            SQLITE_OK);
+    REQUIRE(sqlite3_exec(readLock, "BEGIN", nullptr, nullptr, nullptr) == SQLITE_OK);
+    sqlite3_stmt* lockedStatement = nullptr;
+    REQUIRE(sqlite3_prepare_v2(readLock, "SELECT COUNT(*) FROM ssa_table", -1, &lockedStatement,
+                               nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_step(lockedStatement) == SQLITE_ROW);
+
+    const auto workbook = inputDirectory / "blocked-commit.xlsx";
+    writeWorkbook(workbook, row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                                    inlineCell("C1", "Descricao da SSA")}) +
+                                row(2, {inlineCell("A2", "202600126"), inlineCell("B2", "ASE"),
+                                        inlineCell("C2", "Nao consolidar")}));
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+
+    const auto result = port.rescan({ssa::ports::RescanMode::Incremental});
+
+    REQUIRE(sqlite3_finalize(lockedStatement) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(readLock, "ROLLBACK", nullptr, nullptr, nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_close(readLock) == SQLITE_OK);
+    INFO(result.message);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
+    REQUIRE(std::filesystem::exists(workbook));
+    REQUIRE_FALSE(std::filesystem::exists(inputDirectory / "processadas"));
+    sqlite3* verificationDb = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &verificationDb) == SQLITE_OK);
+    REQUIRE(scalarInt(verificationDb,
+                      "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600126'") == 0);
+    REQUIRE(sqlite3_close(verificationDb) == SQLITE_OK);
+}
+
+TEST_CASE("external import consolidates its staged copy and preserves the selected source") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto sourceDirectory = root / "external";
+    const auto inputDirectory = root / "docs_entrada";
+    const auto processedDirectory = inputDirectory / "processadas";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(sourceDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    const auto source = sourceDirectory / "selected.xlsx";
+    writeWorkbook(source, row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                                  inlineCell("C1", "Descricao da SSA")}) +
+                              row(2, {inlineCell("A2", "202600122"), inlineCell("B2", "ASE"),
+                                      inlineCell("C2", "Import externo")}));
+
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+    ssa::ports::ImportExternalFilesRequest request;
+    request.files = {source};
+    const auto result = port.importExternalFiles(request);
+
+    INFO(result.message);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE(std::filesystem::exists(source));
+    REQUIRE(directWorkbookCount(inputDirectory) == 0);
+    REQUIRE(directWorkbookCount(processedDirectory) == 1);
 }
 
 TEST_CASE("spreadsheet import workflow preserves unicode paths") {
@@ -401,7 +680,7 @@ TEST_CASE("import file stager accepts exactly 64 files") {
 
     REQUIRE(result.rejectionReason.empty());
     REQUIRE(result.failedCopies == 0);
-    REQUIRE(result.xlsxFiles.size() == 64);
+    REQUIRE(result.files.size() == 64);
 }
 
 TEST_CASE("spreadsheet import workflow rejects files larger than 128 MiB before staging") {
@@ -470,16 +749,75 @@ TEST_CASE("spreadsheet import workflow full rescan replaces existing rows") {
                                 row(2, {inlineCell("A2", "202600010"), inlineCell("B2", "ASE"),
                                         inlineCell("C2", "Linha nova")}));
 
+    const auto noSurvivorDirectory = inputDirectory / "processadas" / "nosurvivor";
+    std::filesystem::create_directories(noSurvivorDirectory);
+    writeWorkbook(noSurvivorDirectory / "ignored.xlsx",
+                  row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                          inlineCell("C1", "Descricao da SSA")}) +
+                      row(2, {inlineCell("A2", "202600011"), inlineCell("B2", "ASE"),
+                              inlineCell("C2", "Nao deve voltar")}));
+
     ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
                                                               importColumns());
     REQUIRE(port.rescan({ssa::ports::RescanMode::Full}).ok());
+    REQUIRE(std::filesystem::exists(inputDirectory / "processadas" / "first.xlsx"));
+    REQUIRE_FALSE(std::filesystem::exists(workbook));
     REQUIRE(port.rescan({ssa::ports::RescanMode::Full}).ok());
 
     sqlite3* db = nullptr;
     REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
     REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 1);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600011'") == 0);
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
+
+#ifndef _WIN32
+TEST_CASE("full rescan rejects a symlinked processed directory without clearing the database") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto outsideDirectory = root / "outside";
+    const auto seedDirectory = root / "seed";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(outsideDirectory);
+    std::filesystem::create_directories(seedDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    const auto seedWorkbook = seedDirectory / "seed.xlsx";
+    writeWorkbook(seedWorkbook,
+                  row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                          inlineCell("C1", "Descricao da SSA")}) +
+                      row(2, {inlineCell("A2", "202600126"), inlineCell("B2", "ASE"),
+                              inlineCell("C2", "Linha preservada")}));
+    writeWorkbook(outsideDirectory / "outside.xlsx",
+                  row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                          inlineCell("C1", "Descricao da SSA")}) +
+                      row(2, {inlineCell("A2", "202600127"), inlineCell("B2", "ASE"),
+                              inlineCell("C2", "Fora da entrada")}));
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+    ssa::ports::ImportExternalFilesRequest seedRequest;
+    seedRequest.files = {seedWorkbook};
+    REQUIRE(port.importExternalFiles(seedRequest).ok());
+    REQUIRE(std::filesystem::remove_all(inputDirectory / "processadas") > 0);
+    REQUIRE_FALSE(std::filesystem::exists(inputDirectory / "processadas"));
+    std::filesystem::create_directory_symlink(outsideDirectory, inputDirectory / "processadas");
+
+    const auto result = port.rescan({ssa::ports::RescanMode::Full});
+
+    INFO(result.message);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
+    REQUIRE(result.message.find("processed_directory_symlink") != std::string::npos);
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 1);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600126'") == 1);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+    REQUIRE(std::filesystem::exists(outsideDirectory / "outside.xlsx"));
+}
+#endif
 
 TEST_CASE("spreadsheet import workflow reports empty full rescan write failure") {
     QTemporaryDir tempDir;
@@ -553,7 +891,46 @@ TEST_CASE("import file stager counts legacy xls with existing xlsx without conve
     REQUIRE(result.convertedXls == 0);
     REQUIRE(result.failedLegacyXls == 0);
     REQUIRE(result.unsupported == 0);
-    REQUIRE(result.xlsxFiles == std::vector<std::filesystem::path>{workbook});
+    REQUIRE(result.files.size() == 1);
+    REQUIRE(result.files.front().workbookPath == workbook);
+    REQUIRE(result.files.front().consolidationSources ==
+            std::vector<std::filesystem::path>{workbook});
+}
+
+TEST_CASE("incremental rescan keeps an unrelated legacy file pending beside an existing xlsx") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto processedDirectory = inputDirectory / "processadas";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    const auto legacy = inputDirectory / "legacy.xls";
+    const auto workbook = inputDirectory / "legacy.xlsx";
+    {
+        std::ofstream output(legacy);
+        output << "independent legacy content";
+    }
+    writeWorkbook(workbook, row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                                    inlineCell("C1", "Descricao da SSA")}) +
+                                row(2, {inlineCell("A2", "202600128"), inlineCell("B2", "ASE"),
+                                        inlineCell("C2", "Existing workbook")}));
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+
+    const auto result = port.rescan({ssa::ports::RescanMode::Incremental});
+
+    INFO(result.message);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE(std::filesystem::exists(legacy));
+    REQUIRE_FALSE(std::filesystem::exists(workbook));
+    REQUIRE(std::filesystem::exists(processedDirectory / workbook.filename()));
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600128'") == 1);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
 TEST_CASE("import file stager reports unreadable input folder scan") {
@@ -571,7 +948,7 @@ TEST_CASE("import file stager reports unreadable input folder scan") {
     const auto result = stager.stageInputFiles();
 
     REQUIRE(result.failedCopies == 1);
-    REQUIRE(result.xlsxFiles.empty());
+    REQUIRE(result.files.empty());
 }
 
 #ifndef _WIN32
@@ -612,5 +989,36 @@ TEST_CASE("spreadsheet import workflow converts staged xls before sqlite import"
     REQUIRE(scalarText(db, "SELECT setor_executor FROM ssa_table WHERE numero_ssa='202600099'") ==
             "MEL2");
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("incremental rescan consolidates the legacy source and converted workbook") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto processedDirectory = inputDirectory / "processadas";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    const auto legacyWorkbook = inputDirectory / "legacy-input.xls";
+    writeWorkbook(legacyWorkbook,
+                  row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                          inlineCell("C1", "Descricao da SSA")}) +
+                      row(2, {inlineCell("A2", "202600123"), inlineCell("B2", "ASE"),
+                              inlineCell("C2", "Legado da entrada")}));
+
+    const auto fakeSoffice = writeFakeSoffice(root);
+    ssa::infra::importing::LegacySpreadsheetConverter converter(fakeSoffice);
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns(), converter);
+    const auto result = port.rescan({ssa::ports::RescanMode::Incremental});
+
+    INFO(result.message);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE(std::filesystem::exists(processedDirectory / "legacy-input.xls"));
+    REQUIRE(std::filesystem::exists(processedDirectory / "legacy-input.xlsx"));
+    REQUIRE_FALSE(std::filesystem::exists(legacyWorkbook));
+    REQUIRE_FALSE(std::filesystem::exists(inputDirectory / "legacy-input.xlsx"));
 }
 #endif

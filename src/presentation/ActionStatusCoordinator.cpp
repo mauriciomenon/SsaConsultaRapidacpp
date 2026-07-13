@@ -29,9 +29,10 @@ namespace ssa::presentation {
         }
 
         void reportResult(StatusViewModel& status, const bool succeeded, const QString& detail,
-                          const ActionStatusMessages& messages) {
+                          const ActionStatusMessages& messages, const bool warning = false) {
             if (succeeded) {
-                clearAndSetError(status, messages.success);
+                status.setError(warning ? detail : QString{});
+                status.setMessage(messages.success);
             } else {
                 status.setError(detail);
                 status.setMessage(messages.failure);
@@ -85,7 +86,8 @@ namespace ssa::presentation {
 
     void ActionStatusCoordinator::onWorkflowResult() {
         reportResult(status_, workflows_.lastSucceeded(), workflows_.lastMessage(),
-                     {workflows_.successMessage(), workflows_.failureMessage()});
+                     {workflows_.successMessage(), workflows_.failureMessage()},
+                     workflows_.lastWarning());
     }
 
     void ActionStatusCoordinator::onPreferenceSaveFailed(const QString& message) {

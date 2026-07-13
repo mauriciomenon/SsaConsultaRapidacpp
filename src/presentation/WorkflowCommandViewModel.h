@@ -15,6 +15,7 @@ namespace ssa::presentation {
         Q_OBJECT
         Q_PROPERTY(QString lastMessage READ lastMessage NOTIFY lastResultChanged)
         Q_PROPERTY(bool lastSucceeded READ lastSucceeded NOTIFY lastResultChanged)
+        Q_PROPERTY(bool lastWarning READ lastWarning NOTIFY lastResultChanged)
         Q_PROPERTY(bool running READ running NOTIFY runningChanged)
 
       public:
@@ -23,6 +24,7 @@ namespace ssa::presentation {
 
         [[nodiscard]] QString lastMessage() const;
         [[nodiscard]] bool lastSucceeded() const;
+        [[nodiscard]] bool lastWarning() const;
         [[nodiscard]] bool running() const;
         [[nodiscard]] QString runningMessage() const;
         [[nodiscard]] QString successMessage() const;
@@ -49,7 +51,7 @@ namespace ssa::presentation {
         void startRescan(ports::RescanMode mode);
         void applyResult(const ports::WorkflowResult& result);
         void setRunning(bool running);
-        void setResult(QString message, bool succeeded);
+        void setResult(QString message, bool succeeded, bool warning = false);
         [[nodiscard]] OperationMessages messagesForCurrentOperation() const;
 
         enum class Operation {
@@ -63,6 +65,7 @@ namespace ssa::presentation {
         QString lastMessage_;
         Operation operation_{Operation::Rescan};
         bool lastSucceeded_{false};
+        bool lastWarning_{false};
         bool running_{false};
     };
 

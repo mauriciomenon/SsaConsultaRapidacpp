@@ -46,6 +46,10 @@ namespace ssa::presentation {
         return lastSucceeded_;
     }
 
+    bool WorkflowCommandViewModel::lastWarning() const {
+        return lastWarning_;
+    }
+
     bool WorkflowCommandViewModel::running() const {
         return running_;
     }
@@ -138,7 +142,7 @@ namespace ssa::presentation {
         if (result.ok()) {
             setResult(QString::fromStdString(result.message.empty() ? successMessage().toStdString()
                                                                     : result.message),
-                      true);
+                      true, result.warning);
             return;
         }
         setResult(QString::fromStdString(result.message), false);
@@ -152,9 +156,11 @@ namespace ssa::presentation {
         emit runningChanged();
     }
 
-    void WorkflowCommandViewModel::setResult(QString message, const bool succeeded) {
+    void WorkflowCommandViewModel::setResult(QString message, const bool succeeded,
+                                             const bool warning) {
         lastMessage_ = std::move(message);
         lastSucceeded_ = succeeded;
+        lastWarning_ = warning;
         emit lastResultChanged();
     }
 
