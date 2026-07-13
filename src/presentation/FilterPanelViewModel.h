@@ -138,6 +138,7 @@ namespace ssa::presentation {
         QTimer activeFilterRefreshTimer_;
         std::uint64_t filterStateVersion_{0};
         int focusColumnRequest_{0};
+        bool stateReplacementInProgress_{false};
     };
 
 } // namespace ssa::presentation

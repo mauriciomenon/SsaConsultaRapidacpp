@@ -36,6 +36,8 @@ namespace ssa::presentation {
                 });
         connect(&columnValueOptionsFetcher_, &FilterPanelDistinctValueFetcher::valuesFailed, this,
                 &FilterPanelDistinctValuesController::onColumnValueOptionsFailed);
+        connect(&columnValueOptionsFetcher_, &FilterPanelDistinctValueFetcher::valuesCanceled, this,
+                &FilterPanelDistinctValuesController::onColumnValueOptionsCanceled);
         connect(&quickSectorOptionsFetcher_, &FilterPanelDistinctValueFetcher::valuesReady, this,
                 [this](std::uint64_t requestToken, std::vector<std::string> values) {
                     onQuickSectorOptionsReady(requestToken, std::move(values));
@@ -52,12 +54,12 @@ namespace ssa::presentation {
     void FilterPanelDistinctValuesController::refreshColumnValueOptionsFor(
         const QString& key, const std::uint64_t stateVersion) {
         if (!queryService_) {
-            emit columnValueOptionsReady({}, 0, key, stateVersion);
+            emit this->columnValueOptionsReady({}, 0, key, stateVersion);
             return;
         }
         const auto request = requestBuilder_.columnValuesRequestFor(state_, key.toStdString());
         if (!request.has_value()) {
-            emit columnValueOptionsReady({}, 0, key, stateVersion);
+            emit this->columnValueOptionsReady({}, 0, key, stateVersion);
             return;
         }
 
@@ -68,7 +70,7 @@ namespace ssa::presentation {
 
     void FilterPanelDistinctValuesController::refreshQuickSectorOptions() {
         if (!queryService_) {
-            emit quickSectorOptionsReady({});
+            emit this->quickSectorOptionsReady({});
             return;
         }
 
@@ -85,8 +87,8 @@ namespace ssa::presentation {
         }
         const auto context = request->second;
         columnValueRequests_.erase(request);
-        emit columnValueOptionsReady(std::move(values), maxValueLength, context.key,
-                                     context.stateVersion);
+        emit this->columnValueOptionsReady(std::move(values), maxValueLength, context.key,
+                                           context.stateVersion);
     }
 
     void FilterPanelDistinctValuesController::onColumnValueOptionsFailed(
@@ -97,7 +99,18 @@ namespace ssa::presentation {
         }
         const auto context = request->second;
         columnValueRequests_.erase(request);
-        emit columnValueOptionsFailed(context.key, context.stateVersion, message);
+        emit this->columnValueOptionsFailed(context.key, context.stateVersion, message);
+    }
+
+    void FilterPanelDistinctValuesController::onColumnValueOptionsCanceled(
+        const std::uint64_t requestToken) {
+        const auto request = columnValueRequests_.find(requestToken);
+        if (request == columnValueRequests_.end()) {
+            return;
+        }
+        const auto context = request->second;
+        columnValueRequests_.erase(request);
+        emit this->columnValueOptionsCanceled(context.key, context.stateVersion);
     }
 
     void FilterPanelDistinctValuesController::onQuickSectorOptionsReady(
@@ -105,7 +118,7 @@ namespace ssa::presentation {
         if (!quickSectorRequest_.accepts(requestToken)) {
             return;
         }
-        emit quickSectorOptionsReady(std::move(values));
+        emit this->quickSectorOptionsReady(std::move(values));
     }
 
     void FilterPanelDistinctValuesController::onQuickSectorOptionsFailed(
@@ -113,7 +126,7 @@ namespace ssa::presentation {
         if (!quickSectorRequest_.accepts(requestToken)) {
             return;
         }
-        emit quickSectorOptionsFailed(message);
+        emit this->quickSectorOptionsFailed(message);
     }
 
 } // namespace ssa::presentation

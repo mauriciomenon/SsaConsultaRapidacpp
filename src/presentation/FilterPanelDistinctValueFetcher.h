@@ -39,6 +39,7 @@ namespace ssa::presentation {
         void valuesReady(std::uint64_t requestToken, std::vector<std::string> values,
                          std::size_t maxValueLength);
         void valuesFailed(std::uint64_t requestToken, QString message);
+        void valuesCanceled(std::uint64_t requestToken);
 
       private:
         struct FetchResult final {

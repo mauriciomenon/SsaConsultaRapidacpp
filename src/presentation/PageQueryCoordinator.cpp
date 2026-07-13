@@ -1,7 +1,9 @@
 #include "presentation/PageQueryCoordinator.h"
 
+#include "ports/OperationError.h"
 #include "presentation/SsaTablePageFormatter.h"
 
+#include <QDebug>
 #include <QtConcurrent>
 
 #include <algorithm>
@@ -193,19 +195,24 @@ namespace ssa::presentation {
                 } else {
                     emit succeeded(std::move(*result), operation.request);
                 }
-            } catch (const std::length_error& exc) {
+            } catch (const ports::OperationError& exc) {
+                qWarning().noquote()
+                    << "Page query failed:" << QString::fromStdString(exc.diagnostic());
                 emit failed(QString::fromUtf8(exc.what()));
             } catch (const std::system_error& exc) {
                 if (operation.explicitlyCanceled &&
                     exc.code() == std::make_error_code(std::errc::operation_canceled)) {
                     emit canceled();
                 } else {
-                    emit failed(QString::fromUtf8(exc.what()));
+                    qWarning().noquote() << "Page query failed:" << exc.what();
+                    emit failed("Falha ao consultar dados");
                 }
             } catch (const std::exception& exc) {
-                emit failed(QString::fromUtf8(exc.what()));
+                qWarning().noquote() << "Page query failed:" << exc.what();
+                emit failed("Falha ao consultar dados");
             } catch (...) {
-                emit failed("Falha interna ao consultar dados");
+                qWarning() << "Page query failed: unknown exception";
+                emit failed("Falha ao consultar dados");
             }
             finishing_ = false;
             setState(State::Idle);

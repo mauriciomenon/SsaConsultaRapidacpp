@@ -1204,9 +1204,11 @@ namespace {
 
             coordinator.run(request);
             QTRY_VERIFY_WITH_TIMEOUT(repository->firstStarted(), 1000);
+            QTest::ignoreMessage(QtWarningMsg, "Page query failed: query failed after stop");
             coordinator.cancel();
 
-            QTRY_COMPARE_WITH_TIMEOUT(failure, QString("query failed after stop"), 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(failure, QString("Falha ao consultar dados"), 1000);
+            QVERIFY(!failure.contains("query failed after stop"));
             QCOMPARE(canceledCount, 0);
             QCOMPARE(coordinator.state(), ssa::presentation::PageQueryCoordinator::State::Idle);
         }

@@ -45,7 +45,7 @@ namespace ssa::presentation {
 
     void BrowsePageLifecycleCoordinator::markRequestFailed(const QString& message) {
         status_.setError(message);
-        status_.setMessage("Falha ao consultar dados");
+        status_.setMessage("Falha ao consultar dados; tabela ainda mostra o resultado anterior");
         status_.setLoading(false);
     }
 

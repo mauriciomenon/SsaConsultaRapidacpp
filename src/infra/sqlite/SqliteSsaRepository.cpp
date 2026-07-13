@@ -1,6 +1,7 @@
 #include "infra/sqlite/SqliteSsaRepository.h"
 
 #include "infra/sqlite/SqliteProgressHandler.h"
+#include "ports/OperationError.h"
 
 #include <stdexcept>
 #include <stop_token>
@@ -43,21 +44,38 @@ namespace ssa::infra::sqlite {
             return domain::SsaRecord{std::move(schema), std::move(values)};
         }
 
-        void executeSql(sqlite3* db, const std::string_view sql) {
+        bool isCanceledSqlResult(const int rc, const std::atomic_bool* busyCanceled) {
+            return rc == SQLITE_INTERRUPT ||
+                   ((rc == SQLITE_BUSY || rc == SQLITE_LOCKED) && busyCanceled != nullptr &&
+                    busyCanceled->load(std::memory_order_relaxed));
+        }
+
+        void executeSql(sqlite3* db, const std::string_view sql,
+                        const std::atomic_bool* busyCanceled) {
             char* error = nullptr;
             const int rc = sqlite3_exec(db, std::string{sql}.c_str(), nullptr, nullptr, &error);
             if (rc != SQLITE_OK) {
                 const std::string message = error == nullptr ? sqlite3_errmsg(db) : error;
                 sqlite3_free(error);
-                throw std::runtime_error("sqlite command failed: " + message);
+                if (isCanceledSqlResult(rc, busyCanceled)) {
+                    throw std::system_error(std::make_error_code(std::errc::operation_canceled),
+                                            "sqlite query canceled");
+                }
+                throw ports::OperationError(
+                    "Falha ao acessar o banco de dados",
+                    "sqlite command failed: rc=" + std::to_string(rc) + " extended_rc=" +
+                        std::to_string(sqlite3_extended_errcode(db)) + " message=" + message);
             }
             sqlite3_free(error);
         }
 
         class ReadTransaction final {
           public:
-            explicit ReadTransaction(sqlite3* db) : db_(db) {
-                executeSql(db_, "BEGIN");
+            ReadTransaction(sqlite3* db, std::stop_token stopToken,
+                            const std::atomic_bool* busyCanceled)
+                : db_(db), stopToken_(std::move(stopToken)), busyCanceled_(busyCanceled) {
+                throwIfCanceled(stopToken_);
+                executeSql(db_, "BEGIN", busyCanceled_);
             }
 
             ~ReadTransaction() {
@@ -72,12 +90,15 @@ namespace ssa::infra::sqlite {
             ReadTransaction& operator=(const ReadTransaction&) = delete;
 
             void commit() {
-                executeSql(db_, "COMMIT");
+                throwIfCanceled(stopToken_);
+                executeSql(db_, "COMMIT", busyCanceled_);
                 active_ = false;
             }
 
           private:
             sqlite3* db_;
+            std::stop_token stopToken_;
+            const std::atomic_bool* busyCanceled_;
             bool active_ = true;
         };
 
@@ -93,16 +114,18 @@ namespace ssa::infra::sqlite {
     domain::SsaPageResult SqliteSsaRepository::page(const domain::SsaPageRequest& request,
                                                     std::stop_token stopToken) const {
         const auto queries = queryBuilder_.build(request);
-        const std::scoped_lock lock(connectionMutex_);
-        auto& sqlite = connectionLocked(lock);
-        ReadTransaction transaction(sqlite.handle());
+        SqliteConnection sqlite(dbPath_);
+        SqliteBusyHandler busy(sqlite.handle(), stopToken);
         SqliteProgressHandler progress(sqlite.handle(), stopToken);
+        ReadTransaction transaction(sqlite.handle(), stopToken, busy.cancellationObserved());
 
         domain::SsaPageResult result;
-        result.totalRows = executeCount(sqlite.handle(), queries.count);
+        result.totalRows =
+            executeCount(sqlite.handle(), queries.count, stopToken, busy.cancellationObserved());
         result.pageIndex = request.pageIndex;
         result.pageSize = request.pageSize;
-        result.rows = executeRows(sqlite.handle(), queries.page, stopToken);
+        result.rows =
+            executeRows(sqlite.handle(), queries.page, stopToken, busy.cancellationObserved());
         transaction.commit();
 
         return result;
@@ -111,20 +134,20 @@ namespace ssa::infra::sqlite {
     std::size_t SqliteSsaRepository::count(const domain::SsaPageRequest& request,
                                            std::stop_token stopToken) const {
         const auto countQuery = queryBuilder_.buildCount(request);
-        const std::scoped_lock lock(connectionMutex_);
-        auto& sqlite = connectionLocked(lock);
+        SqliteConnection sqlite(dbPath_);
+        SqliteBusyHandler busy(sqlite.handle(), stopToken);
         SqliteProgressHandler progress(sqlite.handle(), stopToken);
-        return executeCount(sqlite.handle(), countQuery);
+        return executeCount(sqlite.handle(), countQuery, stopToken, busy.cancellationObserved());
     }
 
     std::optional<domain::SsaRecord>
     SqliteSsaRepository::recordBySsaNumber(const domain::SsaNumber& number,
                                            std::stop_token stopToken) const {
         const auto query = queryBuilder_.buildRecordBySsaNumber(number);
-        const std::scoped_lock lock(connectionMutex_);
-        auto& sqlite = connectionLocked(lock);
+        SqliteConnection sqlite(dbPath_);
+        SqliteBusyHandler busy(sqlite.handle(), stopToken);
         SqliteProgressHandler progress(sqlite.handle(), stopToken);
-        SqliteStatement statement(sqlite.handle(), query.record.sql);
+        SqliteStatement statement(sqlite.handle(), query.record.sql, busy.cancellationObserved());
         bindAll(statement, query.record.bindings);
         if (!statement.step()) {
             return std::nullopt;
@@ -137,10 +160,10 @@ namespace ssa::infra::sqlite {
     SqliteSsaRepository::distinctValues(const domain::DistinctValuesRequest& request,
                                         std::stop_token stopToken) const {
         const auto query = queryBuilder_.buildDistinctValues(request);
-        const std::scoped_lock lock(connectionMutex_);
-        auto& sqlite = connectionLocked(lock);
+        SqliteConnection sqlite(dbPath_);
+        SqliteBusyHandler busy(sqlite.handle(), stopToken);
         SqliteProgressHandler progress(sqlite.handle(), stopToken);
-        SqliteStatement statement(sqlite.handle(), query.sql);
+        SqliteStatement statement(sqlite.handle(), query.sql, busy.cancellationObserved());
         bindAll(statement, query.bindings);
 
         std::vector<std::string> values;
@@ -157,10 +180,10 @@ namespace ssa::infra::sqlite {
     std::size_t SqliteSsaRepository::maxValueLength(const std::string_view columnKey,
                                                     std::stop_token stopToken) const {
         const auto query = queryBuilder_.buildMaxValueLength(columnKey);
-        const std::scoped_lock lock(connectionMutex_);
-        auto& sqlite = connectionLocked(lock);
+        SqliteConnection sqlite(dbPath_);
+        SqliteBusyHandler busy(sqlite.handle(), stopToken);
         SqliteProgressHandler progress(sqlite.handle(), stopToken);
-        return executeCount(sqlite.handle(), query);
+        return executeCount(sqlite.handle(), query, stopToken, busy.cancellationObserved());
     }
 
     std::vector<domain::SsaDerivadaEntry>
@@ -168,10 +191,10 @@ namespace ssa::infra::sqlite {
                                           std::stop_token stopToken) const {
         const auto sql = "SELECT numero_ssa, situacao FROM " + queryBuilder_.tableName() +
                          " WHERE derivada_de = ? AND numero_ssa IS NOT NULL ORDER BY numero_ssa";
-        const std::scoped_lock lock(connectionMutex_);
-        auto& sqlite = connectionLocked(lock);
+        SqliteConnection sqlite(dbPath_);
+        SqliteBusyHandler busy(sqlite.handle(), stopToken);
         SqliteProgressHandler progress(sqlite.handle(), stopToken);
-        SqliteStatement statement(sqlite.handle(), sql);
+        SqliteStatement statement(sqlite.handle(), sql, busy.cancellationObserved());
         statement.bindTextOneBased(1, number.value());
         std::vector<domain::SsaDerivadaEntry> entries;
         while (statement.step()) {
@@ -190,14 +213,16 @@ namespace ssa::infra::sqlite {
                                                       ports::SsaRecordConsumer consume,
                                                       std::stop_token stopToken) const {
         SqliteConnection sqlite(dbPath_);
-        ReadTransaction transaction(sqlite.handle());
+        SqliteBusyHandler busy(sqlite.handle(), stopToken);
         SqliteProgressHandler progress(sqlite.handle(), stopToken);
+        ReadTransaction transaction(sqlite.handle(), stopToken, busy.cancellationObserved());
         // pageSize == 0 means unbounded streaming (single query, no LIMIT).
         // pageSize > 0 means paginated streaming: read in chunks so peak memory
         // stays bounded to one page even for large filtered result sets.
         if (request.pageSize == 0) {
             const auto query = queryBuilder_.buildRows(request);
-            const auto result = consumeRows(sqlite.handle(), query, consume, stopToken);
+            const auto result = consumeRows(sqlite.handle(), query, consume, stopToken,
+                                            busy.cancellationObserved());
             if (result.ok()) {
                 transaction.commit();
             }
@@ -216,7 +241,7 @@ namespace ssa::infra::sqlite {
                     ++rowCount;
                     return consume(row);
                 },
-                stopToken);
+                stopToken, busy.cancellationObserved());
             if (!result.ok()) {
                 return {rowCount, result.error};
             }
@@ -229,16 +254,10 @@ namespace ssa::infra::sqlite {
         return {rowCount, {}};
     }
 
-    SqliteConnection&
-    SqliteSsaRepository::connectionLocked(const std::scoped_lock<std::mutex>&) const {
-        if (!connection_) {
-            connection_ = std::make_unique<SqliteConnection>(dbPath_);
-        }
-        return *connection_;
-    }
-
-    std::size_t SqliteSsaRepository::executeCount(sqlite3* db, const query::SqlQuery& query) {
-        SqliteStatement statement(db, query.sql);
+    std::size_t SqliteSsaRepository::executeCount(sqlite3* db, const query::SqlQuery& query,
+                                                  const std::stop_token& stopToken,
+                                                  const std::atomic_bool* busyCanceled) {
+        SqliteStatement statement(db, query.sql, busyCanceled);
         bindAll(statement, query.bindings);
         if (!statement.step()) {
             throw std::runtime_error("sqlite count query did not return a result");
@@ -248,7 +267,8 @@ namespace ssa::infra::sqlite {
 
     std::vector<domain::SsaRecord>
     SqliteSsaRepository::executeRows(sqlite3* db, const query::SqlQuery& query,
-                                     const std::stop_token& stopToken) {
+                                     const std::stop_token& stopToken,
+                                     const std::atomic_bool* busyCanceled) {
         std::vector<domain::SsaRecord> rows;
         const auto result = consumeRows(
             db, query,
@@ -256,7 +276,7 @@ namespace ssa::infra::sqlite {
                 rows.push_back(row);
                 return std::nullopt;
             },
-            stopToken);
+            stopToken, busyCanceled);
         if (!result.ok()) {
             throw std::runtime_error(result.error);
         }
@@ -265,8 +285,9 @@ namespace ssa::infra::sqlite {
 
     ports::SsaReadResult SqliteSsaRepository::consumeRows(sqlite3* db, const query::SqlQuery& query,
                                                           const ports::SsaRecordConsumer& consume,
-                                                          const std::stop_token& stopToken) {
-        SqliteStatement statement(db, query.sql);
+                                                          const std::stop_token& stopToken,
+                                                          const std::atomic_bool* busyCanceled) {
+        SqliteStatement statement(db, query.sql, busyCanceled);
         bindAll(statement, query.bindings);
 
         std::size_t rowCount = 0;

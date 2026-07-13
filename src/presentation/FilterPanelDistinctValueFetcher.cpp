@@ -1,5 +1,6 @@
 #include "presentation/FilterPanelDistinctValueFetcher.h"
 
+#include "ports/OperationError.h"
 #include "query/SsaQueryService.h"
 
 #include <QDebug>
@@ -15,14 +16,26 @@ namespace ssa::presentation {
 
     namespace {
 
-        QString errorMessage(const std::exception_ptr& error) {
+        struct ErrorDetails {
+            QString publicMessage;
+            QString diagnostic;
+        };
+
+        ErrorDetails errorDetails(const std::exception_ptr& error) {
             try {
                 std::rethrow_exception(error);
+            } catch (const ports::OperationError& exception) {
+                return {QString::fromUtf8(exception.what()),
+                        QString::fromStdString(exception.diagnostic())};
             } catch (const std::exception& exception) {
-                return QString::fromUtf8(exception.what());
+                return {QStringLiteral("Falha ao consultar valores"),
+                        QString::fromUtf8(exception.what())};
             } catch (...) {
-                return QStringLiteral("Falha interna ao consultar valores");
+                return {QStringLiteral("Falha ao consultar valores"),
+                        QStringLiteral("unknown exception")};
             }
+            return {QStringLiteral("Falha ao consultar valores"),
+                    QStringLiteral("unknown exception")};
         }
 
     } // namespace
@@ -73,6 +86,10 @@ namespace ssa::presentation {
                 pendingRequests_.push_back(
                     PendingRequest{request, requestToken, measureMaxValueLength});
             }
+            if (activeCancelToken_) {
+                activeCancelToken_->store(true, std::memory_order_relaxed);
+            }
+            activeStopSource_.request_stop();
             return;
         }
 
@@ -143,11 +160,13 @@ namespace ssa::presentation {
             result = activeResult_;
             activeResult_.reset();
         }
-        if (!cancelled && !(result && result->canceled)) {
+        if (cancelled || (result && result->canceled)) {
+            emit this->valuesCanceled(activeRequestToken_);
+        } else {
             if (result && result->error) {
-                const auto message = errorMessage(result->error);
-                qWarning().noquote() << "Column value query failed:" << message;
-                emit valuesFailed(activeRequestToken_, message);
+                const auto error = errorDetails(result->error);
+                qWarning().noquote() << "Column value query failed:" << error.diagnostic;
+                emit this->valuesFailed(activeRequestToken_, error.publicMessage);
             } else {
                 auto values = result ? std::move(result->values) : std::vector<std::string>{};
                 const auto maxValueLength = result ? result->maxValueLength : 0;

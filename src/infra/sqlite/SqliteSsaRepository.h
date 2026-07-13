@@ -5,8 +5,6 @@
 #include "query/SqlQueryBuilder.h"
 
 #include <filesystem>
-#include <memory>
-#include <mutex>
 #include <optional>
 #include <stop_token>
 
@@ -45,18 +43,19 @@ namespace ssa::infra::sqlite {
                                                    std::stop_token stopToken = {}) const override;
 
       private:
-        [[nodiscard]] SqliteConnection& connectionLocked(const std::scoped_lock<std::mutex>&) const;
-        [[nodiscard]] static std::size_t executeCount(sqlite3* db, const query::SqlQuery& query);
+        [[nodiscard]] static std::size_t executeCount(sqlite3* db, const query::SqlQuery& query,
+                                                      const std::stop_token& stopToken,
+                                                      const std::atomic_bool* busyCanceled);
         [[nodiscard]] static std::vector<domain::SsaRecord>
-        executeRows(sqlite3* db, const query::SqlQuery& query, const std::stop_token& stopToken);
+        executeRows(sqlite3* db, const query::SqlQuery& query, const std::stop_token& stopToken,
+                    const std::atomic_bool* busyCanceled);
         [[nodiscard]] static ports::SsaReadResult
         consumeRows(sqlite3* db, const query::SqlQuery& query,
-                    const ports::SsaRecordConsumer& consume, const std::stop_token& stopToken);
+                    const ports::SsaRecordConsumer& consume, const std::stop_token& stopToken,
+                    const std::atomic_bool* busyCanceled);
 
         std::filesystem::path dbPath_;
         query::SqlQueryBuilder queryBuilder_;
-        mutable std::mutex connectionMutex_;
-        mutable std::unique_ptr<SqliteConnection> connection_;
     };
 
 } // namespace ssa::infra::sqlite

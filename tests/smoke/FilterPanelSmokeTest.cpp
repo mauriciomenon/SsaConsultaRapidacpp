@@ -7,6 +7,7 @@
 #include "presentation/AdvancedWeekFilterViewModel.h"
 #include "presentation/FilterPanelAdvancedViewModel.h"
 #include "presentation/FilterPanelColumnValueOptions.h"
+#include "presentation/FilterPanelDistinctValueFetcher.h"
 #include "presentation/FilterPanelDistinctValueRequestBuilder.h"
 #include "presentation/FilterPanelSectorViewModel.h"
 #include "presentation/FilterPanelState.h"
@@ -16,10 +17,12 @@
 #include <QtTest>
 
 #include <QDate>
+#include <QScopeGuard>
 
 #include <charconv>
 #include <chrono>
 #include <climits>
+#include <condition_variable>
 #include <iterator>
 #include <map>
 #include <memory>
@@ -73,16 +76,38 @@ namespace {
             return {};
         }
 
-        std::vector<std::string> distinctValues(const ssa::domain::DistinctValuesRequest& request,
-                                                std::stop_token = {}) const override {
+        std::vector<std::string>
+        distinctValues(const ssa::domain::DistinctValuesRequest& request,
+                       const std::stop_token stopToken = {}) const override {
             if (distinctDelay_.count() > 0) {
                 std::this_thread::sleep_for(distinctDelay_);
             }
+            std::string statusFilter;
+            if (const auto status = request.filter.columnTerms.find("situacao");
+                status != request.filter.columnTerms.end() && !status->second.empty()) {
+                statusFilter = status->second.front().text;
+            }
             {
-                const std::scoped_lock lock(mutex_);
+                std::unique_lock lock(mutex_);
                 distinctRequests_.push_back(request);
+                if (blockStateC_ && statusFilter == "SCA" &&
+                    request.columnKey == "setor_executor") {
+                    stateCRequestBlocked_ = true;
+                    stateCCondition_.notify_all();
+                    while (!releaseStateC_ && !stopToken.stop_requested()) {
+                        stateCCondition_.wait_for(lock, std::chrono::milliseconds{5});
+                    }
+                    stateCStopObserved_ = stopToken.stop_requested();
+                    stateCRequestCompleted_ = true;
+                }
             }
             if (request.columnKey == "setor_executor") {
+                if (statusFilter == "SCA") {
+                    return {"STATE_C_ONLY"};
+                }
+                if (statusFilter == "STE") {
+                    return {"STATE_B_ONLY"};
+                }
                 return {"MEG2", "MAM2", "OUO7"};
             }
             if (request.columnKey == "responsavel_execucao") {
@@ -145,11 +170,47 @@ namespace {
             return pageRequests_;
         }
 
+        void blockStateCRequest() {
+            const std::scoped_lock lock(mutex_);
+            blockStateC_ = true;
+            releaseStateC_ = false;
+            stateCRequestBlocked_ = false;
+            stateCRequestCompleted_ = false;
+            stateCStopObserved_ = false;
+        }
+
+        void releaseStateCRequest() {
+            const std::scoped_lock lock(mutex_);
+            releaseStateC_ = true;
+            stateCCondition_.notify_all();
+        }
+
+        [[nodiscard]] bool stateCRequestBlocked() const {
+            const std::scoped_lock lock(mutex_);
+            return stateCRequestBlocked_;
+        }
+
+        [[nodiscard]] bool stateCRequestCompleted() const {
+            const std::scoped_lock lock(mutex_);
+            return stateCRequestCompleted_;
+        }
+
+        [[nodiscard]] bool stateCStopObserved() const {
+            const std::scoped_lock lock(mutex_);
+            return stateCStopObserved_;
+        }
+
       private:
         std::chrono::milliseconds distinctDelay_;
         mutable std::mutex mutex_;
+        mutable std::condition_variable stateCCondition_;
         mutable std::vector<ssa::domain::DistinctValuesRequest> distinctRequests_;
         mutable std::vector<ssa::domain::SsaPageRequest> pageRequests_;
+        bool blockStateC_{false};
+        mutable bool releaseStateC_{false};
+        mutable bool stateCRequestBlocked_{false};
+        mutable bool stateCRequestCompleted_{false};
+        mutable bool stateCStopObserved_{false};
     };
 
     class FilterPanelSmokeTest final : public QObject {
@@ -267,6 +328,237 @@ namespace {
             QTRY_COMPARE_WITH_TIMEOUT(filters.columnValueOptionsLoadingFor("setor_executor"), false,
                                       3000);
             QVERIFY(filters.columnValueOptionsFor("setor_executor").contains("MEG2"));
+        }
+
+        void undo_state_replacement_drops_blocked_distinct_result() {
+            auto repository = std::make_shared<FilterPanelRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::FilterPanelViewModel filters(service);
+            auto* sector =
+                qobject_cast<ssa::presentation::FilterPanelSectorViewModel*>(filters.sector());
+            QVERIFY(sector != nullptr);
+            repository->blockStateCRequest();
+            auto releaseBlockedRequest =
+                qScopeGuard([repository] { repository->releaseStateCRequest(); });
+
+            ssa::ports::UserPreferencesSnapshot stateC;
+            stateC.filters.columnFilters = {{"situacao", "=SCA"}};
+            filters.applyPreferences(stateC);
+            filters.refreshColumnValueOptionsFor("setor_executor");
+            QTRY_VERIFY_WITH_TIMEOUT(repository->stateCRequestBlocked(), 1000);
+            QSignalSpy resetSpy(&filters,
+                                &ssa::presentation::FilterPanelViewModel::columnValueOptionsReset);
+
+            auto stateB = stateC;
+            stateB.filters.columnFilters = {{"situacao", "=STE"}};
+            bool staleRequestVisibleDuringReplacement = false;
+            connect(sector, &ssa::presentation::FilterPanelSectorViewModel::changed, &filters,
+                    [&filters, &staleRequestVisibleDuringReplacement] {
+                        const auto columnFilters = filters.columnFilters();
+                        if (const auto status = columnFilters.find("situacao");
+                            status != columnFilters.end() && status->second == "=STE") {
+                            staleRequestVisibleDuringReplacement =
+                                staleRequestVisibleDuringReplacement ||
+                                filters.columnValueOptionsLoadingFor("setor_executor");
+                        }
+                    });
+            filters.applyPreferences(stateB);
+            QVERIFY(!staleRequestVisibleDuringReplacement);
+            QTRY_VERIFY_WITH_TIMEOUT(repository->stateCStopObserved(), 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(repository->stateCRequestCompleted(), 1000);
+            QCOMPARE(resetSpy.count(), 1);
+            QTest::qWait(50);
+
+            QCOMPARE(filters.columnValueOptionsFor("setor_executor"), QStringList{});
+            filters.refreshColumnValueOptionsFor("setor_executor");
+            QTRY_COMPARE_WITH_TIMEOUT(filters.columnValueOptionsLoadingFor("setor_executor"), false,
+                                      1000);
+            QCOMPARE(filters.columnValueOptionsFor("setor_executor"), QStringList{"STATE_B_ONLY"});
+        }
+
+        void set_column_filters_stops_distinct_before_publishing_new_state_once() {
+            auto repository = std::make_shared<FilterPanelRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::FilterPanelViewModel filters(service);
+            auto* sector =
+                qobject_cast<ssa::presentation::FilterPanelSectorViewModel*>(filters.sector());
+            QVERIFY(sector != nullptr);
+            filters.setColumnFilters({{"situacao", "=SCA"}});
+            repository->blockStateCRequest();
+            auto releaseBlockedRequest =
+                qScopeGuard([repository] { repository->releaseStateCRequest(); });
+            filters.refreshColumnValueOptionsFor("setor_executor");
+            QTRY_VERIFY_WITH_TIMEOUT(repository->stateCRequestBlocked(), 1000);
+            QSignalSpy resetSpy(&filters,
+                                &ssa::presentation::FilterPanelViewModel::columnValueOptionsReset);
+            bool staleLoadingWasPublished = false;
+            connect(sector, &ssa::presentation::FilterPanelSectorViewModel::changed, &filters,
+                    [&filters, &staleLoadingWasPublished] {
+                        const auto columnFilters = filters.columnFilters();
+                        if (const auto status = columnFilters.find("situacao");
+                            status != columnFilters.end() && status->second == "=STE") {
+                            staleLoadingWasPublished =
+                                staleLoadingWasPublished ||
+                                filters.columnValueOptionsLoadingFor("setor_executor");
+                        }
+                    });
+
+            filters.setColumnFilters({{"situacao", "=STE"}});
+
+            QVERIFY(!staleLoadingWasPublished);
+            QTRY_VERIFY_WITH_TIMEOUT(repository->stateCStopObserved(), 1000);
+            QCOMPARE(resetSpy.count(), 1);
+        }
+
+        void reset_filters_stops_distinct_before_publishing_empty_state_once() {
+            auto repository = std::make_shared<FilterPanelRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::FilterPanelViewModel filters(service);
+            auto* sector =
+                qobject_cast<ssa::presentation::FilterPanelSectorViewModel*>(filters.sector());
+            QVERIFY(sector != nullptr);
+            filters.setColumnFilters({{"situacao", "=SCA"}});
+            repository->blockStateCRequest();
+            auto releaseBlockedRequest =
+                qScopeGuard([repository] { repository->releaseStateCRequest(); });
+            filters.refreshColumnValueOptionsFor("setor_executor");
+            QTRY_VERIFY_WITH_TIMEOUT(repository->stateCRequestBlocked(), 1000);
+            QSignalSpy resetSpy(&filters,
+                                &ssa::presentation::FilterPanelViewModel::columnValueOptionsReset);
+            bool staleLoadingWasPublished = false;
+            connect(sector, &ssa::presentation::FilterPanelSectorViewModel::changed, &filters,
+                    [&filters, &staleLoadingWasPublished] {
+                        if (filters.columnFilters().empty()) {
+                            staleLoadingWasPublished =
+                                staleLoadingWasPublished ||
+                                filters.columnValueOptionsLoadingFor("setor_executor");
+                        }
+                    });
+
+            filters.resetFilters();
+
+            QVERIFY(!staleLoadingWasPublished);
+            QTRY_VERIFY_WITH_TIMEOUT(repository->stateCStopObserved(), 1000);
+            QCOMPARE(resetSpy.count(), 1);
+        }
+
+        void nested_state_replacement_keeps_invalidation_scoped() {
+            auto repository = std::make_shared<FilterPanelRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::FilterPanelViewModel filters(service);
+            auto* sector =
+                qobject_cast<ssa::presentation::FilterPanelSectorViewModel*>(filters.sector());
+            QVERIFY(sector != nullptr);
+            ssa::ports::UserPreferencesSnapshot stateA;
+            stateA.filters.columnFilters = {{"situacao", "=SCA"}};
+            filters.applyPreferences(stateA);
+            repository->blockStateCRequest();
+            auto releaseBlockedRequest =
+                qScopeGuard([repository] { repository->releaseStateCRequest(); });
+            filters.refreshColumnValueOptionsFor("setor_executor");
+            QTRY_VERIFY_WITH_TIMEOUT(repository->stateCRequestBlocked(), 1000);
+            QSignalSpy resetSpy(&filters,
+                                &ssa::presentation::FilterPanelViewModel::columnValueOptionsReset);
+            bool nestedReplacementStarted = false;
+            bool staleLoadingWasPublished = false;
+            connect(sector, &ssa::presentation::FilterPanelSectorViewModel::changed, &filters,
+                    [&filters, &nestedReplacementStarted, &staleLoadingWasPublished] {
+                        const auto columnFilters = filters.columnFilters();
+                        const auto status = columnFilters.find("situacao");
+                        if (status == columnFilters.end()) {
+                            return;
+                        }
+                        if (status->second == "=STE" && !nestedReplacementStarted) {
+                            nestedReplacementStarted = true;
+                            filters.setColumnFilters({{"situacao", "=APV"}});
+                        }
+                        if (status->second == "=STE" || status->second == "=APV") {
+                            staleLoadingWasPublished =
+                                staleLoadingWasPublished ||
+                                filters.columnValueOptionsLoadingFor("setor_executor");
+                        }
+                    });
+            auto stateB = stateA;
+            stateB.filters.columnFilters = {{"situacao", "=STE"}};
+
+            filters.applyPreferences(stateB);
+
+            QVERIFY(nestedReplacementStarted);
+            QVERIFY(!staleLoadingWasPublished);
+            QTRY_VERIFY_WITH_TIMEOUT(repository->stateCStopObserved(), 1000);
+            QCOMPARE(filters.columnFilters().at("situacao"), std::string{"=APV"});
+            QCOMPARE(resetSpy.count(), 2);
+        }
+
+        void superseded_distinct_request_stops_active_and_publishes_only_latest() {
+            auto repository = std::make_shared<FilterPanelRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::FilterPanelDistinctValueFetcher fetcher(service);
+            repository->blockStateCRequest();
+            auto releaseBlockedRequest =
+                qScopeGuard([repository] { repository->releaseStateCRequest(); });
+
+            std::vector<std::uint64_t> publishedTokens;
+            std::vector<std::vector<std::string>> publishedValues;
+            connect(&fetcher, &ssa::presentation::FilterPanelDistinctValueFetcher::valuesReady,
+                    &fetcher,
+                    [&publishedTokens, &publishedValues](const std::uint64_t requestToken,
+                                                         std::vector<std::string> values) {
+                        publishedTokens.push_back(requestToken);
+                        publishedValues.push_back(std::move(values));
+                    });
+
+            ssa::domain::DistinctValuesRequest requestA;
+            requestA.columnKey = "setor_executor";
+            requestA.filter.columnTerms["situacao"] = {
+                {"SCA", ssa::domain::MatchMode::Equals, false}};
+            fetcher.requestValues(requestA, 1, false);
+            QTRY_VERIFY_WITH_TIMEOUT(repository->stateCRequestBlocked(), 1000);
+
+            auto requestB = requestA;
+            requestB.filter.columnTerms["situacao"] = {
+                {"STE", ssa::domain::MatchMode::Equals, false}};
+            fetcher.requestValues(requestB, 2, false);
+
+            QTRY_VERIFY_WITH_TIMEOUT(repository->stateCStopObserved(), 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(publishedTokens.size(), std::size_t{1}, 1000);
+            QCOMPARE(publishedTokens.front(), std::uint64_t{2});
+            QCOMPARE(publishedValues.front(), std::vector<std::string>{"STATE_B_ONLY"});
+        }
+
+        void canceled_distinct_request_clears_its_column_loading() {
+            auto repository = std::make_shared<FilterPanelRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::FilterPanelViewModel filters(service);
+            filters.setColumnFilters({{"situacao", "=SCA"}});
+            repository->blockStateCRequest();
+            auto releaseBlockedRequest =
+                qScopeGuard([repository] { repository->releaseStateCRequest(); });
+
+            filters.refreshColumnValueOptionsFor("setor_executor");
+            QTRY_VERIFY_WITH_TIMEOUT(repository->stateCRequestBlocked(), 1000);
+            filters.refreshColumnValueOptionsFor("responsavel_execucao");
+
+            QTRY_VERIFY_WITH_TIMEOUT(repository->stateCStopObserved(), 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(filters.columnValueOptionsLoadingFor("responsavel_execucao"),
+                                      false, 1000);
+            QCOMPARE(filters.columnValueOptionsFor("responsavel_execucao"),
+                     (QStringList{"ANA", "BRUNO"}));
+            QCOMPARE(filters.columnValueOptionsLoadingFor("setor_executor"), false);
+        }
+
+        void exclude_sca_ses_ste_change_invalidates_once_and_applies_once() {
+            auto repository = std::make_shared<FilterPanelRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::FilterPanelViewModel filters(service);
+            QSignalSpy resetSpy(&filters,
+                                &ssa::presentation::FilterPanelViewModel::columnValueOptionsReset);
+            QSignalSpy applySpy(&filters, &ssa::presentation::FilterPanelViewModel::applyRequested);
+
+            filters.setExcludeScaSesSte(true);
+
+            QCOMPARE(resetSpy.count(), 1);
+            QCOMPARE(applySpy.count(), 1);
         }
 
         void responsible_value_options_request_display_ordering() {

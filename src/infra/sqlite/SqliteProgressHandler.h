@@ -3,6 +3,7 @@
 #include <sqlite3.h>
 
 #include <atomic>
+#include <chrono>
 #include <semaphore>
 #include <stop_token>
 #include <system_error>
@@ -15,6 +16,60 @@ namespace ssa::infra::sqlite {
                                     "sqlite query canceled");
         }
     }
+
+    class SqliteBusyHandler final {
+      public:
+        explicit SqliteBusyHandler(
+            sqlite3* db, std::stop_token stopToken,
+            std::chrono::milliseconds maxWait = std::chrono::milliseconds{3000},
+            std::binary_semaphore* busyEntered = nullptr)
+            : db_(db), stopToken_(std::move(stopToken)),
+              maxRetries_(static_cast<int>(maxWait.count() / kRetryDelayMs)),
+              busyEntered_(busyEntered) {
+            sqlite3_busy_handler(db_, &SqliteBusyHandler::shouldRetry, this);
+        }
+
+        ~SqliteBusyHandler() {
+            sqlite3_busy_handler(db_, nullptr, nullptr);
+        }
+
+        SqliteBusyHandler(const SqliteBusyHandler&) = delete;
+        SqliteBusyHandler& operator=(const SqliteBusyHandler&) = delete;
+
+        [[nodiscard]] const std::atomic_bool* cancellationObserved() const noexcept {
+            return &cancellationObserved_;
+        }
+
+      private:
+        static constexpr int kRetryDelayMs = 5;
+
+        static int shouldRetry(void* context, const int retryCount) noexcept {
+            auto* handler = static_cast<SqliteBusyHandler*>(context);
+            if (handler->busyEntered_ != nullptr &&
+                !handler->busyReported_.test_and_set(std::memory_order_relaxed)) {
+                handler->busyEntered_->release();
+            }
+            if (handler->stopToken_.stop_requested() || retryCount >= handler->maxRetries_) {
+                if (handler->stopToken_.stop_requested()) {
+                    handler->cancellationObserved_.store(true, std::memory_order_relaxed);
+                }
+                return 0;
+            }
+            sqlite3_sleep(kRetryDelayMs);
+            if (handler->stopToken_.stop_requested()) {
+                handler->cancellationObserved_.store(true, std::memory_order_relaxed);
+                return 0;
+            }
+            return 1;
+        }
+
+        sqlite3* db_ = nullptr;
+        std::stop_token stopToken_;
+        int maxRetries_ = 0;
+        std::binary_semaphore* busyEntered_ = nullptr;
+        std::atomic_bool cancellationObserved_{false};
+        std::atomic_flag busyReported_ = ATOMIC_FLAG_INIT;
+    };
 
     class SqliteProgressHandler final {
       public:

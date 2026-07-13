@@ -1,5 +1,6 @@
 #include "infra/sqlite/SqliteConnection.h"
 
+#include "ports/OperationError.h"
 #include "qt/FilesystemPath.h"
 
 #include <exception>
@@ -29,6 +30,22 @@ namespace ssa::infra::sqlite {
             }
         }
 
+        bool isCanceledResult(const int rc, const std::atomic_bool* busyCancellationObserved) {
+            if (rc == SQLITE_INTERRUPT) {
+                return true;
+            }
+            const bool isBusy = rc == SQLITE_BUSY || rc == SQLITE_LOCKED;
+            return isBusy && busyCancellationObserved != nullptr &&
+                   busyCancellationObserved->load(std::memory_order_relaxed);
+        }
+
+        std::string sqliteErrorMessage(sqlite3* db, const std::string_view operation,
+                                       const int rc) {
+            return std::string{operation} + " failed: rc=" + std::to_string(rc) +
+                   " extended_rc=" + std::to_string(sqlite3_extended_errcode(db)) +
+                   " message=" + sqlite3_errmsg(db);
+        }
+
     } // namespace
 
     SqliteConnection::SqliteConnection(const std::filesystem::path& dbPath,
@@ -56,11 +73,17 @@ namespace ssa::infra::sqlite {
         return db_;
     }
 
-    SqliteStatement::SqliteStatement(sqlite3* db, const std::string& sql) {
+    SqliteStatement::SqliteStatement(sqlite3* db, const std::string& sql,
+                                     const std::atomic_bool* busyCancellationObserved)
+        : db_(db), busyCancellationObserved_(busyCancellationObserved) {
         const int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &statement_, nullptr);
         if (rc != SQLITE_OK) {
-            throw std::runtime_error("cannot prepare sqlite statement: " +
-                                     std::string(sqlite3_errmsg(db)));
+            if (isCanceledResult(rc, busyCancellationObserved_)) {
+                throw std::system_error(std::make_error_code(std::errc::operation_canceled),
+                                        "sqlite query canceled");
+            }
+            throw ports::OperationError("Falha ao acessar o banco de dados",
+                                        sqliteErrorMessage(db_, "sqlite prepare", rc));
         }
     }
 
@@ -111,15 +134,19 @@ namespace ssa::infra::sqlite {
         if (rc == SQLITE_DONE) {
             return false;
         }
-        if (rc == SQLITE_INTERRUPT) {
+        if (isCanceledResult(rc, busyCancellationObserved_)) {
             throw std::system_error(std::make_error_code(std::errc::operation_canceled),
                                     "sqlite query canceled");
         }
-        throw std::runtime_error("sqlite statement execution failed");
+        throw ports::OperationError("Falha ao acessar o banco de dados",
+                                    sqliteErrorMessage(db_, "sqlite step", rc));
     }
 
     void SqliteStatement::executeAndReset() {
         const int rc = sqlite3_step(statement_);
+        const auto stepError = rc == SQLITE_DONE || isCanceledResult(rc, busyCancellationObserved_)
+                                   ? std::string{}
+                                   : sqliteErrorMessage(db_, "sqlite statement execution", rc);
         hasCurrentRow_ = false;
         std::exception_ptr resetError;
         try {
@@ -127,12 +154,12 @@ namespace ssa::infra::sqlite {
         } catch (...) {
             resetError = std::current_exception();
         }
-        if (rc == SQLITE_INTERRUPT) {
+        if (isCanceledResult(rc, busyCancellationObserved_)) {
             throw std::system_error(std::make_error_code(std::errc::operation_canceled),
                                     "sqlite query canceled");
         }
         if (rc != SQLITE_DONE) {
-            throw std::runtime_error("sqlite statement execution failed");
+            throw ports::OperationError("Falha ao acessar o banco de dados", stepError);
         }
         if (resetError) {
             std::rethrow_exception(resetError);

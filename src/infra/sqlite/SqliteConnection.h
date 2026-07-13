@@ -2,6 +2,7 @@
 
 #include <sqlite3.h>
 
+#include <atomic>
 #include <chrono>
 #include <filesystem>
 #include <string>
@@ -35,7 +36,8 @@ namespace ssa::infra::sqlite {
 
     class SqliteStatement final {
       public:
-        SqliteStatement(sqlite3* db, const std::string& sql);
+        SqliteStatement(sqlite3* db, const std::string& sql,
+                        const std::atomic_bool* busyCancellationObserved = nullptr);
         ~SqliteStatement();
 
         SqliteStatement(const SqliteStatement&) = delete;
@@ -58,7 +60,9 @@ namespace ssa::infra::sqlite {
       private:
         void requireCurrentRow() const;
 
+        sqlite3* db_{nullptr};
         sqlite3_stmt* statement_{nullptr};
+        const std::atomic_bool* busyCancellationObserved_{nullptr};
         bool hasCurrentRow_ = false;
     };
 

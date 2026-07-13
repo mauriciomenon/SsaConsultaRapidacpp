@@ -35,6 +35,7 @@ namespace ssa::presentation {
         void columnValueOptionsReady(std::vector<std::string> values, std::size_t maxValueLength,
                                      QString key, std::uint64_t stateVersion);
         void columnValueOptionsFailed(QString key, std::uint64_t stateVersion, QString message);
+        void columnValueOptionsCanceled(QString key, std::uint64_t stateVersion);
         void quickSectorOptionsReady(std::vector<std::string> values);
         void quickSectorOptionsFailed(QString message);
 
@@ -55,6 +56,7 @@ namespace ssa::presentation {
         void onColumnValueOptionsReady(std::uint64_t requestToken, std::vector<std::string> values,
                                        std::size_t maxValueLength);
         void onColumnValueOptionsFailed(std::uint64_t requestToken, const QString& message);
+        void onColumnValueOptionsCanceled(std::uint64_t requestToken);
         void onQuickSectorOptionsReady(std::uint64_t requestToken, std::vector<std::string> values);
         void onQuickSectorOptionsFailed(std::uint64_t requestToken, const QString& message);
 

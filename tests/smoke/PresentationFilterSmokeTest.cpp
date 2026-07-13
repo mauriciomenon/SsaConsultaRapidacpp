@@ -1,6 +1,7 @@
 #include "AdvancedTextFilterTestSupport.h"
 #include "PresentationSmokeFakes.h"
 
+#include "ports/OperationError.h"
 #include "presentation/AdvancedDerivationFilterViewModel.h"
 #include "presentation/AdvancedMacroFilterViewModel.h"
 #include "presentation/AdvancedTextFilterViewModel.h"
@@ -141,6 +142,71 @@ namespace {
         mutable std::mutex metricsMutex_;
         mutable std::thread::id distinctThread_;
         mutable std::thread::id maxLengthThread_;
+    };
+
+    class FailSecondPageRepository final : public ssa::ports::ISsaRepository {
+      public:
+        explicit FailSecondPageRepository(const bool genericFailure = false)
+            : genericFailure_(genericFailure) {}
+
+        ssa::domain::SsaPageResult page(const ssa::domain::SsaPageRequest& request,
+                                        std::stop_token = {}) const override {
+            const std::scoped_lock lock(mutex_);
+            requests_.push_back(request);
+            if (requests_.size() == 2) {
+                if (genericFailure_) {
+                    throw std::runtime_error("filter B path=/tmp/private.sqlite rc=11");
+                }
+                throw ssa::ports::OperationError("Falha ao acessar o banco de dados",
+                                                 "filter B failed rc=11");
+            }
+            const auto description = request.searchText.empty() ? "Inicial" : request.searchText;
+            return {{ssa::domain::SsaRecord{{{"numero_ssa", "202500001"},
+                                             {"situacao", "APV"},
+                                             {"descricao_ssa", description}}}},
+                    1,
+                    request.pageIndex,
+                    request.pageSize};
+        }
+
+        std::size_t count(const ssa::domain::SsaPageRequest&, std::stop_token = {}) const override {
+            return 1;
+        }
+
+        std::optional<ssa::domain::SsaRecord>
+        recordBySsaNumber(const ssa::domain::SsaNumber&, std::stop_token = {}) const override {
+            return std::nullopt;
+        }
+
+        std::vector<ssa::domain::SsaDerivadaEntry>
+        derivadasDiretas(const ssa::domain::SsaNumber&, std::stop_token = {}) const override {
+            return {};
+        }
+
+        std::vector<std::string> distinctValues(const ssa::domain::DistinctValuesRequest&,
+                                                std::stop_token = {}) const override {
+            return {};
+        }
+
+        std::size_t maxValueLength(std::string_view, std::stop_token = {}) const override {
+            return 0;
+        }
+
+        ssa::ports::SsaReadResult readAll(const ssa::domain::SsaPageRequest&,
+                                          ssa::ports::SsaRecordConsumer,
+                                          std::stop_token = {}) const override {
+            return {};
+        }
+
+        [[nodiscard]] std::vector<ssa::domain::SsaPageRequest> requests() const {
+            const std::scoped_lock lock(mutex_);
+            return requests_;
+        }
+
+      private:
+        bool genericFailure_{false};
+        mutable std::mutex mutex_;
+        mutable std::vector<ssa::domain::SsaPageRequest> requests_;
     };
 
     class MutableDistinctRepository final : public ssa::ports::ISsaRepository {
@@ -442,7 +508,7 @@ namespace {
             QCOMPARE(repository->advancedRequests(), 1);
             QVERIFY(filterPanel.columnValueOptionsFor(QStringLiteral("situacao")).isEmpty());
             QCOMPARE(filterPanel.columnValueOptionsErrorFor(QStringLiteral("situacao")),
-                     QString("distinct failed once"));
+                     QString("Falha ao consultar valores"));
 
             filterPanel.refreshColumnValueOptionsFor(QStringLiteral("situacao"));
 
@@ -464,7 +530,7 @@ namespace {
                 qobject_cast<ssa::presentation::FilterPanelSectorViewModel*>(filterPanel.sector());
             QVERIFY(sector != nullptr);
 
-            QTRY_COMPARE_WITH_TIMEOUT(sector->optionsError(), QString("quick sector failed once"),
+            QTRY_COMPARE_WITH_TIMEOUT(sector->optionsError(), QString("Falha ao consultar valores"),
                                       1000);
             QCOMPARE(repository->quickSectorRequests(), 1);
 
@@ -584,12 +650,14 @@ namespace {
             ssa::presentation::FilterPanelDistinctValueFetcher fetcher(service);
             int readyCount = 0;
             bool failed = false;
+            QString failureMessage;
             connect(
                 &fetcher, &ssa::presentation::FilterPanelDistinctValueFetcher::valuesReady, this,
                 [&](std::uint64_t, const std::vector<std::string>&, std::size_t) { ++readyCount; });
             connect(&fetcher, &ssa::presentation::FilterPanelDistinctValueFetcher::valuesFailed,
-                    this, [&](const std::uint64_t requestToken) {
+                    this, [&](const std::uint64_t requestToken, const QString& message) {
                         QCOMPARE(requestToken, 1);
+                        failureMessage = message;
                         failed = true;
                     });
             ssa::domain::DistinctValuesRequest request;
@@ -600,6 +668,8 @@ namespace {
 
             QTRY_VERIFY_WITH_TIMEOUT(failed, 1000);
             QCOMPARE(readyCount, 0);
+            QCOMPARE(failureMessage, QString("Falha ao consultar valores"));
+            QVERIFY(!failureMessage.contains("distinct failed"));
         }
 
         void distinct_value_fetcher_destructor_drains_worker_without_callback() {
@@ -1538,6 +1608,72 @@ namespace {
             QVERIFY(history.contains("situacao:=APV"));
             QVERIFY(!history.contains("rows"));
             QVERIFY(!history.contains("results"));
+        }
+
+        void failed_filter_keeps_conditions_and_previous_table_for_retry_and_undo() {
+            auto repository = std::make_shared<FailSecondPageRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::BrowseViewModel browse(service);
+
+            browse.search()->setText("A");
+            browse.apply();
+            QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{1}, 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(browse.tableModel()->recordAt(0) != nullptr, 1000);
+            QCOMPARE(std::string(browse.tableModel()->recordAt(0)->valueOf("descricao_ssa")),
+                     std::string{"A"});
+
+            browse.search()->setText("B");
+            QTest::ignoreMessage(QtWarningMsg, "Page query failed: filter B failed rc=11");
+            browse.apply();
+            QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{2}, 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(browse.status()->error(),
+                                      QString("Falha ao acessar o banco de dados"), 1000);
+            QVERIFY(!browse.status()->error().contains("rc="));
+
+            QCOMPARE(browse.search()->text(), QString("B"));
+            QCOMPARE(browse.currentRequest().searchText, std::string{"B"});
+            QCOMPARE(std::string(browse.tableModel()->recordAt(0)->valueOf("descricao_ssa")),
+                     std::string{"A"});
+            QCOMPARE(browse.status()->message(),
+                     QString("Falha ao consultar dados; tabela ainda mostra o resultado anterior"));
+            QVERIFY(browse.canUndoFilters());
+
+            browse.apply();
+            QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{3}, 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(
+                std::string(browse.tableModel()->recordAt(0)->valueOf("descricao_ssa")),
+                std::string{"B"}, 1000);
+
+            browse.undoFilters();
+            QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{4}, 1000);
+            QCOMPARE(browse.search()->text(), QString("A"));
+            QTRY_COMPARE_WITH_TIMEOUT(
+                std::string(browse.tableModel()->recordAt(0)->valueOf("descricao_ssa")),
+                std::string{"A"}, 1000);
+        }
+
+        void generic_page_failure_logs_diagnostic_and_redacts_public_error() {
+            auto repository = std::make_shared<FailSecondPageRepository>(true);
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::BrowseViewModel browse(service);
+
+            browse.search()->setText("A");
+            browse.apply();
+            QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{1}, 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(browse.tableModel()->recordAt(0) != nullptr, 1000);
+
+            browse.search()->setText("B");
+            QTest::ignoreMessage(QtWarningMsg,
+                                 "Page query failed: filter B path=/tmp/private.sqlite rc=11");
+            browse.apply();
+
+            QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{2}, 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(browse.status()->error(), QString("Falha ao consultar dados"),
+                                      1000);
+            QVERIFY(!browse.status()->error().contains("private.sqlite"));
+            QCOMPARE(browse.search()->text(), QString("B"));
+            QCOMPARE(std::string(browse.tableModel()->recordAt(0)->valueOf("descricao_ssa")),
+                     std::string{"A"});
         }
 
         void clear_search_applies_once_and_is_undoable() {

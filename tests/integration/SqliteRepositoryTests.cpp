@@ -4,6 +4,7 @@
 #include "infra/sqlite/SqliteMaintenancePort.h"
 #include "infra/sqlite/SqliteProgressHandler.h"
 #include "infra/sqlite/SqliteSsaRepository.h"
+#include "ports/OperationError.h"
 #include "qt/FilesystemPath.h"
 
 #include <catch2/catch_test_macros.hpp>
@@ -13,6 +14,7 @@
 #include <QTemporaryFile>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <condition_variable>
 #include <filesystem>
@@ -434,7 +436,7 @@ TEST_CASE_METHOD(SqliteRepositoryFixture,
 }
 
 TEST_CASE_METHOD(SqliteRepositoryFixture,
-                 "sqlite repository keeps page reads available while streaming export") {
+                 "sqlite repository keeps reads available while streaming export") {
     ssa::domain::SsaPageRequest request;
     request.excludeScaSesSte = false;
     request.pageSize = 0;
@@ -458,12 +460,16 @@ TEST_CASE_METHOD(SqliteRepositoryFixture,
         std::condition_variable& condition;
         bool& release;
 
-        ~ReleaseGuard() {
+        void releaseNow() {
             {
                 const std::scoped_lock lock(mutex);
                 release = true;
             }
-            condition.notify_one();
+            condition.notify_all();
+        }
+
+        ~ReleaseGuard() {
+            releaseNow();
         }
     } releaseGuard{mutex, releaseCondition, release};
     {
@@ -471,17 +477,38 @@ TEST_CASE_METHOD(SqliteRepositoryFixture,
         REQUIRE(enteredCondition.wait_for(lock, std::chrono::seconds{1}, [&] { return entered; }));
     }
 
+    ssa::domain::DistinctValuesRequest distinctRequest;
+    distinctRequest.columnKey = "situacao";
+    distinctRequest.filter.excludeScaSesSte = false;
+    auto page = std::async(std::launch::async, [&] { return repository.page(request); });
     auto count = std::async(std::launch::async, [&] { return repository.count(request); });
-    const bool countReady =
-        count.wait_for(std::chrono::milliseconds{100}) == std::future_status::ready;
-    {
-        const std::scoped_lock lock(mutex);
-        release = true;
-    }
-    releaseCondition.notify_one();
-    REQUIRE(exportRead.get().ok());
+    auto distinct =
+        std::async(std::launch::async, [&] { return repository.distinctValues(distinctRequest); });
+    auto record = std::async(std::launch::async, [&] {
+        return repository.recordBySsaNumber(ssa::domain::SsaNumber{"202500003"});
+    });
+    const bool pageReady = page.wait_for(std::chrono::seconds{2}) == std::future_status::ready;
+    const bool countReady = count.wait_for(std::chrono::seconds{2}) == std::future_status::ready;
+    const bool distinctReady =
+        distinct.wait_for(std::chrono::seconds{2}) == std::future_status::ready;
+    const bool recordReady = record.wait_for(std::chrono::seconds{2}) == std::future_status::ready;
+    releaseGuard.releaseNow();
+
+    const auto exportResult = exportRead.get();
+    const auto pageResult = page.get();
+    const auto countResult = count.get();
+    const auto distinctResult = distinct.get();
+    const auto recordResult = record.get();
+
+    REQUIRE(pageReady);
     REQUIRE(countReady);
-    REQUIRE(count.get() > 0);
+    REQUIRE(distinctReady);
+    REQUIRE(recordReady);
+    REQUIRE(exportResult.ok());
+    REQUIRE(pageResult.totalRows == 4);
+    REQUIRE(countResult == 4);
+    REQUIRE(distinctResult.size() == 4);
+    REQUIRE(recordResult.has_value());
 }
 
 TEST_CASE_METHOD(SqliteRepositoryFixture, "sqlite repository applies advanced filters") {
@@ -622,6 +649,54 @@ TEST_CASE_METHOD(SqliteRepositoryFixture,
 
     executeSql(path, "UPDATE slow_query_control SET max_value = 1;");
     REQUIRE(slowRepository.count(request) == 1);
+}
+
+TEST_CASE_METHOD(SqliteRepositoryFixture,
+                 "sqlite repository stops promptly while sqlite is busy and remains reusable") {
+    ssa::infra::sqlite::SqliteConnection blocker(path,
+                                                 ssa::infra::sqlite::SqliteOpenMode::ReadWrite);
+    REQUIRE(sqlite3_exec(blocker.handle(), "BEGIN EXCLUSIVE", nullptr, nullptr, nullptr) ==
+            SQLITE_OK);
+
+    std::stop_source stopSource;
+    std::binary_semaphore busyEntered(0);
+    auto query = std::async(std::launch::async, [&] {
+        try {
+            ssa::infra::sqlite::SqliteConnection waiting(path);
+            ssa::infra::sqlite::SqliteBusyHandler busy(waiting.handle(), stopSource.get_token(),
+                                                       std::chrono::milliseconds{3000},
+                                                       &busyEntered);
+            ssa::infra::sqlite::SqliteStatement statement(
+                waiting.handle(), "SELECT COUNT(*) FROM ssa_table", busy.cancellationObserved());
+            static_cast<void>(statement.step());
+            return std::error_code{};
+        } catch (const std::system_error& error) {
+            return error.code();
+        }
+    });
+
+    REQUIRE(busyEntered.try_acquire_for(std::chrono::seconds{2}));
+    stopSource.request_stop();
+
+    REQUIRE(query.wait_for(std::chrono::milliseconds{500}) == std::future_status::ready);
+    REQUIRE(query.get() == std::make_error_code(std::errc::operation_canceled));
+
+    REQUIRE(sqlite3_exec(blocker.handle(), "ROLLBACK", nullptr, nullptr, nullptr) == SQLITE_OK);
+    REQUIRE(repository.count({}) == 4);
+}
+
+TEST_CASE_METHOD(SqliteRepositoryFixture, "sqlite statement separates safe and technical errors") {
+    ssa::infra::sqlite::SqliteConnection connection(path);
+
+    try {
+        ssa::infra::sqlite::SqliteStatement statement(connection.handle(),
+                                                      "SELECT missing_column FROM missing_table");
+        FAIL("invalid sqlite schema did not fail");
+    } catch (const ssa::ports::OperationError& error) {
+        REQUIRE(std::string{error.what()} == "Falha ao acessar o banco de dados");
+        REQUIRE(error.diagnostic().find("rc=1") != std::string::npos);
+        REQUIRE(error.diagnostic().find("no such table") != std::string::npos);
+    }
 }
 
 TEST_CASE("sqlite maintenance port runs vacuum analyze") {

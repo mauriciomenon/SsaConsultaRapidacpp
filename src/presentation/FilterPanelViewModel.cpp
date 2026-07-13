@@ -6,6 +6,7 @@
 #include "query/SsaQueryService.h"
 #include "query/TextFilterToken.h"
 
+#include <QScopedValueRollback>
 #include <QVariantMap>
 
 #include <algorithm>
@@ -66,7 +67,9 @@ namespace ssa::presentation {
         connect(advanced_, &FilterPanelAdvancedViewModel::stateChanged, this, [this]() {
             normalizeAdvancedFilterOverlap();
             sector_.refreshFromState();
-            publishFilterStateChange();
+            if (!stateReplacementInProgress_) {
+                publishFilterStateChange();
+            }
         });
         connect(advanced_, &FilterPanelAdvancedViewModel::textFilterApplied, this,
                 &FilterPanelViewModel::handleAdvancedTextFilterApplied);
@@ -118,6 +121,15 @@ namespace ssa::presentation {
                 columnValueOptions_.markFailed(normalizedKey, message);
                 emit columnValueOptionsChangedFor(normalizedKey);
             });
+        connect(&distinctValues_, &FilterPanelDistinctValuesController::columnValueOptionsCanceled,
+                this, [this](const QString& key, const std::uint64_t stateVersion) {
+                    if (stateVersion != 0 && stateVersion != filterStateVersion_) {
+                        return;
+                    }
+                    const auto normalizedKey = key.trimmed();
+                    columnValueOptions_.clearLoadingFor(normalizedKey);
+                    emit columnValueOptionsChangedFor(normalizedKey);
+                });
         connect(&distinctValues_, &FilterPanelDistinctValuesController::quickSectorOptionsReady,
                 this,
                 [this](const std::vector<std::string>& values) { sector_.setOptions(values); });
@@ -145,14 +157,11 @@ namespace ssa::presentation {
     }
 
     void FilterPanelViewModel::setExcludeScaSesSte(bool value) {
-        const bool didChange = sector_.excludeScaSesSte() != value;
-        if (!didChange) {
+        if (!state_.setExcludeScaSesSte(value)) {
             return;
         }
-        sector_.setExcludeScaSesSte(value);
-        if (filterpanel::clearStatusExclusionIfStatusIncludesExcluded(state_)) {
-            sector_.refreshFromState();
-        }
+        filterpanel::clearStatusExclusionIfStatusIncludesExcluded(state_);
+        sector_.refreshFromState();
         publishFilterStateChange();
         emit applyRequested();
     }
@@ -502,12 +511,16 @@ namespace ssa::presentation {
         if (!state_.setColumnFilters(std::move(filters))) {
             return;
         }
-        if (filterpanel::clearStatusExclusionIfStatusIncludesExcluded(state_)) {
+        {
+            QScopedValueRollback replacement(stateReplacementInProgress_, true);
+            invalidateColumnValueOptions();
+            if (filterpanel::clearStatusExclusionIfStatusIncludesExcluded(state_)) {
+                sector_.refreshFromState();
+            }
+            advanced_->refreshFromState();
+            columns_.refreshFromState();
             sector_.refreshFromState();
         }
-        advanced_->refreshFromState();
-        columns_.refreshFromState();
-        sector_.refreshFromState();
         synchronizeFilterState(false);
     }
 
@@ -542,11 +555,15 @@ namespace ssa::presentation {
         if (!state_.applyPreferences(snapshot, weekColumnKeys_)) {
             return;
         }
-        sector_.refreshFromState();
-        normalizeAdvancedFilterOverlap();
-        syncAdvancedQuickSector();
-        advanced_->refreshFromState();
-        columns_.refreshFromState();
+        {
+            QScopedValueRollback replacement(stateReplacementInProgress_, true);
+            invalidateColumnValueOptions();
+            sector_.refreshFromState();
+            normalizeAdvancedFilterOverlap();
+            syncAdvancedQuickSector();
+            advanced_->refreshFromState();
+            columns_.refreshFromState();
+        }
         synchronizeFilterState(true);
     }
 
@@ -563,10 +580,14 @@ namespace ssa::presentation {
 
     void FilterPanelViewModel::resetFilters() {
         state_.clear();
-        sector_.refreshFromState();
-        syncAdvancedQuickSector();
-        advanced_->refreshFromState();
-        columns_.refreshFromState();
+        {
+            QScopedValueRollback replacement(stateReplacementInProgress_, true);
+            invalidateColumnValueOptions();
+            sector_.refreshFromState();
+            syncAdvancedQuickSector();
+            advanced_->refreshFromState();
+            columns_.refreshFromState();
+        }
         synchronizeFilterState(true);
         emit applyRequested();
     }
