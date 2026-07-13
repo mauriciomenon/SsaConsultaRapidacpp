@@ -87,7 +87,7 @@ namespace ssa::application {
     }
 
     ports::WorkflowResult SsaWorkflowService::refreshSam(const ports::SamRefreshRequest& request,
-                                                         std::stop_token stopToken) const {
+                                                         const std::stop_token& stopToken) const {
         if (!samPort_) {
             return notImplemented("SAM refresh");
         }

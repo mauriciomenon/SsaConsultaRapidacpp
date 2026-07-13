@@ -18,7 +18,7 @@ namespace ssa::infra::importing {
         XlsxPackage& operator=(XlsxPackage&&) = delete;
 
         [[nodiscard]] std::string textEntry(const std::string& entryName, bool required,
-                                            std::stop_token stopToken = {});
+                                            const std::stop_token& stopToken = {});
 
       private:
         class Storage;

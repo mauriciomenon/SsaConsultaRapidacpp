@@ -46,12 +46,12 @@ namespace ssa::infra::importing {
 
         [[nodiscard]] ImportStagingResult
         stageExternalFiles(const std::vector<std::filesystem::path>& files,
-                           std::stop_token stopToken = {}) const;
-        [[nodiscard]] ImportStagingResult stageInputFiles(std::stop_token stopToken = {},
+                           const std::stop_token& stopToken = {}) const;
+        [[nodiscard]] ImportStagingResult stageInputFiles(const std::stop_token& stopToken = {},
                                                           bool includeProcessed = false) const;
         [[nodiscard]] ImportConsolidationResult
         consolidate(const std::vector<ImportManifestEntry>& manifest,
-                    std::stop_token stopToken = {}) const;
+                    const std::stop_token& stopToken = {}) const;
 
       private:
         struct LegacyStageRequest {
@@ -67,7 +67,7 @@ namespace ssa::infra::importing {
 
         bool stageLegacyFile(const LegacyStageRequest& request,
                              std::vector<std::filesystem::path> consolidationSources,
-                             ImportStagingResult& result, std::stop_token stopToken) const;
+                             ImportStagingResult& result, const std::stop_token& stopToken) const;
         [[nodiscard]] std::filesystem::path
         stagedDestination(const StagedDestinationRequest& request) const;
 

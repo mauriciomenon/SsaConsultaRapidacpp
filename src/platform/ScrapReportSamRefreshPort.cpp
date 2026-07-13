@@ -95,10 +95,15 @@ namespace ssa::platform {
             return std::nullopt;
         }
 
-        bool validateManifest(const QString& manifestPath, const QString& artifactPath,
-                              const QString& sector) {
+        struct ManifestValidationRequest {
+            const QString& manifestPath;
+            const QString& artifactPath;
+            const QString& sector;
+        };
+
+        bool validateManifest(const ManifestValidationRequest& request) {
             constexpr qint64 kMaxManifestBytes = qint64{1024} * 1024;
-            QFile file{manifestPath};
+            QFile file{request.manifestPath};
             if (!file.open(QIODevice::ReadOnly) || file.size() <= 0 ||
                 file.size() > kMaxManifestBytes) {
                 return false;
@@ -114,16 +119,17 @@ namespace ssa::platform {
             const auto executorSectors =
                 filters.value(QStringLiteral("executor_sectors")).toArray();
             const auto exportedPath = exports.value(QStringLiteral("data_xlsx")).toString();
-            const QFileInfo artifactInfo{artifactPath};
+            const QFileInfo artifactInfo{request.artifactPath};
             return root.value(QStringLiteral("status")).toString() == QStringLiteral("ok") &&
                    root.value(QStringLiteral("runtime_mode")).toString() ==
                        QStringLiteral("rest") &&
                    root.value(QStringLiteral("profile")).toString() == QStringLiteral("panorama") &&
                    root.value(QStringLiteral("verify_tls")).toBool(false) &&
                    root.value(QStringLiteral("count")).toInt(0) > 0 &&
-                   executorSectors.size() == 1 && executorSectors.first().toString() == sector &&
+                   executorSectors.size() == 1 &&
+                   executorSectors.first().toString() == request.sector &&
                    QFileInfo{exportedPath}.absoluteFilePath() ==
-                       QFileInfo{artifactPath}.absoluteFilePath() &&
+                       QFileInfo{request.artifactPath}.absoluteFilePath() &&
                    !artifactInfo.isSymLink() && artifactInfo.isFile() && artifactInfo.size() > 0;
         }
 
@@ -222,7 +228,8 @@ namespace ssa::platform {
                 discardArtifacts();
                 return failed("SAM refresh process failed", processResult.diagnostic.toStdString());
             }
-            if (!validateManifest(manifestPath, artifactPath, QString::fromStdString(sector))) {
+            const auto sectorName = QString::fromStdString(sector);
+            if (!validateManifest({manifestPath, artifactPath, sectorName})) {
                 discardArtifacts();
                 return failed("SAM refresh returned an invalid manifest");
             }

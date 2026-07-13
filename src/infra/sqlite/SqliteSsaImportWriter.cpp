@@ -327,14 +327,14 @@ namespace ssa::infra::sqlite {
             }
         }
 
-        void write(const importing::ResolvedSsaImportRows& rows, const std::size_t fileCount,
-                   const std::size_t skippedRows) {
+        void write(const importing::ResolvedSsaImportRows& rows,
+                   const importing::SsaImportWriteSummary& batchSummary) {
             if (state != State::Active) {
                 throw std::logic_error("sqlite import session is closed");
             }
             throwIfCanceled(stopToken);
-            summary.files += fileCount;
-            summary.skippedRows += skippedRows;
+            summary.files += batchSummary.files;
+            summary.skippedRows += batchSummary.skippedRows;
             summary.duplicateRows += rows.duplicateRows;
 
             auto* db = connection.handle();
@@ -405,7 +405,9 @@ namespace ssa::infra::sqlite {
     void SqliteSsaImportWriter::WriteSession::write(const importing::ResolvedSsaImportRows& rows,
                                                     const std::size_t fileCount,
                                                     const std::size_t skippedRows) {
-        storage_->write(rows, fileCount, skippedRows);
+        const importing::SsaImportWriteSummary batchSummary{.files = fileCount,
+                                                            .skippedRows = skippedRows};
+        storage_->write(rows, batchSummary);
     }
 
     importing::SsaImportWriteSummary SqliteSsaImportWriter::WriteSession::finish() {

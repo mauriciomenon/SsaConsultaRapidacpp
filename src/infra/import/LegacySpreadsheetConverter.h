@@ -1,5 +1,7 @@
 #pragma once
 
+#include "infra/import/CancelableFileCopy.h"
+
 #include <filesystem>
 #include <stop_token>
 #include <string>
@@ -30,8 +32,7 @@ namespace ssa::infra::importing {
         explicit LegacySpreadsheetConverter(std::filesystem::path executablePath);
 
         [[nodiscard]] LegacySpreadsheetConversionResult
-        convertToXlsx(const std::filesystem::path& source, const std::filesystem::path& destination,
-                      std::stop_token stopToken = {}) const;
+        convertToXlsx(const FileCopyRequest& request, const std::stop_token& stopToken = {}) const;
 
       private:
         [[nodiscard]] std::filesystem::path resolvedExecutable() const;

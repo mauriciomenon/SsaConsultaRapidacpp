@@ -12,7 +12,7 @@ namespace ssa::infra::importing {
     class XlsxWorkbookReader final {
       public:
         [[nodiscard]] static SpreadsheetTable readFirstSheet(const std::filesystem::path& filePath,
-                                                             std::stop_token stopToken = {});
+                                                             const std::stop_token& stopToken = {});
 
       private:
         struct WorksheetRelationshipRequest {
@@ -20,16 +20,17 @@ namespace ssa::infra::importing {
             const std::string& relationshipId;
         };
 
-        [[nodiscard]] static std::vector<std::string> parseSharedStrings(const std::string& xml,
-                                                                         std::stop_token stopToken);
+        [[nodiscard]] static std::vector<std::string>
+        parseSharedStrings(const std::string& xml, const std::stop_token& stopToken);
         [[nodiscard]] static std::string
-        relationshipIdForFirstWorkbookSheet(const std::string& xml, std::stop_token stopToken);
+        relationshipIdForFirstWorkbookSheet(const std::string& xml,
+                                            const std::stop_token& stopToken);
         [[nodiscard]] static std::string
         worksheetEntryForRelationship(const WorksheetRelationshipRequest& request,
-                                      std::stop_token stopToken);
+                                      const std::stop_token& stopToken);
         [[nodiscard]] static std::vector<std::vector<std::string>>
         parseSheetRows(const std::string& xml, const std::vector<std::string>& sharedStrings,
-                       std::stop_token stopToken);
+                       const std::stop_token& stopToken);
     };
 
 } // namespace ssa::infra::importing

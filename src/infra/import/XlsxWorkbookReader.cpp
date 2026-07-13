@@ -335,7 +335,7 @@ namespace ssa::infra::importing {
     } // namespace
 
     SpreadsheetTable XlsxWorkbookReader::readFirstSheet(const std::filesystem::path& filePath,
-                                                        const std::stop_token stopToken) {
+                                                        const std::stop_token& stopToken) {
         throwIfImportCanceled(stopToken);
         XlsxPackage package(filePath);
         const auto workbook = package.textEntry("xl/workbook.xml", true, stopToken);
@@ -353,7 +353,7 @@ namespace ssa::infra::importing {
 
     std::vector<std::string>
     XlsxWorkbookReader::parseSharedStrings(const std::string& xml,
-                                           const std::stop_token stopToken) {
+                                           const std::stop_token& stopToken) {
         std::vector<std::string> values;
         if (xml.empty()) {
             return values;
@@ -403,7 +403,7 @@ namespace ssa::infra::importing {
 
     std::string
     XlsxWorkbookReader::relationshipIdForFirstWorkbookSheet(const std::string& xml,
-                                                            const std::stop_token stopToken) {
+                                                            const std::stop_token& stopToken) {
         QXmlStreamReader reader(xmlBytes(xml));
         while (!reader.atEnd()) {
             throwIfImportCanceled(stopToken);
@@ -422,7 +422,7 @@ namespace ssa::infra::importing {
 
     std::string
     XlsxWorkbookReader::worksheetEntryForRelationship(const WorksheetRelationshipRequest& request,
-                                                      const std::stop_token stopToken) {
+                                                      const std::stop_token& stopToken) {
         QXmlStreamReader reader(xmlBytes(request.xml));
         while (!reader.atEnd()) {
             throwIfImportCanceled(stopToken);
@@ -449,7 +449,7 @@ namespace ssa::infra::importing {
     std::vector<std::vector<std::string>>
     XlsxWorkbookReader::parseSheetRows(const std::string& xml,
                                        const std::vector<std::string>& sharedStrings,
-                                       const std::stop_token stopToken) {
+                                       const std::stop_token& stopToken) {
         return SheetRowsParser{xml, sharedStrings, stopToken}.parse();
     }
 

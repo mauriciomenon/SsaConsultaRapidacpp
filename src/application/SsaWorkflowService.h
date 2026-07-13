@@ -29,7 +29,7 @@ namespace ssa::application {
         [[nodiscard]] ports::WorkflowResult vacuumAnalyze(std::stop_token stopToken = {}) const;
         [[nodiscard]] ports::WorkflowResult syncDerivadas(std::stop_token stopToken = {}) const;
         [[nodiscard]] ports::WorkflowResult refreshSam(const ports::SamRefreshRequest& request,
-                                                       std::stop_token stopToken = {}) const;
+                                                       const std::stop_token& stopToken = {}) const;
 
       private:
         [[nodiscard]] static ports::WorkflowResult notImplemented(const char* operation);

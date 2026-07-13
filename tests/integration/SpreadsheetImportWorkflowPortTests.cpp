@@ -397,8 +397,8 @@ TEST_CASE("legacy converter rejects a stopped token before starting a process") 
     std::stop_source stopSource;
     stopSource.request_stop();
 
-    const auto result =
-        converter.convertToXlsx(root / "source.xls", root / "output.xlsx", stopSource.get_token());
+    const auto result = converter.convertToXlsx({root / "source.xls", root / "output.xlsx"},
+                                                stopSource.get_token());
 
     REQUIRE(result.status == ssa::infra::importing::LegacySpreadsheetConversionStatus::Canceled);
     REQUIRE(result.message.find("canceled") != std::string::npos);
@@ -422,7 +422,7 @@ TEST_CASE("legacy converter cancellation preserves destination and removes tempo
     const ssa::infra::importing::LegacySpreadsheetConverter converter(writeBlockingSoffice(root));
     std::stop_source stopSource;
     auto operation = std::async(std::launch::async, [&] {
-        return converter.convertToXlsx(source, destination, stopSource.get_token());
+        return converter.convertToXlsx({source, destination}, stopSource.get_token());
     });
     QElapsedTimer deadline;
     deadline.start();

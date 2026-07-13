@@ -97,7 +97,7 @@ namespace ssa::infra::importing {
         }
 
         std::string preflightFiles(const std::vector<std::filesystem::path>& files,
-                                   const std::stop_token stopToken) {
+                                   const std::stop_token& stopToken) {
             if (stopToken.stop_requested()) {
                 return "canceled";
             }
@@ -186,7 +186,7 @@ namespace ssa::infra::importing {
         bool moveToUniqueDestination(const std::filesystem::path& source,
                                      const std::filesystem::path& directory,
                                      std::filesystem::path& destination, std::string& message,
-                                     const std::stop_token stopToken) {
+                                     const std::stop_token& stopToken) {
             for (std::size_t attempt = 0; attempt < kMaxDestinationAttempts; ++attempt) {
                 if (stopToken.stop_requested()) {
                     message = "consolidation canceled";
@@ -232,7 +232,7 @@ namespace ssa::infra::importing {
 
     ImportStagingResult
     ImportFileStager::stageExternalFiles(const std::vector<std::filesystem::path>& files,
-                                         const std::stop_token stopToken) const {
+                                         const std::stop_token& stopToken) const {
         ImportStagingResult result;
         result.rejectionReason = preflightFiles(files, stopToken);
         if (!result.rejectionReason.empty()) {
@@ -302,7 +302,7 @@ namespace ssa::infra::importing {
         return result;
     }
 
-    ImportStagingResult ImportFileStager::stageInputFiles(const std::stop_token stopToken,
+    ImportStagingResult ImportFileStager::stageInputFiles(const std::stop_token& stopToken,
                                                           const bool includeProcessed) const {
         ImportStagingResult result;
         if (stopToken.stop_requested()) {
@@ -449,7 +449,7 @@ namespace ssa::infra::importing {
 
     ImportConsolidationResult
     ImportFileStager::consolidate(const std::vector<ImportManifestEntry>& manifest,
-                                  const std::stop_token stopToken) const {
+                                  const std::stop_token& stopToken) const {
         ImportConsolidationResult result;
         if (stopToken.stop_requested()) {
             result.canceled = true;
@@ -508,10 +508,10 @@ namespace ssa::infra::importing {
     bool ImportFileStager::stageLegacyFile(const LegacyStageRequest& request,
                                            std::vector<std::filesystem::path> consolidationSources,
                                            ImportStagingResult& result,
-                                           const std::stop_token stopToken) const {
+                                           const std::stop_token& stopToken) const {
         ++result.legacyXls;
         const auto conversion =
-            legacyConverter_.convertToXlsx(request.source, request.destination, stopToken);
+            legacyConverter_.convertToXlsx({request.source, request.destination}, stopToken);
         if (!conversion.ok()) {
             if (conversion.status == LegacySpreadsheetConversionStatus::Canceled) {
                 result.rejectionReason = "canceled";

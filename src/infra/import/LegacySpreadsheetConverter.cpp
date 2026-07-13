@@ -58,9 +58,10 @@ namespace ssa::infra::importing {
         : executablePath_(std::move(executablePath)) {}
 
     LegacySpreadsheetConversionResult
-    LegacySpreadsheetConverter::convertToXlsx(const std::filesystem::path& source,
-                                              const std::filesystem::path& destination,
-                                              const std::stop_token stopToken) const {
+    LegacySpreadsheetConverter::convertToXlsx(const FileCopyRequest& request,
+                                              const std::stop_token& stopToken) const {
+        const auto& source = request.source;
+        const auto& destination = request.destination;
         if (stopToken.stop_requested()) {
             return {LegacySpreadsheetConversionStatus::Canceled, {}, "xls conversion canceled"};
         }

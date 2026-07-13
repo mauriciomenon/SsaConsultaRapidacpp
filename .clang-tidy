@@ -24,7 +24,7 @@ Checks: >
   readability-simplify-boolean-expr,
   readability-use-anyofallof
 WarningsAsErrors: ''
-HeaderFilterRegex: 'src/.*|app/.*|tests/.*'
+HeaderFilterRegex: '(^|/)(src|app|tests)/.*'
 CheckOptions:
   - key: modernize-use-nullptr.NullMacros
     value: 'NULL'

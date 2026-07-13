@@ -47,7 +47,7 @@ namespace ssa::infra::importing {
         Storage& operator=(const Storage&) = delete;
 
         [[nodiscard]] std::string textEntry(const std::string& entryName, const bool required,
-                                            const std::stop_token stopToken) {
+                                            const std::stop_token& stopToken) {
             constexpr mz_uint64 kMaxXmlEntryBytes = 32ULL * 1024ULL * 1024ULL;
             constexpr mz_uint64 kMaxTotalXmlBytes = 96ULL * 1024ULL * 1024ULL;
             const int fileIndex =
@@ -123,7 +123,7 @@ namespace ssa::infra::importing {
     XlsxPackage::~XlsxPackage() = default;
 
     std::string XlsxPackage::textEntry(const std::string& entryName, const bool required,
-                                       const std::stop_token stopToken) {
+                                       const std::stop_token& stopToken) {
         return storage_->textEntry(entryName, required, stopToken);
     }
 
