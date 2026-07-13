@@ -45,7 +45,7 @@ namespace ssa::presentation {
         };
 
         void finishValidation();
-        void setRunning(bool running);
+        void setRunning(bool isRunning);
         void setErrorMessage(QString message);
 
         std::shared_ptr<ports::IDatabaseValidator> validator_;

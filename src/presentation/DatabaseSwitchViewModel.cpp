@@ -116,11 +116,11 @@ namespace ssa::presentation {
         emit replacementStarted();
     }
 
-    void DatabaseSwitchViewModel::setRunning(const bool running) {
-        if (running_ == running) {
+    void DatabaseSwitchViewModel::setRunning(const bool isRunning) {
+        if (running_ == isRunning) {
             return;
         }
-        running_ = running;
+        running_ = isRunning;
         emit runningChanged();
     }
 

@@ -52,8 +52,14 @@ repos:
           filters+=(--file-filter="$source");;
           *) filters+=(--file-filter="$file");; esac; done;
           ((${#filters[@]})) || exit 0;
+          case "$(uname -s)" in
+          Darwin) platform=(-D__APPLE__);;
+          Linux) platform=(-D__linux__);;
+          MINGW*|MSYS*|CYGWIN*) platform=(-D_WIN32);;
+          *) echo "cppcheck platform is unsupported for $(uname -s)" >&2; exit 1;;
+          esac;
           cppcheck --project=build/dev/compile_commands.json
-          "${filters[@]}" --enable=warning,style --inconclusive
+          "${filters[@]}" "${platform[@]}" --enable=warning,style --inconclusive
           --error-exitcode=1
           --suppress=missingIncludeSystem --suppress=useStlAlgorithm
           --suppress=functionStatic --suppress=constParameterReference
