@@ -3,6 +3,7 @@
 #include "DesktopMainViewModelFactory.h"
 
 #include <QCommandLineParser>
+#include <QCoreApplication>
 #include <QQmlApplicationEngine>
 #include <QVariant>
 
@@ -13,6 +14,10 @@ namespace ssa::app::desktop {
           paths_(options_.projectRoot, options_.configDir) {
         paths_.ensureConfigDirectory();
         mainViewModel_ = DesktopMainViewModelFactory::create(options_, paths_);
+        QObject::connect(mainViewModel_->databaseSwitch(),
+                         &ssa::presentation::DatabaseSwitchViewModel::replacementStarted,
+                         QCoreApplication::instance(), &QCoreApplication::quit,
+                         Qt::QueuedConnection);
         QObject::connect(&systemThemeResolver_,
                          &ssa::platform::SystemThemeResolver::systemThemeChanged,
                          mainViewModel_->ui(), [ui = mainViewModel_->ui(), this] {

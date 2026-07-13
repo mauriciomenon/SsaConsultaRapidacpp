@@ -39,6 +39,12 @@ ApplicationWindow {
                 onTriggered: root.vm.browse.load()
             }
             MenuItem {
+                objectName: "openDatabaseMenuItem"
+                text: "Carregar outro banco"
+                enabled: !root.vm.databaseSwitch.running
+                onTriggered: fileDialogs.openDatabase()
+            }
+            MenuItem {
                 text: "Exportar resultados"
                 onTriggered: fileDialogs.openExportResults()
             }

@@ -15,11 +15,14 @@ namespace ssa::presentation {
                                  std::shared_ptr<ports::IUserPreferencesStore> preferencesStore,
                                  std::shared_ptr<ports::IFilterPresetStore> filterPresetStore,
                                  std::shared_ptr<application::SsaWorkflowService> workflowService,
+                                 std::shared_ptr<ports::IDatabaseValidator> databaseValidator,
+                                 std::shared_ptr<ports::IApplicationLauncher> applicationLauncher,
                                  QObject* parent)
         : QObject(parent), browse_(std::move(queryService), this), columns_(this), ui_(this),
           preferences_(std::move(preferencesStore), this),
           preferencesFlow_(browse_, ui_, columns_, preferences_, std::move(filterPresetStore),
                            filterPresetService_),
+          databaseSwitch_(std::move(databaseValidator), std::move(applicationLauncher), this),
           actions_(
               std::move(commandPort), std::move(workflowService),
               [this] { return browse_.currentRequest(); }, *browse_.status(), preferences_, this),
@@ -38,6 +41,7 @@ namespace ssa::presentation {
     }
 
     MainViewModel::~MainViewModel() {
+        databaseSwitch_.shutdown();
         try {
             auto finalSnapshot = preferencesFlow_.buildPreferencesSnapshot();
             preferencesFlow_.shutdown();
@@ -95,6 +99,10 @@ namespace ssa::presentation {
 
     UiSettingsViewModel* MainViewModel::ui() {
         return &ui_;
+    }
+
+    DatabaseSwitchViewModel* MainViewModel::databaseSwitch() {
+        return &databaseSwitch_;
     }
 
     QObject* MainViewModel::columnFlow() {

@@ -174,6 +174,25 @@ namespace {
                                                 QStringLiteral("Ajuda")));
             QVERIFY(dialogCanOpenCloseAndReopen(*mainWindow, "openAboutDialog",
                                                 QStringLiteral("Sobre")));
+
+            auto* openDatabase =
+                mainWindow->findChild<QObject*>(QStringLiteral("openDatabaseMenuItem"));
+            QVERIFY(openDatabase != nullptr);
+            QVERIFY(QMetaObject::invokeMethod(openDatabase, "triggered"));
+            auto* databaseDialog =
+                mainWindow->findChild<QObject*>(QStringLiteral("databaseFileDialog"));
+            QVERIFY(databaseDialog != nullptr);
+            QTRY_VERIFY_WITH_TIMEOUT(databaseDialog->property("visible").toBool(), 1000);
+            QVERIFY(QMetaObject::invokeMethod(databaseDialog, "close"));
+
+            viewModel.databaseSwitch()->openDatabase(
+                QUrl{QStringLiteral("https://example.invalid/not-local.db")});
+            auto* errorDialog =
+                mainWindow->findChild<QObject*>(QStringLiteral("databaseErrorDialog"));
+            QVERIFY(errorDialog != nullptr);
+            QTRY_VERIFY_WITH_TIMEOUT(errorDialog->property("visible").toBool(), 1000);
+            QVERIFY(errorDialog->property("text").toString().contains(
+                QStringLiteral("arquivo de banco local")));
         }
     };
 

@@ -81,6 +81,7 @@ add_library(
   src/infra/import/XlsxPackage.cpp
   src/infra/import/XlsxWorkbookReader.cpp
   src/infra/sqlite/SqliteConnection.cpp
+  src/infra/sqlite/SqliteDatabaseValidator.cpp
   src/infra/sqlite/SqliteDerivadasPort.cpp
   src/infra/sqlite/SqliteMaintenancePort.cpp
   src/infra/sqlite/SqliteSsaImportWriter.cpp
@@ -97,6 +98,7 @@ target_link_libraries(ssa_infra PUBLIC ssa_core ${SSA_SQLITE_TARGET} Qt6::Core
 add_library(
   ssa_platform STATIC
   src/platform/AppPaths.cpp
+  src/platform/DesktopApplicationLauncher.cpp
   src/platform/DesktopExternalCommandPort.cpp
   src/platform/LocalOpenCommandHandler.cpp
   src/platform/OpenPathPolicy.cpp
@@ -132,6 +134,7 @@ add_library(
   src/presentation/ColumnFilterViewModel.cpp
   src/presentation/ColumnSettingsModel.cpp
   src/presentation/CurrentWeekViewModel.cpp
+  src/presentation/DatabaseSwitchViewModel.cpp
   src/presentation/DesktopActionsViewModel.cpp
   src/presentation/SearchViewModel.cpp
   src/presentation/AdvancedTextFilterColumnStore.cpp
@@ -333,6 +336,7 @@ if(SSA_BUILD_TESTS)
     tests/integration/ExportPortTests.cpp
     tests/integration/JsonPreferencesStoreTests.cpp
     tests/integration/SpreadsheetImportWorkflowPortTests.cpp
+    tests/integration/SqliteDatabaseValidatorTests.cpp
     tests/integration/SqliteRepositoryTests.cpp)
   target_link_libraries(ssa_integration_tests PRIVATE ssa_infra
                                                       Catch2::Catch2WithMain)
@@ -360,6 +364,14 @@ if(SSA_BUILD_TESTS)
   add_test(NAME ssa_qt_workflow_runner_tests
            COMMAND ssa_qt_workflow_runner_tests)
   set_tests_properties(ssa_qt_workflow_runner_tests PROPERTIES TIMEOUT 10)
+
+  add_executable(ssa_qt_database_switch_tests
+                 tests/smoke/DatabaseSwitchViewModelTest.cpp)
+  target_link_libraries(ssa_qt_database_switch_tests PRIVATE ssa_presentation
+                                                             Qt6::Test)
+  add_test(NAME ssa_qt_database_switch_tests
+           COMMAND ssa_qt_database_switch_tests)
+  set_tests_properties(ssa_qt_database_switch_tests PROPERTIES TIMEOUT 10)
 
   add_executable(ssa_qt_current_week_tests
                  tests/smoke/CurrentWeekViewModelTest.cpp)

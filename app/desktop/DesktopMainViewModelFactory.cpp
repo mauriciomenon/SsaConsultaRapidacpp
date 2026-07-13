@@ -6,9 +6,11 @@
 #include "infra/import/SpreadsheetImportWorkflowPort.h"
 #include "infra/preferences/JsonFilterPresetStore.h"
 #include "infra/preferences/JsonUserPreferencesStore.h"
+#include "infra/sqlite/SqliteDatabaseValidator.h"
 #include "infra/sqlite/SqliteDerivadasPort.h"
 #include "infra/sqlite/SqliteMaintenancePort.h"
 #include "infra/sqlite/SqliteSsaRepository.h"
+#include "platform/DesktopApplicationLauncher.h"
 #include "platform/DesktopExternalCommandPort.h"
 #include "qt/FilesystemPath.h"
 #include "query/SsaQueryService.h"
@@ -80,9 +82,14 @@ namespace ssa::app::desktop {
                 ssa::qt::toFileSystemPath(paths.preferencesFile()));
         const auto filterPresets =
             std::make_shared<ssa::infra::preferences::JsonFilterPresetStore>();
+        const auto databaseValidator =
+            std::make_shared<ssa::infra::sqlite::SqliteDatabaseValidator>();
+        const auto applicationLauncher =
+            std::make_shared<ssa::platform::DesktopApplicationLauncher>(options);
 
-        return std::make_unique<ssa::presentation::MainViewModel>(service, commands, preferences,
-                                                                  filterPresets, workflows);
+        return std::make_unique<ssa::presentation::MainViewModel>(
+            service, commands, preferences, filterPresets, workflows, databaseValidator,
+            applicationLauncher);
     }
 
 } // namespace ssa::app::desktop

@@ -1,3 +1,4 @@
+#include "platform/DesktopApplicationLauncher.h"
 #include "platform/DesktopExternalCommandPort.h"
 #include "platform/OpenPathPolicy.h"
 #include "platform/SamUrlBuilder.h"
@@ -13,6 +14,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QStringList>
 #include <QTemporaryDir>
 
 #include <array>
@@ -206,6 +208,25 @@ TEST_CASE("startup options reject non web SAM URL schemes") {
                           testDatabasePath(), "--sam-url", "file:///tmp/sam"}));
 
     REQUIRE_THROWS_AS(ssa::platform::StartupOptions::fromParser(parser), std::invalid_argument);
+}
+
+TEST_CASE("desktop launcher preserves operational arguments for a replacement") {
+    ssa::platform::StartupOptions options;
+    options.projectRoot = QStringLiteral("/project/root");
+    options.configDir = QStringLiteral("/project/config");
+    options.samBaseUrl = QStringLiteral("https://example.invalid/sam");
+    const ssa::platform::DesktopApplicationLauncher launcher(options);
+    const auto databasePath = ssa::qt::toFileSystemPath(QStringLiteral("/data/alternate.db"));
+
+    const auto arguments = launcher.argumentsForDatabase(databasePath);
+
+    REQUIRE(arguments ==
+            QStringList{QStringLiteral("--project-root"), QStringLiteral("/project/root"),
+                        QStringLiteral("--config-dir"), QStringLiteral("/project/config"),
+                        QStringLiteral("--sam-url"), QStringLiteral("https://example.invalid/sam"),
+                        QStringLiteral("--db"), QStringLiteral("/data/alternate.db")});
+    REQUIRE_FALSE(arguments.contains(QStringLiteral("--smoke-exit-ms")));
+    REQUIRE_FALSE(arguments.contains(QStringLiteral("--screenshot")));
 }
 
 TEST_CASE("SAM URL builder uses public view contract") {

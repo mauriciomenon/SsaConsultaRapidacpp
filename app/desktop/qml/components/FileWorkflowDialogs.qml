@@ -23,6 +23,36 @@ Item {
         importDataDialog.open();
     }
 
+    function openDatabase() {
+        databaseDialog.open();
+    }
+
+    Connections {
+        target: root.viewModel.databaseSwitch
+
+        function onErrorMessageChanged() {
+            if (root.viewModel.databaseSwitch.errorMessage.length > 0)
+                databaseErrorDialog.open();
+        }
+    }
+
+    MessageDialog {
+        id: databaseErrorDialog
+        objectName: "databaseErrorDialog"
+        title: "Nao foi possivel carregar o banco"
+        text: root.viewModel.databaseSwitch.errorMessage
+    }
+
+    FileDialog {
+        id: databaseDialog
+        objectName: "databaseFileDialog"
+        title: "Carregar outro banco"
+        fileMode: FileDialog.OpenFile
+        nameFilters: ["Banco SQLite (*.db *.sqlite *.sqlite3)", "Todos os arquivos (*)"]
+
+        onAccepted: root.viewModel.databaseSwitch.openDatabase(databaseDialog.selectedFile)
+    }
+
     FileDialog {
         id: exportDialog
         title: "Exportar CSV"

@@ -5,6 +5,7 @@
 #include "ports/IUserPreferencesStore.h"
 #include "presentation/BrowseViewModel.h"
 #include "presentation/ColumnSettingsModel.h"
+#include "presentation/DatabaseSwitchViewModel.h"
 #include "presentation/DesktopActionsViewModel.h"
 #include "presentation/MainColumnFlowCoordinator.h"
 #include "presentation/MainPreferenceFlowCoordinator.h"
@@ -27,6 +28,7 @@ namespace ssa::presentation {
         Q_PROPERTY(DesktopActionsViewModel* actions READ actions CONSTANT)
         Q_PROPERTY(ColumnSettingsModel* columns READ columns CONSTANT)
         Q_PROPERTY(UiSettingsViewModel* ui READ ui CONSTANT)
+        Q_PROPERTY(DatabaseSwitchViewModel* databaseSwitch READ databaseSwitch CONSTANT)
         Q_PROPERTY(QObject* columnFlow READ columnFlow CONSTANT)
         Q_PROPERTY(QObject* selectionFlow READ selectionFlow CONSTANT)
         Q_PROPERTY(QObject* requestFlow READ requestFlow CONSTANT)
@@ -38,6 +40,8 @@ namespace ssa::presentation {
                       std::shared_ptr<ports::IUserPreferencesStore> preferencesStore = nullptr,
                       std::shared_ptr<ports::IFilterPresetStore> filterPresetStore = nullptr,
                       std::shared_ptr<application::SsaWorkflowService> workflowService = nullptr,
+                      std::shared_ptr<ports::IDatabaseValidator> databaseValidator = nullptr,
+                      std::shared_ptr<ports::IApplicationLauncher> applicationLauncher = nullptr,
                       QObject* parent = nullptr);
         ~MainViewModel() override;
 
@@ -45,6 +49,7 @@ namespace ssa::presentation {
         [[nodiscard]] DesktopActionsViewModel* actions();
         [[nodiscard]] ColumnSettingsModel* columns();
         [[nodiscard]] UiSettingsViewModel* ui();
+        [[nodiscard]] DatabaseSwitchViewModel* databaseSwitch();
         [[nodiscard]] QObject* columnFlow();
         [[nodiscard]] QObject* selectionFlow();
         [[nodiscard]] QObject* requestFlow();
@@ -61,6 +66,7 @@ namespace ssa::presentation {
         UserPreferencesCoordinator preferences_;
         application::FilterPresetService filterPresetService_;
         MainPreferenceFlowCoordinator preferencesFlow_;
+        DatabaseSwitchViewModel databaseSwitch_;
         DesktopActionsViewModel actions_;
         MainColumnFlowCoordinator columnsFlow_;
         MainSelectionFlowCoordinator selectionFlow_;
