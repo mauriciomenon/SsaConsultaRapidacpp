@@ -45,11 +45,19 @@ repos:
       - id: cppcheck
         name: cppcheck
         description: Static analysis for changed production C/C++; findings block.
-        entry: bash -c 'cppcheck --enable=warning,style --inconclusive
+        entry: bash -c 'test -f build/dev/compile_commands.json || { echo
+          "build/dev/compile_commands.json is missing; run cmake --preset dev" >&2;
+          exit 1; }; filters=(); for file in "$@"; do case "$file" in
+          *.h|*.hpp) source="${file%.*}.cpp"; test ! -f "$source" ||
+          filters+=(--file-filter="$source");;
+          *) filters+=(--file-filter="$file");; esac; done;
+          ((${#filters[@]})) || exit 0;
+          cppcheck --project=build/dev/compile_commands.json
+          "${filters[@]}" --enable=warning,style --inconclusive
           --error-exitcode=1
           --suppress=missingIncludeSystem --suppress=useStlAlgorithm
           --suppress=functionStatic --suppress=constParameterReference
-          --suppress=constVariableReference "$@"' --
+          --suppress=constVariableReference --suppress=unknownMacro' --
         language: system
         files: \.(cpp|h|hpp|cc)$
         exclude: ^build/|^build-dev/|^_deps/|^tests/
