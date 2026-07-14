@@ -6,6 +6,12 @@
   `roleNames()` estavel por modelo para evitar reconstrucoes pequenas. Nao
   alterar o contrato Qt nem adicionar cache sem evidencia de hot path.
 
+- [LOW] [MINIZ-CMAKE-DEPRECATION] O CMake do source cache do miniz declara
+  compatibilidade anterior a 3.10 e gera warning em CMake recente. Nao editar
+  `.deps-cache/miniz-src/CMakeLists.txt`: o diretorio e gerado e ignorado. Tratar
+  somente ao atualizar o pin do miniz, depois de validar build e pacote em todas
+  as plataformas suportadas.
+
 - [PENDING] Implementar sincronizacao completa de derivadas com regras de negocio e fonte externa, incluindo modelagem de grafo/fluxo derivado.
 - [PENDING] Adicionar lacunas restantes de paridade da tabela: reorder persistido por drag de colunas, acoes de menu de contexto de linha e acao de reset de sort no header.
 - [LOW] [IMPORT-CONSOLIDATION-TOCTOU] A consolidacao rejeita diretorios

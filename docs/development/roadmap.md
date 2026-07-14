@@ -85,6 +85,20 @@ without porting Python architecture, and stabilize CI/flaky tests.
 - Fluxos macOS interativo, offscreen, incremental e release documentados com
   os scripts versionados usados em cada caso.
 
+### Entregas da 0.9.5
+
+- Full rescan rejeita planilha sem cabecalho reconhecido ou sem linhas validas
+  antes do commit, preservando banco e fontes anteriores.
+- Staging distingue artefatos owned, cancelamento, falha primaria e falha real
+  de cleanup sem deixar temporarios invisiveis.
+- Diagnosticos de importacao separam razao publica segura de detalhe tecnico,
+  usam contagens consistentes para XLS e contagens de preflight para
+  consolidacao.
+- Teste de shutdown prova que o supervisor volta a aceitar processos somente
+  depois de uma barreira bem-sucedida.
+- Configuracao Markdown do projeto elimina MD024 falso em changelog sem
+  desabilitar duplicatas reais no mesmo nivel.
+
 ## Long term (multiple PRs, no fixed order)
 
 ### Missing GUI features (parity with PyQt6)

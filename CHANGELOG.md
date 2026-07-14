@@ -2,6 +2,32 @@
 
 Mudancas relevantes deste projeto sao registradas neste arquivo.
 
+## 0.9.5 - 2026-07-14
+
+### Corrigido
+
+- Full rescan invalido preserva o banco anterior e nao consolida fontes sem
+  commit SQLite valido.
+- Cancelamento e falha removem somente artefatos de staging pertencentes a
+  operacao; falha real de cleanup possui estado explicito e nao e inferida pelo
+  instante do stop token.
+- Falhas de preflight e leitura de diretorios sao `Failed` com razao publica
+  segura e diagnostico tecnico separado; rejeicoes de politica continuam
+  `Rejected`.
+- Contagens de falha de consolidacao usam fontes nos retornos de preflight e o
+  total de falhas inclui conversoes XLS malsucedidas.
+- Override do conversor XLS exige arquivo executavel e os testes nao dependem
+  da presenca de LibreOffice no `PATH`.
+
+### Validacao
+
+- Reutilizacao do supervisor apos barreira de shutdown bem-sucedida possui
+  teste de regressao repetido, sem liberar a protecao fail-closed apos timeout.
+- Markdownlint aceita headings iguais em releases diferentes e continua
+  rejeitando duplicatas sob o mesmo pai.
+- Build, testes e pacote macOS usam exclusivamente os presets e scripts
+  canonicos documentados no repositorio.
+
 ## 0.9.4 - 2026-07-14
 
 ### Corrigido

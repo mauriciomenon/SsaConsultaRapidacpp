@@ -34,6 +34,20 @@ Para reconstruir release, testar e gerar ZIP/DMG:
 ./scripts/package-macos.sh
 ```
 
+Para verificar a versao compilada depois do build:
+
+```bash
+./build/dev/ssa_consulta_rapida_cli --version
+```
+
+Nao crie diretorios de build alternativos para contornar falhas. Os unicos
+presets oficiais sao `dev` e `release`; scripts de clean, smoke e package usam
+esses mesmos diretorios e preservam `data/`, `dist/` e configuracoes locais.
+
+O warning `cmake_minimum_required` sob `.deps-cache/miniz-src` vem do source
+cache da dependencia. Nao edite o cache gerado. A correcao pertence a uma
+atualizacao validada do pin em `cmake/Dependencies.cmake`.
+
 Os scripts usam `~/Qt/6.11.0/macos` quando `CMAKE_PREFIX_PATH` nao esta
 definido. O banco default dos smokes e `data/ssas.db`; sua ausencia encerra o
 script com erro objetivo.
@@ -77,7 +91,7 @@ These tools were already installed and functional before this cycle. They form
 the core of the quality gate.
 
 | Tool | Purpose | Command |
-|---|---|---|
+| --- | --- | --- |
 | clang-format (LLVM) | C++ formatting | `clang-format --dry-run --Werror <files>` |
 | clang-tidy (LLVM) | C++ static analysis | `run-clang-tidy -p build/dev ...` |
 | cppcheck | C++ static analysis (fast) | `pre-commit run cppcheck --hook-stage manual --files <changed production files>` |
@@ -131,7 +145,7 @@ updates baseline metadata and must not be used as a read-only verification gate.
 ### Newly installed this cycle
 
 | Tool | Purpose | Install | Status |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | include-what-you-use 0.26 | Detect unused/missing C++ includes | `brew install include-what-you-use` | OK |
 | lcov 2.4 + genhtml | Test coverage HTML reports | `brew install lcov` | OK |
 | cmake-format 0.6.13 | CMake files formatting | `uv tool install cmakelang` | OK |
@@ -148,7 +162,7 @@ use Apple clang 21, which fully supports them, plus C++23 (verified: `__cpp_lib_
 `__cpp_lib_mdspan`, `__cpp_lib_format`, `__cpp_lib_ranges` all present).
 
 | Preset | Flags | Purpose | Status |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `dev-asan` | `-fsanitize=address,undefined` | ASan + UBSan runtime checks | validated: 100/100 tests pass |
 | `dev-tsan` | `-fsanitize=thread` | TSan data-race detection | validated: builds; found 1 real race (see RECOVERY_BACKLOG) |
 | `dev-cov` | `-fprofile-instr-generate -fcoverage-mapping` | Coverage instrumentation | validated: 85.35% lines, report at `build/dev-cov/coverage_html/` |
