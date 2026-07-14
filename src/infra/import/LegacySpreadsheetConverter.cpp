@@ -69,6 +69,7 @@ namespace ssa::infra::importing {
         if (executable.empty()) {
             return {LegacySpreadsheetConversionStatus::ToolUnavailable,
                     {},
+                    "xls converter unavailable",
                     "LibreOffice soffice executable was not found"};
         }
 

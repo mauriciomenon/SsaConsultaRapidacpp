@@ -449,6 +449,9 @@ namespace {
 
 #ifndef Q_OS_WIN
         void port_retains_failed_cleanup_for_a_verified_retry() {
+            if (::geteuid() == 0) {
+                QSKIP("permission cleanup failure cannot be simulated as root");
+            }
             QTemporaryDir root;
             QVERIFY(root.isValid());
             auto request = validRequest(root);
