@@ -2800,6 +2800,36 @@ TEST_CASE("full rescan rejects an unrecognized header without clearing or moving
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
+TEST_CASE("spreadsheet workflow rejects ambiguous positional headers without moving the source") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    const auto workbook = inputDirectory / "ambiguous.xlsx";
+    writeWorkbook(
+        workbook,
+        row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Número da SSA Relacionada"),
+                inlineCell("C1", "Numero SSA"), inlineCell("D1", "Descricao"),
+                inlineCell("E1", "Data Cadastro")}) +
+            row(2, {inlineCell("A2", "202600001"), inlineCell("B2", "202600002"),
+                    inlineCell("C2", "202600003"), inlineCell("D2", "Colisao"),
+                    inlineCell("E2", "2026-07-14")}));
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+
+    const auto result = port.rescan({ssa::ports::RescanMode::Incremental});
+
+    INFO(result.message);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
+    REQUIRE(result.message.find("ambiguous_headers") != std::string::npos);
+    REQUIRE(std::filesystem::exists(workbook));
+    REQUIRE_FALSE(std::filesystem::exists(inputDirectory / "processadas"));
+}
+
 TEST_CASE("full rescan rejects mixed valid and invalid rows without clearing the database") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());

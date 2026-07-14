@@ -19,7 +19,12 @@ namespace ssa::infra::importing {
         return found == row.end() ? std::string{} : found->second;
     }
 
-    enum class SpreadsheetMappingStatus { HeaderNotRecognized, RequiredColumnsMissing, Mapped };
+    enum class SpreadsheetMappingStatus {
+        HeaderNotRecognized,
+        RequiredColumnsMissing,
+        AmbiguousHeaders,
+        Mapped
+    };
 
     struct SsaImportBatch {
         std::filesystem::path sourcePath;

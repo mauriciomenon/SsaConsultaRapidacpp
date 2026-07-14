@@ -4,46 +4,22 @@
 #include "infra/import/SsaSpreadsheetHeaderCatalog.h"
 #include "qt/FilesystemPath.h"
 
-#include <QChar>
-#include <QString>
-
 #include <algorithm>
 #include <array>
 #include <iterator>
 #include <optional>
+#include <span>
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 namespace ssa::infra::importing {
 
     namespace {
 
-        QString normalizedHeader(const std::string& value) {
-            QString text = QString::fromStdString(value).normalized(QString::NormalizationForm_D);
-            QString output;
-            output.reserve(text.size());
-            bool previousSpace = false;
-            for (const auto ch : text) {
-                if (ch.category() == QChar::Mark_NonSpacing) {
-                    continue;
-                }
-                if (ch.isSpace()) {
-                    if (!previousSpace) {
-                        output.push_back(' ');
-                    }
-                    previousSpace = true;
-                    continue;
-                }
-                output.push_back(ch.toLower());
-                previousSpace = false;
-            }
-            return output.trimmed();
-        }
-
         std::optional<std::string> canonicalColumn(const std::string& header) {
-            return SsaSpreadsheetHeaderCatalog::canonicalColumnForHeader(
-                normalizedHeader(header).toStdString());
+            return SsaSpreadsheetHeaderCatalog::canonicalColumnForHeader(header);
         }
 
         class HeaderColumnCache final {
@@ -101,17 +77,86 @@ namespace ssa::infra::importing {
             return bestIndex;
         }
 
-        std::unordered_map<std::size_t, std::string>
-        columnMapFromHeader(const std::vector<std::string>& header, HeaderColumnCache& cache) {
-            std::unordered_map<std::size_t, std::string> mapped;
-            std::unordered_set<std::string> used;
+        using HeaderColumns = std::vector<std::pair<std::size_t, std::string>>;
+
+        struct HeaderColumnMap {
+            HeaderColumns columns;
+            bool ambiguous = false;
+        };
+
+        std::span<const std::string_view> positionalFamily(const std::string_view canonical) {
+            static constexpr std::array<std::string_view, 4> number{
+                "numero_ssa", "numero_ssa_relacionada_1", "numero_ssa_relacionada_2",
+                "numero_ssa_relacionada_3"};
+            static constexpr std::array<std::string_view, 3> emitter{
+                "setor_emissor", "setor_emissor_relacionado_1", "setor_emissor_relacionado_2"};
+            static constexpr std::array<std::string_view, 3> executor{
+                "setor_executor", "setor_executor_relacionado_1", "setor_executor_relacionado_2"};
+            static constexpr std::array<std::string_view, 3> status{
+                "situacao", "situacao_relacionada_1", "situacao_relacionada_2"};
+            static constexpr std::array<std::string_view, 3> since{"desde", "desde_1", "desde_2"};
+            static constexpr std::array<std::string_view, 3> until{"ate", "ate_1", "ate_2"};
+            static constexpr std::array<std::string_view, 3> serial{"sn_retirado", "sn_instalado",
+                                                                    "sn_extra"};
+            if (canonical == "numero_ssa") {
+                return number;
+            }
+            if (canonical == "setor_emissor") {
+                return emitter;
+            }
+            if (canonical == "setor_executor") {
+                return executor;
+            }
+            if (canonical == "situacao") {
+                return status;
+            }
+            if (canonical == "desde") {
+                return since;
+            }
+            if (canonical == "ate") {
+                return until;
+            }
+            if (canonical == "sn") {
+                return serial;
+            }
+            return {};
+        }
+
+        HeaderColumnMap columnMapFromHeader(const std::vector<std::string>& header,
+                                            HeaderColumnCache& cache) {
+            HeaderColumnMap mapped;
+            std::unordered_set<std::string> seenCanonical;
+            std::unordered_set<std::string> seenCanonicalHeader;
+            std::unordered_map<std::string, std::size_t> repeatedHeaders;
+            std::unordered_map<std::string, std::string> destinationOwner;
             for (std::size_t index = 0; index < header.size(); ++index) {
                 auto column = cache.resolve(header[index]);
-                if (!column || used.contains(*column)) {
+                if (!column) {
                     continue;
                 }
-                used.insert(*column);
-                mapped.emplace(index, *column);
+                auto destination = *column;
+                const auto family = positionalFamily(*column);
+                if (!family.empty()) {
+                    const bool firstCanonical = seenCanonical.insert(*column).second;
+                    const bool firstHeader =
+                        seenCanonicalHeader.insert(*column + '\n' + header[index]).second;
+                    if (*column == "sn" || firstCanonical || !firstHeader) {
+                        const auto occurrence = repeatedHeaders[*column]++;
+                        if (occurrence >= family.size()) {
+                            mapped.ambiguous = true;
+                            return mapped;
+                        }
+                        destination = family[occurrence];
+                    } else {
+                        destination = family.front();
+                    }
+                }
+                const auto [owner, inserted] = destinationOwner.try_emplace(destination, *column);
+                if (!inserted && owner->second != *column) {
+                    mapped.ambiguous = true;
+                    return mapped;
+                }
+                mapped.columns.emplace_back(index, destination);
             }
             return mapped;
         }
@@ -120,7 +165,7 @@ namespace ssa::infra::importing {
             return rowValue(row, key);
         }
 
-        bool hasRequiredColumns(const std::unordered_map<std::size_t, std::string>& columnByIndex) {
+        bool hasRequiredColumns(const HeaderColumns& columnByIndex) {
             static constexpr std::array<std::string_view, 3> required{"numero_ssa", "descricao_ssa",
                                                                       "data_cadastro"};
             return std::ranges::all_of(required, [&](const auto key) {
@@ -140,9 +185,14 @@ namespace ssa::infra::importing {
             batch.skippedRows = table.rows.size();
             return batch;
         }
-        const auto columnByIndex = columnMapFromHeader(table.rows[*headerIndex], headerCache);
-        batch.mappedColumns = columnByIndex.size();
-        if (!hasRequiredColumns(columnByIndex)) {
+        const auto columnMap = columnMapFromHeader(table.rows[*headerIndex], headerCache);
+        batch.mappedColumns = columnMap.columns.size();
+        if (columnMap.ambiguous) {
+            batch.mappingStatus = SpreadsheetMappingStatus::AmbiguousHeaders;
+            batch.skippedRows = table.rows.size() - *headerIndex - 1;
+            return batch;
+        }
+        if (!hasRequiredColumns(columnMap.columns)) {
             batch.mappingStatus = SpreadsheetMappingStatus::RequiredColumnsMissing;
             batch.skippedRows = table.rows.size() - *headerIndex - 1;
             return batch;
@@ -150,7 +200,7 @@ namespace ssa::infra::importing {
         batch.mappingStatus = SpreadsheetMappingStatus::Mapped;
         for (std::size_t rowIndex = *headerIndex + 1; rowIndex < table.rows.size(); ++rowIndex) {
             SsaImportRow row;
-            for (const auto& [columnIndex, columnKey] : columnByIndex) {
+            for (const auto& [columnIndex, columnKey] : columnMap.columns) {
                 if (columnIndex >= table.rows[rowIndex].size()) {
                     continue;
                 }

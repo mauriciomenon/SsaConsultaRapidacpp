@@ -292,6 +292,11 @@ namespace ssa::infra::importing {
                     *writeSession, {ports::WorkflowStatus::Rejected,
                                     std::string{operation} + " required_columns_missing"}));
             }
+            if (batch.mappingStatus == SpreadsheetMappingStatus::AmbiguousHeaders) {
+                return discardBeforeCommit(rollbackSession(
+                    *writeSession, {ports::WorkflowStatus::Rejected,
+                                    std::string{operation} + " ambiguous_headers"}));
+            }
             fileResult.validRows = batch.rows.size();
             fileResult.invalidRows = batch.invalidRows;
             importSummary.validRows += batch.rows.size();

@@ -350,6 +350,7 @@ if(SSA_BUILD_TESTS)
     tests/integration/ExportPortTests.cpp
     tests/integration/JsonPreferencesStoreTests.cpp
     tests/integration/SpreadsheetImportWorkflowPortTests.cpp
+    tests/integration/SsaSpreadsheetHeaderCatalogTests.cpp
     tests/integration/XlsxWorkbookReaderTests.cpp
     tests/integration/SqliteDatabaseValidatorTests.cpp
     tests/integration/SqliteRepositoryTests.cpp)
