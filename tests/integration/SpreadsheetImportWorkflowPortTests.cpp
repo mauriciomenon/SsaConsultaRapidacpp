@@ -540,6 +540,34 @@ TEST_CASE("import file consolidation observes cancellation with an empty source 
     REQUIRE_FALSE(std::filesystem::exists(inputDirectory));
 }
 
+TEST_CASE("consolidation preflight counts failed sources rather than manifest entries") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto inputDirectory =
+        std::filesystem::path{tempDir.path().toStdString()} / "docs_entrada";
+    std::filesystem::create_directories(inputDirectory);
+    {
+        std::ofstream blocked(inputDirectory / "processadas");
+        blocked << "not a directory";
+    }
+    const auto legacy = inputDirectory / "one.xls";
+    const auto converted = inputDirectory / "one.xlsx";
+    const auto workbook = inputDirectory / "two.xlsx";
+    createSparseFile(legacy, 1);
+    createSparseFile(converted, 1);
+    createSparseFile(workbook, 1);
+    const ssa::infra::importing::ImportFileStager stager(inputDirectory);
+    const std::vector<ssa::infra::importing::ImportManifestEntry> manifest{
+        {{legacy, converted, workbook}, true}, {{}, false}};
+
+    const auto result = stager.consolidate(manifest);
+
+    REQUIRE(result.failed == 3);
+    REQUIRE(result.moved == 0);
+    REQUIRE(result.error.find("cannot create consolidation directory") != std::string::npos);
+}
+
 TEST_CASE("legacy converter rejects a stopped token before starting a process") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
@@ -556,6 +584,22 @@ TEST_CASE("legacy converter rejects a stopped token before starting a process") 
     REQUIRE(result.message.find("canceled") != std::string::npos);
     REQUIRE_FALSE(std::filesystem::exists(root / "output.xlsx"));
 }
+
+#ifndef _WIN32
+TEST_CASE("legacy converter treats a configured directory as unavailable") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const ssa::infra::importing::LegacySpreadsheetConverter converter(root);
+
+    const auto result = converter.convertToXlsx({root / "source.xls", root / "output.xlsx"});
+
+    REQUIRE(result.status ==
+            ssa::infra::importing::LegacySpreadsheetConversionStatus::ToolUnavailable);
+    REQUIRE(result.message == "xls converter unavailable");
+}
+#endif
 
 #ifndef _WIN32
 TEST_CASE("legacy converter cancellation preserves destination and removes temporary output") {
@@ -604,6 +648,60 @@ TEST_CASE("legacy converter cancellation preserves destination and removes tempo
     for (const auto& entry : std::filesystem::directory_iterator(root)) {
         REQUIRE_FALSE(entry.path().filename().string().starts_with("ssa_xls_conversion_"));
     }
+}
+
+TEST_CASE("legacy converter reports cleanup failure after canceled output copy") {
+    if (::geteuid() == 0) {
+        SKIP("permission cleanup failure cannot be simulated as root");
+    }
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    constexpr std::uintmax_t copyBytes = 128ULL * 1024ULL * 1024ULL;
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto source = root / "source.xls";
+    const auto destination = root / "output.xlsx";
+    createSparseFile(source, copyBytes);
+    const ssa::infra::importing::LegacySpreadsheetConverter converter(
+        writeFakeSoffice(root, FakeSofficeBehavior::CleanupFailure));
+    std::stop_source stopSource;
+    auto operation = std::async(std::launch::async, [&] {
+        return converter.convertToXlsx({source, destination}, stopSource.get_token());
+    });
+    QElapsedTimer deadline;
+    deadline.start();
+    bool observedCopy = false;
+    while (operation.wait_for(std::chrono::milliseconds{0}) != std::future_status::ready &&
+           deadline.elapsed() < 3'000) {
+        std::error_code error;
+        for (std::filesystem::directory_iterator iterator(root, error), end;
+             !error && iterator != end; iterator.increment(error)) {
+            if (iterator->path().filename().string().find(".part") != std::string::npos &&
+                iterator->file_size(error) > 0 && !error) {
+                observedCopy = true;
+                stopSource.request_stop();
+                break;
+            }
+        }
+        QThread::msleep(1);
+    }
+    stopSource.request_stop();
+    const auto result = operation.get();
+
+    for (const auto& entry : std::filesystem::directory_iterator(root)) {
+        if (entry.is_directory() &&
+            entry.path().filename().string().starts_with("ssa_xls_conversion_")) {
+            std::filesystem::permissions(entry.path(), std::filesystem::perms::owner_all,
+                                         std::filesystem::perm_options::replace);
+            REQUIRE(std::filesystem::remove_all(entry.path()) > 0);
+        }
+    }
+    REQUIRE(observedCopy);
+    REQUIRE(result.status ==
+            ssa::infra::importing::LegacySpreadsheetConversionStatus::CleanupFailed);
+    REQUIRE(result.diagnostic.find("cannot remove xls conversion temporary directory") !=
+            std::string::npos);
+    REQUIRE_FALSE(std::filesystem::exists(destination));
 }
 #endif
 
@@ -1416,6 +1514,24 @@ TEST_CASE("spreadsheet import workflow rejects more than 64 files before staging
     REQUIRE_FALSE(std::filesystem::exists(dbPath));
 }
 
+TEST_CASE("spreadsheet import workflow reports missing selected file metadata as failed") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+
+    const auto result = port.importExternalFiles({.files = {root / "missing.xlsx"}});
+
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
+    REQUIRE(result.message.find("file_size_unavailable") != std::string::npos);
+    REQUIRE_FALSE(result.diagnostic.empty());
+    REQUIRE_FALSE(std::filesystem::exists(dbPath));
+}
+
 TEST_CASE("import file stager accepts exactly 64 files") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
@@ -1795,8 +1911,9 @@ TEST_CASE("spreadsheet import workflow reports legacy xls when converter is unav
     output << "legacy";
     output.close();
 
-    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
-                                                              importColumns());
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(
+        inputDirectory, dbPath, importColumns(),
+        ssa::infra::importing::LegacySpreadsheetConverter(root / "missing-soffice"));
     ssa::ports::ImportExternalFilesRequest request;
     request.files = {legacy};
 
@@ -1804,7 +1921,10 @@ TEST_CASE("spreadsheet import workflow reports legacy xls when converter is unav
 
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
     REQUIRE(result.message.find("legacy_xls=1") != std::string::npos);
-    REQUIRE_FALSE(result.diagnostic.empty());
+    REQUIRE(result.message.find("failed=1") != std::string::npos);
+    REQUIRE(result.diagnostic.find("xls converter unavailable") != std::string::npos);
+    REQUIRE(result.diagnostic.find("LibreOffice soffice executable was not found") !=
+            std::string::npos);
 }
 
 TEST_CASE("import file stager counts legacy xls with existing xlsx without conversion") {
@@ -1873,7 +1993,7 @@ TEST_CASE("incremental rescan keeps an unrelated legacy file pending beside an e
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
-TEST_CASE("import file stager reports unreadable input folder scan") {
+TEST_CASE("import file stager rejects an input path that is not a directory") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
 
@@ -1887,9 +2007,64 @@ TEST_CASE("import file stager reports unreadable input folder scan") {
 
     const auto result = stager.stageInputFiles();
 
-    REQUIRE(result.failedCopies == 1);
+    REQUIRE(result.rejectionReason == "input_directory_not_directory");
     REQUIRE(result.files.empty());
 }
+
+#ifndef _WIN32
+TEST_CASE("spreadsheet import workflow reports an unreadable input directory as failed") {
+    if (::geteuid() == 0) {
+        SKIP("permission scan failure cannot be simulated as root");
+    }
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::permissions(inputDirectory, std::filesystem::perms::none,
+                                 std::filesystem::perm_options::replace);
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+
+    const auto result = port.rescan({ssa::ports::RescanMode::Incremental});
+
+    std::filesystem::permissions(inputDirectory, std::filesystem::perms::owner_all,
+                                 std::filesystem::perm_options::replace);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
+    REQUIRE(result.message.find("input_directory_unreadable") != std::string::npos);
+    REQUIRE_FALSE(result.diagnostic.empty());
+    REQUIRE_FALSE(std::filesystem::exists(dbPath));
+}
+
+TEST_CASE("spreadsheet import workflow reports input status IO errors as failed") {
+    if (::geteuid() == 0) {
+        SKIP("permission status failure cannot be simulated as root");
+    }
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto blockedDirectory = root / "blocked";
+    const auto inputDirectory = blockedDirectory / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(blockedDirectory);
+    std::filesystem::permissions(blockedDirectory, std::filesystem::perms::none,
+                                 std::filesystem::perm_options::replace);
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+
+    const auto result = port.rescan({ssa::ports::RescanMode::Incremental});
+
+    std::filesystem::permissions(blockedDirectory, std::filesystem::perms::owner_all,
+                                 std::filesystem::perm_options::replace);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
+    REQUIRE(result.message.find("input_directory_status_unavailable") != std::string::npos);
+    REQUIRE_FALSE(result.diagnostic.empty());
+    REQUIRE_FALSE(std::filesystem::exists(dbPath));
+}
+#endif
 
 #ifndef _WIN32
 TEST_CASE("spreadsheet import workflow converts staged xls before sqlite import") {

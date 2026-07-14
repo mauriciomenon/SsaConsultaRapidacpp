@@ -32,8 +32,8 @@ namespace ssa::infra::importing {
                    << " duplicates=" << writeSummary.duplicateRows
                    << " legacy_xls=" << files.legacyXls << " converted_xls=" << files.convertedXls
                    << " failed_legacy_xls=" << files.failedLegacyXls
-                   << " unsupported=" << files.unsupported
-                   << " failed=" << (failure.failedFiles + files.failedCopies);
+                   << " unsupported=" << files.unsupported << " failed="
+                   << (failure.failedFiles + files.failedCopies + files.failedLegacyXls);
             if (!failure.error.empty()) {
                 output << " error=" << failure.error;
             }
@@ -132,6 +132,10 @@ namespace ssa::infra::importing {
         if (files.rejectionReason == "staging_cleanup_failed") {
             return {ports::WorkflowStatus::Failed, "import_xlsx_to_sqlite staging_cleanup_failed",
                     false, files.diagnostic};
+        }
+        if (files.operationalFailure) {
+            return discardBeforeCommit({ports::WorkflowStatus::Failed,
+                                        std::string{operation} + " " + files.rejectionReason});
         }
         if (stopToken.stop_requested()) {
             return discardBeforeCommit(canceled(operation));

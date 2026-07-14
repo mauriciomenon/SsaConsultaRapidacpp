@@ -9,6 +9,7 @@ namespace ssa::infra::importing {
     enum class FileCopyStatus {
         Succeeded,
         Canceled,
+        CleanupFailed,
         Failed,
     };
 

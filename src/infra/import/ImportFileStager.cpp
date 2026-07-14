@@ -70,13 +70,15 @@ namespace ssa::infra::importing {
                    filename != "..";
         }
 
-        std::string inputDirectoryRejectionReason(const std::filesystem::path& directory) {
+        std::string inputDirectoryRejectionReason(const std::filesystem::path& directory,
+                                                  std::string& diagnostic) {
             std::error_code error;
             const auto status = std::filesystem::symlink_status(directory, error);
             if (error == std::errc::no_such_file_or_directory) {
                 return {};
             }
             if (error) {
+                appendDiagnostic(diagnostic, "cannot inspect input directory: " + error.message());
                 return "input_directory_status_unavailable";
             }
             if (std::filesystem::is_symlink(status)) {
@@ -97,7 +99,7 @@ namespace ssa::infra::importing {
         }
 
         std::string preflightFiles(const std::vector<std::filesystem::path>& files,
-                                   const std::stop_token& stopToken) {
+                                   const std::stop_token& stopToken, std::string& diagnostic) {
             if (stopToken.stop_requested()) {
                 return "canceled";
             }
@@ -112,6 +114,8 @@ namespace ssa::infra::importing {
                 std::error_code error;
                 const auto fileBytes = std::filesystem::file_size(file, error);
                 if (error) {
+                    appendDiagnostic(diagnostic,
+                                     "cannot read import file size: " + error.message());
                     return "file_size_unavailable";
                 }
                 if (fileBytes > kMaxImportFileBytes) {
@@ -236,6 +240,14 @@ namespace ssa::infra::importing {
             }
         }
 
+        std::size_t manifestSourceCount(const std::vector<ImportManifestEntry>& manifest) {
+            std::size_t count = 0;
+            for (const auto& entry : manifest) {
+                count += entry.sources.size();
+            }
+            return count;
+        }
+
     } // namespace
 
     ImportFileStager::ImportFileStager(std::filesystem::path inputFolder,
@@ -246,19 +258,26 @@ namespace ssa::infra::importing {
     ImportFileStager::stageExternalFiles(const std::vector<std::filesystem::path>& files,
                                          const std::stop_token& stopToken) const {
         ImportStagingResult result;
-        result.rejectionReason = preflightFiles(files, stopToken);
+        result.rejectionReason = preflightFiles(files, stopToken, result.diagnostic);
         if (!result.rejectionReason.empty()) {
+            result.operationalFailure = result.rejectionReason == "file_size_unavailable";
             return result;
         }
-        result.rejectionReason = inputDirectoryRejectionReason(inputFolder_);
+        result.rejectionReason = inputDirectoryRejectionReason(inputFolder_, result.diagnostic);
         if (!result.rejectionReason.empty()) {
             result.failedCopies = files.size();
+            result.operationalFailure =
+                result.rejectionReason == "input_directory_status_unavailable";
             return result;
         }
         std::error_code error;
         std::filesystem::create_directories(inputFolder_, error);
         if (error) {
             result.failedCopies = files.size();
+            result.operationalFailure = true;
+            result.rejectionReason = "input_directory_create_failed";
+            appendDiagnostic(result.diagnostic,
+                             "cannot create input directory: " + error.message());
             return result;
         }
 
@@ -304,8 +323,12 @@ namespace ssa::infra::importing {
             if (!copy.ok()) {
                 ++result.failedCopies;
                 appendDiagnostic(result.diagnostic, copy.diagnostic);
-                if (stopToken.stop_requested()) {
+                if (copy.status == FileCopyStatus::CleanupFailed) {
                     result.rejectionReason = "staging_cleanup_failed";
+                    cancelStaging(result);
+                    return result;
+                }
+                if (stopToken.stop_requested()) {
                     cancelStaging(result);
                     return result;
                 }
@@ -330,15 +353,21 @@ namespace ssa::infra::importing {
             result.rejectionReason = "canceled";
             return result;
         }
-        result.rejectionReason = inputDirectoryRejectionReason(inputFolder_);
+        result.rejectionReason = inputDirectoryRejectionReason(inputFolder_, result.diagnostic);
         if (!result.rejectionReason.empty()) {
             result.failedCopies = 1;
+            result.operationalFailure =
+                result.rejectionReason == "input_directory_status_unavailable";
             return result;
         }
         std::error_code error;
         const bool inputExists = std::filesystem::exists(inputFolder_, error);
         if (error) {
             result.failedCopies = 1;
+            result.operationalFailure = true;
+            result.rejectionReason = "input_directory_status_unavailable";
+            appendDiagnostic(result.diagnostic,
+                             "cannot inspect input directory existence: " + error.message());
             return result;
         }
         if (!inputExists) {
@@ -347,12 +376,23 @@ namespace ssa::infra::importing {
         const bool inputIsDirectory = std::filesystem::is_directory(inputFolder_, error);
         if (error || !inputIsDirectory) {
             result.failedCopies = 1;
+            result.operationalFailure = static_cast<bool>(error);
+            if (error) {
+                result.rejectionReason = "input_directory_status_unavailable";
+                appendDiagnostic(result.diagnostic,
+                                 "cannot inspect input directory type: " + error.message());
+            } else {
+                result.rejectionReason = "input_directory_not_directory";
+            }
             return result;
         }
         std::vector<std::filesystem::path> candidates;
         std::filesystem::directory_iterator iterator(inputFolder_, error);
         if (error) {
             result.failedCopies = 1;
+            result.operationalFailure = true;
+            result.rejectionReason = "input_directory_unreadable";
+            appendDiagnostic(result.diagnostic, "cannot scan input directory: " + error.message());
             return result;
         }
         for (const auto& entry : iterator) {
@@ -378,7 +418,10 @@ namespace ssa::infra::importing {
         const auto processedStatus = std::filesystem::symlink_status(processedDirectory, error);
         if (includeProcessed && error && error != std::errc::no_such_file_or_directory) {
             result.failedCopies = 1;
+            result.operationalFailure = true;
             result.rejectionReason = "processed_directory_status_unavailable";
+            appendDiagnostic(result.diagnostic,
+                             "cannot inspect processed directory: " + error.message());
             return result;
         }
         error.clear();
@@ -395,7 +438,10 @@ namespace ssa::infra::importing {
             std::filesystem::directory_iterator processedIterator(processedDirectory, error);
             if (error) {
                 result.failedCopies = 1;
+                result.operationalFailure = true;
                 result.rejectionReason = "processed_directory_unreadable";
+                appendDiagnostic(result.diagnostic,
+                                 "cannot scan processed directory: " + error.message());
                 return result;
             }
             for (const auto& entry : processedIterator) {
@@ -406,13 +452,19 @@ namespace ssa::infra::importing {
                 const bool entryIsSymlink = entry.is_symlink(error);
                 if (error) {
                     result.failedCopies = 1;
+                    result.operationalFailure = true;
                     result.rejectionReason = "processed_entry_status_unavailable";
+                    appendDiagnostic(result.diagnostic,
+                                     "cannot inspect processed entry: " + error.message());
                     return result;
                 }
                 const bool entryIsRegular = entry.is_regular_file(error);
                 if (error) {
                     result.failedCopies = 1;
+                    result.operationalFailure = true;
                     result.rejectionReason = "processed_entry_status_unavailable";
+                    appendDiagnostic(result.diagnostic,
+                                     "cannot inspect processed entry: " + error.message());
                     return result;
                 }
                 if (!entryIsSymlink && entryIsRegular && isXlsxFile(entry.path())) {
@@ -429,8 +481,9 @@ namespace ssa::infra::importing {
             });
         importCandidates.insert(importCandidates.end(), processedWorkbooks.begin(),
                                 processedWorkbooks.end());
-        result.rejectionReason = preflightFiles(importCandidates, stopToken);
+        result.rejectionReason = preflightFiles(importCandidates, stopToken, result.diagnostic);
         if (!result.rejectionReason.empty()) {
+            result.operationalFailure = result.rejectionReason == "file_size_unavailable";
             return result;
         }
 
@@ -484,10 +537,12 @@ namespace ssa::infra::importing {
             result.error = "consolidation canceled";
             return result;
         }
-        const auto inputRejection = inputDirectoryRejectionReason(inputFolder_);
+        std::string inputDiagnostic;
+        const auto inputRejection = inputDirectoryRejectionReason(inputFolder_, inputDiagnostic);
         if (!inputRejection.empty()) {
-            result.failed = manifest.size();
+            result.failed = manifestSourceCount(manifest);
             result.error = inputRejection;
+            appendDiagnostic(result.error, inputDiagnostic);
             return result;
         }
         if (manifest.empty()) {
@@ -497,7 +552,7 @@ namespace ssa::infra::importing {
         const auto noSurvivorDirectory = processedDirectory / "nosurvivor";
         if (!prepareDirectory(processedDirectory, result.error) ||
             !prepareDirectory(noSurvivorDirectory, result.error)) {
-            result.failed = manifest.size();
+            result.failed = manifestSourceCount(manifest);
             return result;
         }
         for (const auto& entry : manifest) {
@@ -544,10 +599,11 @@ namespace ssa::infra::importing {
             if (conversion.status == LegacySpreadsheetConversionStatus::Canceled) {
                 result.rejectionReason = "canceled";
             } else {
-                appendDiagnostic(result.diagnostic, conversion.diagnostic);
-                if (stopToken.stop_requested()) {
+                if (conversion.status == LegacySpreadsheetConversionStatus::CleanupFailed) {
                     result.rejectionReason = "staging_cleanup_failed";
                 }
+                appendDiagnostic(result.diagnostic, conversion.message);
+                appendDiagnostic(result.diagnostic, conversion.diagnostic);
             }
             ++result.failedLegacyXls;
             return false;

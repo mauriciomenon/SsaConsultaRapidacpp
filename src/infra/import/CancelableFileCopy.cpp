@@ -60,7 +60,7 @@ namespace ssa::infra::importing {
         if (!input || !output.open()) {
             const auto cleanupDiagnostic = removeTemporary();
             if (!cleanupDiagnostic.empty()) {
-                return {FileCopyStatus::Failed, cleanupDiagnostic};
+                return {FileCopyStatus::CleanupFailed, cleanupDiagnostic};
             }
             return {FileCopyStatus::Failed, "cannot open staged file copy"};
         }
@@ -71,7 +71,7 @@ namespace ssa::infra::importing {
                 output.close();
                 const auto cleanupDiagnostic = removeTemporary();
                 if (!cleanupDiagnostic.empty()) {
-                    return {FileCopyStatus::Failed, cleanupDiagnostic};
+                    return {FileCopyStatus::CleanupFailed, cleanupDiagnostic};
                 }
                 return {FileCopyStatus::Canceled, {}};
             }
@@ -81,7 +81,7 @@ namespace ssa::infra::importing {
                 output.close();
                 const auto cleanupDiagnostic = removeTemporary();
                 if (!cleanupDiagnostic.empty()) {
-                    return {FileCopyStatus::Failed, cleanupDiagnostic};
+                    return {FileCopyStatus::CleanupFailed, cleanupDiagnostic};
                 }
                 return {FileCopyStatus::Failed, "cannot write staged file copy"};
             }
@@ -90,7 +90,7 @@ namespace ssa::infra::importing {
             output.close();
             const auto cleanupDiagnostic = removeTemporary();
             if (!cleanupDiagnostic.empty()) {
-                return {FileCopyStatus::Failed, cleanupDiagnostic};
+                return {FileCopyStatus::CleanupFailed, cleanupDiagnostic};
             }
             return {FileCopyStatus::Failed, "cannot read staged file source"};
         }
@@ -99,14 +99,14 @@ namespace ssa::infra::importing {
         if (!flushed) {
             const auto cleanupDiagnostic = removeTemporary();
             if (!cleanupDiagnostic.empty()) {
-                return {FileCopyStatus::Failed, cleanupDiagnostic};
+                return {FileCopyStatus::CleanupFailed, cleanupDiagnostic};
             }
             return {FileCopyStatus::Failed, "cannot flush staged file copy"};
         }
         if (canceled()) {
             const auto cleanupDiagnostic = removeTemporary();
             if (!cleanupDiagnostic.empty()) {
-                return {FileCopyStatus::Failed, cleanupDiagnostic};
+                return {FileCopyStatus::CleanupFailed, cleanupDiagnostic};
             }
             return {FileCopyStatus::Canceled, {}};
         }
@@ -115,7 +115,7 @@ namespace ssa::infra::importing {
             const auto diagnostic = "cannot publish staged file copy: " + error.message();
             const auto cleanupDiagnostic = removeTemporary();
             if (!cleanupDiagnostic.empty()) {
-                return {FileCopyStatus::Failed, diagnostic + "; " + cleanupDiagnostic};
+                return {FileCopyStatus::CleanupFailed, diagnostic + "; " + cleanupDiagnostic};
             }
             return {FileCopyStatus::Failed, diagnostic};
         }

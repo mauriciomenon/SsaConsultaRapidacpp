@@ -5,6 +5,7 @@
 #include "qt/FilesystemPath.h"
 
 #include <QDir>
+#include <QFileInfo>
 #include <QStandardPaths>
 #include <QString>
 #include <QTemporaryDir>
@@ -103,7 +104,7 @@ namespace ssa::infra::importing {
         if (processResult.status == platform::SupervisedProcessStatus::Canceled) {
             const auto cleanupDiagnostic = cleanupConversionDirectory();
             if (!cleanupDiagnostic.empty()) {
-                return {LegacySpreadsheetConversionStatus::Failed,
+                return {LegacySpreadsheetConversionStatus::CleanupFailed,
                         {},
                         "cannot clean canceled xls conversion",
                         cleanupDiagnostic};
@@ -115,6 +116,10 @@ namespace ssa::infra::importing {
             const auto cleanupDiagnostic = cleanupConversionDirectory();
             if (!cleanupDiagnostic.empty()) {
                 diagnostic += diagnostic.empty() ? cleanupDiagnostic : "; " + cleanupDiagnostic;
+                return {LegacySpreadsheetConversionStatus::CleanupFailed,
+                        {},
+                        "cannot clean failed xls conversion",
+                        std::move(diagnostic)};
             }
             return {LegacySpreadsheetConversionStatus::Failed,
                     {},
@@ -129,6 +134,10 @@ namespace ssa::infra::importing {
             const auto cleanupDiagnostic = cleanupConversionDirectory();
             if (!cleanupDiagnostic.empty()) {
                 diagnostic += diagnostic.empty() ? cleanupDiagnostic : "; " + cleanupDiagnostic;
+                return {LegacySpreadsheetConversionStatus::CleanupFailed,
+                        {},
+                        "cannot clean invalid xls conversion",
+                        std::move(diagnostic)};
             }
             return {LegacySpreadsheetConversionStatus::Failed,
                     {},
@@ -139,18 +148,33 @@ namespace ssa::infra::importing {
         if (copy.status == FileCopyStatus::Canceled) {
             const auto cleanupDiagnostic = cleanupConversionDirectory();
             if (!cleanupDiagnostic.empty()) {
-                return {LegacySpreadsheetConversionStatus::Failed,
+                return {LegacySpreadsheetConversionStatus::CleanupFailed,
                         {},
                         "cannot clean canceled xls conversion",
                         cleanupDiagnostic};
             }
             return {LegacySpreadsheetConversionStatus::Canceled, {}, "xls conversion canceled"};
         }
+        if (copy.status == FileCopyStatus::CleanupFailed) {
+            auto diagnostic = copy.diagnostic;
+            const auto cleanupDiagnostic = cleanupConversionDirectory();
+            if (!cleanupDiagnostic.empty()) {
+                diagnostic += diagnostic.empty() ? cleanupDiagnostic : "; " + cleanupDiagnostic;
+            }
+            return {LegacySpreadsheetConversionStatus::CleanupFailed,
+                    {},
+                    "cannot clean xls conversion output",
+                    std::move(diagnostic)};
+        }
         if (!copy.ok()) {
             auto diagnostic = copy.diagnostic;
             const auto cleanupDiagnostic = cleanupConversionDirectory();
             if (!cleanupDiagnostic.empty()) {
                 diagnostic += diagnostic.empty() ? cleanupDiagnostic : "; " + cleanupDiagnostic;
+                return {LegacySpreadsheetConversionStatus::CleanupFailed,
+                        {},
+                        "cannot clean failed xls conversion",
+                        std::move(diagnostic)};
             }
             return {LegacySpreadsheetConversionStatus::Failed,
                     {},
@@ -167,11 +191,17 @@ namespace ssa::infra::importing {
 
     std::filesystem::path LegacySpreadsheetConverter::resolvedExecutable() const {
         if (!executablePath_.empty()) {
-            return executablePath_;
+            const QFileInfo executableInfo{qt::toQString(executablePath_)};
+            return executableInfo.isFile() && executableInfo.isExecutable()
+                       ? executablePath_
+                       : std::filesystem::path{};
         }
         auto environmentPath = executableFromEnvironment();
         if (!environmentPath.empty()) {
-            return environmentPath;
+            const QFileInfo executableInfo{qt::toQString(environmentPath)};
+            return executableInfo.isFile() && executableInfo.isExecutable()
+                       ? environmentPath
+                       : std::filesystem::path{};
         }
         return executableFromPath();
     }

@@ -37,6 +37,7 @@ namespace ssa::infra::importing {
         std::size_t unsupported = 0;
         std::size_t failedCopies = 0;
         bool warning = false;
+        bool operationalFailure = false;
         std::string rejectionReason;
         std::string diagnostic;
     };

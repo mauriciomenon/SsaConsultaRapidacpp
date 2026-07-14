@@ -11,6 +11,7 @@ namespace ssa::infra::importing {
     enum class LegacySpreadsheetConversionStatus {
         Succeeded,
         Canceled,
+        CleanupFailed,
         ToolUnavailable,
         Failed,
     };
