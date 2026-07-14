@@ -2,18 +2,47 @@
 
 ## macOS
 
+O fluxo completo usado pelo operador e o wrapper versionado na raiz:
+
 ```bash
-brew install qt cmake ninja sqlite
-cmake --preset dev -DCMAKE_PREFIX_PATH=/opt/homebrew/opt/qt
-cmake --build --preset dev
+./run-macos-smoke-clean
+```
+
+Esse comando resolve o symlink para `scripts/run-macos-smoke-clean.sh`, remove
+somente `build/dev`, reconfigura o preset `dev` com Qt 6.11, compila, executa
+`ctest --preset dev --output-on-failure`, copia `data/ssas.db` para o runtime
+isolado e abre a GUI. A janela permanece aberta ate o operador encerra-la.
+
+Para o mesmo clean, build e teste em automacao, sem janela persistente, use o
+smoke offscreen. Ele gera `build/runtime/macos/main.png`:
+
+```bash
+./scripts/smoke-macos.sh
+```
+
+Para iteracao incremental, sem remover `build/dev`:
+
+```bash
+export SSA_CPP_PRESET=dev
+./scripts/build-macos.sh
 ctest --preset dev --output-on-failure
 ```
 
-Run:
+Para reconstruir release, testar e gerar ZIP/DMG:
+
+```bash
+./scripts/package-macos.sh
+```
+
+Os scripts usam `~/Qt/6.11.0/macos` quando `CMAKE_PREFIX_PATH` nao esta
+definido. O banco default dos smokes e `data/ssas.db`; sua ausencia encerra o
+script com erro objetivo.
+
+Execucao manual do binario, quando necessaria:
 
 ```bash
 ./build/dev/ssa_consulta_rapida.app/Contents/MacOS/ssa_consulta_rapida \
-  --db /Users/menon/git/SSA_Consulta_Rapida/data/ssas.db
+  --db /caminho/para/ssas.db
 ```
 
 ## Linux

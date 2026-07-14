@@ -439,14 +439,17 @@ clang-format --version
 
 ## Smoke visual
 
-Exemplo de smoke visual com banco isolado:
+O wrapper usado para validacao manual faz clean de `build/dev`, configura Qt
+6.11, compila, executa toda a suite e abre a GUI:
 
 ```bash
-REPO_ROOT=/caminho/para/SSA_Consulta_Rapida_Cpp
-mkdir -p "${REPO_ROOT}/build/runtime/macos"
-cp "${REPO_ROOT}/data/ssas.db" "${REPO_ROOT}/build/runtime/macos/ssas.db"
 ./run-macos-smoke-clean
 ```
+
+Ele usa `data/ssas.db`, copia o banco para `build/runtime/macos/` e espera a
+janela ser fechada. Para CI ou execucao nao interativa com o mesmo core de
+clean/build/test, use `./scripts/smoke-macos.sh`; o screenshot fica em
+`build/runtime/macos/main.png`.
 
 ## Packaging e artefatos finais por plataforma
 

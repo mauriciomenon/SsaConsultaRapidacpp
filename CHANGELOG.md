@@ -2,6 +2,20 @@
 
 Mudancas relevantes deste projeto sao registradas neste arquivo.
 
+## 0.9.4 - 2026-07-14
+
+### Corrigido
+
+- Conversao XLS indisponivel agora retorna mensagem publica segura e mantem o
+  detalhe tecnico separado no diagnostico.
+- Teste de retry da limpeza SAM reconhece que falha por permissao nao pode ser
+  simulada quando o runner Linux executa como root.
+
+### Validacao
+
+- O fluxo macOS explicita o wrapper interativo `./run-macos-smoke-clean`, o
+  smoke offscreen nao interativo e o empacotamento release.
+
 ## 0.9.3 - 2026-07-13
 
 ### Adicionado

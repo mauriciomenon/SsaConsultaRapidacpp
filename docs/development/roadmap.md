@@ -76,6 +76,15 @@ without porting Python architecture, and stabilize CI/flaky tests.
 - Shutdown responsivo com status contextual, `Cancelando...`, barreira de
   terminais e confirmacao forcada sem espera na thread GUI.
 
+### Entregas da 0.9.4
+
+- Mensagem segura e diagnostico tecnico separados quando o conversor XLS nao
+  esta disponivel.
+- Gate Linux estavel para retry de limpeza SAM: simulacao por permissao roda
+  em POSIX nao-root e e explicitamente pulada quando o runner e root.
+- Fluxos macOS interativo, offscreen, incremental e release documentados com
+  os scripts versionados usados em cada caso.
+
 ## Long term (multiple PRs, no fixed order)
 
 ### Missing GUI features (parity with PyQt6)
