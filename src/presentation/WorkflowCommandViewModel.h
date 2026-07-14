@@ -75,7 +75,7 @@ namespace ssa::presentation {
         void importExternalFiles(const QVariantList& selectedFiles);
         void rescanIncremental();
         void rescanFull();
-        void syncDerivadas();
+        void cleanOrphanDerivations();
         void compactDatabase();
         void refreshSamNow();
         void cancel();
@@ -109,7 +109,7 @@ namespace ssa::presentation {
         enum class Operation {
             Rescan,
             ImportExternalFiles,
-            SyncDerivadas,
+            CleanOrphanDerivations,
             CompactDatabase,
             SamRefresh,
         };

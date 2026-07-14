@@ -14,16 +14,17 @@ namespace ssa::infra::sqlite {
     namespace {
 
         ports::WorkflowResult succeeded(std::size_t fixedRecords) {
-            return {ports::WorkflowStatus::Succeeded,
-                    "derivadas sync completed; " + std::to_string(fixedRecords) + " records fixed"};
+            return {ports::WorkflowStatus::Succeeded, "orphan derivation cleanup completed; " +
+                                                          std::to_string(fixedRecords) +
+                                                          " records fixed"};
         }
 
         ports::WorkflowResult canceled() {
-            return {ports::WorkflowStatus::Canceled, "sqlite derivadas sync canceled"};
+            return {ports::WorkflowStatus::Canceled, "sqlite orphan derivation cleanup canceled"};
         }
 
         ports::WorkflowResult failed(std::string diagnostic) {
-            return {ports::WorkflowStatus::Failed, "sqlite derivadas sync failed", false,
+            return {ports::WorkflowStatus::Failed, "sqlite orphan derivation cleanup failed", false,
                     std::move(diagnostic)};
         }
 
@@ -43,8 +44,8 @@ namespace ssa::infra::sqlite {
                 return canceled();
             }
             if (execRc != SQLITE_OK) {
-                return failed("sqlite derivadas sync failed: rc=" + std::to_string(execRc) +
-                              " extended_rc=" +
+                return failed("sqlite orphan derivation cleanup failed: rc=" +
+                              std::to_string(execRc) + " extended_rc=" +
                               std::to_string(sqlite3_extended_errcode(connection.handle())) +
                               " message=" + message);
             }
@@ -56,7 +57,8 @@ namespace ssa::infra::sqlite {
     SqliteDerivadasPort::SqliteDerivadasPort(std::filesystem::path databasePath)
         : databasePath_(std::move(databasePath)) {}
 
-    ports::WorkflowResult SqliteDerivadasPort::syncDerivadas(const std::stop_token stopToken) {
+    ports::WorkflowResult
+    SqliteDerivadasPort::cleanOrphanDerivations(const std::stop_token stopToken) {
         try {
             SqliteConnection connection(databasePath_, SqliteOpenMode::ReadWrite);
             SqliteBusyHandler busy(connection.handle(), stopToken);
@@ -70,7 +72,7 @@ namespace ssa::infra::sqlite {
                     transaction.rollback();
                 } catch (const ports::OperationError& error) {
                     result.status = ports::WorkflowStatus::Failed;
-                    result.message = "sqlite derivadas sync failed";
+                    result.message = "sqlite orphan derivation cleanup failed";
                     result.diagnostic += "; " + error.diagnostic();
                 }
                 return result;

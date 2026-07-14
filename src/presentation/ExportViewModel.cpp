@@ -17,6 +17,8 @@ namespace ssa::presentation {
             switch (status) {
             case ports::WorkflowStatus::Succeeded:
                 return "succeeded";
+            case ports::WorkflowStatus::NoChanges:
+                return "no_changes";
             case ports::WorkflowStatus::Canceled:
                 return "canceled";
             case ports::WorkflowStatus::NotImplemented:

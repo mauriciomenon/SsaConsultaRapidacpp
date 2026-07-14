@@ -1,0 +1,439 @@
+#include "domain/SsaImportPolicy.h"
+
+#include <algorithm>
+#include <array>
+#include <cctype>
+#include <charconv>
+#include <chrono>
+#include <cstdio>
+#include <optional>
+#include <ranges>
+#include <string_view>
+
+namespace ssa::domain {
+
+    namespace {
+
+        std::string trimCopy(const std::string& value) {
+            const auto begin = std::ranges::find_if_not(
+                value, [](const unsigned char ch) { return std::isspace(ch) != 0; });
+            const auto end =
+                std::find_if_not(value.rbegin(), value.rend(), [](const unsigned char ch) {
+                    return std::isspace(ch) != 0;
+                }).base();
+            return begin < end ? std::string{begin, end} : std::string{};
+        }
+
+        std::string valueFor(const SsaImportPolicy::Values& values, const std::string_view key) {
+            const auto found = values.find(std::string{key});
+            return found == values.end() ? std::string{} : trimCopy(found->second);
+        }
+
+        std::string uppercase(std::string value) {
+            std::ranges::transform(value, value.begin(), [](const unsigned char ch) {
+                return static_cast<char>(std::toupper(ch));
+            });
+            return value;
+        }
+
+        bool isDateExemptStatus(const std::string& status) {
+            static constexpr std::array<std::string_view, 3> exempt{"SCC", "ADI", "ASE"};
+            return std::ranges::find(exempt, uppercase(trimCopy(status))) != exempt.end();
+        }
+
+        bool isTerminalStatus(const std::string& status) {
+            const auto normalized = uppercase(trimCopy(status));
+            return normalized == "STE" || normalized == "SCA";
+        }
+
+        std::optional<int> parsePart(const std::string_view value) {
+            int parsed = 0;
+            const auto [end, error] =
+                std::from_chars(value.data(), value.data() + value.size(), parsed);
+            if (error != std::errc{} || end != value.data() + value.size()) {
+                return std::nullopt;
+            }
+            return parsed;
+        }
+
+        struct SnapshotTimestamp {
+            int year = 0;
+            int month = 0;
+            int day = 0;
+            int hour = 0;
+            int minute = 0;
+            int second = 0;
+        };
+
+        bool validTimestamp(const SnapshotTimestamp& timestamp) {
+            return timestamp.hour >= 0 && timestamp.hour < 24 && timestamp.minute >= 0 &&
+                   timestamp.minute < 60 && timestamp.second >= 0 && timestamp.second < 60 &&
+                   std::chrono::year_month_day{
+                       std::chrono::year{timestamp.year},
+                       std::chrono::month{static_cast<unsigned>(timestamp.month)},
+                       std::chrono::day{static_cast<unsigned>(timestamp.day)}}
+                       .ok();
+        }
+
+        bool applyMeridiem(SnapshotTimestamp& timestamp, std::string marker) {
+            marker = uppercase(std::move(marker));
+            if ((marker != "AM" && marker != "PM") || timestamp.hour < 1 || timestamp.hour > 12) {
+                return false;
+            }
+            if (marker == "AM") {
+                timestamp.hour %= 12;
+            } else if (timestamp.hour != 12) {
+                timestamp.hour += 12;
+            }
+            return true;
+        }
+
+        using FieldSlice = std::pair<std::size_t, std::size_t>;
+
+        struct FilenameTimestampFields {
+            std::size_t yearOffset = 0;
+            std::size_t monthOffset = 0;
+            std::size_t dayOffset = 0;
+            std::size_t hourOffset = 0;
+            std::size_t hourLength = 0;
+            std::size_t minuteOffset = 0;
+        };
+
+        std::optional<SnapshotTimestamp> parseFields(const std::string_view text,
+                                                     const std::array<FieldSlice, 6>& fields,
+                                                     const bool dayFirst) {
+            std::array<int, 6> values{};
+            for (std::size_t index = 0; index < fields.size(); ++index) {
+                const auto [offset, length] = fields[index];
+                if (length == 0) {
+                    continue;
+                }
+                if (offset + length > text.size()) {
+                    return std::nullopt;
+                }
+                const auto value = parsePart(text.substr(offset, length));
+                if (!value) {
+                    return std::nullopt;
+                }
+                values[index] = *value;
+            }
+            SnapshotTimestamp timestamp;
+            if (dayFirst) {
+                timestamp.day = values[0];
+                timestamp.month = values[1];
+                timestamp.year = values[2];
+            } else {
+                timestamp.year = values[0];
+                timestamp.month = values[1];
+                timestamp.day = values[2];
+            }
+            timestamp.hour = values[3];
+            timestamp.minute = values[4];
+            timestamp.second = values[5];
+            return validTimestamp(timestamp) ? std::optional{timestamp} : std::nullopt;
+        }
+
+        std::optional<SnapshotTimestamp> parseExactTimestamp(const std::string_view text) {
+            static constexpr std::array<FieldSlice, 6> dateTimeFields{
+                FieldSlice{0, 4},  FieldSlice{5, 2},  FieldSlice{8, 2},
+                FieldSlice{11, 2}, FieldSlice{14, 2}, FieldSlice{17, 2}};
+            static constexpr std::array<FieldSlice, 6> dayFirstDateTimeFields{
+                FieldSlice{0, 2},  FieldSlice{3, 2},  FieldSlice{6, 4},
+                FieldSlice{11, 2}, FieldSlice{14, 2}, FieldSlice{17, 2}};
+            static constexpr std::array<FieldSlice, 6> dateFields{
+                FieldSlice{0, 4}, FieldSlice{5, 2}, FieldSlice{8, 2},
+                FieldSlice{0, 0}, FieldSlice{0, 0}, FieldSlice{0, 0}};
+            static constexpr std::array<FieldSlice, 6> dayFirstDateFields{
+                FieldSlice{0, 2}, FieldSlice{3, 2}, FieldSlice{6, 4},
+                FieldSlice{0, 0}, FieldSlice{0, 0}, FieldSlice{0, 0}};
+
+            if (text.size() == 19 && text[4] == '-' && text[7] == '-' &&
+                (text[10] == 'T' || text[10] == ' ') && text[13] == ':' && text[16] == ':') {
+                return parseFields(text, dateTimeFields, false);
+            }
+            if (text.size() == 19 && text[2] == '/' && text[5] == '/' && text[10] == ' ' &&
+                text[13] == ':' && text[16] == ':') {
+                return parseFields(text, dayFirstDateTimeFields, true);
+            }
+            if (text.size() != 10) {
+                return std::nullopt;
+            }
+            if (text[4] == '-' && text[7] == '-') {
+                return parseFields(text, dateFields, false);
+            }
+            if ((text[2] == '-' && text[5] == '-') || (text[2] == '/' && text[5] == '/')) {
+                return parseFields(text, dayFirstDateFields, true);
+            }
+            return std::nullopt;
+        }
+
+        std::optional<SnapshotTimestamp> filenameTimestampAt(const std::string_view text) {
+            const auto parseTimestamp = [&](const FilenameTimestampFields& fields) {
+                const auto year = parsePart(text.substr(fields.yearOffset, 4));
+                const auto month = parsePart(text.substr(fields.monthOffset, 2));
+                const auto day = parsePart(text.substr(fields.dayOffset, 2));
+                const auto hour = parsePart(text.substr(fields.hourOffset, fields.hourLength));
+                const auto minute = parsePart(text.substr(fields.minuteOffset, 2));
+                if (!year || !month || !day || !hour || !minute) {
+                    return std::optional<SnapshotTimestamp>{};
+                }
+                SnapshotTimestamp timestamp{*year, *month, *day, *hour, *minute, 0};
+                return validTimestamp(timestamp) ? std::optional{timestamp}
+                                                 : std::optional<SnapshotTimestamp>{};
+            };
+
+            if (text.size() >= 17 && text[2] == '-' && text[5] == '-' &&
+                (text[10] == '_' || text[10] == '-' || text[10] == ' ')) {
+                auto timestamp = parseTimestamp({6, 3, 0, 11, 2, 13});
+                if (timestamp && applyMeridiem(*timestamp, std::string{text.substr(15, 2)})) {
+                    return timestamp;
+                }
+            }
+
+            if (text.size() >= 19 && text[2] == '-' && text[5] == '-' &&
+                (text[10] == ' ' || text[10] == '_')) {
+                const std::size_t hourLength = text[12] == ':' ? 1 : 2;
+                const auto colon = 11 + hourLength;
+                const auto minute = colon + 1;
+                auto marker = minute + 2;
+                if (text.size() > marker && (text[marker] == ' ' || text[marker] == '_')) {
+                    ++marker;
+                }
+                if (text.size() >= marker + 2 && text[colon] == ':') {
+                    auto timestamp = parseTimestamp({6, 3, 0, 11, hourLength, minute});
+                    if (timestamp &&
+                        applyMeridiem(*timestamp, std::string{text.substr(marker, 2)})) {
+                        return timestamp;
+                    }
+                }
+            }
+
+            const auto dateSeparator = [](const char ch) {
+                return ch == '-' || ch == '_' || ch == '/';
+            };
+            if (text.size() >= 16 && dateSeparator(text[4]) && dateSeparator(text[7]) &&
+                (text[10] == ' ' || text[10] == 'T')) {
+                const std::size_t hourLength = (text[12] == ':' || text[12] == '.') ? 1 : 2;
+                const auto separator = 11 + hourLength;
+                const auto minute = separator + 1;
+                if (text.size() >= minute + 2 &&
+                    (text[separator] == ':' || text[separator] == '.')) {
+                    return parseTimestamp({0, 5, 8, 11, hourLength, minute});
+                }
+            }
+            return std::nullopt;
+        }
+
+        std::optional<SnapshotTimestamp> filenameTimestamp(const std::string& value) {
+            for (std::size_t index = 0; index < value.size(); ++index) {
+                if (std::isdigit(static_cast<unsigned char>(value[index])) != 0) {
+                    if (auto timestamp =
+                            filenameTimestampAt(std::string_view{value}.substr(index))) {
+                        return timestamp;
+                    }
+                }
+            }
+            return std::nullopt;
+        }
+
+        std::string timestampKey(const SnapshotTimestamp& timestamp) {
+            std::array<char, 15> buffer{};
+            std::snprintf(buffer.data(), buffer.size(), "%04d%02d%02d%02d%02d%02d", timestamp.year,
+                          timestamp.month, timestamp.day, timestamp.hour, timestamp.minute,
+                          timestamp.second);
+            return buffer.data();
+        }
+
+        std::optional<std::string> snapshotKeyForField(const std::string& value) {
+            if (const auto timestamp = parseExactTimestamp(value)) {
+                return timestampKey(*timestamp);
+            }
+            return std::nullopt;
+        }
+
+        std::optional<std::string> snapshotKeyForFilename(const std::string& value) {
+            if (const auto timestamp = filenameTimestamp(value)) {
+                return timestampKey(*timestamp);
+            }
+            return std::nullopt;
+        }
+
+        std::optional<std::string> snapshotKey(const SsaImportPolicy::Values& values) {
+            static constexpr std::array<std::string_view, 2> keys{"data_planilha",
+                                                                  "data_arquivo_origem"};
+            for (const auto key : keys) {
+                const auto value = valueFor(values, key);
+                if (!value.empty()) {
+                    return snapshotKeyForField(value);
+                }
+            }
+            if (const auto filename = valueFor(values, "arquivo_origem"); !filename.empty()) {
+                if (auto key = snapshotKeyForFilename(filename)) {
+                    return key;
+                }
+            }
+            return snapshotKeyForField(valueFor(values, "data_cadastro"));
+        }
+
+        bool isIndicatorField(const std::string_view key) {
+            static constexpr std::array<std::string_view, 35> indicators{
+                "prazo_limite",
+                "status_execucao_prazo",
+                "tempo_disponivel",
+                "data_limite",
+                "tempo_excedido",
+                "desde",
+                "desde_1",
+                "desde_2",
+                "ate",
+                "ate_1",
+                "ate_2",
+                "tempo_total",
+                "total_tempo_tpe_planejado",
+                "total_tempo_tex_planejado",
+                "total_tempo_tpo_planejado",
+                "total_horas_programadas",
+                "total_tempo_tpe_executada",
+                "total_tempo_tex_executada",
+                "total_tempo_tpo_executada",
+                "semana_executada",
+                "num_reprogramacoes",
+                "total_de_reprogramacoes",
+                "execucao_parcial",
+                "parciais",
+                "situacao_da_parcial",
+                "anomalia",
+                "registros_espera",
+                "situacao_espera",
+                "num_reprobaciones",
+                "numero_desvios",
+                "situacao_de_desvio",
+                "justificativa",
+                "data_inicio_programada",
+                "data_programacao",
+                "data_reprogramacao"};
+            return std::ranges::find(indicators, key) != indicators.end() ||
+                   key == "data_inicio_reprogramada" || key == "situacao_reprogramacao" ||
+                   key == "executado" || key == "concluido";
+        }
+
+        bool isMetadataField(const std::string_view key) {
+            return key == "arquivo_origem" || key == "data_planilha" ||
+                   key == "data_arquivo_origem";
+        }
+
+        bool isConflictField(const std::string_view key) {
+            return key != "numero_ssa" && key != "arquivo_origem" && key != "data_planilha" &&
+                   key != "data_arquivo_origem" && !isIndicatorField(key);
+        }
+
+    } // namespace
+
+    std::string SsaImportPolicy::normalizeNumber(const std::string& value) {
+        auto text = trimCopy(value);
+        if (text.ends_with(".0")) {
+            text.resize(text.size() - 2);
+        }
+        text.erase(std::remove_if(text.begin(), text.end(),
+                                  [](const unsigned char ch) { return std::isspace(ch) != 0; }),
+                   text.end());
+        if (text.size() == 10 && text[4] == '-') {
+            text.erase(4, 1);
+        }
+        if (text.size() != 9 || !std::ranges::all_of(text, [](const unsigned char ch) {
+                return std::isdigit(ch) != 0;
+            })) {
+            return {};
+        }
+        return text;
+    }
+
+    std::string SsaImportPolicy::normalizeSnapshotTimestamp(const std::string& value) {
+        const auto timestamp = parseExactTimestamp(trimCopy(value));
+        if (!timestamp) {
+            return {};
+        }
+        std::array<char, 20> buffer{};
+        std::snprintf(buffer.data(), buffer.size(), "%04d-%02d-%02d %02d:%02d:%02d",
+                      timestamp->year, timestamp->month, timestamp->day, timestamp->hour,
+                      timestamp->minute, timestamp->second);
+        return buffer.data();
+    }
+
+    std::string SsaImportPolicy::normalizeFilenameTimestamp(const std::string& filename) {
+        const auto timestamp = filenameTimestamp(filename);
+        if (!timestamp) {
+            return {};
+        }
+        std::array<char, 20> buffer{};
+        std::snprintf(buffer.data(), buffer.size(), "%04d-%02d-%02d %02d:%02d:%02d",
+                      timestamp->year, timestamp->month, timestamp->day, timestamp->hour,
+                      timestamp->minute, timestamp->second);
+        return buffer.data();
+    }
+
+    SsaImportPolicy::RowValidationIssue SsaImportPolicy::validateRow(const Values& row) {
+        if (normalizeNumber(valueFor(row, "numero_ssa")).empty()) {
+            return RowValidationIssue::InvalidNumber;
+        }
+        if (valueFor(row, "descricao_ssa").empty()) {
+            return RowValidationIssue::MissingDescription;
+        }
+        const auto date = valueFor(row, "data_cadastro");
+        if (date.empty()) {
+            return isDateExemptStatus(valueFor(row, "situacao")) ? RowValidationIssue::None
+                                                                 : RowValidationIssue::MissingDate;
+        }
+        return parseExactTimestamp(date) ? RowValidationIssue::None
+                                         : RowValidationIssue::InvalidDate;
+    }
+
+    bool SsaImportPolicy::isValidRow(const Values& row) {
+        return validateRow(row) == RowValidationIssue::None;
+    }
+
+    SsaImportPolicy::MergeResult SsaImportPolicy::merge(const Values& existing,
+                                                        const Values& incoming) {
+        if (existing.empty()) {
+            return {incoming, !incoming.empty()};
+        }
+        const auto existingSnapshot = snapshotKey(existing);
+        const auto incomingSnapshot = snapshotKey(incoming);
+        if (!existingSnapshot || !incomingSnapshot) {
+            return {existing, false, existing != incoming};
+        }
+        if (*incomingSnapshot < *existingSnapshot) {
+            return {existing, false};
+        }
+
+        auto merged = existing;
+        const bool terminal = isTerminalStatus(valueFor(existing, "situacao"));
+        const bool equalSnapshot = *incomingSnapshot == *existingSnapshot;
+        bool conflict = false;
+        for (const auto& [key, value] : incoming) {
+            const auto normalized = trimCopy(value);
+            const auto current = valueFor(existing, key);
+            if (isMetadataField(key)) {
+                if (!normalized.empty() &&
+                    (!equalSnapshot || current.empty() || normalized < current)) {
+                    merged[key] = normalized;
+                }
+                continue;
+            }
+            if (equalSnapshot && isConflictField(key) && !normalized.empty() && !current.empty() &&
+                normalized != current) {
+                conflict = true;
+            }
+            if (normalized.empty() || (terminal && !isIndicatorField(key)) ||
+                (equalSnapshot && key == "situacao")) {
+                continue;
+            }
+            if (equalSnapshot && !current.empty() && !isIndicatorField(key)) {
+                continue;
+            }
+            merged[key] = normalized;
+        }
+        return {merged, merged != existing, conflict};
+    }
+
+} // namespace ssa::domain

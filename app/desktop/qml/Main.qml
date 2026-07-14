@@ -86,7 +86,8 @@ ApplicationWindow {
             title: "Importacao"
 
             MenuItem {
-                text: "Importar XLS/XLSX externo"
+                objectName: "openImportDataMenuItem"
+                text: "Importar XLSX externo"
                 enabled: !root.vm.actions.workflows.running
                 onTriggered: fileDialogs.openImportData()
             }
@@ -102,9 +103,9 @@ ApplicationWindow {
             }
             MenuSeparator {}
             MenuItem {
-                text: "Atualizar derivadas"
+                text: "Limpar referencias orfas"
                 enabled: !root.vm.actions.workflows.running
-                onTriggered: root.vm.actions.workflows.syncDerivadas()
+                onTriggered: root.vm.actions.workflows.cleanOrphanDerivations()
             }
         }
 
@@ -231,9 +232,9 @@ ApplicationWindow {
             }
             MenuSeparator {}
             MenuItem {
-                text: "Atualizar derivadas"
+                text: "Limpar referencias orfas"
                 enabled: !root.vm.actions.workflows.running
-                onTriggered: root.vm.actions.workflows.syncDerivadas()
+                onTriggered: root.vm.actions.workflows.cleanOrphanDerivations()
             }
             MenuItem {
                 text: "Compactar DB"
@@ -302,7 +303,7 @@ ApplicationWindow {
                 spacing: Theme.gap
 
                 ActionButton {
-                    text: "Importar XLS"
+                    text: "Importar XLSX"
                     enabled: !root.vm.actions.workflows.running
                     implicitWidth: 112
                     onClicked: fileDialogs.openImportData()

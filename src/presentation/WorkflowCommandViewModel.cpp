@@ -80,9 +80,10 @@ namespace ssa::presentation {
         case Operation::ImportExternalFiles:
             return {tr("Importando arquivos..."), tr("Importacao concluida"),
                     tr("Falha ao importar arquivos"), tr("Importacao cancelada")};
-        case Operation::SyncDerivadas:
-            return {tr("Sincronizando derivadas..."), tr("Sincronizacao de derivadas concluida"),
-                    tr("Falha ao sincronizar derivadas"), tr("Sincronizacao cancelada")};
+        case Operation::CleanOrphanDerivations:
+            return {tr("Limpando referencias orfas..."),
+                    tr("Limpeza de referencias orfas concluida"),
+                    tr("Falha ao limpar referencias orfas"), tr("Limpeza cancelada")};
         case Operation::CompactDatabase:
             return {tr("Compactando banco..."), tr("Banco compactado"),
                     tr("Falha ao compactar banco"), tr("Compactacao cancelada")};
@@ -193,12 +194,12 @@ namespace ssa::presentation {
         startRescan(ports::RescanMode::Full);
     }
 
-    void WorkflowCommandViewModel::syncDerivadas() {
+    void WorkflowCommandViewModel::cleanOrphanDerivations() {
         if (runner_.running()) {
             return;
         }
-        operation_ = Operation::SyncDerivadas;
-        runner_.syncDerivadas();
+        operation_ = Operation::CleanOrphanDerivations;
+        runner_.cleanOrphanDerivations();
     }
 
     void WorkflowCommandViewModel::compactDatabase() {

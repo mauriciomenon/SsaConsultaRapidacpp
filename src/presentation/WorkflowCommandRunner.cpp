@@ -61,7 +61,6 @@ namespace ssa::presentation {
         }
 
         ports::ImportExternalFilesRequest request;
-        request.optimized = true;
         request.files.reserve(files.size());
         for (const auto& path : files) {
             request.files.emplace_back(qt::toFileSystemPath(path));
@@ -85,8 +84,6 @@ namespace ssa::presentation {
 
         ports::RescanRequest request;
         request.mode = mode;
-        request.allowFileDiscovery = true;
-        request.optimized = mode == ports::RescanMode::Incremental;
 
         auto workflows = workflows_;
         start([workflows = std::move(workflows), request](const std::stop_token& stopToken) {
@@ -111,19 +108,19 @@ namespace ssa::presentation {
         });
     }
 
-    void WorkflowCommandRunner::syncDerivadas() {
+    void WorkflowCommandRunner::cleanOrphanDerivations() {
         if (running() || shuttingDown_) {
             return;
         }
         if (!workflows_) {
-            emit this->finished(
-                {ports::WorkflowStatus::Failed, "sync derivadas workflow is not configured"});
+            emit this->finished({ports::WorkflowStatus::Failed,
+                                 "orphan derivation cleanup workflow is not configured"});
             return;
         }
 
         auto workflows = workflows_;
         start([workflows = std::move(workflows)](const std::stop_token& stopToken) {
-            return workflows->syncDerivadas(stopToken);
+            return workflows->cleanOrphanDerivations(stopToken);
         });
     }
 

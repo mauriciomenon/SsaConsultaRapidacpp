@@ -3,15 +3,18 @@
 #include "infra/import/XlsxPackage.h"
 
 #include <QByteArray>
+#include <QDate>
 #include <QDir>
 #include <QString>
 #include <QXmlStreamReader>
 
 #include <algorithm>
+#include <cmath>
 #include <optional>
 #include <stdexcept>
 #include <string>
 #include <system_error>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -164,8 +167,140 @@ namespace ssa::infra::importing {
             }
         }
 
+        bool isBuiltInDateFormat(const unsigned formatId) {
+            return (formatId >= 14 && formatId <= 22) || (formatId >= 27 && formatId <= 36) ||
+                   (formatId >= 45 && formatId <= 47) || (formatId >= 50 && formatId <= 58);
+        }
+
+        bool isCustomDateFormat(const QStringView formatCode) {
+            bool quoted = false;
+            for (qsizetype index = 0; index < formatCode.size(); ++index) {
+                const auto character = formatCode[index];
+                if (character == '\\') {
+                    ++index;
+                    continue;
+                }
+                if (character == '"') {
+                    quoted = !quoted;
+                    continue;
+                }
+                if (quoted) {
+                    continue;
+                }
+                if (character == '_' || character == '*') {
+                    ++index;
+                    continue;
+                }
+                if (character == '[') {
+                    while (index < formatCode.size() && formatCode[index] != ']') {
+                        ++index;
+                    }
+                    continue;
+                }
+                const auto lower = character.toLower();
+                if (lower == 'y' || lower == 'd') {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        std::vector<bool> parseDateStyles(const std::string& xml,
+                                          const std::stop_token& stopToken) {
+            std::vector<unsigned> formatIds;
+            std::unordered_set<unsigned> customDateFormats;
+            if (xml.empty()) {
+                return {};
+            }
+            QXmlStreamReader reader(xmlBytes(xml));
+            XmlReadBudget budget(stopToken);
+            bool inCellFormats = false;
+            while (!reader.atEnd()) {
+                reader.readNext();
+                recordXmlToken(reader, budget);
+                if (reader.isStartElement() && reader.name() == "numFmt") {
+                    bool parsed = false;
+                    const auto formatId = reader.attributes().value("numFmtId").toUInt(&parsed);
+                    if (parsed && isCustomDateFormat(reader.attributes().value("formatCode"))) {
+                        customDateFormats.insert(formatId);
+                    }
+                } else if (reader.isStartElement() && reader.name() == "cellXfs") {
+                    inCellFormats = true;
+                } else if (inCellFormats && reader.isStartElement() && reader.name() == "xf") {
+                    bool parsed = false;
+                    const auto formatId = reader.attributes().value("numFmtId").toUInt(&parsed);
+                    formatIds.push_back(parsed ? formatId : 0);
+                } else if (reader.isEndElement() && reader.name() == "cellXfs") {
+                    inCellFormats = false;
+                }
+            }
+            if (reader.hasError()) {
+                throw std::runtime_error("cannot parse xlsx styles");
+            }
+            std::vector<bool> dateStyles;
+            dateStyles.reserve(formatIds.size());
+            for (const auto formatId : formatIds) {
+                dateStyles.push_back(isBuiltInDateFormat(formatId) ||
+                                     customDateFormats.contains(formatId));
+            }
+            return dateStyles;
+        }
+
+        bool usesDate1904(const std::string& workbookXml, const std::stop_token& stopToken) {
+            QXmlStreamReader reader(xmlBytes(workbookXml));
+            XmlReadBudget budget(stopToken);
+            while (!reader.atEnd()) {
+                reader.readNext();
+                recordXmlToken(reader, budget);
+                if (reader.isStartElement() && reader.name() == "workbookPr") {
+                    const auto value = reader.attributes().value("date1904").toString().toLower();
+                    return value == "1" || value == "true";
+                }
+            }
+            if (reader.hasError()) {
+                throw std::runtime_error("cannot parse xlsx workbook properties");
+            }
+            return false;
+        }
+
+        std::string excelDateValue(const QString& rawValue, const bool date1904) {
+            bool parsed = false;
+            const double serial = rawValue.toDouble(&parsed);
+            if (!parsed || !std::isfinite(serial) || serial < 0.0) {
+                throw std::runtime_error("invalid xlsx date serial");
+            }
+            auto wholeDays = static_cast<qint64>(std::floor(serial));
+            auto seconds = static_cast<qint64>(
+                std::llround((serial - static_cast<double>(wholeDays)) * 86'400.0));
+            if (seconds == 86'400) {
+                ++wholeDays;
+                seconds = 0;
+            }
+            QDate baseDate = date1904 ? QDate{1904, 1, 1} : QDate{1899, 12, 31};
+            if (!date1904 && wholeDays >= 60) {
+                --wholeDays;
+            }
+            const auto date = baseDate.addDays(wholeDays);
+            if (!date.isValid()) {
+                throw std::runtime_error("xlsx date serial out of supported range");
+            }
+            const auto hours = seconds / 3'600;
+            const auto minutes = (seconds % 3'600) / 60;
+            const auto remainingSeconds = seconds % 60;
+            return QStringLiteral("%1T%2:%3:%4")
+                .arg(date.toString(QStringLiteral("yyyy-MM-dd")))
+                .arg(hours, 2, 10, QChar{'0'})
+                .arg(minutes, 2, 10, QChar{'0'})
+                .arg(remainingSeconds, 2, 10, QChar{'0'})
+                .toStdString();
+        }
+
         std::string decodeCellValue(const QString& rawValue, const QStringView type,
-                                    const std::vector<std::string>& sharedStrings) {
+                                    const std::vector<std::string>& sharedStrings,
+                                    const bool dateStyle, const bool date1904) {
+            if (rawValue.isEmpty()) {
+                return {};
+            }
             if (type == "s") {
                 bool parsed = false;
                 const auto index = rawValue.toInt(&parsed);
@@ -175,19 +310,32 @@ namespace ssa::infra::importing {
                 }
                 return {};
             }
+            if (dateStyle && (type.empty() || type == "n")) {
+                return excelDateValue(rawValue, date1904);
+            }
             return rawValue.toStdString();
         }
 
-        QString readCellRawValue(QXmlStreamReader& reader, XmlReadBudget& budget,
-                                 XmlTextBudget& textBudget) {
-            QString rawValue;
+        struct CellRawValue {
+            QString text;
+            bool hasFormula = false;
+            bool hasCachedValue = false;
+        };
+
+        CellRawValue readCellRawValue(QXmlStreamReader& reader, XmlReadBudget& budget,
+                                      XmlTextBudget& textBudget) {
+            CellRawValue value;
             while (!reader.atEnd() && !reader.hasError()) {
                 reader.readNext();
                 if (reader.atEnd()) {
                     break;
                 }
                 recordXmlToken(reader, budget);
-                if (reader.isStartElement() && (reader.name() == "v" || reader.name() == "t")) {
+                if (reader.isStartElement() && reader.name() == "f") {
+                    value.hasFormula = true;
+                } else if (reader.isStartElement() &&
+                           (reader.name() == "v" || reader.name() == "t")) {
+                    value.hasCachedValue = true;
                     while (!reader.atEnd() && !reader.hasError()) {
                         reader.readNext();
                         if (reader.atEnd()) {
@@ -195,7 +343,7 @@ namespace ssa::infra::importing {
                         }
                         recordXmlToken(reader, budget);
                         if (reader.isCharacters()) {
-                            appendCharacters(rawValue, reader.text(), textBudget);
+                            appendCharacters(value.text, reader.text(), textBudget);
                         } else if (reader.isEndElement() &&
                                    (reader.name() == "v" || reader.name() == "t")) {
                             break;
@@ -205,7 +353,7 @@ namespace ssa::infra::importing {
                     break;
                 }
             }
-            return rawValue;
+            return value;
         }
 
         std::string normalizeWorksheetTarget(const std::string& target) {
@@ -236,9 +384,10 @@ namespace ssa::infra::importing {
         class SheetRowsParser final {
           public:
             SheetRowsParser(const std::string& xml, const std::vector<std::string>& sharedStrings,
+                            const std::vector<bool>& dateStyles, const bool date1904,
                             std::stop_token stopToken)
-                : reader_(xmlBytes(xml)), sharedStrings_(sharedStrings),
-                  readBudget_(std::move(stopToken)) {}
+                : reader_(xmlBytes(xml)), sharedStrings_(sharedStrings), dateStyles_(dateStyles),
+                  date1904_(date1904), readBudget_(std::move(stopToken)) {}
 
             [[nodiscard]] std::vector<std::vector<std::string>> parse() {
                 while (!reader_.atEnd()) {
@@ -288,15 +437,23 @@ namespace ssa::infra::importing {
                 const auto attributes = reader_.attributes();
                 const auto ref = attributes.value("r");
                 const auto type = attributes.value("t");
+                bool styleParsed = false;
+                const auto styleIndex = attributes.value("s").toUInt(&styleParsed);
                 const auto columnIndex = columnIndexFromCellRef(ref);
-                const QString rawValue = readCellRawValue(reader_, readBudget_, textBudget_);
+                const auto rawValue = readCellRawValue(reader_, readBudget_, textBudget_);
+                if (rawValue.hasFormula && !rawValue.hasCachedValue) {
+                    throw std::runtime_error("xlsx formula cell has no cached value");
+                }
                 if (!columnIndex && !ref.isEmpty()) {
                     return;
                 }
                 const auto resolvedColumn =
                     columnIndex ? static_cast<std::size_t>(*columnIndex) : nextColumnIndex_;
                 currentRow_.resize(std::max<std::size_t>(currentRow_.size(), resolvedColumn + 1));
-                currentRow_[resolvedColumn] = decodeCellValue(rawValue, type, sharedStrings_);
+                const bool dateStyle =
+                    styleParsed && styleIndex < dateStyles_.size() && dateStyles_[styleIndex];
+                currentRow_[resolvedColumn] =
+                    decodeCellValue(rawValue.text, type, sharedStrings_, dateStyle, date1904_);
                 nextColumnIndex_ = resolvedColumn + 1;
                 ++totalCells_;
                 if (totalCells_ > kMaxWorksheetCells) {
@@ -321,6 +478,8 @@ namespace ssa::infra::importing {
 
             QXmlStreamReader reader_;
             const std::vector<std::string>& sharedStrings_;
+            const std::vector<bool>& dateStyles_;
+            bool date1904_ = false;
             std::vector<std::vector<std::string>> rows_;
             std::vector<std::string> currentRow_;
             bool inRow_ = false;
@@ -346,9 +505,15 @@ namespace ssa::infra::importing {
             worksheetEntryForRelationship({relationships, relationshipId}, stopToken);
         const auto sharedStrings = parseSharedStrings(
             package.textEntry("xl/sharedStrings.xml", false, stopToken), stopToken);
+        const auto dateStyles =
+            parseDateStyles(package.textEntry("xl/styles.xml", false, stopToken), stopToken);
+        const bool date1904 = usesDate1904(workbook, stopToken);
         throwIfImportCanceled(stopToken);
         const auto sheetXml = package.textEntry(worksheetEntry, true, stopToken);
-        return SpreadsheetTable{filePath, parseSheetRows(sheetXml, sharedStrings, stopToken)};
+        SpreadsheetTable table;
+        table.sourcePath = filePath;
+        table.rows = parseSheetRows(sheetXml, sharedStrings, dateStyles, date1904, stopToken);
+        return table;
     }
 
     std::vector<std::string>
@@ -449,8 +614,9 @@ namespace ssa::infra::importing {
     std::vector<std::vector<std::string>>
     XlsxWorkbookReader::parseSheetRows(const std::string& xml,
                                        const std::vector<std::string>& sharedStrings,
+                                       const std::vector<bool>& dateStyles, const bool date1904,
                                        const std::stop_token& stopToken) {
-        return SheetRowsParser{xml, sharedStrings, stopToken}.parse();
+        return SheetRowsParser{xml, sharedStrings, dateStyles, date1904, stopToken}.parse();
     }
 
 } // namespace ssa::infra::importing

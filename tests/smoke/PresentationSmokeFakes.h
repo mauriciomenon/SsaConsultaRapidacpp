@@ -301,10 +301,10 @@ namespace ssa::tests::presentation_smoke {
       public:
         explicit CapturingDerivadasPort(
             ssa::ports::WorkflowResult result = {ssa::ports::WorkflowStatus::Succeeded,
-                                                 "derivadas sync completed"})
+                                                 "orphan derivation cleanup completed"})
             : nextResult_(std::move(result)) {}
 
-        ssa::ports::WorkflowResult syncDerivadas(std::stop_token = {}) override {
+        ssa::ports::WorkflowResult cleanOrphanDerivations(std::stop_token = {}) override {
             const std::scoped_lock lock(mutex_);
             ++syncCalls_;
             return nextResult_;

@@ -287,6 +287,19 @@ namespace {
             QTRY_VERIFY_WITH_TIMEOUT(databaseDialog->property("visible").toBool(), 1000);
             QVERIFY(QMetaObject::invokeMethod(databaseDialog, "close"));
 
+            auto* openImportData =
+                mainWindow->findChild<QObject*>(QStringLiteral("openImportDataMenuItem"));
+            QVERIFY(openImportData != nullptr);
+            QVERIFY(QMetaObject::invokeMethod(openImportData, "triggered"));
+            auto* importDataDialog =
+                mainWindow->findChild<QObject*>(QStringLiteral("importDataFileDialog"));
+            QVERIFY(importDataDialog != nullptr);
+            QCOMPARE(importDataDialog->property("title").toString(),
+                     QStringLiteral("Importar XLSX externo"));
+            QCOMPARE(importDataDialog->property("nameFilters").toStringList(),
+                     QStringList{QStringLiteral("Planilhas XLSX (*.xlsx)")});
+            QVERIFY(QMetaObject::invokeMethod(importDataDialog, "close"));
+
             viewModel.databaseSwitch()->openDatabase(
                 QUrl{QStringLiteral("https://example.invalid/not-local.db")});
             auto* errorDialog =

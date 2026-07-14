@@ -1,5 +1,6 @@
 #include "infra/sqlite/SqliteSsaImportWriter.h"
 
+#include "domain/SsaImportPolicy.h"
 #include "domain/SsaTypes.h"
 #include "infra/sqlite/SqliteConnection.h"
 #include "infra/sqlite/SqliteProgressHandler.h"
@@ -107,6 +108,15 @@ namespace ssa::infra::sqlite {
                    query::quoteColumnIdentifier(ssaNumberColumn) + ")";
         }
 
+        std::string createUniqueSsaNumberIndexSql(const std::string& tableName) {
+            const auto ssaNumberColumn = std::string{domain::kSsaNumberColumnKey};
+            return "CREATE UNIQUE INDEX IF NOT EXISTS " +
+                   query::quoteTableIdentifier("ux_" + tableName + "_" + ssaNumberColumn) + " ON " +
+                   query::quoteTableIdentifier(tableName) + " (" +
+                   query::quoteColumnIdentifier(ssaNumberColumn) + ") WHERE TRIM(COALESCE(" +
+                   query::quoteColumnIdentifier(ssaNumberColumn) + ", '')) <> ''";
+        }
+
         // Columns used by interactive filters/sorts/distinct lookups. Indexing them
         // turns the common browse/filter/distinct queries from full table scans into
         // index lookups on large datasets. IF NOT EXISTS keeps this idempotent and
@@ -159,6 +169,37 @@ namespace ssa::infra::sqlite {
             return sql.str();
         }
 
+        std::string selectExistingSql(const std::string& tableName,
+                                      const std::vector<domain::ColumnDef>& columns) {
+            std::ostringstream sql;
+            sql << "SELECT ";
+            for (std::size_t index = 0; index < columns.size(); ++index) {
+                if (index > 0) {
+                    sql << ", ";
+                }
+                sql << query::quoteColumnIdentifier(columns[index].key);
+            }
+            sql << " FROM " << query::quoteTableIdentifier(tableName) << " WHERE "
+                << query::quoteColumnIdentifier(std::string{domain::kSsaNumberColumnKey})
+                << " = ? LIMIT 1";
+            return sql.str();
+        }
+
+        std::string updateSql(const std::string& tableName,
+                              const std::vector<domain::ColumnDef>& columns) {
+            std::ostringstream sql;
+            sql << "UPDATE " << query::quoteTableIdentifier(tableName) << " SET ";
+            for (std::size_t index = 0; index < columns.size(); ++index) {
+                if (index > 0) {
+                    sql << ", ";
+                }
+                sql << query::quoteColumnIdentifier(columns[index].key) << " = ?";
+            }
+            sql << " WHERE "
+                << query::quoteColumnIdentifier(std::string{domain::kSsaNumberColumnKey}) << " = ?";
+            return sql.str();
+        }
+
         const std::string* rowValuePtr(const importing::SsaImportRow& row, const std::string& key) {
             const auto found = row.find(key);
             return found == row.end() ? nullptr : &found->second;
@@ -168,6 +209,10 @@ namespace ssa::infra::sqlite {
             return std::ranges::any_of(columns, [](const domain::ColumnDef& column) {
                 return column.key == domain::kSsaNumberColumnKey;
             });
+        }
+
+        bool isSsaReferenceColumn(const std::string_view key) {
+            return key == "derivada_de" || key.starts_with("numero_ssa_relacionada_");
         }
 
         void validateIdentityColumns(const std::vector<domain::ColumnDef>& columns) {
@@ -213,41 +258,93 @@ namespace ssa::infra::sqlite {
             statement.bindTextOneBased(index, *value);
         }
 
-        void prepareImportNumberTable(sqlite3* db) {
-            const auto ssaNumberColumn = std::string{domain::kSsaNumberColumnKey};
-            executeSql(db, "CREATE TEMP TABLE IF NOT EXISTS temp_ssa_import_numbers (" +
-                               query::quoteColumnIdentifier(ssaNumberColumn) +
-                               " TEXT PRIMARY KEY)");
-        }
-
-        std::string insertImportNumberSql() {
-            const auto ssaNumberColumn = std::string{domain::kSsaNumberColumnKey};
-            return "INSERT OR IGNORE INTO temp_ssa_import_numbers(" +
-                   query::quoteColumnIdentifier(ssaNumberColumn) + ") VALUES (?)";
-        }
-
-        std::string deleteExistingRowsSql(const std::string& tableName) {
-            const auto ssaNumberColumn = std::string{domain::kSsaNumberColumnKey};
-            return "DELETE FROM " + query::quoteTableIdentifier(tableName) + " WHERE " +
-                   query::quoteColumnIdentifier(ssaNumberColumn) + " IN (SELECT " +
-                   query::quoteColumnIdentifier(ssaNumberColumn) + " FROM temp_ssa_import_numbers)";
-        }
-
-        void deleteExistingRowsByNumber(sqlite3* db, const std::vector<std::string>& numbers,
-                                        SqliteStatement& insertNumber,
-                                        SqliteStatement& deleteExistingRows) {
-            if (numbers.empty()) {
-                return;
-            }
-            executeSql(db, "DELETE FROM temp_ssa_import_numbers");
-            for (const auto& value : numbers) {
-                if (value.empty()) {
+        std::size_t normalizeExistingSsaNumbers(sqlite3* db, const std::string& tableName,
+                                                const std::vector<domain::ColumnDef>& columns,
+                                                const std::stop_token& stopToken,
+                                                const std::atomic_bool* busyCancellationObserved) {
+            const auto numberColumn =
+                query::quoteColumnIdentifier(std::string{domain::kSsaNumberColumnKey});
+            std::vector<std::string> referenceColumns;
+            std::string selectSql = "SELECT rowid, COALESCE(" + numberColumn + ", '')";
+            for (const auto& column : columns) {
+                if (!isSsaReferenceColumn(column.key)) {
                     continue;
                 }
-                insertNumber.bindTextOneBased(1, value);
-                insertNumber.executeAndReset();
+                referenceColumns.push_back(column.key);
+                selectSql += ", COALESCE(" + query::quoteColumnIdentifier(column.key) + ", '')";
             }
-            deleteExistingRows.executeAndReset();
+            selectSql += " FROM " + query::quoteTableIdentifier(tableName);
+            SqliteStatement select(db, selectSql, busyCancellationObserved);
+            struct ExistingNumber {
+                long long rowId = 0;
+                std::string raw;
+                std::string normalized;
+                std::vector<std::string> rawReferences;
+                std::vector<std::string> normalizedReferences;
+            };
+            std::vector<ExistingNumber> numbers;
+            std::unordered_set<std::string> normalizedNumbers;
+            while (select.step()) {
+                throwIfCanceled(stopToken);
+                ExistingNumber number{select.columnInt64(0), select.columnText(1), {}};
+                number.normalized = domain::SsaImportPolicy::normalizeNumber(number.raw);
+                if (number.normalized.empty()) {
+                    throw ports::OperationError("Falha ao validar identificadores SSA existentes",
+                                                "invalid SSA number in existing database");
+                }
+                if (!normalizedNumbers.insert(number.normalized).second) {
+                    throw ports::OperationError("Falha ao validar identificadores SSA existentes",
+                                                "semantic SSA collision in existing database");
+                }
+                number.rawReferences.reserve(referenceColumns.size());
+                number.normalizedReferences.reserve(referenceColumns.size());
+                for (std::size_t index = 0; index < referenceColumns.size(); ++index) {
+                    auto raw = select.columnText(static_cast<int>(index + 2));
+                    auto normalized =
+                        raw.empty() ? std::string{} : domain::SsaImportPolicy::normalizeNumber(raw);
+                    if (!raw.empty() && normalized.empty()) {
+                        throw ports::OperationError("Falha ao validar referencias SSA existentes",
+                                                    "invalid SSA reference in existing database");
+                    }
+                    number.rawReferences.push_back(std::move(raw));
+                    number.normalizedReferences.push_back(std::move(normalized));
+                }
+                numbers.push_back(std::move(number));
+            }
+
+            std::string normalizationSql = "UPDATE " + query::quoteTableIdentifier(tableName) +
+                                           " SET " + numberColumn + " = ?";
+            for (const auto& referenceColumn : referenceColumns) {
+                const auto quoted = query::quoteColumnIdentifier(referenceColumn);
+                normalizationSql.append(", ")
+                    .append(quoted)
+                    .append(" = CASE WHEN ")
+                    .append(quoted)
+                    .append(" IS NOT NULL AND TRIM(")
+                    .append(quoted)
+                    .append(") <> '' THEN ? ELSE ")
+                    .append(quoted)
+                    .append(" END");
+            }
+            normalizationSql += " WHERE rowid = ?";
+            SqliteStatement update(db, normalizationSql, busyCancellationObserved);
+            std::size_t changedRows = 0;
+            for (const auto& number : numbers) {
+                throwIfCanceled(stopToken);
+                const bool referencesChanged = number.rawReferences != number.normalizedReferences;
+                if (number.raw == number.normalized && !referencesChanged) {
+                    continue;
+                }
+                int bindIndex = 1;
+                update.bindTextOneBased(bindIndex++, number.normalized);
+                for (const auto& normalizedReference : number.normalizedReferences) {
+                    update.bindTextOneBased(bindIndex++, normalizedReference);
+                }
+                update.bindInt64OneBased(bindIndex, number.rowId);
+                update.executeAndReset();
+                changedRows += static_cast<std::size_t>(sqlite3_changes(db));
+            }
+            return changedRows;
         }
 
     } // namespace
@@ -289,22 +386,28 @@ namespace ssa::infra::sqlite {
             try {
                 executeSql(db, createTableSql(this->tableName, columns),
                            busy.cancellationObserved());
+                if (replaceAll) {
+                    executeSql(db, "DELETE FROM " + query::quoteTableIdentifier(this->tableName),
+                               busy.cancellationObserved());
+                } else {
+                    const auto normalizedRows = normalizeExistingSsaNumbers(
+                        db, this->tableName, columns, this->stopToken, busy.cancellationObserved());
+                    summary.rowsWritten += normalizedRows;
+                    summary.rowsUpdated += normalizedRows;
+                }
                 executeSql(db, createSsaNumberIndexSql(this->tableName),
+                           busy.cancellationObserved());
+                executeSql(db, createUniqueSsaNumberIndexSql(this->tableName),
                            busy.cancellationObserved());
                 for (const auto& indexSql : createFilterIndexesSql(this->tableName, columns)) {
                     executeSql(db, indexSql, busy.cancellationObserved());
                 }
-                prepareImportNumberTable(db);
-                if (replaceAll) {
-                    executeSql(db, "DELETE FROM " + query::quoteTableIdentifier(this->tableName),
-                               busy.cancellationObserved());
-                }
                 insert = std::make_unique<SqliteStatement>(db, insertSql(this->tableName, columns),
                                                            busy.cancellationObserved());
-                insertNumber = std::make_unique<SqliteStatement>(db, insertImportNumberSql(),
-                                                                 busy.cancellationObserved());
-                deleteExisting = std::make_unique<SqliteStatement>(
-                    db, deleteExistingRowsSql(this->tableName), busy.cancellationObserved());
+                selectExisting = std::make_unique<SqliteStatement>(
+                    db, selectExistingSql(this->tableName, columns), busy.cancellationObserved());
+                update = std::make_unique<SqliteStatement>(db, updateSql(this->tableName, columns),
+                                                           busy.cancellationObserved());
             } catch (...) {
                 rollback();
                 throw;
@@ -327,8 +430,9 @@ namespace ssa::infra::sqlite {
             }
         }
 
-        void write(const importing::ResolvedSsaImportRows& rows,
-                   const importing::SsaImportWriteSummary& batchSummary) {
+        [[nodiscard]] importing::SsaImportBatchWriteSummary
+        write(const importing::ResolvedSsaImportRows& rows,
+              const importing::SsaImportWriteSummary& batchSummary) {
             if (state != State::Active) {
                 throw std::logic_error("sqlite import session is closed");
             }
@@ -336,21 +440,81 @@ namespace ssa::infra::sqlite {
             summary.files += batchSummary.files;
             summary.skippedRows += batchSummary.skippedRows;
             summary.duplicateRows += rows.duplicateRows;
-
-            auto* db = connection.handle();
-            deleteExistingRowsByNumber(db, rows.ssaNumbersForUpsertDelete, *insertNumber,
-                                       *deleteExisting);
+            summary.conflictRows += rows.conflictRows;
+            importing::SsaImportBatchWriteSummary result;
+            result.conflictRows = rows.conflictRows;
+            const auto ssaNumberKey = std::string{domain::kSsaNumberColumnKey};
 
             for (const auto& row : rows.rows) {
                 throwIfCanceled(stopToken);
+                auto normalizedRow = row;
+                const auto number = domain::SsaImportPolicy::normalizeNumber(
+                    importing::rowValue(row, ssaNumberKey));
+                if (number.empty()) {
+                    throw ports::OperationError("Falha ao validar identificador SSA importado",
+                                                "invalid SSA number in import batch");
+                }
+                normalizedRow[ssaNumberKey] = number;
+                for (const auto& column : columns) {
+                    if (!isSsaReferenceColumn(column.key)) {
+                        continue;
+                    }
+                    const auto reference = normalizedRow.find(column.key);
+                    if (reference == normalizedRow.end() || reference->second.empty()) {
+                        continue;
+                    }
+                    const auto normalizedReference =
+                        domain::SsaImportPolicy::normalizeNumber(reference->second);
+                    if (normalizedReference.empty()) {
+                        throw ports::OperationError("Falha ao validar referencia SSA importada",
+                                                    "invalid SSA reference in import batch");
+                    }
+                    reference->second = normalizedReference;
+                }
+                selectExisting->bindTextOneBased(1, number);
+                domain::SsaImportPolicy::Values existing;
+                if (selectExisting->step()) {
+                    for (int index = 0; index < selectExisting->columnCount(); ++index) {
+                        if (sqlite3_column_type(selectExisting->handle(), index) != SQLITE_NULL) {
+                            existing.emplace(selectExisting->columnName(index),
+                                             selectExisting->columnText(index));
+                        }
+                    }
+                }
+                selectExisting->resetAndClearBindings();
+
+                const auto merged = domain::SsaImportPolicy::merge(existing, normalizedRow);
+                if (merged.conflict) {
+                    ++summary.conflictRows;
+                    ++result.conflictRows;
+                    return result;
+                }
+                if (!existing.empty() && !merged.changed) {
+                    ++summary.rowsUnchanged;
+                    ++result.rowsUnchanged;
+                    continue;
+                }
+                auto& statement = existing.empty() ? *insert : *update;
                 int bindIndex = 1;
                 for (const auto& column : columns) {
-                    bindValue(*insert, bindIndex, column, rowValuePtr(row, column.key));
+                    bindValue(statement, bindIndex, column, rowValuePtr(merged.values, column.key));
                     ++bindIndex;
                 }
-                insert->executeAndReset();
+                if (!existing.empty()) {
+                    update->bindTextOneBased(bindIndex, number);
+                }
+                statement.executeAndReset();
                 ++summary.rowsWritten;
+                ++result.rowsWritten;
+                if (existing.empty()) {
+                    ++summary.rowsInserted;
+                    ++result.rowsInserted;
+                } else {
+                    ++summary.rowsUpdated;
+                    ++result.rowsUpdated;
+                }
             }
+            return result;
         }
 
         [[nodiscard]] importing::SsaImportWriteSummary finish() {
@@ -386,8 +550,8 @@ namespace ssa::infra::sqlite {
         std::vector<domain::ColumnDef> columns;
         std::string tableName;
         std::unique_ptr<SqliteStatement> insert;
-        std::unique_ptr<SqliteStatement> insertNumber;
-        std::unique_ptr<SqliteStatement> deleteExisting;
+        std::unique_ptr<SqliteStatement> selectExisting;
+        std::unique_ptr<SqliteStatement> update;
         importing::SsaImportWriteSummary summary;
         State state = State::Active;
     };
@@ -402,12 +566,13 @@ namespace ssa::infra::sqlite {
     SqliteSsaImportWriter::WriteSession&
     SqliteSsaImportWriter::WriteSession::operator=(WriteSession&&) noexcept = default;
 
-    void SqliteSsaImportWriter::WriteSession::write(const importing::ResolvedSsaImportRows& rows,
-                                                    const std::size_t fileCount,
-                                                    const std::size_t skippedRows) {
+    importing::SsaImportBatchWriteSummary
+    SqliteSsaImportWriter::WriteSession::write(const importing::ResolvedSsaImportRows& rows,
+                                               const std::size_t fileCount,
+                                               const std::size_t skippedRows) {
         const importing::SsaImportWriteSummary batchSummary{.files = fileCount,
                                                             .skippedRows = skippedRows};
-        storage_->write(rows, batchSummary);
+        return storage_->write(rows, batchSummary);
     }
 
     importing::SsaImportWriteSummary SqliteSsaImportWriter::WriteSession::finish() {
@@ -423,7 +588,10 @@ namespace ssa::infra::sqlite {
                                  const std::size_t fileCount, const std::size_t skippedRows,
                                  const bool replaceAll, std::stop_token stopToken) const {
         auto session = startSession(replaceAll, std::move(stopToken));
-        session.write(rows, fileCount, skippedRows);
+        if (session.write(rows, fileCount, skippedRows).conflictRows > 0) {
+            session.rollback();
+            throw ports::OperationError("SSA import was rejected", "duplicate_conflict");
+        }
         return session.finish();
     }
 

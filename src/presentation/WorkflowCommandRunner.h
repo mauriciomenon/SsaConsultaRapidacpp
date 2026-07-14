@@ -34,7 +34,7 @@ namespace ssa::presentation {
         void importExternalFiles(const std::vector<QString>& files);
         void rescan(ports::RescanMode mode);
         void refreshSam(ports::SamRefreshRequest request);
-        void syncDerivadas();
+        void cleanOrphanDerivations();
         void compactDatabase();
         void cancel();
         void shutdown();

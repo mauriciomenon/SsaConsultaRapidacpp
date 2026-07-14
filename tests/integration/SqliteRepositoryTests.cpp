@@ -844,7 +844,7 @@ TEST_CASE("sqlite derivadas port clears orphan derivadas") {
         repository.recordBySsaNumber(ssa::domain::SsaNumber{"202500003"})->valueOf("derivada_de") ==
         "202400001");
 
-    const auto result = derivadasPort.syncDerivadas();
+    const auto result = derivadasPort.cleanOrphanDerivations();
 
     const auto after = repository.recordBySsaNumber(ssa::domain::SsaNumber{"202500003"});
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
@@ -858,7 +858,7 @@ TEST_CASE("sqlite derivadas rejects a stopped token before changing data") {
     std::stop_source stopSource;
     stopSource.request_stop();
 
-    const auto result = derivadasPort.syncDerivadas(stopSource.get_token());
+    const auto result = derivadasPort.cleanOrphanDerivations(stopSource.get_token());
     const ssa::infra::sqlite::SqliteSsaRepository repository(fixture.path);
     const auto record = repository.recordBySsaNumber(ssa::domain::SsaNumber{"202500003"});
 
@@ -876,8 +876,9 @@ TEST_CASE("sqlite derivadas stops promptly while locked and remains reusable") {
             SQLITE_OK);
     ssa::infra::sqlite::SqliteDerivadasPort derivadas(fixture.path);
     std::stop_source stopSource;
-    auto operation = std::async(std::launch::async,
-                                [&] { return derivadas.syncDerivadas(stopSource.get_token()); });
+    auto operation = std::async(std::launch::async, [&] {
+        return derivadas.cleanOrphanDerivations(stopSource.get_token());
+    });
 
     REQUIRE(operation.wait_for(std::chrono::milliseconds{50}) == std::future_status::timeout);
     stopSource.request_stop();
@@ -885,7 +886,7 @@ TEST_CASE("sqlite derivadas stops promptly while locked and remains reusable") {
     REQUIRE(operation.get().status == ssa::ports::WorkflowStatus::Canceled);
     REQUIRE(sqlite3_exec(blocker.handle(), "ROLLBACK", nullptr, nullptr, nullptr) == SQLITE_OK);
 
-    REQUIRE(derivadas.syncDerivadas().status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE(derivadas.cleanOrphanDerivations().status == ssa::ports::WorkflowStatus::Succeeded);
     ssa::infra::sqlite::SqliteConnection verification(fixture.path);
     ssa::infra::sqlite::SqliteStatement integrity(verification.handle(), "PRAGMA integrity_check");
     REQUIRE(integrity.step());

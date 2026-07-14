@@ -20,7 +20,8 @@ namespace ssa::application {
         [[nodiscard]] ports::WorkflowResult resetDatabase(std::stop_token stopToken = {}) override;
         [[nodiscard]] ports::WorkflowResult cleanData(std::stop_token stopToken = {}) override;
         [[nodiscard]] ports::WorkflowResult vacuumAnalyze(std::stop_token stopToken = {}) override;
-        [[nodiscard]] ports::WorkflowResult syncDerivadas(std::stop_token stopToken = {}) override;
+        [[nodiscard]] ports::WorkflowResult
+        cleanOrphanDerivations(std::stop_token stopToken = {}) override;
 
       private:
         [[nodiscard]] static ports::WorkflowResult unavailable(const char* operation);

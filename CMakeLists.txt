@@ -48,6 +48,7 @@ add_library(
   ssa_core STATIC
   src/domain/ColumnCatalog.cpp
   src/domain/ColumnValuePriorityPolicy.cpp
+  src/domain/SsaImportPolicy.cpp
   src/domain/SsaRelationGraph.cpp
   src/query/SearchParser.cpp
   src/query/AdvancedFilterSqlCompiler.cpp
@@ -305,6 +306,7 @@ if(SSA_BUILD_TESTS)
     tests/unit/ApplicationTests.cpp
     tests/unit/CliControllerTests.cpp
     tests/unit/DomainTests.cpp
+    tests/unit/SsaImportPolicyTests.cpp
     tests/unit/SearchParserTests.cpp
     tests/unit/SqlQueryBuilderTests.cpp
     tests/unit/StartupOptionsTests.cpp
@@ -348,6 +350,7 @@ if(SSA_BUILD_TESTS)
     tests/integration/ExportPortTests.cpp
     tests/integration/JsonPreferencesStoreTests.cpp
     tests/integration/SpreadsheetImportWorkflowPortTests.cpp
+    tests/integration/XlsxWorkbookReaderTests.cpp
     tests/integration/SqliteDatabaseValidatorTests.cpp
     tests/integration/SqliteRepositoryTests.cpp)
   target_link_libraries(ssa_integration_tests PRIVATE ssa_infra

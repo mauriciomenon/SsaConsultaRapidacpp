@@ -1,5 +1,6 @@
 #include "infra/import/SsaSpreadsheetMapper.h"
 
+#include "domain/SsaImportPolicy.h"
 #include "infra/import/SsaSpreadsheetHeaderCatalog.h"
 #include "qt/FilesystemPath.h"
 
@@ -7,8 +8,10 @@
 #include <QString>
 
 #include <algorithm>
+#include <array>
 #include <iterator>
 #include <optional>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -73,22 +76,6 @@ namespace ssa::infra::importing {
             return {begin, end};
         }
 
-        std::string normalizeSsaNumber(const std::string& value) {
-            auto text = trimCopy(value);
-            if (text.ends_with(".0")) {
-                text.resize(text.size() - 2);
-            }
-            std::string digits;
-            digits.reserve(text.size());
-            std::ranges::copy_if(text, std::back_inserter(digits), [](const auto ch) {
-                return std::isdigit(static_cast<unsigned char>(ch)) != 0;
-            });
-            if (digits.size() < 5 || digits.size() > 9) {
-                return text;
-            }
-            return digits;
-        }
-
         std::optional<std::size_t> headerRowIndex(const SpreadsheetTable& table,
                                                   HeaderColumnCache& cache) {
             std::size_t bestIndex = 0;
@@ -133,6 +120,15 @@ namespace ssa::infra::importing {
             return rowValue(row, key);
         }
 
+        bool hasRequiredColumns(const std::unordered_map<std::size_t, std::string>& columnByIndex) {
+            static constexpr std::array<std::string_view, 3> required{"numero_ssa", "descricao_ssa",
+                                                                      "data_cadastro"};
+            return std::ranges::all_of(required, [&](const auto key) {
+                return std::ranges::any_of(
+                    columnByIndex, [key](const auto& column) { return column.second == key; });
+            });
+        }
+
     } // namespace
 
     SsaImportBatch SsaSpreadsheetMapper::map(const SpreadsheetTable& table) {
@@ -146,6 +142,11 @@ namespace ssa::infra::importing {
         }
         const auto columnByIndex = columnMapFromHeader(table.rows[*headerIndex], headerCache);
         batch.mappedColumns = columnByIndex.size();
+        if (!hasRequiredColumns(columnByIndex)) {
+            batch.mappingStatus = SpreadsheetMappingStatus::RequiredColumnsMissing;
+            batch.skippedRows = table.rows.size() - *headerIndex - 1;
+            return batch;
+        }
         batch.mappingStatus = SpreadsheetMappingStatus::Mapped;
         for (std::size_t rowIndex = *headerIndex + 1; rowIndex < table.rows.size(); ++rowIndex) {
             SsaImportRow row;
@@ -155,18 +156,43 @@ namespace ssa::infra::importing {
                 }
                 auto value = trimCopy(table.rows[rowIndex][columnIndex]);
                 if (columnKey == "numero_ssa" || columnKey.starts_with("numero_ssa_relacionada")) {
-                    value = normalizeSsaNumber(value);
+                    value = domain::SsaImportPolicy::normalizeNumber(value);
                 }
                 if (!value.empty()) {
                     row.emplace(columnKey, value);
                 }
             }
-            if (!row.empty() && valueFor(row, "arquivo_origem").empty()) {
-                row.emplace("arquivo_origem", qt::toUtf8(table.sourcePath.filename()));
-            }
-            if (valueFor(row, "numero_ssa").empty() && valueFor(row, "descricao_ssa").empty()) {
+            const auto validation = domain::SsaImportPolicy::validateRow(row);
+            if (validation != domain::SsaImportPolicy::RowValidationIssue::None) {
                 ++batch.skippedRows;
+                ++batch.invalidRows;
+                switch (validation) {
+                case domain::SsaImportPolicy::RowValidationIssue::InvalidNumber:
+                    ++batch.invalidNumberRows;
+                    break;
+                case domain::SsaImportPolicy::RowValidationIssue::MissingDescription:
+                    ++batch.invalidDescriptionRows;
+                    break;
+                case domain::SsaImportPolicy::RowValidationIssue::MissingDate:
+                case domain::SsaImportPolicy::RowValidationIssue::InvalidDate:
+                    ++batch.invalidDateRows;
+                    break;
+                case domain::SsaImportPolicy::RowValidationIssue::None:
+                    break;
+                }
                 continue;
+            }
+            if (valueFor(row, "arquivo_origem").empty()) {
+                row.emplace("arquivo_origem", table.originalFilename.empty()
+                                                  ? qt::toUtf8(table.sourcePath.filename())
+                                                  : table.originalFilename);
+            }
+            if (const auto sourceTimestamp = domain::SsaImportPolicy::normalizeSnapshotTimestamp(
+                    table.sourceModifiedTimestamp);
+                !sourceTimestamp.empty()) {
+                if (valueFor(row, "data_arquivo_origem").empty()) {
+                    row.emplace("data_arquivo_origem", sourceTimestamp);
+                }
             }
             batch.rows.push_back(std::move(row));
         }

@@ -53,18 +53,14 @@ namespace {
             QCommandLineOption(QStringList{"incremental-rescan"}, "Run incremental rescan."));
         parser.addOption(QCommandLineOption(QStringList{"skip-import"},
                                             "Deprecated compatibility flag; accepted as no-op."));
-        parser.addOption(
-            QCommandLineOption(QStringList{"optimized"}, "Use optimized import strategy."));
-        parser.addOption(
-            QCommandLineOption(QStringList{"standard"}, "Use standard import strategy."));
         parser.addOption(QCommandLineOption(QStringList{"reset-db"}, "Reset the local database."));
         parser.addOption(QCommandLineOption(QStringList{"clean-data"}, "Clean imported data."));
         parser.addOption(QCommandLineOption(QStringList{"vacuum-analyze"},
                                             "Run SQLite vacuum/analyze maintenance."));
-        parser.addOption(
-            QCommandLineOption(QStringList{"sync-derivadas"}, "Synchronize derivadas data."));
-        parser.addOption(QCommandLineOption(QStringList{"acao"},
-                                            "Run legacy action commands, ex: backfill.", "action"));
+        parser.addOption(QCommandLineOption(QStringList{"clean-orphan-derivations"},
+                                            "Clean orphan derivation references."));
+        parser.addOption(QCommandLineOption(
+            QStringList{"acao"}, "Deprecated legacy action; use explicit commands.", "action"));
         parser.addOption(
             QCommandLineOption(QStringList{"log-level"}, "Set logging level.", "level"));
     }

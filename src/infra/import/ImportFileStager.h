@@ -1,7 +1,5 @@
 #pragma once
 
-#include "infra/import/LegacySpreadsheetConverter.h"
-
 #include <filesystem>
 #include <stop_token>
 #include <string>
@@ -14,6 +12,9 @@ namespace ssa::infra::importing {
         std::filesystem::path workbookPath;
         std::vector<std::filesystem::path> consolidationSources;
         bool ownedByStager = false;
+        std::string originalFilename;
+        std::string sourceModifiedTimestamp;
+        std::size_t summaryIndex = 0;
     };
 
     struct ImportManifestEntry {
@@ -21,7 +22,14 @@ namespace ssa::infra::importing {
         bool hasValidRows = false;
     };
 
+    struct ImportConsolidationEntryResult {
+        std::size_t moved = 0;
+        std::size_t noSurvivor = 0;
+        std::size_t failed = 0;
+    };
+
     struct ImportConsolidationResult {
+        std::vector<ImportConsolidationEntryResult> entries;
         std::size_t moved = 0;
         std::size_t noSurvivor = 0;
         std::size_t failed = 0;
@@ -31,6 +39,8 @@ namespace ssa::infra::importing {
 
     struct ImportStagingResult {
         std::vector<StagedImportFile> files;
+        std::vector<std::string> discoveredXlsxSources;
+        std::size_t discovered = 0;
         std::size_t legacyXls = 0;
         std::size_t convertedXls = 0;
         std::size_t failedLegacyXls = 0;
@@ -44,8 +54,7 @@ namespace ssa::infra::importing {
 
     class ImportFileStager final {
       public:
-        explicit ImportFileStager(std::filesystem::path inputFolder,
-                                  LegacySpreadsheetConverter legacyConverter = {});
+        explicit ImportFileStager(std::filesystem::path inputFolder);
 
         [[nodiscard]] ImportStagingResult
         stageExternalFiles(const std::vector<std::filesystem::path>& files,
@@ -58,25 +67,16 @@ namespace ssa::infra::importing {
                     const std::stop_token& stopToken = {}) const;
 
       private:
-        struct LegacyStageRequest {
-            const std::filesystem::path& source;
-            const std::filesystem::path& destination;
-        };
-
         struct StagedDestinationRequest {
             std::filesystem::path source;
             std::string_view batchPrefix;
             std::size_t fileIndex = 0;
         };
 
-        bool stageLegacyFile(const LegacyStageRequest& request,
-                             std::vector<std::filesystem::path> consolidationSources,
-                             ImportStagingResult& result, const std::stop_token& stopToken) const;
         [[nodiscard]] std::filesystem::path
         stagedDestination(const StagedDestinationRequest& request) const;
 
         std::filesystem::path inputFolder_;
-        LegacySpreadsheetConverter legacyConverter_;
     };
 
 } // namespace ssa::infra::importing

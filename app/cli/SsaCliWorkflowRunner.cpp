@@ -6,11 +6,6 @@
 
 namespace {
 
-    ssa::ports::WorkflowResult runBackfill(const QCommandLineParser&,
-                                           const ssa::application::SsaWorkflowService& workflows) {
-        return workflows.syncDerivadas();
-    }
-
     struct WorkflowCliCommand {
         const char* option;
         bool requiresDatabase;
@@ -29,34 +24,23 @@ namespace {
     }
 
     ssa::ports::WorkflowResult rejectUnsupportedAction(const QString& action) {
+        if (action.compare(QStringLiteral("backfill"), Qt::CaseInsensitive) == 0) {
+            return {ssa::ports::WorkflowStatus::Rejected,
+                    "--acao backfill is deprecated; use --clean-orphan-derivations"};
+        }
         return {ssa::ports::WorkflowStatus::Rejected,
                 "unsupported --acao value: " + action.toStdString()};
     }
 
-    bool isBackfillAction(const QString& action) {
-        return action.toLower() == "backfill";
-    }
-
-    bool shouldOptimizeImport(const QCommandLineParser& parser) {
-        if (parser.isSet("optimized")) {
-            return true;
-        }
-        if (parser.isSet("standard")) {
-            return false;
-        }
-        return true;
-    }
-
     ssa::ports::WorkflowResult
-    incrementalRescan(const QCommandLineParser& parser,
+    incrementalRescan(const QCommandLineParser&,
                       const ssa::application::SsaWorkflowService& workflows) {
-        return workflows.rescan(
-            {ssa::ports::RescanMode::Incremental, true, shouldOptimizeImport(parser)});
+        return workflows.rescan({ssa::ports::RescanMode::Incremental});
     }
 
-    ssa::ports::WorkflowResult fullRescan(const QCommandLineParser& parser,
+    ssa::ports::WorkflowResult fullRescan(const QCommandLineParser&,
                                           const ssa::application::SsaWorkflowService& workflows) {
-        return workflows.rescan({ssa::ports::RescanMode::Full, true, shouldOptimizeImport(parser)});
+        return workflows.rescan({ssa::ports::RescanMode::Full});
     }
 
     // Python compatibility: --rescan is an alias for --force-rescan.
@@ -76,28 +60,18 @@ namespace {
          [](const QCommandLineParser&, const ssa::application::SsaWorkflowService& workflows) {
              return workflows.vacuumAnalyze();
          }},
-        {"sync-derivadas", true,
+        {"clean-orphan-derivations", true,
          [](const QCommandLineParser&, const ssa::application::SsaWorkflowService& workflows) {
-             return workflows.syncDerivadas();
+             return workflows.cleanOrphanDerivations();
          }},
     }};
-
-    constexpr WorkflowCliCommand kAcaoBackfillCommand{"acao-backfill", true, runBackfill};
 
     bool isAcaoRequested(const QCommandLineParser& parser) {
         return parser.isSet("acao");
     }
 
-    bool isBackfillActionRequested(const QCommandLineParser& parser) {
-        return isAcaoRequested(parser) && isBackfillAction(parser.value("acao"));
-    }
-
     WorkflowCommandSelection selectedWorkflowCommand(const QCommandLineParser& parser) {
         WorkflowCommandSelection selection;
-        if (isBackfillActionRequested(parser)) {
-            ++selection.selectedCommands;
-            selection.selectedCommand = &kAcaoBackfillCommand;
-        }
         for (const auto& command : kWorkflowCommands) {
             if (parser.isSet(command.option)) {
                 ++selection.selectedCommands;
@@ -111,7 +85,7 @@ namespace {
     validateWorkflowSelection(const QCommandLineParser& parser,
                               const WorkflowCommandSelection& selection) {
         const bool hasAcao = isAcaoRequested(parser);
-        if (hasAcao && !isBackfillActionRequested(parser)) {
+        if (hasAcao) {
             return rejectUnsupportedAction(parser.value("acao"));
         }
         if (selection.selectedCommands > 1) {
@@ -135,9 +109,6 @@ namespace ssa::app::cli {
     }
 
     bool SsaCliWorkflowRunner::requiresDatabase(const QCommandLineParser& parser) {
-        if (isAcaoRequested(parser)) {
-            return kAcaoBackfillCommand.requiresDatabase;
-        }
         const auto command = std::ranges::find_if(
             kWorkflowCommands, [&parser](const auto& item) { return parser.isSet(item.option); });
         if (command != kWorkflowCommands.end()) {

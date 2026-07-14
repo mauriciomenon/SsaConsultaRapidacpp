@@ -32,10 +32,12 @@ int main(const int argc, char* argv[]) {
         const ssa::infra::sqlite::SqliteSsaImportWriter writer(databasePath, columns);
         ssa::infra::importing::ResolvedSsaImportRows replacement;
         replacement.rows.push_back({{"numero_ssa", "202600211"}, {"descricao_ssa", "Nova"}});
-        replacement.ssaNumbersForUpsertDelete.emplace_back("202600211");
 
         auto session = writer.startSession(true);
-        session.write(replacement, 1, 0);
+        if (session.write(replacement, 1, 0).conflictRows != 0) {
+            std::cerr << "unexpected import conflict\n";
+            return 3;
+        }
         if (commitBeforeReady) {
             static_cast<void>(session.finish());
         }

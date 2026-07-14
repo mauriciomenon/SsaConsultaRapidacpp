@@ -13,8 +13,7 @@ namespace ssa::infra::importing {
       public:
         SpreadsheetImportWorkflowPort(std::filesystem::path inputFolder,
                                       std::filesystem::path databasePath,
-                                      std::vector<domain::ColumnDef> columns,
-                                      LegacySpreadsheetConverter legacyConverter = {});
+                                      std::vector<domain::ColumnDef> columns);
 
         [[nodiscard]] ports::WorkflowResult
         importExternalFiles(const ports::ImportExternalFilesRequest& request,

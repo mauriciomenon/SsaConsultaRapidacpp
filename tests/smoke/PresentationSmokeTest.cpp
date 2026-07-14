@@ -1806,7 +1806,6 @@ namespace {
 
             QTRY_COMPARE_WITH_TIMEOUT(importPort->requests().size(), std::size_t{1}, 1000);
             QCOMPARE(importPort->requests().back().mode, ssa::ports::RescanMode::Incremental);
-            QCOMPARE(importPort->requests().back().optimized, true);
             QTRY_COMPARE_WITH_TIMEOUT(model.browse()->status()->message(),
                                       QString("Reescaneamento concluido"), 1000);
         }
@@ -1825,7 +1824,6 @@ namespace {
 
             QTRY_COMPARE_WITH_TIMEOUT(importPort->importRequests().size(), std::size_t{1}, 1000);
             QCOMPARE(importPort->importRequests().back().files.size(), std::size_t{1});
-            QCOMPARE(importPort->importRequests().back().optimized, true);
             QTRY_COMPARE_WITH_TIMEOUT(model.browse()->status()->message(),
                                       QString("Importacao concluida"), 1000);
         }
@@ -1894,7 +1892,7 @@ namespace {
             QCOMPARE(model.actions()->workflows()->lastSucceeded(), false);
         }
 
-        void sync_derivadas_updates_status_after_success() {
+        void orphan_derivation_cleanup_updates_status_after_success() {
             auto repository = std::make_shared<FakeRepository>();
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
             auto commands = std::make_shared<FakeCommands>();
@@ -1903,11 +1901,11 @@ namespace {
                 std::make_shared<CapturingImportPort>(), nullptr, nullptr, derivadasPort);
             ssa::presentation::MainViewModel model(service, commands, nullptr, nullptr, workflows);
 
-            model.actions()->workflows()->syncDerivadas();
+            model.actions()->workflows()->cleanOrphanDerivations();
 
             QTRY_COMPARE_WITH_TIMEOUT(derivadasPort->syncCalls(), std::size_t{1}, 1000);
             QTRY_COMPARE_WITH_TIMEOUT(model.browse()->status()->message(),
-                                      QString("Sincronizacao de derivadas concluida"), 1000);
+                                      QString("Limpeza de referencias orfas concluida"), 1000);
             QCOMPARE(model.actions()->workflows()->lastSucceeded(), true);
         }
 
@@ -1942,49 +1940,51 @@ namespace {
             QTRY_COMPARE_WITH_TIMEOUT(repository->countCalls(), std::size_t{1}, 1000);
             QTRY_COMPARE_WITH_TIMEOUT(pageSpy.size(), 1, 1000);
 
-            model.actions()->workflows()->syncDerivadas();
+            model.actions()->workflows()->cleanOrphanDerivations();
 
             QTRY_COMPARE_WITH_TIMEOUT(repository->countCalls(), std::size_t{2}, 1000);
             QTRY_COMPARE_WITH_TIMEOUT(model.browse()->status()->message(),
-                                      QString("Sincronizacao de derivadas concluida"), 1000);
+                                      QString("Limpeza de referencias orfas concluida"), 1000);
         }
 
-        void sync_derivadas_reports_workflow_error() {
+        void orphan_derivation_cleanup_reports_workflow_error() {
             auto repository = std::make_shared<FakeRepository>();
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
             auto commands = std::make_shared<FakeCommands>();
             auto derivadasPort = std::make_shared<CapturingDerivadasPort>(
                 ssa::ports::WorkflowResult{ssa::ports::WorkflowStatus::Failed,
-                                           "sync derivadas failed in integration path"});
+                                           "orphan derivation cleanup failed in integration path"});
             auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(
                 std::make_shared<CapturingImportPort>(), nullptr, nullptr, derivadasPort);
             ssa::presentation::MainViewModel model(service, commands, nullptr, nullptr, workflows);
 
-            model.actions()->workflows()->syncDerivadas();
+            model.actions()->workflows()->cleanOrphanDerivations();
 
             QTRY_COMPARE_WITH_TIMEOUT(model.browse()->status()->message(),
-                                      QString("Falha ao sincronizar derivadas"), 1000);
-            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->status()->error(),
-                                      QString("sync derivadas failed in integration path"), 1000);
+                                      QString("Falha ao limpar referencias orfas"), 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(
+                model.browse()->status()->error(),
+                QString("orphan derivation cleanup failed in integration path"), 1000);
             QCOMPARE(model.actions()->workflows()->lastSucceeded(), false);
         }
 
-        void sync_derivadas_reports_not_configured_adapter() {
+        void orphan_derivation_cleanup_reports_not_configured_adapter() {
             auto repository = std::make_shared<FakeRepository>();
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
             auto commands = std::make_shared<FakeCommands>();
             ssa::presentation::MainViewModel model(service, commands, nullptr, nullptr, nullptr);
 
-            model.actions()->workflows()->syncDerivadas();
+            model.actions()->workflows()->cleanOrphanDerivations();
 
             QTRY_COMPARE_WITH_TIMEOUT(model.browse()->status()->message(),
-                                      QString("Falha ao sincronizar derivadas"), 1000);
-            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->status()->error(),
-                                      QString("sync derivadas workflow is not configured"), 1000);
+                                      QString("Falha ao limpar referencias orfas"), 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(
+                model.browse()->status()->error(),
+                QString("orphan derivation cleanup workflow is not configured"), 1000);
             QCOMPARE(model.actions()->workflows()->lastSucceeded(), false);
         }
 
-        void rescan_full_disables_optimized_mode() {
+        void rescan_full_uses_full_mode() {
             auto repository = std::make_shared<FakeRepository>();
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
             auto commands = std::make_shared<FakeCommands>();
@@ -1996,7 +1996,6 @@ namespace {
 
             QTRY_COMPARE_WITH_TIMEOUT(importPort->requests().size(), std::size_t{1}, 1000);
             QCOMPARE(importPort->requests().back().mode, ssa::ports::RescanMode::Full);
-            QCOMPARE(importPort->requests().back().optimized, false);
         }
 
         void invalid_density_is_ignored() {

@@ -1,6 +1,9 @@
 #include "domain/ColumnCatalog.h"
 #include "infra/import/ImportFileStager.h"
+#include "infra/import/LegacySpreadsheetConverter.h"
 #include "infra/import/SpreadsheetImportWorkflowPort.h"
+#include "infra/import/SsaImportConflictResolver.h"
+#include "infra/import/SsaSpreadsheetMapper.h"
 #include "infra/import/XlsxPackage.h"
 #include "infra/import/XlsxWorkbookReader.h"
 #include "infra/sqlite/SqliteConnection.h"
@@ -17,6 +20,8 @@
 #include <miniz.h>
 #include <sqlite3.h>
 
+#include <chrono>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <future>
@@ -42,7 +47,10 @@ namespace {
                                       MZ_BEST_COMPRESSION) != 0);
     }
 
-    void writeWorkbook(const std::filesystem::path& path, const std::string& rowsXml) {
+    void createSparseFile(const std::filesystem::path& path, std::uintmax_t size);
+
+    void writeWorkbook(const std::filesystem::path& path, const std::string& rowsXml,
+                       const std::uintmax_t paddingBytes = 0) {
         mz_zip_archive zip = {};
         REQUIRE(mz_zip_writer_init_file(&zip, path.string().c_str(), 0) != 0);
         addZipEntry(zip, "[Content_Types].xml", R"(<?xml version="1.0" encoding="UTF-8"?>
@@ -64,8 +72,17 @@ xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
 <dimension ref="A1:E4"/><sheetData>)" +
                         rowsXml + "</sheetData></worksheet>");
+        const auto paddingPath = path.string() + ".padding";
+        if (paddingBytes > 0) {
+            createSparseFile(paddingPath, paddingBytes);
+            REQUIRE(mz_zip_writer_add_file(&zip, "padding.bin", paddingPath.c_str(), nullptr, 0,
+                                           MZ_NO_COMPRESSION) != 0);
+        }
         REQUIRE(mz_zip_writer_finalize_archive(&zip) != 0);
         REQUIRE(mz_zip_writer_end(&zip) != 0);
+        if (paddingBytes > 0) {
+            REQUIRE(std::filesystem::remove(paddingPath));
+        }
     }
 
     std::string inlineCell(const char* ref, const std::string& value) {
@@ -126,6 +143,23 @@ xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
         REQUIRE(output.good());
         output.close();
         std::filesystem::resize_file(path, size);
+    }
+
+    void setLocalModificationTime(const std::filesystem::path& path, const int year,
+                                  const int month, const int day, const int hour,
+                                  const int minute) {
+        std::tm local{};
+        local.tm_year = year - 1900;
+        local.tm_mon = month - 1;
+        local.tm_mday = day;
+        local.tm_hour = hour;
+        local.tm_min = minute;
+        local.tm_isdst = -1;
+        const auto timestamp = std::mktime(&local);
+        REQUIRE(timestamp != static_cast<std::time_t>(-1));
+        std::filesystem::last_write_time(path,
+                                         std::filesystem::file_time_type::clock::from_sys(
+                                             std::chrono::system_clock::from_time_t(timestamp)));
     }
 
 #ifndef _WIN32
@@ -199,6 +233,7 @@ TEST_CASE("spreadsheet import workflow rejects a stopped token before staging") 
     const auto root = std::filesystem::path{tempDir.path().toStdString()};
     const auto inputDirectory = root / "docs_entrada";
     const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(dbPath.parent_path());
     ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
                                                               importColumns());
     ssa::ports::ImportExternalFilesRequest request;
@@ -210,8 +245,37 @@ TEST_CASE("spreadsheet import workflow rejects a stopped token before staging") 
 
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Canceled);
     REQUIRE(result.message.find("canceled") != std::string::npos);
+    REQUIRE(result.importSummary.has_value());
+    REQUIRE(result.importSummary->discovered == 1);
+    REQUIRE(result.importSummary->preserved == 1);
+    REQUIRE(result.importSummary->files.size() == 1);
+    REQUIRE(result.importSummary->files.front().source == "source.xlsx");
+    REQUIRE(result.importSummary->files.front().status == ssa::ports::ImportFileStatus::Canceled);
     REQUIRE_FALSE(std::filesystem::exists(inputDirectory));
     REQUIRE_FALSE(std::filesystem::exists(dbPath));
+}
+
+TEST_CASE("external import preflight preserves the rejected XLSX source in its summary") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto missingWorkbook = root / "missing.xlsx";
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(
+        inputDirectory, root / "data" / "ssas.db", importColumns());
+
+    const auto result = port.importExternalFiles({{missingWorkbook}});
+
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
+    REQUIRE(result.importSummary.has_value());
+    REQUIRE(result.importSummary->discovered == 1);
+    REQUIRE(result.importSummary->rejected == 1);
+    REQUIRE(result.importSummary->preserved == 1);
+    REQUIRE(result.importSummary->files.size() == 1);
+    REQUIRE(result.importSummary->files.front().source == "missing.xlsx");
+    REQUIRE(result.importSummary->files.front().status == ssa::ports::ImportFileStatus::Failed);
+    REQUIRE_FALSE(std::filesystem::exists(inputDirectory));
 }
 
 TEST_CASE("import file stager rejects a stopped token before copying") {
@@ -228,6 +292,31 @@ TEST_CASE("import file stager rejects a stopped token before copying") {
 
     REQUIRE(result.rejectionReason == "canceled");
     REQUIRE_FALSE(std::filesystem::exists(inputDirectory));
+}
+
+TEST_CASE("input preflight preserves XLSX inventory and pending XLS classification") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto inputDirectory =
+        std::filesystem::path{tempDir.path().toStdString()} / "docs_entrada";
+    std::filesystem::create_directories(inputDirectory);
+    const auto oversized = inputDirectory / "oversized.xlsx";
+    const auto legacy = inputDirectory / "pending.xls";
+    createSparseFile(oversized, 128ULL * 1024ULL * 1024ULL + 1ULL);
+    createSparseFile(legacy, 1);
+    const ssa::infra::importing::ImportFileStager stager(inputDirectory);
+
+    const auto result = stager.stageInputFiles();
+
+    REQUIRE(result.rejectionReason == "file_too_large max_bytes=134217728");
+    REQUIRE(result.discovered == 2);
+    REQUIRE(result.discoveredXlsxSources == std::vector<std::string>{"oversized.xlsx"});
+    REQUIRE(result.legacyXls == 1);
+    REQUIRE(result.unsupported == 0);
+    REQUIRE(result.files.empty());
+    REQUIRE(std::filesystem::exists(oversized));
+    REQUIRE(std::filesystem::exists(legacy));
 }
 
 TEST_CASE("import file stager cancels a copy without publishing partial files") {
@@ -272,7 +361,119 @@ TEST_CASE("import file stager cancels a copy without publishing partial files") 
     REQUIRE(std::filesystem::is_empty(inputDirectory));
 }
 
-TEST_CASE("staging preserves prior diagnostics without misclassifying clean cancellation") {
+TEST_CASE("import file stager preserves inventory after a later source disappears") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    constexpr std::uintmax_t copyBytes = 128ULL * 1024ULL * 1024ULL;
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto firstSource = root / "first.xlsx";
+    const auto missingSource = root / "second.xlsx";
+    const auto inputDirectory = root / "docs_entrada";
+    createSparseFile(firstSource, copyBytes);
+    createSparseFile(missingSource, 1);
+    const ssa::infra::importing::ImportFileStager stager(inputDirectory);
+
+    auto future = std::async(std::launch::async, [&] {
+        return stager.stageExternalFiles({firstSource, missingSource});
+    });
+    QElapsedTimer deadline;
+    deadline.start();
+    bool observedTemporary = false;
+    while (future.wait_for(std::chrono::milliseconds{0}) != std::future_status::ready &&
+           deadline.elapsed() < 3'000) {
+        std::error_code error;
+        for (std::filesystem::directory_iterator iterator(inputDirectory, error), end;
+             !error && iterator != end; iterator.increment(error)) {
+            if (iterator->path().filename().string().find(".part") != std::string::npos &&
+                iterator->file_size(error) > 0 && !error) {
+                observedTemporary = true;
+                REQUIRE(std::filesystem::remove(missingSource));
+                break;
+            }
+        }
+        if (observedTemporary) {
+            break;
+        }
+        QThread::msleep(1);
+    }
+    const auto result = future.get();
+
+    REQUIRE(observedTemporary);
+    REQUIRE(result.discovered == 2);
+    REQUIRE(result.discoveredXlsxSources == std::vector<std::string>{"first.xlsx", "second.xlsx"});
+    REQUIRE(result.files.size() == 1);
+    REQUIRE(result.files.front().summaryIndex == 0);
+    REQUIRE(result.failedCopies == 1);
+}
+
+TEST_CASE("external import reports one applied and one failed staging source") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    constexpr std::uintmax_t paddingBytes = 96ULL * 1024ULL * 1024ULL;
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto firstSource = root / "first.xlsx";
+    const auto missingSource = root / "second.xlsx";
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(dbPath.parent_path());
+    const auto header =
+        row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Descricao da SSA"),
+                inlineCell("C1", "Data de emissao")});
+    writeWorkbook(firstSource,
+                  header +
+                      row(2, {inlineCell("A2", "202600888"), inlineCell("B2", "Fonte aplicada"),
+                              inlineCell("C2", "2026-07-14")}),
+                  paddingBytes);
+    writeWorkbook(missingSource, header + row(2, {inlineCell("A2", "202600889"),
+                                                  inlineCell("B2", "Fonte removida"),
+                                                  inlineCell("C2", "2026-07-14")}));
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+    ssa::ports::ImportExternalFilesRequest request;
+    request.files = {firstSource, missingSource};
+
+    auto future = std::async(std::launch::async, [&] { return port.importExternalFiles(request); });
+    QElapsedTimer deadline;
+    deadline.start();
+    bool observedTemporary = false;
+    while (future.wait_for(std::chrono::milliseconds{0}) != std::future_status::ready &&
+           deadline.elapsed() < 3'000) {
+        std::error_code error;
+        for (std::filesystem::directory_iterator iterator(inputDirectory, error), end;
+             !error && iterator != end; iterator.increment(error)) {
+            if (iterator->path().filename().string().find(".part") != std::string::npos &&
+                iterator->file_size(error) > 0 && !error) {
+                observedTemporary = true;
+                REQUIRE(std::filesystem::remove(missingSource));
+                break;
+            }
+        }
+        if (observedTemporary) {
+            break;
+        }
+        QThread::msleep(1);
+    }
+    const auto result = future.get();
+
+    INFO(result.message);
+    INFO(result.diagnostic);
+    REQUIRE(observedTemporary);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE(result.warning);
+    REQUIRE(result.importSummary.has_value());
+    const auto& summary = *result.importSummary;
+    REQUIRE(summary.discovered == 2);
+    REQUIRE(summary.accepted == 1);
+    REQUIRE(summary.rejected == 1);
+    REQUIRE(summary.preserved == 1);
+    REQUIRE(summary.files.size() == 2);
+    REQUIRE(summary.files[0].status == ssa::ports::ImportFileStatus::Applied);
+    REQUIRE(summary.files[1].status == ssa::ports::ImportFileStatus::Failed);
+}
+
+TEST_CASE("staging cancellation stays clean with a pending legacy workbook") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
 
@@ -283,9 +484,7 @@ TEST_CASE("staging preserves prior diagnostics without misclassifying clean canc
     const auto inputDirectory = root / "docs_entrada";
     createSparseFile(legacy, 1);
     createSparseFile(largeSource, copyBytes);
-    const ssa::infra::importing::ImportFileStager stager(
-        inputDirectory,
-        ssa::infra::importing::LegacySpreadsheetConverter(root / "missing-soffice"));
+    const ssa::infra::importing::ImportFileStager stager(inputDirectory);
     std::stop_source stopSource;
     auto future = std::async(std::launch::async, [&] {
         return stager.stageExternalFiles({legacy, largeSource}, stopSource.get_token());
@@ -309,8 +508,9 @@ TEST_CASE("staging preserves prior diagnostics without misclassifying clean canc
     const auto result = future.get();
 
     REQUIRE(result.rejectionReason == "canceled");
-    REQUIRE_FALSE(result.diagnostic.empty());
+    REQUIRE(result.diagnostic.empty());
     REQUIRE(result.files.empty());
+    REQUIRE(std::filesystem::exists(legacy));
     REQUIRE(std::filesystem::is_empty(inputDirectory));
 }
 
@@ -332,7 +532,6 @@ TEST_CASE("workflow cancellation after staging removes the owned external copy")
     const ssa::infra::sqlite::SqliteSsaImportWriter writer(dbPath, importColumns());
     ssa::infra::importing::ResolvedSsaImportRows previous;
     previous.rows.push_back({{"numero_ssa", "202600409"}, {"descricao_ssa", "Anterior"}});
-    previous.ssaNumbersForUpsertDelete.emplace_back("202600409");
     REQUIRE(writer.write(previous, 1, 0, false).rowsWritten == 1);
     ssa::infra::sqlite::SqliteConnection blocker(dbPath,
                                                  ssa::infra::sqlite::SqliteOpenMode::ReadWrite);
@@ -568,6 +767,35 @@ TEST_CASE("consolidation preflight counts failed sources rather than manifest en
     REQUIRE(result.error.find("cannot create consolidation directory") != std::string::npos);
 }
 
+TEST_CASE("partial consolidation reports each manifest entry independently") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto inputDirectory =
+        std::filesystem::path{tempDir.path().toStdString()} / "docs_entrada";
+    std::filesystem::create_directories(inputDirectory);
+    const auto first = inputDirectory / "first.xlsx";
+    const auto missing = inputDirectory / "missing.xlsx";
+    createSparseFile(first, 1);
+    const ssa::infra::importing::ImportFileStager stager(inputDirectory);
+    const std::vector<ssa::infra::importing::ImportManifestEntry> manifest{{{first}, true},
+                                                                           {{missing}, true}};
+
+    const auto result = stager.consolidate(manifest);
+
+    REQUIRE(result.moved == 1);
+    REQUIRE(result.failed == 1);
+    REQUIRE(result.entries.size() == 2);
+    REQUIRE(result.entries[0].moved == 1);
+    REQUIRE(result.entries[0].failed == 0);
+    REQUIRE(result.entries[0].noSurvivor == 0);
+    REQUIRE(result.entries[1].moved == 0);
+    REQUIRE(result.entries[1].failed == 1);
+    REQUIRE(result.entries[1].noSurvivor == 0);
+    REQUIRE(std::filesystem::exists(inputDirectory / "processadas" / "first.xlsx"));
+    REQUIRE_FALSE(std::filesystem::exists(first));
+}
+
 TEST_CASE("legacy converter rejects a stopped token before starting a process") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
@@ -705,163 +933,33 @@ TEST_CASE("legacy converter reports cleanup failure after canceled output copy")
 }
 #endif
 
-#ifndef _WIN32
-TEST_CASE("input staging cancellation removes only converted artifacts owned by the operation") {
+TEST_CASE("input staging leaves legacy workbooks pending") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
 
-    const auto root = std::filesystem::path{tempDir.path().toStdString()};
-    const auto inputDirectory = root / "docs_entrada";
+    const auto inputDirectory =
+        std::filesystem::path{tempDir.path().toStdString()} / "docs_entrada";
     std::filesystem::create_directories(inputDirectory);
     const auto firstLegacy = inputDirectory / "a.xls";
-    const auto blockingLegacy = inputDirectory / "block.xls";
-    const auto preservedWorkbook = inputDirectory / "0_keep.xlsx";
+    const auto secondLegacy = inputDirectory / "b.xls";
+    const auto workbook = inputDirectory / "keep.xlsx";
     writeWorkbook(firstLegacy, row(1, {inlineCell("A1", "Numero SSA")}));
-    writeWorkbook(blockingLegacy, row(1, {inlineCell("A1", "Numero SSA")}));
-    writeWorkbook(preservedWorkbook, row(1, {inlineCell("A1", "Numero SSA")}));
-    const ssa::infra::importing::ImportFileStager stager(
-        inputDirectory, ssa::infra::importing::LegacySpreadsheetConverter(
-                            writeFakeSoffice(root, FakeSofficeBehavior::CopyThenBlock)));
-    std::stop_source stopSource;
+    writeWorkbook(secondLegacy, row(1, {inlineCell("A1", "Numero SSA")}));
+    writeWorkbook(workbook, row(1, {inlineCell("A1", "Numero SSA")}));
 
-    auto operation = std::async(std::launch::async,
-                                [&] { return stager.stageInputFiles(stopSource.get_token()); });
-    QElapsedTimer deadline;
-    deadline.start();
-    const auto firstConverted = inputDirectory / "a.xlsx";
-    bool observedBlockingTemporary = false;
-    while (operation.wait_for(std::chrono::milliseconds{0}) != std::future_status::ready &&
-           deadline.elapsed() < 3'000) {
-        std::error_code error;
-        for (std::filesystem::recursive_directory_iterator iterator(inputDirectory, error), end;
-             !error && iterator != end; iterator.increment(error)) {
-            if (iterator->path().filename() == "block.xlsx" &&
-                iterator->path().parent_path().filename().string().starts_with(
-                    "ssa_xls_conversion_")) {
-                observedBlockingTemporary = true;
-                break;
-            }
-        }
-        if (observedBlockingTemporary) {
-            break;
-        }
-        QThread::msleep(5);
-    }
-    REQUIRE(std::filesystem::exists(firstConverted));
-    REQUIRE(observedBlockingTemporary);
-    stopSource.request_stop();
-    REQUIRE(operation.wait_for(std::chrono::seconds{7}) == std::future_status::ready);
-    const auto result = operation.get();
+    const ssa::infra::importing::ImportFileStager stager(inputDirectory);
+    const auto result = stager.stageInputFiles();
 
-    REQUIRE(result.rejectionReason == "canceled");
-    REQUIRE(result.files.empty());
+    REQUIRE(result.rejectionReason.empty());
+    REQUIRE_FALSE(result.operationalFailure);
+    REQUIRE(result.legacyXls == 2);
+    REQUIRE(result.files.size() == 1);
+    REQUIRE(result.files.front().workbookPath == workbook);
     REQUIRE(std::filesystem::exists(firstLegacy));
-    REQUIRE(std::filesystem::exists(blockingLegacy));
-    REQUIRE(std::filesystem::exists(preservedWorkbook));
-    REQUIRE_FALSE(std::filesystem::exists(firstConverted));
-    REQUIRE_FALSE(std::filesystem::exists(inputDirectory / "block.xlsx"));
-    for (const auto& entry : std::filesystem::directory_iterator(inputDirectory)) {
-        REQUIRE_FALSE(entry.path().filename().string().starts_with("ssa_xls_conversion_"));
-    }
+    REQUIRE(std::filesystem::exists(secondLegacy));
+    REQUIRE_FALSE(std::filesystem::exists(inputDirectory / "a.xlsx"));
+    REQUIRE_FALSE(std::filesystem::exists(inputDirectory / "b.xlsx"));
 }
-
-TEST_CASE("published legacy conversion remains successful when temporary cleanup fails") {
-    if (::geteuid() == 0) {
-        SKIP("permission cleanup failure cannot be simulated as root");
-    }
-    QTemporaryDir tempDir;
-    REQUIRE(tempDir.isValid());
-
-    const auto root = std::filesystem::path{tempDir.path().toStdString()};
-    const auto sourceDirectory = root / "source";
-    const auto inputDirectory = root / "docs_entrada";
-    const auto dbPath = root / "data" / "ssas.db";
-    std::filesystem::create_directories(sourceDirectory);
-    std::filesystem::create_directories(dbPath.parent_path());
-    const auto legacy = sourceDirectory / "cleanup.xls";
-    writeWorkbook(legacy, row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
-                                  inlineCell("C1", "Descricao da SSA")}) +
-                              row(2, {inlineCell("A2", "202600407"), inlineCell("B2", "ASE"),
-                                      inlineCell("C2", "Cleanup warning")}));
-    ssa::infra::importing::SpreadsheetImportWorkflowPort port(
-        inputDirectory, dbPath, importColumns(),
-        ssa::infra::importing::LegacySpreadsheetConverter(
-            writeFakeSoffice(root, FakeSofficeBehavior::CleanupFailure)));
-
-    const auto result = port.importExternalFiles({.files = {legacy}});
-
-    std::size_t temporaryDirectories = 0;
-    for (const auto& entry : std::filesystem::directory_iterator(inputDirectory)) {
-        if (entry.is_directory() &&
-            entry.path().filename().string().starts_with("ssa_xls_conversion_")) {
-            ++temporaryDirectories;
-            std::filesystem::permissions(entry.path(), std::filesystem::perms::owner_all,
-                                         std::filesystem::perm_options::replace);
-            REQUIRE(std::filesystem::remove_all(entry.path()) > 0);
-        }
-    }
-    REQUIRE(temporaryDirectories == 1);
-    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
-    REQUIRE(result.warning);
-    REQUIRE(result.diagnostic.find("cannot remove xls conversion temporary directory") !=
-            std::string::npos);
-    REQUIRE(std::filesystem::exists(legacy));
-    sqlite3* db = nullptr;
-    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
-    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600407'") == 1);
-    REQUIRE(sqlite3_close(db) == SQLITE_OK);
-}
-
-TEST_CASE("cleanup warning before commit is preserved when full rescan rejects the workbook") {
-    if (::geteuid() == 0) {
-        SKIP("permission cleanup failure cannot be simulated as root");
-    }
-    QTemporaryDir tempDir;
-    REQUIRE(tempDir.isValid());
-
-    const auto root = std::filesystem::path{tempDir.path().toStdString()};
-    const auto inputDirectory = root / "docs_entrada";
-    const auto dbPath = root / "data" / "ssas.db";
-    std::filesystem::create_directories(inputDirectory);
-    std::filesystem::create_directories(dbPath.parent_path());
-    const auto legacy = inputDirectory / "cleanup.xls";
-    writeWorkbook(legacy, row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
-                                  inlineCell("C1", "Descricao da SSA")}));
-    ssa::infra::importing::ResolvedSsaImportRows previous;
-    previous.rows.push_back({{"numero_ssa", "202600411"}, {"descricao_ssa", "Anterior"}});
-    previous.ssaNumbersForUpsertDelete.emplace_back("202600411");
-    const ssa::infra::sqlite::SqliteSsaImportWriter writer(dbPath, importColumns());
-    REQUIRE(writer.write(previous, 1, 0, false).rowsWritten == 1);
-    ssa::infra::importing::SpreadsheetImportWorkflowPort port(
-        inputDirectory, dbPath, importColumns(),
-        ssa::infra::importing::LegacySpreadsheetConverter(
-            writeFakeSoffice(root, FakeSofficeBehavior::CleanupFailure)));
-
-    const auto result = port.rescan({ssa::ports::RescanMode::Full});
-
-    std::size_t temporaryDirectories = 0;
-    for (const auto& entry : std::filesystem::directory_iterator(inputDirectory)) {
-        if (entry.is_directory() &&
-            entry.path().filename().string().starts_with("ssa_xls_conversion_")) {
-            ++temporaryDirectories;
-            std::filesystem::permissions(entry.path(), std::filesystem::perms::owner_all,
-                                         std::filesystem::perm_options::replace);
-            REQUIRE(std::filesystem::remove_all(entry.path()) > 0);
-        }
-    }
-    REQUIRE(temporaryDirectories == 1);
-    REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
-    REQUIRE(result.message.find("staging_cleanup_failed") != std::string::npos);
-    REQUIRE(result.diagnostic.find("cannot remove xls conversion temporary directory") !=
-            std::string::npos);
-    REQUIRE(std::filesystem::exists(legacy));
-    REQUIRE_FALSE(std::filesystem::exists(inputDirectory / "cleanup.xlsx"));
-    sqlite3* db = nullptr;
-    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
-    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600411'") == 1);
-    REQUIRE(sqlite3_close(db) == SQLITE_OK);
-}
-#endif
 
 TEST_CASE("xlsx reader rejects a stopped token before opening the package") {
     QTemporaryDir tempDir;
@@ -962,16 +1060,14 @@ TEST_CASE("sqlite import cancellation rolls back rows and permits a second write
     const ssa::infra::sqlite::SqliteSsaImportWriter writer(dbPath, importColumns());
     ssa::infra::importing::ResolvedSsaImportRows previous;
     previous.rows.push_back({{"numero_ssa", "202600200"}, {"descricao_ssa", "Anterior"}});
-    previous.ssaNumbersForUpsertDelete.emplace_back("202600200");
     REQUIRE(writer.write(previous, 1, 0, false).rowsWritten == 1);
 
     ssa::infra::importing::ResolvedSsaImportRows replacement;
     replacement.rows.push_back({{"numero_ssa", "202600201"}, {"descricao_ssa", "Nova"}});
-    replacement.ssaNumbersForUpsertDelete.emplace_back("202600201");
     std::stop_source stopSource;
     {
         auto session = writer.startSession(true, stopSource.get_token());
-        session.write(replacement, 1, 0);
+        REQUIRE(session.write(replacement, 1, 0).conflictRows == 0);
         stopSource.request_stop();
         REQUIRE_THROWS_AS(session.finish(), std::system_error);
         REQUIRE_NOTHROW(session.rollback());
@@ -1002,7 +1098,6 @@ TEST_CASE("sqlite import stops promptly while locked and remains reusable") {
     const ssa::infra::sqlite::SqliteSsaImportWriter writer(dbPath, importColumns());
     ssa::infra::importing::ResolvedSsaImportRows previous;
     previous.rows.push_back({{"numero_ssa", "202600205"}, {"descricao_ssa", "Anterior"}});
-    previous.ssaNumbersForUpsertDelete.emplace_back("202600205");
     REQUIRE(writer.write(previous, 1, 0, false).rowsWritten == 1);
 
     ssa::infra::sqlite::SqliteConnection blocker(dbPath,
@@ -1012,7 +1107,6 @@ TEST_CASE("sqlite import stops promptly while locked and remains reusable") {
 
     ssa::infra::importing::ResolvedSsaImportRows replacement;
     replacement.rows.push_back({{"numero_ssa", "202600206"}, {"descricao_ssa", "Nova"}});
-    replacement.ssaNumbersForUpsertDelete.emplace_back("202600206");
     std::stop_source stopSource;
     auto operation = std::async(std::launch::async, [&] {
         try {
@@ -1047,7 +1141,6 @@ TEST_CASE("sqlite import cancels a blocked commit and rolls back explicitly") {
     const ssa::infra::sqlite::SqliteSsaImportWriter writer(dbPath, importColumns());
     ssa::infra::importing::ResolvedSsaImportRows previous;
     previous.rows.push_back({{"numero_ssa", "202600207"}, {"descricao_ssa", "Anterior"}});
-    previous.ssaNumbersForUpsertDelete.emplace_back("202600207");
     REQUIRE(writer.write(previous, 1, 0, false).rowsWritten == 1);
 
     sqlite3* reader = nullptr;
@@ -1062,7 +1155,6 @@ TEST_CASE("sqlite import cancels a blocked commit and rolls back explicitly") {
 
     ssa::infra::importing::ResolvedSsaImportRows replacement;
     replacement.rows.push_back({{"numero_ssa", "202600208"}, {"descricao_ssa", "Nova"}});
-    replacement.ssaNumbersForUpsertDelete.emplace_back("202600208");
     std::stop_source stopSource;
     auto operation = std::async(std::launch::async, [&] {
         try {
@@ -1144,7 +1236,6 @@ TEST_CASE("sqlite import survives process death before and after commit") {
         const ssa::infra::sqlite::SqliteSsaImportWriter writer(dbPath, columns);
         ssa::infra::importing::ResolvedSsaImportRows retry;
         retry.rows.push_back({{"numero_ssa", "202600212"}, {"descricao_ssa", "Retry"}});
-        retry.ssaNumbersForUpsertDelete.emplace_back("202600212");
         REQUIRE(writer.write(retry, 1, 0, true).rowsWritten == 1);
         REQUIRE_FALSE(std::filesystem::exists(dbPath.string() + "-journal"));
         REQUIRE_FALSE(std::filesystem::exists(dbPath.string() + "-wal"));
@@ -1164,12 +1255,13 @@ TEST_CASE("spreadsheet import workflow stages xlsx and writes sqlite rows") {
     std::filesystem::create_directories(dbPath.parent_path());
 
     const auto workbook = sourceDirectory / "entrada.xlsx";
-    writeWorkbook(
-        workbook,
-        row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
-                inlineCell("C1", "Setor Executor"), inlineCell("D1", "Descricao da SSA")}) +
-            row(2, {inlineCell("A2", "202600001"), inlineCell("B2", "ASE"),
-                    inlineCell("C2", "MEL1"), inlineCell("D2", "Primeira importacao")}));
+    writeWorkbook(workbook,
+                  row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                          inlineCell("C1", "Setor Executor"), inlineCell("D1", "Descricao da SSA"),
+                          inlineCell("E1", "Data de emissao")}) +
+                      row(2, {inlineCell("A2", "202600001"), inlineCell("B2", "ASE"),
+                              inlineCell("C2", "MEL1"), inlineCell("D2", "Primeira importacao"),
+                              inlineCell("E2", "2026-07-01")}));
 
     ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
                                                               importColumns());
@@ -1189,6 +1281,809 @@ TEST_CASE("spreadsheet import workflow stages xlsx and writes sqlite rows") {
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
+TEST_CASE("external import preserves original filename and spreadsheet timestamp metadata") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto sourceDirectory = root / "external";
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(sourceDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    const auto source = sourceDirectory / "SSA_13-07-2026_0130PM.xlsx";
+    writeWorkbook(source,
+                  row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                          inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao"),
+                          inlineCell("E1", "data_planilha")}) +
+                      row(2, {inlineCell("A2", "202600501"), inlineCell("B2", "APV"),
+                              inlineCell("C2", "Metadata"), inlineCell("D2", "2026-07-01"),
+                              inlineCell("E2", "2026-07-13T13:20:00")}));
+    setLocalModificationTime(source, 2026, 7, 13, 10, 15);
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+
+    const auto result = port.importExternalFiles({.files = {source}});
+
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarText(db, "SELECT arquivo_origem FROM ssa_table WHERE numero_ssa='202600501'") ==
+            source.filename().string());
+    REQUIRE(scalarText(db, "SELECT data_planilha FROM ssa_table WHERE numero_ssa='202600501'") ==
+            "2026-07-13T13:20:00");
+    REQUIRE(scalarText(db, "SELECT data_arquivo_origem FROM ssa_table "
+                           "WHERE numero_ssa='202600501'") == "2026-07-13 10:15:00");
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("external import falls back to the original source modification time") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto sourceDirectory = root / "external";
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(sourceDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    const auto source = sourceDirectory / "sem-data-no-nome.xlsx";
+    writeWorkbook(source, row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                                  inlineCell("C1", "Descricao da SSA"),
+                                  inlineCell("D1", "Data de emissao")}) +
+                              row(2, {inlineCell("A2", "202600502"), inlineCell("B2", "APV"),
+                                      inlineCell("C2", "Mtime"), inlineCell("D2", "2026-07-01")}));
+    setLocalModificationTime(source, 2026, 7, 12, 9, 45);
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+
+    const auto result = port.importExternalFiles({.files = {source}});
+
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarText(db, "SELECT arquivo_origem FROM ssa_table WHERE numero_ssa='202600502'") ==
+            source.filename().string());
+    REQUIRE(scalarText(db, "SELECT data_arquivo_origem FROM ssa_table "
+                           "WHERE numero_ssa='202600502'") == "2026-07-12 09:45:00");
+    REQUIRE(scalarText(db, "SELECT COALESCE(data_planilha, '') FROM ssa_table "
+                           "WHERE numero_ssa='202600502'") == "");
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("spreadsheet mapper keeps file modification time below spreadsheet time") {
+    ssa::infra::importing::SpreadsheetTable table;
+    table.sourcePath = "metadata.xlsx";
+    table.originalFilename = "metadata.xlsx";
+    table.sourceModifiedTimestamp = "2026-07-12 09:45:00";
+    table.rows = {{"Numero SSA", "Situacao", "Descricao da SSA", "Data de emissao"},
+                  {"202600506", "APV", "Metadata", "2026-07-01"}};
+
+    const auto result = ssa::infra::importing::SsaSpreadsheetMapper::map(table);
+
+    REQUIRE(result.rows.size() == 1);
+    REQUIRE(ssa::infra::importing::rowValue(result.rows.front(), "data_planilha").empty());
+    REQUIRE(ssa::infra::importing::rowValue(result.rows.front(), "data_arquivo_origem") ==
+            "2026-07-12 09:45:00");
+}
+
+TEST_CASE("external imports compare source times within the same day") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto sourceDirectory = root / "external";
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(sourceDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    const auto older = sourceDirectory / "SSA_14-07-2026_0130PM.xlsx";
+    const auto newer = sourceDirectory / "SSA_14-07-2026_0145PM.xlsx";
+    const auto workbookRows = [](const std::string& description, const std::string& status) {
+        return row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                       inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao")}) +
+               row(2, {inlineCell("A2", "202600507"), inlineCell("B2", status),
+                       inlineCell("C2", description), inlineCell("D2", "2026-07-01")});
+    };
+    writeWorkbook(older, workbookRows("Older", "APV"));
+    writeWorkbook(newer, workbookRows("Newer", "STE"));
+    setLocalModificationTime(older, 2026, 7, 14, 13, 30);
+    setLocalModificationTime(newer, 2026, 7, 14, 13, 45);
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+
+    REQUIRE(port.importExternalFiles({.files = {older}}).status ==
+            ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE(port.importExternalFiles({.files = {newer}}).status ==
+            ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE(port.importExternalFiles({.files = {older}}).status ==
+            ssa::ports::WorkflowStatus::NoChanges);
+
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarText(db, "SELECT descricao_ssa FROM ssa_table WHERE numero_ssa='202600507'") ==
+            "Newer");
+    REQUIRE(scalarText(db, "SELECT situacao FROM ssa_table WHERE numero_ssa='202600507'") == "STE");
+    REQUIRE(scalarText(db, "SELECT COALESCE(data_planilha, '') FROM ssa_table "
+                           "WHERE numero_ssa='202600507'") == "");
+    REQUIRE(scalarText(db, "SELECT data_arquivo_origem FROM ssa_table "
+                           "WHERE numero_ssa='202600507'") == "2026-07-14 13:45:00");
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("input staging keeps filename and local modification time separate") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto sourceDirectory = root / "source";
+    std::filesystem::create_directories(sourceDirectory);
+    const std::vector<std::string> cases{"SSA_14-07-2026_0343PM.xlsx",
+                                         "SSA_14-07-2026 3:43 PM.xlsx", "SSA_2026_07_14T3.43.xlsx"};
+    for (const auto& filename : cases) {
+        const auto source = sourceDirectory / filename;
+        createSparseFile(source, 1);
+        setLocalModificationTime(source, 2000, 1, 2, 3, 4);
+        const auto staged =
+            ssa::infra::importing::ImportFileStager{inputDirectory}.stageExternalFiles({source});
+        REQUIRE(staged.files.size() == 1);
+        REQUIRE(staged.files.front().originalFilename == filename);
+        REQUIRE(staged.files.front().sourceModifiedTimestamp == "2000-01-02 03:04:00");
+    }
+
+    const auto unsupported = sourceDirectory / "SSA_2026-07-14.xlsx";
+    createSparseFile(unsupported, 1);
+    setLocalModificationTime(unsupported, 2000, 1, 2, 3, 4);
+    const auto staged =
+        ssa::infra::importing::ImportFileStager{inputDirectory}.stageExternalFiles({unsupported});
+    REQUIRE(staged.files.size() == 1);
+    REQUIRE(staged.files.front().sourceModifiedTimestamp == "2000-01-02 03:04:00");
+}
+
+TEST_CASE("spreadsheet mapper accepts the real cadastro timestamp format") {
+    ssa::infra::importing::SpreadsheetTable table;
+    table.sourcePath = "real-date.xlsx";
+    table.rows = {{"Numero SSA", "Situacao", "Descricao da SSA", "Data de emissao"},
+                  {"202600505", "APV", "Real timestamp", "21/10/2025 11:10:36"}};
+
+    const auto result = ssa::infra::importing::SsaSpreadsheetMapper::map(table);
+
+    REQUIRE(result.mappingStatus == ssa::infra::importing::SpreadsheetMappingStatus::Mapped);
+    REQUIRE(result.rows.size() == 1);
+    REQUIRE(ssa::infra::importing::rowValue(result.rows.front(), "data_cadastro") ==
+            "21/10/2025 11:10:36");
+}
+
+TEST_CASE("external import rejects a workbook without the required date column") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto sourceDirectory = root / "external";
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(sourceDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    const auto source = sourceDirectory / "schema-incompleto.xlsx";
+    writeWorkbook(source, row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                                  inlineCell("C1", "Descricao da SSA")}) +
+                              row(2, {inlineCell("A2", "202600503"), inlineCell("B2", "ASE"),
+                                      inlineCell("C2", "Sem coluna de data")}));
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+
+    const auto result = port.importExternalFiles({.files = {source}});
+
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
+    REQUIRE(result.message.find("required_columns_missing") != std::string::npos);
+    REQUIRE(std::filesystem::exists(source));
+    REQUIRE_FALSE(std::filesystem::exists(inputDirectory / "processadas"));
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND "
+                          "name='ssa_table'") == 0);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("SSA duplicate resolution is temporal and independent of input order") {
+    const ssa::infra::importing::SsaImportRow older{{"numero_ssa", "202600504"},
+                                                    {"situacao", "APV"},
+                                                    {"descricao_ssa", "Older"},
+                                                    {"data_arquivo_origem", "2026-07-13 09:00:00"}};
+    const ssa::infra::importing::SsaImportRow newer{{"numero_ssa", "202600504"},
+                                                    {"situacao", "STE"},
+                                                    {"descricao_ssa", "Newer"},
+                                                    {"data_arquivo_origem", "2026-07-13 14:30:00"}};
+    const auto resolve = [](const ssa::infra::importing::SsaImportRow& first,
+                            const ssa::infra::importing::SsaImportRow& second) {
+        ssa::infra::importing::SsaImportBatch firstBatch;
+        firstBatch.rows = {first};
+        ssa::infra::importing::SsaImportBatch secondBatch;
+        secondBatch.rows = {second};
+        return ssa::infra::importing::SsaImportConflictResolver{}
+            .resolveBySsaNumberKeepingUnkeyedRows({firstBatch, secondBatch});
+    };
+
+    const auto oldThenNew = resolve(older, newer);
+    const auto newThenOld = resolve(newer, older);
+
+    REQUIRE(oldThenNew.rows.size() == 1);
+    REQUIRE(newThenOld.rows.size() == 1);
+    REQUIRE(oldThenNew.duplicateRows == 1);
+    REQUIRE(newThenOld.duplicateRows == 1);
+    REQUIRE(ssa::infra::importing::rowValue(oldThenNew.rows.front(), "situacao") == "STE");
+    REQUIRE(ssa::infra::importing::rowValue(newThenOld.rows.front(), "situacao") == "STE");
+    REQUIRE(ssa::infra::importing::rowValue(oldThenNew.rows.front(), "descricao_ssa") == "Newer");
+    REQUIRE(oldThenNew.rows == newThenOld.rows);
+
+    const auto equalDuplicate = resolve(newer, newer);
+    REQUIRE(equalDuplicate.rows == std::vector<ssa::infra::importing::SsaImportRow>{newer});
+    REQUIRE(equalDuplicate.duplicateRows == 1);
+}
+
+TEST_CASE("SSA duplicate resolution rejects conflicting values at the same snapshot") {
+    ssa::infra::importing::SsaImportBatch batch;
+    batch.rows = {{{"numero_ssa", "202600508"},
+                   {"descricao_ssa", "First"},
+                   {"situacao", "APV"},
+                   {"data_planilha", "2026-07-14T13:45:00"}},
+                  {{"numero_ssa", "202600508"},
+                   {"descricao_ssa", "Second"},
+                   {"situacao", "APV"},
+                   {"data_planilha", "2026-07-14T13:45:00"}}};
+
+    const auto result =
+        ssa::infra::importing::SsaImportConflictResolver{}.resolveBySsaNumberKeepingUnkeyedRows(
+            {batch});
+
+    REQUIRE(result.rows.empty());
+}
+
+TEST_CASE("external import rejects duplicate conflicts and preserves the source") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto sourceDirectory = root / "external";
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(sourceDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    const auto source = sourceDirectory / "SSA_14-07-2026_0145PM.xlsx";
+    writeWorkbook(
+        source,
+        row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao")}) +
+            row(2, {inlineCell("A2", "202600509"), inlineCell("B2", "APV"),
+                    inlineCell("C2", "SECRET_FIRST"), inlineCell("D2", "2026-07-01")}) +
+            row(3, {inlineCell("A3", "202600509"), inlineCell("B3", "APV"),
+                    inlineCell("C3", "SECRET_SECOND"), inlineCell("D3", "2026-07-01")}));
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+
+    const auto result = port.importExternalFiles({.files = {source}});
+
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
+    REQUIRE(result.message.find("duplicate_conflict") != std::string::npos);
+    REQUIRE(result.message.find("conflicts=1") != std::string::npos);
+    REQUIRE(result.message.find("SECRET_") == std::string::npos);
+    REQUIRE(result.diagnostic.find("SECRET_") == std::string::npos);
+    REQUIRE(std::filesystem::exists(source));
+    REQUIRE_FALSE(std::filesystem::exists(inputDirectory / "processadas"));
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND "
+                          "name='ssa_table'") == 0);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("external import rejects equal snapshot conflicts across files") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto sourceDirectory = root / "external";
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(sourceDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    const auto first = sourceDirectory / "A_SSA_14-07-2026_0145PM.xlsx";
+    const auto second = sourceDirectory / "B_SSA_14-07-2026_0145PM.xlsx";
+    const auto workbookRows = [](const std::string& description) {
+        return row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                       inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao")}) +
+               row(2, {inlineCell("A2", "202600510"), inlineCell("B2", "APV"),
+                       inlineCell("C2", description), inlineCell("D2", "2026-07-01")});
+    };
+    writeWorkbook(first, workbookRows("FIRST_FILE"));
+    writeWorkbook(second, workbookRows("SECOND_FILE"));
+    setLocalModificationTime(first, 2026, 7, 14, 13, 45);
+    setLocalModificationTime(second, 2026, 7, 14, 13, 45);
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+
+    const auto result = port.importExternalFiles({.files = {first, second}});
+
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
+    REQUIRE(result.message.find("duplicate_conflict") != std::string::npos);
+    REQUIRE(std::filesystem::exists(first));
+    REQUIRE(std::filesystem::exists(second));
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND "
+                          "name='ssa_table'") == 0);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("incremental rescan rejects an unrecognized workbook without moving it") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    const auto workbook = inputDirectory / "unknown.xlsx";
+    writeWorkbook(workbook, row(1, {inlineCell("A1", "Unknown A"), inlineCell("B1", "Unknown B"),
+                                    inlineCell("C1", "Unknown C")}));
+
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(dbPath, importColumns());
+    ssa::infra::importing::ResolvedSsaImportRows previous;
+    previous.rows.push_back({{"numero_ssa", "202600130"}, {"descricao_ssa", "Existing"}});
+    REQUIRE(writer.write(previous, 1, 0, false).rowsWritten == 1);
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+
+    const auto result = port.rescan({ssa::ports::RescanMode::Incremental});
+
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
+    REQUIRE(result.message.find("header_not_recognized") != std::string::npos);
+    REQUIRE(std::filesystem::exists(workbook));
+    REQUIRE_FALSE(std::filesystem::exists(inputDirectory / "processadas"));
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 1);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600130'") == 1);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("spreadsheet mapper rejects invalid rows and accepts date exempt states") {
+    ssa::infra::importing::SpreadsheetTable table;
+    table.sourcePath = "rows.xlsx";
+    table.rows = {{"Numero SSA", "Situacao", "Descricao da SSA", "Data de emissao"},
+                  {"SSA 202600001", "APV", "Invalid number", "2026-01-01"},
+                  {"2026-00002", "APV", "Missing date", ""},
+                  {"2026-00003", "ASE", "Exempt date", ""},
+                  {"202600004.0", "APV", "Valid", "2026-01-01"}};
+
+    const auto result = ssa::infra::importing::SsaSpreadsheetMapper{}.map(table);
+
+    REQUIRE(result.mappingStatus == ssa::infra::importing::SpreadsheetMappingStatus::Mapped);
+    REQUIRE(result.rows.size() == 2);
+    REQUIRE(result.skippedRows == 2);
+    REQUIRE(ssa::infra::importing::rowValue(result.rows[0], "numero_ssa") == "202600003");
+    REQUIRE(ssa::infra::importing::rowValue(result.rows[1], "numero_ssa") == "202600004");
+}
+
+TEST_CASE("spreadsheet workflow reports invalid row causes without cell content") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    const auto workbook = inputDirectory / "rows.xlsx";
+    writeWorkbook(
+        workbook,
+        row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao")}) +
+            row(2, {inlineCell("A2", "202600510"), inlineCell("B2", "APV"),
+                    inlineCell("C2", "SECRET_ROW_PAYLOAD"), inlineCell("D2", "not-a-date")}) +
+            row(3, {inlineCell("A3", "202600511"), inlineCell("B3", "APV"),
+                    inlineCell("C3", "Valid"), inlineCell("D3", "2026-07-01")}));
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+
+    const auto result = port.rescan({ssa::ports::RescanMode::Incremental});
+
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE(result.message.find("invalid_rows=1") != std::string::npos);
+    REQUIRE(result.message.find("invalid_number=0") != std::string::npos);
+    REQUIRE(result.message.find("invalid_description=0") != std::string::npos);
+    REQUIRE(result.message.find("invalid_date=1") != std::string::npos);
+    REQUIRE(result.message.find("SECRET_ROW_PAYLOAD") == std::string::npos);
+    REQUIRE(result.diagnostic.find("SECRET_ROW_PAYLOAD") == std::string::npos);
+    REQUIRE(result.warning);
+}
+
+TEST_CASE("sqlite incremental import merges without deleting existing fields") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto dbPath = std::filesystem::path{tempDir.path().toStdString()} / "ssas.db";
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(dbPath, importColumns());
+    ssa::infra::importing::ResolvedSsaImportRows previous;
+    previous.rows.push_back({{"numero_ssa", "202600131"},
+                             {"descricao_ssa", "Existing"},
+                             {"setor_executor", "MEL1"},
+                             {"situacao", "STE"},
+                             {"data_planilha", "2026-05-01"}});
+    REQUIRE(writer.write(previous, 1, 0, false).rowsWritten == 1);
+
+    ssa::infra::importing::ResolvedSsaImportRows incoming;
+    incoming.rows.push_back({{"numero_ssa", "202600131"},
+                             {"descricao_ssa", "Regressed"},
+                             {"setor_executor", ""},
+                             {"situacao", "APV"},
+                             {"prazo_limite", "2026-05-30"},
+                             {"data_planilha", "2026-05-02"}});
+
+    const auto summary = writer.write(incoming, 1, 0, false);
+
+    REQUIRE(summary.rowsWritten == 1);
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarText(db, "SELECT descricao_ssa FROM ssa_table WHERE numero_ssa='202600131'") ==
+            "Existing");
+    REQUIRE(scalarText(db, "SELECT setor_executor FROM ssa_table WHERE numero_ssa='202600131'") ==
+            "MEL1");
+    REQUIRE(scalarText(db, "SELECT situacao FROM ssa_table WHERE numero_ssa='202600131'") == "STE");
+    REQUIRE(scalarText(db, "SELECT prazo_limite FROM ssa_table WHERE numero_ssa='202600131'") ==
+            "2026-05-30");
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("incremental no-op reports a successful non-mutating outcome") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    const auto workbook = inputDirectory / "same.xlsx";
+    writeWorkbook(
+        workbook,
+        row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao")}) +
+            row(2, {inlineCell("A2", "202600132"), inlineCell("B2", "ASE"),
+                    inlineCell("C2", "Unchanged"), inlineCell("D2", "2026-07-01")}));
+    setLocalModificationTime(workbook, 2026, 7, 14, 12, 0);
+
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(dbPath, importColumns());
+    ssa::infra::importing::ResolvedSsaImportRows previous;
+    previous.rows.push_back({{"numero_ssa", "202600132"},
+                             {"situacao", "ASE"},
+                             {"descricao_ssa", "Unchanged"},
+                             {"data_cadastro", "2026-07-01"},
+                             {"arquivo_origem", "same.xlsx"},
+                             {"data_arquivo_origem", "2026-07-14 12:00:00"}});
+    REQUIRE(writer.write(previous, 1, 0, false).rowsWritten == 1);
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+
+    const auto result = port.rescan({ssa::ports::RescanMode::Incremental});
+
+    REQUIRE(result.ok());
+    REQUIRE(result.status != ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE(result.message.find("inserted=0") != std::string::npos);
+    REQUIRE(result.message.find("updated=0") != std::string::npos);
+    REQUIRE(result.message.find("unchanged=1") != std::string::npos);
+    REQUIRE(std::filesystem::exists(inputDirectory / "processadas" / "same.xlsx"));
+}
+
+TEST_CASE("incremental summary reports transactional legacy normalization separately from file") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    const auto workbook = inputDirectory / "same-normalized.xlsx";
+    writeWorkbook(
+        workbook,
+        row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao")}) +
+            row(2, {inlineCell("A2", "202600526"), inlineCell("B2", "ASE"),
+                    inlineCell("C2", "Unchanged"), inlineCell("D2", "2026-07-01")}));
+    setLocalModificationTime(workbook, 2026, 7, 14, 12, 0);
+
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(dbPath, importColumns());
+    ssa::infra::importing::ResolvedSsaImportRows previous;
+    previous.rows.push_back({{"numero_ssa", "202600526"},
+                             {"situacao", "ASE"},
+                             {"descricao_ssa", "Unchanged"},
+                             {"data_cadastro", "2026-07-01"},
+                             {"arquivo_origem", "same-normalized.xlsx"},
+                             {"data_arquivo_origem", "2026-07-14 12:00:00"}});
+    REQUIRE(writer.write(previous, 1, 0, false).rowsWritten == 1);
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(db,
+                         "UPDATE ssa_table SET numero_ssa='2026-00526.0' WHERE "
+                         "numero_ssa='202600526'",
+                         nullptr, nullptr, nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+    const auto result = port.rescan({ssa::ports::RescanMode::Incremental});
+
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE(result.importSummary.has_value());
+    REQUIRE(result.importSummary->updates == 1);
+    REQUIRE(result.importSummary->files.size() == 1);
+    REQUIRE(result.importSummary->files.front().status == ssa::ports::ImportFileStatus::NoChanges);
+    REQUIRE(result.importSummary->files.front().updates == 0);
+    REQUIRE(result.message.find("updated=1") != std::string::npos);
+}
+
+TEST_CASE("sqlite import rejects duplicate existing SSA numbers before mutation") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto dbPath = std::filesystem::path{tempDir.path().toStdString()} / "ssas.db";
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(dbPath, importColumns());
+    ssa::infra::importing::ResolvedSsaImportRows legacyRow;
+    legacyRow.rows.push_back({{"numero_ssa", "202600133"}, {"descricao_ssa", "First"}});
+    REQUIRE(writer.write(legacyRow, 1, 0, false).rowsWritten == 1);
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(db, "DROP INDEX ux_ssa_table_numero_ssa", nullptr, nullptr, nullptr) ==
+            SQLITE_OK);
+    REQUIRE(sqlite3_exec(
+                db,
+                "INSERT INTO ssa_table(numero_ssa, descricao_ssa) VALUES('202600133', 'Second')",
+                nullptr, nullptr, nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+
+    ssa::infra::importing::ResolvedSsaImportRows incoming;
+    incoming.rows.push_back({{"numero_ssa", "202600134"}, {"descricao_ssa", "Must not enter"}});
+
+    REQUIRE_THROWS(writer.write(incoming, 1, 0, false));
+
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600133'") == 2);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600134'") == 0);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("sqlite import rejects semantic SSA collisions before mutation") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto dbPath = std::filesystem::path{tempDir.path().toStdString()} / "ssas.db";
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(dbPath, importColumns());
+    ssa::infra::importing::ResolvedSsaImportRows legacy;
+    legacy.rows = {{{"numero_ssa", "202600512"}, {"descricao_ssa", "First"}},
+                   {{"numero_ssa", "202600599"}, {"descricao_ssa", "Second"}}};
+    REQUIRE(writer.write(legacy, 1, 0, false).rowsWritten == 2);
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(db, "DROP INDEX ux_ssa_table_numero_ssa", nullptr, nullptr, nullptr) ==
+            SQLITE_OK);
+    REQUIRE(sqlite3_exec(db,
+                         "UPDATE ssa_table SET numero_ssa='2026-00512' WHERE "
+                         "descricao_ssa='First'",
+                         nullptr, nullptr, nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(db,
+                         "UPDATE ssa_table SET numero_ssa='202600512.0' WHERE "
+                         "descricao_ssa='Second'",
+                         nullptr, nullptr, nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+
+    ssa::infra::importing::ResolvedSsaImportRows incoming;
+    incoming.rows.push_back({{"numero_ssa", "202600513"}, {"descricao_ssa", "Must not enter"}});
+
+    REQUIRE_THROWS(writer.write(incoming, 1, 0, false));
+
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 2);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600513'") == 0);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("sqlite import normalizes unique legacy SSA values transactionally") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto dbPath = std::filesystem::path{tempDir.path().toStdString()} / "ssas.db";
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(dbPath, importColumns());
+    ssa::infra::importing::ResolvedSsaImportRows legacy;
+    legacy.rows = {{{"numero_ssa", "202600514"}, {"descricao_ssa", "Legacy"}},
+                   {{"numero_ssa", "202600515"},
+                    {"descricao_ssa", "Child"},
+                    {"derivada_de", "202600514"},
+                    {"numero_ssa_relacionada_1", "202600514"}}};
+    REQUIRE(writer.write(legacy, 1, 0, false).rowsWritten == 2);
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(db,
+                         "UPDATE ssa_table SET numero_ssa='2026-00514.0' WHERE "
+                         "numero_ssa='202600514'",
+                         nullptr, nullptr, nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(db,
+                         "UPDATE ssa_table SET derivada_de='2026-00514.0', "
+                         "numero_ssa_relacionada_1='2026-00514.0' WHERE "
+                         "numero_ssa='202600515'",
+                         nullptr, nullptr, nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+
+    ssa::infra::importing::ResolvedSsaImportRows incoming;
+    incoming.rows.push_back({{"numero_ssa", "202600516"}, {"descricao_ssa", "Incoming"}});
+    const auto summary = writer.write(incoming, 1, 0, false);
+    REQUIRE(summary.rowsWritten == 3);
+    REQUIRE(summary.rowsUpdated == 2);
+
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600514'") == 1);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='2026-00514.0'") == 0);
+    REQUIRE(scalarText(db, "SELECT derivada_de FROM ssa_table WHERE numero_ssa='202600515'") ==
+            "202600514");
+    REQUIRE(scalarText(db, "SELECT numero_ssa_relacionada_1 FROM ssa_table WHERE "
+                           "numero_ssa='202600515'") == "202600514");
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("sqlite full import replaces exact duplicate legacy identities") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto dbPath = std::filesystem::path{tempDir.path().toStdString()} / "ssas.db";
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(dbPath, importColumns());
+    ssa::infra::importing::ResolvedSsaImportRows legacy;
+    legacy.rows.push_back({{"numero_ssa", "202600519"}, {"descricao_ssa", "First"}});
+    REQUIRE(writer.write(legacy, 1, 0, false).rowsWritten == 1);
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(db, "DROP INDEX ux_ssa_table_numero_ssa", nullptr, nullptr, nullptr) ==
+            SQLITE_OK);
+    REQUIRE(sqlite3_exec(
+                db,
+                "INSERT INTO ssa_table(numero_ssa, descricao_ssa) VALUES('202600519', 'Second')",
+                nullptr, nullptr, nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+
+    ssa::infra::importing::ResolvedSsaImportRows replacement;
+    replacement.rows.push_back({{"numero_ssa", "202600520"}, {"descricao_ssa", "Replacement"}});
+    const auto summary = writer.write(replacement, 1, 0, true);
+
+    REQUIRE(summary.rowsWritten == 1);
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 1);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600520'") == 1);
+    REQUIRE(scalarText(db, "PRAGMA integrity_check") == "ok");
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("sqlite import normalizes formatted references to canonical existing identities") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto dbPath = std::filesystem::path{tempDir.path().toStdString()} / "ssas.db";
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(dbPath, importColumns());
+    ssa::infra::importing::ResolvedSsaImportRows legacy;
+    legacy.rows = {{{"numero_ssa", "202600521"}, {"descricao_ssa", "Parent"}},
+                   {{"numero_ssa", "202600522"},
+                    {"descricao_ssa", "Child"},
+                    {"derivada_de", "202600521"},
+                    {"numero_ssa_relacionada_1", "202600521"}}};
+    REQUIRE(writer.write(legacy, 1, 0, false).rowsWritten == 2);
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(db,
+                         "UPDATE ssa_table SET derivada_de='2026-00521.0', "
+                         "numero_ssa_relacionada_1='2026-00521.0' WHERE "
+                         "numero_ssa='202600522'",
+                         nullptr, nullptr, nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+
+    ssa::infra::importing::ResolvedSsaImportRows incoming;
+    incoming.rows.push_back({{"numero_ssa", "202600523"}, {"descricao_ssa", "Incoming"}});
+    const auto summary = writer.write(incoming, 1, 0, false);
+
+    REQUIRE(summary.rowsWritten == 2);
+    REQUIRE(summary.rowsUpdated == 1);
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarText(db, "SELECT derivada_de FROM ssa_table WHERE numero_ssa='202600522'") ==
+            "202600521");
+    REQUIRE(scalarText(db, "SELECT numero_ssa_relacionada_1 FROM ssa_table WHERE "
+                           "numero_ssa='202600522'") == "202600521");
+    REQUIRE(scalarText(db, "PRAGMA integrity_check") == "ok");
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("sqlite import normalizes formatted references before inserting rows") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto dbPath = std::filesystem::path{tempDir.path().toStdString()} / "ssas.db";
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(dbPath, importColumns());
+    ssa::infra::importing::ResolvedSsaImportRows incoming;
+    incoming.rows = {{{"numero_ssa", "202600524"}, {"descricao_ssa", "Parent"}},
+                     {{"numero_ssa", "202600525"},
+                      {"descricao_ssa", "Child"},
+                      {"derivada_de", "2026-00524.0"},
+                      {"numero_ssa_relacionada_1", "2026-00524.0"}}};
+
+    const auto summary = writer.write(incoming, 1, 0, false);
+
+    REQUIRE(summary.rowsWritten == 2);
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarText(db, "SELECT derivada_de FROM ssa_table WHERE numero_ssa='202600525'") ==
+            "202600524");
+    REQUIRE(scalarText(db, "SELECT numero_ssa_relacionada_1 FROM ssa_table WHERE "
+                           "numero_ssa='202600525'") == "202600524");
+    REQUIRE(scalarText(db, "PRAGMA integrity_check") == "ok");
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("sqlite full import replaces an invalid legacy database") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto dbPath = std::filesystem::path{tempDir.path().toStdString()} / "ssas.db";
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(dbPath, importColumns());
+    ssa::infra::importing::ResolvedSsaImportRows legacy;
+    legacy.rows.push_back({{"numero_ssa", "202600517"}, {"descricao_ssa", "Legacy"}});
+    REQUIRE(writer.write(legacy, 1, 0, false).rowsWritten == 1);
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(db, "UPDATE ssa_table SET numero_ssa='invalid-legacy'", nullptr, nullptr,
+                         nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+
+    ssa::infra::importing::ResolvedSsaImportRows replacement;
+    replacement.rows.push_back({{"numero_ssa", "202600518"}, {"descricao_ssa", "Replacement"}});
+    const auto summary = writer.write(replacement, 1, 0, true);
+
+    REQUIRE(summary.rowsWritten == 1);
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 1);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600518'") == 1);
+    REQUIRE(scalarText(db, "PRAGMA integrity_check") == "ok");
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("sqlite import rolls back legacy SSA normalization when preflight fails") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto dbPath = std::filesystem::path{tempDir.path().toStdString()} / "ssas.db";
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(dbPath, importColumns());
+    ssa::infra::importing::ResolvedSsaImportRows legacy;
+    legacy.rows.push_back({{"numero_ssa", "202600516"}, {"descricao_ssa", "Legacy"}});
+    REQUIRE(writer.write(legacy, 1, 0, false).rowsWritten == 1);
+
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(db,
+                         "UPDATE ssa_table SET numero_ssa='2026-00516.0' WHERE "
+                         "numero_ssa='202600516'",
+                         nullptr, nullptr, nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(db,
+                         "CREATE TRIGGER reject_normalization BEFORE UPDATE OF numero_ssa ON "
+                         "ssa_table WHEN NEW.numero_ssa='202600516' BEGIN SELECT "
+                         "RAISE(ABORT, 'test normalization failure'); END",
+                         nullptr, nullptr, nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+
+    REQUIRE_THROWS(writer.startSession(false));
+
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='2026-00516.0'") == 1);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600516'") == 0);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
 TEST_CASE("incremental rescan consolidates only committed input workbooks") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
@@ -1202,20 +2097,21 @@ TEST_CASE("incremental rescan consolidates only committed input workbooks") {
     std::filesystem::create_directories(dbPath.parent_path());
     ssa::infra::importing::ResolvedSsaImportRows previous;
     previous.rows.push_back({{"numero_ssa", "202600119"}, {"descricao_ssa", "Anterior"}});
-    previous.ssaNumbersForUpsertDelete.emplace_back("202600119");
     const ssa::infra::sqlite::SqliteSsaImportWriter writer(dbPath, importColumns());
     REQUIRE(writer.write(previous, 1, 0, false).rowsWritten == 1);
 
     const auto validWorkbook = inputDirectory / "valid.xlsx";
-    writeWorkbook(validWorkbook,
-                  row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
-                          inlineCell("C1", "Descricao da SSA")}) +
-                      row(2, {inlineCell("A2", "202600120"), inlineCell("B2", "ASE"),
-                              inlineCell("C2", "Linha valida")}));
+    writeWorkbook(
+        validWorkbook,
+        row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao")}) +
+            row(2, {inlineCell("A2", "202600120"), inlineCell("B2", "ASE"),
+                    inlineCell("C2", "Linha valida"), inlineCell("D2", "2026-07-01")}));
     const auto emptyWorkbook = inputDirectory / "empty.xlsx";
-    writeWorkbook(emptyWorkbook,
-                  row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
-                          inlineCell("C1", "Descricao da SSA")}));
+    writeWorkbook(
+        emptyWorkbook,
+        row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao")}));
     const auto unknown = inputDirectory / "pending.txt";
     {
         std::ofstream output(unknown);
@@ -1258,10 +2154,12 @@ TEST_CASE("incremental rescan preserves an existing destination with a unique na
         output << "existing";
     }
     const auto workbook = inputDirectory / "same.xlsx";
-    writeWorkbook(workbook, row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
-                                    inlineCell("C1", "Descricao da SSA")}) +
-                                row(2, {inlineCell("A2", "202600121"), inlineCell("B2", "ASE"),
-                                        inlineCell("C2", "Novo arquivo")}));
+    writeWorkbook(
+        workbook,
+        row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao")}) +
+            row(2, {inlineCell("A2", "202600121"), inlineCell("B2", "ASE"),
+                    inlineCell("C2", "Novo arquivo"), inlineCell("D2", "2026-07-01")}));
 
     ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
                                                               importColumns());
@@ -1289,10 +2187,12 @@ TEST_CASE("post commit consolidation failure stays visible and preserves the inp
         blockedDestination << "not a directory";
     }
     const auto workbook = inputDirectory / "committed.xlsx";
-    writeWorkbook(workbook, row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
-                                    inlineCell("C1", "Descricao da SSA")}) +
-                                row(2, {inlineCell("A2", "202600124"), inlineCell("B2", "ASE"),
-                                        inlineCell("C2", "Commit antes do move")}));
+    writeWorkbook(
+        workbook,
+        row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao")}) +
+            row(2, {inlineCell("A2", "202600124"), inlineCell("B2", "ASE"),
+                    inlineCell("C2", "Commit antes do move"), inlineCell("D2", "2026-07-01")}));
 
     ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
                                                               importColumns());
@@ -1321,7 +2221,6 @@ TEST_CASE("sqlite commit failure prevents creation of a consolidation manifest")
     std::filesystem::create_directories(dbPath.parent_path());
     ssa::infra::importing::ResolvedSsaImportRows seedRows;
     seedRows.rows.push_back({{"numero_ssa", "202600125"}, {"descricao_ssa", "Linha anterior"}});
-    seedRows.ssaNumbersForUpsertDelete.emplace_back("202600125");
     const ssa::infra::sqlite::SqliteSsaImportWriter seedWriter(dbPath, importColumns());
     REQUIRE(seedWriter.write(seedRows, 1, 0, false).rowsWritten == 1);
 
@@ -1336,10 +2235,12 @@ TEST_CASE("sqlite commit failure prevents creation of a consolidation manifest")
     REQUIRE(sqlite3_step(lockedStatement) == SQLITE_ROW);
 
     const auto workbook = inputDirectory / "blocked-commit.xlsx";
-    writeWorkbook(workbook, row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
-                                    inlineCell("C1", "Descricao da SSA")}) +
-                                row(2, {inlineCell("A2", "202600126"), inlineCell("B2", "ASE"),
-                                        inlineCell("C2", "Nao consolidar")}));
+    writeWorkbook(
+        workbook,
+        row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao")}) +
+            row(2, {inlineCell("A2", "202600126"), inlineCell("B2", "ASE"),
+                    inlineCell("C2", "Nao consolidar"), inlineCell("D2", "2026-07-01")}));
     ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
                                                               importColumns());
 
@@ -1371,10 +2272,12 @@ TEST_CASE("external import consolidates its staged copy and preserves the select
     std::filesystem::create_directories(sourceDirectory);
     std::filesystem::create_directories(dbPath.parent_path());
     const auto source = sourceDirectory / "selected.xlsx";
-    writeWorkbook(source, row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
-                                  inlineCell("C1", "Descricao da SSA")}) +
-                              row(2, {inlineCell("A2", "202600122"), inlineCell("B2", "ASE"),
-                                      inlineCell("C2", "Import externo")}));
+    writeWorkbook(
+        source,
+        row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao")}) +
+            row(2, {inlineCell("A2", "202600122"), inlineCell("B2", "ASE"),
+                    inlineCell("C2", "Import externo"), inlineCell("D2", "2026-07-01")}));
 
     ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
                                                               importColumns());
@@ -1395,11 +2298,12 @@ TEST_CASE("spreadsheet import workflow preserves unicode paths") {
 
     const auto asciiWorkbook =
         std::filesystem::path{tempDir.path().toStdString()} / "unicode-source.xlsx";
-    writeWorkbook(asciiWorkbook,
-                  row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
-                          inlineCell("C1", "Descricao da SSA")}) +
-                      row(2, {inlineCell("A2", "202600099"), inlineCell("B2", "APV"),
-                              inlineCell("C2", "Caminho unicode")}));
+    writeWorkbook(
+        asciiWorkbook,
+        row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao")}) +
+            row(2, {inlineCell("A2", "202600099"), inlineCell("B2", "ASE"),
+                    inlineCell("C2", "Caminho unicode"), inlineCell("D2", "2026-07-01")}));
 
     const QString unicodeRootText =
         tempDir.filePath(QString::fromUtf8("importacao-unicode-\xE6\xBC\xA2"));
@@ -1442,10 +2346,13 @@ TEST_CASE("spreadsheet import workflow maps sparse xlsx cells by cell reference"
     std::filesystem::create_directories(dbPath.parent_path());
 
     const auto workbook = sourceDirectory / "sparse.xlsx";
-    writeWorkbook(workbook, row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
-                                    inlineCell("C1", "Descricao da SSA"),
-                                    inlineCell("D1", "Setor Executor")}) +
-                                row(2, {inlineCell("A2", "202600777"), inlineCell("D2", "MEL9")}));
+    writeWorkbook(workbook,
+                  row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                          inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao"),
+                          inlineCell("E1", "Setor Executor")}) +
+                      row(2, {inlineCell("A2", "202600777"), inlineCell("B2", "ASE"),
+                              inlineCell("C2", "Linha esparsa"), inlineCell("D2", "2026-07-01"),
+                              inlineCell("E2", "MEL9")}));
 
     ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
                                                               importColumns());
@@ -1616,10 +2523,12 @@ TEST_CASE("spreadsheet import workflow full rescan replaces existing rows") {
     std::filesystem::create_directories(dbPath.parent_path());
 
     const auto workbook = inputDirectory / "first.xlsx";
-    writeWorkbook(workbook, row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
-                                    inlineCell("C1", "Descricao da SSA")}) +
-                                row(2, {inlineCell("A2", "202600010"), inlineCell("B2", "ASE"),
-                                        inlineCell("C2", "Linha nova")}));
+    writeWorkbook(
+        workbook,
+        row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao")}) +
+            row(2, {inlineCell("A2", "202600010"), inlineCell("B2", "ASE"),
+                    inlineCell("C2", "Linha nova"), inlineCell("D2", "2026-07-01")}));
 
     const auto noSurvivorDirectory = inputDirectory / "processadas" / "nosurvivor";
     std::filesystem::create_directories(noSurvivorDirectory);
@@ -1643,7 +2552,7 @@ TEST_CASE("spreadsheet import workflow full rescan replaces existing rows") {
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
-TEST_CASE("full rescan preserves database when legacy conversion fails") {
+TEST_CASE("full rescan leaves legacy XLS pending and imports valid XLSX") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
 
@@ -1653,33 +2562,37 @@ TEST_CASE("full rescan preserves database when legacy conversion fails") {
     std::filesystem::create_directories(inputDirectory);
     std::filesystem::create_directories(dbPath.parent_path());
     ssa::infra::importing::ResolvedSsaImportRows previous;
-    previous.rows.push_back({{"numero_ssa", "202600399"}, {"descricao_ssa", "Anterior"}});
-    previous.ssaNumbersForUpsertDelete.emplace_back("202600399");
+    previous.rows.push_back(
+        {{"numero_ssa", "202600399"}, {"situacao", "ASE"}, {"descricao_ssa", "Anterior"}});
     const ssa::infra::sqlite::SqliteSsaImportWriter writer(dbPath, importColumns());
     REQUIRE(writer.write(previous, 1, 0, false).rowsWritten == 1);
+    const auto legacy = inputDirectory / "pending.xls";
     {
-        std::ofstream legacy(inputDirectory / "broken.xls");
-        legacy << "not a workbook";
+        std::ofstream stream(legacy);
+        stream << "legacy workbook";
     }
-    writeWorkbook(inputDirectory / "valid.xlsx",
-                  row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Descricao da SSA")}) +
-                      row(2, {inlineCell("A2", "202600400"), inlineCell("B2", "Nova")}));
-    ssa::infra::importing::LegacySpreadsheetConverter converter(root / "missing-soffice");
+    const auto workbook = inputDirectory / "valid.xlsx";
+    writeWorkbook(workbook, row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                                    inlineCell("C1", "Descricao da SSA"),
+                                    inlineCell("D1", "Data de emissao")}) +
+                                row(2, {inlineCell("A2", "202600400"), inlineCell("B2", "ASE"),
+                                        inlineCell("C2", "Nova"), inlineCell("D2", "2026-07-01")}));
     ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
-                                                              importColumns(), converter);
+                                                              importColumns());
 
     const auto result = port.rescan({ssa::ports::RescanMode::Full});
 
-    REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
+    REQUIRE(result.ok());
+    REQUIRE(std::filesystem::exists(legacy));
+    REQUIRE(std::filesystem::exists(inputDirectory / "processadas" / "valid.xlsx"));
     sqlite3* db = nullptr;
     REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
     REQUIRE(scalarText(db, "PRAGMA integrity_check") == "ok");
     REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 1);
-    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600399'") == 1);
-    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600400'") == 0);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600399'") == 0);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600400'") == 1);
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
-
 #ifndef _WIN32
 TEST_CASE("full rescan rejects a symlinked processed directory without clearing the database") {
     QTemporaryDir tempDir;
@@ -1695,11 +2608,12 @@ TEST_CASE("full rescan rejects a symlinked processed directory without clearing 
     std::filesystem::create_directories(seedDirectory);
     std::filesystem::create_directories(dbPath.parent_path());
     const auto seedWorkbook = seedDirectory / "seed.xlsx";
-    writeWorkbook(seedWorkbook,
-                  row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
-                          inlineCell("C1", "Descricao da SSA")}) +
-                      row(2, {inlineCell("A2", "202600126"), inlineCell("B2", "ASE"),
-                              inlineCell("C2", "Linha preservada")}));
+    writeWorkbook(
+        seedWorkbook,
+        row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao")}) +
+            row(2, {inlineCell("A2", "202600126"), inlineCell("B2", "ASE"),
+                    inlineCell("C2", "Linha preservada"), inlineCell("D2", "2026-07-01")}));
     writeWorkbook(outsideDirectory / "outside.xlsx",
                   row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
                           inlineCell("C1", "Descricao da SSA")}) +
@@ -1719,6 +2633,9 @@ TEST_CASE("full rescan rejects a symlinked processed directory without clearing 
     INFO(result.message);
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
     REQUIRE(result.message.find("processed_directory_symlink") != std::string::npos);
+    REQUIRE(result.importSummary.has_value());
+    REQUIRE(result.importSummary->discovered == 1);
+    REQUIRE(result.importSummary->pending == 1);
     sqlite3* db = nullptr;
     REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
     REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 1);
@@ -1739,7 +2656,6 @@ TEST_CASE("full rescan rejects empty input without clearing the database") {
     std::filesystem::create_directories(dbPath.parent_path());
     ssa::infra::importing::ResolvedSsaImportRows previous;
     previous.rows.push_back({{"numero_ssa", "202600401"}, {"descricao_ssa", "Anterior"}});
-    previous.ssaNumbersForUpsertDelete.emplace_back("202600401");
     const ssa::infra::sqlite::SqliteSsaImportWriter writer(dbPath, importColumns());
     REQUIRE(writer.write(previous, 1, 0, false).rowsWritten == 1);
 
@@ -1757,6 +2673,98 @@ TEST_CASE("full rescan rejects empty input without clearing the database") {
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
+TEST_CASE("incremental import exposes truthful per-file and aggregate summary") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    const auto appliedWorkbook = inputDirectory / "a-applied.xlsx";
+    writeWorkbook(
+        appliedWorkbook,
+        row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao")}) +
+            row(2, {inlineCell("A2", "202600601"), inlineCell("B2", "ASE"),
+                    inlineCell("C2", "Applied"), inlineCell("D2", "2026-07-01")}) +
+            row(3, {inlineCell("A3", "invalid"), inlineCell("B3", "ASE"),
+                    inlineCell("C3", "Invalid"), inlineCell("D3", "2026-07-01")}));
+    const auto emptyWorkbook = inputDirectory / "b-empty.xlsx";
+    writeWorkbook(
+        emptyWorkbook,
+        row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao")}));
+
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+    const auto result = port.rescan({ssa::ports::RescanMode::Incremental});
+
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE(result.importSummary.has_value());
+    const auto& summary = *result.importSummary;
+    REQUIRE(summary.discovered == 2);
+    REQUIRE(summary.accepted == 2);
+    REQUIRE(summary.rejected == 0);
+    REQUIRE(summary.pending == 0);
+    REQUIRE(summary.preserved == 0);
+    REQUIRE(summary.validRows == 1);
+    REQUIRE(summary.invalidRows == 1);
+    REQUIRE(summary.inserts == 1);
+    REQUIRE(summary.updates == 0);
+    REQUIRE(summary.unchangedRows == 0);
+    REQUIRE(summary.conflicts == 0);
+    REQUIRE(summary.consolidated == 1);
+    REQUIRE(summary.noSurvivor == 1);
+    REQUIRE(summary.files.size() == 2);
+    REQUIRE(summary.files[0].source == "a-applied.xlsx");
+    REQUIRE(summary.files[0].status == ssa::ports::ImportFileStatus::Applied);
+    REQUIRE(summary.files[0].validRows == 1);
+    REQUIRE(summary.files[0].invalidRows == 1);
+    REQUIRE(summary.files[0].inserts == 1);
+    REQUIRE(summary.files[0].consolidated);
+    REQUIRE_FALSE(summary.files[0].noSurvivor);
+    REQUIRE(summary.files[1].source == "b-empty.xlsx");
+    REQUIRE(summary.files[1].status == ssa::ports::ImportFileStatus::NoValidRows);
+    REQUIRE(summary.files[1].validRows == 0);
+    REQUIRE(summary.files[1].invalidRows == 0);
+    REQUIRE(summary.files[1].noSurvivor);
+}
+
+TEST_CASE("rejected workbook summary preserves source and reports no applied rows") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    const auto workbook = inputDirectory / "unknown-header.xlsx";
+    writeWorkbook(workbook, row(1, {inlineCell("A1", "Unknown A"), inlineCell("B1", "Unknown B")}));
+
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+    const auto result = port.rescan({ssa::ports::RescanMode::Incremental});
+
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
+    REQUIRE(result.importSummary.has_value());
+    const auto& summary = *result.importSummary;
+    REQUIRE(summary.discovered == 1);
+    REQUIRE(summary.accepted == 0);
+    REQUIRE(summary.rejected == 1);
+    REQUIRE(summary.preserved == 1);
+    REQUIRE(summary.validRows == 0);
+    REQUIRE(summary.inserts == 0);
+    REQUIRE(summary.updates == 0);
+    REQUIRE(summary.files.size() == 1);
+    REQUIRE(summary.files.front().source == "unknown-header.xlsx");
+    REQUIRE(summary.files.front().status == ssa::ports::ImportFileStatus::Rejected);
+    REQUIRE_FALSE(summary.files.front().consolidated);
+    REQUIRE(std::filesystem::exists(workbook));
+}
+
 TEST_CASE("full rescan rejects an unrecognized header without clearing or moving the source") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
@@ -1768,7 +2776,6 @@ TEST_CASE("full rescan rejects an unrecognized header without clearing or moving
     std::filesystem::create_directories(dbPath.parent_path());
     ssa::infra::importing::ResolvedSsaImportRows previous;
     previous.rows.push_back({{"numero_ssa", "202600402"}, {"descricao_ssa", "Anterior"}});
-    previous.ssaNumbersForUpsertDelete.emplace_back("202600402");
     const ssa::infra::sqlite::SqliteSsaImportWriter writer(dbPath, importColumns());
     REQUIRE(writer.write(previous, 1, 0, false).rowsWritten == 1);
     const auto workbook = inputDirectory / "unknown-header.xlsx";
@@ -1793,6 +2800,46 @@ TEST_CASE("full rescan rejects an unrecognized header without clearing or moving
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
+TEST_CASE("full rescan rejects mixed valid and invalid rows without clearing the database") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    ssa::infra::importing::ResolvedSsaImportRows previous;
+    previous.rows.push_back({{"numero_ssa", "202600519"}, {"descricao_ssa", "Previous"}});
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(dbPath, importColumns());
+    REQUIRE(writer.write(previous, 1, 0, false).rowsWritten == 1);
+    const auto workbook = inputDirectory / "mixed.xlsx";
+    writeWorkbook(
+        workbook,
+        row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao")}) +
+            row(2, {inlineCell("A2", "202600520"), inlineCell("B2", "ASE"),
+                    inlineCell("C2", "Valid"), inlineCell("D2", "2026-07-01")}) +
+            row(3, {inlineCell("A3", "invalid"), inlineCell("B3", "APV"),
+                    inlineCell("C3", "Invalid"), inlineCell("D3", "2026-07-01")}));
+
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+    const auto result = port.rescan({ssa::ports::RescanMode::Full});
+
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
+    REQUIRE(result.message.find("invalid_rows=1") != std::string::npos);
+    REQUIRE(std::filesystem::exists(workbook));
+    REQUIRE_FALSE(std::filesystem::exists(inputDirectory / "processadas"));
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 1);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600519'") == 1);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600520'") == 0);
+    REQUIRE(scalarText(db, "PRAGMA integrity_check") == "ok");
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
 TEST_CASE("full rescan rolls back a valid workbook when a later header is unrecognized") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
@@ -1804,16 +2851,16 @@ TEST_CASE("full rescan rolls back a valid workbook when a later header is unreco
     std::filesystem::create_directories(dbPath.parent_path());
     ssa::infra::importing::ResolvedSsaImportRows previous;
     previous.rows.push_back({{"numero_ssa", "202600404"}, {"descricao_ssa", "Anterior"}});
-    previous.ssaNumbersForUpsertDelete.emplace_back("202600404");
     const ssa::infra::sqlite::SqliteSsaImportWriter writer(dbPath, importColumns());
     REQUIRE(writer.write(previous, 1, 0, false).rowsWritten == 1);
 
     const auto validWorkbook = inputDirectory / "a-valid.xlsx";
-    writeWorkbook(validWorkbook,
-                  row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
-                          inlineCell("C1", "Descricao da SSA")}) +
-                      row(2, {inlineCell("A2", "202600405"), inlineCell("B2", "ASE"),
-                              inlineCell("C2", "Nova")}));
+    writeWorkbook(
+        validWorkbook,
+        row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao")}) +
+            row(2, {inlineCell("A2", "202600405"), inlineCell("B2", "ASE"),
+                    inlineCell("C2", "Nova"), inlineCell("D2", "2026-07-01")}));
     const auto invalidWorkbook = inputDirectory / "b-invalid.xlsx";
     writeWorkbook(invalidWorkbook,
                   row(1, {inlineCell("A1", "Unknown A"), inlineCell("B1", "Unknown B"),
@@ -1848,12 +2895,12 @@ TEST_CASE("full rescan rejects workbooks without valid rows and preserves their 
     std::filesystem::create_directories(dbPath.parent_path());
     ssa::infra::importing::ResolvedSsaImportRows previous;
     previous.rows.push_back({{"numero_ssa", "202600403"}, {"descricao_ssa", "Anterior"}});
-    previous.ssaNumbersForUpsertDelete.emplace_back("202600403");
     const ssa::infra::sqlite::SqliteSsaImportWriter writer(dbPath, importColumns());
     REQUIRE(writer.write(previous, 1, 0, false).rowsWritten == 1);
     const auto workbook = inputDirectory / "header-only.xlsx";
     writeWorkbook(workbook, row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
-                                    inlineCell("C1", "Descricao da SSA")}));
+                                    inlineCell("C1", "Descricao da SSA"),
+                                    inlineCell("D1", "Data de emissao")}));
 
     ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
                                                               importColumns());
@@ -1868,6 +2915,52 @@ TEST_CASE("full rescan rejects workbooks without valid rows and preserves their 
     REQUIRE(scalarText(db, "PRAGMA integrity_check") == "ok");
     REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 1);
     REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600403'") == 1);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("full rescan rolls back valid data when another workbook has no valid rows") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    ssa::infra::importing::ResolvedSsaImportRows previous;
+    previous.rows.push_back(
+        {{"numero_ssa", "202600412"}, {"situacao", "ASE"}, {"descricao_ssa", "Anterior"}});
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(dbPath, importColumns());
+    REQUIRE(writer.write(previous, 1, 0, false).rowsWritten == 1);
+
+    const auto validWorkbook = inputDirectory / "a-valid.xlsx";
+    writeWorkbook(
+        validWorkbook,
+        row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao")}) +
+            row(2, {inlineCell("A2", "202600413"), inlineCell("B2", "ASE"),
+                    inlineCell("C2", "Nova"), inlineCell("D2", "2026-07-01")}));
+    const auto emptyWorkbook = inputDirectory / "b-empty.xlsx";
+    writeWorkbook(
+        emptyWorkbook,
+        row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao")}));
+
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+    const auto result = port.rescan({ssa::ports::RescanMode::Full});
+
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
+    REQUIRE(result.message.find("no_valid_rows") != std::string::npos);
+    REQUIRE(std::filesystem::exists(validWorkbook));
+    REQUIRE(std::filesystem::exists(emptyWorkbook));
+    REQUIRE_FALSE(std::filesystem::exists(inputDirectory / "processadas"));
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarText(db, "PRAGMA integrity_check") == "ok");
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 1);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600412'") == 1);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600413'") == 0);
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
@@ -1895,7 +2988,7 @@ TEST_CASE("full rescan reports database open failure for a valid workbook") {
     REQUIRE(std::filesystem::exists(workbook));
 }
 
-TEST_CASE("spreadsheet import workflow reports legacy xls when converter is unavailable") {
+TEST_CASE("spreadsheet import workflow leaves selected legacy xls pending") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
 
@@ -1911,20 +3004,18 @@ TEST_CASE("spreadsheet import workflow reports legacy xls when converter is unav
     output << "legacy";
     output.close();
 
-    ssa::infra::importing::SpreadsheetImportWorkflowPort port(
-        inputDirectory, dbPath, importColumns(),
-        ssa::infra::importing::LegacySpreadsheetConverter(root / "missing-soffice"));
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
     ssa::ports::ImportExternalFilesRequest request;
     request.files = {legacy};
 
     const auto result = port.importExternalFiles(request);
 
-    REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
     REQUIRE(result.message.find("legacy_xls=1") != std::string::npos);
-    REQUIRE(result.message.find("failed=1") != std::string::npos);
-    REQUIRE(result.diagnostic.find("xls converter unavailable") != std::string::npos);
-    REQUIRE(result.diagnostic.find("LibreOffice soffice executable was not found") !=
-            std::string::npos);
+    REQUIRE(result.message.find("converted_xls=0") != std::string::npos);
+    REQUIRE(result.diagnostic.empty());
+    REQUIRE(std::filesystem::exists(legacy));
 }
 
 TEST_CASE("import file stager counts legacy xls with existing xlsx without conversion") {
@@ -1973,10 +3064,12 @@ TEST_CASE("incremental rescan keeps an unrelated legacy file pending beside an e
         std::ofstream output(legacy);
         output << "independent legacy content";
     }
-    writeWorkbook(workbook, row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
-                                    inlineCell("C1", "Descricao da SSA")}) +
-                                row(2, {inlineCell("A2", "202600128"), inlineCell("B2", "ASE"),
-                                        inlineCell("C2", "Existing workbook")}));
+    writeWorkbook(
+        workbook,
+        row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao")}) +
+            row(2, {inlineCell("A2", "202600128"), inlineCell("B2", "ASE"),
+                    inlineCell("C2", "Existing workbook"), inlineCell("D2", "2026-07-01")}));
     ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
                                                               importColumns());
 
@@ -2067,7 +3160,7 @@ TEST_CASE("spreadsheet import workflow reports input status IO errors as failed"
 #endif
 
 #ifndef _WIN32
-TEST_CASE("spreadsheet import workflow converts staged xls before sqlite import") {
+TEST_CASE("spreadsheet import workflow does not invoke the legacy converter") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
 
@@ -2086,33 +3179,26 @@ TEST_CASE("spreadsheet import workflow converts staged xls before sqlite import"
             row(2, {inlineCell("A2", "202600099"), inlineCell("B2", "ASE"),
                     inlineCell("C2", "MEL2"), inlineCell("D2", "Legado convertido")}));
 
-    const auto fakeSoffice = writeFakeSoffice(root);
-    ssa::infra::importing::LegacySpreadsheetConverter converter(fakeSoffice);
     ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
-                                                              importColumns(), converter);
+                                                              importColumns());
     ssa::ports::ImportExternalFilesRequest request;
     request.files = {legacyWorkbook};
 
     const auto result = port.importExternalFiles(request);
 
-    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
-    REQUIRE(result.message.find("converted_xls=1") != std::string::npos);
-
-    sqlite3* db = nullptr;
-    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
-    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 1);
-    REQUIRE(scalarText(db, "SELECT setor_executor FROM ssa_table WHERE numero_ssa='202600099'") ==
-            "MEL2");
-    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
+    REQUIRE(result.message.find("legacy_xls=1") != std::string::npos);
+    REQUIRE(result.message.find("converted_xls=0") != std::string::npos);
+    REQUIRE_FALSE(std::filesystem::exists(dbPath));
+    REQUIRE(std::filesystem::exists(legacyWorkbook));
 }
 
-TEST_CASE("incremental rescan consolidates the legacy source and converted workbook") {
+TEST_CASE("incremental rescan leaves legacy xls pending without conversion") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
 
     const auto root = std::filesystem::path{tempDir.path().toStdString()};
     const auto inputDirectory = root / "docs_entrada";
-    const auto processedDirectory = inputDirectory / "processadas";
     const auto dbPath = root / "data" / "ssas.db";
     std::filesystem::create_directories(inputDirectory);
     std::filesystem::create_directories(dbPath.parent_path());
@@ -2123,17 +3209,15 @@ TEST_CASE("incremental rescan consolidates the legacy source and converted workb
                       row(2, {inlineCell("A2", "202600123"), inlineCell("B2", "ASE"),
                               inlineCell("C2", "Legado da entrada")}));
 
-    const auto fakeSoffice = writeFakeSoffice(root);
-    ssa::infra::importing::LegacySpreadsheetConverter converter(fakeSoffice);
     ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
-                                                              importColumns(), converter);
+                                                              importColumns());
     const auto result = port.rescan({ssa::ports::RescanMode::Incremental});
 
     INFO(result.message);
-    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
-    REQUIRE(std::filesystem::exists(processedDirectory / "legacy-input.xls"));
-    REQUIRE(std::filesystem::exists(processedDirectory / "legacy-input.xlsx"));
-    REQUIRE_FALSE(std::filesystem::exists(legacyWorkbook));
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
+    REQUIRE(result.message.find("legacy_xls=1") != std::string::npos);
+    REQUIRE(std::filesystem::exists(legacyWorkbook));
     REQUIRE_FALSE(std::filesystem::exists(inputDirectory / "legacy-input.xlsx"));
+    REQUIRE_FALSE(std::filesystem::exists(inputDirectory / "processadas"));
 }
 #endif

@@ -4,6 +4,7 @@
 
 #include <chrono>
 #include <filesystem>
+#include <optional>
 #include <stop_token>
 #include <string>
 #include <vector>
@@ -12,10 +13,50 @@ namespace ssa::ports {
 
     enum class WorkflowStatus {
         Succeeded,
+        NoChanges,
         Canceled,
         NotImplemented,
         Rejected,
         Failed,
+    };
+
+    enum class ImportFileStatus {
+        Applied,
+        NoChanges,
+        NoValidRows,
+        Rejected,
+        Failed,
+        Canceled,
+    };
+
+    struct ImportFileResult {
+        std::string source;
+        ImportFileStatus status = ImportFileStatus::Rejected;
+        std::size_t validRows = 0;
+        std::size_t invalidRows = 0;
+        std::size_t inserts = 0;
+        std::size_t updates = 0;
+        std::size_t unchangedRows = 0;
+        std::size_t conflicts = 0;
+        bool consolidated = false;
+        bool noSurvivor = false;
+    };
+
+    struct ImportSummary {
+        std::size_t discovered = 0;
+        std::size_t accepted = 0;
+        std::size_t rejected = 0;
+        std::size_t pending = 0;
+        std::size_t preserved = 0;
+        std::size_t validRows = 0;
+        std::size_t invalidRows = 0;
+        std::size_t inserts = 0;
+        std::size_t updates = 0;
+        std::size_t unchangedRows = 0;
+        std::size_t conflicts = 0;
+        std::size_t consolidated = 0;
+        std::size_t noSurvivor = 0;
+        std::vector<ImportFileResult> files;
     };
 
     struct WorkflowResult {
@@ -23,15 +64,15 @@ namespace ssa::ports {
         std::string message;
         bool warning = false;
         std::string diagnostic;
+        std::optional<ImportSummary> importSummary;
 
         [[nodiscard]] bool ok() const {
-            return status == WorkflowStatus::Succeeded;
+            return status == WorkflowStatus::Succeeded || status == WorkflowStatus::NoChanges;
         }
     };
 
     struct ImportExternalFilesRequest {
         std::vector<std::filesystem::path> files;
-        bool optimized = true;
     };
 
     struct SamRefreshRequest {
@@ -63,8 +104,6 @@ namespace ssa::ports {
 
     struct RescanRequest {
         RescanMode mode = RescanMode::Incremental;
-        bool allowFileDiscovery = true;
-        bool optimized = true;
     };
 
     struct ExportFilteredListRequest {
@@ -114,7 +153,8 @@ namespace ssa::ports {
       public:
         virtual ~IDerivadasPort() = default;
 
-        [[nodiscard]] virtual WorkflowResult syncDerivadas(std::stop_token stopToken = {}) = 0;
+        [[nodiscard]] virtual WorkflowResult
+        cleanOrphanDerivations(std::stop_token stopToken = {}) = 0;
     };
 
 } // namespace ssa::ports

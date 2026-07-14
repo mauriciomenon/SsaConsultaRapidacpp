@@ -4,10 +4,12 @@
 #include "qt/FilesystemPath.h"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cctype>
 #include <cerrno>
 #include <chrono>
+#include <ctime>
 #include <optional>
 #include <stdexcept>
 #include <string_view>
@@ -15,8 +17,6 @@
 
 #ifdef _WIN32
 #include <windows.h>
-#elif defined(__APPLE__)
-#include <cstdio>
 #elif defined(__linux__)
 #include <fcntl.h>
 #include <linux/fs.h>
@@ -68,6 +68,49 @@ namespace ssa::infra::importing {
         bool isSafeFilename(const std::filesystem::path& filename) {
             return !filename.empty() && filename == filename.filename() && filename != "." &&
                    filename != "..";
+        }
+
+        void recordDiscoveredFile(ImportStagingResult& result, const std::filesystem::path& path) {
+            if (isExcelLockFile(path)) {
+                ++result.unsupported;
+                return;
+            }
+            if (isLegacyXlsFile(path)) {
+                ++result.legacyXls;
+                return;
+            }
+            if (!isXlsxFile(path)) {
+                ++result.unsupported;
+                return;
+            }
+            result.discoveredXlsxSources.push_back(qt::toUtf8(path.filename()));
+        }
+
+        std::string sourceModifiedTimestamp(const std::filesystem::path& source,
+                                            std::error_code& error) {
+            const auto modified = std::filesystem::last_write_time(source, error);
+            if (error) {
+                return {};
+            }
+            const auto instant = std::chrono::floor<std::chrono::system_clock::duration>(
+                std::filesystem::file_time_type::clock::to_sys(modified));
+            const auto time = std::chrono::system_clock::to_time_t(instant);
+            std::tm local{};
+#ifdef _WIN32
+            const bool conversionFailed = localtime_s(&local, &time) != 0;
+#else
+            const bool conversionFailed = localtime_r(&time, &local) == nullptr;
+#endif
+            if (conversionFailed) {
+                error = std::make_error_code(std::errc::invalid_argument);
+                return {};
+            }
+            std::array<char, 20> buffer{};
+            if (std::strftime(buffer.data(), buffer.size(), "%Y-%m-%d %H:%M:%S", &local) == 0) {
+                error = std::make_error_code(std::errc::value_too_large);
+                return {};
+            }
+            return buffer.data();
         }
 
         std::string inputDirectoryRejectionReason(const std::filesystem::path& directory,
@@ -250,14 +293,17 @@ namespace ssa::infra::importing {
 
     } // namespace
 
-    ImportFileStager::ImportFileStager(std::filesystem::path inputFolder,
-                                       LegacySpreadsheetConverter legacyConverter)
-        : inputFolder_(std::move(inputFolder)), legacyConverter_(std::move(legacyConverter)) {}
+    ImportFileStager::ImportFileStager(std::filesystem::path inputFolder)
+        : inputFolder_(std::move(inputFolder)) {}
 
     ImportStagingResult
     ImportFileStager::stageExternalFiles(const std::vector<std::filesystem::path>& files,
                                          const std::stop_token& stopToken) const {
         ImportStagingResult result;
+        result.discovered = files.size();
+        for (const auto& source : files) {
+            recordDiscoveredFile(result, source);
+        }
         result.rejectionReason = preflightFiles(files, stopToken, result.diagnostic);
         if (!result.rejectionReason.empty()) {
             result.operationalFailure = result.rejectionReason == "file_size_unavailable";
@@ -283,38 +329,39 @@ namespace ssa::infra::importing {
 
         const auto prefix = batchPrefix();
         std::size_t fileIndex = 0;
+        std::size_t summaryIndex = 0;
         for (const auto& source : files) {
             if (stopToken.stop_requested()) {
                 cancelStaging(result);
                 return result;
             }
             if (isExcelLockFile(source)) {
-                ++result.unsupported;
                 continue;
             }
+            const bool isXlsx = isXlsxFile(source);
+            const auto currentSummaryIndex = summaryIndex;
+            summaryIndex += isXlsx ? 1 : 0;
             const auto filename = source.filename();
             if (!isSafeFilename(filename)) {
                 ++result.failedCopies;
                 continue;
             }
             if (isLegacyXlsFile(source)) {
-                const auto destination = stagedDestination({source, prefix, fileIndex});
-                ++fileIndex;
-                auto xlsxDestination = destination;
-                xlsxDestination.replace_extension(".xlsx");
-                stageLegacyFile({source, xlsxDestination}, {xlsxDestination}, result, stopToken);
-                if (stopToken.stop_requested()) {
-                    cancelStaging(result);
-                    return result;
-                }
                 continue;
             }
-            if (!isXlsxFile(source)) {
-                ++result.unsupported;
+            if (!isXlsx) {
                 continue;
             }
             const auto destination = stagedDestination({source, prefix, fileIndex});
             ++fileIndex;
+            error.clear();
+            const auto timestamp = sourceModifiedTimestamp(source, error);
+            if (error) {
+                ++result.failedCopies;
+                appendDiagnostic(result.diagnostic,
+                                 "cannot read source modification time: " + error.message());
+                continue;
+            }
             const auto copy = copyFileAtomically({source, destination}, stopToken);
             if (copy.status == FileCopyStatus::Canceled) {
                 cancelStaging(result);
@@ -334,7 +381,12 @@ namespace ssa::infra::importing {
                 }
                 continue;
             }
-            result.files.push_back({destination, {destination}, true});
+            result.files.push_back({destination,
+                                    {destination},
+                                    true,
+                                    qt::toUtf8(source.filename()),
+                                    timestamp,
+                                    currentSummaryIndex});
         }
         if (stopToken.stop_requested()) {
             cancelStaging(result);
@@ -401,6 +453,7 @@ namespace ssa::infra::importing {
                 return result;
             }
             if (entry.is_symlink(error)) {
+                ++result.discovered;
                 ++result.unsupported;
                 error.clear();
                 continue;
@@ -409,7 +462,9 @@ namespace ssa::infra::importing {
                 error.clear();
                 continue;
             }
+            ++result.discovered;
             candidates.push_back(entry.path());
+            recordDiscoveredFile(result, entry.path());
         }
         std::ranges::sort(candidates);
 
@@ -426,7 +481,6 @@ namespace ssa::infra::importing {
         }
         error.clear();
         if (includeProcessed && std::filesystem::is_symlink(processedStatus)) {
-            ++result.unsupported;
             result.rejectionReason = "processed_directory_symlink";
             return result;
         } else if (includeProcessed && std::filesystem::exists(processedStatus)) {
@@ -468,7 +522,9 @@ namespace ssa::infra::importing {
                     return result;
                 }
                 if (!entryIsSymlink && entryIsRegular && isXlsxFile(entry.path())) {
+                    ++result.discovered;
                     processedWorkbooks.push_back(entry.path());
+                    recordDiscoveredFile(result, entry.path());
                 }
             }
             std::ranges::sort(processedWorkbooks);
@@ -476,49 +532,65 @@ namespace ssa::infra::importing {
 
         std::vector<std::filesystem::path> importCandidates;
         std::ranges::copy_if(
-            candidates, std::back_inserter(importCandidates), [](const auto& path) {
-                return !isExcelLockFile(path) && (isLegacyXlsFile(path) || isXlsxFile(path));
-            });
+            candidates, std::back_inserter(importCandidates),
+            [](const auto& path) { return !isExcelLockFile(path) && isXlsxFile(path); });
         importCandidates.insert(importCandidates.end(), processedWorkbooks.begin(),
                                 processedWorkbooks.end());
+        result.discoveredXlsxSources.clear();
+        result.discoveredXlsxSources.reserve(importCandidates.size());
+        for (const auto& path : importCandidates) {
+            result.discoveredXlsxSources.push_back(qt::toUtf8(path.filename()));
+        }
         result.rejectionReason = preflightFiles(importCandidates, stopToken, result.diagnostic);
         if (!result.rejectionReason.empty()) {
             result.operationalFailure = result.rejectionReason == "file_size_unavailable";
             return result;
         }
 
+        std::size_t summaryIndex = 0;
         for (const auto& path : candidates) {
             if (stopToken.stop_requested()) {
                 cancelStaging(result);
                 return result;
             }
             if (isExcelLockFile(path)) {
-                ++result.unsupported;
                 continue;
             }
             if (isLegacyXlsFile(path)) {
-                auto destination = path;
-                destination.replace_extension(".xlsx");
-                if (std::filesystem::exists(destination, error)) {
-                    ++result.legacyXls;
-                    continue;
-                }
-                error.clear();
-                stageLegacyFile({path, destination}, {path, destination}, result, stopToken);
-                if (stopToken.stop_requested() || result.rejectionReason == "canceled") {
-                    cancelStaging(result);
-                    return result;
-                }
                 continue;
             }
             if (isXlsxFile(path)) {
-                result.files.push_back({path, {path}});
+                const auto currentSummaryIndex = summaryIndex++;
+                error.clear();
+                const auto timestamp = sourceModifiedTimestamp(path, error);
+                if (error) {
+                    ++result.failedCopies;
+                    result.operationalFailure = true;
+                    appendDiagnostic(result.diagnostic,
+                                     "cannot read source modification time: " + error.message());
+                    continue;
+                }
+                result.files.push_back({path,
+                                        {path},
+                                        false,
+                                        qt::toUtf8(path.filename()),
+                                        timestamp,
+                                        currentSummaryIndex});
                 continue;
             }
-            ++result.unsupported;
         }
         for (const auto& path : processedWorkbooks) {
-            result.files.push_back({path, {}});
+            error.clear();
+            const auto timestamp = sourceModifiedTimestamp(path, error);
+            if (error) {
+                ++result.failedCopies;
+                result.operationalFailure = true;
+                appendDiagnostic(result.diagnostic,
+                                 "cannot read source modification time: " + error.message());
+                continue;
+            }
+            result.files.push_back({path, {}, false, qt::toUtf8(path.filename()), timestamp});
+            result.files.back().summaryIndex = summaryIndex++;
         }
         if (stopToken.stop_requested()) {
             cancelStaging(result);
@@ -532,6 +604,7 @@ namespace ssa::infra::importing {
     ImportFileStager::consolidate(const std::vector<ImportManifestEntry>& manifest,
                                   const std::stop_token& stopToken) const {
         ImportConsolidationResult result;
+        result.entries.resize(manifest.size());
         if (stopToken.stop_requested()) {
             result.canceled = true;
             result.error = "consolidation canceled";
@@ -541,6 +614,9 @@ namespace ssa::infra::importing {
         const auto inputRejection = inputDirectoryRejectionReason(inputFolder_, inputDiagnostic);
         if (!inputRejection.empty()) {
             result.failed = manifestSourceCount(manifest);
+            for (std::size_t index = 0; index < manifest.size(); ++index) {
+                result.entries[index].failed = manifest[index].sources.size();
+            }
             result.error = inputRejection;
             appendDiagnostic(result.error, inputDiagnostic);
             return result;
@@ -553,9 +629,14 @@ namespace ssa::infra::importing {
         if (!prepareDirectory(processedDirectory, result.error) ||
             !prepareDirectory(noSurvivorDirectory, result.error)) {
             result.failed = manifestSourceCount(manifest);
+            for (std::size_t index = 0; index < manifest.size(); ++index) {
+                result.entries[index].failed = manifest[index].sources.size();
+            }
             return result;
         }
-        for (const auto& entry : manifest) {
+        for (std::size_t entryIndex = 0; entryIndex < manifest.size(); ++entryIndex) {
+            const auto& entry = manifest[entryIndex];
+            auto& entryResult = result.entries[entryIndex];
             if (stopToken.stop_requested()) {
                 result.canceled = true;
                 result.error = "consolidation canceled";
@@ -577,44 +658,18 @@ namespace ssa::infra::importing {
                         return result;
                     }
                     ++result.failed;
+                    ++entryResult.failed;
                     continue;
                 }
                 ++result.moved;
+                ++entryResult.moved;
                 if (!entry.hasValidRows) {
                     ++result.noSurvivor;
+                    ++entryResult.noSurvivor;
                 }
             }
         }
         return result;
-    }
-
-    bool ImportFileStager::stageLegacyFile(const LegacyStageRequest& request,
-                                           std::vector<std::filesystem::path> consolidationSources,
-                                           ImportStagingResult& result,
-                                           const std::stop_token& stopToken) const {
-        ++result.legacyXls;
-        const auto conversion =
-            legacyConverter_.convertToXlsx({request.source, request.destination}, stopToken);
-        if (!conversion.ok()) {
-            if (conversion.status == LegacySpreadsheetConversionStatus::Canceled) {
-                result.rejectionReason = "canceled";
-            } else {
-                if (conversion.status == LegacySpreadsheetConversionStatus::CleanupFailed) {
-                    result.rejectionReason = "staging_cleanup_failed";
-                }
-                appendDiagnostic(result.diagnostic, conversion.message);
-                appendDiagnostic(result.diagnostic, conversion.diagnostic);
-            }
-            ++result.failedLegacyXls;
-            return false;
-        }
-        ++result.convertedXls;
-        if (!conversion.diagnostic.empty()) {
-            result.warning = true;
-            appendDiagnostic(result.diagnostic, conversion.diagnostic);
-        }
-        result.files.push_back({conversion.outputPath, std::move(consolidationSources), true});
-        return true;
     }
 
     std::filesystem::path

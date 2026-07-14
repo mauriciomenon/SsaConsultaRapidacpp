@@ -82,9 +82,10 @@ Item {
 
     FileDialog {
         id: importDataDialog
-        title: "Importar XLS/XLSX externo"
+        objectName: "importDataFileDialog"
+        title: "Importar XLSX externo"
         fileMode: FileDialog.OpenFiles
-        nameFilters: ["Planilhas (*.xls *.xlsx)"]
+        nameFilters: ["Planilhas XLSX (*.xlsx)"]
 
         onAccepted: root.viewModel.actions.workflows.importExternalFiles(importDataDialog.selectedFiles)
     }

@@ -22,8 +22,9 @@ namespace ssa::infra::sqlite {
             WriteSession(WriteSession&&) noexcept;
             WriteSession& operator=(WriteSession&&) noexcept;
 
-            void write(const importing::ResolvedSsaImportRows& rows, std::size_t fileCount,
-                       std::size_t skippedRows);
+            [[nodiscard]] importing::SsaImportBatchWriteSummary
+            write(const importing::ResolvedSsaImportRows& rows, std::size_t fileCount,
+                  std::size_t skippedRows);
             [[nodiscard]] importing::SsaImportWriteSummary finish();
             void rollback();
 

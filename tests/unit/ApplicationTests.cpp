@@ -136,7 +136,7 @@ TEST_CASE("workflow service reports missing adapters explicitly") {
 
     const auto rescan = workflows.rescan({});
     const auto exportResult = workflows.exportFilteredList({});
-    const auto derivadas = workflows.syncDerivadas();
+    const auto derivadas = workflows.cleanOrphanDerivations();
 
     REQUIRE(rescan.status == ssa::ports::WorkflowStatus::NotImplemented);
     REQUIRE(exportResult.status == ssa::ports::WorkflowStatus::NotImplemented);
@@ -150,5 +150,6 @@ TEST_CASE("unavailable workflow adapter reports not implemented explicitly") {
 
     REQUIRE(workflows.rescan({}).status == ssa::ports::WorkflowStatus::NotImplemented);
     REQUIRE(workflows.resetDatabase().status == ssa::ports::WorkflowStatus::NotImplemented);
-    REQUIRE(workflows.syncDerivadas().status == ssa::ports::WorkflowStatus::NotImplemented);
+    REQUIRE(workflows.cleanOrphanDerivations().status ==
+            ssa::ports::WorkflowStatus::NotImplemented);
 }

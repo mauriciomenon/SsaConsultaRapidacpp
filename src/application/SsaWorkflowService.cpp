@@ -79,11 +79,12 @@ namespace ssa::application {
         return maintenancePort_->vacuumAnalyze(std::move(stopToken));
     }
 
-    ports::WorkflowResult SsaWorkflowService::syncDerivadas(std::stop_token stopToken) const {
+    ports::WorkflowResult
+    SsaWorkflowService::cleanOrphanDerivations(std::stop_token stopToken) const {
         if (!derivadasPort_) {
-            return notImplemented("sync derivadas");
+            return notImplemented("orphan derivation cleanup");
         }
-        return derivadasPort_->syncDerivadas(std::move(stopToken));
+        return derivadasPort_->cleanOrphanDerivations(std::move(stopToken));
     }
 
     ports::WorkflowResult SsaWorkflowService::refreshSam(const ports::SamRefreshRequest& request,
@@ -102,8 +103,8 @@ namespace ssa::application {
             return withCleanupStatus(notImplemented("SAM import"), samPort_->discardArtifacts());
         }
 
-        auto result = importPort_->importExternalFiles(
-            {.files = std::move(fetchResult.artifacts), .optimized = true}, stopToken);
+        auto result = importPort_->importExternalFiles({.files = std::move(fetchResult.artifacts)},
+                                                       stopToken);
         return withCleanupStatus(std::move(result), samPort_->discardArtifacts());
     }
 

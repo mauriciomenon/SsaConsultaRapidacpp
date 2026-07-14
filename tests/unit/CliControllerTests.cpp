@@ -37,9 +37,10 @@ namespace {
 
     class CapturingDerivadasPort final : public ssa::ports::IDerivadasPort {
       public:
-        [[nodiscard]] ssa::ports::WorkflowResult syncDerivadas(std::stop_token = {}) override {
+        [[nodiscard]] ssa::ports::WorkflowResult
+        cleanOrphanDerivations(std::stop_token = {}) override {
             called = true;
-            return {ssa::ports::WorkflowStatus::Succeeded, "sync derivadas requested"};
+            return {ssa::ports::WorkflowStatus::Succeeded, "orphan derivation cleanup requested"};
         }
 
         bool called = false;
@@ -120,7 +121,7 @@ TEST_CASE("cli reports invalid database path with the provided path") {
     REQUIRE(output.find("database path does not exist: " + missingPath) != std::string::npos);
 }
 
-TEST_CASE("cli treats rescan as full rescan compatibility alias with optimized default") {
+TEST_CASE("cli treats rescan as full rescan compatibility alias") {
     auto importPort = std::make_shared<CapturingImportPort>();
     auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(importPort);
 
@@ -133,7 +134,6 @@ TEST_CASE("cli treats rescan as full rescan compatibility alias with optimized d
     REQUIRE(exitCode == 0);
     REQUIRE(importPort->called);
     REQUIRE(importPort->lastRequest.mode == ssa::ports::RescanMode::Full);
-    REQUIRE(importPort->lastRequest.optimized);
 }
 
 TEST_CASE("cli exposes explicit incremental rescan") {
@@ -143,13 +143,12 @@ TEST_CASE("cli exposes explicit incremental rescan") {
     const auto controller = controllerWithWorkflow(workflows);
 
     const auto databasePath = existingDatabaseArgument();
-    const int exitCode = controller.run({"ssa", "--incremental-rescan", "--standard", "--db",
-                                         databasePath.c_str(), "--docs-dir", "."});
+    const int exitCode = controller.run(
+        {"ssa", "--incremental-rescan", "--db", databasePath.c_str(), "--docs-dir", "."});
 
     REQUIRE(exitCode == 0);
     REQUIRE(importPort->called);
     REQUIRE(importPort->lastRequest.mode == ssa::ports::RescanMode::Incremental);
-    REQUIRE_FALSE(importPort->lastRequest.optimized);
 }
 
 TEST_CASE("cli preserves unicode database and import paths") {
@@ -185,21 +184,6 @@ TEST_CASE("cli preserves unicode database and import paths") {
     REQUIRE(capturedDocsPath == ssa::qt::toFileSystemPath(docsPath));
 }
 
-TEST_CASE("cli lets optimized override standard import strategy") {
-    auto importPort = std::make_shared<CapturingImportPort>();
-    auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(importPort);
-
-    const auto controller = controllerWithWorkflow(workflows);
-
-    const auto databasePath = existingDatabaseArgument();
-    const int exitCode = controller.run({"ssa", "--rescan", "--optimized", "--standard", "--db",
-                                         databasePath.c_str(), "--docs-dir", "."});
-
-    REQUIRE(exitCode == 0);
-    REQUIRE(importPort->called);
-    REQUIRE(importPort->lastRequest.optimized);
-}
-
 TEST_CASE("cli accepts --log-level values") {
     auto importPort = std::make_shared<CapturingImportPort>();
     auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(importPort);
@@ -230,7 +214,23 @@ TEST_CASE("cli accepts --cols as alias for --columns") {
     REQUIRE(exitCode == 0);
 }
 
-TEST_CASE("cli maps acao backfill to sync derivadas command") {
+TEST_CASE("cli rejects legacy acao backfill with orphan cleanup guidance") {
+    auto derivadasPort = std::make_shared<CapturingDerivadasPort>();
+    auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(
+        std::make_shared<CapturingImportPort>(), nullptr, nullptr, derivadasPort);
+
+    const auto controller = controllerWithWorkflow(workflows);
+    const auto databasePath = existingDatabaseArgument();
+    StderrCapture stderrCapture;
+    const int exitCode =
+        controller.run({"ssa", "--acao", "backfill", "--db", databasePath.c_str()});
+
+    REQUIRE(exitCode == 1);
+    REQUIRE_FALSE(derivadasPort->called);
+    REQUIRE(stderrCapture.text().find("--clean-orphan-derivations") != std::string::npos);
+}
+
+TEST_CASE("cli executes orphan derivation cleanup command") {
     auto derivadasPort = std::make_shared<CapturingDerivadasPort>();
     auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(
         std::make_shared<CapturingImportPort>(), nullptr, nullptr, derivadasPort);
@@ -238,20 +238,7 @@ TEST_CASE("cli maps acao backfill to sync derivadas command") {
     const auto controller = controllerWithWorkflow(workflows);
     const auto databasePath = existingDatabaseArgument();
     const int exitCode =
-        controller.run({"ssa", "--acao", "backfill", "--db", databasePath.c_str()});
-
-    REQUIRE(exitCode == 0);
-    REQUIRE(derivadasPort->called);
-}
-
-TEST_CASE("cli executes sync-derivadas command") {
-    auto derivadasPort = std::make_shared<CapturingDerivadasPort>();
-    auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(
-        std::make_shared<CapturingImportPort>(), nullptr, nullptr, derivadasPort);
-
-    const auto controller = controllerWithWorkflow(workflows);
-    const auto databasePath = existingDatabaseArgument();
-    const int exitCode = controller.run({"ssa", "--sync-derivadas", "--db", databasePath.c_str()});
+        controller.run({"ssa", "--clean-orphan-derivations", "--db", databasePath.c_str()});
 
     REQUIRE(exitCode == 0);
     REQUIRE(derivadasPort->called);
@@ -288,7 +275,7 @@ TEST_CASE("cli rejects acao with another workflow command") {
     const auto controller = controllerWithWorkflow(workflows);
     const auto databasePath = existingDatabaseArgument();
     const int exitCode = controller.run(
-        {"ssa", "--sync-derivadas", "--acao", "backfill", "--db", databasePath.c_str()});
+        {"ssa", "--clean-orphan-derivations", "--acao", "backfill", "--db", databasePath.c_str()});
 
     REQUIRE(exitCode == 1);
     REQUIRE_FALSE(derivadasPort->called);

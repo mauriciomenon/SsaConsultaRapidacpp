@@ -30,6 +30,7 @@ namespace ssa::infra::importing {
                                       const std::stop_token& stopToken);
         [[nodiscard]] static std::vector<std::vector<std::string>>
         parseSheetRows(const std::string& xml, const std::vector<std::string>& sharedStrings,
+                       const std::vector<bool>& dateStyles, bool date1904,
                        const std::stop_token& stopToken);
     };
 
