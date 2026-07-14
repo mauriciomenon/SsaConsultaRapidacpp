@@ -13,6 +13,7 @@ namespace ssa::infra::importing {
     struct StagedImportFile {
         std::filesystem::path workbookPath;
         std::vector<std::filesystem::path> consolidationSources;
+        bool ownedByStager = false;
     };
 
     struct ImportManifestEntry {
@@ -35,6 +36,7 @@ namespace ssa::infra::importing {
         std::size_t failedLegacyXls = 0;
         std::size_t unsupported = 0;
         std::size_t failedCopies = 0;
+        bool warning = false;
         std::string rejectionReason;
         std::string diagnostic;
     };
@@ -49,6 +51,7 @@ namespace ssa::infra::importing {
                            const std::stop_token& stopToken = {}) const;
         [[nodiscard]] ImportStagingResult stageInputFiles(const std::stop_token& stopToken = {},
                                                           bool includeProcessed = false) const;
+        [[nodiscard]] std::string discardOwnedArtifacts(const ImportStagingResult& staging) const;
         [[nodiscard]] ImportConsolidationResult
         consolidate(const std::vector<ImportManifestEntry>& manifest,
                     const std::stop_token& stopToken = {}) const;

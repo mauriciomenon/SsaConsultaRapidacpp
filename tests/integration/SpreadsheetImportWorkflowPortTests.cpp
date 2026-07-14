@@ -26,6 +26,10 @@
 #include <system_error>
 #include <vector>
 
+#ifndef _WIN32
+#include <unistd.h>
+#endif
+
 namespace {
 
     std::vector<ssa::domain::ColumnDef> importColumns() {
@@ -125,7 +129,11 @@ xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
     }
 
 #ifndef _WIN32
-    std::filesystem::path writeFakeSoffice(const std::filesystem::path& directory) {
+    enum class FakeSofficeBehavior { Copy, Block, CopyThenBlock, CleanupFailure };
+
+    std::filesystem::path
+    writeFakeSoffice(const std::filesystem::path& directory,
+                     const FakeSofficeBehavior behavior = FakeSofficeBehavior::Copy) {
         const auto executable = directory / "fake-soffice";
         std::ofstream script(executable);
         script << R"SH(#!/bin/sh
@@ -150,45 +158,28 @@ while [ "$#" -gt 0 ]; do
 done
 base="$(basename "$source")"
 stem="${base%.*}"
-cp "$source" "$outdir/$stem.xlsx"
 )SH";
-        script.close();
-        std::filesystem::permissions(executable,
-                                     std::filesystem::perms::owner_exec |
-                                         std::filesystem::perms::owner_read |
-                                         std::filesystem::perms::owner_write,
-                                     std::filesystem::perm_options::add);
-        return executable;
-    }
-
-    std::filesystem::path writeBlockingSoffice(const std::filesystem::path& directory) {
-        const auto executable = directory / "blocking-soffice";
-        std::ofstream script(executable);
-        script << R"SH(#!/bin/sh
-outdir=""
-source=""
-while [ "$#" -gt 0 ]; do
-    case "$1" in
-        --outdir)
-            shift
-            outdir="$1"
-            ;;
-        --convert-to)
-            shift
-            ;;
-        --headless|--)
-            ;;
-        *)
-            source="$1"
-            ;;
-    esac
-    shift
-done
-base="$(basename "$source")"
-stem="${base%.*}"
-printf 'partial' > "$outdir/$stem.xlsx"
-while :; do sleep 1; done
-)SH";
+        switch (behavior) {
+        case FakeSofficeBehavior::Copy:
+            script << "cp \"$source\" \"$outdir/$stem.xlsx\"\n";
+            break;
+        case FakeSofficeBehavior::Block:
+            script << "printf 'partial' > \"$outdir/$stem.xlsx\"\n"
+                      "while :; do sleep 1; done\n";
+            break;
+        case FakeSofficeBehavior::CopyThenBlock:
+            script << "if [ \"$stem\" = a ]; then\n"
+                      "    cp \"$source\" \"$outdir/$stem.xlsx\"\n"
+                      "else\n"
+                      "    printf 'partial' > \"$outdir/$stem.xlsx\"\n"
+                      "    while :; do sleep 1; done\n"
+                      "fi\n";
+            break;
+        case FakeSofficeBehavior::CleanupFailure:
+            script << "cp \"$source\" \"$outdir/$stem.xlsx\"\n"
+                      "chmod 500 \"$outdir\"\n";
+            break;
+        }
         script.close();
         std::filesystem::permissions(executable,
                                      std::filesystem::perms::owner_exec |
@@ -323,6 +314,167 @@ TEST_CASE("staging preserves prior diagnostics without misclassifying clean canc
     REQUIRE(std::filesystem::is_empty(inputDirectory));
 }
 
+TEST_CASE("workflow cancellation after staging removes the owned external copy") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto sourceDirectory = root / "source";
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(sourceDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    const auto source = sourceDirectory / "selected.xlsx";
+    writeWorkbook(source, row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                                  inlineCell("C1", "Descricao da SSA")}) +
+                              row(2, {inlineCell("A2", "202600408"), inlineCell("B2", "ASE"),
+                                      inlineCell("C2", "Cancelar apos staging")}));
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(dbPath, importColumns());
+    ssa::infra::importing::ResolvedSsaImportRows previous;
+    previous.rows.push_back({{"numero_ssa", "202600409"}, {"descricao_ssa", "Anterior"}});
+    previous.ssaNumbersForUpsertDelete.emplace_back("202600409");
+    REQUIRE(writer.write(previous, 1, 0, false).rowsWritten == 1);
+    ssa::infra::sqlite::SqliteConnection blocker(dbPath,
+                                                 ssa::infra::sqlite::SqliteOpenMode::ReadWrite);
+    REQUIRE(sqlite3_exec(blocker.handle(), "BEGIN EXCLUSIVE", nullptr, nullptr, nullptr) ==
+            SQLITE_OK);
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+    std::stop_source stopSource;
+    auto operation = std::async(std::launch::async, [&] {
+        return port.importExternalFiles({.files = {source}}, stopSource.get_token());
+    });
+    QElapsedTimer deadline;
+    deadline.start();
+    while ((!std::filesystem::exists(inputDirectory) || directWorkbookCount(inputDirectory) == 0) &&
+           deadline.elapsed() < 3'000) {
+        QThread::msleep(5);
+    }
+    REQUIRE(directWorkbookCount(inputDirectory) == 1);
+    REQUIRE(operation.wait_for(std::chrono::milliseconds{50}) == std::future_status::timeout);
+
+    stopSource.request_stop();
+    REQUIRE(operation.wait_for(std::chrono::seconds{2}) == std::future_status::ready);
+    const auto result = operation.get();
+    REQUIRE(sqlite3_exec(blocker.handle(), "ROLLBACK", nullptr, nullptr, nullptr) == SQLITE_OK);
+
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Canceled);
+    REQUIRE(directWorkbookCount(inputDirectory) == 0);
+    REQUIRE(std::filesystem::exists(source));
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600409'") == 1);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600408'") == 0);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+#ifndef _WIN32
+TEST_CASE("workflow reports failed when owned staging cleanup cannot complete after cancellation") {
+    if (::geteuid() == 0) {
+        SKIP("permission cleanup failure cannot be simulated as root");
+    }
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto sourceDirectory = root / "source";
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(sourceDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    const auto source = sourceDirectory / "selected.xlsx";
+    writeWorkbook(source, row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                                  inlineCell("C1", "Descricao da SSA")}) +
+                              row(2, {inlineCell("A2", "202600410"), inlineCell("B2", "ASE"),
+                                      inlineCell("C2", "Cleanup bloqueado")}));
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(dbPath, importColumns());
+    REQUIRE(writer.write({}, 0, 0, false).rowsWritten == 0);
+    ssa::infra::sqlite::SqliteConnection blocker(dbPath,
+                                                 ssa::infra::sqlite::SqliteOpenMode::ReadWrite);
+    REQUIRE(sqlite3_exec(blocker.handle(), "BEGIN EXCLUSIVE", nullptr, nullptr, nullptr) ==
+            SQLITE_OK);
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+    std::stop_source stopSource;
+    auto operation = std::async(std::launch::async, [&] {
+        return port.importExternalFiles({.files = {source}}, stopSource.get_token());
+    });
+    QElapsedTimer deadline;
+    deadline.start();
+    while ((!std::filesystem::exists(inputDirectory) || directWorkbookCount(inputDirectory) == 0) &&
+           deadline.elapsed() < 3'000) {
+        QThread::msleep(5);
+    }
+    REQUIRE(directWorkbookCount(inputDirectory) == 1);
+    std::filesystem::permissions(
+        inputDirectory, std::filesystem::perms::owner_read | std::filesystem::perms::owner_exec,
+        std::filesystem::perm_options::replace);
+
+    stopSource.request_stop();
+    REQUIRE(operation.wait_for(std::chrono::seconds{2}) == std::future_status::ready);
+    const auto result = operation.get();
+    std::filesystem::permissions(inputDirectory, std::filesystem::perms::owner_all,
+                                 std::filesystem::perm_options::replace);
+    REQUIRE(sqlite3_exec(blocker.handle(), "ROLLBACK", nullptr, nullptr, nullptr) == SQLITE_OK);
+
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
+    REQUIRE(result.message.find("staging_cleanup_failed") != std::string::npos);
+    REQUIRE_FALSE(result.diagnostic.empty());
+    REQUIRE(directWorkbookCount(inputDirectory) == 1);
+    REQUIRE(std::filesystem::exists(source));
+}
+
+TEST_CASE("staging cleanup failure is not masked as canceled") {
+    if (::geteuid() == 0) {
+        SKIP("permission cleanup failure cannot be simulated as root");
+    }
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    constexpr std::uintmax_t copyBytes = 128ULL * 1024ULL * 1024ULL;
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto source = root / "large-source.xlsx";
+    const auto inputDirectory = root / "docs_entrada";
+    createSparseFile(source, copyBytes);
+    const ssa::infra::importing::ImportFileStager stager(inputDirectory);
+    std::stop_source stopSource;
+    auto operation = std::async(std::launch::async, [&] {
+        return stager.stageExternalFiles({source}, stopSource.get_token());
+    });
+    QElapsedTimer deadline;
+    deadline.start();
+    bool observedTemporary = false;
+    while (operation.wait_for(std::chrono::milliseconds{0}) != std::future_status::ready &&
+           deadline.elapsed() < 3'000) {
+        std::error_code error;
+        for (std::filesystem::directory_iterator iterator(inputDirectory, error), end;
+             !error && iterator != end; iterator.increment(error)) {
+            if (iterator->path().filename().string().find(".part") != std::string::npos &&
+                iterator->file_size(error) > 0 && !error) {
+                observedTemporary = true;
+                break;
+            }
+        }
+        if (observedTemporary) {
+            break;
+        }
+        QThread::msleep(1);
+    }
+    REQUIRE(observedTemporary);
+    std::filesystem::permissions(
+        inputDirectory, std::filesystem::perms::owner_read | std::filesystem::perms::owner_exec,
+        std::filesystem::perm_options::replace);
+    stopSource.request_stop();
+    REQUIRE(operation.wait_for(std::chrono::seconds{2}) == std::future_status::ready);
+    const auto result = operation.get();
+    std::filesystem::permissions(inputDirectory, std::filesystem::perms::owner_all,
+                                 std::filesystem::perm_options::replace);
+
+    REQUIRE(result.rejectionReason == "staging_cleanup_failed");
+    REQUIRE(result.diagnostic.find("cannot remove staged temporary file") != std::string::npos);
+}
+#endif
+
 #ifndef _WIN32
 TEST_CASE("import file stager rejects a symlinked input directory") {
     QTemporaryDir tempDir;
@@ -419,7 +571,8 @@ TEST_CASE("legacy converter cancellation preserves destination and removes tempo
         std::ofstream previous(destination);
         previous << "previous";
     }
-    const ssa::infra::importing::LegacySpreadsheetConverter converter(writeBlockingSoffice(root));
+    const ssa::infra::importing::LegacySpreadsheetConverter converter(
+        writeFakeSoffice(root, FakeSofficeBehavior::Block));
     std::stop_source stopSource;
     auto operation = std::async(std::launch::async, [&] {
         return converter.convertToXlsx({source, destination}, stopSource.get_token());
@@ -451,6 +604,164 @@ TEST_CASE("legacy converter cancellation preserves destination and removes tempo
     for (const auto& entry : std::filesystem::directory_iterator(root)) {
         REQUIRE_FALSE(entry.path().filename().string().starts_with("ssa_xls_conversion_"));
     }
+}
+#endif
+
+#ifndef _WIN32
+TEST_CASE("input staging cancellation removes only converted artifacts owned by the operation") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    std::filesystem::create_directories(inputDirectory);
+    const auto firstLegacy = inputDirectory / "a.xls";
+    const auto blockingLegacy = inputDirectory / "block.xls";
+    const auto preservedWorkbook = inputDirectory / "0_keep.xlsx";
+    writeWorkbook(firstLegacy, row(1, {inlineCell("A1", "Numero SSA")}));
+    writeWorkbook(blockingLegacy, row(1, {inlineCell("A1", "Numero SSA")}));
+    writeWorkbook(preservedWorkbook, row(1, {inlineCell("A1", "Numero SSA")}));
+    const ssa::infra::importing::ImportFileStager stager(
+        inputDirectory, ssa::infra::importing::LegacySpreadsheetConverter(
+                            writeFakeSoffice(root, FakeSofficeBehavior::CopyThenBlock)));
+    std::stop_source stopSource;
+
+    auto operation = std::async(std::launch::async,
+                                [&] { return stager.stageInputFiles(stopSource.get_token()); });
+    QElapsedTimer deadline;
+    deadline.start();
+    const auto firstConverted = inputDirectory / "a.xlsx";
+    bool observedBlockingTemporary = false;
+    while (operation.wait_for(std::chrono::milliseconds{0}) != std::future_status::ready &&
+           deadline.elapsed() < 3'000) {
+        std::error_code error;
+        for (std::filesystem::recursive_directory_iterator iterator(inputDirectory, error), end;
+             !error && iterator != end; iterator.increment(error)) {
+            if (iterator->path().filename() == "block.xlsx" &&
+                iterator->path().parent_path().filename().string().starts_with(
+                    "ssa_xls_conversion_")) {
+                observedBlockingTemporary = true;
+                break;
+            }
+        }
+        if (observedBlockingTemporary) {
+            break;
+        }
+        QThread::msleep(5);
+    }
+    REQUIRE(std::filesystem::exists(firstConverted));
+    REQUIRE(observedBlockingTemporary);
+    stopSource.request_stop();
+    REQUIRE(operation.wait_for(std::chrono::seconds{7}) == std::future_status::ready);
+    const auto result = operation.get();
+
+    REQUIRE(result.rejectionReason == "canceled");
+    REQUIRE(result.files.empty());
+    REQUIRE(std::filesystem::exists(firstLegacy));
+    REQUIRE(std::filesystem::exists(blockingLegacy));
+    REQUIRE(std::filesystem::exists(preservedWorkbook));
+    REQUIRE_FALSE(std::filesystem::exists(firstConverted));
+    REQUIRE_FALSE(std::filesystem::exists(inputDirectory / "block.xlsx"));
+    for (const auto& entry : std::filesystem::directory_iterator(inputDirectory)) {
+        REQUIRE_FALSE(entry.path().filename().string().starts_with("ssa_xls_conversion_"));
+    }
+}
+
+TEST_CASE("published legacy conversion remains successful when temporary cleanup fails") {
+    if (::geteuid() == 0) {
+        SKIP("permission cleanup failure cannot be simulated as root");
+    }
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto sourceDirectory = root / "source";
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(sourceDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    const auto legacy = sourceDirectory / "cleanup.xls";
+    writeWorkbook(legacy, row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                                  inlineCell("C1", "Descricao da SSA")}) +
+                              row(2, {inlineCell("A2", "202600407"), inlineCell("B2", "ASE"),
+                                      inlineCell("C2", "Cleanup warning")}));
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(
+        inputDirectory, dbPath, importColumns(),
+        ssa::infra::importing::LegacySpreadsheetConverter(
+            writeFakeSoffice(root, FakeSofficeBehavior::CleanupFailure)));
+
+    const auto result = port.importExternalFiles({.files = {legacy}});
+
+    std::size_t temporaryDirectories = 0;
+    for (const auto& entry : std::filesystem::directory_iterator(inputDirectory)) {
+        if (entry.is_directory() &&
+            entry.path().filename().string().starts_with("ssa_xls_conversion_")) {
+            ++temporaryDirectories;
+            std::filesystem::permissions(entry.path(), std::filesystem::perms::owner_all,
+                                         std::filesystem::perm_options::replace);
+            REQUIRE(std::filesystem::remove_all(entry.path()) > 0);
+        }
+    }
+    REQUIRE(temporaryDirectories == 1);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE(result.warning);
+    REQUIRE(result.diagnostic.find("cannot remove xls conversion temporary directory") !=
+            std::string::npos);
+    REQUIRE(std::filesystem::exists(legacy));
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600407'") == 1);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("cleanup warning before commit is preserved when full rescan rejects the workbook") {
+    if (::geteuid() == 0) {
+        SKIP("permission cleanup failure cannot be simulated as root");
+    }
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    const auto legacy = inputDirectory / "cleanup.xls";
+    writeWorkbook(legacy, row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                                  inlineCell("C1", "Descricao da SSA")}));
+    ssa::infra::importing::ResolvedSsaImportRows previous;
+    previous.rows.push_back({{"numero_ssa", "202600411"}, {"descricao_ssa", "Anterior"}});
+    previous.ssaNumbersForUpsertDelete.emplace_back("202600411");
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(dbPath, importColumns());
+    REQUIRE(writer.write(previous, 1, 0, false).rowsWritten == 1);
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(
+        inputDirectory, dbPath, importColumns(),
+        ssa::infra::importing::LegacySpreadsheetConverter(
+            writeFakeSoffice(root, FakeSofficeBehavior::CleanupFailure)));
+
+    const auto result = port.rescan({ssa::ports::RescanMode::Full});
+
+    std::size_t temporaryDirectories = 0;
+    for (const auto& entry : std::filesystem::directory_iterator(inputDirectory)) {
+        if (entry.is_directory() &&
+            entry.path().filename().string().starts_with("ssa_xls_conversion_")) {
+            ++temporaryDirectories;
+            std::filesystem::permissions(entry.path(), std::filesystem::perms::owner_all,
+                                         std::filesystem::perm_options::replace);
+            REQUIRE(std::filesystem::remove_all(entry.path()) > 0);
+        }
+    }
+    REQUIRE(temporaryDirectories == 1);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
+    REQUIRE(result.message.find("staging_cleanup_failed") != std::string::npos);
+    REQUIRE(result.diagnostic.find("cannot remove xls conversion temporary directory") !=
+            std::string::npos);
+    REQUIRE(std::filesystem::exists(legacy));
+    REQUIRE_FALSE(std::filesystem::exists(inputDirectory / "cleanup.xlsx"));
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600411'") == 1);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 #endif
 

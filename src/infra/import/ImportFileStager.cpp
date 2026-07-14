@@ -208,20 +208,32 @@ namespace ssa::infra::importing {
             return false;
         }
 
-        void cancelStaging(ImportStagingResult& result) {
+        std::string cleanupOwnedArtifacts(const ImportStagingResult& result) {
+            std::string diagnostic;
             std::error_code error;
-            bool cleanupFailed = false;
             for (const auto& staged : result.files) {
+                if (!staged.ownedByStager) {
+                    continue;
+                }
                 std::filesystem::remove(staged.workbookPath, error);
                 if (error) {
-                    cleanupFailed = true;
-                    appendDiagnostic(result.diagnostic,
+                    appendDiagnostic(diagnostic,
                                      "cannot remove canceled staged file: " + error.message());
                 }
                 error.clear();
             }
+            return diagnostic;
+        }
+
+        void cancelStaging(ImportStagingResult& result) {
+            const auto cleanupDiagnostic = cleanupOwnedArtifacts(result);
+            appendDiagnostic(result.diagnostic, cleanupDiagnostic);
             result.files.clear();
-            result.rejectionReason = cleanupFailed ? "staging_cleanup_failed" : "canceled";
+            if (!cleanupDiagnostic.empty() || result.rejectionReason == "staging_cleanup_failed") {
+                result.rejectionReason = "staging_cleanup_failed";
+            } else {
+                result.rejectionReason = "canceled";
+            }
         }
 
     } // namespace
@@ -292,14 +304,23 @@ namespace ssa::infra::importing {
             if (!copy.ok()) {
                 ++result.failedCopies;
                 appendDiagnostic(result.diagnostic, copy.diagnostic);
+                if (stopToken.stop_requested()) {
+                    result.rejectionReason = "staging_cleanup_failed";
+                    cancelStaging(result);
+                    return result;
+                }
                 continue;
             }
-            result.files.push_back({destination, {destination}});
+            result.files.push_back({destination, {destination}, true});
         }
         if (stopToken.stop_requested()) {
             cancelStaging(result);
         }
         return result;
+    }
+
+    std::string ImportFileStager::discardOwnedArtifacts(const ImportStagingResult& staging) const {
+        return cleanupOwnedArtifacts(staging);
     }
 
     ImportStagingResult ImportFileStager::stageInputFiles(const std::stop_token& stopToken,
@@ -415,8 +436,7 @@ namespace ssa::infra::importing {
 
         for (const auto& path : candidates) {
             if (stopToken.stop_requested()) {
-                result.files.clear();
-                result.rejectionReason = "canceled";
+                cancelStaging(result);
                 return result;
             }
             if (isExcelLockFile(path)) {
@@ -432,6 +452,10 @@ namespace ssa::infra::importing {
                 }
                 error.clear();
                 stageLegacyFile({path, destination}, {path, destination}, result, stopToken);
+                if (stopToken.stop_requested() || result.rejectionReason == "canceled") {
+                    cancelStaging(result);
+                    return result;
+                }
                 continue;
             }
             if (isXlsxFile(path)) {
@@ -442,6 +466,10 @@ namespace ssa::infra::importing {
         }
         for (const auto& path : processedWorkbooks) {
             result.files.push_back({path, {}});
+        }
+        if (stopToken.stop_requested()) {
+            cancelStaging(result);
+            return result;
         }
         std::ranges::sort(result.files, {}, &StagedImportFile::workbookPath);
         return result;
@@ -517,12 +545,19 @@ namespace ssa::infra::importing {
                 result.rejectionReason = "canceled";
             } else {
                 appendDiagnostic(result.diagnostic, conversion.diagnostic);
+                if (stopToken.stop_requested()) {
+                    result.rejectionReason = "staging_cleanup_failed";
+                }
             }
             ++result.failedLegacyXls;
             return false;
         }
         ++result.convertedXls;
-        result.files.push_back({conversion.outputPath, std::move(consolidationSources)});
+        if (!conversion.diagnostic.empty()) {
+            result.warning = true;
+            appendDiagnostic(result.diagnostic, conversion.diagnostic);
+        }
+        result.files.push_back({conversion.outputPath, std::move(consolidationSources), true});
         return true;
     }
 

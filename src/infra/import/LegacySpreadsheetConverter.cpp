@@ -159,10 +159,8 @@ namespace ssa::infra::importing {
         }
         const auto cleanupDiagnostic = cleanupConversionDirectory();
         if (!cleanupDiagnostic.empty()) {
-            return {LegacySpreadsheetConversionStatus::Failed,
-                    {},
-                    "cannot clean xls conversion temporary directory",
-                    cleanupDiagnostic};
+            return {
+                LegacySpreadsheetConversionStatus::Succeeded, destination, {}, cleanupDiagnostic};
         }
         return {LegacySpreadsheetConversionStatus::Succeeded, destination, {}};
     }

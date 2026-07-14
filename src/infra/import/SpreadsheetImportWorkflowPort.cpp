@@ -108,32 +108,53 @@ namespace ssa::infra::importing {
                                                          const bool replaceAll,
                                                          const std::stop_token& stopToken) const {
         constexpr const char* operation = "import_xlsx_to_sqlite";
+        const auto discardBeforeCommit = [this, &files](ports::WorkflowResult result) {
+            if (!files.diagnostic.empty()) {
+                if (!result.diagnostic.empty()) {
+                    result.diagnostic += "; ";
+                }
+                result.diagnostic += files.diagnostic;
+            }
+            const auto cleanupDiagnostic = stager_.discardOwnedArtifacts(files);
+            if (!cleanupDiagnostic.empty()) {
+                if (!result.diagnostic.empty()) {
+                    result.diagnostic += "; ";
+                }
+                result.diagnostic += cleanupDiagnostic;
+            }
+            if ((files.warning || !cleanupDiagnostic.empty()) &&
+                result.status != ports::WorkflowStatus::Failed) {
+                result.status = ports::WorkflowStatus::Failed;
+                result.message = "import_xlsx_to_sqlite staging_cleanup_failed";
+            }
+            return result;
+        };
         if (files.rejectionReason == "staging_cleanup_failed") {
             return {ports::WorkflowStatus::Failed, "import_xlsx_to_sqlite staging_cleanup_failed",
                     false, files.diagnostic};
         }
         if (stopToken.stop_requested()) {
-            return canceled(operation);
+            return discardBeforeCommit(canceled(operation));
         }
         if (!files.rejectionReason.empty()) {
-            return {ports::WorkflowStatus::Rejected,
-                    std::string{operation} + " " + files.rejectionReason, false, files.diagnostic};
+            return discardBeforeCommit({ports::WorkflowStatus::Rejected,
+                                        std::string{operation} + " " + files.rejectionReason});
         }
         if (replaceAll && (files.failedCopies > 0 || files.failedLegacyXls > 0)) {
-            return {ports::WorkflowStatus::Failed, rejectedMessage(operation, files), false,
-                    files.diagnostic};
+            return discardBeforeCommit(
+                {ports::WorkflowStatus::Failed, rejectedMessage(operation, files)});
         }
         if (files.files.empty()) {
             if (files.failedCopies > 0 || files.failedLegacyXls > 0) {
-                return {ports::WorkflowStatus::Failed, rejectedMessage(operation, files), false,
-                        files.diagnostic};
+                return discardBeforeCommit(
+                    {ports::WorkflowStatus::Failed, rejectedMessage(operation, files)});
             }
             if (replaceAll) {
                 return {ports::WorkflowStatus::Rejected,
                         std::string{operation} + " no_importable_files"};
             }
-            return {ports::WorkflowStatus::Rejected, rejectedMessage(operation, files), false,
-                    files.diagnostic};
+            return discardBeforeCommit(
+                {ports::WorkflowStatus::Rejected, rejectedMessage(operation, files)});
         }
 
         SsaImportWriteSummary totalSummary;
@@ -144,13 +165,14 @@ namespace ssa::infra::importing {
                 writer_.startSession(replaceAll, stopToken));
         } catch (const std::system_error& error) {
             if (error.code() == std::make_error_code(std::errc::operation_canceled)) {
-                return canceled(operation);
+                return discardBeforeCommit(canceled(operation));
             }
-            return failed(operation, files, totalSummary, 1, error.what());
+            return discardBeforeCommit(failed(operation, files, totalSummary, 1, error.what()));
         } catch (const ports::OperationError& error) {
-            return failed(operation, files, totalSummary, 1, error.diagnostic());
+            return discardBeforeCommit(
+                failed(operation, files, totalSummary, 1, error.diagnostic()));
         } catch (const std::exception& exc) {
-            return failed(operation, files, totalSummary, 1, exc.what());
+            return discardBeforeCommit(failed(operation, files, totalSummary, 1, exc.what()));
         }
         std::size_t failedFiles = 0;
         bool hasAnyValidRows = false;
@@ -158,35 +180,38 @@ namespace ssa::infra::importing {
         pendingOutcomes.reserve(files.files.size());
         for (const auto& file : files.files) {
             if (stopToken.stop_requested()) {
-                return rollbackSession(*writeSession, canceled(operation));
+                return discardBeforeCommit(rollbackSession(*writeSession, canceled(operation)));
             }
             SsaImportBatch batch;
             try {
                 batch = mapper_.map(reader_.readFirstSheet(file.workbookPath, stopToken));
             } catch (const std::system_error& error) {
                 if (error.code() == std::make_error_code(std::errc::operation_canceled)) {
-                    return rollbackSession(*writeSession, canceled(operation));
+                    return discardBeforeCommit(rollbackSession(*writeSession, canceled(operation)));
                 }
                 ++failedFiles;
-                return rollbackSession(*writeSession, failed(operation, files, totalSummary,
-                                                             failedFiles, error.what()));
+                return discardBeforeCommit(
+                    rollbackSession(*writeSession, failed(operation, files, totalSummary,
+                                                          failedFiles, error.what())));
             } catch (const ports::OperationError& error) {
                 ++failedFiles;
-                return rollbackSession(*writeSession, failed(operation, files, totalSummary,
-                                                             failedFiles, error.diagnostic()));
+                return discardBeforeCommit(
+                    rollbackSession(*writeSession, failed(operation, files, totalSummary,
+                                                          failedFiles, error.diagnostic())));
             } catch (const std::exception& exc) {
                 ++failedFiles;
-                return rollbackSession(
-                    *writeSession, failed(operation, files, totalSummary, failedFiles, exc.what()));
+                return discardBeforeCommit(
+                    rollbackSession(*writeSession, failed(operation, files, totalSummary,
+                                                          failedFiles, exc.what())));
             }
             if (stopToken.stop_requested()) {
-                return rollbackSession(*writeSession, canceled(operation));
+                return discardBeforeCommit(rollbackSession(*writeSession, canceled(operation)));
             }
             if (replaceAll &&
                 batch.mappingStatus == SpreadsheetMappingStatus::HeaderNotRecognized) {
-                return rollbackSession(*writeSession,
-                                       {ports::WorkflowStatus::Rejected,
-                                        std::string{operation} + " header_not_recognized"});
+                return discardBeforeCommit(rollbackSession(
+                    *writeSession, {ports::WorkflowStatus::Rejected,
+                                    std::string{operation} + " header_not_recognized"}));
             }
             pendingOutcomes.push_back({&file, !batch.rows.empty()});
             if (batch.rows.empty()) {
@@ -202,24 +227,28 @@ namespace ssa::infra::importing {
                 writeSession->write(resolved, 1, singleBatch.front().skippedRows);
             } catch (const std::system_error& error) {
                 if (error.code() == std::make_error_code(std::errc::operation_canceled)) {
-                    return rollbackSession(*writeSession, canceled(operation));
+                    return discardBeforeCommit(rollbackSession(*writeSession, canceled(operation)));
                 }
                 ++failedFiles;
-                return rollbackSession(*writeSession, failed(operation, files, totalSummary,
-                                                             failedFiles, error.what()));
+                return discardBeforeCommit(
+                    rollbackSession(*writeSession, failed(operation, files, totalSummary,
+                                                          failedFiles, error.what())));
             } catch (const ports::OperationError& error) {
                 ++failedFiles;
-                return rollbackSession(*writeSession, failed(operation, files, totalSummary,
-                                                             failedFiles, error.diagnostic()));
+                return discardBeforeCommit(
+                    rollbackSession(*writeSession, failed(operation, files, totalSummary,
+                                                          failedFiles, error.diagnostic())));
             } catch (const std::exception& exc) {
                 ++failedFiles;
-                return rollbackSession(
-                    *writeSession, failed(operation, files, totalSummary, failedFiles, exc.what()));
+                return discardBeforeCommit(
+                    rollbackSession(*writeSession, failed(operation, files, totalSummary,
+                                                          failedFiles, exc.what())));
             }
         }
         if (replaceAll && !hasAnyValidRows) {
-            return rollbackSession(*writeSession, {ports::WorkflowStatus::Rejected,
-                                                   std::string{operation} + " no_valid_rows"});
+            return discardBeforeCommit(
+                rollbackSession(*writeSession, {ports::WorkflowStatus::Rejected,
+                                                std::string{operation} + " no_valid_rows"}));
         }
         try {
             const auto writeSummary = writeSession->finish();
@@ -228,16 +257,16 @@ namespace ssa::infra::importing {
             totalSummary.duplicateRows = writeSummary.duplicateRows;
         } catch (const std::system_error& error) {
             if (error.code() == std::make_error_code(std::errc::operation_canceled)) {
-                return rollbackSession(*writeSession, canceled(operation));
+                return discardBeforeCommit(rollbackSession(*writeSession, canceled(operation)));
             }
-            return rollbackSession(*writeSession,
-                                   failed(operation, files, totalSummary, 1, error.what()));
+            return discardBeforeCommit(rollbackSession(
+                *writeSession, failed(operation, files, totalSummary, 1, error.what())));
         } catch (const ports::OperationError& error) {
-            return rollbackSession(*writeSession,
-                                   failed(operation, files, totalSummary, 1, error.diagnostic()));
+            return discardBeforeCommit(rollbackSession(
+                *writeSession, failed(operation, files, totalSummary, 1, error.diagnostic())));
         } catch (const std::exception& error) {
-            return rollbackSession(*writeSession,
-                                   failed(operation, files, totalSummary, 1, error.what()));
+            return discardBeforeCommit(rollbackSession(
+                *writeSession, failed(operation, files, totalSummary, 1, error.what())));
         }
 
         std::vector<ImportManifestEntry> manifest;
@@ -264,8 +293,8 @@ namespace ssa::infra::importing {
                                      : std::string_view{};
         return {ports::WorkflowStatus::Succeeded,
                 workflowMessage(operation, files, totalSummary, {failedFiles, consolidationState}),
-                files.failedCopies > 0 || files.failedLegacyXls > 0 || consolidation.failed > 0 ||
-                    consolidation.canceled,
+                files.warning || files.failedCopies > 0 || files.failedLegacyXls > 0 ||
+                    consolidation.failed > 0 || consolidation.canceled,
                 std::move(diagnostic)};
     }
 
