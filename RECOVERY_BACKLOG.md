@@ -12,6 +12,12 @@
   somente ao atualizar o pin do miniz, depois de validar build e pacote em todas
   as plataformas suportadas.
 
+- [LOW] [POWERSHELL-ANALYZER-BASELINE] PSScriptAnalyzer reporta seis usos
+  preexistentes de `Write-Host` e duas funcoes de pacote sem `ShouldProcess` nos
+  scripts Windows. Nenhum arquivo PowerShell mudou na 0.9.5. Tratar em slice
+  Windows dedicado, com validacao real em Windows antes de alterar a saida dos
+  scripts ou o comportamento de links de artefatos.
+
 - [PENDING] Implementar sincronizacao completa de derivadas com regras de negocio e fonte externa, incluindo modelagem de grafo/fluxo derivado.
 - [PENDING] Adicionar lacunas restantes de paridade da tabela: reorder persistido por drag de colunas, acoes de menu de contexto de linha e acao de reset de sort no header.
 - [LOW] [IMPORT-CONSOLIDATION-TOCTOU] A consolidacao rejeita diretorios
