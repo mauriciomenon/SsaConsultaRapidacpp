@@ -146,6 +146,7 @@ namespace ssa::infra::importing {
         }
         const auto columnByIndex = columnMapFromHeader(table.rows[*headerIndex], headerCache);
         batch.mappedColumns = columnByIndex.size();
+        batch.mappingStatus = SpreadsheetMappingStatus::Mapped;
         for (std::size_t rowIndex = *headerIndex + 1; rowIndex < table.rows.size(); ++rowIndex) {
             SsaImportRow row;
             for (const auto& [columnIndex, columnKey] : columnByIndex) {

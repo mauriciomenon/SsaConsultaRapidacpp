@@ -129,21 +129,8 @@ namespace ssa::infra::importing {
                         files.diagnostic};
             }
             if (replaceAll) {
-                try {
-                    const auto summary =
-                        writer_.write(ResolvedSsaImportRows{}, 0, 0, true, stopToken);
-                    return {ports::WorkflowStatus::Succeeded,
-                            workflowMessage(operation, files, summary)};
-                } catch (const std::system_error& error) {
-                    if (error.code() == std::make_error_code(std::errc::operation_canceled)) {
-                        return canceled(operation);
-                    }
-                    return failed(operation, files, {}, 1, error.what());
-                } catch (const ports::OperationError& error) {
-                    return failed(operation, files, {}, 1, error.diagnostic());
-                } catch (const std::exception& exc) {
-                    return failed(operation, files, {}, 1, exc.what());
-                }
+                return {ports::WorkflowStatus::Rejected,
+                        std::string{operation} + " no_importable_files"};
             }
             return {ports::WorkflowStatus::Rejected, rejectedMessage(operation, files), false,
                     files.diagnostic};
@@ -166,6 +153,7 @@ namespace ssa::infra::importing {
             return failed(operation, files, totalSummary, 1, exc.what());
         }
         std::size_t failedFiles = 0;
+        bool hasAnyValidRows = false;
         std::vector<PendingImportOutcome> pendingOutcomes;
         pendingOutcomes.reserve(files.files.size());
         for (const auto& file : files.files) {
@@ -191,11 +179,21 @@ namespace ssa::infra::importing {
                 return rollbackSession(
                     *writeSession, failed(operation, files, totalSummary, failedFiles, exc.what()));
             }
+            if (stopToken.stop_requested()) {
+                return rollbackSession(*writeSession, canceled(operation));
+            }
+            if (replaceAll &&
+                batch.mappingStatus == SpreadsheetMappingStatus::HeaderNotRecognized) {
+                return rollbackSession(*writeSession,
+                                       {ports::WorkflowStatus::Rejected,
+                                        std::string{operation} + " header_not_recognized"});
+            }
             pendingOutcomes.push_back({&file, !batch.rows.empty()});
             if (batch.rows.empty()) {
                 totalSummary.skippedRows += batch.skippedRows;
                 continue;
             }
+            hasAnyValidRows = true;
             const std::vector<SsaImportBatch> singleBatch{std::move(batch)};
             const auto resolved =
                 conflictResolver_.resolveForDeleteInsertUpsertBySsaNumberKeepingUnkeyedRows(
@@ -218,6 +216,10 @@ namespace ssa::infra::importing {
                 return rollbackSession(
                     *writeSession, failed(operation, files, totalSummary, failedFiles, exc.what()));
             }
+        }
+        if (replaceAll && !hasAnyValidRows) {
+            return rollbackSession(*writeSession, {ports::WorkflowStatus::Rejected,
+                                                   std::string{operation} + " no_valid_rows"});
         }
         try {
             const auto writeSummary = writeSession->finish();

@@ -791,6 +791,11 @@ TEST_CASE("incremental rescan consolidates only committed input workbooks") {
     const auto dbPath = root / "data" / "ssas.db";
     std::filesystem::create_directories(inputDirectory);
     std::filesystem::create_directories(dbPath.parent_path());
+    ssa::infra::importing::ResolvedSsaImportRows previous;
+    previous.rows.push_back({{"numero_ssa", "202600119"}, {"descricao_ssa", "Anterior"}});
+    previous.ssaNumbersForUpsertDelete.emplace_back("202600119");
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(dbPath, importColumns());
+    REQUIRE(writer.write(previous, 1, 0, false).rowsWritten == 1);
 
     const auto validWorkbook = inputDirectory / "valid.xlsx";
     writeWorkbook(validWorkbook,
@@ -823,7 +828,8 @@ TEST_CASE("incremental rescan consolidates only committed input workbooks") {
 
     sqlite3* db = nullptr;
     REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
-    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 1);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 2);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600119'") == 1);
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
@@ -1295,7 +1301,150 @@ TEST_CASE("full rescan rejects a symlinked processed directory without clearing 
 }
 #endif
 
-TEST_CASE("spreadsheet import workflow reports empty full rescan write failure") {
+TEST_CASE("full rescan rejects empty input without clearing the database") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    ssa::infra::importing::ResolvedSsaImportRows previous;
+    previous.rows.push_back({{"numero_ssa", "202600401"}, {"descricao_ssa", "Anterior"}});
+    previous.ssaNumbersForUpsertDelete.emplace_back("202600401");
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(dbPath, importColumns());
+    REQUIRE(writer.write(previous, 1, 0, false).rowsWritten == 1);
+
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+    const auto result = port.rescan({ssa::ports::RescanMode::Full});
+
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
+    REQUIRE(result.message.find("no_importable_files") != std::string::npos);
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarText(db, "PRAGMA integrity_check") == "ok");
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 1);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600401'") == 1);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("full rescan rejects an unrecognized header without clearing or moving the source") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    ssa::infra::importing::ResolvedSsaImportRows previous;
+    previous.rows.push_back({{"numero_ssa", "202600402"}, {"descricao_ssa", "Anterior"}});
+    previous.ssaNumbersForUpsertDelete.emplace_back("202600402");
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(dbPath, importColumns());
+    REQUIRE(writer.write(previous, 1, 0, false).rowsWritten == 1);
+    const auto workbook = inputDirectory / "unknown-header.xlsx";
+    writeWorkbook(workbook, row(1, {inlineCell("A1", "Unknown A"), inlineCell("B1", "Unknown B"),
+                                    inlineCell("C1", "Unknown C")}) +
+                                row(2, {inlineCell("A2", "one"), inlineCell("B2", "two"),
+                                        inlineCell("C2", "three")}));
+
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+    const auto result = port.rescan({ssa::ports::RescanMode::Full});
+
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
+    REQUIRE(result.message.find("header_not_recognized") != std::string::npos);
+    REQUIRE(std::filesystem::exists(workbook));
+    REQUIRE_FALSE(std::filesystem::exists(inputDirectory / "processadas"));
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarText(db, "PRAGMA integrity_check") == "ok");
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 1);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600402'") == 1);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("full rescan rolls back a valid workbook when a later header is unrecognized") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    ssa::infra::importing::ResolvedSsaImportRows previous;
+    previous.rows.push_back({{"numero_ssa", "202600404"}, {"descricao_ssa", "Anterior"}});
+    previous.ssaNumbersForUpsertDelete.emplace_back("202600404");
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(dbPath, importColumns());
+    REQUIRE(writer.write(previous, 1, 0, false).rowsWritten == 1);
+
+    const auto validWorkbook = inputDirectory / "a-valid.xlsx";
+    writeWorkbook(validWorkbook,
+                  row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                          inlineCell("C1", "Descricao da SSA")}) +
+                      row(2, {inlineCell("A2", "202600405"), inlineCell("B2", "ASE"),
+                              inlineCell("C2", "Nova")}));
+    const auto invalidWorkbook = inputDirectory / "b-invalid.xlsx";
+    writeWorkbook(invalidWorkbook,
+                  row(1, {inlineCell("A1", "Unknown A"), inlineCell("B1", "Unknown B"),
+                          inlineCell("C1", "Unknown C")}));
+
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+    const auto result = port.rescan({ssa::ports::RescanMode::Full});
+
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
+    REQUIRE(result.message.find("header_not_recognized") != std::string::npos);
+    REQUIRE(std::filesystem::exists(validWorkbook));
+    REQUIRE(std::filesystem::exists(invalidWorkbook));
+    REQUIRE_FALSE(std::filesystem::exists(inputDirectory / "processadas"));
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarText(db, "PRAGMA integrity_check") == "ok");
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 1);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600404'") == 1);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600405'") == 0);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("full rescan rejects workbooks without valid rows and preserves their sources") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    ssa::infra::importing::ResolvedSsaImportRows previous;
+    previous.rows.push_back({{"numero_ssa", "202600403"}, {"descricao_ssa", "Anterior"}});
+    previous.ssaNumbersForUpsertDelete.emplace_back("202600403");
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(dbPath, importColumns());
+    REQUIRE(writer.write(previous, 1, 0, false).rowsWritten == 1);
+    const auto workbook = inputDirectory / "header-only.xlsx";
+    writeWorkbook(workbook, row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                                    inlineCell("C1", "Descricao da SSA")}));
+
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+    const auto result = port.rescan({ssa::ports::RescanMode::Full});
+
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
+    REQUIRE(result.message.find("no_valid_rows") != std::string::npos);
+    REQUIRE(std::filesystem::exists(workbook));
+    REQUIRE_FALSE(std::filesystem::exists(inputDirectory / "processadas"));
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarText(db, "PRAGMA integrity_check") == "ok");
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 1);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600403'") == 1);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("full rescan reports database open failure for a valid workbook") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
 
@@ -1303,17 +1452,20 @@ TEST_CASE("spreadsheet import workflow reports empty full rescan write failure")
     const auto inputDirectory = root / "docs_entrada";
     const auto dbPath = root / "missing-parent" / "ssas.db";
     std::filesystem::create_directories(inputDirectory);
+    const auto workbook = inputDirectory / "valid.xlsx";
+    writeWorkbook(workbook, row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                                    inlineCell("C1", "Descricao da SSA")}) +
+                                row(2, {inlineCell("A2", "202600406"), inlineCell("B2", "ASE"),
+                                        inlineCell("C2", "Nova")}));
 
     ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
                                                               importColumns());
-    ssa::ports::RescanRequest request;
-    request.mode = ssa::ports::RescanMode::Full;
-
-    ssa::ports::WorkflowResult result;
-    REQUIRE_NOTHROW(result = port.rescan(request));
+    const auto result = port.rescan({ssa::ports::RescanMode::Full});
 
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
-    REQUIRE(result.message.find("error=") != std::string::npos);
+    REQUIRE(result.message.find("operation_failed") != std::string::npos);
+    REQUIRE_FALSE(result.diagnostic.empty());
+    REQUIRE(std::filesystem::exists(workbook));
 }
 
 TEST_CASE("spreadsheet import workflow reports legacy xls when converter is unavailable") {
