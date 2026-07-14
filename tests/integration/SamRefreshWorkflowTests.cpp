@@ -410,6 +410,14 @@ namespace {
 
             QVERIFY2(!processExists(descendantPid),
                      "descendant survived the forced shutdown barrier");
+
+            QTemporaryDir retryRoot;
+            QVERIFY(retryRoot.isValid());
+            auto retryRequest = validRequest(retryRoot);
+            retryRequest.executorSectors = {"IEE3"};
+            const auto retryResult = port.fetch(retryRequest);
+
+            QVERIFY2(retryResult.ok(), "supervisor remained stopped after a successful barrier");
         }
 
         void port_drains_noisy_process_channels_without_unbounded_diagnostics() {
