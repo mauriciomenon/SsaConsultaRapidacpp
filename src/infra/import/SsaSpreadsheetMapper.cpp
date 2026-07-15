@@ -1,5 +1,6 @@
 #include "infra/import/SsaSpreadsheetMapper.h"
 
+#include "domain/ColumnCatalog.h"
 #include "domain/SsaImportPolicy.h"
 #include "infra/import/SsaSpreadsheetHeaderCatalog.h"
 #include "qt/FilesystemPath.h"
@@ -181,8 +182,7 @@ namespace ssa::infra::importing {
                 return std::ranges::any_of(
                     columnByIndex, [key](const auto& column) { return column.second == key; });
             };
-            return hasColumn("numero_ssa") && hasColumn("descricao_ssa") &&
-                   hasColumn("data_cadastro");
+            return std::ranges::all_of(domain::ColumnCatalog::requiredSchemaColumns(), hasColumn);
         }
 
     } // namespace
