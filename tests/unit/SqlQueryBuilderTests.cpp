@@ -1,12 +1,14 @@
 #include "query/SqlQueryBuilder.h"
 
 #include "domain/ColumnCatalog.h"
+#include "domain/ColumnValuePriorityPolicy.h"
 #include "domain/SafePattern.h"
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
 #include <limits>
+#include <ranges>
 #include <stdexcept>
 
 TEST_CASE("sql query builder uses bound parameters for search text") {
@@ -258,6 +260,17 @@ TEST_CASE("sql query builder orders distinct values by display priority before l
         std::string::npos);
     REQUIRE(query.sql.find("THEN 0") != std::string::npos);
     REQUIRE(query.sql.find("THEN 1") != std::string::npos);
+    constexpr std::array<std::string_view, 8> expectedPriorityValues{
+        "IEE3", "IEE1", "IEE2", "IEE4", "MEL1", "MEL2", "MEL3", "MEL4"};
+    REQUIRE(ssa::domain::kOrderedPriorityValues == expectedPriorityValues);
+    auto previousPosition = query.sql.find("LIKE 'IEE3%'");
+    REQUIRE(previousPosition != std::string::npos);
+    for (const auto value : expectedPriorityValues | std::views::drop(1)) {
+        const auto position = query.sql.find("LIKE '" + std::string{value} + "%'");
+        REQUIRE(position != std::string::npos);
+        REQUIRE(position > previousPosition);
+        previousPosition = position;
+    }
     REQUIRE(query.sql.find("COLLATE NOCASE ASC") != std::string::npos);
     REQUIRE(query.bindings.back() == "25");
 }

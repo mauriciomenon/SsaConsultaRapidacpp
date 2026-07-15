@@ -150,15 +150,12 @@ namespace ssa::query {
             return column != nullptr && column->type == domain::ColumnType::Integer;
         }
 
-        constexpr std::array<std::string_view, 8> kOrderedPriorityValues{
-            "IEE3", "IEE1", "IEE2", "IEE4", "MEL1", "MEL2", "MEL3", "MEL4"};
-
         std::string priorityCaseSql(const std::string& expression) {
             std::ostringstream sql;
             sql << "CASE";
-            for (std::size_t index = 0; index < kOrderedPriorityValues.size(); ++index) {
+            for (std::size_t index = 0; index < domain::kOrderedPriorityValues.size(); ++index) {
                 sql << " WHEN "
-                    << asciiCodeSegmentCondition(expression, kOrderedPriorityValues[index])
+                    << asciiCodeSegmentCondition(expression, domain::kOrderedPriorityValues[index])
                     << " THEN " << index;
             }
             sql << " ELSE 100 END";
@@ -257,8 +254,7 @@ namespace ssa::query {
         if (request.pageSize == 0) {
             return query;
         }
-        if (request.pageSize != 0 &&
-            request.pageIndex > (std::numeric_limits<std::size_t>::max() / request.pageSize)) {
+        if (request.pageIndex > (std::numeric_limits<std::size_t>::max() / request.pageSize)) {
             throw std::overflow_error("page offset exceeds supported range");
         }
         query.sql += " LIMIT ? OFFSET ?";

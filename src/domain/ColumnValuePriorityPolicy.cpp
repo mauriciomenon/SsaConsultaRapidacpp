@@ -10,9 +10,6 @@ namespace ssa::domain {
     namespace {
         constexpr int kNoPriorityRank = 100;
         constexpr std::array<std::string_view, 2> kLegacyPriorityPrefixes{"SMIN", "SMME"};
-        constexpr std::array<std::string_view, 8> kOrderedPriorityValues{
-            "IEE3", "IEE1", "IEE2", "IEE4", "MEL1", "MEL2", "MEL3", "MEL4"};
-
         constexpr char asciiUpper(const char value) {
             return value >= 'a' && value <= 'z'
                        ? static_cast<char>(value - static_cast<char>('a' - 'A'))
