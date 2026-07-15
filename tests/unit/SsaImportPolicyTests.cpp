@@ -419,6 +419,31 @@ TEST_CASE("terminal SSA advances snapshot metadata while accepting newer indicat
     REQUIRE(ignored.values == advanced.values);
 }
 
+TEST_CASE("terminal SSA preserves newer execution planning and description fields") {
+    using Values = ssa::domain::SsaImportPolicy::Values;
+    const Values existing{{"numero_ssa", "202600018"},
+                          {"situacao", "STE"},
+                          {"descricao_ssa", "Finalizada"},
+                          {"data_planilha", "2026-07-14"},
+                          {"arquivo_origem", "SSAs executadas_14-07-2026.xlsx"}};
+    const Values incoming{{"numero_ssa", "202600018"},
+                          {"situacao", "STE"},
+                          {"descricao_ssa", "Finalizada"},
+                          {"semana_programada", "202630"},
+                          {"responsavel_programacao", "Equipe A"},
+                          {"responsavel_execucao", "Equipe B"},
+                          {"descricao_execucao", "Execucao parcial 2"},
+                          {"data_planilha", "2026-07-15"},
+                          {"arquivo_origem", "SSAs executadas_15-07-2026.xlsx"}};
+
+    const auto result = ssa::domain::SsaImportPolicy::merge(existing, incoming);
+
+    REQUIRE(result.values.at("semana_programada") == "202630");
+    REQUIRE(result.values.at("responsavel_programacao") == "Equipe A");
+    REQUIRE(result.values.at("responsavel_execucao") == "Equipe B");
+    REQUIRE(result.values.at("descricao_execucao") == "Execucao parcial 2");
+}
+
 TEST_CASE("terminal SSA never changes to another terminal state") {
     using Values = ssa::domain::SsaImportPolicy::Values;
     const Values existing{{"numero_ssa", "202600023"},
