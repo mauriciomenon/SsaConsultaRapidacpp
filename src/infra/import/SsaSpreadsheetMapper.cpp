@@ -182,7 +182,7 @@ namespace ssa::infra::importing {
                     columnByIndex, [key](const auto& column) { return column.second == key; });
             };
             return hasColumn("numero_ssa") && hasColumn("descricao_ssa") &&
-                   (hasColumn("data_cadastro") || hasColumn("semana_cadastro"));
+                   hasColumn("data_cadastro");
         }
 
     } // namespace

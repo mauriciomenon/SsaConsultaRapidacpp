@@ -1916,7 +1916,7 @@ TEST_CASE("spreadsheet mapper accepts the real cadastro timestamp format") {
             "21/10/2025 11:10:36");
 }
 
-TEST_CASE("spreadsheet mapper accepts week-only exceptional rows") {
+TEST_CASE("spreadsheet mapper rejects exceptional rows without the date column") {
     ssa::infra::importing::SpreadsheetTable table;
     table.sourcePath = "week-only.xlsx";
     table.rows = {{"Numero SSA", "Descricao da SSA", "Situacao", "Year Week"},
@@ -1924,9 +1924,9 @@ TEST_CASE("spreadsheet mapper accepts week-only exceptional rows") {
 
     const auto result = ssa::infra::importing::SsaSpreadsheetMapper::map(table);
 
-    REQUIRE(result.mappingStatus == ssa::infra::importing::SpreadsheetMappingStatus::Mapped);
-    REQUIRE(result.rows.size() == 1);
-    REQUIRE(ssa::infra::importing::rowValue(result.rows.front(), "semana_cadastro") == "202631");
+    REQUIRE(result.mappingStatus ==
+            ssa::infra::importing::SpreadsheetMappingStatus::RequiredColumnsMissing);
+    REQUIRE(result.rows.empty());
 }
 
 TEST_CASE("external import rejects a workbook without the required date column") {
