@@ -19,7 +19,8 @@
 - Repeated semantic families are resolved by documented position. An overflow,
   collision, or unresolved ambiguity rejects the file.
 - Minimum schema is `numero_ssa`, `descricao_ssa`, and `data_cadastro`. SCC,
-  ADI, and ASE may omit the date as defined by the domain policy.
+  ADI, and ASE may omit the date only when a valid `semana_cadastro` is
+  present.
 - SSA number normalizes spaces, `YYYY-XXXXX`, and Excel `.0`, then must contain
   exactly nine digits. Letters, ambiguity, and out-of-contract values reject
   the row.
@@ -30,16 +31,38 @@
 
 Snapshot precedence is:
 
-1. spreadsheet date;
-2. source file timestamp;
-3. date in the original source name;
-4. registration date.
+1. date and time encoded in the original source name;
+2. spreadsheet date;
+3. file creation time when the filesystem exposes it;
+4. source file modification time;
+5. registration date, only as the last fallback.
 
-An unparseable comparison fails closed. An older snapshot changes nothing. An
-equal snapshot preserves `situacao` and may complete only empty fields or the
-allowed operational indicators. A newer snapshot updates only fields present
-and non-empty in the input. Missing fields never erase stored values, and STE
-or SCA never regress.
+The source filename is the primary evidence. Creation time is auxiliary metadata
+and is currently transient because the SQLite schema is unchanged; it is not
+used to manufacture a persisted update by itself. An unparseable comparison
+fails closed. An older snapshot changes nothing. An equal snapshot preserves
+`situacao` except that a terminal `STE` may finalize a transient state, and may
+complete only empty fields or allowed operational indicators. A newer snapshot
+updates only fields present and non-empty in the input. Missing fields never
+erase stored values. `STE` (final execution) and `SCA` (approved cancellation)
+are terminal; `SCS` remains transient. A terminal record does not change to a
+different terminal or transient state, although newer indicators and snapshot
+metadata may be recorded.
+
+Source names are classified as `Executadas`, `DerivadasRelacionadas`, `Desvios`,
+or `Geral`. Executadas is the strongest evidence for final STE rows. Derivadas
+and related workbooks and files with `desvio` in the name are separate profiles;
+their richer execution, delay, partial-run, waiting, deviation, scheduling,
+and rescheduling fields may enrich an eligible snapshot without regressing the
+status. This profile classification is domain metadata, not a second database
+schema.
+
+The current schema has one `descricao_execucao` column, so a valid incoming
+execution overwrites that column as before. `ExecutionHistoryPolicy` already
+selects `descricao_execucao_2`, `descricao_execucao_3`, and later columns when
+they exist; adding those columns is deferred until schema stabilization. Sparse
+workbooks preserve previously stored rich fields, while a richer equal snapshot
+may fill or improve them.
 
 ## Atomicity And Results
 

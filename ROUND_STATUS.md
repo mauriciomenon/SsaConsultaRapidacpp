@@ -72,10 +72,10 @@ remotes ativos o aceitou.
 
 ## Release e CI atuais
 
-- Candidata local em preparacao: `v0.9.7`; `v0.9.6` permanece preservada.
+- Candidata local em preparacao: `v0.9.8`; `v0.9.7` permanece preservada.
 - A tag deve apontar para o commit documental final desta rodada e ser publicada
   somente depois do pacote macOS e dos refs obrigatorios.
-- Build canonico local e `ctest --preset dev --output-on-failure`: 366/366.
+- Build canonico local e `ctest --preset dev --output-on-failure`: 377/377.
 - `origin/master` e `bitbucket/master` foram verificados em
   `be16126a7c6bc6c1258f25cb649c3c8497d4860c` antes do commit documental.
 - Pipeline GitLab da 0.9.7: pendente de verificacao apos o push final.

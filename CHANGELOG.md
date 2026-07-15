@@ -2,6 +2,37 @@
 
 Mudancas relevantes deste projeto sao registradas neste arquivo.
 
+## 0.9.8 - 2026-07-15
+
+### Adicionado
+
+- Politica de snapshot SSA com nome da planilha como evidencia primaria,
+  suporte auxiliar a data de criacao do arquivo e semana de cadastro para
+  estados excepcionais.
+- Perfis de fonte para executadas, derivadas/relacionadas, desvios e planilhas
+  gerais, sem alterar o schema SQLite.
+- Politica autocontida para reservar colunas futuras de historico de execucao;
+  no schema atual, `descricao_execucao` continua sobrescrevendo o valor.
+- Inspector opcional somente leitura usando Apache Arrow, desativado no build
+  padrao e sem qualquer escrita no banco.
+
+### Alterado
+
+- Merge incremental preserva campos ricos quando a planilha nova e esparsa e
+  permite enriquecer indicadores de execucao, atraso e parciais em snapshots
+  elegiveis.
+- `STE` e `SCA` permanecem terminais; `SCS` e transitorio. Um estado terminal
+  nao e substituido por outro estado.
+- Valores numericos invalidos sao rejeitados antes da mutacao SQLite, com
+  rollback transacional.
+
+### Validacao
+
+- Build canonico `SSA_CPP_PRESET=dev ./scripts/build-macos.sh` concluido.
+- Suite canonica local: 377 de 377 testes.
+- Preset opt-in `dev-arrow` configurado com Apache Arrow 25.0.0 e smoke
+  somente leitura concluido.
+
 ## 0.9.7 - 2026-07-15
 
 ### Adicionado
