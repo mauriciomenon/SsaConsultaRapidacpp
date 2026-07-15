@@ -28,6 +28,14 @@ namespace ssa::domain {
 
     class ColumnCatalog final {
       public:
+        [[nodiscard]] static constexpr std::string_view schemaTableName() noexcept {
+            return "ssa_table";
+        }
+        [[nodiscard]] static constexpr int schemaVersion() noexcept {
+            return 1;
+        }
+        [[nodiscard]] static std::vector<ColumnDef> schemaColumns();
+        [[nodiscard]] static std::span<const std::string_view> requiredSchemaColumns();
         [[nodiscard]] static std::span<const ColumnDef> all();
         [[nodiscard]] static std::vector<ColumnDef> storageColumns();
         [[nodiscard]] static std::vector<std::string> defaultVisibleKeys();

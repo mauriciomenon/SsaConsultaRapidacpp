@@ -64,6 +64,27 @@ TEST_CASE("column catalog exposes visible and general-search contracts") {
     }));
 }
 
+TEST_CASE("column catalog exposes the shared GUI CLI SQLite schema dictionary") {
+    const auto schema = ssa::domain::ColumnCatalog::schemaColumns();
+
+    REQUIRE(ssa::domain::ColumnCatalog::schemaTableName() == "ssa_table");
+    REQUIRE(ssa::domain::ColumnCatalog::schemaVersion() == 1);
+    const auto storage = ssa::domain::ColumnCatalog::storageColumns();
+    REQUIRE(schema.size() == storage.size());
+    for (std::size_t index = 0; index < schema.size(); ++index) {
+        REQUIRE(schema[index].key == storage[index].key);
+        REQUIRE(schema[index].type == storage[index].type);
+    }
+    REQUIRE(std::ranges::find(ssa::domain::ColumnCatalog::requiredSchemaColumns(), "numero_ssa") !=
+            ssa::domain::ColumnCatalog::requiredSchemaColumns().end());
+    REQUIRE(
+        std::ranges::find(ssa::domain::ColumnCatalog::requiredSchemaColumns(), "descricao_ssa") !=
+        ssa::domain::ColumnCatalog::requiredSchemaColumns().end());
+    REQUIRE(
+        std::ranges::find(ssa::domain::ColumnCatalog::requiredSchemaColumns(), "data_cadastro") !=
+        ssa::domain::ColumnCatalog::requiredSchemaColumns().end());
+}
+
 TEST_CASE("column catalog exposes expanded advanced filter fields") {
     const auto keys = ssa::domain::ColumnCatalog::advancedFilterKeys();
     const auto containsKey = [&keys](const std::string_view key) {

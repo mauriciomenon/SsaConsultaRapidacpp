@@ -8,6 +8,7 @@
 #include "infra/import/XlsxPackage.h"
 #include "infra/import/XlsxWorkbookReader.h"
 #include "infra/sqlite/SqliteConnection.h"
+#include "infra/sqlite/SqliteDatabaseValidator.h"
 #include "infra/sqlite/SqliteSsaImportWriter.h"
 #include "qt/FilesystemPath.h"
 
@@ -3098,6 +3099,57 @@ TEST_CASE("spreadsheet import workflow rejects a second instance before discover
     REQUIRE(result.message.find("import_already_running") != std::string::npos);
     REQUIRE(std::filesystem::exists(workbook));
     REQUIRE_FALSE(std::filesystem::exists(dbPath));
+}
+
+TEST_CASE("spreadsheet import recreates a renamed database without deleting the backup") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    const auto backupPath = root / "data" / "ssas.db.before-recreate";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    writeWorkbook(inputDirectory / "first.xlsx",
+                  row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Descricao"),
+                          inlineCell("C1", "Data Cadastro")}) +
+                      row(2, {inlineCell("A2", "202600701"), inlineCell("B2", "First"),
+                              inlineCell("C2", "2026-07-15")}));
+
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+    const auto first = port.rescan({ssa::ports::RescanMode::Incremental});
+    REQUIRE(first.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE(std::filesystem::exists(dbPath));
+
+    std::filesystem::rename(dbPath, backupPath);
+    REQUIRE(std::filesystem::exists(backupPath));
+    writeWorkbook(inputDirectory / "second.xlsx",
+                  row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Descricao"),
+                          inlineCell("C1", "Data Cadastro")}) +
+                      row(2, {inlineCell("A2", "202600702"), inlineCell("B2", "Second"),
+                              inlineCell("C2", "2026-07-15")}));
+
+    const auto second = port.rescan({ssa::ports::RescanMode::Incremental});
+    REQUIRE(second.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE(std::filesystem::exists(dbPath));
+
+    const ssa::infra::sqlite::SqliteDatabaseValidator validator;
+    REQUIRE(validator.validate(backupPath).status == ssa::ports::DatabaseValidationStatus::Valid);
+    REQUIRE(validator.validate(dbPath).status == ssa::ports::DatabaseValidationStatus::Valid);
+
+    sqlite3* backup = nullptr;
+    sqlite3* recreated = nullptr;
+    REQUIRE(sqlite3_open(backupPath.string().c_str(), &backup) == SQLITE_OK);
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &recreated) == SQLITE_OK);
+    REQUIRE(scalarInt(backup, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600701'") == 1);
+    REQUIRE(scalarInt(recreated, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600701'") ==
+            0);
+    REQUIRE(scalarInt(recreated, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600702'") ==
+            1);
+    REQUIRE(sqlite3_close(backup) == SQLITE_OK);
+    REQUIRE(sqlite3_close(recreated) == SQLITE_OK);
 }
 
 TEST_CASE("external import lock failure preserves the selected file inventory") {

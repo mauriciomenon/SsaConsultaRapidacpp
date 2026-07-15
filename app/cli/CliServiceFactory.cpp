@@ -14,7 +14,7 @@ namespace ssa::app::cli {
     namespace {
 
         std::vector<ssa::domain::ColumnDef> importColumns() {
-            return ssa::domain::ColumnCatalog::storageColumns();
+            return ssa::domain::ColumnCatalog::schemaColumns();
         }
 
     } // namespace

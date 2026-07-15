@@ -200,6 +200,16 @@ namespace ssa::domain {
         return kColumns;
     }
 
+    std::vector<ColumnDef> ColumnCatalog::schemaColumns() {
+        return storageColumns();
+    }
+
+    std::span<const std::string_view> ColumnCatalog::requiredSchemaColumns() {
+        static constexpr std::array<std::string_view, 3> required{"numero_ssa", "descricao_ssa",
+                                                                  "data_cadastro"};
+        return required;
+    }
+
     std::vector<ColumnDef> ColumnCatalog::storageColumns() {
         std::vector<ColumnDef> result;
         std::ranges::copy_if(kColumns, std::back_inserter(result), [](const ColumnDef& column) {

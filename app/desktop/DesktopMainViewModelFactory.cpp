@@ -31,7 +31,7 @@ namespace ssa::app::desktop {
         }
 
         std::vector<ssa::domain::ColumnDef> importColumns() {
-            return ssa::domain::ColumnCatalog::storageColumns();
+            return ssa::domain::ColumnCatalog::schemaColumns();
         }
 
         std::shared_ptr<ssa::ports::ISsaRepository>

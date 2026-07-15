@@ -47,15 +47,17 @@ namespace ssa::infra::sqlite {
         }
 
         bool hasSsaTable(sqlite3* database) {
-            SqliteStatement table(
-                database,
-                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'ssa_table'");
+            SqliteStatement table(database,
+                                  "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?");
+            table.bindTextOneBased(1, std::string{domain::ColumnCatalog::schemaTableName()});
             return table.step();
         }
 
         std::map<std::string, SqliteAffinity> schema(sqlite3* database) {
             std::map<std::string, SqliteAffinity> columns;
-            SqliteStatement tableInfo(database, "PRAGMA table_info(ssa_table)");
+            SqliteStatement tableInfo(
+                database,
+                "PRAGMA table_info(" + std::string{domain::ColumnCatalog::schemaTableName()} + ")");
             while (tableInfo.step()) {
                 columns.emplace(tableInfo.columnText(1), affinity(tableInfo.columnText(2)));
             }
@@ -64,7 +66,7 @@ namespace ssa::infra::sqlite {
 
         ports::DatabaseValidationResult validateSchema(sqlite3* database) {
             const auto actual = schema(database);
-            for (const auto& expected : domain::ColumnCatalog::storageColumns()) {
+            for (const auto& expected : domain::ColumnCatalog::schemaColumns()) {
                 const auto found = actual.find(expected.key);
                 if (found == actual.end()) {
                     return {ports::DatabaseValidationStatus::Invalid,
@@ -86,7 +88,9 @@ namespace ssa::infra::sqlite {
         }
 
         bool hasRecords(sqlite3* database) {
-            SqliteStatement records(database, "SELECT 1 FROM ssa_table LIMIT 1");
+            SqliteStatement records(
+                database, "SELECT 1 FROM " + std::string{domain::ColumnCatalog::schemaTableName()} +
+                              " LIMIT 1");
             return records.step();
         }
 
