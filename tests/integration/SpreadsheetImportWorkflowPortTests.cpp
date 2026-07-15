@@ -12,6 +12,7 @@
 
 #include <QDir>
 #include <QElapsedTimer>
+#include <QLockFile>
 #include <QProcess>
 #include <QTemporaryDir>
 #include <QThread>
@@ -2428,26 +2429,39 @@ TEST_CASE("spreadsheet import workflow reports xlsx read failure cause") {
     REQUIRE(result.diagnostic.find("cannot read xlsx zip package") != std::string::npos);
 }
 
-TEST_CASE("spreadsheet import workflow rejects more than 64 files before staging") {
+TEST_CASE("spreadsheet import workflow processes more than 64 discovered files") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
 
     const auto root = std::filesystem::path{tempDir.path().toStdString()};
     const auto inputDirectory = root / "docs_entrada";
     const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    for (std::size_t index = 0; index < 65; ++index) {
+        const auto workbook = inputDirectory / ("source_" + std::to_string(index) + ".xlsx");
+        writeWorkbook(
+            workbook,
+            row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Descricao"),
+                    inlineCell("C1", "Data Cadastro")}) +
+                row(2, {inlineCell("A2", std::to_string(202600000 + index)),
+                        inlineCell("B2", "Windowed import"), inlineCell("C2", "2026-07-14")}));
+    }
     ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
                                                               importColumns());
-    ssa::ports::ImportExternalFilesRequest request;
-    for (std::size_t index = 0; index < 65; ++index) {
-        request.files.push_back(root / ("source_" + std::to_string(index) + ".xlsx"));
-    }
 
-    const auto result = port.importExternalFiles(request);
+    const auto result = port.rescan({ssa::ports::RescanMode::Incremental});
 
-    REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
-    REQUIRE(result.message.find("too_many_files max=64") != std::string::npos);
-    REQUIRE_FALSE(std::filesystem::exists(inputDirectory));
-    REQUIRE_FALSE(std::filesystem::exists(dbPath));
+    INFO(result.message);
+    INFO(result.diagnostic);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE(result.importSummary.has_value());
+    REQUIRE(result.importSummary->discovered == 65);
+    REQUIRE(result.importSummary->inserts == 65);
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 65);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
 TEST_CASE("spreadsheet import workflow reports missing selected file metadata as failed") {
@@ -2489,6 +2503,189 @@ TEST_CASE("import file stager accepts exactly 64 files") {
     REQUIRE(result.rejectionReason.empty());
     REQUIRE(result.failedCopies == 0);
     REQUIRE(result.files.size() == 64);
+}
+
+TEST_CASE("import file stager rejects more than 64 externally selected files") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto sourceDirectory = root / "source";
+    const auto inputDirectory = root / "docs_entrada";
+    std::filesystem::create_directories(sourceDirectory);
+    std::vector<std::filesystem::path> files;
+    for (std::size_t index = 0; index < 65; ++index) {
+        const auto source = sourceDirectory / ("source_" + std::to_string(index) + ".xlsx");
+        createSparseFile(source, 0);
+        files.push_back(source);
+    }
+
+    const ssa::infra::importing::ImportFileStager stager(inputDirectory);
+    const auto result = stager.stageExternalFiles(files);
+
+    REQUIRE(result.rejectionReason == "too_many_files max=64");
+    REQUIRE(result.files.empty());
+    REQUIRE_FALSE(std::filesystem::exists(inputDirectory));
+}
+
+TEST_CASE("input file stager inventories 1769 xlsx files without a quantity rejection") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto inputDirectory =
+        std::filesystem::path{tempDir.path().toStdString()} / "docs_entrada";
+    std::filesystem::create_directories(inputDirectory);
+    for (std::size_t index = 0; index < 1'769; ++index) {
+        createSparseFile(inputDirectory / ("source_" + std::to_string(index) + ".xlsx"), 0);
+    }
+
+    const ssa::infra::importing::ImportFileStager stager(inputDirectory);
+    const auto result = stager.stageInputFiles();
+
+    REQUIRE(result.rejectionReason.empty());
+    REQUIRE(result.discoveredXlsxSources.size() == 1'769);
+    REQUIRE(result.files.size() == 1'769);
+}
+
+TEST_CASE("spreadsheet import workflow rejects a second instance before discovery") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    QLockFile heldLock(ssa::qt::toQString(root / ".ssa_import.lock"));
+    heldLock.setStaleLockTime(0);
+    REQUIRE(heldLock.tryLock(0));
+    const auto workbook = inputDirectory / "pending.xlsx";
+    std::filesystem::create_directories(inputDirectory);
+    createSparseFile(workbook, 0);
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+
+    const auto result = port.rescan({ssa::ports::RescanMode::Incremental});
+
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
+    REQUIRE(result.message.find("import_already_running") != std::string::npos);
+    REQUIRE(std::filesystem::exists(workbook));
+    REQUIRE_FALSE(std::filesystem::exists(dbPath));
+}
+
+TEST_CASE("external import lock failure preserves the selected file inventory") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "alternate.sqlite";
+    const auto first = root / "first.xlsx";
+    const auto second = root / "second.xlsx";
+    createSparseFile(first, 0);
+    createSparseFile(second, 0);
+    QLockFile heldLock(ssa::qt::toQString(root / ".ssa_import.lock"));
+    heldLock.setStaleLockTime(0);
+    REQUIRE(heldLock.tryLock(0));
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+
+    const auto result = port.importExternalFiles({.files = {first, second}});
+
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
+    REQUIRE(result.message == "import_already_running");
+    REQUIRE_FALSE(result.diagnostic.empty());
+    REQUIRE(result.importSummary.has_value());
+    REQUIRE(result.importSummary->discovered == 2);
+    REQUIRE(result.importSummary->rejected == 2);
+    REQUIRE(result.importSummary->preserved == 2);
+    REQUIRE(result.importSummary->files.size() == 2);
+    REQUIRE(result.importSummary->files[0].source == "first.xlsx");
+    REQUIRE(result.importSummary->files[0].status == ssa::ports::ImportFileStatus::Failed);
+    REQUIRE(result.importSummary->files[1].source == "second.xlsx");
+    REQUIRE(result.importSummary->files[1].status == ssa::ports::ImportFileStatus::Failed);
+    REQUIRE_FALSE(std::filesystem::exists(dbPath));
+}
+
+#ifndef _WIN32
+TEST_CASE("external import lock permission failure includes a technical diagnostic") {
+    if (::geteuid() == 0) {
+        SKIP("permission lock failure cannot be simulated as root");
+    }
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "alternate.sqlite";
+    const auto source = root / "selected.xlsx";
+    createSparseFile(source, 0);
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+    std::filesystem::permissions(
+        root, std::filesystem::perms::owner_read | std::filesystem::perms::owner_exec,
+        std::filesystem::perm_options::replace);
+
+    const auto result = port.importExternalFiles({.files = {source}});
+
+    std::filesystem::permissions(root, std::filesystem::perms::owner_all,
+                                 std::filesystem::perm_options::replace);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
+    REQUIRE(result.message == "import_lock_failed");
+    REQUIRE_FALSE(result.diagnostic.empty());
+    REQUIRE(result.importSummary.has_value());
+    REQUIRE(result.importSummary->discovered == 1);
+    REQUIRE(result.importSummary->preserved == 1);
+    REQUIRE(result.importSummary->files.front().source == "selected.xlsx");
+    REQUIRE_FALSE(std::filesystem::exists(dbPath));
+}
+#endif
+
+TEST_CASE("spreadsheet import workflow holds the corpus lock until an alternate database import "
+          "finishes") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "alternate.sqlite";
+    const auto importLockPath = root / ".ssa_import.lock";
+    std::filesystem::create_directories(inputDirectory);
+    const auto workbook = inputDirectory / "pending.xlsx";
+    writeWorkbook(workbook,
+                  row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Descricao"),
+                          inlineCell("C1", "Data Cadastro")}) +
+                      row(2, {inlineCell("A2", "202600901"), inlineCell("B2", "Lock lifetime"),
+                              inlineCell("C2", "2026-07-14")}));
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(dbPath, importColumns());
+    REQUIRE(writer.write({}, 0, 0, false).rowsWritten == 0);
+    ssa::infra::sqlite::SqliteConnection blocker(dbPath,
+                                                 ssa::infra::sqlite::SqliteOpenMode::ReadWrite);
+    REQUIRE(sqlite3_exec(blocker.handle(), "BEGIN EXCLUSIVE", nullptr, nullptr, nullptr) ==
+            SQLITE_OK);
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+
+    auto operation = std::async(std::launch::async,
+                                [&] { return port.rescan({ssa::ports::RescanMode::Incremental}); });
+    QElapsedTimer deadline;
+    deadline.start();
+    while (!std::filesystem::exists(importLockPath) && deadline.elapsed() < 3'000) {
+        QThread::msleep(5);
+    }
+    REQUIRE(std::filesystem::exists(importLockPath));
+    REQUIRE(operation.wait_for(std::chrono::milliseconds{50}) == std::future_status::timeout);
+    QLockFile contender(ssa::qt::toQString(importLockPath));
+    contender.setStaleLockTime(0);
+    REQUIRE_FALSE(contender.tryLock(0));
+
+    REQUIRE(sqlite3_exec(blocker.handle(), "ROLLBACK", nullptr, nullptr, nullptr) == SQLITE_OK);
+    REQUIRE(operation.wait_for(std::chrono::seconds{2}) == std::future_status::ready);
+    const auto result = operation.get();
+
+    INFO(result.message);
+    INFO(result.diagnostic);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE(contender.tryLock(0));
+    contender.unlock();
 }
 
 TEST_CASE("spreadsheet import workflow rejects files larger than 128 MiB before staging") {

@@ -1,6 +1,9 @@
 #include "infra/import/SpreadsheetImportWorkflowPort.h"
 
 #include "ports/OperationError.h"
+#include "qt/FilesystemPath.h"
+
+#include <QLockFile>
 
 #include <memory>
 #include <sstream>
@@ -22,6 +25,18 @@ namespace ssa::infra::importing {
             bool hasValidRows = false;
             std::size_t summaryIndex = 0;
         };
+
+        std::unique_ptr<QLockFile> acquireImportLock(const std::filesystem::path& path,
+                                                     QLockFile::LockError& error) {
+            auto lock = std::make_unique<QLockFile>(qt::toQString(path));
+            lock->setStaleLockTime(0);
+            if (lock->tryLock(0)) {
+                error = QLockFile::NoError;
+                return lock;
+            }
+            error = lock->error();
+            return {};
+        }
 
         ports::ImportSummary makeImportSummary(const ImportStagingResult& files) {
             ports::ImportSummary summary;
@@ -68,6 +83,43 @@ namespace ssa::infra::importing {
                                           const ports::ImportSummary& summary) {
             result.importSummary = summary;
             return result;
+        }
+
+        std::string_view importLockDiagnostic(const QLockFile::LockError error) {
+            switch (error) {
+            case QLockFile::NoError:
+                return "QLockFile acquisition failed without an error code";
+            case QLockFile::LockFailedError:
+                return "QLockFile is held by another process";
+            case QLockFile::PermissionError:
+                return "QLockFile permission denied";
+            case QLockFile::UnknownError:
+                return "QLockFile reported an unknown filesystem error";
+            }
+            return "QLockFile reported an invalid error code";
+        }
+
+        ports::ImportSummary
+        selectedFilesFailureSummary(const std::vector<std::filesystem::path>& files) {
+            ports::ImportSummary summary;
+            summary.discovered = files.size();
+            summary.rejected = files.size();
+            summary.preserved = files.size();
+            summary.files.reserve(files.size());
+            for (const auto& file : files) {
+                summary.files.push_back({.source = qt::toUtf8(file.filename()),
+                                         .status = ports::ImportFileStatus::Failed});
+            }
+            return summary;
+        }
+
+        ports::WorkflowResult importLockFailure(const QLockFile::LockError error,
+                                                const ports::ImportSummary& summary = {}) {
+            return withSummary({ports::WorkflowStatus::Failed,
+                                error == QLockFile::LockFailedError ? "import_already_running"
+                                                                    : "import_lock_failed",
+                                false, std::string{importLockDiagnostic(error)}},
+                               summary);
         }
 
         std::string workflowMessage(const char* operation, const ImportStagingResult& files,
@@ -135,13 +187,20 @@ namespace ssa::infra::importing {
     SpreadsheetImportWorkflowPort::SpreadsheetImportWorkflowPort(
         std::filesystem::path inputFolder, std::filesystem::path databasePath,
         std::vector<domain::ColumnDef> columns)
-        : stager_(std::move(inputFolder)), writer_(std::move(databasePath), std::move(columns)) {}
+        : importLockPath_(std::filesystem::absolute(inputFolder).lexically_normal().parent_path() /
+                          ".ssa_import.lock"),
+          stager_(std::move(inputFolder)), writer_(std::move(databasePath), std::move(columns)) {}
 
     ports::WorkflowResult SpreadsheetImportWorkflowPort::importExternalFiles(
         const ports::ImportExternalFilesRequest& request, const std::stop_token stopToken) {
         if (request.files.empty()) {
             return withSummary(
                 {ports::WorkflowStatus::Rejected, "import_external_files no_files_selected"}, {});
+        }
+        QLockFile::LockError lockError = QLockFile::NoError;
+        const auto importLock = acquireImportLock(importLockPath_, lockError);
+        if (!importLock) {
+            return importLockFailure(lockError, selectedFilesFailureSummary(request.files));
         }
         return importDiscoveredFiles(stager_.stageExternalFiles(request.files, stopToken), false,
                                      stopToken);
@@ -153,6 +212,15 @@ namespace ssa::infra::importing {
             return canceled("rescan");
         }
         const bool replaceAll = request.mode == ports::RescanMode::Full;
+        const auto directoryStatus = stager_.validateInputDirectory(stopToken);
+        if (!directoryStatus.rejectionReason.empty()) {
+            return importDiscoveredFiles(directoryStatus, replaceAll, stopToken);
+        }
+        QLockFile::LockError lockError = QLockFile::NoError;
+        const auto importLock = acquireImportLock(importLockPath_, lockError);
+        if (!importLock) {
+            return importLockFailure(lockError);
+        }
         return importDiscoveredFiles(stager_.stageInputFiles(stopToken, replaceAll), replaceAll,
                                      stopToken);
     }

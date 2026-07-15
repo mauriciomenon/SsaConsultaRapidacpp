@@ -26,6 +26,7 @@ namespace ssa::infra::importing {
         importDiscoveredFiles(const ImportStagingResult& files, bool replaceAll,
                               const std::stop_token& stopToken) const;
 
+        std::filesystem::path importLockPath_;
         ImportFileStager stager_;
         XlsxWorkbookReader reader_;
         SsaSpreadsheetMapper mapper_;

@@ -28,7 +28,7 @@ namespace ssa::infra::importing {
 
     namespace {
 
-        constexpr std::size_t kMaxImportFiles = 64;
+        constexpr std::size_t kMaxSelectedImportFiles = 64;
         constexpr std::uintmax_t kMaxImportFileBytes = 128ULL * 1024ULL * 1024ULL;
         constexpr std::uintmax_t kMaxImportBatchBytes = 1024ULL * 1024ULL * 1024ULL;
         constexpr std::size_t kMaxDestinationAttempts = 10'000;
@@ -142,11 +142,12 @@ namespace ssa::infra::importing {
         }
 
         std::string preflightFiles(const std::vector<std::filesystem::path>& files,
-                                   const std::stop_token& stopToken, std::string& diagnostic) {
+                                   const std::stop_token& stopToken, std::string& diagnostic,
+                                   const bool enforceSelectionLimit) {
             if (stopToken.stop_requested()) {
                 return "canceled";
             }
-            if (files.size() > kMaxImportFiles) {
+            if (enforceSelectionLimit && files.size() > kMaxSelectedImportFiles) {
                 return "too_many_files max=64";
             }
             std::uintmax_t totalBytes = 0;
@@ -304,7 +305,7 @@ namespace ssa::infra::importing {
         for (const auto& source : files) {
             recordDiscoveredFile(result, source);
         }
-        result.rejectionReason = preflightFiles(files, stopToken, result.diagnostic);
+        result.rejectionReason = preflightFiles(files, stopToken, result.diagnostic, true);
         if (!result.rejectionReason.empty()) {
             result.operationalFailure = result.rejectionReason == "file_size_unavailable";
             return result;
@@ -398,8 +399,8 @@ namespace ssa::infra::importing {
         return cleanupOwnedArtifacts(staging);
     }
 
-    ImportStagingResult ImportFileStager::stageInputFiles(const std::stop_token& stopToken,
-                                                          const bool includeProcessed) const {
+    ImportStagingResult
+    ImportFileStager::validateInputDirectory(const std::stop_token& stopToken) const {
         ImportStagingResult result;
         if (stopToken.stop_requested()) {
             result.rejectionReason = "canceled";
@@ -410,6 +411,14 @@ namespace ssa::infra::importing {
             result.failedCopies = 1;
             result.operationalFailure =
                 result.rejectionReason == "input_directory_status_unavailable";
+        }
+        return result;
+    }
+
+    ImportStagingResult ImportFileStager::stageInputFiles(const std::stop_token& stopToken,
+                                                          const bool includeProcessed) const {
+        auto result = validateInputDirectory(stopToken);
+        if (!result.rejectionReason.empty()) {
             return result;
         }
         std::error_code error;
@@ -541,7 +550,8 @@ namespace ssa::infra::importing {
         for (const auto& path : importCandidates) {
             result.discoveredXlsxSources.push_back(qt::toUtf8(path.filename()));
         }
-        result.rejectionReason = preflightFiles(importCandidates, stopToken, result.diagnostic);
+        result.rejectionReason =
+            preflightFiles(importCandidates, stopToken, result.diagnostic, false);
         if (!result.rejectionReason.empty()) {
             result.operationalFailure = result.rejectionReason == "file_size_unavailable";
             return result;

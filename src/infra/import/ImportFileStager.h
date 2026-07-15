@@ -59,6 +59,8 @@ namespace ssa::infra::importing {
         [[nodiscard]] ImportStagingResult
         stageExternalFiles(const std::vector<std::filesystem::path>& files,
                            const std::stop_token& stopToken = {}) const;
+        [[nodiscard]] ImportStagingResult
+        validateInputDirectory(const std::stop_token& stopToken = {}) const;
         [[nodiscard]] ImportStagingResult stageInputFiles(const std::stop_token& stopToken = {},
                                                           bool includeProcessed = false) const;
         [[nodiscard]] std::string discardOwnedArtifacts(const ImportStagingResult& staging) const;
