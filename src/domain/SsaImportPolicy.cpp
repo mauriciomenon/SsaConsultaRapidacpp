@@ -274,6 +274,28 @@ namespace ssa::domain {
             const auto dateSeparator = [](const char ch) {
                 return ch == '-' || ch == '_' || ch == '/';
             };
+            if (text.size() >= 10 && dateSeparator(text[2]) && dateSeparator(text[5])) {
+                const auto day = parsePart(text.substr(0, 2));
+                const auto month = parsePart(text.substr(3, 2));
+                const auto year = parsePart(text.substr(6, 4));
+                if (day && month && year) {
+                    SnapshotTimestamp timestamp{*year, *month, *day, 0, 0, 0};
+                    if (validTimestamp(timestamp)) {
+                        return timestamp;
+                    }
+                }
+            }
+            if (text.size() >= 10 && dateSeparator(text[4]) && dateSeparator(text[7])) {
+                const auto year = parsePart(text.substr(0, 4));
+                const auto month = parsePart(text.substr(5, 2));
+                const auto day = parsePart(text.substr(8, 2));
+                if (year && month && day) {
+                    SnapshotTimestamp timestamp{*year, *month, *day, 0, 0, 0};
+                    if (validTimestamp(timestamp)) {
+                        return timestamp;
+                    }
+                }
+            }
             if (text.size() >= 16 && dateSeparator(text[4]) && dateSeparator(text[7]) &&
                 (text[10] == ' ' || text[10] == 'T')) {
                 const std::size_t hourLength = (text[12] == ':' || text[12] == '.') ? 1 : 2;

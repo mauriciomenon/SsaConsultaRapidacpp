@@ -154,6 +154,13 @@ TEST_CASE("SSA import gives executed sources precedence on equal snapshots") {
     REQUIRE(result.values.at("situacao") == "STE");
 }
 
+TEST_CASE("SSA import parses date-only source filenames") {
+    REQUIRE(ssa::domain::SsaImportPolicy::normalizeFilenameTimestamp(
+                "SSAs executadas_14-07-2026.xlsx") == "2026-07-14 00:00:00");
+    REQUIRE(ssa::domain::SsaImportPolicy::normalizeFilenameTimestamp("SSA_2026-07-15.xlsx") ==
+            "2026-07-15 00:00:00");
+}
+
 TEST_CASE(
     "SSA import treats approved cancel and final execution as terminal but SCS as transient") {
     REQUIRE(ssa::domain::SsaImportPolicy::isTerminalStatus("STE - finalizada"));
