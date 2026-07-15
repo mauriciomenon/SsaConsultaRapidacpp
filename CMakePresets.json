@@ -24,6 +24,16 @@
       }
     },
     {
+      "name": "dev-arrow",
+      "displayName": "Dev with optional Arrow snapshot inspector",
+      "inherits": "dev",
+      "binaryDir": "${sourceDir}/build/dev-arrow",
+      "cacheVariables": {
+        "SSA_BUILD_ARROW_TOOL": "ON",
+        "CMAKE_PREFIX_PATH": "/opt/homebrew/opt/apache-arrow"
+      }
+    },
+    {
       "name": "dev-asan",
       "displayName": "Dev AddressSanitizer + UBSan (Apple clang)",
       "generator": "Ninja",
@@ -79,6 +89,10 @@
       "configurePreset": "release"
     },
     {
+      "name": "dev-arrow",
+      "configurePreset": "dev-arrow"
+    },
+    {
       "name": "dev-asan",
       "configurePreset": "dev-asan"
     },
@@ -129,4 +143,3 @@
     }
   ]
 }
-

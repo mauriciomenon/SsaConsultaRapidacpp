@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.24)
 
 project(
   SSAConsultaRapidaCpp
-  VERSION 0.9.7
+  VERSION 0.9.8
   LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -11,6 +11,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_AUTOMOC ON)
 
 option(SSA_BUILD_TESTS "Build tests" ON)
+option(SSA_BUILD_ARROW_TOOL "Build the optional read-only Arrow inspector" OFF)
 
 find_package(
   Qt6 6.6 REQUIRED
@@ -106,6 +107,14 @@ add_library(
 target_include_directories(ssa_infra PUBLIC src)
 target_link_libraries(ssa_infra PUBLIC ssa_core ssa_platform_process
                                        ${SSA_SQLITE_TARGET} Qt6::Core miniz)
+
+if(SSA_BUILD_ARROW_TOOL)
+  find_package(Arrow CONFIG REQUIRED)
+  add_executable(ssa_arrow_snapshot_inspector
+                 tools/ssa_arrow_snapshot_inspector.cpp)
+  target_link_libraries(ssa_arrow_snapshot_inspector
+                        PRIVATE ${SSA_SQLITE_TARGET} Arrow::arrow_shared)
+endif()
 
 add_library(
   ssa_platform STATIC
