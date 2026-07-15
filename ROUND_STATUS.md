@@ -20,8 +20,8 @@ ainda nao foram publicados nos remotes nesta rodada.
 | 6. TOCTOU na copia | ENTREGUE PARCIAL | tamanho e mtime comparados antes do rename; identidade inode/handle permanece futura |
 | 7. Lock entre raizes para o mesmo DB | ENTREGUE PARCIAL | lock de corpus mais lock hash global por caminho absoluto; aliases fisicos e colisao de hash ainda nao sao provados |
 | 8. Cancelamento e staging | ENTREGUE PARCIAL | stop remove temporarios e sweep de `.ssa-staged-`; janela SIGKILL pos-publicacao sem prova deterministica |
-| 9. SAM ate SQLite | PENDENTE | adapter e limites ainda exigem rodada E2E dedicada |
-| 10. Derivadas explicitas | PENDENTE | limpeza de orfas continua separada da importacao real |
+| 9. SAM ate SQLite | ENTREGUE LOCAL PARCIAL | adapter, manifesto, truncamento, rollback e importacao em SQLite passam; REST real permanece dependencia externa |
+| 10. Derivadas explicitas | ENTREGUE LOCAL PARCIAL | CSV/TXT/TSV/XLSX/XLSM e cancelamento passam; limpeza de orfas segue acao separada |
 | 11. Auxiliar Arrow | ENTREGUE | preset `dev-arrow` e inspector somente leitura em v0.9.8 |
 | 12. GUI/CLI e dicionario | ENTREGUE | schema e colunas obrigatorias vem do dominio; validador exige schema integral |
 | 13. Release e remotes | PENDENTE | HEAD local avancou; tag v0.9.8 permanece preservada; push depende de SSH |
