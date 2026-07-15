@@ -75,7 +75,7 @@ remotes ativos o aceitou.
 - Release local concluida: tag anotada `v0.9.8`; `v0.9.7` permanece preservada.
 - A tag deve apontar para o commit documental final desta rodada e ser publicada
   somente depois do pacote macOS e dos refs obrigatorios.
-- Build canonico local e `ctest --preset dev --output-on-failure`: 378/378.
+- Build canonico local e `ctest --preset dev --output-on-failure`: 379/379.
 - Pacote macOS arm64 v0.9.8 gerado; ZIP e DMG aguardam publicacao junto com a
   tag porque os dois remotes SSH estao em timeout nesta rodada.
 - `origin/master` e `bitbucket/master` foram verificados em

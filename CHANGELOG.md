@@ -29,7 +29,7 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 ### Validacao
 
 - Build canonico `SSA_CPP_PRESET=dev ./scripts/build-macos.sh` concluido.
-- Suite canonica local: 378 de 378 testes.
+- Suite canonica local: 379 de 379 testes.
 - Preset opt-in `dev-arrow` configurado com Apache Arrow 25.0.0 e smoke
   somente leitura concluido.
 
