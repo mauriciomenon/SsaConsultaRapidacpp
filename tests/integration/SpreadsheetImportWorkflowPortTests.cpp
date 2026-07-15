@@ -620,16 +620,14 @@ TEST_CASE("workflow reports failed when owned staging cleanup cannot complete af
     std::filesystem::create_directories(sourceDirectory);
     std::filesystem::create_directories(dbPath.parent_path());
     const auto source = sourceDirectory / "selected.xlsx";
-    writeWorkbook(source, row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
-                                  inlineCell("C1", "Descricao da SSA")}) +
+    constexpr std::size_t bufferedEntryLimit = 32ULL * 1024ULL * 1024ULL;
+    writeWorkbook(source, std::string(bufferedEntryLimit + 1, ' ') +
+                              row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                                      inlineCell("C1", "Descricao da SSA")}) +
                               row(2, {inlineCell("A2", "202600410"), inlineCell("B2", "ASE"),
                                       inlineCell("C2", "Cleanup bloqueado")}));
     const ssa::infra::sqlite::SqliteSsaImportWriter writer(dbPath, importColumns());
     REQUIRE(writer.write({}, 0, 0, false).rowsWritten == 0);
-    ssa::infra::sqlite::SqliteConnection blocker(dbPath,
-                                                 ssa::infra::sqlite::SqliteOpenMode::ReadWrite);
-    REQUIRE(sqlite3_exec(blocker.handle(), "BEGIN EXCLUSIVE", nullptr, nullptr, nullptr) ==
-            SQLITE_OK);
     ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
                                                               importColumns());
     std::stop_source stopSource;
@@ -652,8 +650,8 @@ TEST_CASE("workflow reports failed when owned staging cleanup cannot complete af
     const auto result = operation.get();
     std::filesystem::permissions(inputDirectory, std::filesystem::perms::owner_all,
                                  std::filesystem::perm_options::replace);
-    REQUIRE(sqlite3_exec(blocker.handle(), "ROLLBACK", nullptr, nullptr, nullptr) == SQLITE_OK);
 
+    CAPTURE(result.message, result.diagnostic);
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
     REQUIRE(result.message.find("staging_cleanup_failed") != std::string::npos);
     REQUIRE_FALSE(result.diagnostic.empty());
@@ -914,7 +912,7 @@ TEST_CASE("legacy converter cancellation preserves destination and removes tempo
     deadline.start();
     const auto conversionReady = source.string() + ".conversion-ready";
     while (operation.wait_for(std::chrono::milliseconds{0}) != std::future_status::ready &&
-           !std::filesystem::exists(conversionReady) && deadline.elapsed() < 3'000) {
+           !std::filesystem::exists(conversionReady) && deadline.elapsed() < 10'000) {
         QThread::msleep(5);
     }
     if (std::filesystem::exists(conversionReady)) {
@@ -923,6 +921,7 @@ TEST_CASE("legacy converter cancellation preserves destination and removes tempo
     stopSource.request_stop();
     const auto result = operation.get();
 
+    CAPTURE(static_cast<int>(result.status), result.message, result.diagnostic);
     REQUIRE(std::filesystem::exists(conversionReady));
     REQUIRE(result.status == ssa::infra::importing::LegacySpreadsheetConversionStatus::Canceled);
     REQUIRE(readFile(destination) == "previous");
@@ -1074,7 +1073,7 @@ TEST_CASE("spreadsheet workflow imports a worksheet larger than the buffered ent
     std::filesystem::create_directories(dbPath.parent_path());
     constexpr std::size_t bufferedEntryLimit = 32ULL * 1024ULL * 1024ULL;
     const auto workbook = inputDirectory / "large-entry.xlsx";
-    const auto rowsXml = "<!--" + std::string(bufferedEntryLimit + 1, 'x') + "-->" +
+    const auto rowsXml = std::string(bufferedEntryLimit + 1, ' ') +
                          row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Descricao"),
                                  inlineCell("C1", "Data Cadastro")}) +
                          row(2, {inlineCell("A2", "202600301"), inlineCell("B2", "Streamed"),

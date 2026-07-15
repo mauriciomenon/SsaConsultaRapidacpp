@@ -217,8 +217,8 @@ TEST_CASE("xlsx reader streams a worksheet XML entry larger than the buffered en
     REQUIRE(tempDir.isValid());
     const auto path = std::filesystem::path{tempDir.path().toStdString()} / "large-entry.xlsx";
     constexpr std::size_t bufferedEntryLimit = 32ULL * 1024ULL * 1024ULL;
-    const std::string rows = "<!--" + std::string(bufferedEntryLimit + 1, 'x') +
-                             "--><row r=\"1\"><c r=\"A1\"><v>7</v></c></row>";
+    const std::string rows =
+        std::string(bufferedEntryLimit + 1, ' ') + "<row r=\"1\"><c r=\"A1\"><v>7</v></c></row>";
     writeWorkbook(path, {}, builtInDateStyles, rows, true);
     std::size_t rowCount = 0;
 
