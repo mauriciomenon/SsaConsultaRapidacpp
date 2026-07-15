@@ -40,6 +40,7 @@ namespace ssa::infra::importing {
         resumePendingConsolidation(const std::stop_token& stopToken) const;
 
         std::filesystem::path importLockPath_;
+        std::filesystem::path databaseImportLockPath_;
         ImportFileStager stager_;
         XlsxWorkbookReader reader_;
         SsaSpreadsheetMapper mapper_;

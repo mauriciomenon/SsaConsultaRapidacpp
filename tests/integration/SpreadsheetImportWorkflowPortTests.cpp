@@ -28,6 +28,7 @@
 #include <ctime>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <future>
 #include <latch>
 #include <memory>
@@ -3139,6 +3140,36 @@ TEST_CASE("spreadsheet import workflow rejects a second instance before discover
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
     REQUIRE(result.message.find("import_already_running") != std::string::npos);
     REQUIRE(std::filesystem::exists(workbook));
+    REQUIRE_FALSE(std::filesystem::exists(dbPath));
+}
+
+TEST_CASE("spreadsheet import rejects a second input root targeting the same database") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto firstInput = root / "first" / "docs_entrada";
+    const auto secondInput = root / "second" / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(firstInput);
+    std::filesystem::create_directories(secondInput);
+    std::filesystem::create_directories(dbPath.parent_path());
+    const auto normalizedDatabasePath = std::filesystem::absolute(dbPath).lexically_normal();
+    const auto databaseLockPath =
+        std::filesystem::path{QDir::tempPath().toStdString()} /
+        (".ssa_import_db_" +
+         std::to_string(std::hash<std::string>{}(normalizedDatabasePath.string())) + ".lock");
+    QLockFile heldLock(ssa::qt::toQString(databaseLockPath));
+    heldLock.setStaleLockTime(0);
+    REQUIRE(heldLock.tryLock(0));
+    createSparseFile(secondInput / "pending.xlsx", 0);
+
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(secondInput, dbPath, importColumns());
+    const auto result = port.rescan({ssa::ports::RescanMode::Incremental});
+
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
+    REQUIRE(result.message.find("import_already_running") != std::string::npos);
+    REQUIRE(std::filesystem::exists(secondInput / "pending.xlsx"));
     REQUIRE_FALSE(std::filesystem::exists(dbPath));
 }
 

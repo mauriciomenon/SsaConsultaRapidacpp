@@ -3,8 +3,10 @@
 #include "ports/OperationError.h"
 #include "qt/FilesystemPath.h"
 
+#include <QDir>
 #include <QLockFile>
 
+#include <functional>
 #include <memory>
 #include <sstream>
 #include <string_view>
@@ -50,6 +52,36 @@ namespace ssa::infra::importing {
             }
             error = lock->error();
             return {};
+        }
+
+        struct ImportLocks final {
+            std::unique_ptr<QLockFile> corpus;
+            std::unique_ptr<QLockFile> database;
+
+            explicit operator bool() const noexcept {
+                return corpus != nullptr && database != nullptr;
+            }
+        };
+
+        ImportLocks acquireImportLocks(const std::filesystem::path& corpusPath,
+                                       const std::filesystem::path& databasePath,
+                                       QLockFile::LockError& error) {
+            auto corpus = acquireImportLock(corpusPath, error);
+            if (!corpus) {
+                return {};
+            }
+            auto database = acquireImportLock(databasePath, error);
+            if (!database) {
+                return {};
+            }
+            return {std::move(corpus), std::move(database)};
+        }
+
+        std::filesystem::path databaseLockPath(const std::filesystem::path& databasePath) {
+            const auto normalized = std::filesystem::absolute(databasePath).lexically_normal();
+            const auto hash = std::hash<std::string>{}(normalized.string());
+            return std::filesystem::path{QDir::tempPath().toStdString()} /
+                   (".ssa_import_db_" + std::to_string(hash) + ".lock");
         }
 
         ports::ImportSummary makeImportSummary(const ImportStagingResult& files) {
@@ -203,7 +235,8 @@ namespace ssa::infra::importing {
         std::vector<domain::ColumnDef> columns)
         : importLockPath_(std::filesystem::absolute(inputFolder).lexically_normal().parent_path() /
                           ".ssa_import.lock"),
-          stager_(std::move(inputFolder)), writer_(std::move(databasePath), std::move(columns)) {}
+          databaseImportLockPath_(databaseLockPath(databasePath)), stager_(std::move(inputFolder)),
+          writer_(std::move(databasePath), std::move(columns)) {}
 
     std::optional<ports::WorkflowResult> SpreadsheetImportWorkflowPort::resumePendingConsolidation(
         const std::stop_token& stopToken) const {
@@ -289,7 +322,8 @@ namespace ssa::infra::importing {
                 {ports::WorkflowStatus::Rejected, "import_external_files no_files_selected"}, {});
         }
         QLockFile::LockError lockError = QLockFile::NoError;
-        const auto importLock = acquireImportLock(importLockPath_, lockError);
+        const auto importLock =
+            acquireImportLocks(importLockPath_, databaseImportLockPath_, lockError);
         if (!importLock) {
             return importLockFailure(lockError, selectedFilesFailureSummary(request.files));
         }
@@ -316,7 +350,8 @@ namespace ssa::infra::importing {
             return withSummary({ports::WorkflowStatus::Rejected, "sam_import no_artifacts"}, {});
         }
         QLockFile::LockError lockError = QLockFile::NoError;
-        const auto importLock = acquireImportLock(importLockPath_, lockError);
+        const auto importLock =
+            acquireImportLocks(importLockPath_, databaseImportLockPath_, lockError);
         if (!importLock) {
             std::vector<std::filesystem::path> files;
             files.reserve(request.artifacts.size());
@@ -362,7 +397,8 @@ namespace ssa::infra::importing {
             return importDiscoveredFiles(directoryStatus, replaceAll, stopToken);
         }
         QLockFile::LockError lockError = QLockFile::NoError;
-        const auto importLock = acquireImportLock(importLockPath_, lockError);
+        const auto importLock =
+            acquireImportLocks(importLockPath_, databaseImportLockPath_, lockError);
         if (!importLock) {
             return importLockFailure(lockError);
         }
