@@ -1,5 +1,6 @@
 #include "application/SsaWorkflowService.h"
 #include "domain/ColumnCatalog.h"
+#include "infra/import/CancelableFileCopy.h"
 #include "infra/import/ImportFileStager.h"
 #include "infra/import/LegacySpreadsheetConverter.h"
 #include "infra/import/SpreadsheetImportWorkflowPort.h"
@@ -33,6 +34,7 @@
 #include <stop_token>
 #include <string>
 #include <system_error>
+#include <thread>
 #include <vector>
 
 #ifndef _WIN32
@@ -456,6 +458,45 @@ TEST_CASE("import file stager cancels a copy without publishing partial files") 
     REQUIRE(result.files.empty());
     REQUIRE(std::filesystem::exists(source));
     REQUIRE(std::filesystem::is_empty(inputDirectory));
+}
+
+TEST_CASE("file copy rejects a source changed during the staged copy") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    constexpr std::uintmax_t copyBytes = 128ULL * 1024ULL * 1024ULL;
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto source = root / "changing-source.xlsx";
+    const auto destination = root / "docs_entrada" / "staged.xlsx";
+    createSparseFile(source, copyBytes);
+
+    auto future = std::async(std::launch::async, [&] {
+        return ssa::infra::importing::copyFileAtomically({source, destination});
+    });
+    QElapsedTimer deadline;
+    deadline.start();
+    bool observedTemporary = false;
+    while (future.wait_for(std::chrono::milliseconds{0}) != std::future_status::ready &&
+           deadline.elapsed() < 3'000) {
+        std::error_code error;
+        for (std::filesystem::directory_iterator iterator(destination.parent_path(), error), end;
+             !error && iterator != end; iterator.increment(error)) {
+            if (iterator->path().filename().string().find(".part") != std::string::npos) {
+                observedTemporary = true;
+                std::filesystem::last_write_time(
+                    source, std::filesystem::file_time_type::clock::now(), error);
+                REQUIRE_FALSE(error);
+                break;
+            }
+        }
+        QThread::msleep(1);
+    }
+    const auto result = future.get();
+
+    REQUIRE(observedTemporary);
+    REQUIRE(result.status == ssa::infra::importing::FileCopyStatus::Failed);
+    REQUIRE(result.diagnostic == "source changed during staged file copy");
+    REQUIRE_FALSE(std::filesystem::exists(destination));
 }
 
 TEST_CASE("import file stager preserves inventory after a later source disappears") {

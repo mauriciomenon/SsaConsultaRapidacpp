@@ -5,6 +5,7 @@
 #include <QTemporaryFile>
 
 #include <fstream>
+#include <optional>
 #include <system_error>
 #include <vector>
 
@@ -16,6 +17,26 @@ namespace ssa::infra::importing {
     namespace {
 
         constexpr std::size_t kCopyBlockBytes = std::size_t{1024} * 1024;
+
+        struct SourceSnapshot {
+            std::uintmax_t size = 0;
+            std::filesystem::file_time_type modified;
+
+            [[nodiscard]] bool operator==(const SourceSnapshot&) const = default;
+        };
+
+        std::optional<SourceSnapshot> snapshotSource(const std::filesystem::path& source,
+                                                     std::error_code& error) {
+            const auto size = std::filesystem::file_size(source, error);
+            if (error) {
+                return std::nullopt;
+            }
+            const auto modified = std::filesystem::last_write_time(source, error);
+            if (error) {
+                return std::nullopt;
+            }
+            return SourceSnapshot{size, modified};
+        }
 
         bool replaceAtomically(const std::filesystem::path& source,
                                const std::filesystem::path& destination, std::error_code& error) {
@@ -42,6 +63,12 @@ namespace ssa::infra::importing {
             return {FileCopyStatus::Canceled, {}};
         }
         std::error_code error;
+        const auto sourceSnapshot = snapshotSource(request.source, error);
+        if (!sourceSnapshot) {
+            return {FileCopyStatus::Failed,
+                    "cannot inspect staged file source: " + error.message()};
+        }
+        error.clear();
         std::filesystem::create_directories(request.destination.parent_path(), error);
         if (error) {
             return {FileCopyStatus::Failed, "cannot create copy destination: " + error.message()};
@@ -109,6 +136,22 @@ namespace ssa::infra::importing {
                 return {FileCopyStatus::CleanupFailed, cleanupDiagnostic};
             }
             return {FileCopyStatus::Canceled, {}};
+        }
+        const auto currentSourceSnapshot = snapshotSource(request.source, error);
+        if (!currentSourceSnapshot) {
+            const auto cleanupDiagnostic = removeTemporary();
+            if (!cleanupDiagnostic.empty()) {
+                return {FileCopyStatus::CleanupFailed, cleanupDiagnostic};
+            }
+            return {FileCopyStatus::Failed, "cannot verify staged file source: " + error.message()};
+        }
+        if (*currentSourceSnapshot != *sourceSnapshot) {
+            const auto cleanupDiagnostic = removeTemporary();
+            if (!cleanupDiagnostic.empty()) {
+                return {FileCopyStatus::CleanupFailed,
+                        "source changed during staged file copy; " + cleanupDiagnostic};
+            }
+            return {FileCopyStatus::Failed, "source changed during staged file copy"};
         }
         const auto temporary = qt::toFileSystemPath(output.fileName());
         if (!replaceAtomically(temporary, request.destination, error)) {
