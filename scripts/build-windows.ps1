@@ -2,6 +2,8 @@
 param(
     [string]$Preset = "dev",
     [string]$QtDir = "",
+    [string]$QtRoot = "",
+    [string]$QtSubdir = "",
     [string]$SQLiteRoot = "",
     [string]$ProjectRoot = "",
     [switch]$Help
@@ -27,13 +29,18 @@ Defaults:
   Repository root: directory that contains this script.
 
 Explicit options can be used through:
-  .\scripts\build-windows.ps1 -Preset <preset> [-QtDir <qt-dir>] [-SQLiteRoot <path>]
+  .\scripts\build-windows.ps1 -Preset <preset> [-QtDir <qt-dir>] [-QtRoot <root>] [-QtSubdir <kit>] [-SQLiteRoot <path>]
+
+Qt kit examples:
+  .\scripts\build-windows.ps1
+  .\scripts\build-windows.ps1 -QtSubdir llvm-mingw_64
+  .\scripts\build-windows.ps1 -QtSubdir mingw_64
 "@
     return
 }
 
-if ($QtDir -or $SQLiteRoot) {
-    & $configureScript -Preset $preset -QtDir $QtDir -SQLiteRoot $SQLiteRoot
+if ($QtDir -or $QtRoot -or $QtSubdir -or $SQLiteRoot) {
+    & $configureScript -Preset $preset -QtDir $QtDir -QtRoot $QtRoot -QtSubdir $QtSubdir -SQLiteRoot $SQLiteRoot
 } else {
     if (-not (Test-Path $cacheFile)) {
         & $configureScript -Preset $preset

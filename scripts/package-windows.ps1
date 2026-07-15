@@ -6,6 +6,9 @@ param(
     [string]$Arch = "",
     [string]$DistDir = "",
     [string]$Version = "",
+    [string]$QtDir = "",
+    [string]$QtRoot = "",
+    [string]$QtSubdir = "",
     [switch]$SkipTests,
     [string[]]$CmakeExtraArgs = @()
 )
@@ -25,7 +28,8 @@ Defaults:
   Architecture: amd64 (x64-windows) or arm64
   Artifact dir: dist\windows\<arch>\
   Required build output: build\<preset>\SsaConsultaRapida QML module must exist.
-  Optional parameters: -Preset, -ProjectRoot, -Arch, -DistDir, -Version
+  Optional parameters: -Preset, -ProjectRoot, -Arch, -DistDir, -Version,
+    -QtDir, -QtRoot, -QtSubdir
   Optional switch: -SkipTests
   Latest pointers: symbolic links when permitted, copied fallback otherwise.
 
@@ -64,6 +68,15 @@ $installerPath = Join-Path $artifactRoot ("{0}-installer.exe" -f $artifactName)
 $nsiPath = Join-Path $artifactRoot "installer.nsi"
 
 $configureParams = @("-Preset", $preset)
+if ($QtDir) {
+    $configureParams += @("-QtDir", $QtDir)
+}
+if ($QtRoot) {
+    $configureParams += @("-QtRoot", $QtRoot)
+}
+if ($QtSubdir) {
+    $configureParams += @("-QtSubdir", $QtSubdir)
+}
 if ($CmakeExtraArgs -and $CmakeExtraArgs.Count -gt 0) {
     $configureParams += "-CmakeExtraArgs"
     $configureParams += $CmakeExtraArgs

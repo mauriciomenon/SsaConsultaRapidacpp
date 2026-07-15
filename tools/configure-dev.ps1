@@ -1,9 +1,12 @@
 [CmdletBinding()]
 param(
     [string]$QtDir,
+    [string]$QtRoot,
+    [string]$QtSubdir,
     [string]$SQLiteRoot,
     [string]$Preset = "dev",
-    [string[]]$CmakeExtraArgs = @()
+    [string[]]$CmakeExtraArgs = @(),
+    [switch]$PrintQtSelection
 )
 
 $ErrorActionPreference = "Stop"
@@ -29,7 +32,7 @@ function Read-QtDetectConfig {
 }
 
 $DetectConfig = Read-QtDetectConfig
-foreach ($requiredKey in @("QT_VERSION", "WINDOWS_QT_SUBDIR")) {
+foreach ($requiredKey in @("QT_VERSION", "QT_VERSION_FAMILY", "WINDOWS_QT_SUBDIR", "WINDOWS_QT_FALLBACK_SUBDIRS")) {
     if (-not $DetectConfig.ContainsKey($requiredKey) -or -not $DetectConfig[$requiredKey]) {
         throw "Missing required key in Qt detection config: $requiredKey"
     }
@@ -55,7 +58,7 @@ function Test-QtPrefix {
     if (-not $Path) {
         return $false
     }
-    return Test-Path (Join-Path $Path "lib\cmake\Qt6\Qt6Config.cmake")
+    return Test-Path (Join-Path $Path "lib/cmake/Qt6/Qt6Config.cmake")
 }
 
 function ConvertTo-NormalizedPath {
@@ -101,89 +104,263 @@ function Find-FirstValidPrefix {
     return $null
 }
 
-function Find-QtFromKnownPath {
-    param([string[]]$Paths)
-    return Find-FirstValidPrefix -Paths $Paths -IsValid { param([string]$Path) Test-QtPrefix $Path }
+function Get-QtVersionForPrefix {
+    param([string]$Path)
+
+    $versionFile = Join-Path $Path "lib/cmake/Qt6/Qt6ConfigVersionImpl.cmake"
+    if (-not (Test-Path $versionFile)) {
+        return $null
+    }
+    $versionLine = Select-String -Path $versionFile -Pattern 'set\(PACKAGE_VERSION\s+"([0-9.]+)"\)' |
+        Select-Object -First 1
+    if (-not $versionLine) {
+        return $null
+    }
+    return [version]$versionLine.Matches[0].Groups[1].Value
+}
+
+function Test-QtVersionFamily {
+    param([version]$Version)
+
+    if (-not $Version) {
+        return $false
+    }
+    $familyParts = $DetectConfig.QT_VERSION_FAMILY.Split('.')
+    return $Version.Major -eq [int]$familyParts[0] -and
+        $Version.Minor -eq [int]$familyParts[1]
+}
+
+function Get-DesktopQtSubdir {
+    $subdirs = @($DetectConfig.WINDOWS_QT_SUBDIR)
+    $subdirs += $DetectConfig.WINDOWS_QT_FALLBACK_SUBDIRS.Split(
+        @(':'),
+        [System.StringSplitOptions]::RemoveEmptyEntries
+    )
+    return @($subdirs | Select-Object -Unique)
+}
+
+function Test-DesktopQtSubdir {
+    param([string]$Subdir)
+    return $Subdir -in (Get-DesktopQtSubdir)
+}
+
+function ConvertFrom-QtCmakeDir {
+    param([string]$Path)
+
+    $normalized = ConvertTo-NormalizedPath $Path
+    if ($normalized -match '^(.*)[\\/]lib[\\/]cmake[\\/]Qt6$') {
+        return $matches[1]
+    }
+    return $normalized
+}
+
+function Get-QtSelectionForPrefix {
+    param(
+        [string]$Path,
+        [string]$Source,
+        [string]$ExpectedSubdir = ""
+    )
+
+    $normalized = ConvertFrom-QtCmakeDir $Path
+    if (-not (Test-QtPrefix $normalized)) {
+        throw "Qt path is not valid: $normalized"
+    }
+    $version = Get-QtVersionForPrefix $normalized
+    if (-not (Test-QtVersionFamily $version)) {
+        $detectedVersion = if ($version) { $version.ToString() } else { "unknown" }
+        throw "Qt $($DetectConfig.QT_VERSION_FAMILY).x is required; detected $detectedVersion at $normalized"
+    }
+    $subdir = Split-Path $normalized -Leaf
+    if ($ExpectedSubdir -and $subdir -ne $ExpectedSubdir) {
+        throw "Qt path uses kit '$subdir', but -QtSubdir requested '$ExpectedSubdir'."
+    }
+    if (-not (Test-DesktopQtSubdir $subdir)) {
+        throw "No desktop Qt kit was selected. '$subdir' is not a supported desktop kit. WASM kits target browsers."
+    }
+
+    return [PSCustomObject]@{
+        Path = (Resolve-Path -LiteralPath $normalized).Path
+        Version = $version
+        Subdir = $subdir
+        Source = $Source
+    }
 }
 
 function Find-QtFromEnvironment {
-    $paths = @()
-    # Qt6_DIR e exportado pela install-qt-action no CI; honrar antes do PATH.
-    $paths += (Get-NormalizedPathList $env:Qt6_DIR)
-    $paths += (Get-NormalizedPathList $env:QT_DIR)
-    $paths += (Get-NormalizedPathList $env:CMAKE_PREFIX_PATH)
-    return Find-QtFromKnownPath $paths
-}
+    param([string]$ExpectedSubdir = "")
 
-function Find-QtUnderDefaultRoot {
-    if (-not (Test-Path "C:\Qt")) {
-        return $null
+    $environmentPaths = @()
+    foreach ($path in (Get-NormalizedPathList $env:Qt6_DIR)) {
+        $environmentPaths += ConvertFrom-QtCmakeDir $path
     }
+    $environmentPaths += Get-NormalizedPathList $env:QT_DIR
+    $environmentPaths += Get-NormalizedPathList $env:CMAKE_PREFIX_PATH
 
-    function Get-QtCandidateInfo {
-        param([string]$Candidate)
-        if (-not (Test-QtPrefix $Candidate)) {
-            return $null
-        }
-        $versionMatch = [regex]::Match($Candidate, "\\d+\\.\\d+(?:\\.\\d+)?")
-        if (-not $versionMatch.Success) {
-            return $null
-        }
-        $versionValue = [version]"0.0.0.0"
-        [void][version]::TryParse($versionMatch.Value, [ref]$versionValue)
-        [PSCustomObject]@{
-            Path = $Candidate
-            Version = $versionValue
+    foreach ($path in $environmentPaths) {
+        if (Test-QtPrefix $path) {
+            return Get-QtSelectionForPrefix -Path $path -Source "environment" -ExpectedSubdir $ExpectedSubdir
         }
     }
-
-    function Get-SortedQtCandidate {
-        param([string[]]$Candidates)
-        return @(
-            $Candidates |
-                ForEach-Object { Get-QtCandidateInfo $_ } |
-                Where-Object { $_ } |
-                Sort-Object -Property Version -Descending
-        )
-    }
-
-    $candidates = @(Get-ChildItem "C:\Qt" -Directory -ErrorAction SilentlyContinue | ForEach-Object {
-        Join-Path $_.FullName $DetectConfig.WINDOWS_QT_SUBDIR
-    })
-
-    $sortedCandidates = Get-SortedQtCandidate $candidates
-    if ($sortedCandidates.Count -eq 0) {
-        return $null
-    }
-
-    # Preferir a versao pinada em qt-detect.conf para evitar mismatch
-    # (ex.: build com 6.11.0 mas deploy com 6.11.1). Se nao existir, cai
-    # para a mais alta disponivel.
-    $pinnedVersion = $DetectConfig.QT_VERSION
-    $pinnedMatch = $sortedCandidates | Where-Object { $_.Version -eq ([version]$pinnedVersion) } | Select-Object -First 1
-    $chosen = if ($pinnedMatch) { $pinnedMatch } else { $sortedCandidates[0] }
-    return (Resolve-Path -LiteralPath $chosen.Path).Path
-
     return $null
 }
 
-function Find-QtDir {
-    param([string]$ExplicitQtDir)
+function Find-QtUnderRoot {
+    param(
+        [string]$Root,
+        [string]$Subdir
+    )
 
-    $normalizedExplicit = ConvertTo-NormalizedPath $ExplicitQtDir
-    if ($normalizedExplicit) {
-        if (Test-QtPrefix $normalizedExplicit) {
-            return $normalizedExplicit
+    if (-not (Test-Path $Root)) {
+        return $null
+    }
+    $candidates = foreach ($versionDir in Get-ChildItem $Root -Directory -ErrorAction SilentlyContinue) {
+        $candidate = Join-Path $versionDir.FullName $Subdir
+        if (-not (Test-QtPrefix $candidate)) {
+            continue
         }
-        throw "Explicit Qt path is not valid: $normalizedExplicit"
+        $version = Get-QtVersionForPrefix $candidate
+        if (Test-QtVersionFamily $version) {
+            [PSCustomObject]@{
+                Path = $candidate
+                Version = $version
+                Subdir = $Subdir
+                Source = "automatic"
+            }
+        }
+    }
+    return $candidates | Sort-Object -Property Version -Descending | Select-Object -First 1
+}
+
+function Get-InstalledQtSubdir {
+    param([string]$Root)
+
+    if (-not (Test-Path $Root)) {
+        return @()
+    }
+    $subdirs = foreach ($versionDir in Get-ChildItem $Root -Directory -ErrorAction SilentlyContinue) {
+        foreach ($kitDir in Get-ChildItem $versionDir.FullName -Directory -ErrorAction SilentlyContinue) {
+            if (Test-QtPrefix $kitDir.FullName) {
+                $version = Get-QtVersionForPrefix $kitDir.FullName
+                if (Test-QtVersionFamily $version) {
+                    $kitDir.Name
+                }
+            }
+        }
+    }
+    return @($subdirs | Sort-Object -Unique)
+}
+
+function Find-QtSelection {
+    param(
+        [string]$ExplicitQtDir,
+        [string]$Root,
+        [string]$RequestedSubdir
+    )
+
+    if ($ExplicitQtDir) {
+        return Get-QtSelectionForPrefix -Path $ExplicitQtDir -Source "explicit" -ExpectedSubdir $RequestedSubdir
     }
 
-    $defaultInstallPath = "C:\Qt\$($DetectConfig.QT_VERSION)\$($DetectConfig.WINDOWS_QT_SUBDIR)"
-    return Find-QtFromKnownPath @(
-        (Find-QtFromEnvironment),
-        $defaultInstallPath,
-        (Find-QtUnderDefaultRoot)
+    $environmentSelection = Find-QtFromEnvironment -ExpectedSubdir $RequestedSubdir
+    if ($environmentSelection) {
+        return $environmentSelection
+    }
+
+    $subdirs = if ($RequestedSubdir) { @($RequestedSubdir) } else { Get-DesktopQtSubdir }
+    foreach ($subdir in $subdirs) {
+        if (-not (Test-DesktopQtSubdir $subdir)) {
+            throw "No desktop Qt kit was selected. '$subdir' is not supported. WASM kits target browsers."
+        }
+        $selection = Find-QtUnderRoot -Root $Root -Subdir $subdir
+        if ($selection) {
+            return $selection
+        }
+    }
+
+    $installed = Get-InstalledQtSubdir -Root $Root
+    if ($installed | Where-Object { $_ -like "wasm*" }) {
+        throw "No desktop Qt kit was found under $Root. WASM kits target browsers and cannot build this desktop application."
+    }
+    return $null
+}
+
+function Find-CompilerInQtTool {
+    param(
+        [string]$Root,
+        [string]$DirectoryPattern,
+        [string]$Executable
     )
+
+    $toolsRoot = Join-Path $Root "Tools"
+    if (-not (Test-Path $toolsRoot)) {
+        return $null
+    }
+    foreach ($toolDir in Get-ChildItem $toolsRoot -Directory -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -like $DirectoryPattern } |
+        Sort-Object -Property Name -Descending) {
+        $candidate = Join-Path $toolDir.FullName "bin/$Executable"
+        if (Test-Path $candidate) {
+            return $candidate
+        }
+    }
+    return $null
+}
+
+function Test-MinGwCompilerTarget {
+    param([string]$Cxx)
+
+    try {
+        $target = & $Cxx -dumpmachine 2>$null | Select-Object -First 1
+    } catch {
+        Write-Verbose "Compiler target probe failed for ${Cxx}: $($_.Exception.Message)"
+        return $false
+    }
+    if ($LASTEXITCODE -ne 0) {
+        Write-Verbose "Compiler target probe returned exit code $LASTEXITCODE for $Cxx."
+        return $false
+    }
+    return $target -match '(mingw|windows-gnu)'
+}
+
+function Get-CompilerForQtSelection {
+    param(
+        [object]$Selection,
+        [string]$Root
+    )
+
+    if ($Selection.Subdir -like "msvc*") {
+        $cl = Get-Command "cl.exe" -ErrorAction SilentlyContinue
+        if ($cl) {
+            return [PSCustomObject]@{ C = ""; Cxx = ""; BinDir = ""; Name = "MSVC" }
+        }
+        return $null
+    }
+
+    $isLlvm = $Selection.Subdir -like "llvm-mingw*"
+    $cName = if ($isLlvm) { "clang.exe" } else { "gcc.exe" }
+    $cxxName = if ($isLlvm) { "clang++.exe" } else { "g++.exe" }
+    $directoryPattern = if ($isLlvm) { "llvm*" } else { "mingw*" }
+    $c = Find-CompilerInQtTool -Root $Root -DirectoryPattern $directoryPattern -Executable $cName
+    $cxx = Find-CompilerInQtTool -Root $Root -DirectoryPattern $directoryPattern -Executable $cxxName
+    if (-not $c -or -not $cxx) {
+        $cCommand = Get-Command $cName -ErrorAction SilentlyContinue
+        $cxxCommand = Get-Command $cxxName -ErrorAction SilentlyContinue
+        $c = if ($cCommand) { $cCommand.Source } else { $null }
+        $cxx = if ($cxxCommand) { $cxxCommand.Source } else { $null }
+    }
+    if (-not $c -or -not $cxx) {
+        return $null
+    }
+    if (-not (Test-MinGwCompilerTarget -Cxx $cxx)) {
+        return $null
+    }
+
+    return [PSCustomObject]@{
+        C = $c
+        Cxx = $cxx
+        BinDir = Split-Path $cxx -Parent
+        Name = if ($isLlvm) { "LLVM MinGW" } else { "MinGW" }
+    }
 }
 
 function Test-SqlitePrefix {
@@ -242,10 +419,6 @@ function Find-SqliteRoot {
     )
 }
 
-function Test-RequiredCompiler {
-    Test-RequiredCommand "cl.exe" "Run this script from 'Developer PowerShell for VS 2022' or install Visual Studio 2022 Build Tools with Desktop development with C++."
-}
-
 function Confirm-ClangFormat {
     if (Get-Command clang-format -ErrorAction SilentlyContinue) {
         return
@@ -274,29 +447,78 @@ function Confirm-ClangFormat {
     Write-Output "Add C:\Program Files\LLVM\bin to PATH for this session and profile if needed."
 }
 
-Test-RequiredCommand "cmake" "Install CMake 3.24 or newer and add it to PATH."
-Test-RequiredCommand "ninja" "Install Ninja and add it to PATH."
-Test-RequiredCompiler
-Write-Output "Target Qt version: $($DetectConfig.QT_VERSION)"
-
-$detectedQtDir = Find-QtDir -ExplicitQtDir $QtDir
-if (-not $detectedQtDir) {
+$effectiveQtRoot = if ($QtRoot) {
+    ConvertTo-NormalizedPath $QtRoot
+} elseif ($env:QT_INSTALL_ROOT) {
+    ConvertTo-NormalizedPath $env:QT_INSTALL_ROOT
+} else {
+    "C:\Qt"
+}
+$selection = Find-QtSelection -ExplicitQtDir $QtDir -Root $effectiveQtRoot -RequestedSubdir $QtSubdir
+if (-not $selection) {
     throw @"
-Qt was not detected.
-Expected default path:
-  C:\Qt\$($DetectConfig.QT_VERSION)\$($DetectConfig.WINDOWS_QT_SUBDIR)
-Fallback search:
-  C:\Qt\*\$($DetectConfig.WINDOWS_QT_SUBDIR)
+Qt $($DetectConfig.QT_VERSION_FAMILY).x was not detected under $effectiveQtRoot.
+Desktop kit priority:
+  $((Get-DesktopQtSubdir) -join ', ')
 You can run:
-  .\tools\configure-dev.ps1 -QtDir "C:\Qt\$($DetectConfig.QT_VERSION)\$($DetectConfig.WINDOWS_QT_SUBDIR)"
+  .\tools\configure-dev.ps1 -QtSubdir llvm-mingw_64
 "@
 }
 
-Write-Output "Using Qt prefix: $detectedQtDir"
+$installedSubdirs = Get-InstalledQtSubdir -Root $effectiveQtRoot
+if ($PrintQtSelection) {
+    Write-Output "QtVersion=$($selection.Version.ToString())"
+    Write-Output "QtSubdir=$($selection.Subdir)"
+    Write-Output "QtDir=$($selection.Path)"
+    Write-Output "AvailableQtSubdirs=$($installedSubdirs -join ',')"
+    return
+}
+
+Test-RequiredCommand "cmake" "Install CMake 3.24 or newer and add it to PATH."
+Test-RequiredCommand "ninja" "Install Ninja and add it to PATH."
+
+$compiler = Get-CompilerForQtSelection -Selection $selection -Root $effectiveQtRoot
+if (-not $compiler -and $selection.Source -eq "automatic" -and -not $QtSubdir) {
+    foreach ($fallbackSubdir in Get-DesktopQtSubdir) {
+        $fallbackSelection = Find-QtUnderRoot -Root $effectiveQtRoot -Subdir $fallbackSubdir
+        if (-not $fallbackSelection) {
+            continue
+        }
+        $fallbackCompiler = Get-CompilerForQtSelection -Selection $fallbackSelection -Root $effectiveQtRoot
+        if ($fallbackCompiler) {
+            $selection = $fallbackSelection
+            $compiler = $fallbackCompiler
+            break
+        }
+    }
+}
+if (-not $compiler) {
+    throw "Compiler for Qt kit '$($selection.Subdir)' was not found. Use Developer PowerShell for MSVC or pass -QtSubdir llvm-mingw_64 or mingw_64."
+}
+
+Write-Output "Target Qt family: $($DetectConfig.QT_VERSION_FAMILY).x (reference patch: $($DetectConfig.QT_VERSION))"
+Write-Output "Using Qt version: $($selection.Version.ToString())"
+Write-Output "Using Qt kit: $($selection.Subdir)"
+Write-Output "Using Qt prefix: $($selection.Path)"
+if ($installedSubdirs.Count -gt 1) {
+    Write-Output "Detected Qt kits: $($installedSubdirs -join ', ')"
+    Write-Output "Select another desktop kit with -QtSubdir <name>. WASM kits target browsers."
+}
+Write-Output "Using compiler: $($compiler.Name)"
+if ($compiler.BinDir) {
+    $env:Path = "$($compiler.BinDir);$env:Path"
+}
 $cmakeArgs = @(
     "--preset", $Preset,
-    "-DCMAKE_PREFIX_PATH=$detectedQtDir"
+    "-UQt6*_DIR",
+    "-U*DEPLOYQT_EXECUTABLE",
+    "-DCMAKE_PREFIX_PATH=$($selection.Path)",
+    "-DQt6_DIR=$(Join-Path $selection.Path 'lib/cmake/Qt6')"
 )
+if ($compiler.C) {
+    $cmakeArgs += "-DCMAKE_C_COMPILER=$($compiler.C)"
+    $cmakeArgs += "-DCMAKE_CXX_COMPILER=$($compiler.Cxx)"
+}
 
 $detectedSQLiteRoot = Find-SqliteRoot -ExplicitSQLiteRoot $SQLiteRoot
 if ($detectedSQLiteRoot) {

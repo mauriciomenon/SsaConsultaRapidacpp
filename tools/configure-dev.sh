@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+print_qt_prefix=false
+if [[ "${1-}" == "--print-qt-prefix" ]]; then
+  print_qt_prefix=true
+  shift
+fi
+if [[ $# -gt 1 ]]; then
+  printf 'Usage: %s [--print-qt-prefix] [preset]\n' "$0" >&2
+  exit 2
+fi
 preset="${1:-dev}"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -49,6 +58,45 @@ is_qt_prefix() {
   [[ -f "${candidate}/lib/cmake/Qt6/Qt6Config.cmake" ]]
 }
 
+qt_version_for_prefix() {
+  local candidate="$1"
+  local version_file="${candidate}/lib/cmake/Qt6/Qt6ConfigVersionImpl.cmake"
+  [[ -f "${version_file}" ]] || return 1
+  sed -n 's/^[[:space:]]*set(PACKAGE_VERSION[[:space:]]*"\([0-9][0-9.]*\)").*/\1/p' \
+    "${version_file}" | head -n 1
+}
+
+qt_version_matches_family() {
+  local version="$1"
+  [[ "${version}" == "${QT_VERSION_FAMILY}" || "${version}" == "${QT_VERSION_FAMILY}."* ]]
+}
+
+qt_prefix_from_cmake_dir() {
+  local candidate="$1"
+  if [[ "${candidate}" == */lib/cmake/Qt6 ]]; then
+    candidate="${candidate%/lib/cmake/Qt6}"
+  fi
+  normalize_path "${candidate}"
+}
+
+validate_explicit_qt_prefix() {
+  local source_name="$1"
+  local candidate="$2"
+  local version
+  candidate="$(qt_prefix_from_cmake_dir "${candidate}")"
+  if ! is_qt_prefix "${candidate}"; then
+    printf '%s does not point to a Qt prefix: %s\n' "${source_name}" "${candidate}" >&2
+    return 1
+  fi
+  version="$(qt_version_for_prefix "${candidate}" || true)"
+  if [[ -z "${version}" ]] || ! qt_version_matches_family "${version}"; then
+    printf '%s must point to Qt %s.x; detected version: %s\n' \
+      "${source_name}" "${QT_VERSION_FAMILY}" "${version:-unknown}" >&2
+    return 1
+  fi
+  printf '%s\n' "${candidate}"
+}
+
 normalize_path() {
   local value="$1"
   value="${value#"${value%%[![:space:]]*}"}"
@@ -65,86 +113,127 @@ normalize_path() {
   printf '%s\n' "${value}"
 }
 
-split_path_list() {
-  local value="$1"
-  local sep="$2"
-  if [[ -z "${value}" ]]; then
+detect_explicit_qt_dir() {
+  if [[ -n "${QT_DIR:-}" ]]; then
+    validate_explicit_qt_prefix QT_DIR "${QT_DIR}"
     return
   fi
-  IFS="${sep}" read -r -a paths <<< "${value}"
-  for candidate in "${paths[@]}"; do
-    [[ -n "${candidate}" ]] && printf '%s\n' "${candidate}"
-  done
-}
 
-detect_qt_dir() {
-  if [[ -n "${QT_DIR:-}" ]] && is_qt_prefix "${QT_DIR}"; then
-    printf '%s\n' "${QT_DIR}"
-    return 0
+  if [[ -n "${Qt6_DIR:-}" ]]; then
+    validate_explicit_qt_prefix Qt6_DIR "${Qt6_DIR}"
+    return
   fi
 
   if [[ -n "${CMAKE_PREFIX_PATH:-}" ]]; then
-    for separator in ":" ";"; do
-      while IFS= read -r candidate; do
-        candidate="$(normalize_path "${candidate}")"
-        if is_qt_prefix "${candidate}"; then
-          printf '%s\n' "${candidate}"
-          return 0
-        fi
-      done < <(split_path_list "${CMAKE_PREFIX_PATH}" "${separator}")
+    while IFS= read -r candidate; do
+      candidate="$(qt_prefix_from_cmake_dir "${candidate}")"
+      if is_qt_prefix "${candidate}"; then
+        validate_explicit_qt_prefix CMAKE_PREFIX_PATH "${candidate}"
+        return
+      fi
+    done < <(printf '%s\n' "${CMAKE_PREFIX_PATH}" | tr ':;' '\n')
+  fi
+
+  return 2
+}
+
+version_is_newer() {
+  local candidate="$1"
+  local current="$2"
+  local candidate_major candidate_minor candidate_patch
+  local current_major current_minor current_patch
+  IFS=. read -r candidate_major candidate_minor candidate_patch _ <<<"${candidate}"
+  IFS=. read -r current_major current_minor current_patch _ <<<"${current}"
+  candidate_patch="${candidate_patch:-0}"
+  current_patch="${current_patch:-0}"
+  ((candidate_major > current_major)) ||
+    ((candidate_major == current_major && candidate_minor > current_minor)) ||
+    ((candidate_major == current_major && candidate_minor == current_minor && candidate_patch > current_patch))
+}
+
+detect_auto_qt_dir() {
+  local best_path=""
+  local best_version="0.0.0"
+  local candidate version linux_prefix
+  local -a candidates=()
+
+  if [[ -n "${QT_INSTALL_ROOT:-}" ]]; then
+    for candidate in "${QT_INSTALL_ROOT}"/*/macos "${QT_INSTALL_ROOT}"/*/gcc_64; do
+      [[ -d "${candidate}" ]] && candidates+=("${candidate}")
+    done
+  else
+    candidates+=(
+      "${MACOS_QT_ONLINE_INSTALLER_DIR}"
+      "${MACOS_HOMEBREW_ARM_QT}"
+      "${MACOS_HOMEBREW_INTEL_QT}"
+    )
+
+    for candidate in "${HOME}"/Qt/*/macos "${HOME}"/Qt/*/gcc_64; do
+      [[ -d "${candidate}" ]] && candidates+=("${candidate}")
+    done
+
+    if command -v brew >/dev/null 2>&1; then
+      candidate="$(brew --prefix qt 2>/dev/null || true)"
+      [[ -n "${candidate}" ]] && candidates+=("${candidate}")
+    fi
+
+    IFS=':' read -r -a linux_qt_dirs <<<"${LINUX_QT_CMAKE_DIRS}"
+    for candidate in "${linux_qt_dirs[@]}"; do
+      linux_prefix="${candidate%/lib/cmake/Qt6}"
+      candidates+=("${linux_prefix}")
     done
   fi
 
-  # Priorizar o Qt declarado em qt-detect.conf (online installer, versao
-  # pinada) ANTES do brew, para evitar mismatch de versao (brew pode ter uma
-  # versao diferente da declarada, causando deploy inconsistente).
-  for candidate in \
-    "${MACOS_QT_ONLINE_INSTALLER_DIR}" \
-    "${MACOS_HOMEBREW_ARM_QT}" \
-    "${MACOS_HOMEBREW_INTEL_QT}"; do
-    if is_qt_prefix "${candidate}"; then
-      printf '%s\n' "${candidate}"
-      return 0
+  for candidate in "${candidates[@]}"; do
+    is_qt_prefix "${candidate}" || continue
+    version="$(qt_version_for_prefix "${candidate}" || true)"
+    if [[ -z "${version}" ]] || ! qt_version_matches_family "${version}"; then
+      continue
+    fi
+    if [[ -z "${best_path}" ]] || version_is_newer "${version}" "${best_version}"; then
+      best_path="${candidate}"
+      best_version="${version}"
     fi
   done
 
-  if command -v brew >/dev/null 2>&1; then
-    local brew_qt
-    brew_qt="$(brew --prefix qt 2>/dev/null || true)"
-    if [[ -n "${brew_qt}" ]] && is_qt_prefix "${brew_qt}"; then
-      printf '%s\n' "${brew_qt}"
-      return 0
-    fi
+  [[ -n "${best_path}" ]] || return 1
+  printf '%s\n' "${best_path}"
+}
+
+detect_qt_dir() {
+  local explicit_path explicit_status
+  if explicit_path="$(detect_explicit_qt_dir)"; then
+    printf '%s\n' "${explicit_path}"
+    return 0
+  else
+    explicit_status=$?
+  fi
+  if [[ ${explicit_status} -eq 1 ]]; then
+    return 1
   fi
 
-  IFS=':' read -r -a linux_qt_dirs <<< "${LINUX_QT_CMAKE_DIRS}"
-  for candidate in "${linux_qt_dirs[@]}"; do
-    if [[ "${candidate}" == */lib/cmake/Qt6 ]]; then
-      local linux_prefix="${candidate%/lib/cmake/Qt6}"
-    else
-      local linux_prefix="${candidate}"
-    fi
-    if is_qt_prefix "${linux_prefix}"; then
-      printf '%s\n' "${linux_prefix}"
-      return 0
+  detect_auto_qt_dir
+}
+
+print_compiler_choices() {
+  local compiler
+  local -a compilers=()
+  for compiler in clang++ g++ c++; do
+    if command -v "${compiler}" >/dev/null 2>&1; then
+      compilers+=("$(command -v "${compiler}")")
     fi
   done
-
-  for candidate in "${HOME}"/Qt/*/macos; do
-    if is_qt_prefix "${candidate}"; then
-      printf '%s\n' "${candidate}"
-      return 0
-    fi
-  done
-
-  return 1
+  if [[ ${#compilers[@]} -gt 1 ]]; then
+    printf 'Detected C++ compilers: %s\n' "${compilers[*]}"
+    printf 'Select explicitly with CC=/path/to/cc CXX=/path/to/c++.\n'
+  fi
 }
 
 print_qt_hint() {
   case "$(uname -s)" in
     Darwin)
       cat >&2 <<'EOF'
-Qt was not detected.
+Qt 6.11.x was not detected.
 Install with:
   brew install qt cmake ninja sqlite
 Or run with:
@@ -153,7 +242,7 @@ EOF
       ;;
     Linux)
       cat >&2 <<'EOF'
-Qt was not detected.
+Qt 6.11.x was not detected.
 On Debian/Ubuntu install:
   sudo apt update
   sudo apt install -y build-essential cmake ninja-build libsqlite3-dev qt6-base-dev qt6-base-dev-tools qt6-declarative-dev qt6-tools-dev-tools qml6-module-qtquick qml6-module-qtquick-controls
@@ -163,19 +252,32 @@ EOF
       ;;
     *)
       cat >&2 <<'EOF'
-Qt was not detected.
+Qt 6.11.x was not detected.
 Set QT_DIR or CMAKE_PREFIX_PATH to the Qt 6 installation prefix.
 EOF
       ;;
   esac
 }
 
-if [[ -z "${QT_VERSION:-}" ]]; then
-  printf 'Missing required variable: QT_VERSION\n' >&2
+if [[ -z "${QT_VERSION:-}" || -z "${QT_VERSION_FAMILY:-}" ]]; then
+  printf 'Missing required variable: QT_VERSION or QT_VERSION_FAMILY\n' >&2
   exit 1
 fi
 
-printf 'Target Qt version: %s\n' "${QT_VERSION}"
+qt_dir=""
+if ! qt_dir="$(detect_qt_dir)"; then
+  print_qt_hint
+  exit 1
+fi
+
+if [[ "${print_qt_prefix}" == "true" ]]; then
+  printf '%s\n' "${qt_dir}"
+  exit 0
+fi
+
+printf 'Target Qt family: %s.x (reference patch: %s)\n' "${QT_VERSION_FAMILY}" "${QT_VERSION}"
+printf 'Using Qt version: %s\n' "$(qt_version_for_prefix "${qt_dir}")"
+printf 'Using Qt prefix: %s\n' "${qt_dir}"
 
 require_command cmake "Install CMake 3.24 or newer."
 require_command ninja "Install Ninja."
@@ -185,14 +287,11 @@ if ! command -v c++ >/dev/null 2>&1 && ! command -v clang++ >/dev/null 2>&1 && !
   exit 1
 fi
 
-qt_dir="$(detect_qt_dir || true)"
-if [[ -n "${qt_dir}" ]]; then
-  printf 'Using Qt prefix: %s\n' "${qt_dir}"
-  cmake --preset "${preset}" -DCMAKE_PREFIX_PATH="${qt_dir}"
-else
-  print_qt_hint
-  printf 'Trying CMake without CMAKE_PREFIX_PATH in case Qt is registered system-wide.\n' >&2
-  cmake --preset "${preset}"
-fi
+print_compiler_choices
+cmake --preset "${preset}" \
+  '-UQt6*_DIR' \
+  '-U*DEPLOYQT_EXECUTABLE' \
+  -DCMAKE_PREFIX_PATH="${qt_dir}" \
+  -DQt6_DIR="${qt_dir}/lib/cmake/Qt6"
 
 warn_clang_format

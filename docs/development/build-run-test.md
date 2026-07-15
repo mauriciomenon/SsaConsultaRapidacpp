@@ -48,9 +48,23 @@ O warning `cmake_minimum_required` sob `.deps-cache/miniz-src` vem do source
 cache da dependencia. Nao edite o cache gerado. A correcao pertence a uma
 atualizacao validada do pin em `cmake/Dependencies.cmake`.
 
-Os scripts usam `~/Qt/6.11.0/macos` quando `CMAKE_PREFIX_PATH` nao esta
-definido. O banco default dos smokes e `data/ssas.db`; sua ausencia encerra o
-script com erro objetivo.
+Os scripts aceitam apenas a familia Qt 6.11.x. `QT_DIR`, `Qt6_DIR` e
+`CMAKE_PREFIX_PATH` sao escolhas explicitas e vencem a autodeteccao. Sem essas
+variaveis, o configurador procura os patches 6.11.x instalados e usa o mais
+alto valido; se ele estiver incompleto, continua em ordem decrescente. Para
+limitar a busca a uma raiz nao padrao, use `QT_INSTALL_ROOT=/caminho/Qt`.
+
+Consulte a escolha sem configurar nem compilar:
+
+```bash
+env -u QT_DIR -u Qt6_DIR -u CMAKE_PREFIX_PATH \
+  ./tools/configure-dev.sh --print-qt-prefix
+```
+
+Em macOS e Linux, o compilador pode ser fixado com `CC` e `CXX`. Quando mais
+de um compilador e encontrado, o configurador mostra a sintaxe de selecao. O
+banco default dos smokes e `data/ssas.db`; sua ausencia encerra o script com
+erro objetivo.
 
 Execucao manual do binario, quando necessaria:
 
@@ -61,12 +75,57 @@ Execucao manual do binario, quando necessaria:
 
 ## Linux
 
-Install Qt 6 development packages, CMake, Ninja, SQLite, then use the same presets.
+Instale Qt 6.11.x, CMake, Ninja, SQLite e um compilador C++20. O configurador
+usa `QT_DIR`, `Qt6_DIR` ou `CMAKE_PREFIX_PATH` quando definidos; sem isso,
+procura Qt 6.11.x em `~/Qt/*/gcc_64` e nos caminhos de sistema registrados em
+`tools/qt-detect.conf`. O CI mantem 6.11.0 como patch reproduzivel, mas o
+script local aceita qualquer patch compativel da familia 6.11.
 
 ## Windows
 
-Use Qt 6, CMake, Ninja, and a C++20 compiler. Windows packaging is planned after the
-macOS bundle smoke is stable.
+Instale Qt 6.11.x, CMake, Ninja, SQLite e um compilador C++20. A busca padrao
+usa `C:\Qt`, seleciona o patch 6.11.x mais alto valido e prioriza os kits:
+
+1. `msvc2022_64`;
+2. `llvm-mingw_64`;
+3. `mingw_64`.
+
+MSVC permanece o default. Se o kit ou `cl.exe` nao estiver disponivel e a
+escolha nao tiver sido explicita, o configurador tenta LLVM MinGW e depois
+MinGW. Uma escolha explicita nunca muda de compilador silenciosamente.
+
+```powershell
+# Default: MSVC, com fallback automatico de kit desktop.
+.\scripts\build-windows.ps1
+
+# Selecao explicita do kit LLVM MinGW.
+.\scripts\build-windows.ps1 -QtSubdir llvm-mingw_64
+
+# Raiz de instalacao alternativa.
+.\scripts\build-windows.ps1 -QtRoot "D:\Qt" -QtSubdir msvc2022_64
+
+# Somente inspecao, sem configurar ou compilar.
+.\tools\configure-dev.ps1 -QtRoot "C:\Qt" -PrintQtSelection
+
+# O empacotamento aceita os mesmos seletores.
+.\scripts\package-windows.ps1 -QtSubdir llvm-mingw_64
+```
+
+Os kits `wasm_singlethread` e `wasm_multithread` geram WebAssembly para
+navegadores. Eles sao listados no diagnostico, mas nunca sao fallback para o
+aplicativo desktop; um alvo WASM exigiria preset e empacotamento proprios.
+
+O `windeployqt` e o `macdeployqt` continuam sendo resolvidos a partir do cache
+do build. Assim, a ferramenta de deploy usa exatamente o mesmo patch Qt do
+binario e nao mistura 6.11.0 com 6.11.1.
+
+Testes isolados da deteccao:
+
+```bash
+bash tests/scripts/qt-detection-tests.sh
+pwsh -NoLogo -NoProfile -Command \
+  "Invoke-Pester -Path 'tests/scripts/QtDetection.Tests.ps1' -CI"
+```
 
 ## Quality Toolchain
 
