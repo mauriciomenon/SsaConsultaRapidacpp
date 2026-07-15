@@ -18,7 +18,7 @@ ainda nao foram publicados nos remotes nesta rodada.
 | 4. Datas e metadata | ENTREGUE | data planilha, nome, criacao quando disponivel e mtime; parser date-only adicionado |
 | 5. Perfil de fonte | ENTREGUE PARCIAL | `executadas` vence empate; derivadas/desvios ainda enriquecem por campos |
 | 6. TOCTOU na copia | ENTREGUE PARCIAL | tamanho e mtime comparados antes do rename; identidade inode/handle permanece futura |
-| 7. Lock entre raizes para o mesmo DB | ENTREGUE | lock de corpus mais lock hash global por caminho absoluto do SQLite |
+| 7. Lock entre raizes para o mesmo DB | ENTREGUE PARCIAL | lock de corpus mais lock hash global por caminho absoluto; aliases fisicos e colisao de hash ainda nao sao provados |
 | 8. Cancelamento e staging | ENTREGUE PARCIAL | stop remove temporarios e sweep de `.ssa-staged-`; janela SIGKILL pos-publicacao sem prova deterministica |
 | 9. SAM ate SQLite | PENDENTE | adapter e limites ainda exigem rodada E2E dedicada |
 | 10. Derivadas explicitas | PENDENTE | limpeza de orfas continua separada da importacao real |
@@ -39,7 +39,10 @@ ainda nao foram publicados nos remotes nesta rodada.
 ### Validacao local desta rodada
 
 - `ssa_unit_tests`: 569 asserts em 108 casos.
-- `ssa_integration_tests`: 5672 asserts em 247 casos.
+- `ssa_integration_tests`: 5636 asserts em 247 casos nesta execucao; alguns
+  testes de polling variam a contagem de asserts, por isso o gate canonico e
+  `ctest`.
+- `ctest --preset dev --output-on-failure`: 391/391.
 - Recriacao e validacao do DB: 38 asserts no caso dedicado; o banco real nao
   foi tocado.
 - O staged `tests/smoke/AdvancedPopupQmlTest.cpp` e os untracked do usuario
