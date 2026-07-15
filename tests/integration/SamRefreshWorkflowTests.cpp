@@ -10,6 +10,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QProcess>
+#include <QScopeGuard>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QThread>
@@ -79,6 +80,27 @@ namespace {
                 return 7;
             }
             QThread::msleep(5'000);
+        } else if (sector == QStringLiteral("EXITTREE")) {
+            const auto sentinelPath = qEnvironmentVariable("SSA_TEST_SENTINEL_PATH");
+            if (sentinelPath.isEmpty()) {
+                return 6;
+            }
+            QProcess descendant;
+            descendant.setProgram(executablePath);
+            descendant.setArguments({QStringLiteral("--sentinel-child"), sentinelPath});
+            descendant.start();
+            if (!descendant.waitForStarted(2'000)) {
+                return 7;
+            }
+            QElapsedTimer sentinelDeadline;
+            sentinelDeadline.start();
+            while (!QFileInfo::exists(sentinelPath) && sentinelDeadline.elapsed() < 2'000) {
+                QThread::msleep(5);
+            }
+            if (!QFileInfo::exists(sentinelPath)) {
+                return 8;
+            }
+            std::_Exit(EXIT_SUCCESS);
         } else if (sector == QStringLiteral("BLOCK")) {
             QThread::msleep(5000);
         }
@@ -139,6 +161,9 @@ namespace {
     }
 
     int runSentinelChild(const QString& path) {
+#ifndef Q_OS_WIN
+        ::signal(SIGHUP, SIG_IGN);
+#endif
         QFile sentinel{path};
         if (!sentinel.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
             return 8;
@@ -167,6 +192,20 @@ namespace {
         return status == WAIT_TIMEOUT;
 #else
         return ::kill(static_cast<pid_t>(processId), 0) == 0 || errno == EPERM;
+#endif
+    }
+
+    void terminateProcessForTesting(const qint64 processId) {
+#ifdef Q_OS_WIN
+        const auto process = OpenProcess(PROCESS_TERMINATE, FALSE, static_cast<DWORD>(processId));
+        if (process != nullptr) {
+            TerminateProcess(process, 1);
+            CloseHandle(process);
+        }
+#else
+        if (processId > 0) {
+            ::kill(static_cast<pid_t>(processId), SIGKILL);
+        }
 #endif
     }
 
@@ -401,9 +440,15 @@ namespace {
 
             QElapsedTimer forceStopTimer;
             forceStopTimer.start();
-            QCOMPARE(ssa::platform::SupervisedProcess::requestForceStopAll(),
-                     ssa::platform::ForceStopRequestStatus::Ready);
+            auto forceStopStatus = ssa::platform::SupervisedProcess::requestForceStopAll();
+            QVERIFY(forceStopStatus != ssa::platform::ForceStopRequestStatus::Failed);
             QVERIFY(forceStopTimer.elapsed() < 50);
+            while (forceStopStatus == ssa::platform::ForceStopRequestStatus::Pending &&
+                   forceStopTimer.elapsed() < 3'000) {
+                QTest::qWait(10);
+                forceStopStatus = ssa::platform::SupervisedProcess::requestForceStopAll();
+            }
+            QCOMPARE(forceStopStatus, ssa::platform::ForceStopRequestStatus::Drained);
             future.waitForFinished();
             QVERIFY(ssa::platform::SupervisedProcess::forceStopAll());
             qunsetenv("SSA_TEST_SENTINEL_PATH");
@@ -418,6 +463,166 @@ namespace {
             const auto retryResult = port.fetch(retryRequest);
 
             QVERIFY2(retryResult.ok(), "supervisor remained stopped after a successful barrier");
+        }
+
+        void forced_shutdown_tracks_a_tree_when_the_leader_exits_during_start() {
+            QTemporaryDir root;
+            QVERIFY(root.isValid());
+            auto request = validRequest(root);
+            request.executorSectors = {"EXITTREE"};
+            request.processTimeout = std::chrono::seconds{10};
+            const auto sentinelPath = root.filePath(QStringLiteral("early-exit-descendant.pid"));
+            QVERIFY(qputenv("SSA_TEST_SENTINEL_PATH", sentinelPath.toUtf8()));
+            qint64 descendantPid = -1;
+            const auto cleanup = qScopeGuard([&] {
+                ssa::platform::supervised_process_testing::setPostStartPause(
+                    std::chrono::milliseconds{0});
+                static_cast<void>(ssa::platform::SupervisedProcess::forceStopAll());
+                if (processExists(descendantPid)) {
+                    terminateProcessForTesting(descendantPid);
+                }
+                qunsetenv("SSA_TEST_SENTINEL_PATH");
+            });
+            ssa::platform::supervised_process_testing::setPostStartPause(
+                std::chrono::milliseconds{500});
+            ssa::platform::ScrapReportSamRefreshPort port(
+                QCoreApplication::applicationFilePath().toStdString());
+
+            auto future = QtConcurrent::run([&] { return port.fetch(request); });
+            QElapsedTimer startupDeadline;
+            startupDeadline.start();
+            while (!QFileInfo::exists(sentinelPath) && startupDeadline.elapsed() < 3'000) {
+                QTest::qWait(10);
+            }
+            QVERIFY2(QFileInfo::exists(sentinelPath), "descendant did not start");
+            QFile sentinel{sentinelPath};
+            QVERIFY(sentinel.open(QIODevice::ReadOnly));
+            bool validPid = false;
+            descendantPid = sentinel.readAll().trimmed().toLongLong(&validPid);
+            QVERIFY(validPid);
+            QVERIFY(processExists(descendantPid));
+            QCOMPARE(ssa::platform::supervised_process_testing::registeredTreeCount(),
+                     std::size_t{1});
+            auto forceStopStatus = ssa::platform::SupervisedProcess::requestForceStopAll();
+            QCOMPARE(forceStopStatus, ssa::platform::ForceStopRequestStatus::Pending);
+            QElapsedTimer drainDeadline;
+            drainDeadline.start();
+            while (forceStopStatus == ssa::platform::ForceStopRequestStatus::Pending &&
+                   drainDeadline.elapsed() < 3'000) {
+                QTest::qWait(10);
+                forceStopStatus = ssa::platform::SupervisedProcess::requestForceStopAll();
+            }
+            QCOMPARE(forceStopStatus, ssa::platform::ForceStopRequestStatus::Drained);
+            future.waitForFinished();
+
+            QVERIFY2(!processExists(descendantPid),
+                     "verified drain left an early-exit descendant running");
+            QVERIFY(ssa::platform::SupervisedProcess::forceStopAll());
+        }
+
+        void failed_forced_shutdown_remains_closed_until_the_tree_drains() {
+            QTemporaryDir root;
+            QVERIFY(root.isValid());
+            auto request = validRequest(root);
+            request.executorSectors = {"TREE"};
+            request.processTimeout = std::chrono::seconds{10};
+            const auto sentinelPath = root.filePath(QStringLiteral("failed-stop-descendant.pid"));
+            QVERIFY(qputenv("SSA_TEST_SENTINEL_PATH", sentinelPath.toUtf8()));
+            const auto cleanup = qScopeGuard([] {
+                ssa::platform::supervised_process_testing::setStopFailure(false);
+                static_cast<void>(ssa::platform::SupervisedProcess::forceStopAll());
+                qunsetenv("SSA_TEST_SENTINEL_PATH");
+            });
+            ssa::platform::ScrapReportSamRefreshPort port(
+                QCoreApplication::applicationFilePath().toStdString());
+
+            auto future = QtConcurrent::run([&] { return port.fetch(request); });
+            QElapsedTimer startupDeadline;
+            startupDeadline.start();
+            while (!QFileInfo::exists(sentinelPath) && startupDeadline.elapsed() < 3'000) {
+                QTest::qWait(10);
+            }
+            QVERIFY2(QFileInfo::exists(sentinelPath), "descendant did not start");
+            QFile sentinel{sentinelPath};
+            QVERIFY(sentinel.open(QIODevice::ReadOnly));
+            bool validPid = false;
+            const auto descendantPid = sentinel.readAll().trimmed().toLongLong(&validPid);
+            QVERIFY(validPid);
+            QVERIFY(processExists(descendantPid));
+
+            ssa::platform::supervised_process_testing::setStopFailure(true);
+            QCOMPARE(ssa::platform::SupervisedProcess::requestForceStopAll(),
+                     ssa::platform::ForceStopRequestStatus::Failed);
+            QVERIFY(processExists(descendantPid));
+
+            QTemporaryDir blockedRoot;
+            QVERIFY(blockedRoot.isValid());
+            auto blockedRequest = validRequest(blockedRoot);
+            blockedRequest.executorSectors = {"IEE3"};
+            const auto blockedResult = port.fetch(blockedRequest);
+            QCOMPARE(blockedResult.status, ssa::ports::WorkflowStatus::Canceled);
+            QCOMPARE(ssa::platform::SupervisedProcess::requestForceStopAll(),
+                     ssa::platform::ForceStopRequestStatus::Failed);
+
+            ssa::platform::supervised_process_testing::setStopFailure(false);
+            QElapsedTimer drainDeadline;
+            drainDeadline.start();
+            auto forceStopStatus = ssa::platform::SupervisedProcess::requestForceStopAll();
+            while (forceStopStatus != ssa::platform::ForceStopRequestStatus::Drained &&
+                   drainDeadline.elapsed() < 3'000) {
+                QTest::qWait(10);
+                forceStopStatus = ssa::platform::SupervisedProcess::requestForceStopAll();
+            }
+            QCOMPARE(forceStopStatus, ssa::platform::ForceStopRequestStatus::Drained);
+            future.waitForFinished();
+            QVERIFY2(!processExists(descendantPid),
+                     "descendant survived the verified forced shutdown drain");
+            QVERIFY(ssa::platform::SupervisedProcess::forceStopAll());
+
+            QTemporaryDir retryRoot;
+            QVERIFY(retryRoot.isValid());
+            auto retryRequest = validRequest(retryRoot);
+            retryRequest.executorSectors = {"IEE3"};
+            QVERIFY2(port.fetch(retryRequest).ok(),
+                     "supervisor did not reopen after the verified drain");
+        }
+
+        void untracked_stop_failure_never_reports_a_verified_drain() {
+            const auto cleanup = qScopeGuard([] {
+                ssa::platform::supervised_process_testing::setUntrackedStopFailure(false);
+                static_cast<void>(ssa::platform::SupervisedProcess::forceStopAll());
+            });
+            ssa::platform::supervised_process_testing::setUntrackedStopFailure(true);
+
+            QCOMPARE(ssa::platform::SupervisedProcess::requestForceStopAll(),
+                     ssa::platform::ForceStopRequestStatus::Failed);
+
+            QTemporaryDir blockedRoot;
+            QVERIFY(blockedRoot.isValid());
+            auto blockedRequest = validRequest(blockedRoot);
+            blockedRequest.executorSectors = {"IEE3"};
+            ssa::platform::ScrapReportSamRefreshPort port(
+                QCoreApplication::applicationFilePath().toStdString());
+            QCOMPARE(port.fetch(blockedRequest).status, ssa::ports::WorkflowStatus::Canceled);
+
+            ssa::platform::supervised_process_testing::setUntrackedStopFailure(false);
+            QVERIFY(ssa::platform::SupervisedProcess::forceStopAll());
+            QVERIFY(port.fetch(blockedRequest).ok());
+        }
+
+        void tracked_stop_failure_cannot_clear_an_untracked_failure() {
+            const auto cleanup = qScopeGuard([] {
+                ssa::platform::supervised_process_testing::setUntrackedStopFailure(false);
+                static_cast<void>(ssa::platform::SupervisedProcess::forceStopAll());
+            });
+
+            ssa::platform::supervised_process_testing::setUntrackedStopFailure(true);
+            ssa::platform::supervised_process_testing::recordTrackedStopFailure();
+            QCOMPARE(ssa::platform::SupervisedProcess::requestForceStopAll(),
+                     ssa::platform::ForceStopRequestStatus::Failed);
+
+            ssa::platform::supervised_process_testing::setUntrackedStopFailure(false);
+            QVERIFY(ssa::platform::SupervisedProcess::forceStopAll());
         }
 
         void port_drains_noisy_process_channels_without_unbounded_diagnostics() {

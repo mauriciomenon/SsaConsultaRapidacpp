@@ -6,6 +6,7 @@
 #include <QCommandLineParser>
 #include <QCoreApplication>
 #include <QDebug>
+#include <QElapsedTimer>
 #include <QQmlApplicationEngine>
 #include <QTimer>
 #include <QVariant>
@@ -35,17 +36,24 @@ namespace ssa::app::desktop {
     }
 
     void DesktopApplicationRuntime::forceShutdown() {
-        const auto status = ssa::platform::SupervisedProcess::requestForceStopAll();
-        if (status == ssa::platform::ForceStopRequestStatus::PendingStart) {
-            QTimer::singleShot(25, QCoreApplication::instance(),
-                               &DesktopApplicationRuntime::forceShutdown);
-            return;
+        constexpr qint64 forceShutdownTimeoutMs = 5'000;
+        static QElapsedTimer drainTimer;
+        if (!drainTimer.isValid()) {
+            drainTimer.start();
         }
-        if (status == ssa::platform::ForceStopRequestStatus::Failed) {
+        const auto status = ssa::platform::SupervisedProcess::requestForceStopAll();
+        if (status == ssa::platform::ForceStopRequestStatus::Drained) {
+            std::_Exit(EXIT_SUCCESS);
+        }
+        if (status == ssa::platform::ForceStopRequestStatus::Failed && drainTimer.elapsed() < 25) {
             qCritical() << "Forced shutdown could not signal process cleanup";
         }
-        std::_Exit(status == ssa::platform::ForceStopRequestStatus::Ready ? EXIT_SUCCESS
-                                                                          : EXIT_FAILURE);
+        if (drainTimer.elapsed() >= forceShutdownTimeoutMs) {
+            qCritical() << "Forced shutdown timed out before process drain";
+            std::_Exit(EXIT_FAILURE);
+        }
+        QTimer::singleShot(25, QCoreApplication::instance(),
+                           &DesktopApplicationRuntime::forceShutdown);
     }
 
     void DesktopApplicationRuntime::loadMainWindow(QQmlApplicationEngine& engine) {

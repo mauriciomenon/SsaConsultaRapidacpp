@@ -28,10 +28,10 @@ namespace ssa::presentation {
             return;
         }
         shuttingDown_ = true;
-        disconnect(&watcher_, nullptr, this, nullptr);
+        if (running()) {
+            setState(State::Canceling);
+        }
         stopSource_.request_stop();
-        resultState_.reset();
-        state_ = State::Idle;
     }
 
     WorkflowCommandRunner::State WorkflowCommandRunner::state() const {
@@ -177,6 +177,10 @@ namespace ssa::presentation {
             error = resultState_->error;
         }
         resultState_.reset();
+        if (shuttingDown_) {
+            setState(State::Idle);
+            return;
+        }
         if (error) {
             try {
                 std::rethrow_exception(error);

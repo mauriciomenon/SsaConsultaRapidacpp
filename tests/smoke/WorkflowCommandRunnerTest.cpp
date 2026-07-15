@@ -170,8 +170,10 @@ namespace {
             runner.rescan(ssa::ports::RescanMode::Incremental);
 
             QCOMPARE(importPort->calls(), 1);
+            QCOMPARE(runner.state(), ssa::presentation::WorkflowCommandRunner::State::Canceling);
+            QVERIFY(runner.running());
             QTRY_VERIFY_WITH_TIMEOUT(importPort->canceled(), 1000);
-            QVERIFY(!runner.running());
+            QTRY_VERIFY_WITH_TIMEOUT(!runner.running(), 1000);
         }
 
         void sam_refresh_is_single_flight_and_canceled_on_shutdown() {
@@ -189,7 +191,7 @@ namespace {
 
             QCOMPARE(samPort->calls(), 1);
             QTRY_VERIFY_WITH_TIMEOUT(samPort->canceled(), 1000);
-            QVERIFY(!runner.running());
+            QTRY_VERIFY_WITH_TIMEOUT(!runner.running(), 1000);
         }
 
         void cancel_is_non_blocking_terminal_and_single_flight() {

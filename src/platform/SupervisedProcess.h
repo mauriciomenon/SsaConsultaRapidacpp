@@ -4,6 +4,7 @@
 #include <QStringList>
 
 #include <chrono>
+#include <cstddef>
 #include <stop_token>
 
 namespace ssa::platform {
@@ -18,8 +19,8 @@ namespace ssa::platform {
     };
 
     enum class ForceStopRequestStatus {
-        Ready,
-        PendingStart,
+        Drained,
+        Pending,
         Failed,
     };
 
@@ -47,5 +48,15 @@ namespace ssa::platform {
         [[nodiscard]] static ForceStopRequestStatus requestForceStopAll();
         [[nodiscard]] static bool forceStopAll();
     };
+
+#ifdef SSA_SUPERVISED_PROCESS_TESTING
+    namespace supervised_process_testing {
+        void setStopFailure(bool enabled);
+        void setPostStartPause(std::chrono::milliseconds duration);
+        [[nodiscard]] std::size_t registeredTreeCount();
+        void setUntrackedStopFailure(bool enabled);
+        void recordTrackedStopFailure();
+    } // namespace supervised_process_testing
+#endif
 
 } // namespace ssa::platform

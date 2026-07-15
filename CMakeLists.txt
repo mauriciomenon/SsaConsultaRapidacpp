@@ -73,6 +73,10 @@ target_link_libraries(ssa_application PUBLIC ssa_core)
 add_library(ssa_platform_process STATIC src/platform/SupervisedProcess.cpp)
 target_include_directories(ssa_platform_process PUBLIC src)
 target_link_libraries(ssa_platform_process PUBLIC Qt6::Core)
+if(SSA_BUILD_TESTS)
+  target_compile_definitions(ssa_platform_process
+                             PRIVATE SSA_SUPERVISED_PROCESS_TESTING=1)
+endif()
 
 add_library(
   ssa_infra STATIC
@@ -392,6 +396,8 @@ if(SSA_BUILD_TESTS)
   target_link_libraries(
     ssa_qt_sam_refresh_tests PRIVATE ssa_application ssa_platform
                                      Qt6::Concurrent Qt6::Test)
+  target_compile_definitions(ssa_qt_sam_refresh_tests
+                             PRIVATE SSA_SUPERVISED_PROCESS_TESTING=1)
   add_test(NAME ssa_qt_sam_refresh_tests COMMAND ssa_qt_sam_refresh_tests)
   set_tests_properties(ssa_qt_sam_refresh_tests PROPERTIES TIMEOUT 15)
 
