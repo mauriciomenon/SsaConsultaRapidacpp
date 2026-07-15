@@ -14,7 +14,15 @@ namespace ssa::domain {
             InvalidNumber,
             MissingDescription,
             MissingDate,
+            MissingWeek,
             InvalidDate,
+        };
+
+        enum class SourceProfile {
+            Geral,
+            Executadas,
+            DerivadasRelacionadas,
+            Desvios,
         };
 
         struct MergeResult {
@@ -26,6 +34,8 @@ namespace ssa::domain {
         [[nodiscard]] static std::string normalizeNumber(const std::string& value);
         [[nodiscard]] static std::string normalizeSnapshotTimestamp(const std::string& value);
         [[nodiscard]] static std::string normalizeFilenameTimestamp(const std::string& filename);
+        [[nodiscard]] static bool isTerminalStatus(const std::string& status);
+        [[nodiscard]] static SourceProfile classifySourceProfile(const std::string& filename);
         [[nodiscard]] static RowValidationIssue validateRow(const Values& row);
         [[nodiscard]] static bool isValidRow(const Values& row);
         [[nodiscard]] static MergeResult merge(const Values& existing, const Values& incoming);

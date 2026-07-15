@@ -1,6 +1,10 @@
+#include "domain/ExecutionHistoryPolicy.h"
 #include "domain/SsaImportPolicy.h"
 
 #include <catch2/catch_test_macros.hpp>
+
+#include <string>
+#include <vector>
 
 TEST_CASE("SSA import rejects invalid calendar dates even for exempt states") {
     using Values = ssa::domain::SsaImportPolicy::Values;
@@ -9,10 +13,14 @@ TEST_CASE("SSA import rejects invalid calendar dates even for exempt states") {
                                                                   {"descricao_ssa", "Invalid date"},
                                                                   {"data_cadastro", "2026-13-99"},
                                                                   {"situacao", "ASE"}}));
-    REQUIRE(
+    REQUIRE_FALSE(
         ssa::domain::SsaImportPolicy::isValidRow(Values{{"numero_ssa", "202600002"},
                                                         {"descricao_ssa", "Exempt without date"},
                                                         {"situacao", "ASE"}}));
+    REQUIRE(ssa::domain::SsaImportPolicy::isValidRow(Values{{"numero_ssa", "202600003"},
+                                                            {"descricao_ssa", "Exempt with week"},
+                                                            {"situacao", "ASE"},
+                                                            {"semana_cadastro", "202631"}}));
 }
 
 TEST_CASE("SSA import merge fails closed when neither snapshot is valid") {
@@ -45,7 +53,7 @@ TEST_CASE("SSA import equal snapshot preserves state and completes empty fields"
     const auto result = ssa::domain::SsaImportPolicy::merge(existing, incoming);
 
     REQUIRE(result.values.at("situacao") == "APV");
-    REQUIRE(result.values.at("descricao_ssa") == "Existing");
+    REQUIRE(result.values.at("descricao_ssa") == "Replacement");
     REQUIRE(result.values.at("setor_executor") == "MEL1");
     REQUIRE(result.values.at("prazo_limite") == "2026-05-30");
     REQUIRE(result.changed);
@@ -102,6 +110,125 @@ TEST_CASE("SSA import compares Python source timestamps within the same day") {
     REQUIRE(result.changed);
     REQUIRE(result.values.at("situacao") == "STE");
     REQUIRE(result.values.at("descricao_ssa") == "Later");
+}
+
+TEST_CASE("SSA import uses filename timestamp before filesystem timestamps") {
+    using Values = ssa::domain::SsaImportPolicy::Values;
+    const Values existing{{"numero_ssa", "202600019"},
+                          {"descricao_ssa", "Newer filename"},
+                          {"situacao", "APV"},
+                          {"arquivo_origem", "SSA_14-07-2026_0100PM.xlsx"},
+                          {"data_planilha", "2026-07-01"},
+                          {"data_arquivo_origem", "2026-07-20 10:00:00"}};
+    const Values incoming{{"numero_ssa", "202600019"},
+                          {"descricao_ssa", "Older filename"},
+                          {"situacao", "APV"},
+                          {"arquivo_origem", "SSA_13-07-2026_0100PM.xlsx"},
+                          {"data_planilha", "2026-07-30"},
+                          {"data_arquivo_origem", "2026-07-31 10:00:00"},
+                          {"data_criacao_arquivo", "2026-07-29 10:00:00"}};
+
+    const auto result = ssa::domain::SsaImportPolicy::merge(existing, incoming);
+
+    REQUIRE_FALSE(result.changed);
+    REQUIRE(result.values == existing);
+}
+
+TEST_CASE(
+    "SSA import treats approved cancel and final execution as terminal but SCS as transient") {
+    REQUIRE(ssa::domain::SsaImportPolicy::isTerminalStatus("STE - finalizada"));
+    REQUIRE(ssa::domain::SsaImportPolicy::isTerminalStatus("SCA"));
+    REQUIRE_FALSE(ssa::domain::SsaImportPolicy::isTerminalStatus("SCS"));
+}
+
+TEST_CASE("SSA import accepts final execution over a same snapshot transient state") {
+    using Values = ssa::domain::SsaImportPolicy::Values;
+    const Values existing{{"numero_ssa", "202600020"},
+                          {"descricao_ssa", "Execution"},
+                          {"situacao", "APV"},
+                          {"data_planilha", "2026-07-14"}};
+    const Values incoming{{"numero_ssa", "202600020"},
+                          {"descricao_ssa", "Execution"},
+                          {"situacao", "STE"},
+                          {"data_planilha", "2026-07-14"}};
+
+    const auto result = ssa::domain::SsaImportPolicy::merge(existing, incoming);
+
+    REQUIRE(result.changed);
+    REQUIRE(result.values.at("situacao") == "STE");
+    REQUIRE_FALSE(result.conflict);
+}
+
+TEST_CASE("SSA import chooses the richer row on an equal snapshot") {
+    using Values = ssa::domain::SsaImportPolicy::Values;
+    const Values sparse{{"numero_ssa", "202600021"},
+                        {"descricao_ssa", "Sparse"},
+                        {"situacao", "APV"},
+                        {"data_planilha", "2026-07-14"}};
+    const Values rich{{"numero_ssa", "202600021"},
+                      {"descricao_ssa", "Rich"},
+                      {"situacao", "APV"},
+                      {"setor_executor", "MEL1"},
+                      {"descricao_execucao", "Parcial 1"},
+                      {"tempo_excedido", "02:00"},
+                      {"data_planilha", "2026-07-14"}};
+
+    const auto result = ssa::domain::SsaImportPolicy::merge(sparse, rich);
+
+    REQUIRE(result.changed);
+    REQUIRE_FALSE(result.conflict);
+    REQUIRE(result.values.at("descricao_ssa") == "Rich");
+    REQUIRE(result.values.at("setor_executor") == "MEL1");
+}
+
+TEST_CASE("SSA import preserves a rich field when a newer snapshot is sparse") {
+    using Values = ssa::domain::SsaImportPolicy::Values;
+    const Values existing{{"numero_ssa", "202600022"}, {"descricao_ssa", "Description"},
+                          {"situacao", "APV"},         {"descricao_execucao", "Parcial 1"},
+                          {"tempo_excedido", "02:00"}, {"data_planilha", "2026-07-14"}};
+    const Values incoming{{"numero_ssa", "202600022"},
+                          {"descricao_ssa", "Description"},
+                          {"situacao", "APV"},
+                          {"tempo_excedido", "03:00"},
+                          {"data_planilha", "2026-07-15"}};
+
+    const auto result = ssa::domain::SsaImportPolicy::merge(existing, incoming);
+
+    REQUIRE(result.changed);
+    REQUIRE(result.values.at("descricao_execucao") == "Parcial 1");
+    REQUIRE(result.values.at("tempo_excedido") == "03:00");
+}
+
+TEST_CASE("SSA import classifies source profiles without changing the schema") {
+    using Profile = ssa::domain::SsaImportPolicy::SourceProfile;
+    REQUIRE(ssa::domain::SsaImportPolicy::classifySourceProfile("SSAs executadas.xlsx") ==
+            Profile::Executadas);
+    REQUIRE(ssa::domain::SsaImportPolicy::classifySourceProfile("relatorio de derivadas.xlsx") ==
+            Profile::DerivadasRelacionadas);
+    REQUIRE(ssa::domain::SsaImportPolicy::classifySourceProfile("SSA com desvio.xlsx") ==
+            Profile::Desvios);
+    REQUIRE(ssa::domain::SsaImportPolicy::classifySourceProfile("planejamento.xlsx") ==
+            Profile::Geral);
+}
+
+TEST_CASE("SSA execution history keeps current overwrite behavior without numbered columns") {
+    using Values = ssa::domain::SsaImportPolicy::Values;
+    const Values existing{{"descricao_execucao", "Parcial antiga"}};
+    const std::vector<std::string> columns{"numero_ssa", "descricao_execucao"};
+
+    REQUIRE(ssa::domain::ExecutionHistoryPolicy::targetColumn(existing, columns) ==
+            "descricao_execucao");
+}
+
+TEST_CASE("SSA execution history selects the next available numbered column") {
+    using Values = ssa::domain::SsaImportPolicy::Values;
+    const Values existing{{"descricao_execucao", "Parcial 1"},
+                          {"descricao_execucao_2", "Parcial 2"}};
+    const std::vector<std::string> columns{"descricao_execucao", "descricao_execucao_2",
+                                           "descricao_execucao_3"};
+
+    REQUIRE(ssa::domain::ExecutionHistoryPolicy::targetColumn(existing, columns) ==
+            "descricao_execucao_3");
 }
 
 TEST_CASE("SSA import accepts the real cadastro timestamp format") {
@@ -176,6 +303,23 @@ TEST_CASE("terminal SSA advances snapshot metadata while accepting newer indicat
     REQUIRE(advanced.values.at("arquivo_origem") == "SSA_03-07-2026.xlsx");
     REQUIRE_FALSE(ignored.changed);
     REQUIRE(ignored.values == advanced.values);
+}
+
+TEST_CASE("terminal SSA never changes to another terminal state") {
+    using Values = ssa::domain::SsaImportPolicy::Values;
+    const Values existing{{"numero_ssa", "202600023"},
+                          {"descricao_ssa", "Approved cancellation"},
+                          {"situacao", "SCA"},
+                          {"data_planilha", "2026-07-01"}};
+    const Values incoming{{"numero_ssa", "202600023"},
+                          {"descricao_ssa", "Final execution"},
+                          {"situacao", "STE"},
+                          {"data_planilha", "2026-07-01"}};
+
+    const auto result = ssa::domain::SsaImportPolicy::merge(existing, incoming);
+
+    REQUIRE_FALSE(result.changed);
+    REQUIRE(result.values == existing);
 }
 
 TEST_CASE("equal SSA snapshot enriches allowed indicators without reporting conflict") {

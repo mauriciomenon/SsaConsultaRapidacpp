@@ -177,12 +177,12 @@ namespace ssa::infra::importing {
         }
 
         bool hasRequiredColumns(const HeaderColumns& columnByIndex) {
-            static constexpr std::array<std::string_view, 3> required{"numero_ssa", "descricao_ssa",
-                                                                      "data_cadastro"};
-            return std::ranges::all_of(required, [&](const auto key) {
+            const auto hasColumn = [&](const std::string_view key) {
                 return std::ranges::any_of(
                     columnByIndex, [key](const auto& column) { return column.second == key; });
-            });
+            };
+            return hasColumn("numero_ssa") && hasColumn("descricao_ssa") &&
+                   (hasColumn("data_cadastro") || hasColumn("semana_cadastro"));
         }
 
     } // namespace
@@ -239,6 +239,7 @@ namespace ssa::infra::importing {
                     ++batch.invalidDescriptionRows;
                     break;
                 case domain::SsaImportPolicy::RowValidationIssue::MissingDate:
+                case domain::SsaImportPolicy::RowValidationIssue::MissingWeek:
                 case domain::SsaImportPolicy::RowValidationIssue::InvalidDate:
                     ++batch.invalidDateRows;
                     break;
@@ -258,6 +259,12 @@ namespace ssa::infra::importing {
                 if (valueFor(row, "data_arquivo_origem").empty()) {
                     row.emplace("data_arquivo_origem", sourceTimestamp);
                 }
+            }
+            if (const auto sourceCreatedTimestamp =
+                    domain::SsaImportPolicy::normalizeSnapshotTimestamp(
+                        table.sourceCreatedTimestamp);
+                !sourceCreatedTimestamp.empty() && valueFor(row, "data_criacao_arquivo").empty()) {
+                row.emplace("data_criacao_arquivo", sourceCreatedTimestamp);
             }
             batch.rows.push_back(std::move(row));
         }

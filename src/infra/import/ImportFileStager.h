@@ -15,6 +15,7 @@ namespace ssa::infra::importing {
         std::string originalFilename;
         std::string sourceModifiedTimestamp;
         std::size_t summaryIndex = 0;
+        std::string sourceCreatedTimestamp;
     };
 
     struct ImportManifestEntry {

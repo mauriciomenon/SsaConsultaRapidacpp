@@ -597,6 +597,7 @@ namespace ssa::infra::importing {
                     for (auto& table : sheets) {
                         table.originalFilename = file.originalFilename;
                         table.sourceModifiedTimestamp = file.sourceModifiedTimestamp;
+                        table.sourceCreatedTimestamp = file.sourceCreatedTimestamp;
                     }
                     auto adapted = SamSpreadsheetAdapter::adapt(
                         sheets, samArtifacts->at(file.summaryIndex), stopToken);
@@ -656,6 +657,7 @@ namespace ssa::infra::importing {
                             }
                             table.originalFilename = file.originalFilename;
                             table.sourceModifiedTimestamp = file.sourceModifiedTimestamp;
+                            table.sourceCreatedTimestamp = file.sourceCreatedTimestamp;
                             auto worksheetBatch = mapper_.map(table, stopToken);
                             if (worksheetBatch.mappingStatus ==
                                 SpreadsheetMappingStatus::HeaderNotRecognized) {

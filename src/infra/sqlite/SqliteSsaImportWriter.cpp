@@ -270,6 +270,8 @@ namespace ssa::infra::sqlite {
                     statement.bindInt64OneBased(index, parsed);
                     return;
                 }
+                throw ports::OperationError("Falha ao validar valor numerico importado",
+                                            "invalid integer value for column " + column.key);
             }
             statement.bindTextOneBased(index, *value);
         }

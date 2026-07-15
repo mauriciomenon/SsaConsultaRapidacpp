@@ -3,6 +3,9 @@
 #include "infra/import/CancelableFileCopy.h"
 #include "qt/FilesystemPath.h"
 
+#include <QDateTime>
+#include <QFileInfo>
+
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -116,6 +119,17 @@ namespace ssa::infra::importing {
                 return {};
             }
             return buffer.data();
+        }
+
+        std::string sourceCreatedTimestamp(const std::filesystem::path& source) {
+            const QFileInfo information{qt::toQString(source)};
+            const auto created = information.birthTime();
+            if (!created.isValid()) {
+                return {};
+            }
+            const auto encoded =
+                created.toLocalTime().toString(QStringLiteral("yyyy-MM-dd HH:mm:ss")).toUtf8();
+            return {encoded.constData(), static_cast<std::size_t>(encoded.size())};
         }
 
         std::string inputDirectoryRejectionReason(const std::filesystem::path& directory,
@@ -625,7 +639,8 @@ namespace ssa::infra::importing {
                                     true,
                                     qt::toUtf8(source.filename()),
                                     timestamp,
-                                    currentSummaryIndex});
+                                    currentSummaryIndex,
+                                    sourceCreatedTimestamp(source)});
         }
         if (stopToken.stop_requested()) {
             cancelStaging(result);
@@ -823,7 +838,8 @@ namespace ssa::infra::importing {
                                         false,
                                         qt::toUtf8(path.filename()),
                                         timestamp,
-                                        currentSummaryIndex});
+                                        currentSummaryIndex,
+                                        sourceCreatedTimestamp(path)});
                 continue;
             }
         }
@@ -838,6 +854,7 @@ namespace ssa::infra::importing {
                 continue;
             }
             result.files.push_back({path, {}, false, qt::toUtf8(path.filename()), timestamp});
+            result.files.back().sourceCreatedTimestamp = sourceCreatedTimestamp(path);
             result.files.back().summaryIndex = summaryIndex++;
         }
         if (stopToken.stop_requested()) {

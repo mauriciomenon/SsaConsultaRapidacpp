@@ -1848,6 +1848,9 @@ TEST_CASE("input staging keeps filename and local modification time separate") {
         REQUIRE(staged.files.size() == 1);
         REQUIRE(staged.files.front().originalFilename == filename);
         REQUIRE(staged.files.front().sourceModifiedTimestamp == "2000-01-02 03:04:00");
+#ifdef __APPLE__
+        REQUIRE_FALSE(staged.files.front().sourceCreatedTimestamp.empty());
+#endif
     }
 
     const auto unsupported = sourceDirectory / "SSA_2026-07-14.xlsx";
@@ -1857,6 +1860,21 @@ TEST_CASE("input staging keeps filename and local modification time separate") {
         ssa::infra::importing::ImportFileStager{inputDirectory}.stageExternalFiles({unsupported});
     REQUIRE(staged.files.size() == 1);
     REQUIRE(staged.files.front().sourceModifiedTimestamp == "2000-01-02 03:04:00");
+}
+
+TEST_CASE("spreadsheet mapper carries optional source creation time") {
+    ssa::infra::importing::SpreadsheetTable table;
+    table.sourcePath = "created-time.xlsx";
+    table.originalFilename = "created-time.xlsx";
+    table.sourceCreatedTimestamp = "2026-07-14 13:45:00";
+    table.rows = {{"Numero SSA", "Descricao da SSA", "Data de emissao"},
+                  {"202600506", "Creation metadata", "2026-07-14 12:00:00"}};
+
+    const auto result = ssa::infra::importing::SsaSpreadsheetMapper::map(table);
+
+    REQUIRE(result.rows.size() == 1);
+    REQUIRE(ssa::infra::importing::rowValue(result.rows.front(), "data_criacao_arquivo") ==
+            "2026-07-14 13:45:00");
 }
 
 TEST_CASE("spreadsheet mapper accepts the real cadastro timestamp format") {
@@ -1871,6 +1889,19 @@ TEST_CASE("spreadsheet mapper accepts the real cadastro timestamp format") {
     REQUIRE(result.rows.size() == 1);
     REQUIRE(ssa::infra::importing::rowValue(result.rows.front(), "data_cadastro") ==
             "21/10/2025 11:10:36");
+}
+
+TEST_CASE("spreadsheet mapper accepts week-only exceptional rows") {
+    ssa::infra::importing::SpreadsheetTable table;
+    table.sourcePath = "week-only.xlsx";
+    table.rows = {{"Numero SSA", "Descricao da SSA", "Situacao", "Year Week"},
+                  {"202600507", "Week only", "ASE", "202631"}};
+
+    const auto result = ssa::infra::importing::SsaSpreadsheetMapper::map(table);
+
+    REQUIRE(result.mappingStatus == ssa::infra::importing::SpreadsheetMappingStatus::Mapped);
+    REQUIRE(result.rows.size() == 1);
+    REQUIRE(ssa::infra::importing::rowValue(result.rows.front(), "semana_cadastro") == "202631");
 }
 
 TEST_CASE("external import rejects a workbook without the required date column") {
@@ -2070,11 +2101,12 @@ TEST_CASE("incremental rescan rejects an unrecognized workbook without moving it
 TEST_CASE("spreadsheet mapper rejects invalid rows and accepts date exempt states") {
     ssa::infra::importing::SpreadsheetTable table;
     table.sourcePath = "rows.xlsx";
-    table.rows = {{"Numero SSA", "Situacao", "Descricao da SSA", "Data de emissao"},
-                  {"SSA 202600001", "APV", "Invalid number", "2026-01-01"},
-                  {"2026-00002", "APV", "Missing date", ""},
-                  {"2026-00003", "ASE", "Exempt date", ""},
-                  {"202600004.0", "APV", "Valid", "2026-01-01"}};
+    table.rows = {
+        {"Numero SSA", "Situacao", "Descricao da SSA", "Data de emissao", "Semana cadastro"},
+        {"SSA 202600001", "APV", "Invalid number", "2026-01-01"},
+        {"2026-00002", "APV", "Missing date", ""},
+        {"2026-00003", "ASE", "Exempt date", "", "202601"},
+        {"202600004.0", "APV", "Valid", "2026-01-01"}};
 
     const auto result = ssa::infra::importing::SsaSpreadsheetMapper{}.map(table);
 
@@ -2313,6 +2345,29 @@ TEST_CASE("sqlite import rejects duplicate existing SSA numbers before mutation"
     REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
     REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600133'") == 2);
     REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600134'") == 0);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("sqlite import rejects invalid integer values before mutation") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto dbPath = std::filesystem::path{tempDir.path().toStdString()} / "ssas.db";
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(dbPath, importColumns());
+    ssa::infra::importing::ResolvedSsaImportRows seed;
+    seed.rows.push_back({{"numero_ssa", "202600134"}, {"descricao_ssa", "Existing"}});
+    REQUIRE(writer.write(seed, 1, 0, false).rowsWritten == 1);
+    ssa::infra::importing::ResolvedSsaImportRows incoming;
+    incoming.rows.push_back({{"numero_ssa", "202600135"},
+                             {"descricao_ssa", "Invalid week"},
+                             {"semana_cadastro", "not-an-integer"}});
+
+    REQUIRE_THROWS(writer.write(incoming, 1, 0, false));
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 1);
+    REQUIRE(scalarText(db, "SELECT descricao_ssa FROM ssa_table WHERE numero_ssa='202600134'") ==
+            "Existing");
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 

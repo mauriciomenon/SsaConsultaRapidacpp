@@ -41,9 +41,41 @@ namespace ssa::domain {
             return std::ranges::find(exempt, uppercase(trimCopy(status))) != exempt.end();
         }
 
-        bool isTerminalStatus(const std::string& status) {
+        bool isTerminalStatusValue(const std::string& status) {
             const auto normalized = uppercase(trimCopy(status));
-            return normalized == "STE" || normalized == "SCA";
+            return normalized == "STE" || normalized.starts_with("STE ") || normalized == "SCA" ||
+                   normalized.starts_with("SCA ");
+        }
+
+        std::optional<int> parsePart(const std::string_view value);
+
+        bool isValidWeek(const std::string& value) {
+            const auto normalized = trimCopy(value);
+            if (normalized.size() != 6 ||
+                !std::ranges::all_of(
+                    normalized, [](const unsigned char ch) { return std::isdigit(ch) != 0; })) {
+                return false;
+            }
+            const auto year = parsePart(std::string_view{normalized}.substr(0, 4));
+            const auto week = parsePart(std::string_view{normalized}.substr(4, 2));
+            return year && *year >= 1980 && *year <= 2050 && week && *week >= 1 && *week <= 53;
+        }
+
+        std::size_t completenessScore(const SsaImportPolicy::Values& values) {
+            std::size_t score = 0;
+            for (const auto& [key, value] : values) {
+                if (!valueFor(values, key).empty() && key != "numero_ssa") {
+                    ++score;
+                }
+            }
+            return score;
+        }
+
+        std::string lowercase(std::string value) {
+            std::ranges::transform(value, value.begin(), [](const unsigned char ch) {
+                return static_cast<char>(std::tolower(ch));
+            });
+            return value;
         }
 
         std::optional<int> parsePart(const std::string_view value) {
@@ -259,17 +291,17 @@ namespace ssa::domain {
         }
 
         std::optional<std::string> snapshotKey(const SsaImportPolicy::Values& values) {
-            static constexpr std::array<std::string_view, 2> keys{"data_planilha",
-                                                                  "data_arquivo_origem"};
+            if (const auto filename = valueFor(values, "arquivo_origem"); !filename.empty()) {
+                if (auto key = snapshotKeyForFilename(filename)) {
+                    return key;
+                }
+            }
+            static constexpr std::array<std::string_view, 3> keys{
+                "data_planilha", "data_criacao_arquivo", "data_arquivo_origem"};
             for (const auto key : keys) {
                 const auto value = valueFor(values, key);
                 if (!value.empty()) {
                     return snapshotKeyForField(value);
-                }
-            }
-            if (const auto filename = valueFor(values, "arquivo_origem"); !filename.empty()) {
-                if (auto key = snapshotKeyForFilename(filename)) {
-                    return key;
                 }
             }
             return snapshotKeyForField(valueFor(values, "data_cadastro"));
@@ -319,12 +351,32 @@ namespace ssa::domain {
 
         bool isMetadataField(const std::string_view key) {
             return key == "arquivo_origem" || key == "data_planilha" ||
-                   key == "data_arquivo_origem";
+                   key == "data_criacao_arquivo" || key == "data_arquivo_origem";
+        }
+
+        bool isTransientField(const std::string_view key) {
+            return key == "data_criacao_arquivo";
+        }
+
+        bool differsInPersistedValues(const SsaImportPolicy::Values& left,
+                                      const SsaImportPolicy::Values& right) {
+            for (const auto& [key, value] : left) {
+                if (!isTransientField(key) && valueFor(right, key) != trimCopy(value)) {
+                    return true;
+                }
+            }
+            for (const auto& [key, value] : right) {
+                if (!isTransientField(key) && valueFor(left, key) != trimCopy(value)) {
+                    return true;
+                }
+            }
+            return false;
         }
 
         bool isConflictField(const std::string_view key) {
             return key != "numero_ssa" && key != "arquivo_origem" && key != "data_planilha" &&
-                   key != "data_arquivo_origem" && !isIndicatorField(key);
+                   key != "data_criacao_arquivo" && key != "data_arquivo_origem" &&
+                   !isIndicatorField(key);
         }
 
     } // namespace
@@ -372,6 +424,26 @@ namespace ssa::domain {
         return buffer.data();
     }
 
+    bool SsaImportPolicy::isTerminalStatus(const std::string& status) {
+        return isTerminalStatusValue(status);
+    }
+
+    SsaImportPolicy::SourceProfile
+    SsaImportPolicy::classifySourceProfile(const std::string& filename) {
+        const auto normalized = lowercase(filename);
+        if (normalized.find("executad") != std::string::npos) {
+            return SourceProfile::Executadas;
+        }
+        if (normalized.find("derivad") != std::string::npos ||
+            normalized.find("relacion") != std::string::npos) {
+            return SourceProfile::DerivadasRelacionadas;
+        }
+        if (normalized.find("desvio") != std::string::npos) {
+            return SourceProfile::Desvios;
+        }
+        return SourceProfile::Geral;
+    }
+
     SsaImportPolicy::RowValidationIssue SsaImportPolicy::validateRow(const Values& row) {
         if (normalizeNumber(valueFor(row, "numero_ssa")).empty()) {
             return RowValidationIssue::InvalidNumber;
@@ -381,8 +453,11 @@ namespace ssa::domain {
         }
         const auto date = valueFor(row, "data_cadastro");
         if (date.empty()) {
-            return isDateExemptStatus(valueFor(row, "situacao")) ? RowValidationIssue::None
-                                                                 : RowValidationIssue::MissingDate;
+            if (!isDateExemptStatus(valueFor(row, "situacao"))) {
+                return RowValidationIssue::MissingDate;
+            }
+            return isValidWeek(valueFor(row, "semana_cadastro")) ? RowValidationIssue::None
+                                                                 : RowValidationIssue::MissingWeek;
         }
         return parseExactTimestamp(date) ? RowValidationIssue::None
                                          : RowValidationIssue::InvalidDate;
@@ -408,7 +483,9 @@ namespace ssa::domain {
 
         auto merged = existing;
         const bool terminal = isTerminalStatus(valueFor(existing, "situacao"));
+        const bool incomingTerminal = isTerminalStatus(valueFor(incoming, "situacao"));
         const bool equalSnapshot = *incomingSnapshot == *existingSnapshot;
+        const bool incomingRicher = completenessScore(incoming) > completenessScore(existing);
         bool conflict = false;
         for (const auto& [key, value] : incoming) {
             const auto normalized = trimCopy(value);
@@ -421,19 +498,21 @@ namespace ssa::domain {
                 continue;
             }
             if (equalSnapshot && isConflictField(key) && !normalized.empty() && !current.empty() &&
-                normalized != current) {
+                normalized != current && !incomingRicher &&
+                !(key == "situacao" && incomingTerminal && !terminal)) {
                 conflict = true;
             }
             if (normalized.empty() || (terminal && !isIndicatorField(key)) ||
-                (equalSnapshot && key == "situacao")) {
+                (equalSnapshot && key == "situacao" && !(incomingTerminal && !terminal))) {
                 continue;
             }
-            if (equalSnapshot && !current.empty() && !isIndicatorField(key)) {
+            if (equalSnapshot && !current.empty() && !isIndicatorField(key) && !incomingRicher &&
+                !(key == "situacao" && incomingTerminal && !terminal)) {
                 continue;
             }
             merged[key] = normalized;
         }
-        return {merged, merged != existing, conflict};
+        return {merged, differsInPersistedValues(merged, existing), conflict};
     }
 
 } // namespace ssa::domain

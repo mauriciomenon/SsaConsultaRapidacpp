@@ -160,6 +160,7 @@ namespace ssa::infra::importing {
         result.table.sourcePath = source.sourcePath;
         result.table.originalFilename = source.originalFilename;
         result.table.sourceModifiedTimestamp = source.sourceModifiedTimestamp;
+        result.table.sourceCreatedTimestamp = source.sourceCreatedTimestamp;
         result.table.rows.push_back({"numero_ssa", "localizacao_codigo", "descricao_ssa",
                                      "data_cadastro", "setor_emissor", "setor_executor",
                                      "semana_cadastro", "situacao", "sistema_origem"});

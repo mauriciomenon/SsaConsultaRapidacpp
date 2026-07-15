@@ -13,6 +13,7 @@ namespace ssa::infra::importing {
         std::string originalFilename;
         std::string sourceModifiedTimestamp;
         std::vector<std::vector<std::string>> rows;
+        std::string sourceCreatedTimestamp;
     };
 
 } // namespace ssa::infra::importing
