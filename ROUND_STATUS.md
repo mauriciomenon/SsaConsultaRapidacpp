@@ -5,6 +5,46 @@ de interpretar sincronizacao Git, status de CI ou falhas de publicacao.
 
 Ultima verificacao: 2026-07-15
 
+## Prioridades de importacao v0.9.9 em andamento
+
+Esta matriz registra somente evidencias do checkout local. Os commits abaixo
+ainda nao foram publicados nos remotes nesta rodada.
+
+| Prioridade | Status | Evidencia |
+| --- | --- | --- |
+| 1. Preservar banco em full/incremental | ENTREGUE | rollback e merge nao destrutivo mantidos; suite de integracao verde |
+| 2. Validar schema compartilhado | ENTREGUE | `ColumnCatalog` usado por GUI, CLI, mapper e validador |
+| 3. Recriar DB sem apagar o atual | ENTREGUE | teste renomeia backup em temporario e valida DB antigo e novo |
+| 4. Datas e metadata | ENTREGUE | data planilha, nome, criacao quando disponivel e mtime; parser date-only adicionado |
+| 5. Perfil de fonte | ENTREGUE PARCIAL | `executadas` vence empate; derivadas/desvios ainda enriquecem por campos |
+| 6. TOCTOU na copia | ENTREGUE PARCIAL | tamanho e mtime comparados antes do rename; identidade inode/handle permanece futura |
+| 7. Lock entre raizes para o mesmo DB | ENTREGUE | lock de corpus mais lock hash global por caminho absoluto do SQLite |
+| 8. Cancelamento e staging | ENTREGUE PARCIAL | stop remove temporarios e sweep de `.ssa-staged-`; janela SIGKILL pos-publicacao sem prova deterministica |
+| 9. SAM ate SQLite | PENDENTE | adapter e limites ainda exigem rodada E2E dedicada |
+| 10. Derivadas explicitas | PENDENTE | limpeza de orfas continua separada da importacao real |
+| 11. Auxiliar Arrow | ENTREGUE | preset `dev-arrow` e inspector somente leitura em v0.9.8 |
+| 12. GUI/CLI e dicionario | ENTREGUE | schema e colunas obrigatorias vem do dominio; validador exige schema integral |
+| 13. Release e remotes | PENDENTE | HEAD local avancou; tag v0.9.8 permanece preservada; push depende de SSH |
+
+### Commits funcionais locais
+
+- `8354a62` dicionario e validacao do schema SQLite.
+- `8092e8c` coluna `data_cadastro` obrigatoria no header.
+- `bac398c` lock por identidade do banco.
+- `ea43800` rejeicao de fonte alterada durante copia.
+- `b8957af` prioridade de fontes executadas em empate.
+- `a918f93` mapper consumindo colunas obrigatorias compartilhadas.
+- `af32c50` parser de data sem hora no nome da planilha.
+
+### Validacao local desta rodada
+
+- `ssa_unit_tests`: 569 asserts em 108 casos.
+- `ssa_integration_tests`: 5672 asserts em 247 casos.
+- Recriacao e validacao do DB: 38 asserts no caso dedicado; o banco real nao
+  foi tocado.
+- O staged `tests/smoke/AdvancedPopupQmlTest.cpp` e os untracked do usuario
+  continuam fora dos commits.
+
 ## Remotes Git
 
 | Remote | Provedor | Funcao | Estado atual |
