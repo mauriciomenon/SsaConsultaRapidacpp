@@ -85,6 +85,42 @@ xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
         }
     }
 
+    void writeWorkbookSheets(const std::filesystem::path& path,
+                             const std::vector<std::string>& sheets) {
+        mz_zip_archive zip{};
+        REQUIRE(mz_zip_writer_init_file(&zip, path.string().c_str(), 0) != 0);
+        addZipEntry(zip, "[Content_Types].xml", R"(<?xml version="1.0" encoding="UTF-8"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+<Default Extension="xml" ContentType="application/xml"/>
+</Types>)");
+        std::string workbook = R"(<?xml version="1.0" encoding="UTF-8"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>)";
+        std::string relationships = R"(<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">)";
+        for (std::size_t index = 0; index < sheets.size(); ++index) {
+            const auto number = std::to_string(index + 1);
+            workbook += "<sheet name=\"Sheet" + number + "\" sheetId=\"" + number +
+                        "\" r:id=\"rId" + number + "\"/>";
+            relationships += "<Relationship Id=\"rId" + number +
+                             "\" "
+                             "Type=\"http://schemas.openxmlformats.org/officeDocument/2006/"
+                             "relationships/worksheet\" Target=\"worksheets/sheet" +
+                             number + ".xml\"/>";
+            addZipEntry(zip, ("xl/worksheets/sheet" + number + ".xml").c_str(),
+                        R"(<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>)" +
+                            sheets[index] + "</sheetData></worksheet>");
+        }
+        workbook += "</sheets></workbook>";
+        relationships += "</Relationships>";
+        addZipEntry(zip, "xl/workbook.xml", workbook);
+        addZipEntry(zip, "xl/_rels/workbook.xml.rels", relationships);
+        REQUIRE(mz_zip_writer_finalize_archive(&zip) != 0);
+        REQUIRE(mz_zip_writer_end(&zip) != 0);
+    }
+
     std::string inlineCell(const char* ref, const std::string& value) {
         return std::string{"<c r=\""} + ref + "\" t=\"inlineStr\"><is><t>" + value +
                "</t></is></c>";
@@ -199,6 +235,7 @@ stem="${base%.*}"
             break;
         case FakeSofficeBehavior::Block:
             script << "printf 'partial' > \"$outdir/$stem.xlsx\"\n"
+                      "printf 'ready' > \"$source.conversion-ready\"\n"
                       "while :; do sleep 1; done\n";
             break;
         case FakeSofficeBehavior::CopyThenBlock:
@@ -851,26 +888,18 @@ TEST_CASE("legacy converter cancellation preserves destination and removes tempo
     });
     QElapsedTimer deadline;
     deadline.start();
-    bool observedTemporaryOutput = false;
+    const auto conversionReady = source.string() + ".conversion-ready";
     while (operation.wait_for(std::chrono::milliseconds{0}) != std::future_status::ready &&
-           deadline.elapsed() < 3'000) {
-        std::error_code error;
-        for (std::filesystem::recursive_directory_iterator iterator(root, error), end;
-             !error && iterator != end; iterator.increment(error)) {
-            if (iterator->path().parent_path().filename().string().starts_with(
-                    "ssa_xls_conversion_") &&
-                iterator->path().extension() == ".xlsx") {
-                observedTemporaryOutput = true;
-                stopSource.request_stop();
-                break;
-            }
-        }
+           !std::filesystem::exists(conversionReady) && deadline.elapsed() < 3'000) {
         QThread::msleep(5);
+    }
+    if (std::filesystem::exists(conversionReady)) {
+        stopSource.request_stop();
     }
     stopSource.request_stop();
     const auto result = operation.get();
 
-    REQUIRE(observedTemporaryOutput);
+    REQUIRE(std::filesystem::exists(conversionReady));
     REQUIRE(result.status == ssa::infra::importing::LegacySpreadsheetConversionStatus::Canceled);
     REQUIRE(readFile(destination) == "previous");
     for (const auto& entry : std::filesystem::directory_iterator(root)) {
@@ -2828,6 +2857,144 @@ TEST_CASE("spreadsheet workflow rejects ambiguous positional headers without mov
     REQUIRE(result.message.find("ambiguous_headers") != std::string::npos);
     REQUIRE(std::filesystem::exists(workbook));
     REQUIRE_FALSE(std::filesystem::exists(inputDirectory / "processadas"));
+}
+
+TEST_CASE("spreadsheet workflow skips a cover sheet and imports the following data sheet") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    const auto workbook = inputDirectory / "two-sheets.xlsx";
+    const auto header = row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Descricao"),
+                                inlineCell("C1", "Data Cadastro")});
+    const auto firstData =
+        row(2, {inlineCell("A2", "202600321"), inlineCell("B2", "Imported from sheet two"),
+                inlineCell("C2", "2026-07-14")});
+    const auto secondData =
+        row(2, {inlineCell("A2", "202600322"), inlineCell("B2", "Imported from sheet three"),
+                inlineCell("C2", "2026-07-14")});
+    writeWorkbookSheets(workbook, {row(1, {inlineCell("A1", "SAM report cover")}),
+                                   header + firstData, header + secondData});
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+
+    const auto result = port.rescan({ssa::ports::RescanMode::Incremental});
+
+    INFO(result.message);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE(result.importSummary.has_value());
+    REQUIRE(result.importSummary->validRows == 2);
+    REQUIRE(result.importSummary->inserts == 2);
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 2);
+    REQUIRE(scalarText(db, "SELECT descricao_ssa FROM ssa_table WHERE numero_ssa='202600321'") ==
+            "Imported from sheet two");
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("spreadsheet workflow rejects an unknown sheet after valid data") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    const auto workbook = inputDirectory / "invalid-tail.xlsx";
+    const auto valid = row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Descricao"),
+                               inlineCell("C1", "Data Cadastro")}) +
+                       row(2, {inlineCell("A2", "202600323"), inlineCell("B2", "Must roll back"),
+                               inlineCell("C2", "2026-07-14")});
+    writeWorkbookSheets(workbook,
+                        {valid, row(1, {inlineCell("A1", "Unexpected trailing report")})});
+    ssa::infra::importing::ResolvedSsaImportRows seedRows;
+    seedRows.rows.push_back({{"numero_ssa", "202600100"}, {"descricao_ssa", "Existing"}});
+    const ssa::infra::sqlite::SqliteSsaImportWriter seedWriter(dbPath, importColumns());
+    REQUIRE(seedWriter.write(seedRows, 1, 0, false).rowsWritten == 1);
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+
+    const auto result = port.rescan({ssa::ports::RescanMode::Incremental});
+
+    INFO(result.message);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
+    REQUIRE(std::filesystem::exists(workbook));
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 1);
+    REQUIRE(scalarText(db, "SELECT descricao_ssa FROM ssa_table WHERE numero_ssa='202600100'") ==
+            "Existing");
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("spreadsheet workflow rolls back conflicting SSA rows across worksheets") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    const auto workbook = inputDirectory / "conflict.xlsx";
+    const auto header = row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Descricao"),
+                                inlineCell("C1", "Data Cadastro")});
+    writeWorkbookSheets(workbook,
+                        {header + row(2, {inlineCell("A2", "202600324"), inlineCell("B2", "First"),
+                                          inlineCell("C2", "2026-07-14")}),
+                         header + row(2, {inlineCell("A2", "202600324"), inlineCell("B2", "Second"),
+                                          inlineCell("C2", "2026-07-14")})});
+    ssa::infra::importing::ResolvedSsaImportRows seedRows;
+    seedRows.rows.push_back({{"numero_ssa", "202600100"}, {"descricao_ssa", "Existing"}});
+    const ssa::infra::sqlite::SqliteSsaImportWriter seedWriter(dbPath, importColumns());
+    REQUIRE(seedWriter.write(seedRows, 1, 0, false).rowsWritten == 1);
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+
+    const auto result = port.rescan({ssa::ports::RescanMode::Incremental});
+
+    INFO(result.message);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
+    REQUIRE(result.message.find("duplicate_conflict") != std::string::npos);
+    REQUIRE(std::filesystem::exists(workbook));
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 1);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("spreadsheet mapper observes cancellation during a large worksheet") {
+    ssa::infra::importing::SpreadsheetTable table;
+    table.rows.reserve(250'001);
+    table.rows.push_back({"Numero SSA", "Descricao", "Data Cadastro"});
+    for (std::size_t index = 0; index < 250'000; ++index) {
+        table.rows.push_back({"202600321", "Large worksheet", "2026-07-14"});
+    }
+    std::stop_source stopSource;
+    std::latch started{1};
+    auto operation = std::async(std::launch::async, [&] {
+        started.count_down();
+        try {
+            static_cast<void>(
+                ssa::infra::importing::SsaSpreadsheetMapper::map(table, stopSource.get_token()));
+            return false;
+        } catch (const std::system_error& error) {
+            return error.code() == std::make_error_code(std::errc::operation_canceled);
+        }
+    });
+    started.wait();
+    QThread::msleep(5);
+
+    stopSource.request_stop();
+
+    REQUIRE(operation.wait_for(std::chrono::seconds{1}) == std::future_status::ready);
+    REQUIRE(operation.get());
 }
 
 TEST_CASE("full rescan rejects mixed valid and invalid rows without clearing the database") {

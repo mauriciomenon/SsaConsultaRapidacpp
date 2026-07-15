@@ -13,6 +13,8 @@ namespace ssa::infra::importing {
       public:
         [[nodiscard]] static SpreadsheetTable readFirstSheet(const std::filesystem::path& filePath,
                                                              const std::stop_token& stopToken = {});
+        [[nodiscard]] static std::vector<SpreadsheetTable>
+        readSheets(const std::filesystem::path& filePath, const std::stop_token& stopToken = {});
 
       private:
         struct WorksheetRelationshipRequest {
@@ -22,9 +24,8 @@ namespace ssa::infra::importing {
 
         [[nodiscard]] static std::vector<std::string>
         parseSharedStrings(const std::string& xml, const std::stop_token& stopToken);
-        [[nodiscard]] static std::string
-        relationshipIdForFirstWorkbookSheet(const std::string& xml,
-                                            const std::stop_token& stopToken);
+        [[nodiscard]] static std::vector<std::string>
+        relationshipIdsForWorkbookSheets(const std::string& xml, const std::stop_token& stopToken);
         [[nodiscard]] static std::string
         worksheetEntryForRelationship(const WorksheetRelationshipRequest& request,
                                       const std::stop_token& stopToken);

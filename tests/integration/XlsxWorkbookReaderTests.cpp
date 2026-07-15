@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -43,6 +44,47 @@ xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">)x
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
 <sheetData><row r="1">)xml" +
                      cells + R"xml(</row></sheetData></worksheet>)xml");
+        REQUIRE(mz_zip_writer_finalize_archive(&zip) != 0);
+        REQUIRE(mz_zip_writer_end(&zip) != 0);
+    }
+
+    void writeMultiSheetWorkbook(const std::filesystem::path& path,
+                                 const std::vector<std::string>& sheets,
+                                 const std::vector<std::string>& relationshipIds = {}) {
+        mz_zip_archive zip{};
+        REQUIRE(mz_zip_writer_init_file(&zip, path.string().c_str(), 0) != 0);
+        addEntry(zip, "[Content_Types].xml", R"xml(<?xml version="1.0" encoding="UTF-8"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+<Default Extension="xml" ContentType="application/xml"/>
+</Types>)xml");
+        std::string workbook = R"xml(<?xml version="1.0" encoding="UTF-8"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>)xml";
+        std::string relationships = R"xml(<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">)xml";
+        for (std::size_t index = 0; index < sheets.size(); ++index) {
+            const auto number = std::to_string(index + 1);
+            const auto relationshipId =
+                relationshipIds.empty() ? "rId" + number : relationshipIds.at(index);
+            workbook += "<sheet name=\"Sheet" + number + "\" sheetId=\"" + number + "\"";
+            if (!relationshipId.empty()) {
+                workbook += " r:id=\"" + relationshipId + "\"";
+                relationships += "<Relationship Id=\"" + relationshipId +
+                                 "\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/"
+                                 "relationships/worksheet\" Target=\"worksheets/sheet" +
+                                 number + ".xml\"/>";
+            }
+            workbook += "/>";
+            addEntry(zip, ("xl/worksheets/sheet" + number + ".xml").c_str(),
+                     R"xml(<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1">)xml" +
+                         sheets[index] + "</row></sheetData></worksheet>");
+        }
+        workbook += "</sheets></workbook>";
+        relationships += "</Relationships>";
+        addEntry(zip, "xl/workbook.xml", workbook);
+        addEntry(zip, "xl/_rels/workbook.xml.rels", relationships);
         REQUIRE(mz_zip_writer_finalize_archive(&zip) != 0);
         REQUIRE(mz_zip_writer_end(&zip) != 0);
     }
@@ -121,4 +163,53 @@ TEST_CASE("xlsx reader preserves a blank cell that only has a date style") {
     const auto table = ssa::infra::importing::XlsxWorkbookReader::readFirstSheet(path);
 
     REQUIRE(table.rows.at(0).at(0).empty());
+}
+
+TEST_CASE("xlsx reader returns every worksheet in workbook order") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+    const auto path = std::filesystem::path{tempDir.path().toStdString()} / "sheets.xlsx";
+    writeMultiSheetWorkbook(path, {R"xml(<c r="A1" t="inlineStr"><is><t>Cover</t></is></c>)xml",
+                                   R"xml(<c r="A1" t="inlineStr"><is><t>Data</t></is></c>)xml"});
+
+    const auto sheets = ssa::infra::importing::XlsxWorkbookReader::readSheets(path);
+
+    REQUIRE(sheets.size() == 2);
+    REQUIRE(sheets.at(0).rows.at(0).at(0) == "Cover");
+    REQUIRE(sheets.at(1).rows.at(0).at(0) == "Data");
+}
+
+TEST_CASE("xlsx reader rejects a formula without cache in any worksheet") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+    const auto path = std::filesystem::path{tempDir.path().toStdString()} / "formula-sheet2.xlsx";
+    writeMultiSheetWorkbook(
+        path, {R"xml(<c r="A1"><v>cover</v></c>)xml", R"xml(<c r="A1"><f>NOW()</f></c>)xml"});
+
+    bool rejected = false;
+    try {
+        static_cast<void>(ssa::infra::importing::XlsxWorkbookReader::readSheets(path));
+    } catch (const std::runtime_error& error) {
+        rejected = true;
+        REQUIRE(std::string{error.what()} == "xlsx formula cell has no cached value");
+    }
+    REQUIRE(rejected);
+}
+
+TEST_CASE("xlsx reader rejects missing and duplicate worksheet relationship ids") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto missing = root / "missing-id.xlsx";
+    const auto duplicate = root / "duplicate-id.xlsx";
+    const std::vector<std::string> sheets{
+        R"xml(<c r="A1" t="inlineStr"><is><t>First</t></is></c>)xml",
+        R"xml(<c r="A1" t="inlineStr"><is><t>Second</t></is></c>)xml"};
+    writeMultiSheetWorkbook(missing, sheets, {"rId1", ""});
+    writeMultiSheetWorkbook(duplicate, sheets, {"rId1", "rId1"});
+
+    REQUIRE_THROWS_AS(ssa::infra::importing::XlsxWorkbookReader::readSheets(missing),
+                      std::runtime_error);
+    REQUIRE_THROWS_AS(ssa::infra::importing::XlsxWorkbookReader::readSheets(duplicate),
+                      std::runtime_error);
 }

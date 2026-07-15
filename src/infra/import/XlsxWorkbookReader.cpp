@@ -24,6 +24,7 @@ namespace ssa::infra::importing {
 
         constexpr std::size_t kMaxWorksheetRows = 250'000;
         constexpr std::size_t kMaxWorksheetCells = 5'000'000;
+        constexpr std::size_t kMaxWorksheets = 256;
         constexpr int kSpreadsheetColumnBase = 26;
         constexpr qsizetype kDefaultSharedStringReserve = 256;
 
@@ -498,11 +499,11 @@ namespace ssa::infra::importing {
         throwIfImportCanceled(stopToken);
         XlsxPackage package(filePath);
         const auto workbook = package.textEntry("xl/workbook.xml", true, stopToken);
-        const auto relationshipId = relationshipIdForFirstWorkbookSheet(workbook, stopToken);
+        const auto relationshipIds = relationshipIdsForWorkbookSheets(workbook, stopToken);
         throwIfImportCanceled(stopToken);
         const auto relationships = package.textEntry("xl/_rels/workbook.xml.rels", true, stopToken);
         const auto worksheetEntry =
-            worksheetEntryForRelationship({relationships, relationshipId}, stopToken);
+            worksheetEntryForRelationship({relationships, relationshipIds.front()}, stopToken);
         const auto sharedStrings = parseSharedStrings(
             package.textEntry("xl/sharedStrings.xml", false, stopToken), stopToken);
         const auto dateStyles =
@@ -514,6 +515,35 @@ namespace ssa::infra::importing {
         table.sourcePath = filePath;
         table.rows = parseSheetRows(sheetXml, sharedStrings, dateStyles, date1904, stopToken);
         return table;
+    }
+
+    std::vector<SpreadsheetTable>
+    XlsxWorkbookReader::readSheets(const std::filesystem::path& filePath,
+                                   const std::stop_token& stopToken) {
+        throwIfImportCanceled(stopToken);
+        XlsxPackage package(filePath);
+        const auto workbook = package.textEntry("xl/workbook.xml", true, stopToken);
+        const auto relationshipIds = relationshipIdsForWorkbookSheets(workbook, stopToken);
+        const auto relationships = package.textEntry("xl/_rels/workbook.xml.rels", true, stopToken);
+        const auto sharedStrings = parseSharedStrings(
+            package.textEntry("xl/sharedStrings.xml", false, stopToken), stopToken);
+        const auto dateStyles =
+            parseDateStyles(package.textEntry("xl/styles.xml", false, stopToken), stopToken);
+        const bool date1904 = usesDate1904(workbook, stopToken);
+
+        std::vector<SpreadsheetTable> tables;
+        tables.reserve(relationshipIds.size());
+        for (const auto& relationshipId : relationshipIds) {
+            throwIfImportCanceled(stopToken);
+            const auto worksheetEntry =
+                worksheetEntryForRelationship({relationships, relationshipId}, stopToken);
+            const auto sheetXml = package.textEntry(worksheetEntry, true, stopToken);
+            SpreadsheetTable table;
+            table.sourcePath = filePath;
+            table.rows = parseSheetRows(sheetXml, sharedStrings, dateStyles, date1904, stopToken);
+            tables.push_back(std::move(table));
+        }
+        return tables;
     }
 
     std::vector<std::string>
@@ -566,9 +596,11 @@ namespace ssa::infra::importing {
         return values;
     }
 
-    std::string
-    XlsxWorkbookReader::relationshipIdForFirstWorkbookSheet(const std::string& xml,
-                                                            const std::stop_token& stopToken) {
+    std::vector<std::string>
+    XlsxWorkbookReader::relationshipIdsForWorkbookSheets(const std::string& xml,
+                                                         const std::stop_token& stopToken) {
+        std::vector<std::string> relationships;
+        std::unordered_set<std::string> seenRelationships;
         QXmlStreamReader reader(xmlBytes(xml));
         while (!reader.atEnd()) {
             throwIfImportCanceled(stopToken);
@@ -578,11 +610,25 @@ namespace ssa::infra::importing {
             }
             const auto attributes = reader.attributes();
             const auto relationship = std::ranges::find_if(attributes, isRelationshipIdAttribute);
-            if (relationship != attributes.end()) {
-                return toStdString(relationship->value());
+            if (relationship == attributes.end()) {
+                throw std::runtime_error("xlsx worksheet has no relationship id");
+            }
+            auto identifier = toStdString(relationship->value());
+            if (identifier.empty() || !seenRelationships.insert(identifier).second) {
+                throw std::runtime_error("xlsx worksheet relationship id is invalid or duplicated");
+            }
+            relationships.push_back(std::move(identifier));
+            if (relationships.size() > kMaxWorksheets) {
+                throw std::runtime_error("xlsx workbook has too many worksheets");
             }
         }
-        throw std::runtime_error("xlsx workbook has no sheet relationship");
+        if (reader.hasError()) {
+            throw std::runtime_error("cannot parse xlsx workbook sheets");
+        }
+        if (relationships.empty()) {
+            throw std::runtime_error("xlsx workbook has no sheet relationship");
+        }
+        return relationships;
     }
 
     std::string

@@ -256,10 +256,47 @@ namespace ssa::infra::importing {
             }
             SsaImportBatch batch;
             try {
-                auto table = reader_.readFirstSheet(file.workbookPath, stopToken);
-                table.originalFilename = file.originalFilename;
-                table.sourceModifiedTimestamp = file.sourceModifiedTimestamp;
-                batch = mapper_.map(table);
+                auto tables = reader_.readSheets(file.workbookPath, stopToken);
+                bool mappedWorksheet = false;
+                bool invalidTrailingWorksheet = false;
+                batch.sourcePath = file.workbookPath;
+                for (auto& table : tables) {
+                    table.originalFilename = file.originalFilename;
+                    table.sourceModifiedTimestamp = file.sourceModifiedTimestamp;
+                    auto worksheetBatch = mapper_.map(table, stopToken);
+                    if (worksheetBatch.mappingStatus ==
+                        SpreadsheetMappingStatus::HeaderNotRecognized) {
+                        if (mappedWorksheet) {
+                            invalidTrailingWorksheet = true;
+                            break;
+                        }
+                        batch.skippedRows += worksheetBatch.skippedRows;
+                        continue;
+                    }
+                    if (worksheetBatch.mappingStatus != SpreadsheetMappingStatus::Mapped) {
+                        batch.mappingStatus = worksheetBatch.mappingStatus;
+                        break;
+                    }
+                    mappedWorksheet = true;
+                    batch.mappedColumns += worksheetBatch.mappedColumns;
+                    batch.skippedRows += worksheetBatch.skippedRows;
+                    batch.invalidRows += worksheetBatch.invalidRows;
+                    batch.invalidNumberRows += worksheetBatch.invalidNumberRows;
+                    batch.invalidDescriptionRows += worksheetBatch.invalidDescriptionRows;
+                    batch.invalidDateRows += worksheetBatch.invalidDateRows;
+                    batch.rows.insert(batch.rows.end(),
+                                      std::make_move_iterator(worksheetBatch.rows.begin()),
+                                      std::make_move_iterator(worksheetBatch.rows.end()));
+                }
+                if (invalidTrailingWorksheet) {
+                    batch.mappingStatus = SpreadsheetMappingStatus::HeaderNotRecognized;
+                } else if (batch.mappingStatus !=
+                               SpreadsheetMappingStatus::RequiredColumnsMissing &&
+                           batch.mappingStatus != SpreadsheetMappingStatus::AmbiguousHeaders) {
+                    batch.mappingStatus = mappedWorksheet
+                                              ? SpreadsheetMappingStatus::Mapped
+                                              : SpreadsheetMappingStatus::HeaderNotRecognized;
+                }
             } catch (const std::system_error& error) {
                 if (error.code() == std::make_error_code(std::errc::operation_canceled)) {
                     return discardBeforeCommit(rollbackSession(*writeSession, canceled(operation)));

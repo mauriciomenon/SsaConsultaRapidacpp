@@ -9,7 +9,9 @@
 #include <iterator>
 #include <optional>
 #include <span>
+#include <stop_token>
 #include <string_view>
+#include <system_error>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -20,6 +22,13 @@ namespace ssa::infra::importing {
 
         std::optional<std::string> canonicalColumn(const std::string& header) {
             return SsaSpreadsheetHeaderCatalog::canonicalColumnForHeader(header);
+        }
+
+        void throwIfMappingCanceled(const std::stop_token& stopToken) {
+            if (stopToken.stop_requested()) {
+                throw std::system_error(std::make_error_code(std::errc::operation_canceled),
+                                        "spreadsheet mapping canceled");
+            }
         }
 
         class HeaderColumnCache final {
@@ -53,11 +62,13 @@ namespace ssa::infra::importing {
         }
 
         std::optional<std::size_t> headerRowIndex(const SpreadsheetTable& table,
-                                                  HeaderColumnCache& cache) {
+                                                  HeaderColumnCache& cache,
+                                                  const std::stop_token& stopToken) {
             std::size_t bestIndex = 0;
             std::size_t bestScore = 0;
             const auto limit = std::min<std::size_t>(table.rows.size(), 15);
             for (std::size_t rowIndex = 0; rowIndex < limit; ++rowIndex) {
+                throwIfMappingCanceled(stopToken);
                 std::unordered_set<std::string> mapped;
                 for (const auto& cell : table.rows[rowIndex]) {
                     if (auto column = cache.resolve(cell)) {
@@ -176,11 +187,13 @@ namespace ssa::infra::importing {
 
     } // namespace
 
-    SsaImportBatch SsaSpreadsheetMapper::map(const SpreadsheetTable& table) {
+    SsaImportBatch SsaSpreadsheetMapper::map(const SpreadsheetTable& table,
+                                             const std::stop_token& stopToken) {
+        throwIfMappingCanceled(stopToken);
         SsaImportBatch batch;
         batch.sourcePath = table.sourcePath;
         HeaderColumnCache headerCache;
-        const auto headerIndex = headerRowIndex(table, headerCache);
+        const auto headerIndex = headerRowIndex(table, headerCache, stopToken);
         if (!headerIndex) {
             batch.skippedRows = table.rows.size();
             return batch;
@@ -199,6 +212,7 @@ namespace ssa::infra::importing {
         }
         batch.mappingStatus = SpreadsheetMappingStatus::Mapped;
         for (std::size_t rowIndex = *headerIndex + 1; rowIndex < table.rows.size(); ++rowIndex) {
+            throwIfMappingCanceled(stopToken);
             SsaImportRow row;
             for (const auto& [columnIndex, columnKey] : columnMap.columns) {
                 if (columnIndex >= table.rows[rowIndex].size()) {
