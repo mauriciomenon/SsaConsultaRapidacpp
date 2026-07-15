@@ -87,6 +87,26 @@ TEST_CASE("SSA spreadsheet mapper resolves repeated semantic header families by 
     REQUIRE(imported.at("ate_2") == "A2");
 }
 
+TEST_CASE("SSA spreadsheet mapper exposes the validated header for continuation chunks") {
+    ssa::infra::importing::SpreadsheetTable first;
+    first.sourcePath = "chunks.xlsx";
+    first.rows = {{"Report cover"},
+                  {"Numero SSA", "Descricao", "Data Cadastro"},
+                  {"202600001", "First", "2026-07-14"}};
+
+    const auto firstBatch = ssa::infra::importing::SsaSpreadsheetMapper::map(first);
+    REQUIRE(firstBatch.headerRow ==
+            std::vector<std::string>{"Numero SSA", "Descricao", "Data Cadastro"});
+
+    ssa::infra::importing::SpreadsheetTable continuation;
+    continuation.sourcePath = first.sourcePath;
+    continuation.rows = {firstBatch.headerRow, {"202600002", "Second", "2026-07-14"}};
+    const auto nextBatch = ssa::infra::importing::SsaSpreadsheetMapper::map(continuation);
+
+    REQUIRE(nextBatch.rows.size() == 1);
+    REQUIRE(nextBatch.rows.front().at("numero_ssa") == "202600002");
+}
+
 TEST_CASE("SSA spreadsheet mapper rejects an overflowing repeated header family") {
     ssa::infra::importing::SpreadsheetTable table;
     table.rows = {

@@ -26,6 +26,7 @@ namespace ssa::infra::importing {
             std::size_t summaryIndex = 0;
         };
 
+        constexpr std::size_t kImportRowsPerChunk = 1'000;
         constexpr std::size_t kMaxWorkflowDiagnosticBytes = 4'096;
 
         void appendWorkflowDiagnostic(std::string& destination, const std::string_view detail) {
@@ -326,11 +327,125 @@ namespace ssa::infra::importing {
         const auto staging = stager_.stageInputFiles(stopToken, replaceAll);
         if (auto resumed = resumePendingConsolidation(stopToken)) {
             if (resumed->status == ports::WorkflowStatus::Canceled) {
-                return importDiscoveredFiles(staging, replaceAll, stopToken);
+                return replaceAll ? importDiscoveredFiles(staging, true, stopToken)
+                                  : importIncrementalFiles(staging, stopToken);
             }
             return std::move(*resumed);
         }
-        return importDiscoveredFiles(staging, replaceAll, stopToken);
+        return replaceAll ? importDiscoveredFiles(staging, true, stopToken)
+                          : importIncrementalFiles(staging, stopToken);
+    }
+
+    ports::WorkflowResult
+    SpreadsheetImportWorkflowPort::importIncrementalFiles(const ImportStagingResult& files,
+                                                          const std::stop_token& stopToken) const {
+        constexpr const char* operation = "import_xlsx_to_sqlite";
+        if (files.files.size() <= 1 || files.operationalFailure || !files.rejectionReason.empty()) {
+            return importDiscoveredFiles(files, false, stopToken);
+        }
+
+        auto summary = makeImportSummary(files);
+        std::optional<ports::WorkflowResult> firstFailure;
+        bool completedFile = false;
+        bool changed = false;
+        bool interrupted = summary.rejected > 0;
+        bool warning = files.warning;
+        std::string diagnostic = files.diagnostic;
+        for (std::size_t fileIndex = 0; fileIndex < files.files.size(); ++fileIndex) {
+            if (stopToken.stop_requested()) {
+                interrupted = true;
+                firstFailure = canceled(operation);
+                for (; fileIndex < files.files.size(); ++fileIndex) {
+                    auto& pending = summary.files[files.files[fileIndex].summaryIndex];
+                    pending.status = ports::ImportFileStatus::Canceled;
+                    ++summary.preserved;
+                }
+                break;
+            }
+
+            auto stagedFile = files.files[fileIndex];
+            stagedFile.summaryIndex = 0;
+            ImportStagingResult single;
+            single.files.push_back(std::move(stagedFile));
+            single.discoveredXlsxSources.push_back(
+                files.discoveredXlsxSources[files.files[fileIndex].summaryIndex]);
+            single.discovered = 1;
+            auto result = importDiscoveredFiles(single, false, stopToken);
+            if (!result.importSummary || result.importSummary->files.size() != 1) {
+                result = {ports::WorkflowStatus::Failed, "import_xlsx_to_sqlite summary_failed",
+                          false, "single-file import did not return one file result"};
+            } else {
+                const auto& singleSummary = *result.importSummary;
+                summary.files[files.files[fileIndex].summaryIndex] = singleSummary.files.front();
+                summary.accepted += singleSummary.accepted;
+                summary.rejected += singleSummary.rejected;
+                summary.preserved += singleSummary.preserved;
+                summary.validRows += singleSummary.validRows;
+                summary.invalidRows += singleSummary.invalidRows;
+                summary.invalidNumberRows += singleSummary.invalidNumberRows;
+                summary.invalidDescriptionRows += singleSummary.invalidDescriptionRows;
+                summary.invalidDateRows += singleSummary.invalidDateRows;
+                summary.skippedRows += singleSummary.skippedRows;
+                summary.duplicateRows += singleSummary.duplicateRows;
+                summary.inserts += singleSummary.inserts;
+                summary.updates += singleSummary.updates;
+                summary.unchangedRows += singleSummary.unchangedRows;
+                summary.conflicts += singleSummary.conflicts;
+                summary.consolidated += singleSummary.consolidated;
+                summary.noSurvivor += singleSummary.noSurvivor;
+            }
+            appendWorkflowDiagnostic(diagnostic, result.diagnostic);
+            warning = warning || result.warning;
+            if (result.ok()) {
+                completedFile = true;
+                changed = changed || result.status == ports::WorkflowStatus::Succeeded;
+                continue;
+            }
+
+            interrupted = true;
+            if (!firstFailure) {
+                firstFailure = result;
+            }
+            if (result.status != ports::WorkflowStatus::Canceled) {
+                continue;
+            }
+            firstFailure = result;
+            for (++fileIndex; fileIndex < files.files.size(); ++fileIndex) {
+                auto& pending = summary.files[files.files[fileIndex].summaryIndex];
+                pending.status = ports::ImportFileStatus::Canceled;
+                ++summary.preserved;
+            }
+            break;
+        }
+
+        if (!completedFile) {
+            auto result = firstFailure.value_or(ports::WorkflowResult{
+                ports::WorkflowStatus::Failed, "import_xlsx_to_sqlite no_file_completed"});
+            result.diagnostic = std::move(diagnostic);
+            return withSummary(std::move(result), summary);
+        }
+
+        SsaImportWriteSummary total;
+        total.files = files.files.size();
+        total.rowsInserted = summary.inserts;
+        total.rowsUpdated = summary.updates;
+        total.rowsWritten = summary.inserts + summary.updates;
+        total.rowsUnchanged = summary.unchangedRows;
+        total.skippedRows = summary.skippedRows;
+        total.duplicateRows = summary.duplicateRows;
+        total.invalidRows = summary.invalidRows;
+        total.invalidNumberRows = summary.invalidNumberRows;
+        total.invalidDescriptionRows = summary.invalidDescriptionRows;
+        total.invalidDateRows = summary.invalidDateRows;
+        total.conflictRows = summary.conflicts;
+        const auto error = interrupted ? std::string_view{"partial_failure"} : std::string_view{};
+        return withSummary(
+            {changed || interrupted ? ports::WorkflowStatus::Succeeded
+                                    : ports::WorkflowStatus::NoChanges,
+             workflowMessage(operation, files, total, {summary.rejected, error}),
+             warning || interrupted || summary.invalidRows > 0 || summary.duplicateRows > 0,
+             std::move(diagnostic)},
+            summary);
     }
 
     ports::WorkflowResult
@@ -431,44 +546,97 @@ namespace ssa::infra::importing {
                 return discardBeforeCommit(rollbackSession(*writeSession, canceled(operation)));
             }
             SsaImportBatch batch;
+            std::size_t validRows = 0;
+            bool invalidFullBatch = false;
+            bool duplicateConflict = false;
             try {
-                auto tables = reader_.readSheets(file.workbookPath, stopToken);
                 bool mappedWorksheet = false;
+                bool ignoredWorksheet = false;
                 bool invalidTrailingWorksheet = false;
+                bool fatalMapping = false;
+                bool fileCountedByWriter = false;
+                std::vector<std::string> headerRow;
                 batch.sourcePath = file.workbookPath;
-                for (auto& table : tables) {
-                    table.originalFilename = file.originalFilename;
-                    table.sourceModifiedTimestamp = file.sourceModifiedTimestamp;
-                    auto worksheetBatch = mapper_.map(table, stopToken);
-                    if (worksheetBatch.mappingStatus ==
-                        SpreadsheetMappingStatus::HeaderNotRecognized) {
-                        if (mappedWorksheet) {
-                            invalidTrailingWorksheet = true;
-                            break;
+                reader_.readSheetChunks(
+                    file.workbookPath, kImportRowsPerChunk,
+                    [&](SpreadsheetTable table, const bool firstInSheet, const bool) {
+                        if (fatalMapping || invalidTrailingWorksheet || invalidFullBatch ||
+                            duplicateConflict) {
+                            return;
                         }
+                        if (firstInSheet) {
+                            ignoredWorksheet = false;
+                            headerRow.clear();
+                        } else if (ignoredWorksheet) {
+                            batch.skippedRows += table.rows.size();
+                            return;
+                        } else {
+                            table.rows.insert(table.rows.begin(), headerRow);
+                        }
+                        table.originalFilename = file.originalFilename;
+                        table.sourceModifiedTimestamp = file.sourceModifiedTimestamp;
+                        auto worksheetBatch = mapper_.map(table, stopToken);
+                        if (worksheetBatch.mappingStatus ==
+                            SpreadsheetMappingStatus::HeaderNotRecognized) {
+                            if (mappedWorksheet) {
+                                invalidTrailingWorksheet = true;
+                            } else {
+                                ignoredWorksheet = true;
+                                batch.skippedRows += worksheetBatch.skippedRows;
+                            }
+                            return;
+                        }
+                        if (worksheetBatch.mappingStatus != SpreadsheetMappingStatus::Mapped) {
+                            batch.mappingStatus = worksheetBatch.mappingStatus;
+                            fatalMapping = true;
+                            return;
+                        }
+                        if (firstInSheet) {
+                            headerRow = worksheetBatch.headerRow;
+                            batch.mappedColumns += worksheetBatch.mappedColumns;
+                        }
+                        mappedWorksheet = true;
                         batch.skippedRows += worksheetBatch.skippedRows;
-                        continue;
-                    }
-                    if (worksheetBatch.mappingStatus != SpreadsheetMappingStatus::Mapped) {
-                        batch.mappingStatus = worksheetBatch.mappingStatus;
-                        break;
-                    }
-                    mappedWorksheet = true;
-                    batch.mappedColumns += worksheetBatch.mappedColumns;
-                    batch.skippedRows += worksheetBatch.skippedRows;
-                    batch.invalidRows += worksheetBatch.invalidRows;
-                    batch.invalidNumberRows += worksheetBatch.invalidNumberRows;
-                    batch.invalidDescriptionRows += worksheetBatch.invalidDescriptionRows;
-                    batch.invalidDateRows += worksheetBatch.invalidDateRows;
-                    batch.rows.insert(batch.rows.end(),
-                                      std::make_move_iterator(worksheetBatch.rows.begin()),
-                                      std::make_move_iterator(worksheetBatch.rows.end()));
-                }
+                        batch.invalidRows += worksheetBatch.invalidRows;
+                        batch.invalidNumberRows += worksheetBatch.invalidNumberRows;
+                        batch.invalidDescriptionRows += worksheetBatch.invalidDescriptionRows;
+                        batch.invalidDateRows += worksheetBatch.invalidDateRows;
+                        validRows += worksheetBatch.rows.size();
+                        if (replaceAll && worksheetBatch.invalidRows > 0) {
+                            invalidFullBatch = true;
+                            return;
+                        }
+                        if (worksheetBatch.rows.empty()) {
+                            return;
+                        }
+                        const std::vector<SsaImportBatch> chunk{std::move(worksheetBatch)};
+                        const auto resolved =
+                            conflictResolver_.resolveBySsaNumberKeepingUnkeyedRows(chunk);
+                        fileResult.conflicts += resolved.conflictRows;
+                        importSummary.conflicts += resolved.conflictRows;
+                        totalSummary.conflictRows += resolved.conflictRows;
+                        if (resolved.conflictRows > 0) {
+                            duplicateConflict = true;
+                            return;
+                        }
+                        const auto batchWrite =
+                            writeSession->write(resolved, fileCountedByWriter ? 0 : 1, 0);
+                        fileCountedByWriter = true;
+                        fileResult.inserts += batchWrite.rowsInserted;
+                        fileResult.updates += batchWrite.rowsUpdated;
+                        fileResult.unchangedRows += batchWrite.rowsUnchanged;
+                        fileResult.conflicts += batchWrite.conflictRows;
+                        importSummary.inserts += batchWrite.rowsInserted;
+                        importSummary.updates += batchWrite.rowsUpdated;
+                        importSummary.unchangedRows += batchWrite.rowsUnchanged;
+                        importSummary.conflicts += batchWrite.conflictRows;
+                        totalSummary.conflictRows += batchWrite.conflictRows;
+                        duplicateConflict = batchWrite.conflictRows > 0;
+                    },
+                    stopToken);
                 if (invalidTrailingWorksheet) {
                     batch.mappingStatus = SpreadsheetMappingStatus::HeaderNotRecognized;
-                } else if (batch.mappingStatus !=
-                               SpreadsheetMappingStatus::RequiredColumnsMissing &&
-                           batch.mappingStatus != SpreadsheetMappingStatus::AmbiguousHeaders) {
+                } else if (!fatalMapping) {
                     batch.mappingStatus = mappedWorksheet
                                               ? SpreadsheetMappingStatus::Mapped
                                               : SpreadsheetMappingStatus::HeaderNotRecognized;
@@ -495,6 +663,25 @@ namespace ssa::infra::importing {
             if (stopToken.stop_requested()) {
                 return discardBeforeCommit(rollbackSession(*writeSession, canceled(operation)));
             }
+            fileResult.validRows = validRows;
+            fileResult.invalidRows = batch.invalidRows;
+            importSummary.validRows += validRows;
+            importSummary.invalidRows += batch.invalidRows;
+            importSummary.invalidNumberRows += batch.invalidNumberRows;
+            importSummary.invalidDescriptionRows += batch.invalidDescriptionRows;
+            importSummary.invalidDateRows += batch.invalidDateRows;
+            importSummary.skippedRows += batch.skippedRows;
+            totalSummary.skippedRows += batch.skippedRows;
+            totalSummary.invalidRows += batch.invalidRows;
+            totalSummary.invalidNumberRows += batch.invalidNumberRows;
+            totalSummary.invalidDescriptionRows += batch.invalidDescriptionRows;
+            totalSummary.invalidDateRows += batch.invalidDateRows;
+            if (duplicateConflict) {
+                return discardBeforeCommit(rollbackSession(
+                    *writeSession,
+                    {ports::WorkflowStatus::Rejected,
+                     workflowMessage(operation, files, totalSummary, {0, "duplicate_conflict"})}));
+            }
             if (batch.mappingStatus == SpreadsheetMappingStatus::HeaderNotRecognized) {
                 return discardBeforeCommit(rollbackSession(
                     *writeSession, {ports::WorkflowStatus::Rejected,
@@ -510,24 +697,15 @@ namespace ssa::infra::importing {
                     *writeSession, {ports::WorkflowStatus::Rejected,
                                     std::string{operation} + " ambiguous_headers"}));
             }
-            fileResult.validRows = batch.rows.size();
-            fileResult.invalidRows = batch.invalidRows;
-            importSummary.validRows += batch.rows.size();
-            importSummary.invalidRows += batch.invalidRows;
-            totalSummary.invalidRows += batch.invalidRows;
-            totalSummary.invalidNumberRows += batch.invalidNumberRows;
-            totalSummary.invalidDescriptionRows += batch.invalidDescriptionRows;
-            totalSummary.invalidDateRows += batch.invalidDateRows;
-            if (replaceAll && batch.invalidRows > 0) {
+            if (invalidFullBatch) {
                 return discardBeforeCommit(rollbackSession(
                     *writeSession,
                     {ports::WorkflowStatus::Rejected,
                      workflowMessage(operation, files, totalSummary, {0, "invalid_rows"})}));
             }
-            pendingOutcomes.push_back({&file, !batch.rows.empty(), file.summaryIndex});
-            if (batch.rows.empty()) {
+            pendingOutcomes.push_back({&file, validRows > 0, file.summaryIndex});
+            if (validRows == 0) {
                 fileResult.status = ports::ImportFileStatus::NoValidRows;
-                totalSummary.skippedRows += batch.skippedRows;
                 if (replaceAll) {
                     return discardBeforeCommit(rollbackSession(
                         *writeSession, {ports::WorkflowStatus::Rejected,
@@ -536,57 +714,9 @@ namespace ssa::infra::importing {
                 continue;
             }
             hasAnyValidRows = true;
-            const std::vector<SsaImportBatch> singleBatch{std::move(batch)};
-            const auto resolved =
-                conflictResolver_.resolveBySsaNumberKeepingUnkeyedRows(singleBatch);
-            if (resolved.conflictRows > 0) {
-                fileResult.conflicts = resolved.conflictRows;
-                importSummary.conflicts += resolved.conflictRows;
-                totalSummary.conflictRows += resolved.conflictRows;
-                return discardBeforeCommit(rollbackSession(
-                    *writeSession,
-                    {ports::WorkflowStatus::Rejected,
-                     workflowMessage(operation, files, totalSummary, {0, "duplicate_conflict"})}));
-            }
-            try {
-                const auto batchWrite =
-                    writeSession->write(resolved, 1, singleBatch.front().skippedRows);
-                fileResult.inserts = batchWrite.rowsInserted;
-                fileResult.updates = batchWrite.rowsUpdated;
-                fileResult.unchangedRows = batchWrite.rowsUnchanged;
-                fileResult.conflicts = batchWrite.conflictRows;
-                importSummary.inserts += batchWrite.rowsInserted;
-                importSummary.updates += batchWrite.rowsUpdated;
-                importSummary.unchangedRows += batchWrite.rowsUnchanged;
-                importSummary.conflicts += batchWrite.conflictRows;
-                fileResult.status = batchWrite.rowsWritten > 0 ? ports::ImportFileStatus::Applied
-                                                               : ports::ImportFileStatus::NoChanges;
-                if (batchWrite.conflictRows > 0) {
-                    totalSummary.conflictRows += batchWrite.conflictRows;
-                    return discardBeforeCommit(rollbackSession(
-                        *writeSession, {ports::WorkflowStatus::Rejected,
-                                        workflowMessage(operation, files, totalSummary,
-                                                        {0, "duplicate_conflict"})}));
-                }
-            } catch (const std::system_error& error) {
-                if (error.code() == std::make_error_code(std::errc::operation_canceled)) {
-                    return discardBeforeCommit(rollbackSession(*writeSession, canceled(operation)));
-                }
-                ++failedFiles;
-                return discardBeforeCommit(
-                    rollbackSession(*writeSession, failed(operation, files, totalSummary,
-                                                          failedFiles, error.what())));
-            } catch (const ports::OperationError& error) {
-                ++failedFiles;
-                return discardBeforeCommit(
-                    rollbackSession(*writeSession, failed(operation, files, totalSummary,
-                                                          failedFiles, error.diagnostic())));
-            } catch (const std::exception& exc) {
-                ++failedFiles;
-                return discardBeforeCommit(
-                    rollbackSession(*writeSession, failed(operation, files, totalSummary,
-                                                          failedFiles, exc.what())));
-            }
+            fileResult.status = fileResult.inserts + fileResult.updates > 0
+                                    ? ports::ImportFileStatus::Applied
+                                    : ports::ImportFileStatus::NoChanges;
         }
         if (replaceAll && !hasAnyValidRows) {
             return discardBeforeCommit(
@@ -622,6 +752,11 @@ namespace ssa::infra::importing {
             importSummary.inserts = writeSummary.rowsInserted;
             importSummary.updates = writeSummary.rowsUpdated;
             importSummary.unchangedRows = writeSummary.rowsUnchanged;
+            importSummary.skippedRows = totalSummary.skippedRows;
+            importSummary.duplicateRows = totalSummary.duplicateRows;
+            importSummary.invalidNumberRows = totalSummary.invalidNumberRows;
+            importSummary.invalidDescriptionRows = totalSummary.invalidDescriptionRows;
+            importSummary.invalidDateRows = totalSummary.invalidDateRows;
         } catch (const std::system_error& error) {
             if (error.code() == std::make_error_code(std::errc::operation_canceled)) {
                 return discardBeforeCommit(rollbackSession(*writeSession, canceled(operation)));

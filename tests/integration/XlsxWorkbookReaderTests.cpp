@@ -18,7 +18,8 @@ namespace {
     }
 
     void writeWorkbook(const std::filesystem::path& path, const std::string& workbookProperties,
-                       const std::string& styles, const std::string& cells) {
+                       const std::string& styles, const std::string& cells,
+                       const bool completeRows = false) {
         mz_zip_archive zip{};
         REQUIRE(mz_zip_writer_init_file(&zip, path.string().c_str(), 0) != 0);
         addEntry(zip, "[Content_Types].xml", R"xml(<?xml version="1.0" encoding="UTF-8"?>
@@ -39,11 +40,12 @@ xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">)x
 <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
 </Relationships>)xml");
         addEntry(zip, "xl/styles.xml", styles);
+        const auto sheetRows = completeRows ? cells : "<row r=\"1\">" + cells + "</row>";
         addEntry(zip, "xl/worksheets/sheet1.xml",
                  R"xml(<?xml version="1.0" encoding="UTF-8"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-<sheetData><row r="1">)xml" +
-                     cells + R"xml(</row></sheetData></worksheet>)xml");
+<sheetData>)xml" + sheetRows +
+                     R"xml(</sheetData></worksheet>)xml");
         REQUIRE(mz_zip_writer_finalize_archive(&zip) != 0);
         REQUIRE(mz_zip_writer_end(&zip) != 0);
     }
@@ -177,6 +179,55 @@ TEST_CASE("xlsx reader returns every worksheet in workbook order") {
     REQUIRE(sheets.size() == 2);
     REQUIRE(sheets.at(0).rows.at(0).at(0) == "Cover");
     REQUIRE(sheets.at(1).rows.at(0).at(0) == "Data");
+}
+
+TEST_CASE("xlsx reader streams worksheet rows in bounded ordered chunks") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+    const auto path = std::filesystem::path{tempDir.path().toStdString()} / "chunks.xlsx";
+    std::string rows;
+    for (std::size_t index = 0; index < 2'005; ++index) {
+        rows += "<row r=\"" + std::to_string(index + 1) + "\"><c r=\"A" +
+                std::to_string(index + 1) + "\"><v>" + std::to_string(index) + "</v></c></row>";
+    }
+    writeWorkbook(path, {}, builtInDateStyles, rows, true);
+    std::vector<std::size_t> chunkSizes;
+    std::vector<std::string> values;
+
+    ssa::infra::importing::XlsxWorkbookReader::readSheetChunks(
+        path, 1'000,
+        [&](ssa::infra::importing::SpreadsheetTable chunk, const bool firstInSheet,
+            const bool lastInSheet) {
+            REQUIRE(firstInSheet == chunkSizes.empty());
+            REQUIRE(lastInSheet == (chunkSizes.size() == 2));
+            chunkSizes.push_back(chunk.rows.size());
+            for (const auto& row : chunk.rows) {
+                values.push_back(row.at(0));
+            }
+        });
+
+    REQUIRE(chunkSizes == std::vector<std::size_t>{1'000, 1'000, 5});
+    REQUIRE(values.size() == 2'005);
+    REQUIRE(values.front() == "0");
+    REQUIRE(values.back() == "2004");
+}
+
+TEST_CASE("xlsx reader streams a worksheet XML entry larger than the buffered entry limit") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+    const auto path = std::filesystem::path{tempDir.path().toStdString()} / "large-entry.xlsx";
+    constexpr std::size_t bufferedEntryLimit = 32ULL * 1024ULL * 1024ULL;
+    const std::string rows = "<!--" + std::string(bufferedEntryLimit + 1, 'x') +
+                             "--><row r=\"1\"><c r=\"A1\"><v>7</v></c></row>";
+    writeWorkbook(path, {}, builtInDateStyles, rows, true);
+    std::size_t rowCount = 0;
+
+    ssa::infra::importing::XlsxWorkbookReader::readSheetChunks(
+        path, 1'000, [&](ssa::infra::importing::SpreadsheetTable chunk, const bool, const bool) {
+            rowCount += chunk.rows.size();
+        });
+
+    REQUIRE(rowCount == 1);
 }
 
 TEST_CASE("xlsx reader rejects a formula without cache in any worksheet") {

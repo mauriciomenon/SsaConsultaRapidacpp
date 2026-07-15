@@ -22,7 +22,7 @@ namespace ssa::infra::importing {
 
     namespace {
 
-        constexpr std::size_t kMaxWorksheetRows = 250'000;
+        constexpr std::size_t kMaxWorksheetRows = 250'015;
         constexpr std::size_t kMaxWorksheetCells = 5'000'000;
         constexpr std::size_t kMaxWorksheets = 256;
         constexpr int kSpreadsheetColumnBase = 26;
@@ -323,40 +323,6 @@ namespace ssa::infra::importing {
             bool hasCachedValue = false;
         };
 
-        CellRawValue readCellRawValue(QXmlStreamReader& reader, XmlReadBudget& budget,
-                                      XmlTextBudget& textBudget) {
-            CellRawValue value;
-            while (!reader.atEnd() && !reader.hasError()) {
-                reader.readNext();
-                if (reader.atEnd()) {
-                    break;
-                }
-                recordXmlToken(reader, budget);
-                if (reader.isStartElement() && reader.name() == "f") {
-                    value.hasFormula = true;
-                } else if (reader.isStartElement() &&
-                           (reader.name() == "v" || reader.name() == "t")) {
-                    value.hasCachedValue = true;
-                    while (!reader.atEnd() && !reader.hasError()) {
-                        reader.readNext();
-                        if (reader.atEnd()) {
-                            break;
-                        }
-                        recordXmlToken(reader, budget);
-                        if (reader.isCharacters()) {
-                            appendCharacters(value.text, reader.text(), textBudget);
-                        } else if (reader.isEndElement() &&
-                                   (reader.name() == "v" || reader.name() == "t")) {
-                            break;
-                        }
-                    }
-                } else if (reader.isEndElement() && reader.name() == "c") {
-                    break;
-                }
-            }
-            return value;
-        }
-
         std::string normalizeWorksheetTarget(const std::string& target) {
             QString path = QString::fromStdString(target);
             if (path.startsWith('/')) {
@@ -384,43 +350,67 @@ namespace ssa::infra::importing {
 
         class SheetRowsParser final {
           public:
-            SheetRowsParser(const std::string& xml, const std::vector<std::string>& sharedStrings,
+            SheetRowsParser(const std::vector<std::string>& sharedStrings,
                             const std::vector<bool>& dateStyles, const bool date1904,
-                            std::stop_token stopToken)
-                : reader_(xmlBytes(xml)), sharedStrings_(sharedStrings), dateStyles_(dateStyles),
-                  date1904_(date1904), readBudget_(std::move(stopToken)) {}
+                            const std::size_t rowsPerChunk,
+                            const XlsxWorkbookReader::SheetChunkConsumer& consume,
+                            SpreadsheetTable metadata, std::stop_token stopToken)
+                : sharedStrings_(sharedStrings), dateStyles_(dateStyles), date1904_(date1904),
+                  rowsPerChunk_(rowsPerChunk), consume_(consume), metadata_(std::move(metadata)),
+                  readBudget_(std::move(stopToken)) {
+                if (rowsPerChunk_ == 0 || rowsPerChunk_ > kMaxWorksheetRows) {
+                    throw std::invalid_argument("xlsx chunk row count is out of range");
+                }
+                pendingRows_.reserve(rowsPerChunk_);
+            }
 
-            [[nodiscard]] std::vector<std::vector<std::string>> parse() {
+            void addData(const std::string_view data) {
+                reader_.addData(QByteArray{data.data(), static_cast<qsizetype>(data.size())});
+                parseAvailable();
+            }
+
+            void finish() {
+                parseAvailable();
+                if (!documentComplete_ || reader_.hasError()) {
+                    throw std::runtime_error("cannot parse xlsx worksheet");
+                }
+                flush(true);
+            }
+
+          private:
+            void parseAvailable() {
                 while (!reader_.atEnd()) {
-                    reader_.readNext();
+                    const auto token = reader_.readNext();
+                    if (token == QXmlStreamReader::Invalid &&
+                        reader_.error() == QXmlStreamReader::PrematureEndOfDocumentError) {
+                        return;
+                    }
                     recordXmlToken(reader_, readBudget_);
                     if (reader_.isStartElement() && reader_.name() == "dimension") {
                         handleDimension();
                     } else if (reader_.isStartElement() && reader_.name() == "row") {
                         startRow();
                     } else if (inRow_ && reader_.isStartElement() && reader_.name() == "c") {
-                        readCell();
+                        startCell();
+                    } else if (inCell_) {
+                        handleCellToken();
                     } else if (reader_.isEndElement() && reader_.name() == "row") {
                         finishRow();
+                    } else if (reader_.isEndDocument()) {
+                        documentComplete_ = true;
                     }
                 }
-                if (reader_.hasError()) {
+                if (reader_.hasError() &&
+                    reader_.error() != QXmlStreamReader::PrematureEndOfDocumentError) {
                     throw std::runtime_error("cannot parse xlsx worksheet");
                 }
-                return rows_;
             }
 
-          private:
             void handleDimension() {
                 expectedColumns_ =
                     absoluteColumnSlotsFromDimensionRef(reader_.attributes().value("ref"));
                 if (expectedColumns_ > 0) {
                     currentRow_.reserve(expectedColumns_);
-                }
-                const auto expectedRows =
-                    absoluteRowSlotsFromDimensionRef(reader_.attributes().value("ref"));
-                if (expectedRows > 0) {
-                    rows_.reserve((std::min)(expectedRows, kMaxWorksheetRows));
                 }
             }
 
@@ -434,60 +424,117 @@ namespace ssa::infra::importing {
                 inRow_ = true;
             }
 
-            void readCell() {
+            void startCell() {
                 const auto attributes = reader_.attributes();
-                const auto ref = attributes.value("r");
-                const auto type = attributes.value("t");
-                bool styleParsed = false;
-                const auto styleIndex = attributes.value("s").toUInt(&styleParsed);
-                const auto columnIndex = columnIndexFromCellRef(ref);
-                const auto rawValue = readCellRawValue(reader_, readBudget_, textBudget_);
-                if (rawValue.hasFormula && !rawValue.hasCachedValue) {
+                cellRef_ = attributes.value("r").toString();
+                cellType_ = attributes.value("t").toString();
+                cellStyleIndex_ = attributes.value("s").toUInt(&cellStyleParsed_);
+                cellValue_ = {};
+                inCell_ = true;
+                inCellValue_ = false;
+            }
+
+            void handleCellToken() {
+                if (reader_.isStartElement() && reader_.name() == "f") {
+                    cellValue_.hasFormula = true;
+                } else if (reader_.isStartElement() &&
+                           (reader_.name() == "v" || reader_.name() == "t")) {
+                    cellValue_.hasCachedValue = true;
+                    inCellValue_ = true;
+                } else if (inCellValue_ && reader_.isCharacters()) {
+                    appendCharacters(cellValue_.text, reader_.text(), textBudget_);
+                } else if (reader_.isEndElement() &&
+                           (reader_.name() == "v" || reader_.name() == "t")) {
+                    inCellValue_ = false;
+                } else if (reader_.isEndElement() && reader_.name() == "c") {
+                    finishCell();
+                }
+            }
+
+            void finishCell() {
+                if (cellValue_.hasFormula && !cellValue_.hasCachedValue) {
                     throw std::runtime_error("xlsx formula cell has no cached value");
                 }
-                if (!columnIndex && !ref.isEmpty()) {
+                const auto columnIndex = columnIndexFromCellRef(cellRef_);
+                if (!columnIndex && !cellRef_.isEmpty()) {
+                    inCell_ = false;
                     return;
                 }
                 const auto resolvedColumn =
                     columnIndex ? static_cast<std::size_t>(*columnIndex) : nextColumnIndex_;
                 currentRow_.resize(std::max<std::size_t>(currentRow_.size(), resolvedColumn + 1));
-                const bool dateStyle =
-                    styleParsed && styleIndex < dateStyles_.size() && dateStyles_[styleIndex];
-                currentRow_[resolvedColumn] =
-                    decodeCellValue(rawValue.text, type, sharedStrings_, dateStyle, date1904_);
+                const bool dateStyle = cellStyleParsed_ && cellStyleIndex_ < dateStyles_.size() &&
+                                       dateStyles_[cellStyleIndex_];
+                currentRow_[resolvedColumn] = decodeCellValue(cellValue_.text, cellType_,
+                                                              sharedStrings_, dateStyle, date1904_);
                 nextColumnIndex_ = resolvedColumn + 1;
                 ++totalCells_;
                 if (totalCells_ > kMaxWorksheetCells) {
                     throw std::runtime_error("xlsx worksheet has too many cells");
                 }
+                inCell_ = false;
             }
 
             void finishRow() {
-                if (currentRowIndex_) {
-                    rows_.resize((std::max)(rows_.size(), *currentRowIndex_ + 1));
-                    rows_[*currentRowIndex_] = std::move(currentRow_);
-                } else {
-                    rows_.push_back(std::move(currentRow_));
+                const auto rowIndex = currentRowIndex_.value_or(nextRowIndex_);
+                if (rowIndex < nextRowIndex_) {
+                    throw std::runtime_error("xlsx rows are not ordered");
                 }
+                while (nextRowIndex_ < rowIndex) {
+                    appendRow({});
+                }
+                appendRow(std::move(currentRow_));
                 currentRow_ = {};
-                if (rows_.size() > kMaxWorksheetRows) {
-                    throw std::runtime_error("xlsx worksheet has too many rows");
-                }
                 inRow_ = false;
                 currentRowIndex_.reset();
+            }
+
+            void appendRow(std::vector<std::string> row) {
+                if (pendingRows_.size() == rowsPerChunk_) {
+                    flush(false);
+                }
+                pendingRows_.push_back(std::move(row));
+                ++nextRowIndex_;
+                if (nextRowIndex_ > kMaxWorksheetRows) {
+                    throw std::runtime_error("xlsx worksheet has too many rows");
+                }
+            }
+
+            void flush(const bool lastInSheet) {
+                if (pendingRows_.empty() && emittedChunk_) {
+                    return;
+                }
+                auto chunk = metadata_;
+                chunk.rows.swap(pendingRows_);
+                pendingRows_.reserve(rowsPerChunk_);
+                consume_(std::move(chunk), !emittedChunk_, lastInSheet);
+                emittedChunk_ = true;
             }
 
             QXmlStreamReader reader_;
             const std::vector<std::string>& sharedStrings_;
             const std::vector<bool>& dateStyles_;
             bool date1904_ = false;
-            std::vector<std::vector<std::string>> rows_;
+            std::size_t rowsPerChunk_;
+            const XlsxWorkbookReader::SheetChunkConsumer& consume_;
+            SpreadsheetTable metadata_;
+            std::vector<std::vector<std::string>> pendingRows_;
             std::vector<std::string> currentRow_;
+            QString cellRef_;
+            QString cellType_;
+            CellRawValue cellValue_;
             bool inRow_ = false;
+            bool inCell_ = false;
+            bool inCellValue_ = false;
+            bool cellStyleParsed_ = false;
             std::optional<std::size_t> currentRowIndex_ = std::nullopt;
             std::size_t nextColumnIndex_ = 0;
             std::size_t expectedColumns_ = 0;
             std::size_t totalCells_ = 0;
+            std::size_t nextRowIndex_ = 0;
+            unsigned int cellStyleIndex_ = 0;
+            bool emittedChunk_ = false;
+            bool documentComplete_ = false;
             XmlReadBudget readBudget_;
             XmlTextBudget textBudget_;
         };
@@ -513,7 +560,10 @@ namespace ssa::infra::importing {
         const auto sheetXml = package.textEntry(worksheetEntry, true, stopToken);
         SpreadsheetTable table;
         table.sourcePath = filePath;
-        table.rows = parseSheetRows(sheetXml, sharedStrings, dateStyles, date1904, stopToken);
+        parseSheetRowChunks(
+            sheetXml, sharedStrings, dateStyles, date1904, kMaxWorksheetRows,
+            [&](SpreadsheetTable chunk, const bool, const bool) { table = std::move(chunk); },
+            table, stopToken);
         return table;
     }
 
@@ -540,10 +590,42 @@ namespace ssa::infra::importing {
             const auto sheetXml = package.textEntry(worksheetEntry, true, stopToken);
             SpreadsheetTable table;
             table.sourcePath = filePath;
-            table.rows = parseSheetRows(sheetXml, sharedStrings, dateStyles, date1904, stopToken);
+            parseSheetRowChunks(
+                sheetXml, sharedStrings, dateStyles, date1904, kMaxWorksheetRows,
+                [&](SpreadsheetTable chunk, const bool, const bool) { table = std::move(chunk); },
+                table, stopToken);
             tables.push_back(std::move(table));
         }
         return tables;
+    }
+
+    void XlsxWorkbookReader::readSheetChunks(const std::filesystem::path& filePath,
+                                             const std::size_t rowsPerChunk,
+                                             const SheetChunkConsumer& consume,
+                                             const std::stop_token& stopToken) {
+        throwIfImportCanceled(stopToken);
+        XlsxPackage package(filePath);
+        const auto workbook = package.textEntry("xl/workbook.xml", true, stopToken);
+        const auto relationshipIds = relationshipIdsForWorkbookSheets(workbook, stopToken);
+        const auto relationships = package.textEntry("xl/_rels/workbook.xml.rels", true, stopToken);
+        const auto sharedStrings = parseSharedStrings(
+            package.textEntry("xl/sharedStrings.xml", false, stopToken), stopToken);
+        const auto dateStyles =
+            parseDateStyles(package.textEntry("xl/styles.xml", false, stopToken), stopToken);
+        const bool date1904 = usesDate1904(workbook, stopToken);
+        for (const auto& relationshipId : relationshipIds) {
+            throwIfImportCanceled(stopToken);
+            const auto worksheetEntry =
+                worksheetEntryForRelationship({relationships, relationshipId}, stopToken);
+            SpreadsheetTable metadata;
+            metadata.sourcePath = filePath;
+            SheetRowsParser parser{sharedStrings, dateStyles, date1904, rowsPerChunk,
+                                   consume,       metadata,   stopToken};
+            package.streamTextEntry(
+                worksheetEntry, true, [&](const std::string_view chunk) { parser.addData(chunk); },
+                stopToken);
+            parser.finish();
+        }
     }
 
     std::vector<std::string>
@@ -657,12 +739,15 @@ namespace ssa::infra::importing {
         throw std::runtime_error("xlsx worksheet relationship not found");
     }
 
-    std::vector<std::vector<std::string>>
-    XlsxWorkbookReader::parseSheetRows(const std::string& xml,
-                                       const std::vector<std::string>& sharedStrings,
-                                       const std::vector<bool>& dateStyles, const bool date1904,
-                                       const std::stop_token& stopToken) {
-        return SheetRowsParser{xml, sharedStrings, dateStyles, date1904, stopToken}.parse();
+    void XlsxWorkbookReader::parseSheetRowChunks(
+        const std::string& xml, const std::vector<std::string>& sharedStrings,
+        const std::vector<bool>& dateStyles, const bool date1904, const std::size_t rowsPerChunk,
+        const SheetChunkConsumer& consume, const SpreadsheetTable& metadata,
+        const std::stop_token& stopToken) {
+        SheetRowsParser parser{sharedStrings, dateStyles, date1904, rowsPerChunk,
+                               consume,       metadata,   stopToken};
+        parser.addData(xml);
+        parser.finish();
     }
 
 } // namespace ssa::infra::importing

@@ -459,6 +459,7 @@ namespace ssa::infra::sqlite {
             summary.duplicateRows += rows.duplicateRows;
             summary.conflictRows += rows.conflictRows;
             importing::SsaImportBatchWriteSummary result;
+            result.duplicateRows = rows.duplicateRows;
             result.conflictRows = rows.conflictRows;
             const auto ssaNumberKey = std::string{domain::kSsaNumberColumnKey};
 
@@ -470,6 +471,10 @@ namespace ssa::infra::sqlite {
                 if (number.empty()) {
                     throw ports::OperationError("Falha ao validar identificador SSA importado",
                                                 "invalid SSA number in import batch");
+                }
+                if (!seenImportedNumbers.insert(number).second) {
+                    ++summary.duplicateRows;
+                    ++result.duplicateRows;
                 }
                 normalizedRow[ssaNumberKey] = number;
                 for (const auto& column : columns) {
@@ -594,6 +599,7 @@ namespace ssa::infra::sqlite {
         std::unique_ptr<SqliteStatement> insert;
         std::unique_ptr<SqliteStatement> selectExisting;
         std::unique_ptr<SqliteStatement> update;
+        std::unordered_set<std::string> seenImportedNumbers;
         importing::SsaImportWriteSummary summary;
         State state = State::Active;
     };

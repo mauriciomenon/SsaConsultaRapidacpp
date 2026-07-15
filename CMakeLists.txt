@@ -526,6 +526,12 @@ if(SSA_BUILD_TESTS)
     set_tests_properties(ssa_qml_popup_rss PROPERTIES TIMEOUT 60 RUN_SERIAL
                                                       TRUE)
 
+    add_executable(ssa_import_memory_probe tools/ssa_import_memory_probe.cpp)
+    target_link_libraries(ssa_import_memory_probe PRIVATE ssa_infra Qt6::Core)
+    add_test(NAME ssa_import_rss_250k COMMAND ssa_import_memory_probe)
+    set_tests_properties(ssa_import_rss_250k PROPERTIES TIMEOUT 240 RUN_SERIAL
+                                                        TRUE)
+
     add_executable(ssa_mem_stress tools/mem_stress.cpp)
     target_link_libraries(ssa_mem_stress PRIVATE ssa_presentation ssa_infra
                                                  Qt6::Core)

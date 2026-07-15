@@ -1063,6 +1063,72 @@ TEST_CASE("xlsx extraction cancellation is prompt and a second read succeeds") {
     REQUIRE(secondRead.rows.at(1).at(0) == "202600300");
 }
 
+TEST_CASE("spreadsheet workflow imports a worksheet larger than the buffered entry limit") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    constexpr std::size_t bufferedEntryLimit = 32ULL * 1024ULL * 1024ULL;
+    const auto workbook = inputDirectory / "large-entry.xlsx";
+    const auto rowsXml = "<!--" + std::string(bufferedEntryLimit + 1, 'x') + "-->" +
+                         row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Descricao"),
+                                 inlineCell("C1", "Data Cadastro")}) +
+                         row(2, {inlineCell("A2", "202600301"), inlineCell("B2", "Streamed"),
+                                 inlineCell("C2", "2026-07-14")});
+    writeWorkbook(workbook, rowsXml);
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+
+    const auto result = port.rescan({ssa::ports::RescanMode::Incremental});
+
+    INFO(result.message);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600301'") == 1);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("spreadsheet workflow counts equal duplicates across chunk boundaries") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    std::string rowsXml = row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Descricao"),
+                                  inlineCell("C1", "Data Cadastro")});
+    for (std::size_t index = 0; index < 1'001; ++index) {
+        const auto rowNumber = index + 2;
+        const auto suffix = std::to_string(rowNumber);
+        const auto numberRef = "A" + suffix;
+        const auto descriptionRef = "B" + suffix;
+        const auto dateRef = "C" + suffix;
+        rowsXml += row(rowNumber, {inlineCell(numberRef.c_str(), "202600302"),
+                                   inlineCell(descriptionRef.c_str(), "Duplicate"),
+                                   inlineCell(dateRef.c_str(), "2026-07-14")});
+    }
+    writeWorkbook(inputDirectory / "duplicates.xlsx", rowsXml);
+    writeWorkbook(inputDirectory / "z-empty.xlsx",
+                  row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Descricao"),
+                          inlineCell("C1", "Data Cadastro")}));
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+
+    const auto result = port.rescan({ssa::ports::RescanMode::Incremental});
+
+    INFO(result.message);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE(result.warning);
+    REQUIRE(result.message.find("duplicates=1000") != std::string::npos);
+}
+
 TEST_CASE("sqlite import writer rejects a stopped token before creating the database") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
@@ -3321,6 +3387,117 @@ TEST_CASE("rejected workbook summary preserves source and reports no applied row
     REQUIRE(summary.files.front().status == ssa::ports::ImportFileStatus::Rejected);
     REQUIRE_FALSE(summary.files.front().consolidated);
     REQUIRE(std::filesystem::exists(workbook));
+}
+
+TEST_CASE("incremental rescan commits each valid file before a later rejection") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    const auto validWorkbook = inputDirectory / "a-valid.xlsx";
+    writeWorkbook(
+        validWorkbook,
+        row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao")}) +
+            row(2, {inlineCell("A2", "202600602"), inlineCell("B2", "ASE"),
+                    inlineCell("C2", "Committed first"), inlineCell("D2", "2026-07-01")}));
+    const auto invalidWorkbook = inputDirectory / "b-invalid.xlsx";
+    writeWorkbook(invalidWorkbook,
+                  row(1, {inlineCell("A1", "Unknown A"), inlineCell("B1", "Unknown B")}));
+
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+    const auto result = port.rescan({ssa::ports::RescanMode::Incremental});
+
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE(result.warning);
+    REQUIRE(result.importSummary.has_value());
+    const auto& summary = *result.importSummary;
+    REQUIRE(summary.discovered == 2);
+    REQUIRE(summary.accepted == 1);
+    REQUIRE(summary.rejected == 1);
+    REQUIRE(summary.preserved == 1);
+    REQUIRE(summary.inserts == 1);
+    REQUIRE(summary.files.size() == 2);
+    REQUIRE(summary.files[0].status == ssa::ports::ImportFileStatus::Applied);
+    REQUIRE(summary.files[0].consolidated);
+    REQUIRE(summary.files[1].status == ssa::ports::ImportFileStatus::Rejected);
+    REQUIRE_FALSE(summary.files[1].consolidated);
+    REQUIRE_FALSE(std::filesystem::exists(validWorkbook));
+    REQUIRE(std::filesystem::exists(inputDirectory / "processadas" / validWorkbook.filename()));
+    REQUIRE(std::filesystem::exists(invalidWorkbook));
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarText(db, "PRAGMA integrity_check") == "ok");
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600602'") == 1);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("incremental cancellation after a committed file preserves the truthful success") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto processedDirectory = inputDirectory / "processadas";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    const auto firstWorkbook = inputDirectory / "a-first.xlsx";
+    writeWorkbook(
+        firstWorkbook,
+        row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao")}) +
+            row(2, {inlineCell("A2", "202600603"), inlineCell("B2", "ASE"),
+                    inlineCell("C2", "Committed before cancel"), inlineCell("D2", "2026-07-01")}));
+    const auto secondWorkbook = inputDirectory / "b-second.xlsx";
+    const auto slowRows =
+        "<!--" + std::string(8ULL * 1024ULL * 1024ULL, 'x') + "-->" +
+        row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao")}) +
+        row(2, {inlineCell("A2", "202600604"), inlineCell("B2", "ASE"),
+                inlineCell("C2", "Canceled second"), inlineCell("D2", "2026-07-01")});
+    writeWorkbook(secondWorkbook, slowRows);
+
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+    std::stop_source stopSource;
+    auto operation = std::async(std::launch::async, [&] {
+        return port.rescan({ssa::ports::RescanMode::Incremental}, stopSource.get_token());
+    });
+    QElapsedTimer timer;
+    timer.start();
+    while (!std::filesystem::exists(processedDirectory / firstWorkbook.filename()) &&
+           timer.elapsed() < 5'000) {
+        QThread::msleep(1);
+    }
+    const bool firstCommitted =
+        std::filesystem::exists(processedDirectory / firstWorkbook.filename());
+    stopSource.request_stop();
+    const auto result = operation.get();
+
+    REQUIRE(firstCommitted);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE(result.warning);
+    REQUIRE(result.importSummary.has_value());
+    const auto& summary = *result.importSummary;
+    REQUIRE(summary.accepted == 1);
+    REQUIRE(summary.preserved == 1);
+    REQUIRE(summary.files[0].status == ssa::ports::ImportFileStatus::Applied);
+    REQUIRE(summary.files[0].consolidated);
+    REQUIRE(summary.files[1].status == ssa::ports::ImportFileStatus::Canceled);
+    REQUIRE_FALSE(summary.files[1].consolidated);
+    REQUIRE(std::filesystem::exists(secondWorkbook));
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarText(db, "PRAGMA integrity_check") == "ok");
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600603'") == 1);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600604'") == 0);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
 TEST_CASE("full rescan rejects an unrecognized header without clearing or moving the source") {

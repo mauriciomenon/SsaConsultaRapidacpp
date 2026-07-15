@@ -28,6 +28,7 @@ namespace ssa::infra::importing {
 
     struct SsaImportBatch {
         std::filesystem::path sourcePath;
+        std::vector<std::string> headerRow;
         std::vector<SsaImportRow> rows;
         std::size_t skippedRows{0};
         std::size_t invalidRows{0};
@@ -58,6 +59,7 @@ namespace ssa::infra::importing {
         std::size_t rowsInserted{0};
         std::size_t rowsUpdated{0};
         std::size_t rowsUnchanged{0};
+        std::size_t duplicateRows{0};
         std::size_t conflictRows{0};
     };
 

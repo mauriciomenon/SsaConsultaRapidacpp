@@ -210,6 +210,7 @@ namespace ssa::infra::importing {
             batch.skippedRows = table.rows.size() - *headerIndex - 1;
             return batch;
         }
+        batch.headerRow = table.rows[*headerIndex];
         batch.mappingStatus = SpreadsheetMappingStatus::Mapped;
         for (std::size_t rowIndex = *headerIndex + 1; rowIndex < table.rows.size(); ++rowIndex) {
             throwIfMappingCanceled(stopToken);

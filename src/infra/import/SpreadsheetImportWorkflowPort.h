@@ -27,6 +27,9 @@ namespace ssa::infra::importing {
         [[nodiscard]] ports::WorkflowResult
         importDiscoveredFiles(const ImportStagingResult& files, bool replaceAll,
                               const std::stop_token& stopToken) const;
+        [[nodiscard]] ports::WorkflowResult
+        importIncrementalFiles(const ImportStagingResult& files,
+                               const std::stop_token& stopToken) const;
         [[nodiscard]] std::optional<ports::WorkflowResult>
         resumePendingConsolidation(const std::stop_token& stopToken) const;
 
