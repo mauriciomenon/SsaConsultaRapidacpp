@@ -516,6 +516,62 @@ TEST_CASE("file copy rejects a source changed during the staged copy") {
     REQUIRE_FALSE(std::filesystem::exists(destination));
 }
 
+TEST_CASE("file copy rejects a source replaced with the same size and mtime") {
+#ifdef _WIN32
+    SKIP("replacing an open source is not supported by this Windows fixture");
+#else
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    constexpr std::uintmax_t copyBytes = 128ULL * 1024ULL * 1024ULL;
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto source = root / "identity-source.xlsx";
+    const auto replacement = root / "identity-replacement.xlsx";
+    const auto backup = root / "identity-original.xlsx";
+    const auto destination = root / "docs_entrada" / "staged.xlsx";
+    createSparseFile(source, copyBytes);
+    std::error_code error;
+    const auto originalTime = std::filesystem::last_write_time(source, error);
+    REQUIRE_FALSE(error);
+
+    auto future = std::async(std::launch::async, [&] {
+        return ssa::infra::importing::copyFileAtomically({source, destination});
+    });
+    QElapsedTimer deadline;
+    deadline.start();
+    bool observedTemporary = false;
+    bool replaced = false;
+    while (future.wait_for(std::chrono::milliseconds{0}) != std::future_status::ready &&
+           deadline.elapsed() < 3'000) {
+        for (std::filesystem::directory_iterator iterator(destination.parent_path(), error), end;
+             !error && iterator != end; iterator.increment(error)) {
+            if (iterator->path().filename().string().find(".part") == std::string::npos) {
+                continue;
+            }
+            observedTemporary = true;
+            createSparseFile(replacement, copyBytes);
+            std::filesystem::last_write_time(replacement, originalTime, error);
+            REQUIRE_FALSE(error);
+            std::filesystem::rename(source, backup, error);
+            REQUIRE_FALSE(error);
+            std::filesystem::rename(replacement, source, error);
+            REQUIRE_FALSE(error);
+            replaced = true;
+            break;
+        }
+        error.clear();
+        QThread::msleep(1);
+    }
+    const auto result = future.get();
+
+    REQUIRE(observedTemporary);
+    REQUIRE(replaced);
+    REQUIRE(result.status == ssa::infra::importing::FileCopyStatus::Failed);
+    REQUIRE(result.diagnostic == "source changed during staged file copy");
+    REQUIRE_FALSE(std::filesystem::exists(destination));
+#endif
+}
+
 TEST_CASE("import file stager preserves inventory after a later source disappears") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
