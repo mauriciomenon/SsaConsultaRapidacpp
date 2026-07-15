@@ -40,7 +40,7 @@ SQL de escrita.
 ## Validacao local
 
 - `export SSA_CPP_PRESET=dev && ./scripts/build-macos.sh`
-- `ctest --preset dev --output-on-failure`: 377/377
+- `ctest --preset dev --output-on-failure`: 378/378
 - `dev-arrow` configurado com Apache Arrow 25.0.0 e smoke concluido
 - Scanners de codigo e segredos executados no escopo alterado
 
