@@ -121,7 +121,7 @@ TEST_CASE("SSA spreadsheet mapper rejects an overflowing repeated header family"
     REQUIRE(batch.rows.empty());
 }
 
-TEST_CASE("SSA spreadsheet mapper coalesces complementary header aliases") {
+TEST_CASE("SSA spreadsheet mapper rejects duplicate non-positional header aliases") {
     ssa::infra::importing::SpreadsheetTable table;
     table.rows = {
         {"Numero SSA", "Nº SSA", "Descricao", "Descricao da SSA", "Data Cadastro"},
@@ -130,11 +130,9 @@ TEST_CASE("SSA spreadsheet mapper coalesces complementary header aliases") {
 
     const auto batch = ssa::infra::importing::SsaSpreadsheetMapper::map(table);
 
-    REQUIRE(batch.mappingStatus == ssa::infra::importing::SpreadsheetMappingStatus::Mapped);
-    REQUIRE(batch.rows.size() == 1);
-    REQUIRE(batch.rows.front().at("numero_ssa") == "202600010");
-    REQUIRE(batch.rows.front().at("descricao_ssa") == "Valor complementar");
-    REQUIRE_FALSE(batch.rows.front().contains("numero_ssa_relacionada_1"));
+    REQUIRE(batch.mappingStatus ==
+            ssa::infra::importing::SpreadsheetMappingStatus::AmbiguousHeaders);
+    REQUIRE(batch.rows.empty());
 }
 
 TEST_CASE("SSA spreadsheet mapper rejects explicit and positional destination collisions") {

@@ -163,7 +163,7 @@ namespace ssa::infra::importing {
                     }
                 }
                 const auto [owner, inserted] = destinationOwner.try_emplace(destination, *column);
-                if (!inserted && owner->second != *column) {
+                if (!inserted) {
                     mapped.ambiguous = true;
                     return mapped;
                 }
