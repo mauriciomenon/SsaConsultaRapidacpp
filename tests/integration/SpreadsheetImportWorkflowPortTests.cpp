@@ -13,6 +13,7 @@
 #include "infra/sqlite/SqliteSsaImportWriter.h"
 #include "qt/FilesystemPath.h"
 
+#include <QCryptographicHash>
 #include <QDir>
 #include <QElapsedTimer>
 #include <QLockFile>
@@ -63,6 +64,21 @@ namespace {
     std::vector<ssa::domain::ColumnDef> importColumns() {
         const auto columns = ssa::domain::ColumnCatalog::all();
         return {columns.begin(), columns.end()};
+    }
+
+    std::filesystem::path databaseImportLockPathForTest(const std::filesystem::path& databasePath) {
+        std::error_code error;
+        auto normalized = std::filesystem::weakly_canonical(databasePath, error);
+        if (error) {
+            normalized = std::filesystem::absolute(databasePath).lexically_normal();
+        }
+        const auto digest =
+            QCryptographicHash::hash(QString::fromStdString(normalized.string()).toUtf8(),
+                                     QCryptographicHash::Sha256)
+                .toHex()
+                .toStdString();
+        return std::filesystem::path{QDir::tempPath().toStdString()} /
+               (".ssa_import_db_" + digest + ".lock");
     }
 
     void addZipEntry(mz_zip_archive& zip, const char* path, const std::string& content) {
@@ -3154,11 +3170,7 @@ TEST_CASE("spreadsheet import rejects a second input root targeting the same dat
     std::filesystem::create_directories(firstInput);
     std::filesystem::create_directories(secondInput);
     std::filesystem::create_directories(dbPath.parent_path());
-    const auto normalizedDatabasePath = std::filesystem::absolute(dbPath).lexically_normal();
-    const auto databaseLockPath =
-        std::filesystem::path{QDir::tempPath().toStdString()} /
-        (".ssa_import_db_" +
-         std::to_string(std::hash<std::string>{}(normalizedDatabasePath.string())) + ".lock");
+    const auto databaseLockPath = databaseImportLockPathForTest(dbPath);
     QLockFile heldLock(ssa::qt::toQString(databaseLockPath));
     heldLock.setStaleLockTime(0);
     REQUIRE(heldLock.tryLock(0));
@@ -3171,6 +3183,38 @@ TEST_CASE("spreadsheet import rejects a second input root targeting the same dat
     REQUIRE(result.message.find("import_already_running") != std::string::npos);
     REQUIRE(std::filesystem::exists(secondInput / "pending.xlsx"));
     REQUIRE_FALSE(std::filesystem::exists(dbPath));
+}
+
+TEST_CASE("spreadsheet import lock resolves database symlink aliases") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "input" / "docs_entrada";
+    const auto databasePath = root / "data" / "ssas.db";
+    const auto aliasPath = root / "aliases" / "ssas.db";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(databasePath.parent_path());
+    std::filesystem::create_directories(aliasPath.parent_path());
+    std::ofstream{databasePath}.close();
+    std::error_code error;
+    std::filesystem::create_symlink(databasePath, aliasPath, error);
+    if (error) {
+        SKIP("symbolic links are unavailable in this environment");
+    }
+
+    QLockFile heldLock(ssa::qt::toQString(databaseImportLockPathForTest(databasePath)));
+    heldLock.setStaleLockTime(0);
+    REQUIRE(heldLock.tryLock(0));
+    createSparseFile(inputDirectory / "pending.xlsx", 0);
+
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, aliasPath,
+                                                              importColumns());
+    const auto result = port.rescan({ssa::ports::RescanMode::Incremental});
+
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
+    REQUIRE(result.message.find("import_already_running") != std::string::npos);
+    REQUIRE(std::filesystem::exists(inputDirectory / "pending.xlsx"));
 }
 
 TEST_CASE("spreadsheet import recreates a renamed database without deleting the backup") {

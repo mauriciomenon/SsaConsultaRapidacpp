@@ -3,6 +3,7 @@
 #include "ports/OperationError.h"
 #include "qt/FilesystemPath.h"
 
+#include <QCryptographicHash>
 #include <QDir>
 #include <QLockFile>
 
@@ -78,10 +79,17 @@ namespace ssa::infra::importing {
         }
 
         std::filesystem::path databaseLockPath(const std::filesystem::path& databasePath) {
-            const auto normalized = std::filesystem::absolute(databasePath).lexically_normal();
-            const auto hash = std::hash<std::string>{}(normalized.string());
+            std::error_code error;
+            auto normalized = std::filesystem::weakly_canonical(databasePath, error);
+            if (error) {
+                normalized = std::filesystem::absolute(databasePath).lexically_normal();
+            }
+            const auto digest = QCryptographicHash::hash(qt::toQString(normalized).toUtf8(),
+                                                         QCryptographicHash::Sha256)
+                                    .toHex()
+                                    .toStdString();
             return std::filesystem::path{QDir::tempPath().toStdString()} /
-                   (".ssa_import_db_" + std::to_string(hash) + ".lock");
+                   (".ssa_import_db_" + digest + ".lock");
         }
 
         ports::ImportSummary makeImportSummary(const ImportStagingResult& files) {
