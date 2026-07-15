@@ -90,6 +90,8 @@
 
 ## Consolidacao de entrada
 
+- SSA import and rescan accept only `.xlsx`. Legacy `.xls` remains pending and
+  is never converted automatically.
 - A consolidation manifest is assembled only after the SQLite write session
   commits successfully.
 - Only source files associated with the committed import are eligible.
@@ -101,6 +103,8 @@
   no-replace rename are used for each move.
 - Cancellation or a post-commit move failure remains visible as a warning and
   does not hide the successful database commit.
+- The journal is committed with the database mutation. Restart resumes only
+  unfinished moves and never replays an already completed destination.
 
 ## Atualizacao SAM REST
 
@@ -115,10 +119,12 @@
   details enabled, four years, and a limit of 200 records per sector.
 - Every sector must return a strict successful manifest and one fresh non-empty
   XLSX. A partial batch is rejected and nothing from it is imported.
-- A complete batch is imported once through the optimized spreadsheet import
-  port. Temporary artifact cleanup is attempted on every terminal path. A
-  cleanup failure remains visible and becomes a warning when import already
-  committed successfully.
+- Fetch and cleanup are implemented, but the SAM XLSX schema adapter and proof
+  that a 200-row response is complete remain pending. The feature stays
+  disabled by default and must not be treated as a validated database refresh.
+- Temporary artifact cleanup is attempted on every terminal path. A cleanup
+  failure remains visible and becomes a warning when a primary operation has
+  already committed successfully.
 - Only one SAM refresh runs per application instance. A second trigger while
   it is running is a no-op. Shutdown requests cancellation and waits for the
   worker to finish.

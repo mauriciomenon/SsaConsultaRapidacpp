@@ -2,6 +2,44 @@
 
 Mudancas relevantes deste projeto sao registradas neste arquivo.
 
+## 0.9.6 - 2026-07-15
+
+### Adicionado
+
+- Contrato publico de importacao com `NoChanges`, resultado por arquivo e
+  metricas reconciliadas de descoberta, validacao, escrita e consolidacao.
+- Catalogo SSA com 77 campos canonicos, 184 labels de origem e 168 aliases
+  normalizados, leitura de todas as worksheets, datas Excel 1900/1904 e
+  rejeicao de formulas sem valor em cache.
+- Journal SQLite transacional para retomada idempotente da consolidacao
+  pos-commit.
+
+### Alterado
+
+- Rescans processam o acervo sequencialmente sem limite global de 64 arquivos;
+  o guard de 64 permanece apenas para selecao externa explicita.
+- O import SSA principal aceita somente XLSX. O conversor LibreOffice continua
+  isolado e nao participa de discovery, rescan ou importacao SSA.
+- Incremental usa merge seletivo e full rescan e all-or-nothing, sem transformar
+  campo ausente em `NULL` nem publicar subconjunto valido.
+
+### Corrigido
+
+- Snapshot antigo nao substitui registro novo; empate temporal preserva estado
+  e permite apenas enriquecimento autorizado.
+- Full misto, header desconhecido, SSA invalida e conflito preservam o banco e
+  as fontes anteriores.
+- Shutdown forcado publica `Drained` somente sem start pendente nem arvore
+  ativa; falha de termination bloqueia novos processos ate drain comprovado.
+- Lider de processo que sai durante startup nao deixa descendente fora do
+  registry ou da barreira.
+
+### Validacao
+
+- Suite canonica local: 340 de 340 testes.
+- Fixture de 250 mil linhas respeita o limite adicional de RSS de 256 MiB.
+- Testes de processo e cleanup foram repetidos 20 vezes sem corrida.
+
 ## 0.9.5 - 2026-07-14
 
 ### Corrigido

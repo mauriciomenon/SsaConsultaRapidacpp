@@ -31,3 +31,15 @@
   database, run `PRAGMA integrity_check`, and accept only the complete previous
   state or the complete new state.
 - A second read or write must succeed after rollback or interrupted execution.
+
+## Import And Consolidation Journal
+
+- Full rescan uses one SQLite transaction for the complete accepted corpus.
+  Any rejected file, invalid row, conflict, failure, or cancel rolls back the
+  entire replacement.
+- Incremental import commits one accepted file atomically and uses selective
+  merge; an absent spreadsheet field never erases an existing database value.
+- The consolidation journal is written in the same transaction as the primary
+  mutation. Filesystem moves happen after commit and are resumed idempotently.
+- A cross-process import lock is acquired before discovery so two application
+  instances cannot decide over the same input corpus.

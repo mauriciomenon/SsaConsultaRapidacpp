@@ -99,6 +99,18 @@ without porting Python architecture, and stabilize CI/flaky tests.
 - Configuracao Markdown do projeto elimina MD024 falso em changelog sem
   desabilitar duplicatas reais no mesmo nivel.
 
+### Entregas da 0.9.6
+
+- Importacao SSA XLSX com merge seletivo, politica temporal fail-closed e full
+  rescan all-or-nothing.
+- Catalogo de 77 campos, 184 labels de origem e 168 aliases normalizados, todas
+  as worksheets, datas Excel e formula somente com valor em cache.
+- Corpus processado sequencialmente sem cap global de 64, streaming em blocos
+  de 1.000 linhas, lock entre processos e journal de consolidacao retomavel.
+- Supervisor publica `Drained` somente depois de starts e arvores zerarem,
+  inclusive quando o lider sai durante startup.
+- Conversor LibreOffice preservado como componente isolado, fora do fluxo SSA.
+
 ## Long term (multiple PRs, no fixed order)
 
 ### Missing GUI features (parity with PyQt6)
@@ -126,13 +138,14 @@ commands are out of scope unless a REPL mode is explicitly added:
 
 ### "Contract only" -> "Present" (completed)
 
-- `Import external XLS/XLSX`: done. `SpreadsheetImportWorkflowPort` wired in
-  `DesktopMainViewModelFactory`; QML invokes via Importacao menu + FileDialog.
+- `Import external XLSX`: done. `SpreadsheetImportWorkflowPort` is wired in
+  `DesktopMainViewModelFactory`; QML invokes it through the Importacao menu and
+  FileDialog. Legacy XLS remains isolated from the SSA workflow.
 - `Rescan/update data`: done. `IImportWorkflowPort::rescan` wired; QML invokes
   via Importacao menu, Manutencao menu, and toolbar button.
-- `Update derivadas`: `syncDerivadas` C++ impl complete; QML trigger added to
-  Importacao and Manutencao menus. Graph view, Mermaid copy, and PNG export are
-  present.
+- `Update derivadas`: the current C++ action only cleans orphan references.
+  Explicit CSV/TXT/TSV/XLSX/XLSM import remains pending. Graph view, Mermaid
+  copy, and PNG export are present.
 
 ### SAM depois da 0.9.2
 

@@ -3,7 +3,7 @@
 Fonte operacional para humanos e agentes de codigo. Verifique este arquivo antes
 de interpretar sincronizacao Git, status de CI ou falhas de publicacao.
 
-Ultima verificacao: 2026-07-12
+Ultima verificacao: 2026-07-15
 
 ## Remotes Git
 
@@ -72,9 +72,13 @@ remotes ativos o aceitou.
 
 ## Release e CI atuais
 
-- Release: `v0.9.1`.
-- Commit da release: `485e0c402211ad7bbc808a66e6bcbd616c1c12b3`.
-- Pipeline GitLab `2671149110`: passou (`linux-verify` e `secret-scan`).
+- Candidata local em preparacao: `v0.9.6`.
+- A tag deve apontar para o commit documental final desta rodada e ser publicada
+  somente depois do pacote macOS e dos refs obrigatorios.
+- Build canonico local e `ctest --preset dev --output-on-failure`: 340/340.
+- `origin/master` e `bitbucket/master` foram verificados em
+  `7bdf825a5c32960973f4d973f79254f4bcba9df0` antes do commit documental.
+- Pipeline GitLab da 0.9.6: pendente de verificacao apos o push final.
 - Bitbucket Pipelines: manual e bloqueado pela cota mensal compartilhada ate a
   renovacao prevista em 2026-07-28. Nao tratar essa cota como falha de Git.
 - GitHub Actions e o environment GitHub `release` sao externos e estao

@@ -30,9 +30,9 @@ the UI and CLI must be able to show it.
 
 ## Specialized Port Families
 
-- `IImportWorkflowPort`: external XLS/XLSX import, incremental rescan, full rescan, and input
-  consolidation are implemented. Consolidation is owned by `ImportFileStager`
-  after a successful SQLite commit.
+- `IImportWorkflowPort`: external XLSX import, incremental rescan, full rescan,
+  and input consolidation are implemented. SSA discovery never invokes the
+  isolated legacy XLS converter. See `ssa-import.md`.
 - `IExportPort`: export the full filtered result set to supported output formats, starting at page
   1 of the filtered query. CSV export exists for CLI and GUI through `CsvExportPort`.
 - `IDatabaseMaintenancePort`: reset, clean data, vacuum/analyze, and backup.
@@ -42,11 +42,13 @@ the UI and CLI must be able to show it.
   read-only mode and start a replacement application instance with `--db`.
   They are separate from database maintenance because the current connection
   is never switched in place.
-- `IDerivadasPort`: sync derivadas and provide graph/tree data.
-- `ISamRefreshPort`: fetch a bounded all-sector REST batch through the local
-  `scrap_report` project and discard its temporary artifacts. The application
-  service imports only when every requested sector succeeds, through
-  `IImportWorkflowPort`. Each sector is limited to 200 records in 0.9.2.
+- `IDerivadasPort`: orphan-reference cleanup exists. Graph/tree reads use the
+  repository/query path. Explicit derivadas source import remains a separate
+  pending workflow.
+- `ISamRefreshPort`: fetches a bounded all-sector REST batch through the local
+  `scrap_report` project and discards temporary artifacts. Runtime import stays
+  disabled by default until the SAM schema adapter and truncation proof pass
+  end to end. Each sector is currently limited to 200 records.
 
 ## Layer Rules
 
@@ -70,12 +72,14 @@ the UI and CLI must be able to show it.
 - Unix and macOS create a dedicated process session and terminate the complete
   process group. Windows assigns the process at creation to a Job Object with
   `KILL_ON_JOB_CLOSE`.
-- Startup is registered before `QProcess::start`. A force request prevents new
-  starts, reports `PendingStart` while registration finishes, and never blocks
-  the GUI thread.
+- A start intent is registered before `QProcess::start`; the concrete tree is
+  registered on `QProcess::started`, before a fast leader can escape tracking.
+  A force request prevents new starts, reports `Pending` until every start and
+  tree drains, and never blocks the GUI thread.
 - Normal cancellation uses short polling, graceful termination, forced kill,
   and confirmation before publishing `Canceled`.
-- Force shutdown latches every failed tree termination and exits with failure;
-  cleanup failure cannot be reported as a safe terminal.
+- Force shutdown reports `Drained` only with zero starts pending and zero active
+  trees. Failed termination remains fail-closed and exits with failure after
+  the bounded desktop barrier; cleanup failure cannot be reported as safe.
 - Staged files are copied in blocks to a temporary destination. Publication is
   one rename after complete success; cancel or failure removes the temporary.

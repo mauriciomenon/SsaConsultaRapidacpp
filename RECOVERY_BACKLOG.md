@@ -19,6 +19,11 @@
   scripts ou o comportamento de links de artefatos.
 
 - [PENDING] Implementar sincronizacao completa de derivadas com regras de negocio e fonte externa, incluindo modelagem de grafo/fluxo derivado.
+- [NEXT-v0.9.7] Validar SAM ate SQLite com adapter do schema real, contagem do
+  manifesto e rejeicao de resposta potencialmente truncada em 200 registros.
+- [NEXT-v0.9.7] Separar importacao explicita de derivadas da limpeza de orfas;
+  aceitar CSV, TXT, TSV, XLSX e XLSM, deixando XLS sob selecao e preflight
+  explicitos do conversor legado.
 - [PENDING] Adicionar lacunas restantes de paridade da tabela: reorder persistido por drag de colunas, acoes de menu de contexto de linha e acao de reset de sort no header.
 - [LOW] [IMPORT-CONSOLIDATION-TOCTOU] A consolidacao rejeita diretorios
   symlink e usa rename atomico sem sobrescrita, mas existe uma janela entre
