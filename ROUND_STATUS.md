@@ -43,6 +43,8 @@ ainda nao foram publicados nos remotes nesta rodada.
   testes de polling variam a contagem de asserts, por isso o gate canonico e
   `ctest`.
 - `ctest --preset dev --output-on-failure`: 391/391.
+- `git ls-remote --heads origin master`: timeout rc 124 nesta rodada.
+- `git ls-remote --heads bitbucket master`: timeout rc 124 nesta rodada.
 - Recriacao e validacao do DB: 38 asserts no caso dedicado; o banco real nao
   foi tocado.
 - O staged `tests/smoke/AdvancedPopupQmlTest.cpp` e os untracked do usuario
@@ -52,8 +54,8 @@ ainda nao foram publicados nos remotes nesta rodada.
 
 | Remote | Provedor | Funcao | Estado atual |
 | --- | --- | --- | --- |
-| `origin` | GitLab | Repositorio e CI primarios | Disponivel |
-| `bitbucket` | Bitbucket | Mirror obrigatorio de push; nao usar para pull | Disponivel |
+| `origin` | GitLab | Repositorio e CI primarios | SSH timeout nesta rodada |
+| `bitbucket` | Bitbucket | Mirror obrigatorio de push; nao usar para pull | SSH timeout nesta rodada |
 | `gh` | GitHub | Mirror inativo | HTTP 403 enquanto a conta esta suspensa |
 
 O branch deste repositorio e `master`, nao `dev` ou `main`.
