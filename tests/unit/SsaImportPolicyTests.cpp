@@ -316,6 +316,23 @@ TEST_CASE("SSA import normalizes a day first date without time") {
             "2026-07-13 00:00:00");
 }
 
+TEST_CASE("SSA import accepts an unambiguous US date for English spreadsheets") {
+    REQUIRE(ssa::domain::SsaImportPolicy::normalizeSnapshotTimestamp("07/14/2025") ==
+            "2025-07-14 00:00:00");
+}
+
+TEST_CASE("SSA import rejects invalid execution date fields before merge") {
+    using Values = ssa::domain::SsaImportPolicy::Values;
+    const Values row{{"numero_ssa", "202600027"},
+                     {"descricao_ssa", "Invalid execution date"},
+                     {"situacao", "APV"},
+                     {"data_cadastro", "2026-07-15"},
+                     {"data_programacao", "not-a-date"}};
+
+    REQUIRE(ssa::domain::SsaImportPolicy::validateRow(row) ==
+            ssa::domain::SsaImportPolicy::RowValidationIssue::InvalidDate);
+}
+
 TEST_CASE("SSA import field timestamps reject surrounding text") {
     REQUIRE(ssa::domain::SsaImportPolicy::normalizeSnapshotTimestamp("21/10/2025 11:10:36") ==
             "2025-10-21 11:10:36");

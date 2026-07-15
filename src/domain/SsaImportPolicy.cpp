@@ -52,6 +52,17 @@ namespace ssa::domain {
                    key == "data_criacao_arquivo" || key == "data_arquivo_origem";
         }
 
+        bool isDateField(const std::string_view key) {
+            static constexpr std::array<std::string_view, 8> dateFields{
+                "data_planilha",       "data_criacao_arquivo",
+                "data_arquivo_origem", "prazo_limite",
+                "data_limite",         "data_inicio_programada",
+                "data_programacao",    "data_inicio_reprogramada",
+            };
+            return std::ranges::find(dateFields, key) != dateFields.end() ||
+                   key == "data_reprogramacao";
+        }
+
         std::optional<int> parsePart(const std::string_view value);
 
         bool isValidWeek(const std::string& value) {
@@ -178,11 +189,17 @@ namespace ssa::domain {
             static constexpr std::array<FieldSlice, 6> dayFirstDateTimeFields{
                 FieldSlice{0, 2},  FieldSlice{3, 2},  FieldSlice{6, 4},
                 FieldSlice{11, 2}, FieldSlice{14, 2}, FieldSlice{17, 2}};
+            static constexpr std::array<FieldSlice, 6> monthFirstDateTimeFields{
+                FieldSlice{3, 2},  FieldSlice{0, 2},  FieldSlice{6, 4},
+                FieldSlice{11, 2}, FieldSlice{14, 2}, FieldSlice{17, 2}};
             static constexpr std::array<FieldSlice, 6> dateFields{
                 FieldSlice{0, 4}, FieldSlice{5, 2}, FieldSlice{8, 2},
                 FieldSlice{0, 0}, FieldSlice{0, 0}, FieldSlice{0, 0}};
             static constexpr std::array<FieldSlice, 6> dayFirstDateFields{
                 FieldSlice{0, 2}, FieldSlice{3, 2}, FieldSlice{6, 4},
+                FieldSlice{0, 0}, FieldSlice{0, 0}, FieldSlice{0, 0}};
+            static constexpr std::array<FieldSlice, 6> monthFirstDateFields{
+                FieldSlice{3, 2}, FieldSlice{0, 2}, FieldSlice{6, 4},
                 FieldSlice{0, 0}, FieldSlice{0, 0}, FieldSlice{0, 0}};
 
             if (text.size() == 19 && text[4] == '-' && text[7] == '-' &&
@@ -191,7 +208,10 @@ namespace ssa::domain {
             }
             if (text.size() == 19 && text[2] == '/' && text[5] == '/' && text[10] == ' ' &&
                 text[13] == ':' && text[16] == ':') {
-                return parseFields(text, dayFirstDateTimeFields, true);
+                if (const auto dayFirst = parseFields(text, dayFirstDateTimeFields, true)) {
+                    return dayFirst;
+                }
+                return parseFields(text, monthFirstDateTimeFields, true);
             }
             if (text.size() != 10) {
                 return std::nullopt;
@@ -200,7 +220,12 @@ namespace ssa::domain {
                 return parseFields(text, dateFields, false);
             }
             if ((text[2] == '-' && text[5] == '-') || (text[2] == '/' && text[5] == '/')) {
-                return parseFields(text, dayFirstDateFields, true);
+                if (const auto dayFirst = parseFields(text, dayFirstDateFields, true)) {
+                    return dayFirst;
+                }
+                if (text[2] == '/') {
+                    return parseFields(text, monthFirstDateFields, true);
+                }
             }
             return std::nullopt;
         }
@@ -457,11 +482,18 @@ namespace ssa::domain {
             if (!isDateExemptStatus(valueFor(row, "situacao"))) {
                 return RowValidationIssue::MissingDate;
             }
-            return isValidWeek(valueFor(row, "semana_cadastro")) ? RowValidationIssue::None
-                                                                 : RowValidationIssue::MissingWeek;
+            if (!isValidWeek(valueFor(row, "semana_cadastro"))) {
+                return RowValidationIssue::MissingWeek;
+            }
+        } else if (!parseExactTimestamp(date)) {
+            return RowValidationIssue::InvalidDate;
         }
-        return parseExactTimestamp(date) ? RowValidationIssue::None
-                                         : RowValidationIssue::InvalidDate;
+        for (const auto& [key, value] : row) {
+            if (isDateField(key) && !valueFor(row, key).empty() && !parseExactTimestamp(value)) {
+                return RowValidationIssue::InvalidDate;
+            }
+        }
+        return RowValidationIssue::None;
     }
 
     bool SsaImportPolicy::isValidRow(const Values& row) {
