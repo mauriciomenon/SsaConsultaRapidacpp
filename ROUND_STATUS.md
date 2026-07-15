@@ -72,13 +72,13 @@ remotes ativos o aceitou.
 
 ## Release e CI atuais
 
-- Candidata local em preparacao: `v0.9.6`.
+- Candidata local em preparacao: `v0.9.7`; `v0.9.6` permanece preservada.
 - A tag deve apontar para o commit documental final desta rodada e ser publicada
   somente depois do pacote macOS e dos refs obrigatorios.
-- Build canonico local e `ctest --preset dev --output-on-failure`: 340/340.
+- Build canonico local e `ctest --preset dev --output-on-failure`: 366/366.
 - `origin/master` e `bitbucket/master` foram verificados em
-  `7bdf825a5c32960973f4d973f79254f4bcba9df0` antes do commit documental.
-- Pipeline GitLab da 0.9.6: pendente de verificacao apos o push final.
+  `be16126a7c6bc6c1258f25cb649c3c8497d4860c` antes do commit documental.
+- Pipeline GitLab da 0.9.7: pendente de verificacao apos o push final.
 - Bitbucket Pipelines: manual e bloqueado pela cota mensal compartilhada ate a
   renovacao prevista em 2026-07-28. Nao tratar essa cota como falha de Git.
 - GitHub Actions e o environment GitHub `release` sao externos e estao

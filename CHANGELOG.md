@@ -2,6 +2,38 @@
 
 Mudancas relevantes deste projeto sao registradas neste arquivo.
 
+## 0.9.7 - 2026-07-15
+
+### Adicionado
+
+- Importacao explicita de derivadas em CSV, TXT, TSV, XLSX e XLSM, com XLS
+  legado somente por selecao e preflight visivel do LibreOffice.
+- Manifestos SAM validados antes do staging; workbook, schema e contagem fisica
+  conferidos dentro de uma unica transacao SQLite atomica.
+
+### Alterado
+
+- Resultado SAM no limite de 200 linhas e rejeitado como potencialmente
+  truncado; falha de qualquer setor impede o commit do lote completo.
+- A ordem prioritaria de valores de setor e responsavel possui uma unica
+  constante de dominio compartilhada entre display e SQL.
+- O seletor de colunas recebe o acionador real, usa `Overlay.overlay` e resolve
+  posicao e tamanho juntos com clamp nas bordas durante resize.
+
+### Corrigido
+
+- Importacao de derivadas rejeita self-loop, multiparent e filho inexistente,
+  deduplica arestas e preserva pais ausentes em lote parcial.
+- Fechar o menu de contexto nao fecha o seletor de colunas recem-aberto; o
+  popup continua ancorado ao acionador durante redimensionamento da janela.
+
+### Validacao
+
+- Suite canonica local: 366 de 366 testes.
+- Smoke QML prova clique real do menu, fechamento, ancoragem e resize visivel
+  em 1180x760 e 1500x900.
+- Scanners de codigo e segredos passaram; revisao independente final limpa.
+
 ## 0.9.6 - 2026-07-15
 
 ### Adicionado

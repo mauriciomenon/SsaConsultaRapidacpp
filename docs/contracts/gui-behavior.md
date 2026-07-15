@@ -17,6 +17,9 @@
 - Header click sorts by that column and cycles ascending, descending, then no explicit sort.
 - Sorting by column `numero_ssa` applies status-last ordering before SSA ordering by design.
 - Header right-click exposes column filter focus, hide-current-column, and column selector actions.
+- The column selector is parented to `Overlay.overlay`, right-aligned to the
+  actual menu item that opened it, and clamped on both axes. Position and size
+  are recalculated together while the popup remains visible during resize.
 - Details panel for the selected SSA.
 - Preferences dialog with theme selection, visual density, visible column selection, column width
   editing, select all, defaults reset, detail panel visibility, detail panel width, local column
@@ -119,9 +122,12 @@
   details enabled, four years, and a limit of 200 records per sector.
 - Every sector must return a strict successful manifest and one fresh non-empty
   XLSX. A partial batch is rejected and nothing from it is imported.
-- Fetch and cleanup are implemented, but the SAM XLSX schema adapter and proof
-  that a 200-row response is complete remain pending. The feature stays
-  disabled by default and must not be treated as a validated database refresh.
+- All sector artifacts are staged before the atomic import session opens. Each
+  workbook is validated against the SSA schema and its manifest and physical
+  row counts inside the single transaction. Commit occurs only after every
+  sector passes. A response with exactly 200 rows is rejected as potentially
+  truncated. The feature remains disabled by default until the user enables it
+  explicitly.
 - Temporary artifact cleanup is attempted on every terminal path. A cleanup
   failure remains visible and becomes a warning when a primary operation has
   already committed successfully.
@@ -130,6 +136,19 @@
   worker to finish.
 - Refresh success reloads the GUI only after the spreadsheet import commits.
   Stale or canceled operations cannot publish a terminal result.
+
+## Importacao de derivadas
+
+- Orphan cleanup and source import are separate commands and report separate
+  outcomes.
+- Explicit import accepts CSV, TXT, TSV, XLSX, and XLSM. Legacy XLS requires an
+  explicit selection and visible LibreOffice availability preflight.
+- The workflow rejects self-loops, conflicting multiple parents, and missing
+  children, deduplicates repeated edges, and preserves existing parents not
+  present in a partial batch.
+- Text parsing and workbook traversal observe cancellation. SQLite publication
+  is transactional and a canceled or failed batch leaves the prior graph
+  intact.
 
 ## Visual Customization
 

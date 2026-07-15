@@ -111,6 +111,17 @@ without porting Python architecture, and stabilize CI/flaky tests.
   inclusive quando o lider sai durante startup.
 - Conversor LibreOffice preservado como componente isolado, fora do fluxo SSA.
 
+### Entregas da 0.9.7
+
+- SAM validado de manifesto ate SQLite, com lote atomico entre setores e
+  rejeicao fail-closed de resposta potencialmente truncada no limite 200.
+- Importacao explicita de derivadas em CSV, TXT, TSV, XLSX e XLSM; XLS legado
+  somente por selecao e preflight visivel, fora do fluxo SSA.
+- Ordem prioritaria de setores e responsaveis centralizada numa unica constante
+  usada por display e SQL.
+- Seletor de colunas ancorado ao acionador real, reparentado ao overlay e
+  recalculado com clamp durante resize visivel.
+
 ## Long term (multiple PRs, no fixed order)
 
 ### Missing GUI features (parity with PyQt6)
@@ -144,8 +155,9 @@ commands are out of scope unless a REPL mode is explicitly added:
 - `Rescan/update data`: done. `IImportWorkflowPort::rescan` wired; QML invokes
   via Importacao menu, Manutencao menu, and toolbar button.
 - `Update derivadas`: the current C++ action only cleans orphan references.
-  Explicit CSV/TXT/TSV/XLSX/XLSM import remains pending. Graph view, Mermaid
-  copy, and PNG export are present.
+  Explicit CSV/TXT/TSV/XLSX/XLSM import is now present as a separate action.
+  Legacy XLS requires explicit selection and converter preflight. Graph view,
+  Mermaid copy, and PNG export remain present.
 
 ### SAM depois da 0.9.2
 
@@ -153,8 +165,8 @@ commands are out of scope unless a REPL mode is explicitly added:
   fluxo operacional.
 - Definir contrato separado para credenciais com Keychain, Credential Manager
   e Secret Service antes de aceitar escopos com usuario, senha ou token.
-- Avaliar paginacao do `scrap_report`. A 0.9.2 consulta no maximo 200 registros
-  por setor em cada rodada.
+- Avaliar paginacao do `scrap_report`. A 0.9.7 rejeita exatamente 200 registros
+  por setor como potencial truncamento e nao publica esse lote.
 - Se varias instancias da aplicacao forem executadas, cada uma possui seu
   proprio single-flight. Coordenacao entre processos fica fora deste release.
 

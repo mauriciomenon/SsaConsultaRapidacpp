@@ -24,12 +24,12 @@ This document tracks parity against the Python project at
 | Rescan/update data                              | `gui/ssa/gui_workers.py`, `core/app_logic.py`               | `SpreadsheetImportWorkflowPort`, `SsaWorkflowService`                              | Present                            |
 | Consolidate imported input files                | `gui/gui_ssa.py`                                            | `ImportFileStager`, `SpreadsheetImportWorkflowPort`                                | Present                            |
 | Clean orphan derivadas                          | `gui/gui_ssa.py::update_derivadas_from_sources`             | `IDerivadasPort`, `SsaWorkflowService`                                             | Present                            |
-| Import derivadas sources                        | `armazenamento/derivadas_sync.py`                           | dedicated adapter pending                                                          | Not implemented                    |
+| Import derivadas sources                        | `armazenamento/derivadas_sync.py`                           | `DerivadasSourceReader`, `SqliteDerivadasPort`, `SsaWorkflowService`                 | Present                            |
 | Load other DB                                   | `gui/gui_ssa.py::load_other_database`                       | `SqliteDatabaseValidator`, `DatabaseSwitchViewModel`, `DesktopApplicationLauncher` | Present                            |
 | Filter condition history                        | `interface/cli.py::voltar_filtro`                           | `BrowseOrchestrator`, `BrowseViewModel`                                            | GUI present, CLI REPL out of scope |
 | Help and About                                  | `gui/gui_ssa.py`                                            | `HelpDialog`, `AboutDialog`, application metadata                                  | Present                            |
 | SAM REST fetch                                  | Python `scrap_report` integration                           | `ISamRefreshPort`, `ScrapReportSamRefreshPort`                                     | Present, disabled by default       |
-| SAM XLSX to SQLite                              | Python `scrap_report` integration                           | explicit schema adapter pending                                                    | Not validated                      |
+| SAM XLSX to SQLite                              | Python `scrap_report` integration                           | `SamSpreadsheetAdapter`, `SpreadsheetImportWorkflowPort`                           | Present, disabled by default       |
 | Vacuum/analyze DB                               | `gui/gui_ssa.py::run_vacuum_analyze`                        | `SqliteMaintenancePort`, `SsaWorkflowService`                                      | CLI present                        |
 | Open input/processed/redundant folders and docs | `gui/gui_ssa.py` menu handlers                              | command port variants                                                              | Present                            |
 | Preferences/theme/density                       | `gui/ssa/gui_theme.py`, config JSON                         | `IUserPreferencesStore`                                                            | Partial                            |
@@ -98,6 +98,17 @@ A feature is only marked `Present` when it has:
   `processadas/nosurvivor/`, sem sobrescrever destinos existentes.
 - A atualizacao SAM REST usa o projeto `scrap_report` local, fica desabilitada
   por padrao e nao armazena senha, token ou segredo.
+
+## Notas da GUI 0.9.7
+
+- O lote SAM e commitado somente depois que todos os setores passam manifesto,
+  schema e contagem fisica; exatamente 200 linhas e rejeitado como possivel
+  truncamento.
+- Derivadas possui importacao explicita para CSV, TXT, TSV, XLSX e XLSM. XLS
+  legado exige selecao explicita e preflight visivel do LibreOffice.
+- O seletor de colunas abre ancorado ao item real do menu, permanece dentro do
+  overlay e recalcula a geometria enquanto a janela e redimensionada.
+- A ordem prioritaria de setores e responsaveis e unica entre display e SQL.
 
 ## 0.9.0 GUI Notes
 

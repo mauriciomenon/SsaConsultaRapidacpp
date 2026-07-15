@@ -66,8 +66,17 @@ or SCA never regress.
   are idempotent and resume after restart without overwriting destinations.
 - The 250,000-row regression fixture permits at most 256 MiB additional RSS.
 
-## Deferred Workflows
+## Related Explicit Workflows
 
-- SAM fetch exists but SAM XLSX to SQLite is not validated until the explicit
-  schema adapter and truncation proof pass end to end.
-- Derivadas source import is separate from orphan cleanup and remains pending.
+- SAM refresh stages every sector artifact before opening the atomic SQLite
+  write session. Each workbook schema and its manifest and physical row counts
+  are validated inside the single transaction, and commit occurs only after
+  every sector passes. A result at the configured 200-row limit is rejected as
+  potentially truncated. The feature remains disabled by default.
+- Derivadas import is separate from orphan cleanup. CSV, TXT, TSV, XLSX, and
+  XLSM are supported directly. Legacy XLS is accepted only by explicit user
+  selection after a visible LibreOffice availability preflight; it never
+  participates in SSA discovery or rescan.
+- Derivadas edges reject self-loops, conflicting parents, and missing children,
+  deduplicate repeated edges, and preserve existing parents absent from a
+  partial batch.
