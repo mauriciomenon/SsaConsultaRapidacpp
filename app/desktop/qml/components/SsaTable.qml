@@ -11,7 +11,7 @@ Rectangle {
     property var columnFlow: null
     required property string density
     signal openRequested
-    signal configureColumnsRequested
+    signal configureColumnsRequested(var trigger)
     signal copyDerivationSvgRequested
     signal copyTextRequested(string text)
     signal navigateToRelationRequested(string ssaNumber)
@@ -62,6 +62,7 @@ Rectangle {
 
     Menu {
         id: cellContextMenu
+        objectName: "cellContextMenu"
         parent: root
 
         MenuItem {
@@ -89,8 +90,10 @@ Rectangle {
             onTriggered: root.detailsWindowRequested()
         }
         MenuItem {
+            id: cellConfigureColumnsAction
+            objectName: "cellConfigureColumnsAction"
             text: "Alterar colunas visiveis"
-            onTriggered: root.configureColumnsRequested()
+            onTriggered: root.configureColumnsRequested(cellConfigureColumnsAction)
         }
     }
 
@@ -199,8 +202,9 @@ Rectangle {
                             }
                             MenuSeparator {}
                             MenuItem {
+                                id: headerConfigureColumnsAction
                                 text: "Configurar colunas"
-                                onTriggered: root.configureColumnsRequested()
+                                onTriggered: root.configureColumnsRequested(headerConfigureColumnsAction)
                             }
                         }
 

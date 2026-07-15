@@ -252,6 +252,113 @@ namespace {
             window->hide();
         }
 
+        void column_selector_popup_tracks_trigger_and_clamps_to_overlay() {
+            auto repository = std::make_shared<ssa::tests::presentation_smoke::FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<ssa::tests::presentation_smoke::FakeCommands>();
+            auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(
+                std::make_shared<ssa::tests::presentation_smoke::CapturingImportPort>(), nullptr,
+                nullptr,
+                std::make_shared<ssa::tests::presentation_smoke::CapturingDerivadasPort>());
+            ssa::presentation::MainViewModel viewModel(service, commands, nullptr, nullptr,
+                                                       workflows);
+            SourceQmlUrlInterceptor sourceInterceptor;
+            QQmlEngine engine;
+            engine.addUrlInterceptor(&sourceInterceptor);
+            engine.addImportPath(QStringLiteral(SSA_BUILD_DIR));
+            QQmlComponent component(&engine, QUrl::fromLocalFile(repositoryRoot().filePath(
+                                                 QStringLiteral("app/desktop/qml/Main.qml"))));
+            QVariantMap initialProperties;
+            initialProperties.insert(QStringLiteral("mainViewModel"),
+                                     QVariant::fromValue<QObject*>(&viewModel));
+            const auto mainWindow =
+                std::unique_ptr<QObject>(component.createWithInitialProperties(initialProperties));
+            QVERIFY2(mainWindow != nullptr, qPrintable(component.errorString()));
+            auto* window = qobject_cast<QQuickWindow*>(mainWindow.get());
+            QVERIFY(window != nullptr);
+            window->resize(1180, 760);
+            window->show();
+            QTRY_VERIFY_WITH_TIMEOUT(window->isExposed(), 1000);
+
+            auto* mainTable = window->findChild<QObject*>(QStringLiteral("mainSsaTable"));
+            auto* popup = window->findChild<QObject*>(QStringLiteral("columnSelectorPopup"));
+            QVERIFY(mainTable != nullptr);
+            QVERIFY(popup != nullptr);
+
+            auto* cellMenu = window->findChild<QObject*>(QStringLiteral("cellContextMenu"));
+            auto* cellAction =
+                window->findChild<QQuickItem*>(QStringLiteral("cellConfigureColumnsAction"));
+            QVERIFY(cellMenu != nullptr);
+            QVERIFY(cellAction != nullptr);
+            cellMenu->setProperty("x", 900);
+            cellMenu->setProperty("y", 100);
+            QVERIFY(QMetaObject::invokeMethod(cellMenu, "popup"));
+            QTRY_VERIFY_WITH_TIMEOUT(cellMenu->property("visible").toBool(), 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(cellAction->isVisible(), 1000);
+            const auto cellActionCenter = cellAction->mapToItem(
+                window->contentItem(), QPointF{cellAction->width() / 2, cellAction->height() / 2});
+            QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, cellActionCenter.toPoint());
+            QTRY_VERIFY_WITH_TIMEOUT(popup->property("visible").toBool(), 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(!cellMenu->property("visible").toBool(), 1000);
+            QVERIFY(QMetaObject::invokeMethod(popup, "close"));
+            QTRY_VERIFY_WITH_TIMEOUT(!popup->property("visible").toBool(), 1000);
+
+            const auto tableSource =
+                readSource(QStringLiteral("app/desktop/qml/components/SsaTable.qml"));
+            QVERIFY(tableSource.contains(
+                QStringLiteral("root.configureColumnsRequested(headerConfigureColumnsAction)")));
+
+            QQuickItem trigger(window->contentItem());
+            trigger.setX(1040);
+            trigger.setY(120);
+            trigger.setWidth(100);
+            trigger.setHeight(30);
+            const QVariant triggerArgument = QVariant::fromValue<QObject*>(&trigger);
+            QVERIFY(QMetaObject::invokeMethod(mainTable, "configureColumnsRequested",
+                                              Q_ARG(QVariant, triggerArgument)));
+            QTRY_VERIFY_WITH_TIMEOUT(popup->property("visible").toBool(), 1000);
+
+            auto* overlay = qvariant_cast<QQuickItem*>(popup->property("parent"));
+            QVERIFY(overlay != nullptr);
+            auto popupBounds =
+                QRectF{popup->property("x").toReal(), popup->property("y").toReal(),
+                       popup->property("width").toReal(), popup->property("height").toReal()};
+            const auto triggerOrigin = trigger.mapToItem(overlay, QPointF{});
+            auto overlayBounds = QRectF{QPointF{}, overlay->size()};
+            QVERIFY(overlayBounds.contains(popupBounds));
+            QVERIFY(qAbs(popupBounds.right() - (triggerOrigin.x() + trigger.width())) <= 1.0);
+            QVERIFY(popupBounds.top() > triggerOrigin.y());
+            const auto initialPopupX = popupBounds.x();
+
+            trigger.setX(1340);
+            trigger.setY(780);
+            trigger.setWidth(120);
+            window->resize(1500, 900);
+            QTRY_COMPARE_WITH_TIMEOUT(window->width(), 1500, 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(window->height(), 900, 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(overlay->width(), 1500.0, 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(overlay->height(), 900.0, 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(popup->property("visible").toBool(), 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(
+                qAbs(popup->property("x").toReal() + popup->property("width").toReal() -
+                     (trigger.mapToItem(overlay, QPointF{}).x() + trigger.width())) <= 1.0,
+                1000);
+
+            overlay = qvariant_cast<QQuickItem*>(popup->property("parent"));
+            QVERIFY(overlay != nullptr);
+            popupBounds =
+                QRectF{popup->property("x").toReal(), popup->property("y").toReal(),
+                       popup->property("width").toReal(), popup->property("height").toReal()};
+            const auto resizedTriggerOrigin = trigger.mapToItem(overlay, QPointF{});
+            overlayBounds = QRectF{QPointF{}, overlay->size()};
+            QVERIFY(overlayBounds.contains(popupBounds));
+            QVERIFY(qAbs(popupBounds.right() - (resizedTriggerOrigin.x() + trigger.width())) <=
+                    1.0);
+            QVERIFY(popupBounds.top() < resizedTriggerOrigin.y());
+            QVERIFY(popupBounds.x() != initialPopupX);
+            window->hide();
+        }
+
         void main_window_opens_closes_and_reopens_help_and_about() {
             auto repository = std::make_shared<ssa::tests::presentation_smoke::FakeRepository>();
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);

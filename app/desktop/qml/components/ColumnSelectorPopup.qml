@@ -7,50 +7,77 @@ import SsaConsultaRapida
 
 Popup {
     id: root
+    objectName: "columnSelectorPopup"
     required property var viewModel
+    property var trigger: null
     readonly property int minPopupWidth: 320
     readonly property int maxPopupWidth: 760
     readonly property int minPopupHeight: 360
     readonly property int maxPopupHeight: 560
-    readonly property int fallbackParentWidth: 792
-    readonly property int fallbackParentHeight: 680
-    readonly property int horizontalMargin: 32
-    readonly property int verticalMargin: 120
-    readonly property int edgeMargin: 8
-    readonly property int popupRightMargin: 16
-    readonly property int popupBottomMargin: 16
-    readonly property int toolbarOffsetY: 88
-    property int preferredY: toolbarOffsetY
 
-    width: Math.max(minPopupWidth, Math.min(maxPopupWidth, (parent ? parent.width : fallbackParentWidth) - horizontalMargin))
-    height: Math.max(minPopupHeight, Math.min(maxPopupHeight, (parent ? parent.height : fallbackParentHeight) - verticalMargin))
+    width: minPopupWidth
+    height: minPopupHeight
     modal: false
     focus: true
     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
     padding: 0
 
-    function updatePosition() {
-        if (!parent) {
-            return;
+    function resolvePopupGeometry() {
+        const overlayRoot = Overlay.overlay;
+        if (overlayRoot === null || root.trigger === null) {
+            return null;
         }
-        x = Math.max(edgeMargin, parent.width - width - popupRightMargin);
-        y = Math.max(edgeMargin, Math.min(preferredY, parent.height - height - popupBottomMargin));
+        const origin = root.trigger.mapToItem(overlayRoot, 0, 0);
+        const boundsWidth = overlayRoot.width;
+        const boundsHeight = overlayRoot.height;
+        const popupWidth = Math.max(root.minPopupWidth, Math.min(root.maxPopupWidth, boundsWidth - Theme.popupMargin * 2));
+        const popupHeight = Theme.clampedPopupHeight(boundsHeight, root.maxPopupHeight, root.minPopupHeight);
+        return {
+            x: Theme.clampedPopupX(boundsWidth, origin.x + root.trigger.width, popupWidth),
+            y: Theme.clampedPopupY(boundsHeight, origin.y, root.trigger.height, popupHeight),
+            width: popupWidth,
+            height: popupHeight
+        };
     }
 
-    Component.onCompleted: updatePosition()
-    onOpened: updatePosition()
-    onWidthChanged: updatePosition()
-    onHeightChanged: updatePosition()
+    function updateGeometry() {
+        const geometry = root.resolvePopupGeometry();
+        if (geometry === null) {
+            return;
+        }
+        root.x = geometry.x;
+        root.y = geometry.y;
+        root.width = geometry.width;
+        root.height = geometry.height;
+    }
+
+    function openForTrigger(triggerItem) {
+        const overlayRoot = Overlay.overlay;
+        if (triggerItem === null || overlayRoot === null) {
+            return;
+        }
+        root.trigger = triggerItem;
+        root.parent = overlayRoot;
+        root.updateGeometry();
+        root.open();
+    }
+
+    onAboutToShow: updateGeometry()
+    onClosed: trigger = null
 
     Connections {
         target: root.parent
 
         function onWidthChanged() {
-            root.updatePosition();
+            if (root.visible) {
+                root.updateGeometry();
+            }
         }
 
         function onHeightChanged() {
-            root.updatePosition();
+            if (root.visible) {
+                root.updateGeometry();
+            }
         }
     }
 

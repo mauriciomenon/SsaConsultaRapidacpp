@@ -418,7 +418,7 @@ ApplicationWindow {
             onCopyDerivationSvgRequested: root.vm.copyTextToClipboard(root.vm.browse.details.graphModel.svg)
             onCopyTextRequested: text => root.vm.copyTextToClipboard(text)
             onOpenRequested: root.vm.selectionFlow.openSelectedSsa()
-            onConfigureColumnsRequested: columnSelectorPopup.open()
+            onConfigureColumnsRequested: trigger => columnSelectorPopup.openForTrigger(trigger)
             onNavigateToRelationRequested: ssaNumber => root.vm.selectionFlow.openSsa(ssaNumber)
             onDetailsWindowRequested: root.openDetailsWindow()
         }
@@ -576,6 +576,7 @@ ApplicationWindow {
 
     ColumnSelectorPopup {
         id: columnSelectorPopup
+        objectName: "columnSelectorPopup"
         viewModel: root.vm
     }
 
