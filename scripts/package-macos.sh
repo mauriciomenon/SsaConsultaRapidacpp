@@ -181,6 +181,12 @@ else
   exit 1
 fi
 
+bundle_icon="${bundle_copy}/Contents/Resources/app_icon.icns"
+if [[ ! -f "${bundle_icon}" ]]; then
+  echo "Application icon missing from macOS bundle: ${bundle_icon}" >&2
+  exit 1
+fi
+
 sql_drivers_dir="${bundle_copy}/Contents/PlugIns/sqldrivers"
 if [[ -d "${sql_drivers_dir}" ]]; then
   while IFS= read -r -d '' sql_driver; do

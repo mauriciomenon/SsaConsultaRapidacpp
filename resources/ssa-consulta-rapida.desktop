@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=SSA Consulta Rapida
+Comment=Consulta rapida de SSAs
+Exec=ssa_consulta_rapida
+Icon=ssa-consulta-rapida
+Categories=Utility;Office;
+Terminal=false

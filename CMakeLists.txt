@@ -274,6 +274,14 @@ qt_add_qml_module(
 target_link_libraries(
   ssa_consulta_rapida PRIVATE ssa_presentation ssa_infra ssa_platform
                               Qt6::Concurrent Qt6::Quick Qt6::QuickControls2)
+if(APPLE)
+  set_source_files_properties(resources/app_icon.icns
+                              PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+  target_sources(ssa_consulta_rapida PRIVATE resources/app_icon.icns)
+endif()
+if(WIN32)
+  target_sources(ssa_consulta_rapida PRIVATE app/desktop/ssa_consulta_rapida.rc)
+endif()
 target_compile_definitions(ssa_consulta_rapida
                            PRIVATE SSA_PROJECT_VERSION="${PROJECT_VERSION}")
 
@@ -297,6 +305,7 @@ set_target_properties(
   PROPERTIES MACOSX_BUNDLE TRUE
              MACOSX_BUNDLE_GUI_IDENTIFIER br.menon.ssa-consulta-rapida
              MACOSX_BUNDLE_BUNDLE_NAME "SSA Consulta Rapida"
+             MACOSX_BUNDLE_ICON_FILE app_icon.icns
              MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
              MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
              WIN32_EXECUTABLE TRUE)
@@ -307,6 +316,18 @@ install(
   RUNTIME DESTINATION bin)
 
 install(TARGETS ssa_consulta_rapida_cli RUNTIME DESTINATION bin)
+
+if(UNIX AND NOT APPLE)
+  install(FILES resources/app_icon.png
+          DESTINATION share/icons/hicolor/512x512/apps)
+  install(FILES resources/app_icon.svg
+          DESTINATION share/icons/hicolor/scalable/apps)
+  install(FILES resources/ssa-consulta-rapida.desktop
+          DESTINATION share/applications)
+endif()
+if(WIN32)
+  install(FILES resources/app_icon.ico DESTINATION .)
+endif()
 
 install(FILES THIRD_PARTY_NOTICES.md third_party/tinted-themes/LICENSE
         DESTINATION share/doc/ssa-consulta-rapida)
@@ -480,6 +501,13 @@ if(SSA_BUILD_TESTS)
     ssa_qml_help_about_tests
     PROPERTIES TIMEOUT 15 RUN_SERIAL TRUE ENVIRONMENT
                "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Basic")
+
+  add_executable(ssa_icon_artifact_tests tests/smoke/IconArtifactTest.cpp)
+  target_compile_definitions(ssa_icon_artifact_tests
+                             PRIVATE SSA_BUILD_DIR="${CMAKE_BINARY_DIR}")
+  target_link_libraries(ssa_icon_artifact_tests PRIVATE Qt6::Test)
+  add_test(NAME ssa_icon_artifact_tests COMMAND ssa_icon_artifact_tests)
+  set_tests_properties(ssa_icon_artifact_tests PROPERTIES TIMEOUT 10)
 
   add_test(NAME ssa_gui_version COMMAND ssa_consulta_rapida --version)
   set_tests_properties(

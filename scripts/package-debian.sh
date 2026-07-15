@@ -146,6 +146,8 @@ mkdir -p "${install_prefix}/lib/ssa_consulta_rapida/bin" \
          "${install_prefix}/lib/ssa_consulta_rapida/lib" \
          "${install_prefix}/bin" \
          "${install_prefix}/share/applications" \
+         "${install_prefix}/share/icons/hicolor/512x512/apps" \
+         "${install_prefix}/share/icons/hicolor/scalable/apps" \
          "${install_prefix}/share/doc/ssa-consulta-rapida"
 
 cp "${binary}" "${install_prefix}/lib/ssa_consulta_rapida/bin/ssa_consulta_rapida"
@@ -157,6 +159,12 @@ cp "${repo_root}/third_party/tinted-themes/LICENSE" \
 package_copy_runtime_libraries "${binary}" "${install_prefix}/lib/ssa_consulta_rapida/lib"
 # Deploy de plugins Qt + imports QML para o bundle ser autocontido.
 package_copy_qt_resources "${binary}" "${install_prefix}/lib/ssa_consulta_rapida"
+cp "${repo_root}/resources/app_icon.png" \
+   "${install_prefix}/share/icons/hicolor/512x512/apps/ssa-consulta-rapida.png"
+cp "${repo_root}/resources/app_icon.svg" \
+   "${install_prefix}/share/icons/hicolor/scalable/apps/ssa-consulta-rapida.svg"
+cp "${repo_root}/resources/ssa-consulta-rapida.desktop" \
+   "${install_prefix}/share/applications/ssa-consulta-rapida.desktop"
 
 cat > "${install_prefix}/lib/ssa_consulta_rapida/ssa_consulta_rapida" <<'EOF_LAUNCHER'
 #!/usr/bin/env bash
@@ -185,16 +193,6 @@ chmod 0755 "${install_prefix}/lib/ssa_consulta_rapida/ssa_consulta_rapida"
 
 ln -sf "../lib/ssa_consulta_rapida/ssa_consulta_rapida" \
        "${install_prefix}/bin/ssa_consulta_rapida"
-
-cat > "${install_prefix}/share/applications/ssa-consulta-rapida.desktop" <<EOF_DESKTOP
-[Desktop Entry]
-Type=Application
-Name=SSA Consulta Rapida
-Comment=Consulta rapida de SSAs
-Exec=ssa_consulta_rapida
-Categories=Utility;Office;
-Terminal=false
-EOF_DESKTOP
 
 cat > "${install_prefix}/share/doc/ssa-consulta-rapida/copyright" <<EOF_COPYRIGHT
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/

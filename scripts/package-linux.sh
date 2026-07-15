@@ -128,10 +128,19 @@ if [[ ! -x "${binary}" ]]; then
 fi
 
 rm -rf "${artifact_root}"
-mkdir -p "${artifact_root}/bin" "${artifact_root}/lib"
+mkdir -p "${artifact_root}/bin" "${artifact_root}/lib" \
+         "${artifact_root}/share/applications" \
+         "${artifact_root}/share/icons/hicolor/512x512/apps" \
+         "${artifact_root}/share/icons/hicolor/scalable/apps"
 rm -f "${archive_path}"
 cp "${binary}" "${artifact_root}/bin/"
 chmod +x "${artifact_root}/bin/ssa_consulta_rapida"
+cp "${repo_root}/resources/app_icon.png" \
+   "${artifact_root}/share/icons/hicolor/512x512/apps/ssa-consulta-rapida.png"
+cp "${repo_root}/resources/app_icon.svg" \
+   "${artifact_root}/share/icons/hicolor/scalable/apps/ssa-consulta-rapida.svg"
+cp "${repo_root}/resources/ssa-consulta-rapida.desktop" \
+   "${artifact_root}/share/applications/ssa-consulta-rapida.desktop"
 
 package_copy_runtime_libraries "${binary}" "${artifact_root}/lib"
 # Deploy de plugins Qt + imports QML para o bundle ser autocontido.

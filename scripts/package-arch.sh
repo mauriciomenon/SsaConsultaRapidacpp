@@ -155,6 +155,9 @@ cp "${binary}" "${pkgbuild_root}/src/ssa_consulta_rapida"
 cp "${repo_root}/THIRD_PARTY_NOTICES.md" "${pkgbuild_root}/src/"
 cp "${repo_root}/third_party/tinted-themes/LICENSE" \
   "${pkgbuild_root}/src/TINTED_SCHEMES_LICENSE.txt"
+cp "${repo_root}/resources/app_icon.png" "${pkgbuild_root}/src/"
+cp "${repo_root}/resources/app_icon.svg" "${pkgbuild_root}/src/"
+cp "${repo_root}/resources/ssa-consulta-rapida.desktop" "${pkgbuild_root}/src/"
 package_copy_runtime_libraries "${binary}" "${pkgbuild_root}/src"
 # Deploy de plugins Qt + imports QML (bundle autocontido).
 package_copy_qt_resources "${binary}" "${pkgbuild_root}/src"
@@ -215,15 +218,12 @@ exec "\${APP_DIR}/bin/ssa_consulta_rapida" "\$@"
 LAUNCHER
   chmod 0755 "\${pkgdir}/usr/bin/ssa_consulta_rapida"
   install -d "\${pkgdir}/usr/share/applications"
-  cat > "\${pkgdir}/usr/share/applications/ssa-consulta-rapida.desktop" <<'DESKTOP'
-[Desktop Entry]
-Type=Application
-Name=SSA Consulta Rapida
-Comment=Consulta rapida de SSAs
-Exec=ssa_consulta_rapida
-Categories=Utility;Office;
-Terminal=false
-DESKTOP
+  install -Dm0644 "\${srcdir}/ssa-consulta-rapida.desktop" \
+    "\${pkgdir}/usr/share/applications/ssa-consulta-rapida.desktop"
+  install -Dm0644 "\${srcdir}/app_icon.png" \
+    "\${pkgdir}/usr/share/icons/hicolor/512x512/apps/ssa-consulta-rapida.png"
+  install -Dm0644 "\${srcdir}/app_icon.svg" \
+    "\${pkgdir}/usr/share/icons/hicolor/scalable/apps/ssa-consulta-rapida.svg"
   install -Dm0644 "\${srcdir}/THIRD_PARTY_NOTICES.md" \
     "\${pkgdir}/usr/share/doc/ssa-consulta-rapida/THIRD_PARTY_NOTICES.md"
   install -Dm0644 "\${srcdir}/TINTED_SCHEMES_LICENSE.txt" \

@@ -89,6 +89,7 @@ if (Test-Path $installerPath) {
 New-Item -ItemType Directory -Path $artifactDir -Force | Out-Null
 
 Copy-Item $binary (Join-Path $artifactDir "ssa_consulta_rapida.exe")
+Copy-Item (Join-Path $repoRoot "resources\app_icon.ico") (Join-Path $artifactDir "app_icon.ico")
 Copy-Item (Join-Path $repoRoot "THIRD_PARTY_NOTICES.md") $artifactDir
 Copy-Item (Join-Path $repoRoot "third_party\tinted-themes\LICENSE") (Join-Path $artifactDir "TINTED_SCHEMES_LICENSE.txt")
 
@@ -201,7 +202,7 @@ Page instfiles
 Section
 SetOutPath "`$INSTDIR"
 File /r "$artifactDir\*.*"
-CreateShortCut "`$DESKTOP\\${APP_NAME}.lnk" "`$INSTDIR\\ssa_consulta_rapida.exe"
+CreateShortCut "`$DESKTOP\\${APP_NAME}.lnk" "`$INSTDIR\\ssa_consulta_rapida.exe" "" "`$INSTDIR\\app_icon.ico"
 SectionEnd
 "@
 
