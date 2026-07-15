@@ -38,7 +38,10 @@ namespace ssa::domain {
 
         bool isDateExemptStatus(const std::string& status) {
             static constexpr std::array<std::string_view, 3> exempt{"SCC", "ADI", "ASE"};
-            return std::ranges::find(exempt, uppercase(trimCopy(status))) != exempt.end();
+            const auto normalized = uppercase(trimCopy(status));
+            return std::ranges::any_of(exempt, [&normalized](const std::string_view code) {
+                return normalized == code || normalized.starts_with(std::string{code} + " ");
+            });
         }
 
         bool isTerminalStatusValue(const std::string& status) {

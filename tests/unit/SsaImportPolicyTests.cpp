@@ -21,6 +21,11 @@ TEST_CASE("SSA import rejects invalid calendar dates even for exempt states") {
                                                             {"descricao_ssa", "Exempt with week"},
                                                             {"situacao", "ASE"},
                                                             {"semana_cadastro", "202631"}}));
+    REQUIRE(ssa::domain::SsaImportPolicy::isValidRow(
+        Values{{"numero_ssa", "202600004"},
+               {"descricao_ssa", "Exempt with descriptive status"},
+               {"situacao", "ASE - aguardando execucao"},
+               {"semana_cadastro", "202631"}}));
 }
 
 TEST_CASE("SSA import merge fails closed when neither snapshot is valid") {
