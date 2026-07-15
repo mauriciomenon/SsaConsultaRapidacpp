@@ -35,23 +35,26 @@ Explicit options can be passed directly:
     return
 }
 
-if (-not $DbPath) {
-    $DbPath = Resolve-ProjectDefaultDbPath -Root $repoRoot
-}
-if (-not $DbPath) {
-    Write-ProjectDefaultDbNotFound `
-        -Root $repoRoot `
-        -ExplicitPathHint "Use .\scripts\run-windows.ps1 -DbPath <path> for an explicit external DB path."
-    exit 1
-}
-
-if (-not (Test-Path $DbPath)) {
-    throw "Database path not found: $DbPath"
-}
-
 $executable = Join-Path $buildDir "ssa_consulta_rapida.exe"
 if (-not (Test-Path $executable)) {
     throw "Binary not found for preset '$Preset' at: $executable. Run .\scripts\build-windows.ps1 before running .\scripts\run-windows.ps1."
+}
+
+$usingDefaultDb = [string]::IsNullOrWhiteSpace($DbPath)
+if ($usingDefaultDb) {
+    $DbPath = Join-Path $repoRoot "data\ssas.db"
+}
+
+if (-not (Test-Path -LiteralPath $DbPath -PathType Leaf)) {
+    if (-not $usingDefaultDb) {
+        throw "Database path not found: $DbPath"
+    }
+
+    $dbDirectory = Split-Path -Parent $DbPath
+    if (-not (Test-Path -LiteralPath $dbDirectory -PathType Container)) {
+        New-Item -ItemType Directory -Path $dbDirectory -Force | Out-Null
+    }
+    Write-Warning "Database file not found at '$DbPath'. The application will open so you can load data and create it."
 }
 
 $qtBinPath = $null
