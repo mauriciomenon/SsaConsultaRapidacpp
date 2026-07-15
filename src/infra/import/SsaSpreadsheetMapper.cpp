@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <iterator>
 #include <optional>
 #include <span>
@@ -62,6 +63,30 @@ namespace ssa::infra::importing {
             return {begin, end};
         }
 
+        enum class SnapshotHeaderKind {
+            Other,
+            Issue,
+            Emission,
+        };
+
+        SnapshotHeaderKind snapshotHeaderKind(const std::string& header) {
+            auto normalized = trimCopy(header);
+            std::ranges::transform(normalized, normalized.begin(), [](const unsigned char ch) {
+                return static_cast<char>(std::tolower(ch));
+            });
+            std::ranges::replace(normalized, '_', ' ');
+            if (normalized.find("emission") != std::string::npos ||
+                normalized.find("emissao") != std::string::npos ||
+                normalized.find("emitida") != std::string::npos) {
+                return SnapshotHeaderKind::Emission;
+            }
+            if (normalized.find("issue") != std::string::npos ||
+                normalized.find("cadastro") != std::string::npos) {
+                return SnapshotHeaderKind::Issue;
+            }
+            return SnapshotHeaderKind::Other;
+        }
+
         std::optional<std::size_t> headerRowIndex(const SpreadsheetTable& table,
                                                   HeaderColumnCache& cache,
                                                   const std::stop_token& stopToken) {
@@ -93,6 +118,7 @@ namespace ssa::infra::importing {
 
         struct HeaderColumnMap {
             HeaderColumns columns;
+            std::optional<std::size_t> fallbackTimestampColumn;
             bool ambiguous = false;
         };
 
@@ -140,7 +166,7 @@ namespace ssa::infra::importing {
             std::unordered_set<std::string> seenCanonical;
             std::unordered_set<std::string> seenCanonicalHeader;
             std::unordered_map<std::string, std::size_t> repeatedHeaders;
-            std::unordered_map<std::string, std::string> destinationOwner;
+            std::unordered_map<std::string, std::size_t> destinationIndexes;
             for (std::size_t index = 0; index < header.size(); ++index) {
                 auto column = cache.resolve(header[index]);
                 if (!column) {
@@ -163,10 +189,43 @@ namespace ssa::infra::importing {
                         destination = family.front();
                     }
                 }
-                const auto [owner, inserted] = destinationOwner.try_emplace(destination, *column);
+                const auto [owner, inserted] =
+                    destinationIndexes.try_emplace(destination, mapped.columns.size());
                 if (!inserted) {
-                    mapped.ambiguous = true;
-                    return mapped;
+                    if (destination != "data_cadastro") {
+                        mapped.ambiguous = true;
+                        return mapped;
+                    }
+                    const auto existingIndex = mapped.columns[owner->second].first;
+                    const auto existingKind = snapshotHeaderKind(header[existingIndex]);
+                    const auto incomingKind = snapshotHeaderKind(header[index]);
+                    if (existingKind == incomingKind ||
+                        (existingKind == SnapshotHeaderKind::Other &&
+                         incomingKind == SnapshotHeaderKind::Other)) {
+                        mapped.ambiguous = true;
+                        return mapped;
+                    }
+                    const auto recordFallback = [&](const std::size_t fallbackIndex) {
+                        if (mapped.fallbackTimestampColumn &&
+                            *mapped.fallbackTimestampColumn != fallbackIndex) {
+                            mapped.ambiguous = true;
+                            return false;
+                        }
+                        mapped.fallbackTimestampColumn = fallbackIndex;
+                        return true;
+                    };
+                    const auto incomingPreferred = incomingKind == SnapshotHeaderKind::Emission ||
+                                                   (incomingKind == SnapshotHeaderKind::Issue &&
+                                                    existingKind == SnapshotHeaderKind::Other);
+                    if (incomingPreferred) {
+                        if (!recordFallback(existingIndex)) {
+                            return mapped;
+                        }
+                        mapped.columns[owner->second] = {index, destination};
+                    } else if (!recordFallback(index)) {
+                        return mapped;
+                    }
+                    continue;
                 }
                 mapped.columns.emplace_back(index, destination);
             }
@@ -225,6 +284,15 @@ namespace ssa::infra::importing {
                 }
                 if (!value.empty()) {
                     row.emplace(columnKey, value);
+                }
+            }
+            if (valueFor(row, "data_cadastro").empty() && columnMap.fallbackTimestampColumn) {
+                const auto fallbackColumn = *columnMap.fallbackTimestampColumn;
+                if (fallbackColumn < table.rows[rowIndex].size()) {
+                    const auto fallback = trimCopy(table.rows[rowIndex][fallbackColumn]);
+                    if (!fallback.empty()) {
+                        row.emplace("data_cadastro", fallback);
+                    }
                 }
             }
             const auto validation = domain::SsaImportPolicy::validateRow(row);

@@ -2030,6 +2030,24 @@ TEST_CASE("spreadsheet mapper accepts the real cadastro timestamp format") {
             "21/10/2025 11:10:36");
 }
 
+TEST_CASE("spreadsheet mapper prefers emission timestamp over issue timestamp") {
+    ssa::infra::importing::SpreadsheetTable table;
+    table.sourcePath = "emission-priority.xlsx";
+    table.rows = {
+        {"Numero SSA", "Descricao da SSA", "emission_datetime", "issue_datetime", "Situacao"},
+        {"202600508", "Emission priority", "2026-07-15 10:00:00", "2026-07-01 10:00:00", "APV"},
+        {"202600509", "Issue fallback", "", "2026-07-02 10:00:00", "APV"}};
+
+    const auto result = ssa::infra::importing::SsaSpreadsheetMapper::map(table);
+
+    REQUIRE(result.mappingStatus == ssa::infra::importing::SpreadsheetMappingStatus::Mapped);
+    REQUIRE(result.rows.size() == 2);
+    REQUIRE(ssa::infra::importing::rowValue(result.rows.front(), "data_cadastro") ==
+            "2026-07-15 10:00:00");
+    REQUIRE(ssa::infra::importing::rowValue(result.rows.back(), "data_cadastro") ==
+            "2026-07-02 10:00:00");
+}
+
 TEST_CASE("spreadsheet mapper rejects exceptional rows without the date column") {
     ssa::infra::importing::SpreadsheetTable table;
     table.sourcePath = "week-only.xlsx";
