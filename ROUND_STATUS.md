@@ -121,15 +121,14 @@ remotes ativos o aceitou.
 
 ## Release e CI atuais
 
-- Release local anterior: tag anotada `v0.9.8`; `v0.9.7` permanece preservada.
-- A versao de trabalho agora e `0.9.9`; a tag `v0.9.9` ainda nao foi criada.
-- A tag deve apontar para o commit documental final desta rodada e ser publicada
-  somente depois do pacote macOS e dos refs obrigatorios.
+- Release local: tag anotada `v0.9.9`; `v0.9.8` e `v0.9.7` permanecem
+  preservadas.
+- A tag local aponta para o commit documental final desta rodada.
 - Build canonico local e `ctest --preset dev --output-on-failure`: 396/396.
 - Pacote macOS arm64 v0.9.9 foi gerado apos os gates locais; ZIP e DMG foram
   verificados com o icon no bundle.
 - `origin/master` e `bitbucket/master` nao foram atualizados nesta rodada:
-  ambos retornaram timeout SSH (`rc=124`) na verificacao ao vivo.
+  verificacao e tentativas de push retornaram timeout SSH (`rc=124`).
 - Pipeline GitLab da 0.9.7: pendente de verificacao apos o push final.
 - Bitbucket Pipelines: manual e bloqueado pela cota mensal compartilhada ate a
   renovacao prevista em 2026-07-28. Nao tratar essa cota como falha de Git.
