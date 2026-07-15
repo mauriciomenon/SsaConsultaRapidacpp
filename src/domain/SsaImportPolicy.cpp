@@ -364,7 +364,7 @@ namespace ssa::domain {
         }
 
         bool isIndicatorField(const std::string_view key) {
-            static constexpr std::array<std::string_view, 39> indicators{
+            static constexpr std::array<std::string_view, 40> indicators{
                 "prazo_limite",
                 "status_execucao_prazo",
                 "tempo_disponivel",
@@ -403,6 +403,7 @@ namespace ssa::domain {
                 "semana_programada",
                 "responsavel_programacao",
                 "responsavel_execucao",
+                "execucao_simples",
                 "descricao_execucao"};
             return std::ranges::find(indicators, key) != indicators.end() ||
                    key == "data_inicio_reprogramada" || key == "situacao_reprogramacao" ||

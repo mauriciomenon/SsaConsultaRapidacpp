@@ -437,6 +437,7 @@ TEST_CASE("terminal SSA preserves newer execution planning and description field
                           {"semana_programada", "202630"},
                           {"responsavel_programacao", "Equipe A"},
                           {"responsavel_execucao", "Equipe B"},
+                          {"execucao_simples", "Sim"},
                           {"descricao_execucao", "Execucao parcial 2"},
                           {"data_planilha", "2026-07-15"},
                           {"arquivo_origem", "SSAs executadas_15-07-2026.xlsx"}};
@@ -446,6 +447,7 @@ TEST_CASE("terminal SSA preserves newer execution planning and description field
     REQUIRE(result.values.at("semana_programada") == "202630");
     REQUIRE(result.values.at("responsavel_programacao") == "Equipe A");
     REQUIRE(result.values.at("responsavel_execucao") == "Equipe B");
+    REQUIRE(result.values.at("execucao_simples") == "Sim");
     REQUIRE(result.values.at("descricao_execucao") == "Execucao parcial 2");
 }
 
