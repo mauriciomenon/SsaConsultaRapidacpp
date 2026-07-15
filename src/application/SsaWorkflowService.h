@@ -14,7 +14,8 @@ namespace ssa::application {
             std::shared_ptr<ports::IExportPort> exportPort = nullptr,
             std::shared_ptr<ports::IDatabaseMaintenancePort> maintenancePort = nullptr,
             std::shared_ptr<ports::IDerivadasPort> derivadasPort = nullptr,
-            std::shared_ptr<ports::ISamRefreshPort> samPort = nullptr);
+            std::shared_ptr<ports::ISamRefreshPort> samPort = nullptr,
+            std::shared_ptr<ports::ISamImportPort> samImportPort = nullptr);
 
         [[nodiscard]] ports::WorkflowResult
         importExternalFiles(const ports::ImportExternalFilesRequest& request,
@@ -40,6 +41,7 @@ namespace ssa::application {
         std::shared_ptr<ports::IDatabaseMaintenancePort> maintenancePort_;
         std::shared_ptr<ports::IDerivadasPort> derivadasPort_;
         std::shared_ptr<ports::ISamRefreshPort> samPort_;
+        std::shared_ptr<ports::ISamImportPort> samImportPort_;
     };
 
 } // namespace ssa::application

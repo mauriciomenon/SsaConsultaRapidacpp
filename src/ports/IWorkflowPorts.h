@@ -80,6 +80,18 @@ namespace ssa::ports {
         std::vector<std::filesystem::path> files;
     };
 
+    struct SamArtifact {
+        std::filesystem::path path;
+        std::string executorSector;
+        std::size_t manifestRows = 0;
+        std::size_t detailRows = 0;
+        std::size_t withoutDetailRows = 0;
+    };
+
+    struct SamImportRequest {
+        std::vector<SamArtifact> artifacts;
+    };
+
     struct SamRefreshRequest {
         bool enabled = false;
         std::filesystem::path scrapReportRoot;
@@ -94,7 +106,7 @@ namespace ssa::ports {
     struct SamFetchResult {
         WorkflowStatus status = WorkflowStatus::NotImplemented;
         std::string message;
-        std::vector<std::filesystem::path> artifacts;
+        std::vector<SamArtifact> artifacts;
         std::string diagnostic;
 
         [[nodiscard]] bool ok() const {
@@ -134,6 +146,14 @@ namespace ssa::ports {
         [[nodiscard]] virtual SamFetchResult fetch(const SamRefreshRequest& request,
                                                    std::stop_token stopToken = {}) = 0;
         virtual bool discardArtifacts() = 0;
+    };
+
+    class ISamImportPort {
+      public:
+        virtual ~ISamImportPort() = default;
+
+        [[nodiscard]] virtual WorkflowResult importSamArtifacts(const SamImportRequest& request,
+                                                                std::stop_token stopToken = {}) = 0;
     };
 
     class IExportPort {

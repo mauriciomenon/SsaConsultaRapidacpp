@@ -55,7 +55,7 @@ namespace ssa::app::desktop {
             const auto samRefreshPort =
                 std::make_shared<ssa::platform::ScrapReportSamRefreshPort>();
             return std::make_shared<ssa::application::SsaWorkflowService>(
-                importPort, exportPort, maintenancePort, derivadasPort, samRefreshPort);
+                importPort, exportPort, maintenancePort, derivadasPort, samRefreshPort, importPort);
         }
 
         std::shared_ptr<ssa::platform::DesktopExternalCommandPort>

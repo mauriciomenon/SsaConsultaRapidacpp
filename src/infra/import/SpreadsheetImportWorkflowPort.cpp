@@ -309,6 +309,48 @@ namespace ssa::infra::importing {
         return importDiscoveredFiles(staging, false, stopToken);
     }
 
+    ports::WorkflowResult
+    SpreadsheetImportWorkflowPort::importSamArtifacts(const ports::SamImportRequest& request,
+                                                      const std::stop_token stopToken) {
+        if (request.artifacts.empty()) {
+            return withSummary({ports::WorkflowStatus::Rejected, "sam_import no_artifacts"}, {});
+        }
+        QLockFile::LockError lockError = QLockFile::NoError;
+        const auto importLock = acquireImportLock(importLockPath_, lockError);
+        if (!importLock) {
+            std::vector<std::filesystem::path> files;
+            files.reserve(request.artifacts.size());
+            for (const auto& artifact : request.artifacts) {
+                files.push_back(artifact.path);
+            }
+            return importLockFailure(lockError, selectedFilesFailureSummary(files));
+        }
+        if (auto resumed = resumePendingConsolidation(stopToken)) {
+            if (!resumed->ok()) {
+                return std::move(*resumed);
+            }
+            if (resumed->warning) {
+                resumed->status = ports::WorkflowStatus::Canceled;
+                resumed->message = "sam_import canceled_during_consolidation_resume";
+                return std::move(*resumed);
+            }
+        }
+        std::vector<std::filesystem::path> files;
+        files.reserve(request.artifacts.size());
+        for (const auto& artifact : request.artifacts) {
+            files.push_back(artifact.path);
+        }
+        auto staging = stager_.stageExternalFiles(files, stopToken);
+        if (staging.files.size() != request.artifacts.size() || staging.failedCopies > 0 ||
+            staging.legacyXls > 0 || staging.unsupported > 0) {
+            staging.operationalFailure = staging.failedCopies > 0;
+            if (staging.rejectionReason.empty()) {
+                staging.rejectionReason = "sam_staging_incomplete";
+            }
+        }
+        return importDiscoveredFiles(staging, false, stopToken, &request.artifacts);
+    }
+
     ports::WorkflowResult SpreadsheetImportWorkflowPort::rescan(const ports::RescanRequest& request,
                                                                 const std::stop_token stopToken) {
         if (stopToken.stop_requested()) {
@@ -448,10 +490,9 @@ namespace ssa::infra::importing {
             summary);
     }
 
-    ports::WorkflowResult
-    SpreadsheetImportWorkflowPort::importDiscoveredFiles(const ImportStagingResult& files,
-                                                         const bool replaceAll,
-                                                         const std::stop_token& stopToken) const {
+    ports::WorkflowResult SpreadsheetImportWorkflowPort::importDiscoveredFiles(
+        const ImportStagingResult& files, const bool replaceAll, const std::stop_token& stopToken,
+        const std::vector<ports::SamArtifact>* samArtifacts) const {
         constexpr const char* operation = "import_xlsx_to_sqlite";
         auto importSummary = makeImportSummary(files);
         const auto discardBeforeCommit = [this, &files,
@@ -549,97 +590,138 @@ namespace ssa::infra::importing {
             std::size_t validRows = 0;
             bool invalidFullBatch = false;
             bool duplicateConflict = false;
+            std::string samRejectionReason;
             try {
-                bool mappedWorksheet = false;
-                bool ignoredWorksheet = false;
-                bool invalidTrailingWorksheet = false;
-                bool fatalMapping = false;
-                bool fileCountedByWriter = false;
-                std::vector<std::string> headerRow;
-                batch.sourcePath = file.workbookPath;
-                reader_.readSheetChunks(
-                    file.workbookPath, kImportRowsPerChunk,
-                    [&](SpreadsheetTable table, const bool firstInSheet, const bool) {
-                        if (fatalMapping || invalidTrailingWorksheet || invalidFullBatch ||
-                            duplicateConflict) {
-                            return;
-                        }
-                        if (firstInSheet) {
-                            ignoredWorksheet = false;
-                            headerRow.clear();
-                        } else if (ignoredWorksheet) {
-                            batch.skippedRows += table.rows.size();
-                            return;
-                        } else {
-                            table.rows.insert(table.rows.begin(), headerRow);
-                        }
+                if (samArtifacts != nullptr) {
+                    auto sheets = reader_.readSheets(file.workbookPath, stopToken);
+                    for (auto& table : sheets) {
                         table.originalFilename = file.originalFilename;
                         table.sourceModifiedTimestamp = file.sourceModifiedTimestamp;
-                        auto worksheetBatch = mapper_.map(table, stopToken);
-                        if (worksheetBatch.mappingStatus ==
-                            SpreadsheetMappingStatus::HeaderNotRecognized) {
-                            if (mappedWorksheet) {
-                                invalidTrailingWorksheet = true;
+                    }
+                    auto adapted = SamSpreadsheetAdapter::adapt(
+                        sheets, samArtifacts->at(file.summaryIndex), stopToken);
+                    if (!adapted.ok()) {
+                        samRejectionReason = std::move(adapted.rejectionReason);
+                    } else {
+                        batch = mapper_.map(adapted.table, stopToken);
+                        validRows = batch.rows.size();
+                        if (batch.mappingStatus == SpreadsheetMappingStatus::Mapped &&
+                            !batch.rows.empty()) {
+                            const std::vector<SsaImportBatch> mapped{batch};
+                            const auto resolved =
+                                conflictResolver_.resolveBySsaNumberKeepingUnkeyedRows(mapped);
+                            fileResult.conflicts += resolved.conflictRows;
+                            importSummary.conflicts += resolved.conflictRows;
+                            totalSummary.conflictRows += resolved.conflictRows;
+                            if (resolved.conflictRows > 0) {
+                                duplicateConflict = true;
                             } else {
-                                ignoredWorksheet = true;
-                                batch.skippedRows += worksheetBatch.skippedRows;
+                                const auto batchWrite = writeSession->write(resolved, 1, 0);
+                                fileResult.inserts += batchWrite.rowsInserted;
+                                fileResult.updates += batchWrite.rowsUpdated;
+                                fileResult.unchangedRows += batchWrite.rowsUnchanged;
+                                fileResult.conflicts += batchWrite.conflictRows;
+                                importSummary.inserts += batchWrite.rowsInserted;
+                                importSummary.updates += batchWrite.rowsUpdated;
+                                importSummary.unchangedRows += batchWrite.rowsUnchanged;
+                                importSummary.conflicts += batchWrite.conflictRows;
+                                totalSummary.conflictRows += batchWrite.conflictRows;
+                                duplicateConflict = batchWrite.conflictRows > 0;
                             }
-                            return;
                         }
-                        if (worksheetBatch.mappingStatus != SpreadsheetMappingStatus::Mapped) {
-                            batch.mappingStatus = worksheetBatch.mappingStatus;
-                            fatalMapping = true;
-                            return;
-                        }
-                        if (firstInSheet) {
-                            headerRow = worksheetBatch.headerRow;
-                            batch.mappedColumns += worksheetBatch.mappedColumns;
-                        }
-                        mappedWorksheet = true;
-                        batch.skippedRows += worksheetBatch.skippedRows;
-                        batch.invalidRows += worksheetBatch.invalidRows;
-                        batch.invalidNumberRows += worksheetBatch.invalidNumberRows;
-                        batch.invalidDescriptionRows += worksheetBatch.invalidDescriptionRows;
-                        batch.invalidDateRows += worksheetBatch.invalidDateRows;
-                        validRows += worksheetBatch.rows.size();
-                        if (replaceAll && worksheetBatch.invalidRows > 0) {
-                            invalidFullBatch = true;
-                            return;
-                        }
-                        if (worksheetBatch.rows.empty()) {
-                            return;
-                        }
-                        const std::vector<SsaImportBatch> chunk{std::move(worksheetBatch)};
-                        const auto resolved =
-                            conflictResolver_.resolveBySsaNumberKeepingUnkeyedRows(chunk);
-                        fileResult.conflicts += resolved.conflictRows;
-                        importSummary.conflicts += resolved.conflictRows;
-                        totalSummary.conflictRows += resolved.conflictRows;
-                        if (resolved.conflictRows > 0) {
-                            duplicateConflict = true;
-                            return;
-                        }
-                        const auto batchWrite =
-                            writeSession->write(resolved, fileCountedByWriter ? 0 : 1, 0);
-                        fileCountedByWriter = true;
-                        fileResult.inserts += batchWrite.rowsInserted;
-                        fileResult.updates += batchWrite.rowsUpdated;
-                        fileResult.unchangedRows += batchWrite.rowsUnchanged;
-                        fileResult.conflicts += batchWrite.conflictRows;
-                        importSummary.inserts += batchWrite.rowsInserted;
-                        importSummary.updates += batchWrite.rowsUpdated;
-                        importSummary.unchangedRows += batchWrite.rowsUnchanged;
-                        importSummary.conflicts += batchWrite.conflictRows;
-                        totalSummary.conflictRows += batchWrite.conflictRows;
-                        duplicateConflict = batchWrite.conflictRows > 0;
-                    },
-                    stopToken);
-                if (invalidTrailingWorksheet) {
-                    batch.mappingStatus = SpreadsheetMappingStatus::HeaderNotRecognized;
-                } else if (!fatalMapping) {
-                    batch.mappingStatus = mappedWorksheet
-                                              ? SpreadsheetMappingStatus::Mapped
-                                              : SpreadsheetMappingStatus::HeaderNotRecognized;
+                    }
+                } else {
+                    bool mappedWorksheet = false;
+                    bool ignoredWorksheet = false;
+                    bool invalidTrailingWorksheet = false;
+                    bool fatalMapping = false;
+                    bool fileCountedByWriter = false;
+                    std::vector<std::string> headerRow;
+                    batch.sourcePath = file.workbookPath;
+                    reader_.readSheetChunks(
+                        file.workbookPath, kImportRowsPerChunk,
+                        [&](SpreadsheetTable table, const bool firstInSheet, const bool) {
+                            if (fatalMapping || invalidTrailingWorksheet || invalidFullBatch ||
+                                duplicateConflict) {
+                                return;
+                            }
+                            if (firstInSheet) {
+                                ignoredWorksheet = false;
+                                headerRow.clear();
+                            } else if (ignoredWorksheet) {
+                                batch.skippedRows += table.rows.size();
+                                return;
+                            } else {
+                                table.rows.insert(table.rows.begin(), headerRow);
+                            }
+                            table.originalFilename = file.originalFilename;
+                            table.sourceModifiedTimestamp = file.sourceModifiedTimestamp;
+                            auto worksheetBatch = mapper_.map(table, stopToken);
+                            if (worksheetBatch.mappingStatus ==
+                                SpreadsheetMappingStatus::HeaderNotRecognized) {
+                                if (mappedWorksheet) {
+                                    invalidTrailingWorksheet = true;
+                                } else {
+                                    ignoredWorksheet = true;
+                                    batch.skippedRows += worksheetBatch.skippedRows;
+                                }
+                                return;
+                            }
+                            if (worksheetBatch.mappingStatus != SpreadsheetMappingStatus::Mapped) {
+                                batch.mappingStatus = worksheetBatch.mappingStatus;
+                                fatalMapping = true;
+                                return;
+                            }
+                            if (firstInSheet) {
+                                headerRow = worksheetBatch.headerRow;
+                                batch.mappedColumns += worksheetBatch.mappedColumns;
+                            }
+                            mappedWorksheet = true;
+                            batch.skippedRows += worksheetBatch.skippedRows;
+                            batch.invalidRows += worksheetBatch.invalidRows;
+                            batch.invalidNumberRows += worksheetBatch.invalidNumberRows;
+                            batch.invalidDescriptionRows += worksheetBatch.invalidDescriptionRows;
+                            batch.invalidDateRows += worksheetBatch.invalidDateRows;
+                            validRows += worksheetBatch.rows.size();
+                            if (replaceAll && worksheetBatch.invalidRows > 0) {
+                                invalidFullBatch = true;
+                                return;
+                            }
+                            if (worksheetBatch.rows.empty()) {
+                                return;
+                            }
+                            const std::vector<SsaImportBatch> chunk{std::move(worksheetBatch)};
+                            const auto resolved =
+                                conflictResolver_.resolveBySsaNumberKeepingUnkeyedRows(chunk);
+                            fileResult.conflicts += resolved.conflictRows;
+                            importSummary.conflicts += resolved.conflictRows;
+                            totalSummary.conflictRows += resolved.conflictRows;
+                            if (resolved.conflictRows > 0) {
+                                duplicateConflict = true;
+                                return;
+                            }
+                            const auto batchWrite =
+                                writeSession->write(resolved, fileCountedByWriter ? 0 : 1, 0);
+                            fileCountedByWriter = true;
+                            fileResult.inserts += batchWrite.rowsInserted;
+                            fileResult.updates += batchWrite.rowsUpdated;
+                            fileResult.unchangedRows += batchWrite.rowsUnchanged;
+                            fileResult.conflicts += batchWrite.conflictRows;
+                            importSummary.inserts += batchWrite.rowsInserted;
+                            importSummary.updates += batchWrite.rowsUpdated;
+                            importSummary.unchangedRows += batchWrite.rowsUnchanged;
+                            importSummary.conflicts += batchWrite.conflictRows;
+                            totalSummary.conflictRows += batchWrite.conflictRows;
+                            duplicateConflict = batchWrite.conflictRows > 0;
+                        },
+                        stopToken);
+                    if (invalidTrailingWorksheet) {
+                        batch.mappingStatus = SpreadsheetMappingStatus::HeaderNotRecognized;
+                    } else if (!fatalMapping) {
+                        batch.mappingStatus = mappedWorksheet
+                                                  ? SpreadsheetMappingStatus::Mapped
+                                                  : SpreadsheetMappingStatus::HeaderNotRecognized;
+                    }
                 }
             } catch (const std::system_error& error) {
                 if (error.code() == std::make_error_code(std::errc::operation_canceled)) {
@@ -662,6 +744,11 @@ namespace ssa::infra::importing {
             }
             if (stopToken.stop_requested()) {
                 return discardBeforeCommit(rollbackSession(*writeSession, canceled(operation)));
+            }
+            if (!samRejectionReason.empty()) {
+                return discardBeforeCommit(rollbackSession(
+                    *writeSession, {ports::WorkflowStatus::Rejected,
+                                    std::string{operation} + " " + samRejectionReason}));
             }
             fileResult.validRows = validRows;
             fileResult.invalidRows = batch.invalidRows;

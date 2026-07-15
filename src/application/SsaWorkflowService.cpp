@@ -27,10 +27,11 @@ namespace ssa::application {
         std::shared_ptr<ports::IExportPort> exportPort,
         std::shared_ptr<ports::IDatabaseMaintenancePort> maintenancePort,
         std::shared_ptr<ports::IDerivadasPort> derivadasPort,
-        std::shared_ptr<ports::ISamRefreshPort> samPort)
+        std::shared_ptr<ports::ISamRefreshPort> samPort,
+        std::shared_ptr<ports::ISamImportPort> samImportPort)
         : importPort_(std::move(importPort)), exportPort_(std::move(exportPort)),
           maintenancePort_(std::move(maintenancePort)), derivadasPort_(std::move(derivadasPort)),
-          samPort_(std::move(samPort)) {}
+          samPort_(std::move(samPort)), samImportPort_(std::move(samImportPort)) {}
 
     ports::WorkflowResult
     SsaWorkflowService::importExternalFiles(const ports::ImportExternalFilesRequest& request,
@@ -99,12 +100,11 @@ namespace ssa::application {
                                       std::move(fetchResult.diagnostic)},
                                      samPort_->discardArtifacts());
         }
-        if (!importPort_) {
+        if (!samImportPort_) {
             return withCleanupStatus(notImplemented("SAM import"), samPort_->discardArtifacts());
         }
-
-        auto result = importPort_->importExternalFiles({.files = std::move(fetchResult.artifacts)},
-                                                       stopToken);
+        auto result = samImportPort_->importSamArtifacts(
+            {.artifacts = std::move(fetchResult.artifacts)}, stopToken);
         return withCleanupStatus(std::move(result), samPort_->discardArtifacts());
     }
 

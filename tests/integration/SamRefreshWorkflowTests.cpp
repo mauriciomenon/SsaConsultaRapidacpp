@@ -125,6 +125,9 @@ namespace {
         manifest.insert(QStringLiteral("status"), sector == QStringLiteral("BAD")
                                                       ? QStringLiteral("error")
                                                       : QStringLiteral("ok"));
+        manifest.insert(QStringLiteral("mode"), sector == QStringLiteral("MODE")
+                                                    ? QStringLiteral("detail")
+                                                    : QStringLiteral("search"));
         manifest.insert(QStringLiteral("runtime_mode"), sector == QStringLiteral("RUNTIME")
                                                             ? QStringLiteral("playwright")
                                                             : QStringLiteral("rest"));
@@ -132,16 +135,38 @@ namespace {
                                                        ? QStringLiteral("detail-lote")
                                                        : QStringLiteral("panorama"));
         manifest.insert(QStringLiteral("verify_tls"), sector != QStringLiteral("TLS"));
-        manifest.insert(QStringLiteral("count"), 1);
+        const int manifestCount = sector == QStringLiteral("LIMIT")   ? 200
+                                  : sector == QStringLiteral("EMPTY") ? 0
+                                                                      : 1;
+        manifest.insert(QStringLiteral("count"), manifestCount);
         QJsonObject filters;
         QJsonArray executorSectors;
         executorSectors.append(sector == QStringLiteral("MISMATCH") ? QStringLiteral("OTHER")
                                                                     : sector);
         filters.insert(QStringLiteral("executor_sectors"), executorSectors);
+        filters.insert(QStringLiteral("number_of_years"),
+                       sector == QStringLiteral("YEARS") ? 5 : 4);
+        filters.insert(QStringLiteral("limit"),
+                       sector == QStringLiteral("FILTERLIMIT") ? 199 : 200);
+        filters.insert(QStringLiteral("include_details"), sector != QStringLiteral("DETAILS"));
         manifest.insert(QStringLiteral("filters"), filters);
-        if (sector == QStringLiteral("EMPTY")) {
-            manifest.insert(QStringLiteral("count"), 0);
-        }
+        QJsonObject telemetry;
+        telemetry.insert(QStringLiteral("record_count"),
+                         sector == QStringLiteral("TELEMETRY") ? manifestCount + 1 : manifestCount);
+        telemetry.insert(QStringLiteral("detail_count"), manifestCount);
+        telemetry.insert(QStringLiteral("without_detail_count"), 0);
+        manifest.insert(QStringLiteral("telemetry"), telemetry);
+        QJsonObject byExecutor;
+        byExecutor.insert(sector == QStringLiteral("BYEXEC") ? QStringLiteral("OTHER") : sector,
+                          manifestCount);
+        QJsonObject summary;
+        summary.insert(QStringLiteral("total"),
+                       sector == QStringLiteral("SUMMARY") ? manifestCount + 1 : manifestCount);
+        summary.insert(QStringLiteral("detail_count"), manifestCount);
+        summary.insert(QStringLiteral("without_detail_count"),
+                       sector == QStringLiteral("DETAILCOUNT") ? 1 : 0);
+        summary.insert(QStringLiteral("by_executor"), byExecutor);
+        manifest.insert(QStringLiteral("summary"), summary);
         manifest.insert(QStringLiteral("exports"), exports);
         QFile output{manifestPath};
         if (!output.open(QIODevice::WriteOnly) ||
@@ -228,13 +253,21 @@ namespace {
         return request;
     }
 
-    class CapturingImportPort final : public ssa::ports::IImportWorkflowPort {
+    class CapturingImportPort final : public ssa::ports::IImportWorkflowPort,
+                                      public ssa::ports::ISamImportPort {
       public:
         ssa::ports::WorkflowResult
         importExternalFiles(const ssa::ports::ImportExternalFilesRequest& request,
                             std::stop_token = {}) override {
             ++calls;
             files = request.files;
+            return nextResult;
+        }
+
+        ssa::ports::WorkflowResult importSamArtifacts(const ssa::ports::SamImportRequest& request,
+                                                      std::stop_token = {}) override {
+            ++calls;
+            samArtifacts = request.artifacts;
             return nextResult;
         }
 
@@ -245,6 +278,7 @@ namespace {
 
         int calls = 0;
         std::vector<std::filesystem::path> files;
+        std::vector<ssa::ports::SamArtifact> samArtifacts;
         ssa::ports::WorkflowResult nextResult{ssa::ports::WorkflowStatus::Succeeded,
                                               "import committed"};
     };
@@ -282,11 +316,11 @@ namespace {
             QVERIFY(result.ok());
             QCOMPARE(result.artifacts.size(), std::size_t{2});
             for (const auto& artifact : result.artifacts) {
-                QVERIFY(std::filesystem::is_regular_file(artifact));
+                QVERIFY(std::filesystem::is_regular_file(artifact.path));
             }
             port.discardArtifacts();
             for (const auto& artifact : result.artifacts) {
-                QVERIFY(!std::filesystem::exists(artifact));
+                QVERIFY(!std::filesystem::exists(artifact.path));
             }
         }
 
@@ -318,11 +352,29 @@ namespace {
             QVERIFY(result.artifacts.empty());
         }
 
+        void port_rejects_a_result_at_the_configured_limit_as_potentially_truncated() {
+            QTemporaryDir root;
+            QVERIFY(root.isValid());
+            auto request = validRequest(root);
+            request.executorSectors = {"LIMIT"};
+            ssa::platform::ScrapReportSamRefreshPort port(
+                QCoreApplication::applicationFilePath().toStdString());
+
+            const auto result = port.fetch(request);
+
+            QCOMPARE(result.status, ssa::ports::WorkflowStatus::Rejected);
+            QVERIFY(result.message.find("truncated") != std::string::npos);
+            QVERIFY(result.artifacts.empty());
+        }
+
         void port_rejects_invalid_manifest_contract() {
             for (const auto& sector :
                  {std::string{"BAD"}, std::string{"RUNTIME"}, std::string{"PROFILE"},
                   std::string{"TLS"}, std::string{"EMPTY"}, std::string{"MISMATCH"},
-                  std::string{"EXPORT"}, std::string{"ALIAS"}, std::string{"NOFILE"}}) {
+                  std::string{"EXPORT"}, std::string{"ALIAS"}, std::string{"NOFILE"},
+                  std::string{"MODE"}, std::string{"YEARS"}, std::string{"FILTERLIMIT"},
+                  std::string{"DETAILS"}, std::string{"TELEMETRY"}, std::string{"SUMMARY"},
+                  std::string{"DETAILCOUNT"}, std::string{"BYEXEC"}}) {
                 QTemporaryDir root;
                 QVERIFY(root.isValid());
                 auto request = validRequest(root);
@@ -674,7 +726,7 @@ namespace {
             const auto fetch = port.fetch(request);
             QVERIFY(fetch.ok());
             QCOMPARE(fetch.artifacts.size(), std::size_t{1});
-            const auto outputDirectory = fetch.artifacts.front().parent_path();
+            const auto outputDirectory = fetch.artifacts.front().path.parent_path();
             std::filesystem::permissions(outputDirectory,
                                          std::filesystem::perms::owner_read |
                                              std::filesystem::perms::owner_exec,
@@ -694,15 +746,19 @@ namespace {
             auto importPort = std::make_shared<CapturingImportPort>();
             auto samPort = std::make_shared<FakeSamPort>();
             samPort->nextResult = {
-                ssa::ports::WorkflowStatus::Succeeded, "fetched", {"first.xlsx", "second.xlsx"}};
+                ssa::ports::WorkflowStatus::Succeeded,
+                "fetched",
+                {{"first.xlsx", "IEE3", 17, 10, 7}, {"second.xlsx", "MEL4", 23, 20, 3}}};
             const ssa::application::SsaWorkflowService service(importPort, nullptr, nullptr,
-                                                               nullptr, samPort);
+                                                               nullptr, samPort, importPort);
 
             const auto result = service.refreshSam({});
 
             QVERIFY(result.ok());
             QCOMPARE(importPort->calls, 1);
-            QCOMPARE(importPort->files.size(), std::size_t{2});
+            QCOMPARE(importPort->samArtifacts.size(), std::size_t{2});
+            QCOMPARE(importPort->samArtifacts.front().executorSector, std::string{"IEE3"});
+            QCOMPARE(importPort->samArtifacts.front().manifestRows, std::size_t{17});
             QCOMPARE(samPort->discardCalls, 1);
         }
 
@@ -723,11 +779,12 @@ namespace {
         void service_reports_cleanup_failure_after_committed_import() {
             auto importPort = std::make_shared<CapturingImportPort>();
             auto samPort = std::make_shared<FakeSamPort>();
-            samPort->nextResult = {
-                ssa::ports::WorkflowStatus::Succeeded, "fetched", {"fresh.xlsx"}};
+            samPort->nextResult = {ssa::ports::WorkflowStatus::Succeeded,
+                                   "fetched",
+                                   {{"fresh.xlsx", "IEE3", 1, 1, 0}}};
             samPort->discardSucceeds = false;
             const ssa::application::SsaWorkflowService service(importPort, nullptr, nullptr,
-                                                               nullptr, samPort);
+                                                               nullptr, samPort, importPort);
 
             const auto result = service.refreshSam({});
 

@@ -84,6 +84,7 @@ add_library(
   src/infra/import/CancelableFileCopy.cpp
   src/infra/import/ImportFileStager.cpp
   src/infra/import/LegacySpreadsheetConverter.cpp
+  src/infra/import/SamSpreadsheetAdapter.cpp
   src/infra/import/SpreadsheetImportWorkflowPort.cpp
   src/infra/import/SsaImportConflictResolver.cpp
   src/infra/import/SsaSpreadsheetHeaderCatalog.cpp
@@ -358,7 +359,7 @@ if(SSA_BUILD_TESTS)
     tests/integration/XlsxWorkbookReaderTests.cpp
     tests/integration/SqliteDatabaseValidatorTests.cpp
     tests/integration/SqliteRepositoryTests.cpp)
-  target_link_libraries(ssa_integration_tests PRIVATE ssa_infra
+  target_link_libraries(ssa_integration_tests PRIVATE ssa_application ssa_infra
                                                       Catch2::Catch2WithMain)
   target_compile_definitions(
     ssa_integration_tests
