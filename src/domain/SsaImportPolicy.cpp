@@ -47,6 +47,11 @@ namespace ssa::domain {
                    normalized.starts_with("SCA ");
         }
 
+        bool isMetadataField(const std::string_view key) {
+            return key == "arquivo_origem" || key == "data_planilha" ||
+                   key == "data_criacao_arquivo" || key == "data_arquivo_origem";
+        }
+
         std::optional<int> parsePart(const std::string_view value);
 
         bool isValidWeek(const std::string& value) {
@@ -64,7 +69,8 @@ namespace ssa::domain {
         std::size_t completenessScore(const SsaImportPolicy::Values& values) {
             std::size_t score = 0;
             for (const auto& [key, value] : values) {
-                if (!valueFor(values, key).empty() && key != "numero_ssa") {
+                if (!valueFor(values, key).empty() && key != "numero_ssa" &&
+                    !isMetadataField(key)) {
                     ++score;
                 }
             }
@@ -349,11 +355,6 @@ namespace ssa::domain {
                    key == "executado" || key == "concluido";
         }
 
-        bool isMetadataField(const std::string_view key) {
-            return key == "arquivo_origem" || key == "data_planilha" ||
-                   key == "data_criacao_arquivo" || key == "data_arquivo_origem";
-        }
-
         bool isTransientField(const std::string_view key) {
             return key == "data_criacao_arquivo";
         }
@@ -494,14 +495,14 @@ namespace ssa::domain {
         for (const auto& [key, value] : incoming) {
             const auto normalized = trimCopy(value);
             const auto current = valueFor(existing, key);
+            if (olderTerminalPromotion && key != "situacao") {
+                continue;
+            }
             if (isMetadataField(key)) {
                 if (!normalized.empty() &&
                     (!equalSnapshot || current.empty() || normalized < current)) {
                     merged[key] = normalized;
                 }
-                continue;
-            }
-            if (olderTerminalPromotion && key != "situacao" && !isIndicatorField(key)) {
                 continue;
             }
             if (equalSnapshot && isConflictField(key) && !normalized.empty() && !current.empty() &&

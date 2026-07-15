@@ -180,6 +180,55 @@ TEST_CASE("SSA import always promotes a transient state to an older terminal sna
     REQUIRE(result.values.at("descricao_ssa") == "Current description");
 }
 
+TEST_CASE("SSA import older terminal promotion preserves newer metadata and indicators") {
+    using Values = ssa::domain::SsaImportPolicy::Values;
+    const Values existing{{"numero_ssa", "202600025"},
+                          {"descricao_ssa", "Current description"},
+                          {"situacao", "APV"},
+                          {"prazo_limite", "2026-07-30"},
+                          {"tempo_excedido", "02:00"},
+                          {"data_planilha", "2026-07-15"},
+                          {"arquivo_origem", "SSA_15-07-2026.xlsx"},
+                          {"data_arquivo_origem", "2026-07-15 10:00:00"}};
+    const Values incoming{{"numero_ssa", "202600025"},
+                          {"descricao_ssa", "Older execution"},
+                          {"situacao", "STE"},
+                          {"prazo_limite", "2026-07-20"},
+                          {"tempo_excedido", "01:00"},
+                          {"data_planilha", "2026-07-14"},
+                          {"arquivo_origem", "SSA_14-07-2026.xlsx"},
+                          {"data_arquivo_origem", "2026-07-14 10:00:00"}};
+
+    const auto result = ssa::domain::SsaImportPolicy::merge(existing, incoming);
+
+    REQUIRE(result.values.at("situacao") == "STE");
+    REQUIRE(result.values.at("prazo_limite") == "2026-07-30");
+    REQUIRE(result.values.at("tempo_excedido") == "02:00");
+    REQUIRE(result.values.at("data_planilha") == "2026-07-15");
+    REQUIRE(result.values.at("arquivo_origem") == "SSA_15-07-2026.xlsx");
+    REQUIRE(result.values.at("data_arquivo_origem") == "2026-07-15 10:00:00");
+}
+
+TEST_CASE("SSA import metadata does not make an equal snapshot richer") {
+    using Values = ssa::domain::SsaImportPolicy::Values;
+    const Values existing{{"numero_ssa", "202600026"},
+                          {"descricao_ssa", "Current description"},
+                          {"situacao", "APV"},
+                          {"data_planilha", "2026-07-15"}};
+    const Values incoming{{"numero_ssa", "202600026"},
+                          {"descricao_ssa", "Conflicting description"},
+                          {"situacao", "APV"},
+                          {"data_planilha", "2026-07-15"},
+                          {"arquivo_origem", "SSA_15-07-2026.xlsx"},
+                          {"data_criacao_arquivo", "2026-07-15 11:00:00"},
+                          {"data_arquivo_origem", "2026-07-15 12:00:00"}};
+
+    const auto result = ssa::domain::SsaImportPolicy::merge(existing, incoming);
+
+    REQUIRE(result.values.at("descricao_ssa") == "Current description");
+    REQUIRE(result.conflict);
+}
+
 TEST_CASE("SSA import chooses the richer row on an equal snapshot") {
     using Values = ssa::domain::SsaImportPolicy::Values;
     const Values sparse{{"numero_ssa", "202600021"},
