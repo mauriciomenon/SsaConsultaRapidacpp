@@ -159,6 +159,27 @@ TEST_CASE("SSA import accepts final execution over a same snapshot transient sta
     REQUIRE_FALSE(result.conflict);
 }
 
+TEST_CASE("SSA import always promotes a transient state to an older terminal snapshot") {
+    using Values = ssa::domain::SsaImportPolicy::Values;
+    const Values existing{{"numero_ssa", "202600024"},
+                          {"descricao_ssa", "Current description"},
+                          {"situacao", "APV"},
+                          {"data_planilha", "2026-07-15"},
+                          {"arquivo_origem", "SSA_15-07-2026.xlsx"}};
+    const Values incoming{{"numero_ssa", "202600024"},
+                          {"descricao_ssa", "Older execution"},
+                          {"situacao", "STE"},
+                          {"data_planilha", "2026-07-14"},
+                          {"arquivo_origem", "SSAs executadas_14-07-2026.xlsx"}};
+
+    const auto result = ssa::domain::SsaImportPolicy::merge(existing, incoming);
+
+    REQUIRE(result.changed);
+    REQUIRE_FALSE(result.conflict);
+    REQUIRE(result.values.at("situacao") == "STE");
+    REQUIRE(result.values.at("descricao_ssa") == "Current description");
+}
+
 TEST_CASE("SSA import chooses the richer row on an equal snapshot") {
     using Values = ssa::domain::SsaImportPolicy::Values;
     const Values sparse{{"numero_ssa", "202600021"},

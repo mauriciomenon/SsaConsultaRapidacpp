@@ -477,13 +477,17 @@ namespace ssa::domain {
         if (!existingSnapshot || !incomingSnapshot) {
             return {existing, false, existing != incoming};
         }
-        if (*incomingSnapshot < *existingSnapshot) {
+        const bool existingTerminal = isTerminalStatus(valueFor(existing, "situacao"));
+        const bool incomingTerminal = isTerminalStatus(valueFor(incoming, "situacao"));
+        const bool terminalPromotion = incomingTerminal && !existingTerminal;
+        const bool olderTerminalPromotion =
+            terminalPromotion && *incomingSnapshot < *existingSnapshot;
+        if (*incomingSnapshot < *existingSnapshot && !terminalPromotion) {
             return {existing, false};
         }
 
         auto merged = existing;
-        const bool terminal = isTerminalStatus(valueFor(existing, "situacao"));
-        const bool incomingTerminal = isTerminalStatus(valueFor(incoming, "situacao"));
+        const bool terminal = existingTerminal;
         const bool equalSnapshot = *incomingSnapshot == *existingSnapshot;
         const bool incomingRicher = completenessScore(incoming) > completenessScore(existing);
         bool conflict = false;
@@ -495,6 +499,9 @@ namespace ssa::domain {
                     (!equalSnapshot || current.empty() || normalized < current)) {
                     merged[key] = normalized;
                 }
+                continue;
+            }
+            if (olderTerminalPromotion && key != "situacao" && !isIndicatorField(key)) {
                 continue;
             }
             if (equalSnapshot && isConflictField(key) && !normalized.empty() && !current.empty() &&
