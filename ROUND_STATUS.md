@@ -5,7 +5,7 @@ de interpretar sincronizacao Git, status de CI ou falhas de publicacao.
 
 Ultima verificacao: 2026-07-15
 
-## Prioridades de importacao v0.9.9 em andamento
+## Prioridades de importacao pos-v0.9.8
 
 Esta matriz registra somente evidencias do checkout local. Os commits abaixo
 ainda nao foram publicados nos remotes nesta rodada.
@@ -39,9 +39,9 @@ ainda nao foram publicados nos remotes nesta rodada.
 ### Validacao local desta rodada
 
 - `ssa_unit_tests`: 569 asserts em 108 casos.
-- `ssa_integration_tests`: 5636 asserts em 247 casos nesta execucao; alguns
-  testes de polling variam a contagem de asserts, por isso o gate canonico e
-  `ctest`.
+- `ssa_integration_tests`: 5639 asserts em 247 casos na ultima execucao direta;
+  alguns testes de polling variam a contagem de asserts, por isso o gate
+  canonico e `ctest`.
 - `ctest --preset dev --output-on-failure`: 391/391.
 - `git ls-remote --heads origin master`: timeout rc 124 nesta rodada.
 - `git ls-remote --heads bitbucket master`: timeout rc 124 nesta rodada.
@@ -120,11 +120,11 @@ remotes ativos o aceitou.
 - Release local concluida: tag anotada `v0.9.8`; `v0.9.7` permanece preservada.
 - A tag deve apontar para o commit documental final desta rodada e ser publicada
   somente depois do pacote macOS e dos refs obrigatorios.
-- Build canonico local e `ctest --preset dev --output-on-failure`: 379/379.
+- Build canonico local e `ctest --preset dev --output-on-failure`: 391/391.
 - Pacote macOS arm64 v0.9.8 gerado; ZIP e DMG aguardam publicacao junto com a
   tag porque os dois remotes SSH estao em timeout nesta rodada.
-- `origin/master` e `bitbucket/master` foram verificados em
-  `be16126a7c6bc6c1258f25cb649c3c8497d4860c` antes do commit documental.
+- `origin/master` e `bitbucket/master` nao foram atualizados nesta rodada:
+  ambos retornaram timeout SSH (`rc=124`) na verificacao ao vivo.
 - Pipeline GitLab da 0.9.7: pendente de verificacao apos o push final.
 - Bitbucket Pipelines: manual e bloqueado pela cota mensal compartilhada ate a
   renovacao prevista em 2026-07-28. Nao tratar essa cota como falha de Git.
