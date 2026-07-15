@@ -18,7 +18,7 @@ ainda nao foram publicados nos remotes nesta rodada.
 | 4. Datas e metadata | ENTREGUE | data planilha, nome, criacao quando disponivel e mtime; parser date-only adicionado |
 | 5. Perfil de fonte | ENTREGUE PARCIAL | `executadas` vence empate; derivadas/desvios ainda enriquecem por campos |
 | 6. TOCTOU na copia | ENTREGUE PARCIAL | tamanho e mtime comparados antes do rename; identidade inode/handle permanece futura |
-| 7. Lock entre raizes para o mesmo DB | ENTREGUE PARCIAL | lock de corpus mais lock hash global por caminho absoluto; aliases fisicos e colisao de hash ainda nao sao provados |
+| 7. Lock entre raizes para o mesmo DB | ENTREGUE | lock de corpus mais lock global por caminho canonico com SHA-256; teste cobre duas raizes e alias por symlink |
 | 8. Cancelamento e staging | ENTREGUE PARCIAL | stop remove temporarios e sweep de `.ssa-staged-`; janela SIGKILL pos-publicacao sem prova deterministica |
 | 9. SAM ate SQLite | ENTREGUE LOCAL PARCIAL | adapter, manifesto, truncamento, rollback e importacao em SQLite passam; REST real permanece dependencia externa |
 | 10. Derivadas explicitas | ENTREGUE LOCAL PARCIAL | CSV/TXT/TSV/XLSX/XLSM e cancelamento passam; limpeza de orfas segue acao separada |
@@ -35,6 +35,7 @@ ainda nao foram publicados nos remotes nesta rodada.
 - `b8957af` prioridade de fontes executadas em empate.
 - `a918f93` mapper consumindo colunas obrigatorias compartilhadas.
 - `af32c50` parser de data sem hora no nome da planilha.
+- `f55f0d9` lock por caminho canonico e digest SHA-256, incluindo alias por symlink.
 
 ### Validacao local desta rodada
 

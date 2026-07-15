@@ -9,10 +9,14 @@ CLI nao mantem listas paralelas de colunas.
 | Campo | Valor |
 | --- | --- |
 | Tabela | `ssa_table` |
-| Versao do schema | `1` |
+| Versao do catalogo | `1` |
 | Colunas obrigatorias no workbook | `numero_ssa`, `descricao_ssa`, `data_cadastro` |
 | Chave logica | `numero_ssa` |
 | Coluna derivada | `qtd_derivadas` |
+
+`ColumnCatalog::schemaVersion()` identifica a versao do contrato em codigo; ela
+nao e uma tabela de metadados gravada no SQLite atual. A validacao usa a versao
+do catalogo e compara as colunas persistidas diretamente.
 
 `ColumnCatalog::schemaColumns()` retorna as colunas persistidas. A lista inclui
 tipagem (`Text`, `Integer` ou `DateText`), rotulo e largura padrao. O validador
