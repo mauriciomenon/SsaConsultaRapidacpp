@@ -31,7 +31,9 @@ namespace ssa::presentation {
         [[nodiscard]] bool running() const;
         [[nodiscard]] bool canceling() const;
         [[nodiscard]] bool canCancel() const;
+        [[nodiscard]] bool legacySpreadsheetConverterAvailable() const;
         void importExternalFiles(const std::vector<QString>& files);
+        void importDerivations(const std::vector<QString>& files);
         void rescan(ports::RescanMode mode);
         void refreshSam(ports::SamRefreshRequest request);
         void cleanOrphanDerivations();

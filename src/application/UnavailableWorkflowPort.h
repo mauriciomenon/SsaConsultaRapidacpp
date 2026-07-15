@@ -21,6 +21,10 @@ namespace ssa::application {
         [[nodiscard]] ports::WorkflowResult cleanData(std::stop_token stopToken = {}) override;
         [[nodiscard]] ports::WorkflowResult vacuumAnalyze(std::stop_token stopToken = {}) override;
         [[nodiscard]] ports::WorkflowResult
+        importDerivations(const ports::ImportDerivationsRequest& request,
+                          std::stop_token stopToken = {}) override;
+        [[nodiscard]] bool legacySpreadsheetConverterAvailable() const override;
+        [[nodiscard]] ports::WorkflowResult
         cleanOrphanDerivations(std::stop_token stopToken = {}) override;
 
       private:

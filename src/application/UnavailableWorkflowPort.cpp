@@ -41,6 +41,18 @@ namespace ssa::application {
     }
 
     ports::WorkflowResult
+    UnavailableWorkflowPort::importDerivations(const ports::ImportDerivationsRequest& request,
+                                               std::stop_token stopToken) {
+        (void)request;
+        (void)stopToken;
+        return unavailable("derivadas import");
+    }
+
+    bool UnavailableWorkflowPort::legacySpreadsheetConverterAvailable() const {
+        return false;
+    }
+
+    ports::WorkflowResult
     UnavailableWorkflowPort::cleanOrphanDerivations(std::stop_token stopToken) {
         (void)stopToken;
         return unavailable("orphan derivation cleanup");

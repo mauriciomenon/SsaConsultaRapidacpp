@@ -50,6 +50,7 @@ namespace ssa::presentation {
         [[nodiscard]] bool running() const;
         [[nodiscard]] bool canceling() const;
         [[nodiscard]] bool canCancel() const;
+        Q_INVOKABLE [[nodiscard]] bool legacyDerivadasConverterAvailable() const;
         [[nodiscard]] QString runningMessage() const;
         [[nodiscard]] QString successMessage() const;
         [[nodiscard]] QString failureMessage() const;
@@ -73,6 +74,7 @@ namespace ssa::presentation {
 
       public slots:
         void importExternalFiles(const QVariantList& selectedFiles);
+        void importDerivations(const QVariantList& selectedFiles);
         void rescanIncremental();
         void rescanFull();
         void cleanOrphanDerivations();
@@ -109,6 +111,7 @@ namespace ssa::presentation {
         enum class Operation {
             Rescan,
             ImportExternalFiles,
+            ImportDerivations,
             CleanOrphanDerivations,
             CompactDatabase,
             SamRefresh,

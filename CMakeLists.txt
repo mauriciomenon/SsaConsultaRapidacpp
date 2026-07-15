@@ -82,6 +82,7 @@ add_library(
   ssa_infra STATIC
   src/infra/export/CsvExportPort.cpp
   src/infra/import/CancelableFileCopy.cpp
+  src/infra/import/DerivadasSourceReader.cpp
   src/infra/import/ImportFileStager.cpp
   src/infra/import/LegacySpreadsheetConverter.cpp
   src/infra/import/SamSpreadsheetAdapter.cpp
@@ -353,6 +354,7 @@ if(SSA_BUILD_TESTS)
   add_executable(
     ssa_integration_tests
     tests/integration/ExportPortTests.cpp
+    tests/integration/DerivadasImportTests.cpp
     tests/integration/JsonPreferencesStoreTests.cpp
     tests/integration/SpreadsheetImportWorkflowPortTests.cpp
     tests/integration/SsaSpreadsheetHeaderCatalogTests.cpp

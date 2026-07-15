@@ -304,6 +304,19 @@ namespace ssa::tests::presentation_smoke {
                                                  "orphan derivation cleanup completed"})
             : nextResult_(std::move(result)) {}
 
+        [[nodiscard]] bool legacySpreadsheetConverterAvailable() const override {
+            const std::scoped_lock lock(mutex_);
+            return legacyConverterAvailable_;
+        }
+
+        ssa::ports::WorkflowResult
+        importDerivations(const ssa::ports::ImportDerivationsRequest& request,
+                          std::stop_token = {}) override {
+            const std::scoped_lock lock(mutex_);
+            importRequests_.push_back(request);
+            return {ssa::ports::WorkflowStatus::Succeeded, "derivadas import completed"};
+        }
+
         ssa::ports::WorkflowResult cleanOrphanDerivations(std::stop_token = {}) override {
             const std::scoped_lock lock(mutex_);
             ++syncCalls_;
@@ -315,14 +328,26 @@ namespace ssa::tests::presentation_smoke {
             return syncCalls_;
         }
 
+        [[nodiscard]] std::vector<ssa::ports::ImportDerivationsRequest> importRequests() const {
+            const std::scoped_lock lock(mutex_);
+            return importRequests_;
+        }
+
         void setNextResult(ssa::ports::WorkflowResult result) {
             const std::scoped_lock lock(mutex_);
             nextResult_ = std::move(result);
         }
 
+        void setLegacySpreadsheetConverterAvailable(const bool available) {
+            const std::scoped_lock lock(mutex_);
+            legacyConverterAvailable_ = available;
+        }
+
       private:
         mutable std::mutex mutex_;
+        std::vector<ssa::ports::ImportDerivationsRequest> importRequests_;
         std::size_t syncCalls_{0};
+        bool legacyConverterAvailable_{true};
         ssa::ports::WorkflowResult nextResult_;
     };
 

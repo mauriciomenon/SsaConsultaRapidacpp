@@ -50,6 +50,10 @@ namespace ssa::presentation {
         return state_ == State::Running;
     }
 
+    bool WorkflowCommandRunner::legacySpreadsheetConverterAvailable() const {
+        return workflows_ && workflows_->legacySpreadsheetConverterAvailable();
+    }
+
     void WorkflowCommandRunner::importExternalFiles(const std::vector<QString>& files) {
         if (running() || shuttingDown_) {
             return;
@@ -69,6 +73,28 @@ namespace ssa::presentation {
         start([workflows = std::move(workflows),
                request = std::move(request)](const std::stop_token& stopToken) {
             return workflows->importExternalFiles(request, stopToken);
+        });
+    }
+
+    void WorkflowCommandRunner::importDerivations(const std::vector<QString>& files) {
+        if (running() || shuttingDown_) {
+            return;
+        }
+        if (!workflows_) {
+            emit this->finished(
+                {ports::WorkflowStatus::Failed, "derivadas import workflow is not configured"});
+            return;
+        }
+
+        ports::ImportDerivationsRequest request;
+        request.files.reserve(files.size());
+        for (const auto& path : files) {
+            request.files.emplace_back(qt::toFileSystemPath(path));
+        }
+        auto workflows = workflows_;
+        start([workflows = std::move(workflows),
+               request = std::move(request)](const std::stop_token& stopToken) {
+            return workflows->importDerivations(request, stopToken);
         });
     }
 

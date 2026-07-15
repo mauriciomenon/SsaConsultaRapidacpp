@@ -37,6 +37,16 @@ namespace {
 
     class CapturingDerivadasPort final : public ssa::ports::IDerivadasPort {
       public:
+        [[nodiscard]] bool legacySpreadsheetConverterAvailable() const override {
+            return false;
+        }
+
+        [[nodiscard]] ssa::ports::WorkflowResult
+        importDerivations(const ssa::ports::ImportDerivationsRequest&,
+                          std::stop_token = {}) override {
+            return {ssa::ports::WorkflowStatus::Succeeded, "derivadas import requested"};
+        }
+
         [[nodiscard]] ssa::ports::WorkflowResult
         cleanOrphanDerivations(std::stop_token = {}) override {
             called = true;

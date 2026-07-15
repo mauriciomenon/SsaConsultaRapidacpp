@@ -80,6 +80,9 @@ namespace ssa::presentation {
         case Operation::ImportExternalFiles:
             return {tr("Importando arquivos..."), tr("Importacao concluida"),
                     tr("Falha ao importar arquivos"), tr("Importacao cancelada")};
+        case Operation::ImportDerivations:
+            return {tr("Importando derivadas..."), tr("Importacao de derivadas concluida"),
+                    tr("Falha ao importar derivadas"), tr("Importacao de derivadas cancelada")};
         case Operation::CleanOrphanDerivations:
             return {tr("Limpando referencias orfas..."),
                     tr("Limpeza de referencias orfas concluida"),
@@ -188,6 +191,30 @@ namespace ssa::presentation {
 
     void WorkflowCommandViewModel::rescanIncremental() {
         startRescan(ports::RescanMode::Incremental);
+    }
+
+    void WorkflowCommandViewModel::importDerivations(const QVariantList& selectedFiles) {
+        if (runner_.running()) {
+            return;
+        }
+
+        operation_ = Operation::ImportDerivations;
+        std::vector<QString> files;
+        const auto parseError = localFilePathsFromUrls(selectedFiles, files);
+        if (parseError == FileSelectionError::EmptySelection) {
+            setResult(tr("Falha ao importar derivadas: nenhum arquivo selecionado"), false);
+            return;
+        }
+        if (parseError == FileSelectionError::NonLocalFile) {
+            setResult(tr("Falha ao importar derivadas: apenas arquivos locais sao suportados"),
+                      false);
+            return;
+        }
+        runner_.importDerivations(files);
+    }
+
+    bool WorkflowCommandViewModel::legacyDerivadasConverterAvailable() const {
+        return runner_.legacySpreadsheetConverterAvailable();
     }
 
     void WorkflowCommandViewModel::rescanFull() {

@@ -29,6 +29,10 @@ namespace ssa::application {
         [[nodiscard]] ports::WorkflowResult cleanData(std::stop_token stopToken = {}) const;
         [[nodiscard]] ports::WorkflowResult vacuumAnalyze(std::stop_token stopToken = {}) const;
         [[nodiscard]] ports::WorkflowResult
+        importDerivations(const ports::ImportDerivationsRequest& request,
+                          std::stop_token stopToken = {}) const;
+        [[nodiscard]] bool legacySpreadsheetConverterAvailable() const;
+        [[nodiscard]] ports::WorkflowResult
         cleanOrphanDerivations(std::stop_token stopToken = {}) const;
         [[nodiscard]] ports::WorkflowResult refreshSam(const ports::SamRefreshRequest& request,
                                                        const std::stop_token& stopToken = {}) const;

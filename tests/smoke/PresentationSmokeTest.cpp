@@ -1,4 +1,5 @@
 #include "PresentationSmokeFakes.h"
+#include "qt/FilesystemPath.h"
 
 #include "application/SsaWorkflowService.h"
 #include "domain/SsaTypes.h"
@@ -1906,6 +1907,31 @@ namespace {
             QTRY_COMPARE_WITH_TIMEOUT(derivadasPort->syncCalls(), std::size_t{1}, 1000);
             QTRY_COMPARE_WITH_TIMEOUT(model.browse()->status()->message(),
                                       QString("Limpeza de referencias orfas concluida"), 1000);
+            QCOMPARE(model.actions()->workflows()->lastSucceeded(), true);
+        }
+
+        void derivadas_import_dispatches_local_files_and_updates_status() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            auto derivadasPort = std::make_shared<CapturingDerivadasPort>();
+            auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(
+                std::make_shared<CapturingImportPort>(), nullptr, nullptr, derivadasPort);
+            ssa::presentation::MainViewModel model(service, commands, nullptr, nullptr, workflows);
+            QCOMPARE(model.actions()->workflows()->legacyDerivadasConverterAvailable(), true);
+            const auto first = QDir::temp().filePath(QStringLiteral("derivadas.csv"));
+            const auto second = QDir::temp().filePath(QStringLiteral("derivadas.xlsx"));
+            QVariantList selectedFiles{QUrl::fromLocalFile(first), QUrl::fromLocalFile(second)};
+
+            model.actions()->workflows()->importDerivations(selectedFiles);
+
+            QTRY_COMPARE_WITH_TIMEOUT(derivadasPort->importRequests().size(), std::size_t{1}, 1000);
+            const auto requests = derivadasPort->importRequests();
+            QCOMPARE(requests.front().files.size(), std::size_t{2});
+            QCOMPARE(requests.front().files[0], ssa::qt::toFileSystemPath(first));
+            QCOMPARE(requests.front().files[1], ssa::qt::toFileSystemPath(second));
+            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->status()->message(),
+                                      QString("Importacao de derivadas concluida"), 1000);
             QCOMPARE(model.actions()->workflows()->lastSucceeded(), true);
         }
 

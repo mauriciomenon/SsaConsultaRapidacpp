@@ -5,7 +5,9 @@ import QtQuick.Dialogs
 
 Item {
     id: root
+    objectName: "fileWorkflowDialogs"
     required property var viewModel
+    property var pendingDerivadasFiles: []
 
     function openExportResults() {
         exportDialog.open();
@@ -23,8 +25,27 @@ Item {
         importDataDialog.open();
     }
 
+    function openImportDerivations() {
+        derivadasDialog.open();
+    }
+
     function openDatabase() {
         databaseDialog.open();
+    }
+
+    function requestDerivadasImport(files) {
+        const requiresLegacyConverter = files.some(file => file.toString().toLowerCase().endsWith(".xls"));
+        if (requiresLegacyConverter) {
+            if (!root.viewModel.actions.workflows.legacyDerivadasConverterAvailable()) {
+                root.pendingDerivadasFiles = [];
+                legacyDerivadasUnavailableDialog.open();
+                return;
+            }
+            root.pendingDerivadasFiles = files;
+            legacyDerivadasPreflightDialog.open();
+            return;
+        }
+        root.viewModel.actions.workflows.importDerivations(files);
     }
 
     Connections {
@@ -88,5 +109,37 @@ Item {
         nameFilters: ["Planilhas XLSX (*.xlsx)"]
 
         onAccepted: root.viewModel.actions.workflows.importExternalFiles(importDataDialog.selectedFiles)
+    }
+
+    FileDialog {
+        id: derivadasDialog
+        objectName: "derivadasFileDialog"
+        title: "Importar derivadas"
+        fileMode: FileDialog.OpenFiles
+        nameFilters: ["Derivadas (*.csv *.txt *.tsv *.xlsx *.xlsm)", "XLS legado - requer LibreOffice (*.xls)"]
+
+        onAccepted: root.requestDerivadasImport(derivadasDialog.selectedFiles)
+    }
+
+    MessageDialog {
+        id: legacyDerivadasPreflightDialog
+        objectName: "legacyDerivadasPreflightDialog"
+        title: "Importar XLS legado"
+        text: "A importacao XLS legado requer LibreOffice instalado. Confirmar a conversao explicita?"
+        buttons: MessageDialog.Ok | MessageDialog.Cancel
+
+        onAccepted: {
+            root.viewModel.actions.workflows.importDerivations(root.pendingDerivadasFiles);
+            root.pendingDerivadasFiles = [];
+        }
+        onRejected: root.pendingDerivadasFiles = []
+    }
+
+    MessageDialog {
+        id: legacyDerivadasUnavailableDialog
+        objectName: "legacyDerivadasUnavailableDialog"
+        title: "LibreOffice nao encontrado"
+        text: "A importacao XLS legado nao pode iniciar porque o executavel LibreOffice soffice nao foi encontrado."
+        buttons: MessageDialog.Ok
     }
 }

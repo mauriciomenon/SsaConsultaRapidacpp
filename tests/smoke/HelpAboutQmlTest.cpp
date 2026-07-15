@@ -256,7 +256,14 @@ namespace {
             auto repository = std::make_shared<ssa::tests::presentation_smoke::FakeRepository>();
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
             auto commands = std::make_shared<ssa::tests::presentation_smoke::FakeCommands>();
-            ssa::presentation::MainViewModel viewModel(service, commands);
+            auto derivadasPort =
+                std::make_shared<ssa::tests::presentation_smoke::CapturingDerivadasPort>();
+            derivadasPort->setLegacySpreadsheetConverterAvailable(false);
+            auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(
+                std::make_shared<ssa::tests::presentation_smoke::CapturingImportPort>(), nullptr,
+                nullptr, derivadasPort);
+            ssa::presentation::MainViewModel viewModel(service, commands, nullptr, nullptr,
+                                                       workflows);
             SourceQmlUrlInterceptor sourceInterceptor;
             QQmlEngine engine;
             engine.addUrlInterceptor(&sourceInterceptor);
@@ -299,6 +306,43 @@ namespace {
             QCOMPARE(importDataDialog->property("nameFilters").toStringList(),
                      QStringList{QStringLiteral("Planilhas XLSX (*.xlsx)")});
             QVERIFY(QMetaObject::invokeMethod(importDataDialog, "close"));
+
+            auto* openImportDerivations =
+                mainWindow->findChild<QObject*>(QStringLiteral("openImportDerivationsMenuItem"));
+            QVERIFY(openImportDerivations != nullptr);
+            QVERIFY(QMetaObject::invokeMethod(openImportDerivations, "triggered"));
+            auto* derivadasDialog =
+                mainWindow->findChild<QObject*>(QStringLiteral("derivadasFileDialog"));
+            QVERIFY(derivadasDialog != nullptr);
+            QCOMPARE(derivadasDialog->property("title").toString(),
+                     QStringLiteral("Importar derivadas"));
+            QCOMPARE(derivadasDialog->property("nameFilters").toStringList(),
+                     QStringList({QStringLiteral("Derivadas (*.csv *.txt *.tsv *.xlsx *.xlsm)"),
+                                  QStringLiteral("XLS legado - requer LibreOffice (*.xls)")}));
+            auto* fileWorkflowDialogs =
+                mainWindow->findChild<QObject*>(QStringLiteral("fileWorkflowDialogs"));
+            QVERIFY(fileWorkflowDialogs != nullptr);
+            const QVariant files = QVariant::fromValue(QVariantList{QUrl::fromLocalFile(
+                QDir::temp().filePath(QStringLiteral("derivadas-legado.xls")))});
+            QVERIFY(QMetaObject::invokeMethod(fileWorkflowDialogs, "requestDerivadasImport",
+                                              Q_ARG(QVariant, files)));
+            auto* legacyPreflight =
+                mainWindow->findChild<QObject*>(QStringLiteral("legacyDerivadasPreflightDialog"));
+            QVERIFY(legacyPreflight != nullptr);
+            QCOMPARE(legacyPreflight->property("title").toString(),
+                     QStringLiteral("Importar XLS legado"));
+            QVERIFY(legacyPreflight->property("text").toString().contains(
+                QStringLiteral("LibreOffice")));
+            auto* legacyUnavailable =
+                mainWindow->findChild<QObject*>(QStringLiteral("legacyDerivadasUnavailableDialog"));
+            QVERIFY(legacyUnavailable != nullptr);
+            QCOMPARE(legacyUnavailable->property("title").toString(),
+                     QStringLiteral("LibreOffice nao encontrado"));
+            QVERIFY(legacyUnavailable->property("text").toString().contains(
+                QStringLiteral("LibreOffice")));
+            QTRY_VERIFY_WITH_TIMEOUT(legacyUnavailable->property("visible").toBool(), 1000);
+            QCOMPARE(derivadasPort->importRequests().size(), std::size_t{0});
+            QVERIFY(QMetaObject::invokeMethod(legacyUnavailable, "close"));
 
             viewModel.databaseSwitch()->openDatabase(
                 QUrl{QStringLiteral("https://example.invalid/not-local.db")});

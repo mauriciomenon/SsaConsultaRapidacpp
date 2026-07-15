@@ -81,6 +81,19 @@ namespace ssa::application {
     }
 
     ports::WorkflowResult
+    SsaWorkflowService::importDerivations(const ports::ImportDerivationsRequest& request,
+                                          std::stop_token stopToken) const {
+        if (!derivadasPort_) {
+            return notImplemented("derivadas import");
+        }
+        return derivadasPort_->importDerivations(request, std::move(stopToken));
+    }
+
+    bool SsaWorkflowService::legacySpreadsheetConverterAvailable() const {
+        return derivadasPort_ && derivadasPort_->legacySpreadsheetConverterAvailable();
+    }
+
+    ports::WorkflowResult
     SsaWorkflowService::cleanOrphanDerivations(std::stop_token stopToken) const {
         if (!derivadasPort_) {
             return notImplemented("orphan derivation cleanup");

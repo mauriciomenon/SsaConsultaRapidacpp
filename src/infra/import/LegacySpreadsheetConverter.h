@@ -32,6 +32,7 @@ namespace ssa::infra::importing {
         LegacySpreadsheetConverter();
         explicit LegacySpreadsheetConverter(std::filesystem::path executablePath);
 
+        [[nodiscard]] bool available() const;
         [[nodiscard]] LegacySpreadsheetConversionResult
         convertToXlsx(const FileCopyRequest& request, const std::stop_token& stopToken = {}) const;
 

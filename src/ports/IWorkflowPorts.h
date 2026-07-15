@@ -80,6 +80,10 @@ namespace ssa::ports {
         std::vector<std::filesystem::path> files;
     };
 
+    struct ImportDerivationsRequest {
+        std::vector<std::filesystem::path> files;
+    };
+
     struct SamArtifact {
         std::filesystem::path path;
         std::string executorSector;
@@ -178,6 +182,10 @@ namespace ssa::ports {
       public:
         virtual ~IDerivadasPort() = default;
 
+        [[nodiscard]] virtual bool legacySpreadsheetConverterAvailable() const = 0;
+        [[nodiscard]] virtual WorkflowResult
+        importDerivations(const ImportDerivationsRequest& request,
+                          std::stop_token stopToken = {}) = 0;
         [[nodiscard]] virtual WorkflowResult
         cleanOrphanDerivations(std::stop_token stopToken = {}) = 0;
     };

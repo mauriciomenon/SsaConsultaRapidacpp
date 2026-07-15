@@ -92,6 +92,12 @@ ApplicationWindow {
                 onTriggered: fileDialogs.openImportData()
             }
             MenuItem {
+                objectName: "openImportDerivationsMenuItem"
+                text: "Importar derivadas"
+                enabled: !root.vm.actions.workflows.running
+                onTriggered: fileDialogs.openImportDerivations()
+            }
+            MenuItem {
                 text: "Atualizar dados"
                 enabled: !root.vm.actions.workflows.running
                 onTriggered: root.vm.actions.workflows.rescanIncremental()
