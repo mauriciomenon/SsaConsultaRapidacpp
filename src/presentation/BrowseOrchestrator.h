@@ -1,6 +1,7 @@
 #pragma once
 
 #include "domain/SsaTypes.h"
+#include "ports/ISsaBrowsePort.h"
 #include "ports/IUserPreferencesStore.h"
 #include "presentation/BrowseInputCoordinator.h"
 #include "presentation/BrowseQueryState.h"
@@ -11,7 +12,6 @@
 #include "presentation/SearchViewModel.h"
 #include "presentation/SsaTableModel.h"
 #include "presentation/StatusViewModel.h"
-#include "query/SsaQueryService.h"
 
 #include <QObject>
 
@@ -27,7 +27,7 @@ namespace ssa::presentation {
         Q_OBJECT
 
       public:
-        BrowseOrchestrator(std::shared_ptr<query::SsaQueryService> queryService,
+        BrowseOrchestrator(std::shared_ptr<ports::ISsaBrowsePort> browsePort,
                            SearchViewModel& search, FilterPanelViewModel& filters,
                            DetailsViewModel& details, StatusViewModel& status,
                            SsaTableModel& tableModel, QObject* parent = nullptr);

@@ -3,7 +3,6 @@
 #include "domain/ColumnCatalog.h"
 #include "domain/SsaRelationGraph.h"
 #include "presentation/AsyncOperationErrorLog.h"
-#include "query/SsaQueryService.h"
 
 #include <QVariantMap>
 #include <QtConcurrentRun>
@@ -115,9 +114,9 @@ namespace ssa::presentation {
 
     DetailsViewModel::DetailsViewModel(QObject* parent) : QObject(parent), fields_(this) {}
 
-    DetailsViewModel::DetailsViewModel(std::shared_ptr<query::SsaQueryService> queryService,
+    DetailsViewModel::DetailsViewModel(std::shared_ptr<ports::ISsaBrowsePort> browsePort,
                                        QObject* parent)
-        : QObject(parent), fields_(this), queryService_(std::move(queryService)) {}
+        : QObject(parent), fields_(this), browsePort_(std::move(browsePort)) {}
 
     DetailsViewModel::~DetailsViewModel() {
         shuttingDown_ = true;
@@ -188,7 +187,7 @@ namespace ssa::presentation {
     void DetailsViewModel::startRelationQuery(const QString& ssaNumber,
                                               const RelationQueryKind kind) {
         stopRelationQueries();
-        if (!queryService_ || ssaNumber.isEmpty() || shuttingDown_) {
+        if (!browsePort_ || ssaNumber.isEmpty() || shuttingDown_) {
             const bool statusChanged = relationLoading_ || !relationError_.isEmpty();
             relationLoading_ = false;
             relationError_.clear();
@@ -205,7 +204,7 @@ namespace ssa::presentation {
         operation->state = std::make_shared<RelationQueryState>();
         const auto operationId = operation->id;
         const auto number = operation->ssaNumber.toStdString();
-        const auto service = queryService_;
+        const auto browsePort = browsePort_;
         const auto state = operation->state;
         const auto stopToken = operation->stopSource.get_token();
         connect(&operation->watcher, &QFutureWatcher<void>::finished, this,
@@ -218,14 +217,14 @@ namespace ssa::presentation {
         relationError_.clear();
         emit relationStatusChanged();
 
-        watcher->setFuture(QtConcurrent::run([service, number, state, stopToken, kind] {
+        watcher->setFuture(QtConcurrent::run([browsePort, number, state, stopToken, kind] {
             try {
                 std::scoped_lock lock(state->mutex);
                 if (kind == RelationQueryKind::Record) {
-                    state->record = service->details(domain::SsaNumber{number}, stopToken);
+                    state->record = browsePort->details(domain::SsaNumber{number}, stopToken);
                 } else {
                     state->children =
-                        service->derivadasDiretas(domain::SsaNumber{number}, stopToken);
+                        browsePort->derivadasDiretas(domain::SsaNumber{number}, stopToken);
                 }
                 state->canceled = stopToken.stop_requested();
             } catch (const std::system_error& error) {

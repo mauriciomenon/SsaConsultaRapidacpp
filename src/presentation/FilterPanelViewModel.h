@@ -1,6 +1,8 @@
 #pragma once
 
 #include "domain/SsaTypes.h"
+#include "ports/IExecutadasReportPort.h"
+#include "ports/ISsaBrowsePort.h"
 #include "ports/IUserPreferencesStore.h"
 #include "presentation/ColumnFilterViewModel.h"
 #include "presentation/FilterPanelAdvancedViewModel.h"
@@ -23,15 +25,12 @@
 #include <string>
 #include <vector>
 
-namespace ssa::query {
-    class SsaQueryService;
-}
-
 namespace ssa::presentation {
 
     class FilterPanelViewModel final : public QObject {
         Q_OBJECT
         Q_PROPERTY(QStringList statusShortcutValues READ statusShortcutValues CONSTANT)
+        Q_PROPERTY(QString excludedStatusCodesText READ excludedStatusCodesText CONSTANT)
         Q_PROPERTY(QString columnKey READ columnKey WRITE setColumnKey NOTIFY changed)
         Q_PROPERTY(QString columnValue READ columnValue WRITE setColumnValue NOTIFY changed)
         Q_PROPERTY(
@@ -46,14 +45,17 @@ namespace ssa::presentation {
         Q_PROPERTY(bool hasExclusionFilter READ hasExclusionFilter NOTIFY changed)
 
       public:
-        explicit FilterPanelViewModel(std::shared_ptr<query::SsaQueryService> queryService,
-                                      QObject* parent = nullptr);
+        explicit FilterPanelViewModel(
+            std::shared_ptr<ports::ISsaBrowsePort> browsePort,
+            std::shared_ptr<ports::IExecutadasReportPort> reportPort = nullptr,
+            QObject* parent = nullptr);
 
         [[nodiscard]] QString quickSector() const;
         void setQuickSector(const QString& value);
         [[nodiscard]] bool excludeScaSesSte() const;
         void setExcludeScaSesSte(bool value);
         [[nodiscard]] QStringList statusShortcutValues() const;
+        [[nodiscard]] QString excludedStatusCodesText() const;
         [[nodiscard]] QString columnKey() const;
         void setColumnKey(const QString& value);
         [[nodiscard]] QString columnValue() const;
@@ -127,7 +129,7 @@ namespace ssa::presentation {
         void handleAdvancedTextFilterApplied(const QString& key, const QString& expression);
 
         filterpanel::FilterPanelState state_;
-        std::shared_ptr<query::SsaQueryService> queryService_;
+        std::shared_ptr<ports::ISsaBrowsePort> browsePort_;
         QStringList weekColumnKeys_;
         ColumnFilterViewModel columns_;
         FilterPanelSectorViewModel sector_;

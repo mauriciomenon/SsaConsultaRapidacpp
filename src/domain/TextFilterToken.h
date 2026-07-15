@@ -8,7 +8,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace ssa::query {
+namespace ssa::domain {
 
     enum class TextFilterOperator : std::uint8_t {
         Equals,
@@ -46,10 +46,9 @@ namespace ssa::query {
     [[nodiscard]] bool sameTextFilterTokens(const TextFilterTokenSet& lhs,
                                             const TextFilterTokenSet& rhs);
     [[nodiscard]] std::string joinTextFilterTokens(const TextFilterTokenSet& tokens);
-    // Mixed token sets are reported explicitly so presentation code does not hide exclusions.
     [[nodiscard]] TextFilterUiMode textFilterUiModeForTokens(const TextFilterTokenSet& tokens,
                                                              TextFilterUiMode emptyFallback);
     [[nodiscard]] TextFilterUiMode textFilterUiModeForTokens(const TextFilterTokenSet& tokens);
     [[nodiscard]] std::string textFilterUiModeNameForTokens(const TextFilterTokenSet& tokens);
 
-} // namespace ssa::query
+} // namespace ssa::domain

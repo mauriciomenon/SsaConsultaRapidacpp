@@ -1,6 +1,7 @@
 #pragma once
 
 #include "infra/import/CancelableFileCopy.h"
+#include "ports/IExternalProcessRunner.h"
 
 #include <filesystem>
 #include <stop_token>
@@ -31,6 +32,8 @@ namespace ssa::infra::importing {
       public:
         LegacySpreadsheetConverter();
         explicit LegacySpreadsheetConverter(std::filesystem::path executablePath);
+        LegacySpreadsheetConverter(std::filesystem::path executablePath,
+                                   std::shared_ptr<ports::IExternalProcessRunner> processRunner);
 
         [[nodiscard]] bool available() const;
         [[nodiscard]] LegacySpreadsheetConversionResult
@@ -40,6 +43,7 @@ namespace ssa::infra::importing {
         [[nodiscard]] std::filesystem::path resolvedExecutable() const;
 
         std::filesystem::path executablePath_;
+        std::shared_ptr<ports::IExternalProcessRunner> processRunner_;
     };
 
 } // namespace ssa::infra::importing

@@ -1,8 +1,8 @@
 #include "presentation/FilterPanelCanonicalizer.h"
 
 #include "domain/ColumnCatalog.h"
+#include "domain/TextFilterToken.h"
 #include "presentation/FilterPanelStateHelpers.h"
-#include "query/TextFilterToken.h"
 
 #include <algorithm>
 #include <string>
@@ -30,20 +30,20 @@ namespace ssa::presentation::filterpanel {
             return false;
         }
 
-        query::TextFilterTokenSet tokens = query::parseTextFilterTokens(
+        domain::TextFilterTokenSet tokens = domain::parseTextFilterTokens(
             state.advanced().textFilter(statusColumnKey()).toStdString());
         if (const auto columnFilter = state.columnFilters().find(statusColumnKey().toStdString());
             columnFilter != state.columnFilters().end()) {
-            const auto columnTokens = query::parseTextFilterTokens(columnFilter->second);
+            const auto columnTokens = domain::parseTextFilterTokens(columnFilter->second);
             for (const auto& token : columnTokens.ordered) {
-                query::addTextFilterValue(tokens, token.value, token.filterOperator);
+                domain::addTextFilterValue(tokens, token.value, token.filterOperator);
             }
         }
 
         const auto excluded = domain::ColumnCatalog::excludedStatusCodes();
         const bool includesExcluded =
             std::ranges::any_of(tokens.ordered, [excluded](const auto& token) {
-                return token.filterOperator == query::TextFilterOperator::Equals &&
+                return token.filterOperator == domain::TextFilterOperator::Equals &&
                        std::ranges::find(excluded, std::string_view{token.value}) != excluded.end();
             });
         return includesExcluded && state.setExcludeScaSesSte(false);
@@ -66,9 +66,9 @@ namespace ssa::presentation::filterpanel {
         const auto executorKey = executorColumnKey();
         bool changed = state.setQuickSector({});
         const auto tokens =
-            query::parseTextFilterTokens(state.advanced().textFilter(executorKey).toStdString());
+            domain::parseTextFilterTokens(state.advanced().textFilter(executorKey).toStdString());
         if (tokens.ordered.size() == 1 &&
-            tokens.ordered.front().filterOperator == query::TextFilterOperator::Equals) {
+            tokens.ordered.front().filterOperator == domain::TextFilterOperator::Equals) {
             changed = state.advanced().removeTextFilter(executorKey) || changed;
         }
         changed = state.removeColumnFilter(executorKey) || changed;
@@ -82,10 +82,10 @@ namespace ssa::presentation::filterpanel {
         if (value.isEmpty()) {
             return clearExecutorShortcut(state) || changed;
         }
-        query::TextFilterTokenSet tokens;
-        query::addTextFilterValue(tokens, value.toStdString(), query::TextFilterOperator::Equals);
+        domain::TextFilterTokenSet tokens;
+        domain::addTextFilterValue(tokens, value.toStdString(), domain::TextFilterOperator::Equals);
         changed = state.advanced().setTextFilter(
-                      executorKey, QString::fromStdString(query::joinTextFilterTokens(tokens))) ||
+                      executorKey, QString::fromStdString(domain::joinTextFilterTokens(tokens))) ||
                   changed;
         changed = state.removeColumnFilter(executorKey) || changed;
         return changed;

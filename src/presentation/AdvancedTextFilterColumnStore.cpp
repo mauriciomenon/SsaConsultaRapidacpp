@@ -11,12 +11,12 @@ namespace ssa::presentation {
     }
 
     bool AdvancedTextFilterColumnStore::setOperatorMode(const OperatorModeUpdate& update) {
-        const auto normalizedMode = QString::fromStdString(query::textFilterUiModeName(
-            query::textFilterUiModeFromName(update.operatorMode.toStdString())));
+        const auto normalizedMode = QString::fromStdString(domain::textFilterUiModeName(
+            domain::textFilterUiModeFromName(update.operatorMode.toStdString())));
         auto [columnEntry, inserted] = columns_.try_emplace(update.key);
         if (inserted && !update.currentExpression.trimmed().isEmpty()) {
             columnEntry->second.tokens =
-                query::parseTextFilterTokens(update.currentExpression.toStdString());
+                domain::parseTextFilterTokens(update.currentExpression.toStdString());
             columnEntry->second.snapshot = update.currentExpression.trimmed();
         }
         auto& column = columnEntry->second;
@@ -32,53 +32,54 @@ namespace ssa::presentation {
         auto& column = columnEntry->second;
         const auto rawExpression = update.expression.toStdString();
         if (column.rawSnapshot != rawExpression) {
-            column.tokens = query::parseTextFilterTokens(rawExpression);
+            column.tokens = domain::parseTextFilterTokens(rawExpression);
             column.rawSnapshot = rawExpression;
         }
         if (update.inferOperatorMode && !column.tokens.ordered.empty()) {
             column.operatorMode =
-                QString::fromStdString(query::textFilterUiModeNameForTokens(column.tokens));
+                QString::fromStdString(domain::textFilterUiModeNameForTokens(column.tokens));
         }
         column.snapshot = update.expression.trimmed();
     }
 
     std::optional<QString>
     AdvancedTextFilterColumnStore::expressionWithAddedValue(const AddValueRequest& request) {
-        auto tokens = query::parseTextFilterTokens(request.currentExpression.toStdString());
-        auto filterOperator = query::textFilterOperatorFromMode(request.operatorMode.toStdString());
+        auto tokens = domain::parseTextFilterTokens(request.currentExpression.toStdString());
+        auto filterOperator =
+            domain::textFilterOperatorFromMode(request.operatorMode.toStdString());
         if (!filterOperator.has_value() ||
-            !query::addTextFilterValue(tokens, request.value.toStdString(), *filterOperator)) {
+            !domain::addTextFilterValue(tokens, request.value.toStdString(), *filterOperator)) {
             return std::nullopt;
         }
-        return QString::fromStdString(query::joinTextFilterTokens(tokens));
+        return QString::fromStdString(domain::joinTextFilterTokens(tokens));
     }
 
     QString AdvancedTextFilterColumnStore::expressionReplacingWithOperator(
         const OperatorValueListRequest& request) {
         const auto filterOperator =
-            query::textFilterOperatorFromMode(request.operatorMode.toStdString());
+            domain::textFilterOperatorFromMode(request.operatorMode.toStdString());
         if (!filterOperator.has_value()) {
             return {};
         }
-        query::TextFilterTokenSet tokens;
+        domain::TextFilterTokenSet tokens;
         for (const auto& value : request.values) {
-            query::addTextFilterValue(tokens, value.toStdString(), *filterOperator);
+            domain::addTextFilterValue(tokens, value.toStdString(), *filterOperator);
         }
-        return QString::fromStdString(query::joinTextFilterTokens(tokens));
+        return QString::fromStdString(domain::joinTextFilterTokens(tokens));
     }
 
     QString AdvancedTextFilterColumnStore::expressionReplacingWithOperatorLists(
         const OperatorValueListsRequest& request) {
-        query::TextFilterTokenSet tokens;
+        domain::TextFilterTokenSet tokens;
         for (const auto& value : request.includeValues) {
-            query::addTextFilterValue(tokens, value.toStdString(),
-                                      query::TextFilterOperator::Equals);
+            domain::addTextFilterValue(tokens, value.toStdString(),
+                                       domain::TextFilterOperator::Equals);
         }
         for (const auto& value : request.excludeValues) {
-            query::addTextFilterValue(tokens, value.toStdString(),
-                                      query::TextFilterOperator::Different);
+            domain::addTextFilterValue(tokens, value.toStdString(),
+                                       domain::TextFilterOperator::Different);
         }
-        return QString::fromStdString(query::joinTextFilterTokens(tokens));
+        return QString::fromStdString(domain::joinTextFilterTokens(tokens));
     }
 
     bool

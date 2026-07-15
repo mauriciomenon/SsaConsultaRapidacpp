@@ -1,6 +1,8 @@
 #pragma once
 
 #include "domain/SsaTypes.h"
+#include "ports/IExecutadasReportPort.h"
+#include "ports/ISsaBrowsePort.h"
 #include "ports/IUserPreferencesStore.h"
 #include "presentation/BrowseOrchestrator.h"
 #include "presentation/DetailsViewModel.h"
@@ -8,7 +10,6 @@
 #include "presentation/SearchViewModel.h"
 #include "presentation/SsaTableModel.h"
 #include "presentation/StatusViewModel.h"
-#include "query/SsaQueryService.h"
 
 #include <QObject>
 #include <QPointer>
@@ -42,7 +43,8 @@ namespace ssa::presentation {
         Q_PROPERTY(QVariantList tableHeaders READ tableHeaders NOTIFY tableHeadersChanged)
 
       public:
-        explicit BrowseViewModel(std::shared_ptr<query::SsaQueryService> queryService,
+        explicit BrowseViewModel(std::shared_ptr<ports::ISsaBrowsePort> browsePort,
+                                 std::shared_ptr<ports::IExecutadasReportPort> reportPort = nullptr,
                                  QObject* parent = nullptr);
 
         [[nodiscard]] SearchViewModel* search();
@@ -116,7 +118,7 @@ namespace ssa::presentation {
         BrowseOrchestrator orchestrator_;
         mutable QVariantList cachedTableHeaders_;
         mutable bool tableHeadersDirty_{true};
-        std::shared_ptr<query::SsaQueryService> queryService_;
+        std::shared_ptr<ports::ISsaBrowsePort> browsePort_;
         std::vector<QPointer<DetailsViewModel>> detachedDetails_;
     };
 

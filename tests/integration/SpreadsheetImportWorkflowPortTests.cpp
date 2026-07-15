@@ -11,6 +11,8 @@
 #include "infra/sqlite/SqliteConnection.h"
 #include "infra/sqlite/SqliteDatabaseValidator.h"
 #include "infra/sqlite/SqliteSsaImportWriter.h"
+#include "infra/sqlite/SqliteSsaRepository.h"
+#include "platform/SupervisedProcessRunner.h"
 #include "qt/FilesystemPath.h"
 
 #include <QCryptographicHash>
@@ -22,6 +24,7 @@
 #include <QThread>
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers.hpp>
 #include <miniz.h>
 #include <sqlite3.h>
 
@@ -89,7 +92,8 @@ namespace {
     void createSparseFile(const std::filesystem::path& path, std::uintmax_t size);
 
     void writeWorkbook(const std::filesystem::path& path, const std::string& rowsXml,
-                       const std::uintmax_t paddingBytes = 0) {
+                       const std::uintmax_t paddingBytes = 0,
+                       const std::string& sharedStringsXml = {}) {
         mz_zip_archive zip = {};
         REQUIRE(mz_zip_writer_init_file(&zip, path.string().c_str(), 0) != 0);
         addZipEntry(zip, "[Content_Types].xml", R"(<?xml version="1.0" encoding="UTF-8"?>
@@ -106,6 +110,9 @@ xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
 <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
 </Relationships>)");
+        if (!sharedStringsXml.empty()) {
+            addZipEntry(zip, "xl/sharedStrings.xml", sharedStringsXml);
+        }
         addZipEntry(zip, "xl/worksheets/sheet1.xml",
                     R"(<?xml version="1.0" encoding="UTF-8"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
@@ -779,7 +786,7 @@ TEST_CASE("workflow cancellation after staging removes the owned external copy")
 }
 
 #ifndef _WIN32
-TEST_CASE("workflow reports failed when owned staging cleanup cannot complete after cancellation") {
+TEST_CASE("workflow preserves canceled status when owned staging cleanup cannot complete") {
     if (::geteuid() == 0) {
         SKIP("permission cleanup failure cannot be simulated as root");
     }
@@ -825,8 +832,8 @@ TEST_CASE("workflow reports failed when owned staging cleanup cannot complete af
                                  std::filesystem::perm_options::replace);
 
     CAPTURE(result.message, result.diagnostic);
-    REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
-    REQUIRE(result.message.find("staging_cleanup_failed") != std::string::npos);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Canceled);
+    REQUIRE(result.message.find("canceled") != std::string::npos);
     REQUIRE_FALSE(result.diagnostic.empty());
     REQUIRE(directWorkbookCount(inputDirectory) == 1);
     REQUIRE(std::filesystem::exists(source));
@@ -1075,8 +1082,9 @@ TEST_CASE("legacy converter cancellation preserves destination and removes tempo
         std::ofstream previous(destination);
         previous << "previous";
     }
+    const auto processRunner = std::make_shared<ssa::platform::SupervisedProcessRunner>();
     const ssa::infra::importing::LegacySpreadsheetConverter converter(
-        writeFakeSoffice(root, FakeSofficeBehavior::Block));
+        writeFakeSoffice(root, FakeSofficeBehavior::Block), processRunner);
     std::stop_source stopSource;
     auto operation = std::async(std::launch::async, [&] {
         return converter.convertToXlsx({source, destination}, stopSource.get_token());
@@ -1115,8 +1123,9 @@ TEST_CASE("legacy converter reports cleanup failure after canceled output copy")
     const auto source = root / "source.xls";
     const auto destination = root / "output.xlsx";
     createSparseFile(source, copyBytes);
+    const auto processRunner = std::make_shared<ssa::platform::SupervisedProcessRunner>();
     const ssa::infra::importing::LegacySpreadsheetConverter converter(
-        writeFakeSoffice(root, FakeSofficeBehavior::CleanupFailure));
+        writeFakeSoffice(root, FakeSofficeBehavior::CleanupFailure), processRunner);
     std::stop_source stopSource;
     auto operation = std::async(std::launch::async, [&] {
         return converter.convertToXlsx({source, destination}, stopSource.get_token());
@@ -1154,6 +1163,8 @@ TEST_CASE("legacy converter reports cleanup failure after canceled output copy")
             ssa::infra::importing::LegacySpreadsheetConversionStatus::CleanupFailed);
     REQUIRE(result.diagnostic.find("cannot remove xls conversion temporary directory") !=
             std::string::npos);
+    REQUIRE(result.diagnostic.find("path=") != std::string::npos);
+    REQUIRE(result.diagnostic.find("error=") != std::string::npos);
     REQUIRE_FALSE(std::filesystem::exists(destination));
 }
 #endif
@@ -1197,6 +1208,19 @@ TEST_CASE("xlsx reader rejects a stopped token before opening the package") {
     REQUIRE_THROWS_AS(ssa::infra::importing::XlsxWorkbookReader::readFirstSheet(
                           root / "missing.xlsx", stopSource.get_token()),
                       std::system_error);
+}
+
+TEST_CASE("xlsx reader enforces the shared string count limit") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+    const auto workbook = std::filesystem::path{tempDir.path().toStdString()} / "shared-limit.xlsx";
+    writeWorkbook(workbook, row(1, {"<c r=\"A1\" t=\"s\"><v>0</v></c>"}), 0,
+                  R"(<?xml version="1.0" encoding="UTF-8"?>
+<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" uniqueCount="1000001">
+</sst>)");
+
+    REQUIRE_THROWS_WITH(ssa::infra::importing::XlsxWorkbookReader::readFirstSheet(workbook),
+                        "xlsx shared strings exceed supported limit");
 }
 
 TEST_CASE("xlsx extraction cancellation is prompt and a second read succeeds") {
@@ -2302,6 +2326,9 @@ TEST_CASE("spreadsheet workflow reports invalid row causes without cell content"
     REQUIRE(result.message.find("invalid_number=0") != std::string::npos);
     REQUIRE(result.message.find("invalid_description=0") != std::string::npos);
     REQUIRE(result.message.find("invalid_date=1") != std::string::npos);
+    REQUIRE(result.message.find("skipped=1") != std::string::npos);
+    REQUIRE(result.importSummary.has_value());
+    REQUIRE(result.importSummary->skippedRows == 1);
     REQUIRE(result.message.find("SECRET_ROW_PAYLOAD") == std::string::npos);
     REQUIRE(result.diagnostic.find("SECRET_ROW_PAYLOAD") == std::string::npos);
     REQUIRE(result.warning);
@@ -2425,6 +2452,70 @@ TEST_CASE("incremental no-op reports success when post commit consolidation is i
     REQUIRE(result.message.find("error=consolidation_failed") != std::string::npos);
     REQUIRE(std::filesystem::exists(workbook));
     REQUIRE(writer.pendingConsolidation().size() == 1);
+}
+
+TEST_CASE("sqlite writer maintains an indexed derived count summary") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto dbPath = std::filesystem::path{tempDir.path().toStdString()} / "summary.db";
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(dbPath, importColumns());
+    ssa::infra::importing::ResolvedSsaImportRows rows;
+    rows.rows = {
+        {{"numero_ssa", "202600600"},
+         {"situacao", "APV"},
+         {"descricao_ssa", "Parent"},
+         {"data_cadastro", "2026-07-14"}},
+        {{"numero_ssa", "202600601"},
+         {"situacao", "APV"},
+         {"descricao_ssa", "Child one"},
+         {"data_cadastro", "2026-07-14"},
+         {"derivada_de", "202600600"}},
+        {{"numero_ssa", "202600602"},
+         {"situacao", "APV"},
+         {"descricao_ssa", "Child two"},
+         {"data_cadastro", "2026-07-14"},
+         {"derivada_de", "202600600"}},
+    };
+    REQUIRE(writer.write(rows, 1, 0, false).rowsWritten == 3);
+
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarInt(db, "SELECT qtd_derivadas FROM ssa_table_derived_counts WHERE "
+                          "parent_ssa='202600600'") == 2);
+    REQUIRE(sqlite3_exec(db,
+                         "UPDATE ssa_table SET derivada_de='202600999' WHERE "
+                         "numero_ssa='202600602'",
+                         nullptr, nullptr, nullptr) == SQLITE_OK);
+    REQUIRE(scalarInt(db, "SELECT qtd_derivadas FROM ssa_table_derived_counts WHERE "
+                          "parent_ssa='202600600'") == 1);
+    REQUIRE(scalarInt(db, "SELECT qtd_derivadas FROM ssa_table_derived_counts WHERE "
+                          "parent_ssa='202600999'") == 1);
+    REQUIRE(sqlite3_exec(db, "DELETE FROM ssa_table WHERE numero_ssa='202600601'", nullptr, nullptr,
+                         nullptr) == SQLITE_OK);
+    REQUIRE(scalarInt(db, "SELECT COALESCE((SELECT qtd_derivadas FROM "
+                          "ssa_table_derived_counts WHERE parent_ssa='202600600'), 0)") == 0);
+    REQUIRE(sqlite3_exec(db,
+                         "INSERT OR REPLACE INTO ssa_table_derived_counts(parent_ssa, "
+                         "qtd_derivadas) VALUES('202600600', 7)",
+                         nullptr, nullptr, nullptr) == SQLITE_OK);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM sqlite_schema WHERE type='table' AND "
+                          "name='ssa_table_derived_counts'") == 1);
+    REQUIRE(scalarInt(db, "SELECT COALESCE(d.qtd_derivadas, 0) FROM ssa_table AS s LEFT JOIN "
+                          "ssa_table_derived_counts AS d ON d.parent_ssa=TRIM(COALESCE("
+                          "s.numero_ssa, '')) WHERE s.numero_ssa='202600600'") == 7);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+
+    ssa::infra::sqlite::SqliteSsaRepository repository(dbPath);
+    ssa::domain::SsaPageRequest request;
+    request.visibleColumns = {"numero_ssa", "qtd_derivadas"};
+    request.pageSize = 10;
+    request.excludeScaSesSte = false;
+    const auto page = repository.page(request);
+    const auto parent = std::ranges::find_if(
+        page.rows, [](const auto& row) { return row.valueOf("numero_ssa") == "202600600"; });
+    REQUIRE(parent != page.rows.end());
+    REQUIRE(parent->valueOf("qtd_derivadas") == "7");
 }
 
 TEST_CASE("incremental summary reports transactional legacy normalization separately from file") {
@@ -2883,7 +2974,7 @@ TEST_CASE("post commit consolidation failure stays visible and preserves the inp
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
-TEST_CASE("sqlite commit failure prevents creation of a consolidation manifest") {
+TEST_CASE("rescan publishes from a protected copy while the original is read locked") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
 
@@ -2923,13 +3014,16 @@ TEST_CASE("sqlite commit failure prevents creation of a consolidation manifest")
     REQUIRE(sqlite3_exec(readLock, "ROLLBACK", nullptr, nullptr, nullptr) == SQLITE_OK);
     REQUIRE(sqlite3_close(readLock) == SQLITE_OK);
     INFO(result.message);
-    REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
-    REQUIRE(std::filesystem::exists(workbook));
-    REQUIRE_FALSE(std::filesystem::exists(inputDirectory / "processadas"));
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE_FALSE(result.warning);
+    REQUIRE_FALSE(std::filesystem::exists(workbook));
+    REQUIRE(std::filesystem::exists(inputDirectory / "processadas" / workbook.filename()));
     sqlite3* verificationDb = nullptr;
     REQUIRE(sqlite3_open(dbPath.string().c_str(), &verificationDb) == SQLITE_OK);
     REQUIRE(scalarInt(verificationDb,
-                      "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600126'") == 0);
+                      "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600125'") == 1);
+    REQUIRE(scalarInt(verificationDb,
+                      "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600126'") == 1);
     REQUIRE(sqlite3_close(verificationDb) == SQLITE_OK);
 }
 
@@ -3762,7 +3856,7 @@ TEST_CASE("rejected workbook summary preserves source and reports no applied row
     REQUIRE(std::filesystem::exists(workbook));
 }
 
-TEST_CASE("incremental rescan commits each valid file before a later rejection") {
+TEST_CASE("incremental rescan rolls back the batch when a later file is rejected") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
 
@@ -3786,31 +3880,27 @@ TEST_CASE("incremental rescan commits each valid file before a later rejection")
                                                               importColumns());
     const auto result = port.rescan({ssa::ports::RescanMode::Incremental});
 
-    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
-    REQUIRE(result.warning);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
     REQUIRE(result.importSummary.has_value());
     const auto& summary = *result.importSummary;
     REQUIRE(summary.discovered == 2);
-    REQUIRE(summary.accepted == 1);
-    REQUIRE(summary.rejected == 1);
-    REQUIRE(summary.preserved == 1);
-    REQUIRE(summary.inserts == 1);
+    REQUIRE(summary.accepted == 0);
+    REQUIRE(summary.rejected == 2);
+    REQUIRE(summary.preserved == 2);
+    REQUIRE(summary.inserts == 0);
     REQUIRE(summary.files.size() == 2);
-    REQUIRE(summary.files[0].status == ssa::ports::ImportFileStatus::Applied);
-    REQUIRE(summary.files[0].consolidated);
+    REQUIRE(summary.files[0].status == ssa::ports::ImportFileStatus::Rejected);
+    REQUIRE_FALSE(summary.files[0].consolidated);
     REQUIRE(summary.files[1].status == ssa::ports::ImportFileStatus::Rejected);
     REQUIRE_FALSE(summary.files[1].consolidated);
-    REQUIRE_FALSE(std::filesystem::exists(validWorkbook));
-    REQUIRE(std::filesystem::exists(inputDirectory / "processadas" / validWorkbook.filename()));
+    REQUIRE(std::filesystem::exists(validWorkbook));
+    REQUIRE_FALSE(
+        std::filesystem::exists(inputDirectory / "processadas" / validWorkbook.filename()));
     REQUIRE(std::filesystem::exists(invalidWorkbook));
-    sqlite3* db = nullptr;
-    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
-    REQUIRE(scalarText(db, "PRAGMA integrity_check") == "ok");
-    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600602'") == 1);
-    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+    REQUIRE_FALSE(std::filesystem::exists(dbPath));
 }
 
-TEST_CASE("incremental cancellation after a committed file preserves the truthful success") {
+TEST_CASE("incremental cancellation before publication preserves the original database") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
 
@@ -3828,47 +3918,36 @@ TEST_CASE("incremental cancellation after a committed file preserves the truthfu
             row(2, {inlineCell("A2", "202600603"), inlineCell("B2", "ASE"),
                     inlineCell("C2", "Committed before cancel"), inlineCell("D2", "2026-07-01")}));
     const auto secondWorkbook = inputDirectory / "b-second.xlsx";
-    const auto slowRows =
-        "<!--" + std::string(8ULL * 1024ULL * 1024ULL, 'x') + "-->" +
+    writeWorkbook(
+        secondWorkbook,
         row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
                 inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao")}) +
-        row(2, {inlineCell("A2", "202600604"), inlineCell("B2", "ASE"),
-                inlineCell("C2", "Canceled second"), inlineCell("D2", "2026-07-01")});
-    writeWorkbook(secondWorkbook, slowRows);
+            row(2, {inlineCell("A2", "202600604"), inlineCell("B2", "ASE"),
+                    inlineCell("C2", "Canceled second"), inlineCell("D2", "2026-07-01")}));
+
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(dbPath, importColumns());
+    ssa::infra::importing::ResolvedSsaImportRows previous;
+    previous.rows.push_back({{"numero_ssa", "202600605"}, {"descricao_ssa", "Original"}});
+    REQUIRE(writer.write(previous, 1, 0, false).rowsWritten == 1);
 
     ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
                                                               importColumns());
     std::stop_source stopSource;
-    auto operation = std::async(std::launch::async, [&] {
-        return port.rescan({ssa::ports::RescanMode::Incremental}, stopSource.get_token());
-    });
-    QElapsedTimer timer;
-    timer.start();
-    while (!std::filesystem::exists(processedDirectory / firstWorkbook.filename()) &&
-           timer.elapsed() < 5'000) {
-        QThread::msleep(1);
-    }
-    const bool firstCommitted =
-        std::filesystem::exists(processedDirectory / firstWorkbook.filename());
     stopSource.request_stop();
-    const auto result = operation.get();
+    const auto result = port.rescan({ssa::ports::RescanMode::Incremental}, stopSource.get_token());
 
-    REQUIRE(firstCommitted);
-    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
-    REQUIRE(result.warning);
-    REQUIRE(result.importSummary.has_value());
-    const auto& summary = *result.importSummary;
-    REQUIRE(summary.accepted == 1);
-    REQUIRE(summary.preserved == 1);
-    REQUIRE(summary.files[0].status == ssa::ports::ImportFileStatus::Applied);
-    REQUIRE(summary.files[0].consolidated);
-    REQUIRE(summary.files[1].status == ssa::ports::ImportFileStatus::Canceled);
-    REQUIRE_FALSE(summary.files[1].consolidated);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Canceled);
+    REQUIRE_FALSE(std::filesystem::exists(processedDirectory / firstWorkbook.filename()));
+    REQUIRE_FALSE(std::filesystem::exists(processedDirectory / secondWorkbook.filename()));
+    REQUIRE_FALSE(std::filesystem::exists(inputDirectory / "processadas" / "nosurvivor" /
+                                          firstWorkbook.filename()));
+    REQUIRE(std::filesystem::exists(firstWorkbook));
     REQUIRE(std::filesystem::exists(secondWorkbook));
     sqlite3* db = nullptr;
     REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
     REQUIRE(scalarText(db, "PRAGMA integrity_check") == "ok");
-    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600603'") == 1);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600605'") == 1);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600603'") == 0);
     REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600604'") == 0);
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
@@ -4250,16 +4329,17 @@ TEST_CASE("full rescan reports database open failure for a valid workbook") {
     std::filesystem::create_directories(inputDirectory);
     const auto workbook = inputDirectory / "valid.xlsx";
     writeWorkbook(workbook, row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
-                                    inlineCell("C1", "Descricao da SSA")}) +
+                                    inlineCell("C1", "Descricao da SSA"),
+                                    inlineCell("D1", "Data de emissao")}) +
                                 row(2, {inlineCell("A2", "202600406"), inlineCell("B2", "ASE"),
-                                        inlineCell("C2", "Nova")}));
+                                        inlineCell("C2", "Nova"), inlineCell("D2", "2026-07-01")}));
 
     ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
                                                               importColumns());
     const auto result = port.rescan({ssa::ports::RescanMode::Full});
 
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
-    REQUIRE(result.message.find("operation_failed") != std::string::npos);
+    REQUIRE(result.message.find("rescan database snapshot failed") != std::string::npos);
     REQUIRE_FALSE(result.diagnostic.empty());
     REQUIRE(std::filesystem::exists(workbook));
 }

@@ -13,6 +13,11 @@ Flickable {
     signal nodeClicked(string ssaNumber)
     signal exportFinished(bool succeeded)
 
+    function updateGraphViewport() {
+        if (root.graphModel)
+            root.graphModel.setViewportSize(Math.max(0, root.width), Math.max(0, root.height));
+    }
+
     activeFocusOnTab: true
     Accessible.role: Accessible.Pane
     Accessible.name: currentNodeIndex >= 0 ? "Grafo de derivacoes, SSA " + graphModel.nodeSsa(currentNodeIndex) : "Grafo de derivacoes vazio"
@@ -56,6 +61,11 @@ Flickable {
 
     onActiveFocusChanged: canvas.requestPaint()
     onCurrentNodeIndexChanged: canvas.requestPaint()
+    onWidthChanged: root.updateGraphViewport()
+    onHeightChanged: root.updateGraphViewport()
+    onGraphModelChanged: root.updateGraphViewport()
+
+    Component.onCompleted: root.updateGraphViewport()
 
     function localPathFromUrl(fileUrl) {
         let path = decodeURIComponent(String(fileUrl));
@@ -180,13 +190,21 @@ Flickable {
             ctx.lineWidth = 0.9;
             ctx.strokeStyle = Theme.border;
             const edgeList = model.edges();
+            const vertical = model.orientation === "vertical";
             for (const edge of edgeList) {
                 ctx.beginPath();
                 ctx.moveTo(edge.fromX, edge.fromY);
-                const routeX = edge.routeX !== undefined ? edge.routeX : (edge.fromX + edge.toX) / 2;
-                ctx.lineTo(routeX, edge.fromY);
-                ctx.lineTo(routeX, edge.toY);
-                ctx.lineTo(edge.toX, edge.toY);
+                if (vertical) {
+                    const routeY = edge.routeY !== undefined ? edge.routeY : (edge.fromY + edge.toY) / 2;
+                    ctx.lineTo(edge.fromX, routeY);
+                    ctx.lineTo(edge.toX, routeY);
+                    ctx.lineTo(edge.toX, edge.toY);
+                } else {
+                    const routeX = edge.routeX !== undefined ? edge.routeX : (edge.fromX + edge.toX) / 2;
+                    ctx.lineTo(routeX, edge.fromY);
+                    ctx.lineTo(routeX, edge.toY);
+                    ctx.lineTo(edge.toX, edge.toY);
+                }
                 if (edge.dashed) {
                     ctx.setLineDash([7, 6]);
                 } else {
@@ -195,12 +213,19 @@ Flickable {
                 ctx.stroke();
                 ctx.setLineDash([]);
 
-                const direction = edge.fromX <= edge.toX ? 1 : -1;
                 ctx.beginPath();
                 ctx.moveTo(edge.toX, edge.toY);
-                ctx.lineTo(edge.toX - direction * 5, edge.toY - 4);
-                ctx.moveTo(edge.toX, edge.toY);
-                ctx.lineTo(edge.toX - direction * 5, edge.toY + 4);
+                if (vertical) {
+                    const direction = edge.fromY <= edge.toY ? 1 : -1;
+                    ctx.lineTo(edge.toX - 4, edge.toY - direction * 5);
+                    ctx.moveTo(edge.toX, edge.toY);
+                    ctx.lineTo(edge.toX + 4, edge.toY - direction * 5);
+                } else {
+                    const direction = edge.fromX <= edge.toX ? 1 : -1;
+                    ctx.lineTo(edge.toX - direction * 5, edge.toY - 4);
+                    ctx.moveTo(edge.toX, edge.toY);
+                    ctx.lineTo(edge.toX - direction * 5, edge.toY + 4);
+                }
                 if (edge.dashed) {
                     ctx.setLineDash([7, 6]);
                 } else {
@@ -274,6 +299,7 @@ Flickable {
     Connections {
         target: root.graphModel
         function onGraphChanged() {
+            root.updateGraphViewport();
             root.currentNodeIndex = root.graphModel.nodeCount > 0 ? Math.min(root.currentNodeIndex < 0 ? 0 : root.currentNodeIndex, root.graphModel.nodeCount - 1) : -1;
             canvas.requestPaint();
         }

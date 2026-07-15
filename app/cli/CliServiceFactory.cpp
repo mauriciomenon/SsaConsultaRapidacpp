@@ -3,10 +3,12 @@
 #include "application/UnavailableWorkflowPort.h"
 #include "domain/ColumnCatalog.h"
 #include "infra/export/CsvExportPort.h"
+#include "infra/import/LegacySpreadsheetConverter.h"
 #include "infra/import/SpreadsheetImportWorkflowPort.h"
 #include "infra/sqlite/SqliteDerivadasPort.h"
 #include "infra/sqlite/SqliteMaintenancePort.h"
 #include "infra/sqlite/SqliteSsaRepository.h"
+#include "platform/SupervisedProcessRunner.h"
 #include "query/SsaQueryService.h"
 
 namespace ssa::app::cli {
@@ -46,8 +48,14 @@ namespace ssa::app::cli {
                 const auto importPort =
                     std::make_shared<ssa::infra::importing::SpreadsheetImportWorkflowPort>(
                         inputFolder, dbPath, importColumns());
+                const auto processRunner =
+                    std::make_shared<ssa::platform::SupervisedProcessRunner>();
+                const auto legacyConverter =
+                    std::make_shared<ssa::infra::importing::LegacySpreadsheetConverter>(
+                        std::filesystem::path{}, processRunner);
                 const auto derivadasPort =
-                    std::make_shared<ssa::infra::sqlite::SqliteDerivadasPort>(dbPath);
+                    std::make_shared<ssa::infra::sqlite::SqliteDerivadasPort>(dbPath,
+                                                                              legacyConverter);
                 return std::make_shared<ssa::application::SsaWorkflowService>(
                     importPort, exportPort, maintenancePort, derivadasPort);
             }};

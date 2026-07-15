@@ -6,12 +6,12 @@
 namespace ssa::presentation {
 
     BrowseRequestCoordinator::BrowseRequestCoordinator(
-        std::shared_ptr<query::SsaQueryService> queryService, BrowseQueryState& queryState,
+        std::shared_ptr<ports::ISsaBrowsePort> browsePort, BrowseQueryState& queryState,
         SearchViewModel& search, FilterPanelViewModel& filters, StatusViewModel& status,
         SsaTableModel& tableModel, QObject* parent)
         : QObject(parent), queryState_(queryState), search_(search), filters_(filters),
           tableModel_(tableModel), pageLifecycle_(queryState_, tableModel_, status, this),
-          pageQueries_(std::move(queryService), this) {
+          pageQueries_(std::move(browsePort), this) {
         connect(&pageQueries_, &PageQueryCoordinator::activeOperationsChanged, this,
                 &BrowseRequestCoordinator::activeOperationsChanged);
         connect(&pageQueries_, &PageQueryCoordinator::started, this,

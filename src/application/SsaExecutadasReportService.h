@@ -1,7 +1,7 @@
 #pragma once
 
 #include "domain/SsaTypes.h"
-#include "query/SsaQueryService.h"
+#include "ports/IExecutadasReportPort.h"
 
 #include <memory>
 #include <stop_token>
@@ -24,23 +24,18 @@ namespace ssa::application {
         std::string error;
     };
 
-    // Builds the "SSA Executadas" report by executing the supplied (already
-    // month-restricted) request against the query service and grouping the
-    // streamed records by setor (or setor division), week and person.
-    //
-    // The caller is responsible for narrowing the request to the desired month
-    // via advancedFilters.executionWeekStart/End so the database - not this
-    // service - performs the heavy filtering.
+    // Builds the "SSA Executadas" report from the database report port.
     class SsaExecutadasReportService final {
       public:
-        explicit SsaExecutadasReportService(std::shared_ptr<query::SsaQueryService> queryService);
+        explicit SsaExecutadasReportService(
+            std::shared_ptr<ports::IExecutadasReportPort> reportPort);
 
         [[nodiscard]] ExecutadasReportResult
         buildExecutadasReport(const domain::SsaPageRequest& request, bool byDivision,
                               std::stop_token stopToken = {}) const;
 
       private:
-        std::shared_ptr<query::SsaQueryService> queryService_;
+        std::shared_ptr<ports::IExecutadasReportPort> reportPort_;
     };
 
 } // namespace ssa::application

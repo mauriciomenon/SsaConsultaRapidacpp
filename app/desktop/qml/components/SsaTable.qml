@@ -24,7 +24,9 @@ Rectangle {
     readonly property var tableColumns: root.viewModel.tableHeaders
     property int previewColumnIndex: -1
     property int previewColumnWidth: 0
+    property int draggedColumnIndex: -1
     property string contextCellText: ""
+    property string contextRowText: ""
     property string contextSsaNumber: ""
 
     function firstCellCenterForSmoke() {
@@ -66,32 +68,50 @@ Rectangle {
         parent: root
 
         MenuItem {
+            objectName: "copyCellAction"
+            property string actionId: "copy_cell"
             text: "Copiar celula"
             onTriggered: root.copyTextRequested(root.contextCellText)
         }
         MenuItem {
+            objectName: "copyRowAction"
+            property string actionId: "copy_row"
+            text: "Copiar linha"
+            enabled: root.contextRowText.length > 0
+            onTriggered: root.copyTextRequested(root.contextRowText)
+        }
+        MenuItem {
+            objectName: "copySsaAction"
+            property string actionId: "copy_ssa"
             text: "Copiar numero SSA"
             enabled: root.contextSsaNumber.length > 0
             onTriggered: root.copyTextRequested(root.contextSsaNumber)
         }
         MenuItem {
+            objectName: "copyGraphAction"
+            property string actionId: "copy_graph_svg"
             text: "Copiar diagrama SVG"
             enabled: root.viewModel.details.graphModel.nodeCount > 0
             onTriggered: root.copyDerivationSvgRequested()
         }
         MenuSeparator {}
         MenuItem {
+            objectName: "openSamAction"
+            property string actionId: "open_sam"
             text: "Abrir SAM"
             enabled: root.contextSsaNumber.length > 0
             onTriggered: root.openRequested()
         }
         MenuItem {
+            objectName: "openDetailsAction"
+            property string actionId: "open_details"
             text: "Abrir tela de detalhes"
             onTriggered: root.detailsWindowRequested()
         }
         MenuItem {
             id: cellConfigureColumnsAction
             objectName: "cellConfigureColumnsAction"
+            property string actionId: "configure_columns_from_cell"
             text: "Alterar colunas visiveis"
             onTriggered: root.configureColumnsRequested(cellConfigureColumnsAction)
         }
@@ -134,12 +154,19 @@ Rectangle {
                         property int dragStartWidth: 0
                         property real dragStartX: 0
                         property int previewWidth: modelWidth
+                        property bool reorderTarget: false
 
                         width: previewWidth
                         height: header.height
-                        color: Theme.tableHeader
+                        color: reorderTarget ? Theme.accentSoft : Theme.tableHeader
                         border.color: Theme.borderSoft
                         border.width: 0
+
+                        Drag.active: reorderDragArea.pressed && root.draggedColumnIndex === index
+                        Drag.source: headerCell
+                        Drag.keys: ["ssa-column"]
+                        Drag.hotSpot.x: width / 2
+                        Drag.hotSpot.y: height / 2
 
                         onModelDataChanged: previewWidth = modelWidth
 
@@ -187,15 +214,66 @@ Rectangle {
                             }
                         }
 
+                        Rectangle {
+                            id: reorderHandle
+                            anchors.left: parent.left
+                            anchors.top: parent.top
+                            anchors.bottom: parent.bottom
+                            width: 14
+                            visible: root.columnFlow !== null && headerCell.hasColumnKey
+                            color: reorderDragArea.containsMouse || reorderDragArea.pressed ? Theme.accentSoft : "transparent"
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: "::"
+                                color: Theme.mutedText
+                                font.bold: true
+                                font.pixelSize: Math.max(9, root.textSize - 3)
+                            }
+
+                            MouseArea {
+                                id: reorderDragArea
+                                anchors.fill: parent
+                                cursorShape: Qt.SizeAllCursor
+                                hoverEnabled: true
+                                acceptedButtons: Qt.LeftButton
+                                onPressed: root.draggedColumnIndex = headerCell.index
+                                onReleased: root.draggedColumnIndex = -1
+                            }
+                        }
+
+                        DropArea {
+                            id: headerDropArea
+                            anchors.fill: parent
+                            z: 2
+                            keys: ["ssa-column"]
+
+                            onEntered: function (drag) {
+                                headerCell.reorderTarget = drag.source !== headerCell;
+                            }
+                            onExited: headerCell.reorderTarget = false
+                            onDropped: function (drop) {
+                                const source = drop.source;
+                                if (source !== null && source !== undefined && source !== headerCell && root.draggedColumnIndex >= 0 && root.columnFlow !== null) {
+                                    root.columnFlow.moveVisibleColumnAndApply(root.draggedColumnIndex, headerCell.index);
+                                }
+                                headerCell.reorderTarget = false;
+                            }
+                        }
+
                         Menu {
                             id: headerMenu
 
                             MenuItem {
+                                objectName: "filterColumnAction"
+                                property string actionId: "filter_column"
                                 text: "Filtrar coluna"
                                 enabled: headerCell.hasColumnKey
                                 onTriggered: root.viewModel.setFilterPanelFocusColumn(headerCell.columnKey)
                             }
                             MenuItem {
+                                objectName: "hideColumnAction"
+                                property string actionId: "hide_column"
                                 text: "Ocultar coluna"
                                 enabled: headerCell.hasColumnKey && root.columnFlow !== null && root.columnFlow.canHideColumn(headerCell.columnKey)
                                 onTriggered: root.columnFlow.setColumnVisibleAndApply(headerCell.columnKey, false)
@@ -203,6 +281,8 @@ Rectangle {
                             MenuSeparator {}
                             MenuItem {
                                 id: headerConfigureColumnsAction
+                                objectName: "headerConfigureColumnsAction"
+                                property string actionId: "configure_columns_from_header"
                                 text: "Configurar colunas"
                                 onTriggered: root.configureColumnsRequested(headerConfigureColumnsAction)
                             }
@@ -388,6 +468,7 @@ Rectangle {
                         root.viewModel.selectRow(cellDelegate.row);
                         if (mouse.button === Qt.RightButton) {
                             root.contextCellText = cellDelegate.cellText;
+                            root.contextRowText = root.viewModel.tableModel.rowText(cellDelegate.row);
                             root.contextSsaNumber = root.viewModel.tableModel.ssaNumberAt(cellDelegate.row);
                             const menuParent = Overlay.overlay !== null ? Overlay.overlay : root;
                             if (cellContextMenu.parent !== menuParent)

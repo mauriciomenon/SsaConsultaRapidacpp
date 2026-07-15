@@ -1,11 +1,17 @@
 #include "infra/import/SpreadsheetImportWorkflowPort.h"
 
+#include "infra/sqlite/SqliteConnection.h"
 #include "ports/OperationError.h"
 #include "qt/FilesystemPath.h"
 
 #include <QCryptographicHash>
 #include <QDir>
+#include <QFile>
 #include <QLockFile>
+#include <QSaveFile>
+#include <QTemporaryDir>
+
+#include <sqlite3.h>
 
 #include <functional>
 #include <memory>
@@ -31,6 +37,7 @@ namespace ssa::infra::importing {
 
         constexpr std::size_t kImportRowsPerChunk = 1'000;
         constexpr std::size_t kMaxWorkflowDiagnosticBytes = 4'096;
+        constexpr int kDatabaseBackupPagesPerStep = 256;
 
         void appendWorkflowDiagnostic(std::string& destination, const std::string_view detail) {
             if (detail.empty() || destination.size() >= kMaxWorkflowDiagnosticBytes) {
@@ -41,6 +48,87 @@ namespace ssa::infra::importing {
             }
             destination.append(detail.substr(
                 0, (std::min)(detail.size(), kMaxWorkflowDiagnosticBytes - destination.size())));
+        }
+
+        std::string sqliteBackupError(sqlite3* database, const char* operation, const int rc) {
+            return std::string{operation} + " failed: rc=" + std::to_string(rc) +
+                   " message=" + sqlite3_errmsg(database);
+        }
+
+        void copyDatabaseSnapshot(const std::filesystem::path& source,
+                                  const std::filesystem::path& destination,
+                                  const std::stop_token& stopToken) {
+            if (!std::filesystem::exists(source)) {
+                return;
+            }
+            sqlite::SqliteConnection sourceConnection(source, sqlite::SqliteOpenMode::ReadOnly);
+            sqlite::SqliteConnection destinationConnection(destination,
+                                                           sqlite::SqliteOpenMode::ReadWriteCreate);
+            auto* backup = sqlite3_backup_init(destinationConnection.handle(), "main",
+                                               sourceConnection.handle(), "main");
+            if (backup == nullptr) {
+                throw ports::OperationError(
+                    "Falha ao preparar copia protegida do banco",
+                    sqliteBackupError(destinationConnection.handle(), "sqlite backup init",
+                                      sqlite3_errcode(destinationConnection.handle())));
+            }
+            int stepResult = SQLITE_OK;
+            while (stepResult == SQLITE_OK || stepResult == SQLITE_BUSY ||
+                   stepResult == SQLITE_LOCKED) {
+                if (stopToken.stop_requested()) {
+                    stepResult = SQLITE_INTERRUPT;
+                    break;
+                }
+                stepResult = sqlite3_backup_step(backup, kDatabaseBackupPagesPerStep);
+            }
+            const int finishResult = sqlite3_backup_finish(backup);
+            if (stopToken.stop_requested() || stepResult == SQLITE_INTERRUPT) {
+                throw std::system_error(std::make_error_code(std::errc::operation_canceled),
+                                        "database snapshot canceled");
+            }
+            if (stepResult != SQLITE_DONE || finishResult != SQLITE_OK) {
+                const int errorCode = stepResult != SQLITE_DONE ? stepResult : finishResult;
+                throw ports::OperationError(
+                    "Falha ao copiar banco para rescan",
+                    sqliteBackupError(destinationConnection.handle(), "sqlite backup", errorCode));
+            }
+        }
+
+        void publishDatabaseSnapshot(const std::filesystem::path& source,
+                                     const std::filesystem::path& destination) {
+            QFile input(qt::toQString(source));
+            if (!input.open(QIODevice::ReadOnly)) {
+                throw ports::OperationError("Falha ao publicar banco do rescan",
+                                            "cannot read database snapshot: " +
+                                                input.errorString().toStdString());
+            }
+            QSaveFile output(qt::toQString(destination));
+            if (!output.open(QIODevice::WriteOnly)) {
+                throw ports::OperationError("Falha ao publicar banco do rescan",
+                                            "cannot open atomic database target: " +
+                                                output.errorString().toStdString());
+            }
+            constexpr qint64 chunkSize = 1024 * 1024;
+            while (!input.atEnd()) {
+                const auto chunk = input.read(chunkSize);
+                if (chunk.isEmpty() && input.error() != QFileDevice::NoError) {
+                    output.cancelWriting();
+                    throw ports::OperationError("Falha ao publicar banco do rescan",
+                                                "cannot read database snapshot: " +
+                                                    input.errorString().toStdString());
+                }
+                if (!chunk.isEmpty() && output.write(chunk) != chunk.size()) {
+                    output.cancelWriting();
+                    throw ports::OperationError("Falha ao publicar banco do rescan",
+                                                "cannot write atomic database target: " +
+                                                    output.errorString().toStdString());
+                }
+            }
+            if (!output.commit()) {
+                throw ports::OperationError("Falha ao publicar banco do rescan",
+                                            "atomic database publication failed: " +
+                                                output.errorString().toStdString());
+            }
         }
 
         std::unique_ptr<QLockFile> acquireImportLock(const std::filesystem::path& path,
@@ -240,8 +328,10 @@ namespace ssa::infra::importing {
 
     SpreadsheetImportWorkflowPort::SpreadsheetImportWorkflowPort(
         std::filesystem::path inputFolder, std::filesystem::path databasePath,
-        std::vector<domain::ColumnDef> columns)
-        : importLockPath_(std::filesystem::absolute(inputFolder).lexically_normal().parent_path() /
+        std::vector<domain::ColumnDef> columns, const bool consolidateSources)
+        : inputFolder_(inputFolder), databasePath_(databasePath), columns_(columns),
+          consolidateSources_(consolidateSources),
+          importLockPath_(std::filesystem::absolute(inputFolder).lexically_normal().parent_path() /
                           ".ssa_import.lock"),
           databaseImportLockPath_(databaseLockPath(databasePath)), stager_(std::move(inputFolder)),
           writer_(std::move(databasePath), std::move(columns)) {}
@@ -418,8 +508,89 @@ namespace ssa::infra::importing {
             }
             return std::move(*resumed);
         }
-        return replaceAll ? importDiscoveredFiles(staging, true, stopToken)
-                          : importIncrementalFiles(staging, stopToken);
+        QTemporaryDir workingDirectory;
+        if (!workingDirectory.isValid()) {
+            return {ports::WorkflowStatus::Failed, "rescan working directory unavailable"};
+        }
+        const auto workingDatabase =
+            qt::toFileSystemPath(workingDirectory.path()) / databasePath_.filename();
+        try {
+            copyDatabaseSnapshot(databasePath_, workingDatabase, stopToken);
+            SpreadsheetImportWorkflowPort workingPort(inputFolder_, workingDatabase, columns_,
+                                                      false);
+            auto result = workingPort.importDiscoveredFiles(staging, replaceAll, stopToken);
+            if (!result.ok()) {
+                return result;
+            }
+            if (stopToken.stop_requested()) {
+                return canceled("rescan");
+            }
+            publishDatabaseSnapshot(workingDatabase, databasePath_);
+
+            if (!result.importSummary) {
+                result.warning = true;
+                appendWorkflowDiagnostic(result.diagnostic, "rescan summary unavailable");
+                return result;
+            }
+            std::vector<ImportManifestEntry> manifest;
+            manifest.reserve(staging.files.size());
+            for (const auto& file : staging.files) {
+                const auto& fileResult = result.importSummary->files[file.summaryIndex];
+                const bool hasValidRows = fileResult.status == ports::ImportFileStatus::Applied ||
+                                          fileResult.status == ports::ImportFileStatus::NoChanges;
+                manifest.push_back({file.consolidationSources, hasValidRows});
+            }
+            const auto consolidationPlan = stager_.planConsolidation(manifest, stopToken);
+            if (consolidationPlan.canceled || !consolidationPlan.error.empty()) {
+                result.warning = true;
+                result.status = ports::WorkflowStatus::Succeeded;
+                result.message += consolidationPlan.canceled ? " error=consolidation_canceled"
+                                                             : " error=consolidation_failed";
+                appendWorkflowDiagnostic(result.diagnostic, consolidationPlan.canceled
+                                                                ? "rescan consolidation canceled"
+                                                                : consolidationPlan.error);
+                return result;
+            }
+            const auto consolidation = stager_.consolidate(consolidationPlan, stopToken);
+            appendWorkflowDiagnostic(result.diagnostic, consolidation.error);
+            result.warning = result.warning || consolidation.canceled || consolidation.failed > 0;
+            std::size_t completedFiles = 0;
+            for (std::size_t index = 0; index < consolidationPlan.entries.size(); ++index) {
+                if (index >= consolidation.entries.size() ||
+                    consolidation.entries[index].failed > 0 ||
+                    consolidation.entries[index].completed != manifest[index].sources.size()) {
+                    continue;
+                }
+                auto& fileResult = result.importSummary->files[staging.files[index].summaryIndex];
+                fileResult.consolidated = true;
+                fileResult.noSurvivor = !manifest[index].hasValidRows;
+                ++completedFiles;
+                result.importSummary->consolidated += manifest[index].hasValidRows ? 1 : 0;
+                result.importSummary->noSurvivor += manifest[index].hasValidRows ? 0 : 1;
+            }
+            result.importSummary->preserved =
+                result.importSummary->files.size() > completedFiles
+                    ? result.importSummary->files.size() - completedFiles
+                    : 0;
+            if (consolidation.canceled || consolidation.failed > 0) {
+                result.status = ports::WorkflowStatus::Succeeded;
+                result.message += consolidation.canceled ? " error=consolidation_canceled"
+                                                         : " error=consolidation_failed";
+            }
+            return result;
+        } catch (const std::system_error& error) {
+            if (error.code() == std::make_error_code(std::errc::operation_canceled)) {
+                return canceled("rescan");
+            }
+            return {ports::WorkflowStatus::Failed, "rescan database snapshot failed", false,
+                    error.what()};
+        } catch (const ports::OperationError& error) {
+            return {ports::WorkflowStatus::Failed, "rescan database snapshot failed", false,
+                    error.diagnostic()};
+        } catch (const std::exception& error) {
+            return {ports::WorkflowStatus::Failed, "rescan database snapshot failed", false,
+                    error.what()};
+        }
     }
 
     ports::WorkflowResult
@@ -554,10 +725,8 @@ namespace ssa::infra::importing {
                 }
                 result.diagnostic += cleanupDiagnostic;
             }
-            if ((files.warning || !cleanupDiagnostic.empty()) &&
-                result.status != ports::WorkflowStatus::Failed) {
-                result.status = ports::WorkflowStatus::Failed;
-                result.message = "import_xlsx_to_sqlite staging_cleanup_failed";
+            if (files.warning || !cleanupDiagnostic.empty()) {
+                result.warning = true;
             }
             const auto fileStatus = result.status == ports::WorkflowStatus::Canceled
                                         ? ports::ImportFileStatus::Canceled
@@ -567,6 +736,9 @@ namespace ssa::infra::importing {
             markUncommitted(importSummary, fileStatus);
             return withSummary(std::move(result), importSummary);
         };
+        if (stopToken.stop_requested()) {
+            return discardBeforeCommit(canceled(operation));
+        }
         if (files.rejectionReason == "staging_cleanup_failed") {
             markUncommitted(importSummary, ports::ImportFileStatus::Failed);
             return withSummary({ports::WorkflowStatus::Failed,
@@ -577,9 +749,6 @@ namespace ssa::infra::importing {
         if (files.operationalFailure) {
             return discardBeforeCommit({ports::WorkflowStatus::Failed,
                                         std::string{operation} + " " + files.rejectionReason});
-        }
-        if (stopToken.stop_requested()) {
-            return discardBeforeCommit(canceled(operation));
         }
         if (!files.rejectionReason.empty()) {
             return discardBeforeCommit({ports::WorkflowStatus::Rejected,
@@ -621,7 +790,6 @@ namespace ssa::infra::importing {
             return discardBeforeCommit(failed(operation, files, totalSummary, 1, exc.what()));
         }
         std::size_t failedFiles = 0;
-        bool hasAnyValidRows = false;
         std::vector<PendingImportOutcome> pendingOutcomes;
         pendingOutcomes.reserve(files.files.size());
         for (std::size_t fileIndex = 0; fileIndex < files.files.size(); ++fileIndex) {
@@ -697,7 +865,7 @@ namespace ssa::infra::importing {
                                 batch.skippedRows += table.rows.size();
                                 return;
                             } else {
-                                table.rows.insert(table.rows.begin(), headerRow);
+                                table.headerRow = headerRow;
                             }
                             table.originalFilename = file.originalFilename;
                             table.sourceModifiedTimestamp = file.sourceModifiedTimestamp;
@@ -846,15 +1014,9 @@ namespace ssa::infra::importing {
                 }
                 continue;
             }
-            hasAnyValidRows = true;
             fileResult.status = fileResult.inserts + fileResult.updates > 0
                                     ? ports::ImportFileStatus::Applied
                                     : ports::ImportFileStatus::NoChanges;
-        }
-        if (replaceAll && !hasAnyValidRows) {
-            return discardBeforeCommit(
-                rollbackSession(*writeSession, {ports::WorkflowStatus::Rejected,
-                                                std::string{operation} + " no_valid_rows"}));
         }
         std::vector<ImportManifestEntry> manifest;
         manifest.reserve(pendingOutcomes.size());
@@ -905,6 +1067,17 @@ namespace ssa::infra::importing {
         }
 
         importSummary.accepted = pendingOutcomes.size();
+        if (!consolidateSources_) {
+            importSummary.preserved = importSummary.files.size();
+            const auto status = totalSummary.rowsWritten > 0 ? ports::WorkflowStatus::Succeeded
+                                                             : ports::WorkflowStatus::NoChanges;
+            return withSummary({status, workflowMessage(operation, files, totalSummary),
+                                files.warning || files.failedCopies > 0 ||
+                                    files.failedLegacyXls > 0 || totalSummary.invalidRows > 0 ||
+                                    totalSummary.duplicateRows > 0,
+                                files.diagnostic},
+                               importSummary);
+        }
         const auto consolidation = stager_.consolidate(consolidationPlan, stopToken);
         auto diagnostic = files.diagnostic;
         appendWorkflowDiagnostic(diagnostic, consolidation.error);

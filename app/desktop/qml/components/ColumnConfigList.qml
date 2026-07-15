@@ -8,6 +8,7 @@ import SsaConsultaRapida
 Item {
     id: root
     required property var viewModel
+    property int dragSourceRow: -1
 
     ColumnLayout {
         anchors.fill: parent
@@ -53,11 +54,33 @@ Item {
                     required property bool columnVisible
                     required property bool columnVisibilityChangeEnabled
                     required property int columnWidth
+                    property bool dragging: dragMouseArea.pressed
+                    property real dragStartY: 0
 
                     width: columnList.width
                     height: 38
+                    z: columnDelegate.dragging ? 2 : 0
+                    opacity: columnDelegate.dragging ? 0.82 : 1.0
                     color: columnDelegate.index % 2 === 0 ? Theme.panel : Theme.rowAlt
                     border.color: Theme.border
+
+                    Drag.active: dragMouseArea.pressed
+                    Drag.source: columnDelegate
+                    Drag.keys: ["column"]
+                    Drag.hotSpot.x: dragHandle.width / 2
+                    Drag.hotSpot.y: dragHandle.height / 2
+
+                    DropArea {
+                        anchors.fill: parent
+                        keys: ["column"]
+                        onDropped: function (drop) {
+                            if (root.dragSourceRow < 0 || root.dragSourceRow === columnDelegate.index)
+                                return;
+                            const moved = root.viewModel.moveColumn(root.dragSourceRow, columnDelegate.index);
+                            if (moved)
+                                root.dragSourceRow = -1;
+                        }
+                    }
 
                     RowLayout {
                         anchors.fill: parent
@@ -70,6 +93,43 @@ Item {
                             enabled: columnDelegate.columnVisibilityChangeEnabled
                             Accessible.name: "Alternar visibilidade da coluna " + columnDelegate.columnLabel
                             onToggled: root.viewModel.setColumnVisibleByKey(columnDelegate.columnKey, checked)
+                        }
+                        Rectangle {
+                            id: dragHandle
+                            objectName: "columnDragHandle"
+                            Layout.preferredWidth: 30
+                            Layout.fillHeight: true
+                            color: dragMouseArea.containsMouse ? Theme.accentSoft : "transparent"
+                            radius: Theme.radius
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: "..."
+                                color: Theme.mutedText
+                                font.bold: true
+                                font.pixelSize: Theme.fontSizeBody
+                            }
+
+                            MouseArea {
+                                id: dragMouseArea
+                                anchors.fill: parent
+                                cursorShape: Qt.OpenHandCursor
+                                hoverEnabled: true
+                                drag.target: columnDelegate
+                                drag.axis: Drag.YAxis
+                                onPressed: {
+                                    root.dragSourceRow = columnDelegate.index;
+                                    columnDelegate.dragStartY = columnDelegate.y;
+                                }
+                                onReleased: {
+                                    if (root.dragSourceRow === columnDelegate.index)
+                                        columnDelegate.y = columnDelegate.dragStartY;
+                                    root.dragSourceRow = -1;
+                                    columnDelegate.x = 0;
+                                }
+                                ToolTip.visible: containsMouse
+                                ToolTip.text: "Arraste para reordenar"
+                            }
                         }
                         Label {
                             Layout.preferredWidth: 210

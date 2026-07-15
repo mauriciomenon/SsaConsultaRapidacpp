@@ -731,12 +731,24 @@ namespace ssa::infra::importing {
                              "cannot scan stale staging artifacts: " + error.message());
             return result;
         }
-        for (const auto& entry : staleIterator) {
+        for (auto iterator = staleIterator, end = std::filesystem::directory_iterator{};
+             iterator != end;) {
             if (stopToken.stop_requested()) {
                 result.rejectionReason = "canceled";
                 return result;
             }
+            const auto& entry = *iterator;
             if (!isOwnedStagingArtifact(entry.path())) {
+                iterator.increment(error);
+                if (error) {
+                    result.failedCopies = 1;
+                    result.operationalFailure = true;
+                    result.rejectionReason = "staging_cleanup_scan_failed";
+                    appendDiagnostic(result.diagnostic,
+                                     "cannot continue scanning stale staging artifacts: " +
+                                         error.message());
+                    return result;
+                }
                 continue;
             }
             std::error_code removeError;
@@ -746,6 +758,16 @@ namespace ssa::infra::importing {
                 result.rejectionReason = "staging_cleanup_failed";
                 appendDiagnostic(result.diagnostic, "cannot remove abandoned staging artifact: " +
                                                         removeError.message());
+                return result;
+            }
+            iterator.increment(error);
+            if (error) {
+                result.failedCopies = 1;
+                result.operationalFailure = true;
+                result.rejectionReason = "staging_cleanup_scan_failed";
+                appendDiagnostic(result.diagnostic,
+                                 "cannot continue scanning stale staging artifacts: " +
+                                     error.message());
                 return result;
             }
         }
@@ -759,24 +781,33 @@ namespace ssa::infra::importing {
             appendDiagnostic(result.diagnostic, "cannot scan input directory: " + error.message());
             return result;
         }
-        for (const auto& entry : iterator) {
+        for (auto current = iterator, end = std::filesystem::directory_iterator{};
+             current != end;) {
             if (stopToken.stop_requested()) {
                 result.rejectionReason = "canceled";
                 return result;
             }
+            const auto& entry = *current;
             if (entry.is_symlink(error)) {
                 ++result.discovered;
                 ++result.unsupported;
                 error.clear();
-                continue;
-            }
-            if (!entry.is_regular_file(error) || error) {
+            } else if (!entry.is_regular_file(error) || error) {
                 error.clear();
-                continue;
+            } else {
+                ++result.discovered;
+                candidates.push_back(entry.path());
+                recordDiscoveredFile(result, entry.path());
             }
-            ++result.discovered;
-            candidates.push_back(entry.path());
-            recordDiscoveredFile(result, entry.path());
+            current.increment(error);
+            if (error) {
+                result.failedCopies = 1;
+                result.operationalFailure = true;
+                result.rejectionReason = "input_directory_scan_failed";
+                appendDiagnostic(result.diagnostic,
+                                 "cannot continue scanning input directory: " + error.message());
+                return result;
+            }
         }
         std::ranges::sort(candidates);
 
@@ -810,11 +841,13 @@ namespace ssa::infra::importing {
                                  "cannot scan processed directory: " + error.message());
                 return result;
             }
-            for (const auto& entry : processedIterator) {
+            for (auto current = processedIterator, end = std::filesystem::directory_iterator{};
+                 current != end;) {
                 if (stopToken.stop_requested()) {
                     result.rejectionReason = "canceled";
                     return result;
                 }
+                const auto& entry = *current;
                 const bool entryIsSymlink = entry.is_symlink(error);
                 if (error) {
                     result.failedCopies = 1;
@@ -837,6 +870,16 @@ namespace ssa::infra::importing {
                     ++result.discovered;
                     processedWorkbooks.push_back(entry.path());
                     recordDiscoveredFile(result, entry.path());
+                }
+                current.increment(error);
+                if (error) {
+                    result.failedCopies = 1;
+                    result.operationalFailure = true;
+                    result.rejectionReason = "processed_directory_scan_failed";
+                    appendDiagnostic(result.diagnostic,
+                                     "cannot continue scanning processed directory: " +
+                                         error.message());
+                    return result;
                 }
             }
             std::ranges::sort(processedWorkbooks);

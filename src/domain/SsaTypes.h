@@ -145,6 +145,13 @@ namespace ssa::domain {
         std::string situacao;
     };
 
+    struct SsaExecutadasReportRow final {
+        std::string group;
+        std::string week;
+        std::string person;
+        int count{0};
+    };
+
     enum class MatchMode : std::uint8_t {
         Contains,
         StartsWith,

@@ -25,6 +25,7 @@ namespace ssa::infra::importing {
         constexpr std::size_t kMaxWorksheetRows = 250'015;
         constexpr std::size_t kMaxWorksheetCells = 5'000'000;
         constexpr std::size_t kMaxWorksheets = 256;
+        constexpr std::size_t kMaxSharedStrings = 1'000'000;
         constexpr int kSpreadsheetColumnBase = 26;
         constexpr qsizetype kDefaultSharedStringReserve = 256;
 
@@ -646,12 +647,13 @@ namespace ssa::infra::importing {
             reader.readNext();
             recordXmlToken(reader, budget);
             if (reader.isStartElement() && reader.name() == "sst") {
-                constexpr int kMaxReservedSharedStrings = 1'000'000;
                 bool parsed = false;
                 const auto count = reader.attributes().value("uniqueCount").toInt(&parsed);
+                if (parsed && count > static_cast<int>(kMaxSharedStrings)) {
+                    throw std::runtime_error("xlsx shared strings exceed supported limit");
+                }
                 if (parsed && count > 0) {
-                    values.reserve(
-                        static_cast<std::size_t>((std::min)(count, kMaxReservedSharedStrings)));
+                    values.reserve(static_cast<std::size_t>(count));
                 }
             }
             if (reader.isStartElement() && reader.name() == "si") {
@@ -668,6 +670,9 @@ namespace ssa::infra::importing {
             } else if (inString && reader.isStartElement() && reader.name() == "t") {
                 readTextElementInto(reader, budget, textBudget, current);
             } else if (reader.isEndElement() && reader.name() == "si") {
+                if (values.size() >= kMaxSharedStrings) {
+                    throw std::runtime_error("xlsx shared strings exceed supported limit");
+                }
                 values.push_back(current.toStdString());
                 inString = false;
             }

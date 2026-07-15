@@ -1,8 +1,8 @@
 #include "presentation/FilterPanelSectorViewModel.h"
 
 #include "domain/ColumnCatalog.h"
+#include "domain/TextFilterToken.h"
 #include "presentation/FilterPanelCanonicalizer.h"
-#include "query/TextFilterToken.h"
 
 #include <QSet>
 
@@ -30,10 +30,10 @@ namespace ssa::presentation {
             if (!state.quickSector().trimmed().isEmpty()) {
                 return state.quickSector();
             }
-            const auto tokens = query::parseTextFilterTokens(
+            const auto tokens = domain::parseTextFilterTokens(
                 state.advanced().textFilter(executorColumnKey()).toStdString());
             if (tokens.ordered.size() != 1 ||
-                tokens.ordered.front().filterOperator != query::TextFilterOperator::Equals) {
+                tokens.ordered.front().filterOperator != domain::TextFilterOperator::Equals) {
                 return {};
             }
             return QString::fromStdString(tokens.ordered.front().value);

@@ -12,9 +12,9 @@
 
 namespace ssa::presentation {
 
-    // Layout model for the derivadas relation graph, mirroring the Python
-    // details_graph_renderer: nodes are SSAs, edges connect parent->child, the
-    // target SSA is highlighted. Positions use a depth/index grid layout.
+    // Layout model for the derivadas relation graph. Nodes are SSAs, edges
+    // connect parent->child, and the target SSA is highlighted. Positions are
+    // deterministic and adapt to the available viewport.
     class DerivadasGraphModel final : public QObject {
         Q_OBJECT
         Q_PROPERTY(QString target READ target NOTIFY graphChanged)
@@ -22,6 +22,7 @@ namespace ssa::presentation {
         Q_PROPERTY(QString svg READ svg NOTIFY graphChanged)
         Q_PROPERTY(qreal graphWidth READ graphWidth NOTIFY graphChanged)
         Q_PROPERTY(qreal graphHeight READ graphHeight NOTIFY graphChanged)
+        Q_PROPERTY(QString orientation READ orientation NOTIFY graphChanged)
         Q_PROPERTY(int nodeCount READ rowCount NOTIFY graphChanged)
 
       public:
@@ -29,6 +30,7 @@ namespace ssa::presentation {
 
         // Target stays fixed; edges are derived from the relation list passed in.
         void buildFromRelations(const QString& target, const QVariantList& relations);
+        Q_INVOKABLE void setViewportSize(qreal width, qreal height);
 
         Q_INVOKABLE [[nodiscard]] int rowCount() const;
 
@@ -37,6 +39,7 @@ namespace ssa::presentation {
         [[nodiscard]] QString svg() const;
         [[nodiscard]] qreal graphWidth() const;
         [[nodiscard]] qreal graphHeight() const;
+        [[nodiscard]] QString orientation() const;
 
         // Edge list for the QML Canvas to draw: each entry is {from, to, dashed}.
         Q_INVOKABLE [[nodiscard]] QVariantList edges() const;
@@ -50,6 +53,8 @@ namespace ssa::presentation {
         void graphChanged();
 
       private:
+        void relayout();
+
         struct GraphNode {
             QString ssa;
             QString status;
@@ -65,9 +70,12 @@ namespace ssa::presentation {
 
         std::vector<GraphNode> nodes_;
         std::vector<GraphEdge> edges_;
+        std::vector<QString> ancestorSsa_;
+        std::vector<QString> childSsa_;
         QString target_;
         qreal graphWidth_ = 0;
         qreal graphHeight_ = 0;
+        bool verticalLayout_ = false;
     };
 
 } // namespace ssa::presentation

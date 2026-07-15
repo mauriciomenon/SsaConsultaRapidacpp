@@ -1,8 +1,10 @@
 #include "DesktopMainViewModelFactory.h"
 
+#include "application/SsaBrowseService.h"
 #include "application/SsaWorkflowService.h"
 #include "domain/ColumnCatalog.h"
 #include "infra/export/CsvExportPort.h"
+#include "infra/import/LegacySpreadsheetConverter.h"
 #include "infra/import/SpreadsheetImportWorkflowPort.h"
 #include "infra/preferences/JsonFilterPresetStore.h"
 #include "infra/preferences/JsonUserPreferencesStore.h"
@@ -13,6 +15,7 @@
 #include "platform/DesktopApplicationLauncher.h"
 #include "platform/DesktopExternalCommandPort.h"
 #include "platform/ScrapReportSamRefreshPort.h"
+#include "platform/SupervisedProcessRunner.h"
 #include "qt/FilesystemPath.h"
 #include "query/SsaQueryService.h"
 
@@ -50,8 +53,12 @@ namespace ssa::app::desktop {
                     paths.inputFolderPath(), databasePath(options), importColumns());
             const auto maintenancePort =
                 std::make_shared<ssa::infra::sqlite::SqliteMaintenancePort>(databasePath(options));
-            const auto derivadasPort =
-                std::make_shared<ssa::infra::sqlite::SqliteDerivadasPort>(databasePath(options));
+            const auto processRunner = std::make_shared<ssa::platform::SupervisedProcessRunner>();
+            const auto legacyConverter =
+                std::make_shared<ssa::infra::importing::LegacySpreadsheetConverter>(
+                    std::filesystem::path{}, processRunner);
+            const auto derivadasPort = std::make_shared<ssa::infra::sqlite::SqliteDerivadasPort>(
+                databasePath(options), legacyConverter);
             const auto samRefreshPort =
                 std::make_shared<ssa::platform::ScrapReportSamRefreshPort>();
             return std::make_shared<ssa::application::SsaWorkflowService>(
@@ -77,7 +84,9 @@ namespace ssa::app::desktop {
     DesktopMainViewModelFactory::create(const ssa::platform::StartupOptions& options,
                                         const ssa::platform::AppPaths& paths) {
         const auto repository = createRepository(options);
-        const auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+        const auto queryService = std::make_shared<ssa::query::SsaQueryService>(repository);
+        const auto browseService =
+            std::make_shared<ssa::application::SsaBrowseService>(queryService);
         const auto workflows = createWorkflowService(options, paths, repository);
         const auto commands = createCommandPort(options, paths);
         const auto preferences =
@@ -91,8 +100,8 @@ namespace ssa::app::desktop {
             std::make_shared<ssa::platform::DesktopApplicationLauncher>(options);
 
         return std::make_unique<ssa::presentation::MainViewModel>(
-            service, commands, preferences, filterPresets, workflows, databaseValidator,
-            applicationLauncher);
+            browseService, commands, preferences, filterPresets, workflows, databaseValidator,
+            applicationLauncher, queryService);
     }
 
 } // namespace ssa::app::desktop

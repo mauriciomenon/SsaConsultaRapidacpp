@@ -1,3 +1,4 @@
+#include "domain/ColumnCatalog.h"
 #include "infra/import/SsaSpreadsheetHeaderCatalog.h"
 #include "infra/import/SsaSpreadsheetMapper.h"
 
@@ -24,7 +25,7 @@ TEST_CASE("SSA spreadsheet header catalog preserves the Python import contract")
         std::pair{"SN", "sn"},
     };
 
-    REQUIRE(Catalog::sourceAliasCount() == 184);
+    REQUIRE(Catalog::sourceLabelCount() == 184);
     for (const auto& [header, expected] : samples) {
         INFO(header);
         REQUIRE(Catalog::canonicalColumnForHeader(std::string{header}) == expected);
@@ -105,6 +106,30 @@ TEST_CASE("SSA spreadsheet mapper exposes the validated header for continuation 
 
     REQUIRE(nextBatch.rows.size() == 1);
     REQUIRE(nextBatch.rows.front().at("numero_ssa") == "202600002");
+}
+
+TEST_CASE("SSA spreadsheet mapper consumes an external header without shifting chunk rows") {
+    ssa::infra::importing::SpreadsheetTable continuation;
+    continuation.sourcePath = "external-header.xlsx";
+    continuation.headerRow = {"Numero SSA", "Descricao", "Data Cadastro"};
+    continuation.rows = {{"202600002", "Second", "2026-07-14"}};
+
+    const auto batch = ssa::infra::importing::SsaSpreadsheetMapper::map(continuation);
+
+    REQUIRE(batch.mappingStatus == ssa::infra::importing::SpreadsheetMappingStatus::Mapped);
+    REQUIRE(batch.rows.size() == 1);
+    REQUIRE(batch.rows.front().at("numero_ssa") == "202600002");
+    REQUIRE(batch.headerRow == continuation.headerRow);
+}
+
+TEST_CASE("SSA status filter contracts live in the domain catalog") {
+    const auto shortcuts = ssa::domain::ColumnCatalog::statusShortcutCodes();
+
+    REQUIRE(shortcuts.size() == 26);
+    REQUIRE(shortcuts.front() == "AAD");
+    REQUIRE(shortcuts.back() == "STE");
+    REQUIRE(ssa::domain::ColumnCatalog::downloadableStatusFilterExpression() ==
+            "!SAD,!SCA,!SES,!STE");
 }
 
 TEST_CASE("SSA spreadsheet mapper rejects an overflowing repeated header family") {

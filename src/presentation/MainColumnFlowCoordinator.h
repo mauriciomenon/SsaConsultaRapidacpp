@@ -33,6 +33,7 @@ namespace ssa::presentation {
         void discardColumnSettings();
         [[nodiscard]] bool setColumnWidthAndApply(const QString& columnKey, int width);
         [[nodiscard]] bool setColumnVisibleAndApply(const QString& columnKey, bool visible);
+        [[nodiscard]] bool moveVisibleColumnAndApply(int fromIndex, int toIndex);
 
       private:
         BrowseViewModel& browse_;

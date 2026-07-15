@@ -1,6 +1,7 @@
 #include "PresentationSmokeFakes.h"
 
 #include "presentation/MainViewModel.h"
+#include "query/SsaQueryService.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -288,8 +289,41 @@ namespace {
             auto* cellMenu = window->findChild<QObject*>(QStringLiteral("cellContextMenu"));
             auto* cellAction =
                 window->findChild<QQuickItem*>(QStringLiteral("cellConfigureColumnsAction"));
+            auto* copyCellAction = window->findChild<QQuickItem*>(QStringLiteral("copyCellAction"));
+            auto* copyRowAction = window->findChild<QQuickItem*>(QStringLiteral("copyRowAction"));
+            auto* copySsaAction = window->findChild<QQuickItem*>(QStringLiteral("copySsaAction"));
+            auto* openDetailsAction =
+                window->findChild<QQuickItem*>(QStringLiteral("openDetailsAction"));
             QVERIFY(cellMenu != nullptr);
             QVERIFY(cellAction != nullptr);
+            QVERIFY(copyCellAction != nullptr);
+            QVERIFY(copyRowAction != nullptr);
+            QVERIFY(copySsaAction != nullptr);
+            QVERIFY(openDetailsAction != nullptr);
+            QCOMPARE(copyCellAction->property("actionId").toString(), QString("copy_cell"));
+            QCOMPARE(copyRowAction->property("actionId").toString(), QString("copy_row"));
+            QCOMPARE(copySsaAction->property("actionId").toString(), QString("copy_ssa"));
+            QCOMPARE(openDetailsAction->property("actionId").toString(), QString("open_details"));
+
+            QSignalSpy copySpy(mainTable, SIGNAL(copyTextRequested(QString)));
+            const auto triggerCopyAction = [&](QQuickItem* action, const char* property,
+                                               const QString& value) {
+                mainTable->setProperty(property, value);
+                cellMenu->setProperty("x", 900);
+                cellMenu->setProperty("y", 100);
+                QVERIFY(QMetaObject::invokeMethod(cellMenu, "popup"));
+                QTRY_VERIFY_WITH_TIMEOUT(action->isVisible(), 1000);
+                const int expectedCount = copySpy.count() + 1;
+                const auto actionCenter = action->mapToItem(
+                    window->contentItem(), QPointF{action->width() / 2, action->height() / 2});
+                QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, actionCenter.toPoint());
+                QTRY_COMPARE_WITH_TIMEOUT(copySpy.count(), expectedCount, 1000);
+                QCOMPARE(copySpy.back().at(0).toString(), value);
+            };
+            triggerCopyAction(copyCellAction, "contextCellText", QStringLiteral("cell value"));
+            triggerCopyAction(copyRowAction, "contextRowText", QStringLiteral("row value"));
+            triggerCopyAction(copySsaAction, "contextSsaNumber", QStringLiteral("202600001"));
+
             cellMenu->setProperty("x", 900);
             cellMenu->setProperty("y", 100);
             QVERIFY(QMetaObject::invokeMethod(cellMenu, "popup"));

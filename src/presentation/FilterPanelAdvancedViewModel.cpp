@@ -6,11 +6,11 @@ namespace ssa::presentation {
 
     FilterPanelAdvancedViewModel::FilterPanelAdvancedViewModel(
         filterpanel::FilterPanelAdvancedState& state, filterpanel::FilterPanelState& filterState,
-        QStringList weekColumnKeys, std::shared_ptr<query::SsaQueryService> queryService,
+        QStringList weekColumnKeys, std::shared_ptr<ports::IExecutadasReportPort> reportPort,
         QObject* parent)
         : QObject(parent), state_(state), text_(state_, this),
           week_(state_, std::move(weekColumnKeys), this), derivation_(state_, this),
-          macro_(state_, filterState, std::move(queryService), this) {
+          macro_(state_, filterState, std::move(reportPort), this) {
         connect(&text_, &AdvancedTextFilterViewModel::changed, this,
                 &FilterPanelAdvancedViewModel::publishChanged);
         connect(&text_, &AdvancedTextFilterViewModel::expressionApplied, this,

@@ -1,16 +1,14 @@
 #include "presentation/FilterPanelViewModel.h"
 
 #include "domain/ColumnCatalog.h"
+#include "domain/TextFilterToken.h"
 #include "presentation/FilterPanelCanonicalizer.h"
 #include "presentation/FilterPanelStateHelpers.h"
-#include "query/SsaQueryService.h"
-#include "query/TextFilterToken.h"
 
 #include <QScopedValueRollback>
 #include <QVariantMap>
 
 #include <algorithm>
-#include <array>
 #include <iterator>
 #include <map>
 #include <string>
@@ -20,12 +18,6 @@
 namespace ssa::presentation {
     namespace {
         constexpr int kActiveFilterRefreshDelayMs = 120;
-        constexpr std::array<std::string_view, 26> kStatusShortcutValues{{
-            "AAD", "AAT", "ACC", "ACS", "ADI", "ADM", "AIM", "ALE", "AMP",
-            "APG", "APL", "APV", "ASE", "ASL", "ASO", "SAD", "SAS", "SCA",
-            "SCC", "SCD", "SCS", "SEE", "SES", "SPG", "SRP", "STE",
-        }};
-
         QString statusColumnKey() {
             const auto key = domain::ColumnCatalog::statusColumnKey();
             return QString::fromUtf8(key.data(), static_cast<qsizetype>(key.size()));
@@ -46,23 +38,27 @@ namespace ssa::presentation {
 
         bool containsExcludedToken(const std::map<std::string, std::string>& filters) {
             return std::ranges::any_of(filters, [](const auto& filter) {
-                const auto tokens = query::parseTextFilterTokens(filter.second);
+                const auto tokens = domain::parseTextFilterTokens(filter.second);
                 return std::ranges::any_of(tokens.ordered, [](const auto& token) {
-                    return token.filterOperator == query::TextFilterOperator::Different;
+                    return token.filterOperator == domain::TextFilterOperator::Different;
                 });
             });
         }
 
     } // namespace
 
-    FilterPanelViewModel::FilterPanelViewModel(std::shared_ptr<query::SsaQueryService> queryService,
-                                               QObject* parent)
+    FilterPanelViewModel::FilterPanelViewModel(
+        std::shared_ptr<ports::ISsaBrowsePort> browsePort,
+        std::shared_ptr<ports::IExecutadasReportPort> reportPort, QObject* parent)
         : QObject(parent), state_{domain::ColumnCatalog::defaultFilterColumnKey()},
-          queryService_(std::move(queryService)), columns_(state_, this), sector_(state_, this),
-          distinctValues_(queryService_, state_, this), activeFilterRefreshTimer_(this) {
+          browsePort_(std::move(browsePort)), columns_(state_, this), sector_(state_, this),
+          distinctValues_(browsePort_, state_, this), activeFilterRefreshTimer_(this) {
+        if (!reportPort) {
+            reportPort = std::dynamic_pointer_cast<ports::IExecutadasReportPort>(browsePort_);
+        }
         loadFilterCatalog();
         advanced_ = new FilterPanelAdvancedViewModel(state_.advanced(), state_, weekColumnKeys_,
-                                                     queryService_, this);
+                                                     std::move(reportPort), this);
         syncAdvancedQuickSector();
         connect(advanced_, &FilterPanelAdvancedViewModel::stateChanged, this, [this]() {
             normalizeAdvancedFilterOverlap();
@@ -181,12 +177,22 @@ namespace ssa::presentation {
 
     QStringList FilterPanelViewModel::statusShortcutValues() const {
         QStringList values;
-        values.reserve(static_cast<qsizetype>(kStatusShortcutValues.size()));
-        std::ranges::transform(
-            kStatusShortcutValues, std::back_inserter(values), [](const auto value) {
-                return QString::fromUtf8(value.data(), static_cast<qsizetype>(value.size()));
-            });
+        const auto codes = domain::ColumnCatalog::statusShortcutCodes();
+        values.reserve(static_cast<qsizetype>(codes.size()));
+        std::ranges::transform(codes, std::back_inserter(values), [](const auto value) {
+            return QString::fromUtf8(value.data(), static_cast<qsizetype>(value.size()));
+        });
         return values;
+    }
+
+    QString FilterPanelViewModel::excludedStatusCodesText() const {
+        QStringList values;
+        const auto codes = domain::ColumnCatalog::excludedStatusCodes();
+        values.reserve(static_cast<qsizetype>(codes.size()));
+        std::ranges::transform(codes, std::back_inserter(values), [](const auto value) {
+            return QString::fromUtf8(value.data(), static_cast<qsizetype>(value.size()));
+        });
+        return values.join('/');
     }
 
     QString FilterPanelViewModel::columnKey() const {
@@ -304,7 +310,7 @@ namespace ssa::presentation {
         const auto statusKey = statusColumnKey();
         const auto advancedExpression = state_.advanced().textFilter(statusKey).toStdString();
         const auto columnFilter = state_.columnFilters().find(statusKey.toStdString());
-        const auto tokens = query::parseTextFilterTokens(
+        const auto tokens = domain::parseTextFilterTokens(
             advancedExpression.empty() && columnFilter != state_.columnFilters().end()
                 ? columnFilter->second
                 : advancedExpression);
@@ -312,7 +318,7 @@ namespace ssa::presentation {
             return false;
         }
         return std::ranges::any_of(tokens.ordered, [&normalizedCode](const auto& token) {
-            return token.filterOperator == query::TextFilterOperator::Equals &&
+            return token.filterOperator == domain::TextFilterOperator::Equals &&
                    token.value == normalizedCode;
         });
     }
@@ -325,21 +331,21 @@ namespace ssa::presentation {
         const auto statusKey = statusColumnKey();
         const auto advancedExpression = state_.advanced().textFilter(statusKey).toStdString();
         const auto columnFilter = state_.columnFilters().find(statusKey.toStdString());
-        const auto tokens = query::parseTextFilterTokens(
+        const auto tokens = domain::parseTextFilterTokens(
             advancedExpression.empty() && columnFilter != state_.columnFilters().end()
                 ? columnFilter->second
                 : advancedExpression);
-        const auto hasOperator = [&tokens, &normalizedCode](const query::TextFilterOperator op) {
+        const auto hasOperator = [&tokens, &normalizedCode](const domain::TextFilterOperator op) {
             return std::ranges::any_of(tokens.ordered, [&normalizedCode, op](const auto& token) {
                 return token.value == normalizedCode && token.filterOperator == op;
             });
         };
         // Included (=) wins over Excluded (!): a single value cannot hold both
         // operators because TextFilterToken dedups by value.
-        if (hasOperator(query::TextFilterOperator::Equals)) {
+        if (hasOperator(domain::TextFilterOperator::Equals)) {
             return 1;
         }
-        if (hasOperator(query::TextFilterOperator::Different)) {
+        if (hasOperator(domain::TextFilterOperator::Different)) {
             return 2;
         }
         return 0;
@@ -353,34 +359,34 @@ namespace ssa::presentation {
         const auto statusKey = statusColumnKey();
         const auto advancedExpression = state_.advanced().textFilter(statusKey).toStdString();
         const auto columnFilter = state_.columnFilters().find(statusKey.toStdString());
-        auto tokens = query::parseTextFilterTokens(
+        auto tokens = domain::parseTextFilterTokens(
             advancedExpression.empty() && columnFilter != state_.columnFilters().end()
                 ? columnFilter->second
                 : advancedExpression);
-        const auto hasToken = [&tokens, &normalizedCode](const query::TextFilterOperator op) {
+        const auto hasToken = [&tokens, &normalizedCode](const domain::TextFilterOperator op) {
             return std::ranges::any_of(tokens.ordered, [&normalizedCode, op](const auto& token) {
                 return token.value == normalizedCode && token.filterOperator == op;
             });
         };
-        const bool hasIncluded = hasToken(query::TextFilterOperator::Equals);
-        const bool hasExcluded = hasToken(query::TextFilterOperator::Different);
-        query::TextFilterTokenSet nextTokens;
+        const bool hasIncluded = hasToken(domain::TextFilterOperator::Equals);
+        const bool hasExcluded = hasToken(domain::TextFilterOperator::Different);
+        domain::TextFilterTokenSet nextTokens;
         for (const auto& token : tokens.ordered) {
             if (token.value == normalizedCode) {
                 continue;
             }
-            query::addTextFilterValue(nextTokens, token.value, token.filterOperator);
+            domain::addTextFilterValue(nextTokens, token.value, token.filterOperator);
         }
         if (hasIncluded) {
-            query::addTextFilterValue(nextTokens, normalizedCode,
-                                      query::TextFilterOperator::Different);
+            domain::addTextFilterValue(nextTokens, normalizedCode,
+                                       domain::TextFilterOperator::Different);
         } else if (!hasExcluded) {
-            query::addTextFilterValue(nextTokens, normalizedCode,
-                                      query::TextFilterOperator::Equals);
+            domain::addTextFilterValue(nextTokens, normalizedCode,
+                                       domain::TextFilterOperator::Equals);
         }
         tokens = std::move(nextTokens);
 
-        const auto nextExpression = QString::fromStdString(query::joinTextFilterTokens(tokens));
+        const auto nextExpression = QString::fromStdString(domain::joinTextFilterTokens(tokens));
         const bool advancedChanged = state_.advanced().setTextFilter(statusKey, nextExpression);
         const bool columnChanged = state_.removeColumnFilter(statusKey);
         if (!advancedChanged && !columnChanged) {
@@ -399,20 +405,21 @@ namespace ssa::presentation {
         const auto statusKey = statusColumnKey();
         const auto advancedExpression = state_.advanced().textFilter(statusKey).toStdString();
         const auto columnFilter = state_.columnFilters().find(statusKey.toStdString());
-        const auto tokens = query::parseTextFilterTokens(
+        const auto tokens = domain::parseTextFilterTokens(
             advancedExpression.empty() && columnFilter != state_.columnFilters().end()
                 ? columnFilter->second
                 : advancedExpression);
-        query::TextFilterTokenSet remainingTokens;
+        domain::TextFilterTokenSet remainingTokens;
         for (const auto& token : tokens.ordered) {
+            const auto shortcutCodes = domain::ColumnCatalog::statusShortcutCodes();
             const bool isShortcutValue = std::ranges::any_of(
-                kStatusShortcutValues, [&token](const auto value) { return token.value == value; });
+                shortcutCodes, [&token](const auto value) { return token.value == value; });
             if (!isShortcutValue) {
-                query::addTextFilterValue(remainingTokens, token.value, token.filterOperator);
+                domain::addTextFilterValue(remainingTokens, token.value, token.filterOperator);
             }
         }
         const bool advancedChanged = state_.advanced().setTextFilter(
-            statusKey, QString::fromStdString(query::joinTextFilterTokens(remainingTokens)));
+            statusKey, QString::fromStdString(domain::joinTextFilterTokens(remainingTokens)));
         const bool columnChanged = state_.removeColumnFilter(statusKey);
         if (!advancedChanged && !columnChanged) {
             return;

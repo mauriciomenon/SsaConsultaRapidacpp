@@ -2,7 +2,6 @@
 
 #include "ports/OperationError.h"
 #include "presentation/AsyncOperationErrorLog.h"
-#include "query/SsaQueryService.h"
 
 #include <QDebug>
 #include <QtConcurrentRun>
@@ -42,8 +41,8 @@ namespace ssa::presentation {
     } // namespace
 
     FilterPanelDistinctValueFetcher::FilterPanelDistinctValueFetcher(
-        std::shared_ptr<query::SsaQueryService> queryService, QObject* parent)
-        : QObject(parent), queryService_(std::move(queryService)) {
+        std::shared_ptr<ports::ISsaBrowsePort> browsePort, QObject* parent)
+        : QObject(parent), browsePort_(std::move(browsePort)) {
         connect(&watcher_, &QFutureWatcher<void>::finished, this, [this] { onWatcherFinished(); });
     }
 
@@ -76,8 +75,9 @@ namespace ssa::presentation {
     FilterPanelDistinctValueFetcher::requestValues(const domain::DistinctValuesRequest& request,
                                                    const std::uint64_t requestToken,
                                                    const bool measureMaxValueLength) {
-        if (!queryService_) {
-            emit this->valuesReady(requestToken, {}, 0);
+        if (!browsePort_) {
+            emit this->valuesFailed(requestToken,
+                                    QStringLiteral("browse service is not configured"));
             return;
         }
         // If a task is in flight, do NOT cancel+setFuture immediately: the
@@ -116,7 +116,7 @@ namespace ssa::presentation {
         activeCancelToken_ = std::make_shared<std::atomic_bool>(false);
         const auto stopToken = activeStopSource_.get_token();
         const auto cancelToken = activeCancelToken_;
-        const auto service = queryService_;
+        const auto service = browsePort_;
         auto requestCopy = request;
         // Result is carried in a shared_ptr captured by value; the worker writes
         // through it and onWatcherFinished (owner thread) moves it out. The future

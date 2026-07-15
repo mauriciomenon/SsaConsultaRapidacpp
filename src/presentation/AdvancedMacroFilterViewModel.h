@@ -2,6 +2,7 @@
 
 #include "application/SsaExecutadasReportService.h"
 #include "domain/SsaTypes.h"
+#include "ports/IExecutadasReportPort.h"
 #include "presentation/FilterPanelAdvancedState.h"
 #include "presentation/FilterPanelState.h"
 
@@ -38,7 +39,7 @@ namespace ssa::presentation {
         AdvancedMacroFilterViewModel(
             filterpanel::FilterPanelAdvancedState& advancedState,
             const filterpanel::FilterPanelState& filterState,
-            std::shared_ptr<query::SsaQueryService> queryService, QObject* parent = nullptr,
+            std::shared_ptr<ports::IExecutadasReportPort> reportPort, QObject* parent = nullptr,
             CurrentDate currentDate = [] { return QDate::currentDate(); });
         ~AdvancedMacroFilterViewModel() override;
 

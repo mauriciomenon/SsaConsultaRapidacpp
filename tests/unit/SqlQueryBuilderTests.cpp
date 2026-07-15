@@ -53,6 +53,32 @@ TEST_CASE("sql query builder selects and orders derived count column as expressi
             std::string::npos);
 }
 
+TEST_CASE("sql query builder uses the indexed derived count summary when available") {
+    ssa::domain::SsaPageRequest request;
+    request.visibleColumns = {"numero_ssa", "qtd_derivadas"};
+
+    const auto queries = ssa::query::SqlQueryBuilder{}.build(request, true);
+
+    REQUIRE(queries.page.sql.find("LEFT JOIN \"ssa_table_derived_counts\"") != std::string::npos);
+    REQUIRE(queries.page.sql.find("GROUP BY TRIM(COALESCE(\"derivada_de\", ''))") ==
+            std::string::npos);
+}
+
+TEST_CASE("sql query builder compiles the executadas report in SQLite") {
+    ssa::domain::SsaPageRequest request;
+    request.advancedFilters.executionWeekStart = 202503;
+    request.advancedFilters.executionWeekEnd = 202503;
+
+    const auto query = ssa::query::SqlQueryBuilder{}.buildExecutadasReport(request, true);
+
+    REQUIRE(query.sql.find("COUNT(DISTINCT TRIM(COALESCE(\"numero_ssa\", '')))") !=
+            std::string::npos);
+    REQUIRE(query.sql.find("GROUP BY SUBSTR(UPPER(TRIM(COALESCE(\"setor_executor\", '')))") !=
+            std::string::npos);
+    REQUIRE(query.sql.find("SELECT *") == std::string::npos);
+    REQUIRE(query.bindings == std::vector<std::string>{"202503", "202503"});
+}
+
 TEST_CASE("sql query builder rejects distinct values for derived count column") {
     ssa::domain::DistinctValuesRequest request;
     request.columnKey = std::string{ssa::domain::ColumnCatalog::derivedCountColumnKey()};

@@ -1,7 +1,7 @@
 #include "presentation/FilterPanelStateHelpers.h"
 
 #include "domain/ColumnCatalog.h"
-#include "query/TextFilterToken.h"
+#include "domain/TextFilterToken.h"
 
 #include <algorithm>
 #include <map>
@@ -68,14 +68,14 @@ namespace ssa::presentation::filterpanel {
         // (filter_summary_advanced.add_adv with op handling).
         // Example: "=IEE3,!SES,!STE" -> "IEE3, Exc: SES, STE".
         std::string formatTextFilterValue(const std::string& value) {
-            const auto tokens = query::parseTextFilterTokens(value);
+            const auto tokens = domain::parseTextFilterTokens(value);
             if (tokens.ordered.empty()) {
                 return value;
             }
             std::string included;
             std::string excluded;
             for (const auto& token : tokens.ordered) {
-                if (token.filterOperator == query::TextFilterOperator::Equals) {
+                if (token.filterOperator == domain::TextFilterOperator::Equals) {
                     if (!included.empty()) {
                         included += ", ";
                     }
@@ -259,9 +259,9 @@ namespace ssa::presentation::filterpanel {
 
     std::string executorFilterWithQuickSector(const std::string_view expression,
                                               const std::string_view quickSector) {
-        auto tokens = query::parseTextFilterTokens(expression);
-        query::addTextFilterValue(tokens, quickSector, query::TextFilterOperator::Equals);
-        return query::joinTextFilterTokens(tokens);
+        auto tokens = domain::parseTextFilterTokens(expression);
+        domain::addTextFilterValue(tokens, quickSector, domain::TextFilterOperator::Equals);
+        return domain::joinTextFilterTokens(tokens);
     }
 
     bool hasFilterValue(const std::string& currentFilter, const std::string& candidateValue) {

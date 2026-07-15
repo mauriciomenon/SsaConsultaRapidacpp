@@ -43,7 +43,8 @@ namespace ssa::query {
                    ", 0)";
         }
 
-        std::string derivedCountJoinSql(const std::string& tableName) {
+        std::string derivedCountJoinSql(const std::string& tableName,
+                                        const bool useDerivedCountSummary) {
             const auto table = quoteTableIdentifier(tableName);
             const auto derivationColumn =
                 quoteColumnIdentifier(std::string{domain::ColumnCatalog::derivationColumnKey()});
@@ -52,6 +53,12 @@ namespace ssa::query {
             const auto normalizedDerivation = "TRIM(COALESCE(" + derivationColumn + ", ''))";
             const auto parentAliasColumn =
                 std::string{"\""} + std::string{kDerivedCountsParentColumn} + "\"";
+            if (useDerivedCountSummary) {
+                return " LEFT JOIN " + quoteTableIdentifier(tableName + "_derived_counts") +
+                       " AS " + quoteTableIdentifier(std::string{kDerivedCountsAlias}) + " ON " +
+                       quoteTableIdentifier(std::string{kDerivedCountsAlias}) + "." +
+                       parentAliasColumn + " = TRIM(COALESCE(" + parentNumber + ", ''))";
+            }
             return " LEFT JOIN (SELECT " + normalizedDerivation + " AS " + parentAliasColumn +
                    ", COUNT(*) AS " +
                    quoteColumnIdentifier(
@@ -224,9 +231,18 @@ namespace ssa::query {
         return quoteTableIdentifier(tableName_);
     }
 
+    const std::string& SqlQueryBuilder::rawTableName() const noexcept {
+        return tableName_;
+    }
+
+    std::string SqlQueryBuilder::derivedCountSummaryTableName() const {
+        return tableName_ + "_derived_counts";
+    }
+
     SqlQuery buildSelectQuery(const domain::SsaPageRequest& request, const std::string& tableName,
                               const std::string& where,
-                              const std::vector<std::string>& whereBindings) {
+                              const std::vector<std::string>& whereBindings,
+                              const bool useDerivedCountSummary) {
         const auto columns = selectColumns(request);
         std::ostringstream select;
         select << "SELECT ";
@@ -238,7 +254,7 @@ namespace ssa::query {
         }
         select << " FROM " << quoteTableIdentifier(tableName);
         if (usesDerivedCountColumn(columns, request)) {
-            select << derivedCountJoinSql(tableName);
+            select << derivedCountJoinSql(tableName, useDerivedCountSummary);
         }
         if (!where.empty()) {
             select << " WHERE " << where;
@@ -249,8 +265,10 @@ namespace ssa::query {
 
     SqlQuery buildPagedSelectQuery(const domain::SsaPageRequest& request,
                                    const std::string& tableName, const std::string& where,
-                                   const std::vector<std::string>& whereBindings) {
-        auto query = buildSelectQuery(request, tableName, where, whereBindings);
+                                   const std::vector<std::string>& whereBindings,
+                                   const bool useDerivedCountSummary) {
+        auto query =
+            buildSelectQuery(request, tableName, where, whereBindings, useDerivedCountSummary);
         if (request.pageSize == 0) {
             return query;
         }
@@ -264,14 +282,26 @@ namespace ssa::query {
     }
 
     SqlQuery SqlQueryBuilder::buildRows(const domain::SsaPageRequest& request) const {
+        return buildRows(request, false);
+    }
+
+    SqlQuery SqlQueryBuilder::buildRows(const domain::SsaPageRequest& request,
+                                        const bool useDerivedCountSummary) const {
         const auto where = whereClauseFromRequest(request, parser_, predicateBuilder_);
-        return buildPagedSelectQuery(request, tableName_, where.sql, where.bindings);
+        return buildPagedSelectQuery(request, tableName_, where.sql, where.bindings,
+                                     useDerivedCountSummary);
     }
 
     SqlPageQueries SqlQueryBuilder::build(const domain::SsaPageRequest& request) const {
+        return build(request, false);
+    }
+
+    SqlPageQueries SqlQueryBuilder::build(const domain::SsaPageRequest& request,
+                                          const bool useDerivedCountSummary) const {
         const auto where = whereClauseFromRequest(request, parser_, predicateBuilder_);
 
-        SqlQuery page = buildPagedSelectQuery(request, tableName_, where.sql, where.bindings);
+        SqlQuery page = buildPagedSelectQuery(request, tableName_, where.sql, where.bindings,
+                                              useDerivedCountSummary);
 
         SqlQuery count{"SELECT COUNT(*) FROM " + quoteTableIdentifier(tableName_) +
                            (where.sql.empty() ? "" : " WHERE " + where.sql),
@@ -284,6 +314,32 @@ namespace ssa::query {
         return {"SELECT COUNT(*) FROM " + quoteTableIdentifier(tableName_) +
                     (where.sql.empty() ? "" : " WHERE " + where.sql),
                 where.bindings};
+    }
+
+    SqlQuery SqlQueryBuilder::buildExecutadasReport(const domain::SsaPageRequest& request,
+                                                    const bool byDivision) const {
+        const auto where = whereClauseFromRequest(request, parser_, predicateBuilder_);
+        const auto sector = "TRIM(COALESCE(" + quoteColumnIdentifier("setor_executor") + ", ''))";
+        const auto group =
+            byDivision ? "SUBSTR(UPPER(" + sector + "), 1, 3)" : "UPPER(" + sector + ")";
+        const auto week = "TRIM(COALESCE(" + quoteColumnIdentifier("semana_executada") + ", ''))";
+        const auto person = "COALESCE(NULLIF(TRIM(COALESCE(" +
+                            quoteColumnIdentifier("responsavel_execucao") + ", '')), ''), '-')";
+        const auto ssa = "TRIM(COALESCE(" +
+                         quoteColumnIdentifier(std::string{domain::kSsaNumberColumnKey}) + ", ''))";
+
+        std::ostringstream sql;
+        sql << "SELECT " << group << " AS \"group\", " << week << " AS \"week\", " << person
+            << " AS \"person\", COUNT(DISTINCT " << ssa << ") AS \"count\" FROM "
+            << quoteTableIdentifier(tableName_) << " WHERE " << group << " <> '' AND " << week
+            << " <> '' AND " << ssa << " <> ''";
+        if (!where.sql.empty()) {
+            sql << " AND (" << where.sql << ")";
+        }
+        sql << " GROUP BY " << group << ", " << week << ", " << person << " ORDER BY " << group
+            << " COLLATE NOCASE ASC, " << group << " ASC, " << week << " ASC, " << person
+            << " COLLATE NOCASE ASC, " << person << " ASC";
+        return {sql.str(), where.bindings};
     }
 
     SqlRecordQuery SqlQueryBuilder::buildRecordBySsaNumber(const domain::SsaNumber& number) const {

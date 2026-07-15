@@ -13,6 +13,9 @@ namespace ssa::infra::importing {
         std::string originalFilename;
         std::string sourceModifiedTimestamp;
         std::vector<std::vector<std::string>> rows;
+        // A continuation chunk may carry the header resolved from its first chunk.
+        // Keeping it outside rows avoids shifting every row on each chunk.
+        std::vector<std::string> headerRow;
         std::string sourceCreatedTimestamp;
     };
 

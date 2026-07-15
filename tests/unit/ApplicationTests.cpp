@@ -2,6 +2,7 @@
 #include "application/SsaWorkflowService.h"
 #include "application/UnavailableWorkflowPort.h"
 #include "ports/ISsaRepository.h"
+#include "query/SsaQueryService.h"
 
 #include <catch2/catch_test_macros.hpp>
 

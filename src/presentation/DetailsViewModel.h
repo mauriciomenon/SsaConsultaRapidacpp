@@ -1,6 +1,7 @@
 #pragma once
 
 #include "domain/SsaTypes.h"
+#include "ports/ISsaBrowsePort.h"
 #include "presentation/DerivadasGraphModel.h"
 #include "presentation/DetailsFieldsModel.h"
 
@@ -16,10 +17,6 @@
 #include <optional>
 #include <stop_token>
 #include <vector>
-
-namespace ssa::query {
-    class SsaQueryService;
-}
 
 namespace ssa::presentation {
 
@@ -43,7 +40,7 @@ namespace ssa::presentation {
 
       public:
         explicit DetailsViewModel(QObject* parent = nullptr);
-        explicit DetailsViewModel(std::shared_ptr<query::SsaQueryService> queryService,
+        explicit DetailsViewModel(std::shared_ptr<ports::ISsaBrowsePort> browsePort,
                                   QObject* parent = nullptr);
         ~DetailsViewModel() override;
 
@@ -110,7 +107,7 @@ namespace ssa::presentation {
         QString selectedSsa_;
         QVariantList relations_;
         DerivadasGraphModel graphModel_;
-        std::shared_ptr<query::SsaQueryService> queryService_;
+        std::shared_ptr<ports::ISsaBrowsePort> browsePort_;
         int currentRelationIndex_{0};
         std::vector<std::unique_ptr<RelationQueryOperation>> relationQueries_;
         std::uint64_t latestRelationQueryId_{0};

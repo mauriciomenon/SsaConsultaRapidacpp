@@ -459,7 +459,6 @@ namespace ssa::platform {
                 const auto stopped = terminateTree(process, startingProcessGroup);
 #endif
                 if (!stopped) {
-                    forceStopFailed.store(true, std::memory_order_relaxed);
 #ifdef Q_OS_WIN
                     const auto tracked = retainFailedProcessTree(job.get());
 #else
@@ -481,7 +480,6 @@ namespace ssa::platform {
                 const auto stopped = terminateTree(process, startingProcessGroup);
 #endif
                 if (!stopped) {
-                    forceStopFailed.store(true, std::memory_order_relaxed);
 #ifdef Q_OS_WIN
                     const auto tracked = retainFailedProcessTree(job.get());
 #else
@@ -514,7 +512,6 @@ namespace ssa::platform {
             const auto stopped = terminateTree(process, processGroup);
 #endif
             if (!stopped) {
-                forceStopFailed.store(true, std::memory_order_relaxed);
 #ifdef Q_OS_WIN
                 const auto tracked = retainFailedProcessTree(job.get());
 #else
@@ -538,7 +535,6 @@ namespace ssa::platform {
                 const auto stopped = terminateTree(process, processGroup);
 #endif
                 if (!stopped) {
-                    forceStopFailed.store(true, std::memory_order_relaxed);
                     registeredTree->retain();
                 }
                 drainProcess(process, standardError, standardOutput);
@@ -553,7 +549,6 @@ namespace ssa::platform {
                 const auto stopped = terminateTree(process, processGroup);
 #endif
                 if (!stopped) {
-                    forceStopFailed.store(true, std::memory_order_relaxed);
                     registeredTree->retain();
                 }
                 drainProcess(process, standardError, standardOutput);
@@ -572,7 +567,6 @@ namespace ssa::platform {
             const auto stopped = terminateTree(process, processGroup);
 #endif
             if (!stopped) {
-                forceStopFailed.store(true, std::memory_order_relaxed);
                 registeredTree->retain();
             }
             return {stopped ? SupervisedProcessStatus::Canceled
@@ -588,7 +582,6 @@ namespace ssa::platform {
         const auto stoppedResidual = !residualTree || terminateTree(process, processGroup);
 #endif
         if (!stoppedResidual) {
-            forceStopFailed.store(true, std::memory_order_relaxed);
             registeredTree->retain();
             return {SupervisedProcessStatus::FailedToStop, process.exitCode(),
                     diagnosticText(process, standardError, standardOutput)};

@@ -199,9 +199,7 @@ namespace ssa::infra::importing {
                     const auto existingIndex = mapped.columns[owner->second].first;
                     const auto existingKind = snapshotHeaderKind(header[existingIndex]);
                     const auto incomingKind = snapshotHeaderKind(header[index]);
-                    if (existingKind == incomingKind ||
-                        (existingKind == SnapshotHeaderKind::Other &&
-                         incomingKind == SnapshotHeaderKind::Other)) {
+                    if (existingKind == incomingKind) {
                         mapped.ambiguous = true;
                         return mapped;
                     }
@@ -252,26 +250,32 @@ namespace ssa::infra::importing {
         SsaImportBatch batch;
         batch.sourcePath = table.sourcePath;
         HeaderColumnCache headerCache;
-        const auto headerIndex = headerRowIndex(table, headerCache, stopToken);
+        const bool hasExternalHeader = !table.headerRow.empty();
+        const auto headerIndex = hasExternalHeader ? std::optional<std::size_t>{0}
+                                                   : headerRowIndex(table, headerCache, stopToken);
         if (!headerIndex) {
             batch.skippedRows = table.rows.size();
             return batch;
         }
-        const auto columnMap = columnMapFromHeader(table.rows[*headerIndex], headerCache);
+        const auto& header = hasExternalHeader ? table.headerRow : table.rows[*headerIndex];
+        const auto columnMap = columnMapFromHeader(header, headerCache);
         batch.mappedColumns = columnMap.columns.size();
         if (columnMap.ambiguous) {
             batch.mappingStatus = SpreadsheetMappingStatus::AmbiguousHeaders;
-            batch.skippedRows = table.rows.size() - *headerIndex - 1;
+            batch.skippedRows =
+                hasExternalHeader ? table.rows.size() : table.rows.size() - *headerIndex - 1;
             return batch;
         }
         if (!hasRequiredColumns(columnMap.columns)) {
             batch.mappingStatus = SpreadsheetMappingStatus::RequiredColumnsMissing;
-            batch.skippedRows = table.rows.size() - *headerIndex - 1;
+            batch.skippedRows =
+                hasExternalHeader ? table.rows.size() : table.rows.size() - *headerIndex - 1;
             return batch;
         }
-        batch.headerRow = table.rows[*headerIndex];
+        batch.headerRow = header;
         batch.mappingStatus = SpreadsheetMappingStatus::Mapped;
-        for (std::size_t rowIndex = *headerIndex + 1; rowIndex < table.rows.size(); ++rowIndex) {
+        const std::size_t firstDataRow = hasExternalHeader ? 0 : *headerIndex + 1;
+        for (std::size_t rowIndex = firstDataRow; rowIndex < table.rows.size(); ++rowIndex) {
             throwIfMappingCanceled(stopToken);
             SsaImportRow row;
             for (const auto& [columnIndex, columnKey] : columnMap.columns) {

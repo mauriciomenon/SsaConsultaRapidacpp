@@ -2,6 +2,7 @@
 
 #include "infra/sqlite/SqliteProgressHandler.h"
 #include "ports/OperationError.h"
+#include "query/SqlQueryText.h"
 
 #include <stdexcept>
 #include <stop_token>
@@ -12,6 +13,28 @@
 namespace ssa::infra::sqlite {
 
     namespace {
+
+        bool requestUsesDerivedCount(const domain::SsaPageRequest& request) {
+            return std::ranges::any_of(request.visibleColumns,
+                                       domain::ColumnCatalog::isDerivedCountColumn) ||
+                   domain::ColumnCatalog::isDerivedCountColumn(request.sort.columnKey) ||
+                   request.visibleColumns.empty();
+        }
+
+        bool hasDerivedCountColumns(sqlite3* db, const std::string& tableName,
+                                    const std::atomic_bool* busyCanceled) {
+            SqliteStatement statement(
+                db, "PRAGMA table_info(" + query::quoteTableIdentifier(tableName) + ")",
+                busyCanceled);
+            bool hasNumber = false;
+            bool hasDerivation = false;
+            while (statement.step()) {
+                const auto name = statement.columnText(1);
+                hasNumber = hasNumber || name == domain::kSsaNumberColumnKey;
+                hasDerivation = hasDerivation || name == "derivada_de";
+            }
+            return hasNumber && hasDerivation;
+        }
 
         void bindAll(SqliteStatement& statement, const std::vector<std::string>& bindings) {
             int index = 1;
@@ -111,12 +134,33 @@ namespace ssa::infra::sqlite {
                                              query::SqlQueryBuilder queryBuilder)
         : dbPath_(std::move(dbPath)), queryBuilder_(std::move(queryBuilder)) {}
 
+    bool SqliteSsaRepository::ensureDerivedCountSummary() const {
+        std::call_once(derivedCountSummaryInitialized_, [this] {
+            SqliteConnection sqlite(dbPath_, SqliteOpenMode::ReadWrite);
+            SqliteBusyHandler busy(sqlite.handle(), {});
+            SqliteProgressHandler progress(sqlite.handle(), {});
+            if (!hasDerivedCountColumns(sqlite.handle(), queryBuilder_.rawTableName(),
+                                        busy.cancellationObserved())) {
+                return;
+            }
+            SqliteWriteTransaction transaction(sqlite.handle(), busy.cancellationObserved());
+            ssa::infra::sqlite::ensureDerivedCountSummary(
+                sqlite.handle(), queryBuilder_.rawTableName(),
+                domain::ColumnCatalog::schemaColumns(), busy.cancellationObserved());
+            transaction.commit();
+            derivedCountSummaryAvailable_ = true;
+        });
+        return derivedCountSummaryAvailable_;
+    }
+
     domain::SsaPageResult SqliteSsaRepository::page(const domain::SsaPageRequest& request,
                                                     std::stop_token stopToken) const {
-        const auto queries = queryBuilder_.build(request);
+        const bool usesDerivedCount =
+            requestUsesDerivedCount(request) && ensureDerivedCountSummary();
         SqliteConnection sqlite(dbPath_);
         SqliteBusyHandler busy(sqlite.handle(), stopToken);
         SqliteProgressHandler progress(sqlite.handle(), stopToken);
+        const auto queries = queryBuilder_.build(request, usesDerivedCount);
         ReadTransaction transaction(sqlite.handle(), stopToken, busy.cancellationObserved());
 
         domain::SsaPageResult result;
@@ -212,6 +256,8 @@ namespace ssa::infra::sqlite {
     ports::SsaReadResult SqliteSsaRepository::readAll(const domain::SsaPageRequest& request,
                                                       ports::SsaRecordConsumer consume,
                                                       std::stop_token stopToken) const {
+        const bool usesDerivedCount =
+            requestUsesDerivedCount(request) && ensureDerivedCountSummary();
         SqliteConnection sqlite(dbPath_);
         SqliteBusyHandler busy(sqlite.handle(), stopToken);
         SqliteProgressHandler progress(sqlite.handle(), stopToken);
@@ -220,7 +266,7 @@ namespace ssa::infra::sqlite {
         // pageSize > 0 means paginated streaming: read in chunks so peak memory
         // stays bounded to one page even for large filtered result sets.
         if (request.pageSize == 0) {
-            const auto query = queryBuilder_.buildRows(request);
+            const auto query = queryBuilder_.buildRows(request, usesDerivedCount);
             const auto result = consumeRows(sqlite.handle(), query, consume, stopToken,
                                             busy.cancellationObserved());
             if (result.ok()) {
@@ -233,7 +279,7 @@ namespace ssa::infra::sqlite {
             throwIfCanceled(stopToken);
             auto paged = request;
             paged.pageIndex = pageIndex;
-            const auto query = queryBuilder_.buildRows(paged);
+            const auto query = queryBuilder_.buildRows(paged, usesDerivedCount);
             std::size_t before = rowCount;
             const auto result = consumeRows(
                 sqlite.handle(), query,
@@ -252,6 +298,27 @@ namespace ssa::infra::sqlite {
         }
         transaction.commit();
         return {rowCount, {}};
+    }
+
+    std::vector<domain::SsaExecutadasReportRow>
+    SqliteSsaRepository::executadasReport(const domain::SsaPageRequest& request,
+                                          const bool byDivision,
+                                          const std::stop_token stopToken) const {
+        const auto query = queryBuilder_.buildExecutadasReport(request, byDivision);
+        SqliteConnection sqlite(dbPath_);
+        SqliteBusyHandler busy(sqlite.handle(), stopToken);
+        SqliteProgressHandler progress(sqlite.handle(), stopToken);
+        SqliteStatement statement(sqlite.handle(), query.sql, busy.cancellationObserved());
+        bindAll(statement, query.bindings);
+
+        std::vector<domain::SsaExecutadasReportRow> rows;
+        while (statement.step()) {
+            throwIfCanceled(stopToken);
+            rows.push_back(domain::SsaExecutadasReportRow{
+                statement.columnText(0), statement.columnText(1), statement.columnText(2),
+                static_cast<int>(statement.columnInt64(3))});
+        }
+        return rows;
     }
 
     std::size_t SqliteSsaRepository::executeCount(sqlite3* db, const query::SqlQuery& query,

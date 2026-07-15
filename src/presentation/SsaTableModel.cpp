@@ -157,6 +157,19 @@ namespace ssa::presentation {
         return QString::fromUtf8(value.data(), static_cast<qsizetype>(value.size()));
     }
 
+    QString SsaTableModel::rowText(const int row) const {
+        if (row < 0 || row >= static_cast<int>(rows_.size())) {
+            return {};
+        }
+
+        QStringList values;
+        values.reserve(static_cast<int>(columns_.count()));
+        for (std::size_t column = 0; column < columns_.count(); ++column) {
+            values.push_back(displayCache_.value(static_cast<std::size_t>(row), column).toString());
+        }
+        return values.join(QStringLiteral("\t"));
+    }
+
     bool SsaTableModel::hasColumn(const int column) const {
         if (column < 0) {
             return false;

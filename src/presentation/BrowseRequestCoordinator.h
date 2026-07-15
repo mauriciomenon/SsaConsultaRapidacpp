@@ -1,6 +1,7 @@
 #pragma once
 
 #include "domain/SsaTypes.h"
+#include "ports/ISsaBrowsePort.h"
 #include "presentation/BrowsePageLifecycleCoordinator.h"
 #include "presentation/BrowseQueryState.h"
 #include "presentation/FilterPanelViewModel.h"
@@ -13,17 +14,13 @@
 #include <QString>
 #include <memory>
 
-namespace ssa::query {
-    class SsaQueryService;
-}
-
 namespace ssa::presentation {
 
     class BrowseRequestCoordinator final : public QObject {
         Q_OBJECT
 
       public:
-        explicit BrowseRequestCoordinator(std::shared_ptr<query::SsaQueryService> queryService,
+        explicit BrowseRequestCoordinator(std::shared_ptr<ports::ISsaBrowsePort> browsePort,
                                           BrowseQueryState& queryState, SearchViewModel& search,
                                           FilterPanelViewModel& filters, StatusViewModel& status,
                                           SsaTableModel& tableModel, QObject* parent = nullptr);

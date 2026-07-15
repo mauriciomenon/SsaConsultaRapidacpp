@@ -9,13 +9,14 @@
 
 namespace ssa::presentation {
 
-    BrowseViewModel::BrowseViewModel(std::shared_ptr<query::SsaQueryService> queryService,
+    BrowseViewModel::BrowseViewModel(std::shared_ptr<ports::ISsaBrowsePort> browsePort,
+                                     std::shared_ptr<ports::IExecutadasReportPort> reportPort,
                                      QObject* parent)
-        : QObject(parent), search_(this), filters_(queryService, this),
-          details_(queryService, this), status_(this),
+        : QObject(parent), search_(this), filters_(browsePort, std::move(reportPort), this),
+          details_(browsePort, this), status_(this),
           tableModel_(std::string{domain::kSsaNumberColumnKey}, this),
-          orchestrator_(queryService, search_, filters_, details_, status_, tableModel_, this),
-          queryService_(std::move(queryService)) {
+          orchestrator_(browsePort, search_, filters_, details_, status_, tableModel_, this),
+          browsePort_(std::move(browsePort)) {
         connect(&orchestrator_, &BrowseOrchestrator::pageChanged, this, [this] {
             invalidateTableHeaders();
             emit pageChanged();
@@ -194,7 +195,7 @@ namespace ssa::presentation {
 
     DetailsViewModel* BrowseViewModel::createDetailsWindowModel(const QString& ssaNumber,
                                                                 QObject* parent) {
-        auto* model = new DetailsViewModel(queryService_, parent);
+        auto* model = new DetailsViewModel(browsePort_, parent);
         detachedDetails_.emplace_back(model);
         connect(model, &DetailsViewModel::activeOperationsChanged, this,
                 &BrowseViewModel::backgroundActivityChanged);

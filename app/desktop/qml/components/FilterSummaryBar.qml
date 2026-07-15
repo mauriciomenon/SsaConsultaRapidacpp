@@ -129,8 +129,8 @@ Rectangle {
 
                 SummaryTag {
                     visible: root.hasActiveExclusion
-                    text: "Exc: SCA/SES/STE"
-                    tooltipText: "Excluindo SCA/SES/STE"
+                    text: "Exc: " + root.filterViewModel.excludedStatusCodesText
+                    tooltipText: "Excluindo " + root.filterViewModel.excludedStatusCodesText
                     compact: root.compact
                     tagTextSize: root.tagTextSize
                     preferredTagWidth: root.preferredWidthForTag(naturalWidth)

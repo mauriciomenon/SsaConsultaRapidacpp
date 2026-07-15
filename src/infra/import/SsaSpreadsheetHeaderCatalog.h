@@ -10,7 +10,7 @@ namespace ssa::infra::importing {
       public:
         [[nodiscard]] static std::optional<std::string>
         canonicalColumnForHeader(const std::string& header);
-        [[nodiscard]] static std::size_t sourceAliasCount();
+        [[nodiscard]] static std::size_t sourceLabelCount();
     };
 
 } // namespace ssa::infra::importing

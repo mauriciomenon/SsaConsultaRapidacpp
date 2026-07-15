@@ -35,9 +35,9 @@ namespace ssa::presentation {
             return false;
         }
         const auto columnValue = utf8String(value).trimmed();
-        auto tokens = query::parseTextFilterTokens(value);
+        auto tokens = domain::parseTextFilterTokens(value);
         const auto operatorMode =
-            QString::fromStdString(query::textFilterUiModeNameForTokens(tokens));
+            QString::fromStdString(domain::textFilterUiModeNameForTokens(tokens));
         auto column = AdvancedTextFilterColumnState{
             .tokens = std::move(tokens),
             .operatorMode = operatorMode,

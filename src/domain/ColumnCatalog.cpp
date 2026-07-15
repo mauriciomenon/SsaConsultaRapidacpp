@@ -18,6 +18,12 @@ namespace ssa::domain {
         constexpr std::string_view kExecutorColumnKey = "setor_executor";
         constexpr std::string_view kDerivationColumnKey = "derivada_de";
         constexpr std::string_view kDerivedCountColumnKey = "qtd_derivadas";
+        constexpr std::array<std::string_view, 26> kStatusShortcutCodes{{
+            "AAD", "AAT", "ACC", "ACS", "ADI", "ADM", "AIM", "ALE", "AMP",
+            "APG", "APL", "APV", "ASE", "ASL", "ASO", "SAD", "SAS", "SCA",
+            "SCC", "SCD", "SCS", "SEE", "SES", "SPG", "SRP", "STE",
+        }};
+        constexpr std::string_view kDownloadableStatusFilterExpression = "!SAD,!SCA,!SES,!STE";
         constexpr std::array<std::string_view, 3> kExcludedStatusCodes{"SCA", "SES", "STE"};
         constexpr std::array<std::string_view, 3> kWeekColumnKeys{
             "semana_cadastro", "semana_programada", "semana_executada"};
@@ -296,6 +302,14 @@ namespace ssa::domain {
 
     std::string_view ColumnCatalog::derivedCountColumnKey() {
         return kDerivedCountColumnKey;
+    }
+
+    std::span<const std::string_view> ColumnCatalog::statusShortcutCodes() {
+        return kStatusShortcutCodes;
+    }
+
+    std::string_view ColumnCatalog::downloadableStatusFilterExpression() {
+        return kDownloadableStatusFilterExpression;
     }
 
     std::span<const std::string_view> ColumnCatalog::excludedStatusCodes() {

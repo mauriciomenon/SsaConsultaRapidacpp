@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ports/IExecutadasReportPort.h"
 #include "presentation/AdvancedDerivationFilterViewModel.h"
 #include "presentation/AdvancedMacroFilterViewModel.h"
 #include "presentation/AdvancedTextFilterViewModel.h"
@@ -12,10 +13,6 @@
 #include <QVariantList>
 
 #include <memory>
-
-namespace ssa::query {
-    class SsaQueryService;
-}
 
 namespace ssa::presentation {
 
@@ -30,7 +27,7 @@ namespace ssa::presentation {
         FilterPanelAdvancedViewModel(filterpanel::FilterPanelAdvancedState& state,
                                      filterpanel::FilterPanelState& filterState,
                                      QStringList weekColumnKeys,
-                                     std::shared_ptr<query::SsaQueryService> queryService,
+                                     std::shared_ptr<ports::IExecutadasReportPort> reportPort,
                                      QObject* parent = nullptr);
 
         [[nodiscard]] QObject* text();

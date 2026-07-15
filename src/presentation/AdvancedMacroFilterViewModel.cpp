@@ -1,8 +1,8 @@
 #include "presentation/AdvancedMacroFilterViewModel.h"
 
+#include "domain/ColumnCatalog.h"
 #include "domain/SsaTypes.h"
 #include "presentation/AsyncOperationErrorLog.h"
-#include "query/SsaQueryService.h"
 
 #include <QDate>
 #include <QVariantMap>
@@ -19,8 +19,6 @@ namespace ssa::presentation {
         constexpr auto kBaixar = "ssas_para_baixar";
         constexpr auto kExecutadasSetor = "ssas_executadas_setor";
         constexpr auto kExecutadasDivisao = "ssas_executadas_divisao";
-        constexpr auto kStatusColumn = "situacao";
-        constexpr auto kBaixarStatusFilter = "!SAD,!SCA,!SES,!STE";
 
         // Range of ISO year-weeks (YYYYWW) overlapping the month of currentDate.
         // The database restricts the set via semana_executada BETWEEN, so the
@@ -71,11 +69,11 @@ namespace ssa::presentation {
     AdvancedMacroFilterViewModel::AdvancedMacroFilterViewModel(
         filterpanel::FilterPanelAdvancedState& advancedState,
         const filterpanel::FilterPanelState& filterState,
-        std::shared_ptr<query::SsaQueryService> queryService, QObject* parent,
+        std::shared_ptr<ports::IExecutadasReportPort> reportPort, QObject* parent,
         CurrentDate currentDate)
         : QObject(parent), advancedState_(advancedState), filterState_(filterState),
           reportService_(
-              std::make_shared<application::SsaExecutadasReportService>(std::move(queryService))),
+              std::make_shared<application::SsaExecutadasReportService>(std::move(reportPort))),
           currentDate_(std::move(currentDate)),
           options_{
               QVariantMap{{"label", tr("Exibir o grafico e somente o grafico")},
@@ -161,8 +159,10 @@ namespace ssa::presentation {
     void AdvancedMacroFilterViewModel::refreshFromState() {}
 
     void AdvancedMacroFilterViewModel::applyBaixarPreset() {
-        advancedState_.setTextFilter(QString::fromLatin1(kStatusColumn),
-                                     QString::fromLatin1(kBaixarStatusFilter));
+        advancedState_.setTextFilter(
+            QString::fromStdString(std::string{domain::ColumnCatalog::statusColumnKey()}),
+            QString::fromStdString(
+                std::string{domain::ColumnCatalog::downloadableStatusFilterExpression()}));
     }
 
     void AdvancedMacroFilterViewModel::buildExecutadasReport(const QString& value) {

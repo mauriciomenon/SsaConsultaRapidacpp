@@ -16,6 +16,7 @@
 #include "presentation/PageQueryCoordinator.h"
 #include "presentation/SsaRecordValueFormatter.h"
 #include "presentation/StatusViewModel.h"
+#include "query/SsaQueryService.h"
 
 #include <QChar>
 #include <QCoreApplication>
@@ -960,6 +961,30 @@ namespace {
             QVERIFY(model.nodeCenter(3).y() > model.nodeCenter(2).y());
         }
 
+        void derivadas_graph_model_rotates_and_centers_for_narrow_viewport() {
+            ssa::presentation::DerivadasGraphModel model;
+            QVariantList relations;
+            relations.push_back(QVariantMap{{"kind", "Atual"}, {"ssa", "202500003"}});
+            relations.push_back(QVariantMap{{"kind", "Derivada de"}, {"ssa", "202500001"}});
+            relations.push_back(QVariantMap{{"kind", "Derivada de"}, {"ssa", "202500002"}});
+            relations.push_back(QVariantMap{{"kind", "Relacionada"}, {"ssa", "202500004"}});
+
+            model.buildFromRelations(QStringLiteral("202500003"), relations);
+            QCOMPARE(model.orientation(), QString("horizontal"));
+
+            model.setViewportSize(640, 480);
+            QCOMPARE(model.orientation(), QString("vertical"));
+            const auto targetCenter = model.nodeCenter(2);
+            QVERIFY(qAbs(targetCenter.x() - model.graphWidth() / 2.0) < 1.0);
+            QVERIFY(qAbs(targetCenter.y() - model.graphHeight() / 2.0) < 1.0);
+
+            for (const auto& edgeValue : model.edges()) {
+                const auto edge = edgeValue.toMap();
+                QVERIFY(edge.contains("routeY"));
+                QVERIFY(edge.value("fromY").toReal() < edge.value("toY").toReal());
+            }
+        }
+
         void derivadas_graph_model_fans_many_children_below_target() {
             ssa::presentation::DerivadasGraphModel model;
             QVariantList relations;
@@ -1108,18 +1133,28 @@ namespace {
             const auto commands = std::make_shared<FakeCommands>();
             const auto preferences = std::make_shared<FakePreferences>();
             ssa::presentation::MainViewModel model(service, commands, preferences);
+            const auto hasPageWithSort = [&repository] {
+                const auto requests = repository->requests();
+                return std::any_of(requests.begin(), requests.end(), [](const auto& request) {
+                    return request.pageIndex == 0 && request.sort.columnKey == "situacao";
+                });
+            };
 
             model.browse()->setPageSize(10);
             QTRY_COMPARE_WITH_TIMEOUT(model.browse()->pageCount(), 3, 1000);
             model.browse()->nextPage();
             QTRY_COMPARE_WITH_TIMEOUT(model.browse()->pageNumber(), 2, 1000);
-            QTRY_COMPARE_WITH_TIMEOUT(repository->requests().back().pageIndex, std::size_t{1},
-                                      1000);
+            QTRY_VERIFY_WITH_TIMEOUT(
+                [&repository] {
+                    const auto requests = repository->requests();
+                    return std::any_of(requests.begin(), requests.end(),
+                                       [](const auto& request) { return request.pageIndex == 1; });
+                }(),
+                1000);
 
             model.browse()->sortByColumn(1);
 
-            QTRY_COMPARE_WITH_TIMEOUT(repository->requests().back().pageIndex, std::size_t{0},
-                                      1000);
+            QTRY_VERIFY_WITH_TIMEOUT(hasPageWithSort(), 1000);
             QTRY_COMPARE_WITH_TIMEOUT(model.browse()->pageNumber(), 1, 1000);
             QTRY_COMPARE_WITH_TIMEOUT(QString::fromStdString(preferences->snapshot().sortColumnKey),
                                       QString("situacao"), 1000);
@@ -1168,21 +1203,24 @@ namespace {
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
             auto commands = std::make_shared<FakeCommands>();
             ssa::presentation::MainViewModel model(service, commands);
+            const auto hasPage = [&repository](const std::size_t pageIndex) {
+                const auto requests = repository->requests();
+                return std::any_of(
+                    requests.begin(), requests.end(),
+                    [pageIndex](const auto& request) { return request.pageIndex == pageIndex; });
+            };
 
             model.browse()->setPageSize(10);
             QTRY_COMPARE_WITH_TIMEOUT(model.browse()->pageCount(), 3, 1000);
             model.browse()->nextPage();
-            QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{2}, 3000);
-            QCOMPARE(repository->requests().back().pageIndex, std::size_t{1});
             QTRY_COMPARE_WITH_TIMEOUT(model.browse()->pageNumber(), 2, 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(hasPage(1), 3000);
             model.browse()->nextPage();
-            QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{3}, 3000);
-            QCOMPARE(repository->requests().back().pageIndex, std::size_t{2});
             QTRY_COMPARE_WITH_TIMEOUT(model.browse()->pageNumber(), 3, 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(hasPage(2), 3000);
 
             QCOMPARE(model.browse()->pageNumber(), 3);
             QCOMPARE(model.browse()->pageCount(), 3);
-            QCOMPARE(repository->requests().back().pageIndex, std::size_t{2});
         }
 
         void cancel_marks_current_request_as_stale() {
@@ -1261,6 +1299,36 @@ namespace {
             QCOMPARE(succeededCount, 1);
             QCOMPARE(canceledCount, 0);
             QCOMPARE(failedCount, 0);
+        }
+
+        void page_query_prefetches_two_pages_and_reuses_the_cache() {
+            auto repository = std::make_shared<FakeRepository>(
+                FakeRepositoryConfig{.totalRows = std::size_t{25}});
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::PageQueryCoordinator coordinator(service);
+            int succeededCount = 0;
+            connect(&coordinator, &ssa::presentation::PageQueryCoordinator::succeeded, this,
+                    [&](const ssa::presentation::PageQueryResult&,
+                        const ssa::domain::SsaPageRequest&) { ++succeededCount; });
+
+            ssa::domain::SsaPageRequest first;
+            first.pageSize = 10;
+            coordinator.run(first);
+
+            QTRY_COMPARE_WITH_TIMEOUT(succeededCount, 1, 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(!coordinator.hasActiveOperations(), 1000);
+            const auto prefetchedRequests = repository->requests();
+            QCOMPARE(prefetchedRequests.size(), std::size_t{3});
+            QCOMPARE(prefetchedRequests[0].pageIndex, std::size_t{0});
+            QCOMPARE(prefetchedRequests[1].pageIndex, std::size_t{1});
+            QCOMPARE(prefetchedRequests[2].pageIndex, std::size_t{2});
+
+            auto second = first;
+            second.pageIndex = 1;
+            coordinator.run(second);
+
+            QCOMPARE(succeededCount, 2);
+            QCOMPARE(repository->requests().size(), std::size_t{3});
         }
 
         void page_query_cancel_is_terminal_and_blocks_new_work() {
@@ -2378,6 +2446,59 @@ namespace {
             QTRY_COMPARE_WITH_TIMEOUT(preferences->snapshot().visibleColumns.front(),
                                       std::string("numero_ssa"), 1000);
             QCOMPARE(preferences->snapshot().visibleColumns.at(1), std::string("situacao"));
+        }
+
+        void column_header_move_reorders_and_persists_visible_order() {
+            ssa::ports::UserPreferencesSnapshot initial;
+            initial.visibleColumns = {"situacao", "numero_ssa"};
+
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            auto preferences = std::make_shared<FakePreferences>(initial);
+            ssa::presentation::MainViewModel model(service, commands, preferences);
+
+            auto* flow =
+                qobject_cast<ssa::presentation::MainColumnFlowCoordinator*>(model.columnFlow());
+            QVERIFY(flow != nullptr);
+            QVERIFY(flow->moveVisibleColumnAndApply(0, 1));
+            const std::vector<std::string> expectedOrder{"numero_ssa", "situacao"};
+            QCOMPARE(model.browse()->visibleColumns(), expectedOrder);
+            QTRY_COMPARE_WITH_TIMEOUT(preferences->snapshot().visibleColumns.front(),
+                                      std::string("numero_ssa"), 1000);
+            QCOMPARE(preferences->snapshot().visibleColumns.at(1), std::string("situacao"));
+        }
+
+        void column_reset_restores_catalog_order() {
+            ssa::presentation::ColumnSettingsModel model;
+            const auto initialKeys = model.visibleKeys();
+            QVERIFY(initialKeys.size() >= 2);
+
+            int firstRow = -1;
+            int secondRow = -1;
+            for (int row = 0; row < model.rowCount(); ++row) {
+                const auto key =
+                    model.data(model.index(row), ssa::presentation::ColumnSettingsModel::KeyRole)
+                        .toString();
+                if (key == QString::fromStdString(initialKeys[0])) {
+                    firstRow = row;
+                }
+                if (key == QString::fromStdString(initialKeys[1])) {
+                    secondRow = row;
+                }
+            }
+            QVERIFY(firstRow >= 0);
+            QVERIFY(secondRow >= 0);
+            QVERIFY(model.moveColumn(firstRow, secondRow));
+            QCOMPARE(QString::fromStdString(model.visibleKeys()[0]),
+                     QString::fromStdString(initialKeys[1]));
+
+            model.resetDefaults();
+            const auto restoredKeys = model.visibleKeys();
+            QCOMPARE(QString::fromStdString(restoredKeys[0]),
+                     QString::fromStdString(initialKeys[0]));
+            QCOMPARE(QString::fromStdString(restoredKeys[1]),
+                     QString::fromStdString(initialKeys[1]));
         }
     };
 

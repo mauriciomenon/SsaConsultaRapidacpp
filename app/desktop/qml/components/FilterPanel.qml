@@ -68,7 +68,7 @@ Rectangle {
             }
 
             AppCheckBox {
-                text: "Excluir SCA/SES/STE"
+                text: "Excluir " + root.filterViewModel.excludedStatusCodesText
                 checked: root.filterViewModel.excludeScaSesSte
                 onToggled: {
                     root.filterViewModel.excludeScaSesSte = checked;

@@ -1,7 +1,7 @@
 #include "presentation/FilterPreferencesNormalizer.h"
 
 #include "domain/ColumnCatalog.h"
-#include "query/TextFilterToken.h"
+#include "domain/TextFilterToken.h"
 
 #include <algorithm>
 #include <map>
@@ -17,10 +17,10 @@ namespace ssa::presentation {
             }
             const auto executorKey = std::string{domain::ColumnCatalog::executorColumnKey()};
             auto& executorExpression = filters.advancedTextFilters[executorKey];
-            auto tokens = query::parseTextFilterTokens(executorExpression);
-            query::addTextFilterValue(tokens, filters.quickSector,
-                                      query::TextFilterOperator::Equals);
-            executorExpression = query::joinTextFilterTokens(tokens);
+            auto tokens = domain::parseTextFilterTokens(executorExpression);
+            domain::addTextFilterValue(tokens, filters.quickSector,
+                                       domain::TextFilterOperator::Equals);
+            executorExpression = domain::joinTextFilterTokens(tokens);
             filters.quickSector.clear();
         }
 
@@ -36,10 +36,10 @@ namespace ssa::presentation {
             if (filter == textFilters.end()) {
                 return false;
             }
-            const auto tokens = query::parseTextFilterTokens(filter->second);
+            const auto tokens = domain::parseTextFilterTokens(filter->second);
             const auto excluded = domain::ColumnCatalog::excludedStatusCodes();
             return std::ranges::any_of(tokens.ordered, [excluded](const auto& token) {
-                return token.filterOperator == query::TextFilterOperator::Equals &&
+                return token.filterOperator == domain::TextFilterOperator::Equals &&
                        std::ranges::find(excluded, std::string_view{token.value}) != excluded.end();
             });
         }

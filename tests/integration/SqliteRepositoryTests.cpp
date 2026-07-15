@@ -19,9 +19,11 @@
 #include <condition_variable>
 #include <filesystem>
 #include <future>
+#include <iostream>
 #include <mutex>
 #include <semaphore>
 #include <sqlite3.h>
+#include <sstream>
 #include <stop_token>
 #include <string>
 #include <system_error>
@@ -128,6 +130,32 @@ namespace {
     };
 
 } // namespace
+
+TEST_CASE("sqlite connection diagnoses deferred close with an open statement") {
+    QTemporaryFile databaseFile(QDir::tempPath() + QStringLiteral("/ssa_close_XXXXXX.sqlite"));
+    databaseFile.setAutoRemove(true);
+    REQUIRE(databaseFile.open());
+    const auto path = std::filesystem::path{databaseFile.fileName().toStdString()};
+    databaseFile.close();
+
+    sqlite3_stmt* statement = nullptr;
+    std::ostringstream diagnostic;
+    struct StreamGuard final {
+        std::streambuf* previous;
+        ~StreamGuard() {
+            std::clog.rdbuf(previous);
+        }
+    } guard{std::clog.rdbuf(diagnostic.rdbuf())};
+    {
+        ssa::infra::sqlite::SqliteConnection connection(
+            path, ssa::infra::sqlite::SqliteOpenMode::ReadWriteCreate);
+        REQUIRE(sqlite3_prepare_v2(connection.handle(), "SELECT 1", -1, &statement, nullptr) ==
+                SQLITE_OK);
+    }
+
+    REQUIRE(diagnostic.str().find("statements remain open") != std::string::npos);
+    REQUIRE(sqlite3_finalize(statement) == SQLITE_OK);
+}
 
 TEST_CASE("sqlite progress handler interrupts after entering sqlite and remains reusable") {
     const SqliteFixture fixture;
@@ -253,6 +281,45 @@ TEST_CASE_METHOD(SqliteRepositoryFixture,
 
     REQUIRE(contradictoryPage.totalRows == 0);
     REQUIRE(contradictoryPage.rows.empty());
+}
+
+TEST_CASE_METHOD(SqliteRepositoryFixture,
+                 "sqlite repository preserves not equals separately from not contains") {
+    ssa::domain::SsaPageRequest request;
+    request.pageSize = 10;
+    request.columnFilters = {{"descricao_ssa", "!=filtro"}};
+
+    const auto page = repository.page(request);
+
+    REQUIRE(page.totalRows == 4);
+    REQUIRE(page.rows.size() == 4);
+}
+
+TEST_CASE_METHOD(SqliteRepositoryFixture, "sqlite repository executes every typed text operator") {
+    struct OperatorCase final {
+        std::string expression;
+        std::size_t expectedRows;
+    };
+    const std::array cases{
+        OperatorCase{"filtro", 1},          OperatorCase{"!filtro", 3},
+        OperatorCase{"-filtro", 0},         OperatorCase{"^Tro", 1},
+        OperatorCase{"!^Tro", 3},           OperatorCase{"$bomba", 1},
+        OperatorCase{"!$bomba", 3},         OperatorCase{"=Trocar filtro", 1},
+        OperatorCase{"!=filtro", 4},        OperatorCase{"~Tro.ar filtro", 1},
+        OperatorCase{"!~Tro.ar filtro", 3},
+    };
+
+    for (const auto& operatorCase : cases) {
+        ssa::domain::SsaPageRequest request;
+        request.pageSize = 10;
+        request.columnFilters = {{"descricao_ssa", operatorCase.expression}};
+
+        const auto page = repository.page(request);
+
+        CAPTURE(operatorCase.expression);
+        REQUIRE(page.totalRows == operatorCase.expectedRows);
+        REQUIRE(page.rows.size() == operatorCase.expectedRows);
+    }
 }
 
 TEST_CASE_METHOD(SqliteRepositoryFixture, "sqlite repository returns details and distinct values") {
@@ -401,6 +468,67 @@ TEST_CASE_METHOD(SqliteRepositoryFixture,
     });
     REQUIRE(child != page.rows.end());
     REQUIRE(child->valueOf("qtd_derivadas") == "0");
+}
+
+TEST_CASE_METHOD(SqliteRepositoryFixture,
+                 "sqlite repository migrates a legacy database to the derived count summary") {
+    executeSql(path, R"SQL(
+        INSERT INTO ssa_table VALUES
+            ('202500004','APV','202500002','LOC-5','Tomada dagua','EQ-E',202501,'2025-01-05','Ajustar valvula','Ajuste','SEM','SMM','Ari','Beto','Clio','SAM','SYS','e.xlsx','2025-01-05','I','J',202502,202503,0,0);
+    )SQL");
+
+    ssa::domain::SsaPageRequest request;
+    request.pageSize = 10;
+    request.visibleColumns = {"numero_ssa", "qtd_derivadas"};
+
+    const auto page = repository.page(request);
+    const auto parent = std::ranges::find_if(page.rows, [](const ssa::domain::SsaRecord& row) {
+        return row.valueOf("numero_ssa") == "202500002";
+    });
+    REQUIRE(parent != page.rows.end());
+    REQUIRE(parent->valueOf("qtd_derivadas") == "1");
+
+    ssa::infra::sqlite::SqliteConnection connection(path);
+    ssa::infra::sqlite::SqliteStatement statement(
+        connection.handle(),
+        "SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table' AND name = ?");
+    statement.bindTextOneBased(1, "ssa_table_derived_counts");
+    REQUIRE(statement.step());
+    REQUIRE(statement.columnInt64(0) == 1);
+}
+
+TEST_CASE_METHOD(SqliteRepositoryFixture,
+                 "sqlite repository executes the grouped executadas report") {
+    executeSql(path, R"SQL(
+        INSERT INTO ssa_table VALUES
+            ('202500003','APV','','LOC-6','Casa de forca','EQ-F',202501,'2025-01-06','A','A','SEM','SMM','Ana','Bruno','Caio','SAM','SYS','f.xlsx','2025-01-06','A','B',202502,202503,0,0),
+            ('202500005','APV','','LOC-7','Casa de forca','EQ-G',202501,'2025-01-07','A','A','SEM','SMM2','Ana','Bruno','Caio','SAM','SYS','g.xlsx','2025-01-07','A','B',202502,202503,0,0),
+            ('202500006','APV','','LOC-8','Casa de forca','EQ-H',202501,'2025-01-08','A','A','SEM','SMM2','Ana','Bruno','','SAM','SYS','h.xlsx','2025-01-08','A','B',202502,202503,0,0);
+    )SQL");
+
+    ssa::domain::SsaPageRequest request;
+    request.advancedFilters.executionWeekStart = 202503;
+    request.advancedFilters.executionWeekEnd = 202503;
+
+    const auto bySector = repository.executadasReport(request, false);
+    const auto sector = std::ranges::find_if(bySector, [](const auto& row) {
+        return row.group == "SMM" && row.week == "202503" && row.person == "Caio";
+    });
+    REQUIRE(sector != bySector.end());
+    REQUIRE(sector->count == 1);
+
+    const auto byDivision = repository.executadasReport(request, true);
+    const auto division = std::ranges::find_if(byDivision, [](const auto& row) {
+        return row.group == "SMM" && row.week == "202503" && row.person == "Caio";
+    });
+    REQUIRE(division != byDivision.end());
+    REQUIRE(division->count == 2);
+
+    const auto emptyPerson = std::ranges::find_if(byDivision, [](const auto& row) {
+        return row.group == "SMM" && row.week == "202503" && row.person == "-";
+    });
+    REQUIRE(emptyPerson != byDivision.end());
+    REQUIRE(emptyPerson->count == 1);
 }
 
 TEST_CASE_METHOD(SqliteRepositoryFixture,

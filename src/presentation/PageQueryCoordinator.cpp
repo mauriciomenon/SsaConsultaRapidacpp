@@ -13,11 +13,11 @@
 
 namespace ssa::presentation {
 
-    PageQueryCoordinator::PageQueryCoordinator(std::shared_ptr<query::SsaQueryService> queryService,
+    PageQueryCoordinator::PageQueryCoordinator(std::shared_ptr<ports::ISsaBrowsePort> browsePort,
                                                QObject* parent)
-        : QObject(parent), queryService_(std::move(queryService)) {
-        if (!queryService_) {
-            throw std::invalid_argument("query service is required");
+        : QObject(parent), browsePort_(std::move(browsePort)) {
+        if (!browsePort_) {
+            throw std::invalid_argument("browse port is required");
         }
     }
 
@@ -43,6 +43,7 @@ namespace ssa::presentation {
         if (shuttingDown_ || state_ == State::Canceling || finishing_) {
             return;
         }
+        invalidateCacheForQuery(request);
         auto* current = latestOperation();
         if (current != nullptr && current->request == request &&
             !current->stopSource.stop_requested()) {
@@ -57,7 +58,23 @@ namespace ssa::presentation {
         if (replacing) {
             emit replaced();
         }
-        start(std::move(request));
+        if (auto cached = takeCachedPage(request)) {
+            latestOperationId_ = ++nextOperationId_;
+            emit started();
+            setState(State::Running);
+            finishing_ = true;
+            if (cached->totalRowsAllComputed) {
+                totalRowsAll_ = cached->totalRowsAll;
+                totalRowsAllKnown_ = true;
+            }
+            const auto totalRows = cached->page.totalRows;
+            emit succeeded(std::move(*cached), request);
+            finishing_ = false;
+            setState(State::Idle);
+            startPrefetchWindow(request, totalRows);
+            return;
+        }
+        start(std::move(request), false);
     }
 
     void PageQueryCoordinator::cancel() {
@@ -76,13 +93,16 @@ namespace ssa::presentation {
     void PageQueryCoordinator::invalidateTotalRowsAll() {
         totalRowsAllKnown_ = false;
         totalRowsAll_ = 0;
+        pageCache_.clear();
+        cacheQuery_.reset();
     }
 
-    void PageQueryCoordinator::start(domain::SsaPageRequest request) {
-        const auto queryService = queryService_;
+    void PageQueryCoordinator::start(domain::SsaPageRequest request, const bool prefetch) {
+        const auto browsePort = browsePort_;
         auto operation = std::make_unique<Operation>();
         operation->id = ++nextOperationId_;
         operation->request = request;
+        operation->prefetch = prefetch;
         operation->resultState = std::make_shared<PageQueryResultState>();
         operation->cancelToken = std::make_shared<std::atomic_bool>(false);
         const auto operationId = operation->id;
@@ -92,27 +112,31 @@ namespace ssa::presentation {
         connect(&operation->watcher, &QFutureWatcher<void>::finished, this,
                 [this, operationId] { finishOperation(operationId); });
         auto* watcher = &operation->watcher;
-        latestOperationId_ = operationId;
+        if (!prefetch) {
+            latestOperationId_ = operationId;
+        }
         operations_.push_back(std::move(operation));
         emit activeOperationsChanged();
-        setState(State::Running);
+        if (!prefetch) {
+            setState(State::Running);
+        }
 
         auto displayColumns = columnCatalog_.resolveAll(request.visibleColumns);
-        const bool needTotalRowsAll = !totalRowsAllKnown_;
+        const bool needTotalRowsAll = !prefetch && !totalRowsAllKnown_;
         const auto cachedTotalRowsAll = totalRowsAll_;
-        watcher->setFuture(QtConcurrent::run([queryService, request = std::move(request),
+        watcher->setFuture(QtConcurrent::run([browsePort, request = std::move(request),
                                               displayColumns = std::move(displayColumns), stopToken,
                                               cancelToken, resultState, needTotalRowsAll,
                                               cachedTotalRowsAll]() mutable {
             try {
-                if (!queryService) {
-                    throw std::runtime_error("query service no longer available");
+                if (!browsePort) {
+                    throw std::runtime_error("browse port no longer available");
                 }
                 auto result = [&]() -> PageQueryResult {
                     try {
                         auto totalRowsRequest = domain::SsaPageRequest{};
                         totalRowsRequest.excludeScaSesSte = domain::kDefaultExcludeScaSesSte;
-                        auto page = queryService->search(request, stopToken);
+                        auto page = browsePort->page(request, stopToken);
                         if (cancelToken && cancelToken->load(std::memory_order_relaxed)) {
                             return {domain::SsaPageResult{}, 0,   false, {},
                                     SsaTableDisplayValues{}, true};
@@ -120,7 +144,7 @@ namespace ssa::presentation {
                         std::size_t totalRowsAll = cachedTotalRowsAll;
                         bool totalRowsAllComputed = false;
                         if (needTotalRowsAll) {
-                            totalRowsAll = queryService->count(totalRowsRequest, stopToken);
+                            totalRowsAll = browsePort->count(totalRowsRequest, stopToken);
                             totalRowsAllComputed = true;
                         }
                         if (cancelToken && cancelToken->load(std::memory_order_relaxed)) {
@@ -164,6 +188,19 @@ namespace ssa::presentation {
         auto& operation = **found;
         operation.completed = true;
         emit activeOperationsChanged();
+        if (operation.prefetch) {
+            std::optional<PageQueryResult> result;
+            {
+                std::scoped_lock lock(operation.resultState->mutex);
+                result = std::move(operation.resultState->result);
+            }
+            if (result && !result->canceled && !operation.stopSource.stop_requested()) {
+                cachePage(operation.request, *result);
+            }
+            QMetaObject::invokeMethod(
+                this, [this] { pruneCompletedOperations(); }, Qt::QueuedConnection);
+            return;
+        }
         const bool isLatest = operation.id == latestOperationId_;
         if (!shuttingDown_ && isLatest &&
             (operation.explicitlyCanceled || !operation.watcher.isCanceled())) {
@@ -197,7 +234,10 @@ namespace ssa::presentation {
                     if (result->canceled) {
                         emit canceled();
                     } else {
+                        cachePage(operation.request, *result);
+                        const auto totalRows = result->page.totalRows;
                         emit succeeded(std::move(*result), operation.request);
+                        startPrefetchWindow(operation.request, totalRows);
                     }
                 }
             } catch (const ports::OperationError& exc) {
@@ -236,6 +276,74 @@ namespace ssa::presentation {
 
     void PageQueryCoordinator::pruneCompletedOperations() {
         std::erase_if(operations_, [](const auto& operation) { return operation->completed; });
+    }
+
+    void PageQueryCoordinator::startPrefetchWindow(const domain::SsaPageRequest& request,
+                                                   const std::size_t totalRows) {
+        if (request.pageSize == 0) {
+            return;
+        }
+        const auto pages = domain::pageCount(totalRows, request.pageSize);
+        for (std::size_t offset = 1; offset <= kPrefetchPageCount; ++offset) {
+            if (request.pageIndex >= pages || offset > pages - request.pageIndex - 1) {
+                break;
+            }
+            auto prefetchRequest = request;
+            prefetchRequest.pageIndex += offset;
+            if (hasCachedPage(prefetchRequest)) {
+                continue;
+            }
+            const auto active = std::ranges::any_of(operations_, [&](const auto& operation) {
+                return !operation->completed && operation->request == prefetchRequest;
+            });
+            if (!active) {
+                start(std::move(prefetchRequest), true);
+            }
+        }
+    }
+
+    void PageQueryCoordinator::cachePage(const domain::SsaPageRequest& request,
+                                         const PageQueryResult& result) {
+        if (result.canceled) {
+            return;
+        }
+        auto fingerprint = request;
+        fingerprint.pageIndex = 0;
+        if (!cacheQuery_ || *cacheQuery_ != fingerprint) {
+            pageCache_.clear();
+            cacheQuery_ = fingerprint;
+        }
+        std::erase_if(pageCache_, [&](const auto& cached) { return cached.request == request; });
+        pageCache_.push_back({request, result});
+        while (pageCache_.size() > kMaxCachedPages) {
+            pageCache_.pop_front();
+        }
+    }
+
+    std::optional<PageQueryResult>
+    PageQueryCoordinator::takeCachedPage(const domain::SsaPageRequest& request) {
+        const auto found = std::ranges::find_if(
+            pageCache_, [&](const auto& cached) { return cached.request == request; });
+        if (found == pageCache_.end()) {
+            return std::nullopt;
+        }
+        auto result = std::move(found->result);
+        pageCache_.erase(found);
+        return result;
+    }
+
+    void PageQueryCoordinator::invalidateCacheForQuery(const domain::SsaPageRequest& request) {
+        auto fingerprint = request;
+        fingerprint.pageIndex = 0;
+        if (cacheQuery_ && *cacheQuery_ != fingerprint) {
+            pageCache_.clear();
+            cacheQuery_.reset();
+        }
+    }
+
+    bool PageQueryCoordinator::hasCachedPage(const domain::SsaPageRequest& request) const {
+        return std::ranges::any_of(pageCache_,
+                                   [&](const auto& cached) { return cached.request == request; });
     }
 
     void PageQueryCoordinator::setState(const State state) {

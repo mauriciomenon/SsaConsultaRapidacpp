@@ -1,6 +1,6 @@
 #pragma once
 
-#include "query/TextFilterToken.h"
+#include "domain/TextFilterToken.h"
 
 #include <QString>
 
@@ -9,9 +9,9 @@
 namespace ssa::presentation {
 
     struct AdvancedTextFilterColumnState {
-        query::TextFilterTokenSet tokens;
+        domain::TextFilterTokenSet tokens;
         QString operatorMode{
-            QString::fromStdString(query::textFilterUiModeName(query::TextFilterUiMode::Equals))};
+            QString::fromStdString(domain::textFilterUiModeName(domain::TextFilterUiMode::Equals))};
         QString snapshot;
         std::string rawSnapshot;
     };

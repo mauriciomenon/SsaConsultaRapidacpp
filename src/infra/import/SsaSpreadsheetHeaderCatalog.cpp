@@ -242,7 +242,7 @@ namespace ssa::infra::importing {
         return std::nullopt;
     }
 
-    std::size_t SsaSpreadsheetHeaderCatalog::sourceAliasCount() {
+    std::size_t SsaSpreadsheetHeaderCatalog::sourceLabelCount() {
         return kSourceAliasCount;
     }
 

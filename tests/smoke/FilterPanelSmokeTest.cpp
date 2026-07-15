@@ -2,6 +2,7 @@
 
 #include "domain/ColumnCatalog.h"
 #include "domain/SsaTypes.h"
+#include "ports/IExecutadasReportPort.h"
 #include "presentation/AdvancedMacroFilterViewModel.h"
 #include "presentation/AdvancedTextFilterViewModel.h"
 #include "presentation/AdvancedWeekFilterViewModel.h"
@@ -12,6 +13,7 @@
 #include "presentation/FilterPanelSectorViewModel.h"
 #include "presentation/FilterPanelState.h"
 #include "presentation/FilterPanelViewModel.h"
+#include "query/SsaQueryService.h"
 
 #include <QObject>
 #include <QtTest>
@@ -28,9 +30,11 @@
 #include <memory>
 #include <mutex>
 #include <ranges>
+#include <set>
 #include <string>
 #include <system_error>
 #include <thread>
+#include <tuple>
 #include <vector>
 
 namespace {
@@ -53,7 +57,8 @@ namespace {
         }};
     }
 
-    class FilterPanelRepository final : public ssa::ports::ISsaRepository {
+    class FilterPanelRepository final : public ssa::ports::ISsaRepository,
+                                        public ssa::ports::IExecutadasReportPort {
       public:
         explicit FilterPanelRepository(std::chrono::milliseconds distinctDelay = {})
             : distinctDelay_(distinctDelay) {}
@@ -160,6 +165,39 @@ namespace {
             return {rowCount, {}};
         }
 
+        std::vector<ssa::domain::SsaExecutadasReportRow>
+        executadasReport(const ssa::domain::SsaPageRequest& request, const bool byDivision,
+                         const std::stop_token stopToken = {}) const override {
+            std::map<std::tuple<std::string, std::string, std::string>, std::set<std::string>>
+                grouped;
+            const auto result = readAll(
+                request,
+                [&](const ssa::domain::SsaRecord& record) {
+                    const auto sector = std::string{record.valueOf("setor_executor")};
+                    const auto week = std::string{record.valueOf("semana_executada")};
+                    const auto personValue = std::string{record.valueOf("responsavel_execucao")};
+                    const auto person = personValue.empty() ? std::string{"-"} : personValue;
+                    if (sector.empty() || week.empty() || record.valueOf("numero_ssa").empty()) {
+                        return std::optional<std::string>{};
+                    }
+                    const auto group = byDivision ? sector.substr(0, 3) : sector;
+                    grouped[{group, week, person}].insert(
+                        std::string{record.valueOf("numero_ssa")});
+                    return std::optional<std::string>{};
+                },
+                stopToken);
+            if (!result.ok()) {
+                throw std::runtime_error(result.error);
+            }
+            std::vector<ssa::domain::SsaExecutadasReportRow> rows;
+            rows.reserve(grouped.size());
+            for (const auto& [key, numbers] : grouped) {
+                rows.push_back({std::get<0>(key), std::get<1>(key), std::get<2>(key),
+                                static_cast<int>(numbers.size())});
+            }
+            return rows;
+        }
+
         [[nodiscard]] std::vector<ssa::domain::DistinctValuesRequest> distinctRequests() const {
             const std::scoped_lock lock(mutex_);
             return distinctRequests_;
@@ -230,6 +268,14 @@ namespace {
             QVERIFY(column != nullptr);
             QCOMPARE(first.value("label").toString(), QString::fromStdString(column->label));
             QCOMPARE(first.value("value").toString(), QString{});
+        }
+
+        void excluded_status_label_comes_from_domain_policy() {
+            auto repository = std::make_shared<FilterPanelRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::FilterPanelViewModel filters(service);
+
+            QCOMPARE(filters.excludedStatusCodesText(), QString("SCA/SES/STE"));
         }
 
         void quick_sector_options_are_loaded_from_distinct_executor_values() {

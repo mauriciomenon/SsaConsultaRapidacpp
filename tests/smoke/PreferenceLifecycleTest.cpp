@@ -3,6 +3,7 @@
 #include "presentation/MainPreferenceFlowCoordinator.h"
 #include "presentation/MainViewModel.h"
 #include "presentation/UserPreferencesCoordinator.h"
+#include "query/SsaQueryService.h"
 
 #include <QCoreApplication>
 #include <QObject>

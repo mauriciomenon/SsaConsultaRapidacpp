@@ -1,6 +1,7 @@
 #include "AdvancedTextFilterTestSupport.h"
 #include "PresentationSmokeFakes.h"
 
+#include "ports/IExecutadasReportPort.h"
 #include "ports/OperationError.h"
 #include "presentation/AdvancedDerivationFilterViewModel.h"
 #include "presentation/AdvancedMacroFilterViewModel.h"
@@ -16,6 +17,7 @@
 #include "presentation/SsaColumnDisplayCatalog.h"
 #include "presentation/SsaTableModel.h"
 #include "presentation/WorkflowCommandRunner.h"
+#include "query/SsaQueryService.h"
 
 #include <QAbstractItemModel>
 #include <QCoreApplication>
@@ -31,11 +33,14 @@
 #include <atomic>
 #include <chrono>
 #include <iterator>
+#include <map>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <string>
 #include <system_error>
 #include <thread>
+#include <tuple>
 
 namespace {
 
@@ -317,7 +322,8 @@ namespace {
         mutable int quickSectorRequests_{0};
     };
 
-    class BlockingMacroReportRepository final : public ssa::ports::ISsaRepository {
+    class BlockingMacroReportRepository final : public ssa::ports::ISsaRepository,
+                                                public ssa::ports::IExecutadasReportPort {
       public:
         ssa::domain::SsaPageResult page(const ssa::domain::SsaPageRequest& request,
                                         std::stop_token = {}) const override {
@@ -378,6 +384,39 @@ namespace {
                 return {0, *error};
             }
             return {1, {}};
+        }
+
+        std::vector<ssa::domain::SsaExecutadasReportRow>
+        executadasReport(const ssa::domain::SsaPageRequest& request, const bool byDivision,
+                         const std::stop_token stopToken = {}) const override {
+            std::map<std::tuple<std::string, std::string, std::string>, std::set<std::string>>
+                grouped;
+            const auto result = readAll(
+                request,
+                [&](const ssa::domain::SsaRecord& record) {
+                    const auto sector = std::string{record.valueOf("setor_executor")};
+                    const auto week = std::string{record.valueOf("semana_executada")};
+                    const auto personValue = std::string{record.valueOf("responsavel_execucao")};
+                    const auto person = personValue.empty() ? std::string{"-"} : personValue;
+                    if (sector.empty() || week.empty() || record.valueOf("numero_ssa").empty()) {
+                        return std::optional<std::string>{};
+                    }
+                    const auto group = byDivision ? sector.substr(0, 3) : sector;
+                    grouped[{group, week, person}].insert(
+                        std::string{record.valueOf("numero_ssa")});
+                    return std::optional<std::string>{};
+                },
+                stopToken);
+            if (!result.ok()) {
+                throw std::runtime_error(result.error);
+            }
+            std::vector<ssa::domain::SsaExecutadasReportRow> rows;
+            rows.reserve(grouped.size());
+            for (const auto& [key, numbers] : grouped) {
+                rows.push_back({std::get<0>(key), std::get<1>(key), std::get<2>(key),
+                                static_cast<int>(numbers.size())});
+            }
+            return rows;
         }
 
         [[nodiscard]] bool firstStarted() const {
@@ -721,6 +760,21 @@ namespace {
             QVERIFY(!failureMessage.contains("distinct failed"));
         }
 
+        void distinct_value_fetcher_reports_missing_service_separately() {
+            ssa::presentation::FilterPanelDistinctValueFetcher fetcher(nullptr);
+            QSignalSpy failureSpy(
+                &fetcher, &ssa::presentation::FilterPanelDistinctValueFetcher::valuesFailed);
+            ssa::domain::DistinctValuesRequest request;
+            request.columnKey = "situacao";
+
+            fetcher.requestValues(request, 7, false);
+
+            QCOMPARE(failureSpy.count(), 1);
+            QCOMPARE(failureSpy.at(0).at(0).toULongLong(), quint64{7});
+            QCOMPARE(failureSpy.at(0).at(1).toString(),
+                     QStringLiteral("browse service is not configured"));
+        }
+
         void distinct_value_fetcher_destructor_is_non_blocking_and_drops_callback() {
             auto repository = std::make_shared<BlockingPageRepository>(true, false);
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
@@ -931,6 +985,15 @@ namespace {
             expectedRoles.insert(Qt::DisplayRole, QByteArrayLiteral("displayValue"));
 
             QCOMPARE(roles, expectedRoles);
+        }
+
+        void ssa_table_model_serializes_visible_row_values() {
+            ssa::presentation::SsaTableModel model("numero_ssa");
+            populateTableModel(model);
+
+            QCOMPARE(model.rowText(0), QString("202500001"));
+            QCOMPARE(model.rowText(-1), QString());
+            QCOMPARE(model.rowText(1), QString());
         }
 
         void ssa_table_model_record_access_keeps_a_stable_reference() {
@@ -1703,8 +1766,8 @@ namespace {
 
             const auto requestCountBeforeRepeatedApply = repository->requests().size();
             browse.apply();
-            QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(),
-                                      requestCountBeforeRepeatedApply + 1, 1000);
+            QTest::qWait(50);
+            QCOMPARE(repository->requests().size(), requestCountBeforeRepeatedApply);
             QTRY_VERIFY_WITH_TIMEOUT(!browse.status()->loading(), 1000);
             QCOMPARE(browse.filterUndoDepth(), 10);
 

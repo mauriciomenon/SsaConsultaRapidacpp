@@ -1,6 +1,7 @@
 #pragma once
 
 #include "domain/SsaTypes.h"
+#include "ports/ISsaBrowsePort.h"
 
 #include <QFutureWatcher>
 #include <QObject>
@@ -17,18 +18,14 @@
 #include <string>
 #include <vector>
 
-namespace ssa::query {
-    class SsaQueryService;
-}
-
 namespace ssa::presentation {
 
     class FilterPanelDistinctValueFetcher final : public QObject {
         Q_OBJECT
 
       public:
-        explicit FilterPanelDistinctValueFetcher(
-            std::shared_ptr<query::SsaQueryService> queryService, QObject* parent = nullptr);
+        explicit FilterPanelDistinctValueFetcher(std::shared_ptr<ports::ISsaBrowsePort> browsePort,
+                                                 QObject* parent = nullptr);
         ~FilterPanelDistinctValueFetcher() override;
 
         void requestValues(const domain::DistinctValuesRequest& request, std::uint64_t requestToken,
@@ -56,7 +53,7 @@ namespace ssa::presentation {
         void startWorker(const domain::DistinctValuesRequest& request, std::uint64_t requestToken,
                          bool measureMaxValueLength);
 
-        std::shared_ptr<query::SsaQueryService> queryService_;
+        std::shared_ptr<ports::ISsaBrowsePort> browsePort_;
         // void watcher: QFutureWatcher<T> for non-trivial T has a data race in
         // QFutureInterface's ResultStore when torn down while the worker reports
         // its result (TSan: race in vector<string> destruction). The result is

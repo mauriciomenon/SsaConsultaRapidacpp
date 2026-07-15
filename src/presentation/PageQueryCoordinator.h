@@ -1,9 +1,9 @@
 #pragma once
 
 #include "domain/SsaTypes.h"
+#include "ports/ISsaBrowsePort.h"
 #include "presentation/SsaColumnDisplayCatalog.h"
 #include "presentation/SsaTableDisplayCache.h"
-#include "query/SsaQueryService.h"
 
 #include <QFutureWatcher>
 #include <QObject>
@@ -11,6 +11,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <deque>
 #include <exception>
 #include <memory>
 #include <mutex>
@@ -45,7 +46,7 @@ namespace ssa::presentation {
         enum class State { Idle, Running, Canceling };
         Q_ENUM(State)
 
-        explicit PageQueryCoordinator(std::shared_ptr<query::SsaQueryService> queryService,
+        explicit PageQueryCoordinator(std::shared_ptr<ports::ISsaBrowsePort> browsePort,
                                       QObject* parent = nullptr);
         ~PageQueryCoordinator() override;
 
@@ -77,16 +78,28 @@ namespace ssa::presentation {
             std::shared_ptr<std::atomic_bool> cancelToken;
             bool explicitlyCanceled{false};
             bool completed{false};
+            bool prefetch{false};
         };
 
-        void start(domain::SsaPageRequest request);
+        struct CachedPage final {
+            domain::SsaPageRequest request;
+            PageQueryResult result;
+        };
+
+        void start(domain::SsaPageRequest request, bool prefetch);
+        void startPrefetchWindow(const domain::SsaPageRequest& request, std::size_t totalRows);
+        void cachePage(const domain::SsaPageRequest& request, const PageQueryResult& result);
+        [[nodiscard]] std::optional<PageQueryResult>
+        takeCachedPage(const domain::SsaPageRequest& request);
+        void invalidateCacheForQuery(const domain::SsaPageRequest& request);
+        [[nodiscard]] bool hasCachedPage(const domain::SsaPageRequest& request) const;
         void finishOperation(std::uint64_t operationId);
         void stopOperation(Operation& operation);
         void pruneCompletedOperations();
         void setState(State state);
         [[nodiscard]] Operation* latestOperation();
 
-        std::shared_ptr<query::SsaQueryService> queryService_;
+        std::shared_ptr<ports::ISsaBrowsePort> browsePort_;
         SsaColumnDisplayCatalog columnCatalog_;
         std::vector<std::unique_ptr<Operation>> operations_;
         std::uint64_t latestOperationId_{0};
@@ -94,8 +107,13 @@ namespace ssa::presentation {
         bool shuttingDown_{false};
         bool totalRowsAllKnown_{false};
         std::size_t totalRowsAll_{0};
+        std::optional<domain::SsaPageRequest> cacheQuery_;
+        std::deque<CachedPage> pageCache_;
         State state_{State::Idle};
         bool finishing_{false};
+
+        static constexpr std::size_t kPrefetchPageCount = 2;
+        static constexpr std::size_t kMaxCachedPages = 3;
     };
 
 } // namespace ssa::presentation

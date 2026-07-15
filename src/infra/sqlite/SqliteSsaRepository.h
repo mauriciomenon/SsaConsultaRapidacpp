@@ -1,10 +1,13 @@
 #pragma once
 
 #include "infra/sqlite/SqliteConnection.h"
+#include "infra/sqlite/SqliteDerivedCountSummary.h"
+#include "ports/IExecutadasReportPort.h"
 #include "ports/ISsaRepository.h"
 #include "query/SqlQueryBuilder.h"
 
 #include <filesystem>
+#include <mutex>
 #include <optional>
 #include <stop_token>
 
@@ -12,7 +15,8 @@ namespace ssa::infra::sqlite {
 
     // Synchronous storage port implementation.
     // GUI callers must use presentation::PageQueryCoordinator or another worker boundary.
-    class SqliteSsaRepository final : public ports::ISsaRepository {
+    class SqliteSsaRepository final : public ports::ISsaRepository,
+                                      public ports::IExecutadasReportPort {
       public:
         explicit SqliteSsaRepository(std::filesystem::path dbPath);
         SqliteSsaRepository(std::filesystem::path dbPath, query::SqlQueryBuilder queryBuilder);
@@ -42,7 +46,13 @@ namespace ssa::infra::sqlite {
                                                    ports::SsaRecordConsumer consume,
                                                    std::stop_token stopToken = {}) const override;
 
+        [[nodiscard]] std::vector<domain::SsaExecutadasReportRow>
+        executadasReport(const domain::SsaPageRequest& request, bool byDivision,
+                         std::stop_token stopToken = {}) const override;
+
       private:
+        [[nodiscard]] bool ensureDerivedCountSummary() const;
+
         [[nodiscard]] static std::size_t executeCount(sqlite3* db, const query::SqlQuery& query,
                                                       const std::stop_token& stopToken,
                                                       const std::atomic_bool* busyCanceled);
@@ -56,6 +66,8 @@ namespace ssa::infra::sqlite {
 
         std::filesystem::path dbPath_;
         query::SqlQueryBuilder queryBuilder_;
+        mutable std::once_flag derivedCountSummaryInitialized_;
+        mutable bool derivedCountSummaryAvailable_{false};
     };
 
 } // namespace ssa::infra::sqlite

@@ -3,6 +3,7 @@
 #include "domain/SsaImportPolicy.h"
 #include "domain/SsaTypes.h"
 #include "infra/sqlite/SqliteConnection.h"
+#include "infra/sqlite/SqliteDerivedCountSummary.h"
 #include "infra/sqlite/SqliteProgressHandler.h"
 #include "ports/OperationError.h"
 #include "qt/FilesystemPath.h"
@@ -292,44 +293,13 @@ namespace ssa::infra::sqlite {
                 selectSql += ", COALESCE(" + query::quoteColumnIdentifier(column.key) + ", '')";
             }
             selectSql += " FROM " + query::quoteTableIdentifier(tableName);
-            SqliteStatement select(db, selectSql, busyCancellationObserved);
-            struct ExistingNumber {
-                long long rowId = 0;
-                std::string raw;
-                std::string normalized;
-                std::vector<std::string> rawReferences;
-                std::vector<std::string> normalizedReferences;
-            };
-            std::vector<ExistingNumber> numbers;
-            std::unordered_set<std::string> normalizedNumbers;
-            while (select.step()) {
-                throwIfCanceled(stopToken);
-                ExistingNumber number{select.columnInt64(0), select.columnText(1), {}};
-                number.normalized = domain::SsaImportPolicy::normalizeNumber(number.raw);
-                if (number.normalized.empty()) {
-                    throw ports::OperationError("Falha ao validar identificadores SSA existentes",
-                                                "invalid SSA number in existing database");
-                }
-                if (!normalizedNumbers.insert(number.normalized).second) {
-                    throw ports::OperationError("Falha ao validar identificadores SSA existentes",
-                                                "semantic SSA collision in existing database");
-                }
-                number.rawReferences.reserve(referenceColumns.size());
-                number.normalizedReferences.reserve(referenceColumns.size());
-                for (std::size_t index = 0; index < referenceColumns.size(); ++index) {
-                    auto raw = select.columnText(static_cast<int>(index + 2));
-                    auto normalized =
-                        raw.empty() ? std::string{} : domain::SsaImportPolicy::normalizeNumber(raw);
-                    if (!raw.empty() && normalized.empty()) {
-                        throw ports::OperationError("Falha ao validar referencias SSA existentes",
-                                                    "invalid SSA reference in existing database");
-                    }
-                    number.rawReferences.push_back(std::move(raw));
-                    number.normalizedReferences.push_back(std::move(normalized));
-                }
-                numbers.push_back(std::move(number));
-            }
-
+            executeSql(db,
+                       "CREATE TEMP TABLE ssa_import_normalized_numbers (normalized TEXT "
+                       "PRIMARY KEY NOT NULL)",
+                       busyCancellationObserved);
+            SqliteStatement seen(
+                db, "INSERT OR IGNORE INTO ssa_import_normalized_numbers(normalized) VALUES(?)",
+                busyCancellationObserved);
             std::string normalizationSql = "UPDATE " + query::quoteTableIdentifier(tableName) +
                                            " SET " + numberColumn + " = ?";
             for (const auto& referenceColumn : referenceColumns) {
@@ -346,19 +316,47 @@ namespace ssa::infra::sqlite {
             }
             normalizationSql += " WHERE rowid = ?";
             SqliteStatement update(db, normalizationSql, busyCancellationObserved);
+            SqliteStatement select(db, selectSql, busyCancellationObserved);
             std::size_t changedRows = 0;
-            for (const auto& number : numbers) {
+            while (select.step()) {
                 throwIfCanceled(stopToken);
-                const bool referencesChanged = number.rawReferences != number.normalizedReferences;
-                if (number.raw == number.normalized && !referencesChanged) {
+                const auto rowId = select.columnInt64(0);
+                const auto rawNumber = select.columnText(1);
+                const auto normalizedNumber = domain::SsaImportPolicy::normalizeNumber(rawNumber);
+                if (normalizedNumber.empty()) {
+                    throw ports::OperationError("Falha ao validar identificadores SSA existentes",
+                                                "invalid SSA number in existing database");
+                }
+                seen.bindTextOneBased(1, normalizedNumber);
+                seen.executeAndReset();
+                if (sqlite3_changes(db) == 0) {
+                    throw ports::OperationError("Falha ao validar identificadores SSA existentes",
+                                                "semantic SSA collision in existing database");
+                }
+                std::vector<std::string> rawReferences;
+                std::vector<std::string> normalizedReferences;
+                rawReferences.reserve(referenceColumns.size());
+                normalizedReferences.reserve(referenceColumns.size());
+                for (std::size_t index = 0; index < referenceColumns.size(); ++index) {
+                    auto raw = select.columnText(static_cast<int>(index + 2));
+                    auto normalized =
+                        raw.empty() ? std::string{} : domain::SsaImportPolicy::normalizeNumber(raw);
+                    if (!raw.empty() && normalized.empty()) {
+                        throw ports::OperationError("Falha ao validar referencias SSA existentes",
+                                                    "invalid SSA reference in existing database");
+                    }
+                    rawReferences.push_back(std::move(raw));
+                    normalizedReferences.push_back(std::move(normalized));
+                }
+                if (rawNumber == normalizedNumber && rawReferences == normalizedReferences) {
                     continue;
                 }
                 int bindIndex = 1;
-                update.bindTextOneBased(bindIndex++, number.normalized);
-                for (const auto& normalizedReference : number.normalizedReferences) {
+                update.bindTextOneBased(bindIndex++, normalizedNumber);
+                for (const auto& normalizedReference : normalizedReferences) {
                     update.bindTextOneBased(bindIndex++, normalizedReference);
                 }
-                update.bindInt64OneBased(bindIndex, number.rowId);
+                update.bindInt64OneBased(bindIndex, rowId);
                 update.executeAndReset();
                 changedRows += static_cast<std::size_t>(sqlite3_changes(db));
             }
@@ -405,6 +403,8 @@ namespace ssa::infra::sqlite {
                 executeSql(db, createConsolidationJournalSql(), busy.cancellationObserved());
                 executeSql(db, createTableSql(this->tableName, columns),
                            busy.cancellationObserved());
+                ensureDerivedCountSummary(db, this->tableName, columns,
+                                          busy.cancellationObserved());
                 if (replaceAll) {
                     executeSql(db, "DELETE FROM " + query::quoteTableIdentifier(this->tableName),
                                busy.cancellationObserved());

@@ -23,7 +23,7 @@ namespace ssa::query {
             domain::FilterTerm term;
             term.text = trim(chunk);
 
-            if (!term.text.empty() && (term.text.front() == '!' || term.text.front() == '-')) {
+            if (!term.text.empty() && term.text.front() == '!') {
                 term.negated = true;
                 term.text = trim(std::string_view(term.text).substr(1));
             }

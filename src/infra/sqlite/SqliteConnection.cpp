@@ -4,6 +4,7 @@
 #include "qt/FilesystemPath.h"
 
 #include <exception>
+#include <iostream>
 #include <stdexcept>
 #include <system_error>
 
@@ -24,10 +25,20 @@ namespace ssa::infra::sqlite {
         }
 
         void closeHandle(sqlite3*& db) {
-            if (db != nullptr) {
-                sqlite3_close_v2(db);
-                db = nullptr;
+            if (db == nullptr) {
+                return;
             }
+            const bool hasOutstandingStatements = sqlite3_next_stmt(db, nullptr) != nullptr;
+            const char* errorMessage = sqlite3_errmsg(db);
+            const int rc = sqlite3_close_v2(db);
+            if (rc != SQLITE_OK) {
+                std::clog << "sqlite close failed: rc=" << rc
+                          << " message=" << (errorMessage == nullptr ? "unknown" : errorMessage)
+                          << '\n';
+            } else if (hasOutstandingStatements) {
+                std::clog << "sqlite close deferred: statements remain open\n";
+            }
+            db = nullptr;
         }
 
         bool isCanceledResult(const int rc, const std::atomic_bool* busyCancellationObserved) {

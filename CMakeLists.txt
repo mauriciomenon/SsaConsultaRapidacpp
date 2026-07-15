@@ -57,7 +57,7 @@ add_library(
   src/query/SqlQueryBuilder.cpp
   src/query/SqlQueryText.cpp
   src/query/SsaQueryService.cpp
-  src/query/TextFilterToken.cpp
+  src/domain/TextFilterToken.cpp
   src/query/TextFilterSqlCompiler.cpp)
 target_include_directories(ssa_core PUBLIC src)
 
@@ -96,6 +96,7 @@ add_library(
   src/infra/sqlite/SqliteConnection.cpp
   src/infra/sqlite/SqliteDatabaseValidator.cpp
   src/infra/sqlite/SqliteDerivadasPort.cpp
+  src/infra/sqlite/SqliteDerivedCountSummary.cpp
   src/infra/sqlite/SqliteMaintenancePort.cpp
   src/infra/sqlite/SqliteSsaImportWriter.cpp
   src/infra/sqlite/SqliteSsaRepository.cpp
@@ -127,6 +128,7 @@ add_library(
   src/platform/SystemThemeResolver.cpp
   src/platform/SamCommandHandler.cpp
   src/platform/SamUrlBuilder.cpp
+  src/platform/SupervisedProcessRunner.cpp
   src/platform/StartupOptions.cpp)
 target_include_directories(ssa_platform PUBLIC src)
 target_link_libraries(ssa_platform PUBLIC ssa_core ssa_platform_process
@@ -296,7 +298,8 @@ target_link_libraries(ssa_cli PUBLIC ssa_application Qt6::Core)
 add_executable(
   ssa_consulta_rapida_cli app/cli/CliServiceFactory.cpp
                           app/cli/SsaCliApplicationRuntime.cpp app/cli/main.cpp)
-target_link_libraries(ssa_consulta_rapida_cli PRIVATE ssa_cli ssa_infra)
+target_link_libraries(ssa_consulta_rapida_cli PRIVATE ssa_cli ssa_infra
+                                                      ssa_platform)
 target_compile_definitions(ssa_consulta_rapida_cli
                            PRIVATE SSA_PROJECT_VERSION="${PROJECT_VERSION}")
 
@@ -391,8 +394,9 @@ if(SSA_BUILD_TESTS)
     tests/integration/XlsxWorkbookReaderTests.cpp
     tests/integration/SqliteDatabaseValidatorTests.cpp
     tests/integration/SqliteRepositoryTests.cpp)
-  target_link_libraries(ssa_integration_tests PRIVATE ssa_application ssa_infra
-                                                      Catch2::Catch2WithMain)
+  target_link_libraries(
+    ssa_integration_tests PRIVATE ssa_application ssa_infra ssa_platform
+                                  Catch2::Catch2WithMain)
   target_compile_definitions(
     ssa_integration_tests
     PRIVATE

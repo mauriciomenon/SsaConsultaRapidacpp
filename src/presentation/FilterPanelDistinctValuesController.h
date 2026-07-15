@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ports/ISsaBrowsePort.h"
 #include "presentation/FilterPanelDistinctValueFetcher.h"
 #include "presentation/FilterPanelDistinctValueRequestBuilder.h"
 #include "presentation/FilterPanelState.h"
@@ -13,17 +14,13 @@
 #include <string>
 #include <vector>
 
-namespace ssa::query {
-    class SsaQueryService;
-}
-
 namespace ssa::presentation {
 
     class FilterPanelDistinctValuesController final : public QObject {
         Q_OBJECT
 
       public:
-        FilterPanelDistinctValuesController(std::shared_ptr<query::SsaQueryService> queryService,
+        FilterPanelDistinctValuesController(std::shared_ptr<ports::ISsaBrowsePort> browsePort,
                                             filterpanel::FilterPanelState& state,
                                             QObject* parent = nullptr);
 
@@ -63,7 +60,7 @@ namespace ssa::presentation {
         void onQuickSectorOptionsReady(std::uint64_t requestToken, std::vector<std::string> values);
         void onQuickSectorOptionsFailed(std::uint64_t requestToken, const QString& message);
 
-        std::shared_ptr<query::SsaQueryService> queryService_;
+        std::shared_ptr<ports::ISsaBrowsePort> browsePort_;
         filterpanel::FilterPanelState& state_;
         FilterPanelDistinctValueRequestBuilder requestBuilder_;
         // Keep independent watchers so sector refreshes do not cancel column value refreshes.

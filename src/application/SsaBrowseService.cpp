@@ -13,12 +13,47 @@ namespace ssa::application {
         }
     }
 
-    domain::SsaPageResult SsaBrowseService::page(domain::SsaPageRequest request) const {
-        return queryService_->search(normalizeRequest(std::move(request)));
+    domain::SsaPageResult SsaBrowseService::page(const domain::SsaPageRequest& request,
+                                                 const std::stop_token stopToken) const {
+        return queryService_->search(normalizeRequest(request), stopToken);
+    }
+
+    std::size_t SsaBrowseService::count(const domain::SsaPageRequest& request,
+                                        const std::stop_token stopToken) const {
+        return queryService_->count(request, stopToken);
+    }
+
+    std::optional<domain::SsaRecord>
+    SsaBrowseService::details(const domain::SsaNumber& number,
+                              const std::stop_token stopToken) const {
+        return queryService_->details(number, stopToken);
+    }
+
+    std::vector<domain::SsaDerivadaEntry>
+    SsaBrowseService::derivadasDiretas(const domain::SsaNumber& number,
+                                       const std::stop_token stopToken) const {
+        return queryService_->derivadasDiretas(number, stopToken);
+    }
+
+    std::vector<std::string>
+    SsaBrowseService::distinctValues(const domain::DistinctValuesRequest& request,
+                                     const std::stop_token stopToken) const {
+        return queryService_->distinctValues(request, stopToken);
+    }
+
+    std::size_t SsaBrowseService::maxValueLength(const std::string_view columnKey,
+                                                 const std::stop_token stopToken) const {
+        return queryService_->maxValueLength(columnKey, stopToken);
+    }
+
+    ports::SsaReadResult SsaBrowseService::readAll(const domain::SsaPageRequest& request,
+                                                   ports::SsaRecordConsumer consume,
+                                                   const std::stop_token stopToken) const {
+        return queryService_->readAll(normalizeRequest(request), std::move(consume), stopToken);
     }
 
     std::optional<domain::SsaRecord> SsaBrowseService::details(const std::string& numeroSsa) const {
-        return queryService_->details(domain::SsaNumber{numeroSsa});
+        return details(domain::SsaNumber{numeroSsa});
     }
 
     std::vector<std::string> SsaBrowseService::defaultVisibleColumns() const {

@@ -206,6 +206,15 @@ namespace ssa::presentation {
 
     void ColumnSettingsModel::resetDefaults() {
         beginResetModel();
+        std::vector<ColumnItem> reordered;
+        reordered.reserve(columns_.size());
+        for (const auto& definition : domain::ColumnCatalog::all()) {
+            const auto current = findColumn(definition.key);
+            if (current != columns_.end()) {
+                reordered.push_back(*current);
+            }
+        }
+        columns_ = std::move(reordered);
         visibleCount_ = 0;
         for (auto& column : columns_) {
             column.visible = column.defaultVisible;

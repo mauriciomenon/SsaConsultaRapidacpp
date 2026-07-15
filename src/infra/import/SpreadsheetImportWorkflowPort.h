@@ -17,7 +17,8 @@ namespace ssa::infra::importing {
       public:
         SpreadsheetImportWorkflowPort(std::filesystem::path inputFolder,
                                       std::filesystem::path databasePath,
-                                      std::vector<domain::ColumnDef> columns);
+                                      std::vector<domain::ColumnDef> columns,
+                                      bool consolidateSources = true);
 
         [[nodiscard]] ports::WorkflowResult
         importExternalFiles(const ports::ImportExternalFilesRequest& request,
@@ -39,6 +40,10 @@ namespace ssa::infra::importing {
         [[nodiscard]] std::optional<ports::WorkflowResult>
         resumePendingConsolidation(const std::stop_token& stopToken) const;
 
+        std::filesystem::path inputFolder_;
+        std::filesystem::path databasePath_;
+        std::vector<domain::ColumnDef> columns_;
+        bool consolidateSources_{true};
         std::filesystem::path importLockPath_;
         std::filesystem::path databaseImportLockPath_;
         ImportFileStager stager_;

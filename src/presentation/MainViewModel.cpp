@@ -10,16 +10,17 @@
 
 namespace ssa::presentation {
 
-    MainViewModel::MainViewModel(std::shared_ptr<query::SsaQueryService> queryService,
+    MainViewModel::MainViewModel(std::shared_ptr<ports::ISsaBrowsePort> browsePort,
                                  std::shared_ptr<ports::IExternalCommandPort> commandPort,
                                  std::shared_ptr<ports::IUserPreferencesStore> preferencesStore,
                                  std::shared_ptr<ports::IFilterPresetStore> filterPresetStore,
                                  std::shared_ptr<application::SsaWorkflowService> workflowService,
                                  std::shared_ptr<ports::IDatabaseValidator> databaseValidator,
                                  std::shared_ptr<ports::IApplicationLauncher> applicationLauncher,
+                                 std::shared_ptr<ports::IExecutadasReportPort> reportPort,
                                  QObject* parent)
-        : QObject(parent), browse_(std::move(queryService), this), columns_(this), ui_(this),
-          preferences_(std::move(preferencesStore), this),
+        : QObject(parent), browse_(std::move(browsePort), std::move(reportPort), this),
+          columns_(this), ui_(this), preferences_(std::move(preferencesStore), this),
           databaseSwitch_(std::move(databaseValidator), std::move(applicationLauncher), this),
           actions_(
               std::move(commandPort), std::move(workflowService),

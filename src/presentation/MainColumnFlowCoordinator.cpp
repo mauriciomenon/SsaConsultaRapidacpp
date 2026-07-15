@@ -85,6 +85,27 @@ namespace ssa::presentation {
         return true;
     }
 
+    bool MainColumnFlowCoordinator::moveVisibleColumnAndApply(const int fromIndex,
+                                                              const int toIndex) {
+        auto visibleKeys = browse_.visibleColumns();
+        if (fromIndex < 0 || toIndex < 0 || fromIndex >= static_cast<int>(visibleKeys.size()) ||
+            toIndex >= static_cast<int>(visibleKeys.size()) || fromIndex == toIndex) {
+            return false;
+        }
+        const auto from = visibleKeys.begin() + fromIndex;
+        auto column = *from;
+        visibleKeys.erase(from);
+        visibleKeys.insert(visibleKeys.begin() + toIndex, std::move(column));
+        browse_.applyColumnSettings(visibleKeys, browse_.columnWidths());
+        columns_.applyPreferences(browse_.visibleColumns(), browse_.columnWidths());
+        if (saveAppliedColumns_) {
+            saveAppliedColumns_(browse_.visibleColumns(), browse_.columnWidths());
+        } else if (savePreferences_) {
+            savePreferences_();
+        }
+        return true;
+    }
+
     bool MainColumnFlowCoordinator::canHideColumn(const QString& columnKey) const {
         const auto visibleKeys = browse_.visibleColumns();
         const auto key = columnKey.toStdString();

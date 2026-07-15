@@ -1,7 +1,5 @@
 #include "presentation/FilterPanelDistinctValuesController.h"
 
-#include "query/SsaQueryService.h"
-
 #include <memory>
 #include <string>
 #include <utility>
@@ -20,11 +18,11 @@ namespace ssa::presentation {
     }
 
     FilterPanelDistinctValuesController::FilterPanelDistinctValuesController(
-        std::shared_ptr<query::SsaQueryService> queryService, filterpanel::FilterPanelState& state,
+        std::shared_ptr<ports::ISsaBrowsePort> browsePort, filterpanel::FilterPanelState& state,
         QObject* parent)
-        : QObject(parent), queryService_(std::move(queryService)), state_(state),
-          columnValueOptionsFetcher_(queryService_, this),
-          quickSectorOptionsFetcher_(queryService_, this) {
+        : QObject(parent), browsePort_(std::move(browsePort)), state_(state),
+          columnValueOptionsFetcher_(browsePort_, this),
+          quickSectorOptionsFetcher_(browsePort_, this) {
         configureConnections();
     }
 
@@ -66,8 +64,9 @@ namespace ssa::presentation {
 
     void FilterPanelDistinctValuesController::refreshColumnValueOptionsFor(
         const QString& key, const std::uint64_t stateVersion) {
-        if (!queryService_) {
-            emit this->columnValueOptionsReady({}, 0, key, stateVersion);
+        if (!browsePort_) {
+            emit this->columnValueOptionsFailed(key, stateVersion,
+                                                QStringLiteral("browse service is not configured"));
             return;
         }
         const auto request = requestBuilder_.columnValuesRequestFor(state_, key.toStdString());
@@ -82,8 +81,8 @@ namespace ssa::presentation {
     }
 
     void FilterPanelDistinctValuesController::refreshQuickSectorOptions() {
-        if (!queryService_) {
-            emit this->quickSectorOptionsReady({});
+        if (!browsePort_) {
+            emit this->quickSectorOptionsFailed(QStringLiteral("browse service is not configured"));
             return;
         }
 

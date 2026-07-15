@@ -2,6 +2,8 @@
 
 #include "application/FilterPresetService.h"
 #include "domain/SsaTypes.h"
+#include "ports/IExecutadasReportPort.h"
+#include "ports/ISsaBrowsePort.h"
 #include "ports/IUserPreferencesStore.h"
 #include "presentation/BrowseViewModel.h"
 #include "presentation/ColumnSettingsModel.h"
@@ -13,7 +15,6 @@
 #include "presentation/MainSelectionFlowCoordinator.h"
 #include "presentation/UiSettingsViewModel.h"
 #include "presentation/UserPreferencesCoordinator.h"
-#include "query/SsaQueryService.h"
 
 #include <QObject>
 #include <QString>
@@ -41,13 +42,14 @@ namespace ssa::presentation {
         Q_PROPERTY(bool cancelingActivity READ cancelingActivity NOTIFY activityStateChanged)
 
       public:
-        MainViewModel(std::shared_ptr<query::SsaQueryService> queryService,
+        MainViewModel(std::shared_ptr<ports::ISsaBrowsePort> browsePort,
                       std::shared_ptr<ports::IExternalCommandPort> commandPort,
                       std::shared_ptr<ports::IUserPreferencesStore> preferencesStore = nullptr,
                       std::shared_ptr<ports::IFilterPresetStore> filterPresetStore = nullptr,
                       std::shared_ptr<application::SsaWorkflowService> workflowService = nullptr,
                       std::shared_ptr<ports::IDatabaseValidator> databaseValidator = nullptr,
                       std::shared_ptr<ports::IApplicationLauncher> applicationLauncher = nullptr,
+                      std::shared_ptr<ports::IExecutadasReportPort> reportPort = nullptr,
                       QObject* parent = nullptr);
         ~MainViewModel() override;
 

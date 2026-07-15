@@ -1,10 +1,8 @@
-#include "query/TextFilterToken.h"
+#include "domain/TextFilterToken.h"
 
-#include <string>
 #include <utility>
-#include <vector>
 
-namespace ssa::query {
+namespace ssa::domain {
 
     namespace {
 
@@ -195,4 +193,4 @@ namespace ssa::query {
         return textFilterUiModeName(textFilterUiModeForTokens(tokens));
     }
 
-} // namespace ssa::query
+} // namespace ssa::domain

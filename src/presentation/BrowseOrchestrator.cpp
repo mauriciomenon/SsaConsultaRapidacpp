@@ -11,14 +11,14 @@ namespace ssa::presentation {
         constexpr std::size_t kMaxFilterHistoryDepth = 10;
     }
 
-    BrowseOrchestrator::BrowseOrchestrator(std::shared_ptr<query::SsaQueryService> queryService,
+    BrowseOrchestrator::BrowseOrchestrator(std::shared_ptr<ports::ISsaBrowsePort> browsePort,
                                            SearchViewModel& search, FilterPanelViewModel& filters,
                                            DetailsViewModel& details, StatusViewModel& status,
                                            SsaTableModel& tableModel, QObject* parent)
         : QObject(parent), search_(search), filters_(filters), status_(status),
           tableModel_(tableModel), inputCoordinator_(queryState_, this),
           selectionCoordinator_(details, tableModel, this),
-          requestCoordinator_(std::move(queryService), queryState_, search_, filters_, status,
+          requestCoordinator_(std::move(browsePort), queryState_, search_, filters_, status,
                               tableModel, this) {
         connect(&requestCoordinator_, &BrowseRequestCoordinator::activeOperationsChanged, this,
                 &BrowseOrchestrator::activeOperationsChanged);

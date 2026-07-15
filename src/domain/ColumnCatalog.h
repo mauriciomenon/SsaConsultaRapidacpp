@@ -51,6 +51,8 @@ namespace ssa::domain {
         [[nodiscard]] static std::string_view executorColumnKey();
         [[nodiscard]] static std::string_view derivationColumnKey();
         [[nodiscard]] static std::string_view derivedCountColumnKey();
+        [[nodiscard]] static std::span<const std::string_view> statusShortcutCodes();
+        [[nodiscard]] static std::string_view downloadableStatusFilterExpression();
         [[nodiscard]] static std::span<const std::string_view> excludedStatusCodes();
         [[nodiscard]] static std::span<const std::string_view> weekColumnKeys();
         [[nodiscard]] static std::string_view defaultAdvancedWeekColumnKey();
