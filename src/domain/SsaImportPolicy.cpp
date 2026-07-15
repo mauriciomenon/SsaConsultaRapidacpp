@@ -405,6 +405,20 @@ namespace ssa::domain {
                    !isIndicatorField(key);
         }
 
+        int sourceProfilePriority(const SsaImportPolicy::Values& values) {
+            switch (SsaImportPolicy::classifySourceProfile(valueFor(values, "arquivo_origem"))) {
+            case SsaImportPolicy::SourceProfile::Executadas:
+                return 3;
+            case SsaImportPolicy::SourceProfile::DerivadasRelacionadas:
+                return 2;
+            case SsaImportPolicy::SourceProfile::Desvios:
+                return 1;
+            case SsaImportPolicy::SourceProfile::Geral:
+                return 0;
+            }
+            return 0;
+        }
+
     } // namespace
 
     std::string SsaImportPolicy::normalizeNumber(const std::string& value) {
@@ -523,6 +537,8 @@ namespace ssa::domain {
         const bool terminal = existingTerminal;
         const bool equalSnapshot = *incomingSnapshot == *existingSnapshot;
         const bool incomingRicher = completenessScore(incoming) > completenessScore(existing);
+        const bool incomingPreferredSource =
+            sourceProfilePriority(incoming) > sourceProfilePriority(existing);
         bool conflict = false;
         for (const auto& [key, value] : incoming) {
             const auto normalized = trimCopy(value);
@@ -538,7 +554,7 @@ namespace ssa::domain {
                 continue;
             }
             if (equalSnapshot && isConflictField(key) && !normalized.empty() && !current.empty() &&
-                normalized != current && !incomingRicher &&
+                normalized != current && !incomingRicher && !incomingPreferredSource &&
                 !(key == "situacao" && incomingTerminal && !terminal)) {
                 conflict = true;
             }
@@ -547,7 +563,7 @@ namespace ssa::domain {
                 continue;
             }
             if (equalSnapshot && !current.empty() && !isIndicatorField(key) && !incomingRicher &&
-                !(key == "situacao" && incomingTerminal && !terminal)) {
+                !incomingPreferredSource && !(key == "situacao" && incomingTerminal && !terminal)) {
                 continue;
             }
             merged[key] = normalized;

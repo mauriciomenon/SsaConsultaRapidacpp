@@ -134,6 +134,26 @@ TEST_CASE("SSA import uses filename timestamp before filesystem timestamps") {
     REQUIRE(result.values == existing);
 }
 
+TEST_CASE("SSA import gives executed sources precedence on equal snapshots") {
+    using Values = ssa::domain::SsaImportPolicy::Values;
+    const Values existing{{"numero_ssa", "202600021"},
+                          {"descricao_ssa", "General snapshot"},
+                          {"situacao", "APV"},
+                          {"arquivo_origem", "SSA_14-07-2026_0100PM.xlsx"},
+                          {"data_planilha", "2026-07-14"}};
+    const Values incoming{{"numero_ssa", "202600021"},
+                          {"descricao_ssa", "Executed snapshot"},
+                          {"situacao", "STE"},
+                          {"arquivo_origem", "SSAs executadas_14-07-2026_0100PM.xlsx"},
+                          {"data_planilha", "2026-07-14"}};
+
+    const auto result = ssa::domain::SsaImportPolicy::merge(existing, incoming);
+
+    REQUIRE(result.changed);
+    REQUIRE(result.values.at("descricao_ssa") == "Executed snapshot");
+    REQUIRE(result.values.at("situacao") == "STE");
+}
+
 TEST_CASE(
     "SSA import treats approved cancel and final execution as terminal but SCS as transient") {
     REQUIRE(ssa::domain::SsaImportPolicy::isTerminalStatus("STE - finalizada"));
