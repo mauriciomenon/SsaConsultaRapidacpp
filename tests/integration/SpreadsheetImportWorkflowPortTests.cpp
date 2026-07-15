@@ -350,6 +350,30 @@ TEST_CASE("external import preflight preserves the rejected XLSX source in its s
     REQUIRE_FALSE(std::filesystem::exists(inputDirectory));
 }
 
+TEST_CASE("external import rejects a symlink source before copying") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto source = root / "source.xlsx";
+    const auto link = root / "selected.xlsx";
+    createSparseFile(source, 1);
+    std::error_code error;
+    std::filesystem::create_symlink(source, link, error);
+    if (error) {
+        SKIP("symbolic links are unavailable in this environment");
+    }
+
+    const ssa::infra::importing::ImportFileStager stager(root / "docs_entrada");
+    const auto result = stager.stageExternalFiles({link});
+
+    REQUIRE(result.rejectionReason == "source_symlink");
+    REQUIRE(result.files.empty());
+    REQUIRE_FALSE(std::filesystem::exists(root / "docs_entrada"));
+    REQUIRE(std::filesystem::exists(source));
+    REQUIRE(std::filesystem::exists(link));
+}
+
 TEST_CASE("import file stager rejects a stopped token before copying") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
@@ -3031,6 +3055,25 @@ TEST_CASE("input file stager inventories 1769 xlsx files without a quantity reje
     REQUIRE(result.rejectionReason.empty());
     REQUIRE(result.discoveredXlsxSources.size() == 1'769);
     REQUIRE(result.files.size() == 1'769);
+}
+
+TEST_CASE("input file stager removes abandoned owned staging artifacts") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto inputDirectory =
+        std::filesystem::path{tempDir.path().toStdString()} / "docs_entrada";
+    std::filesystem::create_directories(inputDirectory);
+    createSparseFile(inputDirectory / ".ssa-staged-crashed_123_0.xlsx", 1);
+    createSparseFile(inputDirectory / "pending.xlsx", 1);
+
+    const ssa::infra::importing::ImportFileStager stager(inputDirectory);
+    const auto result = stager.stageInputFiles();
+
+    REQUIRE(result.rejectionReason.empty());
+    REQUIRE(result.files.size() == 1);
+    REQUIRE(result.files.front().workbookPath == inputDirectory / "pending.xlsx");
+    REQUIRE_FALSE(std::filesystem::exists(inputDirectory / ".ssa-staged-crashed_123_0.xlsx"));
 }
 
 TEST_CASE("spreadsheet import workflow rejects a second instance before discovery") {

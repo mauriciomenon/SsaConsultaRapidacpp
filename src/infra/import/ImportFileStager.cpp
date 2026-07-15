@@ -73,6 +73,11 @@ namespace ssa::infra::importing {
             return qt::toQString(path.filename()).startsWith(QStringLiteral("~$"));
         }
 
+        bool isOwnedStagingArtifact(const std::filesystem::path& path) {
+            return isXlsxFile(path) &&
+                   qt::toQString(path.filename()).startsWith(QStringLiteral(".ssa-staged-"));
+        }
+
         bool isSafeFilename(const std::filesystem::path& filename) {
             return !filename.empty() && filename == filename.filename() && filename != "." &&
                    filename != "..";
@@ -175,6 +180,23 @@ namespace ssa::infra::importing {
                     return "canceled";
                 }
                 std::error_code error;
+                const auto status = std::filesystem::symlink_status(file, error);
+                if (error) {
+                    if (error == std::errc::no_such_file_or_directory) {
+                        appendDiagnostic(diagnostic,
+                                         "cannot read import file size: " + error.message());
+                        return "file_size_unavailable";
+                    }
+                    appendDiagnostic(diagnostic,
+                                     "cannot inspect import source: " + error.message());
+                    return "source_status_unavailable";
+                }
+                if (std::filesystem::is_symlink(status)) {
+                    return "source_symlink";
+                }
+                if (!std::filesystem::is_regular_file(status)) {
+                    return "source_not_regular";
+                }
                 const auto fileBytes = std::filesystem::file_size(file, error);
                 if (error) {
                     appendDiagnostic(diagnostic,
@@ -700,6 +722,34 @@ namespace ssa::infra::importing {
             }
             return result;
         }
+        std::filesystem::directory_iterator staleIterator(inputFolder_, error);
+        if (error) {
+            result.failedCopies = 1;
+            result.operationalFailure = true;
+            result.rejectionReason = "input_directory_unreadable";
+            appendDiagnostic(result.diagnostic,
+                             "cannot scan stale staging artifacts: " + error.message());
+            return result;
+        }
+        for (const auto& entry : staleIterator) {
+            if (stopToken.stop_requested()) {
+                result.rejectionReason = "canceled";
+                return result;
+            }
+            if (!isOwnedStagingArtifact(entry.path())) {
+                continue;
+            }
+            std::error_code removeError;
+            if (!std::filesystem::remove(entry.path(), removeError) && removeError) {
+                result.failedCopies = 1;
+                result.operationalFailure = true;
+                result.rejectionReason = "staging_cleanup_failed";
+                appendDiagnostic(result.diagnostic, "cannot remove abandoned staging artifact: " +
+                                                        removeError.message());
+                return result;
+            }
+        }
+        error.clear();
         std::vector<std::filesystem::path> candidates;
         std::filesystem::directory_iterator iterator(inputFolder_, error);
         if (error) {
@@ -1105,7 +1155,8 @@ namespace ssa::infra::importing {
 
     std::filesystem::path
     ImportFileStager::stagedDestination(const StagedDestinationRequest& request) const {
-        std::filesystem::path candidateName = request.source.stem();
+        std::filesystem::path candidateName = ".ssa-staged-";
+        candidateName += request.source.stem();
         candidateName += "_";
         candidateName += request.batchPrefix;
         candidateName += "_";
