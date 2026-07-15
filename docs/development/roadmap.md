@@ -122,6 +122,17 @@ without porting Python architecture, and stabilize CI/flaky tests.
 - Seletor de colunas ancorado ao acionador real, reparentado ao overlay e
   recalculado com clamp durante resize visivel.
 
+### Entregas da 0.9.9
+
+- Staging compara identidade, tamanho e mtime da fonte antes de publicar a
+  copia, rejeitando substituicoes TOCTOU sem alterar o destino.
+- Merge terminal preserva indicadores de execucao, planejamento, responsaveis
+  e descricao sem permitir downgrade de STE ou SCA.
+- Mapper trata emissao como data primaria e issue como fallback por linha.
+- Icone `app_icon` e desktop entry sao arquivos rastreados e entram no bundle
+  macOS, nos pacotes Linux/Windows e nos artefatos de distribuicao.
+- A sequencia de versoes permanece 0.9.x; 1.0 exige autorizacao explicita.
+
 ## Long term (multiple PRs, no fixed order)
 
 ### Missing GUI features (parity with PyQt6)

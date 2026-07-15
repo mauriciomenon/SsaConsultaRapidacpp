@@ -2,6 +2,26 @@
 
 Mudancas relevantes deste projeto sao registradas neste arquivo.
 
+## 0.9.9 - 2026-07-15
+
+### Corrigido
+
+- Fontes substituidas durante o staging agora sao rejeitadas mesmo quando
+  preservam tamanho e mtime; a identidade do arquivo tambem e comparada.
+- Estados excepcionais com descricao (`ASE - ...`, `ADI - ...`, `SCC - ...`)
+  continuam elegiveis por semana de cadastro sem exigir uma data inexistente.
+- Estados terminais preservam e enriquecem indicadores de execucao, incluindo
+  semana, responsaveis, execucao simples e descricao da execucao.
+- Quando uma planilha traz `emission_datetime` e `issue_datetime`, emissao e a
+  fonte primaria e issue e fallback somente quando emissao esta vazia.
+
+### Validacao
+
+- Build canonico `SSA_CPP_PRESET=dev ./scripts/build-macos.sh` concluido.
+- Suite canonica local: 396 de 396 testes.
+- Icone presente no bundle macOS e no ZIP/DMG gerados localmente.
+- Backup local de `CMakeLists.txt` criado antes da alteracao de versao.
+
 ## 0.9.8 - 2026-07-15
 
 ### Adicionado

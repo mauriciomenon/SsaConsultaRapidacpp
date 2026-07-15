@@ -5,7 +5,7 @@ de interpretar sincronizacao Git, status de CI ou falhas de publicacao.
 
 Ultima verificacao: 2026-07-15
 
-## Prioridades de importacao pos-v0.9.8
+## Prioridades de importacao pos-v0.9.9
 
 Esta matriz registra somente evidencias do checkout local. Os commits abaixo
 ainda nao foram publicados nos remotes nesta rodada.
@@ -16,15 +16,15 @@ ainda nao foram publicados nos remotes nesta rodada.
 | 2. Validar schema compartilhado | ENTREGUE | `ColumnCatalog` usado por GUI, CLI, mapper e validador |
 | 3. Recriar DB sem apagar o atual | ENTREGUE | teste renomeia backup em temporario e valida DB antigo e novo |
 | 4. Datas e metadata | ENTREGUE | data planilha, nome, criacao quando disponivel e mtime; parser date-only adicionado |
-| 5. Perfil de fonte | ENTREGUE PARCIAL | `executadas` vence empate; derivadas/desvios ainda enriquecem por campos |
-| 6. TOCTOU na copia | ENTREGUE PARCIAL | tamanho e mtime comparados antes do rename; identidade inode/handle permanece futura |
+| 5. Perfil de fonte | ENTREGUE PARCIAL | `executadas` vence empate; derivadas/desvios enriquecem por campos ricos; corpus real ainda nao foi reprocessado |
+| 6. TOCTOU na copia | ENTREGUE | tamanho, mtime e identidade do arquivo comparados antes do rename; teste de substituicao com mesmo tamanho/mtime passa |
 | 7. Lock entre raizes para o mesmo DB | ENTREGUE | lock de corpus mais lock global por caminho canonico com SHA-256; teste cobre duas raizes e alias por symlink |
 | 8. Cancelamento e staging | ENTREGUE PARCIAL | stop remove temporarios e sweep de `.ssa-staged-`; janela SIGKILL pos-publicacao sem prova deterministica |
 | 9. SAM ate SQLite | ENTREGUE LOCAL PARCIAL | adapter, manifesto, truncamento, rollback e importacao em SQLite passam; REST real permanece dependencia externa |
 | 10. Derivadas explicitas | ENTREGUE LOCAL PARCIAL | CSV/TXT/TSV/XLSX/XLSM e cancelamento passam; limpeza de orfas segue acao separada |
 | 11. Auxiliar Arrow | ENTREGUE | preset `dev-arrow` e inspector somente leitura em v0.9.8 |
 | 12. GUI/CLI e dicionario | ENTREGUE | schema e colunas obrigatorias vem do dominio; validador exige schema integral |
-| 13. Release e remotes | PENDENTE | HEAD local avancou; tag v0.9.8 permanece preservada; push depende de SSH |
+| 13. Release e remotes | PENDENTE | versao local 0.9.9; tag v0.9.8 preservada; push e tag dependem de SSH |
 
 ### Commits funcionais locais
 
@@ -36,14 +36,17 @@ ainda nao foram publicados nos remotes nesta rodada.
 - `a918f93` mapper consumindo colunas obrigatorias compartilhadas.
 - `af32c50` parser de data sem hora no nome da planilha.
 - `f55f0d9` lock por caminho canonico e digest SHA-256, incluindo alias por symlink.
+- `3278646` preservacao de campos ricos em estados terminais.
+- `bab8616` estados excepcionais com descricao.
+- `51c05be` identidade de arquivo no staging.
+- `ac78a51` precedencia de emissao e fallback de issue.
+- `e26bfb1` icone rastreado e integrado a builds/pacotes.
 
 ### Validacao local desta rodada
 
-- `ssa_unit_tests`: 569 asserts em 108 casos.
-- `ssa_integration_tests`: 5639 asserts em 247 casos na ultima execucao direta;
-  alguns testes de polling variam a contagem de asserts, por isso o gate
-  canonico e `ctest`.
-- `ctest --preset dev --output-on-failure`: 391/391.
+- `ctest --preset dev --output-on-failure`: 396/396.
+- Testes focados de politica, mapper, staging e identidade passaram antes do
+  gate completo; o build canonico foi executado pelo script versionado.
 - `git ls-remote --heads origin master`: timeout rc 124 nesta rodada.
 - `git ls-remote --heads bitbucket master`: timeout rc 124 nesta rodada.
 - Recriacao e validacao do DB: 38 asserts no caso dedicado; o banco real nao
@@ -118,12 +121,13 @@ remotes ativos o aceitou.
 
 ## Release e CI atuais
 
-- Release local concluida: tag anotada `v0.9.8`; `v0.9.7` permanece preservada.
+- Release local anterior: tag anotada `v0.9.8`; `v0.9.7` permanece preservada.
+- A versao de trabalho agora e `0.9.9`; a tag `v0.9.9` ainda nao foi criada.
 - A tag deve apontar para o commit documental final desta rodada e ser publicada
   somente depois do pacote macOS e dos refs obrigatorios.
-- Build canonico local e `ctest --preset dev --output-on-failure`: 391/391.
-- Pacote macOS arm64 v0.9.8 gerado; ZIP e DMG aguardam publicacao junto com a
-  tag porque os dois remotes SSH estao em timeout nesta rodada.
+- Build canonico local e `ctest --preset dev --output-on-failure`: 396/396.
+- Pacote macOS arm64 v0.9.9 foi gerado apos os gates locais; ZIP e DMG foram
+  verificados com o icon no bundle.
 - `origin/master` e `bitbucket/master` nao foram atualizados nesta rodada:
   ambos retornaram timeout SSH (`rc=124`) na verificacao ao vivo.
 - Pipeline GitLab da 0.9.7: pendente de verificacao apos o push final.
