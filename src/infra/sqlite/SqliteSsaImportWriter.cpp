@@ -5,6 +5,7 @@
 #include "infra/sqlite/SqliteConnection.h"
 #include "infra/sqlite/SqliteProgressHandler.h"
 #include "ports/OperationError.h"
+#include "qt/FilesystemPath.h"
 #include "query/SqlQueryText.h"
 
 #include <sqlite3.h>
@@ -23,6 +24,8 @@
 namespace ssa::infra::sqlite {
 
     namespace {
+
+        constexpr std::string_view kConsolidationJournalTable = "ssa_import_consolidation_journal";
 
         void executeSql(sqlite3* db, const std::string& sql,
                         const std::atomic_bool* busyCancellationObserved = nullptr) {
@@ -45,6 +48,19 @@ namespace ssa::infra::sqlite {
                         std::to_string(sqlite3_extended_errcode(db)) + " message=" + message);
             }
             sqlite3_free(error);
+        }
+
+        std::string createConsolidationJournalSql() {
+            return "CREATE TABLE IF NOT EXISTS " + std::string{kConsolidationJournalTable} +
+                   " (source TEXT PRIMARY KEY NOT NULL, destination TEXT NOT NULL, "
+                   "has_valid_rows INTEGER NOT NULL CHECK(has_valid_rows IN (0, 1)))";
+        }
+
+        std::filesystem::path journalPath(const std::string& value) {
+            return std::filesystem::absolute(
+                       qt::toFileSystemPath(
+                           QString::fromUtf8(value.c_str(), static_cast<qsizetype>(value.size()))))
+                .lexically_normal();
         }
 
         bool isValidSqlIdentifier(const std::string_view value) {
@@ -384,6 +400,7 @@ namespace ssa::infra::sqlite {
             auto* db = connection.handle();
             transaction = std::make_unique<SqliteWriteTransaction>(db, busy.cancellationObserved());
             try {
+                executeSql(db, createConsolidationJournalSql(), busy.cancellationObserved());
                 executeSql(db, createTableSql(this->tableName, columns),
                            busy.cancellationObserved());
                 if (replaceAll) {
@@ -529,6 +546,31 @@ namespace ssa::infra::sqlite {
             return summary;
         }
 
+        void recordConsolidation(const std::vector<importing::ImportConsolidationMove>& moves) {
+            if (state != State::Active) {
+                throw std::logic_error("sqlite import session is closed");
+            }
+            throwIfCanceled(stopToken);
+            SqliteStatement insertJournal(
+                connection.handle(),
+                "INSERT INTO " + std::string{kConsolidationJournalTable} +
+                    "(source, destination, has_valid_rows) VALUES(?, ?, ?)",
+                busy.cancellationObserved());
+            for (const auto& move : moves) {
+                throwIfCanceled(stopToken);
+                const auto source = std::filesystem::absolute(move.source).lexically_normal();
+                const auto destination =
+                    std::filesystem::absolute(move.destination).lexically_normal();
+                if (source.empty() || destination.empty()) {
+                    throw std::invalid_argument("consolidation journal paths cannot be empty");
+                }
+                insertJournal.bindTextOneBased(1, qt::toUtf8(source));
+                insertJournal.bindTextOneBased(2, qt::toUtf8(destination));
+                insertJournal.bindInt64OneBased(3, move.hasValidRows ? 1 : 0);
+                insertJournal.executeAndReset();
+            }
+        }
+
         void rollback() {
             if (state != State::Active) {
                 return;
@@ -575,6 +617,11 @@ namespace ssa::infra::sqlite {
         return storage_->write(rows, batchSummary);
     }
 
+    void SqliteSsaImportWriter::WriteSession::recordConsolidation(
+        const std::vector<importing::ImportConsolidationMove>& moves) {
+        storage_->recordConsolidation(moves);
+    }
+
     importing::SsaImportWriteSummary SqliteSsaImportWriter::WriteSession::finish() {
         return storage_->finish();
     }
@@ -600,6 +647,66 @@ namespace ssa::infra::sqlite {
         throwIfCanceled(stopToken);
         return WriteSession{std::make_unique<WriteSession::Storage>(
             databasePath_, columns_, tableName_, replaceAll, std::move(stopToken))};
+    }
+
+    std::vector<importing::ImportConsolidationMove>
+    SqliteSsaImportWriter::pendingConsolidation(const std::stop_token& stopToken) const {
+        throwIfCanceled(stopToken);
+        std::error_code error;
+        const bool databaseExists = std::filesystem::exists(databasePath_, error);
+        if (error) {
+            throw std::runtime_error("cannot inspect sqlite database: " + error.message());
+        }
+        if (!databaseExists) {
+            return {};
+        }
+        SqliteConnection connection(databasePath_, SqliteOpenMode::ReadOnly,
+                                    std::chrono::milliseconds{0});
+        SqliteBusyHandler busy(connection.handle(), stopToken, std::chrono::milliseconds{250});
+        SqliteProgressHandler progress(connection.handle(), stopToken);
+        SqliteStatement tableExists(
+            connection.handle(), "SELECT COUNT(*) FROM sqlite_schema WHERE type='table' AND name=?",
+            busy.cancellationObserved());
+        tableExists.bindTextOneBased(1, std::string{kConsolidationJournalTable});
+        if (!tableExists.step() || tableExists.columnInt64(0) == 0) {
+            return {};
+        }
+        SqliteStatement select(connection.handle(),
+                               "SELECT source, destination, has_valid_rows FROM " +
+                                   std::string{kConsolidationJournalTable} + " ORDER BY source",
+                               busy.cancellationObserved());
+        std::vector<importing::ImportConsolidationMove> pending;
+        while (select.step()) {
+            throwIfCanceled(stopToken);
+            pending.push_back({journalPath(select.columnText(0)), journalPath(select.columnText(1)),
+                               select.columnInt64(2) != 0});
+        }
+        return pending;
+    }
+
+    void SqliteSsaImportWriter::completeConsolidation(
+        const std::vector<std::filesystem::path>& sources) const {
+        if (sources.empty()) {
+            return;
+        }
+        SqliteConnection connection(databasePath_, SqliteOpenMode::ReadWrite,
+                                    std::chrono::milliseconds{0});
+        SqliteBusyHandler busy(connection.handle(), {}, std::chrono::milliseconds{250});
+        SqliteWriteTransaction transaction(connection.handle(), busy.cancellationObserved());
+        SqliteStatement erase(connection.handle(),
+                              "DELETE FROM " + std::string{kConsolidationJournalTable} +
+                                  " WHERE source=?",
+                              busy.cancellationObserved());
+        for (const auto& source : sources) {
+            erase.bindTextOneBased(
+                1, qt::toUtf8(std::filesystem::absolute(source).lexically_normal()));
+            erase.executeAndReset();
+            if (sqlite3_changes(connection.handle()) != 1) {
+                throw ports::OperationError("Falha ao concluir a consolidacao da importacao",
+                                            "consolidation journal entry was not removed");
+            }
+        }
+        transaction.commit();
     }
 
 } // namespace ssa::infra::sqlite

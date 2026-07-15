@@ -2,6 +2,7 @@
 
 #include "domain/ColumnCatalog.h"
 #include "infra/SsaImportData.h"
+#include "infra/import/ImportFileStager.h"
 
 #include <filesystem>
 #include <memory>
@@ -25,6 +26,7 @@ namespace ssa::infra::sqlite {
             [[nodiscard]] importing::SsaImportBatchWriteSummary
             write(const importing::ResolvedSsaImportRows& rows, std::size_t fileCount,
                   std::size_t skippedRows);
+            void recordConsolidation(const std::vector<importing::ImportConsolidationMove>& moves);
             [[nodiscard]] importing::SsaImportWriteSummary finish();
             void rollback();
 
@@ -49,6 +51,9 @@ namespace ssa::infra::sqlite {
               std::size_t skippedRows, bool replaceAll, std::stop_token stopToken = {}) const;
         [[nodiscard]] WriteSession startSession(bool replaceAll,
                                                 std::stop_token stopToken = {}) const;
+        [[nodiscard]] std::vector<importing::ImportConsolidationMove>
+        pendingConsolidation(const std::stop_token& stopToken = {}) const;
+        void completeConsolidation(const std::vector<std::filesystem::path>& sources) const;
 
       private:
         std::filesystem::path databasePath_;

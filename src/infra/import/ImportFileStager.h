@@ -22,7 +22,31 @@ namespace ssa::infra::importing {
         bool hasValidRows = false;
     };
 
+    struct ImportConsolidationMove {
+        std::filesystem::path source;
+        std::filesystem::path destination;
+        bool hasValidRows = false;
+    };
+
+    struct ImportConsolidationPlanEntry {
+        std::vector<ImportConsolidationMove> moves;
+    };
+
+    struct ImportConsolidationPlan {
+        std::vector<ImportConsolidationPlanEntry> entries;
+        bool canceled = false;
+        std::string error;
+    };
+
+    struct ImportConsolidationMoveResult {
+        bool completed = false;
+        bool moved = false;
+        bool failed = false;
+    };
+
     struct ImportConsolidationEntryResult {
+        std::vector<ImportConsolidationMoveResult> moves;
+        std::size_t completed = 0;
         std::size_t moved = 0;
         std::size_t noSurvivor = 0;
         std::size_t failed = 0;
@@ -64,8 +88,14 @@ namespace ssa::infra::importing {
         [[nodiscard]] ImportStagingResult stageInputFiles(const std::stop_token& stopToken = {},
                                                           bool includeProcessed = false) const;
         [[nodiscard]] std::string discardOwnedArtifacts(const ImportStagingResult& staging) const;
+        [[nodiscard]] ImportConsolidationPlan
+        planConsolidation(const std::vector<ImportManifestEntry>& manifest,
+                          const std::stop_token& stopToken = {}) const;
         [[nodiscard]] ImportConsolidationResult
         consolidate(const std::vector<ImportManifestEntry>& manifest,
+                    const std::stop_token& stopToken = {}) const;
+        [[nodiscard]] ImportConsolidationResult
+        consolidate(const ImportConsolidationPlan& plan,
                     const std::stop_token& stopToken = {}) const;
 
       private:
