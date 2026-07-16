@@ -13,11 +13,13 @@
 
 #include <sqlite3.h>
 
+#include <chrono>
 #include <functional>
 #include <memory>
 #include <sstream>
 #include <string_view>
 #include <system_error>
+#include <thread>
 #include <utility>
 
 namespace ssa::infra::importing {
@@ -38,6 +40,8 @@ namespace ssa::infra::importing {
         constexpr std::size_t kImportRowsPerChunk = 1'000;
         constexpr std::size_t kMaxWorkflowDiagnosticBytes = 4'096;
         constexpr int kDatabaseBackupPagesPerStep = 256;
+        constexpr auto kDatabaseBackupRetryDelay = std::chrono::milliseconds{10};
+        constexpr auto kDatabaseBackupTimeout = std::chrono::seconds{5};
 
         void appendWorkflowDiagnostic(std::string& destination, const std::string_view detail) {
             if (detail.empty() || destination.size() >= kMaxWorkflowDiagnosticBytes) {
@@ -73,6 +77,7 @@ namespace ssa::infra::importing {
                                       sqlite3_errcode(destinationConnection.handle())));
             }
             int stepResult = SQLITE_OK;
+            const auto retryDeadline = std::chrono::steady_clock::now() + kDatabaseBackupTimeout;
             while (stepResult == SQLITE_OK || stepResult == SQLITE_BUSY ||
                    stepResult == SQLITE_LOCKED) {
                 if (stopToken.stop_requested()) {
@@ -80,6 +85,12 @@ namespace ssa::infra::importing {
                     break;
                 }
                 stepResult = sqlite3_backup_step(backup, kDatabaseBackupPagesPerStep);
+                if ((stepResult == SQLITE_BUSY || stepResult == SQLITE_LOCKED) &&
+                    std::chrono::steady_clock::now() < retryDeadline) {
+                    std::this_thread::sleep_for(kDatabaseBackupRetryDelay);
+                } else if (stepResult == SQLITE_BUSY || stepResult == SQLITE_LOCKED) {
+                    break;
+                }
             }
             const int finishResult = sqlite3_backup_finish(backup);
             if (stopToken.stop_requested() || stepResult == SQLITE_INTERRUPT) {
