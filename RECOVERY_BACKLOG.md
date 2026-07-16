@@ -87,9 +87,15 @@
   Trinta execucoes do runner ficaram em 73.572/74.577 ms e RSS maximo de
   17661952 bytes, mas incluem startup QtTest. Falta harness interno para separar
   latencia/idle/CPU e target compilado com QML debugging para qmlprofiler.
-- [PENDING] [SUPERVISOR-N3] `untrackedStopFailure` permanece fail-closed. Criar
-  reproducer multiplataforma de `retainFailedProcessTree()` antes de qualquer
-  tentativa de limpar a flag por estado do registry.
+- [CONFIRMED-FAIL-CLOSED] [SUPERVISOR-N3] `untrackedStopFailure` permanece
+  sticky. No POSIX, `retainFailedProcessTree()` so perde rastreamento com
+  process group invalido, condicao nao reproduzida depois de um start valido.
+  No Windows, uma falha de `DuplicateHandle` remove justamente o handle
+  necessario para provar que todos os descendentes terminaram. Registry vazio
+  nao e prova de drain de uma arvore nao rastreada. Os testes focados confirmam
+  que falha rastreada reabre somente apos drain verificado e que falha nao
+  rastreada nunca declara drain. Nao aplicar limpeza especulativa; recuperacao
+  exige reinicio do processo ou um novo mecanismo de verificacao por SO.
 - [PENDING] [SUPERVISOR-FAILED-TO-STOP] Manter caso real de falha de parada
   separado do contrato N1. Se um reproducer demonstrar processo vivo apos
   falha de parada, apresentar desenho de ownership antes de alterar producao.
