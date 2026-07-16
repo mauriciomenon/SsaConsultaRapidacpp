@@ -512,8 +512,17 @@ namespace ssa::infra::importing {
             return importLockFailure(lockError);
         }
         const auto staging = stager_.stageInputFiles(stopToken, replaceAll);
-        if (staging.operationalFailure || !staging.rejectionReason.empty() ||
-            staging.files.empty()) {
+        if (staging.operationalFailure || !staging.rejectionReason.empty()) {
+            return importDiscoveredFiles(staging, replaceAll, stopToken);
+        }
+        if (auto resumed = resumePendingConsolidation(stopToken)) {
+            if (resumed->status == ports::WorkflowStatus::Canceled) {
+                return replaceAll ? importDiscoveredFiles(staging, true, stopToken)
+                                  : importIncrementalFiles(staging, stopToken);
+            }
+            return std::move(*resumed);
+        }
+        if (staging.files.empty()) {
             return importDiscoveredFiles(staging, replaceAll, stopToken);
         }
         std::error_code databaseDirectoryError;
@@ -527,13 +536,6 @@ namespace ssa::infra::importing {
                     : "database target path is not a directory";
             return {ports::WorkflowStatus::Failed, "rescan database snapshot failed", false,
                     diagnostic};
-        }
-        if (auto resumed = resumePendingConsolidation(stopToken)) {
-            if (resumed->status == ports::WorkflowStatus::Canceled) {
-                return replaceAll ? importDiscoveredFiles(staging, true, stopToken)
-                                  : importIncrementalFiles(staging, stopToken);
-            }
-            return std::move(*resumed);
         }
         QTemporaryDir workingDirectory;
         if (!workingDirectory.isValid()) {
