@@ -2692,6 +2692,41 @@ TEST_CASE("incremental summary reports transactional legacy normalization separa
     REQUIRE(result.message.find("updated=1") != std::string::npos);
 }
 
+TEST_CASE("sqlite import normalizes legacy dates only when the SSA row is touched") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto dbPath = std::filesystem::path{tempDir.path().toStdString()} / "ssas.db";
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(dbPath, importColumns());
+    ssa::infra::importing::ResolvedSsaImportRows seed;
+    seed.rows.push_back({{"numero_ssa", "202600527"},
+                         {"situacao", "APV"},
+                         {"descricao_ssa", "Existing"},
+                         {"data_cadastro", "2025-10-21 11:10:36"},
+                         {"data_planilha", "2026-07-15"}});
+    REQUIRE(writer.write(seed, 1, 0, false).rowsWritten == 1);
+
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(db,
+                         "UPDATE ssa_table SET data_cadastro='21/10/2025 11:10:36' "
+                         "WHERE numero_ssa='202600527'",
+                         nullptr, nullptr, nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+
+    ssa::infra::importing::ResolvedSsaImportRows incoming;
+    incoming.rows.push_back({{"numero_ssa", "202600527"},
+                             {"situacao", "APV"},
+                             {"descricao_ssa", "Newer"},
+                             {"data_planilha", "2026-07-16"}});
+    REQUIRE(writer.write(incoming, 1, 0, false).rowsUpdated == 1);
+
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarText(db, "SELECT data_cadastro FROM ssa_table WHERE numero_ssa='202600527'") ==
+            "2025-10-21 11:10:36");
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
 TEST_CASE("sqlite import rejects duplicate existing SSA numbers before mutation") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());

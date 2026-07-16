@@ -277,6 +277,27 @@ namespace ssa::infra::sqlite {
             statement.bindTextOneBased(index, *value);
         }
 
+        bool normalizeDateValues(importing::SsaImportRow& row,
+                                 const std::vector<domain::ColumnDef>& columns) {
+            bool changed = false;
+            for (const auto& column : columns) {
+                if (column.type != domain::ColumnType::DateText) {
+                    continue;
+                }
+                const auto value = row.find(column.key);
+                if (value == row.end() || value->second.empty()) {
+                    continue;
+                }
+                const auto normalized =
+                    domain::SsaImportPolicy::normalizeSnapshotTimestamp(value->second);
+                if (!normalized.empty() && normalized != value->second) {
+                    value->second = normalized;
+                    changed = true;
+                }
+            }
+            return changed;
+        }
+
         std::size_t normalizeExistingSsaNumbers(sqlite3* db, const std::string& tableName,
                                                 const std::vector<domain::ColumnDef>& columns,
                                                 const std::stop_token& stopToken,
@@ -474,6 +495,7 @@ namespace ssa::infra::sqlite {
                     throw ports::OperationError("Falha ao validar identificador SSA importado",
                                                 "invalid SSA number in import batch");
                 }
+                static_cast<void>(normalizeDateValues(normalizedRow, columns));
                 if (!seenImportedNumbers.insert(number).second) {
                     ++summary.duplicateRows;
                     ++result.duplicateRows;
@@ -506,6 +528,7 @@ namespace ssa::infra::sqlite {
                     }
                 }
                 selectExisting->resetAndClearBindings();
+                const bool normalizedExistingDates = normalizeDateValues(existing, columns);
 
                 const auto merged = domain::SsaImportPolicy::merge(existing, normalizedRow);
                 if (merged.conflict) {
@@ -513,7 +536,7 @@ namespace ssa::infra::sqlite {
                     ++result.conflictRows;
                     return result;
                 }
-                if (!existing.empty() && !merged.changed) {
+                if (!existing.empty() && !merged.changed && !normalizedExistingDates) {
                     ++summary.rowsUnchanged;
                     ++result.rowsUnchanged;
                     continue;
