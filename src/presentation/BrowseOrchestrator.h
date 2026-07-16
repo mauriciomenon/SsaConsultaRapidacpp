@@ -78,6 +78,7 @@ namespace ssa::presentation {
         void selectNextRow();
         void selectPreviousRow();
         void sortByColumn(int column);
+        void resetSort();
         void cancelCurrentRequest();
 
       private:

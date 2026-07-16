@@ -341,6 +341,7 @@ namespace {
                 readSource(QStringLiteral("app/desktop/qml/components/SsaTable.qml"));
             QVERIFY(tableSource.contains(
                 QStringLiteral("root.configureColumnsRequested(headerConfigureColumnsAction)")));
+            QVERIFY(tableSource.contains(QStringLiteral("actionId: \"reset_sort\"")));
 
             QQuickItem trigger(window->contentItem());
             trigger.setX(1040);

@@ -18,6 +18,7 @@ namespace ssa::presentation {
         [[nodiscard]] bool nextPage();
         [[nodiscard]] bool previousPage();
         [[nodiscard]] bool applySortByColumn(const QString& key);
+        [[nodiscard]] bool resetSort();
 
       private:
         BrowseQueryState& queryState_;

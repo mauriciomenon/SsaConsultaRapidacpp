@@ -295,6 +295,10 @@ namespace ssa::presentation {
         orchestrator_.sortByColumn(column);
     }
 
+    void BrowseViewModel::resetSort() {
+        orchestrator_.resetSort();
+    }
+
     void BrowseViewModel::cancelCurrentRequest() {
         orchestrator_.cancelCurrentRequest();
     }

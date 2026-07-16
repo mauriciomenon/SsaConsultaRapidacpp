@@ -278,6 +278,13 @@ Rectangle {
                                 enabled: headerCell.hasColumnKey && root.columnFlow !== null && root.columnFlow.canHideColumn(headerCell.columnKey)
                                 onTriggered: root.columnFlow.setColumnVisibleAndApply(headerCell.columnKey, false)
                             }
+                            MenuItem {
+                                objectName: "resetSortAction"
+                                property string actionId: "reset_sort"
+                                text: "Limpar ordenacao"
+                                enabled: root.viewModel.sortColumnKey.length > 0
+                                onTriggered: root.viewModel.resetSort()
+                            }
                             MenuSeparator {}
                             MenuItem {
                                 id: headerConfigureColumnsAction

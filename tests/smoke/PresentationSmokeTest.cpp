@@ -1126,6 +1126,26 @@ namespace {
             QCOMPARE(model.browse()->sortAscending(), true);
         }
 
+        void reset_sort_clears_sorting_and_reloads_default_order() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            ssa::presentation::MainViewModel model(service, commands);
+
+            model.browse()->load();
+            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->tableModel()->rowCount(), 1, 1000);
+            model.browse()->sortByColumn(1);
+            QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{2}, 1000);
+
+            model.browse()->resetSort();
+
+            QCOMPARE(model.browse()->sortColumnKey(), QString(""));
+            QCOMPARE(model.browse()->sortAscending(), false);
+            QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{3}, 1000);
+            QCOMPARE(repository->requests().back().sort.columnKey, std::string{});
+            QCOMPARE(repository->requests().back().sort.ascending, false);
+        }
+
         void sort_by_column_resets_page_and_saves_preferences() {
             const auto repository = std::make_shared<FakeRepository>(
                 FakeRepositoryConfig{.totalRows = std::size_t{21}});

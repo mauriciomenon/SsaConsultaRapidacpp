@@ -35,4 +35,12 @@ namespace ssa::presentation {
         return true;
     }
 
+    bool BrowseInputCoordinator::resetSort() {
+        if (queryState_.sortColumnKey().isEmpty()) {
+            return false;
+        }
+        queryState_.resetSort();
+        return true;
+    }
+
 } // namespace ssa::presentation

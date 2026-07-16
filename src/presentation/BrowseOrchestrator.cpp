@@ -286,6 +286,15 @@ namespace ssa::presentation {
         load();
     }
 
+    void BrowseOrchestrator::resetSort() {
+        if (!inputCoordinator_.resetSort()) {
+            return;
+        }
+        emit sortChanged();
+        emit preferencesSaveRequested();
+        load();
+    }
+
     void BrowseOrchestrator::cancelCurrentRequest() {
         requestCoordinator_.cancelCurrentRequest();
     }

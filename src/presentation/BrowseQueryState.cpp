@@ -85,9 +85,9 @@ namespace ssa::presentation {
     }
 
     void BrowseQueryState::applyPageResult(const domain::SsaPageResult& result,
-                                           const std::size_t totalRowsAll) {
+                                           const std::size_t totalRowsAllValue) {
         totalRows_ = result.totalRows;
-        totalRowsAll_ = totalRowsAll;
+        totalRowsAll_ = totalRowsAllValue;
         pageIndex_ = result.pageIndex;
         if (totalRows_ == 0) {
             pageIndex_ = 0;
@@ -110,13 +110,20 @@ namespace ssa::presentation {
         resetPage();
     }
 
-    void BrowseQueryState::applyColumnSettings(std::vector<std::string> visibleColumns,
-                                               std::map<std::string, int> columnWidths) {
-        if (visibleColumns_ != visibleColumns) {
+    void BrowseQueryState::resetSort() {
+        sort_.columnKey.clear();
+        sort_.ascending = false;
+        sort_.statusLast = false;
+        resetPage();
+    }
+
+    void BrowseQueryState::applyColumnSettings(std::vector<std::string> visibleColumnsValue,
+                                               std::map<std::string, int> columnWidthsValue) {
+        if (visibleColumns_ != visibleColumnsValue) {
             resetPage();
         }
-        visibleColumns_ = std::move(visibleColumns);
-        columnWidths_ = std::move(columnWidths);
+        visibleColumns_ = std::move(visibleColumnsValue);
+        columnWidths_ = std::move(columnWidthsValue);
     }
 
     void BrowseQueryState::applyPreferences(const ports::UserPreferencesSnapshot& snapshot) {

@@ -27,10 +27,12 @@ namespace ssa::presentation {
         void resetPage();
         bool nextPage();
         bool previousPage();
-        void applyPageResult(const domain::SsaPageResult& result, const std::size_t totalRowsAll);
+        void applyPageResult(const domain::SsaPageResult& result,
+                             const std::size_t totalRowsAllValue);
         void sortByColumnKey(const std::string& columnKey);
-        void applyColumnSettings(std::vector<std::string> visibleColumns,
-                                 std::map<std::string, int> columnWidths);
+        void resetSort();
+        void applyColumnSettings(std::vector<std::string> visibleColumnsValue,
+                                 std::map<std::string, int> columnWidthsValue);
         void applyPreferences(const ports::UserPreferencesSnapshot& snapshot);
         void writePreferences(ports::UserPreferencesSnapshot& snapshot) const;
 
