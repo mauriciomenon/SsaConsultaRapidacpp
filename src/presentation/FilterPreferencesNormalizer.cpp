@@ -33,15 +33,8 @@ namespace ssa::presentation {
         bool includesExcludedStatus(const std::map<std::string, std::string>& textFilters) {
             const auto statusKey = std::string{domain::ColumnCatalog::statusColumnKey()};
             const auto filter = textFilters.find(statusKey);
-            if (filter == textFilters.end()) {
-                return false;
-            }
-            const auto tokens = domain::parseTextFilterTokens(filter->second);
-            const auto excluded = domain::ColumnCatalog::excludedStatusCodes();
-            return std::ranges::any_of(tokens.ordered, [excluded](const auto& token) {
-                return token.filterOperator == domain::TextFilterOperator::Equals &&
-                       std::ranges::find(excluded, std::string_view{token.value}) != excluded.end();
-            });
+            return filter != textFilters.end() &&
+                   domain::ColumnCatalog::containsExcludedStatusCode(filter->second);
         }
 
         void normalizeStatusExclusion(ports::FilterPreferencesSnapshot& filters) {

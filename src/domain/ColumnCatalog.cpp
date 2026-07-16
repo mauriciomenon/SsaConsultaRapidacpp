@@ -1,5 +1,7 @@
 #include "domain/ColumnCatalog.h"
 
+#include "domain/TextFilterToken.h"
+
 #include <algorithm>
 #include <array>
 #include <iterator>
@@ -314,6 +316,15 @@ namespace ssa::domain {
 
     std::span<const std::string_view> ColumnCatalog::excludedStatusCodes() {
         return kExcludedStatusCodes;
+    }
+
+    bool ColumnCatalog::containsExcludedStatusCode(const std::string_view filterExpression) {
+        const auto tokens = parseTextFilterTokens(filterExpression);
+        return std::ranges::any_of(tokens.ordered, [](const auto& token) {
+            return token.filterOperator == TextFilterOperator::Equals &&
+                   std::ranges::find(kExcludedStatusCodes, std::string_view{token.value}) !=
+                       kExcludedStatusCodes.end();
+        });
     }
 
     std::span<const std::string_view> ColumnCatalog::weekColumnKeys() {

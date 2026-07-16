@@ -54,6 +54,7 @@ namespace ssa::domain {
         [[nodiscard]] static std::span<const std::string_view> statusShortcutCodes();
         [[nodiscard]] static std::string_view downloadableStatusFilterExpression();
         [[nodiscard]] static std::span<const std::string_view> excludedStatusCodes();
+        [[nodiscard]] static bool containsExcludedStatusCode(std::string_view filterExpression);
         [[nodiscard]] static std::span<const std::string_view> weekColumnKeys();
         [[nodiscard]] static std::string_view defaultAdvancedWeekColumnKey();
         [[nodiscard]] static std::string_view issueWeekColumnKey();

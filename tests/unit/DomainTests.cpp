@@ -85,6 +85,13 @@ TEST_CASE("column catalog exposes the shared GUI CLI SQLite schema dictionary") 
         ssa::domain::ColumnCatalog::requiredSchemaColumns().end());
 }
 
+TEST_CASE("column catalog identifies excluded status codes in equality filters") {
+    REQUIRE(ssa::domain::ColumnCatalog::containsExcludedStatusCode("=SCA,!SES"));
+    REQUIRE_FALSE(ssa::domain::ColumnCatalog::containsExcludedStatusCode("=APV"));
+    REQUIRE_FALSE(ssa::domain::ColumnCatalog::containsExcludedStatusCode("!SCA"));
+    REQUIRE_FALSE(ssa::domain::ColumnCatalog::containsExcludedStatusCode("=SAD"));
+}
+
 TEST_CASE("column catalog exposes expanded advanced filter fields") {
     const auto keys = ssa::domain::ColumnCatalog::advancedFilterKeys();
     const auto containsKey = [&keys](const std::string_view key) {

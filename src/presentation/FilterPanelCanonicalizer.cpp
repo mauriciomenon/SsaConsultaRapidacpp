@@ -30,22 +30,15 @@ namespace ssa::presentation::filterpanel {
             return false;
         }
 
-        domain::TextFilterTokenSet tokens = domain::parseTextFilterTokens(
-            state.advanced().textFilter(statusColumnKey()).toStdString());
-        if (const auto columnFilter = state.columnFilters().find(statusColumnKey().toStdString());
-            columnFilter != state.columnFilters().end()) {
-            const auto columnTokens = domain::parseTextFilterTokens(columnFilter->second);
-            for (const auto& token : columnTokens.ordered) {
-                domain::addTextFilterValue(tokens, token.value, token.filterOperator);
-            }
-        }
-
-        const auto excluded = domain::ColumnCatalog::excludedStatusCodes();
         const bool includesExcluded =
-            std::ranges::any_of(tokens.ordered, [excluded](const auto& token) {
-                return token.filterOperator == domain::TextFilterOperator::Equals &&
-                       std::ranges::find(excluded, std::string_view{token.value}) != excluded.end();
-            });
+            domain::ColumnCatalog::containsExcludedStatusCode(
+                state.advanced().textFilter(statusColumnKey()).toStdString()) ||
+            [&state] {
+                const auto columnFilter = state.columnFilters().find(
+                    std::string{domain::ColumnCatalog::statusColumnKey()});
+                return columnFilter != state.columnFilters().end() &&
+                       domain::ColumnCatalog::containsExcludedStatusCode(columnFilter->second);
+            }();
         return includesExcluded && state.setExcludeScaSesSte(false);
     }
 
