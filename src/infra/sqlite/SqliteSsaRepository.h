@@ -51,7 +51,7 @@ namespace ssa::infra::sqlite {
                          std::stop_token stopToken = {}) const override;
 
       private:
-        [[nodiscard]] bool ensureDerivedCountSummary() const;
+        [[nodiscard]] bool ensureDerivedCountSummary(std::stop_token stopToken) const;
 
         [[nodiscard]] static std::size_t executeCount(sqlite3* db, const query::SqlQuery& query,
                                                       const std::stop_token& stopToken,

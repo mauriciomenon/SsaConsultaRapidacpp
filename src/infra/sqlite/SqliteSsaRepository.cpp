@@ -4,6 +4,7 @@
 #include "ports/OperationError.h"
 #include "query/SqlQueryText.h"
 
+#include <iostream>
 #include <stdexcept>
 #include <stop_token>
 #include <string_view>
@@ -19,6 +20,11 @@ namespace ssa::infra::sqlite {
                                        domain::ColumnCatalog::isDerivedCountColumn) ||
                    domain::ColumnCatalog::isDerivedCountColumn(request.sort.columnKey) ||
                    request.visibleColumns.empty();
+        }
+
+        bool isReadonlyDiagnostic(const std::string_view diagnostic) {
+            return diagnostic.find("readonly") != std::string_view::npos ||
+                   diagnostic.find("read-only") != std::string_view::npos;
         }
 
         bool hasDerivedCountColumns(sqlite3* db, const std::string& tableName,
@@ -134,21 +140,36 @@ namespace ssa::infra::sqlite {
                                              query::SqlQueryBuilder queryBuilder)
         : dbPath_(std::move(dbPath)), queryBuilder_(std::move(queryBuilder)) {}
 
-    bool SqliteSsaRepository::ensureDerivedCountSummary() const {
-        std::call_once(derivedCountSummaryInitialized_, [this] {
-            SqliteConnection sqlite(dbPath_, SqliteOpenMode::ReadWrite);
-            SqliteBusyHandler busy(sqlite.handle(), {});
-            SqliteProgressHandler progress(sqlite.handle(), {});
-            if (!hasDerivedCountColumns(sqlite.handle(), queryBuilder_.rawTableName(),
-                                        busy.cancellationObserved())) {
-                return;
+    bool SqliteSsaRepository::ensureDerivedCountSummary(const std::stop_token stopToken) const {
+        std::call_once(derivedCountSummaryInitialized_, [this, stopToken] {
+            throwIfCanceled(stopToken);
+            try {
+                SqliteConnection sqlite(dbPath_, SqliteOpenMode::ReadWrite);
+                SqliteBusyHandler busy(sqlite.handle(), stopToken);
+                SqliteProgressHandler progress(sqlite.handle(), stopToken);
+                if (!hasDerivedCountColumns(sqlite.handle(), queryBuilder_.rawTableName(),
+                                            busy.cancellationObserved())) {
+                    return;
+                }
+                SqliteWriteTransaction transaction(sqlite.handle(), busy.cancellationObserved());
+                ssa::infra::sqlite::ensureDerivedCountSummary(
+                    sqlite.handle(), queryBuilder_.rawTableName(),
+                    domain::ColumnCatalog::schemaColumns(), busy.cancellationObserved());
+                transaction.commit();
+                derivedCountSummaryAvailable_ = true;
+            } catch (const ports::OperationError& error) {
+                if (!isReadonlyDiagnostic(error.diagnostic())) {
+                    throw;
+                }
+                std::clog << "sqlite derived count summary unavailable in readonly database: "
+                          << error.diagnostic() << '\n';
+            } catch (const std::runtime_error& error) {
+                if (!isReadonlyDiagnostic(error.what())) {
+                    throw;
+                }
+                std::clog << "sqlite derived count summary unavailable in readonly database: "
+                          << error.what() << '\n';
             }
-            SqliteWriteTransaction transaction(sqlite.handle(), busy.cancellationObserved());
-            ssa::infra::sqlite::ensureDerivedCountSummary(
-                sqlite.handle(), queryBuilder_.rawTableName(),
-                domain::ColumnCatalog::schemaColumns(), busy.cancellationObserved());
-            transaction.commit();
-            derivedCountSummaryAvailable_ = true;
         });
         return derivedCountSummaryAvailable_;
     }
@@ -156,7 +177,7 @@ namespace ssa::infra::sqlite {
     domain::SsaPageResult SqliteSsaRepository::page(const domain::SsaPageRequest& request,
                                                     std::stop_token stopToken) const {
         const bool usesDerivedCount =
-            requestUsesDerivedCount(request) && ensureDerivedCountSummary();
+            requestUsesDerivedCount(request) && ensureDerivedCountSummary(stopToken);
         SqliteConnection sqlite(dbPath_);
         SqliteBusyHandler busy(sqlite.handle(), stopToken);
         SqliteProgressHandler progress(sqlite.handle(), stopToken);
@@ -257,7 +278,7 @@ namespace ssa::infra::sqlite {
                                                       ports::SsaRecordConsumer consume,
                                                       std::stop_token stopToken) const {
         const bool usesDerivedCount =
-            requestUsesDerivedCount(request) && ensureDerivedCountSummary();
+            requestUsesDerivedCount(request) && ensureDerivedCountSummary(stopToken);
         SqliteConnection sqlite(dbPath_);
         SqliteBusyHandler busy(sqlite.handle(), stopToken);
         SqliteProgressHandler progress(sqlite.handle(), stopToken);

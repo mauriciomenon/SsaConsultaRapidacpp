@@ -497,6 +497,60 @@ TEST_CASE_METHOD(SqliteRepositoryFixture,
     REQUIRE(statement.columnInt64(0) == 1);
 }
 
+TEST_CASE("sqlite repository reads derived counts from a legacy readonly database") {
+    const auto path = createFixture();
+    executeSql(path, R"SQL(
+        INSERT INTO ssa_table VALUES
+            ('202500004','APV','202500002','LOC-5','Tomada dagua','EQ-E',202501,'2025-01-05','Ajustar valvula','Ajuste','SEM','SMM','Ari','Beto','Clio','SAM','SYS','e.xlsx','2025-01-05','I','J',202502,202503,0,0);
+    )SQL");
+
+    std::error_code error;
+    const auto originalPermissions = std::filesystem::status(path, error).permissions();
+    REQUIRE(!error);
+    const auto writePermissions = std::filesystem::perms::owner_write |
+                                  std::filesystem::perms::group_write |
+                                  std::filesystem::perms::others_write;
+    std::filesystem::permissions(path, originalPermissions & ~writePermissions,
+                                 std::filesystem::perm_options::replace, error);
+    REQUIRE(!error);
+
+    ssa::infra::sqlite::SqliteSsaRepository repository(path);
+    ssa::domain::SsaPageRequest request;
+    request.pageSize = 10;
+    request.visibleColumns = {"numero_ssa", "qtd_derivadas"};
+    const auto page = repository.page(request);
+
+    const auto parent = std::ranges::find_if(page.rows, [](const ssa::domain::SsaRecord& row) {
+        return row.valueOf("numero_ssa") == "202500002";
+    });
+    REQUIRE(parent != page.rows.end());
+    REQUIRE(parent->valueOf("qtd_derivadas") == "1");
+
+    std::filesystem::permissions(path, originalPermissions, std::filesystem::perm_options::replace,
+                                 error);
+    REQUIRE(!error);
+    std::filesystem::remove(path, error);
+    REQUIRE(!error);
+}
+
+TEST_CASE_METHOD(SqliteRepositoryFixture,
+                 "sqlite repository cancels before derived summary initialization") {
+    ssa::domain::SsaPageRequest request;
+    request.visibleColumns = {"numero_ssa", "qtd_derivadas"};
+    std::stop_source stopSource;
+    stopSource.request_stop();
+
+    REQUIRE_THROWS_AS(repository.page(request, stopSource.get_token()), std::system_error);
+
+    ssa::infra::sqlite::SqliteConnection connection(path);
+    ssa::infra::sqlite::SqliteStatement statement(
+        connection.handle(),
+        "SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table' AND name = ?");
+    statement.bindTextOneBased(1, "ssa_table_derived_counts");
+    REQUIRE(statement.step());
+    REQUIRE(statement.columnInt64(0) == 0);
+}
+
 TEST_CASE_METHOD(SqliteRepositoryFixture,
                  "sqlite repository executes the grouped executadas report") {
     executeSql(path, R"SQL(
