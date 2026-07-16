@@ -225,25 +225,21 @@ namespace ssa::presentation {
         }
         const bool isLatest = operation.id == latestOperationId_;
         const bool isCurrentGeneration = operation.generation == cacheGeneration_;
+        std::optional<PageQueryResult> result;
+        std::exception_ptr error;
+        if (operation.resultState) {
+            std::scoped_lock lock(operation.resultState->mutex);
+            result = std::move(operation.resultState->result);
+            error = operation.resultState->error;
+        }
+        if (!shuttingDown_ && isCurrentGeneration && result && result->totalRowsAllComputed) {
+            totalRowsAll_ = result->totalRowsAll;
+            totalRowsAllKnown_ = true;
+        }
         if (!shuttingDown_ && isLatest && isCurrentGeneration &&
             (operation.explicitlyCanceled || !operation.watcher.isCanceled())) {
             finishing_ = true;
             try {
-                std::optional<PageQueryResult> result;
-                std::exception_ptr error;
-                if (operation.resultState) {
-                    std::scoped_lock lock(operation.resultState->mutex);
-                    result = std::move(operation.resultState->result);
-                    error = operation.resultState->error;
-                }
-                // Cache the grand total as soon as it is computed, even when the
-                // request is later superseded/cancelled: the COUNT(*) over the
-                // whole table is stable for the session and re-running it on every
-                // keystroke is the expensive part.
-                if (result && result->totalRowsAllComputed) {
-                    totalRowsAll_ = result->totalRowsAll;
-                    totalRowsAllKnown_ = true;
-                }
                 if (operation.explicitlyCanceled || operation.stopSource.stop_requested()) {
                     logAsyncOperationError("Page query failed after cancellation:", error);
                     emit canceled();
