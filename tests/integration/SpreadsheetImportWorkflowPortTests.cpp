@@ -2451,7 +2451,7 @@ TEST_CASE("incremental no-op reports success when post commit consolidation is i
     REQUIRE(result.message.find("unchanged=1") != std::string::npos);
     REQUIRE(result.message.find("error=consolidation_failed") != std::string::npos);
     REQUIRE(std::filesystem::exists(workbook));
-    REQUIRE(writer.pendingConsolidation().size() == 1);
+    REQUIRE(writer.pendingConsolidation().empty());
 }
 
 TEST_CASE("sqlite writer maintains an indexed derived count summary") {
@@ -2974,10 +2974,7 @@ TEST_CASE("post commit consolidation failure stays visible and preserves the inp
     REQUIRE(result.message.find("error=consolidation_failed") != std::string::npos);
     REQUIRE(result.diagnostic.find("cannot create consolidation directory") != std::string::npos);
     REQUIRE(std::filesystem::exists(workbook));
-    sqlite3* db = nullptr;
-    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
-    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600124'") == 1);
-    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+    REQUIRE_FALSE(std::filesystem::exists(dbPath));
 }
 
 TEST_CASE("rescan publishes from a protected copy while the original is read locked") {

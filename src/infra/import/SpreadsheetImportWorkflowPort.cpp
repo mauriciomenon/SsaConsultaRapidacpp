@@ -536,8 +536,6 @@ namespace ssa::infra::importing {
             if (stopToken.stop_requested()) {
                 return canceled("rescan");
             }
-            publishDatabaseSnapshot(workingDatabase, databasePath_);
-
             if (!result.importSummary) {
                 result.warning = true;
                 appendWorkflowDiagnostic(result.diagnostic, "rescan summary unavailable");
@@ -587,7 +585,9 @@ namespace ssa::infra::importing {
                 result.status = ports::WorkflowStatus::Succeeded;
                 result.message += consolidation.canceled ? " error=consolidation_canceled"
                                                          : " error=consolidation_failed";
+                return result;
             }
+            publishDatabaseSnapshot(workingDatabase, databasePath_);
             return result;
         } catch (const std::system_error& error) {
             if (error.code() == std::make_error_code(std::errc::operation_canceled)) {
