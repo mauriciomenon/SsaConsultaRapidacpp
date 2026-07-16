@@ -361,7 +361,10 @@ namespace ssa::query {
         const std::string projection = "TRIM(COALESCE(" + column + ", ''))";
         SearchExpression expression;
         expression.requiredTerms = request.filter.generalTerms;
-        auto where = predicateBuilder_.build(expression, request.filter);
+        auto filter = request.filter;
+        SearchParser parser;
+        appendColumnFilters(filter, request.columnFilters, parser);
+        auto where = predicateBuilder_.build(expression, filter);
         std::ostringstream sql;
         sql << "SELECT " << projection << " FROM " << quoteTableIdentifier(tableName_) << " ";
         sql << "WHERE " << distinctValuesWhereSql(projection, where);

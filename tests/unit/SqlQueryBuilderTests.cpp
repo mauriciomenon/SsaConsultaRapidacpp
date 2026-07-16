@@ -269,6 +269,17 @@ TEST_CASE("sql query builder binds distinct values limit") {
     REQUIRE(query.bindings.back() == "37");
 }
 
+TEST_CASE("sql query builder parses raw distinct column filters in the query layer") {
+    ssa::domain::DistinctValuesRequest request;
+    request.columnKey = "situacao";
+    request.columnFilters = {{"setor_executor", "!^IEE"}};
+
+    const auto query = ssa::query::SqlQueryBuilder{}.buildDistinctValues(request);
+
+    REQUIRE(query.sql.find("NOT (\"setor_executor\" LIKE ?") != std::string::npos);
+    REQUIRE(std::ranges::find(query.bindings, "IEE%") != query.bindings.end());
+}
+
 TEST_CASE("sql query builder orders distinct values by display priority before limit") {
     ssa::domain::DistinctValuesRequest request;
     request.columnKey = "responsavel_execucao";

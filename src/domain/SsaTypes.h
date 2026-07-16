@@ -412,6 +412,7 @@ namespace ssa::domain {
 
     struct DistinctValuesRequest {
         std::string columnKey;
+        std::map<std::string, std::string> columnFilters;
         SsaFilterExpression filter;
         std::size_t limit{kDefaultDistinctValuesLimit};
         bool orderByFrequency{false};

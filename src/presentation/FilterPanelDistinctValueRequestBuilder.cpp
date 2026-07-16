@@ -1,7 +1,6 @@
 #include "presentation/FilterPanelDistinctValueRequestBuilder.h"
 
 #include "domain/ColumnCatalog.h"
-#include "query/SearchParser.h"
 
 #include <map>
 #include <string>
@@ -40,17 +39,6 @@ namespace ssa::presentation {
             return filters;
         }
 
-        void applyColumnTermsExcept(domain::SsaFilterExpression& filter,
-                                    const std::map<std::string, std::string>& columnFilters,
-                                    const std::string& excludedColumnKey) {
-            query::SearchParser parser;
-            for (const auto& [key, value] : columnFilters) {
-                if (key != excludedColumnKey) {
-                    filter.columnTerms.emplace(key, parser.parseTerms(value));
-                }
-            }
-        }
-
     } // namespace
 
     std::optional<domain::DistinctValuesRequest>
@@ -68,7 +56,11 @@ namespace ssa::presentation {
             !domain::ColumnCatalog::isStatusExclusionFilterColumn(request.columnKey) &&
             state.excludeScaSesSte();
         request.filter.advanced = advancedFiltersExcept(state.advancedFilters(), request.columnKey);
-        applyColumnTermsExcept(request.filter, state.columnFilters(), request.columnKey);
+        for (const auto& [key, value] : state.columnFilters()) {
+            if (key != request.columnKey) {
+                request.columnFilters.emplace(key, value);
+            }
+        }
         request.limit = domain::kAdvancedDistinctValuesLimit;
         return request;
     }
@@ -79,7 +71,11 @@ namespace ssa::presentation {
         request.columnKey = std::string{domain::ColumnCatalog::executorColumnKey()};
         request.filter.excludeScaSesSte = state.excludeScaSesSte();
         request.filter.advanced = advancedFiltersExcept(state.advancedFilters(), request.columnKey);
-        applyColumnTermsExcept(request.filter, state.columnFilters(), request.columnKey);
+        for (const auto& [key, value] : state.columnFilters()) {
+            if (key != request.columnKey) {
+                request.columnFilters.emplace(key, value);
+            }
+        }
         request.limit = kQuickSectorLimit;
         return request;
     }

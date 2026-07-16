@@ -88,8 +88,14 @@ namespace {
                 std::this_thread::sleep_for(distinctDelay_);
             }
             std::string statusFilter;
-            if (const auto status = request.filter.columnTerms.find("situacao");
-                status != request.filter.columnTerms.end() && !status->second.empty()) {
+            if (const auto rawStatus = request.columnFilters.find("situacao");
+                rawStatus != request.columnFilters.end()) {
+                statusFilter = rawStatus->second;
+                if (!statusFilter.empty() && statusFilter.front() == '=') {
+                    statusFilter.erase(0, 1);
+                }
+            } else if (const auto status = request.filter.columnTerms.find("situacao");
+                       status != request.filter.columnTerms.end() && !status->second.empty()) {
                 statusFilter = status->second.front().text;
             }
             {
@@ -928,8 +934,8 @@ namespace {
             const auto request = builder.quickSectorRequest(state);
 
             QCOMPARE(QString::fromStdString(request.columnKey), QString("setor_executor"));
-            QVERIFY(request.filter.columnTerms.contains("situacao"));
-            QVERIFY(!request.filter.columnTerms.contains("setor_executor"));
+            QCOMPARE(QString::fromStdString(request.columnFilters.at("situacao")), QString("APV"));
+            QVERIFY(!request.columnFilters.contains("setor_executor"));
             QCOMPARE(request.filter.excludeScaSesSte, false);
             QVERIFY(!request.filter.advanced.textFilters.contains("setor_executor"));
             QVERIFY(request.filter.advanced.textFilters.empty());
@@ -952,8 +958,9 @@ namespace {
             QCOMPARE(QString::fromStdString(request->columnKey), QString("setor_executor"));
             QVERIFY(!request->filter.quickSector.has_value());
             QCOMPARE(request->filter.excludeScaSesSte, true);
-            QVERIFY(!request->filter.columnTerms.contains("setor_executor"));
-            QVERIFY(request->filter.columnTerms.contains("situacao"));
+            QCOMPARE(QString::fromStdString(request->columnFilters.at("situacao")),
+                     QString("=APV"));
+            QVERIFY(!request->columnFilters.contains("setor_executor"));
             QVERIFY(!request->filter.advanced.textFilters.contains("setor_executor"));
             QCOMPARE(QString::fromStdString(
                          request->filter.advanced.textFilters.at("responsavel_execucao")),
@@ -973,7 +980,7 @@ namespace {
 
             QVERIFY(request.has_value());
             QCOMPARE(request->filter.excludeScaSesSte, false);
-            QVERIFY(!request->filter.columnTerms.contains("situacao"));
+            QVERIFY(!request->columnFilters.contains("situacao"));
             QVERIFY(!request->filter.advanced.textFilters.contains("situacao"));
             QCOMPARE(
                 QString::fromStdString(request->filter.advanced.textFilters.at("setor_executor")),
