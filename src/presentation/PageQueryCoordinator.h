@@ -71,6 +71,7 @@ namespace ssa::presentation {
       private:
         struct Operation final {
             std::uint64_t id{0};
+            std::uint64_t generation{0};
             domain::SsaPageRequest request;
             QFutureWatcher<void> watcher;
             std::shared_ptr<PageQueryResultState> resultState;
@@ -104,6 +105,7 @@ namespace ssa::presentation {
         std::vector<std::unique_ptr<Operation>> operations_;
         std::uint64_t latestOperationId_{0};
         std::uint64_t nextOperationId_{0};
+        std::uint64_t cacheGeneration_{0};
         bool shuttingDown_{false};
         bool totalRowsAllKnown_{false};
         std::size_t totalRowsAll_{0};

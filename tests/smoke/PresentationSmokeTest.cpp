@@ -1307,6 +1307,7 @@ namespace {
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
             ssa::presentation::PageQueryCoordinator coordinator(service);
             int succeededCount = 0;
+            QSignalSpy startedSpy(&coordinator, &ssa::presentation::PageQueryCoordinator::started);
             connect(&coordinator, &ssa::presentation::PageQueryCoordinator::succeeded, this,
                     [&](const ssa::presentation::PageQueryResult&,
                         const ssa::domain::SsaPageRequest&) { ++succeededCount; });
@@ -1317,6 +1318,7 @@ namespace {
 
             QTRY_COMPARE_WITH_TIMEOUT(succeededCount, 1, 1000);
             QTRY_VERIFY_WITH_TIMEOUT(!coordinator.hasActiveOperations(), 1000);
+            QCOMPARE(startedSpy.size(), 1);
             const auto prefetchedRequests = repository->requests();
             QCOMPARE(prefetchedRequests.size(), std::size_t{3});
             QCOMPARE(prefetchedRequests[0].pageIndex, std::size_t{0});
@@ -1329,6 +1331,24 @@ namespace {
 
             QCOMPARE(succeededCount, 2);
             QCOMPARE(repository->requests().size(), std::size_t{3});
+        }
+
+        void invalidating_totals_restarts_same_inflight_query() {
+            auto repository = std::make_shared<FakeRepository>(FakeRepositoryConfig{
+                .delay = std::chrono::milliseconds{150}, .totalRows = std::size_t{25}});
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::PageQueryCoordinator coordinator(service);
+            ssa::domain::SsaPageRequest request;
+
+            coordinator.run(request);
+            QTRY_COMPARE_WITH_TIMEOUT(repository->startedRequests().size(), std::size_t{1}, 500);
+
+            coordinator.invalidateTotalRowsAll();
+            coordinator.run(request);
+
+            QTRY_VERIFY_WITH_TIMEOUT(repository->startedRequests().size() >= std::size_t{2}, 500);
+            coordinator.cancel();
+            QTRY_VERIFY_WITH_TIMEOUT(!coordinator.hasActiveOperations(), 1000);
         }
 
         void page_query_cancel_is_terminal_and_blocks_new_work() {

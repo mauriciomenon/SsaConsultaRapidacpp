@@ -46,7 +46,7 @@ namespace ssa::presentation {
         invalidateCacheForQuery(request);
         auto* current = latestOperation();
         if (current != nullptr && current->request == request &&
-            !current->stopSource.stop_requested()) {
+            current->generation == cacheGeneration_ && !current->stopSource.stop_requested()) {
             return;
         }
         const bool replacing = current != nullptr;
@@ -78,6 +78,12 @@ namespace ssa::presentation {
     }
 
     void PageQueryCoordinator::cancel() {
+        for (const auto& operation : operations_) {
+            if (!operation->completed && operation->prefetch) {
+                stopOperation(*operation);
+            }
+        }
+
         if (state_ != State::Running) {
             return;
         }
@@ -93,6 +99,7 @@ namespace ssa::presentation {
     void PageQueryCoordinator::invalidateTotalRowsAll() {
         totalRowsAllKnown_ = false;
         totalRowsAll_ = 0;
+        ++cacheGeneration_;
         pageCache_.clear();
         cacheQuery_.reset();
     }
@@ -101,6 +108,7 @@ namespace ssa::presentation {
         const auto browsePort = browsePort_;
         auto operation = std::make_unique<Operation>();
         operation->id = ++nextOperationId_;
+        operation->generation = cacheGeneration_;
         operation->request = request;
         operation->prefetch = prefetch;
         operation->resultState = std::make_shared<PageQueryResultState>();
@@ -175,7 +183,9 @@ namespace ssa::presentation {
                 resultState->error = std::current_exception();
             }
         }));
-        emit started();
+        if (!prefetch) {
+            emit started();
+        }
     }
 
     void PageQueryCoordinator::finishOperation(const std::uint64_t operationId) {
@@ -194,7 +204,8 @@ namespace ssa::presentation {
                 std::scoped_lock lock(operation.resultState->mutex);
                 result = std::move(operation.resultState->result);
             }
-            if (result && !result->canceled && !operation.stopSource.stop_requested()) {
+            if (result && operation.generation == cacheGeneration_ && !result->canceled &&
+                !operation.stopSource.stop_requested()) {
                 cachePage(operation.request, *result);
             }
             QMetaObject::invokeMethod(
@@ -202,7 +213,8 @@ namespace ssa::presentation {
             return;
         }
         const bool isLatest = operation.id == latestOperationId_;
-        if (!shuttingDown_ && isLatest &&
+        const bool isCurrentGeneration = operation.generation == cacheGeneration_;
+        if (!shuttingDown_ && isLatest && isCurrentGeneration &&
             (operation.explicitlyCanceled || !operation.watcher.isCanceled())) {
             finishing_ = true;
             try {
@@ -260,6 +272,8 @@ namespace ssa::presentation {
                 emit failed("Falha ao consultar dados");
             }
             finishing_ = false;
+            setState(State::Idle);
+        } else if (isLatest && !hasActiveOperations()) {
             setState(State::Idle);
         }
         QMetaObject::invokeMethod(
@@ -336,6 +350,7 @@ namespace ssa::presentation {
         auto fingerprint = request;
         fingerprint.pageIndex = 0;
         if (cacheQuery_ && *cacheQuery_ != fingerprint) {
+            ++cacheGeneration_;
             pageCache_.clear();
             cacheQuery_.reset();
         }
