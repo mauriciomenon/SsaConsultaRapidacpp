@@ -37,9 +37,6 @@ namespace ssa::query {
         executadasReport(const domain::SsaPageRequest& request, bool byDivision,
                          std::stop_token stopToken = {}) const override;
 
-        [[nodiscard]] domain::SsaPageResult search(const domain::SsaPageRequest& request,
-                                                   std::stop_token stopToken = {}) const;
-
       private:
         std::shared_ptr<ports::ISsaRepository> repository_;
         std::shared_ptr<ports::IExecutadasReportPort> reportPort_;

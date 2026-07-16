@@ -6,50 +6,50 @@
 
 namespace ssa::application {
 
-    SsaBrowseService::SsaBrowseService(std::shared_ptr<query::SsaQueryService> queryService)
-        : queryService_(std::move(queryService)) {
-        if (!queryService_) {
-            throw std::invalid_argument("query service is required");
+    SsaBrowseService::SsaBrowseService(std::shared_ptr<ports::ISsaBrowsePort> browsePort)
+        : browsePort_(std::move(browsePort)) {
+        if (!browsePort_) {
+            throw std::invalid_argument("browse port is required");
         }
     }
 
     domain::SsaPageResult SsaBrowseService::page(const domain::SsaPageRequest& request,
                                                  const std::stop_token stopToken) const {
-        return queryService_->search(normalizeRequest(request), stopToken);
+        return browsePort_->page(normalizeRequest(request), stopToken);
     }
 
     std::size_t SsaBrowseService::count(const domain::SsaPageRequest& request,
                                         const std::stop_token stopToken) const {
-        return queryService_->count(request, stopToken);
+        return browsePort_->count(request, stopToken);
     }
 
     std::optional<domain::SsaRecord>
     SsaBrowseService::details(const domain::SsaNumber& number,
                               const std::stop_token stopToken) const {
-        return queryService_->details(number, stopToken);
+        return browsePort_->details(number, stopToken);
     }
 
     std::vector<domain::SsaDerivadaEntry>
     SsaBrowseService::derivadasDiretas(const domain::SsaNumber& number,
                                        const std::stop_token stopToken) const {
-        return queryService_->derivadasDiretas(number, stopToken);
+        return browsePort_->derivadasDiretas(number, stopToken);
     }
 
     std::vector<std::string>
     SsaBrowseService::distinctValues(const domain::DistinctValuesRequest& request,
                                      const std::stop_token stopToken) const {
-        return queryService_->distinctValues(request, stopToken);
+        return browsePort_->distinctValues(request, stopToken);
     }
 
     std::size_t SsaBrowseService::maxValueLength(const std::string_view columnKey,
                                                  const std::stop_token stopToken) const {
-        return queryService_->maxValueLength(columnKey, stopToken);
+        return browsePort_->maxValueLength(columnKey, stopToken);
     }
 
     ports::SsaReadResult SsaBrowseService::readAll(const domain::SsaPageRequest& request,
                                                    ports::SsaRecordConsumer consume,
                                                    const std::stop_token stopToken) const {
-        return queryService_->readAll(normalizeRequest(request), std::move(consume), stopToken);
+        return browsePort_->readAll(normalizeRequest(request), std::move(consume), stopToken);
     }
 
     std::optional<domain::SsaRecord> SsaBrowseService::details(const std::string& numeroSsa) const {

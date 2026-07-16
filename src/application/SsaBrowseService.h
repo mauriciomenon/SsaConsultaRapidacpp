@@ -3,7 +3,6 @@
 #include "domain/ColumnCatalog.h"
 #include "domain/SsaTypes.h"
 #include "ports/ISsaBrowsePort.h"
-#include "query/SsaQueryService.h"
 
 #include <memory>
 #include <optional>
@@ -14,7 +13,7 @@ namespace ssa::application {
 
     class SsaBrowseService final : public ports::ISsaBrowsePort {
       public:
-        explicit SsaBrowseService(std::shared_ptr<query::SsaQueryService> queryService);
+        explicit SsaBrowseService(std::shared_ptr<ports::ISsaBrowsePort> browsePort);
 
         [[nodiscard]] domain::SsaPageResult page(const domain::SsaPageRequest& request,
                                                  std::stop_token stopToken = {}) const override;
@@ -42,7 +41,7 @@ namespace ssa::application {
       private:
         [[nodiscard]] domain::SsaPageRequest normalizeRequest(domain::SsaPageRequest request) const;
 
-        std::shared_ptr<query::SsaQueryService> queryService_;
+        std::shared_ptr<ports::ISsaBrowsePort> browsePort_;
     };
 
 } // namespace ssa::application

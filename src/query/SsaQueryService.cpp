@@ -9,7 +9,7 @@ namespace ssa::query {
 
     domain::SsaPageResult SsaQueryService::page(const domain::SsaPageRequest& request,
                                                 const std::stop_token stopToken) const {
-        return search(request, stopToken);
+        return repository_->page(request, stopToken);
     }
 
     SsaQueryService::SsaQueryService(std::shared_ptr<ports::ISsaRepository> repository,
@@ -21,11 +21,6 @@ namespace ssa::query {
         if (!repository_) {
             throw std::invalid_argument("repository is required");
         }
-    }
-
-    domain::SsaPageResult SsaQueryService::search(const domain::SsaPageRequest& request,
-                                                  std::stop_token stopToken) const {
-        return repository_->page(request, std::move(stopToken));
     }
 
     std::size_t SsaQueryService::count(const domain::SsaPageRequest& request,
