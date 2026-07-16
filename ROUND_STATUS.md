@@ -10,6 +10,16 @@ Ultima verificacao: 2026-07-15
 Esta matriz registra evidencias do checkout local e dos refs remotos verificados.
 Os commits abaixo foram publicados nos dois remotes nesta rodada.
 
+### Atualizacao desta rodada
+
+- HEAD local e remoto: `8d22535` em `master`.
+- `cmake --build --preset dev`: passou.
+- `cmake --build --preset dev --target all_qmllint`: passou.
+- `ctest --preset dev --output-on-failure`: 412/412 passou.
+- Scans finais: clang-format, cppcheck, semgrep, gitleaks, detect-secrets e
+  trufflehog passaram sem achados bloqueantes.
+- Arquivos modificados em paralelo permanecem fora dos commits desta rodada.
+
 | Prioridade | Status | Evidencia |
 | --- | --- | --- |
 | 1. Preservar banco em full/incremental | ENTREGUE | rollback e merge nao destrutivo mantidos; suite de integracao verde |
