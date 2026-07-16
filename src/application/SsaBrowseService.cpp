@@ -20,7 +20,7 @@ namespace ssa::application {
 
     std::size_t SsaBrowseService::count(const domain::SsaPageRequest& request,
                                         const std::stop_token stopToken) const {
-        return browsePort_->count(request, stopToken);
+        return browsePort_->count(normalizeRequest(request), stopToken);
     }
 
     std::optional<domain::SsaRecord>

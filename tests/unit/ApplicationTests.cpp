@@ -6,7 +6,13 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <array>
+#include <filesystem>
+#include <fstream>
 #include <limits>
+#include <string>
+#include <string_view>
+#include <vector>
 
 namespace {
 
@@ -72,6 +78,55 @@ namespace {
 
 } // namespace
 
+TEST_CASE("source layers reject forbidden direct dependencies") {
+    struct LayerRule {
+        std::string_view directory;
+        std::vector<std::string_view> forbiddenIncludes;
+    };
+    const std::array rules{
+        LayerRule{
+            "domain",
+            {"query/", "ports/", "application/", "infra/", "platform/", "presentation/", "<Q"}},
+        LayerRule{"ports",
+                  {"query/", "application/", "infra/", "platform/", "presentation/", "<Q"}},
+        LayerRule{"query", {"application/", "infra/", "platform/", "presentation/", "<Q"}},
+        LayerRule{"application", {"query/", "infra/", "platform/", "presentation/", "<Q"}},
+        LayerRule{"infra", {"application/", "platform/", "presentation/"}},
+        LayerRule{"platform", {"query/", "application/", "infra/", "presentation/"}},
+        LayerRule{"presentation", {"query/", "infra/", "platform/"}},
+    };
+    const auto sourceRoot = std::filesystem::weakly_canonical(std::filesystem::path{__FILE__})
+                                .parent_path()
+                                .parent_path()
+                                .parent_path() /
+                            "src";
+    REQUIRE(std::filesystem::is_directory(sourceRoot));
+
+    for (const auto& rule : rules) {
+        for (const auto& entry :
+             std::filesystem::recursive_directory_iterator(sourceRoot / rule.directory)) {
+            if (!entry.is_regular_file() ||
+                (entry.path().extension() != ".cpp" && entry.path().extension() != ".h")) {
+                continue;
+            }
+            std::ifstream source(entry.path());
+            REQUIRE(source.is_open());
+            std::string line;
+            std::size_t lineNumber = 0;
+            while (std::getline(source, line)) {
+                ++lineNumber;
+                if (!line.starts_with("#include")) {
+                    continue;
+                }
+                for (const auto forbidden : rule.forbiddenIncludes) {
+                    CAPTURE(entry.path(), lineNumber, line, forbidden);
+                    REQUIRE(line.find(forbidden) == std::string::npos);
+                }
+            }
+        }
+    }
+}
+
 TEST_CASE("browse service normalizes empty visible columns and page size") {
     const auto repository = std::make_shared<FakeRepository>();
     const auto query = std::make_shared<ssa::query::SsaQueryService>(repository);
@@ -130,6 +185,7 @@ TEST_CASE("browse service validates requested sort column") {
     request.sort.columnKey = "missing_column";
 
     REQUIRE_THROWS_AS(service.page(request), std::invalid_argument);
+    REQUIRE_THROWS_AS(service.count(request), std::invalid_argument);
 }
 
 TEST_CASE("workflow service reports missing adapters explicitly") {
