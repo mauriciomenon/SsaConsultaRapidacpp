@@ -505,6 +505,17 @@ namespace ssa::infra::importing {
         if (!directoryStatus.rejectionReason.empty()) {
             return importDiscoveredFiles(directoryStatus, replaceAll, stopToken);
         }
+        QLockFile::LockError lockError = QLockFile::NoError;
+        const auto importLock =
+            acquireImportLocks(importLockPath_, databaseImportLockPath_, lockError);
+        if (!importLock) {
+            return importLockFailure(lockError);
+        }
+        const auto staging = stager_.stageInputFiles(stopToken, replaceAll);
+        if (staging.operationalFailure || !staging.rejectionReason.empty() ||
+            staging.files.empty()) {
+            return importDiscoveredFiles(staging, replaceAll, stopToken);
+        }
         std::error_code databaseDirectoryError;
         const auto databaseDirectory = databasePath_.parent_path();
         const auto databaseDirectoryStatus =
@@ -517,13 +528,6 @@ namespace ssa::infra::importing {
             return {ports::WorkflowStatus::Failed, "rescan database snapshot failed", false,
                     diagnostic};
         }
-        QLockFile::LockError lockError = QLockFile::NoError;
-        const auto importLock =
-            acquireImportLocks(importLockPath_, databaseImportLockPath_, lockError);
-        if (!importLock) {
-            return importLockFailure(lockError);
-        }
-        const auto staging = stager_.stageInputFiles(stopToken, replaceAll);
         if (auto resumed = resumePendingConsolidation(stopToken)) {
             if (resumed->status == ports::WorkflowStatus::Canceled) {
                 return replaceAll ? importDiscoveredFiles(staging, true, stopToken)
