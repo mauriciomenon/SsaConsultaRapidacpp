@@ -72,7 +72,7 @@ namespace ssa::presentation {
         [[nodiscard]] QString activeFilterSummary() const;
         [[nodiscard]] QVariantList activeFilterEntries() const;
         [[nodiscard]] bool hasExclusionFilter() const;
-        [[nodiscard]] std::map<std::string, std::string> columnFilters() const;
+        [[nodiscard]] const std::map<std::string, std::string>& columnFilters() const;
         [[nodiscard]] domain::AdvancedFilterSpec advancedFilters() const;
         void requestColumnFocus(const QString& key);
         Q_INVOKABLE [[nodiscard]] bool hasFilterForColumn(const QString& key) const;

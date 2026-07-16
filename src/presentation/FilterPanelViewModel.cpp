@@ -252,7 +252,7 @@ namespace ssa::presentation {
         return containsExcludedToken(state_.advancedFilters().textFilters);
     }
 
-    std::map<std::string, std::string> FilterPanelViewModel::columnFilters() const {
+    const std::map<std::string, std::string>& FilterPanelViewModel::columnFilters() const {
         return state_.columnFilters();
     }
 
