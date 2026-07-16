@@ -24,7 +24,11 @@
 - [NEXT-v0.9.7] Separar importacao explicita de derivadas da limpeza de orfas;
   aceitar CSV, TXT, TSV, XLSX e XLSM, deixando XLS sob selecao e preflight
   explicitos do conversor legado.
-- [PENDING] Adicionar lacunas restantes de paridade da tabela: reorder persistido por drag de colunas, acoes de menu de contexto de linha e acao de reset de sort no header.
+- [PARTIAL] [GUI-MENUS] Copia de celula, linha, SSA e grafo, abertura SAM e de
+  detalhes, filtro/ocultacao de header, reset de sort e configuracao de colunas
+  possuem prova de efeito. Importacao, exportacao, manutencao e banco tambem
+  possuem contratos de handler; ainda falta um fluxo de pointer real dedicado
+  por familia de menu, alem do pointer real ja preservado no menu de celula.
 - [LOW] [IMPORT-CONSOLIDATION-TOCTOU] A consolidacao rejeita diretorios
   symlink e usa rename atomico sem sobrescrita, mas existe uma janela entre
   `symlink_status()` e o rename por pathname. Um escritor local adversarial
@@ -47,19 +51,41 @@
 - [MED] [P7] Eager date/string formatting: formata 500x12 celulas antes de exibir; QML so renderiza visiveis. Lazy exigiria repensar `SsaTableDisplayValues`/`displayCache_` - ciclo dedicado.
 
 ### Qualidade / duplicacao
-- [HIGH] [Q1] 5 copias de trim/trimCopy: SearchParser, SsaExecutadasReportService, SsaSpreadsheetMapper, FilterPanelStateHelpers, TextFilterToken. Unificar em helper Qt-free (ex: domain/StringView.h).
+- [RESOLVED] [Q1] As tres copias identicas de `trimCopy` da importacao foram
+  consolidadas em `domain/WhitespaceTrim.h`, com prova Qt-free para texto,
+  vazio e somente whitespace. Helpers de parser e `string_view` com semanticas
+  diferentes permaneceram separados.
 - [MED] [Q4] `SsaImportConflictResolver` double-tracking (seenNumbers set + indexBySsa map) pra mesma condicao. Remover seenNumbers.
 
 ### Cleanup / low priority
 - [LOW] [L-Q2] `emptyFiles`/`failedFiles` contadores mortos no import (failedFiles so pode ser 0 ou 1).
 - [LOW] [L-Q3] null checks redundantes em chaves vindas do proprio catalogo (AdvancedTextFilterRowModelFactory, ColumnFilterViewModel).
 - [LOW] [L-Q4] `tokenOperatorForStorage` microfuncao tautologica (Different?Different:Equals). Remover.
-- [LOW] [L-A1] `SearchParser` trata `-` inicial como negacao sem escape (nao busca conteudo com hifen inicial).
+- [LOW] [L-A1] `SearchParser` trata `-` inicial como negacao sem escape (nao busca conteudo com hifen inicial). Manter fora desta trilha.
 - [LOW] [L-A2] `kLastIsoWeek=53` aceita semana 53 em anos nao-longos (resultado vazio silencioso).
 - [LOW] [L-A3] `LegacySpreadsheetConverter:117` `error` nao limpo apos `remove`.
 - [LOW] [L-P1] `FilterPanelViewModel::advancedFilters()/columnFilters()` retornam mapas por valor na hot path. Retornar const&.
 
 ## Otimizacao de performance (deferido do ciclo de audit de anti-padroes)
+
+- [MEASURED] [IMPORT-BENCHMARK] Em microbenchmark local com 250000 linhas e 30
+  amostras, resumo ficou em 0.035/0.038 ms mediana/p95, coluna omitida em
+  0.012/0.013 ms, fallback read-only com `GROUP BY` em 10.168/10.574 ms e cold
+  connection em 0.444/0.571 ms. `EXPLAIN QUERY PLAN` confirmou lookup por PK no
+  normal e materializacao/temp B-tree no fallback. Trigger delete de 100 linhas
+  ficou em 10.143/10.701 ms e deve ser reavaliado com corpus/disco reais antes
+  de qualquer otimizacao.
+- [PARTIAL] [PREFETCH-BENCHMARK] Testes provam prefetch das paginas 2 e 3,
+  cache hit, invalidacao por fingerprint/generation, cancelamento e latest-wins.
+  Trinta execucoes do runner ficaram em 73.572/74.577 ms e RSS maximo de
+  17661952 bytes, mas incluem startup QtTest. Falta harness interno para separar
+  latencia/idle/CPU e target compilado com QML debugging para qmlprofiler.
+- [PENDING] [SUPERVISOR-N3] `untrackedStopFailure` permanece fail-closed. Criar
+  reproducer multiplataforma de `retainFailedProcessTree()` antes de qualquer
+  tentativa de limpar a flag por estado do registry.
+- [PENDING] [SUPERVISOR-FAILED-TO-STOP] Manter caso real de falha de parada
+  separado do contrato N1. Se um reproducer demonstrar processo vivo apos
+  falha de parada, apresentar desenho de ownership antes de alterar producao.
 
 - [RESOLVED] [TSan] Data race em `QArrayDataPointer<char16_t>::deref()` corrigido. Causa raiz: `QFutureWatcher<T>` com T nao-trivial tem race no `ResultStore` durante teardown concorrente com o worker reportando resultado; alem disso `QtConcurrent::run` com cancel+setFuture imediato race o vtable do runnable. Correcoes aplicadas:
   - `UserPreferencesCoordinator`: migrado para `QFutureWatcher<void>` + erro em `std::string` protegido por mutex.

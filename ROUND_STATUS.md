@@ -3,22 +3,30 @@
 Fonte operacional para humanos e agentes de codigo. Verifique este arquivo antes
 de interpretar sincronizacao Git, status de CI ou falhas de publicacao.
 
-Ultima verificacao: 2026-07-15
+Ultima verificacao: 2026-07-16
 
 ## Prioridades de importacao pos-v0.9.9
 
 Esta matriz registra evidencias do checkout local e dos refs remotos verificados.
-Os commits abaixo foram publicados nos dois remotes nesta rodada.
+Os commits abaixo pertencem ao baseline historico. Nenhum commit, push, tag ou
+PR foi criado nesta rodada; a atividade atual esta descrita abaixo.
 
 ### Atualizacao desta rodada
 
-- HEAD local e remoto: `8d22535` em `master`.
-- `cmake --build --preset dev`: passou.
-- `cmake --build --preset dev --target all_qmllint`: passou.
-- `ctest --preset dev --output-on-failure`: 412/412 passou.
-- Scans finais: clang-format, cppcheck, semgrep, gitleaks, detect-secrets e
-  trufflehog passaram sem achados bloqueantes.
-- Arquivos modificados em paralelo permanecem fora dos commits desta rodada.
+- HEAD local: `07c1e44` em `master`; `origin/master` e `bitbucket/master`
+  apontam para o mesmo commit.
+- Working tree: 18 arquivos modificados e 8 untracked; nenhum arquivo staged.
+  Arquivos locais e artefatos permanecem fora do escopo de publicacao.
+- `ctest --preset dev -N`: 419 testes registrados nesta configuracao.
+- Gate final `ctest --preset dev --output-on-failure`: 419/419 passaram em
+  58.04 segundos; build canonico e `all_qmllint` tambem passaram.
+- Validacao focada: rescan/importacao 125 casos, N8/grafo/SAM 46/46, suites
+  presentation e popup 2/2, menus 1/1 e prefetch 7/7.
+- Probes existentes: importacao de 250000 linhas passou com RSS adicional de
+  96387072 bytes; popup RSS passou nos modos eager e virtual.
+- Scans imediatos dos diffs: clang-format, semgrep, detect-secrets e os gates
+  aplicaveis passaram; cppcheck nao encontrou arquivos elegiveis.
+- Nenhum commit, push, tag ou PR foi realizado nesta rodada.
 
 | Prioridade | Status | Evidencia |
 | --- | --- | --- |
@@ -34,9 +42,9 @@ Os commits abaixo foram publicados nos dois remotes nesta rodada.
 | 10. Derivadas explicitas | ENTREGUE LOCAL PARCIAL | CSV/TXT/TSV/XLSX/XLSM e cancelamento passam; limpeza de orfas segue acao separada |
 | 11. Auxiliar Arrow | ENTREGUE | preset `dev-arrow` e inspector somente leitura em v0.9.8 |
 | 12. GUI/CLI e dicionario | ENTREGUE | schema e colunas obrigatorias vem do dominio; validador exige schema integral |
-| 13. Release e remotes | ENTREGUE | `master` e `v0.9.9` conferidos em origin e bitbucket via HTTPS |
+| 13. Release e remotes | BASELINE HISTORICO | `master` e `v0.9.9` foram conferidos em rodada anterior; nenhum release foi publicado agora |
 
-### Commits funcionais locais
+### Commits funcionais historicos do baseline
 
 - `8354a62` dicionario e validacao do schema SQLite.
 - `8092e8c` coluna `data_cadastro` obrigatoria no header.
@@ -54,26 +62,49 @@ Os commits abaixo foram publicados nos dois remotes nesta rodada.
 
 ### Validacao local desta rodada
 
-- `ctest --preset dev --output-on-failure`: 396/396.
-- Testes focados de politica, mapper, staging e identidade passaram antes do
-  gate completo; o build canonico foi executado pelo script versionado.
-- `git ls-remote --heads origin master` e Bitbucket: refs conferidos via HTTPS
-  apos a publicacao do commit de release `40737b4`.
-- `git ls-remote --tags origin v0.9.9` e Bitbucket: tag anotada conferida e
-  objeto apontando para `40737b4`.
-- `markdownlint-cli 0.49.0`: changelog, status, roadmap e release notes sem
-  ocorrencias.
+- `git ls-remote --heads origin refs/heads/master` e Bitbucket: ambos apontam
+  para `07c1e44`.
+- O build dos targets `ssa_integration_tests`, `ssa_qt_sam_refresh_tests`,
+  `ssa_qml_advanced_popup_tests`, `ssa_unit_tests`, probes de RSS passou.
+- `ctest --preset dev -R 'rescan|consolidation|spreadsheet.*workflow|workflow.*spreadsheet'`:
+  54/54.
+- O caso N1 e a suite `ssa_qt_sam_refresh_tests` passaram sem o teste candidato
+  que mantinha processo vivo; falhas de parada permanecem em casos separados.
+- O caso de trim Qt-free passou em `ssa_unit_tests`.
+- As tres copias identicas de trim na importacao usam agora o contrato Qt-free
+  `domain/WhitespaceTrim.h`; variantes de parser e `string_view` nao mudaram.
+- `ctest --preset dev -R '^ssa_qml_advanced_popup_tests$'` com
+  `QT_QPA_PLATFORM=offscreen`: passou.
+- O grafo real passou determinismo, bounds, ausencia de overlap, centro nas duas
+  orientacoes e exportacao PNG decodificavel; teclado e SVG permanecem verdes.
+- `ctest --preset dev -R '^ssa_qml_popup_rss$|^ssa_import_rss_250k$'`: 2/2.
+- Microbenchmark local de `qtd_derivadas`, 250000 linhas e 30 amostras:
+  resumo 0.035/0.038 ms mediana/p95, coluna omitida 0.012/0.013 ms, fallback
+  read-only com `GROUP BY` 10.168/10.574 ms e conexao cold 0.444/0.571 ms.
+  Inicializacao do resumo ficou em 10.079/11.164 ms; trigger de insert de 100
+  linhas em 0.269/0.413 ms e delete de 100 em 10.143/10.701 ms.
+- Prefetch: 30 execucoes do runner ficaram em 73.572/74.577 ms e RSS maximo de
+  17661952 bytes, incluindo startup/teardown QtTest. Os contratos cold, paginas
+  2/3, cache hit, fingerprint, generation, cancelamento e latest-wins passaram.
+- `qmlprofiler` foi tentado, mas o target QtTest nao possui QML debugging; a
+  ferramenta recusou a gravacao e marcou o trace como danificado.
+- CodeRabbit autenticou, mas a revisao final ficou bloqueada pelo rate limit da
+  cota CLI gratuita. Isso e dependencia externa, nao validacao concluida.
+- A credencial local em `zshrc20260712` nao foi lida, editada ou versionada;
+  o proprietario deve providenciar a rotacao fora deste checkout.
+- A verificacao de `markdownlint-cli2` nao foi executada porque a ferramenta nao
+  esta instalada neste ambiente.
 - Recriacao e validacao do DB: 38 asserts no caso dedicado; o banco real nao
   foi tocado.
-- O staged `tests/smoke/AdvancedPopupQmlTest.cpp` e os untracked do usuario
-  continuam fora dos commits.
+- Nao existe arquivo staged. Os diffs e untracked continuam no working tree e
+  nenhum deles foi commitado ou publicado.
 
-## Remotes Git
+## Remotes Git e estado desta rodada
 
 | Remote | Provedor | Funcao | Estado atual |
 | --- | --- | --- | --- |
-| `origin` | GitLab | Repositorio e CI primarios | HTTPS autenticado por glab/keychain; release publicada |
-| `bitbucket` | Bitbucket | Mirror obrigatorio de push; nao usar para pull | HTTPS autenticado por GCM/keychain; release publicada |
+| `origin` | GitLab | Repositorio e CI primarios | refs alinhados; nenhuma publicacao nesta rodada |
+| `bitbucket` | Bitbucket | Mirror obrigatorio de push; nao usar para pull | refs alinhados; nenhuma publicacao nesta rodada |
 | `gh` | GitHub | Mirror inativo | HTTP 403 enquanto a conta esta suspensa |
 
 O branch deste repositorio e `master`, nao `dev` ou `main`.
@@ -133,16 +164,13 @@ Quando o usuario pede `commit`, a operacao esperada e:
 Nunca relatar um commit como totalmente publicado quando somente um dos dois
 remotes ativos o aceitou.
 
-## Release e CI atuais
+## Historico de Release e CI
 
-- Release local e remota: tag anotada `v0.9.9`; `v0.9.8` e `v0.9.7` permanecem
-  preservadas.
-- A tag local aponta para o commit documental final desta rodada.
-- Build canonico local e `ctest --preset dev --output-on-failure`: 396/396.
-- Pacote macOS arm64 v0.9.9 foi gerado apos os gates locais; ZIP e DMG foram
-  verificados com o icon no bundle.
-- A tag `v0.9.9` esta presente nos dois remotes e aponta para `40737b4`.
-  O branch `master` recebeu este status documental depois da release.
+- A tag anotada `v0.9.9` e os pacotes macOS arm64 pertencem ao historico de
+  release anterior; nenhuma release foi gerada nesta rodada.
+- A configuracao local atual registra 419 testes; o resultado do gate completo
+  foi 419/419 em 58.04 segundos. Esse registro local nao implica commit ou
+  publicacao.
 - Pipeline GitLab `2679255778`: jobs `secret-scan` e `linux-verify` falharam
   por `ci_quota_exceeded`, sem diagnostico de codigo.
 - Bitbucket Pipelines: manual e bloqueado pela cota mensal compartilhada ate a

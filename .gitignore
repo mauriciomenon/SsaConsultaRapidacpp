@@ -28,7 +28,10 @@ docs/local/
 .claude/
 .opencode/
 .zed/
+.zcode/
+.trunk/
 cmake-build-debug/
+testResults.xml
 
 # Local env files
 .env
