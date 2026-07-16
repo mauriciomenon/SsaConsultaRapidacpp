@@ -55,16 +55,23 @@
   consolidadas em `domain/WhitespaceTrim.h`, com prova Qt-free para texto,
   vazio e somente whitespace. Helpers de parser e `string_view` com semanticas
   diferentes permaneceram separados.
-- [MED] [Q4] `SsaImportConflictResolver` double-tracking (seenNumbers set + indexBySsa map) pra mesma condicao. Remover seenNumbers.
+- [RESOLVED] [Q4] `SsaImportConflictResolver` usa somente `indexBySsa` para
+  localizar linhas aceitas; o antigo `seenNumbers` redundante nao existe no
+  HEAD atual.
 
 ### Cleanup / low priority
 - [LOW] [L-Q2] `emptyFiles`/`failedFiles` contadores mortos no import (failedFiles so pode ser 0 ou 1).
 - [LOW] [L-Q3] null checks redundantes em chaves vindas do proprio catalogo (AdvancedTextFilterRowModelFactory, ColumnFilterViewModel).
-- [LOW] [L-Q4] `tokenOperatorForStorage` microfuncao tautologica (Different?Different:Equals). Remover.
+- [RESOLVED] [L-Q4] `tokenOperatorForStorage` foi removida; o enum tipado e
+  armazenado diretamente.
 - [LOW] [L-A1] `SearchParser` trata `-` inicial como negacao sem escape (nao busca conteudo com hifen inicial). Manter fora desta trilha.
-- [LOW] [L-A2] `kLastIsoWeek=53` aceita semana 53 em anos nao-longos (resultado vazio silencioso).
+- [RESOLVED] [L-A2] A semana 53 agora e aceita somente em anos ISO longos,
+  com cobertura para 2020 (valido) e 2021 (invalido).
 - [LOW] [L-A3] `LegacySpreadsheetConverter:117` `error` nao limpo apos `remove`.
-- [LOW] [L-P1] `FilterPanelViewModel::advancedFilters()/columnFilters()` retornam mapas por valor na hot path. Retornar const&.
+- [RESOLVED] [L-P1] `columnFilters()` retorna `const&` e
+  `ColumnFilterViewModel` nao copia mais o mapa ao atualizar linhas.
+  `advancedFilters()` continua por valor porque sintetiza um DTO a partir do
+  estado Qt, em vez de expor um mapa armazenado.
 
 ## Otimizacao de performance (deferido do ciclo de audit de anti-padroes)
 
@@ -72,9 +79,9 @@
   amostras, resumo ficou em 0.035/0.038 ms mediana/p95, coluna omitida em
   0.012/0.013 ms, fallback read-only com `GROUP BY` em 10.168/10.574 ms e cold
   connection em 0.444/0.571 ms. `EXPLAIN QUERY PLAN` confirmou lookup por PK no
-  normal e materializacao/temp B-tree no fallback. Trigger delete de 100 linhas
-  ficou em 10.143/10.701 ms e deve ser reavaliado com corpus/disco reais antes
-  de qualquer otimizacao.
+  normal e materializacao/temp B-tree no fallback. A remocao direcionada por
+  pai reduziu o trigger delete de 100 linhas de 10.143/10.701 ms para
+  0.255/0.309 ms em 30 amostras locais.
 - [PARTIAL] [PREFETCH-BENCHMARK] Testes provam prefetch das paginas 2 e 3,
   cache hit, invalidacao por fingerprint/generation, cancelamento e latest-wins.
   Trinta execucoes do runner ficaram em 73.572/74.577 ms e RSS maximo de

@@ -8,15 +8,15 @@ Ultima verificacao: 2026-07-16
 ## Prioridades de importacao pos-v0.9.9
 
 Esta matriz registra evidencias do checkout local e dos refs remotos verificados.
-Os commits abaixo pertencem ao baseline historico. Nenhum commit, push, tag ou
-PR foi criado nesta rodada; a atividade atual esta descrita abaixo.
+Os commits abaixo pertencem ao baseline historico. A atividade atual foi
+commitada e publicada sem criar branch, tag ou PR.
 
 ### Atualizacao desta rodada
 
-- HEAD local: `07c1e44` em `master`; `origin/master` e `bitbucket/master`
-  apontam para o mesmo commit.
-- Working tree: 18 arquivos modificados e 8 untracked; nenhum arquivo staged.
-  Arquivos locais e artefatos permanecem fora do escopo de publicacao.
+- HEAD local: `d1e942c` em `master`; o push para `origin/master` e
+  `bitbucket/master` foi aceito.
+- Working tree: somente 7 entradas untracked locais; nenhum arquivo de codigo
+  modificado ou staged. Artefatos locais permanecem fora da publicacao.
 - `ctest --preset dev -N`: 419 testes registrados nesta configuracao.
 - Gate final `ctest --preset dev --output-on-failure`: 419/419 passaram em
   58.04 segundos; build canonico e `all_qmllint` tambem passaram.
@@ -26,7 +26,8 @@ PR foi criado nesta rodada; a atividade atual esta descrita abaixo.
   96387072 bytes; popup RSS passou nos modos eager e virtual.
 - Scans imediatos dos diffs: clang-format, semgrep, detect-secrets e os gates
   aplicaveis passaram; cppcheck nao encontrou arquivos elegiveis.
-- Nenhum commit, push, tag ou PR foi realizado nesta rodada.
+- Oito commits atomicos foram criados e publicados em `origin` e `bitbucket`;
+  nenhuma tag, branch nova ou PR foi criada.
 
 | Prioridade | Status | Evidencia |
 | --- | --- | --- |
@@ -62,8 +63,9 @@ PR foi criado nesta rodada; a atividade atual esta descrita abaixo.
 
 ### Validacao local desta rodada
 
-- `git ls-remote --heads origin refs/heads/master` e Bitbucket: ambos apontam
-  para `07c1e44`.
+- `git ls-remote --heads origin refs/heads/master` aponta para `d1e942c`; a
+  verificacao Bitbucket sera repetida porque a primeira consulta pos-push
+  excedeu 30 segundos, embora o push tenha sido aceito pelo servidor.
 - O build dos targets `ssa_integration_tests`, `ssa_qt_sam_refresh_tests`,
   `ssa_qml_advanced_popup_tests`, `ssa_unit_tests`, probes de RSS passou.
 - `ctest --preset dev -R 'rescan|consolidation|spreadsheet.*workflow|workflow.*spreadsheet'`:
@@ -82,29 +84,30 @@ PR foi criado nesta rodada; a atividade atual esta descrita abaixo.
   resumo 0.035/0.038 ms mediana/p95, coluna omitida 0.012/0.013 ms, fallback
   read-only com `GROUP BY` 10.168/10.574 ms e conexao cold 0.444/0.571 ms.
   Inicializacao do resumo ficou em 10.079/11.164 ms; trigger de insert de 100
-  linhas em 0.269/0.413 ms e delete de 100 em 10.143/10.701 ms.
+  linhas em 0.269/0.413 ms. A remocao direcionada por pai reduziu o delete de
+  100 linhas de 10.143/10.701 ms para 0.255/0.309 ms.
 - Prefetch: 30 execucoes do runner ficaram em 73.572/74.577 ms e RSS maximo de
   17661952 bytes, incluindo startup/teardown QtTest. Os contratos cold, paginas
   2/3, cache hit, fingerprint, generation, cancelamento e latest-wins passaram.
 - `qmlprofiler` foi tentado, mas o target QtTest nao possui QML debugging; a
   ferramenta recusou a gravacao e marcou o trace como danificado.
-- CodeRabbit autenticou, mas a revisao final ficou bloqueada pelo rate limit da
-  cota CLI gratuita. Isso e dependencia externa, nao validacao concluida.
-- A credencial local em `zshrc20260712` nao foi lida, editada ou versionada;
-  o proprietario deve providenciar a rotacao fora deste checkout.
+- CodeRabbit revisou o ultimo slice de filtros e reportou 0 issues. Uma revisao
+  anterior mais ampla ficou bloqueada pelo rate limit da cota CLI gratuita.
+- `zshrc20260712` foi removido do checkout e movido para o home sem ser lido ou
+  versionado; a rotacao da credencial continua responsabilidade do proprietario.
 - A verificacao de `markdownlint-cli2` nao foi executada porque a ferramenta nao
   esta instalada neste ambiente.
 - Recriacao e validacao do DB: 38 asserts no caso dedicado; o banco real nao
   foi tocado.
-- Nao existe arquivo staged. Os diffs e untracked continuam no working tree e
-  nenhum deles foi commitado ou publicado.
+- Nao existe arquivo staged nem diff de codigo. Somente configuracoes locais,
+  backup e documentos untracked fora do escopo permanecem no working tree.
 
 ## Remotes Git e estado desta rodada
 
 | Remote | Provedor | Funcao | Estado atual |
 | --- | --- | --- | --- |
-| `origin` | GitLab | Repositorio e CI primarios | refs alinhados; nenhuma publicacao nesta rodada |
-| `bitbucket` | Bitbucket | Mirror obrigatorio de push; nao usar para pull | refs alinhados; nenhuma publicacao nesta rodada |
+| `origin` | GitLab | Repositorio e CI primarios | push aceito e ref ao vivo em `d1e942c` |
+| `bitbucket` | Bitbucket | Mirror obrigatorio de push; nao usar para pull | push aceito; verificacao ao vivo pendente de retry apos timeout |
 | `gh` | GitHub | Mirror inativo | HTTP 403 enquanto a conta esta suspensa |
 
 O branch deste repositorio e `master`, nao `dev` ou `main`.
@@ -148,8 +151,9 @@ git ls-remote --heads bitbucket refs/heads/master
 git ls-remote --heads gh refs/heads/master
 ```
 
-Na ultima verificacao, os dois primeiros comandos passaram e `gh` retornou HTTP
-403 com `Your account is suspended`.
+Na ultima verificacao, `origin` respondeu em `d1e942c`; o push Bitbucket foi
+aceito, mas duas consultas posteriores expiraram em 30 e 60 segundos. O `gh`
+permanece indisponivel por HTTP 403 com `Your account is suspended`.
 
 ## Politica de commit e publicacao
 
