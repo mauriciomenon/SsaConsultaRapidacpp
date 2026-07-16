@@ -2491,6 +2491,12 @@ TEST_CASE("sqlite writer maintains an indexed derived count summary") {
                           "parent_ssa='202600600'") == 1);
     REQUIRE(scalarInt(db, "SELECT qtd_derivadas FROM ssa_table_derived_counts WHERE "
                           "parent_ssa='202600999'") == 1);
+    REQUIRE(sqlite3_exec(db,
+                         "UPDATE ssa_table SET derivada_de='' WHERE "
+                         "numero_ssa='202600602'",
+                         nullptr, nullptr, nullptr) == SQLITE_OK);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table_derived_counts WHERE parent_ssa=''") ==
+            0);
     REQUIRE(sqlite3_exec(db, "DELETE FROM ssa_table WHERE numero_ssa='202600601'", nullptr, nullptr,
                          nullptr) == SQLITE_OK);
     REQUIRE(scalarInt(db, "SELECT COALESCE((SELECT qtd_derivadas FROM "

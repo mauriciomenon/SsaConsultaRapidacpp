@@ -99,9 +99,11 @@ namespace ssa::infra::sqlite {
         }
 
         const auto addParent = [&](const std::string& value) {
+            const auto normalizedValue = "TRIM(COALESCE(" + value + ", ''))";
             return "INSERT INTO " + summaryTable + " (" + parentColumn + ", " + countColumn +
-                   ") VALUES (TRIM(COALESCE(" + value + ", '')), 1) ON CONFLICT(" + parentColumn +
-                   ") DO UPDATE SET " + countColumn + " = " + countColumn + " + 1";
+                   ") SELECT " + normalizedValue + ", 1 WHERE " + normalizedValue +
+                   " <> '' ON CONFLICT(" + parentColumn + ") DO UPDATE SET " + countColumn + " = " +
+                   countColumn + " + 1";
         };
         const auto removeParent = [&](const std::string& value) {
             return "UPDATE " + summaryTable + " SET " + countColumn + " = " + countColumn +
