@@ -106,9 +106,11 @@ namespace ssa::infra::sqlite {
                    countColumn + " + 1";
         };
         const auto removeParent = [&](const std::string& value) {
+            const auto normalizedValue = "TRIM(COALESCE(" + value + ", ''))";
             return "UPDATE " + summaryTable + " SET " + countColumn + " = " + countColumn +
-                   " - 1 WHERE " + parentColumn + " = TRIM(COALESCE(" + value +
-                   ", '')); DELETE FROM " + summaryTable + " WHERE " + countColumn + " <= 0";
+                   " - 1 WHERE " + parentColumn + " = " + normalizedValue + "; DELETE FROM " +
+                   summaryTable + " WHERE " + parentColumn + " = " + normalizedValue + " AND " +
+                   countColumn + " <= 0";
         };
         const auto oldParent = "OLD." + derivationColumn;
         const auto newParent = "NEW." + derivationColumn;
