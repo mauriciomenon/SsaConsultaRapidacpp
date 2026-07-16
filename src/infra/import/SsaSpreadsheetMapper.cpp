@@ -2,6 +2,7 @@
 
 #include "domain/ColumnCatalog.h"
 #include "domain/SsaImportPolicy.h"
+#include "domain/WhitespaceTrim.h"
 #include "infra/import/SsaSpreadsheetHeaderCatalog.h"
 #include "qt/FilesystemPath.h"
 
@@ -50,19 +51,6 @@ namespace ssa::infra::importing {
             std::unordered_map<std::string, std::string> cache_;
         };
 
-        std::string trimCopy(const std::string& value) {
-            const auto begin = std::ranges::find_if_not(
-                value, [](const unsigned char ch) { return std::isspace(ch) != 0; });
-            const auto end =
-                std::find_if_not(value.rbegin(), value.rend(), [](const unsigned char ch) {
-                    return std::isspace(ch) != 0;
-                }).base();
-            if (begin >= end) {
-                return {};
-            }
-            return {begin, end};
-        }
-
         enum class SnapshotHeaderKind {
             Other,
             Issue,
@@ -70,7 +58,7 @@ namespace ssa::infra::importing {
         };
 
         SnapshotHeaderKind snapshotHeaderKind(const std::string& header) {
-            auto normalized = trimCopy(header);
+            auto normalized = domain::trimWhitespace(header);
             std::ranges::transform(normalized, normalized.begin(), [](const unsigned char ch) {
                 return static_cast<char>(std::tolower(ch));
             });
@@ -282,7 +270,7 @@ namespace ssa::infra::importing {
                 if (columnIndex >= table.rows[rowIndex].size()) {
                     continue;
                 }
-                auto value = trimCopy(table.rows[rowIndex][columnIndex]);
+                auto value = domain::trimWhitespace(table.rows[rowIndex][columnIndex]);
                 if (columnKey == "numero_ssa" || columnKey.starts_with("numero_ssa_relacionada")) {
                     value = domain::SsaImportPolicy::normalizeNumber(value);
                 }
@@ -293,7 +281,8 @@ namespace ssa::infra::importing {
             if (valueFor(row, "data_cadastro").empty() && columnMap.fallbackTimestampColumn) {
                 const auto fallbackColumn = *columnMap.fallbackTimestampColumn;
                 if (fallbackColumn < table.rows[rowIndex].size()) {
-                    const auto fallback = trimCopy(table.rows[rowIndex][fallbackColumn]);
+                    const auto fallback =
+                        domain::trimWhitespace(table.rows[rowIndex][fallbackColumn]);
                     if (!fallback.empty()) {
                         row.emplace("data_cadastro", fallback);
                     }

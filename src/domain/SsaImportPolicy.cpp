@@ -1,4 +1,5 @@
 #include "domain/SsaImportPolicy.h"
+#include "domain/WhitespaceTrim.h"
 
 #include <algorithm>
 #include <array>
@@ -14,19 +15,9 @@ namespace ssa::domain {
 
     namespace {
 
-        std::string trimCopy(const std::string& value) {
-            const auto begin = std::ranges::find_if_not(
-                value, [](const unsigned char ch) { return std::isspace(ch) != 0; });
-            const auto end =
-                std::find_if_not(value.rbegin(), value.rend(), [](const unsigned char ch) {
-                    return std::isspace(ch) != 0;
-                }).base();
-            return begin < end ? std::string{begin, end} : std::string{};
-        }
-
         std::string valueFor(const SsaImportPolicy::Values& values, const std::string_view key) {
             const auto found = values.find(std::string{key});
-            return found == values.end() ? std::string{} : trimCopy(found->second);
+            return found == values.end() ? std::string{} : trimWhitespace(found->second);
         }
 
         std::string uppercase(std::string value) {
@@ -38,14 +29,14 @@ namespace ssa::domain {
 
         bool isDateExemptStatus(const std::string& status) {
             static constexpr std::array<std::string_view, 3> exempt{"SCC", "ADI", "ASE"};
-            const auto normalized = uppercase(trimCopy(status));
+            const auto normalized = uppercase(trimWhitespace(status));
             return std::ranges::any_of(exempt, [&normalized](const std::string_view code) {
                 return normalized == code || normalized.starts_with(std::string{code} + " ");
             });
         }
 
         bool isTerminalStatusValue(const std::string& status) {
-            const auto normalized = uppercase(trimCopy(status));
+            const auto normalized = uppercase(trimWhitespace(status));
             return normalized == "STE" || normalized.starts_with("STE ") || normalized == "SCA" ||
                    normalized.starts_with("SCA ");
         }
@@ -69,7 +60,7 @@ namespace ssa::domain {
         std::optional<int> parsePart(const std::string_view value);
 
         bool isValidWeek(const std::string& value) {
-            const auto normalized = trimCopy(value);
+            const auto normalized = trimWhitespace(value);
             if (normalized.size() != 6 ||
                 !std::ranges::all_of(
                     normalized, [](const unsigned char ch) { return std::isdigit(ch) != 0; })) {
@@ -77,7 +68,17 @@ namespace ssa::domain {
             }
             const auto year = parsePart(std::string_view{normalized}.substr(0, 4));
             const auto week = parsePart(std::string_view{normalized}.substr(4, 2));
-            return year && *year >= 1980 && *year <= 2050 && week && *week >= 1 && *week <= 53;
+            if (!year || *year < 1980 || *year > 2050 || !week || *week < 1 || *week > 53) {
+                return false;
+            }
+            if (*week < 53) {
+                return true;
+            }
+            const auto calendarYear = std::chrono::year{*year};
+            const auto firstWeekday = std::chrono::weekday{
+                std::chrono::sys_days{calendarYear / std::chrono::January / 1}};
+            return firstWeekday.iso_encoding() == 4 ||
+                   (calendarYear.is_leap() && firstWeekday.iso_encoding() == 3);
         }
 
         std::size_t completenessScore(const SsaImportPolicy::Values& values) {
@@ -417,12 +418,12 @@ namespace ssa::domain {
         bool differsInPersistedValues(const SsaImportPolicy::Values& left,
                                       const SsaImportPolicy::Values& right) {
             for (const auto& [key, value] : left) {
-                if (!isTransientField(key) && valueFor(right, key) != trimCopy(value)) {
+                if (!isTransientField(key) && valueFor(right, key) != trimWhitespace(value)) {
                     return true;
                 }
             }
             for (const auto& [key, value] : right) {
-                if (!isTransientField(key) && valueFor(left, key) != trimCopy(value)) {
+                if (!isTransientField(key) && valueFor(left, key) != trimWhitespace(value)) {
                     return true;
                 }
             }
@@ -452,7 +453,7 @@ namespace ssa::domain {
     } // namespace
 
     std::string SsaImportPolicy::normalizeNumber(const std::string& value) {
-        auto text = trimCopy(value);
+        auto text = trimWhitespace(value);
         if (text.ends_with(".0")) {
             text.resize(text.size() - 2);
         }
@@ -471,7 +472,7 @@ namespace ssa::domain {
     }
 
     std::string SsaImportPolicy::normalizeSnapshotTimestamp(const std::string& value) {
-        const auto timestamp = parseExactTimestamp(trimCopy(value));
+        const auto timestamp = parseExactTimestamp(trimWhitespace(value));
         if (!timestamp) {
             return {};
         }
@@ -571,7 +572,7 @@ namespace ssa::domain {
             sourceProfilePriority(incoming) > sourceProfilePriority(existing);
         bool conflict = false;
         for (const auto& [key, value] : incoming) {
-            const auto normalized = trimCopy(value);
+            const auto normalized = trimWhitespace(value);
             const auto current = valueFor(existing, key);
             if (olderTerminalPromotion && key != "situacao") {
                 continue;

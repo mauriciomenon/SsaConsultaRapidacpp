@@ -1,5 +1,7 @@
 #include "infra/import/SamSpreadsheetAdapter.h"
 
+#include "domain/WhitespaceTrim.h"
+
 #include "domain/SsaImportPolicy.h"
 
 #include <QDateTime>
@@ -59,16 +61,6 @@ namespace ssa::infra::importing {
             }
         }
 
-        std::string trimCopy(const std::string& value) {
-            const auto begin = std::ranges::find_if_not(
-                value, [](const unsigned char ch) { return std::isspace(ch) != 0; });
-            const auto end =
-                std::find_if_not(value.rbegin(), value.rend(), [](const unsigned char ch) {
-                    return std::isspace(ch) != 0;
-                }).base();
-            return begin < end ? std::string{begin, end} : std::string{};
-        }
-
         std::string uppercase(std::string value) {
             std::ranges::transform(value, value.begin(), [](const unsigned char ch) {
                 return static_cast<char>(std::toupper(ch));
@@ -77,12 +69,12 @@ namespace ssa::infra::importing {
         }
 
         bool rowHasContent(const std::vector<std::string>& row) {
-            return std::ranges::any_of(row,
-                                       [](const auto& value) { return !trimCopy(value).empty(); });
+            return std::ranges::any_of(
+                row, [](const auto& value) { return !domain::trimWhitespace(value).empty(); });
         }
 
         std::string cell(const std::vector<std::string>& row, const std::size_t index) {
-            return index < row.size() ? trimCopy(row[index]) : std::string{};
+            return index < row.size() ? domain::trimWhitespace(row[index]) : std::string{};
         }
 
         bool hasExactHeaders(const std::vector<std::string>& row) {
@@ -90,7 +82,7 @@ namespace ssa::infra::importing {
                 return false;
             }
             for (std::size_t index = 0; index < row.size(); ++index) {
-                if (trimCopy(row[index]) != kSamHeaders[index]) {
+                if (domain::trimWhitespace(row[index]) != kSamHeaders[index]) {
                     return false;
                 }
             }
@@ -112,7 +104,7 @@ namespace ssa::infra::importing {
         }
 
         std::string knownStatus(const std::string& value) {
-            auto normalized = uppercase(trimCopy(value));
+            auto normalized = uppercase(domain::trimWhitespace(value));
             if (const auto separator = normalized.find(" - "); separator != std::string::npos) {
                 normalized.resize(separator);
             }
@@ -134,7 +126,7 @@ namespace ssa::infra::importing {
         }
 
         std::optional<bool> detailPresent(const std::string& value) {
-            const auto normalized = uppercase(trimCopy(value));
+            const auto normalized = uppercase(domain::trimWhitespace(value));
             if (normalized == "TRUE" || normalized == "1") {
                 return true;
             }

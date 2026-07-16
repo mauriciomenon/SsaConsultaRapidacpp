@@ -1,10 +1,17 @@
 #include "domain/ExecutionHistoryPolicy.h"
 #include "domain/SsaImportPolicy.h"
+#include "domain/WhitespaceTrim.h"
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <string>
 #include <vector>
+
+TEST_CASE("whitespace trim handles text empty and whitespace-only values") {
+    REQUIRE(ssa::domain::trimWhitespace("  SSA  ") == "SSA");
+    REQUIRE(ssa::domain::trimWhitespace("") == "");
+    REQUIRE(ssa::domain::trimWhitespace(" \t\r\n\f\v") == "");
+}
 
 TEST_CASE("SSA import rejects invalid calendar dates even for exempt states") {
     using Values = ssa::domain::SsaImportPolicy::Values;
@@ -26,6 +33,21 @@ TEST_CASE("SSA import rejects invalid calendar dates even for exempt states") {
                {"descricao_ssa", "Exempt with descriptive status"},
                {"situacao", "ASE - aguardando execucao"},
                {"semana_cadastro", "202631"}}));
+    REQUIRE_FALSE(
+        ssa::domain::SsaImportPolicy::isValidRow(Values{{"numero_ssa", "202600005"},
+                                                        {"descricao_ssa", "Invalid ISO week 53"},
+                                                        {"situacao", "ASE"},
+                                                        {"semana_cadastro", "202153"}}));
+    REQUIRE(ssa::domain::SsaImportPolicy::isValidRow(Values{{"numero_ssa", "202600006"},
+                                                            {"descricao_ssa", "Valid ISO week 53"},
+                                                            {"situacao", "ASE"},
+                                                            {"semana_cadastro", "202053"}}));
+}
+
+TEST_CASE("SSA import normalization trims spaces and whitespace-only values") {
+    REQUIRE(ssa::domain::SsaImportPolicy::normalizeNumber(" 2026-00001.0 ") == "202600001");
+    REQUIRE(ssa::domain::SsaImportPolicy::normalizeNumber("\t\r\n") == "");
+    REQUIRE(ssa::domain::SsaImportPolicy::normalizeNumber("") == "");
 }
 
 TEST_CASE("SSA import merge fails closed when neither snapshot is valid") {
