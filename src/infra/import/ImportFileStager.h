@@ -16,11 +16,13 @@ namespace ssa::infra::importing {
         std::string sourceModifiedTimestamp;
         std::size_t summaryIndex = 0;
         std::string sourceCreatedTimestamp;
+        std::filesystem::path consolidationFilename;
     };
 
     struct ImportManifestEntry {
         std::vector<std::filesystem::path> sources;
         bool hasValidRows = false;
+        std::filesystem::path destinationFilename;
     };
 
     struct ImportConsolidationMove {

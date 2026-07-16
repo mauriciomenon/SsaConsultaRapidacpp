@@ -273,6 +273,9 @@ namespace ssa::infra::importing {
                 auto value = domain::trimWhitespace(table.rows[rowIndex][columnIndex]);
                 if (columnKey == "numero_ssa" || columnKey.starts_with("numero_ssa_relacionada")) {
                     value = domain::SsaImportPolicy::normalizeNumber(value);
+                } else if (const auto* column = domain::ColumnCatalog::find(columnKey);
+                           column != nullptr && column->type == domain::ColumnType::DateText) {
+                    value = domain::SsaImportPolicy::normalizeSnapshotTimestamp(value);
                 }
                 if (!value.empty()) {
                     row.emplace(columnKey, value);
@@ -281,8 +284,8 @@ namespace ssa::infra::importing {
             if (valueFor(row, "data_cadastro").empty() && columnMap.fallbackTimestampColumn) {
                 const auto fallbackColumn = *columnMap.fallbackTimestampColumn;
                 if (fallbackColumn < table.rows[rowIndex].size()) {
-                    const auto fallback =
-                        domain::trimWhitespace(table.rows[rowIndex][fallbackColumn]);
+                    const auto fallback = domain::SsaImportPolicy::normalizeSnapshotTimestamp(
+                        domain::trimWhitespace(table.rows[rowIndex][fallbackColumn]));
                     if (!fallback.empty()) {
                         row.emplace("data_cadastro", fallback);
                     }

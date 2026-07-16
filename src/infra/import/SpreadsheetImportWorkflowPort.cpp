@@ -585,7 +585,8 @@ namespace ssa::infra::importing {
                 const auto& fileResult = result.importSummary->files[file.summaryIndex];
                 const bool hasValidRows = fileResult.status == ports::ImportFileStatus::Applied ||
                                           fileResult.status == ports::ImportFileStatus::NoChanges;
-                manifest.push_back({file.consolidationSources, hasValidRows});
+                manifest.push_back(
+                    {file.consolidationSources, hasValidRows, file.consolidationFilename});
             }
             const auto consolidationPlan = stager_.planConsolidation(manifest, stopToken);
             if (consolidationPlan.canceled || !consolidationPlan.error.empty()) {
@@ -1105,7 +1106,8 @@ namespace ssa::infra::importing {
         std::vector<ImportManifestEntry> manifest;
         manifest.reserve(pendingOutcomes.size());
         for (const auto& outcome : pendingOutcomes) {
-            manifest.push_back({outcome.file->consolidationSources, outcome.hasValidRows});
+            manifest.push_back({outcome.file->consolidationSources, outcome.hasValidRows,
+                                outcome.file->consolidationFilename});
         }
         const auto consolidationPlan = stager_.planConsolidation(manifest, stopToken);
         if (consolidationPlan.canceled) {

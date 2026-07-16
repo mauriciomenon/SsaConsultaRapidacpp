@@ -664,7 +664,8 @@ namespace ssa::infra::importing {
                                     qt::toUtf8(source.filename()),
                                     timestamp,
                                     currentSummaryIndex,
-                                    sourceCreatedTimestamp(source)});
+                                    sourceCreatedTimestamp(source),
+                                    source.filename()});
         }
         if (stopToken.stop_requested()) {
             cancelStaging(result);
@@ -951,7 +952,8 @@ namespace ssa::infra::importing {
                                         qt::toUtf8(path.filename()),
                                         timestamp,
                                         currentSummaryIndex,
-                                        sourceCreatedTimestamp(path)});
+                                        sourceCreatedTimestamp(path),
+                                        path.filename()});
                 continue;
             }
         }
@@ -968,6 +970,7 @@ namespace ssa::infra::importing {
             result.files.push_back({path, {}, false, qt::toUtf8(path.filename()), timestamp});
             result.files.back().sourceCreatedTimestamp = sourceCreatedTimestamp(path);
             result.files.back().summaryIndex = summaryIndex++;
+            result.files.back().consolidationFilename = path.filename();
         }
         if (stopToken.stop_requested()) {
             cancelStaging(result);
@@ -989,6 +992,10 @@ namespace ssa::infra::importing {
         for (std::size_t entryIndex = 0; entryIndex < manifest.size(); ++entryIndex) {
             const auto& manifestEntry = manifest[entryIndex];
             auto& planEntry = plan.entries[entryIndex];
+            if (!manifestEntry.destinationFilename.empty() && manifestEntry.sources.size() != 1) {
+                plan.error = "consolidation filename requires exactly one source";
+                return plan;
+            }
             const auto& destinationDirectory =
                 manifestEntry.hasValidRows ? processedDirectory : noSurvivorDirectory;
             std::error_code directoryError;
@@ -1004,10 +1011,17 @@ namespace ssa::infra::importing {
                     return plan;
                 }
                 const auto normalizedSource = std::filesystem::absolute(source).lexically_normal();
+                const auto destinationFilename = manifestEntry.destinationFilename.empty()
+                                                     ? normalizedSource.filename()
+                                                     : manifestEntry.destinationFilename;
+                if (!isSafeFilename(destinationFilename)) {
+                    plan.error = "unsafe consolidation destination filename";
+                    return plan;
+                }
                 bool destinationSelected = false;
                 for (std::size_t attempt = 0; attempt < kMaxDestinationAttempts; ++attempt) {
-                    auto candidate = destinationCandidate(destinationDirectory,
-                                                          normalizedSource.filename(), attempt);
+                    auto candidate =
+                        destinationCandidate(destinationDirectory, destinationFilename, attempt);
                     if (reservedDestinations.contains(candidate)) {
                         continue;
                     }

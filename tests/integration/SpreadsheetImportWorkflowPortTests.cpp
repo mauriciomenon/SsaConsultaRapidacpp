@@ -2146,7 +2146,7 @@ TEST_CASE("spreadsheet mapper accepts the real cadastro timestamp format") {
     REQUIRE(result.mappingStatus == ssa::infra::importing::SpreadsheetMappingStatus::Mapped);
     REQUIRE(result.rows.size() == 1);
     REQUIRE(ssa::infra::importing::rowValue(result.rows.front(), "data_cadastro") ==
-            "21/10/2025 11:10:36");
+            "2025-10-21 11:10:36");
 }
 
 TEST_CASE("spreadsheet mapper prefers emission timestamp over issue timestamp") {
@@ -2155,7 +2155,7 @@ TEST_CASE("spreadsheet mapper prefers emission timestamp over issue timestamp") 
     table.rows = {
         {"Numero SSA", "Descricao da SSA", "emission_datetime", "issue_datetime", "Situacao"},
         {"202600508", "Emission priority", "2026-07-15 10:00:00", "2026-07-01 10:00:00", "APV"},
-        {"202600509", "Issue fallback", "", "2026-07-02 10:00:00", "APV"}};
+        {"202600509", "Issue fallback", "", "02/07/2026 10:00:00", "APV"}};
 
     const auto result = ssa::infra::importing::SsaSpreadsheetMapper::map(table);
 
@@ -3191,6 +3191,7 @@ TEST_CASE("external import consolidates its staged copy and preserves the select
     REQUIRE(std::filesystem::exists(source));
     REQUIRE(directWorkbookCount(inputDirectory) == 0);
     REQUIRE(directWorkbookCount(processedDirectory) == 1);
+    REQUIRE(std::filesystem::exists(processedDirectory / source.filename()));
 }
 
 TEST_CASE("spreadsheet import workflow preserves unicode paths") {

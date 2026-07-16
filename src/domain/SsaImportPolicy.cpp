@@ -358,7 +358,9 @@ namespace ssa::domain {
             for (const auto key : keys) {
                 const auto value = valueFor(values, key);
                 if (!value.empty()) {
-                    return snapshotKeyForField(value);
+                    if (auto snapshot = snapshotKeyForField(value)) {
+                        return snapshot;
+                    }
                 }
             }
             return snapshotKeyForField(valueFor(values, "data_cadastro"));

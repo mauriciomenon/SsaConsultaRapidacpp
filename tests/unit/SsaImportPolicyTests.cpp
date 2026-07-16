@@ -101,6 +101,24 @@ TEST_CASE("SSA import uses source file date only as the last snapshot fallback")
     REQUIRE_FALSE(result.changed);
 }
 
+TEST_CASE("SSA import skips invalid snapshot metadata and uses the next valid timestamp") {
+    using Values = ssa::domain::SsaImportPolicy::Values;
+    const Values existing{{"numero_ssa", "202600028"},
+                          {"descricao_ssa", "Existing"},
+                          {"situacao", "APV"},
+                          {"data_planilha", "invalid"},
+                          {"data_arquivo_origem", "2026-07-15 10:00:00"}};
+    const Values incoming{{"numero_ssa", "202600028"},
+                          {"descricao_ssa", "Newer"},
+                          {"situacao", "APV"},
+                          {"data_arquivo_origem", "2026-07-16 10:00:00"}};
+
+    const auto result = ssa::domain::SsaImportPolicy::merge(existing, incoming);
+
+    REQUIRE(result.changed);
+    REQUIRE(result.values.at("descricao_ssa") == "Newer");
+}
+
 TEST_CASE("SSA import equal snapshot metadata is independent of file order") {
     using Values = ssa::domain::SsaImportPolicy::Values;
     const Values first{{"numero_ssa", "202600016"},
