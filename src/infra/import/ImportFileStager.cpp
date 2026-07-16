@@ -548,7 +548,9 @@ namespace ssa::infra::importing {
                 std::filesystem::remove(staged.workbookPath, error);
                 if (error) {
                     appendDiagnostic(diagnostic,
-                                     "cannot remove canceled staged file: " + error.message());
+                                     "staging cleanup failed operation=remove_owned_staging path=" +
+                                         qt::toUtf8(staged.workbookPath) +
+                                         " error=" + error.message() + " pending=true");
                 }
                 error.clear();
             }
@@ -756,8 +758,10 @@ namespace ssa::infra::importing {
                 result.failedCopies = 1;
                 result.operationalFailure = true;
                 result.rejectionReason = "staging_cleanup_failed";
-                appendDiagnostic(result.diagnostic, "cannot remove abandoned staging artifact: " +
-                                                        removeError.message());
+                appendDiagnostic(result.diagnostic,
+                                 "staging cleanup failed operation=remove_abandoned_staging path=" +
+                                     qt::toUtf8(entry.path()) + " error=" + removeError.message() +
+                                     " pending=true");
                 return result;
             }
             iterator.increment(error);
@@ -788,13 +792,28 @@ namespace ssa::infra::importing {
                 return result;
             }
             const auto& entry = *current;
-            if (entry.is_symlink(error)) {
+            const bool entryIsSymlink = entry.is_symlink(error);
+            if (error) {
+                result.failedCopies = 1;
+                result.operationalFailure = true;
+                result.rejectionReason = "input_entry_status_unavailable";
+                appendDiagnostic(result.diagnostic,
+                                 "cannot inspect input entry symlink status: " + error.message());
+                return result;
+            }
+            const bool entryIsRegular = entry.is_regular_file(error);
+            if (error) {
+                result.failedCopies = 1;
+                result.operationalFailure = true;
+                result.rejectionReason = "input_entry_status_unavailable";
+                appendDiagnostic(result.diagnostic,
+                                 "cannot inspect input entry file status: " + error.message());
+                return result;
+            }
+            if (entryIsSymlink) {
                 ++result.discovered;
                 ++result.unsupported;
-                error.clear();
-            } else if (!entry.is_regular_file(error) || error) {
-                error.clear();
-            } else {
+            } else if (entryIsRegular) {
                 ++result.discovered;
                 candidates.push_back(entry.path());
                 recordDiscoveredFile(result, entry.path());

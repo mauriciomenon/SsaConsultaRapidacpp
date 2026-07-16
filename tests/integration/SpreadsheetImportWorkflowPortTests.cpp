@@ -834,7 +834,10 @@ TEST_CASE("workflow preserves canceled status when owned staging cleanup cannot 
     CAPTURE(result.message, result.diagnostic);
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Canceled);
     REQUIRE(result.message.find("canceled") != std::string::npos);
-    REQUIRE_FALSE(result.diagnostic.empty());
+    REQUIRE(result.diagnostic.find("operation=remove_owned_staging") != std::string::npos);
+    REQUIRE(result.diagnostic.find("path=" + inputDirectory.string()) != std::string::npos);
+    REQUIRE(result.diagnostic.find("error=") != std::string::npos);
+    REQUIRE(result.diagnostic.find("pending=true") != std::string::npos);
     REQUIRE(directWorkbookCount(inputDirectory) == 1);
     REQUIRE(std::filesystem::exists(source));
 }
@@ -886,7 +889,10 @@ TEST_CASE("staging cleanup failure is not masked as canceled") {
                                  std::filesystem::perm_options::replace);
 
     REQUIRE(result.rejectionReason == "staging_cleanup_failed");
-    REQUIRE(result.diagnostic.find("cannot remove staged temporary file") != std::string::npos);
+    REQUIRE(result.diagnostic.find("operation=remove_copy_temporary") != std::string::npos);
+    REQUIRE(result.diagnostic.find("path=" + inputDirectory.string()) != std::string::npos);
+    REQUIRE(result.diagnostic.find("error=") != std::string::npos);
+    REQUIRE(result.diagnostic.find("pending=true") != std::string::npos);
 }
 #endif
 
@@ -1706,6 +1712,95 @@ TEST_CASE("spreadsheet workflow resumes committed consolidation after process de
     }
 }
 
+TEST_CASE("rescan resumes completed journal moves and keeps partial failure resumable") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    const auto firstSource = inputDirectory / "first.xlsx";
+    const auto secondSource = inputDirectory / "second.xlsx";
+    const auto firstDestination = inputDirectory / "processadas" / "first.xlsx";
+    const auto secondDestination = inputDirectory / "processadas" / "second.xlsx";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    createSparseFile(firstSource, 1);
+
+    ssa::infra::sqlite::SqliteSsaImportWriter writer(dbPath, importColumns());
+    auto session = writer.startSession(false);
+    session.recordConsolidation(
+        {{{firstSource, firstDestination, true}, {secondSource, secondDestination, true}}});
+    static_cast<void>(session.finish());
+
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+    const auto partial = port.rescan({ssa::ports::RescanMode::Incremental});
+
+    REQUIRE(partial.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE(partial.warning);
+    REQUIRE(std::filesystem::exists(firstDestination));
+    REQUIRE_FALSE(std::filesystem::exists(firstSource));
+    REQUIRE_FALSE(std::filesystem::exists(secondDestination));
+    REQUIRE(writer.pendingConsolidation().size() == 1);
+
+    createSparseFile(secondSource, 1);
+    const auto resumed = port.rescan({ssa::ports::RescanMode::Incremental});
+
+    REQUIRE(resumed.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE_FALSE(resumed.warning);
+    REQUIRE(std::filesystem::exists(secondDestination));
+    REQUIRE_FALSE(std::filesystem::exists(secondSource));
+    REQUIRE(writer.pendingConsolidation().empty());
+}
+
+TEST_CASE("rescan resumes a journal before importing the current input batch") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    const auto pendingSource = inputDirectory / "pending.xlsx";
+    const auto pendingDestination = inputDirectory / "processadas" / "pending.xlsx";
+    const auto currentSource = inputDirectory / "current.xlsx";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    createSparseFile(pendingSource, 1);
+
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(dbPath, importColumns());
+    auto session = writer.startSession(false);
+    session.recordConsolidation({{{pendingSource, pendingDestination, true}}});
+    static_cast<void>(session.finish());
+
+    writeWorkbook(
+        currentSource,
+        row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao")}) +
+            row(2, {inlineCell("A2", "202600911"), inlineCell("B2", "APV"),
+                    inlineCell("C2", "Current input batch"), inlineCell("D2", "2026-07-16")}));
+
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+
+    const auto result = port.rescan({ssa::ports::RescanMode::Incremental});
+
+    INFO(result.message);
+    INFO(result.diagnostic);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE_FALSE(result.warning);
+    REQUIRE(std::filesystem::exists(pendingDestination));
+    REQUIRE_FALSE(std::filesystem::exists(pendingSource));
+    REQUIRE_FALSE(std::filesystem::exists(currentSource));
+    REQUIRE(writer.pendingConsolidation().empty());
+
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600911'") == 1);
+    REQUIRE(scalarText(db, "PRAGMA integrity_check") == "ok");
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
 TEST_CASE("sqlite consolidation journal survives process death around cleanup commit") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
@@ -2411,6 +2506,31 @@ TEST_CASE("incremental no-op reports a successful non-mutating outcome") {
     REQUIRE(std::filesystem::exists(inputDirectory / "processadas" / "same.xlsx"));
 }
 
+TEST_CASE("incremental rescan rejects an empty recognized workbook and preserves its source") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    const auto workbook = inputDirectory / "empty.xlsx";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    writeWorkbook(workbook,
+                  row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Descricao da SSA"),
+                          inlineCell("C1", "Data de emissao")}));
+
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+    const auto result = port.rescan({ssa::ports::RescanMode::Incremental});
+
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
+    REQUIRE(result.message.find("no_valid_rows") != std::string::npos);
+    REQUIRE(std::filesystem::exists(workbook));
+    REQUIRE_FALSE(std::filesystem::exists(inputDirectory / "processadas" / "nosurvivor" /
+                                          workbook.filename()));
+}
+
 TEST_CASE("incremental no-op reports success when post commit consolidation is interrupted") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
@@ -2451,7 +2571,7 @@ TEST_CASE("incremental no-op reports success when post commit consolidation is i
     REQUIRE(result.message.find("unchanged=1") != std::string::npos);
     REQUIRE(result.message.find("error=consolidation_failed") != std::string::npos);
     REQUIRE(std::filesystem::exists(workbook));
-    REQUIRE(writer.pendingConsolidation().empty());
+    REQUIRE_FALSE(writer.pendingConsolidation().empty());
 }
 
 TEST_CASE("sqlite writer maintains an indexed derived count summary") {
@@ -2974,7 +3094,18 @@ TEST_CASE("post commit consolidation failure stays visible and preserves the inp
     REQUIRE(result.message.find("error=consolidation_failed") != std::string::npos);
     REQUIRE(result.diagnostic.find("cannot create consolidation directory") != std::string::npos);
     REQUIRE(std::filesystem::exists(workbook));
-    REQUIRE_FALSE(std::filesystem::exists(dbPath));
+    REQUIRE(std::filesystem::exists(dbPath));
+    const ssa::infra::sqlite::SqliteSsaImportWriter publishedWriter(dbPath, importColumns());
+    REQUIRE_FALSE(publishedWriter.pendingConsolidation().empty());
+
+    REQUIRE(std::filesystem::remove(processedPath));
+    REQUIRE(std::filesystem::create_directory(processedPath));
+    const auto resumed = port.rescan({ssa::ports::RescanMode::Incremental});
+    REQUIRE(resumed.ok());
+    REQUIRE_FALSE(resumed.warning);
+    REQUIRE_FALSE(std::filesystem::exists(workbook));
+    REQUIRE(std::filesystem::exists(processedPath / workbook.filename()));
+    REQUIRE(publishedWriter.pendingConsolidation().empty());
 }
 
 TEST_CASE("rescan publishes from a protected copy while the original is read locked") {
@@ -3305,6 +3436,37 @@ TEST_CASE("input file stager removes abandoned owned staging artifacts") {
     REQUIRE(result.files.front().workbookPath == inputDirectory / "pending.xlsx");
     REQUIRE_FALSE(std::filesystem::exists(inputDirectory / ".ssa-staged-crashed_123_0.xlsx"));
 }
+
+#ifndef _WIN32
+TEST_CASE("input file stager reports an abandoned staging artifact that cannot be removed") {
+    if (::geteuid() == 0) {
+        SKIP("permission cleanup failure cannot be simulated as root");
+    }
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto inputDirectory =
+        std::filesystem::path{tempDir.path().toStdString()} / "docs_entrada";
+    const auto abandoned = inputDirectory / ".ssa-staged-crashed_123_0.xlsx";
+    std::filesystem::create_directories(inputDirectory);
+    createSparseFile(abandoned, 1);
+    std::filesystem::permissions(
+        inputDirectory, std::filesystem::perms::owner_read | std::filesystem::perms::owner_exec,
+        std::filesystem::perm_options::replace);
+    const ssa::infra::importing::ImportFileStager stager(inputDirectory);
+
+    const auto result = stager.stageInputFiles();
+
+    std::filesystem::permissions(inputDirectory, std::filesystem::perms::owner_all,
+                                 std::filesystem::perm_options::replace);
+    REQUIRE(result.rejectionReason == "staging_cleanup_failed");
+    REQUIRE(result.diagnostic.find("operation=remove_abandoned_staging") != std::string::npos);
+    REQUIRE(result.diagnostic.find("path=" + abandoned.string()) != std::string::npos);
+    REQUIRE(result.diagnostic.find("error=") != std::string::npos);
+    REQUIRE(result.diagnostic.find("pending=true") != std::string::npos);
+    REQUIRE(std::filesystem::exists(abandoned));
+}
+#endif
 
 TEST_CASE("spreadsheet import workflow rejects a second instance before discovery") {
     QTemporaryDir tempDir;
@@ -3952,6 +4114,76 @@ TEST_CASE("incremental cancellation before publication preserves the original da
     REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600605'") == 1);
     REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600603'") == 0);
     REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600604'") == 0);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("incremental cancellation during snapshot publication preserves the original database") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    constexpr std::uintmax_t paddingBytes = 128ULL * 1024ULL * 1024ULL;
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    const auto workbook = inputDirectory / "during-publication.xlsx";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    writeWorkbook(workbook, row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                                    inlineCell("C1", "Descricao da SSA"),
+                                    inlineCell("D1", "Data de emissao")}) +
+                                row(2, {inlineCell("A2", "202600606"), inlineCell("B2", "ASE"),
+                                        inlineCell("C2", "Canceled during publication"),
+                                        inlineCell("D2", "2026-07-01")}));
+
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(dbPath, importColumns());
+    ssa::infra::importing::ResolvedSsaImportRows previous;
+    previous.rows.push_back({{"numero_ssa", "202600607"}, {"descricao_ssa", "Original"}});
+    REQUIRE(writer.write(previous, 1, 0, false).rowsWritten == 1);
+    sqlite3* paddingDb = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &paddingDb) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(paddingDb, "CREATE TABLE import_padding(value BLOB)", nullptr, nullptr,
+                         nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(paddingDb,
+                         "INSERT INTO import_padding(value) VALUES (zeroblob(134217728))", nullptr,
+                         nullptr, nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_close(paddingDb) == SQLITE_OK);
+
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+    std::stop_source stopSource;
+    auto future = std::async(std::launch::async, [&] {
+        return port.rescan({ssa::ports::RescanMode::Incremental}, stopSource.get_token());
+    });
+    QElapsedTimer deadline;
+    deadline.start();
+    bool observedTemporary = false;
+    while (future.wait_for(std::chrono::milliseconds{0}) != std::future_status::ready &&
+           deadline.elapsed() < 5'000) {
+        std::error_code error;
+        for (std::filesystem::directory_iterator iterator(dbPath.parent_path(), error), end;
+             !error && iterator != end; iterator.increment(error)) {
+            if (iterator->path().filename() == dbPath.filename() ||
+                !iterator->is_regular_file(error) || iterator->file_size(error) == 0 || error) {
+                continue;
+            }
+            observedTemporary = true;
+            stopSource.request_stop();
+            break;
+        }
+        QThread::msleep(1);
+    }
+    stopSource.request_stop();
+    const auto result = future.get();
+
+    REQUIRE(observedTemporary);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Canceled);
+    REQUIRE(std::filesystem::exists(workbook));
+    REQUIRE_FALSE(std::filesystem::exists(inputDirectory / "processadas" / workbook.filename()));
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarText(db, "PRAGMA integrity_check") == "ok");
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600607'") == 1);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600606'") == 0);
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 

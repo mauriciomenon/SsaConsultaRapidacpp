@@ -136,7 +136,9 @@ namespace ssa::infra::importing {
             if (output.fileName().isEmpty() || !output.exists() || output.remove()) {
                 return {};
             }
-            return "cannot remove staged temporary file: " + output.errorString().toStdString();
+            return "staging cleanup failed operation=remove_copy_temporary path=" +
+                   qt::toUtf8(qt::toFileSystemPath(output.fileName())) +
+                   " error=" + output.errorString().toStdString() + " pending=true";
         };
         std::ifstream input(request.source, std::ios::binary);
         if (!input || !output.open()) {
