@@ -113,6 +113,7 @@ namespace ssa::presentation {
         std::deque<CachedPage> pageCache_;
         State state_{State::Idle};
         bool finishing_{false};
+        bool prefetchCancellationRequested_{false};
 
         static constexpr std::size_t kPrefetchPageCount = 2;
         static constexpr std::size_t kMaxCachedPages = 3;

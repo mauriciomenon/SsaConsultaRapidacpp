@@ -59,10 +59,11 @@ namespace ssa::presentation {
             emit replaced();
         }
         if (auto cached = takeCachedPage(request)) {
+            cachePage(request, *cached);
             latestOperationId_ = ++nextOperationId_;
-            emit started();
             setState(State::Running);
             finishing_ = true;
+            emit started();
             if (cached->totalRowsAllComputed) {
                 totalRowsAll_ = cached->totalRowsAll;
                 totalRowsAllKnown_ = true;
@@ -71,7 +72,11 @@ namespace ssa::presentation {
             emit succeeded(std::move(*cached), request);
             finishing_ = false;
             setState(State::Idle);
-            startPrefetchWindow(request, totalRows);
+            const bool suppressPrefetch = prefetchCancellationRequested_;
+            prefetchCancellationRequested_ = false;
+            if (!suppressPrefetch) {
+                startPrefetchWindow(request, totalRows);
+            }
             return;
         }
         start(std::move(request), false);
@@ -88,7 +93,13 @@ namespace ssa::presentation {
             return;
         }
         auto* operation = latestOperation();
-        if (operation == nullptr || operation->explicitlyCanceled) {
+        if (operation == nullptr) {
+            if (finishing_) {
+                prefetchCancellationRequested_ = true;
+            }
+            return;
+        }
+        if (operation->explicitlyCanceled) {
             return;
         }
         operation->explicitlyCanceled = true;
@@ -249,7 +260,11 @@ namespace ssa::presentation {
                         cachePage(operation.request, *result);
                         const auto totalRows = result->page.totalRows;
                         emit succeeded(std::move(*result), operation.request);
-                        startPrefetchWindow(operation.request, totalRows);
+                        const bool suppressPrefetch = prefetchCancellationRequested_;
+                        prefetchCancellationRequested_ = false;
+                        if (!suppressPrefetch) {
+                            startPrefetchWindow(operation.request, totalRows);
+                        }
                     }
                 }
             } catch (const ports::OperationError& exc) {

@@ -1331,6 +1331,66 @@ namespace {
 
             QCOMPARE(succeededCount, 2);
             QCOMPARE(repository->requests().size(), std::size_t{3});
+
+            coordinator.run(second);
+
+            QTRY_COMPARE_WITH_TIMEOUT(succeededCount, 3, 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(!coordinator.hasActiveOperations(), 1000);
+            QCOMPARE(repository->requests().size(), std::size_t{3});
+        }
+
+        void page_query_cancel_during_success_suppresses_prefetch() {
+            auto repository = std::make_shared<FakeRepository>(
+                FakeRepositoryConfig{.totalRows = std::size_t{25}});
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::PageQueryCoordinator coordinator(service);
+            bool successSeen = false;
+            connect(
+                &coordinator, &ssa::presentation::PageQueryCoordinator::succeeded, this,
+                [&](const ssa::presentation::PageQueryResult&, const ssa::domain::SsaPageRequest&) {
+                    successSeen = true;
+                    coordinator.cancel();
+                });
+
+            coordinator.run({});
+
+            QTRY_VERIFY_WITH_TIMEOUT(successSeen, 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(!coordinator.hasActiveOperations(), 1000);
+            QCOMPARE(repository->requests().size(), std::size_t{1});
+        }
+
+        void page_query_cache_hit_blocks_reentrant_request() {
+            auto repository = std::make_shared<FakeRepository>(
+                FakeRepositoryConfig{.totalRows = std::size_t{25}});
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::PageQueryCoordinator coordinator(service);
+            int succeededCount = 0;
+            bool reenterOnStart = false;
+            connect(&coordinator, &ssa::presentation::PageQueryCoordinator::succeeded, this,
+                    [&](const ssa::presentation::PageQueryResult&,
+                        const ssa::domain::SsaPageRequest&) { ++succeededCount; });
+            connect(&coordinator, &ssa::presentation::PageQueryCoordinator::started, this, [&] {
+                if (reenterOnStart) {
+                    auto newerRequest = ssa::domain::SsaPageRequest{};
+                    newerRequest.searchText = "reentrant";
+                    coordinator.run(newerRequest);
+                }
+            });
+
+            ssa::domain::SsaPageRequest first;
+            first.pageSize = 10;
+            coordinator.run(first);
+            QTRY_COMPARE_WITH_TIMEOUT(succeededCount, 1, 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(!coordinator.hasActiveOperations(), 1000);
+
+            auto cached = first;
+            cached.pageIndex = 1;
+            reenterOnStart = true;
+            coordinator.run(cached);
+
+            QTRY_COMPARE_WITH_TIMEOUT(succeededCount, 2, 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(!coordinator.hasActiveOperations(), 1000);
+            QCOMPARE(repository->requests().size(), std::size_t{3});
         }
 
         void invalidating_totals_restarts_same_inflight_query() {
