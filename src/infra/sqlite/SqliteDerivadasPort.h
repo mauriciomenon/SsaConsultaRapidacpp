@@ -13,7 +13,6 @@ namespace ssa::infra::sqlite {
 
     class SqliteDerivadasPort final : public ports::IDerivadasPort {
       public:
-        explicit SqliteDerivadasPort(std::filesystem::path databasePath);
         SqliteDerivadasPort(std::filesystem::path databasePath,
                             std::shared_ptr<importing::LegacySpreadsheetConverter> legacyConverter);
 

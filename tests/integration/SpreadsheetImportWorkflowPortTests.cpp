@@ -1040,7 +1040,7 @@ TEST_CASE("legacy converter rejects a stopped token before starting a process") 
     REQUIRE(tempDir.isValid());
 
     const auto root = std::filesystem::path{tempDir.path().toStdString()};
-    const ssa::infra::importing::LegacySpreadsheetConverter converter(root / "soffice");
+    const ssa::infra::importing::LegacySpreadsheetConverter converter(root / "soffice", nullptr);
     std::stop_source stopSource;
     stopSource.request_stop();
 
@@ -1058,7 +1058,7 @@ TEST_CASE("legacy converter treats a configured directory as unavailable") {
     REQUIRE(tempDir.isValid());
 
     const auto root = std::filesystem::path{tempDir.path().toStdString()};
-    const ssa::infra::importing::LegacySpreadsheetConverter converter(root);
+    const ssa::infra::importing::LegacySpreadsheetConverter converter(root, nullptr);
 
     const auto result = converter.convertToXlsx({root / "source.xls", root / "output.xlsx"});
 

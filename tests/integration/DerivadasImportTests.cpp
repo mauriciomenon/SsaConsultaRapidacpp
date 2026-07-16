@@ -19,6 +19,12 @@
 
 namespace {
 
+    std::shared_ptr<ssa::infra::importing::LegacySpreadsheetConverter>
+    unavailableLegacyConverter() {
+        return std::make_shared<ssa::infra::importing::LegacySpreadsheetConverter>(
+            std::filesystem::path{}, nullptr);
+    }
+
     struct Fixture {
         QTemporaryDir directory;
         std::filesystem::path databasePath;
@@ -137,7 +143,8 @@ TEST_CASE("derivadas import applies CSV edges and preserves an absent parent") {
     const Fixture fixture;
     const auto source = fixture.path("derivadas.csv");
     writeText(source, "ssa_mae,ssa_filha\n202699999,202600001\n202699999,202600001\n");
-    ssa::infra::sqlite::SqliteDerivadasPort port(fixture.databasePath);
+    ssa::infra::sqlite::SqliteDerivadasPort port(fixture.databasePath,
+                                                 unavailableLegacyConverter());
 
     const auto result = port.importDerivations(requestFor(source));
 
@@ -154,7 +161,8 @@ TEST_CASE("derivadas import preserves relations outside a partial batch") {
     fixture.setParent("202600004", "202600003");
     const auto source = fixture.path("partial.csv");
     writeText(source, "parent_ssa,child_ssa\n202600001,202600002\n");
-    ssa::infra::sqlite::SqliteDerivadasPort port(fixture.databasePath);
+    ssa::infra::sqlite::SqliteDerivadasPort port(fixture.databasePath,
+                                                 unavailableLegacyConverter());
 
     const auto result = port.importDerivations(requestFor(source));
 
@@ -168,7 +176,8 @@ TEST_CASE("derivadas import replaces the parent only for a child present in the 
     fixture.setParent("202600002", "202600001");
     const auto source = fixture.path("replacement.csv");
     writeText(source, "parent_ssa,child_ssa\n202600003,202600002\n");
-    ssa::infra::sqlite::SqliteDerivadasPort port(fixture.databasePath);
+    ssa::infra::sqlite::SqliteDerivadasPort port(fixture.databasePath,
+                                                 unavailableLegacyConverter());
 
     const auto result = port.importDerivations(requestFor(source));
 
@@ -182,7 +191,8 @@ TEST_CASE("derivadas import reads TXT and TSV as explicit sources") {
     const auto tsv = fixture.path("second.tsv");
     writeText(txt, "parent_ssa,child_ssa\n202600001,202600002\n");
     writeText(tsv, "numero_ssa_mae\tnumero_ssa_filha\n202600002\t202600003\n");
-    ssa::infra::sqlite::SqliteDerivadasPort port(fixture.databasePath);
+    ssa::infra::sqlite::SqliteDerivadasPort port(fixture.databasePath,
+                                                 unavailableLegacyConverter());
 
     const auto result = port.importDerivations({{txt, tsv}});
 
@@ -197,7 +207,8 @@ TEST_CASE("derivadas import reads every worksheet from XLSX and XLSM") {
     const auto xlsm = fixture.path("second.xlsm");
     writeWorkbook(xlsx, {{{"cover"}}, {{"parent_ssa", "child_ssa"}, {"202600001", "202600002"}}});
     writeWorkbook(xlsm, {{{"ssa_pai", "ssa_derivada"}, {"202600002", "202600003"}}});
-    ssa::infra::sqlite::SqliteDerivadasPort port(fixture.databasePath);
+    ssa::infra::sqlite::SqliteDerivadasPort port(fixture.databasePath,
+                                                 unavailableLegacyConverter());
 
     const auto result = port.importDerivations({{xlsx, xlsm}});
 
@@ -217,7 +228,8 @@ TEST_CASE("derivadas import reads the shifted visual matrix used by the Python w
                             {"202600001", "", ""},
                             {"202600002", "Derivada da", "202600001"},
                             {"202600003", "Derivada da", "202600001"}}});
-    ssa::infra::sqlite::SqliteDerivadasPort port(fixture.databasePath);
+    ssa::infra::sqlite::SqliteDerivadasPort port(fixture.databasePath,
+                                                 unavailableLegacyConverter());
 
     const auto result = port.importDerivations(requestFor(source));
 
@@ -230,7 +242,8 @@ TEST_CASE("derivadas import normalizes the documented SSA number forms") {
     const Fixture fixture;
     const auto source = fixture.path("normalized.csv");
     writeText(source, "parent_ssa,numero_ssa\n 2026-00001 ,202600002.0\n202600002, 2026-00003 \n");
-    ssa::infra::sqlite::SqliteDerivadasPort port(fixture.databasePath);
+    ssa::infra::sqlite::SqliteDerivadasPort port(fixture.databasePath,
+                                                 unavailableLegacyConverter());
 
     const auto result = port.importDerivations(requestFor(source));
 
@@ -247,7 +260,8 @@ TEST_CASE("derivadas import rejects sources without parse evidence") {
     writeText(empty, "");
     writeText(unknown, "other,value\na,b\n");
     writeWorkbook(cover, {{{"SSAs Derivadas e Relacionadas"}}});
-    ssa::infra::sqlite::SqliteDerivadasPort port(fixture.databasePath);
+    ssa::infra::sqlite::SqliteDerivadasPort port(fixture.databasePath,
+                                                 unavailableLegacyConverter());
 
     for (const auto& source : {empty, unknown, cover}) {
         const auto result = port.importDerivations(requestFor(source));
@@ -262,7 +276,8 @@ TEST_CASE("derivadas import rejects a self loop atomically") {
     const auto invalid = fixture.path("self-loop.csv");
     writeText(valid, "parent_ssa,child_ssa\n202600001,202600002\n");
     writeText(invalid, "parent_ssa,child_ssa\n202600003,202600003\n");
-    ssa::infra::sqlite::SqliteDerivadasPort port(fixture.databasePath);
+    ssa::infra::sqlite::SqliteDerivadasPort port(fixture.databasePath,
+                                                 unavailableLegacyConverter());
 
     const auto result = port.importDerivations({{valid, invalid}});
 
@@ -275,7 +290,8 @@ TEST_CASE("derivadas import rejects multiple parents for one child atomically") 
     const Fixture fixture;
     const auto source = fixture.path("multiparent.csv");
     writeText(source, "parent_ssa,child_ssa\n202600001,202600003\n202600002,202600003\n");
-    ssa::infra::sqlite::SqliteDerivadasPort port(fixture.databasePath);
+    ssa::infra::sqlite::SqliteDerivadasPort port(fixture.databasePath,
+                                                 unavailableLegacyConverter());
 
     const auto result = port.importDerivations(requestFor(source));
 
@@ -290,7 +306,8 @@ TEST_CASE("derivadas import rejects a missing child without clearing existing da
     const auto invalid = fixture.path("missing-child.csv");
     writeText(initial, "parent_ssa,child_ssa\n202600001,202600002\n");
     writeText(invalid, "parent_ssa,child_ssa\n202600003,202699999\n");
-    ssa::infra::sqlite::SqliteDerivadasPort port(fixture.databasePath);
+    ssa::infra::sqlite::SqliteDerivadasPort port(fixture.databasePath,
+                                                 unavailableLegacyConverter());
     REQUIRE(port.importDerivations(requestFor(initial)).ok());
 
     const auto result = port.importDerivations(requestFor(invalid));
@@ -306,7 +323,8 @@ TEST_CASE("derivadas import keeps an earlier valid source atomic when a later so
     const auto unsupported = fixture.path("unsupported.json");
     writeText(valid, "parent_ssa,child_ssa\n202600001,202600002\n");
     writeText(unsupported, "{}\n");
-    ssa::infra::sqlite::SqliteDerivadasPort port(fixture.databasePath);
+    ssa::infra::sqlite::SqliteDerivadasPort port(fixture.databasePath,
+                                                 unavailableLegacyConverter());
 
     const auto result = port.importDerivations({{valid, unsupported}});
 
@@ -318,7 +336,8 @@ TEST_CASE("derivadas import reports no changes when an edge is already stored") 
     const Fixture fixture;
     const auto source = fixture.path("same.csv");
     writeText(source, "parent_ssa,child_ssa\n202600001,202600002\n");
-    ssa::infra::sqlite::SqliteDerivadasPort port(fixture.databasePath);
+    ssa::infra::sqlite::SqliteDerivadasPort port(fixture.databasePath,
+                                                 unavailableLegacyConverter());
     REQUIRE(port.importDerivations(requestFor(source)).ok());
 
     const auto result = port.importDerivations(requestFor(source));
@@ -331,7 +350,8 @@ TEST_CASE("derivadas import observes a stopped token before changing data") {
     const Fixture fixture;
     const auto source = fixture.path("canceled.csv");
     writeText(source, "parent_ssa,child_ssa\n202600001,202600002\n");
-    ssa::infra::sqlite::SqliteDerivadasPort port(fixture.databasePath);
+    ssa::infra::sqlite::SqliteDerivadasPort port(fixture.databasePath,
+                                                 unavailableLegacyConverter());
     std::stop_source stopSource;
     stopSource.request_stop();
 
@@ -350,7 +370,8 @@ TEST_CASE("derivadas import cancels during parsing and leaves the database reusa
         content += "202600001,202600002\n";
     }
     writeText(source, content);
-    ssa::infra::sqlite::SqliteDerivadasPort port(fixture.databasePath);
+    ssa::infra::sqlite::SqliteDerivadasPort port(fixture.databasePath,
+                                                 unavailableLegacyConverter());
     std::stop_source stopSource;
     auto operation = std::async(std::launch::async, [&] {
         return port.importDerivations(requestFor(source), stopSource.get_token());
@@ -418,7 +439,8 @@ TEST_CASE("derivadas import cancels while waiting for SQLite and remains reusabl
                                                  ssa::infra::sqlite::SqliteOpenMode::ReadWrite);
     REQUIRE(sqlite3_exec(blocker.handle(), "BEGIN EXCLUSIVE", nullptr, nullptr, nullptr) ==
             SQLITE_OK);
-    ssa::infra::sqlite::SqliteDerivadasPort port(fixture.databasePath);
+    ssa::infra::sqlite::SqliteDerivadasPort port(fixture.databasePath,
+                                                 unavailableLegacyConverter());
     std::stop_source stopSource;
     auto operation = std::async(std::launch::async, [&] {
         return port.importDerivations(requestFor(source), stopSource.get_token());
@@ -439,7 +461,7 @@ TEST_CASE("derivadas legacy XLS import exposes converter preflight") {
     const auto source = fixture.path("legacy.xls");
     writeText(source, "legacy fixture");
     auto converter = std::make_shared<ssa::infra::importing::LegacySpreadsheetConverter>(
-        fixture.path("missing-soffice"));
+        fixture.path("missing-soffice"), nullptr);
     ssa::infra::sqlite::SqliteDerivadasPort port(fixture.databasePath, converter);
 
     REQUIRE_FALSE(port.legacySpreadsheetConverterAvailable());

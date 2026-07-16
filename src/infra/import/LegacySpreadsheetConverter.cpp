@@ -54,11 +54,6 @@ namespace ssa::infra::importing {
 
     } // namespace
 
-    LegacySpreadsheetConverter::LegacySpreadsheetConverter() = default;
-
-    LegacySpreadsheetConverter::LegacySpreadsheetConverter(std::filesystem::path executablePath)
-        : executablePath_(std::move(executablePath)) {}
-
     LegacySpreadsheetConverter::LegacySpreadsheetConverter(
         std::filesystem::path executablePath,
         std::shared_ptr<ports::IExternalProcessRunner> processRunner)

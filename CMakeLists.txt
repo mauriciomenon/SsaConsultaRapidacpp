@@ -106,8 +106,8 @@ add_library(
   src/infra/preferences/FilterPresetJsonCodec.cpp
   src/infra/preferences/UserPreferencesJsonCodec.cpp)
 target_include_directories(ssa_infra PUBLIC src)
-target_link_libraries(ssa_infra PUBLIC ssa_core ssa_platform_process
-                                       ${SSA_SQLITE_TARGET} Qt6::Core miniz)
+target_link_libraries(ssa_infra PUBLIC ssa_core ${SSA_SQLITE_TARGET} Qt6::Core
+                                       miniz)
 
 if(SSA_BUILD_ARROW_TOOL)
   find_package(Arrow CONFIG REQUIRED)

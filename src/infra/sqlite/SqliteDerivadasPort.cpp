@@ -173,10 +173,6 @@ namespace ssa::infra::sqlite {
 
     } // namespace
 
-    SqliteDerivadasPort::SqliteDerivadasPort(std::filesystem::path databasePath)
-        : SqliteDerivadasPort(std::move(databasePath),
-                              std::make_shared<importing::LegacySpreadsheetConverter>()) {}
-
     SqliteDerivadasPort::SqliteDerivadasPort(
         std::filesystem::path databasePath,
         std::shared_ptr<importing::LegacySpreadsheetConverter> legacyConverter)

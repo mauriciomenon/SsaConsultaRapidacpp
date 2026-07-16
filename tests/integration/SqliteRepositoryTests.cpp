@@ -1,4 +1,5 @@
 #include "domain/ColumnCatalog.h"
+#include "infra/import/LegacySpreadsheetConverter.h"
 #include "infra/sqlite/SqliteConnection.h"
 #include "infra/sqlite/SqliteDerivadasPort.h"
 #include "infra/sqlite/SqliteMaintenancePort.h"
@@ -31,6 +32,12 @@
 #include <vector>
 
 namespace {
+
+    std::shared_ptr<ssa::infra::importing::LegacySpreadsheetConverter>
+    unavailableLegacyConverter() {
+        return std::make_shared<ssa::infra::importing::LegacySpreadsheetConverter>(
+            std::filesystem::path{}, nullptr);
+    }
 
     std::filesystem::path createFixture() {
         QTemporaryFile dbFile(QDir::tempPath() + QStringLiteral("/ssa_cpp_fixture_XXXXXX.sqlite"));
@@ -1018,7 +1025,8 @@ TEST_CASE("sqlite maintenance keeps committed mutation when optional vacuum is c
 
 TEST_CASE("sqlite derivadas port clears orphan derivadas") {
     const SqliteFixture fixture;
-    ssa::infra::sqlite::SqliteDerivadasPort derivadasPort(fixture.path);
+    ssa::infra::sqlite::SqliteDerivadasPort derivadasPort(fixture.path,
+                                                          unavailableLegacyConverter());
     ssa::infra::sqlite::SqliteSsaRepository repository(fixture.path);
 
     REQUIRE(repository.recordBySsaNumber(ssa::domain::SsaNumber{"202500003"}).has_value());
@@ -1036,7 +1044,8 @@ TEST_CASE("sqlite derivadas port clears orphan derivadas") {
 
 TEST_CASE("sqlite derivadas rejects a stopped token before changing data") {
     const SqliteFixture fixture;
-    ssa::infra::sqlite::SqliteDerivadasPort derivadasPort(fixture.path);
+    ssa::infra::sqlite::SqliteDerivadasPort derivadasPort(fixture.path,
+                                                          unavailableLegacyConverter());
     std::stop_source stopSource;
     stopSource.request_stop();
 
@@ -1056,7 +1065,7 @@ TEST_CASE("sqlite derivadas stops promptly while locked and remains reusable") {
                                                  ssa::infra::sqlite::SqliteOpenMode::ReadWrite);
     REQUIRE(sqlite3_exec(blocker.handle(), "BEGIN EXCLUSIVE", nullptr, nullptr, nullptr) ==
             SQLITE_OK);
-    ssa::infra::sqlite::SqliteDerivadasPort derivadas(fixture.path);
+    ssa::infra::sqlite::SqliteDerivadasPort derivadas(fixture.path, unavailableLegacyConverter());
     std::stop_source stopSource;
     auto operation = std::async(std::launch::async, [&] {
         return derivadas.cleanOrphanDerivations(stopSource.get_token());

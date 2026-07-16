@@ -30,8 +30,6 @@ namespace ssa::infra::importing {
 
     class LegacySpreadsheetConverter final {
       public:
-        LegacySpreadsheetConverter();
-        explicit LegacySpreadsheetConverter(std::filesystem::path executablePath);
         LegacySpreadsheetConverter(std::filesystem::path executablePath,
                                    std::shared_ptr<ports::IExternalProcessRunner> processRunner);
 
