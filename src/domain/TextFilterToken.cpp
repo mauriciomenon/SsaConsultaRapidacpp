@@ -18,11 +18,6 @@ namespace ssa::domain {
             return std::string{value.substr(first, last - first + 1)};
         }
 
-        TextFilterOperator tokenOperatorForStorage(const TextFilterOperator filterOperator) {
-            return filterOperator == TextFilterOperator::Different ? TextFilterOperator::Different
-                                                                   : TextFilterOperator::Equals;
-        }
-
         char tokenPrefix(const TextFilterOperator filterOperator) {
             return filterOperator == TextFilterOperator::Different ? kDifferentPrefix
                                                                    : kEqualsPrefix;
@@ -58,7 +53,6 @@ namespace ssa::domain {
             if (token.value.empty()) {
                 return false;
             }
-            token.filterOperator = tokenOperatorForStorage(token.filterOperator);
             if (const auto existing = tokens.indexByValue.find(token.value);
                 existing != tokens.indexByValue.end()) {
                 if (tokens.ordered[existing->second].filterOperator == token.filterOperator) {
@@ -104,8 +98,7 @@ namespace ssa::domain {
 
     std::string makeTextFilterToken(const std::string_view value,
                                     const TextFilterOperator filterOperator) {
-        return serializeToken(
-            TextFilterToken{tokenOperatorForStorage(filterOperator), trimmedCopy(value)});
+        return serializeToken(TextFilterToken{filterOperator, trimmedCopy(value)});
     }
 
     TextFilterTokenSet parseTextFilterTokens(const std::string_view expression) {
@@ -128,16 +121,14 @@ namespace ssa::domain {
                                               const TextFilterOperator filterOperator) {
         TextFilterTokenSet tokens;
         for (const auto& value : values) {
-            appendOrReplaceByValue(tokens, TextFilterToken{tokenOperatorForStorage(filterOperator),
-                                                           trimmedCopy(value)});
+            appendOrReplaceByValue(tokens, TextFilterToken{filterOperator, trimmedCopy(value)});
         }
         return tokens;
     }
 
     bool addTextFilterValue(TextFilterTokenSet& tokens, const std::string_view value,
                             const TextFilterOperator filterOperator) {
-        return appendOrReplaceByValue(
-            tokens, TextFilterToken{tokenOperatorForStorage(filterOperator), trimmedCopy(value)});
+        return appendOrReplaceByValue(tokens, TextFilterToken{filterOperator, trimmedCopy(value)});
     }
 
     bool sameTextFilterTokens(const TextFilterTokenSet& lhs, const TextFilterTokenSet& rhs) {

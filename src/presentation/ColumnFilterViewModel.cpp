@@ -65,7 +65,7 @@ namespace ssa::presentation {
     }
 
     void ColumnFilterViewModel::refreshRowValues() {
-        const auto activeColumnFilters = state_.columnFilters();
+        const auto& activeColumnFilters = state_.columnFilters();
         const auto nextActiveFilterCount = static_cast<int>(activeColumnFilters.size());
 
         bool changed = false;
