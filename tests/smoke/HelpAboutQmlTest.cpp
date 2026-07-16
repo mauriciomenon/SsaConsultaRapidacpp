@@ -3,6 +3,7 @@
 #include "presentation/MainViewModel.h"
 #include "query/SsaQueryService.h"
 
+#include <QClipboard>
 #include <QCoreApplication>
 #include <QDir>
 #include <QElapsedTimer>
@@ -257,11 +258,12 @@ namespace {
             auto repository = std::make_shared<ssa::tests::presentation_smoke::FakeRepository>();
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
             auto commands = std::make_shared<ssa::tests::presentation_smoke::FakeCommands>();
+            auto preferences = std::make_shared<ssa::tests::presentation_smoke::FakePreferences>();
             auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(
                 std::make_shared<ssa::tests::presentation_smoke::CapturingImportPort>(), nullptr,
                 nullptr,
                 std::make_shared<ssa::tests::presentation_smoke::CapturingDerivadasPort>());
-            ssa::presentation::MainViewModel viewModel(service, commands, nullptr, nullptr,
+            ssa::presentation::MainViewModel viewModel(service, commands, preferences, nullptr,
                                                        workflows);
             SourceQmlUrlInterceptor sourceInterceptor;
             QQmlEngine engine;
@@ -292,6 +294,9 @@ namespace {
             auto* copyCellAction = window->findChild<QQuickItem*>(QStringLiteral("copyCellAction"));
             auto* copyRowAction = window->findChild<QQuickItem*>(QStringLiteral("copyRowAction"));
             auto* copySsaAction = window->findChild<QQuickItem*>(QStringLiteral("copySsaAction"));
+            auto* copyGraphAction =
+                window->findChild<QQuickItem*>(QStringLiteral("copyGraphAction"));
+            auto* openSamAction = window->findChild<QQuickItem*>(QStringLiteral("openSamAction"));
             auto* openDetailsAction =
                 window->findChild<QQuickItem*>(QStringLiteral("openDetailsAction"));
             QVERIFY(cellMenu != nullptr);
@@ -299,11 +304,38 @@ namespace {
             QVERIFY(copyCellAction != nullptr);
             QVERIFY(copyRowAction != nullptr);
             QVERIFY(copySsaAction != nullptr);
+            QVERIFY(copyGraphAction != nullptr);
+            QVERIFY(openSamAction != nullptr);
             QVERIFY(openDetailsAction != nullptr);
+
             QCOMPARE(copyCellAction->property("actionId").toString(), QString("copy_cell"));
             QCOMPARE(copyRowAction->property("actionId").toString(), QString("copy_row"));
             QCOMPARE(copySsaAction->property("actionId").toString(), QString("copy_ssa"));
+            QCOMPARE(copyGraphAction->property("actionId").toString(), QString("copy_graph_svg"));
+            QCOMPARE(openSamAction->property("actionId").toString(), QString("open_sam"));
             QCOMPARE(openDetailsAction->property("actionId").toString(), QString("open_details"));
+
+            const auto tableSource =
+                readSource(QStringLiteral("app/desktop/qml/components/SsaTable.qml"));
+            QVERIFY(tableSource.contains(QStringLiteral("actionId: \"filter_column\"")));
+            QVERIFY(tableSource.contains(QStringLiteral(
+                "onTriggered: root.viewModel.setFilterPanelFocusColumn(headerCell.columnKey)")));
+            QVERIFY(tableSource.contains(QStringLiteral("actionId: \"hide_column\"")));
+            QVERIFY(tableSource.contains(QStringLiteral(
+                "onTriggered: root.columnFlow.setColumnVisibleAndApply(headerCell.columnKey, "
+                "false)")));
+            QVERIFY(tableSource.contains(QStringLiteral("actionId: \"reset_sort\"")));
+            QVERIFY(
+                tableSource.contains(QStringLiteral("onTriggered: root.viewModel.resetSort()")));
+            QVERIFY(tableSource.contains(
+                QStringLiteral("actionId: \"configure_columns_from_header\"")));
+            QVERIFY(tableSource.contains(QStringLiteral(
+                "onTriggered: root.configureColumnsRequested(headerConfigureColumnsAction)")));
+
+            mainTable->setProperty("contextCellText", QString{});
+            mainTable->setProperty("contextSsaNumber", QString{});
+            QVERIFY(!copyCellAction->isEnabled());
+            QVERIFY(!openDetailsAction->isEnabled());
 
             QSignalSpy copySpy(mainTable, SIGNAL(copyTextRequested(QString)));
             const auto triggerCopyAction = [&](QQuickItem* action, const char* property,
@@ -324,6 +356,51 @@ namespace {
             triggerCopyAction(copyRowAction, "contextRowText", QStringLiteral("row value"));
             triggerCopyAction(copySsaAction, "contextSsaNumber", QStringLiteral("202600001"));
 
+            QTRY_COMPARE_WITH_TIMEOUT(viewModel.browse()->totalRows(), 1, 1000);
+            viewModel.browse()->selectRow(0);
+            QTRY_COMPARE_WITH_TIMEOUT(viewModel.browse()->currentRow(), 0, 1000);
+            mainTable->setProperty("contextSsaNumber", QStringLiteral("202500001"));
+
+            QTRY_VERIFY_WITH_TIMEOUT(copyGraphAction->isEnabled(), 1000);
+            QVERIFY(QMetaObject::invokeMethod(copyGraphAction, "triggered"));
+            QTRY_COMPARE_WITH_TIMEOUT(QGuiApplication::clipboard()->text(),
+                                      viewModel.browse()->details()->graphModel()->svg(), 1000);
+
+            const auto commandCount = commands->commands().size();
+            QVERIFY(QMetaObject::invokeMethod(openSamAction, "triggered"));
+            QTRY_COMPARE_WITH_TIMEOUT(commands->commands().size(), commandCount + 1, 1000);
+            QCOMPARE(commands->commands().back().kind, ssa::ports::ExternalCommandKind::OpenSsa);
+            QCOMPARE(
+                QString::fromStdString(commands->commands().back().parameters.at("ssa_number")),
+                QStringLiteral("202500001"));
+
+            QVERIFY(QMetaObject::invokeMethod(openDetailsAction, "triggered"));
+            auto* detailsWindow = waitForVisibleWindow(QStringLiteral("Detalhes da SSA"));
+            QVERIFY(detailsWindow != nullptr);
+            detailsWindow->close();
+
+            const auto focusRequest = viewModel.browse()->filters()->focusColumnRequest();
+            viewModel.browse()->setFilterPanelFocusColumn(QStringLiteral("numero_ssa"));
+            QTRY_COMPARE_WITH_TIMEOUT(viewModel.browse()->filters()->focusColumnRequest(),
+                                      focusRequest + 1, 1000);
+            QVERIFY(!viewModel.browse()->filters()->columnKey().isEmpty());
+
+            viewModel.browse()->sortByColumn(1);
+            QTRY_VERIFY_WITH_TIMEOUT(!viewModel.browse()->sortColumnKey().isEmpty(), 1000);
+            viewModel.browse()->resetSort();
+            QTRY_VERIFY_WITH_TIMEOUT(viewModel.browse()->sortColumnKey().isEmpty(), 1000);
+
+            const auto visibleColumnsBeforeHide = viewModel.browse()->visibleColumns().size();
+            bool columnHidden = false;
+            QVERIFY(QMetaObject::invokeMethod(viewModel.columnFlow(), "setColumnVisibleAndApply",
+                                              Q_RETURN_ARG(bool, columnHidden),
+                                              Q_ARG(QString, QStringLiteral("numero_ssa")),
+                                              Q_ARG(bool, false)));
+            QVERIFY(columnHidden);
+            QTRY_COMPARE_WITH_TIMEOUT(viewModel.browse()->visibleColumns().size(),
+                                      visibleColumnsBeforeHide - 1, 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(preferences->saveCount(), 1, 1000);
+
             cellMenu->setProperty("x", 900);
             cellMenu->setProperty("y", 100);
             QVERIFY(QMetaObject::invokeMethod(cellMenu, "popup"));
@@ -336,12 +413,6 @@ namespace {
             QTRY_VERIFY_WITH_TIMEOUT(!cellMenu->property("visible").toBool(), 1000);
             QVERIFY(QMetaObject::invokeMethod(popup, "close"));
             QTRY_VERIFY_WITH_TIMEOUT(!popup->property("visible").toBool(), 1000);
-
-            const auto tableSource =
-                readSource(QStringLiteral("app/desktop/qml/components/SsaTable.qml"));
-            QVERIFY(tableSource.contains(
-                QStringLiteral("root.configureColumnsRequested(headerConfigureColumnsAction)")));
-            QVERIFY(tableSource.contains(QStringLiteral("actionId: \"reset_sort\"")));
 
             QQuickItem trigger(window->contentItem());
             trigger.setX(1040);
@@ -398,13 +469,17 @@ namespace {
             auto repository = std::make_shared<ssa::tests::presentation_smoke::FakeRepository>();
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
             auto commands = std::make_shared<ssa::tests::presentation_smoke::FakeCommands>();
+            auto preferences = std::make_shared<ssa::tests::presentation_smoke::FakePreferences>();
+            auto importPort =
+                std::make_shared<ssa::tests::presentation_smoke::CapturingImportPort>();
             auto derivadasPort =
                 std::make_shared<ssa::tests::presentation_smoke::CapturingDerivadasPort>();
             derivadasPort->setLegacySpreadsheetConverterAvailable(false);
+            auto maintenancePort =
+                std::make_shared<ssa::tests::presentation_smoke::CapturingMaintenancePort>();
             auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(
-                std::make_shared<ssa::tests::presentation_smoke::CapturingImportPort>(), nullptr,
-                nullptr, derivadasPort);
-            ssa::presentation::MainViewModel viewModel(service, commands, nullptr, nullptr,
+                importPort, nullptr, maintenancePort, derivadasPort);
+            ssa::presentation::MainViewModel viewModel(service, commands, preferences, nullptr,
                                                        workflows);
             SourceQmlUrlInterceptor sourceInterceptor;
             QQmlEngine engine;
@@ -453,6 +528,99 @@ namespace {
                 mainWindow->findChild<QObject*>(QStringLiteral("openImportDerivationsMenuItem"));
             QVERIFY(openImportDerivations != nullptr);
             QVERIFY(QMetaObject::invokeMethod(openImportDerivations, "triggered"));
+
+            auto* exportResults =
+                mainWindow->findChild<QObject*>(QStringLiteral("exportResultsMenuItem"));
+            auto* rescanIncremental =
+                mainWindow->findChild<QObject*>(QStringLiteral("rescanIncrementalMenuItem"));
+            auto* rescanFull =
+                mainWindow->findChild<QObject*>(QStringLiteral("rescanFullMenuItem"));
+            auto* cleanOrphans =
+                mainWindow->findChild<QObject*>(QStringLiteral("cleanOrphanDerivationsMenuItem"));
+            auto* applyFilters =
+                mainWindow->findChild<QObject*>(QStringLiteral("applyFiltersMenuItem"));
+            auto* exportFilters =
+                mainWindow->findChild<QObject*>(QStringLiteral("exportFiltersMenuItem"));
+            auto* importFilters =
+                mainWindow->findChild<QObject*>(QStringLiteral("importFiltersMenuItem"));
+            auto* savePreferences =
+                mainWindow->findChild<QObject*>(QStringLiteral("savePreferencesMenuItem"));
+            auto* toggleDetails =
+                mainWindow->findChild<QObject*>(QStringLiteral("toggleDetailsMenuItem"));
+            auto* compactDatabase =
+                mainWindow->findChild<QObject*>(QStringLiteral("compactDatabaseMenuItem"));
+            auto* cancelAll = mainWindow->findChild<QObject*>(QStringLiteral("cancelAllMenuItem"));
+            auto* installationGuide =
+                mainWindow->findChild<QObject*>(QStringLiteral("installationGuideMenuItem"));
+            auto* exportResultsDialog =
+                mainWindow->findChild<QObject*>(QStringLiteral("exportResultsFileDialog"));
+            auto* exportFiltersDialog =
+                mainWindow->findChild<QObject*>(QStringLiteral("exportFiltersFileDialog"));
+            auto* importFiltersDialog =
+                mainWindow->findChild<QObject*>(QStringLiteral("importFiltersFileDialog"));
+            QVERIFY(exportResults != nullptr);
+            QVERIFY(rescanIncremental != nullptr);
+            QVERIFY(rescanFull != nullptr);
+            QVERIFY(cleanOrphans != nullptr);
+            QVERIFY(applyFilters != nullptr);
+            QVERIFY(exportFilters != nullptr);
+            QVERIFY(importFilters != nullptr);
+            QVERIFY(savePreferences != nullptr);
+            QVERIFY(toggleDetails != nullptr);
+            QVERIFY(compactDatabase != nullptr);
+            QVERIFY(cancelAll != nullptr);
+            QVERIFY(installationGuide != nullptr);
+            QVERIFY(exportResultsDialog != nullptr);
+            QVERIFY(exportFiltersDialog != nullptr);
+            QVERIFY(importFiltersDialog != nullptr);
+
+            QVERIFY(QMetaObject::invokeMethod(exportResults, "triggered"));
+            QTRY_VERIFY_WITH_TIMEOUT(exportResultsDialog->property("visible").toBool(), 1000);
+            QCOMPARE(exportResultsDialog->property("title").toString(),
+                     QStringLiteral("Exportar CSV"));
+            QVERIFY(QMetaObject::invokeMethod(exportResultsDialog, "close"));
+
+            QVERIFY(QMetaObject::invokeMethod(exportFilters, "triggered"));
+            QTRY_VERIFY_WITH_TIMEOUT(exportFiltersDialog->property("visible").toBool(), 1000);
+            QVERIFY(QMetaObject::invokeMethod(exportFiltersDialog, "close"));
+
+            QVERIFY(QMetaObject::invokeMethod(importFilters, "triggered"));
+            QTRY_VERIFY_WITH_TIMEOUT(importFiltersDialog->property("visible").toBool(), 1000);
+            QVERIFY(QMetaObject::invokeMethod(importFiltersDialog, "close"));
+
+            QVERIFY(QMetaObject::invokeMethod(rescanIncremental, "triggered"));
+            QTRY_COMPARE_WITH_TIMEOUT(importPort->requests().size(), std::size_t{1}, 1000);
+            QCOMPARE(importPort->requests().front().mode, ssa::ports::RescanMode::Incremental);
+            QTRY_VERIFY_WITH_TIMEOUT(
+                !viewModel.actions()->workflows()->property("running").toBool(), 1000);
+
+            QVERIFY(QMetaObject::invokeMethod(rescanFull, "triggered"));
+            QTRY_COMPARE_WITH_TIMEOUT(importPort->requests().size(), std::size_t{2}, 1000);
+            QCOMPARE(importPort->requests().back().mode, ssa::ports::RescanMode::Full);
+            QTRY_VERIFY_WITH_TIMEOUT(
+                !viewModel.actions()->workflows()->property("running").toBool(), 1000);
+
+            QVERIFY(QMetaObject::invokeMethod(cleanOrphans, "triggered"));
+            QTRY_COMPARE_WITH_TIMEOUT(derivadasPort->syncCalls(), std::size_t{1}, 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(
+                !viewModel.actions()->workflows()->property("running").toBool(), 1000);
+
+            QVERIFY(QMetaObject::invokeMethod(compactDatabase, "triggered"));
+            QTRY_COMPARE_WITH_TIMEOUT(maintenancePort->vacuumAnalyzeCalls(), std::size_t{1}, 1000);
+
+            const bool initialDetailsVisible = viewModel.ui()->detailsVisible();
+            toggleDetails->setProperty("checked", !initialDetailsVisible);
+            QVERIFY(QMetaObject::invokeMethod(toggleDetails, "triggered"));
+            QTRY_COMPARE_WITH_TIMEOUT(viewModel.ui()->detailsVisible(), !initialDetailsVisible,
+                                      1000);
+
+            QVERIFY(QMetaObject::invokeMethod(savePreferences, "triggered"));
+            QTRY_COMPARE_WITH_TIMEOUT(preferences->saveCount(), 1, 1000);
+
+            QVERIFY(QMetaObject::invokeMethod(installationGuide, "triggered"));
+            QTRY_COMPARE_WITH_TIMEOUT(commands->commands().size(), std::size_t{1}, 1000);
+            QCOMPARE(commands->commands().front().kind,
+                     ssa::ports::ExternalCommandKind::OpenInstallationGuide);
             auto* derivadasDialog =
                 mainWindow->findChild<QObject*>(QStringLiteral("derivadasFileDialog"));
             QVERIFY(derivadasDialog != nullptr);

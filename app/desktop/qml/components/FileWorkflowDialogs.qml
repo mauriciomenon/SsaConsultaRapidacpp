@@ -76,6 +76,7 @@ Item {
 
     FileDialog {
         id: exportDialog
+        objectName: "exportResultsFileDialog"
         title: "Exportar CSV"
         fileMode: FileDialog.SaveFile
         nameFilters: ["CSV (*.csv)"]
@@ -85,6 +86,7 @@ Item {
 
     FileDialog {
         id: exportFiltersDialog
+        objectName: "exportFiltersFileDialog"
         title: "Exportar filtros"
         fileMode: FileDialog.SaveFile
         nameFilters: ["JSON (*.json)"]
@@ -94,6 +96,7 @@ Item {
 
     FileDialog {
         id: importFiltersDialog
+        objectName: "importFiltersFileDialog"
         title: "Importar filtros"
         fileMode: FileDialog.OpenFile
         nameFilters: ["JSON (*.json)"]

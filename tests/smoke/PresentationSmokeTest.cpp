@@ -21,9 +21,12 @@
 #include <QChar>
 #include <QCoreApplication>
 #include <QElapsedTimer>
+#include <QList>
 #include <QObject>
+#include <QRectF>
 #include <QRegularExpression>
 #include <QSignalSpy>
+#include <QSizeF>
 #include <QString>
 #include <QTest>
 #include <QThread>
@@ -1021,6 +1024,80 @@ namespace {
             }
         }
 
+        void derivadas_graph_model_is_deterministic_bounded_and_non_overlapping() {
+            constexpr qreal nodeWidth = 118;
+            constexpr qreal nodeHeight = 48;
+            ssa::presentation::DerivadasGraphModel model;
+            QVariantList relations;
+            relations.push_back(QVariantMap{{"role", "current"}, {"ssa", "202500500"}});
+            for (int index = 0; index < 3; ++index) {
+                relations.push_back(QVariantMap{{"role", "parent"},
+                                                {"ssa", QStringLiteral("20250040%1").arg(index)}});
+            }
+            for (int index = 0; index < 21; ++index) {
+                relations.push_back(QVariantMap{
+                    {"role", "child"},
+                    {"ssa", QStringLiteral("2025006%1").arg(index, 2, 10, QChar('0'))}});
+            }
+
+            const auto verifyLayout = [&](const QSizeF viewport, const QString& orientation) {
+                model.buildFromRelations(QStringLiteral("202500500"), relations);
+                model.setViewportSize(viewport.width(), viewport.height());
+                QCOMPARE(model.orientation(), orientation);
+                QCOMPARE(model.rowCount(), 25);
+
+                QList<QPointF> firstLayout;
+                QList<QRectF> nodeBounds;
+                for (int row = 0; row < model.rowCount(); ++row) {
+                    const auto center = model.nodeCenter(row);
+                    firstLayout.push_back(center);
+                    const QRectF bounds{center.x() - nodeWidth / 2.0, center.y() - nodeHeight / 2.0,
+                                        nodeWidth, nodeHeight};
+                    nodeBounds.push_back(bounds);
+                    QVERIFY(bounds.left() >= 0);
+                    QVERIFY(bounds.top() >= 0);
+                    QVERIFY(bounds.right() <= model.graphWidth());
+                    QVERIFY(bounds.bottom() <= model.graphHeight());
+                }
+                for (qsizetype left = 0; left < nodeBounds.size(); ++left) {
+                    for (qsizetype right = left + 1; right < nodeBounds.size(); ++right) {
+                        QVERIFY(!nodeBounds[left].intersects(nodeBounds[right]));
+                    }
+                }
+
+                const auto edges = model.edges();
+                QCOMPARE(edges.size(), 24);
+                for (const auto& edgeValue : edges) {
+                    const auto edge = edgeValue.toMap();
+                    for (const auto* key : {"fromX", "toX"}) {
+                        const auto coordinate = edge.value(QLatin1StringView{key}).toReal();
+                        QVERIFY(coordinate >= 0);
+                        QVERIFY(coordinate <= model.graphWidth());
+                    }
+                    for (const auto* key : {"fromY", "toY"}) {
+                        const auto coordinate = edge.value(QLatin1StringView{key}).toReal();
+                        QVERIFY(coordinate >= 0);
+                        QVERIFY(coordinate <= model.graphHeight());
+                    }
+                }
+
+                const auto targetCenter = model.nodeCenter(3);
+                QVERIFY(qAbs(targetCenter.x() - model.graphWidth() / 2.0) < 1.0);
+                QVERIFY(qAbs(targetCenter.y() - model.graphHeight() / 2.0) < 1.0);
+                const auto firstSvg = model.svg();
+
+                model.buildFromRelations(QStringLiteral("202500500"), relations);
+                model.setViewportSize(viewport.width(), viewport.height());
+                QCOMPARE(model.svg(), firstSvg);
+                for (int row = 0; row < model.rowCount(); ++row) {
+                    QCOMPARE(model.nodeCenter(row), firstLayout[row]);
+                }
+            };
+
+            verifyLayout(QSizeF{1'400, 700}, QStringLiteral("horizontal"));
+            verifyLayout(QSizeF{640, 900}, QStringLiteral("vertical"));
+        }
+
         void derivadas_graph_model_invalid_index_returns_empty() {
             ssa::presentation::DerivadasGraphModel model;
             model.buildFromRelations(QStringLiteral("202500001"),
@@ -1357,6 +1434,62 @@ namespace {
             QTRY_COMPARE_WITH_TIMEOUT(succeededCount, 3, 1000);
             QTRY_VERIFY_WITH_TIMEOUT(!coordinator.hasActiveOperations(), 1000);
             QCOMPARE(repository->requests().size(), std::size_t{3});
+        }
+
+        void page_query_fingerprint_change_does_not_reuse_stale_prefetch() {
+            auto repository = std::make_shared<FakeRepository>(
+                FakeRepositoryConfig{.totalRows = std::size_t{25}});
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::PageQueryCoordinator coordinator(service);
+            int succeededCount = 0;
+            connect(&coordinator, &ssa::presentation::PageQueryCoordinator::succeeded, this,
+                    [&](const ssa::presentation::PageQueryResult&,
+                        const ssa::domain::SsaPageRequest&) { ++succeededCount; });
+
+            ssa::domain::SsaPageRequest initial;
+            initial.pageSize = 10;
+            coordinator.run(initial);
+            QTRY_COMPARE_WITH_TIMEOUT(succeededCount, 1, 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(!coordinator.hasActiveOperations(), 1000);
+            QCOMPARE(repository->requests().size(), std::size_t{3});
+
+            auto changed = initial;
+            changed.pageIndex = 1;
+            changed.searchText = "different fingerprint";
+            coordinator.run(changed);
+
+            QTRY_COMPARE_WITH_TIMEOUT(succeededCount, 2, 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(!coordinator.hasActiveOperations(), 1000);
+            QVERIFY(repository->requests().size() > std::size_t{3});
+            QCOMPARE(repository->requests().at(3), changed);
+        }
+
+        void page_query_generation_invalidation_does_not_reuse_stale_prefetch() {
+            auto repository = std::make_shared<FakeRepository>(
+                FakeRepositoryConfig{.totalRows = std::size_t{25}});
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::PageQueryCoordinator coordinator(service);
+            int succeededCount = 0;
+            connect(&coordinator, &ssa::presentation::PageQueryCoordinator::succeeded, this,
+                    [&](const ssa::presentation::PageQueryResult&,
+                        const ssa::domain::SsaPageRequest&) { ++succeededCount; });
+
+            ssa::domain::SsaPageRequest initial;
+            initial.pageSize = 10;
+            coordinator.run(initial);
+            QTRY_COMPARE_WITH_TIMEOUT(succeededCount, 1, 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(!coordinator.hasActiveOperations(), 1000);
+            QCOMPARE(repository->requests().size(), std::size_t{3});
+
+            coordinator.invalidateTotalRowsAll();
+            auto secondPage = initial;
+            secondPage.pageIndex = 1;
+            coordinator.run(secondPage);
+
+            QTRY_COMPARE_WITH_TIMEOUT(succeededCount, 2, 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(!coordinator.hasActiveOperations(), 1000);
+            QVERIFY(repository->requests().size() > std::size_t{3});
+            QCOMPARE(repository->requests().at(3), secondPage);
         }
 
         void page_query_cancel_during_success_suppresses_prefetch() {

@@ -1,6 +1,7 @@
 #include "domain/SsaTypes.h"
 #include "ports/ISsaRepository.h"
 #include "presentation/AdvancedDerivationFilterViewModel.h"
+#include "presentation/DerivadasGraphModel.h"
 #include "presentation/FilterPanelAdvancedViewModel.h"
 #include "presentation/FilterPanelViewModel.h"
 #include "presentation/SsaColumnDisplayCatalog.h"
@@ -10,6 +11,7 @@
 #include <QColor>
 #include <QDir>
 #include <QFileInfo>
+#include <QImage>
 #include <QJSValue>
 #include <QObject>
 #include <QQmlComponent>
@@ -17,6 +19,8 @@
 #include <QQmlEngine>
 #include <QQuickItem>
 #include <QQuickWindow>
+#include <QSignalSpy>
+#include <QTemporaryDir>
 #include <QTest>
 #include <QtQml/qqml.h>
 
@@ -1086,6 +1090,69 @@ namespace {
 
             QTRY_COMPARE_WITH_TIMEOUT(harness->property("clickCount").toInt(), 1, 1000);
             QCOMPARE(harness->property("clickedSsa").toString(), QString("202600002"));
+        }
+
+        void derivation_graph_exports_a_decodable_png_from_the_real_model() {
+            ssa::presentation::DerivadasGraphModel graphModel;
+            graphModel.buildFromRelations(
+                QStringLiteral("202600001"),
+                {QVariantMap{{"role", "current"}, {"ssa", "202600001"}},
+                 QVariantMap{{"role", "child"}, {"ssa", "202600002"}, {"status", "STE"}}});
+
+            QQmlEngine engine;
+            QQmlComponent component(&engine);
+            component.setData(R"QML(
+                import QtQuick
+                import QtQuick.Controls
+                import SsaConsultaRapida
+
+                Item {
+                    required property var testGraphModel
+                    width: 520
+                    height: 260
+
+                    DerivadasGraph {
+                        objectName: "pngGraph"
+                        anchors.fill: parent
+                        graphModel: parent.testGraphModel
+                    }
+                }
+            )QML",
+                              QUrl(QStringLiteral("inmemory:/GraphPngHarness.qml")));
+            QTRY_VERIFY_WITH_TIMEOUT(component.status() != QQmlComponent::Loading, 1000);
+            QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+
+            QVariantMap initialProperties;
+            initialProperties.insert(QStringLiteral("testGraphModel"),
+                                     QVariant::fromValue<QObject*>(&graphModel));
+            std::unique_ptr<QObject> harness(
+                component.createWithInitialProperties(initialProperties));
+            QVERIFY2(harness != nullptr, qPrintable(component.errorString()));
+
+            QQuickWindow window;
+            window.setGeometry(0, 0, 520, 260);
+            auto* harnessItem = qobject_cast<QQuickItem*>(harness.get());
+            QVERIFY(harnessItem != nullptr);
+            harnessItem->setParentItem(window.contentItem());
+            window.show();
+            QTRY_VERIFY_WITH_TIMEOUT(window.isExposed(), 1000);
+
+            auto* graph = harness->findChild<QQuickItem*>(QStringLiteral("pngGraph"));
+            QVERIFY(graph != nullptr);
+            QTemporaryDir outputDirectory;
+            QVERIFY(outputDirectory.isValid());
+            const auto outputPath = outputDirectory.filePath(QStringLiteral("graph.png"));
+            QSignalSpy exportSpy(graph, SIGNAL(exportFinished(bool)));
+            const QVariant outputUrl = QUrl::fromLocalFile(outputPath);
+
+            QVERIFY(QMetaObject::invokeMethod(graph, "savePng", Q_ARG(QVariant, outputUrl)));
+
+            QTRY_COMPARE_WITH_TIMEOUT(exportSpy.count(), 1, 3000);
+            QCOMPARE(exportSpy.at(0).at(0).toBool(), true);
+            const QImage image(outputPath);
+            QVERIFY(!image.isNull());
+            QVERIFY(image.width() > 0);
+            QVERIFY(image.height() > 0);
         }
 
         void filter_summary_distributes_surplus_and_preserves_natural_widths() {

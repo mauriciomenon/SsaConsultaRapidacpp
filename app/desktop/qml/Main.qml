@@ -56,6 +56,7 @@ ApplicationWindow {
                 onTriggered: fileDialogs.openDatabase()
             }
             MenuItem {
+                objectName: "exportResultsMenuItem"
                 text: "Exportar resultados"
                 onTriggered: fileDialogs.openExportResults()
             }
@@ -98,17 +99,20 @@ ApplicationWindow {
                 onTriggered: fileDialogs.openImportDerivations()
             }
             MenuItem {
+                objectName: "rescanIncrementalMenuItem"
                 text: "Atualizar dados"
                 enabled: !root.vm.actions.workflows.running
                 onTriggered: root.vm.actions.workflows.rescanIncremental()
             }
             MenuItem {
+                objectName: "rescanFullMenuItem"
                 text: "Reescaneamento completo"
                 enabled: !root.vm.actions.workflows.running
                 onTriggered: root.vm.actions.workflows.rescanFull()
             }
             MenuSeparator {}
             MenuItem {
+                objectName: "cleanOrphanDerivationsMenuItem"
                 text: "Limpar referencias orfas"
                 enabled: !root.vm.actions.workflows.running
                 onTriggered: root.vm.actions.workflows.cleanOrphanDerivations()
@@ -177,6 +181,7 @@ ApplicationWindow {
             }
             MenuSeparator {}
             MenuItem {
+                objectName: "applyFiltersMenuItem"
                 text: "Aplicar filtros"
                 onTriggered: root.vm.browse.apply()
             }
@@ -189,15 +194,18 @@ ApplicationWindow {
                 onTriggered: fileDialogs.openExportResults()
             }
             MenuItem {
+                objectName: "exportFiltersMenuItem"
                 text: "Exportar filtros"
                 onTriggered: fileDialogs.openExportFilters()
             }
             MenuItem {
+                objectName: "importFiltersMenuItem"
                 text: "Importar filtros"
                 onTriggered: fileDialogs.openImportFilters()
             }
             MenuSeparator {}
             MenuItem {
+                objectName: "savePreferencesMenuItem"
                 text: "Salvar preferencias"
                 onTriggered: root.vm.preferenceFlow.savePreferences()
             }
@@ -211,6 +219,7 @@ ApplicationWindow {
                 onTriggered: preferencesDialog.open()
             }
             MenuItem {
+                objectName: "toggleDetailsMenuItem"
                 text: "Ocultar detalhes"
                 checkable: true
                 checked: root.vm.ui.detailsVisible
@@ -243,12 +252,14 @@ ApplicationWindow {
                 onTriggered: root.vm.actions.workflows.cleanOrphanDerivations()
             }
             MenuItem {
+                objectName: "compactDatabaseMenuItem"
                 text: "Compactar DB"
                 enabled: !root.vm.actions.workflows.running
                 onTriggered: root.vm.actions.workflows.compactDatabase()
             }
             MenuSeparator {}
             MenuItem {
+                objectName: "cancelAllMenuItem"
                 text: "Cancelar consulta"
                 enabled: root.vm.browse.status.loading
                 onTriggered: root.vm.requestCancelAll()
@@ -263,6 +274,7 @@ ApplicationWindow {
                 onTriggered: root.openHelpDialog()
             }
             MenuItem {
+                objectName: "installationGuideMenuItem"
                 text: "Guia de instalacao"
                 enabled: !root.vm.actions.commands.running
                 onTriggered: root.vm.actions.commands.openInstallationGuide()

@@ -71,6 +71,7 @@ Rectangle {
             objectName: "copyCellAction"
             property string actionId: "copy_cell"
             text: "Copiar celula"
+            enabled: root.contextCellText.length > 0
             onTriggered: root.copyTextRequested(root.contextCellText)
         }
         MenuItem {
@@ -106,6 +107,7 @@ Rectangle {
             objectName: "openDetailsAction"
             property string actionId: "open_details"
             text: "Abrir tela de detalhes"
+            enabled: root.contextSsaNumber.length > 0
             onTriggered: root.detailsWindowRequested()
         }
         MenuItem {
