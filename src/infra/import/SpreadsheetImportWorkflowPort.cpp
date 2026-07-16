@@ -505,6 +505,18 @@ namespace ssa::infra::importing {
         if (!directoryStatus.rejectionReason.empty()) {
             return importDiscoveredFiles(directoryStatus, replaceAll, stopToken);
         }
+        std::error_code databaseDirectoryError;
+        const auto databaseDirectory = databasePath_.parent_path();
+        const auto databaseDirectoryStatus =
+            std::filesystem::status(databaseDirectory, databaseDirectoryError);
+        if (databaseDirectoryError || !std::filesystem::is_directory(databaseDirectoryStatus)) {
+            const auto diagnostic =
+                databaseDirectoryError
+                    ? "cannot access database target directory: " + databaseDirectoryError.message()
+                    : "database target path is not a directory";
+            return {ports::WorkflowStatus::Failed, "rescan database snapshot failed", false,
+                    diagnostic};
+        }
         QLockFile::LockError lockError = QLockFile::NoError;
         const auto importLock =
             acquireImportLocks(importLockPath_, databaseImportLockPath_, lockError);
