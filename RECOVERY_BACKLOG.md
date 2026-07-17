@@ -226,7 +226,10 @@ Matriz completa de acertos, adicoes, erros e ordem de execucao:
 - [RESOLVED-WT] [L-Q2] O finding ficou stale: `emptyFiles` nao existe no
   import atual e `failedFiles` e usado nos caminhos de erro, consolidacao,
   journal e resumo final. Nenhuma remocao de contador e necessaria.
-- [LOW] [L-Q3] null checks redundantes em chaves vindas do proprio catalogo (AdvancedTextFilterRowModelFactory, ColumnFilterViewModel).
+- [RESOLVED-WT] [L-Q3] O finding ficou stale: `AdvancedTextFilterRowModelFactory`
+  e `ColumnFilterViewModel` usam keys canonicas diretamente e nao mantem mais
+  lookup/null branch redundante. Validacao: busca direcionada sem ocorrencias;
+  suites focadas de filtros passaram nos slices correspondentes.
 - [RESOLVED] [L-Q4] `tokenOperatorForStorage` foi removida; o enum tipado e
   armazenado diretamente.
 - [PRODUCT] [L-A1] `SearchParser` preserva `-valor` como texto literal por
