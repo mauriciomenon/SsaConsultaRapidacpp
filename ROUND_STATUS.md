@@ -26,6 +26,8 @@ Ultima verificacao local: 2026-07-17
 - Ultimo slice: commit `e0b5401`, dois polls sincronos de `quickSector()`
   substituidos por `QCOMPARE`; o poll de `activeFilterEntries()` permaneceu
   por depender de timer.
+- Slice seguinte: commit `41ecf36`, dois polls sincronicos de `textFilter()`
+  removidos; os resumos de filtros continuam com polling por timer.
 
 ### Entregas locais do marco
 
@@ -55,6 +57,8 @@ Ultima verificacao local: 2026-07-17
   passaram em `2.96 s`; clang-format, Semgrep, detect-secrets e hooks de
   segredo passaram. Nenhum credito adicional foi atribuido ao denominador
   binario de 14 itens.
+- Validacao de `41ecf36`: build e CTest da mesma suite passaram `1/1` em
+  `5.74 s`; nenhuma mudanca de producao.
 
 ## Snapshot da v0.9.10 e reauditoria externa
 

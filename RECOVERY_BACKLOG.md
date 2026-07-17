@@ -23,6 +23,10 @@ Ultimo fechamento: commit `e0b5401`, build e CTest da suite de painel `1/1`
 passaram em `2.96 s`. O polling de `activeFilterEntries()` continua pendente
 por depender de timer; nao foi removido por inferencia.
 
+Fechamento seguinte: commit `41ecf36`, duas leituras sincronas de `textFilter()`
+foram convertidas para `QCOMPARE`; a suite passou `1/1` em `5.74 s`. O item
+amplo `TEST-DETERMINISM-DELTA` continua pendente e sem credito adicional.
+
 - [RESOLVED-WT] [WIDTHS-BY-KEY] O catalogo de presentation agora pareia cada
   largura default com sua key canonica. Os 85 valores foram preservados, o
   lookup nao depende mais da ordem do domain e o teste focado cobre todas as
