@@ -232,7 +232,11 @@ Matriz completa de acertos, adicoes, erros e ordem de execucao:
   alterar; nao quebrar busca de conteudo com hifen por inferencia.
 - [RESOLVED] [L-A2] A semana 53 agora e aceita somente em anos ISO longos,
   com cobertura para 2020 (valido) e 2021 (invalido).
-- [LOW] [L-A3] `LegacySpreadsheetConverter:117` `error` nao limpo apos `remove`.
+- [RESOLVED-WT] [L-A3] `LegacySpreadsheetConverter` agora diferencia erro real de
+  filesystem de output convertido ausente ou nao regular. O diagnostico nao
+  fica vazio quando `is_regular_file` retorna falso sem `error_code`; status,
+  cleanup e destino permanecem inalterados. Validacao: build de
+  `ssa_integration_tests` e casos 234-237, 4/4.
 - [RESOLVED] [L-P1] `columnFilters()` retorna `const&` e
   `ColumnFilterViewModel` nao copia mais o mapa ao atualizar linhas.
   `advancedFilters()` continua por valor porque sintetiza um DTO a partir do
