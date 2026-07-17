@@ -175,9 +175,10 @@ Matriz completa de acertos, adicoes, erros e ordem de execucao:
   `QFutureWatcher<void>` e estado compartilhado sincronizado apos o fix TSan.
   Auditar teardown separadamente, sem reabrir o finding de payload Qt ja fechado.
 
-- [LOW] [QT-ROLENAMES-CACHE] Medir e, se houver ganho comprovado, armazenar
-  `roleNames()` estavel por modelo para evitar reconstrucoes pequenas. Nao
-  alterar o contrato Qt nem adicionar cache sem evidencia de hot path.
+- [MEASURED-NO-CREDIT] [QT-ROLENAMES-CACHE] A busca encontrou cinco
+  implementacoes de `roleNames()` e apenas chamadas explicitas nos testes;
+  nenhum hot path de producao foi demonstrado. Cache permanece deferido, sem
+  credito, ate existir medicao de runtime que justifique custo de memoria.
 
 - [LOW] [MINIZ-CMAKE-DEPRECATION] O CMake do source cache do miniz declara
   compatibilidade anterior a 3.10 e gera warning em CMake recente. Nao editar

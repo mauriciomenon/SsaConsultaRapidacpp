@@ -63,6 +63,8 @@ Ultima verificacao local: 2026-07-17
   `5.74 s`; nenhuma mudanca de producao.
 - Validacao de `c95a757`: build e CTest passaram `1/1` em `2.88 s`; gates
   direcionados e hooks de segredo passaram.
+- Performance: `roleNames()` foi medido por busca estrutural; cinco modelos,
+  sem consumidor repetitivo de producao identificado. Cache nao foi adicionado.
 
 ## Snapshot da v0.9.10 e reauditoria externa
 
