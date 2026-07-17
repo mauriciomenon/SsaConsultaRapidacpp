@@ -221,12 +221,7 @@ namespace {
             ssa::presentation::DatabaseSwitchViewModel model(validator, launcher);
 
             model.openDatabase(QUrl::fromLocalFile(temporary.filePath("valid.db")));
-            QElapsedTimer completionTimer;
-            completionTimer.start();
-            while (!validator->validationCompleted.load() && completionTimer.elapsed() < 1000) {
-                QThread::msleep(1);
-            }
-            QVERIFY(validator->validationCompleted.load());
+            QTRY_VERIFY_WITH_TIMEOUT(validator->validationCompleted.load(), 1000);
             QVERIFY(model.running());
 
             model.cancel();
@@ -246,12 +241,7 @@ namespace {
             ssa::presentation::DatabaseSwitchViewModel model(validator, launcher);
 
             model.openDatabase(QUrl::fromLocalFile(temporary.filePath("valid.db")));
-            QElapsedTimer completionTimer;
-            completionTimer.start();
-            while (!validator->validationCompleted.load() && completionTimer.elapsed() < 1000) {
-                QThread::msleep(1);
-            }
-            QVERIFY(validator->validationCompleted.load());
+            QTRY_VERIFY_WITH_TIMEOUT(validator->validationCompleted.load(), 1000);
             QTest::ignoreMessage(QtWarningMsg, "Database validation failed after cancellation: "
                                                "late validation failure");
 
