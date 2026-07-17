@@ -8,18 +8,20 @@ Ultima verificacao local: 2026-07-17
 ## Marco P0 no working tree
 
 - Branch: `master`.
-- HEAD continua `d376431372648826d3ee9e1182ea5785a0d31aa0`; nenhum commit ou push foi
-  autorizado nesta rodada.
+- HEAD e `3f9d8509ff349bbd0a31f9f236f031f7f52f4e6b`; os slices pequenos desta
+  rodada estao commitados e publicados em `origin` e `bitbucket`.
 - O working tree implementa localmente os slices de filtros/distinct e
   logging/UTF-8, alem das expectativas smoke canonicas correspondentes.
 - Plano original: `89.0/100 -> 99.0/100`. O P0 pertence a divida nova; 3.9
   pontos vieram dos menus, 0.8 dos popups, 1.6 do grafo e 3.7 do benchmark
   isolado de prefetch. Profiling valido permanece pendente por 1.0 ponto.
-- Divida nova: `0.0/100 -> 78.6/100`, usando aceite binario dos 14 itens
-  enumerados no handoff; 11 itens estao aceitos localmente.
+- Divida nova: `0.0/100 -> 71.4/100`, usando aceite binario dos 14 itens
+  enumerados no handoff; 10 itens estao aceitos localmente. O polling
+  deterministico foi validado como melhoria de teste, sem credito adicional
+  fora desse denominador.
 - Backlog legado: `0.0/100 -> 0.0/100`; nenhum item legado recebeu credito.
-- Estado separado: implementado no working tree e validado localmente; nao
-  commitado no HEAD e sem prova externa nova.
+- Estado separado: implementado e commitado no HEAD; validado localmente nesta
+  rodada; prova externa limitada aos refs GitLab e Bitbucket.
 
 ### Entregas locais do marco
 

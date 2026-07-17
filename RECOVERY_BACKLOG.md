@@ -15,7 +15,9 @@
 4. Revalidar em plataformas reais handles, URL UNC, PowerShell e packaging.
 
 Contadores apos os slices pequenos: plano original `99.0/100`, divida nova
-`78.6/100` (11 de 14 itens aceitos) e backlog legado `0.0/100`.
+`71.4/100` (10 de 14 itens aceitos) e backlog legado `0.0/100`. O polling
+deterministico foi validado como melhoria de teste, mas nao altera o
+denominador binario dos 14 itens.
 
 - [RESOLVED-WT] [WIDTHS-BY-KEY] O catalogo de presentation agora pareia cada
   largura default com sua key canonica. Os 85 valores foram preservados, o
@@ -115,7 +117,7 @@ Matriz completa de acertos, adicoes, erros e ordem de execucao:
   diretamente as keys de `orderedFilterColumnKeys()`, removendo lookup e null
   branch redundantes sem alterar ordem, labels ou valores iniciais.
 
-- [RESOLVED-WT] [FILTER-PANEL-POLLING] O teste de quick sector agora usa
+- [VALIDATED-NO-CREDIT] [FILTER-PANEL-POLLING] O teste de quick sector agora usa
   `QCOMPARE` direto porque o fluxo e sincrono no mesmo thread. O `QTRY` e o
   timeout fixo foram removidos sem alterar o contrato de producao.
 
