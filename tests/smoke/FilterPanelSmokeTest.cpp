@@ -1124,7 +1124,7 @@ namespace {
 
             text->setTextFilter("setor_executor", "=IEE3");
 
-            QTRY_COMPARE_WITH_TIMEOUT(sector->quickSector(), QString("IEE3"), 1000);
+            QCOMPARE(sector->quickSector(), QString("IEE3"));
             QCOMPARE(filters.quickSector(), QString(""));
             QVERIFY(sector->selectorIndex() > 0);
 
