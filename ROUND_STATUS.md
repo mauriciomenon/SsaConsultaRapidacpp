@@ -8,7 +8,7 @@ Ultima verificacao local: 2026-07-17
 ## Marco P0 no working tree
 
 - Branch: `master`.
-- HEAD local e `627a075`; Bitbucket foi confirmado nesse hash. GitLab `origin`
+- HEAD local e `55c6bd8`; Bitbucket foi confirmado nesse hash. GitLab `origin`
   nao esta comprovado porque a autenticacao OAuth falha com `invalid_grant`.
 - O working tree implementa localmente os slices de filtros/distinct e
   logging/UTF-8, alem das expectativas smoke canonicas correspondentes.
@@ -31,6 +31,9 @@ Ultima verificacao local: 2026-07-17
 - Slice estrutural XLSX: commit `627a075`, streaming, mapping, conflitos e
   escrita por chunk extraidos para `ChunkedWorkbookImportResult`; transacao,
   catches, rollback, journal e consolidacao permaneceram no orquestrador.
+- Slice estrutural stager: commit `55c6bd8`, discovery/staging/cleanup ficaram
+  em `ImportFileStager`, enquanto plan e moves ficaram em
+  `ImportFileConsolidator`. O arquivo do stager caiu de 1364 para 634 linhas.
 
 ### Entregas locais do marco
 
@@ -79,6 +82,10 @@ Ultima verificacao local: 2026-07-17
 - Gate do hub de importacao: CTest sequencial completo `453/453` passou em
   `64.05 s`. O novo teste de falha tardia preservou `conflicts=1` no resumo e
   confirmou rollback integral sem tabela publicada.
+- Gate do stager hub: 11 contratos focados passaram `11/11` em `0.36 s`; o
+  CTest sequencial completo passou `453/453` em `65.75 s`. O Sol xhigh e o
+  Terra high aceitaram o split sem finding funcional. Windows/UNC real segue
+  como prova externa pendente, portanto sem credito binario adicional.
 
 ## Snapshot da v0.9.10 e reauditoria externa
 
@@ -202,6 +209,9 @@ HEAD `d376431`; nenhuma sugestao foi aceita apenas pela severidade alegada.
   e adaptacao SAM, mais streaming/mapping/escrita XLSX por chunks, agora usam
   resultados internos tipados. Sessao SQLite, catches, rollback, journal e
   consolidacao continuam no orquestrador para preservar atomicidade.
+- `IMPORT-STAGER-HUB` foi separado localmente em `55c6bd8`: staging pode mutar
+  somente copias owned pre-commit; apenas o consolidator move o corpus fonte
+  post-commit. As validacoes de path ficam compartilhadas sem duplicacao.
 - `ImportFileStager.cpp` possui 1364 linhas. Antes de qualquer split, separar a
   matriz de discovery/staging da consolidacao por um desenho com invariantes de
   path, identidade e cancelamento.

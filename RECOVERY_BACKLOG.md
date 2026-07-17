@@ -8,8 +8,8 @@
    isolado ja estao resolvidos no working tree. `xctrace` nao possui `Time
    Profiler` nesta instalacao e `CPU Counters` falhou com `DTServiceHub` e
    politica do kernel; nenhum credito de profiling foi atribuido.
-2. Decompor `ImportFileStager` somente depois de separar discovery/staging
-   read-only da consolidacao mutavel com invariantes comprovadas.
+2. Validar `ImportFileConsolidator` em Windows/UNC real; o split local entre
+   staging owned pre-commit e consolidacao post-commit ja esta implementado.
 3. Canonizar `clang-tidy` macOS com sysroot e reproduzir IDs das regras Semgrep
    antes de dividir fixtures.
 4. Revalidar em plataformas reais handles, URL UNC, PowerShell e packaging.
@@ -38,6 +38,11 @@ Fechamento do workflow hub: commits `14485a9` e `627a075` extraem adaptacao
 SAM e importacao XLSX por chunks para resultados internos tipados. O CTest
 sequencial passou `453/453` em `64.05 s`; Bitbucket foi confirmado em
 `627a075` e GitLab continua bloqueado por OAuth `invalid_grant`.
+
+Fechamento local do stager hub: commit `55c6bd8` reduz
+`ImportFileStager.cpp` de 1364 para 634 linhas e concentra moves em
+`ImportFileConsolidator.cpp`. Gate focado `11/11` em `0.36 s` e suite completa
+`453/453` em `65.75 s`. Bitbucket confirmado; Windows/UNC real ainda pendente.
 
 Determinismo: a tentativa `7ec88ae` foi rejeitada: `QTRY` bombeou o event loop
 e publicou a falha tardia antes de `cancel()`, quebrando a janela preterminal.
@@ -100,12 +105,11 @@ Matriz completa de acertos, adicoes, erros e ordem de execucao:
   O reviewer Sol confirmou a preservacao de contadores parciais em falha
   tardia, e o CTest sequencial passou `453/453` em `64.05 s`.
 
-- [HIGH-DESIGN] [IMPORT-STAGER-HUB] `ImportFileStager.cpp` tem 1364 linhas e
-  mistura discovery, staging, inventory, plano e consolidacao. Mapear funcoes e
-  dependencias antes do split. Uma fronteira aceitavel separa discovery/staging
-  read-only da consolidacao mutavel sem duplicar validacao de path/identidade.
-  Aceite: contratos atuais de symlink, alias, source identity, cancelamento e
-  retomada continuam verdes em POSIX e Windows.
+- [IMPLEMENTED-LOCAL] [IMPORT-STAGER-HUB] O commit `55c6bd8` separa staging
+  owned pre-commit de consolidacao mutavel post-commit. `ImportPathValidation`
+  compartilha as validacoes de root/filename, e identidade continua em
+  `CancelableFileCopy`. POSIX passou 11/11 focados e 453/453 completos. Falta
+  executar os mesmos contratos em Windows/UNC real para aceite binario.
 
 - [RESOLVED-WT] [COLUMN-WIDTH-KEY-PAIRING] As 85 entradas de `kDefaultWidths`
   agora sao pares `{key, width}` em presentation. O lookup e o teste focado
