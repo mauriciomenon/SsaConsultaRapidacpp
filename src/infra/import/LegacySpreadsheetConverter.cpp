@@ -151,7 +151,8 @@ namespace ssa::infra::importing {
         const auto generated =
             generatedXlsxPath(source, qt::toFileSystemPath(conversionDirectory.path()));
         if (!std::filesystem::is_regular_file(generated, error) || error) {
-            auto diagnostic = error.message();
+            auto diagnostic =
+                error ? error.message() : "converted xls output is not a regular file";
             const auto cleanupDiagnostic = cleanupConversionDirectory();
             if (!cleanupDiagnostic.empty()) {
                 diagnostic += diagnostic.empty() ? cleanupDiagnostic : "; " + cleanupDiagnostic;
