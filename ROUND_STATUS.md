@@ -67,6 +67,9 @@ Ultima verificacao local: 2026-07-17
   sem consumidor repetitivo de producao identificado. Cache nao foi adicionado.
 - Corretude de importacao: caso adversarial com filename de 4096 digitos e
   timestamp valido passou `1/1` em `0.02 s`; sem credito de performance.
+- Gate amplo apos os slices: CTest sequencial completo confirmado em duas
+  etapas, testes `1-433` aprovados e testes `434-452` aprovados `19/19` em
+  `28.78 s`; total operacional `452/452`.
 
 ## Snapshot da v0.9.10 e reauditoria externa
 

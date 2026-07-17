@@ -31,6 +31,9 @@ Fechamento atual: commit `c95a757`, a leitura sincronica de `sector->quickSector
 foi convertida para `QCOMPARE`; a suite passou `1/1` em `2.88 s`. Polls de
 resumos baseados em timer permanecem preservados.
 
+Gate amplo: CTest sequencial foi confirmado em duas etapas, `1-433` aprovados
+na primeira e `434-452` aprovados `19/19` em `28.78 s`; total `452/452`.
+
 - [RESOLVED-WT] [WIDTHS-BY-KEY] O catalogo de presentation agora pareia cada
   largura default com sua key canonica. Os 85 valores foram preservados, o
   lookup nao depende mais da ordem do domain e o teste focado cobre todas as
