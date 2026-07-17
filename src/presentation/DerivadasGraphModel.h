@@ -4,6 +4,7 @@
 #include <QPointF>
 #include <QString>
 #include <QStringList>
+#include <QUrl>
 #include <QVariantList>
 
 #include <optional>
@@ -22,6 +23,8 @@ namespace ssa::presentation {
         Q_PROPERTY(QString svg READ svg NOTIFY graphChanged)
         Q_PROPERTY(qreal graphWidth READ graphWidth NOTIFY graphChanged)
         Q_PROPERTY(qreal graphHeight READ graphHeight NOTIFY graphChanged)
+        Q_PROPERTY(qreal nodeWidth READ nodeWidth CONSTANT)
+        Q_PROPERTY(qreal nodeHeight READ nodeHeight CONSTANT)
         Q_PROPERTY(QString orientation READ orientation NOTIFY graphChanged)
         Q_PROPERTY(int nodeCount READ rowCount NOTIFY graphChanged)
 
@@ -39,7 +42,10 @@ namespace ssa::presentation {
         [[nodiscard]] QString svg() const;
         [[nodiscard]] qreal graphWidth() const;
         [[nodiscard]] qreal graphHeight() const;
+        [[nodiscard]] qreal nodeWidth() const;
+        [[nodiscard]] qreal nodeHeight() const;
         [[nodiscard]] QString orientation() const;
+        Q_INVOKABLE [[nodiscard]] QString localFilePath(const QUrl& url) const;
 
         // Edge list for the QML Canvas to draw: each entry is {from, to, dashed}.
         Q_INVOKABLE [[nodiscard]] QVariantList edges() const;

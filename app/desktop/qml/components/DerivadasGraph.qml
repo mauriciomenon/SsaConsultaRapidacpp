@@ -67,25 +67,21 @@ Flickable {
 
     Component.onCompleted: root.updateGraphViewport()
 
-    function localPathFromUrl(fileUrl) {
-        let path = decodeURIComponent(String(fileUrl));
-        if (path.startsWith("file://")) {
-            path = path.substring(7);
-        }
-        if (Qt.platform.os === "windows" && path.length > 2 && path[0] === "/" && path[2] === ":") {
-            path = path.substring(1);
-        }
-        return path;
-    }
-
     function savePng(fileUrl) {
         if (!graphModel || graphModel.nodeCount === 0) {
             root.exportFinished(false);
             return;
         }
-        canvas.grabToImage(result => {
-            root.exportFinished(result.saveToFile(root.localPathFromUrl(fileUrl)));
+        const localPath = graphModel.localFilePath(fileUrl);
+        if (localPath.length === 0) {
+            root.exportFinished(false);
+            return;
+        }
+        const grabbed = canvas.grabToImage(result => {
+            root.exportFinished(result.saveToFile(localPath));
         });
+        if (!grabbed)
+            root.exportFinished(false);
     }
 
     function roleLabel(role) {
@@ -154,8 +150,8 @@ Flickable {
         width: root.contentWidth
         height: root.contentHeight
 
-        readonly property real nodeWidth: 118
-        readonly property real nodeHeight: 48
+        readonly property real nodeWidth: root.graphModel ? root.graphModel.nodeWidth : 0
+        readonly property real nodeHeight: root.graphModel ? root.graphModel.nodeHeight : 0
 
         function nodeAt(pointX, pointY) {
             const model = root.graphModel;

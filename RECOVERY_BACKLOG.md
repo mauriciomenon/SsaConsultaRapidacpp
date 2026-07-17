@@ -4,14 +4,151 @@
 
 ### Sequencia ativa preservada
 
-1. Triar o feedback de Cursor GLM e OpenCode sem aplicar sugestoes por autoridade;
-   registrar evidencia, decisao e destino em `ROUND_STATUS.md` e neste backlog.
-2. Completar pointer real por familia dos menus ainda marcados como parciais.
-3. Fechar as pendencias multiplataforma de geometria/exportacao do grafo.
-4. Completar instrumentacao isolada de CPU/idle do prefetch e reparar os gates
-   `clang-tidy`/`.qmltypes` antes de trata-los como validacao real.
-5. Desenhar a mitigacao multiplataforma da janela TOCTOU de diretorio da
-   consolidacao antes de alterar ownership, handles ou syscalls.
+1. Completar profiling valido do prefetch; harness, 30 amostras e relatorio
+   isolado ja estao resolvidos no working tree. `xctrace` nao possui `Time
+   Profiler` nesta instalacao e `CPU Counters` falhou com `DTServiceHub` e
+   politica do kernel; nenhum credito de profiling foi atribuido.
+2. Apresentar desenho de decomposicao dos dois hubs de importacao e executar
+   somente fronteiras com responsabilidade comprovada.
+3. Canonizar `clang-tidy` macOS com sysroot e reproduzir IDs das regras Semgrep
+   antes de dividir fixtures.
+4. Revalidar em plataformas reais handles, URL UNC, PowerShell e packaging.
+
+Contadores apos os slices pequenos: plano original `99.0/100`, divida nova
+`50.0/100` (7 de 14 itens aceitos) e backlog legado `0.0/100`.
+
+- [RESOLVED-WT] [WIDTHS-BY-KEY] O catalogo de presentation agora pareia cada
+  largura default com sua key canonica. Os 85 valores foram preservados, o
+  lookup nao depende mais da ordem do domain e o teste focado cobre todas as
+  entradas e sentinelas.
+
+## Reauditoria Cursor GLM e OpenCode (2026-07-17)
+
+Matriz completa de acertos, adicoes, erros e ordem de execucao:
+`docs/plans/2026-07-17-v0.9.10-audit-handoff.md`.
+
+- [RESOLVED-WT-P0] [FILTER-DIFFERENT-SEMANTICS] `TextFilterToken` chamava o operador de
+  `Different` e serializa `!valor`, mas `SearchParser` compila esse token como
+  `NOT LIKE '%VALOR%'`. O not-equals exato ja existe como `!=valor`. Corrigir a
+  fronteira de serializacao ou parsing sem mudar a negacao da busca geral.
+  Aceite: um dataset com `ADM`, `PRE-ADM` e `APV` deve provar que Different
+  remove apenas `ADM`, enquanto not-contains continua removendo ambos os textos
+  que contem `ADM`. Arquivos previstos: `src/domain/TextFilterToken.cpp`,
+  `tests/unit/TextFilterTokenTests.cpp`, `tests/unit/SearchParserTests.cpp` e
+  `tests/integration/SqliteRepositoryTests.cpp`. O working tree serializa
+  `!=valor`, le `!valor` legado e passou contratos unitarios, SQLite e smoke.
+
+- [RESOLVED-WT-P0] [DISTINCT-ADVANCED-TEXT-FILTERS]
+  `SqlQueryBuilder::buildDistinctValues()` incorpora `columnFilters`, mas omite
+  `advancedFilters.textFilters`, apesar de `build()` combinar os dois mapas.
+  Definir explicitamente se o filtro da propria coluna alvo deve ser mantido ou
+  removido; os filtros das demais colunas devem restringir as opcoes exibidas.
+  Aceite: teste unitario da SQL/bindings e teste SQLite onde o filtro avancado
+  altera o conjunto distinct. Arquivos previstos: `src/query/SqlQueryBuilder.cpp`,
+  `tests/unit/SqlQueryBuilderTests.cpp` e `tests/integration/SqliteRepositoryTests.cpp`.
+  O working tree aplica os filtros avancados remanescentes; self-filter e
+  removido somente pelo request builder da coluna alvo.
+
+- [RESOLVED-WT-P0] [DESKTOP-LOG-HANDLER-IO-LOCK] `DesktopLogSink::messageHandler()` segurava
+  `handlerMutex_` ao chamar `record()`, que formata a mensagem, abre/grava/rotaciona
+  arquivo e agenda atualizacao do model. Isso serializa todos os produtores Qt
+  pela latencia de filesystem e amplia risco de reentrancia. O fix deve obter
+  ownership/lifetime estavel sob lock e fazer I/O fora dele, ou usar uma fila
+  estritamente limitada com shutdown deterministico. Aceite: append lento nao
+  bloqueia instalacao/desinstalacao indefinidamente, logging concorrente nao usa
+  sink destruido e falha de writer continua visivel sem recursao. Arquivos
+  previstos: `app/desktop/DesktopLogSink.{h,cpp}` e testes dedicados. O working
+  tree usa estado compartilhado, reserva in-flight e drain; I/O, invoke Qt e
+  handler anterior ficam fora do mutex global. Risco residual Minor: callback
+  ja despachado ao trampoline, mas ainda sem reserva, pode perder uma linha no
+  exato uninstall sem causar UAF ou deadlock.
+
+- [HIGH-DESIGN] [IMPORT-WORKFLOW-HUB] `SpreadsheetImportWorkflowPort.cpp` tem
+  1285 linhas e 23 catches. `importDiscoveredFiles()` concentra 454 linhas e 11
+  catches para mapping, chunks, sessao SQLite, resumo, journal e consolidacao.
+  Nao criar quatro interfaces por contagem de linhas. Primeiro extrair uma
+  operacao interna de importacao de workbook/chunks com resultado tipado; depois
+  avaliar uma operacao de publicacao/consolidacao que preserve journal-before-move.
+  Aceite: mesmas mensagens/status/resumos, nenhum movimento antes do journal,
+  cancelamento pre-commit faz rollback e interrupcao pos-commit fica retomavel.
+  Arquivos candidatos: workflow, writer/stager existentes e testes de integracao.
+
+- [HIGH-DESIGN] [IMPORT-STAGER-HUB] `ImportFileStager.cpp` tem 1364 linhas e
+  mistura discovery, staging, inventory, plano e consolidacao. Mapear funcoes e
+  dependencias antes do split. Uma fronteira aceitavel separa discovery/staging
+  read-only da consolidacao mutavel sem duplicar validacao de path/identidade.
+  Aceite: contratos atuais de symlink, alias, source identity, cancelamento e
+  retomada continuam verdes em POSIX e Windows.
+
+- [RESOLVED-WT] [COLUMN-WIDTH-KEY-PAIRING] As 85 entradas de `kDefaultWidths`
+  agora sao pares `{key, width}` em presentation. O lookup e o teste focado
+  nao dependem da posicao em `ColumnCatalog::all()`; nenhum layout foi alterado.
+
+- [RESOLVED-WT-P0] [ROTATING-LOG-UTF8-TRUNCATION] `RotatingLogWriter::append()` usava
+  `std::string::resize()` por bytes e pode cortar um code point UTF-8. Truncar na
+  ultima fronteira valida que caiba com o sufixo. Adicionar payload maior que o
+  cap com caracteres multibyte e validar UTF-8, tamanho e marcador. O finding de
+  rename ignorado foi refutado: a overload atual lanca em erro. O working tree
+  recua ate uma fronteira UTF-8 valida e cobre limite minimo, ASCII, corte
+  exato, code point de quatro bytes, tamanho e sufixo.
+
+- [MED-MEASURE] [SQLITE-IMPORT-NORMALIZE-FULL-SCAN]
+  `normalizeExistingSsaNumbers()` percorre todos os registros e referencias na
+  abertura da sessao incremental. Medir 250 mil linhas com banco ja normalizado,
+  CPU/RSS e cancelamento antes de escolher flag de schema, migracao ou
+  normalizacao incremental. Nao pular validacao de colisoes semanticamente.
+
+- [MED-MEASURE] [SQLITE-READ-CONNECTION-CHURN] O repository abre conexao,
+  busy/progress handlers e statements por read. Isso tambem isola threads e
+  tokens de cancelamento, portanto nao e bug comprovado. Medir cold/warm,
+  keystrokes concorrentes e RSS antes de propor conexao longeva ou pool.
+
+- [LOW] [SQL-DERIVADAS-BUILDER-BOUNDARY] `derivadasDiretas()` monta a consulta
+  no repository em vez de `SqlQueryBuilder`. Os nomes atuais sao literais ou
+  table name validado, portanto nao ha injection demonstrada. Mover a query para
+  a camada query em slice pequeno, com bindings e teste unitario.
+
+- [RESOLVED-WT] [BROWSE-SECTOR-CAST-INVARIANT] `BrowseRequestCoordinator` agora
+  usa a API publica `FilterPanelViewModel::excludeScaSesSte()` diretamente. O
+  include concreto, o cast e a dereferencia sem check foram removidos; o teste
+  focado de exclusao passou 1/1.
+
+- [RESOLVED-WT] [IMPORT-COMPLETENESS-LOOKUP] `completenessScore()` usa o
+  `value` ja iterado em vez de repetir `map::find` e alocacao de key. Os casos
+  de richness e metadata passaram 2/2.
+
+- [LOW-MEASURE] [IMPORT-FILENAME-TIMESTAMP-SCAN] O parser tenta todos os sufixos
+  iniciados por digito. O pior caso e quadratico, mas filename e limitado pelo
+  filesystem. Adicionar benchmark adversarial antes de substituir o parser.
+
+- [TEST-DEBT] [TEST-DETERMINISM-DELTA] Pendencias confirmadas, sem regressao
+  funcional demonstrada: `sleep_for(1050ms)` para backoff do resumo derivado;
+  polling SQLite de 2ms; duas esperas negativas de 400ms; varios waits de 1/5/10
+  ms; `/tmp` em casos que precisam ser separados entre path apenas simulado e
+  I/O real; contador static de diretorio em `SqliteDatabaseValidatorTests`; e
+  screenshot que retorna apenas false no timeout. Migrar por suite para clock
+  injetavel, `QTemporaryDir`, condition-based wait e diagnosticos QtTest, sem
+  alterar testes que modelam delay/cancelamento deliberadamente.
+
+### Findings refutados ou dependentes de produto
+
+- [REFUTED] [A6-1-DOMAIN-WIDTH] Nao existe `defaultWidth == 98` em
+  `DomainTests.cpp`; o valor citado esta em teste legitimo de round-trip de
+  preferences.
+- [REFUTED] [B22-4-1769] O corpus de 1769 XLSX e contrato de inventory, distinto
+  do limite de selecao externa.
+- [REFUTED] [CONDITIONAL-DEPTH-C1-C3] `positionalFamily` e
+  `removeActiveFilter` usam dispatch flat. Contagem de branches nao prova
+  lentidao; tabela/strategy adicionaria estrutura sem ganho demonstrado.
+- [REFUTED] [WORKFLOW-SERVICE-COUPLING] Presentation depender do facade
+  application `SsaWorkflowService` respeita a arquitetura. Outro port seria
+  duplicacao sem consumidor independente.
+- [PRODUCT] [SEARCH-PYTHON-N6-N8] C++ preserva hifen inicial literal e usa
+  SafePattern restrito para `~`, ambos cobertos por testes. Alinhar com negacao,
+  fallback mode ou regex Python exige decisao de produto e seguranca.
+- [OBSOLETE] [QFUTUREWATCHER-NONTRIVIAL] Os fluxos principais usam
+  `QFutureWatcher<void>` e estado compartilhado sincronizado apos o fix TSan.
+  Auditar teardown separadamente, sem reabrir o finding de payload Qt ja fechado.
 
 - [LOW] [QT-ROLENAMES-CACHE] Medir e, se houver ganho comprovado, armazenar
   `roleNames()` estavel por modelo para evitar reconstrucoes pequenas. Nao
@@ -36,17 +173,18 @@
 - [RESOLVED-v0.9.7] Importacao explicita de derivadas foi separada da limpeza
   de orfas e aceita CSV, TXT, TSV, XLSX e XLSM. XLS permanece sob selecao e
   preflight explicitos do conversor legado.
-- [PARTIAL] [GUI-MENUS] Copia de celula, linha, SSA e grafo, abertura SAM e de
-  detalhes, filtro/ocultacao de header, reset de sort e configuracao de colunas
-  possuem prova de efeito. Importacao, exportacao, manutencao e banco tambem
-  possuem contratos de handler; ainda falta um fluxo de pointer real dedicado
-  por familia de menu, alem do pointer real ja preservado no menu de celula.
-- [LOW] [IMPORT-CONSOLIDATION-TOCTOU] A consolidacao rejeita diretorios
-  symlink e usa rename atomico sem sobrescrita, mas existe uma janela entre
-  `symlink_status()` e o rename por pathname. Um escritor local adversarial
-  poderia trocar o diretorio nesse intervalo. O workspace operacional e
-  confiavel na 0.9.2; hardening futuro deve vincular a identidade do diretorio
-  validado a operacao de movimentacao por handle, com desenho multiplataforma.
+- [RESOLVED-WT] [GUI-MENUS] Cinco contratos dedicados usam pointer real e
+  provam efeito terminal: banco, exportacao, importacao XLSX, manutencao e
+  copia de grafo SVG pelo menu de celula. O target help/about passou offscreen;
+  nenhum QML de producao ou layout foi alterado. Falta commit/prova externa.
+- [RESOLVED-WT] [GUI-POPUP-RECONCILIATION] Smokes 1180x940 e 1580x940 passaram
+  2/2. As imagens mostram ancoragem, clamp lateral/vertical e viewport rolavel
+  dentro da janela. Nenhum defeito reproduzido justificou mudanca de layout.
+- [PARTIAL-EXTERNAL] [IMPORT-CONSOLIDATION-TOCTOU] A consolidacao rejeita
+  diretorios symlink e ja vincula validacao/movimento a handles de diretorio,
+  com rename no-replace ancorado em POSIX e handles em Windows. A implementacao
+  local esta presente; faltam prova externa Windows e revalidacao de plataforma,
+  sem reabrir schema, journal ou ownership.
 - [LOW] [SAM-LIMIT-200] Cada rodada REST solicita no maximo 200 registros por
   setor e a 0.9.7 rejeita exatamente 200 como potencial truncamento. Avaliar
   paginacao do `scrap_report` antes de liberar setores acima desse volume.
@@ -76,7 +214,9 @@
 - [LOW] [L-Q3] null checks redundantes em chaves vindas do proprio catalogo (AdvancedTextFilterRowModelFactory, ColumnFilterViewModel).
 - [RESOLVED] [L-Q4] `tokenOperatorForStorage` foi removida; o enum tipado e
   armazenado diretamente.
-- [LOW] [L-A1] `SearchParser` trata `-` inicial como negacao sem escape (nao busca conteudo com hifen inicial). Manter fora desta trilha.
+- [PRODUCT] [L-A1] `SearchParser` preserva `-valor` como texto literal por
+  contrato testado. Python usa hifen como negacao. Decidir paridade antes de
+  alterar; nao quebrar busca de conteudo com hifen por inferencia.
 - [RESOLVED] [L-A2] A semana 53 agora e aceita somente em anos ISO longos,
   com cobertura para 2020 (valido) e 2021 (invalido).
 - [LOW] [L-A3] `LegacySpreadsheetConverter:117` `error` nao limpo apos `remove`.
@@ -94,11 +234,18 @@
   normal e materializacao/temp B-tree no fallback. A remocao direcionada por
   pai reduziu o trigger delete de 100 linhas de 10.143/10.701 ms para
   0.255/0.309 ms em 30 amostras locais.
-- [PARTIAL] [PREFETCH-BENCHMARK] Testes provam prefetch das paginas 2 e 3,
-  cache hit, invalidacao por fingerprint/generation, cancelamento e latest-wins.
-  Trinta execucoes do runner ficaram em 73.572/74.577 ms e RSS maximo de
-  17661952 bytes, mas incluem startup QtTest. Falta harness interno para separar
-  latencia/idle/CPU e target compilado com QML debugging para qmlprofiler.
+- [RESOLVED-WT-PARTIAL] [PREFETCH-BENCHMARK] Testes provam prefetch das paginas
+  2 e 3, cache hit, invalidacao por fingerprint/generation, cancelamento e
+  latest-wins. O novo harness deterministico separa setup, foreground wall/CPU,
+  idle wall/CPU e RSS sem sleeps ou polling. O target CMake executou 30/30
+  amostras validas e gravou dados brutos e mediana/p95 em
+  `build/dev/prefetch-benchmark-30.json`. Credito aceito: harness `1.6`, 30
+  amostras `1.2` e relatorio `0.9`. Falta profiling valido por `1.0` ponto; as
+  metricas medem o overhead isolado do coordinator com port falso, nao SQLite
+  real. Tentativas de profiling com `sample`, `xctrace Time Profiler` e
+  `xctrace CPU Counters` nao produziram evidencia aceita: attach foi bloqueado
+  por permissao, o template Time Profiler nao existe e CPU Counters falhou no
+  `DTServiceHub`.
 - [RESOLVED-FAIL-CLOSED] [SUPERVISOR-N3] O reproducer agora passa pela chamada
   real de `retainFailedProcessTree()` com identidade de SO invalida. A falha
   marca `untrackedStopFailure`, `forceStopRequested` e `forceStopFailed` no
@@ -175,8 +322,11 @@
   compile database existente. Corrigir a geracao ou a invocacao do toolchain
   antes de considerar clang-tidy um gate real; falha da ferramenta nao equivale
   a aprovacao do codigo.
-- [RESOLVED] [ROUND-STATUS-STALE] `ROUND_STATUS.md` foi reconciliado para o
-  baseline `d34f92d`, suite 443/443, remotes ativos e preparacao da `v0.9.10`.
+- [RESOLVED-HISTORICAL] [ROUND-STATUS-STALE] `ROUND_STATUS.md` foi reconciliado
+  primeiro para o baseline intermediario `d34f92d`. Esse snapshot foi superado
+  pelo HEAD publicado `d376431` e pelo marco P0 no working tree; o status atual
+  distingue 443/443 no HEAD, o full 449/449 anterior ao benchmark e o smoke
+  novo 1/1. A matriz configurada atual tem 450 testes, ainda sem full 450/450.
 - [RESOLVED] [NINJA-CLEAN-CONCURRENCY] O erro `Directory not empty` ocorreu
   quando o smoke clean removeu `build/dev` durante uma compilacao Ninja. O
   script agora recusa a limpeza enquanto `.ninja_lock` existe e diagnostica
@@ -194,20 +344,17 @@
   do singleton C++ real `DesktopSmokeObjectNames` antes de carregar os dialogs.
   `ssa_qml_help_about_tests` passou offscreen sem os `ReferenceError` anteriores,
   preservando os `objectName` usados pelos contratos smoke.
-- [TOOLING] [QMLTYPES-MISSING] `qmllint -I build/dev` retorna sucesso, mas avisa
-  que `build/dev/SsaConsultaRapida/ssa_consulta_rapida.qmltypes` nao existe.
-  Sintaxe e imports basicos sao verificados, mas a analise de tipos do modulo e
-  parcial. Corrigir a geracao do `.qmltypes` antes de tratar qmllint como gate
-  sem ressalvas.
-- [LOW] [GRAPH-NODE-GEOMETRY-DUPLICATION] As dimensoes `118x48` dos nodes estao
-  duplicadas em `DerivadasGraphModel.cpp` e `DerivadasGraph.qml`. Hoje os valores
-  coincidem e os contratos de bounds passam, mas uma alteracao unilateral pode
-  quebrar hit-test, arestas e exportacao. Definir uma unica fonte de verdade em
-  slice de contrato visual, sem mover regra de layout para o dominio.
-- [LOW] [GRAPH-EXPORT-URL-CONVERSION] `DerivadasGraph.qml` converte `file://`
-  manualmente antes de `saveToFile`. O fluxo atual passa no macOS, mas variantes
-  de host e caminhos Windows/UNC nao tem prova multiplataforma. Isolar com casos
-  de URL reais antes de substituir o mecanismo; nao adicionar fallback silencioso.
+- [RESOLVED] [QMLTYPES-MISSING]
+  `build/dev/SsaConsultaRapida/ssa_consulta_rapida.qmltypes` existe e
+  `cmake --build --preset dev --target all_qmllint` passou. O finding antigo
+  estava obsoleto e nao exige patch.
+- [RESOLVED-WT] [GRAPH-NODE-GEOMETRY-DUPLICATION] `118x48` possui fonte unica
+  em `DerivadasGraphModel`; QML consome propriedades CONSTANT. Bounds, centros,
+  arestas, hit-test e SVG permanecem cobertos.
+- [PARTIAL-EXTERNAL] [GRAPH-EXPORT-URL-CONVERSION] O parsing manual `file://`
+  saiu do QML. A fronteira C++ aceita somente `QUrl::isLocalFile/toLocalFile`,
+  falha fechado para vazio/relativo/qrc/HTTP e cobre PNG Unicode no macOS.
+  Windows/UNC ainda exige plataforma real.
 - [RESOLVED] [GRAPH-TARGET-SELF-EDGE] O modelo ignorava a identidade do target
   ao classificar parents e children, permitindo papel incorreto e self-edge em
   entrada repetida. As duas passagens agora excluem o target e o teste focado

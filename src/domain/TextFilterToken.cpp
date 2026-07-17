@@ -11,9 +11,8 @@ namespace ssa::domain {
         constexpr char kDifferentPrefix = '!';
         constexpr char kEqualsPrefix = '=';
 
-        char tokenPrefix(const TextFilterOperator filterOperator) {
-            return filterOperator == TextFilterOperator::Different ? kDifferentPrefix
-                                                                   : kEqualsPrefix;
+        std::string_view tokenPrefix(const TextFilterOperator filterOperator) {
+            return filterOperator == TextFilterOperator::Different ? "!=" : "=";
         }
 
         TextFilterToken parseToken(const std::string_view rawToken) {
@@ -22,9 +21,13 @@ namespace ssa::domain {
                 return {};
             }
             auto filterOperator = TextFilterOperator::Equals;
-            if (token.front() == kDifferentPrefix || token.front() == kEqualsPrefix) {
-                filterOperator = token.front() == kDifferentPrefix ? TextFilterOperator::Different
-                                                                   : TextFilterOperator::Equals;
+            if (token.front() == kDifferentPrefix) {
+                filterOperator = TextFilterOperator::Different;
+                token.erase(token.begin());
+                if (!token.empty() && token.front() == kEqualsPrefix) {
+                    token.erase(token.begin());
+                }
+            } else if (token.front() == kEqualsPrefix) {
                 token.erase(token.begin());
             }
             return TextFilterToken{filterOperator, trimWhitespace(token)};
@@ -35,8 +38,8 @@ namespace ssa::domain {
                 return {};
             }
             std::string serialized;
-            serialized.reserve(token.value.size() + 1);
-            serialized.push_back(tokenPrefix(token.filterOperator));
+            serialized.reserve(token.value.size() + tokenPrefix(token.filterOperator).size());
+            serialized.append(tokenPrefix(token.filterOperator));
             serialized.append(token.value);
             return serialized;
         }

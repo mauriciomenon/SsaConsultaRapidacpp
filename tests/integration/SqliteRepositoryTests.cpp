@@ -358,6 +358,17 @@ TEST_CASE_METHOD(SqliteRepositoryFixture, "sqlite repository returns details and
 }
 
 TEST_CASE_METHOD(SqliteRepositoryFixture,
+                 "sqlite repository applies remaining advanced text filters to distinct values") {
+    ssa::domain::DistinctValuesRequest request;
+    request.columnKey = "situacao";
+    request.filter.advanced.textFilters = {{"responsavel_execucao", "=Mia"}};
+
+    const auto values = repository.distinctValues(request);
+
+    REQUIRE(values == std::vector<std::string>{"SES"});
+}
+
+TEST_CASE_METHOD(SqliteRepositoryFixture,
                  "sqlite repository measures trimmed maximum value length") {
     executeSql(path, R"SQL(
         UPDATE ssa_table

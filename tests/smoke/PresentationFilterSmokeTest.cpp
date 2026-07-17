@@ -1311,7 +1311,7 @@ namespace {
             QCOMPARE(text->updateFilterWithSelectedValue("situacao", "ADM"), true);
             QCOMPARE(text->updateFilterWithSelectedValue("situacao", "APV"), false);
 
-            QCOMPARE(text->textFilter("situacao"), QString("=APV,!ADM"));
+            QCOMPARE(text->textFilter("situacao"), QString("=APV,!=ADM"));
             QCOMPARE(text->operatorModeFor("situacao"), QString("mixed"));
 
             text->setOperatorMode("situacao", "different");
@@ -1322,11 +1322,11 @@ namespace {
 
             text->replaceWithOperatorValueLists("situacao", {}, {"APV", "ADM"});
 
-            QCOMPARE(text->textFilter("situacao"), QString("!APV,!ADM"));
+            QCOMPARE(text->textFilter("situacao"), QString("!=APV,!=ADM"));
 
             text->replaceWithOperatorValueLists("situacao", {"SCA", "SES"}, {"STE"});
 
-            QCOMPARE(text->textFilter("situacao"), QString("=SCA,=SES,!STE"));
+            QCOMPARE(text->textFilter("situacao"), QString("=SCA,=SES,!=STE"));
             QCOMPARE(text->operatorModeFor("situacao"), QString("mixed"));
         }
 
@@ -1629,7 +1629,7 @@ namespace {
 
             model.browse()->filters()->toggleStatusShortcut("APV");
 
-            QCOMPARE(text->textFilter("situacao"), QString("=STE,!APV"));
+            QCOMPARE(text->textFilter("situacao"), QString("=STE,!=APV"));
             QVERIFY(!model.browse()->filters()->statusShortcutSelected("APV"));
             QVERIFY(model.browse()->filters()->statusShortcutSelected("STE"));
             QCOMPARE(model.browse()->filters()->statusShortcutState("APV"), 2);

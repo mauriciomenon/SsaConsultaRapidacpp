@@ -10,7 +10,7 @@ TEST_CASE("text filter tokens are trimmed prefixed and deduplicated") {
     CHECK(tokens.ordered[0].value == "ASE");
     CHECK(tokens.ordered[1].filterOperator == ssa::domain::TextFilterOperator::Different);
     CHECK(tokens.ordered[1].value == "ADI");
-    CHECK(ssa::domain::joinTextFilterTokens(tokens) == "=ASE,!ADI");
+    CHECK(ssa::domain::joinTextFilterTokens(tokens) == "=ASE,!=ADI");
     CHECK(tokens.indexByValue.contains("ASE"));
     CHECK(tokens.indexByValue.contains("ADI"));
 }
@@ -25,7 +25,7 @@ TEST_CASE("text filter token builder applies selected operator") {
     CHECK_FALSE(
         ssa::domain::addTextFilterValue(tokens, "APV", ssa::domain::TextFilterOperator::Equals));
 
-    CHECK(ssa::domain::joinTextFilterTokens(tokens) == "=APV,!ADM");
+    CHECK(ssa::domain::joinTextFilterTokens(tokens) == "=APV,!=ADM");
 }
 
 TEST_CASE("text filter token builder replaces opposite operator for same value") {
@@ -35,7 +35,7 @@ TEST_CASE("text filter token builder replaces opposite operator for same value")
     CHECK(
         ssa::domain::addTextFilterValue(tokens, "APV", ssa::domain::TextFilterOperator::Different));
 
-    CHECK(ssa::domain::joinTextFilterTokens(tokens) == "!APV");
+    CHECK(ssa::domain::joinTextFilterTokens(tokens) == "!=APV");
     REQUIRE(tokens.ordered.size() == 1);
     CHECK(tokens.ordered[0].filterOperator == ssa::domain::TextFilterOperator::Different);
     CHECK(tokens.indexByValue.contains("APV"));
@@ -57,7 +57,7 @@ TEST_CASE("text filter value list replaces current expression") {
     const auto tokens = ssa::domain::makeTextFilterTokenSet(
         {"ASE", "ADI", "ASE"}, ssa::domain::TextFilterOperator::Different);
 
-    CHECK(ssa::domain::joinTextFilterTokens(tokens) == "!ASE,!ADI");
+    CHECK(ssa::domain::joinTextFilterTokens(tokens) == "!=ASE,!=ADI");
 }
 
 TEST_CASE("text filter mutation operator rejects derived mixed mode") {
@@ -75,4 +75,18 @@ TEST_CASE("text filter token comparison is structural") {
 
     CHECK(ssa::domain::sameTextFilterTokens(lhs, rhs));
     CHECK_FALSE(ssa::domain::sameTextFilterTokens(lhs, differentOrder));
+}
+
+TEST_CASE("text filter tokens accept legacy and canonical different prefixes") {
+    const auto legacy = ssa::domain::parseTextFilterTokens("!ADM");
+    const auto canonical = ssa::domain::parseTextFilterTokens("!=ADM");
+
+    REQUIRE(legacy.ordered.size() == 1);
+    REQUIRE(canonical.ordered.size() == 1);
+    CHECK(legacy.ordered[0].filterOperator == ssa::domain::TextFilterOperator::Different);
+    CHECK(canonical.ordered[0].filterOperator == ssa::domain::TextFilterOperator::Different);
+    CHECK(legacy.ordered[0].value == "ADM");
+    CHECK(canonical.ordered[0].value == "ADM");
+    CHECK(ssa::domain::joinTextFilterTokens(legacy) == "!=ADM");
+    CHECK(ssa::domain::joinTextFilterTokens(canonical) == "!=ADM");
 }

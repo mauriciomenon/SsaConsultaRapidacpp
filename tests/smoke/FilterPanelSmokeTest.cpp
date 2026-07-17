@@ -714,12 +714,12 @@ namespace {
 
                 QVERIFY2(!filters.columnFilters().contains(key.toStdString()),
                          qPrintable(QString("column filter was not removed for %1").arg(key)));
-                QCOMPARE(text->textFilter(key), QString("=IN,!OUT"));
+                QCOMPARE(text->textFilter(key), QString("=IN,!=OUT"));
                 QCOMPARE(text->operatorModeFor(key), QString("mixed"));
                 QCOMPARE(ssa::tests::advancedTextFilterCardState(*text, key)
                              .value("textFilter")
                              .toString(),
-                         QString("=IN,!OUT"));
+                         QString("=IN,!=OUT"));
 
                 QVERIFY2(columns->applyFilterFor(key, "NEW"),
                          qPrintable(QString("column filter apply failed for %1").arg(key)));

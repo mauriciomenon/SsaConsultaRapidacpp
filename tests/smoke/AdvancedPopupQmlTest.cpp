@@ -26,6 +26,7 @@
 #include <QtQml/qqml.h>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cmath>
 #include <memory>
@@ -1140,9 +1141,16 @@ namespace {
             QVERIFY(outputDirectory.isValid());
             const auto outputPath = outputDirectory.filePath(QStringLiteral("graph.png"));
             QSignalSpy exportSpy(graph, SIGNAL(exportFinished(bool)));
-            const QVariant outputUrl = QUrl::fromLocalFile(outputPath);
+            const QUrl outputUrl = QUrl::fromLocalFile(outputPath);
+            const QVariant outputValue = outputUrl;
 
-            QVERIFY(QMetaObject::invokeMethod(graph, "savePng", Q_ARG(QVariant, outputUrl)));
+            QString localPath;
+            QVERIFY(QMetaObject::invokeMethod(&graphModel, "localFilePath",
+                                              Q_RETURN_ARG(QString, localPath),
+                                              Q_ARG(QUrl, outputUrl)));
+            QCOMPARE(localPath, outputPath);
+
+            QVERIFY(QMetaObject::invokeMethod(graph, "savePng", Q_ARG(QVariant, outputValue)));
 
             QTRY_COMPARE_WITH_TIMEOUT(exportSpy.count(), 1, 3000);
             QCOMPARE(exportSpy.at(0).at(0).toBool(), true);
@@ -1150,6 +1158,37 @@ namespace {
             QVERIFY(!image.isNull());
             QVERIFY(image.width() > 0);
             QVERIFY(image.height() > 0);
+
+            const auto unicodePath =
+                outputDirectory.filePath(QStringLiteral("graph space \u00E7.png"));
+            const QVariant unicodeUrl = QUrl::fromLocalFile(unicodePath);
+            QVERIFY(QMetaObject::invokeMethod(graph, "savePng", Q_ARG(QVariant, unicodeUrl)));
+            QTRY_COMPARE_WITH_TIMEOUT(exportSpy.count(), 2, 3000);
+            QCOMPARE(exportSpy.at(1).at(0).toBool(), true);
+            QVERIFY(!QImage(unicodePath).isNull());
+
+            const std::array<QUrl, 4> nonLocalUrls = {
+                QUrl{},
+                QUrl(QStringLiteral("relative.png")),
+                QUrl(QStringLiteral("qrc:/graph.png")),
+                QUrl(QStringLiteral("https://example.invalid/graph.png")),
+            };
+            const QDir outputFiles(outputDirectory.path());
+            const auto filesBefore = outputFiles.entryList(QDir::Files, QDir::Name);
+            for (const auto& nonLocalUrl : nonLocalUrls) {
+                QVERIFY(QMetaObject::invokeMethod(&graphModel, "localFilePath",
+                                                  Q_RETURN_ARG(QString, localPath),
+                                                  Q_ARG(QUrl, nonLocalUrl)));
+                QVERIFY(localPath.isEmpty());
+
+                const int expectedSignals = exportSpy.count() + 1;
+                const QVariant nonLocalValue = nonLocalUrl;
+                QVERIFY(
+                    QMetaObject::invokeMethod(graph, "savePng", Q_ARG(QVariant, nonLocalValue)));
+                QTRY_COMPARE_WITH_TIMEOUT(exportSpy.count(), expectedSignals, 3000);
+                QCOMPARE(exportSpy.last().at(0).toBool(), false);
+                QCOMPARE(outputFiles.entryList(QDir::Files, QDir::Name), filesBefore);
+            }
         }
 
         void filter_summary_distributes_surplus_and_preserves_natural_widths() {

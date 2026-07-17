@@ -15,6 +15,7 @@
 #include "presentation/MainViewModel.h"
 #include "presentation/PageQueryCoordinator.h"
 #include "presentation/RecentLogModel.h"
+#include "presentation/SsaColumnDisplayCatalog.h"
 #include "presentation/SsaRecordValueFormatter.h"
 #include "presentation/StatusViewModel.h"
 #include "query/SsaQueryService.h"
@@ -865,6 +866,8 @@ namespace {
 
         void derivadas_graph_model_builds_target_ancestor_and_child_layout() {
             ssa::presentation::DerivadasGraphModel model;
+            QCOMPARE(model.nodeWidth(), 118.0);
+            QCOMPARE(model.nodeHeight(), 48.0);
             QVariantList relations;
             relations.push_back(
                 QVariantMap{{"kind", "Atual"}, {"ssa", "202500002"}, {"status", "APV"}});
@@ -1044,8 +1047,6 @@ namespace {
         }
 
         void derivadas_graph_model_is_deterministic_bounded_and_non_overlapping() {
-            constexpr qreal nodeWidth = 118;
-            constexpr qreal nodeHeight = 48;
             ssa::presentation::DerivadasGraphModel model;
             QVariantList relations;
             relations.push_back(QVariantMap{{"role", "current"}, {"ssa", "202500500"}});
@@ -1070,8 +1071,9 @@ namespace {
                 for (int row = 0; row < model.rowCount(); ++row) {
                     const auto center = model.nodeCenter(row);
                     firstLayout.push_back(center);
-                    const QRectF bounds{center.x() - nodeWidth / 2.0, center.y() - nodeHeight / 2.0,
-                                        nodeWidth, nodeHeight};
+                    const QRectF bounds{center.x() - model.nodeWidth() / 2.0,
+                                        center.y() - model.nodeHeight() / 2.0, model.nodeWidth(),
+                                        model.nodeHeight()};
                     nodeBounds.push_back(bounds);
                     QVERIFY(bounds.left() >= 0);
                     QVERIFY(bounds.top() >= 0);
@@ -1723,6 +1725,20 @@ namespace {
 
             QCOMPARE(columns.maxColumnWidth(), 2400);
             QCOMPARE(columns.columnWidths().at("descricao_ssa"), 900);
+        }
+
+        void column_display_catalog_pairs_default_widths_by_key() {
+            const ssa::presentation::SsaColumnDisplayCatalog catalog;
+            const auto columns = catalog.all();
+
+            QCOMPARE(columns.size(), ssa::domain::ColumnCatalog::all().size());
+            for (const auto& column : columns) {
+                QVERIFY(column.defaultWidth > 0);
+            }
+            QCOMPARE(catalog.resolve("numero_ssa").defaultWidth, 98);
+            QCOMPARE(catalog.resolve("situacao").defaultWidth, 60);
+            QCOMPARE(catalog.resolve("descricao_ssa").defaultWidth, 640);
+            QCOMPARE(catalog.resolve("data_cadastro").defaultWidth, 100);
         }
 
         void column_width_update_does_not_reload_query() {

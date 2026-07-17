@@ -415,10 +415,19 @@ namespace {
 
             viewModel.browse()->selectRow(0);
             QTRY_COMPARE_WITH_TIMEOUT(viewModel.browse()->currentRow(), 0, 1000);
-            mainTable->setProperty("contextSsaNumber", QStringLiteral("202500001"));
 
+            QVariant firstCellCenterValue;
+            QVERIFY(QMetaObject::invokeMethod(mainTable, "firstCellCenterForSmoke",
+                                              Q_RETURN_ARG(QVariant, firstCellCenterValue)));
+            const auto firstCellCenter = firstCellCenterValue.toPointF();
+            QVERIFY(firstCellCenter.x() >= 0.0);
+            const auto firstCellCenterInWindow =
+                mainTableItem->mapToItem(window->contentItem(), firstCellCenter);
+            QTest::mouseClick(window, Qt::RightButton, Qt::NoModifier,
+                              firstCellCenterInWindow.toPoint());
+            QTRY_VERIFY_WITH_TIMEOUT(cellMenu->property("visible").toBool(), 1000);
             QTRY_VERIFY_WITH_TIMEOUT(copyGraphAction->isEnabled(), 1000);
-            QVERIFY(QMetaObject::invokeMethod(copyGraphAction, "triggered"));
+            clickMenuAction(copyGraphAction);
             QTRY_COMPARE_WITH_TIMEOUT(QGuiApplication::clipboard()->text(),
                                       viewModel.browse()->details()->graphModel()->svg(), 1000);
 
@@ -573,6 +582,20 @@ namespace {
             QVERIFY(quickWindow != nullptr);
             quickWindow->show();
             QTRY_VERIFY_WITH_TIMEOUT(quickWindow->isExposed(), 1000);
+            const auto menuBarItemFor = [&](const QString& text) {
+                for (auto* item : quickWindow->findChildren<QQuickItem*>()) {
+                    if (item->isVisible() && item->property("text").toString() == text &&
+                        item->y() < quickWindow->height() / 2.0) {
+                        return item;
+                    }
+                }
+                return static_cast<QQuickItem*>(nullptr);
+            };
+            const auto clickItem = [&](QQuickItem& item) {
+                const auto center = item.mapToItem(
+                    quickWindow->contentItem(), QPointF{item.width() / 2.0, item.height() / 2.0});
+                QTest::mouseClick(quickWindow, Qt::LeftButton, Qt::NoModifier, center.toPoint());
+            };
 
             viewModel.logs()->append(
                 QStringLiteral("Error"), QStringLiteral("Workflow"),
@@ -628,35 +651,41 @@ namespace {
                                                 QStringLiteral("Atualizacao SAM")));
 
             auto* openDatabase =
-                mainWindow->findChild<QObject*>(QStringLiteral("openDatabaseMenuItem"));
+                mainWindow->findChild<QQuickItem*>(QStringLiteral("openDatabaseMenuItem"));
             QVERIFY(openDatabase != nullptr);
-            QVERIFY(QMetaObject::invokeMethod(openDatabase, "triggered"));
+            auto* fileMenuBarItem = menuBarItemFor(QStringLiteral("Arquivo"));
+            QVERIFY(fileMenuBarItem != nullptr);
+            clickItem(*fileMenuBarItem);
+            QTRY_VERIFY_WITH_TIMEOUT(openDatabase->isVisible(), 1000);
+            clickItem(*openDatabase);
             auto* databaseDialog =
                 mainWindow->findChild<QObject*>(QStringLiteral("databaseFileDialog"));
             QVERIFY(databaseDialog != nullptr);
             QTRY_VERIFY_WITH_TIMEOUT(databaseDialog->property("visible").toBool(), 1000);
             QVERIFY(QMetaObject::invokeMethod(databaseDialog, "close"));
+            QTRY_VERIFY_WITH_TIMEOUT(!databaseDialog->property("visible").toBool(), 1000);
 
             auto* openImportData =
-                mainWindow->findChild<QObject*>(QStringLiteral("openImportDataMenuItem"));
+                mainWindow->findChild<QQuickItem*>(QStringLiteral("openImportDataMenuItem"));
             QVERIFY(openImportData != nullptr);
-            QVERIFY(QMetaObject::invokeMethod(openImportData, "triggered"));
+            auto* importMenuBarItem = menuBarItemFor(QStringLiteral("Importacao"));
+            QVERIFY(importMenuBarItem != nullptr);
+            clickItem(*importMenuBarItem);
+            QTRY_VERIFY_WITH_TIMEOUT(openImportData->isVisible(), 1000);
+            clickItem(*openImportData);
             auto* importDataDialog =
                 mainWindow->findChild<QObject*>(QStringLiteral("importDataFileDialog"));
             QVERIFY(importDataDialog != nullptr);
+            QTRY_VERIFY_WITH_TIMEOUT(importDataDialog->property("visible").toBool(), 1000);
             QCOMPARE(importDataDialog->property("title").toString(),
                      QStringLiteral("Importar XLSX externo"));
             QCOMPARE(importDataDialog->property("nameFilters").toStringList(),
                      QStringList{QStringLiteral("Planilhas XLSX (*.xlsx)")});
             QVERIFY(QMetaObject::invokeMethod(importDataDialog, "close"));
-
-            auto* openImportDerivations =
-                mainWindow->findChild<QObject*>(QStringLiteral("openImportDerivationsMenuItem"));
-            QVERIFY(openImportDerivations != nullptr);
-            QVERIFY(QMetaObject::invokeMethod(openImportDerivations, "triggered"));
+            QTRY_VERIFY_WITH_TIMEOUT(!importDataDialog->property("visible").toBool(), 1000);
 
             auto* exportResults =
-                mainWindow->findChild<QObject*>(QStringLiteral("exportResultsMenuItem"));
+                mainWindow->findChild<QQuickItem*>(QStringLiteral("exportResultsMenuItem"));
             auto* rescanIncremental =
                 mainWindow->findChild<QObject*>(QStringLiteral("rescanIncrementalMenuItem"));
             auto* rescanFull =
@@ -674,7 +703,7 @@ namespace {
             auto* toggleDetails =
                 mainWindow->findChild<QObject*>(QStringLiteral("toggleDetailsMenuItem"));
             auto* compactDatabase =
-                mainWindow->findChild<QObject*>(QStringLiteral("compactDatabaseMenuItem"));
+                mainWindow->findChild<QQuickItem*>(QStringLiteral("compactDatabaseMenuItem"));
             auto* cancelAll = mainWindow->findChild<QObject*>(QStringLiteral("cancelAllMenuItem"));
             auto* installationGuide =
                 mainWindow->findChild<QObject*>(QStringLiteral("installationGuideMenuItem"));
@@ -700,19 +729,26 @@ namespace {
             QVERIFY(exportFiltersDialog != nullptr);
             QVERIFY(importFiltersDialog != nullptr);
 
-            QVERIFY(QMetaObject::invokeMethod(exportResults, "triggered"));
+            fileMenuBarItem = menuBarItemFor(QStringLiteral("Arquivo"));
+            QVERIFY(fileMenuBarItem != nullptr);
+            clickItem(*fileMenuBarItem);
+            QTRY_VERIFY_WITH_TIMEOUT(exportResults->isVisible(), 1000);
+            clickItem(*exportResults);
             QTRY_VERIFY_WITH_TIMEOUT(exportResultsDialog->property("visible").toBool(), 1000);
             QCOMPARE(exportResultsDialog->property("title").toString(),
                      QStringLiteral("Exportar CSV"));
             QVERIFY(QMetaObject::invokeMethod(exportResultsDialog, "close"));
+            QTRY_VERIFY_WITH_TIMEOUT(!exportResultsDialog->property("visible").toBool(), 1000);
 
             QVERIFY(QMetaObject::invokeMethod(exportFilters, "triggered"));
             QTRY_VERIFY_WITH_TIMEOUT(exportFiltersDialog->property("visible").toBool(), 1000);
             QVERIFY(QMetaObject::invokeMethod(exportFiltersDialog, "close"));
+            QTRY_VERIFY_WITH_TIMEOUT(!exportFiltersDialog->property("visible").toBool(), 1000);
 
             QVERIFY(QMetaObject::invokeMethod(importFilters, "triggered"));
             QTRY_VERIFY_WITH_TIMEOUT(importFiltersDialog->property("visible").toBool(), 1000);
             QVERIFY(QMetaObject::invokeMethod(importFiltersDialog, "close"));
+            QTRY_VERIFY_WITH_TIMEOUT(!importFiltersDialog->property("visible").toBool(), 1000);
 
             QVERIFY(QMetaObject::invokeMethod(rescanIncremental, "triggered"));
             QTRY_COMPARE_WITH_TIMEOUT(importPort->requests().size(), std::size_t{1}, 1000);
@@ -731,7 +767,11 @@ namespace {
             QTRY_VERIFY_WITH_TIMEOUT(
                 !viewModel.actions()->workflows()->property("running").toBool(), 1000);
 
-            QVERIFY(QMetaObject::invokeMethod(compactDatabase, "triggered"));
+            auto* maintenanceMenuBarItem = menuBarItemFor(QStringLiteral("Manutencao"));
+            QVERIFY(maintenanceMenuBarItem != nullptr);
+            clickItem(*maintenanceMenuBarItem);
+            QTRY_VERIFY_WITH_TIMEOUT(compactDatabase->isVisible(), 1000);
+            clickItem(*compactDatabase);
             QTRY_COMPARE_WITH_TIMEOUT(maintenancePort->vacuumAnalyzeCalls(), std::size_t{1}, 1000);
 
             const bool initialDetailsVisible = viewModel.ui()->detailsVisible();

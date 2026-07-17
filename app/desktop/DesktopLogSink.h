@@ -1,10 +1,9 @@
 #pragma once
 
-#include "platform/RotatingLogWriter.h"
-
 #include <QtLogging>
 
 #include <filesystem>
+#include <memory>
 #include <mutex>
 
 namespace ssa::presentation {
@@ -23,16 +22,15 @@ namespace ssa::app::desktop {
         DesktopLogSink& operator=(const DesktopLogSink&) = delete;
 
       private:
+        class HandlerState;
+
         static void messageHandler(QtMsgType type, const QMessageLogContext& context,
                                    const QString& message);
-        void record(QtMsgType type, const QMessageLogContext& context, const QString& message);
 
         static std::mutex handlerMutex_;
-        static DesktopLogSink* active_;
+        static std::shared_ptr<HandlerState> active_;
 
-        ssa::platform::RotatingLogWriter writer_;
-        ssa::presentation::RecentLogModel& model_;
-        QtMessageHandler previousHandler_{nullptr};
+        std::shared_ptr<HandlerState> state_;
     };
 
 } // namespace ssa::app::desktop

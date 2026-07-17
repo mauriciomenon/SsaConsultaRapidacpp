@@ -1,5 +1,4 @@
 #include "presentation/BrowseRequestCoordinator.h"
-#include "presentation/FilterPanelSectorViewModel.h"
 
 #include <QObject>
 
@@ -60,10 +59,9 @@ namespace ssa::presentation {
     }
 
     domain::SsaPageRequest BrowseRequestCoordinator::buildRequest() const {
-        auto* sector = qobject_cast<FilterPanelSectorViewModel*>(filters_.sector());
         return queryState_.buildRequest(search_.text().toStdString(), filters_.columnFilters(),
                                         filters_.quickSector().trimmed().toStdString(),
-                                        sector->excludeScaSesSte(), filters_.advancedFilters());
+                                        filters_.excludeScaSesSte(), filters_.advancedFilters());
     }
 
     void BrowseRequestCoordinator::runRequest(const domain::SsaPageRequest& request) {

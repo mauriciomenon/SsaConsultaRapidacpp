@@ -10,7 +10,16 @@ namespace ssa::platform {
 
     namespace {
         constexpr std::string_view kTruncatedSuffix = "... [truncated]";
-    }
+
+        [[nodiscard]] std::size_t utf8PrefixLength(const std::string_view text,
+                                                   const std::size_t maximumBytes) {
+            std::size_t length = maximumBytes;
+            while (length > 0 && (static_cast<unsigned char>(text[length]) & 0xC0U) == 0x80U) {
+                --length;
+            }
+            return length;
+        }
+    } // namespace
 
     RotatingLogWriter::RotatingLogWriter(std::filesystem::path filePath,
                                          const std::uintmax_t maximumFileBytes,
@@ -29,7 +38,8 @@ namespace ssa::platform {
         std::string payload{line};
         const auto maximumContentBytes = static_cast<std::size_t>(maximumFileBytes_ - 1);
         if (payload.size() > maximumContentBytes) {
-            payload.resize(maximumContentBytes - kTruncatedSuffix.size());
+            payload.resize(
+                utf8PrefixLength(payload, maximumContentBytes - kTruncatedSuffix.size()));
             payload += kTruncatedSuffix;
         }
         const auto payloadBytes = payload.size() + 1;

@@ -280,6 +280,20 @@ TEST_CASE("sql query builder parses raw distinct column filters in the query lay
     REQUIRE(std::ranges::find(query.bindings, "IEE%") != query.bindings.end());
 }
 
+TEST_CASE("sql query builder applies remaining advanced text filters to distinct values") {
+    ssa::domain::DistinctValuesRequest request;
+    request.columnKey = "situacao";
+    request.columnFilters = {{"setor_executor", "=IEE1"}};
+    request.filter.advanced.textFilters = {{"responsavel_execucao", "=MIA"}};
+
+    const auto query = ssa::query::SqlQueryBuilder{}.buildDistinctValues(request);
+
+    REQUIRE(query.sql.find("\"setor_executor\"") != std::string::npos);
+    REQUIRE(query.sql.find("\"responsavel_execucao\"") != std::string::npos);
+    REQUIRE(std::ranges::find(query.bindings, "IEE1") != query.bindings.end());
+    REQUIRE(std::ranges::find(query.bindings, "MIA") != query.bindings.end());
+}
+
 TEST_CASE("sql query builder orders distinct values by display priority before limit") {
     ssa::domain::DistinctValuesRequest request;
     request.columnKey = "responsavel_execucao";

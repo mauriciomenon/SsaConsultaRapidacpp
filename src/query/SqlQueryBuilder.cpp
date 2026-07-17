@@ -364,6 +364,7 @@ namespace ssa::query {
         auto filter = request.filter;
         SearchParser parser;
         appendColumnFilters(filter, request.columnFilters, parser);
+        appendAdvancedTextFilters(filter, request.filter.advanced.textFilters, parser);
         auto where = predicateBuilder_.build(expression, filter);
         std::ostringstream sql;
         sql << "SELECT " << projection << " FROM " << quoteTableIdentifier(tableName_) << " ";

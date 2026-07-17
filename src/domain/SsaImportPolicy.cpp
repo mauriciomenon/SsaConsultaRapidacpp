@@ -84,7 +84,7 @@ namespace ssa::domain {
         std::size_t completenessScore(const SsaImportPolicy::Values& values) {
             std::size_t score = 0;
             for (const auto& [key, value] : values) {
-                if (!valueFor(values, key).empty() && key != "numero_ssa" &&
+                if (!trimWhitespace(value).empty() && key != "numero_ssa" &&
                     !isMetadataField(key)) {
                     ++score;
                 }

@@ -4,8 +4,6 @@
 
 #include <algorithm>
 #include <array>
-#include <cstddef>
-#include <iterator>
 #include <stdexcept>
 
 namespace ssa::presentation {
@@ -32,12 +30,97 @@ namespace ssa::presentation {
             {"situacao_da_parcial", "Situacao parcial", "Sit. Parc."},
         }};
 
-        constexpr std::array<int, 85> kDefaultWidths{{
-            80,  98,  60,  84,  68,  68,  66,  640, 100, 88,  84,  220, 150, 360, 240, 250, 250,
-            150, 150, 180, 130, 140, 140, 130, 86,  140, 150, 150, 130, 150, 120, 130, 120, 150,
-            150, 150, 160, 150, 86,  140, 140, 130, 140, 130, 150, 120, 120, 260, 150, 150, 160,
-            120, 120, 120, 150, 170, 170, 140, 150, 170, 140, 130, 150, 180, 180, 130, 130, 160,
-            160, 170, 170, 170, 140, 160, 130, 130, 130, 160, 160, 160, 160, 160, 160, 160, 160,
+        struct DefaultWidth final {
+            std::string_view key;
+            int width{0};
+        };
+
+        constexpr std::array<DefaultWidth, 85> kDefaultWidths{{
+            {"id", 80},
+            {"numero_ssa", 98},
+            {"situacao", 60},
+            {"localizacao_codigo", 84},
+            {"setor_emissor", 68},
+            {"setor_executor", 68},
+            {"qtd_derivadas", 66},
+            {"descricao_ssa", 640},
+            {"data_cadastro", 100},
+            {"derivada_de", 88},
+            {"semana_cadastro", 84},
+            {"descricao_localizacao", 220},
+            {"equipamento", 150},
+            {"descricao_execucao", 360},
+            {"solicitante", 240},
+            {"responsavel_programacao", 250},
+            {"responsavel_execucao", 250},
+            {"servico_origem", 150},
+            {"sistema_origem", 150},
+            {"arquivo_origem", 180},
+            {"data_planilha", 130},
+            {"grau_prioridade_emissao", 140},
+            {"grau_prioridade_planejamento", 140},
+            {"execucao_simples", 130},
+            {"semana_programada", 86},
+            {"prazo_limite", 140},
+            {"status_execucao_prazo", 150},
+            {"tempo_disponivel", 150},
+            {"data_limite", 130},
+            {"tempo_excedido", 150},
+            {"desde", 120},
+            {"tempo_total", 130},
+            {"desde_1", 120},
+            {"total_tempo_tpe_planejado", 150},
+            {"total_tempo_tex_planejado", 150},
+            {"total_tempo_tpo_planejado", 150},
+            {"total_horas_programadas", 160},
+            {"total_tempo_tpe_executada", 150},
+            {"semana_executada", 86},
+            {"num_reprogramacoes", 140},
+            {"execucao_parcial", 140},
+            {"anomalia", 130},
+            {"registros_espera", 140},
+            {"num_reprobaciones", 130},
+            {"situacao_espera", 150},
+            {"numero_desvios", 120},
+            {"ate", 120},
+            {"justificativa", 260},
+            {"total_tempo_tex_executada", 150},
+            {"parciais", 150},
+            {"situacao_da_parcial", 160},
+            {"ate_1", 120},
+            {"ate_2", 120},
+            {"desde_2", 120},
+            {"total_tempo_tpo_executada", 150},
+            {"atividade_especial", 170},
+            {"equipamento_retirado", 170},
+            {"sn_retirado", 140},
+            {"destino", 150},
+            {"equipamento_instalado", 170},
+            {"sn_instalado", 140},
+            {"sn_extra", 130},
+            {"origem", 150},
+            {"desativacao_da_localizacao", 180},
+            {"instalacao_estimada", 180},
+            {"executado", 130},
+            {"concluido", 130},
+            {"data_inicio_programada", 160},
+            {"data_programacao", 160},
+            {"data_inicio_reprogramada", 170},
+            {"data_reprogramacao", 170},
+            {"situacao_reprogramacao", 170},
+            {"total_de_reprogramacoes", 140},
+            {"situacao_de_desvio", 160},
+            {"numero_ssa_relacionada_1", 130},
+            {"numero_ssa_relacionada_2", 130},
+            {"numero_ssa_relacionada_3", 130},
+            {"setor_emissor_relacionado_1", 160},
+            {"setor_emissor_relacionado_2", 160},
+            {"setor_executor_relacionado_1", 160},
+            {"setor_executor_relacionado_2", 160},
+            {"situacao_relacionada_1", 160},
+            {"situacao_relacionada_2", 160},
+            {"relacao", 160},
+            {"data_arquivo_origem", 160},
         }};
 
         const AdvancedFilterDisplay* advancedDisplay(const std::string_view key) {
@@ -59,8 +142,8 @@ namespace ssa::presentation {
         if (column == columns.end()) {
             throw std::invalid_argument("unknown display column: " + key);
         }
-        const auto index = static_cast<std::size_t>(std::distance(columns.begin(), column));
-        if (index >= kDefaultWidths.size()) {
+        const auto defaultWidth = std::ranges::find(kDefaultWidths, key, &DefaultWidth::key);
+        if (defaultWidth == kDefaultWidths.end()) {
             throw std::logic_error("display width catalog does not match domain columns");
         }
         const auto* labels = application::SsaColumnLabelCatalog::find(key);
@@ -68,7 +151,7 @@ namespace ssa::presentation {
             throw std::logic_error("display label catalog does not match domain columns");
         }
         return {column->key,  std::string{labels->label},    std::string{labels->labelFull},
-                column->type, isDefaultVisible(column->key), kDefaultWidths[index]};
+                column->type, isDefaultVisible(column->key), defaultWidth->width};
     }
 
     std::vector<SsaDisplayColumn>

@@ -314,6 +314,20 @@ add_library(
 target_include_directories(ssa_cli PUBLIC app/cli)
 target_link_libraries(ssa_cli PUBLIC ssa_application Qt6::Core)
 
+add_executable(ssa_prefetch_benchmark tools/prefetch_benchmark.cpp)
+target_link_libraries(ssa_prefetch_benchmark PRIVATE ssa_presentation Qt6::Core)
+if(WIN32)
+  target_link_libraries(ssa_prefetch_benchmark PRIVATE Psapi)
+endif()
+
+add_custom_target(
+  run_prefetch_benchmark_30
+  COMMAND $<TARGET_FILE:ssa_prefetch_benchmark> --samples 30 --output
+          ${CMAKE_BINARY_DIR}/prefetch-benchmark-30.json
+  DEPENDS ssa_prefetch_benchmark
+  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+  USES_TERMINAL)
+
 add_executable(
   ssa_consulta_rapida_cli app/cli/CliServiceFactory.cpp
                           app/cli/SsaCliApplicationRuntime.cpp app/cli/main.cpp)
@@ -430,6 +444,20 @@ if(SSA_BUILD_TESTS)
                                                           ssa_query Qt6::Test)
   add_test(NAME ssa_qt_presentation_tests COMMAND ssa_qt_presentation_tests)
   set_tests_properties(ssa_qt_presentation_tests PROPERTIES TIMEOUT 30)
+
+  add_test(NAME ssa_prefetch_benchmark_smoke
+           COMMAND $<TARGET_FILE:ssa_prefetch_benchmark> --samples 1 --output
+                   ${CMAKE_CURRENT_BINARY_DIR}/prefetch-benchmark-smoke.json)
+  set_tests_properties(ssa_prefetch_benchmark_smoke PROPERTIES TIMEOUT 15
+                                                               RUN_SERIAL TRUE)
+
+  add_executable(ssa_qt_desktop_log_tests tests/smoke/DesktopLogSinkTest.cpp
+                                          app/desktop/DesktopLogSink.cpp)
+  target_include_directories(ssa_qt_desktop_log_tests PRIVATE app/desktop)
+  target_link_libraries(ssa_qt_desktop_log_tests PRIVATE ssa_presentation
+                                                         ssa_platform Qt6::Test)
+  add_test(NAME ssa_qt_desktop_log_tests COMMAND ssa_qt_desktop_log_tests)
+  set_tests_properties(ssa_qt_desktop_log_tests PROPERTIES TIMEOUT 10)
 
   add_executable(ssa_qt_presentation_filter_tests
                  tests/smoke/PresentationFilterSmokeTest.cpp)

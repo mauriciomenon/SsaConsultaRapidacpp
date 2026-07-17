@@ -413,8 +413,20 @@ namespace ssa::presentation {
         return graphHeight_;
     }
 
+    qreal DerivadasGraphModel::nodeWidth() const {
+        return kNodeWidth;
+    }
+
+    qreal DerivadasGraphModel::nodeHeight() const {
+        return kNodeHeight;
+    }
+
     QString DerivadasGraphModel::orientation() const {
         return verticalLayout_ ? QStringLiteral("vertical") : QStringLiteral("horizontal");
+    }
+
+    QString DerivadasGraphModel::localFilePath(const QUrl& url) const {
+        return url.isLocalFile() ? url.toLocalFile() : QString{};
     }
 
     QVariantList DerivadasGraphModel::edges() const {
