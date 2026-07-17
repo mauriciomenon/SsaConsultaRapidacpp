@@ -8,14 +8,14 @@
    isolado ja estao resolvidos no working tree. `xctrace` nao possui `Time
    Profiler` nesta instalacao e `CPU Counters` falhou com `DTServiceHub` e
    politica do kernel; nenhum credito de profiling foi atribuido.
-2. Apresentar desenho de decomposicao dos dois hubs de importacao e executar
-   somente fronteiras com responsabilidade comprovada.
+2. Decompor `ImportFileStager` somente depois de separar discovery/staging
+   read-only da consolidacao mutavel com invariantes comprovadas.
 3. Canonizar `clang-tidy` macOS com sysroot e reproduzir IDs das regras Semgrep
    antes de dividir fixtures.
 4. Revalidar em plataformas reais handles, URL UNC, PowerShell e packaging.
 
-Contadores auditados: plano original `99.0/100`, divida nova `57.1/100`
-(8 de 14 itens enumerados aceitos) e backlog legado sem denominador definido.
+Contadores auditados: plano original `99.0/100`, divida nova `64.3/100`
+(9 de 14 itens enumerados aceitos) e backlog legado sem denominador definido.
 O valor anterior `71.4/100` creditava dois lookups resolvidos que nao pertencem
 a lista de 14 itens. Polling e melhorias de teste continuam sem credito.
 
@@ -33,6 +33,11 @@ resumos baseados em timer permanecem preservados.
 
 Gate amplo: CTest sequencial foi confirmado em duas etapas, `1-433` aprovados
 na primeira e `434-452` aprovados `19/19` em `28.78 s`; total `452/452`.
+
+Fechamento do workflow hub: commits `14485a9` e `627a075` extraem adaptacao
+SAM e importacao XLSX por chunks para resultados internos tipados. O CTest
+sequencial passou `453/453` em `64.05 s`; Bitbucket foi confirmado em
+`627a075` e GitLab continua bloqueado por OAuth `invalid_grant`.
 
 Determinismo: a tentativa `7ec88ae` foi rejeitada: `QTRY` bombeou o event loop
 e publicou a falha tardia antes de `cancel()`, quebrando a janela preterminal.
@@ -88,15 +93,12 @@ Matriz completa de acertos, adicoes, erros e ordem de execucao:
   ja despachado ao trampoline, mas ainda sem reserva, pode perder uma linha no
   exato uninstall sem causar UAF ou deadlock.
 
-- [HIGH-DESIGN] [IMPORT-WORKFLOW-HUB] `SpreadsheetImportWorkflowPort.cpp` tem
-  1285 linhas e 23 catches. `importDiscoveredFiles()` concentra 454 linhas e 11
-  catches para mapping, chunks, sessao SQLite, resumo, journal e consolidacao.
-  Nao criar quatro interfaces por contagem de linhas. Primeiro extrair uma
-  operacao interna de importacao de workbook/chunks com resultado tipado; depois
-  avaliar uma operacao de publicacao/consolidacao que preserve journal-before-move.
-  Aceite: mesmas mensagens/status/resumos, nenhum movimento antes do journal,
-  cancelamento pre-commit faz rollback e interrupcao pos-commit fica retomavel.
-  Arquivos candidatos: workflow, writer/stager existentes e testes de integracao.
+- [RESOLVED] [IMPORT-WORKFLOW-HUB] Os commits `14485a9` e `627a075` extraem
+  leitura/adaptacao SAM e streaming/mapping/escrita XLSX por chunks para
+  operacoes internas com resultados tipados. A mesma `WriteSession` continua
+  sob o orquestrador; catches, rollback, journal e consolidacao nao mudaram.
+  O reviewer Sol confirmou a preservacao de contadores parciais em falha
+  tardia, e o CTest sequencial passou `453/453` em `64.05 s`.
 
 - [HIGH-DESIGN] [IMPORT-STAGER-HUB] `ImportFileStager.cpp` tem 1364 linhas e
   mistura discovery, staging, inventory, plano e consolidacao. Mapear funcoes e

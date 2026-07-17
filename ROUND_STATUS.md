@@ -8,15 +8,15 @@ Ultima verificacao local: 2026-07-17
 ## Marco P0 no working tree
 
 - Branch: `master`.
-- HEAD local e `efef5c6`; Bitbucket foi confirmado nesse hash. GitLab `origin`
+- HEAD local e `627a075`; Bitbucket foi confirmado nesse hash. GitLab `origin`
   nao esta comprovado porque a autenticacao OAuth falha com `invalid_grant`.
 - O working tree implementa localmente os slices de filtros/distinct e
   logging/UTF-8, alem das expectativas smoke canonicas correspondentes.
 - Plano original: `89.0/100 -> 99.0/100`. O P0 pertence a divida nova; 3.9
   pontos vieram dos menus, 0.8 dos popups, 1.6 do grafo e 3.7 do benchmark
   isolado de prefetch. Profiling valido permanece pendente por 1.0 ponto.
-- Divida nova: `0.0/100 -> 57.1/100`, usando aceite binario dos 14 itens
-  enumerados no handoff; 8 itens estao aceitos localmente. Os dois lookups de
+- Divida nova: `0.0/100 -> 64.3/100`, usando aceite binario dos 14 itens
+  enumerados no handoff; 9 itens estao aceitos localmente. Os dois lookups de
   filtros resolvidos nao pertencem ao denominador e deixaram de receber credito.
 - Backlog legado: `0.0/100 -> 0.0/100`; nenhum item legado recebeu credito.
 - Estado separado: implementado e commitado no HEAD; validado localmente nesta
@@ -26,8 +26,11 @@ Ultima verificacao local: 2026-07-17
   por depender de timer.
 - Slice seguinte: commit `41ecf36`, dois polls sincronicos de `textFilter()`
   removidos; os resumos de filtros continuam com polling por timer.
-- Slice atual: commit `c95a757`, um poll sincronico de `sector->quickSector()`
-  removido; nenhum resumo baseado em timer foi alterado.
+- Slice estrutural SAM: commit `14485a9`, leitura, metadados e adaptacao do
+  workbook extraidos para uma operacao interna tipada.
+- Slice estrutural XLSX: commit `627a075`, streaming, mapping, conflitos e
+  escrita por chunk extraidos para `ChunkedWorkbookImportResult`; transacao,
+  catches, rollback, journal e consolidacao permaneceram no orquestrador.
 
 ### Entregas locais do marco
 
@@ -65,15 +68,17 @@ Ultima verificacao local: 2026-07-17
   sem consumidor repetitivo de producao identificado. Cache nao foi adicionado.
 - Corretude de importacao: caso adversarial com filename de 4096 digitos e
   timestamp valido passou `1/1` em `0.02 s`; sem credito de performance.
-- Gate amplo apos os slices: CTest sequencial completo confirmado em duas
-  etapas, testes `1-433` aprovados e testes `434-452` aprovados `19/19` em
-  `28.78 s`; total operacional `452/452`.
+- Gate amplo anterior: CTest sequencial completo confirmado em duas etapas,
+  total operacional `452/452`.
 - Determinismo adicional: a tentativa `7ec88ae` de remover dois loops de
   polling foi rejeitada pelo gate amplo, pois `QTRY` bombeia eventos e quebra
   a janela preterminal. Commit corretivo `9b960ed` preserva os loops e o
   contrato; suite passou `1/1` em `0.75 s`, sem credito.
 - Reteste pos-correcao: testes `431-448` passaram na etapa final, e `449-452`
   passaram `4/4` em `12.24 s`; o teste 434 passou novamente no estado corrigido.
+- Gate do hub de importacao: CTest sequencial completo `453/453` passou em
+  `64.05 s`. O novo teste de falha tardia preservou `conflicts=1` no resumo e
+  confirmou rollback integral sem tabela publicada.
 
 ## Snapshot da v0.9.10 e reauditoria externa
 
@@ -193,10 +198,10 @@ HEAD `d376431`; nenhuma sugestao foi aceita apenas pela severidade alegada.
 
 ### Confirmados como risco estrutural ou divida controlada
 
-- `SpreadsheetImportWorkflowPort.cpp` possui 1285 linhas e 23 catches; o metodo
-  `importDiscoveredFiles()` ocupa 454 linhas e concentra 11 catches, mapping em
-  chunks, sessao SQLite, resumo e journal/consolidacao. A decomposicao precisa
-  seguir responsabilidades ja provadas, sem criar ports ou wrappers genericos.
+- `IMPORT-WORKFLOW-HUB` foi fechado nos commits `14485a9` e `627a075`: leitura
+  e adaptacao SAM, mais streaming/mapping/escrita XLSX por chunks, agora usam
+  resultados internos tipados. Sessao SQLite, catches, rollback, journal e
+  consolidacao continuam no orquestrador para preservar atomicidade.
 - `ImportFileStager.cpp` possui 1364 linhas. Antes de qualquer split, separar a
   matriz de discovery/staging da consolidacao por um desenho com invariantes de
   path, identidade e cancelamento.
