@@ -15,8 +15,8 @@ Ultima verificacao local: 2026-07-17
 - Plano original: `89.0/100 -> 99.0/100`. O P0 pertence a divida nova; 3.9
   pontos vieram dos menus, 0.8 dos popups, 1.6 do grafo e 3.7 do benchmark
   isolado de prefetch. Profiling valido permanece pendente por 1.0 ponto.
-- Divida nova: `0.0/100 -> 57.1/100`, usando aceite binario dos 14 itens
-  enumerados no handoff; 8 itens estao aceitos localmente.
+- Divida nova: `0.0/100 -> 64.3/100`, usando aceite binario dos 14 itens
+  enumerados no handoff; 9 itens estao aceitos localmente.
 - Backlog legado: `0.0/100 -> 0.0/100`; nenhum item legado recebeu credito.
 - Estado separado: implementado no working tree e validado localmente; nao
   commitado no HEAD e sem prova externa nova.

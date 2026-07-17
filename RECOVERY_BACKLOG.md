@@ -15,7 +15,7 @@
 4. Revalidar em plataformas reais handles, URL UNC, PowerShell e packaging.
 
 Contadores apos os slices pequenos: plano original `99.0/100`, divida nova
-`57.1/100` (8 de 14 itens aceitos) e backlog legado `0.0/100`.
+`64.3/100` (9 de 14 itens aceitos) e backlog legado `0.0/100`.
 
 - [RESOLVED-WT] [WIDTHS-BY-KEY] O catalogo de presentation agora pareia cada
   largura default com sua key canonica. Os 85 valores foram preservados, o
@@ -106,6 +106,10 @@ Matriz completa de acertos, adicoes, erros e ordem de execucao:
 - [RESOLVED-WT] [SQL-DERIVADAS-BUILDER-BOUNDARY] `derivadasDiretas()` agora
   recebe SQL e binding de `SqlQueryBuilder::buildDirectDerivations()`. Colunas,
   `IS NOT NULL`, ordenacao e contrato de cancelamento foram preservados.
+
+- [RESOLVED-WT] [ADVANCED-FILTER-ROW-LOOKUP] `AdvancedTextFilterRowModelFactory`
+  usa diretamente as keys canonicas de `advancedFilterKeys()`, removendo nove
+  buscas e o ramo nulo redundante sem alterar ordem ou labels.
 
 - [RESOLVED-WT] [BROWSE-SECTOR-CAST-INVARIANT] `BrowseRequestCoordinator` agora
   usa a API publica `FilterPanelViewModel::excludeScaSesSte()` diretamente. O

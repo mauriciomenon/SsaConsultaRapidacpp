@@ -25,12 +25,8 @@ namespace ssa::presentation {
         QVariantList rows;
         const SsaColumnDisplayCatalog displayCatalog;
         for (const auto key : domain::ColumnCatalog::advancedFilterKeys()) {
-            const auto* column = domain::ColumnCatalog::find(key);
-            if (column != nullptr) {
-                rows.push_back(filterRow(column->key,
-                                         displayCatalog.advancedFilterLabel(column->key),
-                                         displayCatalog.advancedFilterShortLabel(column->key)));
-            }
+            rows.push_back(filterRow(key, displayCatalog.advancedFilterLabel(key),
+                                     displayCatalog.advancedFilterShortLabel(key)));
         }
         return rows;
     }
