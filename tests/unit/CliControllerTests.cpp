@@ -1,4 +1,5 @@
 #include "SsaCliController.h"
+#include "ports/ISsaBrowsePort.h"
 #include "ports/IWorkflowPorts.h"
 #include "qt/FilesystemPath.h"
 
@@ -54,6 +55,49 @@ namespace {
         }
 
         bool called = false;
+    };
+
+    class UnusedBrowsePort final : public ssa::ports::ISsaBrowsePort {
+      public:
+        ssa::domain::SsaPageResult page(const ssa::domain::SsaPageRequest&,
+                                        std::stop_token = {}) const override {
+            return {};
+        }
+        std::size_t count(const ssa::domain::SsaPageRequest&, std::stop_token = {}) const override {
+            return 0;
+        }
+        std::optional<ssa::domain::SsaRecord> details(const ssa::domain::SsaNumber&,
+                                                      std::stop_token = {}) const override {
+            return std::nullopt;
+        }
+        std::vector<ssa::domain::SsaDerivadaEntry>
+        derivadasDiretas(const ssa::domain::SsaNumber&, std::stop_token = {}) const override {
+            return {};
+        }
+        std::vector<std::string> distinctValues(const ssa::domain::DistinctValuesRequest&,
+                                                std::stop_token = {}) const override {
+            return {};
+        }
+        std::size_t maxValueLength(std::string_view, std::stop_token = {}) const override {
+            return 0;
+        }
+        ssa::ports::SsaReadResult readAll(const ssa::domain::SsaPageRequest&,
+                                          ssa::ports::SsaRecordConsumer,
+                                          std::stop_token = {}) const override {
+            return {};
+        }
+    };
+
+    class CapturingExportPort final : public ssa::ports::IExportPort {
+      public:
+        ssa::ports::WorkflowResult
+        exportFilteredList(const ssa::ports::ExportFilteredListRequest& request,
+                           std::stop_token = {}) override {
+            lastRequest = request;
+            return {ssa::ports::WorkflowStatus::Succeeded, "exported"};
+        }
+
+        ssa::ports::ExportFilteredListRequest lastRequest;
     };
 
     std::shared_ptr<ssa::application::SsaBrowseService>
@@ -222,6 +266,31 @@ TEST_CASE("cli accepts --cols as alias for --columns") {
     const int exitCode = controller.run({"ssa", "--cols", "numero_ssa", "--version"});
 
     REQUIRE(exitCode == 0);
+}
+
+TEST_CASE("cli passes display labels explicitly to csv export") {
+    const auto browse =
+        std::make_shared<ssa::application::SsaBrowseService>(std::make_shared<UnusedBrowsePort>());
+    const auto exportPort = std::make_shared<CapturingExportPort>();
+    const auto workflows =
+        std::make_shared<ssa::application::SsaWorkflowService>(nullptr, exportPort);
+    const ssa::app::cli::SsaCliController controller{
+        [browse](const std::filesystem::path&) { return browse; },
+        [workflows] { return workflows; },
+        [workflows](const std::filesystem::path&, const std::filesystem::path&) {
+            return workflows;
+        }};
+    const auto databasePath = existingDatabaseArgument();
+    const auto outputPath =
+        (std::filesystem::temp_directory_path() / "ssa_cli_export_labels.csv").string();
+
+    const int exitCode = controller.run({"ssa", "--db", databasePath.c_str(), "--export",
+                                         outputPath.c_str(), "--columns", "numero_ssa,situacao"});
+
+    REQUIRE(exitCode == 0);
+    REQUIRE(exportPort->lastRequest.query.visibleColumns ==
+            std::vector<std::string>{"numero_ssa", "situacao"});
+    REQUIRE(exportPort->lastRequest.headerLabels == std::vector<std::string>{"No SSA", "Sit."});
 }
 
 TEST_CASE("cli rejects legacy acao backfill with orphan cleanup guidance") {

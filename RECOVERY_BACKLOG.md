@@ -4,11 +4,9 @@
 
 ### Sequencia ativa preservada
 
-1. Separar labels, visibilidade e largura de `domain::ColumnCatalog` para
-   presentation, mantendo o dicionario de schema ASCII no dominio.
-2. Completar pointer real por familia dos menus ainda marcados como parciais.
-3. Fechar as pendencias multiplataforma de geometria/exportacao do grafo.
-4. Completar instrumentacao isolada de CPU/idle do prefetch e reparar os gates
+1. Completar pointer real por familia dos menus ainda marcados como parciais.
+2. Fechar as pendencias multiplataforma de geometria/exportacao do grafo.
+3. Completar instrumentacao isolada de CPU/idle do prefetch e reparar os gates
    `clang-tidy`/`.qmltypes` antes de trata-los como validacao real.
 
 - [LOW] [QT-ROLENAMES-CACHE] Medir e, se houver ganho comprovado, armazenar
@@ -145,14 +143,20 @@
   `tests/`; nenhum lock interno foi adicionado, evitando auto-deadlock. Build
   do target de integracao e 8/8 contratos de writer, crash, journal, retomada e
   aliases de lock passaram.
-- [MED] [COLUMN-CATALOG-PRESENTATION-LEAK] `domain::ColumnCatalog` ainda contem
-  labels, visibilidade inicial e largura, responsabilidades de presentation.
-  O catalogo de display ja existe, mas apenas repassa os campos do dominio.
-  Os labels curtos/completos dos filtros avancados ja foram removidos do
-  dominio e migrados para esse catalogo, com 3/3 contratos focados verdes.
-  A separacao exige torna-lo a fonte visual, passar cabecalhos CSV pelo request
-  do port e retirar defaults implicitos de query/infra sem criar duas fontes
-  divergentes; nao misturar com correcoes funcionais de importacao.
+- [RESOLVED] [COLUMN-CATALOG-PRESENTATION-LEAK] `domain::ColumnDef` contem
+  somente chave, tipo e participacao na busca geral. Os 85 labels gerais estao
+  no catalogo Qt-free de application; largura e visibilidade permanecem no
+  catalogo de presentation. GUI e CLI passam cabecalhos CSV explicitamente no
+  request do port; infra valida cardinalidade e usa chaves canonicas quando um
+  adapter omite labels. O teste de cobertura exige correspondencia integral
+  entre schema e labels, e 19/19 contratos focados passaram. A projecao default
+  continua no dominio por ser politica compartilhada de consulta, nao visual.
+- [RESOLVED] [STAGED-COPY-REPLACEMENT-RACE] Se a fonte desaparece na janela
+  entre a copia e a verificacao final, depois de um snapshot inicial valido, o
+  resultado agora e deterministicamente `source changed during staged file
+  copy`. Falhas de permissao ou IO continuam como impossibilidade de verificar.
+  O trio de staging passou e o reproducer de troca com mesmo tamanho/mtime
+  passou 50/50 repeticoes.
 - [RESOLVED] [DISTINCT-LIMIT-QML-COUPLING] O limite geral de consulta permanece
   no dominio. O limite de 5000 exclusivo do popup avancado agora pertence ao
   request builder de presentation; dominio nao menciona mais custo de QML.

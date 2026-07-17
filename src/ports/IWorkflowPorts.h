@@ -129,6 +129,7 @@ namespace ssa::ports {
 
     struct ExportFilteredListRequest {
         domain::SsaPageRequest query;
+        std::vector<std::string> headerLabels;
         std::filesystem::path outputPath;
     };
 

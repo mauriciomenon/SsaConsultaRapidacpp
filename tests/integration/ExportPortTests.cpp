@@ -186,11 +186,48 @@ TEST_CASE("csv export port writes filtered list") {
     ssa::ports::ExportFilteredListRequest request;
     request.outputPath = outputPath;
     request.query.visibleColumns = {"numero_ssa", "descricao_ssa"};
+    request.headerLabels = {"No SSA", "Descricao SSA"};
 
     const auto result = port.exportFilteredList(request);
 
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
     REQUIRE(readFile(outputPath) == "No SSA,Descricao SSA\n202500001,\"A,B\"\n202500002,Plain\n");
+}
+
+TEST_CASE("csv export port uses canonical keys when header labels are omitted") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto repository = std::make_shared<FakeRepository>();
+    ssa::infra::exporting::CsvExportPort port(repository);
+    ssa::ports::ExportFilteredListRequest request;
+    request.outputPath =
+        std::filesystem::path{tempDir.path().toStdString()} / "ssa_cpp_export_keys.csv";
+    request.query.visibleColumns = {"numero_ssa", "descricao_ssa"};
+
+    const auto result = port.exportFilteredList(request);
+
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE(readFile(request.outputPath).starts_with("numero_ssa,descricao_ssa\n"));
+}
+
+TEST_CASE("csv export port rejects a header count different from selected columns") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto repository = std::make_shared<FakeRepository>();
+    ssa::infra::exporting::CsvExportPort port(repository);
+    ssa::ports::ExportFilteredListRequest request;
+    request.outputPath =
+        std::filesystem::path{tempDir.path().toStdString()} / "ssa_cpp_export_headers.csv";
+    request.query.visibleColumns = {"numero_ssa", "descricao_ssa"};
+    request.headerLabels = {"No SSA"};
+
+    const auto result = port.exportFilteredList(request);
+
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
+    REQUIRE(result.message == "export header count does not match selected columns");
+    REQUIRE_FALSE(std::filesystem::exists(request.outputPath));
 }
 
 TEST_CASE("csv export port preserves unicode output paths") {
@@ -261,6 +298,7 @@ TEST_CASE("csv export port exports complete filtered list from any current page"
     request.query.pageIndex = 1;
     request.query.pageSize = 1;
     request.query.visibleColumns = {"numero_ssa", "descricao_ssa"};
+    request.headerLabels = {"No SSA", "Descricao SSA"};
 
     const auto result = port.exportFilteredList(request);
 

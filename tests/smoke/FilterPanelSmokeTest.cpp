@@ -13,6 +13,7 @@
 #include "presentation/FilterPanelSectorViewModel.h"
 #include "presentation/FilterPanelState.h"
 #include "presentation/FilterPanelViewModel.h"
+#include "presentation/SsaColumnDisplayCatalog.h"
 #include "query/SsaQueryService.h"
 
 #include <QObject>
@@ -266,14 +267,25 @@ namespace {
             ssa::presentation::ColumnFilterViewModel columns(state);
 
             const auto rows = columns.rows();
-            QVERIFY(!rows.isEmpty());
+            const auto& expectedKeys = ssa::domain::ColumnCatalog::orderedFilterColumnKeys();
+            QCOMPARE(rows.size(), static_cast<qsizetype>(expectedKeys.size()));
 
-            const auto first = rows.front().toMap();
-            const auto key = first.value("key").toString().toStdString();
-            const auto* column = ssa::domain::ColumnCatalog::find(key);
-            QVERIFY(column != nullptr);
-            QCOMPARE(first.value("label").toString(), QString::fromStdString(column->label));
-            QCOMPARE(first.value("value").toString(), QString{});
+            const ssa::presentation::SsaColumnDisplayCatalog displayCatalog;
+            for (qsizetype index = 0; index < rows.size(); ++index) {
+                const auto row = rows.at(index).toMap();
+                const auto& expectedKey = expectedKeys.at(static_cast<std::size_t>(index));
+                QCOMPARE(row.value("key").toString(), QString::fromStdString(expectedKey));
+                QCOMPARE(row.value("label").toString(),
+                         QString::fromStdString(displayCatalog.resolve(expectedKey).label));
+                QVERIFY(!row.value("label").toString().isEmpty());
+                QCOMPARE(row.value("value").toString(), QString{});
+            }
+        }
+
+        void display_catalog_rejects_unknown_columns() {
+            const ssa::presentation::SsaColumnDisplayCatalog displayCatalog;
+            QVERIFY_THROWS_EXCEPTION(std::invalid_argument,
+                                     static_cast<void>(displayCatalog.resolve("missing_column")));
         }
 
         void excluded_status_label_comes_from_domain_policy() {

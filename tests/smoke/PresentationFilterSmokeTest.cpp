@@ -487,6 +487,23 @@ namespace {
         }
     };
 
+    class CapturingExportPort final : public ssa::ports::IExportPort {
+      public:
+        ssa::ports::WorkflowResult
+        exportFilteredList(const ssa::ports::ExportFilteredListRequest& request,
+                           std::stop_token = {}) override {
+            request_ = request;
+            return {ssa::ports::WorkflowStatus::Succeeded, "exported"};
+        }
+
+        [[nodiscard]] const ssa::ports::ExportFilteredListRequest& request() const {
+            return request_;
+        }
+
+      private:
+        ssa::ports::ExportFilteredListRequest request_;
+    };
+
     void populateTableModel(ssa::presentation::SsaTableModel& model) {
         ssa::domain::SsaPageResult page;
         page.rows.push_back(
@@ -932,6 +949,25 @@ namespace {
             QCOMPARE(viewModel.lastSucceeded(), false);
             QCOMPARE(viewModel.lastStatus(), QString("failed"));
             QVERIFY(viewModel.lastMessage().contains("export failed"));
+        }
+
+        void export_view_model_passes_display_labels_explicitly() {
+            auto exportPort = std::make_shared<CapturingExportPort>();
+            auto workflows =
+                std::make_shared<ssa::application::SsaWorkflowService>(nullptr, exportPort);
+            ssa::presentation::ExportViewModel viewModel(workflows, [] {
+                ssa::domain::SsaPageRequest request;
+                request.visibleColumns = {"numero_ssa", "situacao"};
+                return request;
+            });
+
+            viewModel.exportFilteredList(QUrl::fromLocalFile("/tmp/ssa-export-labels.csv"));
+
+            QTRY_COMPARE_WITH_TIMEOUT(viewModel.running(), false, 1000);
+            QCOMPARE(exportPort->request().query.visibleColumns,
+                     std::vector<std::string>({"numero_ssa", "situacao"}));
+            QCOMPARE(exportPort->request().headerLabels,
+                     std::vector<std::string>({"No SSA", "Sit."}));
         }
 
         void advanced_text_filter_updates_only_the_changed_model_row() {

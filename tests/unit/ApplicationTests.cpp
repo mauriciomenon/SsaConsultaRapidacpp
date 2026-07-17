@@ -1,4 +1,5 @@
 #include "application/SsaBrowseService.h"
+#include "application/SsaColumnLabelCatalog.h"
 #include "application/SsaWorkflowService.h"
 #include "application/UnavailableWorkflowPort.h"
 #include "ports/ISsaBrowsePort.h"
@@ -124,6 +125,20 @@ TEST_CASE("source layers reject forbidden direct dependencies") {
             }
         }
     }
+}
+
+TEST_CASE("column label catalog covers every canonical schema column") {
+    const auto columns = ssa::domain::ColumnCatalog::all();
+    const auto labels = ssa::application::SsaColumnLabelCatalog::all();
+
+    REQUIRE(labels.size() == columns.size());
+    for (const auto& column : columns) {
+        const auto* display = ssa::application::SsaColumnLabelCatalog::find(column.key);
+        CAPTURE(column.key);
+        REQUIRE(display != nullptr);
+        REQUIRE_FALSE(display->label.empty());
+    }
+    REQUIRE(ssa::application::SsaColumnLabelCatalog::find("missing_column") == nullptr);
 }
 
 TEST_CASE("browse service normalizes empty visible columns and page size") {

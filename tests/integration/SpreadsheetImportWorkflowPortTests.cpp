@@ -1657,9 +1657,8 @@ TEST_CASE("sqlite import survives process death before and after commit") {
                               "name='idx_ssa_table_numero_ssa'") == (commitBeforeKill ? 1 : 0));
         REQUIRE(sqlite3_close(db) == SQLITE_OK);
 
-        const std::vector<ssa::domain::ColumnDef> columns{
-            {.key = "numero_ssa", .label = "Numero", .labelFull = "Numero"},
-            {.key = "descricao_ssa", .label = "Descricao", .labelFull = "Descricao"}};
+        const std::vector<ssa::domain::ColumnDef> columns{{.key = "numero_ssa"},
+                                                          {.key = "descricao_ssa"}};
         const ssa::infra::sqlite::SqliteSsaImportWriter writer(sqliteWriterAccess(), dbPath,
                                                                columns);
         ssa::infra::importing::ResolvedSsaImportRows retry;
@@ -1996,9 +1995,8 @@ TEST_CASE("sqlite consolidation journal survives process death around cleanup co
         const auto destination = scenarioRoot / "docs_entrada" / "processadas" / "pending.xlsx";
         std::filesystem::create_directories(source.parent_path());
         createSparseFile(source, 1);
-        const std::vector<ssa::domain::ColumnDef> columns{
-            {.key = "numero_ssa", .label = "Numero", .labelFull = "Numero"},
-            {.key = "descricao_ssa", .label = "Descricao", .labelFull = "Descricao"}};
+        const std::vector<ssa::domain::ColumnDef> columns{{.key = "numero_ssa"},
+                                                          {.key = "descricao_ssa"}};
         const ssa::infra::sqlite::SqliteSsaImportWriter writer(sqliteWriterAccess(), dbPath,
                                                                columns);
         auto session = writer.startSession(false);

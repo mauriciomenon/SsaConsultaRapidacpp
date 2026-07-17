@@ -75,6 +75,7 @@ target_link_libraries(ssa_core INTERFACE ssa_domain ssa_ports ssa_query)
 add_library(
   ssa_application STATIC
   src/application/FilterPresetService.cpp
+  src/application/SsaColumnLabelCatalog.cpp
   src/application/SsaBrowseService.cpp
   src/application/SsaExecutadasReportService.cpp
   src/application/SsaWorkflowService.cpp
@@ -157,8 +158,10 @@ add_library(
   src/presentation/DetailsFieldsModel.cpp
   src/presentation/SsaTableModel.cpp)
 target_include_directories(ssa_presentation_tables PUBLIC src)
-target_link_libraries(ssa_presentation_tables PUBLIC ssa_domain Qt6::Core
-                                                     Qt6::Gui)
+target_link_libraries(
+  ssa_presentation_tables
+  PUBLIC ssa_domain Qt6::Core Qt6::Gui
+  PRIVATE ssa_application)
 
 add_library(
   ssa_presentation_models STATIC
@@ -366,9 +369,8 @@ if(SSA_BUILD_TESTS)
     tests/unit/SqlQueryBuilderTests.cpp
     tests/unit/StartupOptionsTests.cpp
     tests/unit/TextFilterTokenTests.cpp)
-  target_link_libraries(
-    ssa_unit_tests PRIVATE ssa_application ssa_cli ssa_core ssa_platform
-                           Catch2::Catch2WithMain)
+  target_link_libraries(ssa_unit_tests PRIVATE ssa_cli ssa_core ssa_platform
+                                               Catch2::Catch2WithMain)
   catch_discover_tests(ssa_unit_tests PROPERTIES TIMEOUT 15)
 
   add_library(ssa_theme_lab_core STATIC tools/theme_lab/ThemePaletteLab.cpp)

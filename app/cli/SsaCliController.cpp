@@ -6,6 +6,7 @@
 #include "SsaCliRequestMapper.h"
 #include "SsaCliWorkflowRunner.h"
 #include "application/SsaBrowseService.h"
+#include "application/SsaColumnLabelCatalog.h"
 #include "domain/ColumnCatalog.h"
 #include "qt/FilesystemPath.h"
 
@@ -310,6 +311,11 @@ namespace ssa::app::cli {
 
         ports::ExportFilteredListRequest request;
         request.query = SsaCliRequestMapper::pageRequest(parser, outputColumns);
+        request.headerLabels.reserve(outputColumns.size());
+        for (const auto& key : outputColumns) {
+            const auto* labels = application::SsaColumnLabelCatalog::find(key);
+            request.headerLabels.emplace_back(labels == nullptr ? key : labels->label);
+        }
         request.outputPath = ssa::qt::toFileSystemPath(parser.value("export"));
         const auto result = workflows->exportFilteredList(request);
         std::cerr << result.message << '\n';

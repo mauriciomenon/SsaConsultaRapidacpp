@@ -39,9 +39,8 @@ int main(const int argc, char* argv[]) {
         return 2;
     }
     try {
-        const std::vector<ssa::domain::ColumnDef> columns{
-            {.key = "numero_ssa", .label = "Numero", .labelFull = "Numero"},
-            {.key = "descricao_ssa", .label = "Descricao", .labelFull = "Descricao"}};
+        const std::vector<ssa::domain::ColumnDef> columns{{.key = "numero_ssa"},
+                                                          {.key = "descricao_ssa"}};
         const ssa::infra::sqlite::SqliteSsaImportWriter writer(
             ssa::infra::sqlite::SqliteSsaImportWriterTestAccess::access(), databasePath, columns);
         if (journalDeleteScenario) {

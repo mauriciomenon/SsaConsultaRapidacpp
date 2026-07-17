@@ -182,16 +182,6 @@ namespace ssa::infra::exporting {
             return query;
         }
 
-        std::vector<std::string> headerLabelsFor(const std::vector<std::string>& columns) {
-            std::vector<std::string> labels;
-            labels.reserve(columns.size());
-            for (const auto& key : columns) {
-                const auto column = domain::ColumnCatalog::find(key);
-                labels.push_back(column ? column->label : key);
-            }
-            return labels;
-        }
-
         PreparedExportRequest
         prepareExportRequest(const ports::ExportFilteredListRequest& request) {
             const auto outputPath = validateOutputPath(request.outputPath);
@@ -199,7 +189,13 @@ namespace ssa::infra::exporting {
                 return {outputPath.result, {}, {}, {}};
             }
             auto query = prepareExportQuery(request.query);
-            auto labels = headerLabelsFor(query.visibleColumns);
+            auto labels = request.headerLabels;
+            if (labels.empty()) {
+                labels = query.visibleColumns;
+            } else if (labels.size() != query.visibleColumns.size()) {
+                return {
+                    rejected("export header count does not match selected columns"), {}, {}, {}};
+            }
             return {{ports::WorkflowStatus::Succeeded, {}},
                     outputPath.normalizedPath,
                     std::move(query),

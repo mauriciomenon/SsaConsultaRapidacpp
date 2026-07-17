@@ -1,6 +1,6 @@
 #include "presentation/ColumnSettingsModel.h"
 
-#include "domain/ColumnCatalog.h"
+#include "presentation/SsaColumnDisplayCatalog.h"
 
 #include <algorithm>
 #include <map>
@@ -24,7 +24,7 @@ namespace ssa::presentation {
     } // namespace
 
     ColumnSettingsModel::ColumnSettingsModel(QObject* parent) : QAbstractListModel(parent) {
-        for (const auto& column : domain::ColumnCatalog::all()) {
+        for (const auto& column : SsaColumnDisplayCatalog{}.all()) {
             columns_.push_back(ColumnItem{column.key, column.label, toLower(column.key),
                                           toLower(column.label), column.defaultVisible,
                                           column.defaultVisible, column.defaultWidth,
@@ -208,7 +208,7 @@ namespace ssa::presentation {
         beginResetModel();
         std::vector<ColumnItem> reordered;
         reordered.reserve(columns_.size());
-        for (const auto& definition : domain::ColumnCatalog::all()) {
+        for (const auto& definition : SsaColumnDisplayCatalog{}.all()) {
             const auto current = findColumn(definition.key);
             if (current != columns_.end()) {
                 reordered.push_back(*current);

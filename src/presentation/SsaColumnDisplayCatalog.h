@@ -15,6 +15,7 @@ namespace ssa::presentation {
         std::string label;
         std::string labelFull;
         domain::ColumnType type{domain::ColumnType::Text};
+        bool defaultVisible{false};
         int defaultWidth{kDefaultDisplayColumnWidth};
     };
 
@@ -23,6 +24,7 @@ namespace ssa::presentation {
         [[nodiscard]] SsaDisplayColumn resolve(const std::string& key) const;
         [[nodiscard]] std::vector<SsaDisplayColumn>
         resolveAll(const std::vector<std::string>& keys) const;
+        [[nodiscard]] std::vector<SsaDisplayColumn> all() const;
         [[nodiscard]] std::string advancedFilterLabel(std::string_view key) const;
         [[nodiscard]] std::string advancedFilterShortLabel(std::string_view key) const;
     };

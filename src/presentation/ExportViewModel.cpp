@@ -1,5 +1,6 @@
 #include "presentation/ExportViewModel.h"
 
+#include "presentation/SsaColumnDisplayCatalog.h"
 #include "qt/FilesystemPath.h"
 
 #include <QThreadPool>
@@ -100,6 +101,11 @@ namespace ssa::presentation {
         request.outputPath = qt::toFileSystemPath(outputUrl.toLocalFile());
         request.query = requestFactory_();
         request.query.pageIndex = 0;
+        const auto columns = SsaColumnDisplayCatalog{}.resolveAll(request.query.visibleColumns);
+        request.headerLabels.reserve(columns.size());
+        for (const auto& column : columns) {
+            request.headerLabels.push_back(column.label);
+        }
 
         running_ = true;
         emit runningChanged();

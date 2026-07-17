@@ -43,20 +43,6 @@ TEST_CASE("column catalog exposes visible and general-search contracts") {
         ssa::domain::ColumnCatalog::orderedFilterColumnKeys().end());
     const auto* derivedCount = ssa::domain::ColumnCatalog::find("qtd_derivadas");
     REQUIRE(derivedCount != nullptr);
-    REQUIRE(derivedCount->label == "Qtd Der.");
-    REQUIRE(derivedCount->labelFull == "Qtd Derivadas");
-    REQUIRE(ssa::domain::ColumnCatalog::find("numero_ssa")->defaultWidth == 98);
-    REQUIRE(ssa::domain::ColumnCatalog::find("situacao")->defaultWidth == 60);
-    REQUIRE(ssa::domain::ColumnCatalog::find("localizacao_codigo")->defaultWidth == 84);
-    REQUIRE(ssa::domain::ColumnCatalog::find("setor_emissor")->defaultWidth == 68);
-    REQUIRE(ssa::domain::ColumnCatalog::find("setor_executor")->defaultWidth == 68);
-    REQUIRE_FALSE(ssa::domain::ColumnCatalog::find("data_cadastro")->defaultVisible);
-    REQUIRE(ssa::domain::ColumnCatalog::find("derivada_de")->defaultWidth == 88);
-    REQUIRE(ssa::domain::ColumnCatalog::find("descricao_ssa")->defaultWidth == 640);
-    REQUIRE(ssa::domain::ColumnCatalog::find("solicitante")->defaultWidth == 240);
-    REQUIRE(ssa::domain::ColumnCatalog::find("responsavel_programacao")->defaultWidth == 250);
-    REQUIRE(ssa::domain::ColumnCatalog::find("responsavel_execucao")->defaultWidth == 250);
-    REQUIRE(ssa::domain::ColumnCatalog::find("semana_executada")->defaultWidth == 86);
 
     const auto storage = ssa::domain::ColumnCatalog::storageColumns();
     REQUIRE(std::ranges::none_of(storage, [](const ssa::domain::ColumnDef& column) {

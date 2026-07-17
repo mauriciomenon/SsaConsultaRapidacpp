@@ -1,5 +1,6 @@
 #include "presentation/DetailsFieldsModel.h"
 
+#include "presentation/SsaColumnDisplayCatalog.h"
 #include "presentation/SsaRecordValueFormatter.h"
 
 #include <QString>
@@ -88,8 +89,7 @@ namespace ssa::presentation {
             if (field.key == "origem") {
                 return QStringLiteral("Fonte");
             }
-            return QString::fromStdString(column == columnsByKey_.end() ? field.key
-                                                                        : column->second.label);
+            return QString::fromStdString(SsaColumnDisplayCatalog{}.resolve(field.key).label);
         }
         if (role == ValueRole) {
             return SsaRecordValueFormatter::valueFor(field.value, column == columnsByKey_.end()
