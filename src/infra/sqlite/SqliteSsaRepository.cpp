@@ -289,13 +289,12 @@ namespace ssa::infra::sqlite {
     std::vector<domain::SsaDerivadaEntry>
     SqliteSsaRepository::derivadasDiretas(const domain::SsaNumber& number,
                                           std::stop_token stopToken) const {
-        const auto sql = "SELECT numero_ssa, situacao FROM " + queryBuilder_.tableName() +
-                         " WHERE derivada_de = ? AND numero_ssa IS NOT NULL ORDER BY numero_ssa";
+        const auto query = queryBuilder_.buildDirectDerivations(number);
         SqliteConnection sqlite(dbPath_);
         SqliteBusyHandler busy(sqlite.handle(), stopToken);
         SqliteProgressHandler progress(sqlite.handle(), stopToken);
-        SqliteStatement statement(sqlite.handle(), sql, busy.cancellationObserved());
-        statement.bindTextOneBased(1, number.value());
+        SqliteStatement statement(sqlite.handle(), query.sql, busy.cancellationObserved());
+        bindAll(statement, query.bindings);
         std::vector<domain::SsaDerivadaEntry> entries;
         while (statement.step()) {
             throwIfCanceled(stopToken);

@@ -349,6 +349,16 @@ namespace ssa::query {
                          {std::string{number.value()}}}};
     }
 
+    SqlQuery SqlQueryBuilder::buildDirectDerivations(const domain::SsaNumber& number) const {
+        return {"SELECT " + quoteColumnIdentifier("numero_ssa") + ", " +
+                    quoteColumnIdentifier("situacao") + " FROM " +
+                    quoteTableIdentifier(tableName_) + " WHERE " +
+                    quoteColumnIdentifier("derivada_de") + " = ? AND " +
+                    quoteColumnIdentifier("numero_ssa") + " IS NOT NULL ORDER BY " +
+                    quoteColumnIdentifier("numero_ssa"),
+                {std::string{number.value()}}};
+    }
+
     SqlQuery
     SqlQueryBuilder::buildDistinctValues(const domain::DistinctValuesRequest& request) const {
         if (domain::ColumnCatalog::isDerivedCountColumn(request.columnKey)) {

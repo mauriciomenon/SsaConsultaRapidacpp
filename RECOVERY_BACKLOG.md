@@ -15,7 +15,7 @@
 4. Revalidar em plataformas reais handles, URL UNC, PowerShell e packaging.
 
 Contadores apos os slices pequenos: plano original `99.0/100`, divida nova
-`50.0/100` (7 de 14 itens aceitos) e backlog legado `0.0/100`.
+`57.1/100` (8 de 14 itens aceitos) e backlog legado `0.0/100`.
 
 - [RESOLVED-WT] [WIDTHS-BY-KEY] O catalogo de presentation agora pareia cada
   largura default com sua key canonica. Os 85 valores foram preservados, o
@@ -103,10 +103,9 @@ Matriz completa de acertos, adicoes, erros e ordem de execucao:
   tokens de cancelamento, portanto nao e bug comprovado. Medir cold/warm,
   keystrokes concorrentes e RSS antes de propor conexao longeva ou pool.
 
-- [LOW] [SQL-DERIVADAS-BUILDER-BOUNDARY] `derivadasDiretas()` monta a consulta
-  no repository em vez de `SqlQueryBuilder`. Os nomes atuais sao literais ou
-  table name validado, portanto nao ha injection demonstrada. Mover a query para
-  a camada query em slice pequeno, com bindings e teste unitario.
+- [RESOLVED-WT] [SQL-DERIVADAS-BUILDER-BOUNDARY] `derivadasDiretas()` agora
+  recebe SQL e binding de `SqlQueryBuilder::buildDirectDerivations()`. Colunas,
+  `IS NOT NULL`, ordenacao e contrato de cancelamento foram preservados.
 
 - [RESOLVED-WT] [BROWSE-SECTOR-CAST-INVARIANT] `BrowseRequestCoordinator` agora
   usa a API publica `FilterPanelViewModel::excludeScaSesSte()` diretamente. O

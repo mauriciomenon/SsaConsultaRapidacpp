@@ -38,6 +38,7 @@ namespace ssa::query {
         [[nodiscard]] SqlQuery buildExecutadasReport(const domain::SsaPageRequest& request,
                                                      bool byDivision) const;
         [[nodiscard]] SqlRecordQuery buildRecordBySsaNumber(const domain::SsaNumber& number) const;
+        [[nodiscard]] SqlQuery buildDirectDerivations(const domain::SsaNumber& number) const;
         [[nodiscard]] SqlQuery
         buildDistinctValues(const domain::DistinctValuesRequest& request) const;
         [[nodiscard]] SqlQuery buildMaxValueLength(std::string_view columnKey) const;

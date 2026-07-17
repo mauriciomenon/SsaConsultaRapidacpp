@@ -33,6 +33,16 @@ TEST_CASE("sql query builder rejects unknown visible columns") {
     REQUIRE_THROWS_AS(ssa::query::SqlQueryBuilder{}.build(request), std::invalid_argument);
 }
 
+TEST_CASE("sql query builder builds direct derivation lookup") {
+    const auto query = ssa::query::SqlQueryBuilder{"custom_table"}.buildDirectDerivations(
+        ssa::domain::SsaNumber{"202500002"});
+
+    REQUIRE(
+        query.sql ==
+        R"(SELECT "numero_ssa", "situacao" FROM "custom_table" WHERE "derivada_de" = ? AND "numero_ssa" IS NOT NULL ORDER BY "numero_ssa")");
+    REQUIRE(query.bindings == std::vector<std::string>{"202500002"});
+}
+
 TEST_CASE("sql query builder selects and orders derived count column as expression") {
     ssa::domain::SsaPageRequest request;
     request.visibleColumns = {"numero_ssa",
