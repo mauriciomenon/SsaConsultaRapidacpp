@@ -5,15 +5,21 @@ the PyQt6 reference repository (sibling project). Goals: keep C++
 memory advantage (already ~7x lower than PyQt6 GUI), close functional parity
 without porting Python architecture, and stabilize CI/flaky tests.
 
-## Short term (next 2-3 PRs, this branch base)
+## Short term apos v0.9.10
 
 ### Stabilization
 
-- Fix flaky `OpenPathPolicyTests` (tests 46-48) under parallel ctest. Likely a
-  shared temp dir or filesystem race in `platform/OpenPathPolicy.cpp`. Repro:
-  `ctest --preset dev -j8` fails, isolated `-R "open path policy"` passes.
-- Add Windows CI job (MSVC) mirroring macOS steps; `msvc.yml` today only does
-  code analysis, no build/test.
+- Incorporar o feedback de Cursor GLM e OpenCode somente depois de reproduzir
+  cada finding no HEAD e classificar como valido, duplicado, obsoleto ou fora
+  de escopo.
+- Completar pointer real por familia dos menus, preservando os contratos de
+  handler ja verdes e sem alterar labels, IDs ou layout.
+- Fechar conversao de URL e fonte unica de geometria do grafo com casos
+  macOS, Windows/UNC e Linux antes de alterar o QML.
+- Separar CPU, idle e latencia do prefetch do custo de startup QtTest e reparar
+  `clang-tidy`/`.qmltypes` antes de promover essas ferramentas a gates reais.
+- Adicionar build/test Windows real quando houver runner, sem declarar MSVC ou
+  Windows ARM64 validados a partir de analise estatica.
 
 ### Close "Partial" GUI items
 
@@ -132,6 +138,29 @@ without porting Python architecture, and stabilize CI/flaky tests.
 - Icone `app_icon` e desktop entry sao arquivos rastreados e entram no bundle
   macOS, nos pacotes Linux/Windows e nos artefatos de distribuicao.
 - A sequencia de versoes permanece 0.9.x; 1.0 exige autorizacao explicita.
+
+### Entregas da 0.9.10
+
+- Rescan publica banco e journal duravel antes de mover fontes, retoma
+  consolidacao parcial e preserva diagnostico de cancelamento/falha.
+- Staging classifica substituicao ou desaparecimento da fonte depois do
+  snapshot inicial como alteracao detectada, inclusive com mesmo tamanho e
+  mtime.
+- Locks de importacao e capability do writer impedem mutacao SQLite fora do
+  workflow autorizado sem introduzir lock interno recursivo.
+- Schema persistido permanece ASCII canonico; aliases PT/ES/EN ficam no
+  catalogo de headers e labels visuais sairam de `domain::ColumnCatalog`.
+- GUI e CLI enviam cabecalhos CSV explicitamente; infra valida cardinalidade
+  e nao decide metadata visual.
+- Supervisor N3 permanece fail-closed, `FailedToStop` nao destroi `QProcess`
+  vivo e novos starts so retornam depois de drain comprovado.
+- Historico circular de 30 logs/erros e arquivos rotativos limitados tornam
+  diagnosticos completos selecionaveis e copiaveis.
+- Menus, popup e grafo ganharam contratos de efeito, pointer, bounds,
+  determinismo, exportacao e teclado; cobertura pointer por familia continua
+  pendente onde registrado no backlog.
+- Resumo `qtd_derivadas` e prefetch possuem medidas locais; instrumentacao
+  isolada de CPU/idle e validacao externa multiplataforma continuam pendentes.
 
 ## Long term (multiple PRs, no fixed order)
 

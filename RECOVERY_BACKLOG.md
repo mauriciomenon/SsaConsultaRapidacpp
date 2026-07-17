@@ -4,10 +4,14 @@
 
 ### Sequencia ativa preservada
 
-1. Completar pointer real por familia dos menus ainda marcados como parciais.
-2. Fechar as pendencias multiplataforma de geometria/exportacao do grafo.
-3. Completar instrumentacao isolada de CPU/idle do prefetch e reparar os gates
+1. Triar o feedback de Cursor GLM e OpenCode sem aplicar sugestoes por autoridade;
+   registrar evidencia, decisao e destino em `ROUND_STATUS.md` e neste backlog.
+2. Completar pointer real por familia dos menus ainda marcados como parciais.
+3. Fechar as pendencias multiplataforma de geometria/exportacao do grafo.
+4. Completar instrumentacao isolada de CPU/idle do prefetch e reparar os gates
    `clang-tidy`/`.qmltypes` antes de trata-los como validacao real.
+5. Desenhar a mitigacao multiplataforma da janela TOCTOU de diretorio da
+   consolidacao antes de alterar ownership, handles ou syscalls.
 
 - [LOW] [QT-ROLENAMES-CACHE] Medir e, se houver ganho comprovado, armazenar
   `roleNames()` estavel por modelo para evitar reconstrucoes pequenas. Nao
@@ -26,11 +30,12 @@
   scripts ou o comportamento de links de artefatos.
 
 - [PENDING] Implementar sincronizacao completa de derivadas com regras de negocio e fonte externa, incluindo modelagem de grafo/fluxo derivado.
-- [NEXT-v0.9.7] Validar SAM ate SQLite com adapter do schema real, contagem do
-  manifesto e rejeicao de resposta potencialmente truncada em 200 registros.
-- [NEXT-v0.9.7] Separar importacao explicita de derivadas da limpeza de orfas;
-  aceitar CSV, TXT, TSV, XLSX e XLSM, deixando XLS sob selecao e preflight
-  explicitos do conversor legado.
+- [RESOLVED-v0.9.7] SAM foi validado ate SQLite com adapter do schema real,
+  contagem de manifesto e rejeicao fail-closed no limite potencialmente
+  truncado de 200 registros.
+- [RESOLVED-v0.9.7] Importacao explicita de derivadas foi separada da limpeza
+  de orfas e aceita CSV, TXT, TSV, XLSX e XLSM. XLS permanece sob selecao e
+  preflight explicitos do conversor legado.
 - [PARTIAL] [GUI-MENUS] Copia de celula, linha, SSA e grafo, abertura SAM e de
   detalhes, filtro/ocultacao de header, reset de sort e configuracao de colunas
   possuem prova de efeito. Importacao, exportacao, manutencao e banco tambem
@@ -42,9 +47,9 @@
   poderia trocar o diretorio nesse intervalo. O workspace operacional e
   confiavel na 0.9.2; hardening futuro deve vincular a identidade do diretorio
   validado a operacao de movimentacao por handle, com desenho multiplataforma.
-- [LOW] [SAM-LIMIT-200] Cada rodada REST da 0.9.2 solicita no maximo 200
-  registros por setor. Avaliar paginacao do `scrap_report` antes de usar o
-  fluxo para setores que excedam esse volume.
+- [LOW] [SAM-LIMIT-200] Cada rodada REST solicita no maximo 200 registros por
+  setor e a 0.9.7 rejeita exatamente 200 como potencial truncamento. Avaliar
+  paginacao do `scrap_report` antes de liberar setores acima desse volume.
 - [LOW] [SAM-SINGLE-FLIGHT-PROCESS] O single-flight da atualizacao SAM vale por
   instancia da aplicacao. Duas instancias podem executar atualizacoes ao mesmo
   tempo. Coordenacao entre processos fica adiada ate existir necessidade
@@ -170,8 +175,8 @@
   compile database existente. Corrigir a geracao ou a invocacao do toolchain
   antes de considerar clang-tidy um gate real; falha da ferramenta nao equivale
   a aprovacao do codigo.
-- [RESOLVED] [ROUND-STATUS-STALE] `ROUND_STATUS.md` registra HEAD `0d4d123`,
-  working tree acumulado e gate local 434/434 desta rodada.
+- [RESOLVED] [ROUND-STATUS-STALE] `ROUND_STATUS.md` foi reconciliado para o
+  baseline `d34f92d`, suite 443/443, remotes ativos e preparacao da `v0.9.10`.
 - [RESOLVED] [NINJA-CLEAN-CONCURRENCY] O erro `Directory not empty` ocorreu
   quando o smoke clean removeu `build/dev` durante uma compilacao Ninja. O
   script agora recusa a limpeza enquanto `.ninja_lock` existe e diagnostica
