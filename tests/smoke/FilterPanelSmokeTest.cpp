@@ -876,11 +876,10 @@ namespace {
 
             filters.setQuickSector("IEE3");
 
-            QTRY_COMPARE_WITH_TIMEOUT(
-                ssa::tests::advancedTextFilterCardState(*text, "setor_executor")
-                    .value("textFilter")
-                    .toString(),
-                QString("=IEE3"), 1000);
+            QCOMPARE(ssa::tests::advancedTextFilterCardState(*text, "setor_executor")
+                         .value("textFilter")
+                         .toString(),
+                     QString("=IEE3"));
             QCOMPARE(text->textFilter("setor_executor"), QString("=IEE3"));
             QCOMPARE(filters.quickSector(), QString(""));
         }
