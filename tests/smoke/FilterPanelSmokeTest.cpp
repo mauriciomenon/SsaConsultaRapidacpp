@@ -899,7 +899,7 @@ namespace {
 
             QVERIFY(text->updateFilterWithSelectedValue("setor_executor", "IEE1"));
 
-            QTRY_COMPARE_WITH_TIMEOUT(filters.quickSector(), QString(""), 1000);
+            QCOMPARE(filters.quickSector(), QString(""));
             QCOMPARE(text->textFilter("setor_executor"), QString("=IEE3,=IEE1"));
             QCOMPARE(ssa::tests::advancedTextFilterCardState(*text, "setor_executor")
                          .value("textFilter")
