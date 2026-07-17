@@ -1199,7 +1199,7 @@ namespace {
 
             filters.setQuickSector("IEE3");
 
-            QTRY_COMPARE_WITH_TIMEOUT(text->textFilter("setor_executor"), QString("=IEE3"), 1000);
+            QCOMPARE(text->textFilter("setor_executor"), QString("=IEE3"));
             QCOMPARE(filters.quickSector(), QString(""));
             QCOMPARE(sector->quickSector(), QString("IEE3"));
             QCOMPARE(ssa::tests::advancedTextFilterCardState(*text, "setor_executor")
@@ -1229,7 +1229,7 @@ namespace {
             filters.setQuickSector("IEE3");
             filters.setQuickSector("IEE1");
 
-            QTRY_COMPARE_WITH_TIMEOUT(text->textFilter("setor_executor"), QString("=IEE1"), 1000);
+            QCOMPARE(text->textFilter("setor_executor"), QString("=IEE1"));
             QCOMPARE(filters.quickSector(), QString(""));
             QCOMPARE(sector->quickSector(), QString("IEE1"));
             QTRY_COMPARE_WITH_TIMEOUT(filters.activeFilterEntries().size(), 1, 1000);
