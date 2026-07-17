@@ -142,9 +142,10 @@ Matriz completa de acertos, adicoes, erros e ordem de execucao:
   `value` ja iterado em vez de repetir `map::find` e alocacao de key. Os casos
   de richness e metadata passaram 2/2.
 
-- [LOW-MEASURE] [IMPORT-FILENAME-TIMESTAMP-SCAN] O parser tenta todos os sufixos
-  iniciados por digito. O pior caso e quadratico, mas filename e limitado pelo
-  filesystem. Adicionar benchmark adversarial antes de substituir o parser.
+- [VALIDATED-NO-CREDIT] [IMPORT-FILENAME-TIMESTAMP-SCAN] Foi adicionado caso
+  adversarial com 4096 digitos de ruido antes de timestamp valido. O teste
+  passou `1/1` em `0.02 s`; o parser nao foi alterado e nenhum credito de
+  performance foi atribuido sem benchmark temporal formal.
 
 - [TEST-DEBT] [TEST-DETERMINISM-DELTA] Pendencias confirmadas, sem regressao
   funcional demonstrada: `sleep_for(1050ms)` para backoff do resumo derivado;

@@ -65,6 +65,8 @@ Ultima verificacao local: 2026-07-17
   direcionados e hooks de segredo passaram.
 - Performance: `roleNames()` foi medido por busca estrutural; cinco modelos,
   sem consumidor repetitivo de producao identificado. Cache nao foi adicionado.
+- Corretude de importacao: caso adversarial com filename de 4096 digitos e
+  timestamp valido passou `1/1` em `0.02 s`; sem credito de performance.
 
 ## Snapshot da v0.9.10 e reauditoria externa
 
