@@ -55,13 +55,9 @@ namespace ssa::presentation {
     void ColumnFilterViewModel::loadRows() {
         const SsaColumnDisplayCatalog displayCatalog;
         for (const auto& key : domain::ColumnCatalog::orderedFilterColumnKeys()) {
-            const auto* column = domain::ColumnCatalog::find(key);
-            if (column == nullptr) {
-                continue;
-            }
-            const auto display = displayCatalog.resolve(column->key);
-            RowData row{column->key, QString::fromStdString(column->key),
-                        QString::fromStdString(display.label), QString{}};
+            const auto display = displayCatalog.resolve(key);
+            RowData row{key, QString::fromStdString(key), QString::fromStdString(display.label),
+                        QString{}};
             rowData_.push_back(row);
             rows_.push_back(rowToMap(row));
         }
