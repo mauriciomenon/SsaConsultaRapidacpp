@@ -27,6 +27,10 @@ Fechamento seguinte: commit `41ecf36`, duas leituras sincronas de `textFilter()`
 foram convertidas para `QCOMPARE`; a suite passou `1/1` em `5.74 s`. O item
 amplo `TEST-DETERMINISM-DELTA` continua pendente e sem credito adicional.
 
+Fechamento atual: commit `c95a757`, a leitura sincronica de `sector->quickSector()`
+foi convertida para `QCOMPARE`; a suite passou `1/1` em `2.88 s`. Polls de
+resumos baseados em timer permanecem preservados.
+
 - [RESOLVED-WT] [WIDTHS-BY-KEY] O catalogo de presentation agora pareia cada
   largura default com sua key canonica. Os 85 valores foram preservados, o
   lookup nao depende mais da ordem do domain e o teste focado cobre todas as

@@ -28,6 +28,8 @@ Ultima verificacao local: 2026-07-17
   por depender de timer.
 - Slice seguinte: commit `41ecf36`, dois polls sincronicos de `textFilter()`
   removidos; os resumos de filtros continuam com polling por timer.
+- Slice atual: commit `c95a757`, um poll sincronico de `sector->quickSector()`
+  removido; nenhum resumo baseado em timer foi alterado.
 
 ### Entregas locais do marco
 
@@ -59,6 +61,8 @@ Ultima verificacao local: 2026-07-17
   binario de 14 itens.
 - Validacao de `41ecf36`: build e CTest da mesma suite passaram `1/1` em
   `5.74 s`; nenhuma mudanca de producao.
+- Validacao de `c95a757`: build e CTest passaram `1/1` em `2.88 s`; gates
+  direcionados e hooks de segredo passaram.
 
 ## Snapshot da v0.9.10 e reauditoria externa
 
