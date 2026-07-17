@@ -70,9 +70,10 @@ Ultima verificacao local: 2026-07-17
 - Gate amplo apos os slices: CTest sequencial completo confirmado em duas
   etapas, testes `1-433` aprovados e testes `434-452` aprovados `19/19` em
   `28.78 s`; total operacional `452/452`.
-- Determinismo adicional: commit `7ec88ae` removeu dois loops manuais de
-  polling com `msleep(1)` no teste de troca de banco; suite passou `1/1` em
-  `0.73 s`, preservando timeout de 1 s.
+- Determinismo adicional: a tentativa `7ec88ae` de remover dois loops de
+  polling foi rejeitada pelo gate amplo, pois `QTRY` bombeia eventos e quebra
+  a janela preterminal. Commit corretivo `9b960ed` preserva os loops e o
+  contrato; suite passou `1/1` em `0.75 s`, sem credito.
 
 ## Snapshot da v0.9.10 e reauditoria externa
 

@@ -34,9 +34,10 @@ resumos baseados em timer permanecem preservados.
 Gate amplo: CTest sequencial foi confirmado em duas etapas, `1-433` aprovados
 na primeira e `434-452` aprovados `19/19` em `28.78 s`; total `452/452`.
 
-Determinismo: commit `7ec88ae` substituiu dois loops manuais de `msleep(1)` por
-`QTRY_VERIFY_WITH_TIMEOUT` sobre o atomic de conclusao. Suite de database switch
-passou `1/1` em `0.73 s`; o item amplo continua sem credito binario.
+Determinismo: a tentativa `7ec88ae` foi rejeitada: `QTRY` bombeou o event loop
+e publicou a falha tardia antes de `cancel()`, quebrando a janela preterminal.
+Commit `9b960ed` restaurou os loops deliberados; suite passou `1/1` em `0.75 s`.
+O item amplo continua sem credito binario.
 
 - [RESOLVED-WT] [WIDTHS-BY-KEY] O catalogo de presentation agora pareia cada
   largura default com sua key canonica. Os 85 valores foram preservados, o
