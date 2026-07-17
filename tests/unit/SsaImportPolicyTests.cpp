@@ -206,6 +206,14 @@ TEST_CASE("SSA import parses date-only source filenames") {
             "2026-07-15 00:00:00");
 }
 
+TEST_CASE("SSA import parses a valid timestamp after numeric filename noise") {
+    std::string filename(4096, '7');
+    filename += "_2026-07-15.xlsx";
+
+    REQUIRE(ssa::domain::SsaImportPolicy::normalizeFilenameTimestamp(filename) ==
+            "2026-07-15 00:00:00");
+}
+
 TEST_CASE(
     "SSA import treats approved cancel and final execution as terminal but SCS as transient") {
     REQUIRE(ssa::domain::SsaImportPolicy::isTerminalStatus("STE - finalizada"));
