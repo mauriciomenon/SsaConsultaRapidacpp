@@ -3,8 +3,6 @@
 #include "infra/import/ImportFileStager.h"
 #include "infra/import/SamSpreadsheetAdapter.h"
 #include "infra/import/SsaImportConflictResolver.h"
-#include "infra/import/SsaSpreadsheetMapper.h"
-#include "infra/import/XlsxWorkbookReader.h"
 #include "infra/sqlite/SqliteSsaImportWriter.h"
 #include "ports/IWorkflowPorts.h"
 
@@ -48,8 +46,6 @@ namespace ssa::infra::importing {
         std::filesystem::path importLockPath_;
         std::string importLockPathDiagnostic_;
         ImportFileStager stager_;
-        XlsxWorkbookReader reader_;
-        SsaSpreadsheetMapper mapper_;
         SsaImportConflictResolver conflictResolver_;
         sqlite::SqliteSsaImportWriter writer_;
     };

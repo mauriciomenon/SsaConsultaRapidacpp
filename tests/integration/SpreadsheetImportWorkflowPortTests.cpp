@@ -1432,6 +1432,45 @@ TEST_CASE("spreadsheet workflow counts equal duplicates across chunk boundaries"
     REQUIRE(result.message.find("duplicates=1000") != std::string::npos);
 }
 
+TEST_CASE("spreadsheet workflow keeps chunk counters when a later worksheet fails") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    const auto header = row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Descricao"),
+                                inlineCell("C1", "Data Cadastro")});
+    writeWorkbookSheets(
+        inputDirectory / "partial-failure.xlsx",
+        {header + row(2, {inlineCell("A2", "202600303"), inlineCell("B2", "Written"),
+                          inlineCell("C2", "2026-07-14")}),
+         header +
+             row(2, {inlineCell("A2", "202600304"), inlineCell("B2", "First"),
+                     inlineCell("C2", "2026-07-14")}) +
+             row(3, {inlineCell("A3", "202600304"), inlineCell("B3", "Conflict"),
+                     inlineCell("C3", "2026-07-14")}),
+         row(0, {inlineCell("A0", "bad")})});
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+
+    const auto result = port.rescan({ssa::ports::RescanMode::Incremental});
+
+    INFO(result.message);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
+    REQUIRE(result.message.find("conflicts=1") != std::string::npos);
+    REQUIRE(result.importSummary.has_value());
+    REQUIRE(result.importSummary->conflicts == 1);
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarInt(
+                db, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='ssa_table'") ==
+            0);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
 TEST_CASE("sqlite import writer rejects a stopped token before creating the database") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
