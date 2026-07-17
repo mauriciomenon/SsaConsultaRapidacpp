@@ -204,10 +204,14 @@ namespace ssa::infra::importing {
         const auto currentSourceSnapshot = snapshotSource(request.source, error);
         if (!currentSourceSnapshot) {
             const auto cleanupDiagnostic = removeTemporary();
+            const auto sourceDiagnostic =
+                error == std::errc::no_such_file_or_directory
+                    ? std::string{"source changed during staged file copy"}
+                    : "cannot verify staged file source: " + error.message();
             if (!cleanupDiagnostic.empty()) {
-                return {FileCopyStatus::CleanupFailed, cleanupDiagnostic};
+                return {FileCopyStatus::CleanupFailed, sourceDiagnostic + "; " + cleanupDiagnostic};
             }
-            return {FileCopyStatus::Failed, "cannot verify staged file source: " + error.message()};
+            return {FileCopyStatus::Failed, sourceDiagnostic};
         }
         if (*currentSourceSnapshot != *sourceSnapshot) {
             const auto cleanupDiagnostic = removeTemporary();
