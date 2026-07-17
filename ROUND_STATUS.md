@@ -8,8 +8,9 @@ Ultima verificacao local: 2026-07-17
 ## Marco P0 no working tree
 
 - Branch: `master`.
-- HEAD e `3f9d8509ff349bbd0a31f9f236f031f7f52f4e6b`; os slices pequenos desta
-  rodada estao commitados e publicados em `origin` e `bitbucket`.
+- HEAD operacional contem os slices pequenos desta rodada, commitados e
+  publicados em `origin` e `bitbucket`; o hash atual deve ser lido pelos refs
+  remotos no fechamento da rodada.
 - O working tree implementa localmente os slices de filtros/distinct e
   logging/UTF-8, alem das expectativas smoke canonicas correspondentes.
 - Plano original: `89.0/100 -> 99.0/100`. O P0 pertence a divida nova; 3.9
