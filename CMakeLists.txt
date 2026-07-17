@@ -96,7 +96,9 @@ add_library(
   src/infra/export/CsvExportPort.cpp
   src/infra/import/CancelableFileCopy.cpp
   src/infra/import/DerivadasSourceReader.cpp
+  src/infra/import/ImportFileConsolidator.cpp
   src/infra/import/ImportFileStager.cpp
+  src/infra/import/ImportPathValidation.cpp
   src/infra/import/LegacySpreadsheetConverter.cpp
   src/infra/import/SamSpreadsheetAdapter.cpp
   src/infra/import/SpreadsheetImportWorkflowPort.cpp

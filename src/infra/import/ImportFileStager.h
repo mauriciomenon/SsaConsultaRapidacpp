@@ -1,7 +1,6 @@
 #pragma once
 
 #include <filesystem>
-#include <optional>
 #include <stop_token>
 #include <string>
 #include <string_view>
@@ -18,53 +17,6 @@ namespace ssa::infra::importing {
         std::size_t summaryIndex = 0;
         std::string sourceCreatedTimestamp;
         std::filesystem::path consolidationFilename;
-    };
-
-    struct ImportManifestEntry {
-        std::vector<std::filesystem::path> sources;
-        bool hasValidRows = false;
-        std::filesystem::path destinationFilename;
-    };
-
-    struct ImportConsolidationMove {
-        std::filesystem::path source;
-        std::filesystem::path destination;
-        bool hasValidRows = false;
-        std::string sourceIdentity;
-        std::optional<std::uintmax_t> sourceSize;
-    };
-
-    struct ImportConsolidationPlanEntry {
-        std::vector<ImportConsolidationMove> moves;
-    };
-
-    struct ImportConsolidationPlan {
-        std::vector<ImportConsolidationPlanEntry> entries;
-        bool canceled = false;
-        std::string error;
-    };
-
-    struct ImportConsolidationMoveResult {
-        bool completed = false;
-        bool moved = false;
-        bool failed = false;
-    };
-
-    struct ImportConsolidationEntryResult {
-        std::vector<ImportConsolidationMoveResult> moves;
-        std::size_t completed = 0;
-        std::size_t moved = 0;
-        std::size_t noSurvivor = 0;
-        std::size_t failed = 0;
-    };
-
-    struct ImportConsolidationResult {
-        std::vector<ImportConsolidationEntryResult> entries;
-        std::size_t moved = 0;
-        std::size_t noSurvivor = 0;
-        std::size_t failed = 0;
-        bool canceled = false;
-        std::string error;
     };
 
     struct ImportStagingResult {
@@ -94,15 +46,6 @@ namespace ssa::infra::importing {
         [[nodiscard]] ImportStagingResult stageInputFiles(const std::stop_token& stopToken = {},
                                                           bool includeProcessed = false) const;
         [[nodiscard]] std::string discardOwnedArtifacts(const ImportStagingResult& staging) const;
-        [[nodiscard]] ImportConsolidationPlan
-        planConsolidation(const std::vector<ImportManifestEntry>& manifest,
-                          const std::stop_token& stopToken = {}) const;
-        [[nodiscard]] ImportConsolidationResult
-        consolidate(const std::vector<ImportManifestEntry>& manifest,
-                    const std::stop_token& stopToken = {}) const;
-        [[nodiscard]] ImportConsolidationResult
-        consolidate(const ImportConsolidationPlan& plan,
-                    const std::stop_token& stopToken = {}) const;
 
       private:
         struct StagedDestinationRequest {

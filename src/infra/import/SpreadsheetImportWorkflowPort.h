@@ -1,5 +1,6 @@
 #pragma once
 
+#include "infra/import/ImportFileConsolidator.h"
 #include "infra/import/ImportFileStager.h"
 #include "infra/import/SamSpreadsheetAdapter.h"
 #include "infra/import/SsaImportConflictResolver.h"
@@ -46,6 +47,7 @@ namespace ssa::infra::importing {
         std::filesystem::path importLockPath_;
         std::string importLockPathDiagnostic_;
         ImportFileStager stager_;
+        ImportFileConsolidator consolidator_;
         SsaImportConflictResolver conflictResolver_;
         sqlite::SqliteSsaImportWriter writer_;
     };

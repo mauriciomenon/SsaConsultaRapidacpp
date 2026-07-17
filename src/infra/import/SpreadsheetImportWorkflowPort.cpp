@@ -489,12 +489,14 @@ namespace ssa::infra::importing {
         std::filesystem::path inputFolder, std::filesystem::path databasePath,
         std::vector<domain::ColumnDef> columns, const bool consolidateSources)
         : inputFolder_(inputFolder), databasePath_(databasePath), columns_(columns),
-          consolidateSources_(consolidateSources), stager_(std::move(inputFolder)),
+          consolidateSources_(consolidateSources), stager_(inputFolder_),
+          consolidator_(inputFolder_),
           writer_(sqlite::SqliteSsaImportWriterAccess{}, databasePath, std::move(columns)) {
         if (const auto resolved = resolvedImportFolder(inputFolder_, importLockPathDiagnostic_)) {
             inputFolder_ = *resolved;
             importLockPath_ = inputFolder_.parent_path() / ".ssa_import.lock";
             stager_ = ImportFileStager(inputFolder_);
+            consolidator_ = ImportFileConsolidator(inputFolder_);
         }
     }
 
@@ -528,7 +530,7 @@ namespace ssa::infra::importing {
         for (auto& move : pending) {
             plan.entries.push_back({{std::move(move)}});
         }
-        const auto consolidation = stager_.consolidate(plan, stopToken);
+        const auto consolidation = consolidator_.consolidate(plan, stopToken);
         std::vector<ImportConsolidationMove> completedMoves;
         std::size_t journalFailures = 0;
         auto diagnostic = consolidation.error;
@@ -753,7 +755,7 @@ namespace ssa::infra::importing {
                 manifest.push_back(
                     {file.consolidationSources, hasValidRows, file.consolidationFilename});
             }
-            const auto consolidationPlan = stager_.planConsolidation(manifest, stopToken);
+            const auto consolidationPlan = consolidator_.plan(manifest, stopToken);
             if (consolidationPlan.canceled || !consolidationPlan.error.empty()) {
                 result.warning = true;
                 result.status = ports::WorkflowStatus::Succeeded;
@@ -765,7 +767,7 @@ namespace ssa::infra::importing {
                 return result;
             }
             publishDatabaseSnapshot(workingDatabase, databasePath_, stopToken);
-            const auto consolidation = stager_.consolidate(consolidationPlan, stopToken);
+            const auto consolidation = consolidator_.consolidate(consolidationPlan, stopToken);
             appendWorkflowDiagnostic(result.diagnostic, consolidation.error);
             result.warning = result.warning || consolidation.canceled || consolidation.failed > 0;
             std::vector<ImportConsolidationMove> completedMoves;
@@ -1208,7 +1210,7 @@ namespace ssa::infra::importing {
             manifest.push_back({outcome.file->consolidationSources, outcome.hasValidRows,
                                 outcome.file->consolidationFilename});
         }
-        const auto consolidationPlan = stager_.planConsolidation(manifest, stopToken);
+        const auto consolidationPlan = consolidator_.plan(manifest, stopToken);
         if (consolidationPlan.canceled) {
             return discardBeforeCommit(rollbackSession(*writeSession, canceled(operation)));
         }
@@ -1263,7 +1265,7 @@ namespace ssa::infra::importing {
                                 files.diagnostic},
                                importSummary);
         }
-        const auto consolidation = stager_.consolidate(consolidationPlan, stopToken);
+        const auto consolidation = consolidator_.consolidate(consolidationPlan, stopToken);
         auto diagnostic = files.diagnostic;
         appendWorkflowDiagnostic(diagnostic, consolidation.error);
         std::vector<ImportConsolidationMove> completedMoves;

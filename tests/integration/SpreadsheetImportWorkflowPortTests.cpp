@@ -2,6 +2,7 @@
 #include "application/SsaWorkflowService.h"
 #include "domain/ColumnCatalog.h"
 #include "infra/import/CancelableFileCopy.h"
+#include "infra/import/ImportFileConsolidator.h"
 #include "infra/import/ImportFileStager.h"
 #include "infra/import/LegacySpreadsheetConverter.h"
 #include "infra/import/SpreadsheetImportWorkflowPort.h"
@@ -943,8 +944,9 @@ TEST_CASE("import file stager rejects a symlinked input directory") {
 
     SECTION("consolidation preserves its source") {
         const std::vector<ssa::infra::importing::ImportManifestEntry> manifest{{{source}, true}};
+        const ssa::infra::importing::ImportFileConsolidator consolidator(inputDirectory);
 
-        const auto result = stager.consolidate(manifest);
+        const auto result = consolidator.consolidate(manifest);
 
         REQUIRE(result.failed == 1);
         REQUIRE(result.error == "input_directory_symlink");
@@ -960,7 +962,7 @@ TEST_CASE("import file consolidation observes cancellation with an empty source 
 
     const auto inputDirectory =
         std::filesystem::path{tempDir.path().toStdString()} / "docs_entrada";
-    const ssa::infra::importing::ImportFileStager stager(inputDirectory);
+    const ssa::infra::importing::ImportFileConsolidator stager(inputDirectory);
     const std::vector<ssa::infra::importing::ImportManifestEntry> manifest{{{}, true}};
     std::stop_source stopSource;
     stopSource.request_stop();
@@ -989,7 +991,7 @@ TEST_CASE("consolidation preflight counts failed sources rather than manifest en
     createSparseFile(legacy, 1);
     createSparseFile(converted, 1);
     createSparseFile(workbook, 1);
-    const ssa::infra::importing::ImportFileStager stager(inputDirectory);
+    const ssa::infra::importing::ImportFileConsolidator stager(inputDirectory);
     const std::vector<ssa::infra::importing::ImportManifestEntry> manifest{
         {{legacy, converted, workbook}, true}, {{}, false}};
 
@@ -1011,10 +1013,10 @@ TEST_CASE("partial consolidation reports each manifest entry independently") {
     const auto missing = inputDirectory / "missing.xlsx";
     createSparseFile(first, 1);
     createSparseFile(missing, 1);
-    const ssa::infra::importing::ImportFileStager stager(inputDirectory);
+    const ssa::infra::importing::ImportFileConsolidator stager(inputDirectory);
     const std::vector<ssa::infra::importing::ImportManifestEntry> manifest{{{first}, true},
                                                                            {{missing}, true}};
-    const auto plan = stager.planConsolidation(manifest);
+    const auto plan = stager.plan(manifest);
     REQUIRE(plan.error.empty());
     REQUIRE(std::filesystem::remove(missing));
 
@@ -1043,7 +1045,7 @@ TEST_CASE("consolidation journal rejects paths outside the input root") {
     const auto outsideDestination = root / "moved.xlsx";
     std::filesystem::create_directories(inputDirectory);
     createSparseFile(outsideSource, 1);
-    const ssa::infra::importing::ImportFileStager stager(inputDirectory);
+    const ssa::infra::importing::ImportFileConsolidator stager(inputDirectory);
     ssa::infra::importing::ImportConsolidationPlan plan;
     plan.entries.push_back({{{outsideSource, outsideDestination, true}}});
 
@@ -1067,8 +1069,8 @@ TEST_CASE("consolidation rejects a source replaced after journal planning") {
     std::filesystem::create_directories(inputDirectory);
     createSparseFile(source, 1);
 
-    const ssa::infra::importing::ImportFileStager stager(inputDirectory);
-    const auto plan = stager.planConsolidation({{{source}, true}});
+    const ssa::infra::importing::ImportFileConsolidator stager(inputDirectory);
+    const auto plan = stager.plan({{{source}, true}});
     REQUIRE(plan.error.empty());
     REQUIRE(plan.entries.size() == 1);
     REQUIRE(plan.entries.front().moves.size() == 1);
@@ -1095,8 +1097,8 @@ TEST_CASE("consolidation journal rejects a source replaced after planning") {
     std::filesystem::create_directories(inputDirectory);
     createSparseFile(source, 1);
 
-    const ssa::infra::importing::ImportFileStager stager(inputDirectory);
-    const auto plan = stager.planConsolidation({{{source}, true}});
+    const ssa::infra::importing::ImportFileConsolidator stager(inputDirectory);
+    const auto plan = stager.plan({{{source}, true}});
     REQUIRE(plan.error.empty());
     std::filesystem::rename(source, original);
     createSparseFile(source, 1);
@@ -1126,8 +1128,8 @@ TEST_CASE("consolidation rejects an unrelated destination while resuming a moved
     std::filesystem::create_directories(inputDirectory);
     createSparseFile(source, 1);
 
-    const ssa::infra::importing::ImportFileStager stager(inputDirectory);
-    const auto plan = stager.planConsolidation({{{source}, true}});
+    const ssa::infra::importing::ImportFileConsolidator stager(inputDirectory);
+    const auto plan = stager.plan({{{source}, true}});
     REQUIRE(plan.error.empty());
     const auto destination = plan.entries.front().moves.front().destination;
 

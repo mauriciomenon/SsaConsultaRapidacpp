@@ -2,7 +2,7 @@
 
 #include "domain/ColumnCatalog.h"
 #include "infra/SsaImportData.h"
-#include "infra/import/ImportFileStager.h"
+#include "infra/import/ImportConsolidation.h"
 
 #include <filesystem>
 #include <memory>
