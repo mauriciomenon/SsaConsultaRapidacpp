@@ -473,6 +473,18 @@ namespace ssa::domain {
         return text;
     }
 
+    std::string SsaImportPolicy::normalizeDateText(const std::string& value) {
+        const auto text = trimWhitespace(value);
+        const auto normalized = normalizeSnapshotTimestamp(text);
+        if (normalized.empty()) {
+            return {};
+        }
+        const bool hasIsoDatePrefix = text.size() >= 10 && text[4] == '-' && text[7] == '-';
+        const bool isIsoDate = text.size() == 10;
+        const bool isIsoDateTime = text.size() == 19 && (text[10] == ' ' || text[10] == 'T');
+        return hasIsoDatePrefix && (isIsoDate || isIsoDateTime) ? text : normalized;
+    }
+
     std::string SsaImportPolicy::normalizeSnapshotTimestamp(const std::string& value) {
         const auto timestamp = parseExactTimestamp(trimWhitespace(value));
         if (!timestamp) {

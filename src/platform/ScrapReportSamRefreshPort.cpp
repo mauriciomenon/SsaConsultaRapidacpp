@@ -292,7 +292,11 @@ namespace ssa::platform {
         if (!activeOutput_) {
             return true;
         }
-        if (!activeOutput_->remove()) {
+        if (!activeOutput_->isValid()) {
+            activeOutput_.reset();
+            return true;
+        }
+        if (!QDir{activeOutput_->path()}.removeRecursively()) {
             return false;
         }
         activeOutput_.reset();

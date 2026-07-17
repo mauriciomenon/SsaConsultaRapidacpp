@@ -344,16 +344,25 @@ namespace ssa::presentation {
 
     void WorkflowCommandViewModel::applyResult(const ports::WorkflowResult& result) {
         if (result.status == ports::WorkflowStatus::Canceled) {
-            setResult(messagesForCurrentOperation().canceled, false, false, true);
+            const auto message = messagesForCurrentOperation().canceled;
+            emit logEntryRequested(QStringLiteral("Warning"), QStringLiteral("Workflow"), message,
+                                   QString::fromStdString(result.diagnostic));
+            setResult(message, false, false, true);
             return;
         }
         if (result.ok()) {
-            setResult(QString::fromStdString(result.message.empty() ? successMessage().toStdString()
-                                                                    : result.message),
-                      true, result.warning);
+            const auto message = QString::fromStdString(
+                result.message.empty() ? successMessage().toStdString() : result.message);
+            emit logEntryRequested(
+                result.warning ? QStringLiteral("Warning") : QStringLiteral("Info"),
+                QStringLiteral("Workflow"), message, QString::fromStdString(result.diagnostic));
+            setResult(message, true, result.warning);
             return;
         }
-        setResult(QString::fromStdString(result.message), false);
+        const auto message = QString::fromStdString(result.message);
+        emit logEntryRequested(QStringLiteral("Error"), QStringLiteral("Workflow"), message,
+                               QString::fromStdString(result.diagnostic));
+        setResult(message, false);
     }
 
     void

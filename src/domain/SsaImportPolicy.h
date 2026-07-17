@@ -32,6 +32,7 @@ namespace ssa::domain {
         };
 
         [[nodiscard]] static std::string normalizeNumber(const std::string& value);
+        [[nodiscard]] static std::string normalizeDateText(const std::string& value);
         [[nodiscard]] static std::string normalizeSnapshotTimestamp(const std::string& value);
         [[nodiscard]] static std::string normalizeFilenameTimestamp(const std::string& filename);
         [[nodiscard]] static bool isTerminalStatus(const std::string& status);

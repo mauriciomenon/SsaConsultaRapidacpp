@@ -1,5 +1,7 @@
 #include "PresentationSmokeFakes.h"
 
+#include "DesktopSmokeObjectNames.h"
+
 #include "presentation/MainViewModel.h"
 #include "query/SsaQueryService.h"
 
@@ -132,6 +134,11 @@ namespace {
 
       private slots:
         void initTestCase() {
+            QVERIFY(qmlRegisterSingletonType<ssa::app::desktop::DesktopSmokeObjectNames>(
+                        "SsaConsultaRapida", 1, 0, "DesktopSmokeObjectNames",
+                        [](QQmlEngine*, QJSEngine*) -> QObject* {
+                            return new ssa::app::desktop::DesktopSmokeObjectNames;
+                        }) >= 0);
             const QUrl themeUrl = QUrl::fromLocalFile(
                 repositoryRoot().filePath(QStringLiteral("app/desktop/qml/Theme.qml")));
             QVERIFY(qmlRegisterSingletonType(themeUrl, "SsaConsultaRapida", 1, 0, "Theme") >= 0);
@@ -282,11 +289,51 @@ namespace {
             window->resize(1180, 760);
             window->show();
             QTRY_VERIFY_WITH_TIMEOUT(window->isExposed(), 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(viewModel.browse()->totalRows(), 1, 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(!viewModel.browse()->visibleColumns().empty(), 1000);
 
             auto* mainTable = window->findChild<QObject*>(QStringLiteral("mainSsaTable"));
             auto* popup = window->findChild<QObject*>(QStringLiteral("columnSelectorPopup"));
             QVERIFY(mainTable != nullptr);
             QVERIFY(popup != nullptr);
+            auto* mainTableItem = qobject_cast<QQuickItem*>(mainTable);
+            QVERIFY(mainTableItem != nullptr);
+            struct HeaderMenuHandles final {
+                QPointer<QQuickItem> cell;
+                QPointer<QObject> menu;
+            };
+            const auto locateHeaderMenu = [&] {
+                QVariant headerCellValue;
+                HeaderMenuHandles handles;
+                if (!QMetaObject::invokeMethod(mainTable, "headerCellForSmoke",
+                                               Q_RETURN_ARG(QVariant, headerCellValue),
+                                               Q_ARG(QVariant, QStringLiteral("numero_ssa")))) {
+                    return handles;
+                }
+                handles.cell = qobject_cast<QQuickItem*>(qvariant_cast<QObject*>(headerCellValue));
+                if (handles.cell) {
+                    handles.menu =
+                        qvariant_cast<QObject*>(handles.cell->property("contextMenuForSmoke"));
+                }
+                return handles;
+            };
+            const auto openHeaderMenu = [&](const HeaderMenuHandles& handles) {
+                const auto center = handles.cell->mapToItem(
+                    window->contentItem(),
+                    QPointF{handles.cell->width() / 2.0, handles.cell->height() / 2.0});
+                QTest::mouseClick(window, Qt::RightButton, Qt::NoModifier, center.toPoint());
+            };
+            const auto clickMenuAction = [&](QQuickItem* action) {
+                const auto center = action->mapToItem(
+                    window->contentItem(), QPointF{action->width() / 2.0, action->height() / 2.0});
+                QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, center.toPoint());
+            };
+            auto headerHandles = locateHeaderMenu();
+            QTRY_VERIFY_WITH_TIMEOUT((!(headerHandles = locateHeaderMenu()).cell.isNull() &&
+                                      !headerHandles.menu.isNull()),
+                                     1000);
+            openHeaderMenu(headerHandles);
+            QTRY_VERIFY_WITH_TIMEOUT(headerHandles.menu->property("visible").toBool(), 1000);
 
             auto* cellMenu = window->findChild<QObject*>(QStringLiteral("cellContextMenu"));
             auto* cellAction =
@@ -299,6 +346,16 @@ namespace {
             auto* openSamAction = window->findChild<QQuickItem*>(QStringLiteral("openSamAction"));
             auto* openDetailsAction =
                 window->findChild<QQuickItem*>(QStringLiteral("openDetailsAction"));
+            QPointer<QQuickItem> filterColumnAction =
+                headerHandles.menu->findChild<QQuickItem*>(QStringLiteral("filterColumnAction"));
+            QPointer<QQuickItem> hideColumnAction =
+                headerHandles.menu->findChild<QQuickItem*>(QStringLiteral("hideColumnAction"));
+            QPointer<QQuickItem> resetSortAction =
+                headerHandles.menu->findChild<QQuickItem*>(QStringLiteral("resetSortAction"));
+            QPointer<QQuickItem> headerConfigureColumnsAction =
+                headerHandles.menu->findChild<QQuickItem*>(
+                    QStringLiteral("headerConfigureColumnsAction"));
+            QVERIFY(!filterColumnAction.isNull());
             QVERIFY(cellMenu != nullptr);
             QVERIFY(cellAction != nullptr);
             QVERIFY(copyCellAction != nullptr);
@@ -307,6 +364,9 @@ namespace {
             QVERIFY(copyGraphAction != nullptr);
             QVERIFY(openSamAction != nullptr);
             QVERIFY(openDetailsAction != nullptr);
+            QVERIFY(hideColumnAction != nullptr);
+            QVERIFY(resetSortAction != nullptr);
+            QVERIFY(headerConfigureColumnsAction != nullptr);
 
             QCOMPARE(copyCellAction->property("actionId").toString(), QString("copy_cell"));
             QCOMPARE(copyRowAction->property("actionId").toString(), QString("copy_row"));
@@ -314,23 +374,20 @@ namespace {
             QCOMPARE(copyGraphAction->property("actionId").toString(), QString("copy_graph_svg"));
             QCOMPARE(openSamAction->property("actionId").toString(), QString("open_sam"));
             QCOMPARE(openDetailsAction->property("actionId").toString(), QString("open_details"));
+            QCOMPARE(filterColumnAction->property("actionId").toString(), QString("filter_column"));
+            QCOMPARE(hideColumnAction->property("actionId").toString(), QString("hide_column"));
+            QCOMPARE(resetSortAction->property("actionId").toString(), QString("reset_sort"));
+            QCOMPARE(headerConfigureColumnsAction->property("actionId").toString(),
+                     QString("configure_columns_from_header"));
 
-            const auto tableSource =
-                readSource(QStringLiteral("app/desktop/qml/components/SsaTable.qml"));
-            QVERIFY(tableSource.contains(QStringLiteral("actionId: \"filter_column\"")));
-            QVERIFY(tableSource.contains(QStringLiteral(
-                "onTriggered: root.viewModel.setFilterPanelFocusColumn(headerCell.columnKey)")));
-            QVERIFY(tableSource.contains(QStringLiteral("actionId: \"hide_column\"")));
-            QVERIFY(tableSource.contains(QStringLiteral(
-                "onTriggered: root.columnFlow.setColumnVisibleAndApply(headerCell.columnKey, "
-                "false)")));
-            QVERIFY(tableSource.contains(QStringLiteral("actionId: \"reset_sort\"")));
-            QVERIFY(
-                tableSource.contains(QStringLiteral("onTriggered: root.viewModel.resetSort()")));
-            QVERIFY(tableSource.contains(
-                QStringLiteral("actionId: \"configure_columns_from_header\"")));
-            QVERIFY(tableSource.contains(QStringLiteral(
-                "onTriggered: root.configureColumnsRequested(headerConfigureColumnsAction)")));
+            const auto focusRequest = viewModel.browse()->filters()->focusColumnRequest();
+            clickMenuAction(filterColumnAction);
+            QTRY_COMPARE_WITH_TIMEOUT(viewModel.browse()->filters()->focusColumnRequest(),
+                                      focusRequest + 1, 1000);
+            QCOMPARE(viewModel.browse()->filters()->columnKey(), QString("numero_ssa"));
+            QTRY_VERIFY_WITH_TIMEOUT(headerHandles.menu.isNull() ||
+                                         !headerHandles.menu->property("visible").toBool(),
+                                     1000);
 
             mainTable->setProperty("contextCellText", QString{});
             mainTable->setProperty("contextSsaNumber", QString{});
@@ -356,7 +413,6 @@ namespace {
             triggerCopyAction(copyRowAction, "contextRowText", QStringLiteral("row value"));
             triggerCopyAction(copySsaAction, "contextSsaNumber", QStringLiteral("202600001"));
 
-            QTRY_COMPARE_WITH_TIMEOUT(viewModel.browse()->totalRows(), 1, 1000);
             viewModel.browse()->selectRow(0);
             QTRY_COMPARE_WITH_TIMEOUT(viewModel.browse()->currentRow(), 0, 1000);
             mainTable->setProperty("contextSsaNumber", QStringLiteral("202500001"));
@@ -379,24 +435,44 @@ namespace {
             QVERIFY(detailsWindow != nullptr);
             detailsWindow->close();
 
-            const auto focusRequest = viewModel.browse()->filters()->focusColumnRequest();
-            viewModel.browse()->setFilterPanelFocusColumn(QStringLiteral("numero_ssa"));
-            QTRY_COMPARE_WITH_TIMEOUT(viewModel.browse()->filters()->focusColumnRequest(),
-                                      focusRequest + 1, 1000);
-            QVERIFY(!viewModel.browse()->filters()->columnKey().isEmpty());
-
             viewModel.browse()->sortByColumn(1);
             QTRY_VERIFY_WITH_TIMEOUT(!viewModel.browse()->sortColumnKey().isEmpty(), 1000);
-            viewModel.browse()->resetSort();
+            QTRY_VERIFY_WITH_TIMEOUT((!(headerHandles = locateHeaderMenu()).cell.isNull() &&
+                                      !headerHandles.menu.isNull()),
+                                     1000);
+            resetSortAction =
+                headerHandles.menu->findChild<QQuickItem*>(QStringLiteral("resetSortAction"));
+            QVERIFY(!resetSortAction.isNull());
+            QVERIFY(QMetaObject::invokeMethod(headerHandles.menu, "popup"));
+            QTRY_VERIFY_WITH_TIMEOUT(headerHandles.menu->property("visible").toBool(), 1000);
+            clickMenuAction(resetSortAction);
             QTRY_VERIFY_WITH_TIMEOUT(viewModel.browse()->sortColumnKey().isEmpty(), 1000);
 
+            QTRY_VERIFY_WITH_TIMEOUT((!(headerHandles = locateHeaderMenu()).cell.isNull() &&
+                                      !headerHandles.menu.isNull()),
+                                     1000);
+            headerConfigureColumnsAction = headerHandles.menu->findChild<QQuickItem*>(
+                QStringLiteral("headerConfigureColumnsAction"));
+            QVERIFY(!headerConfigureColumnsAction.isNull());
+            QVERIFY(QMetaObject::invokeMethod(headerHandles.menu, "popup"));
+            QTRY_VERIFY_WITH_TIMEOUT(headerHandles.menu->property("visible").toBool(), 1000);
+            clickMenuAction(headerConfigureColumnsAction);
+            QTRY_VERIFY_WITH_TIMEOUT(popup->property("visible").toBool(), 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(headerHandles.menu.isNull() ||
+                                         !headerHandles.menu->property("visible").toBool(),
+                                     1000);
+            QVERIFY(QMetaObject::invokeMethod(popup, "close"));
+
             const auto visibleColumnsBeforeHide = viewModel.browse()->visibleColumns().size();
-            bool columnHidden = false;
-            QVERIFY(QMetaObject::invokeMethod(viewModel.columnFlow(), "setColumnVisibleAndApply",
-                                              Q_RETURN_ARG(bool, columnHidden),
-                                              Q_ARG(QString, QStringLiteral("numero_ssa")),
-                                              Q_ARG(bool, false)));
-            QVERIFY(columnHidden);
+            QTRY_VERIFY_WITH_TIMEOUT((!(headerHandles = locateHeaderMenu()).cell.isNull() &&
+                                      !headerHandles.menu.isNull()),
+                                     1000);
+            hideColumnAction =
+                headerHandles.menu->findChild<QQuickItem*>(QStringLiteral("hideColumnAction"));
+            QVERIFY(!hideColumnAction.isNull());
+            QVERIFY(QMetaObject::invokeMethod(headerHandles.menu, "popup"));
+            QTRY_VERIFY_WITH_TIMEOUT(headerHandles.menu->property("visible").toBool(), 1000);
+            clickMenuAction(hideColumnAction);
             QTRY_COMPARE_WITH_TIMEOUT(viewModel.browse()->visibleColumns().size(),
                                       visibleColumnsBeforeHide - 1, 1000);
             QTRY_COMPARE_WITH_TIMEOUT(preferences->saveCount(), 1, 1000);
@@ -493,6 +569,56 @@ namespace {
             const auto mainWindow =
                 std::unique_ptr<QObject>(component.createWithInitialProperties(initialProperties));
             QVERIFY2(mainWindow != nullptr, qPrintable(component.errorString()));
+            auto* quickWindow = qobject_cast<QQuickWindow*>(mainWindow.get());
+            QVERIFY(quickWindow != nullptr);
+            quickWindow->show();
+            QTRY_VERIFY_WITH_TIMEOUT(quickWindow->isExposed(), 1000);
+
+            viewModel.logs()->append(
+                QStringLiteral("Error"), QStringLiteral("Workflow"),
+                QStringLiteral("Falha de importacao"),
+                QStringLiteral("invalid integer value for column numero_desvios"));
+            auto* helpMenu = mainWindow->findChild<QObject*>(QStringLiteral("helpMenu"));
+            auto* openLogHistory =
+                mainWindow->findChild<QQuickItem*>(QStringLiteral("openLogHistoryMenuItem"));
+            QVERIFY(helpMenu != nullptr);
+            QVERIFY(openLogHistory != nullptr);
+            QVERIFY(QMetaObject::invokeMethod(helpMenu, "popup"));
+            QTRY_VERIFY_WITH_TIMEOUT(openLogHistory->isVisible(), 1000);
+            const auto logActionCenter = openLogHistory->mapToItem(
+                quickWindow->contentItem(),
+                QPointF{openLogHistory->width() / 2.0, openLogHistory->height() / 2.0});
+            QTest::mouseClick(quickWindow, Qt::LeftButton, Qt::NoModifier,
+                              logActionCenter.toPoint());
+
+            auto* logWindow = waitForVisibleWindow(QStringLiteral("Historico de logs e erros"));
+            QVERIFY(logWindow != nullptr);
+            auto* logDetail = logWindow->findChild<QQuickItem*>(QStringLiteral("logHistoryDetail"));
+            auto* copySelected =
+                logWindow->findChild<QQuickItem*>(QStringLiteral("copySelectedLogButton"));
+            QVERIFY(logDetail != nullptr);
+            QVERIFY(copySelected != nullptr);
+            QTRY_VERIFY_WITH_TIMEOUT(
+                logDetail->property("text").toString().contains(QStringLiteral("numero_desvios")),
+                1000);
+            const auto copyCenter = copySelected->mapToItem(
+                qobject_cast<QQuickWindow*>(logWindow)->contentItem(),
+                QPointF{copySelected->width() / 2.0, copySelected->height() / 2.0});
+            QTest::mouseClick(logWindow, Qt::LeftButton, Qt::NoModifier, copyCenter.toPoint());
+            QTRY_VERIFY_WITH_TIMEOUT(
+                QGuiApplication::clipboard()->text().contains(QStringLiteral("numero_desvios")),
+                1000);
+            const auto logImage = qobject_cast<QQuickWindow*>(logWindow)->grabWindow();
+            QVERIFY(!logImage.isNull());
+            QVERIFY(logImage.save(QDir(QCoreApplication::applicationDirPath())
+                                      .filePath(QStringLiteral("log-history-dialog.png"))));
+            logWindow->close();
+
+            auto* statusText =
+                mainWindow->findChild<QQuickItem*>(QStringLiteral("statusMessageText"));
+            QVERIFY(statusText != nullptr);
+            QVERIFY(statusText->property("readOnly").toBool());
+            QVERIFY(statusText->property("selectByMouse").toBool());
 
             QVERIFY(dialogCanOpenCloseAndReopen(*mainWindow, "openHelpDialog",
                                                 QStringLiteral("Ajuda")));
@@ -621,6 +747,14 @@ namespace {
             QTRY_COMPARE_WITH_TIMEOUT(commands->commands().size(), std::size_t{1}, 1000);
             QCOMPARE(commands->commands().front().kind,
                      ssa::ports::ExternalCommandKind::OpenInstallationGuide);
+
+            const auto requestsBeforeApply = repository->requests().size();
+            viewModel.browse()->search()->setText(QStringLiteral("menu filter"));
+            QVERIFY(QMetaObject::invokeMethod(applyFilters, "triggered"));
+            QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), requestsBeforeApply + 1, 1000);
+            QCOMPARE(QString::fromStdString(repository->requests().back().searchText),
+                     QStringLiteral("menu filter"));
+
             auto* derivadasDialog =
                 mainWindow->findChild<QObject*>(QStringLiteral("derivadasFileDialog"));
             QVERIFY(derivadasDialog != nullptr);
@@ -676,7 +810,8 @@ namespace {
             QCOMPARE(cancelButton->property("text").toString(), QStringLiteral("Cancelar"));
             QVERIFY(captureDialogScreenshot(*mainWindow, QStringLiteral("status-cancel.png")));
 
-            viewModel.requestCancelAll();
+            QTRY_VERIFY_WITH_TIMEOUT(cancelAll->property("enabled").toBool(), 1000);
+            QVERIFY(QMetaObject::invokeMethod(cancelAll, "triggered"));
             QTRY_COMPARE_WITH_TIMEOUT(cancelButton->property("text").toString(),
                                       QStringLiteral("Cancelando..."), 1000);
             QVERIFY(captureDialogScreenshot(*mainWindow, QStringLiteral("status-canceling.png")));

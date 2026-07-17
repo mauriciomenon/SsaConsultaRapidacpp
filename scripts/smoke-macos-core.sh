@@ -56,7 +56,14 @@ prepare_macos_build_dir() {
   local configure_script="${project_root}/tools/configure-dev.sh"
 
   if [[ "${clean_requested}" == "true" ]]; then
-    rm -rf "${build_dir}"
+    if [[ -e "${build_dir}/.ninja_lock" ]]; then
+      echo "Build directory is in use; wait for the active Ninja build before cleaning: ${build_dir}" >&2
+      return 1
+    fi
+    if ! rm -rf "${build_dir}"; then
+      echo "Build directory cleanup failed; another process may have started using it: ${build_dir}" >&2
+      return 1
+    fi
     "${configure_script}" "${preset}"
   elif [[ ! -f "${build_dir}/CMakeCache.txt" ]]; then
     "${configure_script}" "${preset}"

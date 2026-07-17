@@ -32,6 +32,16 @@ TEST_CASE("SSA spreadsheet header catalog preserves the Python import contract")
     }
 }
 
+TEST_CASE("SSA spreadsheet aliases converge to stable ASCII schema keys") {
+    using Catalog = ssa::infra::importing::SsaSpreadsheetHeaderCatalog;
+
+    REQUIRE(Catalog::canonicalColumnForHeader("Descricao da SSA") == "descricao_ssa");
+    REQUIRE(Catalog::canonicalColumnForHeader("Description") == "descricao_ssa");
+    REQUIRE(Catalog::canonicalColumnForHeader("Descripcion de la SSA") == "descricao_ssa");
+    REQUIRE(Catalog::canonicalColumnForHeader("Numero de Desvios") == "numero_desvios");
+    REQUIRE_FALSE(Catalog::canonicalColumnForHeader("unknown external header"));
+}
+
 TEST_CASE("SSA spreadsheet mapper resolves repeated semantic header families by position") {
     ssa::infra::importing::SpreadsheetTable table;
     table.sourcePath = "families.xlsx";
@@ -86,6 +96,19 @@ TEST_CASE("SSA spreadsheet mapper resolves repeated semantic header families by 
     REQUIRE(imported.at("ate") == "A0");
     REQUIRE(imported.at("ate_1") == "A1");
     REQUIRE(imported.at("ate_2") == "A2");
+}
+
+TEST_CASE("SSA spreadsheet mapper extracts the integer from a real deviation label") {
+    ssa::infra::importing::SpreadsheetTable table;
+    table.sourcePath = "SSAs com Desvio.xlsx";
+    table.rows = {{"Numero SSA", "Descricao", "Data Cadastro", "Desvio"},
+                  {"202600001", "Deviation", "2026-07-14", "Desvio #2"}};
+
+    const auto batch = ssa::infra::importing::SsaSpreadsheetMapper::map(table);
+
+    REQUIRE(batch.mappingStatus == ssa::infra::importing::SpreadsheetMappingStatus::Mapped);
+    REQUIRE(batch.rows.size() == 1);
+    REQUIRE(batch.rows.front().at("numero_desvios") == "2");
 }
 
 TEST_CASE("SSA spreadsheet mapper exposes the validated header for continuation chunks") {

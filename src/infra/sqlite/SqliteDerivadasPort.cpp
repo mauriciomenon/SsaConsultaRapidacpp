@@ -3,6 +3,7 @@
 #include "infra/import/DerivadasSourceReader.h"
 #include "infra/import/LegacySpreadsheetConverter.h"
 #include "infra/sqlite/SqliteConnection.h"
+#include "infra/sqlite/SqliteDatabaseWriteLock.h"
 #include "infra/sqlite/SqliteProgressHandler.h"
 #include "ports/OperationError.h"
 #include "qt/FilesystemPath.h"
@@ -215,6 +216,12 @@ namespace ssa::infra::sqlite {
                 return importCanceled();
             }
 
+            const SqliteDatabaseWriteLock writeLock(databasePath_);
+            if (!writeLock.acquired()) {
+                return stopToken.stop_requested()
+                           ? importCanceled()
+                           : importFailed(std::string{writeLock.diagnostic()});
+            }
             SqliteConnection connection(databasePath_, SqliteOpenMode::ReadWrite);
             SqliteBusyHandler busy(connection.handle(), stopToken);
             SqliteProgressHandler progress(connection.handle(), stopToken);
@@ -304,6 +311,11 @@ namespace ssa::infra::sqlite {
     ports::WorkflowResult
     SqliteDerivadasPort::cleanOrphanDerivations(const std::stop_token stopToken) {
         try {
+            const SqliteDatabaseWriteLock writeLock(databasePath_);
+            if (!writeLock.acquired()) {
+                return stopToken.stop_requested() ? canceled()
+                                                  : failed(std::string{writeLock.diagnostic()});
+            }
             SqliteConnection connection(databasePath_, SqliteOpenMode::ReadWrite);
             SqliteBusyHandler busy(connection.handle(), stopToken);
             SqliteProgressHandler progress(connection.handle(), stopToken);

@@ -1,11 +1,10 @@
 #include "infra/import/SpreadsheetImportWorkflowPort.h"
 
 #include "infra/sqlite/SqliteConnection.h"
+#include "infra/sqlite/SqliteDatabaseWriteLock.h"
 #include "ports/OperationError.h"
 #include "qt/FilesystemPath.h"
 
-#include <QCryptographicHash>
-#include <QDir>
 #include <QFile>
 #include <QLockFile>
 #include <QSaveFile>
@@ -165,41 +164,69 @@ namespace ssa::infra::importing {
             return {};
         }
 
+        std::optional<std::filesystem::path>
+        resolvedImportFolder(const std::filesystem::path& inputFolder, std::string& diagnostic) {
+            std::error_code error;
+            auto normalized = std::filesystem::weakly_canonical(inputFolder, error);
+            if (error) {
+                const auto canonicalError = error.message();
+                error.clear();
+                normalized = std::filesystem::absolute(inputFolder, error);
+                if (error) {
+                    diagnostic = "cannot resolve canonical import corpus: weakly_canonical=" +
+                                 canonicalError + "; absolute=" + error.message();
+                    return std::nullopt;
+                }
+                normalized = normalized.lexically_normal();
+            }
+            return normalized;
+        }
+
         struct ImportLocks final {
             std::unique_ptr<QLockFile> corpus;
-            std::unique_ptr<QLockFile> database;
+            std::unique_ptr<sqlite::SqliteDatabaseWriteLock> database;
 
             explicit operator bool() const noexcept {
                 return corpus != nullptr && database != nullptr;
             }
         };
 
-        ImportLocks acquireImportLocks(const std::filesystem::path& corpusPath,
-                                       const std::filesystem::path& databasePath,
-                                       QLockFile::LockError& error) {
-            auto corpus = acquireImportLock(corpusPath, error);
-            if (!corpus) {
-                return {};
+        enum class ImportLockFailureOrigin { Corpus, Database };
+
+        std::string_view importLockDiagnostic(const QLockFile::LockError error) {
+            switch (error) {
+            case QLockFile::NoError:
+                return "QLockFile acquisition failed without an error code";
+            case QLockFile::LockFailedError:
+                return "QLockFile is held by another process";
+            case QLockFile::PermissionError:
+                return "QLockFile permission denied";
+            case QLockFile::UnknownError:
+                return "QLockFile reported an unknown filesystem error";
             }
-            auto database = acquireImportLock(databasePath, error);
-            if (!database) {
-                return {};
-            }
-            return {std::move(corpus), std::move(database)};
+            return "QLockFile reported an invalid error code";
         }
 
-        std::filesystem::path databaseLockPath(const std::filesystem::path& databasePath) {
-            std::error_code error;
-            auto normalized = std::filesystem::weakly_canonical(databasePath, error);
-            if (error) {
-                normalized = std::filesystem::absolute(databasePath).lexically_normal();
+        ImportLocks acquireImportLocks(const std::filesystem::path& corpusPath,
+                                       const std::filesystem::path& databasePath,
+                                       QLockFile::LockError& error, std::string& diagnostic,
+                                       ImportLockFailureOrigin& failureOrigin) {
+            failureOrigin = ImportLockFailureOrigin::Corpus;
+            auto corpus = acquireImportLock(corpusPath, error);
+            if (!corpus) {
+                diagnostic = importLockDiagnostic(error);
+                return {};
             }
-            const auto digest = QCryptographicHash::hash(qt::toQString(normalized).toUtf8(),
-                                                         QCryptographicHash::Sha256)
-                                    .toHex()
-                                    .toStdString();
-            return std::filesystem::path{QDir::tempPath().toStdString()} /
-                   (".ssa_import_db_" + digest + ".lock");
+            auto database = std::make_unique<sqlite::SqliteDatabaseWriteLock>(databasePath);
+            if (!database->acquired()) {
+                failureOrigin = ImportLockFailureOrigin::Database;
+                error = database->error();
+                diagnostic = database->diagnostic();
+                return {};
+            }
+            error = QLockFile::NoError;
+            diagnostic.clear();
+            return {std::move(corpus), std::move(database)};
         }
 
         ports::ImportSummary makeImportSummary(const ImportStagingResult& files) {
@@ -249,20 +276,6 @@ namespace ssa::infra::importing {
             return result;
         }
 
-        std::string_view importLockDiagnostic(const QLockFile::LockError error) {
-            switch (error) {
-            case QLockFile::NoError:
-                return "QLockFile acquisition failed without an error code";
-            case QLockFile::LockFailedError:
-                return "QLockFile is held by another process";
-            case QLockFile::PermissionError:
-                return "QLockFile permission denied";
-            case QLockFile::UnknownError:
-                return "QLockFile reported an unknown filesystem error";
-            }
-            return "QLockFile reported an invalid error code";
-        }
-
         ports::ImportSummary
         selectedFilesFailureSummary(const std::vector<std::filesystem::path>& files) {
             ports::ImportSummary summary;
@@ -277,12 +290,18 @@ namespace ssa::infra::importing {
             return summary;
         }
 
-        ports::WorkflowResult importLockFailure(const QLockFile::LockError error,
-                                                const ports::ImportSummary& summary = {}) {
-            return withSummary({ports::WorkflowStatus::Failed,
-                                error == QLockFile::LockFailedError ? "import_already_running"
-                                                                    : "import_lock_failed",
-                                false, std::string{importLockDiagnostic(error)}},
+        ports::WorkflowResult
+        importLockFailure(const QLockFile::LockError error,
+                          const ports::ImportSummary& summary = {},
+                          const std::string_view diagnostic = {},
+                          const ImportLockFailureOrigin origin = ImportLockFailureOrigin::Corpus) {
+            const auto message = origin == ImportLockFailureOrigin::Database
+                                     ? "database_write_lock_failed"
+                                 : error == QLockFile::LockFailedError ? "import_already_running"
+                                                                       : "import_lock_failed";
+            return withSummary({ports::WorkflowStatus::Failed, message, false,
+                                diagnostic.empty() ? std::string{importLockDiagnostic(error)}
+                                                   : std::string{diagnostic}},
                                summary);
         }
 
@@ -352,11 +371,14 @@ namespace ssa::infra::importing {
         std::filesystem::path inputFolder, std::filesystem::path databasePath,
         std::vector<domain::ColumnDef> columns, const bool consolidateSources)
         : inputFolder_(inputFolder), databasePath_(databasePath), columns_(columns),
-          consolidateSources_(consolidateSources),
-          importLockPath_(std::filesystem::absolute(inputFolder).lexically_normal().parent_path() /
-                          ".ssa_import.lock"),
-          databaseImportLockPath_(databaseLockPath(databasePath)), stager_(std::move(inputFolder)),
-          writer_(std::move(databasePath), std::move(columns)) {}
+          consolidateSources_(consolidateSources), stager_(std::move(inputFolder)),
+          writer_(sqlite::SqliteSsaImportWriterAccess{}, databasePath, std::move(columns)) {
+        if (const auto resolved = resolvedImportFolder(inputFolder_, importLockPathDiagnostic_)) {
+            inputFolder_ = *resolved;
+            importLockPath_ = inputFolder_.parent_path() / ".ssa_import.lock";
+            stager_ = ImportFileStager(inputFolder_);
+        }
+    }
 
     std::optional<ports::WorkflowResult> SpreadsheetImportWorkflowPort::resumePendingConsolidation(
         const std::stop_token& stopToken) const {
@@ -389,7 +411,7 @@ namespace ssa::infra::importing {
             plan.entries.push_back({{std::move(move)}});
         }
         const auto consolidation = stager_.consolidate(plan, stopToken);
-        std::vector<std::filesystem::path> completedSources;
+        std::vector<ImportConsolidationMove> completedMoves;
         std::size_t journalFailures = 0;
         auto diagnostic = consolidation.error;
         for (std::size_t entryIndex = 0; entryIndex < plan.entries.size(); ++entryIndex) {
@@ -403,19 +425,19 @@ namespace ssa::infra::importing {
                     !resultEntry.moves[moveIndex].completed) {
                     continue;
                 }
-                completedSources.push_back(planEntry.moves[moveIndex].source);
+                completedMoves.push_back(planEntry.moves[moveIndex]);
             }
         }
         try {
-            writer_.completeConsolidation(completedSources);
+            writer_.completeConsolidation(completedMoves);
         } catch (const ports::OperationError& error) {
-            journalFailures = completedSources.size();
+            journalFailures = completedMoves.size();
             appendWorkflowDiagnostic(diagnostic, error.diagnostic());
         } catch (const std::exception& error) {
-            journalFailures = completedSources.size();
+            journalFailures = completedMoves.size();
             appendWorkflowDiagnostic(diagnostic, error.what());
         }
-        const auto completed = journalFailures == 0 ? completedSources.size() : std::size_t{0};
+        const auto completed = journalFailures == 0 ? completedMoves.size() : std::size_t{0};
         if (consolidation.canceled) {
             return ports::WorkflowResult{
                 ports::WorkflowStatus::Succeeded,
@@ -441,11 +463,19 @@ namespace ssa::infra::importing {
             return withSummary(
                 {ports::WorkflowStatus::Rejected, "import_external_files no_files_selected"}, {});
         }
+        if (!importLockPathDiagnostic_.empty()) {
+            return importLockFailure(QLockFile::UnknownError,
+                                     selectedFilesFailureSummary(request.files),
+                                     importLockPathDiagnostic_);
+        }
         QLockFile::LockError lockError = QLockFile::NoError;
-        const auto importLock =
-            acquireImportLocks(importLockPath_, databaseImportLockPath_, lockError);
+        std::string lockDiagnostic;
+        auto lockFailureOrigin = ImportLockFailureOrigin::Corpus;
+        const auto importLock = acquireImportLocks(importLockPath_, databasePath_, lockError,
+                                                   lockDiagnostic, lockFailureOrigin);
         if (!importLock) {
-            return importLockFailure(lockError, selectedFilesFailureSummary(request.files));
+            return importLockFailure(lockError, selectedFilesFailureSummary(request.files),
+                                     lockDiagnostic, lockFailureOrigin);
         }
         const auto staging = stager_.stageExternalFiles(request.files, stopToken);
         if (auto resumed = resumePendingConsolidation(stopToken)) {
@@ -469,16 +499,28 @@ namespace ssa::infra::importing {
         if (request.artifacts.empty()) {
             return withSummary({ports::WorkflowStatus::Rejected, "sam_import no_artifacts"}, {});
         }
+        if (!importLockPathDiagnostic_.empty()) {
+            std::vector<std::filesystem::path> files;
+            files.reserve(request.artifacts.size());
+            for (const auto& artifact : request.artifacts) {
+                files.push_back(artifact.path);
+            }
+            return importLockFailure(QLockFile::UnknownError, selectedFilesFailureSummary(files),
+                                     importLockPathDiagnostic_);
+        }
         QLockFile::LockError lockError = QLockFile::NoError;
-        const auto importLock =
-            acquireImportLocks(importLockPath_, databaseImportLockPath_, lockError);
+        std::string lockDiagnostic;
+        auto lockFailureOrigin = ImportLockFailureOrigin::Corpus;
+        const auto importLock = acquireImportLocks(importLockPath_, databasePath_, lockError,
+                                                   lockDiagnostic, lockFailureOrigin);
         if (!importLock) {
             std::vector<std::filesystem::path> files;
             files.reserve(request.artifacts.size());
             for (const auto& artifact : request.artifacts) {
                 files.push_back(artifact.path);
             }
-            return importLockFailure(lockError, selectedFilesFailureSummary(files));
+            return importLockFailure(lockError, selectedFilesFailureSummary(files), lockDiagnostic,
+                                     lockFailureOrigin);
         }
         if (auto resumed = resumePendingConsolidation(stopToken)) {
             if (!resumed->ok()) {
@@ -516,11 +558,16 @@ namespace ssa::infra::importing {
         if (!directoryStatus.rejectionReason.empty()) {
             return importDiscoveredFiles(directoryStatus, replaceAll, stopToken);
         }
+        if (!importLockPathDiagnostic_.empty()) {
+            return importLockFailure(QLockFile::UnknownError, {}, importLockPathDiagnostic_);
+        }
         QLockFile::LockError lockError = QLockFile::NoError;
-        const auto importLock =
-            acquireImportLocks(importLockPath_, databaseImportLockPath_, lockError);
+        std::string lockDiagnostic;
+        auto lockFailureOrigin = ImportLockFailureOrigin::Corpus;
+        const auto importLock = acquireImportLocks(importLockPath_, databasePath_, lockError,
+                                                   lockDiagnostic, lockFailureOrigin);
         if (!importLock) {
-            return importLockFailure(lockError);
+            return importLockFailure(lockError, {}, lockDiagnostic, lockFailureOrigin);
         }
         auto staging = stager_.stageInputFiles(stopToken, replaceAll);
         if (staging.operationalFailure || !staging.rejectionReason.empty()) {
@@ -603,7 +650,7 @@ namespace ssa::infra::importing {
             const auto consolidation = stager_.consolidate(consolidationPlan, stopToken);
             appendWorkflowDiagnostic(result.diagnostic, consolidation.error);
             result.warning = result.warning || consolidation.canceled || consolidation.failed > 0;
-            std::vector<std::filesystem::path> completedSources;
+            std::vector<ImportConsolidationMove> completedMoves;
             std::size_t journalFailures = 0;
             std::size_t completedFiles = 0;
             for (std::size_t index = 0; index < consolidationPlan.entries.size(); ++index) {
@@ -635,16 +682,16 @@ namespace ssa::infra::importing {
                         !resultEntry.moves[moveIndex].completed) {
                         continue;
                     }
-                    completedSources.push_back(planEntry.moves[moveIndex].source);
+                    completedMoves.push_back(planEntry.moves[moveIndex]);
                 }
             }
             try {
-                writer_.completeConsolidation(completedSources);
+                writer_.completeConsolidation(completedMoves);
             } catch (const ports::OperationError& error) {
-                journalFailures = completedSources.size();
+                journalFailures = completedMoves.size();
                 appendWorkflowDiagnostic(result.diagnostic, error.diagnostic());
             } catch (const std::exception& error) {
-                journalFailures = completedSources.size();
+                journalFailures = completedMoves.size();
                 appendWorkflowDiagnostic(result.diagnostic, error.what());
             }
             if (consolidation.canceled || consolidation.failed > 0 || journalFailures > 0) {
@@ -1167,7 +1214,7 @@ namespace ssa::infra::importing {
         const auto consolidation = stager_.consolidate(consolidationPlan, stopToken);
         auto diagnostic = files.diagnostic;
         appendWorkflowDiagnostic(diagnostic, consolidation.error);
-        std::vector<std::filesystem::path> completedSources;
+        std::vector<ImportConsolidationMove> completedMoves;
         std::size_t journalFailures = 0;
         for (std::size_t entryIndex = 0; entryIndex < consolidationPlan.entries.size();
              ++entryIndex) {
@@ -1181,16 +1228,16 @@ namespace ssa::infra::importing {
                     !resultEntry.moves[moveIndex].completed) {
                     continue;
                 }
-                completedSources.push_back(planEntry.moves[moveIndex].source);
+                completedMoves.push_back(planEntry.moves[moveIndex]);
             }
         }
         try {
-            writer_.completeConsolidation(completedSources);
+            writer_.completeConsolidation(completedMoves);
         } catch (const ports::OperationError& error) {
-            journalFailures = completedSources.size();
+            journalFailures = completedMoves.size();
             appendWorkflowDiagnostic(diagnostic, error.diagnostic());
         } catch (const std::exception& error) {
-            journalFailures = completedSources.size();
+            journalFailures = completedMoves.size();
             appendWorkflowDiagnostic(diagnostic, error.what());
         }
         failedFiles += consolidation.failed + journalFailures;

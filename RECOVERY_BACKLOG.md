@@ -2,6 +2,15 @@
 
 ## Pendente (fora do escopo desta trilha)
 
+### Sequencia ativa preservada
+
+1. Separar labels, visibilidade e largura de `domain::ColumnCatalog` para
+   presentation, mantendo o dicionario de schema ASCII no dominio.
+2. Completar pointer real por familia dos menus ainda marcados como parciais.
+3. Fechar as pendencias multiplataforma de geometria/exportacao do grafo.
+4. Completar instrumentacao isolada de CPU/idle do prefetch e reparar os gates
+   `clang-tidy`/`.qmltypes` antes de trata-los como validacao real.
+
 - [LOW] [QT-ROLENAMES-CACHE] Medir e, se houver ganho comprovado, armazenar
   `roleNames()` estavel por modelo para evitar reconstrucoes pequenas. Nao
   alterar o contrato Qt nem adicionar cache sem evidencia de hot path.
@@ -87,18 +96,117 @@
   Trinta execucoes do runner ficaram em 73.572/74.577 ms e RSS maximo de
   17661952 bytes, mas incluem startup QtTest. Falta harness interno para separar
   latencia/idle/CPU e target compilado com QML debugging para qmlprofiler.
-- [CONFIRMED-FAIL-CLOSED] [SUPERVISOR-N3] `untrackedStopFailure` permanece
-  sticky. No POSIX, `retainFailedProcessTree()` so perde rastreamento com
-  process group invalido, condicao nao reproduzida depois de um start valido.
-  No Windows, uma falha de `DuplicateHandle` remove justamente o handle
-  necessario para provar que todos os descendentes terminaram. Registry vazio
-  nao e prova de drain de uma arvore nao rastreada. Os testes focados confirmam
-  que falha rastreada reabre somente apos drain verificado e que falha nao
-  rastreada nunca declara drain. Nao aplicar limpeza especulativa; recuperacao
-  exige reinicio do processo ou um novo mecanismo de verificacao por SO.
-- [PENDING] [SUPERVISOR-FAILED-TO-STOP] Manter caso real de falha de parada
-  separado do contrato N1. Se um reproducer demonstrar processo vivo apos
-  falha de parada, apresentar desenho de ownership antes de alterar producao.
+- [RESOLVED-FAIL-CLOSED] [SUPERVISOR-N3] O reproducer agora passa pela chamada
+  real de `retainFailedProcessTree()` com identidade de SO invalida. A falha
+  marca `untrackedStopFailure`, `forceStopRequested` e `forceStopFailed` no
+  mesmo ponto, bloqueia novos starts e nunca declara drain porque o registry
+  ficou vazio. A flag permanece sticky em producao; somente o seam de limpeza
+  dos testes a remove. Recuperacao automatica continua proibida sem prova
+  positiva multiplataforma de que todos os descendentes terminaram.
+- [RESOLVED] [SUPERVISOR-FAILED-TO-STOP] Um reproducer direto de
+  `SupervisedProcess::run()` confirmou que o leader `QProcess` permanecia vivo
+  quando a parada da arvore falhava, causando `QProcess: Destroyed while
+  process is still running`. O leader agora recebe kill e wait limitados antes
+  do retorno `FailedToStop`, enquanto a arvore de descendentes permanece no
+  registry e o supervisor continua fechado. Drain verificado reabre o
+  supervisor. A suite focada passa com `QT_FATAL_WARNINGS=1`, sem reaper thread
+  ou ownership cross-thread.
+
+## Riscos estruturais e de tooling registrados
+
+- [RESOLVED] [IMPORT-SCHEMA-BOUNDARY] Labels externos PT/ES/EN continuam
+  normalizados por `SsaSpreadsheetHeaderCatalog` para chaves ASCII canonicas.
+  O catalogo valida cada destino de alias e `SqliteSsaImportWriter` rejeita
+  chaves desconhecidas, nao canonicas ou duplicadas antes de abrir o banco.
+  Nao houve migration nem renomeacao de coluna persistida. Os casos focados
+  cobrem aliases convergentes e `Desvio #2` persistido como inteiro `2`.
+- [RESOLVED] [GUI-LOG-HISTORY] A GUI mantem os 30 eventos mais recentes com
+  timestamp, severidade, origem, mensagem e diagnostico completos. O dialog no
+  menu Ajuda permite selecionar e copiar um ou todos; o status inferior e
+  selecionavel. O desktop persiste mensagens Qt em tres arquivos rotativos de
+  1 MiB. Testes cobrem retencao, tamanho/quantidade dos arquivos e clique real
+  no menu; screenshot offscreen confirmou contraste legivel.
+- [RESOLVED] [SUPERVISOR-N3-ADMISSION-RACE] A transicao para
+  `untrackedStopFailure` agora usa o mesmo `processRegistryMutex` da admissao de
+  novos processos. Uma chamada concorrente nao pode mais observar estado
+  parcialmente publicado. N3 e lifecycle passaram 5/5 com warnings fatais.
+- [RESOLVED] [ROTATING-LOG-CONCURRENCY] `RotatingLogWriter` serializa
+  `file_size`, rotacao e append por instancia. Linhas maiores recebem marcador
+  de truncamento em vez de perda silenciosa. Os dois contratos, incluindo
+  quatro writers concorrentes, passaram.
+- [RESOLVED] [SAM-INVALID-TEMP-OWNER] Um `QTemporaryDir` invalido nao mantem
+  mais `activeOutput_` envenenando a proxima tentativa. O fetch ainda relata a
+  falha original de criacao; o descarte apenas libera um owner sem diretorio.
+  Fetch multi-setor e retry apos falha real de cleanup passaram 4/4.
+
+- [RESOLVED] [SQLITE-IMPORT-WRITER-LOCK-CAPABILITY] O construtor de
+  `SqliteSsaImportWriter` exige uma capability privada concedida ao workflow
+  que ja possui o lock canonico. Testes usam um acesso explicito isolado em
+  `tests/`; nenhum lock interno foi adicionado, evitando auto-deadlock. Build
+  do target de integracao e 8/8 contratos de writer, crash, journal, retomada e
+  aliases de lock passaram.
+- [MED] [COLUMN-CATALOG-PRESENTATION-LEAK] `domain::ColumnCatalog` ainda contem
+  labels, visibilidade inicial e largura, responsabilidades de presentation.
+  O catalogo de display ja existe, mas apenas repassa os campos do dominio.
+  Os labels curtos/completos dos filtros avancados ja foram removidos do
+  dominio e migrados para esse catalogo, com 3/3 contratos focados verdes.
+  A separacao exige torna-lo a fonte visual, passar cabecalhos CSV pelo request
+  do port e retirar defaults implicitos de query/infra sem criar duas fontes
+  divergentes; nao misturar com correcoes funcionais de importacao.
+- [RESOLVED] [DISTINCT-LIMIT-QML-COUPLING] O limite geral de consulta permanece
+  no dominio. O limite de 5000 exclusivo do popup avancado agora pertence ao
+  request builder de presentation; dominio nao menciona mais custo de QML.
+- [TOOLING] [SEMGREP-WIDE-NARROW-TIMEOUT] As duas regras locais de conversao
+  narrow/wide excedem o limite ao analisar o arquivo gigante
+  `SpreadsheetImportWorkflowPortTests.cpp`. Os demais scans concluem sem
+  finding. Separar fixtures ou criar harness focado antes de tratar essas duas
+  regras como gate confiavel.
+- [TOOLING] [CLANG-TIDY-COMPILE-DB] `clang-tidy -p build/dev` nao encontra
+  headers da standard library/toolchain, incluindo `type_traits`, apesar do
+  compile database existente. Corrigir a geracao ou a invocacao do toolchain
+  antes de considerar clang-tidy um gate real; falha da ferramenta nao equivale
+  a aprovacao do codigo.
+- [RESOLVED] [ROUND-STATUS-STALE] `ROUND_STATUS.md` registra HEAD `0d4d123`,
+  working tree acumulado e gate local 434/434 desta rodada.
+- [RESOLVED] [NINJA-CLEAN-CONCURRENCY] O erro `Directory not empty` ocorreu
+  quando o smoke clean removeu `build/dev` durante uma compilacao Ninja. O
+  script agora recusa a limpeza enquanto `.ninja_lock` existe e diagnostica
+  uma corrida residual do `rm` sem continuar sobre build parcialmente apagado.
+- [RESOLVED] [IMPORT-DEVIATION-NUMBER] Planilhas reais usam a coluna `Desvio`
+  com inteiro puro ou rotulo `Desvio #<inteiro>`. O mapper converte somente
+  esse formato explicito para `numero_desvios`; texto ambiguo continua
+  fail-closed. A varredura read-only encontrou 14 valores distintos, todos
+  cobertos, e os contratos mapper/workflow/SQLite passaram.
+- [RESOLVED] [IMPORT-OPTIONAL-INVALID-DATE] O mapper apagava datas opcionais
+  invalidas quando a normalizacao retornava vazio, impedindo `validateRow` de
+  rejeitar a linha. Valores invalidos nao vazios agora sao preservados ate a
+  validacao e contabilizados como `invalid_date`, sem expor conteudo da celula.
+- [RESOLVED] [DESKTOP-SMOKE-OBJECT-NAMES] O harness source registra a factory
+  do singleton C++ real `DesktopSmokeObjectNames` antes de carregar os dialogs.
+  `ssa_qml_help_about_tests` passou offscreen sem os `ReferenceError` anteriores,
+  preservando os `objectName` usados pelos contratos smoke.
+- [TOOLING] [QMLTYPES-MISSING] `qmllint -I build/dev` retorna sucesso, mas avisa
+  que `build/dev/SsaConsultaRapida/ssa_consulta_rapida.qmltypes` nao existe.
+  Sintaxe e imports basicos sao verificados, mas a analise de tipos do modulo e
+  parcial. Corrigir a geracao do `.qmltypes` antes de tratar qmllint como gate
+  sem ressalvas.
+- [LOW] [GRAPH-NODE-GEOMETRY-DUPLICATION] As dimensoes `118x48` dos nodes estao
+  duplicadas em `DerivadasGraphModel.cpp` e `DerivadasGraph.qml`. Hoje os valores
+  coincidem e os contratos de bounds passam, mas uma alteracao unilateral pode
+  quebrar hit-test, arestas e exportacao. Definir uma unica fonte de verdade em
+  slice de contrato visual, sem mover regra de layout para o dominio.
+- [LOW] [GRAPH-EXPORT-URL-CONVERSION] `DerivadasGraph.qml` converte `file://`
+  manualmente antes de `saveToFile`. O fluxo atual passa no macOS, mas variantes
+  de host e caminhos Windows/UNC nao tem prova multiplataforma. Isolar com casos
+  de URL reais antes de substituir o mecanismo; nao adicionar fallback silencioso.
+- [RESOLVED] [GRAPH-TARGET-SELF-EDGE] O modelo ignorava a identidade do target
+  ao classificar parents e children, permitindo papel incorreto e self-edge em
+  entrada repetida. As duas passagens agora excluem o target e o teste focado
+  prova node unico, papel `current`, status preservado e zero arestas.
+- [RESOLVED] [DERIVED-SUMMARY-LOCK-BACKOFF] A falha `LockHeld` tentava adquirir
+  novamente o lock a cada leitura, permitindo loop quente sob contencao. O mesmo
+  backoff de um segundo das demais falhas transientes agora limita tentativas;
+  o teste prova fallback readonly imediato e criacao do resumo apos o intervalo.
 
 - [RESOLVED] [TSan] Data race em `QArrayDataPointer<char16_t>::deref()` corrigido. Causa raiz: `QFutureWatcher<T>` com T nao-trivial tem race no `ResultStore` durante teardown concorrente com o worker reportando resultado; alem disso `QtConcurrent::run` com cancel+setFuture imediato race o vtable do runnable. Correcoes aplicadas:
   - `UserPreferencesCoordinator`: migrado para `QFutureWatcher<void>` + erro em `std::string` protegido por mutex.

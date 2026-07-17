@@ -22,75 +22,28 @@ namespace ssa::infra::importing {
 
         constexpr std::size_t kCopyBlockBytes = std::size_t{1024} * 1024;
 
-        struct SourceIdentity {
-#ifdef _WIN32
-            unsigned long volumeSerial = 0;
-            std::uint64_t fileIndex = 0;
-#else
-            dev_t device = 0;
-            ino_t inode = 0;
-#endif
-
-            [[nodiscard]] bool operator==(const SourceIdentity&) const = default;
-        };
-
         struct SourceSnapshot {
             std::uintmax_t size = 0;
             std::filesystem::file_time_type modified;
-            SourceIdentity identity;
+            std::string identity;
 
-            [[nodiscard]] bool operator==(const SourceSnapshot&) const = default;
+            [[nodiscard]] bool operator==(const SourceSnapshot& other) const {
+                return size == other.size && modified == other.modified &&
+                       identity == other.identity;
+            }
         };
-
-        std::optional<SourceIdentity> sourceIdentity(const std::filesystem::path& source,
-                                                     std::error_code& error) {
-#ifdef _WIN32
-            const auto handle = CreateFileW(source.c_str(), 0,
-                                            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-                                            nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-            if (handle == INVALID_HANDLE_VALUE) {
-                error = {static_cast<int>(GetLastError()), std::system_category()};
-                return std::nullopt;
-            }
-            BY_HANDLE_FILE_INFORMATION information{};
-            const bool inspected = GetFileInformationByHandle(handle, &information) != 0;
-            const auto closeResult = CloseHandle(handle);
-            if (!inspected) {
-                error = {static_cast<int>(GetLastError()), std::system_category()};
-                return std::nullopt;
-            }
-            if (closeResult == 0) {
-                error = {static_cast<int>(GetLastError()), std::system_category()};
-                return std::nullopt;
-            }
-            const auto fileIndex = (static_cast<std::uint64_t>(information.nFileIndexHigh) << 32) |
-                                   information.nFileIndexLow;
-            return SourceIdentity{information.dwVolumeSerialNumber, fileIndex};
-#else
-            struct stat information{};
-            if (::stat(source.c_str(), &information) != 0) {
-                error = {errno, std::generic_category()};
-                return std::nullopt;
-            }
-            return SourceIdentity{information.st_dev, information.st_ino};
-#endif
-        }
 
         std::optional<SourceSnapshot> snapshotSource(const std::filesystem::path& source,
                                                      std::error_code& error) {
-            const auto size = std::filesystem::file_size(source, error);
-            if (error) {
-                return std::nullopt;
-            }
             const auto modified = std::filesystem::last_write_time(source, error);
             if (error) {
                 return std::nullopt;
             }
-            const auto identity = sourceIdentity(source, error);
+            const auto identity = inspectFileIdentity(source, error);
             if (!identity) {
                 return std::nullopt;
             }
-            return SourceSnapshot{size, modified, *identity};
+            return SourceSnapshot{identity->size, modified, identity->value};
         }
 
         bool replaceAtomically(const std::filesystem::path& source,
@@ -110,6 +63,60 @@ namespace ssa::infra::importing {
         }
 
     } // namespace
+
+    std::optional<FileIdentitySnapshot> inspectFileIdentity(const std::filesystem::path& path,
+                                                            std::error_code& error) {
+#ifdef _WIN32
+        const auto handle =
+            CreateFileW(path.c_str(), FILE_READ_ATTRIBUTES,
+                        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+                        OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
+        if (handle == INVALID_HANDLE_VALUE) {
+            error = {static_cast<int>(GetLastError()), std::system_category()};
+            return std::nullopt;
+        }
+        BY_HANDLE_FILE_INFORMATION information{};
+        const bool inspected = GetFileInformationByHandle(handle, &information) != 0;
+        const auto inspectError = inspected ? ERROR_SUCCESS : GetLastError();
+        const bool closed = CloseHandle(handle) != 0;
+        if (!inspected) {
+            error = {static_cast<int>(inspectError), std::system_category()};
+            return std::nullopt;
+        }
+        if (!closed) {
+            error = {static_cast<int>(GetLastError()), std::system_category()};
+            return std::nullopt;
+        }
+        if ((information.dwFileAttributes &
+             (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)) != 0) {
+            error = std::make_error_code(std::errc::operation_not_permitted);
+            return std::nullopt;
+        }
+        const auto fileIndex = (static_cast<std::uint64_t>(information.nFileIndexHigh) << 32) |
+                               information.nFileIndexLow;
+        const auto size = (static_cast<std::uint64_t>(information.nFileSizeHigh) << 32) |
+                          information.nFileSizeLow;
+        error.clear();
+        return FileIdentitySnapshot{std::to_string(information.dwVolumeSerialNumber) + ':' +
+                                        std::to_string(fileIndex),
+                                    size};
+#else
+        struct stat information{};
+        if (::lstat(path.c_str(), &information) != 0) {
+            error = {errno, std::generic_category()};
+            return std::nullopt;
+        }
+        if (!S_ISREG(information.st_mode)) {
+            error = std::make_error_code(std::errc::operation_not_permitted);
+            return std::nullopt;
+        }
+        error.clear();
+        return FileIdentitySnapshot{
+            std::to_string(static_cast<std::uintmax_t>(information.st_dev)) + ':' +
+                std::to_string(static_cast<std::uintmax_t>(information.st_ino)),
+            static_cast<std::uintmax_t>(information.st_size)};
+#endif
+    }
 
     FileCopyResult copyFileAtomically(const FileCopyRequest& request,
                                       const std::stop_token stopToken) {

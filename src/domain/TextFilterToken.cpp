@@ -1,5 +1,7 @@
 #include "domain/TextFilterToken.h"
 
+#include "domain/WhitespaceTrim.h"
+
 #include <utility>
 
 namespace ssa::domain {
@@ -9,22 +11,13 @@ namespace ssa::domain {
         constexpr char kDifferentPrefix = '!';
         constexpr char kEqualsPrefix = '=';
 
-        std::string trimmedCopy(const std::string_view value) {
-            const auto first = value.find_first_not_of(" \t\n\r\f\v");
-            if (first == std::string_view::npos) {
-                return {};
-            }
-            const auto last = value.find_last_not_of(" \t\n\r\f\v");
-            return std::string{value.substr(first, last - first + 1)};
-        }
-
         char tokenPrefix(const TextFilterOperator filterOperator) {
             return filterOperator == TextFilterOperator::Different ? kDifferentPrefix
                                                                    : kEqualsPrefix;
         }
 
         TextFilterToken parseToken(const std::string_view rawToken) {
-            auto token = trimmedCopy(rawToken);
+            auto token = trimWhitespace(rawToken);
             if (token.empty()) {
                 return {};
             }
@@ -34,7 +27,7 @@ namespace ssa::domain {
                                                                    : TextFilterOperator::Equals;
                 token.erase(token.begin());
             }
-            return TextFilterToken{filterOperator, trimmedCopy(token)};
+            return TextFilterToken{filterOperator, trimWhitespace(token)};
         }
 
         std::string serializeToken(const TextFilterToken& token) {
@@ -49,7 +42,7 @@ namespace ssa::domain {
         }
 
         bool appendOrReplaceByValue(TextFilterTokenSet& tokens, TextFilterToken token) {
-            token.value = trimmedCopy(token.value);
+            token.value = trimWhitespace(token.value);
             if (token.value.empty()) {
                 return false;
             }
@@ -98,7 +91,7 @@ namespace ssa::domain {
 
     std::string makeTextFilterToken(const std::string_view value,
                                     const TextFilterOperator filterOperator) {
-        return serializeToken(TextFilterToken{filterOperator, trimmedCopy(value)});
+        return serializeToken(TextFilterToken{filterOperator, trimWhitespace(value)});
     }
 
     TextFilterTokenSet parseTextFilterTokens(const std::string_view expression) {
@@ -121,14 +114,15 @@ namespace ssa::domain {
                                               const TextFilterOperator filterOperator) {
         TextFilterTokenSet tokens;
         for (const auto& value : values) {
-            appendOrReplaceByValue(tokens, TextFilterToken{filterOperator, trimmedCopy(value)});
+            appendOrReplaceByValue(tokens, TextFilterToken{filterOperator, trimWhitespace(value)});
         }
         return tokens;
     }
 
     bool addTextFilterValue(TextFilterTokenSet& tokens, const std::string_view value,
                             const TextFilterOperator filterOperator) {
-        return appendOrReplaceByValue(tokens, TextFilterToken{filterOperator, trimmedCopy(value)});
+        return appendOrReplaceByValue(tokens,
+                                      TextFilterToken{filterOperator, trimWhitespace(value)});
     }
 
     bool sameTextFilterTokens(const TextFilterTokenSet& lhs, const TextFilterTokenSet& rhs) {

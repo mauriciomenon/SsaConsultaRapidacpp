@@ -416,6 +416,15 @@ TEST_CASE("SSA import field timestamps reject surrounding text") {
                 .empty());
 }
 
+TEST_CASE("SSA import date text preserves ISO representation and normalizes legacy values") {
+    REQUIRE(ssa::domain::SsaImportPolicy::normalizeDateText(" 2026-07-13 ") == "2026-07-13");
+    REQUIRE(ssa::domain::SsaImportPolicy::normalizeDateText("2026-07-13T13:20:00") ==
+            "2026-07-13T13:20:00");
+    REQUIRE(ssa::domain::SsaImportPolicy::normalizeDateText("13/07/2026 13:20:00") ==
+            "2026-07-13 13:20:00");
+    REQUIRE(ssa::domain::SsaImportPolicy::normalizeDateText("invalid").empty());
+}
+
 TEST_CASE("SSA import rejects cadastro timestamps with surrounding text") {
     using Values = ssa::domain::SsaImportPolicy::Values;
     const auto row = [](const std::string& timestamp) {

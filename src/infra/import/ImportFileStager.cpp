@@ -992,8 +992,8 @@ namespace ssa::infra::importing {
         for (std::size_t entryIndex = 0; entryIndex < manifest.size(); ++entryIndex) {
             const auto& manifestEntry = manifest[entryIndex];
             auto& planEntry = plan.entries[entryIndex];
-            if (!manifestEntry.destinationFilename.empty() && manifestEntry.sources.size() != 1) {
-                plan.error = "consolidation filename requires exactly one source";
+            if (!manifestEntry.destinationFilename.empty() && manifestEntry.sources.size() > 1) {
+                plan.error = "consolidation filename accepts at most one source";
                 return plan;
             }
             const auto& destinationDirectory =
@@ -1011,6 +1011,13 @@ namespace ssa::infra::importing {
                     return plan;
                 }
                 const auto normalizedSource = std::filesystem::absolute(source).lexically_normal();
+                std::error_code identityError;
+                const auto sourceSnapshot = inspectFileIdentity(normalizedSource, identityError);
+                if (!sourceSnapshot) {
+                    plan.error =
+                        "cannot inspect consolidation source identity: " + identityError.message();
+                    return plan;
+                }
                 const auto destinationFilename = manifestEntry.destinationFilename.empty()
                                                      ? normalizedSource.filename()
                                                      : manifestEntry.destinationFilename;
@@ -1040,8 +1047,9 @@ namespace ssa::infra::importing {
                         }
                     }
                     reservedDestinations.insert(candidate);
-                    planEntry.moves.push_back(
-                        {normalizedSource, std::move(candidate), manifestEntry.hasValidRows});
+                    planEntry.moves.push_back({normalizedSource, std::move(candidate),
+                                               manifestEntry.hasValidRows, sourceSnapshot->value,
+                                               sourceSnapshot->size});
                     destinationSelected = true;
                     break;
                 }
@@ -1084,9 +1092,6 @@ namespace ssa::infra::importing {
             }
             return result;
         }
-        const auto inputDirectory = std::filesystem::absolute(inputFolder_).lexically_normal();
-        const auto processedDirectory = inputDirectory / "processadas";
-        const auto noSurvivorDirectory = processedDirectory / "nosurvivor";
         std::string inputDiagnostic;
         const auto inputRejection = inputDirectoryRejectionReason(inputFolder_, inputDiagnostic);
         if (!inputRejection.empty()) {
@@ -1098,12 +1103,39 @@ namespace ssa::infra::importing {
             appendDiagnostic(result.error, inputDiagnostic);
             return result;
         }
+        std::error_code inputPathError;
+        const auto inputDirectory = std::filesystem::weakly_canonical(inputFolder_, inputPathError);
+        if (inputPathError) {
+            result.failed = moveCount;
+            result.error = "cannot resolve consolidation input root: " + inputPathError.message();
+            for (std::size_t index = 0; index < plan.entries.size(); ++index) {
+                result.entries[index].failed = plan.entries[index].moves.size();
+            }
+            return result;
+        }
+        const auto processedDirectory = inputDirectory / "processadas";
+        const auto noSurvivorDirectory = processedDirectory / "nosurvivor";
         for (const auto& entry : plan.entries) {
             for (const auto& move : entry.moves) {
                 const auto expectedDestination =
                     move.hasValidRows ? processedDirectory : noSurvivorDirectory;
-                if (move.source.lexically_normal().parent_path() != inputDirectory ||
-                    move.destination.lexically_normal().parent_path() != expectedDestination) {
+                std::error_code sourcePathError;
+                const auto sourceParent =
+                    std::filesystem::weakly_canonical(move.source.parent_path(), sourcePathError);
+                std::error_code destinationPathError;
+                const auto destinationParent = std::filesystem::weakly_canonical(
+                    move.destination.parent_path(), destinationPathError);
+                if (sourcePathError || destinationPathError) {
+                    result.failed = moveCount;
+                    result.error = "cannot resolve consolidation journal paths: " +
+                                   (sourcePathError ? sourcePathError.message()
+                                                    : destinationPathError.message());
+                    for (std::size_t index = 0; index < plan.entries.size(); ++index) {
+                        result.entries[index].failed = plan.entries[index].moves.size();
+                    }
+                    return result;
+                }
+                if (sourceParent != inputDirectory || destinationParent != expectedDestination) {
                     result.failed = moveCount;
                     result.error = "consolidation journal contains a path outside the input root";
                     for (std::size_t index = 0; index < plan.entries.size(); ++index) {
@@ -1190,6 +1222,39 @@ namespace ssa::infra::importing {
                 }
                 if (sourceState == DirectoryEntryState::Missing &&
                     destinationState == DirectoryEntryState::RegularFile) {
+                    if (move.sourceIdentity.empty() || !move.sourceSize) {
+                        result.error =
+                            "consolidation destination identity is unavailable for resume";
+                        ++result.failed;
+                        ++entryResult.failed;
+                        moveResult.failed = true;
+                        continue;
+                    }
+                    std::error_code identityError;
+                    const auto destinationSnapshot =
+                        inspectFileIdentity(move.destination, identityError);
+                    if (!destinationSnapshot) {
+                        result.error = "cannot inspect consolidation destination identity: " +
+                                       identityError.message();
+                        ++result.failed;
+                        ++entryResult.failed;
+                        moveResult.failed = true;
+                        continue;
+                    }
+                    if (destinationSnapshot->value != move.sourceIdentity) {
+                        result.error = "consolidation destination identity does not match journal";
+                        ++result.failed;
+                        ++entryResult.failed;
+                        moveResult.failed = true;
+                        continue;
+                    }
+                    if (destinationSnapshot->size != *move.sourceSize) {
+                        result.error = "consolidation destination size does not match journal";
+                        ++result.failed;
+                        ++entryResult.failed;
+                        moveResult.failed = true;
+                        continue;
+                    }
                     moveResult.completed = true;
                     ++entryResult.completed;
                     if (!move.hasValidRows) {
@@ -1206,6 +1271,39 @@ namespace ssa::infra::importing {
                     moveResult.failed = true;
                     continue;
                 }
+                if (move.sourceIdentity.empty() != !move.sourceSize) {
+                    result.error = "consolidation journal identity is incomplete";
+                    ++result.failed;
+                    ++entryResult.failed;
+                    moveResult.failed = true;
+                    continue;
+                }
+                if (!move.sourceIdentity.empty()) {
+                    std::error_code identityError;
+                    const auto sourceSnapshot = inspectFileIdentity(move.source, identityError);
+                    if (!sourceSnapshot) {
+                        result.error = "cannot inspect consolidation source identity: " +
+                                       identityError.message();
+                        ++result.failed;
+                        ++entryResult.failed;
+                        moveResult.failed = true;
+                        continue;
+                    }
+                    if (sourceSnapshot->value != move.sourceIdentity) {
+                        result.error = "consolidation source identity does not match journal";
+                        ++result.failed;
+                        ++entryResult.failed;
+                        moveResult.failed = true;
+                        continue;
+                    }
+                    if (sourceSnapshot->size != *move.sourceSize) {
+                        result.error = "consolidation source size does not match journal";
+                        ++result.failed;
+                        ++entryResult.failed;
+                        moveResult.failed = true;
+                        continue;
+                    }
+                }
                 std::error_code renameError;
                 if (!renameNoReplace(inputHandle, destinationHandle, move.source, move.destination,
                                      renameError)) {
@@ -1214,6 +1312,28 @@ namespace ssa::infra::importing {
                     ++entryResult.failed;
                     moveResult.failed = true;
                     continue;
+                }
+                if (!move.sourceIdentity.empty()) {
+                    std::error_code identityError;
+                    const auto destinationSnapshot =
+                        inspectFileIdentity(move.destination, identityError);
+                    if (!destinationSnapshot || destinationSnapshot->value != move.sourceIdentity) {
+                        result.error = !destinationSnapshot
+                                           ? "cannot verify moved consolidation identity: " +
+                                                 identityError.message()
+                                           : "moved consolidation identity does not match journal";
+                        ++result.failed;
+                        ++entryResult.failed;
+                        moveResult.failed = true;
+                        continue;
+                    }
+                    if (destinationSnapshot->size != *move.sourceSize) {
+                        result.error = "moved consolidation size does not match journal";
+                        ++result.failed;
+                        ++entryResult.failed;
+                        moveResult.failed = true;
+                        continue;
+                    }
                 }
                 moveResult.completed = true;
                 moveResult.moved = true;

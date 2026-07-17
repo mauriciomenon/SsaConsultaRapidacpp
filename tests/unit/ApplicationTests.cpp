@@ -1,8 +1,7 @@
 #include "application/SsaBrowseService.h"
 #include "application/SsaWorkflowService.h"
 #include "application/UnavailableWorkflowPort.h"
-#include "ports/ISsaRepository.h"
-#include "query/SsaQueryService.h"
+#include "ports/ISsaBrowsePort.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -16,7 +15,7 @@
 
 namespace {
 
-    class FakeRepository final : public ssa::ports::ISsaRepository {
+    class FakeBrowsePort final : public ssa::ports::ISsaBrowsePort {
       public:
         [[nodiscard]] ssa::domain::SsaPageResult page(const ssa::domain::SsaPageRequest& request,
                                                       std::stop_token = {}) const override {
@@ -36,7 +35,7 @@ namespace {
         }
 
         [[nodiscard]] std::optional<ssa::domain::SsaRecord>
-        recordBySsaNumber(const ssa::domain::SsaNumber& id, std::stop_token = {}) const override {
+        details(const ssa::domain::SsaNumber& id, std::stop_token = {}) const override {
             if (id.value() != "202500001") {
                 return std::nullopt;
             }
@@ -128,9 +127,8 @@ TEST_CASE("source layers reject forbidden direct dependencies") {
 }
 
 TEST_CASE("browse service normalizes empty visible columns and page size") {
-    const auto repository = std::make_shared<FakeRepository>();
-    const auto query = std::make_shared<ssa::query::SsaQueryService>(repository);
-    const ssa::application::SsaBrowseService service(query);
+    const auto browsePort = std::make_shared<FakeBrowsePort>();
+    const ssa::application::SsaBrowseService service(browsePort);
 
     ssa::domain::SsaPageRequest request;
     request.pageSize = 0;
@@ -138,13 +136,12 @@ TEST_CASE("browse service normalizes empty visible columns and page size") {
     const auto page = service.page(request);
 
     REQUIRE(page.pageSize == static_cast<std::size_t>(ssa::domain::kMinPageSize));
-    REQUIRE_FALSE(repository->lastRequest.visibleColumns.empty());
+    REQUIRE_FALSE(browsePort->lastRequest.visibleColumns.empty());
 }
 
 TEST_CASE("browse service clamps oversized page size without narrowing") {
-    const auto repository = std::make_shared<FakeRepository>();
-    const auto query = std::make_shared<ssa::query::SsaQueryService>(repository);
-    const ssa::application::SsaBrowseService service(query);
+    const auto browsePort = std::make_shared<FakeBrowsePort>();
+    const ssa::application::SsaBrowseService service(browsePort);
 
     ssa::domain::SsaPageRequest request;
     request.pageSize = std::numeric_limits<std::size_t>::max();
@@ -152,14 +149,13 @@ TEST_CASE("browse service clamps oversized page size without narrowing") {
     const auto page = service.page(request);
 
     REQUIRE(page.pageSize == static_cast<std::size_t>(ssa::domain::kMaxPageSize));
-    REQUIRE(repository->lastRequest.pageSize ==
+    REQUIRE(browsePort->lastRequest.pageSize ==
             static_cast<std::size_t>(ssa::domain::kMaxPageSize));
 }
 
 TEST_CASE("browse service returns details by SSA number") {
-    const auto repository = std::make_shared<FakeRepository>();
-    const auto query = std::make_shared<ssa::query::SsaQueryService>(repository);
-    const ssa::application::SsaBrowseService service(query);
+    const auto browsePort = std::make_shared<FakeBrowsePort>();
+    const ssa::application::SsaBrowseService service(browsePort);
 
     const auto record = service.details("202500001");
 
@@ -168,18 +164,16 @@ TEST_CASE("browse service returns details by SSA number") {
 }
 
 TEST_CASE("browse service validates requested visible columns") {
-    const auto repository = std::make_shared<FakeRepository>();
-    const auto query = std::make_shared<ssa::query::SsaQueryService>(repository);
-    const ssa::application::SsaBrowseService service(query);
+    const auto browsePort = std::make_shared<FakeBrowsePort>();
+    const ssa::application::SsaBrowseService service(browsePort);
 
     REQUIRE_THROWS_AS(service.columnsOrDefault({"missing_column"}), std::invalid_argument);
     REQUIRE(service.columnsOrDefault({"numero_ssa"}).front() == "numero_ssa");
 }
 
 TEST_CASE("browse service validates requested sort column") {
-    const auto repository = std::make_shared<FakeRepository>();
-    const auto query = std::make_shared<ssa::query::SsaQueryService>(repository);
-    const ssa::application::SsaBrowseService service(query);
+    const auto browsePort = std::make_shared<FakeBrowsePort>();
+    const ssa::application::SsaBrowseService service(browsePort);
 
     ssa::domain::SsaPageRequest request;
     request.sort.columnKey = "missing_column";

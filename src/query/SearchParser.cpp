@@ -1,31 +1,18 @@
 #include "query/SearchParser.h"
 
-#include <algorithm>
-#include <cctype>
+#include "domain/WhitespaceTrim.h"
 
 namespace ssa::query {
 
     namespace {
 
-        std::string trim(std::string_view value) {
-            const auto first = std::ranges::find_if_not(
-                value, [](unsigned char ch) { return std::isspace(ch) != 0; });
-            const auto last = std::find_if_not(value.rbegin(), value.rend(), [](unsigned char ch) {
-                                  return std::isspace(ch) != 0;
-                              }).base();
-            if (first >= last) {
-                return {};
-            }
-            return {first, last};
-        }
-
         domain::FilterTerm parseTerm(const std::string_view chunk) {
             domain::FilterTerm term;
-            term.text = trim(chunk);
+            term.text = domain::trimWhitespace(chunk);
 
             if (!term.text.empty() && term.text.front() == '!') {
                 term.negated = true;
-                term.text = trim(std::string_view(term.text).substr(1));
+                term.text = domain::trimWhitespace(std::string_view(term.text).substr(1));
             }
 
             if (term.text.empty()) {
@@ -35,18 +22,19 @@ namespace ssa::query {
             const char mode = term.text.front();
             if (mode == '^') {
                 term.mode = domain::MatchMode::StartsWith;
-                term.text = trim(std::string_view(term.text).substr(1));
+                term.text = domain::trimWhitespace(std::string_view(term.text).substr(1));
             } else if (mode == '$') {
                 term.mode = domain::MatchMode::EndsWith;
-                term.text = trim(std::string_view(term.text).substr(1));
+                term.text = domain::trimWhitespace(std::string_view(term.text).substr(1));
             } else if (mode == '=' || mode == '~') {
                 // The '~' prefix is the explicit safe-pattern mode in the GUI contract.
                 term.mode =
                     mode == '=' ? domain::MatchMode::Equals : domain::MatchMode::SafePattern;
-                term.text = trim(std::string_view(term.text).substr(1));
+                term.text = domain::trimWhitespace(std::string_view(term.text).substr(1));
             } else if (term.text.back() == '$') {
                 term.mode = domain::MatchMode::EndsWith;
-                term.text = trim(std::string_view(term.text).substr(0, term.text.size() - 1));
+                term.text = domain::trimWhitespace(
+                    std::string_view(term.text).substr(0, term.text.size() - 1));
             }
 
             return term;

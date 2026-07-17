@@ -2,6 +2,7 @@
 
 #include "domain/ColumnCatalog.h"
 #include "domain/TextFilterToken.h"
+#include "presentation/SsaColumnDisplayCatalog.h"
 
 #include <algorithm>
 #include <map>
@@ -55,7 +56,7 @@ namespace ssa::presentation::filterpanel {
         }
 
         std::string shortColumnLabel(const std::string_view key) {
-            auto label = std::string{domain::ColumnCatalog::advancedFilterShortLabel(key)};
+            auto label = SsaColumnDisplayCatalog{}.advancedFilterShortLabel(key);
             if (!label.empty() && label.back() == '.') {
                 label.pop_back();
             }

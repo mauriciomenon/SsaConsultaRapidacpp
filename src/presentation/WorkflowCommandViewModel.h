@@ -71,6 +71,8 @@ namespace ssa::presentation {
         void stateChanged();
         void samRefreshSettingsChanged();
         void preferencesSaveRequested();
+        void logEntryRequested(const QString& severity, const QString& source,
+                               const QString& message, const QString& detail);
 
       public slots:
         void importExternalFiles(const QVariantList& selectedFiles);

@@ -1,6 +1,7 @@
 #include "infra/sqlite/SqliteMaintenancePort.h"
 
 #include "infra/sqlite/SqliteConnection.h"
+#include "infra/sqlite/SqliteDatabaseWriteLock.h"
 #include "infra/sqlite/SqliteProgressHandler.h"
 #include "ports/OperationError.h"
 
@@ -50,6 +51,11 @@ namespace ssa::infra::sqlite {
     ports::WorkflowResult SqliteMaintenancePort::runCommittedMaintenance(
         const char* mutationSql, const std::stop_token& stopToken, const char* successMessage) {
         try {
+            const SqliteDatabaseWriteLock writeLock(databasePath_);
+            if (!writeLock.acquired()) {
+                return stopToken.stop_requested() ? canceled()
+                                                  : failed(std::string{writeLock.diagnostic()});
+            }
             SqliteConnection connection(databasePath_, SqliteOpenMode::ReadWrite);
             SqliteBusyHandler busy(connection.handle(), stopToken);
             SqliteProgressHandler progress(connection.handle(), stopToken);

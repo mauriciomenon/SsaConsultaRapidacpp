@@ -46,20 +46,31 @@ qt_standard_project_setup(REQUIRES 6.6)
 qt_policy(SET QTP0004 NEW)
 
 add_library(
-  ssa_core STATIC
-  src/domain/ColumnCatalog.cpp
-  src/domain/ColumnValuePriorityPolicy.cpp
-  src/domain/SsaImportPolicy.cpp
-  src/domain/SsaRelationGraph.cpp
+  ssa_domain STATIC
+  src/domain/ColumnCatalog.cpp src/domain/ColumnValuePriorityPolicy.cpp
+  src/domain/SsaImportPolicy.cpp src/domain/SsaRelationGraph.cpp
+  src/domain/TextFilterToken.cpp)
+target_include_directories(ssa_domain PUBLIC src)
+
+add_library(ssa_ports INTERFACE)
+target_include_directories(ssa_ports INTERFACE src)
+target_link_libraries(ssa_ports INTERFACE ssa_domain)
+
+add_library(
+  ssa_query STATIC
   src/query/SearchParser.cpp
   src/query/AdvancedFilterSqlCompiler.cpp
   src/query/SqlPredicateBuilder.cpp
   src/query/SqlQueryBuilder.cpp
   src/query/SqlQueryText.cpp
   src/query/SsaQueryService.cpp
-  src/domain/TextFilterToken.cpp
   src/query/TextFilterSqlCompiler.cpp)
-target_include_directories(ssa_core PUBLIC src)
+target_include_directories(ssa_query PUBLIC src)
+target_link_libraries(ssa_query PUBLIC ssa_domain ssa_ports)
+
+add_library(ssa_core INTERFACE)
+target_include_directories(ssa_core INTERFACE src)
+target_link_libraries(ssa_core INTERFACE ssa_domain ssa_ports ssa_query)
 
 add_library(
   ssa_application STATIC
@@ -69,7 +80,7 @@ add_library(
   src/application/SsaWorkflowService.cpp
   src/application/UnavailableWorkflowPort.cpp)
 target_include_directories(ssa_application PUBLIC src)
-target_link_libraries(ssa_application PUBLIC ssa_core)
+target_link_libraries(ssa_application PUBLIC ssa_domain ssa_ports)
 
 add_library(ssa_platform_process STATIC src/platform/SupervisedProcess.cpp)
 target_include_directories(ssa_platform_process PUBLIC src)
@@ -106,8 +117,8 @@ add_library(
   src/infra/preferences/FilterPresetJsonCodec.cpp
   src/infra/preferences/UserPreferencesJsonCodec.cpp)
 target_include_directories(ssa_infra PUBLIC src)
-target_link_libraries(ssa_infra PUBLIC ssa_core ${SSA_SQLITE_TARGET} Qt6::Core
-                                       miniz)
+target_link_libraries(ssa_infra PUBLIC ssa_domain ssa_ports ssa_query
+                                       ${SSA_SQLITE_TARGET} Qt6::Core miniz)
 
 if(SSA_BUILD_ARROW_TOOL)
   find_package(Arrow CONFIG REQUIRED)
@@ -120,6 +131,7 @@ endif()
 add_library(
   ssa_platform STATIC
   src/platform/AppPaths.cpp
+  src/platform/RotatingLogWriter.cpp
   src/platform/DesktopApplicationLauncher.cpp
   src/platform/DesktopExternalCommandPort.cpp
   src/platform/LocalOpenCommandHandler.cpp
@@ -131,8 +143,9 @@ add_library(
   src/platform/SupervisedProcessRunner.cpp
   src/platform/StartupOptions.cpp)
 target_include_directories(ssa_platform PUBLIC src)
-target_link_libraries(ssa_platform PUBLIC ssa_core ssa_platform_process
-                                          Qt6::Core Qt6::Gui)
+target_link_libraries(
+  ssa_platform PUBLIC ssa_domain ssa_ports ssa_platform_process Qt6::Core
+                      Qt6::Gui)
 
 add_library(
   ssa_presentation_tables STATIC
@@ -144,7 +157,7 @@ add_library(
   src/presentation/DetailsFieldsModel.cpp
   src/presentation/SsaTableModel.cpp)
 target_include_directories(ssa_presentation_tables PUBLIC src)
-target_link_libraries(ssa_presentation_tables PUBLIC ssa_core Qt6::Core
+target_link_libraries(ssa_presentation_tables PUBLIC ssa_domain Qt6::Core
                                                      Qt6::Gui)
 
 add_library(
@@ -195,6 +208,7 @@ add_library(
   src/presentation/WorkflowCommandRunner.cpp
   src/presentation/WorkflowCommandViewModel.cpp
   src/presentation/PageQueryCoordinator.cpp
+  src/presentation/RecentLogModel.cpp
   src/presentation/UserPreferencesCoordinator.cpp
   src/presentation/MainViewModel.cpp)
 target_include_directories(ssa_presentation_models PUBLIC src)
@@ -210,6 +224,7 @@ target_link_libraries(ssa_presentation INTERFACE ssa_presentation_models
 qt_add_executable(
   ssa_consulta_rapida
   app/desktop/DesktopApplicationRuntime.cpp
+  app/desktop/DesktopLogSink.cpp
   app/desktop/DesktopMainViewModelFactory.cpp
   app/desktop/DesktopSmokeCapture.cpp
   app/desktop/DesktopSmokeCaptureFileSystem.cpp
@@ -260,6 +275,7 @@ qt_add_qml_module(
   app/desktop/qml/components/FilterPanel.qml
   app/desktop/qml/components/FilterSummaryBar.qml
   app/desktop/qml/components/HelpDialog.qml
+  app/desktop/qml/components/LogHistoryDialog.qml
   app/desktop/qml/components/ColumnConfigList.qml
   app/desktop/qml/components/PagerQuickFilters.qml
   app/desktop/qml/components/PreferencesDialog.qml
@@ -389,6 +405,7 @@ if(SSA_BUILD_TESTS)
     tests/integration/ExportPortTests.cpp
     tests/integration/DerivadasImportTests.cpp
     tests/integration/JsonPreferencesStoreTests.cpp
+    tests/integration/RotatingLogWriterTests.cpp
     tests/integration/SpreadsheetImportWorkflowPortTests.cpp
     tests/integration/SsaSpreadsheetHeaderCatalogTests.cpp
     tests/integration/XlsxWorkbookReaderTests.cpp
@@ -408,14 +425,14 @@ if(SSA_BUILD_TESTS)
   add_executable(ssa_qt_presentation_tests
                  tests/smoke/PresentationSmokeTest.cpp)
   target_link_libraries(ssa_qt_presentation_tests PRIVATE ssa_presentation
-                                                          Qt6::Test)
+                                                          ssa_query Qt6::Test)
   add_test(NAME ssa_qt_presentation_tests COMMAND ssa_qt_presentation_tests)
   set_tests_properties(ssa_qt_presentation_tests PROPERTIES TIMEOUT 30)
 
   add_executable(ssa_qt_presentation_filter_tests
                  tests/smoke/PresentationFilterSmokeTest.cpp)
   target_link_libraries(ssa_qt_presentation_filter_tests
-                        PRIVATE ssa_presentation Qt6::Test)
+                        PRIVATE ssa_presentation ssa_query Qt6::Test)
   add_test(NAME ssa_qt_presentation_filter_tests
            COMMAND ssa_qt_presentation_filter_tests)
   set_tests_properties(ssa_qt_presentation_filter_tests PROPERTIES TIMEOUT 30)
@@ -456,22 +473,23 @@ if(SSA_BUILD_TESTS)
   add_executable(ssa_qt_preference_lifecycle_tests
                  tests/smoke/PreferenceLifecycleTest.cpp)
   target_link_libraries(ssa_qt_preference_lifecycle_tests
-                        PRIVATE ssa_presentation Qt6::Test)
+                        PRIVATE ssa_presentation ssa_query Qt6::Test)
   add_test(NAME ssa_qt_preference_lifecycle_tests
            COMMAND ssa_qt_preference_lifecycle_tests)
   set_tests_properties(ssa_qt_preference_lifecycle_tests PROPERTIES TIMEOUT 15)
 
   add_executable(ssa_qt_filter_panel_tests tests/smoke/FilterPanelSmokeTest.cpp)
   target_link_libraries(ssa_qt_filter_panel_tests PRIVATE ssa_presentation
-                                                          Qt6::Test)
+                                                          ssa_query Qt6::Test)
   add_test(NAME ssa_qt_filter_panel_tests COMMAND ssa_qt_filter_panel_tests)
   set_tests_properties(ssa_qt_filter_panel_tests PROPERTIES TIMEOUT 30)
 
   add_executable(ssa_qml_advanced_popup_tests
                  tests/smoke/AdvancedPopupQmlTest.cpp)
   target_link_libraries(
-    ssa_qml_advanced_popup_tests PRIVATE ssa_presentation Qt6::Qml Qt6::Quick
-                                         Qt6::QuickControls2 Qt6::Test)
+    ssa_qml_advanced_popup_tests
+    PRIVATE ssa_presentation ssa_query Qt6::Qml Qt6::Quick Qt6::QuickControls2
+            Qt6::Test)
   add_test(NAME ssa_qml_advanced_popup_tests
            COMMAND ssa_qml_advanced_popup_tests)
   set_tests_properties(
@@ -492,14 +510,17 @@ if(SSA_BUILD_TESTS)
     PROPERTY ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
              "QT_QUICK_CONTROLS_STYLE=Basic" "QT_SCALE_FACTOR=1")
 
-  add_executable(ssa_qml_help_about_tests tests/smoke/HelpAboutQmlTest.cpp)
+  add_executable(
+    ssa_qml_help_about_tests app/desktop/DesktopSmokeObjectNames.cpp
+                             tests/smoke/HelpAboutQmlTest.cpp)
+  target_include_directories(ssa_qml_help_about_tests PRIVATE app/desktop)
   target_compile_definitions(
     ssa_qml_help_about_tests
     PRIVATE SSA_BUILD_DIR="${CMAKE_BINARY_DIR}"
             SSA_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
   target_link_libraries(
-    ssa_qml_help_about_tests PRIVATE ssa_presentation Qt6::Qml Qt6::Quick
-                                     Qt6::QuickControls2 Qt6::Test)
+    ssa_qml_help_about_tests PRIVATE ssa_presentation ssa_query Qt6::Qml
+                                     Qt6::Quick Qt6::QuickControls2 Qt6::Test)
   add_test(NAME ssa_qml_help_about_tests COMMAND ssa_qml_help_about_tests)
   set_tests_properties(
     ssa_qml_help_about_tests

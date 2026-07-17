@@ -682,12 +682,84 @@ namespace {
             QVERIFY(ssa::platform::SupervisedProcess::forceStopAll());
         }
 
-        void untracked_stop_failure_never_reports_a_verified_drain() {
+        void failed_to_stop_retains_the_tree_until_a_verified_drain() {
+            QTemporaryDir root;
+            QVERIFY(root.isValid());
+            const auto firstSentinel = root.filePath(QStringLiteral("failed-to-stop.pid"));
+            qint64 firstPid = -1;
+            const auto cleanup = qScopeGuard([&] {
+                ssa::platform::supervised_process_testing::setStopFailure(false);
+                static_cast<void>(ssa::platform::SupervisedProcess::forceStopAll());
+                if (processExists(firstPid)) {
+                    terminateProcessForTesting(firstPid);
+                }
+            });
+            ssa::platform::SupervisedProcessRequest firstRequest;
+            firstRequest.program = QCoreApplication::applicationFilePath();
+            firstRequest.arguments = {QStringLiteral("--sentinel-child"), firstSentinel};
+            firstRequest.timeout = std::chrono::seconds{10};
+
+            auto firstRun = QtConcurrent::run(
+                [&] { return ssa::platform::SupervisedProcess::run(firstRequest); });
+            QElapsedTimer startupDeadline;
+            startupDeadline.start();
+            while (!QFileInfo::exists(firstSentinel) && startupDeadline.elapsed() < 3'000) {
+                QTest::qWait(10);
+            }
+            QVERIFY2(QFileInfo::exists(firstSentinel), "supervised process did not start");
+            QFile firstSentinelFile(firstSentinel);
+            QVERIFY(firstSentinelFile.open(QIODevice::ReadOnly));
+            bool validPid = false;
+            firstPid = firstSentinelFile.readAll().trimmed().toLongLong(&validPid);
+            QVERIFY(validPid);
+
+            ssa::platform::supervised_process_testing::setStopFailure(true);
+            QCOMPARE(ssa::platform::SupervisedProcess::requestForceStopAll(),
+                     ssa::platform::ForceStopRequestStatus::Failed);
+            firstRun.waitForFinished();
+            QCOMPARE(firstRun.result().status,
+                     ssa::platform::SupervisedProcessStatus::FailedToStop);
+            QCOMPARE(ssa::platform::supervised_process_testing::registeredTreeCount(),
+                     std::size_t{1});
+
+            ssa::platform::supervised_process_testing::setStopFailure(false);
+            QVERIFY(ssa::platform::SupervisedProcess::forceStopAll());
+            QCOMPARE(ssa::platform::supervised_process_testing::registeredTreeCount(),
+                     std::size_t{0});
+
+            const auto secondSentinel = root.filePath(QStringLiteral("after-drain.pid"));
+            ssa::platform::SupervisedProcessRequest secondRequest;
+            secondRequest.program = QCoreApplication::applicationFilePath();
+            secondRequest.arguments = {QStringLiteral("--sentinel-child"), secondSentinel};
+            secondRequest.timeout = std::chrono::milliseconds{500};
+            const auto secondResult = ssa::platform::SupervisedProcess::run(secondRequest);
+
+            QCOMPARE(secondResult.status, ssa::platform::SupervisedProcessStatus::TimedOut);
+            QVERIFY(QFileInfo::exists(secondSentinel));
+            QFile secondSentinelFile(secondSentinel);
+            QVERIFY(secondSentinelFile.open(QIODevice::ReadOnly));
+            bool secondPidValid = false;
+            const auto secondPid =
+                secondSentinelFile.readAll().trimmed().toLongLong(&secondPidValid);
+            QVERIFY(secondPidValid);
+            QElapsedTimer terminationDeadline;
+            terminationDeadline.start();
+            while (processExists(secondPid) && terminationDeadline.elapsed() < 3'000) {
+                QTest::qWait(10);
+            }
+            const bool secondProcessTerminated = !processExists(secondPid);
+            if (!secondProcessTerminated) {
+                terminateProcessForTesting(secondPid);
+            }
+            QVERIFY2(secondProcessTerminated, "timed-out supervised process was not terminated");
+        }
+
+        void untrackable_stop_failure_never_reports_a_verified_drain() {
             const auto cleanup = qScopeGuard([] {
                 ssa::platform::supervised_process_testing::setUntrackedStopFailure(false);
                 static_cast<void>(ssa::platform::SupervisedProcess::forceStopAll());
             });
-            ssa::platform::supervised_process_testing::setUntrackedStopFailure(true);
+            ssa::platform::supervised_process_testing::recordUntrackableStopFailure();
 
             QCOMPARE(ssa::platform::SupervisedProcess::requestForceStopAll(),
                      ssa::platform::ForceStopRequestStatus::Failed);
@@ -711,7 +783,7 @@ namespace {
                 static_cast<void>(ssa::platform::SupervisedProcess::forceStopAll());
             });
 
-            ssa::platform::supervised_process_testing::setUntrackedStopFailure(true);
+            ssa::platform::supervised_process_testing::recordUntrackableStopFailure();
             ssa::platform::supervised_process_testing::recordTrackedStopFailure();
             QCOMPARE(ssa::platform::SupervisedProcess::requestForceStopAll(),
                      ssa::platform::ForceStopRequestStatus::Failed);

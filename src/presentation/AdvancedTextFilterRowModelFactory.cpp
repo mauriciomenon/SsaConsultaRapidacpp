@@ -1,6 +1,7 @@
 #include "presentation/AdvancedTextFilterRowModelFactory.h"
 
 #include "domain/ColumnCatalog.h"
+#include "presentation/SsaColumnDisplayCatalog.h"
 
 #include <QVariantMap>
 
@@ -22,12 +23,13 @@ namespace ssa::presentation {
 
     QVariantList AdvancedTextFilterRowModelFactory::buildRows() const {
         QVariantList rows;
+        const SsaColumnDisplayCatalog displayCatalog;
         for (const auto key : domain::ColumnCatalog::advancedFilterKeys()) {
             const auto* column = domain::ColumnCatalog::find(key);
             if (column != nullptr) {
-                rows.push_back(
-                    filterRow(column->key, domain::ColumnCatalog::advancedFilterLabel(column->key),
-                              domain::ColumnCatalog::advancedFilterShortLabel(column->key)));
+                rows.push_back(filterRow(column->key,
+                                         displayCatalog.advancedFilterLabel(column->key),
+                                         displayCatalog.advancedFilterShortLabel(column->key)));
             }
         }
         return rows;

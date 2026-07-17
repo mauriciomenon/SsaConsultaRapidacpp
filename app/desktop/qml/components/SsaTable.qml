@@ -36,6 +36,15 @@ Rectangle {
         return cell.mapToItem(root, cell.width / 2, cell.height / 2);
     }
 
+    function headerCellForSmoke(columnKey) {
+        for (let index = 0; index < headerRepeater.count; ++index) {
+            const cell = headerRepeater.itemAt(index);
+            if (cell !== null && cell.objectName === "ssaHeaderCell_" + columnKey)
+                return cell;
+        }
+        return null;
+    }
+
     color: Theme.surface
     border.color: Theme.border
     radius: Theme.radius
@@ -138,10 +147,13 @@ Rectangle {
                 spacing: 0
 
                 Repeater {
+                    id: headerRepeater
                     model: root.tableColumns
 
                     delegate: Rectangle {
                         id: headerCell
+                        objectName: "ssaHeaderCell_" + columnKey
+                        property alias contextMenuForSmoke: headerMenu
                         required property int index
                         required property var modelData
                         readonly property bool hasColumnKey: modelData.key !== undefined && modelData.key !== null && modelData.key !== ""
@@ -265,6 +277,7 @@ Rectangle {
 
                         Menu {
                             id: headerMenu
+                            objectName: "headerContextMenu_" + headerCell.columnKey
 
                             MenuItem {
                                 objectName: "filterColumnAction"

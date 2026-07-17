@@ -261,12 +261,13 @@ ApplicationWindow {
             MenuItem {
                 objectName: "cancelAllMenuItem"
                 text: "Cancelar consulta"
-                enabled: root.vm.browse.status.loading
+                enabled: root.vm.canCancelActivity
                 onTriggered: root.vm.requestCancelAll()
             }
         }
 
         Menu {
+            objectName: "helpMenu"
             title: "Ajuda"
 
             MenuItem {
@@ -278,6 +279,12 @@ ApplicationWindow {
                 text: "Guia de instalacao"
                 enabled: !root.vm.actions.commands.running
                 onTriggered: root.vm.actions.commands.openInstallationGuide()
+            }
+            MenuSeparator {}
+            MenuItem {
+                objectName: "openLogHistoryMenuItem"
+                text: "Historico de logs e erros"
+                onTriggered: root.openLogHistoryDialog()
             }
             MenuSeparator {}
             MenuItem {
@@ -577,6 +584,16 @@ ApplicationWindow {
     }
 
     Loader {
+        id: logHistoryDialogLoader
+        active: false
+        sourceComponent: LogHistoryDialog {
+            visible: true
+            viewModel: root.vm
+            onClosing: logHistoryDialogLoader.active = false
+        }
+    }
+
+    Loader {
         id: samRefreshDialogLoader
         active: false
         sourceComponent: SamRefreshDialog {
@@ -626,6 +643,10 @@ ApplicationWindow {
 
     function openAboutDialog() {
         aboutDialogLoader.active = true;
+    }
+
+    function openLogHistoryDialog() {
+        logHistoryDialogLoader.active = true;
     }
 
     function openSamRefreshDialog() {

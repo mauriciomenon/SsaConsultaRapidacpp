@@ -1,5 +1,6 @@
 #include "DesktopApplicationRuntime.h"
 
+#include "DesktopLogSink.h"
 #include "DesktopMainViewModelFactory.h"
 #include "platform/SupervisedProcess.h"
 
@@ -20,6 +21,8 @@ namespace ssa::app::desktop {
           paths_(options_.projectRoot, options_.configDir) {
         paths_.ensureConfigDirectory();
         mainViewModel_ = DesktopMainViewModelFactory::create(options_, paths_);
+        logSink_ =
+            std::make_unique<DesktopLogSink>(paths_.configDirectoryPath(), *mainViewModel_->logs());
         QObject::connect(mainViewModel_->databaseSwitch(),
                          &ssa::presentation::DatabaseSwitchViewModel::replacementStarted,
                          QCoreApplication::instance(), &QCoreApplication::quit,
@@ -34,6 +37,8 @@ namespace ssa::app::desktop {
                          });
         mainViewModel_->ui()->setSystemTheme(systemThemeResolver_.currentTheme());
     }
+
+    DesktopApplicationRuntime::~DesktopApplicationRuntime() = default;
 
     void DesktopApplicationRuntime::forceShutdown() {
         constexpr qint64 forceShutdownTimeoutMs = 5'000;

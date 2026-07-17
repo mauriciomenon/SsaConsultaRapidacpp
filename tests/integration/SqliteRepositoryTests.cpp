@@ -1,6 +1,7 @@
 #include "domain/ColumnCatalog.h"
 #include "infra/import/LegacySpreadsheetConverter.h"
 #include "infra/sqlite/SqliteConnection.h"
+#include "infra/sqlite/SqliteDatabaseWriteLock.h"
 #include "infra/sqlite/SqliteDerivadasPort.h"
 #include "infra/sqlite/SqliteMaintenancePort.h"
 #include "infra/sqlite/SqliteProgressHandler.h"
@@ -21,6 +22,7 @@
 #include <filesystem>
 #include <future>
 #include <iostream>
+#include <latch>
 #include <mutex>
 #include <semaphore>
 #include <sqlite3.h>
@@ -502,6 +504,100 @@ TEST_CASE_METHOD(SqliteRepositoryFixture,
     statement.bindTextOneBased(1, "ssa_table_derived_counts");
     REQUIRE(statement.step());
     REQUIRE(statement.columnInt64(0) == 1);
+}
+
+TEST_CASE_METHOD(SqliteRepositoryFixture,
+                 "concurrent derived count reads share completed summary initialization") {
+    executeSql(path, R"SQL(
+        WITH RECURSIVE sequence(value) AS (
+            SELECT 1
+            UNION ALL
+            SELECT value + 1 FROM sequence WHERE value < 20000
+        )
+        INSERT INTO ssa_table
+        SELECT printf('D%08d', value), 'APV', '202500002', '', '', '', 0, '', '', '', '', '',
+               '', '', '', '', '', '', '', '', '', 0, 0, 0, 0
+        FROM sequence;
+    )SQL");
+
+    ssa::domain::SsaPageRequest request;
+    request.pageSize = 10;
+    request.excludeScaSesSte = false;
+    request.columnFilters = {{"numero_ssa", "=202500002"}};
+    request.visibleColumns = {"numero_ssa", "qtd_derivadas"};
+    std::latch start{2};
+    auto readPage = [&] {
+        start.count_down();
+        start.wait();
+        return repository.page(request);
+    };
+
+    auto first = std::async(std::launch::async, readPage);
+    auto second = std::async(std::launch::async, readPage);
+    const auto firstPage = first.get();
+    const auto secondPage = second.get();
+
+    const auto derivedCountForParent = [](const ssa::domain::SsaPageResult& page) {
+        const auto parent = std::ranges::find_if(
+            page.rows, [](const auto& row) { return row.valueOf("numero_ssa") == "202500002"; });
+        REQUIRE(parent != page.rows.end());
+        return parent->valueOf("qtd_derivadas");
+    };
+    REQUIRE(derivedCountForParent(firstPage) == "20000");
+    REQUIRE(derivedCountForParent(secondPage) == "20000");
+
+    ssa::infra::sqlite::SqliteConnection connection(path);
+    ssa::infra::sqlite::SqliteStatement initialized(
+        connection.handle(), "SELECT initialized FROM ssa_table_derived_counts_meta");
+    REQUIRE(initialized.step());
+    REQUIRE(initialized.columnInt64(0) == 1);
+}
+
+TEST_CASE_METHOD(SqliteRepositoryFixture,
+                 "sqlite repository keeps derived count reads readonly while write lock is held") {
+    executeSql(path, R"SQL(
+        INSERT INTO ssa_table VALUES
+            ('202500004','APV','202500002','LOC-5','Tomada dagua','EQ-E',202501,'2025-01-05','Ajustar valvula','Ajuste','SEM','SMM','Ari','Beto','Clio','SAM','SYS','e.xlsx','2025-01-05','I','J',202502,202503,0,0);
+    )SQL");
+    ssa::domain::SsaPageRequest request;
+    request.pageSize = 10;
+    request.visibleColumns = {"numero_ssa", "qtd_derivadas"};
+    {
+        const ssa::infra::sqlite::SqliteDatabaseWriteLock heldLock(path);
+        REQUIRE(heldLock.acquired());
+        const auto page = repository.page(request);
+
+        const auto parent = std::ranges::find_if(page.rows, [](const ssa::domain::SsaRecord& row) {
+            return row.valueOf("numero_ssa") == "202500002";
+        });
+        REQUIRE(parent != page.rows.end());
+        REQUIRE(parent->valueOf("qtd_derivadas") == "1");
+        ssa::infra::sqlite::SqliteConnection connection(path);
+        ssa::infra::sqlite::SqliteStatement summary(
+            connection.handle(), "SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table' "
+                                 "AND name = 'ssa_table_derived_counts'");
+        REQUIRE(summary.step());
+        REQUIRE(summary.columnInt64(0) == 0);
+    }
+
+    static_cast<void>(repository.page(request));
+    {
+        ssa::infra::sqlite::SqliteConnection connection(path);
+        ssa::infra::sqlite::SqliteStatement summary(
+            connection.handle(), "SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table' "
+                                 "AND name = 'ssa_table_derived_counts'");
+        REQUIRE(summary.step());
+        REQUIRE(summary.columnInt64(0) == 0);
+    }
+
+    std::this_thread::sleep_for(std::chrono::milliseconds{1'050});
+    static_cast<void>(repository.page(request));
+    ssa::infra::sqlite::SqliteConnection connection(path);
+    ssa::infra::sqlite::SqliteStatement summary(
+        connection.handle(), "SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table' "
+                             "AND name = 'ssa_table_derived_counts'");
+    REQUIRE(summary.step());
+    REQUIRE(summary.columnInt64(0) == 1);
 }
 
 TEST_CASE("sqlite repository reads derived counts from a legacy readonly database") {

@@ -3,6 +3,7 @@
 #include "presentation/AdvancedDerivationFilterViewModel.h"
 #include "presentation/DerivadasGraphModel.h"
 #include "presentation/FilterPanelAdvancedViewModel.h"
+#include "presentation/FilterPanelDistinctValueRequestBuilder.h"
 #include "presentation/FilterPanelViewModel.h"
 #include "presentation/SsaColumnDisplayCatalog.h"
 #include "presentation/SsaTableModel.h"
@@ -60,7 +61,7 @@ namespace {
 
         std::vector<std::string> distinctValues(const ssa::domain::DistinctValuesRequest& request,
                                                 std::stop_token = {}) const override {
-            if (request.limit == ssa::domain::kAdvancedDistinctValuesLimit) {
+            if (request.limit == ssa::presentation::kAdvancedDistinctValuesLimit) {
                 advancedRequests_.fetch_add(1, std::memory_order_relaxed);
                 if (failNextAdvancedRequest_.exchange(false, std::memory_order_acq_rel)) {
                     throw std::runtime_error("advanced values failed once");
@@ -1022,6 +1023,12 @@ namespace {
         }
 
         void derivation_graph_navigates_and_activates_from_keyboard() {
+            ssa::presentation::DerivadasGraphModel graphModel;
+            graphModel.buildFromRelations(
+                QStringLiteral("202600001"),
+                {QVariantMap{{"role", "current"}, {"ssa", "202600001"}, {"status", "APV"}},
+                 QVariantMap{{"role", "child"}, {"ssa", "202600002"}, {"status", "STE"}}});
+
             QQmlEngine engine;
             QQmlComponent component(&engine);
             component.setData(R"QML(
@@ -1035,27 +1042,13 @@ namespace {
                     height: 180
                     property int clickCount: 0
                     property string clickedSsa: ""
-
-                    QtObject {
-                        id: graphModel
-                        property int nodeCount: 2
-                        property real graphWidth: 900
-                        property real graphHeight: 120
-                        signal graphChanged
-                        function rowCount() { return nodeCount; }
-                        function edges() { return []; }
-                        function nodeCenter(index) { return Qt.point(80 + index * 720, 70); }
-                        function nodeSsa(index) { return index === 0 ? "202600001" : "202600002"; }
-                        function nodeStatus(index) { return index === 0 ? "APV" : "STE"; }
-                        function nodeRole(index) { return index === 0 ? "current" : "child"; }
-                        function nodeIsTarget(index) { return index === 0; }
-                    }
+                    required property var testGraphModel
 
                     DerivadasGraph {
                         id: graph
                         objectName: "keyboardGraph"
                         anchors.fill: parent
-                        graphModel: graphModel
+                        graphModel: harness.testGraphModel
                         onNodeClicked: ssaNumber => {
                             harness.clickedSsa = ssaNumber;
                             harness.clickCount += 1;
@@ -1069,7 +1062,11 @@ namespace {
 
             QQuickWindow window;
             window.setGeometry(0, 0, 420, 180);
-            std::unique_ptr<QObject> harness(component.create());
+            QVariantMap initialProperties;
+            initialProperties.insert(QStringLiteral("testGraphModel"),
+                                     QVariant::fromValue<QObject*>(&graphModel));
+            std::unique_ptr<QObject> harness(
+                component.createWithInitialProperties(initialProperties));
             QVERIFY2(harness != nullptr, qPrintable(component.errorString()));
             auto* harnessItem = qobject_cast<QQuickItem*>(harness.get());
             QVERIFY(harnessItem != nullptr);
@@ -1083,9 +1080,9 @@ namespace {
             QTRY_VERIFY_WITH_TIMEOUT(graph->hasActiveFocus(), 1000);
             QTest::keyClick(&window, Qt::Key_Right);
             QCOMPARE(graph->property("currentNodeIndex").toInt(), 1);
-            QVERIFY(graph->property("contentX").toReal() > 0.0);
-            QVERIFY(graph->property("contentX").toReal() <=
-                    graph->property("contentWidth").toReal() - graph->width());
+            QVERIFY(graph->property("contentY").toReal() > 0.0);
+            QVERIFY(graph->property("contentY").toReal() <=
+                    graph->property("contentHeight").toReal() - graph->height());
             QTest::keyClick(&window, Qt::Key_Return);
 
             QTRY_COMPARE_WITH_TIMEOUT(harness->property("clickCount").toInt(), 1, 1000);

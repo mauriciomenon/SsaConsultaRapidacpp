@@ -61,7 +61,7 @@ namespace ssa::presentation {
                 request.columnFilters.emplace(key, value);
             }
         }
-        request.limit = domain::kAdvancedDistinctValuesLimit;
+        request.limit = kAdvancedDistinctValuesLimit;
         return request;
     }
 

@@ -13,9 +13,12 @@ class QQmlApplicationEngine;
 
 namespace ssa::app::desktop {
 
+    class DesktopLogSink;
+
     class DesktopApplicationRuntime final {
       public:
         explicit DesktopApplicationRuntime(const QCommandLineParser& parser);
+        ~DesktopApplicationRuntime();
 
         void loadMainWindow(QQmlApplicationEngine& engine);
         void installSmokeCapture(const QCommandLineParser& parser, QQmlApplicationEngine& engine);
@@ -27,6 +30,7 @@ namespace ssa::app::desktop {
         ssa::platform::AppPaths paths_;
         ssa::platform::SystemThemeResolver systemThemeResolver_;
         std::unique_ptr<ssa::presentation::MainViewModel> mainViewModel_;
+        std::unique_ptr<DesktopLogSink> logSink_;
         DesktopSmokeController smokeController_;
     };
 

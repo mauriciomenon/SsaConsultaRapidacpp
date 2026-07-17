@@ -22,6 +22,7 @@ namespace ssa::presentation {
         : QObject(parent), browse_(std::move(browsePort), std::move(reportPort), this),
           columns_(this), ui_(this), preferences_(std::move(preferencesStore), this),
           databaseSwitch_(std::move(databaseValidator), std::move(applicationLauncher), this),
+          logs_(this),
           actions_(
               std::move(commandPort), std::move(workflowService),
               [this] { return browse_.currentRequest(); }, *browse_.status(), preferences_, this),
@@ -46,6 +47,14 @@ namespace ssa::presentation {
         });
         connect(browse_.status(), &StatusViewModel::changed, this,
                 &MainViewModel::handleActivityStateChanged);
+        connect(browse_.status(), &StatusViewModel::changed, this, [this] {
+            const auto error = browse_.status()->error();
+            if (!error.isEmpty() && error != actions_.workflows()->lastMessage()) {
+                logs_.append(QStringLiteral("Error"), QStringLiteral("Status"), error);
+            }
+        });
+        connect(actions_.workflows(), &WorkflowCommandViewModel::logEntryRequested, &logs_,
+                &RecentLogModel::append);
         connect(actions_.workflows(), &WorkflowCommandViewModel::stateChanged, this,
                 &MainViewModel::handleActivityStateChanged);
         connect(actions_.exports(), &ExportViewModel::stateChanged, this,
@@ -133,6 +142,10 @@ namespace ssa::presentation {
 
     DatabaseSwitchViewModel* MainViewModel::databaseSwitch() {
         return &databaseSwitch_;
+    }
+
+    RecentLogModel* MainViewModel::logs() {
+        return &logs_;
     }
 
     QObject* MainViewModel::columnFlow() {

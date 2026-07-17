@@ -43,7 +43,10 @@ namespace ssa::platform {
 
         void recordStopFailureTracking(const bool tracked) {
             if (!tracked) {
+                const std::scoped_lock lock(processRegistryMutex);
                 untrackedStopFailure.store(true, std::memory_order_relaxed);
+                forceStopRequested.store(true, std::memory_order_relaxed);
+                forceStopFailed.store(true, std::memory_order_relaxed);
             }
         }
 
@@ -206,6 +209,14 @@ namespace ssa::platform {
                           QByteArray& standardOutput) {
             appendLimited(standardError, process.readAllStandardError());
             appendLimited(standardOutput, process.readAllStandardOutput());
+        }
+
+        void stopProcessLeader(QProcess& process) {
+            if (process.state() == QProcess::NotRunning) {
+                return;
+            }
+            process.kill();
+            process.waitForFinished(static_cast<int>(kForcedStopTimeout.count()));
         }
 
         QString diagnosticText(QProcess& process, const QByteArray& standardError,
@@ -465,6 +476,7 @@ namespace ssa::platform {
                     const auto tracked = retainFailedProcessTree(startingProcessGroup);
 #endif
                     recordStopFailureTracking(tracked);
+                    stopProcessLeader(process);
                 }
                 return {stopped ? SupervisedProcessStatus::Canceled
                                 : SupervisedProcessStatus::FailedToStop,
@@ -486,6 +498,7 @@ namespace ssa::platform {
                     const auto tracked = retainFailedProcessTree(startingProcessGroup);
 #endif
                     recordStopFailureTracking(tracked);
+                    stopProcessLeader(process);
                 }
                 return {stopped ? SupervisedProcessStatus::TimedOut
                                 : SupervisedProcessStatus::FailedToStop,
@@ -518,6 +531,7 @@ namespace ssa::platform {
                 const auto tracked = retainFailedProcessTree(processGroup);
 #endif
                 recordStopFailureTracking(tracked);
+                stopProcessLeader(process);
             }
             return {stopped ? SupervisedProcessStatus::StartFailed
                             : SupervisedProcessStatus::FailedToStop,
@@ -536,6 +550,7 @@ namespace ssa::platform {
 #endif
                 if (!stopped) {
                     registeredTree->retain();
+                    stopProcessLeader(process);
                 }
                 drainProcess(process, standardError, standardOutput);
                 return {stopped ? SupervisedProcessStatus::Canceled
@@ -550,6 +565,7 @@ namespace ssa::platform {
 #endif
                 if (!stopped) {
                     registeredTree->retain();
+                    stopProcessLeader(process);
                 }
                 drainProcess(process, standardError, standardOutput);
                 return {stopped ? SupervisedProcessStatus::TimedOut
@@ -689,6 +705,7 @@ namespace ssa::platform {
         }
 
         void setUntrackedStopFailure(const bool enabled) {
+            const std::scoped_lock lock(processRegistryMutex);
             untrackedStopFailure.store(enabled, std::memory_order_relaxed);
             if (enabled) {
                 forceStopRequested.store(true, std::memory_order_relaxed);
@@ -698,6 +715,14 @@ namespace ssa::platform {
 
         void recordTrackedStopFailure() {
             recordStopFailureTracking(true);
+        }
+
+        void recordUntrackableStopFailure() {
+#ifdef Q_OS_WIN
+            recordStopFailureTracking(retainFailedProcessTree(nullptr));
+#else
+            recordStopFailureTracking(retainFailedProcessTree(0));
+#endif
         }
     } // namespace supervised_process_testing
 #endif

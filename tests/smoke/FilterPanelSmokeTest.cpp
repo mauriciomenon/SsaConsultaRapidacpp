@@ -323,7 +323,7 @@ namespace {
             const auto hasAdvancedRequest = [repository] {
                 const auto requests = repository->distinctRequests();
                 return std::ranges::any_of(requests, [](const auto& request) {
-                    return request.limit == ssa::domain::kAdvancedDistinctValuesLimit;
+                    return request.limit == ssa::presentation::kAdvancedDistinctValuesLimit;
                 });
             };
             QVERIFY(!hasAdvancedRequest());
@@ -625,7 +625,7 @@ namespace {
             const auto distinctRequests = repository->distinctRequests();
             QVERIFY(std::ranges::any_of(distinctRequests, [](const auto& request) {
                 return request.columnKey == "responsavel_execucao" && !request.orderByFrequency &&
-                       request.limit == ssa::domain::kAdvancedDistinctValuesLimit;
+                       request.limit == ssa::presentation::kAdvancedDistinctValuesLimit;
             }));
         }
 

@@ -74,7 +74,11 @@ TEST_CASE("column catalog exposes the shared GUI CLI SQLite schema dictionary") 
     for (std::size_t index = 0; index < schema.size(); ++index) {
         REQUIRE(schema[index].key == storage[index].key);
         REQUIRE(schema[index].type == storage[index].type);
+        REQUIRE(ssa::domain::ColumnCatalog::isCanonicalStorageKey(schema[index].key));
     }
+    REQUIRE_FALSE(ssa::domain::ColumnCatalog::isCanonicalStorageKey("Numero_ssa"));
+    REQUIRE_FALSE(ssa::domain::ColumnCatalog::isCanonicalStorageKey("numero ssa"));
+    REQUIRE_FALSE(ssa::domain::ColumnCatalog::isCanonicalStorageKey("numero-ssa"));
     REQUIRE(std::ranges::find(ssa::domain::ColumnCatalog::requiredSchemaColumns(), "numero_ssa") !=
             ssa::domain::ColumnCatalog::requiredSchemaColumns().end());
     REQUIRE(

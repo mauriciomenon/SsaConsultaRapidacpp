@@ -56,6 +56,7 @@ namespace ssa::platform {
         [[nodiscard]] std::size_t registeredTreeCount();
         void setUntrackedStopFailure(bool enabled);
         void recordTrackedStopFailure();
+        void recordUntrackableStopFailure();
     } // namespace supervised_process_testing
 #endif
 

@@ -2,6 +2,7 @@
 
 #include "domain/SsaImportPolicy.h"
 #include "domain/SsaTypes.h"
+#include "infra/import/CancelableFileCopy.h"
 #include "infra/sqlite/SqliteConnection.h"
 #include "infra/sqlite/SqliteDerivedCountSummary.h"
 #include "infra/sqlite/SqliteProgressHandler.h"
@@ -54,7 +55,38 @@ namespace ssa::infra::sqlite {
         std::string createConsolidationJournalSql() {
             return "CREATE TABLE IF NOT EXISTS " + std::string{kConsolidationJournalTable} +
                    " (source TEXT PRIMARY KEY NOT NULL, destination TEXT NOT NULL, "
-                   "has_valid_rows INTEGER NOT NULL CHECK(has_valid_rows IN (0, 1)))";
+                   "has_valid_rows INTEGER NOT NULL CHECK(has_valid_rows IN (0, 1)), "
+                   "source_identity TEXT, source_size INTEGER)";
+        }
+
+        bool
+        consolidationJournalHasColumn(sqlite3* db, const std::string_view column,
+                                      const std::atomic_bool* busyCancellationObserved = nullptr) {
+            SqliteStatement columns(db, "PRAGMA table_info(ssa_import_consolidation_journal)",
+                                    busyCancellationObserved);
+            while (columns.step()) {
+                if (columns.columnText(1) == column) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        void ensureConsolidationJournalSchema(
+            sqlite3* db, const std::atomic_bool* busyCancellationObserved = nullptr) {
+            executeSql(db, createConsolidationJournalSql(), busyCancellationObserved);
+            if (!consolidationJournalHasColumn(db, "source_identity", busyCancellationObserved)) {
+                executeSql(db,
+                           "ALTER TABLE ssa_import_consolidation_journal "
+                           "ADD COLUMN source_identity TEXT",
+                           busyCancellationObserved);
+            }
+            if (!consolidationJournalHasColumn(db, "source_size", busyCancellationObserved)) {
+                executeSql(db,
+                           "ALTER TABLE ssa_import_consolidation_journal "
+                           "ADD COLUMN source_size INTEGER",
+                           busyCancellationObserved);
+            }
         }
 
         std::filesystem::path journalPath(const std::string& value) {
@@ -232,6 +264,21 @@ namespace ssa::infra::sqlite {
             return key == "derivada_de" || key.starts_with("numero_ssa_relacionada_");
         }
 
+        void validateCanonicalColumns(const std::vector<domain::ColumnDef>& columns) {
+            std::unordered_set<std::string_view> keys;
+            keys.reserve(columns.size());
+            for (const auto& column : columns) {
+                if (!domain::ColumnCatalog::isCanonicalStorageKey(column.key) ||
+                    !domain::ColumnCatalog::contains(column.key)) {
+                    throw std::invalid_argument(
+                        "sqlite import writer received an unknown or non-canonical column");
+                }
+                if (!keys.insert(column.key).second) {
+                    throw std::invalid_argument("sqlite import writer received duplicate columns");
+                }
+            }
+        }
+
         void validateIdentityColumns(const std::vector<domain::ColumnDef>& columns) {
             int identityColumns = 0;
             for (const auto& column : columns) {
@@ -288,8 +335,7 @@ namespace ssa::infra::sqlite {
                 if (value == row.end() || value->second.empty()) {
                     continue;
                 }
-                const auto normalized =
-                    domain::SsaImportPolicy::normalizeSnapshotTimestamp(value->second);
+                const auto normalized = domain::SsaImportPolicy::normalizeDateText(value->second);
                 if (!normalized.empty() && normalized != value->second) {
                     value->second = normalized;
                     changed = true;
@@ -386,7 +432,8 @@ namespace ssa::infra::sqlite {
 
     } // namespace
 
-    SqliteSsaImportWriter::SqliteSsaImportWriter(std::filesystem::path databasePath,
+    SqliteSsaImportWriter::SqliteSsaImportWriter(SqliteSsaImportWriterAccess,
+                                                 std::filesystem::path databasePath,
                                                  std::vector<domain::ColumnDef> columns,
                                                  std::string tableName)
         : databasePath_(std::move(databasePath)), columns_(std::move(columns)),
@@ -397,6 +444,7 @@ namespace ssa::infra::sqlite {
         if (columns_.empty()) {
             throw std::invalid_argument("sqlite import writer requires columns");
         }
+        validateCanonicalColumns(columns_);
         validateIdentityColumns(columns_);
         if (!containsSsaNumberColumn(columns_)) {
             throw std::invalid_argument("sqlite import writer requires " +
@@ -421,7 +469,7 @@ namespace ssa::infra::sqlite {
             auto* db = connection.handle();
             transaction = std::make_unique<SqliteWriteTransaction>(db, busy.cancellationObserved());
             try {
-                executeSql(db, createConsolidationJournalSql(), busy.cancellationObserved());
+                ensureConsolidationJournalSchema(db, busy.cancellationObserved());
                 executeSql(db, createTableSql(this->tableName, columns),
                            busy.cancellationObserved());
                 ensureDerivedCountSummary(db, this->tableName, columns,
@@ -495,7 +543,6 @@ namespace ssa::infra::sqlite {
                     throw ports::OperationError("Falha ao validar identificador SSA importado",
                                                 "invalid SSA number in import batch");
                 }
-                static_cast<void>(normalizeDateValues(normalizedRow, columns));
                 if (!seenImportedNumbers.insert(number).second) {
                     ++summary.duplicateRows;
                     ++result.duplicateRows;
@@ -584,7 +631,8 @@ namespace ssa::infra::sqlite {
             SqliteStatement insertJournal(
                 connection.handle(),
                 "INSERT INTO " + std::string{kConsolidationJournalTable} +
-                    "(source, destination, has_valid_rows) VALUES(?, ?, ?)",
+                    "(source, destination, has_valid_rows, source_identity, source_size) "
+                    "VALUES(?, ?, ?, ?, ?)",
                 busy.cancellationObserved());
             for (const auto& move : moves) {
                 throwIfCanceled(stopToken);
@@ -597,6 +645,18 @@ namespace ssa::infra::sqlite {
                 insertJournal.bindTextOneBased(1, qt::toUtf8(source));
                 insertJournal.bindTextOneBased(2, qt::toUtf8(destination));
                 insertJournal.bindInt64OneBased(3, move.hasValidRows ? 1 : 0);
+                std::error_code identityError;
+                const auto observed = importing::inspectFileIdentity(source, identityError);
+                if (!observed) {
+                    throw std::runtime_error("cannot inspect consolidation source identity: " +
+                                             identityError.message());
+                }
+                if ((!move.sourceIdentity.empty() && move.sourceIdentity != observed->value) ||
+                    (move.sourceSize && *move.sourceSize != observed->size)) {
+                    throw std::runtime_error("consolidation source changed before journal commit");
+                }
+                insertJournal.bindTextOneBased(4, observed->value);
+                insertJournal.bindInt64OneBased(5, static_cast<std::int64_t>(observed->size));
                 insertJournal.executeAndReset();
             }
         }
@@ -702,35 +762,65 @@ namespace ssa::infra::sqlite {
         if (!tableExists.step() || tableExists.columnInt64(0) == 0) {
             return {};
         }
+        const auto identityExpression =
+            consolidationJournalHasColumn(connection.handle(), "source_identity",
+                                          busy.cancellationObserved())
+                ? "source_identity"
+                : "NULL";
+        const auto sizeExpression =
+            consolidationJournalHasColumn(connection.handle(), "source_size",
+                                          busy.cancellationObserved())
+                ? "source_size"
+                : "NULL";
         SqliteStatement select(connection.handle(),
-                               "SELECT source, destination, has_valid_rows FROM " +
+                               "SELECT source, destination, has_valid_rows, " +
+                                   std::string{identityExpression} + ", " +
+                                   std::string{sizeExpression} + " FROM " +
                                    std::string{kConsolidationJournalTable} + " ORDER BY source",
                                busy.cancellationObserved());
         std::vector<importing::ImportConsolidationMove> pending;
         while (select.step()) {
             throwIfCanceled(stopToken);
+            std::optional<std::uintmax_t> sourceSize;
+            if (sqlite3_column_type(select.handle(), 4) != SQLITE_NULL) {
+                sourceSize = static_cast<std::uintmax_t>(select.columnInt64(4));
+            }
             pending.push_back({journalPath(select.columnText(0)), journalPath(select.columnText(1)),
-                               select.columnInt64(2) != 0});
+                               select.columnInt64(2) != 0, select.columnText(3), sourceSize});
         }
         return pending;
     }
 
     void SqliteSsaImportWriter::completeConsolidation(
-        const std::vector<std::filesystem::path>& sources) const {
-        if (sources.empty()) {
+        const std::vector<importing::ImportConsolidationMove>& moves) const {
+        if (moves.empty()) {
             return;
         }
         SqliteConnection connection(databasePath_, SqliteOpenMode::ReadWrite,
                                     std::chrono::milliseconds{0});
         SqliteBusyHandler busy(connection.handle(), {}, std::chrono::milliseconds{250});
         SqliteWriteTransaction transaction(connection.handle(), busy.cancellationObserved());
+        ensureConsolidationJournalSchema(connection.handle(), busy.cancellationObserved());
         SqliteStatement erase(connection.handle(),
                               "DELETE FROM " + std::string{kConsolidationJournalTable} +
-                                  " WHERE source=?",
+                                  " WHERE source=? AND destination=? AND source_identity IS ? "
+                                  "AND source_size IS ?",
                               busy.cancellationObserved());
-        for (const auto& source : sources) {
+        for (const auto& move : moves) {
             erase.bindTextOneBased(
-                1, qt::toUtf8(std::filesystem::absolute(source).lexically_normal()));
+                1, qt::toUtf8(std::filesystem::absolute(move.source).lexically_normal()));
+            erase.bindTextOneBased(
+                2, qt::toUtf8(std::filesystem::absolute(move.destination).lexically_normal()));
+            if (move.sourceIdentity.empty()) {
+                erase.bindNullOneBased(3);
+            } else {
+                erase.bindTextOneBased(3, move.sourceIdentity);
+            }
+            if (move.sourceSize) {
+                erase.bindInt64OneBased(4, static_cast<std::int64_t>(*move.sourceSize));
+            } else {
+                erase.bindNullOneBased(4);
+            }
             erase.executeAndReset();
             if (sqlite3_changes(connection.handle()) != 1) {
                 throw ports::OperationError("Falha ao concluir a consolidacao da importacao",

@@ -44,8 +44,6 @@ namespace ssa::domain {
         [[nodiscard]] static std::vector<std::string> generalSearchKeys();
         [[nodiscard]] static const std::vector<std::string>& orderedFilterColumnKeys();
         [[nodiscard]] static std::span<const std::string_view> advancedFilterKeys();
-        [[nodiscard]] static std::string_view advancedFilterLabel(std::string_view key);
-        [[nodiscard]] static std::string_view advancedFilterShortLabel(std::string_view key);
         [[nodiscard]] static std::string defaultFilterColumnKey();
         [[nodiscard]] static std::string_view statusColumnKey();
         [[nodiscard]] static std::string_view executorColumnKey();
@@ -66,6 +64,7 @@ namespace ssa::domain {
         [[nodiscard]] static bool isStatusExclusionFilterColumn(std::string_view key);
         [[nodiscard]] static bool isReprogrammingColumn(std::string_view key);
         [[nodiscard]] static bool isDerivedCountColumn(std::string_view key);
+        [[nodiscard]] static bool isCanonicalStorageKey(std::string_view key);
         [[nodiscard]] static const ColumnDef* find(std::string_view key);
         [[nodiscard]] static bool contains(std::string_view key);
     };

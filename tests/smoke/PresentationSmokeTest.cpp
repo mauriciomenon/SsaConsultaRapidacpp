@@ -14,6 +14,7 @@
 #include "presentation/MainPreferenceFlowCoordinator.h"
 #include "presentation/MainViewModel.h"
 #include "presentation/PageQueryCoordinator.h"
+#include "presentation/RecentLogModel.h"
 #include "presentation/SsaRecordValueFormatter.h"
 #include "presentation/StatusViewModel.h"
 #include "query/SsaQueryService.h"
@@ -475,6 +476,24 @@ namespace {
             // Empty result.
             status.setQueryComplete(0, 100, 1, 10);
             QCOMPARE(status.message(), QString("Nenhum resultado"));
+        }
+
+        void recent_log_model_keeps_only_30_complete_copyable_events() {
+            ssa::presentation::RecentLogModel logs;
+            logs.append("Error", "Workflow", "Repeated", "Full diagnostic");
+            logs.append("Error", "Workflow", "Repeated", "Full diagnostic");
+            QCOMPARE(logs.rowCount(), 1);
+
+            for (int index = 0; index < 31; ++index) {
+                logs.append("Info", "Import", QStringLiteral("Event %1").arg(index),
+                            QStringLiteral("Detail %1").arg(index));
+            }
+
+            QCOMPARE(logs.rowCount(), 30);
+            QVERIFY(logs.entryText(0).contains("Event 30"));
+            QVERIFY(logs.entryText(0).contains("Detail 30"));
+            QVERIFY(!logs.allText().contains("Event 0\n"));
+            QVERIFY(logs.allText().contains("Event 29"));
         }
 
         void load_populates_table_and_allows_details_selection() {
@@ -1079,6 +1098,16 @@ namespace {
                         QVERIFY(coordinate >= 0);
                         QVERIFY(coordinate <= model.graphHeight());
                     }
+                    const auto routeKey = orientation == QStringLiteral("vertical")
+                                              ? QStringLiteral("routeY")
+                                              : QStringLiteral("routeX");
+                    const auto routeLimit = orientation == QStringLiteral("vertical")
+                                                ? model.graphHeight()
+                                                : model.graphWidth();
+                    QVERIFY(edge.contains(routeKey));
+                    const auto routeCoordinate = edge.value(routeKey).toReal();
+                    QVERIFY(routeCoordinate >= 0);
+                    QVERIFY(routeCoordinate <= routeLimit);
                 }
 
                 const auto targetCenter = model.nodeCenter(3);
@@ -1123,6 +1152,22 @@ namespace {
             // Target + 1 deduped ancestor = 2 nodes (not 3)
             QCOMPARE(model.rowCount(), 2);
             QCOMPARE(model.edges().size(), 1);
+        }
+
+        void derivadas_graph_model_ignores_target_repeated_as_a_relation() {
+            ssa::presentation::DerivadasGraphModel model;
+            model.buildFromRelations(
+                QStringLiteral("202500002"),
+                {QVariantMap{{"role", "parent"}, {"ssa", "202500002"}},
+                 QVariantMap{{"role", "current"}, {"ssa", "202500002"}, {"status", "APV"}},
+                 QVariantMap{{"role", "child"}, {"ssa", "202500002"}},
+                 QVariantMap{{"role", "related"}, {"ssa", "202500002"}}});
+
+            QCOMPARE(model.rowCount(), 1);
+            QCOMPARE(model.nodeSsa(0), QStringLiteral("202500002"));
+            QCOMPARE(model.nodeRole(0), QStringLiteral("current"));
+            QCOMPARE(model.nodeStatus(0), QStringLiteral("APV"));
+            QCOMPARE(model.edges().size(), 0);
         }
 
         void details_navigation_walks_across_pages_next_then_prev() {

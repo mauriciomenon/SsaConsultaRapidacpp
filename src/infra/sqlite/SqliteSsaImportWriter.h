@@ -10,7 +10,21 @@
 #include <string>
 #include <vector>
 
+namespace ssa::infra::importing {
+    class SpreadsheetImportWorkflowPort;
+}
+
 namespace ssa::infra::sqlite {
+
+    class SqliteSsaImportWriterTestAccess;
+
+    class SqliteSsaImportWriterAccess final {
+      private:
+        SqliteSsaImportWriterAccess() = default;
+
+        friend class ssa::infra::importing::SpreadsheetImportWorkflowPort;
+        friend class SqliteSsaImportWriterTestAccess;
+    };
 
     class SqliteSsaImportWriter final {
       public:
@@ -40,7 +54,8 @@ namespace ssa::infra::sqlite {
             std::unique_ptr<Storage> storage_;
         };
 
-        explicit SqliteSsaImportWriter(std::filesystem::path databasePath,
+        explicit SqliteSsaImportWriter(SqliteSsaImportWriterAccess,
+                                       std::filesystem::path databasePath,
                                        std::vector<domain::ColumnDef> columns,
                                        std::string tableName = "ssa_table");
 
@@ -53,7 +68,8 @@ namespace ssa::infra::sqlite {
                                                 std::stop_token stopToken = {}) const;
         [[nodiscard]] std::vector<importing::ImportConsolidationMove>
         pendingConsolidation(const std::stop_token& stopToken = {}) const;
-        void completeConsolidation(const std::vector<std::filesystem::path>& sources) const;
+        void
+        completeConsolidation(const std::vector<importing::ImportConsolidationMove>& moves) const;
 
       private:
         std::filesystem::path databasePath_;

@@ -1,3 +1,4 @@
+#include "SqliteSsaImportWriterTestAccess.h"
 #include "infra/SsaImportData.h"
 #include "infra/sqlite/SqliteSsaImportWriter.h"
 #include "qt/FilesystemPath.h"
@@ -41,9 +42,10 @@ int main(const int argc, char* argv[]) {
         const std::vector<ssa::domain::ColumnDef> columns{
             {.key = "numero_ssa", .label = "Numero", .labelFull = "Numero"},
             {.key = "descricao_ssa", .label = "Descricao", .labelFull = "Descricao"}};
-        const ssa::infra::sqlite::SqliteSsaImportWriter writer(databasePath, columns);
+        const ssa::infra::sqlite::SqliteSsaImportWriter writer(
+            ssa::infra::sqlite::SqliteSsaImportWriterTestAccess::access(), databasePath, columns);
         if (journalDeleteScenario) {
-            writer.completeConsolidation({std::filesystem::path{argv[4]}});
+            writer.completeConsolidation(writer.pendingConsolidation());
         } else {
             ssa::infra::importing::ResolvedSsaImportRows replacement;
             replacement.rows.push_back({{"numero_ssa", "202600211"}, {"descricao_ssa", "Nova"}});

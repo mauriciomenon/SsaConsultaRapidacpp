@@ -6,6 +6,7 @@
 #include <QString>
 
 #include <array>
+#include <stdexcept>
 #include <string_view>
 #include <unordered_map>
 
@@ -190,6 +191,21 @@ namespace ssa::infra::importing {
             HeaderAlias{"situacao relacionada (2)", "situacao_relacionada_2"},
         };
 
+        consteval bool hasConflictingAliases() {
+            for (std::size_t left = 0; left < kNormalizedAliases.size(); ++left) {
+                for (std::size_t right = left + 1; right < kNormalizedAliases.size(); ++right) {
+                    if (kNormalizedAliases[left].header == kNormalizedAliases[right].header &&
+                        kNormalizedAliases[left].canonical != kNormalizedAliases[right].canonical) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        static_assert(!hasConflictingAliases(),
+                      "normalized spreadsheet aliases must have one canonical destination");
+
         std::string normalizedHeader(const std::string_view value) {
             const QString text =
                 QString::fromUtf8(value.data(), static_cast<qsizetype>(value.size()))
@@ -219,7 +235,18 @@ namespace ssa::infra::importing {
                 std::unordered_map<std::string, std::string> values;
                 values.reserve(kNormalizedAliases.size());
                 for (const auto& alias : kNormalizedAliases) {
-                    values.try_emplace(std::string{alias.header}, alias.canonical);
+                    if (alias.canonical != "sn" &&
+                        (!domain::ColumnCatalog::isCanonicalStorageKey(alias.canonical) ||
+                         !domain::ColumnCatalog::contains(alias.canonical))) {
+                        throw std::logic_error(
+                            "spreadsheet alias has an invalid canonical destination");
+                    }
+                    auto [found, inserted] =
+                        values.try_emplace(normalizedHeader(alias.header), alias.canonical);
+                    if (!inserted && found->second != alias.canonical) {
+                        throw std::logic_error(
+                            "normalized spreadsheet alias has conflicting destinations");
+                    }
                 }
                 return values;
             }();

@@ -9,6 +9,7 @@
 #include "ports/IWorkflowPorts.h"
 
 #include <optional>
+#include <string>
 
 namespace ssa::infra::importing {
 
@@ -45,7 +46,7 @@ namespace ssa::infra::importing {
         std::vector<domain::ColumnDef> columns_;
         bool consolidateSources_{true};
         std::filesystem::path importLockPath_;
-        std::filesystem::path databaseImportLockPath_;
+        std::string importLockPathDiagnostic_;
         ImportFileStager stager_;
         XlsxWorkbookReader reader_;
         SsaSpreadsheetMapper mapper_;

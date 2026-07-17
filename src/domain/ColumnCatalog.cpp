@@ -48,24 +48,18 @@ namespace ssa::domain {
             "semana_executada",
             "descricao_execucao",
         }};
-        struct AdvancedFilterColumnDef {
-            std::string_view key;
-            std::string_view label;
-            std::string_view shortLabel;
-        };
-
-        constexpr std::array<AdvancedFilterColumnDef, 11> kAdvancedFilterColumns{{
-            {"setor_emissor", "Setor emissor", "Emis."},
-            {"setor_executor", "Setor executor", "Exec."},
-            {"situacao", "Situacao", "Sit."},
-            {"solicitante", "Solicitante", "Solicit."},
-            {"responsavel_programacao", "Responsavel programacao", "Resp. Plan."},
-            {"responsavel_execucao", "Responsavel execucao", "Resp. Exec."},
-            {"localizacao_codigo", "Localizacao", "Loc."},
-            {"status_execucao_prazo", "Status prazo", "Stat. Prazo"},
-            {"anomalia", "Anomalia", "Anom."},
-            {"situacao_espera", "Situacao espera", "Sit. Esp."},
-            {"situacao_da_parcial", "Situacao parcial", "Sit. Parc."},
+        constexpr std::array<std::string_view, 11> kAdvancedFilterKeys{{
+            "setor_emissor",
+            "setor_executor",
+            "situacao",
+            "solicitante",
+            "responsavel_programacao",
+            "responsavel_execucao",
+            "localizacao_codigo",
+            "status_execucao_prazo",
+            "anomalia",
+            "situacao_espera",
+            "situacao_da_parcial",
         }};
         constexpr std::string_view kStatusLastSortCode = "STE";
 
@@ -173,7 +167,12 @@ namespace ssa::domain {
                 std::unordered_map<std::string_view, ColumnDef> result;
                 result.reserve(kColumns.size());
                 for (const auto& column : kColumns) {
-                    result.emplace(column.key, column);
+                    if (!ColumnCatalog::isCanonicalStorageKey(column.key)) {
+                        throw std::logic_error("column catalog contains a non-canonical key");
+                    }
+                    if (!result.emplace(column.key, column).second) {
+                        throw std::logic_error("column catalog contains a duplicate key");
+                    }
                 }
                 return result;
             }();
@@ -189,15 +188,6 @@ namespace ssa::domain {
             if (statusIt != keys.end() && statusIt != keys.begin()) {
                 keys.erase(statusIt);
                 keys.insert(keys.begin(), status);
-            }
-            return keys;
-        }
-
-        constexpr std::array<std::string_view, kAdvancedFilterColumns.size()>
-        buildAdvancedFilterKeys() {
-            std::array<std::string_view, kAdvancedFilterColumns.size()> keys{};
-            for (std::size_t index = 0; index < kAdvancedFilterColumns.size(); ++index) {
-                keys[index] = kAdvancedFilterColumns[index].key;
             }
             return keys;
         }
@@ -256,34 +246,7 @@ namespace ssa::domain {
     }
 
     std::span<const std::string_view> ColumnCatalog::advancedFilterKeys() {
-        static constexpr auto kAdvancedFilterKeys = buildAdvancedFilterKeys();
         return kAdvancedFilterKeys;
-    }
-
-    std::string_view ColumnCatalog::advancedFilterLabel(const std::string_view key) {
-        const auto* const advancedColumn = std::ranges::find_if(
-            kAdvancedFilterColumns,
-            [key](const AdvancedFilterColumnDef& column) { return column.key == key; });
-        if (advancedColumn != kAdvancedFilterColumns.end()) {
-            return advancedColumn->label;
-        }
-        if (const auto* column = find(key); column != nullptr) {
-            return column->label;
-        }
-        return key;
-    }
-
-    std::string_view ColumnCatalog::advancedFilterShortLabel(const std::string_view key) {
-        const auto* const advancedColumn = std::ranges::find_if(
-            kAdvancedFilterColumns,
-            [key](const AdvancedFilterColumnDef& column) { return column.key == key; });
-        if (advancedColumn != kAdvancedFilterColumns.end() && !advancedColumn->shortLabel.empty()) {
-            return advancedColumn->shortLabel;
-        }
-        if (const auto* column = find(key); column != nullptr) {
-            return column->label;
-        }
-        return key;
     }
 
     std::string ColumnCatalog::defaultFilterColumnKey() {
@@ -369,6 +332,15 @@ namespace ssa::domain {
 
     bool ColumnCatalog::isDerivedCountColumn(const std::string_view key) {
         return key == kDerivedCountColumnKey;
+    }
+
+    bool ColumnCatalog::isCanonicalStorageKey(const std::string_view key) {
+        if (key.empty() || key.front() < 'a' || key.front() > 'z') {
+            return false;
+        }
+        return std::ranges::all_of(key, [](const char value) {
+            return (value >= 'a' && value <= 'z') || (value >= '0' && value <= '9') || value == '_';
+        });
     }
 
     const ColumnDef* ColumnCatalog::find(const std::string_view key) {

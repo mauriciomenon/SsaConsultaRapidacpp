@@ -115,7 +115,7 @@ namespace ssa::presentation {
             const bool isParent = role == QStringLiteral("parent") ||
                                   (role.isEmpty() && (kind == QStringLiteral("Origem") ||
                                                       kind == QStringLiteral("Derivada de")));
-            if (ssa.isEmpty() || !isParent) {
+            if (ssa.isEmpty() || ssa == target_ || !isParent) {
                 continue;
             }
             if (seenAncestors.insert(ssa.toStdString()).second) {
@@ -140,7 +140,7 @@ namespace ssa::presentation {
             const bool isParent = role == QStringLiteral("parent") ||
                                   (role.isEmpty() && (kind == QStringLiteral("Origem") ||
                                                       kind == QStringLiteral("Derivada de")));
-            if (ssa.isEmpty() || isCurrent || isParent) {
+            if (ssa.isEmpty() || ssa == target_ || isCurrent || isParent) {
                 continue;
             }
             if (seenChildren.insert(ssa.toStdString()).second) {

@@ -27,17 +27,16 @@ Rectangle {
             implicitWidth: 20
             implicitHeight: 20
         }
-        Label {
+        TextInput {
+            objectName: "statusMessageText"
+            Layout.fillWidth: true
             text: root.status.error.length > 0 ? root.status.error : root.status.message
-            textFormat: Text.PlainText
             color: root.status.error.length > 0 ? Theme.danger : Theme.text
             font.pixelSize: Theme.fontSizeBody
             font.bold: false
-            elide: Text.ElideRight
-        }
-
-        Label {
-            Layout.fillWidth: true
+            readOnly: true
+            selectByMouse: true
+            clip: true
         }
 
         Label {

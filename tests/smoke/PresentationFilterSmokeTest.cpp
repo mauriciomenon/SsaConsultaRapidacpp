@@ -10,6 +10,7 @@
 #include "presentation/ExportViewModel.h"
 #include "presentation/FilterPanelAdvancedViewModel.h"
 #include "presentation/FilterPanelDistinctValueFetcher.h"
+#include "presentation/FilterPanelDistinctValueRequestBuilder.h"
 #include "presentation/FilterPanelViewModel.h"
 #include "presentation/FilterPreferencesNormalizer.h"
 #include "presentation/MainViewModel.h"
@@ -261,7 +262,7 @@ namespace {
                 }
                 return {"MEG2", "MAM2"};
             }
-            if (request.limit != ssa::domain::kAdvancedDistinctValuesLimit ||
+            if (request.limit != ssa::presentation::kAdvancedDistinctValuesLimit ||
                 request.columnKey != "situacao") {
                 return {};
             }

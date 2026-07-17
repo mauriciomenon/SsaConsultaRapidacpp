@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <optional>
 #include <stop_token>
 #include <string>
 #include <string_view>
@@ -29,6 +30,8 @@ namespace ssa::infra::importing {
         std::filesystem::path source;
         std::filesystem::path destination;
         bool hasValidRows = false;
+        std::string sourceIdentity;
+        std::optional<std::uintmax_t> sourceSize;
     };
 
     struct ImportConsolidationPlanEntry {

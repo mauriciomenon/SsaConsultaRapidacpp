@@ -13,6 +13,7 @@
 #include "presentation/MainPreferenceFlowCoordinator.h"
 #include "presentation/MainRequestFlowCoordinator.h"
 #include "presentation/MainSelectionFlowCoordinator.h"
+#include "presentation/RecentLogModel.h"
 #include "presentation/UiSettingsViewModel.h"
 #include "presentation/UserPreferencesCoordinator.h"
 
@@ -31,6 +32,7 @@ namespace ssa::presentation {
         Q_PROPERTY(ColumnSettingsModel* columns READ columns CONSTANT)
         Q_PROPERTY(UiSettingsViewModel* ui READ ui CONSTANT)
         Q_PROPERTY(DatabaseSwitchViewModel* databaseSwitch READ databaseSwitch CONSTANT)
+        Q_PROPERTY(RecentLogModel* logs READ logs CONSTANT)
         Q_PROPERTY(QObject* columnFlow READ columnFlow CONSTANT)
         Q_PROPERTY(QObject* selectionFlow READ selectionFlow CONSTANT)
         Q_PROPERTY(QObject* requestFlow READ requestFlow CONSTANT)
@@ -58,6 +60,7 @@ namespace ssa::presentation {
         [[nodiscard]] ColumnSettingsModel* columns();
         [[nodiscard]] UiSettingsViewModel* ui();
         [[nodiscard]] DatabaseSwitchViewModel* databaseSwitch();
+        [[nodiscard]] RecentLogModel* logs();
         [[nodiscard]] QObject* columnFlow();
         [[nodiscard]] QObject* selectionFlow();
         [[nodiscard]] QObject* requestFlow();
@@ -90,6 +93,7 @@ namespace ssa::presentation {
         UserPreferencesCoordinator preferences_;
         application::FilterPresetService filterPresetService_;
         DatabaseSwitchViewModel databaseSwitch_;
+        RecentLogModel logs_;
         DesktopActionsViewModel actions_;
         MainPreferenceFlowCoordinator preferencesFlow_;
         MainColumnFlowCoordinator columnsFlow_;

@@ -6,6 +6,7 @@
 #include "ports/ISsaRepository.h"
 #include "query/SqlQueryBuilder.h"
 
+#include <chrono>
 #include <filesystem>
 #include <mutex>
 #include <optional>
@@ -51,6 +52,8 @@ namespace ssa::infra::sqlite {
                          std::stop_token stopToken = {}) const override;
 
       private:
+        enum class DerivedCountSummaryFailure { None, LockHeld, LockError, Readonly };
+
         [[nodiscard]] bool ensureDerivedCountSummary(std::stop_token stopToken) const;
 
         [[nodiscard]] static std::size_t executeCount(sqlite3* db, const query::SqlQuery& query,
@@ -66,8 +69,12 @@ namespace ssa::infra::sqlite {
 
         std::filesystem::path dbPath_;
         query::SqlQueryBuilder queryBuilder_;
-        mutable std::once_flag derivedCountSummaryInitialized_;
+        mutable std::mutex derivedCountSummaryMutex_;
         mutable bool derivedCountSummaryAvailable_{false};
+        mutable bool derivedCountSummaryUnsupported_{false};
+        mutable DerivedCountSummaryFailure derivedCountSummaryFailure_{
+            DerivedCountSummaryFailure::None};
+        mutable std::chrono::steady_clock::time_point derivedCountSummaryRetryAfter_{};
     };
 
 } // namespace ssa::infra::sqlite

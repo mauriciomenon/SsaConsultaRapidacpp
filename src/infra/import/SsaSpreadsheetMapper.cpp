@@ -27,6 +27,23 @@ namespace ssa::infra::importing {
             return SsaSpreadsheetHeaderCatalog::canonicalColumnForHeader(header);
         }
 
+        std::string normalizeDeviationNumber(std::string value) {
+            auto normalized = value;
+            std::ranges::transform(normalized, normalized.begin(), [](const unsigned char ch) {
+                return static_cast<char>(std::tolower(ch));
+            });
+            static constexpr std::string_view prefix{"desvio #"};
+            if (!normalized.starts_with(prefix)) {
+                return value;
+            }
+            const auto suffix = std::string_view{value}.substr(prefix.size());
+            return !suffix.empty() &&
+                           std::ranges::all_of(
+                               suffix, [](const unsigned char ch) { return std::isdigit(ch) != 0; })
+                       ? std::string{suffix}
+                       : value;
+        }
+
         void throwIfMappingCanceled(const std::stop_token& stopToken) {
             if (stopToken.stop_requested()) {
                 throw std::system_error(std::make_error_code(std::errc::operation_canceled),
@@ -273,9 +290,14 @@ namespace ssa::infra::importing {
                 auto value = domain::trimWhitespace(table.rows[rowIndex][columnIndex]);
                 if (columnKey == "numero_ssa" || columnKey.starts_with("numero_ssa_relacionada")) {
                     value = domain::SsaImportPolicy::normalizeNumber(value);
+                } else if (columnKey == "numero_desvios") {
+                    value = normalizeDeviationNumber(value);
                 } else if (const auto* column = domain::ColumnCatalog::find(columnKey);
                            column != nullptr && column->type == domain::ColumnType::DateText) {
-                    value = domain::SsaImportPolicy::normalizeSnapshotTimestamp(value);
+                    const auto normalized = domain::SsaImportPolicy::normalizeDateText(value);
+                    if (!normalized.empty() || value.empty()) {
+                        value = normalized;
+                    }
                 }
                 if (!value.empty()) {
                     row.emplace(columnKey, value);
