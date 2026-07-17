@@ -330,6 +330,24 @@ add_custom_target(
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
   USES_TERMINAL)
 
+add_executable(ssa_import_normalization_benchmark
+               tools/ssa_import_normalization_benchmark.cpp)
+target_link_libraries(ssa_import_normalization_benchmark PRIVATE ssa_infra
+                                                                 Qt6::Core)
+target_include_directories(ssa_import_normalization_benchmark
+                           PRIVATE tests/integration)
+if(WIN32)
+  target_link_libraries(ssa_import_normalization_benchmark PRIVATE Psapi)
+endif()
+
+add_custom_target(
+  run_import_normalization_benchmark_30
+  COMMAND $<TARGET_FILE:ssa_import_normalization_benchmark> --samples 30 --rows
+          250000
+  DEPENDS ssa_import_normalization_benchmark
+  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+  USES_TERMINAL)
+
 add_executable(
   ssa_consulta_rapida_cli app/cli/CliServiceFactory.cpp
                           app/cli/SsaCliApplicationRuntime.cpp app/cli/main.cpp)
@@ -452,6 +470,12 @@ if(SSA_BUILD_TESTS)
                    ${CMAKE_CURRENT_BINARY_DIR}/prefetch-benchmark-smoke.json)
   set_tests_properties(ssa_prefetch_benchmark_smoke PROPERTIES TIMEOUT 15
                                                                RUN_SERIAL TRUE)
+
+  add_test(NAME ssa_import_normalization_benchmark_smoke
+           COMMAND $<TARGET_FILE:ssa_import_normalization_benchmark> --samples
+                   1 --rows 1000)
+  set_tests_properties(ssa_import_normalization_benchmark_smoke
+                       PROPERTIES TIMEOUT 240 RUN_SERIAL TRUE)
 
   add_executable(ssa_qt_desktop_log_tests tests/smoke/DesktopLogSinkTest.cpp
                                           app/desktop/DesktopLogSink.cpp)
