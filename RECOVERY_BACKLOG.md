@@ -19,6 +19,10 @@ Contadores apos os slices pequenos: plano original `99.0/100`, divida nova
 deterministico foi validado como melhoria de teste, mas nao altera o
 denominador binario dos 14 itens.
 
+Ultimo fechamento: commit `e0b5401`, build e CTest da suite de painel `1/1`
+passaram em `2.96 s`. O polling de `activeFilterEntries()` continua pendente
+por depender de timer; nao foi removido por inferencia.
+
 - [RESOLVED-WT] [WIDTHS-BY-KEY] O catalogo de presentation agora pareia cada
   largura default com sua key canonica. Os 85 valores foram preservados, o
   lookup nao depende mais da ordem do domain e o teste focado cobre todas as

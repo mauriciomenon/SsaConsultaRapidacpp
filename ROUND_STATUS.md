@@ -23,6 +23,9 @@ Ultima verificacao local: 2026-07-17
 - Backlog legado: `0.0/100 -> 0.0/100`; nenhum item legado recebeu credito.
 - Estado separado: implementado e commitado no HEAD; validado localmente nesta
   rodada; prova externa limitada aos refs GitLab e Bitbucket.
+- Ultimo slice: commit `e0b5401`, dois polls sincronos de `quickSector()`
+  substituidos por `QCOMPARE`; o poll de `activeFilterEntries()` permaneceu
+  por depender de timer.
 
 ### Entregas locais do marco
 
@@ -48,6 +51,10 @@ Ultima verificacao local: 2026-07-17
   wall ficou em `0.024146/0.050042 ms`, foreground CPU em
   `0.0275/0.049 ms`, idle wall em `0.028854/0.103333 ms`, idle CPU em
   `0.047/0.117 ms` e RSS em `16531456/16547840` bytes, mediana/p95.
+- Validacao do ultimo slice: build `ssa_qt_filter_panel_tests` e CTest `1/1`
+  passaram em `2.96 s`; clang-format, Semgrep, detect-secrets e hooks de
+  segredo passaram. Nenhum credito adicional foi atribuido ao denominador
+  binario de 14 itens.
 
 ## Snapshot da v0.9.10 e reauditoria externa
 
