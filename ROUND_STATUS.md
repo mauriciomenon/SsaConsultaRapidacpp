@@ -8,21 +8,19 @@ Ultima verificacao local: 2026-07-17
 ## Marco P0 no working tree
 
 - Branch: `master`.
-- HEAD operacional contem os slices pequenos desta rodada, commitados e
-  publicados em `origin` e `bitbucket`; o hash atual deve ser lido pelos refs
-  remotos no fechamento da rodada.
+- HEAD local e `efef5c6`; Bitbucket foi confirmado nesse hash. GitLab `origin`
+  nao esta comprovado porque a autenticacao OAuth falha com `invalid_grant`.
 - O working tree implementa localmente os slices de filtros/distinct e
   logging/UTF-8, alem das expectativas smoke canonicas correspondentes.
 - Plano original: `89.0/100 -> 99.0/100`. O P0 pertence a divida nova; 3.9
   pontos vieram dos menus, 0.8 dos popups, 1.6 do grafo e 3.7 do benchmark
   isolado de prefetch. Profiling valido permanece pendente por 1.0 ponto.
-- Divida nova: `0.0/100 -> 71.4/100`, usando aceite binario dos 14 itens
-  enumerados no handoff; 10 itens estao aceitos localmente. O polling
-  deterministico foi validado como melhoria de teste, sem credito adicional
-  fora desse denominador.
+- Divida nova: `0.0/100 -> 57.1/100`, usando aceite binario dos 14 itens
+  enumerados no handoff; 8 itens estao aceitos localmente. Os dois lookups de
+  filtros resolvidos nao pertencem ao denominador e deixaram de receber credito.
 - Backlog legado: `0.0/100 -> 0.0/100`; nenhum item legado recebeu credito.
 - Estado separado: implementado e commitado no HEAD; validado localmente nesta
-  rodada; prova externa limitada aos refs GitLab e Bitbucket.
+  rodada; Bitbucket comprovado e GitLab pendente de reautenticacao.
 - Ultimo slice: commit `e0b5401`, dois polls sincronos de `quickSector()`
   substituidos por `QCOMPARE`; o poll de `activeFilterEntries()` permaneceu
   por depender de timer.

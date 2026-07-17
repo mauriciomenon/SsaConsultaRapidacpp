@@ -14,10 +14,10 @@
    antes de dividir fixtures.
 4. Revalidar em plataformas reais handles, URL UNC, PowerShell e packaging.
 
-Contadores apos os slices pequenos: plano original `99.0/100`, divida nova
-`71.4/100` (10 de 14 itens aceitos) e backlog legado `0.0/100`. O polling
-deterministico foi validado como melhoria de teste, mas nao altera o
-denominador binario dos 14 itens.
+Contadores auditados: plano original `99.0/100`, divida nova `57.1/100`
+(8 de 14 itens enumerados aceitos) e backlog legado sem denominador definido.
+O valor anterior `71.4/100` creditava dois lookups resolvidos que nao pertencem
+a lista de 14 itens. Polling e melhorias de teste continuam sem credito.
 
 Ultimo fechamento: commit `e0b5401`, build e CTest da suite de painel `1/1`
 passaram em `2.96 s`. O polling de `activeFilterEntries()` continua pendente
