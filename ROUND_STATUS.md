@@ -70,6 +70,9 @@ Ultima verificacao local: 2026-07-17
 - Gate amplo apos os slices: CTest sequencial completo confirmado em duas
   etapas, testes `1-433` aprovados e testes `434-452` aprovados `19/19` em
   `28.78 s`; total operacional `452/452`.
+- Determinismo adicional: commit `7ec88ae` removeu dois loops manuais de
+  polling com `msleep(1)` no teste de troca de banco; suite passou `1/1` em
+  `0.73 s`, preservando timeout de 1 s.
 
 ## Snapshot da v0.9.10 e reauditoria externa
 
