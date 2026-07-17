@@ -42,6 +42,18 @@ namespace ssa::infra::importing {
         constexpr auto kDatabaseBackupRetryDelay = std::chrono::milliseconds{10};
         constexpr auto kDatabaseBackupTimeout = std::chrono::seconds{5};
 
+        [[nodiscard]] SamSpreadsheetAdaptResult
+        readAndAdaptSamWorkbook(const StagedImportFile& file, const ports::SamArtifact& artifact,
+                                const std::stop_token& stopToken) {
+            auto sheets = XlsxWorkbookReader::readSheets(file.workbookPath, stopToken);
+            for (auto& table : sheets) {
+                table.originalFilename = file.originalFilename;
+                table.sourceModifiedTimestamp = file.sourceModifiedTimestamp;
+                table.sourceCreatedTimestamp = file.sourceCreatedTimestamp;
+            }
+            return SamSpreadsheetAdapter::adapt(sheets, artifact, stopToken);
+        }
+
         void appendWorkflowDiagnostic(std::string& destination, const std::string_view detail) {
             if (detail.empty() || destination.size() >= kMaxWorkflowDiagnosticBytes) {
                 return;
@@ -929,14 +941,8 @@ namespace ssa::infra::importing {
             std::string samRejectionReason;
             try {
                 if (samArtifacts != nullptr) {
-                    auto sheets = reader_.readSheets(file.workbookPath, stopToken);
-                    for (auto& table : sheets) {
-                        table.originalFilename = file.originalFilename;
-                        table.sourceModifiedTimestamp = file.sourceModifiedTimestamp;
-                        table.sourceCreatedTimestamp = file.sourceCreatedTimestamp;
-                    }
-                    auto adapted = SamSpreadsheetAdapter::adapt(
-                        sheets, samArtifacts->at(file.summaryIndex), stopToken);
+                    auto adapted = readAndAdaptSamWorkbook(
+                        file, samArtifacts->at(file.summaryIndex), stopToken);
                     if (!adapted.ok()) {
                         samRejectionReason = std::move(adapted.rejectionReason);
                     } else {

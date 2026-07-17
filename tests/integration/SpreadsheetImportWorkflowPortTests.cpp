@@ -5296,6 +5296,8 @@ TEST_CASE("SAM service validates and imports a real workbook into SQLite") {
     REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600702'") == 1);
     REQUIRE(scalarText(db, "SELECT descricao_ssa FROM ssa_table WHERE numero_ssa='202600702'") ==
             "Imported from SAM");
+    REQUIRE(scalarText(db, "SELECT arquivo_origem FROM ssa_table WHERE numero_ssa='202600702'") ==
+            "result.xlsx");
     REQUIRE(scalarText(db, "SELECT setor_executor FROM ssa_table WHERE numero_ssa='202600702'") ==
             "MEL4");
     REQUIRE(scalarText(db, "SELECT situacao FROM ssa_table WHERE numero_ssa='202600702'") == "APG");
