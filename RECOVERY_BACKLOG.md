@@ -223,7 +223,9 @@ Matriz completa de acertos, adicoes, erros e ordem de execucao:
   HEAD atual.
 
 ### Cleanup / low priority
-- [LOW] [L-Q2] `emptyFiles`/`failedFiles` contadores mortos no import (failedFiles so pode ser 0 ou 1).
+- [RESOLVED-WT] [L-Q2] O finding ficou stale: `emptyFiles` nao existe no
+  import atual e `failedFiles` e usado nos caminhos de erro, consolidacao,
+  journal e resumo final. Nenhuma remocao de contador e necessaria.
 - [LOW] [L-Q3] null checks redundantes em chaves vindas do proprio catalogo (AdvancedTextFilterRowModelFactory, ColumnFilterViewModel).
 - [RESOLVED] [L-Q4] `tokenOperatorForStorage` foi removida; o enum tipado e
   armazenado diretamente.
