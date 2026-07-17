@@ -86,6 +86,9 @@ Ultima verificacao local: 2026-07-17
   CTest sequencial completo passou `453/453` em `65.75 s`. O Sol xhigh e o
   Terra high aceitaram o split sem finding funcional. Windows/UNC real segue
   como prova externa pendente, portanto sem credito binario adicional.
+- Security ampla do marco: Semgrep analisou 474 arquivos com zero finding;
+  Gitleaks analisou 1.42 GB sem leak; TruffleHog analisou 8668 chunks sem
+  segredo verificado ou desconhecido.
 
 ## Snapshot da v0.9.10 e reauditoria externa
 
