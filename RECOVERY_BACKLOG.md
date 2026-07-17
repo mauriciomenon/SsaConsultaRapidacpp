@@ -39,6 +39,9 @@ e publicou a falha tardia antes de `cancel()`, quebrando a janela preterminal.
 Commit `9b960ed` restaurou os loops deliberados; suite passou `1/1` em `0.75 s`.
 O item amplo continua sem credito binario.
 
+Reteste: a faixa final `449-452` passou `4/4` em `12.24 s`, e o teste 434
+passou novamente apos a restauracao do polling preterminal.
+
 - [RESOLVED-WT] [WIDTHS-BY-KEY] O catalogo de presentation agora pareia cada
   largura default com sua key canonica. Os 85 valores foram preservados, o
   lookup nao depende mais da ordem do domain e o teste focado cobre todas as

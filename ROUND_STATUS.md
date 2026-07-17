@@ -74,6 +74,8 @@ Ultima verificacao local: 2026-07-17
   polling foi rejeitada pelo gate amplo, pois `QTRY` bombeia eventos e quebra
   a janela preterminal. Commit corretivo `9b960ed` preserva os loops e o
   contrato; suite passou `1/1` em `0.75 s`, sem credito.
+- Reteste pos-correcao: testes `431-448` passaram na etapa final, e `449-452`
+  passaram `4/4` em `12.24 s`; o teste 434 passou novamente no estado corrigido.
 
 ## Snapshot da v0.9.10 e reauditoria externa
 
