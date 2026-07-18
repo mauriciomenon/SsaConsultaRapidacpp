@@ -2,10 +2,13 @@
 
 ## Cobertura sintetica de URL Windows/UNC - 2026-07-18
 
-- HEAD anterior: `e76e722`. O working tree adiciona somente em
+- HEAD anterior: `e76e722`. O commit `bca795a` entrega somente em
   `AdvancedPopupQmlTest.cpp` um contrato para `file:///C:/SSA/graph.png` e
   `file://server/share/graph.png`: `DerivadasGraphModel::localFilePath()`
-  delega exatamente para `QUrl::toLocalFile()`.
+  delega exatamente para `QUrl::toLocalFile()`. Na publicacao de `bca795a`,
+  Bitbucket foi confirmado com divergencia `0/0`; GitLab `origin` falhou por
+  OAuth `invalid_grant`, e o HEAD local estava 65 commits a frente de
+  `origin/master`.
 - Validacao local: `ssa_qml_advanced_popup_tests` `1/1` em `2.16 s`;
   `git diff --check`, clang-format e detect-secrets passaram; Semgrep executou
   53 regras com zero finding. Review Terra ultra terminou sem findings.
