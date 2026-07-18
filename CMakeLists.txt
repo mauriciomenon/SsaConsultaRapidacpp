@@ -350,6 +350,24 @@ add_custom_target(
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
   USES_TERMINAL)
 
+add_executable(ssa_sqlite_read_connection_benchmark
+               tools/sqlite_read_connection_benchmark.cpp)
+target_link_libraries(ssa_sqlite_read_connection_benchmark PRIVATE ssa_infra
+                                                                   Qt6::Core)
+if(WIN32)
+  target_link_libraries(ssa_sqlite_read_connection_benchmark PRIVATE Psapi)
+endif()
+
+add_custom_target(
+  run_sqlite_read_connection_benchmark_30
+  COMMAND
+    $<TARGET_FILE:ssa_sqlite_read_connection_benchmark> --samples 30 --rows
+    250000 --operations 100 --threads 4 --reads-per-thread 20 --output
+    ${CMAKE_BINARY_DIR}/sqlite-read-connection-benchmark-30.json
+  DEPENDS ssa_sqlite_read_connection_benchmark
+  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+  USES_TERMINAL)
+
 add_executable(ssa_import_normalization_benchmark
                tools/ssa_import_normalization_benchmark.cpp)
 target_link_libraries(ssa_import_normalization_benchmark PRIVATE ssa_infra
@@ -506,6 +524,15 @@ if(SSA_BUILD_TESTS)
                    ${CMAKE_CURRENT_BINARY_DIR}/prefetch-benchmark-smoke.json)
   set_tests_properties(ssa_prefetch_benchmark_smoke PROPERTIES TIMEOUT 15
                                                                RUN_SERIAL TRUE)
+
+  add_test(
+    NAME ssa_sqlite_read_connection_benchmark_smoke
+    COMMAND
+      $<TARGET_FILE:ssa_sqlite_read_connection_benchmark> --samples 1 --rows
+      1000 --operations 100 --threads 4 --reads-per-thread 20 --output
+      ${CMAKE_CURRENT_BINARY_DIR}/sqlite-read-connection-benchmark-smoke.json)
+  set_tests_properties(ssa_sqlite_read_connection_benchmark_smoke
+                       PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
 
   add_test(NAME ssa_import_normalization_benchmark_first_pass_smoke
            COMMAND $<TARGET_FILE:ssa_import_normalization_benchmark> --samples
