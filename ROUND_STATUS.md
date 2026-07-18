@@ -22,6 +22,16 @@ Ultima verificacao local: 2026-07-18
   benchmark concluido de `SQLITE-READ-CONNECTION-CHURN`; findings descobertos
   depois da enumeracao permanecem registrados fora desse denominador fixo.
 - Backlog legado: `0.0/100 -> 0.0/100`; nenhum item legado recebeu credito.
+  Esse valor e somente o placeholder historico exigido pelo controle anterior;
+  nao representa 0% de execucao porque nunca houve denominador aceito.
+- Fila prioritaria operacional: `2/8 = 25.0%`. Resolvidos: propagacao integral
+  de busy wait e gate transacional de schema. Pendentes: determinismo, benchmark
+  de timestamp em filename, profiling do prefetch, tooling clang-tidy/Semgrep,
+  Windows/UNC de importacao/grafo e handles/PowerShell/packaging reais.
+- Os tres itens exatos que seguram a divida nova em `11/14` sao
+  `IMPORT-STAGER-HUB`, `IMPORT-FILENAME-TIMESTAMP-SCAN` e
+  `TEST-DETERMINISM-DELTA`. Fechar os dois itens locais move esse contador para
+  `13/14 = 92.9%` e a fila operacional para `4/8 = 50.0%`.
 - Estado separado: `610fbf3` prova o snapshot WAL do rescan. Em `7f396b0`, os
   targets afetados compilaram, CTest sequencial passou `588/588` em `78.30 s`,
   o conversor passou 20 repeticoes, SAM passou 20 suites completas e Details
@@ -132,9 +142,10 @@ Ultima verificacao local: 2026-07-18
   excedeu a janela e nao recebeu credito. Clawpatch continuou invalido porque
   seu Codex CLI interno e antigo para `gpt-5.6-sol`.
 
-Proxima atividade unica: produzir profiling valido do prefetch para fechar o
-ultimo ponto do plano original, sem aceitar trace invalido ou ferramenta
-indisponivel como evidencia.
+Proxima atividade unica: fechar `TEST-DETERMINISM-DELTA` por suite, removendo
+somente sleeps e polling com condicao observavel equivalente. Depois, executar
+o benchmark formal de timestamp em filename. Esses dois slices locais sao os
+que movem a divida nova de `78.6%` para `92.9%`.
 
 ## Marco P0 historico
 - Ultimo slice: commit `e0b5401`, dois polls sincronos de `quickSector()`

@@ -4,15 +4,42 @@
 
 ### Sequencia ativa preservada
 
-1. Completar profiling valido do prefetch; harness, 30 amostras e relatorio
+1. Fechar `TEST-DETERMINISM-DELTA` por suite, sem remover espera que represente
+   contrato temporal real e sem aceitar timeout como sucesso.
+2. Executar benchmark temporal formal de `IMPORT-FILENAME-TIMESTAMP-SCAN` com
+   30 processos e corpus adversarial; otimizar apenas se houver gargalo medido.
+3. Completar profiling valido do prefetch; harness, 30 amostras e relatorio
    isolado ja estao resolvidos no working tree. `xctrace` nao possui `Time
    Profiler` nesta instalacao e `CPU Counters` falhou com `DTServiceHub` e
    politica do kernel; nenhum credito de profiling foi atribuido.
-2. Validar `ImportFileConsolidator` em Windows/UNC real; o split local entre
-   staging owned pre-commit e consolidacao post-commit ja esta implementado.
-3. Canonizar `clang-tidy` macOS com sysroot e reproduzir IDs das regras Semgrep
+4. Canonizar `clang-tidy` macOS com sysroot e reproduzir IDs das regras Semgrep
    antes de dividir fixtures.
-4. Revalidar em plataformas reais handles, URL UNC, PowerShell e packaging.
+5. Validar `ImportFileConsolidator` e URL de grafo em Windows/UNC real; o split
+   local entre staging owned pre-commit e consolidacao post-commit ja esta
+   implementado.
+6. Revalidar handles, PowerShell e packaging em plataformas reais.
+
+### Controle operacional auditavel
+
+Fila de fechamento principal: `2/8 = 25.0%`.
+
+| Pacote | Estado | Efeito no contador |
+| --- | --- | --- |
+| Busy wait integral de importacao | Resolvido em `7291082` | `1/8` |
+| Gate transacional de schema SQLite | Resolvido em `b2369ac` | `2/8` |
+| `TEST-DETERMINISM-DELTA` | Pendente local | Leva a `3/8` |
+| `IMPORT-FILENAME-TIMESTAMP-SCAN` | Pendente local | Leva a `4/8` |
+| Profiling valido do prefetch | Bloqueado pela ferramenta local | Leva a `5/8` |
+| Tooling clang-tidy/Semgrep | Pendente local | Leva a `6/8` |
+| Importacao e grafo Windows/UNC | Pendente externo | Leva a `7/8` |
+| Handles, PowerShell e packaging reais | Pendente externo | Leva a `8/8` |
+
+Os tres itens nao aceitos do denominador fixo de 14 sao exatamente
+`IMPORT-STAGER-HUB`, `IMPORT-FILENAME-TIMESTAMP-SCAN` e
+`TEST-DETERMINISM-DELTA`. Fechar determinismo e filename move a divida nova de
+`11/14 = 78.6%` para `13/14 = 92.9%`. O item restante exige Windows/UNC real.
+O `0.0/100` legado abaixo e placeholder historico sem denominador, nao medida de
+execucao; nao deve ser usado isoladamente em reports futuros.
 
 Contadores auditados: plano original `99.0/100`, divida nova `78.6/100`
 (11 de 14 itens enumerados aceitos) e backlog legado `0.0/100`, sem denominador
