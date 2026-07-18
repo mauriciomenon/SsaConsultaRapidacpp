@@ -16,7 +16,6 @@
 #include "infra/sqlite/SqliteMaintenancePort.h"
 #include "infra/sqlite/SqliteSsaImportWriter.h"
 #include "infra/sqlite/SqliteSsaRepository.h"
-#include "platform/SupervisedProcessRunner.h"
 #include "ports/OperationError.h"
 #include "qt/FilesystemPath.h"
 #include "query/SqlQueryBuilder.h"
@@ -42,6 +41,8 @@
 #include <future>
 #include <latch>
 #include <memory>
+#include <optional>
+#include <semaphore>
 #include <stdexcept>
 #include <stop_token>
 #include <string>
@@ -344,7 +345,28 @@ xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><s
     }
 
 #ifndef _WIN32
-    enum class FakeSofficeBehavior { Copy, Block, CopyThenBlock };
+    struct FakeConversionPaths {
+        std::filesystem::path source;
+        std::filesystem::path output;
+    };
+
+    std::optional<FakeConversionPaths>
+    fakeConversionPaths(const ssa::ports::ExternalProcessRequest& request) {
+        std::filesystem::path outputDirectory;
+        for (std::size_t index = 0; index + 1 < request.arguments.size(); ++index) {
+            if (request.arguments[index] == "--outdir") {
+                outputDirectory = request.arguments[index + 1];
+                break;
+            }
+        }
+        if (outputDirectory.empty() || request.arguments.empty()) {
+            return std::nullopt;
+        }
+        const auto source = std::filesystem::path{request.arguments.back()};
+        auto output = outputDirectory / source.stem();
+        output.replace_extension(".xlsx");
+        return FakeConversionPaths{source, std::move(output)};
+    }
 
     class SuccessfulConversionThenCancelRunner final : public ssa::ports::IExternalProcessRunner {
       public:
@@ -353,29 +375,20 @@ xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><s
 
         ssa::ports::ExternalProcessResult run(const ssa::ports::ExternalProcessRequest& request,
                                               const std::stop_token& = {}) const override {
-            std::filesystem::path outputDirectory;
-            for (std::size_t index = 0; index + 1 < request.arguments.size(); ++index) {
-                if (request.arguments[index] == "--outdir") {
-                    outputDirectory = request.arguments[index + 1];
-                    break;
-                }
-            }
-            if (outputDirectory.empty() || request.arguments.empty()) {
+            const auto paths = fakeConversionPaths(request);
+            if (!paths) {
                 return {ssa::ports::ExternalProcessStatus::StartFailed, -1,
                         "fake conversion request is incomplete"};
             }
 
-            const auto source = std::filesystem::path{request.arguments.back()};
-            auto generated = outputDirectory / source.stem();
-            generated.replace_extension(".xlsx");
             std::error_code error;
-            std::filesystem::copy_file(source, generated,
+            std::filesystem::copy_file(paths->source, paths->output,
                                        std::filesystem::copy_options::overwrite_existing, error);
             if (error) {
                 return {ssa::ports::ExternalProcessStatus::Failed, -1,
                         "cannot create fake converted output: " + error.message()};
             }
-            std::filesystem::permissions(outputDirectory,
+            std::filesystem::permissions(paths->output.parent_path(),
                                          std::filesystem::perms::owner_read |
                                              std::filesystem::perms::owner_exec,
                                          std::filesystem::perm_options::replace, error);
@@ -391,9 +404,38 @@ xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><s
         std::stop_source& stopSource_;
     };
 
-    std::filesystem::path
-    writeFakeSoffice(const std::filesystem::path& directory,
-                     const FakeSofficeBehavior behavior = FakeSofficeBehavior::Copy) {
+    class BlockingConversionRunner final : public ssa::ports::IExternalProcessRunner {
+      public:
+        explicit BlockingConversionRunner(std::binary_semaphore& conversionEntered)
+            : conversionEntered_(conversionEntered) {}
+
+        ssa::ports::ExternalProcessResult
+        run(const ssa::ports::ExternalProcessRequest& request,
+            const std::stop_token& stopToken = {}) const override {
+            const auto paths = fakeConversionPaths(request);
+            if (!paths) {
+                return {ssa::ports::ExternalProcessStatus::StartFailed, -1,
+                        "fake conversion request is incomplete"};
+            }
+            std::ofstream output(paths->output, std::ios::binary);
+            output << "partial";
+            if (!output) {
+                return {ssa::ports::ExternalProcessStatus::Failed, -1,
+                        "cannot create fake partial converted output"};
+            }
+            conversionEntered_.release();
+            std::binary_semaphore cancellationObserved{0};
+            std::stop_callback stopCallback(
+                stopToken, [&cancellationObserved] { cancellationObserved.release(); });
+            cancellationObserved.acquire();
+            return {ssa::ports::ExternalProcessStatus::Canceled, -1, {}};
+        }
+
+      private:
+        std::binary_semaphore& conversionEntered_;
+    };
+
+    std::filesystem::path writeFakeSoffice(const std::filesystem::path& directory) {
         const auto executable = directory / "fake-soffice";
         std::ofstream script(executable);
         script << R"SH(#!/bin/sh
@@ -419,24 +461,7 @@ done
 base="$(basename "$source")"
 stem="${base%.*}"
 )SH";
-        switch (behavior) {
-        case FakeSofficeBehavior::Copy:
-            script << "cp \"$source\" \"$outdir/$stem.xlsx\"\n";
-            break;
-        case FakeSofficeBehavior::Block:
-            script << "printf 'partial' > \"$outdir/$stem.xlsx\"\n"
-                      "printf 'ready' > \"$source.conversion-ready\"\n"
-                      "while :; do sleep 1; done\n";
-            break;
-        case FakeSofficeBehavior::CopyThenBlock:
-            script << "if [ \"$stem\" = a ]; then\n"
-                      "    cp \"$source\" \"$outdir/$stem.xlsx\"\n"
-                      "else\n"
-                      "    printf 'partial' > \"$outdir/$stem.xlsx\"\n"
-                      "    while :; do sleep 1; done\n"
-                      "fi\n";
-            break;
-        }
+        script << "cp \"$source\" \"$outdir/$stem.xlsx\"\n";
         script.close();
         std::filesystem::permissions(executable,
                                      std::filesystem::perms::owner_exec |
@@ -1252,28 +1277,22 @@ TEST_CASE("legacy converter cancellation preserves destination and removes tempo
         std::ofstream previous(destination);
         previous << "previous";
     }
-    const auto processRunner = std::make_shared<ssa::platform::SupervisedProcessRunner>();
-    const ssa::infra::importing::LegacySpreadsheetConverter converter(
-        writeFakeSoffice(root, FakeSofficeBehavior::Block), processRunner);
+    std::binary_semaphore conversionEntered{0};
+    const auto processRunner = std::make_shared<BlockingConversionRunner>(conversionEntered);
+    const ssa::infra::importing::LegacySpreadsheetConverter converter(writeFakeSoffice(root),
+                                                                      processRunner);
     std::stop_source stopSource;
     auto operation = std::async(std::launch::async, [&] {
         return converter.convertToXlsx({source, destination}, stopSource.get_token());
     });
-    QElapsedTimer deadline;
-    deadline.start();
-    const auto conversionReady = source.string() + ".conversion-ready";
-    while (operation.wait_for(std::chrono::milliseconds{0}) != std::future_status::ready &&
-           !std::filesystem::exists(conversionReady) && deadline.elapsed() < 10'000) {
-        QThread::msleep(5);
-    }
-    if (std::filesystem::exists(conversionReady)) {
-        stopSource.request_stop();
-    }
+
+    const bool conversionStarted = conversionEntered.try_acquire_for(std::chrono::seconds{1});
     stopSource.request_stop();
+    REQUIRE(conversionStarted);
+    REQUIRE(operation.wait_for(std::chrono::seconds{2}) == std::future_status::ready);
     const auto result = operation.get();
 
     CAPTURE(static_cast<int>(result.status), result.message, result.diagnostic);
-    REQUIRE(std::filesystem::exists(conversionReady));
     REQUIRE(result.status == ssa::infra::importing::LegacySpreadsheetConversionStatus::Canceled);
     REQUIRE(readFile(destination) == "previous");
     for (const auto& entry : std::filesystem::directory_iterator(root)) {
