@@ -597,18 +597,12 @@ TEST_CASE_METHOD(SqliteRepositoryFixture,
     REQUIRE(statement.columnInt64(0) == 1);
 }
 
-TEST_CASE_METHOD(SqliteRepositoryFixture,
-                 "concurrent derived count reads share completed summary initialization") {
+TEST_CASE_METHOD(
+    SqliteRepositoryFixture,
+    "derived count initialization keeps concurrent reads and cancellation responsive") {
     executeSql(path, R"SQL(
-        WITH RECURSIVE sequence(value) AS (
-            SELECT 1
-            UNION ALL
-            SELECT value + 1 FROM sequence WHERE value < 20000
-        )
-        INSERT INTO ssa_table
-        SELECT printf('D%08d', value), 'APV', '202500002', '', '', '', 0, '', '', '', '', '',
-               '', '', '', '', '', '', '', '', '', 0, 0, 0, 0
-        FROM sequence;
+        INSERT INTO ssa_table VALUES
+            ('202500004','APV','202500002','LOC-5','Tomada dagua','EQ-E',202501,'2025-01-05','Ajustar valvula','Ajuste','SEM','SMM','Ari','Beto','Clio','SAM','SYS','e.xlsx','2025-01-05','I','J',202502,202503,0,0);
     )SQL");
 
     ssa::domain::SsaPageRequest request;
@@ -616,17 +610,53 @@ TEST_CASE_METHOD(SqliteRepositoryFixture,
     request.excludeScaSesSte = false;
     request.columnFilters = {{"numero_ssa", "=202500002"}};
     request.visibleColumns = {"numero_ssa", "qtd_derivadas"};
-    std::latch start{2};
-    auto readPage = [&] {
-        start.count_down();
-        start.wait();
-        return repository.page(request);
-    };
 
-    auto first = std::async(std::launch::async, readPage);
-    auto second = std::async(std::launch::async, readPage);
-    const auto firstPage = first.get();
-    const auto secondPage = second.get();
+    ssa::infra::sqlite::SqliteConnection blocker(path,
+                                                 ssa::infra::sqlite::SqliteOpenMode::ReadWrite);
+    REQUIRE(sqlite3_exec(blocker.handle(), "BEGIN IMMEDIATE", nullptr, nullptr, nullptr) ==
+            SQLITE_OK);
+
+    const auto lockPath = ssa::infra::sqlite::SqliteDatabaseWriteLock::pathForDatabase(path);
+    std::error_code lockPathError;
+    std::filesystem::remove(lockPath, lockPathError);
+    lockPathError.clear();
+
+    auto initializer = std::async(std::launch::async, [&] { return repository.page(request); });
+    const auto lockDeadline = std::chrono::steady_clock::now() + std::chrono::seconds{1};
+    while (!std::filesystem::exists(lockPath, lockPathError) && !lockPathError &&
+           std::chrono::steady_clock::now() < lockDeadline) {
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    const bool initializerOwnsLock = !lockPathError && std::filesystem::exists(lockPath);
+
+    auto fallback = std::async(std::launch::async, [&] { return repository.page(request); });
+    const bool fallbackReady =
+        fallback.wait_for(std::chrono::milliseconds{500}) == std::future_status::ready;
+
+    std::stop_source stopSource;
+    std::binary_semaphore canceledStarted(0);
+    std::binary_semaphore canceledProceed(0);
+    auto canceled = std::async(std::launch::async, [&] {
+        canceledStarted.release();
+        canceledProceed.acquire();
+        try {
+            static_cast<void>(repository.page(request, stopSource.get_token()));
+            return std::error_code{};
+        } catch (const std::system_error& error) {
+            return error.code();
+        }
+    });
+    canceledStarted.acquire();
+    stopSource.request_stop();
+    canceledProceed.release();
+    const bool canceledReady =
+        canceled.wait_for(std::chrono::milliseconds{500}) == std::future_status::ready;
+
+    const int rollbackResult =
+        sqlite3_exec(blocker.handle(), "ROLLBACK", nullptr, nullptr, nullptr);
+    const auto initializerPage = initializer.get();
+    const auto fallbackPage = fallback.get();
+    const auto cancellationError = canceled.get();
 
     const auto derivedCountForParent = [](const ssa::domain::SsaPageResult& page) {
         const auto parent = std::ranges::find_if(
@@ -634,8 +664,81 @@ TEST_CASE_METHOD(SqliteRepositoryFixture,
         REQUIRE(parent != page.rows.end());
         return parent->valueOf("qtd_derivadas");
     };
-    REQUIRE(derivedCountForParent(firstPage) == "20000");
-    REQUIRE(derivedCountForParent(secondPage) == "20000");
+    REQUIRE(initializerOwnsLock);
+    REQUIRE(fallbackReady);
+    REQUIRE(canceledReady);
+    REQUIRE(rollbackResult == SQLITE_OK);
+    REQUIRE(derivedCountForParent(initializerPage) == "1");
+    REQUIRE(derivedCountForParent(fallbackPage) == "1");
+    REQUIRE(cancellationError == std::make_error_code(std::errc::operation_canceled));
+
+    ssa::infra::sqlite::SqliteConnection connection(path);
+    ssa::infra::sqlite::SqliteStatement initialized(
+        connection.handle(), "SELECT initialized FROM ssa_table_derived_counts_meta");
+    REQUIRE(initialized.step());
+    REQUIRE(initialized.columnInt64(0) == 1);
+}
+
+TEST_CASE_METHOD(SqliteRepositoryFixture,
+                 "canceled derived count initializer permits an immediate retry") {
+    executeSql(path, R"SQL(
+        INSERT INTO ssa_table VALUES
+            ('202500004','APV','202500002','LOC-5','Tomada dagua','EQ-E',202501,'2025-01-05','Ajustar valvula','Ajuste','SEM','SMM','Ari','Beto','Clio','SAM','SYS','e.xlsx','2025-01-05','I','J',202502,202503,0,0);
+    )SQL");
+
+    ssa::domain::SsaPageRequest request;
+    request.pageSize = 10;
+    request.excludeScaSesSte = false;
+    request.columnFilters = {{"numero_ssa", "=202500002"}};
+    request.visibleColumns = {"numero_ssa", "qtd_derivadas"};
+
+    ssa::infra::sqlite::SqliteConnection blocker(path,
+                                                 ssa::infra::sqlite::SqliteOpenMode::ReadWrite);
+    REQUIRE(sqlite3_exec(blocker.handle(), "BEGIN IMMEDIATE", nullptr, nullptr, nullptr) ==
+            SQLITE_OK);
+
+    const auto lockPath = ssa::infra::sqlite::SqliteDatabaseWriteLock::pathForDatabase(path);
+    std::error_code lockPathError;
+    std::filesystem::remove(lockPath, lockPathError);
+    lockPathError.clear();
+
+    std::stop_source stopSource;
+    auto initializer = std::async(std::launch::async, [&] {
+        try {
+            static_cast<void>(repository.page(request, stopSource.get_token()));
+            return std::error_code{};
+        } catch (const std::system_error& error) {
+            return error.code();
+        }
+    });
+    const auto lockDeadline = std::chrono::steady_clock::now() + std::chrono::seconds{1};
+    while (!std::filesystem::exists(lockPath, lockPathError) && !lockPathError &&
+           std::chrono::steady_clock::now() < lockDeadline) {
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    const bool initializerOwnsLock = !lockPathError && std::filesystem::exists(lockPath);
+    const bool initializerBlocked =
+        initializer.wait_for(std::chrono::milliseconds{50}) == std::future_status::timeout;
+
+    stopSource.request_stop();
+    const bool canceledReady =
+        initializer.wait_for(std::chrono::milliseconds{500}) == std::future_status::ready;
+
+    const int rollbackResult =
+        sqlite3_exec(blocker.handle(), "ROLLBACK", nullptr, nullptr, nullptr);
+    const auto cancellationError = initializer.get();
+
+    REQUIRE(initializerOwnsLock);
+    REQUIRE(initializerBlocked);
+    REQUIRE(canceledReady);
+    REQUIRE(rollbackResult == SQLITE_OK);
+    REQUIRE(cancellationError == std::make_error_code(std::errc::operation_canceled));
+
+    const auto retryPage = repository.page(request);
+    const auto parent = std::ranges::find_if(
+        retryPage.rows, [](const auto& row) { return row.valueOf("numero_ssa") == "202500002"; });
+    REQUIRE(parent != retryPage.rows.end());
+    REQUIRE(parent->valueOf("qtd_derivadas") == "1");
 
     ssa::infra::sqlite::SqliteConnection connection(path);
     ssa::infra::sqlite::SqliteStatement initialized(

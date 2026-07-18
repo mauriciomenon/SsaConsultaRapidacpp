@@ -84,13 +84,17 @@ namespace ssa::infra::sqlite {
         : dbPath_(std::move(dbPath)), queryBuilder_(std::move(queryBuilder)) {}
 
     bool SqliteSsaRepository::ensureDerivedCountSummary(const std::stop_token stopToken) const {
-        std::unique_lock guard(derivedCountSummaryMutex_);
         throwIfCanceled(stopToken);
-        if (derivedCountSummaryAvailable_ || derivedCountSummaryUnsupported_) {
-            return derivedCountSummaryAvailable_;
-        }
-        if (std::chrono::steady_clock::now() < derivedCountSummaryRetryAfter_) {
-            return false;
+        {
+            std::unique_lock guard(derivedCountSummaryMutex_);
+            if (derivedCountSummaryAvailable_) {
+                return true;
+            }
+            if (derivedCountSummaryUnsupported_ || derivedCountSummaryInitializing_ ||
+                std::chrono::steady_clock::now() < derivedCountSummaryRetryAfter_) {
+                return false;
+            }
+            derivedCountSummaryInitializing_ = true;
         }
 
         try {
@@ -99,14 +103,20 @@ namespace ssa::infra::sqlite {
                 const auto failure = writeLock.error() == QLockFile::LockFailedError
                                          ? DerivedCountSummaryFailure::LockHeld
                                          : DerivedCountSummaryFailure::LockError;
-                if (derivedCountSummaryFailure_ != failure) {
+                bool shouldLog = false;
+                {
+                    std::unique_lock guard(derivedCountSummaryMutex_);
+                    shouldLog = derivedCountSummaryFailure_ != failure;
+                    derivedCountSummaryFailure_ = failure;
+                    derivedCountSummaryRetryAfter_ =
+                        std::chrono::steady_clock::now() + std::chrono::seconds{1};
+                    derivedCountSummaryInitializing_ = false;
+                }
+                if (shouldLog) {
                     std::clog << "sqlite derived count summary unavailable while database write "
                                  "lock cannot be acquired: "
                               << writeLock.diagnostic() << '\n';
                 }
-                derivedCountSummaryFailure_ = failure;
-                derivedCountSummaryRetryAfter_ =
-                    std::chrono::steady_clock::now() + std::chrono::seconds{1};
                 return false;
             }
             SqliteConnection sqlite(dbPath_, SqliteOpenMode::ReadWrite);
@@ -114,7 +124,9 @@ namespace ssa::infra::sqlite {
             SqliteProgressHandler progress(sqlite.handle(), stopToken);
             if (!hasDerivedCountColumns(sqlite.handle(), queryBuilder_.rawTableName(),
                                         busy.cancellationObserved())) {
+                std::unique_lock guard(derivedCountSummaryMutex_);
                 derivedCountSummaryUnsupported_ = true;
+                derivedCountSummaryInitializing_ = false;
                 return false;
             }
             SqliteWriteTransaction transaction(sqlite.handle(), busy.cancellationObserved());
@@ -122,33 +134,59 @@ namespace ssa::infra::sqlite {
                 sqlite.handle(), queryBuilder_.rawTableName(),
                 domain::ColumnCatalog::schemaColumns(), busy.cancellationObserved());
             transaction.commit();
-            derivedCountSummaryAvailable_ = true;
-            derivedCountSummaryFailure_ = DerivedCountSummaryFailure::None;
-            derivedCountSummaryRetryAfter_ = {};
+            {
+                std::unique_lock guard(derivedCountSummaryMutex_);
+                derivedCountSummaryAvailable_ = true;
+                derivedCountSummaryFailure_ = DerivedCountSummaryFailure::None;
+                derivedCountSummaryRetryAfter_ = {};
+                derivedCountSummaryInitializing_ = false;
+            }
+            return true;
         } catch (const ports::OperationError& error) {
             if (!isReadonlyDiagnostic(error.diagnostic())) {
+                std::unique_lock guard(derivedCountSummaryMutex_);
+                derivedCountSummaryInitializing_ = false;
                 throw;
             }
-            if (derivedCountSummaryFailure_ != DerivedCountSummaryFailure::Readonly) {
+            bool shouldLog = false;
+            {
+                std::unique_lock guard(derivedCountSummaryMutex_);
+                shouldLog = derivedCountSummaryFailure_ != DerivedCountSummaryFailure::Readonly;
+                derivedCountSummaryFailure_ = DerivedCountSummaryFailure::Readonly;
+                derivedCountSummaryRetryAfter_ =
+                    std::chrono::steady_clock::now() + std::chrono::seconds{1};
+                derivedCountSummaryInitializing_ = false;
+            }
+            if (shouldLog) {
                 std::clog << "sqlite derived count summary unavailable in readonly database: "
                           << error.diagnostic() << '\n';
             }
-            derivedCountSummaryFailure_ = DerivedCountSummaryFailure::Readonly;
-            derivedCountSummaryRetryAfter_ =
-                std::chrono::steady_clock::now() + std::chrono::seconds{1};
+            return false;
         } catch (const std::runtime_error& error) {
             if (!isReadonlyDiagnostic(error.what())) {
+                std::unique_lock guard(derivedCountSummaryMutex_);
+                derivedCountSummaryInitializing_ = false;
                 throw;
             }
-            if (derivedCountSummaryFailure_ != DerivedCountSummaryFailure::Readonly) {
+            bool shouldLog = false;
+            {
+                std::unique_lock guard(derivedCountSummaryMutex_);
+                shouldLog = derivedCountSummaryFailure_ != DerivedCountSummaryFailure::Readonly;
+                derivedCountSummaryFailure_ = DerivedCountSummaryFailure::Readonly;
+                derivedCountSummaryRetryAfter_ =
+                    std::chrono::steady_clock::now() + std::chrono::seconds{1};
+                derivedCountSummaryInitializing_ = false;
+            }
+            if (shouldLog) {
                 std::clog << "sqlite derived count summary unavailable in readonly database: "
                           << error.what() << '\n';
             }
-            derivedCountSummaryFailure_ = DerivedCountSummaryFailure::Readonly;
-            derivedCountSummaryRetryAfter_ =
-                std::chrono::steady_clock::now() + std::chrono::seconds{1};
+            return false;
+        } catch (...) {
+            std::unique_lock guard(derivedCountSummaryMutex_);
+            derivedCountSummaryInitializing_ = false;
+            throw;
         }
-        return derivedCountSummaryAvailable_;
     }
 
     domain::SsaPageResult SqliteSsaRepository::page(const domain::SsaPageRequest& request,

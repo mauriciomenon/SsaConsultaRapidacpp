@@ -70,6 +70,7 @@ namespace ssa::infra::sqlite {
         std::filesystem::path dbPath_;
         query::SqlQueryBuilder queryBuilder_;
         mutable std::mutex derivedCountSummaryMutex_;
+        mutable bool derivedCountSummaryInitializing_{false};
         mutable bool derivedCountSummaryAvailable_{false};
         mutable bool derivedCountSummaryUnsupported_{false};
         mutable DerivedCountSummaryFailure derivedCountSummaryFailure_{
