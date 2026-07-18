@@ -368,6 +368,20 @@ add_custom_target(
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
   USES_TERMINAL)
 
+add_executable(ssa_filename_timestamp_benchmark
+               tools/filename_timestamp_benchmark.cpp)
+target_link_libraries(ssa_filename_timestamp_benchmark PRIVATE ssa_domain
+                                                               Qt6::Core)
+
+add_custom_target(
+  run_filename_timestamp_benchmark_30
+  COMMAND
+    $<TARGET_FILE:ssa_filename_timestamp_benchmark> --samples 30 --iterations
+    100 --output ${CMAKE_BINARY_DIR}/filename-timestamp-benchmark-30.json
+  DEPENDS ssa_filename_timestamp_benchmark
+  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+  USES_TERMINAL)
+
 add_executable(ssa_import_normalization_benchmark
                tools/ssa_import_normalization_benchmark.cpp)
 target_link_libraries(ssa_import_normalization_benchmark PRIVATE ssa_infra
@@ -533,6 +547,15 @@ if(SSA_BUILD_TESTS)
       ${CMAKE_CURRENT_BINARY_DIR}/sqlite-read-connection-benchmark-smoke.json)
   set_tests_properties(ssa_sqlite_read_connection_benchmark_smoke
                        PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
+
+  add_test(
+    NAME ssa_filename_timestamp_benchmark_smoke
+    COMMAND
+      $<TARGET_FILE:ssa_filename_timestamp_benchmark> --samples 1 --iterations
+      2 --output
+      ${CMAKE_CURRENT_BINARY_DIR}/filename-timestamp-benchmark-smoke.json)
+  set_tests_properties(ssa_filename_timestamp_benchmark_smoke
+                       PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
 
   add_test(NAME ssa_import_normalization_benchmark_first_pass_smoke
            COMMAND $<TARGET_FILE:ssa_import_normalization_benchmark> --samples
