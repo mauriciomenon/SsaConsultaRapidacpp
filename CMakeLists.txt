@@ -383,6 +383,20 @@ add_executable(ssa_filename_timestamp_benchmark
 target_link_libraries(ssa_filename_timestamp_benchmark PRIVATE ssa_domain
                                                                Qt6::Core)
 
+add_executable(ssa_table_page_format_benchmark
+               tools/table_page_format_benchmark.cpp)
+target_link_libraries(ssa_table_page_format_benchmark
+                      PRIVATE ssa_presentation_tables Qt6::Core)
+
+add_custom_target(
+  run_table_page_format_benchmark_30
+  COMMAND
+    $<TARGET_FILE:ssa_table_page_format_benchmark> --samples 30 --iterations 10
+    --output ${CMAKE_BINARY_DIR}/table-page-format-benchmark-30.json
+  DEPENDS ssa_table_page_format_benchmark
+  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+  USES_TERMINAL)
+
 add_custom_target(
   run_filename_timestamp_benchmark_30
   COMMAND
@@ -575,6 +589,15 @@ if(SSA_BUILD_TESTS)
       ${CMAKE_CURRENT_BINARY_DIR}/filename-timestamp-benchmark-smoke.json)
   set_tests_properties(ssa_filename_timestamp_benchmark_smoke
                        PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+
+  add_test(
+    NAME ssa_table_page_format_benchmark_smoke
+    COMMAND
+      $<TARGET_FILE:ssa_table_page_format_benchmark> --samples 1 --iterations 1
+      --output
+      ${CMAKE_CURRENT_BINARY_DIR}/table-page-format-benchmark-smoke.json)
+  set_tests_properties(ssa_table_page_format_benchmark_smoke
+                       PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE)
 
   add_test(NAME ssa_import_normalization_benchmark_first_pass_smoke
            COMMAND $<TARGET_FILE:ssa_import_normalization_benchmark> --samples
