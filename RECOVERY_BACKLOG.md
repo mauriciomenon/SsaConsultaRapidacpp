@@ -12,8 +12,8 @@
 - Contadores sem mudanca: plano `99.0/100`, divida nova `13/14 = 92.9%`, legado
   placeholder `0.0/100`, fila operacional `5/8 = 62.5%`.
 
-Proxima atividade unica: medir formatacao eager da tabela antes de qualquer
-cache lazy ou mudanca de GUI.
+Proxima atividade unica: substituir precondicoes temporais de `sqliteBusyWait`
+nos contratos de importacao/rescan por sinais causais da primeira contencao SQLite.
 
 ## Determinismo causal do repositorio SQLite - 2026-07-18
 
