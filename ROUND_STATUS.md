@@ -8,8 +8,8 @@ Ultima verificacao local: 2026-07-18
 ## Marco Activity, importacao parametrizada e SQLite
 
 - Branch: `master`.
-- HEAD de codigo validado: `7291082`, precedido por `0025d44`, `7f396b0` e
-  `610fbf3`. Bitbucket foi confirmado em `7291082`. O push GitLab `origin`
+- HEAD de codigo validado: `b2369ac`, precedido por `7291082`, `0025d44` e
+  `7f396b0`. Bitbucket foi confirmado em `b2369ac`. O push GitLab `origin`
   falhou antes de transferir dados porque o OAuth continua com
   `invalid_grant`.
 - O working tree tracked restante contem somente esta reconciliacao documental
@@ -41,6 +41,17 @@ Ultima verificacao local: 2026-07-18
   agora governa lookup e cleanup do journal, resume, external, rescan, SAM e
   publicacao. Callers diretos preservam default de 250 ms e cancelamento ja
   solicitado limita o lookup a no maximo 250 ms.
+- `b2369ac` fecha `SQLITE-SCHEMA-VERSION-GATE`. Writer, recovery lookup,
+  cleanup de journal e validator rejeitam versoes futuras antes de DDL/DML ou
+  movimento de arquivo. Legado zero e aceito, recebe `schemaVersion()==1`
+  dentro da mesma write transaction e rollback/crash preservam zero. O
+  validator usa uma read transaction unica para versao, estrutura e registros.
+- O RED de recovery moveu o arquivo e retornou sucesso sob `user_version=2`.
+  Depois do patch, os contratos principais passaram `80/80`, cleanup direto
+  passou `30/30` e a familia SQLite/importacao passou `45/45` em `2.87 s`.
+  A primeira matriz integral terminou `590/594`; os quatro casos falhos
+  passaram isolados e `40/40` repeticoes. A repeticao integral final passou
+  `595/595` em `75.81 s`.
 - O RED de recovery terminou cedo aos 250 ms apesar do request de 3,000 ms.
   Depois do patch, preflight, publicacao e cleanup passaram 30 execucoes; a
   familia ampliada de journal, cancelamento, WAL, SAM e rescan passou `15/15`
@@ -111,14 +122,19 @@ Ultima verificacao local: 2026-07-18
   128 MiB do conversor, separa instancias SAM no teste concorrente, ordena o
   teardown e usa watchdogs medidos. Conversor passou 20/20, SAM 20/20 suites,
   Details 10/10 e o CTest final passou `588/588` em `78.30 s`.
-- Security ampla: Semgrep 508 arquivos e zero finding; Gitleaks 1.42 GB e zero
-  leak; TruffleHog 9,029 chunks e zero segredo verificado ou desconhecido.
-- Sol xhigh e Terra high deram GO final. Clawpatch nao gerou review porque seu
-  Codex CLI interno e antigo para `gpt-5.6-sol`; isso nao recebeu credito.
+- Security ampla do gate de versao: Semgrep 508 arquivos, 24 regras e zero
+  finding; Gitleaks 1.42 GB e zero leak; TruffleHog Git 9,090 chunks e os cinco
+  arquivos alterados sem segredo. O scan Git emitiu warning de cleanup porque
+  `ps` e bloqueado pelo sandbox, sem falha do scan de conteudo.
+- Sol xhigh encontrou 1 P1 de recovery, 1 P2 de snapshot e 1 P2 de cobertura
+  do cleanup. Os tres foram reproduzidos ou confirmados e corrigidos. O Sol
+  confirmou os dois fixes de codigo; o recheck final apos o teste de cleanup
+  excedeu a janela e nao recebeu credito. Clawpatch continuou invalido porque
+  seu Codex CLI interno e antigo para `gpt-5.6-sol`.
 
-Proxima atividade unica: persistir `schemaVersion()` em `PRAGMA user_version`,
-aceitar legado zero somente apos validacao estrutural e rejeitar versoes
-futuras antes de qualquer DDL/DML.
+Proxima atividade unica: produzir profiling valido do prefetch para fechar o
+ultimo ponto do plano original, sem aceitar trace invalido ou ferramenta
+indisponivel como evidencia.
 
 ## Marco P0 historico
 - Ultimo slice: commit `e0b5401`, dois polls sincronos de `quickSector()`
@@ -362,14 +378,12 @@ HEAD `d376431`; nenhuma sugestao foi aceita apenas pela severidade alegada.
 
 ## Pendencias ativas priorizadas
 
-1. Persistir `schemaVersion()` em `PRAGMA user_version`, aceitando legado zero
-   compativel e rejeitando versao futura antes de DDL/DML.
-2. Produzir profiling valido do prefetch; `xctrace` nao oferece `Time Profiler`
+1. Produzir profiling valido do prefetch; `xctrace` nao oferece `Time Profiler`
    nesta instalacao e `CPU Counters` falhou com `DTServiceHub`/politica do
    kernel.
-3. Canonizar `clang-tidy` macOS com sysroot e reproduzir IDs Semgrep antes de
+2. Canonizar `clang-tidy` macOS com sysroot e reproduzir IDs Semgrep antes de
    dividir fixtures.
-4. Revalidar handles, PowerShell, packaging e URL UNC em plataformas reais.
+3. Revalidar handles, PowerShell, packaging e URL UNC em plataformas reais.
 
 Detalhes, criterios e itens de prioridade menor ficam em
 `RECOVERY_BACKLOG.md`. O plano executavel fica em
@@ -381,8 +395,8 @@ preparacao da release.
 
 | Remote | Provedor | Funcao | Estado confirmado |
 | --- | --- | --- | --- |
-| `origin` | GitLab | Repositorio e CI primarios | push de `7291082` bloqueado por OAuth `invalid_grant`; local 44 commits a frente |
-| `bitbucket` | Bitbucket | Mirror obrigatorio | `7291082` confirmado em `master`; divergencia `0/0`; tag `v0.9.10` preservada |
+| `origin` | GitLab | Repositorio e CI primarios | push de `b2369ac` bloqueado por OAuth `invalid_grant`; local 46 commits a frente |
+| `bitbucket` | Bitbucket | Mirror obrigatorio | `b2369ac` confirmado em `master`; divergencia `0/0`; tag `v0.9.10` preservada |
 | `gh` | GitHub | Mirror inativo | HTTP 403; conta suspensa |
 
 Todo fetch ou pull operacional vem de `origin`:

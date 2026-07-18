@@ -4,17 +4,15 @@
 
 ### Sequencia ativa preservada
 
-1. Adicionar `SQLITE-SCHEMA-VERSION-GATE`: persistir `schemaVersion()` em
-   `PRAGMA user_version` e rejeitar versoes futuras antes de DDL/DML.
-2. Completar profiling valido do prefetch; harness, 30 amostras e relatorio
+1. Completar profiling valido do prefetch; harness, 30 amostras e relatorio
    isolado ja estao resolvidos no working tree. `xctrace` nao possui `Time
    Profiler` nesta instalacao e `CPU Counters` falhou com `DTServiceHub` e
    politica do kernel; nenhum credito de profiling foi atribuido.
-3. Validar `ImportFileConsolidator` em Windows/UNC real; o split local entre
+2. Validar `ImportFileConsolidator` em Windows/UNC real; o split local entre
    staging owned pre-commit e consolidacao post-commit ja esta implementado.
-4. Canonizar `clang-tidy` macOS com sysroot e reproduzir IDs das regras Semgrep
+3. Canonizar `clang-tidy` macOS com sysroot e reproduzir IDs das regras Semgrep
    antes de dividir fixtures.
-5. Revalidar em plataformas reais handles, URL UNC, PowerShell e packaging.
+4. Revalidar em plataformas reais handles, URL UNC, PowerShell e packaging.
 
 Contadores auditados: plano original `99.0/100`, divida nova `78.6/100`
 (11 de 14 itens enumerados aceitos) e backlog legado `0.0/100`, sem denominador
@@ -23,14 +21,16 @@ O credito novo pertence a `SQLITE-READ-CONNECTION-CHURN`, agora medido em 30
 processos e sem justificativa para pool. Findings descobertos depois da lista
 fixa de 14 itens nao reduzem retroativamente esse percentual.
 
-Fechamento de 2026-07-18: HEAD de codigo `7291082`, precedido por `0025d44`,
-`7f396b0` e `610fbf3`. `610fbf3` fecha o recheck WAL por snapshot. Em
+Fechamento de 2026-07-18: HEAD de codigo `b2369ac`, precedido por `7291082`,
+`0025d44` e `7f396b0`. `610fbf3` fecha o recheck WAL por snapshot. Em
 `7f396b0`, os targets afetados compilaram; conversor passou 20/20, SAM passou
 20/20 suites completas, Details passou 10/10 e CurrentWeek passou 20/20 sem
 patch. O CTest sequencial final passou `588/588` em `78.30 s`. Semgrep amplo
 escaneou 508 arquivos sem finding; Gitleaks escaneou 1.42 GB sem leak e
-TruffleHog escaneou 9,029 chunks sem segredo. Bitbucket foi confirmado em
-`7291082`; o push GitLab continua bloqueado por OAuth `invalid_grant`.
+TruffleHog escaneou 9,029 chunks sem segredo. No gate atual, o CTest final
+passou `595/595` em `75.81 s`; Semgrep, Gitleaks e TruffleHog ficaram sem
+finding. Bitbucket foi confirmado em `b2369ac`; o push GitLab continua
+bloqueado por OAuth `invalid_grant`.
 
 - [RESOLVED] [SQLITE-RESCAN-WAL-SNAPSHOT] `610fbf3` prova que um leitor WAL em
   transacao preserva o snapshot antigo durante a publicacao e observa o novo
@@ -41,10 +41,13 @@ TruffleHog escaneou 9,029 chunks sem segredo. Bitbucket foi confirmado em
   request e usavam 250 ms fixos. Os tres contratos passaram 30 execucoes e a
   familia ampliada passou `15/15` em `2.67 s`, preservando fail-closed,
   cancelamento, integridade e fontes.
-- [PENDING-P1] [SQLITE-SCHEMA-VERSION-GATE] `schemaVersion()==1` nao e
-  persistido nem validado. Aceitar banco legado `user_version=0` somente apos
-  compatibilidade estrutural, aceitar a versao atual, rejeitar futuras antes de
-  DDL/DML e carimbar a versao dentro da transacao de importacao.
+- [RESOLVED] [SQLITE-SCHEMA-VERSION-GATE] `b2369ac` aceita legado zero e a
+  versao atual, rejeita versoes futuras antes de DDL/DML, lookup, cleanup ou
+  movimento de recovery e carimba `schemaVersion()==1` dentro da write
+  transaction. Rollback e crash preservam zero. O validator usa snapshot
+  explicito. Contratos principais passaram `80/80`, cleanup direto `30/30`,
+  gate amplo `45/45` e CTest final `595/595` em `75.81 s`. Sol encontrou e
+  fechou 1 P1 e 2 P2; o recheck final excedeu a janela e nao recebeu credito.
 
 Ultimo fechamento: commit `e0b5401`, build e CTest da suite de painel `1/1`
 passaram em `2.96 s`. O polling de `activeFilterEntries()` continua pendente
