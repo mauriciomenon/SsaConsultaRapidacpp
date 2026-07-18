@@ -5,6 +5,32 @@ antes de interpretar sincronizacao Git, validacao local ou estado externo.
 
 Ultima verificacao local: 2026-07-18
 
+## Cancelamento causal do conversor legacy - 2026-07-18
+
+- Branch `master`; codigo em `0172f2e`, confirmado no Bitbucket. GitLab
+  `origin` continua bloqueado por OAuth `invalid_grant`, uma dependencia externa
+  que nao invalida a evidencia local ou a publicacao no Bitbucket.
+- O contrato de cancelamento do conversor deixa de observar o sidecar
+  `.conversion-ready` em loop de `5 ms` por ate `10 s`. Um runner falso ja
+  permitido pelo port cria a saida parcial, libera um `binary_semaphore` e
+  aguarda o `stop_token` por `stop_callback`; o teste pede cancelamento apenas
+  depois do checkpoint causal.
+- O corte remove tambem o include e comportamentos de fake soffice sem uso. Ele
+  prova boundary do conversor e cleanup de diretorio, nao spawn de filho OS;
+  essa prova continua na suite de `SupervisedProcess`.
+- Gate local: diff, clang-format, detect-secrets e Semgrep (`2` regras, zero
+  finding) limpos. `clang-tidy` filtrado nao encontrou aviso nas linhas novas;
+  o hook cppcheck nao seleciona testes. Build afetado passou; CTest legacy
+  `4/4` em `0.08 s`; workflow completo `174/174` em `6.85 s`. Review Terra
+  ultra final: `SEM FINDINGS`. Hooks staged passaram clang-format, Gitleaks,
+  detect-secrets e TruffleHog.
+- Contadores sem inflacao: plano original `99.0/100`; divida nova
+  `13/14 = 92.9%`; backlog legado `0.0/100` como placeholder; fila operacional
+  `5/8 = 62.5%`. Nenhum credito funcional foi atribuido.
+
+Proxima atividade unica: trocar os tres loops de checkpoint dos crash probes
+SQLite por sinal causal de processo ou filesystem, sem alterar recovery SQLite.
+
 ## Checkpoint causal de copia/staging - 2026-07-18
 
 - Branch `master`; codigo em `79f8200`, confirmado no Bitbucket. GitLab

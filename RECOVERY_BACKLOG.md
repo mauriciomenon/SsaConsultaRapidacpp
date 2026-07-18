@@ -1,5 +1,27 @@
 # Recovery Backlog
 
+## Cancelamento causal do conversor legacy - 2026-07-18
+
+- [RESOLVED-LOCAL] [LEGACY-CONVERTER-CANCEL-CAUSAL] `0172f2e` substitui o
+  polling de `.conversion-ready` por um `BlockingConversionRunner` de teste. O
+  port `IExternalProcessRunner` ja existente cria output parcial, libera um
+  `binary_semaphore` e espera o `stop_token` via `stop_callback`; nenhuma seam
+  nova entrou em producao.
+- O contrato continua provando cancelamento apos output parcial, preservacao do
+  destino anterior e remocao do diretorio de conversao. O include do supervisor
+  e comportamentos fake sem call site foram removidos. Spawn real permanece
+  coberto separadamente pela suite do supervisor.
+- Gates: build `ssa_integration_tests`; familia legacy `4/4` em `0.08 s`; suite
+  workflow `174/174` em `6.85 s`. Diff, formato, detect-secrets e Semgrep
+  limpos; clang-tidy filtrado sem aviso novo. Review Terra ultra final:
+  `SEM FINDINGS`. Bitbucket confirma `0172f2e`; GitLab `origin` segue OAuth
+  `invalid_grant`.
+- Sem credito novo: plano `99.0/100`, divida nova `13/14 = 92.9%`, legado
+  placeholder `0.0/100`, fila operacional `5/8 = 62.5%`.
+
+Proxima atividade unica: remover os polls dos crash probes SQLite com checkpoint
+causal que preserve a semantica de kill e recovery.
+
 ## Checkpoint causal de copia/staging - 2026-07-18
 
 - [RESOLVED-LOCAL] [IMPORT-STAGING-FIRST-CHUNK-CAUSAL] `79f8200` remove sete
