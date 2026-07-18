@@ -5,19 +5,17 @@
 #include "infra/import/XlsxWorkbookReader.h"
 #include "infra/sqlite/SqliteConnection.h"
 #include "infra/sqlite/SqliteDatabaseWriteLock.h"
+#include "infra/sqlite/SqliteProgressHandler.h"
 #include "ports/OperationError.h"
 #include "qt/FilesystemPath.h"
 
 #include <QDate>
-#include <QFile>
 #include <QLockFile>
-#include <QSaveFile>
 #include <QTemporaryDir>
 
 #include <sqlite3.h>
 
 #include <chrono>
-#include <functional>
 #include <memory>
 #include <sstream>
 #include <string_view>
@@ -42,8 +40,11 @@ namespace ssa::infra::importing {
 
         constexpr std::size_t kMaxWorkflowDiagnosticBytes = 4'096;
         constexpr int kDatabaseBackupPagesPerStep = 256;
-        constexpr auto kDatabaseBackupRetryDelay = std::chrono::milliseconds{10};
-        constexpr auto kDatabaseBackupTimeout = std::chrono::seconds{5};
+
+        enum class DatabaseSnapshotPhase {
+            InitialCopy,
+            Publication,
+        };
 
         [[nodiscard]] SamSpreadsheetAdaptResult
         readAndAdaptSamWorkbook(const StagedImportFile& file, const ports::SamArtifact& artifact,
@@ -178,97 +179,76 @@ namespace ssa::infra::importing {
                    " message=" + sqlite3_errmsg(database);
         }
 
-        void copyDatabaseSnapshot(const std::filesystem::path& source,
-                                  const std::filesystem::path& destination,
-                                  const std::stop_token& stopToken) {
+        // Both call sites name source and destination explicitly.
+        // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
+        void backupDatabaseSnapshot(const std::filesystem::path& source,
+                                    const std::filesystem::path& destination,
+                                    const std::stop_token& stopToken,
+                                    const std::chrono::milliseconds busyWait,
+                                    const DatabaseSnapshotPhase phase) {
+            const bool publication = phase == DatabaseSnapshotPhase::Publication;
+            const char* safeMessage = publication ? "Falha ao publicar banco do rescan"
+                                                  : "Falha ao copiar banco para rescan";
+            const char* operation =
+                publication ? "sqlite backup publication" : "sqlite backup copy";
             if (!std::filesystem::exists(source)) {
-                return;
+                if (!publication) {
+                    return;
+                }
+                throw ports::OperationError(safeMessage, std::string{operation} +
+                                                             " failed: source database missing");
             }
-            sqlite::SqliteConnection sourceConnection(source, sqlite::SqliteOpenMode::ReadOnly);
-            sqlite::SqliteConnection destinationConnection(destination,
-                                                           sqlite::SqliteOpenMode::ReadWriteCreate);
+            sqlite::SqliteConnection sourceConnection(source, sqlite::SqliteOpenMode::ReadOnly,
+                                                      std::chrono::milliseconds{0});
+            sqlite::SqliteConnection destinationConnection(
+                destination, sqlite::SqliteOpenMode::ReadWriteCreate, std::chrono::milliseconds{0});
+            sqlite::SqliteBusyHandler busyHandler(destinationConnection.handle(), stopToken,
+                                                  busyWait);
             auto* backup = sqlite3_backup_init(destinationConnection.handle(), "main",
                                                sourceConnection.handle(), "main");
             if (backup == nullptr) {
                 throw ports::OperationError(
-                    "Falha ao preparar copia protegida do banco",
-                    sqliteBackupError(destinationConnection.handle(), "sqlite backup init",
+                    safeMessage,
+                    sqliteBackupError(destinationConnection.handle(),
+                                      publication ? "sqlite backup publication init"
+                                                  : "sqlite backup copy init",
                                       sqlite3_errcode(destinationConnection.handle())));
             }
             int stepResult = SQLITE_OK;
-            const auto retryDeadline = std::chrono::steady_clock::now() + kDatabaseBackupTimeout;
-            while (stepResult == SQLITE_OK || stepResult == SQLITE_BUSY ||
-                   stepResult == SQLITE_LOCKED) {
+            auto lockedRetryDeadline = std::chrono::steady_clock::time_point{};
+            while (stepResult == SQLITE_OK || stepResult == SQLITE_LOCKED) {
                 if (stopToken.stop_requested()) {
                     stepResult = SQLITE_INTERRUPT;
                     break;
                 }
                 stepResult = sqlite3_backup_step(backup, kDatabaseBackupPagesPerStep);
-                if ((stepResult == SQLITE_BUSY || stepResult == SQLITE_LOCKED) &&
-                    std::chrono::steady_clock::now() < retryDeadline) {
-                    std::this_thread::sleep_for(kDatabaseBackupRetryDelay);
-                } else if (stepResult == SQLITE_BUSY || stepResult == SQLITE_LOCKED) {
-                    break;
+                if (stepResult == SQLITE_LOCKED) {
+                    const auto now = std::chrono::steady_clock::now();
+                    if (lockedRetryDeadline == std::chrono::steady_clock::time_point{}) {
+                        lockedRetryDeadline = now + busyWait;
+                    }
+                    if (now >= lockedRetryDeadline) {
+                        break;
+                    }
+                    std::this_thread::sleep_until(
+                        (std::min)(lockedRetryDeadline,
+                                   now +
+                                       ports::ImportExecutionOptions::kSqliteBusyRetryGranularity));
+                } else {
+                    lockedRetryDeadline = {};
                 }
             }
             const int finishResult = sqlite3_backup_finish(backup);
-            if (stopToken.stop_requested() || stepResult == SQLITE_INTERRUPT) {
+            if (stepResult != SQLITE_DONE &&
+                (stopToken.stop_requested() || stepResult == SQLITE_INTERRUPT)) {
                 throw std::system_error(std::make_error_code(std::errc::operation_canceled),
                                         "database snapshot canceled");
             }
             if (stepResult != SQLITE_DONE || finishResult != SQLITE_OK) {
                 const int errorCode = stepResult != SQLITE_DONE ? stepResult : finishResult;
                 throw ports::OperationError(
-                    "Falha ao copiar banco para rescan",
-                    sqliteBackupError(destinationConnection.handle(), "sqlite backup", errorCode));
-            }
-        }
-
-        void publishDatabaseSnapshot(const std::filesystem::path& source,
-                                     const std::filesystem::path& destination,
-                                     const std::stop_token& stopToken) {
-            QFile input(qt::toQString(source));
-            if (!input.open(QIODevice::ReadOnly)) {
-                throw ports::OperationError("Falha ao publicar banco do rescan",
-                                            "cannot read database snapshot: " +
-                                                input.errorString().toStdString());
-            }
-            QSaveFile output(qt::toQString(destination));
-            if (!output.open(QIODevice::WriteOnly)) {
-                throw ports::OperationError("Falha ao publicar banco do rescan",
-                                            "cannot open atomic database target: " +
-                                                output.errorString().toStdString());
-            }
-            constexpr qint64 chunkSize = 1024 * 1024;
-            while (!input.atEnd()) {
-                if (stopToken.stop_requested()) {
-                    output.cancelWriting();
-                    throw std::system_error(std::make_error_code(std::errc::operation_canceled),
-                                            "database snapshot canceled");
-                }
-                const auto chunk = input.read(chunkSize);
-                if (chunk.isEmpty() && input.error() != QFileDevice::NoError) {
-                    output.cancelWriting();
-                    throw ports::OperationError("Falha ao publicar banco do rescan",
-                                                "cannot read database snapshot: " +
-                                                    input.errorString().toStdString());
-                }
-                if (!chunk.isEmpty() && output.write(chunk) != chunk.size()) {
-                    output.cancelWriting();
-                    throw ports::OperationError("Falha ao publicar banco do rescan",
-                                                "cannot write atomic database target: " +
-                                                    output.errorString().toStdString());
-                }
-            }
-            if (stopToken.stop_requested()) {
-                output.cancelWriting();
-                throw std::system_error(std::make_error_code(std::errc::operation_canceled),
-                                        "database snapshot canceled");
-            }
-            if (!output.commit()) {
-                throw ports::OperationError("Falha ao publicar banco do rescan",
-                                            "atomic database publication failed: " +
-                                                output.errorString().toStdString());
+                    safeMessage,
+                    sqliteBackupError(destinationConnection.handle(), operation, errorCode));
             }
         }
 
@@ -744,7 +724,9 @@ namespace ssa::infra::importing {
         const auto workingDatabase =
             qt::toFileSystemPath(workingDirectory.path()) / databasePath_.filename();
         try {
-            copyDatabaseSnapshot(databasePath_, workingDatabase, stopToken);
+            backupDatabaseSnapshot(databasePath_, workingDatabase, stopToken,
+                                   request.execution.sqliteBusyWait,
+                                   DatabaseSnapshotPhase::InitialCopy);
             SpreadsheetImportWorkflowPort workingPort(inputFolder_, workingDatabase, columns_,
                                                       false);
             auto result = workingPort.importDiscoveredFiles(staging, replaceAll, stopToken,
@@ -780,7 +762,9 @@ namespace ssa::infra::importing {
                                                                 : consolidationPlan.error);
                 return result;
             }
-            publishDatabaseSnapshot(workingDatabase, databasePath_, stopToken);
+            backupDatabaseSnapshot(workingDatabase, databasePath_, stopToken,
+                                   request.execution.sqliteBusyWait,
+                                   DatabaseSnapshotPhase::Publication);
             const auto consolidation = consolidator_.consolidate(consolidationPlan, stopToken);
             appendWorkflowDiagnostic(result.diagnostic, consolidation.error);
             result.warning = result.warning || consolidation.canceled || consolidation.failed > 0;
