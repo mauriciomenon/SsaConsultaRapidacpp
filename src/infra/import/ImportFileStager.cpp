@@ -209,8 +209,10 @@ namespace ssa::infra::importing {
 
     } // namespace
 
-    ImportFileStager::ImportFileStager(std::filesystem::path inputFolder)
-        : inputFolder_(std::move(inputFolder)) {}
+    ImportFileStager::ImportFileStager(std::filesystem::path inputFolder,
+                                       FileCopyFirstChunkWrittenHook afterFirstChunkWritten)
+        : inputFolder_(std::move(inputFolder)),
+          afterFirstChunkWritten_(std::move(afterFirstChunkWritten)) {}
 
     ImportStagingResult
     ImportFileStager::stageExternalFiles(const std::vector<std::filesystem::path>& files,
@@ -278,7 +280,8 @@ namespace ssa::infra::importing {
                                  "cannot read source modification time: " + error.message());
                 continue;
             }
-            const auto copy = copyFileAtomically({source, destination}, stopToken);
+            const auto copy =
+                copyFileAtomically({source, destination, afterFirstChunkWritten_}, stopToken);
             if (copy.status == FileCopyStatus::Canceled) {
                 cancelStaging(result);
                 return result;

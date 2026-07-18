@@ -2,10 +2,12 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <optional>
 #include <stop_token>
 #include <string>
 #include <system_error>
+#include <utility>
 
 namespace ssa::infra::importing {
 
@@ -25,9 +27,20 @@ namespace ssa::infra::importing {
         }
     };
 
+    using FileCopyFirstChunkWrittenHook = std::function<void()>;
+
     struct FileCopyRequest {
+        // Source and destination are explicit at every call site.
+        // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
+        FileCopyRequest(const std::filesystem::path& source,
+                        const std::filesystem::path& destination,
+                        FileCopyFirstChunkWrittenHook afterFirstChunkWritten = {})
+            : source(source), destination(destination),
+              afterFirstChunkWritten(std::move(afterFirstChunkWritten)) {}
+
         const std::filesystem::path& source;
         const std::filesystem::path& destination;
+        FileCopyFirstChunkWrittenHook afterFirstChunkWritten{};
     };
 
     struct FileIdentitySnapshot {

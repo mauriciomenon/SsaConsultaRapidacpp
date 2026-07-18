@@ -42,6 +42,7 @@
 #include <future>
 #include <latch>
 #include <memory>
+#include <stdexcept>
 #include <stop_token>
 #include <string>
 #include <string_view>
@@ -596,37 +597,38 @@ TEST_CASE("import file stager cancels a copy without publishing partial files") 
     const auto source = root / "large-source.xlsx";
     const auto inputDirectory = root / "docs_entrada";
     createSparseFile(source, copyBytes);
-    const ssa::infra::importing::ImportFileStager stager(inputDirectory);
     std::stop_source stopSource;
-
-    auto future = std::async(std::launch::async, [&] {
-        return stager.stageExternalFiles({source}, stopSource.get_token());
+    bool firstChunkWritten = false;
+    const ssa::infra::importing::ImportFileStager stager(inputDirectory, [&] {
+        firstChunkWritten = true;
+        stopSource.request_stop();
     });
-    QElapsedTimer deadline;
-    deadline.start();
-    bool observedTemporary = false;
-    while (future.wait_for(std::chrono::milliseconds{0}) != std::future_status::ready &&
-           deadline.elapsed() < 3'000) {
-        std::error_code error;
-        for (std::filesystem::directory_iterator iterator(inputDirectory, error), end;
-             !error && iterator != end; iterator.increment(error)) {
-            if (iterator->path().filename().string().find(".part") != std::string::npos &&
-                iterator->file_size(error) > 0 && !error) {
-                observedTemporary = true;
-                stopSource.request_stop();
-                break;
-            }
-        }
-        QThread::msleep(1);
-    }
-    stopSource.request_stop();
-    const auto result = future.get();
+    const auto result = stager.stageExternalFiles({source}, stopSource.get_token());
 
-    REQUIRE(observedTemporary);
+    REQUIRE(firstChunkWritten);
     REQUIRE(result.rejectionReason == "canceled");
     REQUIRE(result.files.empty());
     REQUIRE(std::filesystem::exists(source));
     REQUIRE(std::filesystem::is_empty(inputDirectory));
+}
+
+TEST_CASE("file copy reports a first chunk callback failure and removes the temporary output") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto source = root / "source.xlsx";
+    const auto destination = root / "docs_entrada" / "staged.xlsx";
+    createSparseFile(source, 1);
+
+    const auto result = ssa::infra::importing::copyFileAtomically(
+        {source, destination, [] { throw std::runtime_error{"test callback"}; }});
+
+    REQUIRE(result.status == ssa::infra::importing::FileCopyStatus::Failed);
+    REQUIRE(result.diagnostic == "staged file copy callback failed: test callback");
+    REQUIRE(std::filesystem::exists(source));
+    REQUIRE_FALSE(std::filesystem::exists(destination));
+    REQUIRE(std::filesystem::is_empty(destination.parent_path()));
 }
 
 TEST_CASE("file copy rejects a source changed during the staged copy") {
@@ -639,30 +641,19 @@ TEST_CASE("file copy rejects a source changed during the staged copy") {
     const auto destination = root / "docs_entrada" / "staged.xlsx";
     createSparseFile(source, copyBytes);
 
-    auto future = std::async(std::launch::async, [&] {
-        return ssa::infra::importing::copyFileAtomically({source, destination});
-    });
-    QElapsedTimer deadline;
-    deadline.start();
-    bool observedTemporary = false;
-    while (future.wait_for(std::chrono::milliseconds{0}) != std::future_status::ready &&
-           deadline.elapsed() < 3'000) {
-        std::error_code error;
-        for (std::filesystem::directory_iterator iterator(destination.parent_path(), error), end;
-             !error && iterator != end; iterator.increment(error)) {
-            if (iterator->path().filename().string().find(".part") != std::string::npos) {
-                observedTemporary = true;
-                std::filesystem::last_write_time(
-                    source, std::filesystem::file_time_type::clock::now(), error);
-                REQUIRE_FALSE(error);
-                break;
-            }
-        }
-        QThread::msleep(1);
-    }
-    const auto result = future.get();
+    bool firstChunkWritten = false;
+    std::error_code changeError;
+    const auto originalTime = std::filesystem::last_write_time(source, changeError);
+    REQUIRE_FALSE(changeError);
+    const auto result = ssa::infra::importing::copyFileAtomically(
+        {source, destination, [&] {
+             firstChunkWritten = true;
+             std::filesystem::last_write_time(source, originalTime + std::chrono::seconds{1},
+                                              changeError);
+         }});
 
-    REQUIRE(observedTemporary);
+    REQUIRE(firstChunkWritten);
+    REQUIRE_FALSE(changeError);
     REQUIRE(result.status == ssa::infra::importing::FileCopyStatus::Failed);
     REQUIRE(result.diagnostic == "source changed during staged file copy");
     REQUIRE_FALSE(std::filesystem::exists(destination));
@@ -685,38 +676,26 @@ TEST_CASE("file copy rejects a source replaced with the same size and mtime") {
     std::error_code error;
     const auto originalTime = std::filesystem::last_write_time(source, error);
     REQUIRE_FALSE(error);
+    createSparseFile(replacement, copyBytes);
+    std::filesystem::last_write_time(replacement, originalTime, error);
+    REQUIRE_FALSE(error);
 
-    auto future = std::async(std::launch::async, [&] {
-        return ssa::infra::importing::copyFileAtomically({source, destination});
-    });
-    QElapsedTimer deadline;
-    deadline.start();
-    bool observedTemporary = false;
+    bool firstChunkWritten = false;
     bool replaced = false;
-    while (future.wait_for(std::chrono::milliseconds{0}) != std::future_status::ready &&
-           deadline.elapsed() < 3'000) {
-        for (std::filesystem::directory_iterator iterator(destination.parent_path(), error), end;
-             !error && iterator != end; iterator.increment(error)) {
-            if (iterator->path().filename().string().find(".part") == std::string::npos) {
-                continue;
-            }
-            observedTemporary = true;
-            createSparseFile(replacement, copyBytes);
-            std::filesystem::last_write_time(replacement, originalTime, error);
-            REQUIRE_FALSE(error);
-            std::filesystem::rename(source, backup, error);
-            REQUIRE_FALSE(error);
-            std::filesystem::rename(replacement, source, error);
-            REQUIRE_FALSE(error);
-            replaced = true;
-            break;
-        }
-        error.clear();
-        QThread::msleep(1);
-    }
-    const auto result = future.get();
+    std::error_code replaceError;
+    const auto result = ssa::infra::importing::copyFileAtomically(
+        {source, destination, [&] {
+             firstChunkWritten = true;
+             std::filesystem::rename(source, backup, replaceError);
+             if (replaceError) {
+                 return;
+             }
+             std::filesystem::rename(replacement, source, replaceError);
+             replaced = !replaceError;
+         }});
 
-    REQUIRE(observedTemporary);
+    REQUIRE(firstChunkWritten);
+    REQUIRE_FALSE(replaceError);
     REQUIRE(replaced);
     REQUIRE(result.status == ssa::infra::importing::FileCopyStatus::Failed);
     REQUIRE(result.diagnostic == "source changed during staged file copy");
@@ -735,34 +714,18 @@ TEST_CASE("import file stager preserves inventory after a later source disappear
     const auto inputDirectory = root / "docs_entrada";
     createSparseFile(firstSource, copyBytes);
     createSparseFile(missingSource, 1);
-    const ssa::infra::importing::ImportFileStager stager(inputDirectory);
-
-    auto future = std::async(std::launch::async, [&] {
-        return stager.stageExternalFiles({firstSource, missingSource});
+    bool firstChunkWritten = false;
+    bool removed = false;
+    std::error_code removeError;
+    const ssa::infra::importing::ImportFileStager stager(inputDirectory, [&] {
+        firstChunkWritten = true;
+        removed = std::filesystem::remove(missingSource, removeError);
     });
-    QElapsedTimer deadline;
-    deadline.start();
-    bool observedTemporary = false;
-    while (future.wait_for(std::chrono::milliseconds{0}) != std::future_status::ready &&
-           deadline.elapsed() < 3'000) {
-        std::error_code error;
-        for (std::filesystem::directory_iterator iterator(inputDirectory, error), end;
-             !error && iterator != end; iterator.increment(error)) {
-            if (iterator->path().filename().string().find(".part") != std::string::npos &&
-                iterator->file_size(error) > 0 && !error) {
-                observedTemporary = true;
-                REQUIRE(std::filesystem::remove(missingSource));
-                break;
-            }
-        }
-        if (observedTemporary) {
-            break;
-        }
-        QThread::msleep(1);
-    }
-    const auto result = future.get();
+    const auto result = stager.stageExternalFiles({firstSource, missingSource});
 
-    REQUIRE(observedTemporary);
+    REQUIRE(firstChunkWritten);
+    REQUIRE(removed);
+    REQUIRE_FALSE(removeError);
     REQUIRE(result.discovered == 2);
     REQUIRE(result.discoveredXlsxSources == std::vector<std::string>{"first.xlsx", "second.xlsx"});
     REQUIRE(result.files.size() == 1);
@@ -792,37 +755,26 @@ TEST_CASE("external import reports one applied and one failed staging source") {
     writeWorkbook(missingSource, header + row(2, {inlineCell("A2", "202600889"),
                                                   inlineCell("B2", "Fonte removida"),
                                                   inlineCell("C2", "2026-07-14")}));
-    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
-                                                              importColumns());
+    bool firstChunkWritten = false;
+    bool removed = false;
+    std::error_code removeError;
+    ssa::infra::importing::SpreadsheetImportWorkflowPort::SynchronizationSignals synchronization;
+    synchronization.afterFirstChunkWritten = [&] {
+        firstChunkWritten = true;
+        removed = std::filesystem::remove(missingSource, removeError);
+    };
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(
+        inputDirectory, dbPath, importColumns(), true, synchronization);
     ssa::ports::ImportExternalFilesRequest request;
     request.files = {firstSource, missingSource};
 
-    auto future = std::async(std::launch::async, [&] { return port.importExternalFiles(request); });
-    QElapsedTimer deadline;
-    deadline.start();
-    bool observedTemporary = false;
-    while (future.wait_for(std::chrono::milliseconds{0}) != std::future_status::ready &&
-           deadline.elapsed() < 3'000) {
-        std::error_code error;
-        for (std::filesystem::directory_iterator iterator(inputDirectory, error), end;
-             !error && iterator != end; iterator.increment(error)) {
-            if (iterator->path().filename().string().find(".part") != std::string::npos &&
-                iterator->file_size(error) > 0 && !error) {
-                observedTemporary = true;
-                REQUIRE(std::filesystem::remove(missingSource));
-                break;
-            }
-        }
-        if (observedTemporary) {
-            break;
-        }
-        QThread::msleep(1);
-    }
-    const auto result = future.get();
+    const auto result = port.importExternalFiles(request);
 
     INFO(result.message);
     INFO(result.diagnostic);
-    REQUIRE(observedTemporary);
+    REQUIRE(firstChunkWritten);
+    REQUIRE(removed);
+    REQUIRE_FALSE(removeError);
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
     REQUIRE(result.warning);
     REQUIRE(result.importSummary.has_value());
@@ -847,29 +799,15 @@ TEST_CASE("staging cancellation stays clean with a pending legacy workbook") {
     const auto inputDirectory = root / "docs_entrada";
     createSparseFile(legacy, 1);
     createSparseFile(largeSource, copyBytes);
-    const ssa::infra::importing::ImportFileStager stager(inputDirectory);
     std::stop_source stopSource;
-    auto future = std::async(std::launch::async, [&] {
-        return stager.stageExternalFiles({legacy, largeSource}, stopSource.get_token());
+    bool firstChunkWritten = false;
+    const ssa::infra::importing::ImportFileStager stager(inputDirectory, [&] {
+        firstChunkWritten = true;
+        stopSource.request_stop();
     });
-    QElapsedTimer deadline;
-    deadline.start();
-    while (future.wait_for(std::chrono::milliseconds{0}) != std::future_status::ready &&
-           deadline.elapsed() < 3'000) {
-        std::error_code error;
-        for (std::filesystem::directory_iterator iterator(inputDirectory, error), end;
-             !error && iterator != end; iterator.increment(error)) {
-            if (iterator->path().filename().string().find(".part") != std::string::npos &&
-                iterator->file_size(error) > 0 && !error) {
-                stopSource.request_stop();
-                break;
-            }
-        }
-        QThread::msleep(1);
-    }
-    stopSource.request_stop();
-    const auto result = future.get();
+    const auto result = stager.stageExternalFiles({legacy, largeSource}, stopSource.get_token());
 
+    REQUIRE(firstChunkWritten);
     REQUIRE(result.rejectionReason == "canceled");
     REQUIRE(result.diagnostic.empty());
     REQUIRE(result.files.empty());
@@ -1005,40 +943,24 @@ TEST_CASE("staging cleanup failure is not masked as canceled") {
     const auto source = root / "large-source.xlsx";
     const auto inputDirectory = root / "docs_entrada";
     createSparseFile(source, copyBytes);
-    const ssa::infra::importing::ImportFileStager stager(inputDirectory);
     std::stop_source stopSource;
-    auto operation = std::async(std::launch::async, [&] {
-        return stager.stageExternalFiles({source}, stopSource.get_token());
+    bool firstChunkWritten = false;
+    std::error_code permissionError;
+    const ssa::infra::importing::ImportFileStager stager(inputDirectory, [&] {
+        firstChunkWritten = true;
+        std::filesystem::permissions(
+            inputDirectory, std::filesystem::perms::owner_read | std::filesystem::perms::owner_exec,
+            std::filesystem::perm_options::replace, permissionError);
+        stopSource.request_stop();
     });
-    QElapsedTimer deadline;
-    deadline.start();
-    bool observedTemporary = false;
-    while (operation.wait_for(std::chrono::milliseconds{0}) != std::future_status::ready &&
-           deadline.elapsed() < 3'000) {
-        std::error_code error;
-        for (std::filesystem::directory_iterator iterator(inputDirectory, error), end;
-             !error && iterator != end; iterator.increment(error)) {
-            if (iterator->path().filename().string().find(".part") != std::string::npos &&
-                iterator->file_size(error) > 0 && !error) {
-                observedTemporary = true;
-                break;
-            }
-        }
-        if (observedTemporary) {
-            break;
-        }
-        QThread::msleep(1);
-    }
-    REQUIRE(observedTemporary);
-    std::filesystem::permissions(
-        inputDirectory, std::filesystem::perms::owner_read | std::filesystem::perms::owner_exec,
-        std::filesystem::perm_options::replace);
-    stopSource.request_stop();
-    REQUIRE(operation.wait_for(std::chrono::seconds{2}) == std::future_status::ready);
-    const auto result = operation.get();
+    const auto result = stager.stageExternalFiles({source}, stopSource.get_token());
+    std::error_code restoreError;
     std::filesystem::permissions(inputDirectory, std::filesystem::perms::owner_all,
-                                 std::filesystem::perm_options::replace);
+                                 std::filesystem::perm_options::replace, restoreError);
 
+    REQUIRE(firstChunkWritten);
+    REQUIRE_FALSE(permissionError);
+    REQUIRE_FALSE(restoreError);
     REQUIRE(result.rejectionReason == "staging_cleanup_failed");
     REQUIRE(result.diagnostic.find("operation=remove_copy_temporary") != std::string::npos);
     REQUIRE(result.diagnostic.find("path=" + inputDirectory.string()) != std::string::npos);

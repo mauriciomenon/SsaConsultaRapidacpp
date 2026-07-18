@@ -1,5 +1,7 @@
 #pragma once
 
+#include "infra/import/CancelableFileCopy.h"
+
 #include <filesystem>
 #include <stop_token>
 #include <string>
@@ -36,7 +38,8 @@ namespace ssa::infra::importing {
 
     class ImportFileStager final {
       public:
-        explicit ImportFileStager(std::filesystem::path inputFolder);
+        explicit ImportFileStager(std::filesystem::path inputFolder,
+                                  FileCopyFirstChunkWrittenHook afterFirstChunkWritten = {});
 
         [[nodiscard]] ImportStagingResult
         stageExternalFiles(const std::vector<std::filesystem::path>& files,
@@ -58,6 +61,7 @@ namespace ssa::infra::importing {
         stagedDestination(const StagedDestinationRequest& request) const;
 
         std::filesystem::path inputFolder_;
+        FileCopyFirstChunkWrittenHook afterFirstChunkWritten_;
     };
 
 } // namespace ssa::infra::importing

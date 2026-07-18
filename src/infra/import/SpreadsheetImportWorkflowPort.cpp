@@ -480,14 +480,15 @@ namespace ssa::infra::importing {
         std::vector<domain::ColumnDef> columns, const bool consolidateSources,
         SynchronizationSignals synchronization)
         : inputFolder_(inputFolder), databasePath_(databasePath), columns_(columns),
-          consolidateSources_(consolidateSources), stager_(inputFolder_),
+          consolidateSources_(consolidateSources),
+          stager_(inputFolder_, synchronization.afterFirstChunkWritten),
           consolidator_(inputFolder_), synchronization_(std::move(synchronization)),
           writer_(sqlite::SqliteSsaImportWriterAccess{}, databasePath, std::move(columns),
                   "ssa_table", {.busyEntered = synchronization_.writerBusyEntered}) {
         if (const auto resolved = resolvedImportFolder(inputFolder_, importLockPathDiagnostic_)) {
             inputFolder_ = *resolved;
             importLockPath_ = inputFolder_.parent_path() / ".ssa_import.lock";
-            stager_ = ImportFileStager(inputFolder_);
+            stager_ = ImportFileStager(inputFolder_, synchronization_.afterFirstChunkWritten);
             consolidator_ = ImportFileConsolidator(inputFolder_);
         }
     }

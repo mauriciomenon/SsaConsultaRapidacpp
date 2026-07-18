@@ -5,6 +5,7 @@
 #include <QTemporaryFile>
 
 #include <cstdint>
+#include <exception>
 #include <fstream>
 #include <optional>
 #include <system_error>
@@ -157,6 +158,7 @@ namespace ssa::infra::importing {
         }
 
         std::vector<char> buffer(kCopyBlockBytes);
+        bool firstChunkWritten = false;
         while (input) {
             if (canceled()) {
                 output.close();
@@ -175,6 +177,31 @@ namespace ssa::infra::importing {
                     return {FileCopyStatus::CleanupFailed, cleanupDiagnostic};
                 }
                 return {FileCopyStatus::Failed, "cannot write staged file copy"};
+            }
+            if (bytes > 0 && !firstChunkWritten) {
+                firstChunkWritten = true;
+                if (request.afterFirstChunkWritten) {
+                    std::string callbackDiagnostic;
+                    try {
+                        request.afterFirstChunkWritten();
+                    } catch (const std::exception& exception) {
+                        callbackDiagnostic =
+                            "staged file copy callback failed: " + std::string{exception.what()};
+                    } catch (...) {
+                        callbackDiagnostic =
+                            "staged file copy callback failed with non-standard exception";
+                    }
+                    if (!callbackDiagnostic.empty()) {
+                        output.close();
+                        const auto cleanupDiagnostic = removeTemporary();
+                        if (!cleanupDiagnostic.empty()) {
+                            callbackDiagnostic += "; ";
+                            callbackDiagnostic += cleanupDiagnostic;
+                            return {FileCopyStatus::CleanupFailed, std::move(callbackDiagnostic)};
+                        }
+                        return {FileCopyStatus::Failed, std::move(callbackDiagnostic)};
+                    }
+                }
             }
         }
         if (!input.eof()) {

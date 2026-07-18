@@ -21,6 +21,7 @@ namespace ssa::infra::importing {
         struct SynchronizationSignals {
             std::shared_ptr<SynchronizationSemaphore> writerBusyEntered;
             std::shared_ptr<SynchronizationSemaphore> snapshotLocked;
+            FileCopyFirstChunkWrittenHook afterFirstChunkWritten;
         };
 
         SpreadsheetImportWorkflowPort(std::filesystem::path inputFolder,
