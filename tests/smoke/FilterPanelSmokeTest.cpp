@@ -106,9 +106,7 @@ namespace {
                     request.columnKey == "setor_executor") {
                     stateCRequestBlocked_ = true;
                     stateCCondition_.notify_all();
-                    while (!releaseStateC_ && !stopToken.stop_requested()) {
-                        stateCCondition_.wait_for(lock, std::chrono::milliseconds{5});
-                    }
+                    stateCCondition_.wait(lock, stopToken, [this] { return releaseStateC_; });
                     stateCStopObserved_ = stopToken.stop_requested();
                     stateCRequestCompleted_ = true;
                 }
@@ -248,7 +246,7 @@ namespace {
       private:
         std::chrono::milliseconds distinctDelay_;
         mutable std::mutex mutex_;
-        mutable std::condition_variable stateCCondition_;
+        mutable std::condition_variable_any stateCCondition_;
         mutable std::vector<ssa::domain::DistinctValuesRequest> distinctRequests_;
         mutable std::vector<ssa::domain::SsaPageRequest> pageRequests_;
         bool blockStateC_{false};
@@ -331,7 +329,7 @@ namespace {
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
             ssa::presentation::FilterPanelViewModel filters(service);
 
-            QTest::qWait(400);
+            QTRY_VERIFY_WITH_TIMEOUT(!filters.backgroundWorkRunning(), 1000);
             const auto hasAdvancedRequest = [repository] {
                 const auto requests = repository->distinctRequests();
                 return std::ranges::any_of(requests, [](const auto& request) {
@@ -340,8 +338,10 @@ namespace {
             };
             QVERIFY(!hasAdvancedRequest());
 
+            QSignalSpy changed(&filters, &ssa::presentation::FilterPanelViewModel::changed);
             filters.setColumnValue("APV");
-            QTest::qWait(400);
+            QTRY_COMPARE_WITH_TIMEOUT(changed.count(), 1, 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(!filters.backgroundWorkRunning(), 1000);
             QVERIFY(!hasAdvancedRequest());
 
             filters.refreshColumnValueOptionsFor("setor_executor");
