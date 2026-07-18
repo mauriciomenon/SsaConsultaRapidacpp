@@ -4,23 +4,21 @@
 
 ### Sequencia ativa preservada
 
-1. Substituir a publicacao do rescan por SQLite Backup API no arquivo de
-   destino. `QSaveFile` troca o arquivo enquanto readers podem manter handles
-   abertos; SQLite classifica rename/unlink nessa condicao como comportamento
-   indefinido. Propagar busy wait e cancelamento, preservar banco/fontes na
-   falha e provar que um handle aberto observa o snapshot novo.
-2. Investigar por `EXPLAIN QUERY PLAN` a latencia medida de `page()` em 250 mil
-   linhas. Nao alterar indice ou SQL antes de separar custo do filtro, count e
-   rows.
-3. Completar profiling valido do prefetch; harness, 30 amostras e relatorio
+1. Compilar igualdade BINARY somente para `numero_ssa` canonico de 9 digitos.
+   `EXPLAIN QUERY PLAN` confirmou que `COLLATE NOCASE` causa dois scans; count e
+   rows devem usar `SEARCH ... (numero_ssa=?)`, preservando NOCASE nos campos
+   textuais e nos valores nao canonicos. Repetir o benchmark de 30 processos.
+2. Completar profiling valido do prefetch; harness, 30 amostras e relatorio
    isolado ja estao resolvidos no working tree. `xctrace` nao possui `Time
    Profiler` nesta instalacao e `CPU Counters` falhou com `DTServiceHub` e
    politica do kernel; nenhum credito de profiling foi atribuido.
-4. Validar `ImportFileConsolidator` em Windows/UNC real; o split local entre
+3. Validar `ImportFileConsolidator` em Windows/UNC real; o split local entre
    staging owned pre-commit e consolidacao post-commit ja esta implementado.
-5. Retirar espera e I/O SQLite de dentro de `derivedCountSummaryMutex_` sem
+4. Retirar espera e I/O SQLite de dentro de `derivedCountSummaryMutex_` sem
    permitir dois inicializadores; callers concorrentes devem usar fallback e
    continuar observando seu proprio stop token.
+5. Adicionar recheck WAL da publicacao do rescan: leitor em transacao deve
+   manter o snapshot antigo ate encerrar e observar o novo snapshot depois.
 6. Canonizar `clang-tidy` macOS com sysroot e reproduzir IDs das regras Semgrep
    antes de dividir fixtures.
 7. Revalidar em plataformas reais handles, URL UNC, PowerShell e packaging.
@@ -31,11 +29,13 @@ O credito novo pertence a `SQLITE-READ-CONNECTION-CHURN`, agora medido em 30
 processos e sem justificativa para pool. Findings descobertos depois da lista
 fixa de 14 itens nao reduzem retroativamente esse percentual.
 
-Fechamento de 2026-07-18: commits `91c60a1`, `eede38e`, `d54a693` e `4e74790`;
-build dev completo e o marco `581/581` permanecem validos. O novo target focado
-compilou, o smoke passou `1/1` em `0.37 s` e 30 amostras terminaram sem falha.
-Bitbucket foi confirmado em `4e74790`; GitLab continua bloqueado por OAuth
-`invalid_grant`.
+Fechamento de 2026-07-18: commits `91c60a1`, `eede38e`, `d54a693`, `4e74790` e
+`2dd9aec`. Em `4e74790`, build dev completo e o marco `581/581` permanecem
+validos; o benchmark focado passou `1/1` em `0.37 s` e 30 amostras terminaram
+sem falha. Em `2dd9aec`, o target de integracao compilou e o gate passou `3/3`
+e depois `7/7`.
+Bitbucket foi confirmado em `2dd9aec`; o push GitLab falhou por DNS nesta
+tentativa e o OAuth `invalid_grant` continua pendente fora do ambiente local.
 
 Ultimo fechamento: commit `e0b5401`, build e CTest da suite de painel `1/1`
 passaram em `2.96 s`. O polling de `activeFilterEntries()` continua pendente
@@ -161,19 +161,23 @@ Matriz completa de acertos, adicoes, erros e ordem de execucao:
   controlado. Pool ou handle persistente nao foi justificado; handlers e
   cancelamento por operacao permanecem preservados.
 
-- [P1-CORRECTNESS] [SQLITE-RESCAN-OPEN-HANDLE-PUBLICATION] O rescan publica o
-  working database por `QSaveFile`, que troca o arquivo de destino enquanto
-  readers QtConcurrent podem manter SQLite aberto. Em POSIX isso separa handles
-  antigos e novos sob o mesmo nome; no Windows a troca pode falhar. Aceite:
-  publicar pelo SQLite Backup API no handle de destino, respeitar busy wait e
-  stop token, preservar banco e fontes na falha e passar integrity check sem
-  sidecars misturados.
+- [RESOLVED] [SQLITE-RESCAN-OPEN-HANDLE-PUBLICATION] `2dd9aec` publica o
+  working database pelo SQLite Backup API no handle de destino, sem rename ou
+  unlink. Busy wait e cancelamento sao limitados pelo request; `SQLITE_DONE`
+  vence stop tardio porque o commit ja ocorreu. Os 3 REDs passaram `3/3` em
+  `0.22 s`, e o gate ampliado passou `7/7` em `0.35 s`, cobrindo leitor aberto,
+  fail-closed sob lock, integridade, sidecars, full rescan e cancelamento.
+  Resta recheck WAL e validacao Windows real, sem reabrir o finding POSIX.
 
-- [HIGH-MEASURE] [SQLITE-PAGE-FILTER-CONCURRENT-LATENCY] O benchmark real
+- [HIGH-CONFIRMED] [SQLITE-PAGE-FILTER-CONCURRENT-LATENCY] O benchmark real
   mediu 2,400 chamadas de `page()` com filtro exato em 250 mil linhas: wall
   p50/p95 `157.501/219.458 ms`; batch 4 x 20 p50/p95
-  `3281.940/14109.139 ms`. Separar com `EXPLAIN QUERY PLAN` o custo de count,
-  rows e predicado antes de propor indice ou mudanca SQL.
+  `3281.940/14109.139 ms`. `EXPLAIN QUERY PLAN` provou a causa: `Equals` em
+  `numero_ssa` adiciona `COLLATE NOCASE`, mas o indice e BINARY. No banco real,
+  count/rows atuais fizeram scan de 94,879 linhas em `43/71 ms`; sem NOCASE,
+  ambos usaram `SEARCH` em `2/<1 ms`. Proximo aceite: BINARY somente para SSA
+  canonica, NOCASE textual preservado, p95 de `page()` ate 25 ms e zero falha
+  nas 2,400 leituras.
 
 - [MED-CONCURRENCY] [DERIVED-SUMMARY-MUTEX-IO] A inicializacao do resumo de
   derivadas segura `derivedCountSummaryMutex_` durante lock e I/O SQLite. Uma
