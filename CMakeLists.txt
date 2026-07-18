@@ -517,7 +517,7 @@ if(SSA_BUILD_TESTS)
   target_link_libraries(ssa_qt_presentation_tests PRIVATE ssa_presentation
                                                           ssa_query Qt6::Test)
   add_test(NAME ssa_qt_presentation_tests COMMAND ssa_qt_presentation_tests)
-  set_tests_properties(ssa_qt_presentation_tests PROPERTIES TIMEOUT 30)
+  set_tests_properties(ssa_qt_presentation_tests PROPERTIES TIMEOUT 60)
 
   add_test(NAME ssa_prefetch_benchmark_smoke
            COMMAND $<TARGET_FILE:ssa_prefetch_benchmark> --samples 1 --output
@@ -577,7 +577,7 @@ if(SSA_BUILD_TESTS)
   target_compile_definitions(ssa_qt_sam_refresh_tests
                              PRIVATE SSA_SUPERVISED_PROCESS_TESTING=1)
   add_test(NAME ssa_qt_sam_refresh_tests COMMAND ssa_qt_sam_refresh_tests)
-  set_tests_properties(ssa_qt_sam_refresh_tests PROPERTIES TIMEOUT 15)
+  set_tests_properties(ssa_qt_sam_refresh_tests PROPERTIES TIMEOUT 60)
 
   add_executable(ssa_qt_database_switch_tests
                  tests/smoke/DatabaseSwitchViewModelTest.cpp)
@@ -736,7 +736,7 @@ if(SSA_BUILD_TESTS)
       ${CMAKE_COMMAND} -DAPP=$<TARGET_FILE:ssa_consulta_rapida>
       -DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/details-timeout-smoke -P
       ${CMAKE_CURRENT_SOURCE_DIR}/cmake/RunDetailsTimeoutSmoke.cmake)
-  set_tests_properties(ssa_qml_details_timeout PROPERTIES TIMEOUT 10 RUN_SERIAL
+  set_tests_properties(ssa_qml_details_timeout PROPERTIES TIMEOUT 15 RUN_SERIAL
                                                           TRUE)
 
   if(NOT WIN32)

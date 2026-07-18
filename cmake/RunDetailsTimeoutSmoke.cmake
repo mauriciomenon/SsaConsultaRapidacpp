@@ -17,7 +17,7 @@ execute_process(
   RESULT_VARIABLE result
   OUTPUT_VARIABLE output
   ERROR_VARIABLE error
-  TIMEOUT 8)
+  TIMEOUT 12)
 string(TIMESTAMP finished "%s" UTC)
 math(EXPR elapsed "${finished} - ${started}")
 

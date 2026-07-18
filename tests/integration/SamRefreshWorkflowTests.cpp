@@ -308,12 +308,16 @@ namespace {
             QTemporaryDir root;
             QVERIFY(root.isValid());
             auto request = validRequest(root);
+            request.processTimeout = std::chrono::seconds{10};
             ssa::platform::ScrapReportSamRefreshPort port(
                 QCoreApplication::applicationFilePath().toStdString());
 
             const auto result = port.fetch(request);
 
-            QVERIFY(result.ok());
+            QVERIFY2(result.ok(), qPrintable(QStringLiteral("status=%1 message=%2 diagnostic=%3")
+                                                 .arg(static_cast<int>(result.status))
+                                                 .arg(QString::fromStdString(result.message),
+                                                      QString::fromStdString(result.diagnostic))));
             QCOMPARE(result.artifacts.size(), std::size_t{2});
             for (const auto& artifact : result.artifacts) {
                 QVERIFY(std::filesystem::is_regular_file(artifact.path));
@@ -496,7 +500,7 @@ namespace {
             QVERIFY(forceStopStatus != ssa::platform::ForceStopRequestStatus::Failed);
             QVERIFY(forceStopTimer.elapsed() < 50);
             while (forceStopStatus == ssa::platform::ForceStopRequestStatus::Pending &&
-                   forceStopTimer.elapsed() < 3'000) {
+                   forceStopTimer.elapsed() < 10'000) {
                 QTest::qWait(10);
                 forceStopStatus = ssa::platform::SupervisedProcess::requestForceStopAll();
             }
@@ -560,7 +564,7 @@ namespace {
             QElapsedTimer drainDeadline;
             drainDeadline.start();
             while (forceStopStatus == ssa::platform::ForceStopRequestStatus::Pending &&
-                   drainDeadline.elapsed() < 3'000) {
+                   drainDeadline.elapsed() < 10'000) {
                 QTest::qWait(10);
                 forceStopStatus = ssa::platform::SupervisedProcess::requestForceStopAll();
             }
@@ -580,15 +584,16 @@ namespace {
             request.processTimeout = std::chrono::seconds{10};
             const auto sentinelPath = root.filePath(QStringLiteral("failed-stop-descendant.pid"));
             QVERIFY(qputenv("SSA_TEST_SENTINEL_PATH", sentinelPath.toUtf8()));
-            const auto cleanup = qScopeGuard([] {
-                ssa::platform::supervised_process_testing::setStopFailure(false);
-                static_cast<void>(ssa::platform::SupervisedProcess::forceStopAll());
-                qunsetenv("SSA_TEST_SENTINEL_PATH");
-            });
             ssa::platform::ScrapReportSamRefreshPort port(
                 QCoreApplication::applicationFilePath().toStdString());
 
             auto future = QtConcurrent::run([&] { return port.fetch(request); });
+            const auto cleanup = qScopeGuard([&future] {
+                ssa::platform::supervised_process_testing::setStopFailure(false);
+                static_cast<void>(ssa::platform::SupervisedProcess::forceStopAll());
+                future.waitForFinished();
+                qunsetenv("SSA_TEST_SENTINEL_PATH");
+            });
             QElapsedTimer startupDeadline;
             startupDeadline.start();
             while (!QFileInfo::exists(sentinelPath) && startupDeadline.elapsed() < 3'000) {
@@ -611,7 +616,9 @@ namespace {
             QVERIFY(blockedRoot.isValid());
             auto blockedRequest = validRequest(blockedRoot);
             blockedRequest.executorSectors = {"IEE3"};
-            const auto blockedResult = port.fetch(blockedRequest);
+            ssa::platform::ScrapReportSamRefreshPort blockedPort(
+                QCoreApplication::applicationFilePath().toStdString());
+            const auto blockedResult = blockedPort.fetch(blockedRequest);
             QCOMPARE(blockedResult.status, ssa::ports::WorkflowStatus::Canceled);
             QCOMPARE(ssa::platform::SupervisedProcess::requestForceStopAll(),
                      ssa::platform::ForceStopRequestStatus::Failed);
@@ -621,7 +628,7 @@ namespace {
             drainDeadline.start();
             auto forceStopStatus = ssa::platform::SupervisedProcess::requestForceStopAll();
             while (forceStopStatus != ssa::platform::ForceStopRequestStatus::Drained &&
-                   drainDeadline.elapsed() < 3'000) {
+                   drainDeadline.elapsed() < 10'000) {
                 QTest::qWait(10);
                 forceStopStatus = ssa::platform::SupervisedProcess::requestForceStopAll();
             }

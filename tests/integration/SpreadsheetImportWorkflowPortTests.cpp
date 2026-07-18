@@ -337,7 +337,52 @@ xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><s
     }
 
 #ifndef _WIN32
-    enum class FakeSofficeBehavior { Copy, Block, CopyThenBlock, CleanupFailure };
+    enum class FakeSofficeBehavior { Copy, Block, CopyThenBlock };
+
+    class SuccessfulConversionThenCancelRunner final : public ssa::ports::IExternalProcessRunner {
+      public:
+        explicit SuccessfulConversionThenCancelRunner(std::stop_source& stopSource)
+            : stopSource_(stopSource) {}
+
+        ssa::ports::ExternalProcessResult run(const ssa::ports::ExternalProcessRequest& request,
+                                              const std::stop_token& = {}) const override {
+            std::filesystem::path outputDirectory;
+            for (std::size_t index = 0; index + 1 < request.arguments.size(); ++index) {
+                if (request.arguments[index] == "--outdir") {
+                    outputDirectory = request.arguments[index + 1];
+                    break;
+                }
+            }
+            if (outputDirectory.empty() || request.arguments.empty()) {
+                return {ssa::ports::ExternalProcessStatus::StartFailed, -1,
+                        "fake conversion request is incomplete"};
+            }
+
+            const auto source = std::filesystem::path{request.arguments.back()};
+            auto generated = outputDirectory / source.stem();
+            generated.replace_extension(".xlsx");
+            std::error_code error;
+            std::filesystem::copy_file(source, generated,
+                                       std::filesystem::copy_options::overwrite_existing, error);
+            if (error) {
+                return {ssa::ports::ExternalProcessStatus::Failed, -1,
+                        "cannot create fake converted output: " + error.message()};
+            }
+            std::filesystem::permissions(outputDirectory,
+                                         std::filesystem::perms::owner_read |
+                                             std::filesystem::perms::owner_exec,
+                                         std::filesystem::perm_options::replace, error);
+            if (error) {
+                return {ssa::ports::ExternalProcessStatus::Failed, -1,
+                        "cannot restrict fake conversion directory: " + error.message()};
+            }
+            stopSource_.request_stop();
+            return {ssa::ports::ExternalProcessStatus::Succeeded, 0, {}};
+        }
+
+      private:
+        std::stop_source& stopSource_;
+    };
 
     std::filesystem::path
     writeFakeSoffice(const std::filesystem::path& directory,
@@ -383,10 +428,6 @@ stem="${base%.*}"
                       "    printf 'partial' > \"$outdir/$stem.xlsx\"\n"
                       "    while :; do sleep 1; done\n"
                       "fi\n";
-            break;
-        case FakeSofficeBehavior::CleanupFailure:
-            script << "cp \"$source\" \"$outdir/$stem.xlsx\"\n"
-                      "chmod 500 \"$outdir\"\n";
             break;
         }
         script.close();
@@ -1310,60 +1351,46 @@ TEST_CASE("legacy converter cancellation preserves destination and removes tempo
     }
 }
 
-TEST_CASE("legacy converter reports cleanup failure after canceled output copy") {
+TEST_CASE("legacy converter reports cleanup failure when output copy is canceled") {
     if (::geteuid() == 0) {
         SKIP("permission cleanup failure cannot be simulated as root");
     }
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
 
-    constexpr std::uintmax_t copyBytes = 128ULL * 1024ULL * 1024ULL;
     const auto root = std::filesystem::path{tempDir.path().toStdString()};
     const auto source = root / "source.xls";
     const auto destination = root / "output.xlsx";
-    createSparseFile(source, copyBytes);
-    const auto processRunner = std::make_shared<ssa::platform::SupervisedProcessRunner>();
-    const ssa::infra::importing::LegacySpreadsheetConverter converter(
-        writeFakeSoffice(root, FakeSofficeBehavior::CleanupFailure), processRunner);
-    std::stop_source stopSource;
-    auto operation = std::async(std::launch::async, [&] {
-        return converter.convertToXlsx({source, destination}, stopSource.get_token());
-    });
-    QElapsedTimer deadline;
-    deadline.start();
-    bool observedCopy = false;
-    while (operation.wait_for(std::chrono::milliseconds{0}) != std::future_status::ready &&
-           deadline.elapsed() < 3'000) {
-        std::error_code error;
-        for (std::filesystem::directory_iterator iterator(root, error), end;
-             !error && iterator != end; iterator.increment(error)) {
-            if (iterator->path().filename().string().find(".part") != std::string::npos &&
-                iterator->file_size(error) > 0 && !error) {
-                observedCopy = true;
-                stopSource.request_stop();
-                break;
-            }
-        }
-        QThread::msleep(1);
+    {
+        std::ofstream input(source, std::ios::binary);
+        input << "source";
+        REQUIRE(input.good());
     }
-    stopSource.request_stop();
-    const auto result = operation.get();
+    std::stop_source stopSource;
+    const auto processRunner = std::make_shared<SuccessfulConversionThenCancelRunner>(stopSource);
+    const ssa::infra::importing::LegacySpreadsheetConverter converter(writeFakeSoffice(root),
+                                                                      processRunner);
 
+    const auto result = converter.convertToXlsx({source, destination}, stopSource.get_token());
+
+    std::size_t cleanupDirectoryCount = 0;
     for (const auto& entry : std::filesystem::directory_iterator(root)) {
         if (entry.is_directory() &&
             entry.path().filename().string().starts_with("ssa_xls_conversion_")) {
+            ++cleanupDirectoryCount;
             std::filesystem::permissions(entry.path(), std::filesystem::perms::owner_all,
                                          std::filesystem::perm_options::replace);
             REQUIRE(std::filesystem::remove_all(entry.path()) > 0);
         }
     }
-    REQUIRE(observedCopy);
+    REQUIRE(cleanupDirectoryCount == 1);
     REQUIRE(result.status ==
             ssa::infra::importing::LegacySpreadsheetConversionStatus::CleanupFailed);
+    REQUIRE(result.message == "cannot clean canceled xls conversion");
     REQUIRE(result.diagnostic.find("cannot remove xls conversion temporary directory") !=
             std::string::npos);
     REQUIRE(result.diagnostic.find("path=") != std::string::npos);
-    REQUIRE(result.diagnostic.find("error=") != std::string::npos);
+    REQUIRE(result.diagnostic.find("error=temporary directory remains") != std::string::npos);
     REQUIRE_FALSE(std::filesystem::exists(destination));
 }
 #endif
