@@ -5,7 +5,46 @@ antes de interpretar sincronizacao Git, validacao local ou estado externo.
 
 Ultima verificacao local: 2026-07-18
 
-## Marco Activity, importacao parametrizada e SQLite
+## Fechamento de determinismo e filename timestamp
+
+- Branch `master`; HEAD de codigo `be20b99`. Bitbucket foi confirmado no mesmo
+  hash com divergencia `0/0`. O GitLab `origin` continua bloqueado por OAuth
+  `invalid_grant`; antes do commit documental, o HEAD local estava 61 commits a
+  frente de `origin/master`.
+- Plano original: `99.0/100`. O unico ponto sem aceite continua sendo 1.0 de
+  profiling valido do prefetch, bloqueado pela ferramenta local.
+- Divida nova: `13/14 = 92.9%`. `TEST-DETERMINISM-DELTA` e
+  `IMPORT-FILENAME-TIMESTAMP-SCAN` receberam aceite binario; resta somente
+  `IMPORT-STAGER-HUB`, dependente de Windows/UNC real.
+- Backlog legado: `0.0/100`, mantido apenas como placeholder historico sem
+  denominador aceito.
+- Fila prioritaria operacional: `4/8 = 50.0%`. Busy wait, gate de schema,
+  determinismo e benchmark de filename estao resolvidos. Restam profiling,
+  tooling local e dois pacotes de prova multiplataforma.
+- Os commits de `785c73e` ate `bcb7980` substituem sleeps, polling e esperas
+  artificiais por barreiras causais, sinais, clocks injetados, hooks
+  post-commit e gates terminais. A matriz focada passou `26/26` em `28.38 s`.
+  O mapper passou `30/30` em `2.21 s`; seu wait curto foi preservado como janela
+  temporal deliberada. Waits residuais observam filesystem, processos, SQLite,
+  timers ou cancelamento reais. Nenhum timeout foi aceito como sucesso.
+- O CTest sequencial passou `595/595` em `66.86 s`. Depois, o novo smoke do
+  benchmark elevou o registro configurado para 596; portanto, o full nao inclui
+  esse smoke. O gate focado do benchmark passou `3/3` em `0.41 s` e o recheck
+  passou `3/3` em `0.13 s`.
+- `be20b99` mede timestamp de filename em 30 processos, 12,000 parses e
+  `2.00 s`. O p95 foi `783.3 ns` para ISO no inicio e no maximo
+  `178269.15 ns`, ou `0.178 ms`, no corpus adversarial. O parser atual e O(n);
+  a medicao nao justifica otimizacao.
+- Security ampla atual: Semgrep `509` arquivos, `24` regras e zero finding;
+  Gitleaks `1.42 GB` e zero leak; TruffleHog `9,226` chunks e zero segredo
+  verificado ou desconhecido.
+
+Proxima atividade unica: canonizar clang-tidy no macOS com sysroot e reproduzir
+os IDs das regras Semgrep. O profiling permanece bloqueado pela ferramenta;
+depois do tooling, executar as provas externas Windows/UNC, handles,
+PowerShell e packaging.
+
+## Historico anterior: Marco Activity, importacao parametrizada e SQLite
 
 - Branch: `master`.
 - HEAD de codigo validado: `b2369ac`, precedido por `7291082`, `0025d44` e

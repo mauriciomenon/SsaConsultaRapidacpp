@@ -4,49 +4,70 @@
 
 ### Sequencia ativa preservada
 
-1. Fechar `TEST-DETERMINISM-DELTA` por suite, sem remover espera que represente
-   contrato temporal real e sem aceitar timeout como sucesso.
-2. Executar benchmark temporal formal de `IMPORT-FILENAME-TIMESTAMP-SCAN` com
-   30 processos e corpus adversarial; otimizar apenas se houver gargalo medido.
-3. Completar profiling valido do prefetch; harness, 30 amostras e relatorio
+1. Canonizar `clang-tidy` macOS com sysroot e reproduzir IDs das regras Semgrep
+   antes de dividir fixtures.
+2. Completar profiling valido do prefetch; harness, 30 amostras e relatorio
    isolado ja estao resolvidos no working tree. `xctrace` nao possui `Time
    Profiler` nesta instalacao e `CPU Counters` falhou com `DTServiceHub` e
    politica do kernel; nenhum credito de profiling foi atribuido.
-4. Canonizar `clang-tidy` macOS com sysroot e reproduzir IDs das regras Semgrep
-   antes de dividir fixtures.
-5. Validar `ImportFileConsolidator` e URL de grafo em Windows/UNC real; o split
+3. Validar `ImportFileConsolidator` e URL de grafo em Windows/UNC real; o split
    local entre staging owned pre-commit e consolidacao post-commit ja esta
    implementado.
-6. Revalidar handles, PowerShell e packaging em plataformas reais.
+4. Revalidar handles, PowerShell e packaging em plataformas reais.
 
 ### Controle operacional auditavel
 
-Fila de fechamento principal: `2/8 = 25.0%`.
+Fila de fechamento principal: `4/8 = 50.0%`.
 
 | Pacote | Estado | Efeito no contador |
 | --- | --- | --- |
 | Busy wait integral de importacao | Resolvido em `7291082` | `1/8` |
 | Gate transacional de schema SQLite | Resolvido em `b2369ac` | `2/8` |
-| `TEST-DETERMINISM-DELTA` | Pendente local | Leva a `3/8` |
-| `IMPORT-FILENAME-TIMESTAMP-SCAN` | Pendente local | Leva a `4/8` |
+| `TEST-DETERMINISM-DELTA` | Resolvido em `785c73e..bcb7980` | `3/8` |
+| `IMPORT-FILENAME-TIMESTAMP-SCAN` | Resolvido em `be20b99` | `4/8` |
 | Profiling valido do prefetch | Bloqueado pela ferramenta local | Leva a `5/8` |
 | Tooling clang-tidy/Semgrep | Pendente local | Leva a `6/8` |
 | Importacao e grafo Windows/UNC | Pendente externo | Leva a `7/8` |
 | Handles, PowerShell e packaging reais | Pendente externo | Leva a `8/8` |
 
-Os tres itens nao aceitos do denominador fixo de 14 sao exatamente
-`IMPORT-STAGER-HUB`, `IMPORT-FILENAME-TIMESTAMP-SCAN` e
-`TEST-DETERMINISM-DELTA`. Fechar determinismo e filename move a divida nova de
-`11/14 = 78.6%` para `13/14 = 92.9%`. O item restante exige Windows/UNC real.
+O unico item nao aceito do denominador fixo de 14 e `IMPORT-STAGER-HUB`.
+Determinismo e filename elevaram a divida nova para `13/14 = 92.9%`; o item
+restante exige Windows/UNC real.
 O `0.0/100` legado abaixo e placeholder historico sem denominador, nao medida de
 execucao; nao deve ser usado isoladamente em reports futuros.
 
-Contadores auditados: plano original `99.0/100`, divida nova `78.6/100`
-(11 de 14 itens enumerados aceitos) e backlog legado `0.0/100`, sem denominador
+Contadores auditados: plano original `99.0/100`, divida nova `92.9/100`
+(13 de 14 itens enumerados aceitos) e backlog legado `0.0/100`, sem denominador
 aceito.
-O credito novo pertence a `SQLITE-READ-CONNECTION-CHURN`, agora medido em 30
-processos e sem justificativa para pool. Findings descobertos depois da lista
-fixa de 14 itens nao reduzem retroativamente esse percentual.
+Os creditos recentes pertencem a `TEST-DETERMINISM-DELTA` e
+`IMPORT-FILENAME-TIMESTAMP-SCAN`. Findings descobertos depois da lista fixa de
+14 itens nao reduzem retroativamente esse percentual.
+
+### Fechamento local de determinismo e filename
+
+- HEAD de codigo `be20b99`; Bitbucket confirmado com divergencia `0/0`. GitLab
+  segue bloqueado por OAuth `invalid_grant`; antes do commit documental, o HEAD
+  local estava 61 commits a frente de `origin/master`.
+- [RESOLVED] [TEST-DETERMINISM-DELTA] Os commits de `785c73e` ate `bcb7980`
+  substituem esperas artificiais por barreiras causais, sinais, clock injetado,
+  hook post-commit e gates terminais. A matriz focada passou `26/26` em
+  `28.38 s`; o mapper passou `30/30` em `2.21 s` e preservou a janela temporal
+  deliberada. Waits restantes observam filesystem, processos, SQLite, timers
+  ou cancelamento reais. Nenhum timeout recebeu credito.
+- [RESOLVED-BENCHMARK] [IMPORT-FILENAME-TIMESTAMP-SCAN] `be20b99` adiciona o
+  harness formal. Target e build passaram; o gate passou `3/3` em `0.41 s` e o
+  recheck `3/3` em `0.13 s`. Foram 30 processos, 12,000 parses e `2.00 s`, com
+  p95 de `783.3 ns` para ISO no inicio e maximo adversarial de
+  `178269.15 ns`, ou `0.178 ms`. O parser e O(n) e nenhuma otimizacao foi
+  justificada.
+- O CTest sequencial passou `595/595` em `66.86 s` antes da inclusao do novo
+  smoke. O registro configurado atual e 596; o full nao inclui o teste 596.
+- Security ampla: Semgrep `509` arquivos, `24` regras e zero finding; Gitleaks
+  `1.42 GB` e zero leak; TruffleHog `9,226` chunks e zero segredo.
+
+Proxima atividade unica: canonizar clang-tidy macOS com sysroot e reproduzir
+IDs Semgrep. O profiling continua bloqueado pela ferramenta; depois seguem as
+provas externas Windows/UNC, handles, PowerShell e packaging.
 
 Fechamento de 2026-07-18: HEAD de codigo `b2369ac`, precedido por `7291082`,
 `0025d44` e `7f396b0`. `610fbf3` fecha o recheck WAL por snapshot. Em
