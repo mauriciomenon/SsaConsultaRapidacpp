@@ -5,6 +5,39 @@ antes de interpretar sincronizacao Git, validacao local ou estado externo.
 
 Ultima verificacao local: 2026-07-18
 
+## Handshake causal dos crash probes SQLite - 2026-07-18
+
+- Branch `master`; codigo em `6bcf65e`, confirmado no Bitbucket. GitLab
+  `origin` continua bloqueado por OAuth `invalid_grant`; isto e dependencia
+  externa e nao equivale a falha de codigo ou a publicacao confirmada no GitLab.
+- Os tres contratos de crash deixam de observar arquivos por polling e aguardam
+  `READY\n` no stdout do probe. O probe grava o marker atomico com `QSaveFile`
+  antes do token; o parser acumula bytes para tolerar leitura parcial, e o
+  watchdog de 5 s continua apenas como falha, nunca como sucesso.
+- Para `journal-delete-before-commit`, `pendingConsolidation()` usa writer sem
+  instrumentacao; um segundo writer observado recebe `busyEntered` somente em
+  `completeConsolidation`. A `jthread` publica `READY` apos a primeira
+  contencao do DELETE/COMMIT e seu `stop_callback` libera o semaforo se o probe
+  sair por erro, evitando deadlock no destrutor. O teste ainda exige `-journal`
+  antes do kill.
+- RED esperado: os tres contratos falharam sem protocolo `READY`. O primeiro
+  review Terra ultra encontrou P1 de sinal possivel na leitura previa; foi
+  corrigido pelo writer observado separado. Review final Terra ultra: `SEM
+  FINDINGS`. `clawpatch` local ficou indisponivel por configuracao/modelo
+  externo incompativel e nao conta como review concluido.
+- Gate local: diff, clang-format, detect-secrets e Semgrep (`2` regras, zero
+  finding) limpos; build de `ssa_integration_tests`; CTest causal `3/3` em
+  `0.36 s`; workflow `174/174` em `7.38 s`; journal-before-commit repetido
+  `10x` em `0.78 s`. Hooks staged passaram clang-format, Gitleaks,
+  detect-secrets e TruffleHog.
+- Contadores sem inflacao: plano original `99.0/100`; divida nova
+  `13/14 = 92.9%`; backlog legado `0.0/100` placeholder e fila operacional
+  `5/8 = 62.5%`. Nenhum credito funcional foi atribuido.
+
+Proxima atividade unica: priorizar por risco a proxima pendencia local de
+confiabilidade de importacao/SQLite fora do denominador fixo, sem tentar simular
+Windows/UNC ou inflar os contadores.
+
 ## Cancelamento causal do conversor legacy - 2026-07-18
 
 - Branch `master`; codigo em `0172f2e`, confirmado no Bitbucket. GitLab

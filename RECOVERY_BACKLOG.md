@@ -1,5 +1,31 @@
 # Recovery Backlog
 
+## Handshake causal dos crash probes SQLite - 2026-07-18
+
+- [RESOLVED-LOCAL] [SQLITE-CRASH-PROBE-CAUSAL] `6bcf65e` troca tres polls de
+  marker/journal nos contratos de crash por `READY\n` em stdout, emitido somente
+  depois do marker `QSaveFile` atomico. O consumidor acumula dados para leitura
+  parcial e mantem timeout apenas como watchdog de falha.
+- Em `journal-delete-before-commit`, o lookup pendente usa writer normal e o
+  writer observado existe somente no DELETE/COMMIT. Assim `busyEntered` prova
+  a fase mutavel correta, nao um `SQLITE_BUSY` incidental da leitura. A
+  `jthread` tem `stop_callback` que libera o semaforo no caminho de erro, sem
+  deadlock de join.
+- O RED falhou `3/3` sem token. Review Terra ultra encontrou P1 de fase e foi
+  corrigido antes do review final `SEM FINDINGS`. Gates: CTest causal `3/3` em
+  `0.36 s`, workflow `174/174` em `7.38 s` e journal `10x` em `0.78 s`.
+  Diff, formato, detect-secrets e Semgrep limpos; hook staged passou Gitleaks e
+  TruffleHog. Bitbucket confirma `6bcf65e`; GitLab `origin` segue OAuth
+  `invalid_grant`.
+- `clawpatch` nao validou o diff porque sua configuracao local referencia modelo
+  incompativel e feature externo sem arquivo legivel. Isto permanece dependencia
+  de tooling, sem finding de codigo e sem alegacao de sucesso.
+- Sem credito novo: plano `99.0/100`, divida nova `13/14 = 92.9%`, legado
+  placeholder `0.0/100`, fila operacional `5/8 = 62.5%`.
+
+Proxima atividade unica: selecionar por risco a proxima pendencia local de
+confiabilidade de importacao/SQLite fora do denominador fixo.
+
 ## Cancelamento causal do conversor legacy - 2026-07-18
 
 - [RESOLVED-LOCAL] [LEGACY-CONVERTER-CANCEL-CAUSAL] `0172f2e` substitui o
