@@ -5,6 +5,33 @@ antes de interpretar sincronizacao Git, validacao local ou estado externo.
 
 Ultima verificacao local: 2026-07-18
 
+## Determinismo causal do repositorio SQLite - 2026-07-18
+
+- Branch `master`; HEAD de codigo `28700b3`. Bitbucket confirma o mesmo hash;
+  GitLab `origin` segue bloqueado por OAuth `invalid_grant`. O local esta `71`
+  commits a frente de `origin/master`.
+- `28700b3` remove o polling do arquivo de lock e as esperas de `10/50 ms` dos
+  contratos de derived summary e query lenta. Os testes agora aguardam eventos
+  reais: `QLockFile` adquirido, primeira callback busy e primeira callback de
+  progress SQLite.
+- A seam opcional mantem ownership por `shared_ptr<counting_semaphore>`; a
+  construcao normal usa sinais nulos e preserva comportamento. Review Terra
+  encontrou P2 de lifetime/overflow e o gate encontrou P1 de tipo entre handlers
+  e repositorio; ambos foram corrigidos. Review final Terra ultra: `SEM FINDINGS`.
+- Gate: diff, clang-format, cppcheck, detect-secrets e Semgrep (`62` regras)
+  limpos. `clang-tidy` so reportou aviso preexistente de `stop_token` por valor.
+  Build afetado passou; familia SQLite Repository completa passou `31/31` em
+  `0.68 s`. Hooks do commit passaram formatacao, Gitleaks, detect-secrets e
+  TruffleHog.
+- Contadores sem mudanca: plano original `99.0/100`; divida nova
+  `13/14 = 92.9%`; backlog legado `0.0/100` como placeholder; fila operacional
+  `5/8 = 62.5%`. Este e hardening adicional, sem credito retroativo.
+- Restam waits de `50 ms` em maintenance e derivadas, fora deste corte e sem
+  regressao demonstrada. Nenhum timeout foi tratado como sucesso.
+
+Proxima atividade unica: medir e provar equivalencia do macro report com
+`COUNT(DISTINCT)` em SQL antes de migrar o calculo em memoria.
+
 ## Indice status-last de producao - 2026-07-18
 
 - Branch `master`; HEAD de codigo `4396e1c`. Bitbucket foi confirmado no mesmo

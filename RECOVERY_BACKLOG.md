@@ -1,5 +1,25 @@
 # Recovery Backlog
 
+## Determinismo causal do repositorio SQLite - 2026-07-18
+
+- [RESOLVED-LOCAL] `28700b3` substitui o polling de lock e waits arbitrarios de
+  `10/50 ms` por sinais causais: lock de escrita adquirido, callback busy e
+  callback progress SQLite. A seam e opcional, com `shared_ptr` de semaforo de
+  contagem; producao usa todos os sinais nulos.
+- Review Terra encontrou P2 de lifetime/overflow dos semaforos; a correcao
+  passou a reter ownership. O gate encontrou P1 de incompatibilidade de tipo,
+  corrigido por alias unico dos handlers. Review final Terra ultra: `SEM FINDINGS`.
+- Gates locais limpos: diff, clang-format, cppcheck, detect-secrets e Semgrep
+  `62` regras/zero finding; `clang-tidy` so um aviso preexistente. Build passou;
+  familia SQLite Repository `31/31` em `0.68 s`. Hooks staged passaram Gitleaks
+  e TruffleHog.
+- Bitbucket confirma `28700b3`; GitLab `origin` segue OAuth `invalid_grant`;
+  local `71` commits a frente. Contadores sem inflacao: plano `99.0/100`, divida
+  nova `13/14 = 92.9%`, legado placeholder `0.0/100`, fila `5/8 = 62.5%`.
+
+Proxima atividade unica: medir a equivalencia e o custo do macro report
+`COUNT(DISTINCT)` antes de remover a agregacao em memoria.
+
 ## Indice status-last de producao - 2026-07-18
 
 - [RESOLVED-LOCAL] `4396e1c` instala no writer o indice de expressao
