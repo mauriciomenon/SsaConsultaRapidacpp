@@ -4185,6 +4185,84 @@ TEST_CASE("rescan keeps an open reader attached to the published database") {
     REQUIRE_FALSE(std::filesystem::exists(dbPath.string() + "-shm"));
 }
 
+TEST_CASE("full rescan preserves a WAL reader snapshot across backup publication") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    ssa::infra::importing::ResolvedSsaImportRows seedRows;
+    seedRows.rows.push_back({{"numero_ssa", "202600127"}, {"descricao_ssa", "Snapshot antigo"}});
+    const ssa::infra::sqlite::SqliteSsaImportWriter seedWriter(sqliteWriterAccess(), dbPath,
+                                                               importColumns());
+    REQUIRE(seedWriter.write(seedRows, 1, 0, false).rowsWritten == 1);
+
+    ssa::infra::sqlite::SqliteConnection reader(dbPath,
+                                                ssa::infra::sqlite::SqliteOpenMode::ReadWrite);
+    REQUIRE(scalarText(reader.handle(), "PRAGMA journal_mode=WAL") == "wal");
+    REQUIRE(sqlite3_exec(reader.handle(), "BEGIN", nullptr, nullptr, nullptr) == SQLITE_OK);
+    REQUIRE(scalarInt(reader.handle(),
+                      "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600127'") == 1);
+    REQUIRE(scalarInt(reader.handle(),
+                      "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600128'") == 0);
+
+    const auto workbook = inputDirectory / "wal-reader.xlsx";
+    writeWorkbook(
+        workbook,
+        row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao")}) +
+            row(2, {inlineCell("A2", "202600128"), inlineCell("B2", "ASE"),
+                    inlineCell("C2", "Backup publication"), inlineCell("D2", "2026-07-01")}));
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+
+    const auto result = port.rescan({ssa::ports::RescanMode::Full});
+    const auto oldReaderOldRows =
+        scalarInt(reader.handle(), "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600127'");
+    const auto oldReaderNewRows =
+        scalarInt(reader.handle(), "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600128'");
+    int publishedOldRows = 0;
+    int publishedNewRows = 0;
+    std::string publishedIntegrity;
+    {
+        ssa::infra::sqlite::SqliteConnection published(dbPath);
+        publishedOldRows = scalarInt(published.handle(),
+                                     "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600127'");
+        publishedNewRows = scalarInt(published.handle(),
+                                     "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600128'");
+        publishedIntegrity = scalarText(published.handle(), "PRAGMA integrity_check");
+    }
+    const auto rollbackResult =
+        sqlite3_exec(reader.handle(), "ROLLBACK", nullptr, nullptr, nullptr);
+    const auto refreshedOldRows =
+        scalarInt(reader.handle(), "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600127'");
+    const auto refreshedNewRows =
+        scalarInt(reader.handle(), "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600128'");
+    const auto refreshedIntegrity = scalarText(reader.handle(), "PRAGMA integrity_check");
+    const auto sourceExists = std::filesystem::exists(workbook);
+    const auto processedExists =
+        std::filesystem::exists(inputDirectory / "processadas" / workbook.filename());
+
+    INFO(result.message);
+    INFO(result.diagnostic);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE_FALSE(result.warning);
+    REQUIRE(oldReaderOldRows == 1);
+    REQUIRE(oldReaderNewRows == 0);
+    REQUIRE(publishedOldRows == 0);
+    REQUIRE(publishedNewRows == 1);
+    REQUIRE(publishedIntegrity == "ok");
+    REQUIRE(rollbackResult == SQLITE_OK);
+    REQUIRE(refreshedOldRows == 0);
+    REQUIRE(refreshedNewRows == 1);
+    REQUIRE(refreshedIntegrity == "ok");
+    REQUIRE_FALSE(sourceExists);
+    REQUIRE(processedExists);
+}
+
 TEST_CASE("full rescan fails closed when publication cannot acquire the destination") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
