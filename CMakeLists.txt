@@ -368,6 +368,16 @@ add_custom_target(
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
   USES_TERMINAL)
 
+add_custom_target(
+  run_sqlite_status_last_benchmark_30
+  COMMAND
+    $<TARGET_FILE:ssa_sqlite_read_connection_benchmark> --status-last --samples
+    30 --rows 250000 --output
+    ${CMAKE_BINARY_DIR}/sqlite-status-last-benchmark-30.json
+  DEPENDS ssa_sqlite_read_connection_benchmark
+  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+  USES_TERMINAL)
+
 add_executable(ssa_filename_timestamp_benchmark
                tools/filename_timestamp_benchmark.cpp)
 target_link_libraries(ssa_filename_timestamp_benchmark PRIVATE ssa_domain
@@ -546,6 +556,15 @@ if(SSA_BUILD_TESTS)
       1000 --operations 100 --threads 4 --reads-per-thread 20 --output
       ${CMAKE_CURRENT_BINARY_DIR}/sqlite-read-connection-benchmark-smoke.json)
   set_tests_properties(ssa_sqlite_read_connection_benchmark_smoke
+                       PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
+
+  add_test(
+    NAME ssa_sqlite_status_last_benchmark_smoke
+    COMMAND
+      $<TARGET_FILE:ssa_sqlite_read_connection_benchmark> --status-last
+      --samples 1 --rows 1000 --output
+      ${CMAKE_CURRENT_BINARY_DIR}/sqlite-status-last-benchmark-smoke.json)
+  set_tests_properties(ssa_sqlite_status_last_benchmark_smoke
                        PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
 
   add_test(

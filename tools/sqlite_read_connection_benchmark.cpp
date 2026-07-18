@@ -29,6 +29,7 @@
 #endif
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -66,6 +67,13 @@ namespace {
     constexpr int kBurnInOperations = 10;
     constexpr std::int64_t kFirstSsaNumber = 700'000'000;
     constexpr int kWorkerTimeoutMs = 60'000;
+    constexpr std::string_view kStatusLastQuery =
+        "SELECT numero_ssa, descricao_ssa, situacao FROM ssa_table ORDER BY CASE WHEN "
+        "UPPER(COALESCE(situacao, '')) <> 'STE' THEN 0 ELSE 1 END ASC, numero_ssa DESC LIMIT 50";
+    constexpr std::string_view kStatusLastIndexName = "idx_ssa_table_status_last_numero_ssa_desc";
+    constexpr std::string_view kStatusLastIndexSql =
+        "CREATE INDEX idx_ssa_table_status_last_numero_ssa_desc ON ssa_table(CASE WHEN "
+        "UPPER(COALESCE(situacao, '')) <> 'STE' THEN 0 ELSE 1 END ASC, numero_ssa DESC)";
 
     struct Metric final {
         double wallMs{0.0};
@@ -80,6 +88,13 @@ namespace {
         int operations{0};
         int threads{0};
         int readsPerThread{0};
+    };
+
+    using StatusLastRows = std::vector<std::array<std::string, 3>>;
+
+    struct StatusLastVariant final {
+        std::vector<Metric> metrics;
+        std::vector<StatusLastRows> rows;
     };
 
     [[nodiscard]] std::string canonicalNumber(const std::size_t offset) {
@@ -238,7 +253,7 @@ namespace {
         };
         sqlite3_stmt* insert = nullptr;
         const char* sql =
-            "INSERT INTO ssa_table(numero_ssa, descricao_ssa, situacao) VALUES(?, ?, 'APV')";
+            "INSERT INTO ssa_table(numero_ssa, descricao_ssa, situacao) VALUES(?, ?, ?)";
         if (sqlite3_prepare_v2(database, sql, -1, &insert, nullptr) != SQLITE_OK) {
             error = sqlite3_errmsg(database);
             return rollbackAndClose();
@@ -247,10 +262,12 @@ namespace {
         for (std::size_t index = 0; index < rows; ++index) {
             const auto number = canonicalNumber(index);
             const auto description = "Fixture " + number;
+            const char* const status = index % 5 == 0 ? "STE" : "APV";
             inserted =
                 sqlite3_bind_text(insert, 1, number.c_str(), -1, SQLITE_TRANSIENT) == SQLITE_OK &&
                 sqlite3_bind_text(insert, 2, description.c_str(), -1, SQLITE_TRANSIENT) ==
                     SQLITE_OK &&
+                sqlite3_bind_text(insert, 3, status, -1, SQLITE_STATIC) == SQLITE_OK &&
                 sqlite3_step(insert) == SQLITE_DONE;
             if (!inserted) {
                 error = sqlite3_errmsg(database);
@@ -510,6 +527,166 @@ namespace {
         rss.push_back(object.value(QStringLiteral("rss_delta_bytes")).toDouble());
     }
 
+    [[nodiscard]] StatusLastRows statusLastRows(sqlite3* database) {
+        sqlite3_stmt* statement = nullptr;
+        if (sqlite3_prepare_v2(database, kStatusLastQuery.data(),
+                               static_cast<int>(kStatusLastQuery.size()), &statement,
+                               nullptr) != SQLITE_OK) {
+            throw std::runtime_error(sqlite3_errmsg(database));
+        }
+        StatusLastRows rows;
+        int result = SQLITE_OK;
+        while ((result = sqlite3_step(statement)) == SQLITE_ROW) {
+            StatusLastRows::value_type row;
+            for (int column = 0; column < 3; ++column) {
+                const auto* value = sqlite3_column_text(statement, column);
+                if (value == nullptr) {
+                    sqlite3_finalize(statement);
+                    throw std::runtime_error("status-last query returned a null fixture value");
+                }
+                row[static_cast<std::size_t>(column)] = reinterpret_cast<const char*>(value);
+            }
+            rows.push_back(std::move(row));
+        }
+        const int finalizeResult = sqlite3_finalize(statement);
+        if (result != SQLITE_DONE || finalizeResult != SQLITE_OK) {
+            throw std::runtime_error(sqlite3_errmsg(database));
+        }
+        return rows;
+    }
+
+    [[nodiscard]] QJsonArray statusLastPlan(sqlite3* database) {
+        sqlite3_stmt* statement = nullptr;
+        const std::string explain = "EXPLAIN QUERY PLAN " + std::string(kStatusLastQuery);
+        if (sqlite3_prepare_v2(database, explain.c_str(), -1, &statement, nullptr) != SQLITE_OK) {
+            throw std::runtime_error(sqlite3_errmsg(database));
+        }
+        QJsonArray plan;
+        int result = SQLITE_OK;
+        while ((result = sqlite3_step(statement)) == SQLITE_ROW) {
+            const auto* detail = sqlite3_column_text(statement, 3);
+            if (detail == nullptr) {
+                sqlite3_finalize(statement);
+                throw std::runtime_error("status-last query plan returned a null detail");
+            }
+            plan.append(QString::fromUtf8(reinterpret_cast<const char*>(detail)));
+        }
+        const int finalizeResult = sqlite3_finalize(statement);
+        if (result != SQLITE_DONE || finalizeResult != SQLITE_OK) {
+            throw std::runtime_error(sqlite3_errmsg(database));
+        }
+        return plan;
+    }
+
+    [[nodiscard]] bool planContains(const QJsonArray& plan, const std::string_view text) {
+        return std::any_of(plan.cbegin(), plan.cend(), [text](const QJsonValue& entry) {
+            return entry.toString().contains(
+                QString::fromLatin1(text.data(), static_cast<qsizetype>(text.size())));
+        });
+    }
+
+    [[nodiscard]] StatusLastVariant runStatusLastVariant(sqlite3* database, const int samples) {
+        StatusLastVariant variant;
+        variant.metrics.reserve(static_cast<std::size_t>(samples));
+        variant.rows.reserve(static_cast<std::size_t>(samples));
+        for (int index = 0; index < samples; ++index) {
+            auto [rows, metric] = measure([&] { return statusLastRows(database); });
+            variant.metrics.push_back(metric);
+            variant.rows.push_back(std::move(rows));
+        }
+        return variant;
+    }
+
+    [[nodiscard]] QJsonObject statusLastVariantJson(const StatusLastVariant& variant) {
+        QJsonArray metrics;
+        std::vector<double> wall;
+        std::vector<double> cpu;
+        std::vector<double> rss;
+        wall.reserve(variant.metrics.size());
+        cpu.reserve(variant.metrics.size());
+        rss.reserve(variant.metrics.size());
+        for (const auto& metric : variant.metrics) {
+            metrics.append(metricJson(metric));
+            wall.push_back(metric.wallMs);
+            cpu.push_back(metric.cpuMs);
+            rss.push_back(static_cast<double>(metric.rssDelta));
+        }
+        return {{QStringLiteral("metrics"), metrics},
+                {QStringLiteral("summary"),
+                 QJsonObject{{QStringLiteral("wall_ms"), summary(wall)},
+                             {QStringLiteral("cpu_ms"), summary(cpu)},
+                             {QStringLiteral("rss_delta_bytes"), summary(rss)}}}};
+    }
+
+    [[nodiscard]] QJsonObject runStatusLastBenchmark(const std::filesystem::path& path,
+                                                     const std::size_t rows, const int samples) {
+        sqlite3* database = nullptr;
+        const auto encodedPath = ssa::qt::toUtf8(path);
+        if (sqlite3_open_v2(encodedPath.c_str(), &database, SQLITE_OPEN_READWRITE, nullptr) !=
+            SQLITE_OK) {
+            const std::string error =
+                database == nullptr ? "cannot open status-last fixture" : sqlite3_errmsg(database);
+            if (database != nullptr) {
+                sqlite3_close(database);
+            }
+            throw std::runtime_error(error);
+        }
+        try {
+            const auto baselinePlan = statusLastPlan(database);
+            const auto baseline = runStatusLastVariant(database, samples);
+            std::string error;
+            if (!execute(database, std::string(kStatusLastIndexSql), error)) {
+                throw std::runtime_error(error);
+            }
+            const auto indexedPlan = statusLastPlan(database);
+            const auto indexed = runStatusLastVariant(database, samples);
+            const auto& expectedRows = baseline.rows.front();
+            const bool resultVectorsMatch =
+                std::all_of(
+                    baseline.rows.cbegin(), baseline.rows.cend(),
+                    [&expectedRows](const StatusLastRows& rows) { return rows == expectedRows; }) &&
+                std::all_of(
+                    indexed.rows.cbegin(), indexed.rows.cend(),
+                    [&expectedRows](const StatusLastRows& rows) { return rows == expectedRows; });
+            const bool indexedUsesStatusLastIndex = planContains(indexedPlan, kStatusLastIndexName);
+            const bool indexedUsesTempBtree = planContains(indexedPlan, "TEMP B-TREE");
+            if (!resultVectorsMatch || !indexedUsesStatusLastIndex || indexedUsesTempBtree) {
+                throw std::runtime_error(
+                    "status-last benchmark result or indexed query-plan contract failed");
+            }
+            if (sqlite3_close(database) != SQLITE_OK) {
+                throw std::runtime_error("cannot close status-last fixture");
+            }
+            database = nullptr;
+            return {
+                {QStringLiteral("scope"), QStringLiteral("sqlite_status_last_order_by_expression")},
+                {QStringLiteral("sql"),
+                 QString::fromLatin1(kStatusLastQuery.data(),
+                                     static_cast<qsizetype>(kStatusLastQuery.size()))},
+                {QStringLiteral("fixture_rows"), static_cast<qint64>(rows)},
+                {QStringLiteral("os_page_cache_control"), QStringLiteral("none")},
+                {QStringLiteral("sample_count"), samples},
+                {QStringLiteral("plans"), QJsonObject{{QStringLiteral("baseline"), baselinePlan},
+                                                      {QStringLiteral("indexed"), indexedPlan}}},
+                {QStringLiteral("flags"),
+                 QJsonObject{
+                     {QStringLiteral("page_result_vectors_match"), resultVectorsMatch},
+                     {QStringLiteral("baseline_uses_status_last_index"),
+                      planContains(baselinePlan, kStatusLastIndexName)},
+                     {QStringLiteral("baseline_uses_temp_btree"),
+                      planContains(baselinePlan, "TEMP B-TREE")},
+                     {QStringLiteral("indexed_uses_status_last_index"), indexedUsesStatusLastIndex},
+                     {QStringLiteral("indexed_uses_temp_btree"), indexedUsesTempBtree}}},
+                {QStringLiteral("baseline"), statusLastVariantJson(baseline)},
+                {QStringLiteral("indexed"), statusLastVariantJson(indexed)}};
+        } catch (...) {
+            if (database != nullptr) {
+                sqlite3_close_v2(database);
+            }
+            throw;
+        }
+    }
+
     [[nodiscard]] std::optional<QJsonObject> runChild(const std::filesystem::path& databasePath,
                                                       const BenchmarkWorkload& workload,
                                                       std::string& error) {
@@ -584,6 +761,9 @@ int main(int argc, char* argv[]) {
         QStringLiteral("output"), QStringLiteral("JSON output path."), QStringLiteral("path"));
     const QCommandLineOption workerOption(QStringLiteral("worker"), QStringLiteral("Run worker."),
                                           QStringLiteral("database"));
+    const QCommandLineOption statusLastOption(
+        QStringLiteral("status-last"),
+        QStringLiteral("Benchmark the status-last expression ordering query."));
     parser.addHelpOption();
     parser.addOption(rowsOption);
     parser.addOption(samplesOption);
@@ -592,6 +772,7 @@ int main(int argc, char* argv[]) {
     parser.addOption(readsOption);
     parser.addOption(outputOption);
     parser.addOption(workerOption);
+    parser.addOption(statusLastOption);
     parser.process(application);
 
     bool rowsValid = false;
@@ -604,6 +785,10 @@ int main(int argc, char* argv[]) {
     const int operations = parser.value(operationsOption).toInt(&operationsValid);
     const int threads = parser.value(threadsOption).toInt(&threadsValid);
     const int readsPerThread = parser.value(readsOption).toInt(&readsValid);
+    if (parser.isSet(statusLastOption) && parser.isSet(workerOption)) {
+        qCritical("error: --status-last cannot be combined with --worker");
+        return 2;
+    }
     if (!rowsValid || rows == 0 || rows > kMaxRows || !samplesValid || samples <= 0 ||
         samples > kMaxSamples || !operationsValid || operations <= 0 ||
         operations > kMaxOperations || !threadsValid || threads <= 0 || threads > kMaxThreads ||
@@ -653,84 +838,96 @@ int main(int argc, char* argv[]) {
         return 4;
     }
 
-    QJsonArray samplesJson;
-    std::vector<double> freshWall;
-    std::vector<double> freshCpu;
-    std::vector<double> freshRss;
-    std::vector<double> repeatedWall;
-    std::vector<double> repeatedCpu;
-    std::vector<double> repeatedRss;
-    std::vector<double> concurrentWall;
-    std::vector<double> concurrentCpu;
-    std::vector<double> concurrentRss;
-    std::vector<double> concurrentLatency;
-    for (int index = 0; index < samples; ++index) {
-        std::string error;
-        const auto sample = runChild(databasePath, workload, error);
-        if (!sample) {
-            qCritical().noquote() << QStringLiteral("SQLITE_READ_CONNECTION sample=%1 error=%2")
-                                         .arg(index)
-                                         .arg(QString::fromStdString(error));
+    QJsonObject report;
+    if (parser.isSet(statusLastOption)) {
+        try {
+            report = runStatusLastBenchmark(databasePath, workload.rows, samples);
+        } catch (const std::exception& error) {
+            qCritical().noquote() << QStringLiteral("SQLITE_STATUS_LAST error: %1")
+                                         .arg(QString::fromStdString(error.what()));
             return 5;
         }
-        samplesJson.append(*sample);
-        appendMetric(sample->value(QStringLiteral("fresh_process_open")).toObject(), freshWall,
-                     freshCpu, freshRss);
-        const auto repeated = sample->value(QStringLiteral("repeated_open")).toObject();
-        for (const auto operation : repeated.value(QStringLiteral("operations")).toArray()) {
-            appendMetric(operation.toObject(), repeatedWall, repeatedCpu, repeatedRss);
+    } else {
+        QJsonArray samplesJson;
+        std::vector<double> freshWall;
+        std::vector<double> freshCpu;
+        std::vector<double> freshRss;
+        std::vector<double> repeatedWall;
+        std::vector<double> repeatedCpu;
+        std::vector<double> repeatedRss;
+        std::vector<double> concurrentWall;
+        std::vector<double> concurrentCpu;
+        std::vector<double> concurrentRss;
+        std::vector<double> concurrentLatency;
+        for (int index = 0; index < samples; ++index) {
+            std::string error;
+            const auto sample = runChild(databasePath, workload, error);
+            if (!sample) {
+                qCritical().noquote() << QStringLiteral("SQLITE_READ_CONNECTION sample=%1 error=%2")
+                                             .arg(index)
+                                             .arg(QString::fromStdString(error));
+                return 5;
+            }
+            samplesJson.append(*sample);
+            appendMetric(sample->value(QStringLiteral("fresh_process_open")).toObject(), freshWall,
+                         freshCpu, freshRss);
+            const auto repeated = sample->value(QStringLiteral("repeated_open")).toObject();
+            for (const auto operation : repeated.value(QStringLiteral("operations")).toArray()) {
+                appendMetric(operation.toObject(), repeatedWall, repeatedCpu, repeatedRss);
+            }
+            const auto concurrent =
+                sample->value(QStringLiteral("concurrent_keystrokes")).toObject();
+            appendMetric(concurrent.value(QStringLiteral("batch")).toObject(), concurrentWall,
+                         concurrentCpu, concurrentRss);
+            for (const auto latency : concurrent.value(QStringLiteral("read_wall_ms")).toArray()) {
+                concurrentLatency.push_back(latency.toDouble());
+            }
         }
-        const auto concurrent = sample->value(QStringLiteral("concurrent_keystrokes")).toObject();
-        appendMetric(concurrent.value(QStringLiteral("batch")).toObject(), concurrentWall,
-                     concurrentCpu, concurrentRss);
-        for (const auto latency : concurrent.value(QStringLiteral("read_wall_ms")).toArray()) {
-            concurrentLatency.push_back(latency.toDouble());
-        }
+        report = {
+            {QStringLiteral("scope"),
+             QStringLiteral("sqlite_repository_open_busy_progress_statement_close")},
+            {QStringLiteral("os_page_cache_control"), QStringLiteral("none")},
+            {QStringLiteral("fresh_process_open_definition"),
+             QStringLiteral("first repository read in a new worker process; not disk-cold")},
+            {QStringLiteral("fixture_rows"), static_cast<qint64>(rows)},
+            {QStringLiteral("sample_count"), samples},
+            {QStringLiteral("limits"),
+             QJsonObject{
+                 {QStringLiteral("max_rows"), static_cast<qint64>(kMaxRows)},
+                 {QStringLiteral("max_samples"), kMaxSamples},
+                 {QStringLiteral("max_operations"), kMaxOperations},
+                 {QStringLiteral("max_threads"), kMaxThreads},
+                 {QStringLiteral("max_reads_per_thread"), kMaxReadsPerThread},
+                 {QStringLiteral("max_concurrent_reads"), static_cast<qint64>(kMaxConcurrentReads)},
+                 {QStringLiteral("max_total_measured_operations"),
+                  static_cast<qint64>(kMaxTotalMeasuredOperations)},
+                 {QStringLiteral("max_total_concurrent_reads"),
+                  static_cast<qint64>(kMaxTotalConcurrentReads)}}},
+            {QStringLiteral("samples"), samplesJson},
+            {QStringLiteral("summary"),
+             QJsonObject{
+                 {QStringLiteral("fresh_process_open"),
+                  QJsonObject{{QStringLiteral("aggregation_scope"),
+                               QStringLiteral("one_first_read_per_worker_process")},
+                              {QStringLiteral("wall_ms"), summary(freshWall)},
+                              {QStringLiteral("cpu_ms"), summary(freshCpu)},
+                              {QStringLiteral("rss_delta_bytes"), summary(freshRss)}}},
+                 {QStringLiteral("repeated_open"),
+                  QJsonObject{{QStringLiteral("aggregation_scope"),
+                               QStringLiteral("all_measured_operations_across_worker_processes")},
+                              {QStringLiteral("wall_ms"), summary(repeatedWall)},
+                              {QStringLiteral("cpu_ms"), summary(repeatedCpu)},
+                              {QStringLiteral("rss_delta_bytes"), summary(repeatedRss)}}},
+                 {QStringLiteral("concurrent_keystrokes"),
+                  QJsonObject{{QStringLiteral("batch_aggregation_scope"),
+                               QStringLiteral("one_batch_per_worker_process")},
+                              {QStringLiteral("read_aggregation_scope"),
+                               QStringLiteral("all_read_operations_across_worker_processes")},
+                              {QStringLiteral("batch_wall_ms"), summary(concurrentWall)},
+                              {QStringLiteral("batch_cpu_ms"), summary(concurrentCpu)},
+                              {QStringLiteral("batch_rss_delta_bytes"), summary(concurrentRss)},
+                              {QStringLiteral("read_wall_ms"), summary(concurrentLatency)}}}}}};
     }
-    const QJsonObject report{
-        {QStringLiteral("scope"),
-         QStringLiteral("sqlite_repository_open_busy_progress_statement_close")},
-        {QStringLiteral("os_page_cache_control"), QStringLiteral("none")},
-        {QStringLiteral("fresh_process_open_definition"),
-         QStringLiteral("first repository read in a new worker process; not disk-cold")},
-        {QStringLiteral("fixture_rows"), static_cast<qint64>(rows)},
-        {QStringLiteral("sample_count"), samples},
-        {QStringLiteral("limits"),
-         QJsonObject{
-             {QStringLiteral("max_rows"), static_cast<qint64>(kMaxRows)},
-             {QStringLiteral("max_samples"), kMaxSamples},
-             {QStringLiteral("max_operations"), kMaxOperations},
-             {QStringLiteral("max_threads"), kMaxThreads},
-             {QStringLiteral("max_reads_per_thread"), kMaxReadsPerThread},
-             {QStringLiteral("max_concurrent_reads"), static_cast<qint64>(kMaxConcurrentReads)},
-             {QStringLiteral("max_total_measured_operations"),
-              static_cast<qint64>(kMaxTotalMeasuredOperations)},
-             {QStringLiteral("max_total_concurrent_reads"),
-              static_cast<qint64>(kMaxTotalConcurrentReads)}}},
-        {QStringLiteral("samples"), samplesJson},
-        {QStringLiteral("summary"),
-         QJsonObject{
-             {QStringLiteral("fresh_process_open"),
-              QJsonObject{{QStringLiteral("aggregation_scope"),
-                           QStringLiteral("one_first_read_per_worker_process")},
-                          {QStringLiteral("wall_ms"), summary(freshWall)},
-                          {QStringLiteral("cpu_ms"), summary(freshCpu)},
-                          {QStringLiteral("rss_delta_bytes"), summary(freshRss)}}},
-             {QStringLiteral("repeated_open"),
-              QJsonObject{{QStringLiteral("aggregation_scope"),
-                           QStringLiteral("all_measured_operations_across_worker_processes")},
-                          {QStringLiteral("wall_ms"), summary(repeatedWall)},
-                          {QStringLiteral("cpu_ms"), summary(repeatedCpu)},
-                          {QStringLiteral("rss_delta_bytes"), summary(repeatedRss)}}},
-             {QStringLiteral("concurrent_keystrokes"),
-              QJsonObject{{QStringLiteral("batch_aggregation_scope"),
-                           QStringLiteral("one_batch_per_worker_process")},
-                          {QStringLiteral("read_aggregation_scope"),
-                           QStringLiteral("all_read_operations_across_worker_processes")},
-                          {QStringLiteral("batch_wall_ms"), summary(concurrentWall)},
-                          {QStringLiteral("batch_cpu_ms"), summary(concurrentCpu)},
-                          {QStringLiteral("batch_rss_delta_bytes"), summary(concurrentRss)},
-                          {QStringLiteral("read_wall_ms"), summary(concurrentLatency)}}}}}};
     QSaveFile output(parser.value(outputOption));
     if (!output.open(QIODevice::WriteOnly)) {
         qCritical().noquote() << QStringLiteral("error: cannot write %1").arg(output.fileName());
@@ -747,8 +944,10 @@ int main(int argc, char* argv[]) {
         qCritical().noquote() << QStringLiteral("error: cannot commit %1").arg(output.fileName());
         return 6;
     }
-    qInfo().noquote() << QStringLiteral("SQLITE_READ_CONNECTION samples=%1 output=%2")
-                             .arg(samples)
-                             .arg(output.fileName());
+    const auto completionMessage =
+        parser.isSet(statusLastOption)
+            ? QStringLiteral("SQLITE_STATUS_LAST samples=%1 output=%2")
+            : QStringLiteral("SQLITE_READ_CONNECTION samples=%1 output=%2");
+    qInfo().noquote() << completionMessage.arg(samples).arg(output.fileName());
     return 0;
 }
