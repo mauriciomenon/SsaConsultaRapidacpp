@@ -45,9 +45,6 @@ namespace ssa::infra::importing {
                               const std::stop_token& stopToken,
                               const ports::ImportExecutionOptions& execution,
                               const std::vector<ports::SamArtifact>* samArtifacts = nullptr) const;
-        [[nodiscard]] ports::WorkflowResult
-        importIncrementalFiles(const ImportStagingResult& files, const std::stop_token& stopToken,
-                               const ports::ImportExecutionOptions& execution) const;
         [[nodiscard]] std::optional<ports::WorkflowResult>
         resumePendingConsolidation(const std::stop_token& stopToken,
                                    std::chrono::milliseconds sqliteBusyWait) const;

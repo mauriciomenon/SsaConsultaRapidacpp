@@ -698,27 +698,17 @@ namespace ssa::infra::importing {
         if (!importLock) {
             return importLockFailure(lockError, {}, lockDiagnostic, lockFailureOrigin);
         }
+        auto resumed = resumePendingConsolidation(stopToken, request.execution.sqliteBusyWait);
+        if (resumed && (resumed->status == ports::WorkflowStatus::Canceled || !resumed->ok() ||
+                        resumed->warning)) {
+            return std::move(*resumed);
+        }
         auto staging = stager_.stageInputFiles(stopToken, replaceAll);
         if (staging.operationalFailure || !staging.rejectionReason.empty()) {
             return importDiscoveredFiles(staging, replaceAll, stopToken, request.execution);
         }
-        if (auto resumed =
-                resumePendingConsolidation(stopToken, request.execution.sqliteBusyWait)) {
-            if (resumed->status == ports::WorkflowStatus::Canceled) {
-                return replaceAll
-                           ? importDiscoveredFiles(staging, true, stopToken, request.execution)
-                           : importIncrementalFiles(staging, stopToken, request.execution);
-            }
-            if (!resumed->ok() || resumed->warning) {
-                return std::move(*resumed);
-            }
-            staging = stager_.stageInputFiles(stopToken, replaceAll);
-            if (staging.operationalFailure || !staging.rejectionReason.empty()) {
-                return importDiscoveredFiles(staging, replaceAll, stopToken, request.execution);
-            }
-            if (staging.files.empty()) {
-                return std::move(*resumed);
-            }
+        if (resumed && staging.files.empty()) {
+            return std::move(*resumed);
         }
         if (staging.files.empty()) {
             return importDiscoveredFiles(staging, replaceAll, stopToken, request.execution);
@@ -851,118 +841,6 @@ namespace ssa::infra::importing {
             return {ports::WorkflowStatus::Failed, "rescan database snapshot failed", false,
                     error.what()};
         }
-    }
-
-    ports::WorkflowResult SpreadsheetImportWorkflowPort::importIncrementalFiles(
-        const ImportStagingResult& files, const std::stop_token& stopToken,
-        const ports::ImportExecutionOptions& execution) const {
-        constexpr const char* operation = "import_xlsx_to_sqlite";
-        if (files.files.size() <= 1 || files.operationalFailure || !files.rejectionReason.empty()) {
-            return importDiscoveredFiles(files, false, stopToken, execution);
-        }
-
-        auto summary = makeImportSummary(files);
-        std::optional<ports::WorkflowResult> firstFailure;
-        bool completedFile = false;
-        bool changed = false;
-        bool interrupted = summary.rejected > 0;
-        bool warning = files.warning;
-        std::string diagnostic = files.diagnostic;
-        for (std::size_t fileIndex = 0; fileIndex < files.files.size(); ++fileIndex) {
-            if (stopToken.stop_requested()) {
-                interrupted = true;
-                firstFailure = canceled(operation);
-                for (; fileIndex < files.files.size(); ++fileIndex) {
-                    auto& pending = summary.files[files.files[fileIndex].summaryIndex];
-                    pending.status = ports::ImportFileStatus::Canceled;
-                    ++summary.preserved;
-                }
-                break;
-            }
-
-            auto stagedFile = files.files[fileIndex];
-            stagedFile.summaryIndex = 0;
-            ImportStagingResult single;
-            single.files.push_back(std::move(stagedFile));
-            single.discoveredXlsxSources.push_back(
-                files.discoveredXlsxSources[files.files[fileIndex].summaryIndex]);
-            single.discovered = 1;
-            auto result = importDiscoveredFiles(single, false, stopToken, execution);
-            if (!result.importSummary || result.importSummary->files.size() != 1) {
-                result = {ports::WorkflowStatus::Failed, "import_xlsx_to_sqlite summary_failed",
-                          false, "single-file import did not return one file result"};
-            } else {
-                const auto& singleSummary = *result.importSummary;
-                summary.files[files.files[fileIndex].summaryIndex] = singleSummary.files.front();
-                summary.accepted += singleSummary.accepted;
-                summary.rejected += singleSummary.rejected;
-                summary.preserved += singleSummary.preserved;
-                summary.validRows += singleSummary.validRows;
-                summary.invalidRows += singleSummary.invalidRows;
-                summary.invalidNumberRows += singleSummary.invalidNumberRows;
-                summary.invalidDescriptionRows += singleSummary.invalidDescriptionRows;
-                summary.invalidDateRows += singleSummary.invalidDateRows;
-                summary.skippedRows += singleSummary.skippedRows;
-                summary.duplicateRows += singleSummary.duplicateRows;
-                summary.inserts += singleSummary.inserts;
-                summary.updates += singleSummary.updates;
-                summary.unchangedRows += singleSummary.unchangedRows;
-                summary.conflicts += singleSummary.conflicts;
-                summary.consolidated += singleSummary.consolidated;
-                summary.noSurvivor += singleSummary.noSurvivor;
-            }
-            appendWorkflowDiagnostic(diagnostic, result.diagnostic);
-            warning = warning || result.warning;
-            if (result.ok()) {
-                completedFile = true;
-                changed = changed || result.status == ports::WorkflowStatus::Succeeded;
-                continue;
-            }
-
-            interrupted = true;
-            if (!firstFailure) {
-                firstFailure = result;
-            }
-            if (result.status != ports::WorkflowStatus::Canceled) {
-                continue;
-            }
-            firstFailure = result;
-            for (++fileIndex; fileIndex < files.files.size(); ++fileIndex) {
-                auto& pending = summary.files[files.files[fileIndex].summaryIndex];
-                pending.status = ports::ImportFileStatus::Canceled;
-                ++summary.preserved;
-            }
-            break;
-        }
-
-        if (!completedFile) {
-            auto result = firstFailure.value_or(ports::WorkflowResult{
-                ports::WorkflowStatus::Failed, "import_xlsx_to_sqlite no_file_completed"});
-            result.diagnostic = std::move(diagnostic);
-            return withSummary(std::move(result), summary);
-        }
-
-        SsaImportWriteSummary total;
-        total.files = files.files.size();
-        total.rowsInserted = summary.inserts;
-        total.rowsUpdated = summary.updates;
-        total.rowsWritten = summary.inserts + summary.updates;
-        total.rowsUnchanged = summary.unchangedRows;
-        total.skippedRows = summary.skippedRows;
-        total.duplicateRows = summary.duplicateRows;
-        total.invalidRows = summary.invalidRows;
-        total.invalidNumberRows = summary.invalidNumberRows;
-        total.invalidDescriptionRows = summary.invalidDescriptionRows;
-        total.invalidDateRows = summary.invalidDateRows;
-        total.conflictRows = summary.conflicts;
-        const auto error = interrupted ? std::string_view{"partial_failure"} : std::string_view{};
-        return withSummary(
-            {changed || interrupted ? ports::WorkflowStatus::Succeeded
-                                    : ports::WorkflowStatus::NoChanges,
-             workflowMessage(operation, files, total, {summary.rejected, error}),
-             warning || interrupted || summary.invalidRows > 0 || summary.duplicateRows > 0,
-             std::move(diagnostic)},
-            summary);
     }
 
     ports::WorkflowResult SpreadsheetImportWorkflowPort::importDiscoveredFiles(

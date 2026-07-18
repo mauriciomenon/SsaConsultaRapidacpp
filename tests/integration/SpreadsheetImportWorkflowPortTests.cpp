@@ -2097,7 +2097,7 @@ TEST_CASE("spreadsheet workflow resumes committed consolidation after process de
         const auto inputDirectory = scenarioRoot / "docs_entrada";
         const auto dbPath = scenarioRoot / "data" / "ssas.db";
         const auto readyPath = scenarioRoot / "data" / "ready";
-        const auto source = inputDirectory / "pending.xlsx";
+        const auto source = inputDirectory / ".ssa-staged-crashed_123_0.xlsx";
         const auto destination = inputDirectory / "processadas" / "pending.xlsx";
         std::filesystem::create_directories(inputDirectory);
         std::filesystem::create_directories(dbPath.parent_path());
