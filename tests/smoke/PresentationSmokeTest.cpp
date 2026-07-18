@@ -29,6 +29,7 @@
 #include <QObject>
 #include <QRectF>
 #include <QRegularExpression>
+#include <QScopeGuard>
 #include <QSignalSpy>
 #include <QSizeF>
 #include <QString>
@@ -124,12 +125,28 @@ namespace {
         exportFilteredList(const ssa::ports::ExportFilteredListRequest&,
                            const std::stop_token stopToken = {}) override {
             started_.store(true, std::memory_order_release);
-            while (!stopToken.stop_requested()) {
-                std::this_thread::yield();
+            std::unique_lock lock(mutex_);
+            condition_.wait_for(lock, stopToken, std::chrono::seconds{2}, [] { return false; });
+            const bool stopObserved = stopToken.stop_requested();
+            stopObserved_.store(stopObserved, std::memory_order_release);
+            stopWaitTimedOut_.store(!stopObserved, std::memory_order_release);
+            const bool released =
+                condition_.wait_for(lock, std::chrono::seconds{2}, [this] { return release_; });
+            terminalTimedOut_.store(!released, std::memory_order_release);
+            lock.unlock();
+            if (!stopObserved) {
+                return {ssa::ports::WorkflowStatus::Failed, "export stop wait timed out"};
             }
-            std::this_thread::sleep_for(std::chrono::milliseconds{100});
             finished_.store(true, std::memory_order_release);
             return {ssa::ports::WorkflowStatus::Failed, "export canceled"};
+        }
+
+        void releaseTerminal() {
+            {
+                const std::scoped_lock lock(mutex_);
+                release_ = true;
+            }
+            condition_.notify_all();
         }
 
         [[nodiscard]] bool started() const {
@@ -140,9 +157,27 @@ namespace {
             return finished_.load(std::memory_order_acquire);
         }
 
+        [[nodiscard]] bool stopObserved() const {
+            return stopObserved_.load(std::memory_order_acquire);
+        }
+
+        [[nodiscard]] bool stopWaitTimedOut() const {
+            return stopWaitTimedOut_.load(std::memory_order_acquire);
+        }
+
+        [[nodiscard]] bool terminalTimedOut() const {
+            return terminalTimedOut_.load(std::memory_order_acquire);
+        }
+
       private:
         std::atomic_bool started_{false};
         std::atomic_bool finished_{false};
+        std::atomic_bool stopObserved_{false};
+        std::atomic_bool stopWaitTimedOut_{false};
+        std::atomic_bool terminalTimedOut_{false};
+        std::mutex mutex_;
+        std::condition_variable_any condition_;
+        bool release_{false};
     };
 
     class DelayedTerminalExportPort final : public ssa::ports::IExportPort {
@@ -2542,6 +2577,7 @@ namespace {
 
         void export_destruction_requests_stop_without_delivering_callback() {
             auto exportPort = std::make_shared<BlockingCancelableExportPort>();
+            const auto releaseTerminal = qScopeGuard([&] { exportPort->releaseTerminal(); });
             auto workflows =
                 std::make_shared<ssa::application::SsaWorkflowService>(nullptr, exportPort);
             int callbackCount = 0;
@@ -2557,7 +2593,12 @@ namespace {
             }
 
             QVERIFY(destructionTimer.elapsed() < 50);
+            QTRY_VERIFY_WITH_TIMEOUT(exportPort->stopObserved(), 1000);
+            QVERIFY(!exportPort->finished());
+            exportPort->releaseTerminal();
             QTRY_VERIFY_WITH_TIMEOUT(exportPort->finished(), 1000);
+            QVERIFY(!exportPort->stopWaitTimedOut());
+            QVERIFY(!exportPort->terminalTimedOut());
             QCoreApplication::processEvents();
             QCOMPARE(callbackCount, 0);
         }

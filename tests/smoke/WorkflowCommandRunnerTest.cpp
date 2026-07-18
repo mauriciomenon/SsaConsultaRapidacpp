@@ -4,6 +4,7 @@
 
 #include <QCoreApplication>
 #include <QElapsedTimer>
+#include <QScopeGuard>
 #include <QTest>
 #include <QTimer>
 
@@ -38,6 +39,34 @@ namespace {
             return canceled_;
         }
 
+        [[nodiscard]] bool finished() const {
+            const std::scoped_lock lock(mutex_);
+            return finished_;
+        }
+
+        [[nodiscard]] bool stopObserved() const {
+            const std::scoped_lock lock(mutex_);
+            return stopObserved_;
+        }
+
+        [[nodiscard]] bool stopWaitTimedOut() const {
+            const std::scoped_lock lock(mutex_);
+            return stopWaitTimedOut_;
+        }
+
+        [[nodiscard]] bool terminalTimedOut() const {
+            const std::scoped_lock lock(mutex_);
+            return terminalTimedOut_;
+        }
+
+        void releaseTerminal() {
+            {
+                const std::scoped_lock lock(mutex_);
+                releaseTerminal_ = true;
+            }
+            changed_.notify_all();
+        }
+
         [[nodiscard]] int calls() const {
             const std::scoped_lock lock(mutex_);
             return calls_;
@@ -49,10 +78,16 @@ namespace {
             ++calls_;
             started_ = true;
             changed_.notify_all();
-            changed_.wait(lock, stopToken, [] { return false; });
-            canceled_ = true;
+            changed_.wait_for(lock, stopToken, std::chrono::seconds{2}, [] { return false; });
+            stopObserved_ = stopToken.stop_requested();
+            stopWaitTimedOut_ = !stopObserved_;
+            canceled_ = stopObserved_;
+            changed_.notify_all();
+            const bool released = changed_.wait_for(lock, std::chrono::seconds{2},
+                                                    [this] { return releaseTerminal_; });
+            terminalTimedOut_ = !released;
+            finished_ = true;
             lock.unlock();
-            std::this_thread::sleep_for(std::chrono::milliseconds{100});
             return {ssa::ports::WorkflowStatus::Canceled, "workflow canceled"};
         }
 
@@ -60,6 +95,11 @@ namespace {
         std::condition_variable_any changed_;
         bool started_ = false;
         bool canceled_ = false;
+        bool finished_ = false;
+        bool stopObserved_ = false;
+        bool stopWaitTimedOut_ = false;
+        bool terminalTimedOut_ = false;
+        bool releaseTerminal_ = false;
         int calls_ = 0;
     };
 
@@ -143,8 +183,10 @@ namespace {
       private slots:
         void destructor_requests_stop_without_callback() {
             auto importPort = std::make_shared<BlockingImportPort>();
+            const auto releaseTerminal = qScopeGuard([&] { importPort->releaseTerminal(); });
             auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(importPort);
             int callbacks = 0;
+            QElapsedTimer destructionTimer;
 
             {
                 ssa::presentation::WorkflowCommandRunner runner(workflows);
@@ -152,15 +194,24 @@ namespace {
                         [&callbacks] { ++callbacks; });
                 runner.rescan(ssa::ports::RescanMode::Incremental);
                 QVERIFY(importPort->waitUntilStarted(std::chrono::seconds{1}));
+                destructionTimer.start();
             }
 
-            QTRY_VERIFY_WITH_TIMEOUT(importPort->canceled(), 1000);
+            QVERIFY(destructionTimer.elapsed() < 50);
+            QTRY_VERIFY_WITH_TIMEOUT(importPort->stopObserved(), 1000);
+            QVERIFY(importPort->canceled());
+            QVERIFY(!importPort->finished());
+            importPort->releaseTerminal();
+            QTRY_VERIFY_WITH_TIMEOUT(importPort->finished(), 1000);
+            QVERIFY(!importPort->stopWaitTimedOut());
+            QVERIFY(!importPort->terminalTimedOut());
             QCoreApplication::processEvents();
             QCOMPARE(callbacks, 0);
         }
 
         void shutdown_rejects_new_work() {
             auto importPort = std::make_shared<BlockingImportPort>();
+            const auto releaseTerminal = qScopeGuard([&] { importPort->releaseTerminal(); });
             auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(importPort);
             ssa::presentation::WorkflowCommandRunner runner(workflows);
 
@@ -172,7 +223,13 @@ namespace {
             QCOMPARE(importPort->calls(), 1);
             QCOMPARE(runner.state(), ssa::presentation::WorkflowCommandRunner::State::Canceling);
             QVERIFY(runner.running());
-            QTRY_VERIFY_WITH_TIMEOUT(importPort->canceled(), 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(importPort->stopObserved(), 1000);
+            QVERIFY(importPort->canceled());
+            QVERIFY(!importPort->finished());
+            importPort->releaseTerminal();
+            QTRY_VERIFY_WITH_TIMEOUT(importPort->finished(), 1000);
+            QVERIFY(!importPort->stopWaitTimedOut());
+            QVERIFY(!importPort->terminalTimedOut());
             QTRY_VERIFY_WITH_TIMEOUT(!runner.running(), 1000);
         }
 
@@ -196,6 +253,7 @@ namespace {
 
         void cancel_is_non_blocking_terminal_and_single_flight() {
             auto importPort = std::make_shared<BlockingImportPort>();
+            const auto releaseTerminal = qScopeGuard([&] { importPort->releaseTerminal(); });
             auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(importPort);
             ssa::presentation::WorkflowCommandRunner runner(workflows);
             int finishedCount = 0;
@@ -225,6 +283,13 @@ namespace {
             QCOMPARE(importPort->calls(), 1);
             QCOMPARE(finishedCount, 0);
 
+            QTRY_VERIFY_WITH_TIMEOUT(importPort->stopObserved(), 1000);
+            QVERIFY(importPort->canceled());
+            QVERIFY(!importPort->finished());
+            importPort->releaseTerminal();
+            QTRY_VERIFY_WITH_TIMEOUT(importPort->finished(), 1000);
+            QVERIFY(!importPort->stopWaitTimedOut());
+            QVERIFY(!importPort->terminalTimedOut());
             QTRY_COMPARE_WITH_TIMEOUT(finishedCount, 1, 1000);
             QCOMPARE(terminalResult.status, ssa::ports::WorkflowStatus::Canceled);
             QCOMPARE(runner.state(), ssa::presentation::WorkflowCommandRunner::State::Idle);
