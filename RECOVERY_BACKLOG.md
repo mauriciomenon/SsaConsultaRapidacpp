@@ -4,17 +4,19 @@
 
 ### Sequencia ativa preservada
 
-1. Adicionar recheck WAL da publicacao do rescan: leitor em transacao deve
-   manter o snapshot antigo ate encerrar e observar o novo snapshot depois.
-2. Completar profiling valido do prefetch; harness, 30 amostras e relatorio
+1. Corrigir `SQLITE-BACKUP-BUSY-RETRY`: `sqliteBusyWait` deve cobrir
+   `SQLITE_BUSY` e `SQLITE_LOCKED` nas conexoes source e destination.
+2. Adicionar `SQLITE-SCHEMA-VERSION-GATE`: persistir `schemaVersion()` em
+   `PRAGMA user_version` e rejeitar versoes futuras antes de DDL/DML.
+3. Completar profiling valido do prefetch; harness, 30 amostras e relatorio
    isolado ja estao resolvidos no working tree. `xctrace` nao possui `Time
    Profiler` nesta instalacao e `CPU Counters` falhou com `DTServiceHub` e
    politica do kernel; nenhum credito de profiling foi atribuido.
-3. Validar `ImportFileConsolidator` em Windows/UNC real; o split local entre
+4. Validar `ImportFileConsolidator` em Windows/UNC real; o split local entre
    staging owned pre-commit e consolidacao post-commit ja esta implementado.
-4. Canonizar `clang-tidy` macOS com sysroot e reproduzir IDs das regras Semgrep
+5. Canonizar `clang-tidy` macOS com sysroot e reproduzir IDs das regras Semgrep
    antes de dividir fixtures.
-5. Revalidar em plataformas reais handles, URL UNC, PowerShell e packaging.
+6. Revalidar em plataformas reais handles, URL UNC, PowerShell e packaging.
 
 Contadores auditados: plano original `99.0/100`, divida nova `78.6/100`
 (11 de 14 itens enumerados aceitos) e backlog legado `0.0/100`, sem denominador
@@ -23,16 +25,27 @@ O credito novo pertence a `SQLITE-READ-CONNECTION-CHURN`, agora medido em 30
 processos e sem justificativa para pool. Findings descobertos depois da lista
 fixa de 14 itens nao reduzem retroativamente esse percentual.
 
-Fechamento de 2026-07-18: HEAD `360d18b`, precedido por `652b102`, `1cea684` e
-`2dd9aec`. Em `4e74790`, build dev completo e o marco `581/581` permanecem
-validos; o benchmark focado passou `1/1` em `0.37 s` e 30 amostras terminaram
-sem falha. Em `2dd9aec`, o target de integracao compilou e o gate passou `3/3`
-e depois `7/7`. Em `1cea684`, `3/3` e `45/45` passaram; 30 processos
-confirmaram `page()` p50/p95 `0.133/0.229 ms` em 2,400 reads corretos.
-Em `360d18b`, 2 contratos concorrentes passaram, suas 60 repeticoes ficaram
-estaveis, a familia de derivadas passou `13/13` e o gate de leitura passou
-`8/8`. Bitbucket foi confirmado em `360d18b`; o push GitLab continua bloqueado
-por OAuth `invalid_grant`.
+Fechamento de 2026-07-18: HEAD de codigo `7f396b0`, precedido por `610fbf3`,
+`09fa97b` e `360d18b`. `610fbf3` fecha o recheck WAL por snapshot. Em
+`7f396b0`, os targets afetados compilaram; conversor passou 20/20, SAM passou
+20/20 suites completas, Details passou 10/10 e CurrentWeek passou 20/20 sem
+patch. O CTest sequencial final passou `588/588` em `78.30 s`. Semgrep amplo
+escaneou 508 arquivos sem finding; Gitleaks escaneou 1.42 GB sem leak e
+TruffleHog escaneou 9,029 chunks sem segredo. Bitbucket foi confirmado em
+`7f396b0`; o push GitLab continua bloqueado por OAuth `invalid_grant`.
+
+- [RESOLVED] [SQLITE-RESCAN-WAL-SNAPSHOT] `610fbf3` prova que um leitor WAL em
+  transacao preserva o snapshot antigo durante a publicacao e observa o novo
+  somente apos encerrar e iniciar outra transacao.
+- [PENDING-P1] [SQLITE-BACKUP-BUSY-RETRY] O request expoe
+  `sqliteBusyWait=3000 ms`, mas o loop do Backup API retenta somente
+  `SQLITE_LOCKED`; `SQLITE_BUSY` pode falhar imediatamente sob contencao
+  normal. Instalar busy handler tambem na source, retentar os dois codigos ate
+  o deadline e preservar cancelamento e fail-closed.
+- [PENDING-P1] [SQLITE-SCHEMA-VERSION-GATE] `schemaVersion()==1` nao e
+  persistido nem validado. Aceitar banco legado `user_version=0` somente apos
+  compatibilidade estrutural, aceitar a versao atual, rejeitar futuras antes de
+  DDL/DML e carimbar a versao dentro da transacao de importacao.
 
 Ultimo fechamento: commit `e0b5401`, build e CTest da suite de painel `1/1`
 passaram em `2.96 s`. O polling de `activeFilterEntries()` continua pendente
@@ -164,7 +177,8 @@ Matriz completa de acertos, adicoes, erros e ordem de execucao:
   vence stop tardio porque o commit ja ocorreu. Os 3 REDs passaram `3/3` em
   `0.22 s`, e o gate ampliado passou `7/7` em `0.35 s`, cobrindo leitor aberto,
   fail-closed sob lock, integridade, sidecars, full rescan e cancelamento.
-  Resta recheck WAL e validacao Windows real, sem reabrir o finding POSIX.
+  O recheck WAL foi fechado em `610fbf3`; resta validacao Windows real, sem
+  reabrir o finding POSIX.
 
 - [RESOLVED] [SQLITE-PAGE-FILTER-CONCURRENT-LATENCY] O benchmark real
   mediu 2,400 chamadas de `page()` com filtro exato em 250 mil linhas: wall

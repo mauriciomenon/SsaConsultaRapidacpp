@@ -8,8 +8,8 @@ Ultima verificacao local: 2026-07-18
 ## Marco Activity, importacao parametrizada e SQLite
 
 - Branch: `master`.
-- HEAD de codigo validado: `360d18b`, precedido por `652b102`, `1cea684` e
-  `2dd9aec`. Bitbucket foi confirmado em `360d18b`. O push GitLab `origin`
+- HEAD de codigo validado: `7f396b0`, precedido por `610fbf3`, `09fa97b` e
+  `360d18b`. Bitbucket foi confirmado em `7f396b0`. O push GitLab `origin`
   falhou antes de transferir dados porque o OAuth continua com
   `invalid_grant`.
 - O working tree tracked restante contem somente esta reconciliacao documental
@@ -22,13 +22,12 @@ Ultima verificacao local: 2026-07-18
   benchmark concluido de `SQLITE-READ-CONNECTION-CHURN`; findings descobertos
   depois da enumeracao permanecem registrados fora desse denominador fixo.
 - Backlog legado: `0.0/100 -> 0.0/100`; nenhum item legado recebeu credito.
-- Estado separado: o full build, `581/581` e security ampla validam `4e74790`;
-  o target de integracao e `7/7` focados validam `2dd9aec`; `3/3`, `45/45` e o
-  benchmark de 30 processos validam `1cea684`. Em `360d18b`, o target de
-  integracao, 60 repeticoes dos 2 contratos concorrentes, `13/13` da familia
-  de derivadas e `8/8` de leitura/cancelamento passaram. Todos estao
-  commitados localmente e `360d18b` foi comprovado no Bitbucket. GitLab e
-  plataformas nao locais permanecem prova externa pendente.
+- Estado separado: `610fbf3` prova o snapshot WAL do rescan. Em `7f396b0`, os
+  targets afetados compilaram, CTest sequencial passou `588/588` em `78.30 s`,
+  o conversor passou 20 repeticoes, SAM passou 20 suites completas e Details
+  passou 10 repeticoes. Semgrep amplo, Gitleaks e TruffleHog ficaram limpos.
+  O commit esta publicado e comprovado no Bitbucket. GitLab e plataformas nao
+  locais permanecem prova externa pendente.
 
 ### Fechamento local de 2026-07-18
 
@@ -55,7 +54,7 @@ Ultima verificacao local: 2026-07-18
   do mutex; callers concorrentes usam fallback read-only e cancelamento ou
   excecao libera a eleicao para retry imediato.
 - As oito falhas informadas do gate de 564 casos passaram novamente `8/8` em
-  `10.09 s` no registro atual. A matriz configurada agora possui 587 casos.
+  `10.09 s` no registro atual. A matriz configurada agora possui 588 casos.
   Activity/SQLite passou `79/79` em `3.23 s`.
 - Em `4e74790`, build `dev` completo passou 476 passos e CTest sequencial
   passou `581/581` em `82.06 s`, incluindo RSS de importacao de 250 mil linhas
@@ -95,14 +94,22 @@ Ultima verificacao local: 2026-07-18
   transacoes/readAll/cancelamento/benchmark smoke passou `8/8` em `0.22 s`.
   Sol xhigh e Terra high encontraram a mesma lacuna P2 de cancelamento do
   initializer; o teste foi adicionado e os dois re-reviews terminaram em GO.
-- Security ampla: Semgrep 507 arquivos e zero finding; Gitleaks 1.42 GB e zero
-  leak; TruffleHog 8,853 chunks e zero segredo verificado ou desconhecido.
+- Snapshot WAL: `610fbf3` mantem o snapshot antigo para um leitor em transacao
+  durante a publicacao pelo Backup API e torna o novo snapshot visivel somente
+  na transacao seguinte. O contrato focado passou e fecha o recheck local.
+- Harness temporal: gates amplos anteriores terminaram `587/588`, `586/588` e
+  `587/588`; nenhum timeout foi aceito. `7f396b0` remove o polling de copia de
+  128 MiB do conversor, separa instancias SAM no teste concorrente, ordena o
+  teardown e usa watchdogs medidos. Conversor passou 20/20, SAM 20/20 suites,
+  Details 10/10 e o CTest final passou `588/588` em `78.30 s`.
+- Security ampla: Semgrep 508 arquivos e zero finding; Gitleaks 1.42 GB e zero
+  leak; TruffleHog 9,029 chunks e zero segredo verificado ou desconhecido.
 - Sol xhigh e Terra high deram GO final. Clawpatch nao gerou review porque seu
   Codex CLI interno e antigo para `gpt-5.6-sol`; isso nao recebeu credito.
 
-Proxima atividade unica: provar a semantica WAL da publicacao do rescan. Um
-leitor em transacao deve manter o snapshot antigo ate encerrar e observar o
-novo snapshot na transacao seguinte.
+Proxima atividade unica: fazer `sqliteBusyWait` valer para `SQLITE_BUSY` e
+`SQLITE_LOCKED` nas duas conexoes do SQLite Backup API, com deadline,
+cancelamento e preservacao fail-closed de banco e fontes.
 
 ## Marco P0 historico
 - Ultimo slice: commit `e0b5401`, dois polls sincronos de `quickSector()`
@@ -346,12 +353,13 @@ HEAD `d376431`; nenhuma sugestao foi aceita apenas pela severidade alegada.
 
 ## Pendencias ativas priorizadas
 
-1. Retirar lock e I/O SQLite de dentro de `derivedCountSummaryMutex_`, mantendo
-   um unico inicializador e cancelamento por caller.
-2. Produzir profiling valido do prefetch; `xctrace` nao oferece `Time Profiler`
+1. Fazer o Backup API respeitar `sqliteBusyWait` tanto para `SQLITE_BUSY`
+   quanto para `SQLITE_LOCKED`, nas conexoes source e destination.
+2. Persistir `schemaVersion()` em `PRAGMA user_version`, aceitando legado zero
+   compativel e rejeitando versao futura antes de DDL/DML.
+3. Produzir profiling valido do prefetch; `xctrace` nao oferece `Time Profiler`
    nesta instalacao e `CPU Counters` falhou com `DTServiceHub`/politica do
    kernel.
-3. Revalidar a publicacao do rescan com reader WAL em transacao.
 4. Canonizar `clang-tidy` macOS com sysroot e reproduzir IDs Semgrep antes de
    dividir fixtures.
 5. Revalidar handles, PowerShell, packaging e URL UNC em plataformas reais.
@@ -366,8 +374,8 @@ preparacao da release.
 
 | Remote | Provedor | Funcao | Estado confirmado |
 | --- | --- | --- | --- |
-| `origin` | GitLab | Repositorio e CI primarios | push de `360d18b` bloqueado por OAuth `invalid_grant` |
-| `bitbucket` | Bitbucket | Mirror obrigatorio | `360d18b` confirmado em `master`; tag `v0.9.10` preservada |
+| `origin` | GitLab | Repositorio e CI primarios | push de `7f396b0` bloqueado por OAuth `invalid_grant` |
+| `bitbucket` | Bitbucket | Mirror obrigatorio | `7f396b0` confirmado em `master`; tag `v0.9.10` preservada |
 | `gh` | GitHub | Mirror inativo | HTTP 403; conta suspensa |
 
 Todo fetch ou pull operacional vem de `origin`:
