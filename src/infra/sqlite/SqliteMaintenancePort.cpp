@@ -31,7 +31,15 @@ namespace ssa::infra::sqlite {
     } // namespace
 
     SqliteMaintenancePort::SqliteMaintenancePort(std::filesystem::path databasePath)
-        : databasePath_(std::move(databasePath)) {}
+        : SqliteMaintenancePort(std::move(databasePath), []() noexcept {}) {}
+
+    SqliteMaintenancePort::SqliteMaintenancePort(std::filesystem::path databasePath,
+                                                 PostCommitHook postCommitHook)
+        : databasePath_(std::move(databasePath)), postCommitHook_(std::move(postCommitHook)) {
+        if (!postCommitHook_) {
+            postCommitHook_ = []() noexcept {};
+        }
+    }
 
     ports::WorkflowResult SqliteMaintenancePort::resetDatabase(const std::stop_token stopToken) {
         return runCommittedMaintenance("DELETE FROM ssa_table", stopToken,
@@ -92,6 +100,7 @@ namespace ssa::infra::sqlite {
             }
             try {
                 transaction.commit();
+                postCommitHook_();
             } catch (const std::system_error& error) {
                 if (error.code() == std::make_error_code(std::errc::operation_canceled)) {
                     return rollback(canceled());
@@ -101,6 +110,9 @@ namespace ssa::infra::sqlite {
                 return rollback(failed(error.diagnostic()));
             }
 
+            if (stopToken.stop_requested()) {
+                return succeeded(std::string{successMessage} + "; optimization canceled", true);
+            }
             if (auto result = runOptimizationTasks(connection, busy.cancellationObserved())) {
                 const auto suffix = result->status == ports::WorkflowStatus::Canceled
                                         ? "; optimization canceled"

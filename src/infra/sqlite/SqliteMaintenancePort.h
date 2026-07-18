@@ -4,6 +4,7 @@
 
 #include <atomic>
 #include <filesystem>
+#include <functional>
 #include <optional>
 
 namespace ssa::infra::sqlite {
@@ -12,7 +13,11 @@ namespace ssa::infra::sqlite {
 
     class SqliteMaintenancePort final : public ports::IDatabaseMaintenancePort {
       public:
+        // Called after the transaction commits and before optional optimization. Must not throw.
+        using PostCommitHook = std::function<void()>;
+
         explicit SqliteMaintenancePort(std::filesystem::path databasePath);
+        SqliteMaintenancePort(std::filesystem::path databasePath, PostCommitHook postCommitHook);
 
         [[nodiscard]] ports::WorkflowResult resetDatabase(std::stop_token stopToken = {}) override;
         [[nodiscard]] ports::WorkflowResult cleanData(std::stop_token stopToken = {}) override;
@@ -30,6 +35,7 @@ namespace ssa::infra::sqlite {
                              const std::atomic_bool* busyCancellationObserved = nullptr);
 
         std::filesystem::path databasePath_;
+        PostCommitHook postCommitHook_;
     };
 
 } // namespace ssa::infra::sqlite
