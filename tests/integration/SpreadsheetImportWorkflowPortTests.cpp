@@ -1462,21 +1462,35 @@ TEST_CASE("xlsx extraction cancellation is prompt and a second read succeeds") {
     writeWorkbook(workbook, rowsXml);
     ssa::infra::importing::XlsxPackage package(workbook);
     std::stop_source stopSource;
-    std::latch extractionStarted{1};
+    std::promise<void> firstChunkPromise;
+    auto firstChunkFuture = firstChunkPromise.get_future();
+    std::promise<void> continueExtractionPromise;
+    auto continueExtractionFuture = continueExtractionPromise.get_future();
     auto operation = std::async(std::launch::async, [&] {
         try {
-            extractionStarted.count_down();
-            static_cast<void>(
-                package.textEntry("xl/worksheets/sheet1.xml", true, stopSource.get_token()));
+            bool firstChunkSignaled = false;
+            package.streamTextEntry(
+                "xl/worksheets/sheet1.xml", true,
+                [&](const std::string_view) {
+                    if (firstChunkSignaled) {
+                        return;
+                    }
+                    firstChunkSignaled = true;
+                    firstChunkPromise.set_value();
+                    continueExtractionFuture.wait();
+                },
+                stopSource.get_token());
             return std::error_code{};
         } catch (const std::system_error& error) {
             return error.code();
         }
     });
 
-    extractionStarted.wait();
-    QThread::msleep(1);
+    const bool firstChunkObserved =
+        firstChunkFuture.wait_for(std::chrono::seconds{1}) == std::future_status::ready;
     stopSource.request_stop();
+    continueExtractionPromise.set_value();
+    REQUIRE(firstChunkObserved);
 
     REQUIRE(operation.wait_for(std::chrono::seconds{1}) == std::future_status::ready);
     REQUIRE(operation.get() == std::make_error_code(std::errc::operation_canceled));
