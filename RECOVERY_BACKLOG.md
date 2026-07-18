@@ -14,10 +14,16 @@
    antes de dividir fixtures.
 4. Revalidar em plataformas reais handles, URL UNC, PowerShell e packaging.
 
-Contadores auditados: plano original `99.0/100`, divida nova `64.3/100`
-(9 de 14 itens enumerados aceitos) e backlog legado sem denominador definido.
-O valor anterior `71.4/100` creditava dois lookups resolvidos que nao pertencem
-a lista de 14 itens. Polling e melhorias de teste continuam sem credito.
+Contadores auditados: plano original `99.0/100`, divida nova `71.4/100`
+(10 de 14 itens enumerados aceitos) e backlog legado sem denominador definido.
+O valor volta a `71.4/100` somente porque `SQLITE-IMPORT-NORMALIZE-FULL-SCAN`
+agora tem 30 amostras por cenario e contrato validado. Os dois lookups, polling
+e melhorias de teste continuam fora do denominador.
+
+Fechamento de 2026-07-18: commits `91c60a1`, `eede38e` e `d54a693`; build dev
+completo passou, CTest sequencial passou `581/581` em `82.06 s` e security
+ampla ficou limpa. Bitbucket foi confirmado em `d54a693`; GitLab continua
+bloqueado por OAuth `invalid_grant`.
 
 Ultimo fechamento: commit `e0b5401`, build e CTest da suite de painel `1/1`
 passaram em `2.96 s`. O polling de `activeFilterEntries()` continua pendente
@@ -123,11 +129,15 @@ Matriz completa de acertos, adicoes, erros e ordem de execucao:
   recua ate uma fronteira UTF-8 valida e cobre limite minimo, ASCII, corte
   exato, code point de quatro bytes, tamanho e sufixo.
 
-- [MED-MEASURE] [SQLITE-IMPORT-NORMALIZE-FULL-SCAN]
-  `normalizeExistingSsaNumbers()` percorre todos os registros e referencias na
-  abertura da sessao incremental. Medir 250 mil linhas com banco ja normalizado,
-  CPU/RSS e cancelamento antes de escolher flag de schema, migracao ou
-  normalizacao incremental. Nao pular validacao de colisoes semanticamente.
+- [RESOLVED-BENCHMARK] [SQLITE-IMPORT-NORMALIZE-FULL-SCAN]
+  O harness mede `first-pass` e `idempotent-reopen` sem chamar o segundo caso de
+  normalizacao warm. Em 30 amostras por cenario com 250 mil linhas, legacy
+  atualizou exatamente 250 mil registros com wall p50/p95
+  `1959.458/3258.614 ms`, CPU `1916.130/2816.048 ms` e RSS adicional p95
+  `98,320,384` bytes. Reabertura idempotente teve wall p50/p95 maximo
+  `1.883/3.894 ms`, zero updates e RSS p95 abaixo de 1.36 MB. Integridade,
+  canonicalidade e indices foram verificados em toda amostra; nenhuma mudanca
+  de schema foi justificada pelos numeros atuais.
 
 - [MED-MEASURE] [SQLITE-READ-CONNECTION-CHURN] O repository abre conexao,
   busy/progress handlers e statements por read. Isso tambem isola threads e

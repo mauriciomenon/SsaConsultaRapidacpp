@@ -3,24 +3,56 @@
 Fonte operacional para humanos e agentes de codigo. Verifique este arquivo
 antes de interpretar sincronizacao Git, validacao local ou estado externo.
 
-Ultima verificacao local: 2026-07-17
+Ultima verificacao local: 2026-07-18
 
-## Marco P0 no working tree
+## Marco Activity, importacao parametrizada e SQLite
 
 - Branch: `master`.
-- HEAD local e `55c6bd8`; Bitbucket foi confirmado nesse hash. GitLab `origin`
-  nao esta comprovado porque a autenticacao OAuth falha com `invalid_grant`.
-- O working tree implementa localmente os slices de filtros/distinct e
-  logging/UTF-8, alem das expectativas smoke canonicas correspondentes.
+- HEAD de codigo validado: `d54a693`, precedido por `eede38e` e `91c60a1`.
+  Bitbucket foi confirmado em `d54a693`. O push GitLab `origin` falhou antes de
+  transferir dados porque a autenticacao OAuth continua com `invalid_grant`.
+- O working tree tracked restante contem somente esta reconciliacao documental
+  e mudancas locais preexistentes fora de escopo, listadas pelo `git status`.
 - Plano original: `89.0/100 -> 99.0/100`. O P0 pertence a divida nova; 3.9
   pontos vieram dos menus, 0.8 dos popups, 1.6 do grafo e 3.7 do benchmark
   isolado de prefetch. Profiling valido permanece pendente por 1.0 ponto.
-- Divida nova: `0.0/100 -> 64.3/100`, usando aceite binario dos 14 itens
-  enumerados no handoff; 9 itens estao aceitos localmente. Os dois lookups de
-  filtros resolvidos nao pertencem ao denominador e deixaram de receber credito.
+- Divida nova: `0.0/100 -> 71.4/100`, usando aceite binario dos 14 itens
+  enumerados no handoff; 10 itens estao aceitos localmente. O novo credito e a
+  medicao concluida de `SQLITE-IMPORT-NORMALIZE-FULL-SCAN`; os dois lookups de
+  filtros continuam fora do denominador.
 - Backlog legado: `0.0/100 -> 0.0/100`; nenhum item legado recebeu credito.
-- Estado separado: implementado e commitado no HEAD; validado localmente nesta
-  rodada; Bitbucket comprovado e GitLab pendente de reautenticacao.
+- Estado separado: implementado e commitado localmente; validado por build,
+  CTest e security nesta rodada; Bitbucket comprovado; GitLab pendente de
+  reautenticacao; plataformas nao locais permanecem prova externa.
+
+### Fechamento local de 2026-07-18
+
+- `91c60a1` endurece Activity Analytics: metadata, storage classes, data/semana,
+  revisao ativa, pontos e disponibilidade falham fechado; reparo da semana
+  corrente e deterministico e preserva configuracao valida.
+- `eede38e` adiciona `ImportExecutionOptions`: chunks de 1 a 1,000 linhas e
+  SQLite busy wait de 0 a 3,000 ms em passos de 5 ms, validados antes de staging
+  e lock e propagados por full, incremental, external e recovery.
+- `d54a693` separa primeira passagem de reabertura idempotente no benchmark,
+  separa o gate RSS do benchmark Activity e mantem o probe POSIX fora de
+  Windows.
+- As oito falhas informadas do gate de 564 casos passaram `8/8` em `10.57 s`.
+  Activity/SQLite passou `79/79` em `3.23 s`.
+- Build `dev` completo passou 476 passos. CTest sequencial passou `581/581` em
+  `82.06 s`, incluindo RSS de importacao de 250 mil linhas em `13.67 s`.
+- Primeira passagem, 30 amostras por cenario: canonical wall p50/p95
+  `1009.864/1484.281 ms`; legacy com 250 mil updates
+  `1959.458/3258.614 ms`. RSS adicional p95: `55,525,376/98,320,384` bytes.
+- Reabertura idempotente, 30 amostras por cenario: canonical wall p50/p95
+  `1.883/3.894 ms`; origem legacy ja canonizada `1.817/3.589 ms`; zero updates.
+- Activity em 250 mil linhas: fingerprint `239.838 ms`, captura inicial
+  `1871.504 ms`, repeticao idempotente `0.265 ms`; 6 snapshots e 6 pontos.
+- Security ampla: Semgrep 507 arquivos e zero finding; Gitleaks 1.42 GB e zero
+  leak; TruffleHog 8,853 chunks e zero segredo verificado ou desconhecido.
+- Sol xhigh e Terra high deram GO final. Clawpatch nao gerou review porque seu
+  Codex CLI interno e antigo para `gpt-5.6-sol`; isso nao recebeu credito.
+
+## Marco P0 historico
 - Ultimo slice: commit `e0b5401`, dois polls sincronos de `quickSector()`
   substituidos por `QCOMPARE`; o poll de `activeFilterEntries()` permaneceu
   por depender de timer.
@@ -267,7 +299,7 @@ HEAD `d376431`; nenhuma sugestao foi aceita apenas pela severidade alegada.
    kernel.
 2. Executar as demais fronteiras pequenas aprovadas.
 3. Desenhar e executar a decomposicao controlada dos hubs de importacao.
-4. Medir normalizacao, conexoes, filename e `roleNames()` antes de otimizar.
+4. Medir conexoes SQLite antes de propor conexao longeva ou pool.
 5. Canonizar `clang-tidy` macOS com sysroot e reproduzir IDs Semgrep antes de
    dividir fixtures.
 6. Revalidar handles, PowerShell, packaging e URL UNC em plataformas reais.
@@ -282,8 +314,8 @@ preparacao da release.
 
 | Remote | Provedor | Funcao | Estado confirmado |
 | --- | --- | --- | --- |
-| `origin` | GitLab | Repositorio e CI primarios | `d376431` e `v0.9.10` confirmados |
-| `bitbucket` | Bitbucket | Mirror obrigatorio | `d376431` e `v0.9.10` confirmados |
+| `origin` | GitLab | Repositorio e CI primarios | push de `d54a693` bloqueado por OAuth `invalid_grant` |
+| `bitbucket` | Bitbucket | Mirror obrigatorio | `d54a693` confirmado em `master`; tag `v0.9.10` preservada |
 | `gh` | GitHub | Mirror inativo | HTTP 403; conta suspensa |
 
 Todo fetch ou pull operacional vem de `origin`:

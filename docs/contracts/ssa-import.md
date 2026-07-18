@@ -79,9 +79,14 @@ may fill or improve them.
 
 ## Cancellation, Scale, And Recovery
 
-- Workbook XML is consumed incrementally in chunks of 1,000 rows. Parser,
-  mapper, copy, lock, SQLite, and consolidation observe cancellation between
-  bounded units of work.
+- Workbook XML is consumed incrementally in bounded chunks. The default is
+  1,000 rows and a rescan CLI request may select 1 through 1,000 rows with
+  `--import-chunk-rows`. Parser, mapper, copy, lock, SQLite, and consolidation
+  observe cancellation between bounded units of work.
+- A rescan CLI request may select a SQLite busy wait from 0 through 3,000 ms in
+  5 ms steps with `--sqlite-busy-wait-ms`; the default is 3,000 ms. Both import
+  controls are validated before staging or acquiring the import lock and are
+  propagated through full, incremental, external, and recovery paths.
 - Cancellation before commit rolls back. Cancellation after commit preserves
   success and reports an optional-stage warning.
 - A cross-process lock serializes discovery and import decisions.

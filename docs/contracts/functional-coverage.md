@@ -24,7 +24,7 @@ This document tracks parity against the Python project at
 | Rescan/update data                              | `gui/ssa/gui_workers.py`, `core/app_logic.py`               | `SpreadsheetImportWorkflowPort`, `SsaWorkflowService`                              | Present                            |
 | Consolidate imported input files                | `gui/gui_ssa.py`                                            | `ImportFileStager`, `SpreadsheetImportWorkflowPort`                                | Present                            |
 | Clean orphan derivadas                          | `gui/gui_ssa.py::update_derivadas_from_sources`             | `IDerivadasPort`, `SsaWorkflowService`                                             | Present                            |
-| Import derivadas sources                        | `armazenamento/derivadas_sync.py`                           | `DerivadasSourceReader`, `SqliteDerivadasPort`, `SsaWorkflowService`                 | Present                            |
+| Import derivadas sources                        | `armazenamento/derivadas_sync.py`                           | `DerivadasSourceReader`, `SqliteDerivadasPort`, `SsaWorkflowService`               | Present                            |
 | Load other DB                                   | `gui/gui_ssa.py::load_other_database`                       | `SqliteDatabaseValidator`, `DatabaseSwitchViewModel`, `DesktopApplicationLauncher` | Present                            |
 | Filter condition history                        | `interface/cli.py::voltar_filtro`                           | `BrowseOrchestrator`, `BrowseViewModel`                                            | GUI present, CLI REPL out of scope |
 | Help and About                                  | `gui/gui_ssa.py`                                            | `HelpDialog`, `AboutDialog`, application metadata                                  | Present                            |
@@ -50,7 +50,7 @@ by equivalent flags where noted.
 | `--streamlit/--web`         | `main.py`                                    | Not planned for C++ desktop repo                      | Out of scope                       |
 | `--force-rescan/--rescan`   | `main.py`, `core/app_logic.py`               | `SsaWorkflowService`                                  | CLI present, adapter contract only |
 | `--skip-import`             | `interface/cli_args.py`                      | compatibility flag, no-op by default                  | Present                            |
-| `--optimized/--standard`    | `main.py`                                    | import strategy selection                             | CLI present, adapter contract only |
+| Import execution controls   | C++ reliability contract                     | `ImportExecutionOptions`                              | Present                            |
 | `--reset-db`                | `main.py`                                    | `SsaWorkflowService`                                  | CLI present                        |
 | `--clean-data`              | `main.py`                                    | `SsaWorkflowService`                                  | CLI present, SQLite cleanup only   |
 | `--log-level`               | `main.py`                                    | `QLoggingCategory` filter rules in `SsaCliController` | Present                            |

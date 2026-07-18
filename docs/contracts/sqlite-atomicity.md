@@ -19,6 +19,9 @@
   does not wait on a shared repository mutex.
 - Progress and busy handlers observe the stop token with bounded polling. A
   locked database cannot turn cancellation into an unbounded busy timeout.
+- Rescan import requests may bound the SQLite busy wait from 0 through 3,000 ms
+  in 5 ms steps. Invalid values fail before staging or lock acquisition; zero
+  means fail immediately when the writer cannot acquire the SQLite lock.
 - A canceled or failed operation releases statements, connections, locks, and
   temporary files before its terminal is published.
 
