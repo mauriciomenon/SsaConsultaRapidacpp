@@ -5,6 +5,33 @@ antes de interpretar sincronizacao Git, validacao local ou estado externo.
 
 Ultima verificacao local: 2026-07-18
 
+## Sinais causais de contencao SQLite na importacao - 2026-07-18
+
+- Branch `master`; HEAD de codigo `f62ea53`. Bitbucket confirma o mesmo hash.
+  GitLab `origin` continua bloqueado por OAuth `invalid_grant`; o local esta
+  `77` commits a frente de `origin/master`.
+- `SqliteSsaImportWriter` agora retira precondicoes temporais com um sinal
+  opcional de primeira callback busy, ownership por `shared_ptr` e retencao na
+  `WriteSession::Storage`. O workflow separa `writerBusyEntered` de
+  `snapshotLocked`, que so e publicado na fase de publication do SQLite Backup.
+- Os contratos trocam esperas de `50/250/500 ms` por `try_acquire_for(1 s)`
+  somente antes de cancelar ou liberar o lock. Watchdogs de termino continuam
+  como limites de falha, nunca como sucesso.
+- Review Terra ultra encontrou dois P2: permit antigo no cleanup e permit duplo
+  entre `SQLITE_BUSY` e `SQLITE_LOCKED`. Ambos foram corrigidos; o handler e o
+  fallback agora compartilham um unico `atomic_flag`. Review final: `SEM FINDINGS`.
+- Gate local: diff, clang-format, cppcheck, detect-secrets e Semgrep limpos;
+  clang-tidy sem erro novo. Build afetado passou. CTest causal `7/7` em `0.56 s`,
+  workflow completo `174/174` em `7.96 s` e familia SQLite Repository `31/31`
+  em `0.72 s`. Hooks do commit passaram clang-format, Gitleaks,
+  detect-secrets e TruffleHog.
+- Contadores sem inflacao: plano original `99.0/100`; divida nova
+  `13/14 = 92.9%`; backlog legado `0.0/100` como placeholder; fila operacional
+  `5/8 = 62.5%`.
+
+Proxima atividade unica: substituir o polling de staging e corpus lock restante
+nos contratos de importacao por sinais causais equivalentes.
+
 ## Benchmark da formatacao de pagina - 2026-07-18
 
 - `ce90132` adiciona `ssa_table_page_format_benchmark`: fixture preconstruida

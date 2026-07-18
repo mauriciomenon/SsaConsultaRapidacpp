@@ -1,5 +1,27 @@
 # Recovery Backlog
 
+## Sinais causais de contencao SQLite na importacao - 2026-07-18
+
+- [RESOLVED-LOCAL] [IMPORT-RESCAN-CAUSAL-BUSY-SIGNALS] `f62ea53` elimina
+  precondicoes temporais nos contratos de writer, cleanup de journal, preflight,
+  publication e cancelamento do rescan. `writerBusyEntered` prova callback busy
+  do writer; `snapshotLocked` prova contencao da publication pelo SQLite Backup.
+- A seam e opcional e nula em producao. `WriteSession::Storage` retem o
+  `shared_ptr` antes do handler. O backup usa um `atomic_flag` compartilhado
+  pelo handler `SQLITE_BUSY` e pelo fallback `SQLITE_LOCKED`, sem permit velho.
+- Review Terra ultra encontrou P2 de permit residual no cleanup e P2 de dupla
+  publicacao do semaforo; ambos corrigidos. Review final: `SEM FINDINGS`.
+- Gates: build afetado; CTest causal `7/7` em `0.56 s`; workflow `174/174` em
+  `7.96 s`; familia SQLite Repository `31/31` em `0.72 s`. Diff, formato,
+  cppcheck, detect-secrets e Semgrep limpos; hooks staged passaram Gitleaks e
+  TruffleHog. Bitbucket confirma `f62ea53`; GitLab `origin` continua OAuth
+  `invalid_grant`.
+- Sem credito novo: plano `99.0/100`, divida nova `13/14 = 92.9%`, legado
+  placeholder `0.0/100`, fila operacional `5/8 = 62.5%`.
+
+Proxima atividade unica: trocar polling de staging e corpus lock por sinais
+causais de filesystem e lock nos contratos de importacao restantes.
+
 ## Reconciliacao do macro report - 2026-07-18
 
 - [RESOLVED-HISTORICAL] [P4] O macro report atual ja usa
