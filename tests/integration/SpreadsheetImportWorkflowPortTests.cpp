@@ -901,20 +901,18 @@ TEST_CASE("workflow cancellation after staging removes the owned external copy")
                                                  ssa::infra::sqlite::SqliteOpenMode::ReadWrite);
     REQUIRE(sqlite3_exec(blocker.handle(), "BEGIN EXCLUSIVE", nullptr, nullptr, nullptr) ==
             SQLITE_OK);
-    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
-                                                              importColumns());
+    const auto writerBusyEntered =
+        std::make_shared<ssa::infra::sqlite::SqliteSsaImportWriter::SynchronizationSemaphore>(0);
+    ssa::infra::importing::SpreadsheetImportWorkflowPort::SynchronizationSignals synchronization;
+    synchronization.writerBusyEntered = writerBusyEntered;
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(
+        inputDirectory, dbPath, importColumns(), true, synchronization);
     std::stop_source stopSource;
     auto operation = std::async(std::launch::async, [&] {
         return port.importExternalFiles({.files = {source}}, stopSource.get_token());
     });
-    QElapsedTimer deadline;
-    deadline.start();
-    while ((!std::filesystem::exists(inputDirectory) || directWorkbookCount(inputDirectory) == 0) &&
-           deadline.elapsed() < 3'000) {
-        QThread::msleep(5);
-    }
+    REQUIRE(writerBusyEntered->try_acquire_for(std::chrono::seconds{1}));
     REQUIRE(directWorkbookCount(inputDirectory) == 1);
-    REQUIRE(operation.wait_for(std::chrono::milliseconds{50}) == std::future_status::timeout);
 
     stopSource.request_stop();
     REQUIRE(operation.wait_for(std::chrono::seconds{2}) == std::future_status::ready);
@@ -955,18 +953,21 @@ TEST_CASE("workflow preserves canceled status when owned staging cleanup cannot 
     const ssa::infra::sqlite::SqliteSsaImportWriter writer(sqliteWriterAccess(), dbPath,
                                                            importColumns());
     REQUIRE(writer.write({}, 0, 0, false).rowsWritten == 0);
-    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
-                                                              importColumns());
+    ssa::infra::sqlite::SqliteConnection blocker(dbPath,
+                                                 ssa::infra::sqlite::SqliteOpenMode::ReadWrite);
+    REQUIRE(sqlite3_exec(blocker.handle(), "BEGIN EXCLUSIVE", nullptr, nullptr, nullptr) ==
+            SQLITE_OK);
+    const auto writerBusyEntered =
+        std::make_shared<ssa::infra::sqlite::SqliteSsaImportWriter::SynchronizationSemaphore>(0);
+    ssa::infra::importing::SpreadsheetImportWorkflowPort::SynchronizationSignals synchronization;
+    synchronization.writerBusyEntered = writerBusyEntered;
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(
+        inputDirectory, dbPath, importColumns(), true, synchronization);
     std::stop_source stopSource;
     auto operation = std::async(std::launch::async, [&] {
         return port.importExternalFiles({.files = {source}}, stopSource.get_token());
     });
-    QElapsedTimer deadline;
-    deadline.start();
-    while ((!std::filesystem::exists(inputDirectory) || directWorkbookCount(inputDirectory) == 0) &&
-           deadline.elapsed() < 3'000) {
-        QThread::msleep(5);
-    }
+    REQUIRE(writerBusyEntered->try_acquire_for(std::chrono::seconds{1}));
     REQUIRE(directWorkbookCount(inputDirectory) == 1);
     std::filesystem::permissions(
         inputDirectory, std::filesystem::perms::owner_read | std::filesystem::perms::owner_exec,
@@ -977,6 +978,7 @@ TEST_CASE("workflow preserves canceled status when owned staging cleanup cannot 
     const auto result = operation.get();
     std::filesystem::permissions(inputDirectory, std::filesystem::perms::owner_all,
                                  std::filesystem::perm_options::replace);
+    REQUIRE(sqlite3_exec(blocker.handle(), "ROLLBACK", nullptr, nullptr, nullptr) == SQLITE_OK);
 
     CAPTURE(result.message, result.diagnostic);
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Canceled);
@@ -5456,18 +5458,16 @@ TEST_CASE("spreadsheet import workflow holds the corpus lock until an alternate 
                                                  ssa::infra::sqlite::SqliteOpenMode::ReadWrite);
     REQUIRE(sqlite3_exec(blocker.handle(), "BEGIN EXCLUSIVE", nullptr, nullptr, nullptr) ==
             SQLITE_OK);
-    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
-                                                              importColumns());
+    const auto writerBusyEntered =
+        std::make_shared<ssa::infra::sqlite::SqliteSsaImportWriter::SynchronizationSemaphore>(0);
+    ssa::infra::importing::SpreadsheetImportWorkflowPort::SynchronizationSignals synchronization;
+    synchronization.writerBusyEntered = writerBusyEntered;
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(
+        inputDirectory, dbPath, importColumns(), true, synchronization);
 
     auto operation = std::async(std::launch::async,
                                 [&] { return port.rescan({ssa::ports::RescanMode::Incremental}); });
-    QElapsedTimer deadline;
-    deadline.start();
-    while (!std::filesystem::exists(importLockPath) && deadline.elapsed() < 3'000) {
-        QThread::msleep(5);
-    }
-    REQUIRE(std::filesystem::exists(importLockPath));
-    REQUIRE(operation.wait_for(std::chrono::milliseconds{50}) == std::future_status::timeout);
+    REQUIRE(writerBusyEntered->try_acquire_for(std::chrono::seconds{1}));
     QLockFile contender(ssa::qt::toQString(importLockPath));
     contender.setStaleLockTime(0);
     REQUIRE_FALSE(contender.tryLock(0));
@@ -5479,6 +5479,7 @@ TEST_CASE("spreadsheet import workflow holds the corpus lock until an alternate 
     INFO(result.message);
     INFO(result.diagnostic);
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE_FALSE(writerBusyEntered->try_acquire());
     REQUIRE(contender.tryLock(0));
     contender.unlock();
 }
