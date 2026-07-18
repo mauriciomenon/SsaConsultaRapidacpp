@@ -5,6 +5,29 @@ antes de interpretar sincronizacao Git, validacao local ou estado externo.
 
 Ultima verificacao local: 2026-07-18
 
+## Benchmark da formatacao de pagina - 2026-07-18
+
+- `ce90132` adiciona `ssa_table_page_format_benchmark`: fixture preconstruida
+  de `500` linhas por `12` colunas com texto, inteiros e datas, isolando o
+  formatter do I/O e da GUI. O JSON local nao versionado fica em
+  `build/dev/table-page-format-benchmark-30.json`.
+- Em `30` amostras de `10` iteracoes, por pagina, wall p50/p95 foi
+  `2.93215/3.3340834 ms` e CPU p50/p95 foi `2.9244/3.2649 ms`. Como o formatter
+  ja roda no worker, a medicao nao justifica refactor lazy ou mudanca de layout.
+- Gate local: diff, clang-format, cmake-format, cppcheck, clang-tidy,
+  detect-secrets e Semgrep limpos; build do target e smoke CTest `1/1` em
+  `0.04 s`. Review Terra ultra: `SEM FINDINGS`. O `clawpatch` local falhou por
+  configuracao/versionamento do proprio Codex e nao conta como validacao.
+- Branch `master`; HEAD `ce90132`; Bitbucket confirma o mesmo hash. GitLab
+  `origin` continua bloqueado por OAuth `invalid_grant`; o local esta `74`
+  commits a frente de `origin/master`.
+- Contadores sem mudanca: plano original `99.0/100`; divida nova
+  `13/14 = 92.9%`; backlog legado `0.0/100` como placeholder; fila operacional
+  `5/8 = 62.5%`.
+
+Proxima atividade unica: propagar sinal causal de `sqliteBusyWait` pelos
+contratos de importacao e rescan que ainda dependem de espera temporal.
+
 ## Reconciliacao do macro report - 2026-07-18
 
 - O finding P4 de agregacao `map<ReportKey,set<string>>` esta obsoleto no HEAD:

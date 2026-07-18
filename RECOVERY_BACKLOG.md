@@ -478,7 +478,11 @@ Matriz completa de acertos, adicoes, erros e ordem de execucao:
 - [RESOLVED-HISTORICAL] [P4] Macro report ja usa analytics SQL com
   `COUNT(DISTINCT "ssa_number")`; o antigo agregador em memoria nao existe no
   HEAD. Contratos de SQL, filtros e resultado agrupado passaram `3/3` em `0.13 s`.
-- [MED] [P7] Eager date/string formatting: formata 500x12 celulas antes de exibir; QML so renderiza visiveis. Lazy exigiria repensar `SsaTableDisplayValues`/`displayCache_` - ciclo dedicado.
+- [RESOLVED-LOCAL] [P7] O benchmark `ce90132` mede a formatacao eager de
+  pagina preconstruida de `500x12`, com texto, inteiros e datas reais. Em 30
+  amostras, wall p50/p95 foi `2.93215/3.3340834 ms` por pagina e CPU p50/p95
+  foi `2.9244/3.2649 ms`. O formatter ja roda fora da UI; nao ha evidencia para
+  romper `SsaTableDisplayValues`/`displayCache_` por lazy formatting.
 
 ### Qualidade / duplicacao
 - [RESOLVED] [Q1] As tres copias identicas de `trimCopy` da importacao foram
