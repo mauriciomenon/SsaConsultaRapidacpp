@@ -1,7 +1,10 @@
 #include "domain/ColumnCatalog.h"
 #include "infra/sqlite/SqliteDatabaseValidator.h"
+#include "qt/FilesystemPath.h"
 
 #include <catch2/catch_test_macros.hpp>
+
+#include <QTemporaryDir>
 
 #include <sqlite3.h>
 
@@ -17,29 +20,21 @@ namespace {
     class TemporaryDirectory final {
       public:
         TemporaryDirectory() {
-            path_ = std::filesystem::temp_directory_path() /
-                    ("ssa_database_validator_" + std::to_string(++sequence_));
-            std::filesystem::remove_all(path_);
-            std::filesystem::create_directories(path_);
+            REQUIRE(directory_.isValid());
         }
 
-        ~TemporaryDirectory() {
-            std::error_code error;
-            std::filesystem::remove_all(path_, error);
-        }
-
-        [[nodiscard]] const std::filesystem::path& path() const {
-            return path_;
+        [[nodiscard]] std::filesystem::path path() const {
+            return ssa::qt::toFileSystemPath(directory_.path());
         }
 
       private:
-        inline static int sequence_ = 0;
-        std::filesystem::path path_;
+        QTemporaryDir directory_;
     };
 
     void executeSql(const std::filesystem::path& path, const std::string& sql) {
         sqlite3* database = nullptr;
-        REQUIRE(sqlite3_open(path.string().c_str(), &database) == SQLITE_OK);
+        const auto sqlitePath = ssa::qt::toUtf8(path);
+        REQUIRE(sqlite3_open(sqlitePath.c_str(), &database) == SQLITE_OK);
         char* error = nullptr;
         const int result = sqlite3_exec(database, sql.c_str(), nullptr, nullptr, &error);
         if (error != nullptr) {
@@ -169,6 +164,8 @@ TEST_CASE("database validator accepts legacy and current populated databases rea
         std::filesystem::permissions(databasePath, std::filesystem::perms::owner_read,
                                      std::filesystem::perm_options::replace);
         const auto result = validator.validate(databasePath);
+        std::filesystem::permissions(databasePath, std::filesystem::perms::owner_all,
+                                     std::filesystem::perm_options::replace);
 
         INFO(version);
         REQUIRE(result.status == ssa::ports::DatabaseValidationStatus::Valid);
