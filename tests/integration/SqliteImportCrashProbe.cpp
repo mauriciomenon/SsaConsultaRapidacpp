@@ -9,9 +9,25 @@
 #include <chrono>
 #include <filesystem>
 #include <iostream>
+#include <memory>
+#include <stop_token>
 #include <string_view>
 #include <thread>
 #include <vector>
+
+namespace {
+
+    bool publishReady(const std::filesystem::path& readyPath) {
+        QSaveFile ready(ssa::qt::toQString(readyPath));
+        if (!ready.open(QIODevice::WriteOnly) || ready.write("ready\n") != 6 || !ready.commit()) {
+            std::cerr << "failed to publish ready marker\n";
+            return false;
+        }
+        std::cout << "READY\n" << std::flush;
+        return true;
+    }
+
+} // namespace
 
 int main(const int argc, char* argv[]) {
     if (argc != 4 && argc != 6) {
@@ -41,10 +57,30 @@ int main(const int argc, char* argv[]) {
     try {
         const std::vector<ssa::domain::ColumnDef> columns{{.key = "numero_ssa"},
                                                           {.key = "descricao_ssa"}};
+        const bool publishReadyAfterWork = scenario != "journal-delete-before-commit";
         const ssa::infra::sqlite::SqliteSsaImportWriter writer(
             ssa::infra::sqlite::SqliteSsaImportWriterTestAccess::access(), databasePath, columns);
         if (journalDeleteScenario) {
-            writer.completeConsolidation(writer.pendingConsolidation());
+            if (publishReadyAfterWork) {
+                writer.completeConsolidation(writer.pendingConsolidation());
+            } else {
+                const auto moves = writer.pendingConsolidation();
+                const auto busyEntered = std::make_shared<
+                    ssa::infra::sqlite::SqliteSsaImportWriter::SynchronizationSemaphore>(0);
+                const ssa::infra::sqlite::SqliteSsaImportWriter observedWriter(
+                    ssa::infra::sqlite::SqliteSsaImportWriterTestAccess::access(), databasePath,
+                    columns, "ssa_table", {.busyEntered = busyEntered});
+                std::jthread readyPublisher([busyEntered,
+                                             readyPath](const std::stop_token stopToken) {
+                    std::stop_callback stopped{stopToken,
+                                               [semaphore = busyEntered] { semaphore->release(); }};
+                    busyEntered->acquire();
+                    if (!stopToken.stop_requested()) {
+                        static_cast<void>(publishReady(readyPath));
+                    }
+                });
+                observedWriter.completeConsolidation(moves, std::chrono::seconds{5});
+            }
         } else {
             ssa::infra::importing::ResolvedSsaImportRows replacement;
             replacement.rows.push_back({{"numero_ssa", "202600211"}, {"descricao_ssa", "Nova"}});
@@ -69,9 +105,7 @@ int main(const int argc, char* argv[]) {
             }
         }
 
-        QSaveFile ready(ssa::qt::toQString(readyPath));
-        if (!ready.open(QIODevice::WriteOnly) || ready.write("ready\n") != 6 || !ready.commit()) {
-            std::cerr << "failed to publish ready marker\n";
+        if (publishReadyAfterWork && !publishReady(readyPath)) {
             return 3;
         }
         for (;;) {

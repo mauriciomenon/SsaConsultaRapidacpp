@@ -82,6 +82,22 @@ namespace {
         return ssa::infra::sqlite::SqliteSsaImportWriterTestAccess::access();
     }
 
+    QByteArray waitForCrashProbeReady(QProcess& child) {
+        QByteArray output = child.readAllStandardOutput();
+        QElapsedTimer deadline;
+        deadline.start();
+        while (!output.contains("READY\n")) {
+            constexpr int timeoutMilliseconds = 5000;
+            const auto remaining = timeoutMilliseconds - deadline.elapsed();
+            if (remaining <= 0 || !child.waitForReadyRead(remaining)) {
+                output += child.readAllStandardOutput();
+                return output;
+            }
+            output += child.readAllStandardOutput();
+        }
+        return output;
+    }
+
     std::filesystem::path databaseImportLockPathForTest(const std::filesystem::path& databasePath) {
         std::error_code error;
         auto normalized = std::filesystem::weakly_canonical(databasePath, error);
@@ -1818,11 +1834,10 @@ TEST_CASE("sqlite import survives process death before and after commit") {
         child.start(QString::fromUtf8(SSA_SQLITE_CRASH_PROBE_PATH),
                     {ssa::qt::toQString(dbPath), ssa::qt::toQString(readyPath), scenario});
         REQUIRE(child.waitForStarted(5000));
-        QElapsedTimer deadline;
-        deadline.start();
-        while (!std::filesystem::exists(readyPath) && deadline.elapsed() < 5000) {
-            QThread::msleep(10);
-        }
+        const auto readyOutput = waitForCrashProbeReady(child);
+        INFO(readyOutput.toStdString());
+        INFO(child.readAllStandardError().toStdString());
+        REQUIRE(readyOutput.contains("READY\n"));
         REQUIRE(std::filesystem::exists(readyPath));
         child.kill();
         REQUIRE(child.waitForFinished(5000));
@@ -2093,11 +2108,10 @@ TEST_CASE("spreadsheet workflow resumes committed consolidation after process de
                     {ssa::qt::toQString(dbPath), ssa::qt::toQString(readyPath), scenario,
                      ssa::qt::toQString(source), ssa::qt::toQString(destination)});
         REQUIRE(child.waitForStarted(5000));
-        QElapsedTimer deadline;
-        deadline.start();
-        while (!std::filesystem::exists(readyPath) && deadline.elapsed() < 5000) {
-            QThread::msleep(10);
-        }
+        const auto readyOutput = waitForCrashProbeReady(child);
+        INFO(readyOutput.toStdString());
+        INFO(child.readAllStandardError().toStdString());
+        REQUIRE(readyOutput.contains("READY\n"));
         REQUIRE(std::filesystem::exists(readyPath));
         child.kill();
         REQUIRE(child.waitForFinished(5000));
@@ -2309,14 +2323,12 @@ TEST_CASE("sqlite consolidation journal survives process death around cleanup co
                     {ssa::qt::toQString(dbPath), ssa::qt::toQString(readyPath), scenario,
                      ssa::qt::toQString(source), ssa::qt::toQString(destination)});
         REQUIRE(child.waitForStarted(5000));
-        QElapsedTimer deadline;
-        deadline.start();
         const auto transactionJournal = std::filesystem::path{dbPath.string() + "-journal"};
-        const auto checkpoint = committed ? readyPath : transactionJournal;
-        while (!std::filesystem::exists(checkpoint) && deadline.elapsed() < 5000) {
-            QThread::msleep(1);
-        }
-        REQUIRE(std::filesystem::exists(checkpoint));
+        const auto readyOutput = waitForCrashProbeReady(child);
+        INFO(readyOutput.toStdString());
+        INFO(child.readAllStandardError().toStdString());
+        REQUIRE(readyOutput.contains("READY\n"));
+        REQUIRE(std::filesystem::exists(committed ? readyPath : transactionJournal));
         child.kill();
         REQUIRE(child.waitForFinished(5000));
         REQUIRE(child.exitStatus() == QProcess::CrashExit);
