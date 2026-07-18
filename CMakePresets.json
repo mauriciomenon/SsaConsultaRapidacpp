@@ -9,6 +9,7 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "CMAKE_OSX_SYSROOT": "macosx",
         "SSA_BUILD_TESTS": "ON"
       }
     },
@@ -20,6 +21,7 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "CMAKE_OSX_SYSROOT": "macosx",
         "SSA_BUILD_TESTS": "ON"
       }
     },
@@ -41,6 +43,7 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "CMAKE_OSX_SYSROOT": "macosx",
         "SSA_BUILD_TESTS": "ON",
         "CMAKE_C_FLAGS_INIT": "-fsanitize=address,undefined -fno-omit-frame-pointer -fno-common",
         "CMAKE_CXX_FLAGS_INIT": "-fsanitize=address,undefined -fno-omit-frame-pointer -fno-common",
@@ -56,6 +59,7 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "CMAKE_OSX_SYSROOT": "macosx",
         "SSA_BUILD_TESTS": "ON",
         "CMAKE_C_FLAGS_INIT": "-fsanitize=thread -fno-omit-frame-pointer -g",
         "CMAKE_CXX_FLAGS_INIT": "-fsanitize=thread -fno-omit-frame-pointer -g",
@@ -71,6 +75,7 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "CMAKE_OSX_SYSROOT": "macosx",
         "SSA_BUILD_TESTS": "ON",
         "CMAKE_C_FLAGS_INIT": "-fprofile-instr-generate -fcoverage-mapping -O0 -g",
         "CMAKE_CXX_FLAGS_INIT": "-fprofile-instr-generate -fcoverage-mapping -O0 -g",
