@@ -1,5 +1,6 @@
 #include "SqliteSsaImportWriterTestAccess.h"
 #include "domain/ColumnCatalog.h"
+#include "qt/FilesystemPath.h"
 
 #include <QCommandLineOption>
 #include <QCommandLineParser>
@@ -44,6 +45,8 @@ namespace {
     constexpr std::int64_t kFirstSsaNumber = 700'000'000;
     constexpr std::string_view kCanonicalScenario = "canonical";
     constexpr std::string_view kLegacyScenario = "legacy";
+    constexpr std::string_view kFirstPassPhase = "first-pass";
+    constexpr std::string_view kIdempotentReopenPhase = "idempotent-reopen";
     constexpr std::string_view kScope =
         "sqlite_writer_incremental_session_after_fixture_preparation";
     constexpr int kWorkerStartTimeoutMs = 10'000;
@@ -51,6 +54,7 @@ namespace {
 
     struct Sample final {
         std::string scenario;
+        std::string phase;
         double wallMs{0.0};
         double cpuMs{0.0};
         std::uint64_t rssBaselineBytes{0};
@@ -67,6 +71,10 @@ namespace {
 
     [[nodiscard]] bool isScenario(const std::string_view scenario) {
         return scenario == kCanonicalScenario || scenario == kLegacyScenario;
+    }
+
+    [[nodiscard]] bool isPhase(const std::string_view phase) {
+        return phase == kFirstPassPhase || phase == kIdempotentReopenPhase;
     }
 
     [[nodiscard]] std::string canonicalNumber(const std::size_t offset) {
@@ -111,7 +119,8 @@ namespace {
                                              const std::size_t rows, const bool legacy,
                                              std::string& error) {
         sqlite3* database = nullptr;
-        if (sqlite3_open_v2(path.string().c_str(), &database,
+        const auto encodedPath = ssa::qt::toUtf8(path);
+        if (sqlite3_open_v2(encodedPath.c_str(), &database,
                             SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nullptr) != SQLITE_OK) {
             error = database == nullptr ? "cannot open fixture database" : sqlite3_errmsg(database);
             if (database != nullptr) {
@@ -266,10 +275,62 @@ namespace {
         return hasRow ? std::optional{value} : std::nullopt;
     }
 
+    [[nodiscard]] std::string canonicalityViolationPredicate() {
+        return "(numero_ssa IS NULL OR TYPEOF(numero_ssa) <> 'text' OR "
+               "INSTR(numero_ssa, CHAR(0)) <> 0 OR numero_ssa NOT GLOB "
+               "'[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]') OR "
+               "(derivada_de IS NOT NULL AND (TYPEOF(derivada_de) <> 'text' OR "
+               "INSTR(derivada_de, CHAR(0)) <> 0 OR "
+               "(derivada_de <> '' AND derivada_de NOT GLOB "
+               "'[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]'))) OR "
+               "(numero_ssa_relacionada_1 IS NOT NULL AND "
+               "(TYPEOF(numero_ssa_relacionada_1) <> 'text' OR "
+               "INSTR(numero_ssa_relacionada_1, CHAR(0)) <> 0 OR "
+               "(numero_ssa_relacionada_1 <> '' AND numero_ssa_relacionada_1 NOT GLOB "
+               "'[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]'))) OR "
+               "(numero_ssa_relacionada_2 IS NOT NULL AND "
+               "(TYPEOF(numero_ssa_relacionada_2) <> 'text' OR "
+               "INSTR(numero_ssa_relacionada_2, CHAR(0)) <> 0 OR "
+               "(numero_ssa_relacionada_2 <> '' AND numero_ssa_relacionada_2 NOT GLOB "
+               "'[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]'))) OR "
+               "(numero_ssa_relacionada_3 IS NOT NULL AND "
+               "(TYPEOF(numero_ssa_relacionada_3) <> 'text' OR "
+               "INSTR(numero_ssa_relacionada_3, CHAR(0)) <> 0 OR "
+               "(numero_ssa_relacionada_3 <> '' AND numero_ssa_relacionada_3 NOT GLOB "
+               "'[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]')))";
+    }
+
+    [[nodiscard]] std::optional<bool> canonicalIndexContract(sqlite3* database) {
+        const auto legacyDirtyIndexes = scalarCount(
+            database, "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name IN ("
+                      "'idx_ssa_table_import_dirty_numero_ssa', "
+                      "'idx_ssa_table_import_dirty_derivada_de', "
+                      "'idx_ssa_table_import_dirty_numero_ssa_relacionada_1', "
+                      "'idx_ssa_table_import_dirty_numero_ssa_relacionada_2', "
+                      "'idx_ssa_table_import_dirty_numero_ssa_relacionada_3')");
+        if (!legacyDirtyIndexes) {
+            return std::nullopt;
+        }
+        const auto normalSsaIndex =
+            scalarCount(database, "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND "
+                                  "name='idx_ssa_table_numero_ssa'");
+        if (!normalSsaIndex) {
+            return std::nullopt;
+        }
+        const auto canonicalIndexes = scalarCount(
+            database,
+            "SELECT COUNT(*) FROM pragma_index_list('ssa_table') WHERE "
+            "(name='ux_ssa_table_numero_ssa' AND \"unique\"=1 AND partial=0) OR "
+            "(name='idx_ssa_table_import_dirty_canonical' AND \"unique\"=0 AND partial=1)");
+        return canonicalIndexes && *legacyDirtyIndexes == 0 && *normalSsaIndex == 0 &&
+               *canonicalIndexes == 2;
+    }
+
     [[nodiscard]] bool databaseContract(const std::filesystem::path& path, const std::size_t rows,
                                         Sample& sample, std::string& error) {
         sqlite3* database = nullptr;
-        if (sqlite3_open_v2(path.string().c_str(), &database, SQLITE_OPEN_READONLY, nullptr) !=
+        const auto encodedPath = ssa::qt::toUtf8(path);
+        if (sqlite3_open_v2(encodedPath.c_str(), &database, SQLITE_OPEN_READONLY, nullptr) !=
             SQLITE_OK) {
             error =
                 database == nullptr ? "cannot reopen benchmark database" : sqlite3_errmsg(database);
@@ -283,14 +344,9 @@ namespace {
         const auto incoming =
             scalarCount(database, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='" +
                                       canonicalNumber(rows) + "'");
-        const auto nonCanonical = scalarCount(
-            database, "SELECT COUNT(*) FROM ssa_table WHERE "
-                      "length(COALESCE(numero_ssa, '')) <> 9 OR numero_ssa GLOB '*[^0-9]*' OR "
-                      "(TRIM(COALESCE(derivada_de, '')) <> '' AND "
-                      "(length(TRIM(derivada_de)) <> 9 OR TRIM(derivada_de) GLOB '*[^0-9]*')) OR "
-                      "(TRIM(COALESCE(numero_ssa_relacionada_1, '')) <> '' AND "
-                      "(length(TRIM(numero_ssa_relacionada_1)) <> 9 OR "
-                      "TRIM(numero_ssa_relacionada_1) GLOB '*[^0-9]*'))");
+        const auto nonCanonical = scalarCount(database, "SELECT COUNT(*) FROM ssa_table WHERE " +
+                                                            canonicalityViolationPredicate());
+        const auto indexes = canonicalIndexContract(database);
         sqlite3_stmt* integrity = nullptr;
         const bool prepared = sqlite3_prepare_v2(database, "PRAGMA integrity_check", -1, &integrity,
                                                  nullptr) == SQLITE_OK;
@@ -303,18 +359,51 @@ namespace {
             sqlite3_finalize(integrity);
         }
         const bool closed = closeDatabase();
-        if (!total || !incoming || !nonCanonical || !valid || !closed) {
+        if (!total || !incoming || !nonCanonical || !indexes || !valid || !closed) {
             error = "benchmark database contract unavailable";
             return false;
         }
         sample.rowsTotal = *total;
         sample.nonCanonicalRows = *nonCanonical;
-        if (*total == rows + 1 && *incoming == 1 && *nonCanonical == 0) {
+        if (*total == rows + 1 && *incoming == 1 && *nonCanonical == 0 && *indexes) {
             return true;
         }
         error = "benchmark database contract failed total=" + std::to_string(*total) +
                 " incoming=" + std::to_string(*incoming) +
-                " noncanonical=" + std::to_string(*nonCanonical);
+                " noncanonical=" + std::to_string(*nonCanonical) +
+                " indexes=" + std::to_string(*indexes);
+        return false;
+    }
+
+    [[nodiscard]] bool prewarmDatabaseContract(const std::filesystem::path& path,
+                                               const std::size_t rows, std::string& error) {
+        sqlite3* database = nullptr;
+        const auto encodedPath = ssa::qt::toUtf8(path);
+        if (sqlite3_open_v2(encodedPath.c_str(), &database, SQLITE_OPEN_READONLY, nullptr) !=
+            SQLITE_OK) {
+            error = database == nullptr ? "cannot reopen prewarmed benchmark database"
+                                        : sqlite3_errmsg(database);
+            if (database != nullptr) {
+                sqlite3_close(database);
+            }
+            return false;
+        }
+        const auto closeDatabase = [&] { return sqlite3_close(database) == SQLITE_OK; };
+        const auto total = scalarCount(database, "SELECT COUNT(*) FROM ssa_table");
+        const auto nonCanonical = scalarCount(database, "SELECT COUNT(*) FROM ssa_table WHERE " +
+                                                            canonicalityViolationPredicate());
+        const auto indexes = canonicalIndexContract(database);
+        const bool closed = closeDatabase();
+        if (!total || !nonCanonical || !indexes || !closed) {
+            error = "prewarmed benchmark database contract unavailable";
+            return false;
+        }
+        if (*total == rows && *nonCanonical == 0 && *indexes) {
+            return true;
+        }
+        error = "prewarmed benchmark database contract failed total=" + std::to_string(*total) +
+                " noncanonical=" + std::to_string(*nonCanonical) +
+                " indexes=" + std::to_string(*indexes);
         return false;
     }
 
@@ -322,6 +411,7 @@ namespace {
         return {
             {QStringLiteral("scope"), QString::fromUtf8(kScope.data(), kScope.size())},
             {QStringLiteral("scenario"), QString::fromStdString(sample.scenario)},
+            {QStringLiteral("phase"), QString::fromStdString(sample.phase)},
             {QStringLiteral("wall_ms"), sample.wallMs},
             {QStringLiteral("cpu_ms"), sample.cpuMs},
             {QStringLiteral("rss_baseline_bytes"), static_cast<qint64>(sample.rssBaselineBytes)},
@@ -340,21 +430,46 @@ namespace {
              static_cast<qint64>(sample.nonCanonicalRows)}};
     }
 
+    [[nodiscard]] bool prewarmSample(const std::filesystem::path& databasePath,
+                                     const std::size_t rows, std::string& error) {
+        try {
+            const auto columns = ssa::domain::ColumnCatalog::all();
+            const ssa::infra::sqlite::SqliteSsaImportWriter writer(
+                ssa::infra::sqlite::SqliteSsaImportWriterTestAccess::access(), databasePath,
+                {columns.begin(), columns.end()});
+            auto session = writer.startSession(false);
+            const auto summary = session.finish();
+            if (summary.rowsInserted != 0 || summary.rowsWritten != summary.rowsUpdated ||
+                !prewarmDatabaseContract(databasePath, rows, error)) {
+                if (error.empty()) {
+                    error = "prewarmed writer contract failed";
+                }
+                return false;
+            }
+            return true;
+        } catch (const std::exception& exception) {
+            error = exception.what();
+            return false;
+        }
+    }
+
     [[nodiscard]] bool prepareSample(const std::filesystem::path& root,
-                                     const std::string_view scenario, const std::size_t rows,
-                                     std::string& error) {
+                                     const std::string_view scenario, const std::string_view phase,
+                                     const std::size_t rows, std::string& error) {
         std::error_code directoryError;
         const auto databasePath = root / "data" / "ssas.db";
         std::filesystem::create_directories(databasePath.parent_path(), directoryError);
         return !directoryError &&
-               createFixtureDatabase(databasePath, rows, scenario == kLegacyScenario, error);
+               createFixtureDatabase(databasePath, rows, scenario == kLegacyScenario, error) &&
+               (phase != kIdempotentReopenPhase || prewarmSample(databasePath, rows, error));
     }
 
     [[nodiscard]] std::optional<Sample> runWorker(const std::string_view scenario,
+                                                  const std::string_view phase,
                                                   const std::filesystem::path& databasePath,
                                                   const std::size_t rows, std::string& error) {
-        if (!isScenario(scenario)) {
-            error = "invalid worker scenario";
+        if (!isScenario(scenario) || !isPhase(phase)) {
+            error = "invalid worker scenario or phase";
             return std::nullopt;
         }
         const auto columns = ssa::domain::ColumnCatalog::all();
@@ -366,9 +481,9 @@ namespace {
                                  {"descricao_ssa", "Incoming"},
                                  {"data_cadastro", "2026-07-17"},
                                  {"situacao", "APV"}});
-        const auto cpuBefore = processCpuNanoseconds();
         const auto rssBefore = currentRssBytes();
         const auto peakBefore = peakRssBytes();
+        const auto cpuBefore = processCpuNanoseconds();
         const auto started = std::chrono::steady_clock::now();
         auto session = writer.startSession(false);
         const auto batch = session.write(incoming, 1, 0);
@@ -383,6 +498,7 @@ namespace {
 
         Sample sample;
         sample.scenario = std::string{scenario};
+        sample.phase = std::string{phase};
         sample.wallMs = std::chrono::duration<double, std::milli>(finished - started).count();
         sample.cpuMs = static_cast<double>(*cpuAfter - *cpuBefore) / 1'000'000.0;
         sample.rssBaselineBytes = rssBefore;
@@ -395,7 +511,8 @@ namespace {
             sample.peakRssBytes >= peakBefore ? sample.peakRssBytes - peakBefore : 0;
         sample.rowsUpdated = summary.rowsUpdated;
         sample.rowsInserted = summary.rowsInserted;
-        const auto expectedUpdated = scenario == kLegacyScenario ? rows : 0;
+        const auto expectedUpdated =
+            phase == kFirstPassPhase && scenario == kLegacyScenario ? rows : 0;
         if (sample.currentRssBytes == 0 || sample.peakRssBytes == 0 ||
             sample.rowsUpdated != expectedUpdated || sample.rowsInserted != 1 ||
             batch.rowsInserted != 1 || !databaseContract(databasePath, rows, sample, error)) {
@@ -408,14 +525,17 @@ namespace {
     }
 
     [[nodiscard]] std::optional<Sample> runChild(const std::string_view scenario,
+                                                 const std::string_view phase,
                                                  const std::filesystem::path& root,
                                                  const std::size_t rows, std::string& error) {
         QProcess worker;
         worker.setProgram(QCoreApplication::applicationFilePath());
-        worker.setArguments({QStringLiteral("--worker"),
-                             QString::fromUtf8(scenario.data(), scenario.size()),
-                             QString::fromStdString((root / "data" / "ssas.db").string()),
-                             QString::number(static_cast<qulonglong>(rows))});
+        worker.setArguments(
+            {QStringLiteral("--worker"),
+             QString::fromUtf8(scenario.data(), static_cast<qsizetype>(scenario.size())),
+             QString::fromUtf8(phase.data(), static_cast<qsizetype>(phase.size())),
+             ssa::qt::toQString(root / "data" / "ssas.db"),
+             QString::number(static_cast<qulonglong>(rows))});
         worker.setProcessChannelMode(QProcess::SeparateChannels);
         worker.start();
         if (!worker.waitForStarted(kWorkerStartTimeoutMs)) {
@@ -446,6 +566,7 @@ namespace {
         const auto object = document.object();
         Sample sample;
         sample.scenario = object.value(QStringLiteral("scenario")).toString().toStdString();
+        sample.phase = object.value(QStringLiteral("phase")).toString().toStdString();
         sample.wallMs = object.value(QStringLiteral("wall_ms")).toDouble();
         sample.cpuMs = object.value(QStringLiteral("cpu_ms")).toDouble();
         sample.rssBaselineBytes = static_cast<std::uint64_t>(
@@ -468,8 +589,8 @@ namespace {
             static_cast<std::size_t>(object.value(QStringLiteral("rows_total")).toInteger());
         sample.nonCanonicalRows = static_cast<std::size_t>(
             object.value(QStringLiteral("noncanonical_identity_or_reference_rows")).toInteger());
-        if (sample.scenario != scenario || sample.wallMs < 0.0 || sample.cpuMs < 0.0 ||
-            sample.rowsTotal != rows + 1 || sample.rowsInserted != 1 ||
+        if (sample.scenario != scenario || sample.phase != phase || sample.wallMs < 0.0 ||
+            sample.cpuMs < 0.0 || sample.rowsTotal != rows + 1 || sample.rowsInserted != 1 ||
             sample.nonCanonicalRows != 0) {
             error = "normalization worker returned invalid metrics";
             return std::nullopt;
@@ -479,7 +600,8 @@ namespace {
 
     [[nodiscard]] double percentile(std::vector<double> values, const double fraction) {
         std::sort(values.begin(), values.end());
-        const auto index = static_cast<std::size_t>(std::ceil(values.size() * fraction)) - 1;
+        const auto index =
+            static_cast<std::size_t>(std::ceil(static_cast<double>(values.size()) * fraction)) - 1;
         return values[index];
     }
 
@@ -514,12 +636,17 @@ int main(int argc, char* argv[]) {
     const QCommandLineOption rowsOption(QStringLiteral("rows"),
                                         QStringLiteral("Fixture rows per sample."),
                                         QStringLiteral("count"), QString::number(kDefaultRows));
-    const QCommandLineOption workerOption(QStringLiteral("worker"),
-                                          QStringLiteral("Run one prepared worker scenario."),
-                                          QStringLiteral("scenario"));
+    const QCommandLineOption phaseOption(
+        QStringLiteral("phase"),
+        QStringLiteral("Benchmark phase: first-pass or idempotent-reopen."),
+        QStringLiteral("phase"), QString::fromUtf8(kFirstPassPhase.data(), kFirstPassPhase.size()));
+    const QCommandLineOption workerOption(
+        QStringLiteral("worker"), QStringLiteral("Run one prepared worker scenario and phase."),
+        QStringLiteral("scenario"));
     parser.addHelpOption();
     parser.addOption(samplesOption);
     parser.addOption(rowsOption);
+    parser.addOption(phaseOption);
     parser.addOption(workerOption);
     parser.process(application);
 
@@ -527,11 +654,12 @@ int main(int argc, char* argv[]) {
     if (parser.isSet(workerOption)) {
         bool rowsValid = false;
         const auto scenario = parser.value(workerOption).toStdString();
-        const auto rows = positional.size() == 2 ? positional.at(1).toULongLong(&rowsValid) : 0;
+        const auto phase = positional.size() == 3 ? positional.at(0).toStdString() : std::string{};
+        const auto rows = positional.size() == 3 ? positional.at(2).toULongLong(&rowsValid) : 0;
         std::string error;
         const auto sample =
-            isScenario(scenario) && rowsValid && rows > 0 && rows <= kMaxRows
-                ? runWorker(scenario, std::filesystem::path{positional.at(0).toStdString()},
+            isScenario(scenario) && isPhase(phase) && rowsValid && rows > 0 && rows <= kMaxRows
+                ? runWorker(scenario, phase, ssa::qt::toFileSystemPath(positional.at(1)),
                             static_cast<std::size_t>(rows), error)
                 : std::nullopt;
         if (!sample) {
@@ -549,9 +677,11 @@ int main(int argc, char* argv[]) {
     bool rowsValid = false;
     const int requestedSamples = parser.value(samplesOption).toInt(&samplesValid);
     const auto requestedRows = parser.value(rowsOption).toULongLong(&rowsValid);
+    const auto phase = parser.value(phaseOption).toStdString();
     if (!samplesValid || requestedSamples <= 0 || !rowsValid || requestedRows == 0 ||
-        requestedRows > kMaxRows || !positional.empty()) {
-        qCritical("error: --samples and --rows must be positive integers in range");
+        requestedRows > kMaxRows || !isPhase(phase) || !positional.empty()) {
+        qCritical("error: --samples and --rows must be positive integers and --phase "
+                  "first-pass or idempotent-reopen");
         return 2;
     }
     const auto rows = static_cast<std::size_t>(requestedRows);
@@ -565,22 +695,27 @@ int main(int argc, char* argv[]) {
         for (int index = 0; index < requestedSamples; ++index) {
             QTemporaryDir temporary;
             std::string error;
-            const auto root = std::filesystem::path{temporary.path().toStdString()};
-            if (!temporary.isValid() || !prepareSample(root, scenario, rows, error)) {
+            const auto root = ssa::qt::toFileSystemPath(temporary.path());
+            if (!temporary.isValid() || !prepareSample(root, scenario, phase, rows, error)) {
                 qCritical().noquote()
-                    << QStringLiteral(
-                           "SSA_IMPORT_NORMALIZATION fixture scenario=%1 sample=%2 error=%3")
-                           .arg(QString::fromUtf8(scenario.data(), scenario.size()))
+                    << QStringLiteral("SSA_IMPORT_NORMALIZATION fixture scenario=%1 phase=%2 "
+                                      "sample=%3 error=%4")
+                           .arg(QString::fromUtf8(scenario.data(),
+                                                  static_cast<qsizetype>(scenario.size())))
+                           .arg(QString::fromStdString(phase))
                            .arg(index)
                            .arg(QString::fromStdString(error.empty() ? "fixture preparation failed"
                                                                      : error));
                 return 3;
             }
-            const auto sample = runChild(scenario, root, rows, error);
+            const auto sample = runChild(scenario, phase, root, rows, error);
             if (!sample) {
                 qCritical().noquote()
-                    << QStringLiteral("SSA_IMPORT_NORMALIZATION scenario=%1 sample=%2 error=%3")
-                           .arg(QString::fromUtf8(scenario.data(), scenario.size()))
+                    << QStringLiteral("SSA_IMPORT_NORMALIZATION scenario=%1 phase=%2 sample=%3 "
+                                      "error=%4")
+                           .arg(QString::fromUtf8(scenario.data(),
+                                                  static_cast<qsizetype>(scenario.size())))
+                           .arg(QString::fromStdString(phase))
                            .arg(index)
                            .arg(QString::fromStdString(error));
                 return 4;
@@ -596,6 +731,7 @@ int main(int argc, char* argv[]) {
     }
     const QJsonObject summary{
         {QStringLiteral("scope"), QString::fromUtf8(kScope.data(), kScope.size())},
+        {QStringLiteral("phase"), QString::fromStdString(phase)},
         {QStringLiteral("fixture_rows"), static_cast<qint64>(rows)},
         {QStringLiteral("samples_per_scenario"), requestedSamples},
         {QStringLiteral("worker_timeout_ms"), kWorkerTimeoutMs},

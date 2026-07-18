@@ -1,5 +1,7 @@
 #include "domain/ColumnCatalog.h"
 #include "infra/import/SpreadsheetImportWorkflowPort.h"
+#include "infra/sqlite/SqliteActivityAnalyticsProjection.h"
+#include "infra/sqlite/SqliteConnection.h"
 #include "ports/IWorkflowPorts.h"
 
 #include <QCoreApplication>
@@ -16,11 +18,17 @@
 #include <mach/mach.h>
 #endif
 
+#include <chrono>
 #include <cstdint>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
+#include <stdexcept>
 #include <string>
+#include <string_view>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -124,6 +132,88 @@ xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
 #endif
     }
 
+    template <typename Operation>
+    auto measurePhase(const std::string_view phase, Operation&& operation) {
+        const auto rssBefore = currentRssBytes();
+        const auto wallStart = std::chrono::steady_clock::now();
+        const auto cpuStart = std::clock();
+        auto result = std::forward<Operation>(operation)();
+        const auto cpuEnd = std::clock();
+        const auto wallEnd = std::chrono::steady_clock::now();
+        const auto rssAfter = currentRssBytes();
+        const auto wallMs = std::chrono::duration<double, std::milli>(wallEnd - wallStart).count();
+        const auto cpuMs = std::cmp_equal(cpuStart, -1) || std::cmp_equal(cpuEnd, -1)
+                               ? -1.0
+                               : 1000.0 * static_cast<double>(cpuEnd - cpuStart) / CLOCKS_PER_SEC;
+        const auto rssDelta =
+            static_cast<std::int64_t>(rssAfter) - static_cast<std::int64_t>(rssBefore);
+        std::cout << std::fixed << std::setprecision(3) << "SSA_ACTIVITY_BENCH phase=" << phase
+                  << " rows=" << kFixtureRows << " wall_ms=" << wallMs << " cpu_ms=" << cpuMs
+                  << " rss_before=" << rssBefore << " rss_after=" << rssAfter
+                  << " rss_delta=" << rssDelta << '\n';
+        return result;
+    }
+
+    long long scalarCount(sqlite3* database, const char* sql) {
+        sqlite3_stmt* statement = nullptr;
+        if (sqlite3_prepare_v2(database, sql, -1, &statement, nullptr) != SQLITE_OK) {
+            return -1;
+        }
+        const bool hasValue = sqlite3_step(statement) == SQLITE_ROW;
+        const auto value = hasValue ? sqlite3_column_int64(statement, 0) : -1;
+        const bool finalized = sqlite3_finalize(statement) == SQLITE_OK;
+        return finalized ? value : -1;
+    }
+
+    void dropAnalyticsProjection(sqlite3* database) {
+        char* error = nullptr;
+        const int result = sqlite3_exec(database,
+                                        "DROP TABLE IF EXISTS activity_analytics_point;"
+                                        "DROP TABLE IF EXISTS activity_analytics_snapshot;"
+                                        "DROP TABLE IF EXISTS activity_analytics_meta;",
+                                        nullptr, nullptr, &error);
+        const std::string detail = error == nullptr ? sqlite3_errmsg(database) : error;
+        sqlite3_free(error);
+        if (result != SQLITE_OK) {
+            throw std::runtime_error("cannot reset analytics benchmark projection: " + detail);
+        }
+    }
+
+    bool benchmarkAnalytics(const std::filesystem::path& databasePath) {
+        ssa::infra::sqlite::SqliteConnection connection(
+            databasePath, ssa::infra::sqlite::SqliteOpenMode::ReadWrite);
+        auto* database = connection.handle();
+        const auto fingerprint = measurePhase("fingerprint", [&] {
+            return ssa::infra::sqlite::SqliteActivityAnalyticsProjection::
+                canonicalSourceFingerprint(database, "ssa_table");
+        });
+        dropAnalyticsProjection(database);
+        const ssa::infra::sqlite::ActivityAnalyticsCaptureContext context{
+            .observedIsoYearWeek = 202605,
+            .observedDate = "2026-02-01",
+            .sourceRevision = fingerprint,
+            .sourceFingerprint = fingerprint,
+        };
+        const auto initial = measurePhase("initial_capture", [&] {
+            return ssa::infra::sqlite::SqliteActivityAnalyticsProjection::capture(
+                database, "ssa_table", context);
+        });
+        const auto repeated = measurePhase("idempotent_capture", [&] {
+            return ssa::infra::sqlite::SqliteActivityAnalyticsProjection::capture(
+                database, "ssa_table", context);
+        });
+        const auto snapshots = scalarCount(
+            database, "SELECT COUNT(*) FROM activity_analytics_snapshot WHERE dataset='SSA'");
+        const auto points = scalarCount(
+            database, "SELECT COUNT(*) FROM activity_analytics_point WHERE dataset='SSA'");
+        std::cout << "SSA_ACTIVITY_CONTRACT fingerprint_bytes=" << fingerprint.size()
+                  << " snapshots=" << snapshots << " points=" << points
+                  << " initial_changed=" << initial.changed
+                  << " repeated_changed=" << repeated.changed << '\n';
+        return fingerprint.size() == 16 && initial.changed && !repeated.changed && snapshots == 6 &&
+               points > 0;
+    }
+
     std::size_t importedRows(const std::filesystem::path& databasePath) {
         sqlite3* database = nullptr;
         if (sqlite3_open_v2(databasePath.string().c_str(), &database, SQLITE_OPEN_READONLY,
@@ -147,7 +237,7 @@ xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
         return count;
     }
 
-    int runWorker(const std::filesystem::path& root) {
+    int runWorker(const std::filesystem::path& root, const bool includeActivityBenchmark) {
         const auto inputDirectory = root / "docs_entrada";
         const auto databasePath = root / "data" / "ssas.db";
         std::filesystem::create_directories(databasePath.parent_path());
@@ -155,7 +245,8 @@ xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
         const auto columns = ssa::domain::ColumnCatalog::all();
         ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, databasePath,
                                                                   {columns.begin(), columns.end()});
-        const auto result = port.rescan({ssa::ports::RescanMode::Incremental});
+        const auto result = measurePhase(
+            "import_total", [&] { return port.rescan({ssa::ports::RescanMode::Incremental}); });
         const auto peak = peakRssBytes();
         if (baseline == 0 || peak <= baseline) {
             std::cerr << "SSA_IMPORT_RSS measurement unavailable baseline=" << baseline
@@ -173,7 +264,20 @@ xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
         if (rows != kFixtureRows) {
             return 3;
         }
-        return additional <= kMaxAdditionalRssBytes ? 0 : 4;
+        if (additional > kMaxAdditionalRssBytes) {
+            return 4;
+        }
+        if (includeActivityBenchmark) {
+            try {
+                if (!benchmarkAnalytics(databasePath)) {
+                    return 6;
+                }
+            } catch (const std::exception& error) {
+                std::cerr << "SSA_ACTIVITY_BENCH failed: " << error.what() << '\n';
+                return 6;
+            }
+        }
+        return 0;
     }
 
 } // namespace
@@ -181,8 +285,16 @@ xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
 int main(int argc, char* argv[]) {
     QCoreApplication application(argc, argv);
     const auto arguments = application.arguments();
-    if (arguments.size() == 3 && arguments.at(1) == QStringLiteral("--worker")) {
-        return runWorker(std::filesystem::path{arguments.at(2).toStdString()});
+    const bool activityWorker =
+        arguments.size() == 3 && arguments.at(1) == QStringLiteral("--activity-worker");
+    if (activityWorker ||
+        (arguments.size() == 3 && arguments.at(1) == QStringLiteral("--worker"))) {
+        return runWorker(std::filesystem::path{arguments.at(2).toStdString()}, activityWorker);
+    }
+    const bool activityBenchmark =
+        arguments.size() == 2 && arguments.at(1) == QStringLiteral("--activity");
+    if (arguments.size() != 1 && !activityBenchmark) {
+        return 2;
     }
     QTemporaryDir temporary;
     if (!temporary.isValid()) {
@@ -194,7 +306,9 @@ int main(int argc, char* argv[]) {
     }
     QProcess worker;
     worker.setProgram(QCoreApplication::applicationFilePath());
-    worker.setArguments({QStringLiteral("--worker"), temporary.path()});
+    worker.setArguments(
+        {activityBenchmark ? QStringLiteral("--activity-worker") : QStringLiteral("--worker"),
+         temporary.path()});
     worker.setProcessChannelMode(QProcess::MergedChannels);
     worker.start();
     if (!worker.waitForStarted(10'000) || !worker.waitForFinished(180'000)) {

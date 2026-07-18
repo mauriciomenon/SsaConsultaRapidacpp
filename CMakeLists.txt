@@ -361,17 +361,17 @@ if(WIN32)
 endif()
 
 add_custom_target(
-  run_import_normalization_benchmark_30
+  run_import_writer_idempotent_reopen_benchmark_30
   COMMAND $<TARGET_FILE:ssa_import_normalization_benchmark> --samples 30 --rows
-          250000 --phase warm
+          250000 --phase idempotent-reopen
   DEPENDS ssa_import_normalization_benchmark
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
   USES_TERMINAL)
 
 add_custom_target(
-  run_import_normalization_benchmark_cold_30
+  run_import_normalization_first_pass_benchmark_30
   COMMAND $<TARGET_FILE:ssa_import_normalization_benchmark> --samples 30 --rows
-          250000 --phase cold
+          250000 --phase first-pass
   DEPENDS ssa_import_normalization_benchmark
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
   USES_TERMINAL)
@@ -507,15 +507,15 @@ if(SSA_BUILD_TESTS)
   set_tests_properties(ssa_prefetch_benchmark_smoke PROPERTIES TIMEOUT 15
                                                                RUN_SERIAL TRUE)
 
-  add_test(NAME ssa_import_normalization_benchmark_cold_smoke
+  add_test(NAME ssa_import_normalization_benchmark_first_pass_smoke
            COMMAND $<TARGET_FILE:ssa_import_normalization_benchmark> --samples
-                   1 --rows 1000 --phase cold)
-  set_tests_properties(ssa_import_normalization_benchmark_cold_smoke
+                   1 --rows 1000 --phase first-pass)
+  set_tests_properties(ssa_import_normalization_benchmark_first_pass_smoke
                        PROPERTIES TIMEOUT 240 RUN_SERIAL TRUE)
-  add_test(NAME ssa_import_normalization_benchmark_warm_smoke
+  add_test(NAME ssa_import_writer_idempotent_reopen_benchmark_smoke
            COMMAND $<TARGET_FILE:ssa_import_normalization_benchmark> --samples
-                   1 --rows 1000 --phase warm)
-  set_tests_properties(ssa_import_normalization_benchmark_warm_smoke
+                   1 --rows 1000 --phase idempotent-reopen)
+  set_tests_properties(ssa_import_writer_idempotent_reopen_benchmark_smoke
                        PROPERTIES TIMEOUT 240 RUN_SERIAL TRUE)
 
   add_executable(ssa_qt_desktop_log_tests tests/smoke/DesktopLogSinkTest.cpp
@@ -730,6 +730,12 @@ if(SSA_BUILD_TESTS)
 
     add_executable(ssa_import_memory_probe tools/ssa_import_memory_probe.cpp)
     target_link_libraries(ssa_import_memory_probe PRIVATE ssa_infra Qt6::Core)
+    add_custom_target(
+      run_activity_analytics_benchmark_250k
+      COMMAND $<TARGET_FILE:ssa_import_memory_probe> --activity
+      DEPENDS ssa_import_memory_probe
+      WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+      USES_TERMINAL)
     add_test(NAME ssa_import_rss_250k COMMAND ssa_import_memory_probe)
     set_tests_properties(ssa_import_rss_250k PROPERTIES TIMEOUT 240 RUN_SERIAL
                                                         TRUE)
