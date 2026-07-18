@@ -658,9 +658,10 @@ namespace ssa::infra::sqlite {
     SqliteSsaImportWriter::SqliteSsaImportWriter(SqliteSsaImportWriterAccess,
                                                  std::filesystem::path databasePath,
                                                  std::vector<domain::ColumnDef> columns,
-                                                 std::string tableName)
+                                                 std::string tableName,
+                                                 SynchronizationSignals synchronization)
         : databasePath_(std::move(databasePath)), columns_(std::move(columns)),
-          tableName_(std::move(tableName)) {
+          tableName_(std::move(tableName)), synchronization_(std::move(synchronization)) {
         if (!isValidSqlIdentifier(tableName_)) {
             throw std::invalid_argument("invalid sqlite import table name");
         }
@@ -684,10 +685,12 @@ namespace ssa::infra::sqlite {
 
         Storage(const std::filesystem::path& databasePath,
                 const std::vector<domain::ColumnDef>& configuredColumns, std::string tableName,
+                std::shared_ptr<SqliteSynchronizationSemaphore> busyEnteredSignal,
                 const bool replaceAll, std::stop_token stopToken,
                 const std::chrono::milliseconds sqliteBusyWait)
-            : connection(databasePath, SqliteOpenMode::ReadWriteCreate, sqliteBusyWait),
-              busy(connection.handle(), stopToken, sqliteBusyWait),
+            : busyEntered(std::move(busyEnteredSignal)),
+              connection(databasePath, SqliteOpenMode::ReadWriteCreate, sqliteBusyWait),
+              busy(connection.handle(), stopToken, sqliteBusyWait, busyEntered.get()),
               progress(connection.handle(), stopToken), stopToken(std::move(stopToken)),
               columns(configuredColumns), tableName(std::move(tableName)) {
             auto* db = connection.handle();
@@ -948,6 +951,7 @@ namespace ssa::infra::sqlite {
             transaction->rollback();
         }
 
+        std::shared_ptr<SqliteSynchronizationSemaphore> busyEntered;
         SqliteConnection connection;
         SqliteBusyHandler busy;
         SqliteProgressHandler progress;
@@ -1018,7 +1022,8 @@ namespace ssa::infra::sqlite {
                                         const std::chrono::milliseconds sqliteBusyWait) const {
         throwIfCanceled(stopToken);
         return WriteSession{std::make_unique<WriteSession::Storage>(
-            databasePath_, columns_, tableName_, replaceAll, std::move(stopToken), sqliteBusyWait)};
+            databasePath_, columns_, tableName_, synchronization_.busyEntered, replaceAll,
+            std::move(stopToken), sqliteBusyWait)};
     }
 
     std::vector<importing::ImportConsolidationMove> SqliteSsaImportWriter::pendingConsolidation(
@@ -1033,7 +1038,8 @@ namespace ssa::infra::sqlite {
             return {};
         }
         SqliteConnection connection(databasePath_, SqliteOpenMode::ReadOnly, sqliteBusyWait);
-        SqliteBusyHandler busy(connection.handle(), stopToken, sqliteBusyWait);
+        SqliteBusyHandler busy(connection.handle(), stopToken, sqliteBusyWait,
+                               synchronization_.busyEntered.get());
         SqliteProgressHandler progress(connection.handle(), stopToken);
         SqliteReadTransaction transaction(connection.handle(), stopToken,
                                           busy.cancellationObserved());
@@ -1083,7 +1089,8 @@ namespace ssa::infra::sqlite {
             return;
         }
         SqliteConnection connection(databasePath_, SqliteOpenMode::ReadWrite, sqliteBusyWait);
-        SqliteBusyHandler busy(connection.handle(), {}, sqliteBusyWait);
+        SqliteBusyHandler busy(connection.handle(), {}, sqliteBusyWait,
+                               synchronization_.busyEntered.get());
         SqliteWriteTransaction transaction(connection.handle(), busy.cancellationObserved());
         static_cast<void>(
             usesLegacySchemaVersion(connection.handle(), busy.cancellationObserved()));

@@ -3,6 +3,7 @@
 #include "domain/ColumnCatalog.h"
 #include "infra/SsaImportData.h"
 #include "infra/import/ImportConsolidation.h"
+#include "infra/sqlite/SqliteProgressHandler.h"
 
 #include <chrono>
 #include <filesystem>
@@ -29,6 +30,12 @@ namespace ssa::infra::sqlite {
 
     class SqliteSsaImportWriter final {
       public:
+        using SynchronizationSemaphore = SqliteSynchronizationSemaphore;
+
+        struct SynchronizationSignals {
+            std::shared_ptr<SynchronizationSemaphore> busyEntered;
+        };
+
         class WriteSession final {
           public:
             ~WriteSession();
@@ -60,7 +67,8 @@ namespace ssa::infra::sqlite {
         explicit SqliteSsaImportWriter(SqliteSsaImportWriterAccess,
                                        std::filesystem::path databasePath,
                                        std::vector<domain::ColumnDef> columns,
-                                       std::string tableName = "ssa_table");
+                                       std::string tableName = "ssa_table",
+                                       SynchronizationSignals synchronization = {});
 
         // Convenience single-batch write. Multi-file imports should use WriteSession
         // to keep one transaction across batches.
@@ -81,6 +89,7 @@ namespace ssa::infra::sqlite {
         std::filesystem::path databasePath_;
         std::vector<domain::ColumnDef> columns_;
         std::string tableName_;
+        SynchronizationSignals synchronization_;
     };
 
 } // namespace ssa::infra::sqlite

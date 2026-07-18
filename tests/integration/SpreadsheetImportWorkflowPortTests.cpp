@@ -1724,8 +1724,12 @@ TEST_CASE("sqlite import stops promptly while locked and remains reusable") {
     REQUIRE(tempDir.isValid());
 
     const auto dbPath = std::filesystem::path{tempDir.path().toStdString()} / "ssas.db";
-    const ssa::infra::sqlite::SqliteSsaImportWriter writer(sqliteWriterAccess(), dbPath,
-                                                           importColumns());
+    const auto busyEntered =
+        std::make_shared<ssa::infra::sqlite::SqliteSsaImportWriter::SynchronizationSemaphore>(0);
+    const ssa::infra::sqlite::SqliteSsaImportWriter::SynchronizationSignals synchronization{
+        .busyEntered = busyEntered};
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(
+        sqliteWriterAccess(), dbPath, importColumns(), "ssa_table", synchronization);
     ssa::infra::importing::ResolvedSsaImportRows previous;
     previous.rows.push_back({{"numero_ssa", "202600205"}, {"descricao_ssa", "Anterior"}});
     REQUIRE(writer.write(previous, 1, 0, false).rowsWritten == 1);
@@ -1747,7 +1751,7 @@ TEST_CASE("sqlite import stops promptly while locked and remains reusable") {
         }
     });
 
-    REQUIRE(operation.wait_for(std::chrono::milliseconds{50}) == std::future_status::timeout);
+    REQUIRE(busyEntered->try_acquire_for(std::chrono::seconds{1}));
     stopSource.request_stop();
     REQUIRE(operation.wait_for(std::chrono::milliseconds{500}) == std::future_status::ready);
     REQUIRE(operation.get() == std::make_error_code(std::errc::operation_canceled));
@@ -1795,8 +1799,12 @@ TEST_CASE("sqlite import cancels a blocked commit and rolls back explicitly") {
     REQUIRE(tempDir.isValid());
 
     const auto dbPath = std::filesystem::path{tempDir.path().toStdString()} / "ssas.db";
-    const ssa::infra::sqlite::SqliteSsaImportWriter writer(sqliteWriterAccess(), dbPath,
-                                                           importColumns());
+    const auto busyEntered =
+        std::make_shared<ssa::infra::sqlite::SqliteSsaImportWriter::SynchronizationSemaphore>(0);
+    const ssa::infra::sqlite::SqliteSsaImportWriter::SynchronizationSignals synchronization{
+        .busyEntered = busyEntered};
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(
+        sqliteWriterAccess(), dbPath, importColumns(), "ssa_table", synchronization);
     ssa::infra::importing::ResolvedSsaImportRows previous;
     previous.rows.push_back({{"numero_ssa", "202600207"}, {"descricao_ssa", "Anterior"}});
     REQUIRE(writer.write(previous, 1, 0, false).rowsWritten == 1);
@@ -1823,7 +1831,7 @@ TEST_CASE("sqlite import cancels a blocked commit and rolls back explicitly") {
         }
     });
 
-    REQUIRE(operation.wait_for(std::chrono::milliseconds{50}) == std::future_status::timeout);
+    REQUIRE(busyEntered->try_acquire_for(std::chrono::seconds{1}));
     stopSource.request_stop();
     REQUIRE(operation.wait_for(std::chrono::milliseconds{500}) == std::future_status::ready);
     REQUIRE(operation.get() == std::make_error_code(std::errc::operation_canceled));
@@ -2077,8 +2085,12 @@ TEST_CASE("consolidation journal cleanup is one bounded atomic batch") {
 
     const auto root = std::filesystem::path{tempDir.path().toStdString()};
     const auto dbPath = root / "ssas.db";
-    const ssa::infra::sqlite::SqliteSsaImportWriter writer(sqliteWriterAccess(), dbPath,
-                                                           importColumns());
+    const auto busyEntered =
+        std::make_shared<ssa::infra::sqlite::SqliteSsaImportWriter::SynchronizationSemaphore>(0);
+    const ssa::infra::sqlite::SqliteSsaImportWriter::SynchronizationSignals synchronization{
+        .busyEntered = busyEntered};
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(
+        sqliteWriterAccess(), dbPath, importColumns(), "ssa_table", synchronization);
     std::vector<ssa::infra::importing::ImportConsolidationMove> moves;
     std::filesystem::create_directories(root / "docs_entrada");
     for (std::size_t index = 0; index < 65; ++index) {
@@ -2100,6 +2112,7 @@ TEST_CASE("consolidation journal cleanup is one bounded atomic batch") {
 
     REQUIRE_THROWS(writer.completeConsolidation(persistedMoves));
 
+    REQUIRE(busyEntered->try_acquire());
     REQUIRE(elapsed.elapsed() < 1'000);
     REQUIRE(sqlite3_exec(blocker.handle(), "ROLLBACK", nullptr, nullptr, nullptr) == SQLITE_OK);
     REQUIRE(writer.pendingConsolidation().size() == 65);
@@ -2109,9 +2122,8 @@ TEST_CASE("consolidation journal cleanup is one bounded atomic batch") {
     auto cleanup = std::async(std::launch::async, [&] {
         writer.completeConsolidation(persistedMoves, std::chrono::milliseconds{1'000});
     });
-    const auto blockedStatus = cleanup.wait_for(std::chrono::milliseconds{500});
+    REQUIRE(busyEntered->try_acquire_for(std::chrono::seconds{1}));
     REQUIRE(sqlite3_exec(blocker.handle(), "ROLLBACK", nullptr, nullptr, nullptr) == SQLITE_OK);
-    REQUIRE(blockedStatus == std::future_status::timeout);
     REQUIRE(cleanup.wait_for(std::chrono::seconds{2}) == std::future_status::ready);
     cleanup.get();
     REQUIRE(writer.pendingConsolidation().empty());
@@ -4603,10 +4615,15 @@ TEST_CASE("full rescan honors configured busy wait while database preflight is l
     REQUIRE(sqlite3_exec(blocker.handle(), "BEGIN EXCLUSIVE", nullptr, nullptr, nullptr) ==
             SQLITE_OK);
     request.execution.sqliteBusyWait = std::chrono::milliseconds{3'000};
-    auto retryFuture = std::async(std::launch::async, [&] { return port.rescan(request); });
-    const auto blockedStatus = retryFuture.wait_for(std::chrono::milliseconds{500});
+    const auto writerBusyEntered =
+        std::make_shared<ssa::infra::sqlite::SqliteSsaImportWriter::SynchronizationSemaphore>(0);
+    ssa::infra::importing::SpreadsheetImportWorkflowPort::SynchronizationSignals synchronization;
+    synchronization.writerBusyEntered = writerBusyEntered;
+    ssa::infra::importing::SpreadsheetImportWorkflowPort retryPort(
+        inputDirectory, dbPath, importColumns(), true, synchronization);
+    auto retryFuture = std::async(std::launch::async, [&] { return retryPort.rescan(request); });
+    REQUIRE(writerBusyEntered->try_acquire_for(std::chrono::seconds{1}));
     REQUIRE(sqlite3_exec(blocker.handle(), "ROLLBACK", nullptr, nullptr, nullptr) == SQLITE_OK);
-    REQUIRE(blockedStatus == std::future_status::timeout);
     REQUIRE(retryFuture.wait_for(std::chrono::seconds{4}) == std::future_status::ready);
     const auto result = retryFuture.get();
 
@@ -4686,13 +4703,19 @@ TEST_CASE("full rescan honors busy wait when publication destination is locked")
                                nullptr) == SQLITE_OK);
     REQUIRE(sqlite3_step(statement) == SQLITE_ROW);
     request.execution.sqliteBusyWait = std::chrono::milliseconds{3'000};
-    auto retryFuture = std::async(std::launch::async, [&] { return port.rescan(request); });
-    const auto blockedStatus = retryFuture.wait_for(std::chrono::milliseconds{250});
+    const auto snapshotLocked =
+        std::make_shared<ssa::infra::sqlite::SqliteSsaImportWriter::SynchronizationSemaphore>(0);
+    ssa::infra::importing::SpreadsheetImportWorkflowPort::SynchronizationSignals synchronization;
+    synchronization.snapshotLocked = snapshotLocked;
+    ssa::infra::importing::SpreadsheetImportWorkflowPort retryPort(
+        inputDirectory, dbPath, importColumns(), true, synchronization);
+    auto retryFuture = std::async(std::launch::async, [&] { return retryPort.rescan(request); });
+    REQUIRE(snapshotLocked->try_acquire_for(std::chrono::seconds{1}));
     REQUIRE(sqlite3_finalize(statement) == SQLITE_OK);
     REQUIRE(sqlite3_exec(blocker, "ROLLBACK", nullptr, nullptr, nullptr) == SQLITE_OK);
-    REQUIRE(blockedStatus == std::future_status::timeout);
     REQUIRE(retryFuture.wait_for(std::chrono::seconds{4}) == std::future_status::ready);
     const auto retryResult = retryFuture.get();
+    REQUIRE_FALSE(snapshotLocked->try_acquire());
 
     INFO(retryResult.message);
     INFO(retryResult.diagnostic);
@@ -5900,15 +5923,19 @@ TEST_CASE("incremental cancellation during snapshot publication preserves the or
                                nullptr) == SQLITE_OK);
     REQUIRE(sqlite3_step(statement) == SQLITE_ROW);
 
-    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
-                                                              importColumns());
+    const auto snapshotLocked =
+        std::make_shared<ssa::infra::sqlite::SqliteSsaImportWriter::SynchronizationSemaphore>(0);
+    ssa::infra::importing::SpreadsheetImportWorkflowPort::SynchronizationSignals synchronization;
+    synchronization.snapshotLocked = snapshotLocked;
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(
+        inputDirectory, dbPath, importColumns(), true, synchronization);
     ssa::ports::RescanRequest request;
     request.mode = ssa::ports::RescanMode::Incremental;
     request.execution.sqliteBusyWait = std::chrono::milliseconds{3'000};
     std::stop_source stopSource;
     auto future = std::async(std::launch::async,
                              [&] { return port.rescan(request, stopSource.get_token()); });
-    REQUIRE(future.wait_for(std::chrono::milliseconds{50}) == std::future_status::timeout);
+    REQUIRE(snapshotLocked->try_acquire_for(std::chrono::seconds{1}));
     stopSource.request_stop();
     const bool canceledPromptly =
         future.wait_for(std::chrono::milliseconds{500}) == std::future_status::ready;
@@ -5917,6 +5944,7 @@ TEST_CASE("incremental cancellation during snapshot publication preserves the or
     REQUIRE(sqlite3_close(blocker) == SQLITE_OK);
     REQUIRE(future.wait_for(std::chrono::seconds{4}) == std::future_status::ready);
     const auto result = future.get();
+    REQUIRE_FALSE(snapshotLocked->try_acquire());
 
     CHECK(canceledPromptly);
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Canceled);
@@ -5933,7 +5961,7 @@ TEST_CASE("incremental cancellation during snapshot publication preserves the or
     REQUIRE_FALSE(std::filesystem::exists(dbPath.string() + "-shm"));
 }
 
-TEST_CASE("incremental rescan cancels promptly while the source snapshot is locked") {
+TEST_CASE("incremental rescan cancels promptly after SQLite busy is observed") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
 
@@ -5963,13 +5991,17 @@ TEST_CASE("incremental rescan cancels promptly while the source snapshot is lock
     REQUIRE(sqlite3_exec(blocker.handle(), "BEGIN EXCLUSIVE", nullptr, nullptr, nullptr) ==
             SQLITE_OK);
 
-    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
-                                                              importColumns());
+    const auto writerBusyEntered =
+        std::make_shared<ssa::infra::sqlite::SqliteSsaImportWriter::SynchronizationSemaphore>(0);
+    ssa::infra::importing::SpreadsheetImportWorkflowPort::SynchronizationSignals synchronization;
+    synchronization.writerBusyEntered = writerBusyEntered;
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(
+        inputDirectory, dbPath, importColumns(), true, synchronization);
     std::stop_source stopSource;
     auto operation = std::async(std::launch::async, [&] {
         return port.rescan({ssa::ports::RescanMode::Incremental}, stopSource.get_token());
     });
-    REQUIRE(operation.wait_for(std::chrono::milliseconds{50}) == std::future_status::timeout);
+    REQUIRE(writerBusyEntered->try_acquire_for(std::chrono::seconds{1}));
 
     stopSource.request_stop();
     const bool canceledPromptly =

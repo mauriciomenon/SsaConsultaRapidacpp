@@ -7,6 +7,7 @@
 #include "infra/sqlite/SqliteSsaImportWriter.h"
 #include "ports/IWorkflowPorts.h"
 
+#include <memory>
 #include <optional>
 #include <string>
 
@@ -15,10 +16,18 @@ namespace ssa::infra::importing {
     class SpreadsheetImportWorkflowPort final : public ports::IImportWorkflowPort,
                                                 public ports::ISamImportPort {
       public:
+        using SynchronizationSemaphore = sqlite::SqliteSsaImportWriter::SynchronizationSemaphore;
+
+        struct SynchronizationSignals {
+            std::shared_ptr<SynchronizationSemaphore> writerBusyEntered;
+            std::shared_ptr<SynchronizationSemaphore> snapshotLocked;
+        };
+
         SpreadsheetImportWorkflowPort(std::filesystem::path inputFolder,
                                       std::filesystem::path databasePath,
                                       std::vector<domain::ColumnDef> columns,
-                                      bool consolidateSources = true);
+                                      bool consolidateSources = true,
+                                      SynchronizationSignals synchronization = {});
 
         [[nodiscard]] ports::WorkflowResult
         importExternalFiles(const ports::ImportExternalFilesRequest& request,
@@ -51,6 +60,7 @@ namespace ssa::infra::importing {
         ImportFileStager stager_;
         ImportFileConsolidator consolidator_;
         SsaImportConflictResolver conflictResolver_;
+        SynchronizationSignals synchronization_;
         sqlite::SqliteSsaImportWriter writer_;
     };
 

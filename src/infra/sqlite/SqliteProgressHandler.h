@@ -25,10 +25,11 @@ namespace ssa::infra::sqlite {
         explicit SqliteBusyHandler(
             sqlite3* db, std::stop_token stopToken,
             std::chrono::milliseconds maxWait = std::chrono::milliseconds{3000},
-            SqliteSynchronizationSemaphore* busyEntered = nullptr)
+            SqliteSynchronizationSemaphore* busyEntered = nullptr,
+            std::atomic_flag* externalBusyReported = nullptr)
             : db_(db), stopToken_(std::move(stopToken)),
               maxRetries_(static_cast<int>(maxWait.count() / kRetryDelayMs)),
-              busyEntered_(busyEntered) {
+              busyEntered_(busyEntered), externalBusyReported_(externalBusyReported) {
             sqlite3_busy_handler(db_, &SqliteBusyHandler::shouldRetry, this);
         }
 
@@ -56,8 +57,11 @@ namespace ssa::infra::sqlite {
 
         static int shouldRetry(void* context, const int retryCount) noexcept {
             auto* handler = static_cast<SqliteBusyHandler*>(context);
+            auto& busyReported = handler->externalBusyReported_ != nullptr
+                                     ? *handler->externalBusyReported_
+                                     : handler->busyReported_;
             if (handler->busyEntered_ != nullptr &&
-                !handler->busyReported_.test_and_set(std::memory_order_relaxed)) {
+                !busyReported.test_and_set(std::memory_order_relaxed)) {
                 handler->busyEntered_->release();
             }
             if (handler->stopToken_.stop_requested() || retryCount >= handler->maxRetries_) {
@@ -78,6 +82,7 @@ namespace ssa::infra::sqlite {
         std::stop_token stopToken_;
         int maxRetries_ = 0;
         SqliteSynchronizationSemaphore* busyEntered_ = nullptr;
+        std::atomic_flag* externalBusyReported_ = nullptr;
         std::atomic_bool cancellationObserved_{false};
         std::atomic_flag busyReported_ = ATOMIC_FLAG_INIT;
     };

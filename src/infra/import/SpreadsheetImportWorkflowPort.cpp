@@ -15,6 +15,7 @@
 
 #include <sqlite3.h>
 
+#include <atomic>
 #include <chrono>
 #include <memory>
 #include <sstream>
@@ -185,7 +186,8 @@ namespace ssa::infra::importing {
                                     const std::filesystem::path& destination,
                                     const std::stop_token& stopToken,
                                     const std::chrono::milliseconds busyWait,
-                                    const DatabaseSnapshotPhase phase) {
+                                    const DatabaseSnapshotPhase phase,
+                                    sqlite::SqliteSynchronizationSemaphore* snapshotLocked) {
             const bool publication = phase == DatabaseSnapshotPhase::Publication;
             const char* safeMessage = publication ? "Falha ao publicar banco do rescan"
                                                   : "Falha ao copiar banco para rescan";
@@ -202,8 +204,10 @@ namespace ssa::infra::importing {
                                                       std::chrono::milliseconds{0});
             sqlite::SqliteConnection destinationConnection(
                 destination, sqlite::SqliteOpenMode::ReadWriteCreate, std::chrono::milliseconds{0});
+            std::atomic_flag snapshotLockReported = ATOMIC_FLAG_INIT;
             sqlite::SqliteBusyHandler busyHandler(destinationConnection.handle(), stopToken,
-                                                  busyWait);
+                                                  busyWait, publication ? snapshotLocked : nullptr,
+                                                  publication ? &snapshotLockReported : nullptr);
             auto* backup = sqlite3_backup_init(destinationConnection.handle(), "main",
                                                sourceConnection.handle(), "main");
             if (backup == nullptr) {
@@ -223,6 +227,10 @@ namespace ssa::infra::importing {
                 }
                 stepResult = sqlite3_backup_step(backup, kDatabaseBackupPagesPerStep);
                 if (stepResult == SQLITE_LOCKED) {
+                    if (publication && snapshotLocked != nullptr &&
+                        !snapshotLockReported.test_and_set(std::memory_order_relaxed)) {
+                        snapshotLocked->release();
+                    }
                     const auto now = std::chrono::steady_clock::now();
                     if (lockedRetryDeadline == std::chrono::steady_clock::time_point{}) {
                         lockedRetryDeadline = now + busyWait;
@@ -469,11 +477,13 @@ namespace ssa::infra::importing {
 
     SpreadsheetImportWorkflowPort::SpreadsheetImportWorkflowPort(
         std::filesystem::path inputFolder, std::filesystem::path databasePath,
-        std::vector<domain::ColumnDef> columns, const bool consolidateSources)
+        std::vector<domain::ColumnDef> columns, const bool consolidateSources,
+        SynchronizationSignals synchronization)
         : inputFolder_(inputFolder), databasePath_(databasePath), columns_(columns),
           consolidateSources_(consolidateSources), stager_(inputFolder_),
-          consolidator_(inputFolder_),
-          writer_(sqlite::SqliteSsaImportWriterAccess{}, databasePath, std::move(columns)) {
+          consolidator_(inputFolder_), synchronization_(std::move(synchronization)),
+          writer_(sqlite::SqliteSsaImportWriterAccess{}, databasePath, std::move(columns),
+                  "ssa_table", {.busyEntered = synchronization_.writerBusyEntered}) {
         if (const auto resolved = resolvedImportFolder(inputFolder_, importLockPathDiagnostic_)) {
             inputFolder_ = *resolved;
             importLockPath_ = inputFolder_.parent_path() / ".ssa_import.lock";
@@ -731,11 +741,11 @@ namespace ssa::infra::importing {
         const auto workingDatabase =
             qt::toFileSystemPath(workingDirectory.path()) / databasePath_.filename();
         try {
-            backupDatabaseSnapshot(databasePath_, workingDatabase, stopToken,
-                                   request.execution.sqliteBusyWait,
-                                   DatabaseSnapshotPhase::InitialCopy);
+            backupDatabaseSnapshot(
+                databasePath_, workingDatabase, stopToken, request.execution.sqliteBusyWait,
+                DatabaseSnapshotPhase::InitialCopy, synchronization_.snapshotLocked.get());
             SpreadsheetImportWorkflowPort workingPort(inputFolder_, workingDatabase, columns_,
-                                                      false);
+                                                      false, synchronization_);
             auto result = workingPort.importDiscoveredFiles(staging, replaceAll, stopToken,
                                                             request.execution);
             if (!result.ok()) {
@@ -769,9 +779,9 @@ namespace ssa::infra::importing {
                                                                 : consolidationPlan.error);
                 return result;
             }
-            backupDatabaseSnapshot(workingDatabase, databasePath_, stopToken,
-                                   request.execution.sqliteBusyWait,
-                                   DatabaseSnapshotPhase::Publication);
+            backupDatabaseSnapshot(
+                workingDatabase, databasePath_, stopToken, request.execution.sqliteBusyWait,
+                DatabaseSnapshotPhase::Publication, synchronization_.snapshotLocked.get());
             const auto consolidation = consolidator_.consolidate(consolidationPlan, stopToken);
             appendWorkflowDiagnostic(result.diagnostic, consolidation.error);
             result.warning = result.warning || consolidation.canceled || consolidation.failed > 0;
