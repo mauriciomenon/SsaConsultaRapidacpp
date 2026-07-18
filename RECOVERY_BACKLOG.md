@@ -1,5 +1,25 @@
 # Recovery Backlog
 
+## Benchmark SQLite status-last - 2026-07-18
+
+- `1d950e3` entrega somente o harness isolado: fixture de `250000` linhas,
+  `30` amostras e JSON local nao versionado em
+  `build/dev/sqlite-status-last-benchmark-30.json`.
+- Baseline: plano com `TEMP B-TREE`; indexado: usa
+  `idx_ssa_table_status_last_numero_ssa_desc`, sem `TEMP B-TREE`; vetores de
+  resultados identicos. Wall p50/p95: `41.260958/45.094667 ms` versus
+  `0.0235/0.030125 ms`. CPU p50/p95: `41.184/44.742 ms` versus
+  `0.024/0.031 ms`.
+- Gates estaticos limpos; smokes `2/2` em `0.37 s`; Terra ultra final:
+  `SEM FINDINGS`. O escopo nao prova filtros arbitrarios ou GUI completa e
+  ainda nao instala indice de producao.
+- Publicacao historica: Bitbucket `0/0` em `1d950e3`; GitLab `origin` com
+  OAuth `invalid_grant`; local `67` commits a frente de `origin/master`.
+- Contadores sem mudanca: plano `99.0/100`, divida nova `13/14 = 92.9%`,
+  legado placeholder `0.0/100` e fila operacional `5/8 = 62.5%`.
+
+Proxima atividade unica: RED de integracao e indice DESC de expressao no writer.
+
 ## Cobertura sintetica de URL Windows/UNC - 2026-07-18
 
 - HEAD anterior: `e76e722`. O commit `bca795a` entrega somente em

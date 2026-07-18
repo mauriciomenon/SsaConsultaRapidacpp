@@ -5,6 +5,29 @@ antes de interpretar sincronizacao Git, validacao local ou estado externo.
 
 Ultima verificacao local: 2026-07-18
 
+## Benchmark SQLite status-last - 2026-07-18
+
+- O commit `1d950e3` entrega o harness isolado de `status-last`: fixture de
+  `250000` linhas e `30` amostras. O JSON local nao versionado esta em
+  `build/dev/sqlite-status-last-benchmark-30.json`.
+- O plano baseline registra `TEMP B-TREE`; o plano indexado usa
+  `idx_ssa_table_status_last_numero_ssa_desc` e nao registra `TEMP B-TREE`.
+  Os vetores de resultados foram identicos nas duas variantes.
+- Wall p50/p95 baseline: `41.260958/45.094667 ms`; indexado:
+  `0.0235/0.030125 ms`. CPU p50/p95 baseline: `41.184/44.742 ms`; indexado:
+  `0.024/0.031 ms`.
+- Escopo: fixture SQL isolada. Ainda nao existe indice de producao, nem prova
+  para filtros arbitrarios ou GUI completa. Gates estaticos limpos; smokes
+  `2/2` em `0.37 s`; review final Terra ultra: `SEM FINDINGS`.
+- Publicacao historica: Bitbucket `0/0` em `1d950e3`; GitLab `origin` segue
+  bloqueado por OAuth `invalid_grant`; o local estava `67` commits a frente de
+  `origin/master`.
+- Contadores sem mudanca: plano original `99.0/100`; divida nova
+  `13/14 = 92.9%`; backlog legado `0.0/100` como placeholder; fila operacional
+  `5/8 = 62.5%`.
+
+Proxima atividade unica: RED de integracao e indice DESC de expressao no writer.
+
 ## Cobertura sintetica de URL Windows/UNC - 2026-07-18
 
 - HEAD anterior: `e76e722`. O commit `bca795a` entrega somente em
