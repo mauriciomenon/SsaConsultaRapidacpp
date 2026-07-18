@@ -5,6 +5,33 @@ antes de interpretar sincronizacao Git, validacao local ou estado externo.
 
 Ultima verificacao local: 2026-07-18
 
+## Fechamento local de tooling
+
+- Branch `master`; HEAD de codigo `2e2476b`. Bitbucket foi confirmado com
+  divergencia `0/0`. O GitLab `origin` continua bloqueado por OAuth
+  `invalid_grant`; o HEAD local esta 63 commits a frente de `origin/master`.
+- Plano original: `99.0/100`; profiling valido do prefetch permanece o unico
+  ponto sem aceite e esta bloqueado pela ferramenta local.
+- Divida nova: `13/14 = 92.9%`; backlog legado: `0.0/100` como placeholder sem
+  denominador; fila operacional: `5/8 = 62.5%`.
+- `CMAKE_OSX_SYSROOT=macosx` agora esta nos cinco presets-raiz (`dev`,
+  `release`, `dev-asan`, `dev-tsan` e `dev-cov`); `dev-arrow` herda `dev`.
+  O compile database passou a registrar SDK macOS 26.5, sem alterar Linux ou
+  Windows.
+- `clang-tidy` direto, sem argumentos extras de sysroot, passou em `2.50 s`.
+  O build de `ssa_infra` passou 58 passos em `5.55 s`; o target de integracao
+  passou 160 passos em `13.19 s`; o mapper passou `15/15` em `0.44 s`.
+- Semgrep 1.170 focado em `SpreadsheetImportWorkflowPortTests.cpp` (6,815
+  linhas) passou em `2.92 s`: duas regras atuais elegiveis, zero finding e zero
+  timeout. `SEMGREP-WIDE-NARROW-TIMEOUT` foi refutado localmente: a alegacao de
+  `63554b9` nao tem IDs, YAML, fixture ou log. Nenhuma fixture foi dividida.
+  A equivalencia exata com Semgrep 1.169 do CI nao foi validada porque o socket
+  Docker local esta ausente; isso permanece dependencia externa, nao sucesso.
+
+Proxima atividade unica: executar a prova Windows/UNC em plataforma real para
+importacao e grafo. Profiling valido do prefetch continua bloqueado; handles,
+PowerShell e packaging tambem exigem plataforma real.
+
 ## Fechamento de determinismo e filename timestamp
 
 - Branch `master`; HEAD de codigo `be20b99`. Bitbucket foi confirmado no mesmo

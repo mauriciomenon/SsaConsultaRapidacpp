@@ -4,20 +4,18 @@
 
 ### Sequencia ativa preservada
 
-1. Canonizar `clang-tidy` macOS com sysroot e reproduzir IDs das regras Semgrep
-   antes de dividir fixtures.
-2. Completar profiling valido do prefetch; harness, 30 amostras e relatorio
+1. Completar profiling valido do prefetch; harness, 30 amostras e relatorio
    isolado ja estao resolvidos no working tree. `xctrace` nao possui `Time
    Profiler` nesta instalacao e `CPU Counters` falhou com `DTServiceHub` e
    politica do kernel; nenhum credito de profiling foi atribuido.
-3. Validar `ImportFileConsolidator` e URL de grafo em Windows/UNC real; o split
+2. Validar `ImportFileConsolidator` e URL de grafo em Windows/UNC real; o split
    local entre staging owned pre-commit e consolidacao post-commit ja esta
    implementado.
-4. Revalidar handles, PowerShell e packaging em plataformas reais.
+3. Revalidar handles, PowerShell e packaging em plataformas reais.
 
 ### Controle operacional auditavel
 
-Fila de fechamento principal: `4/8 = 50.0%`.
+Fila de fechamento principal: `5/8 = 62.5%`.
 
 | Pacote | Estado | Efeito no contador |
 | --- | --- | --- |
@@ -25,8 +23,8 @@ Fila de fechamento principal: `4/8 = 50.0%`.
 | Gate transacional de schema SQLite | Resolvido em `b2369ac` | `2/8` |
 | `TEST-DETERMINISM-DELTA` | Resolvido em `785c73e..bcb7980` | `3/8` |
 | `IMPORT-FILENAME-TIMESTAMP-SCAN` | Resolvido em `be20b99` | `4/8` |
-| Profiling valido do prefetch | Bloqueado pela ferramenta local | Leva a `5/8` |
-| Tooling clang-tidy/Semgrep | Pendente local | Leva a `6/8` |
+| Tooling clang-tidy/Semgrep | Resolvido localmente em `2e2476b` | `5/8` |
+| Profiling valido do prefetch | Bloqueado pela ferramenta local | Leva a `6/8` |
 | Importacao e grafo Windows/UNC | Pendente externo | Leva a `7/8` |
 | Handles, PowerShell e packaging reais | Pendente externo | Leva a `8/8` |
 
@@ -42,6 +40,27 @@ aceito.
 Os creditos recentes pertencem a `TEST-DETERMINISM-DELTA` e
 `IMPORT-FILENAME-TIMESTAMP-SCAN`. Findings descobertos depois da lista fixa de
 14 itens nao reduzem retroativamente esse percentual.
+
+### Fechamento local de tooling
+
+- HEAD de codigo `2e2476b`; Bitbucket confirmado com divergencia `0/0`. GitLab
+  segue bloqueado por OAuth `invalid_grant`; o HEAD local esta 63 commits a
+  frente de `origin/master`.
+- [RESOLVED-LOCAL] [CLANG-TIDY-MACOS-SYSROOT] `CMAKE_OSX_SYSROOT=macosx` foi
+  adicionado aos cinco presets-raiz; `dev-arrow` herda `dev`. O compile database
+  registra SDK macOS 26.5. `clang-tidy` direto sem args extras passou em `2.50
+  s`; `ssa_infra` compilou 58 passos em `5.55 s`, integracao 160 em `13.19 s` e
+  mapper `15/15` em `0.44 s`.
+- [REFUTED-LOCAL] [SEMGREP-WIDE-NARROW-TIMEOUT] A alegacao introduzida em
+  `63554b9` nao possui IDs, YAML, fixture ou log. Semgrep 1.170 focado no teste
+  de importacao de 6,815 linhas passou em `2.92 s`, com duas regras atuais
+  elegiveis, zero finding e zero timeout. Nenhuma fixture foi dividida. A
+  equivalencia exata ao Semgrep 1.169 pinado no CI continua sem prova porque o
+  socket Docker local esta ausente; isso e dependencia externa, nao sucesso.
+
+Proxima atividade unica: prova Windows/UNC em plataforma real para importacao e
+grafo. Profiling permanece bloqueado; handles, PowerShell e packaging seguem
+dependentes de plataformas reais.
 
 ### Fechamento local de determinismo e filename
 
@@ -480,16 +499,15 @@ Matriz completa de acertos, adicoes, erros e ordem de execucao:
 - [RESOLVED] [DISTINCT-LIMIT-QML-COUPLING] O limite geral de consulta permanece
   no dominio. O limite de 5000 exclusivo do popup avancado agora pertence ao
   request builder de presentation; dominio nao menciona mais custo de QML.
-- [TOOLING] [SEMGREP-WIDE-NARROW-TIMEOUT] As duas regras locais de conversao
-  narrow/wide excedem o limite ao analisar o arquivo gigante
-  `SpreadsheetImportWorkflowPortTests.cpp`. Os demais scans concluem sem
-  finding. Separar fixtures ou criar harness focado antes de tratar essas duas
-  regras como gate confiavel.
-- [TOOLING] [CLANG-TIDY-COMPILE-DB] `clang-tidy -p build/dev` nao encontra
-  headers da standard library/toolchain, incluindo `type_traits`, apesar do
-  compile database existente. Corrigir a geracao ou a invocacao do toolchain
-  antes de considerar clang-tidy um gate real; falha da ferramenta nao equivale
-  a aprovacao do codigo.
+- [REFUTED-LOCAL] [SEMGREP-WIDE-NARROW-TIMEOUT] A alegacao de duas regras
+  locais narrow/wide introduzida em `63554b9` nao possui IDs, YAML, fixture ou
+  log. Semgrep 1.170 focado no arquivo de 6,815 linhas passou sem timeout ou
+  finding; nao dividir fixtures. A equivalencia exata ao pin 1.169 do CI ainda
+  depende de Docker funcional e nao recebeu credito como validacao concluida.
+- [RESOLVED-LOCAL] [CLANG-TIDY-COMPILE-DB] O compile database macOS agora recebe
+  `CMAKE_OSX_SYSROOT=macosx` pelos cinco presets-raiz. `clang-tidy -p build/dev`
+  encontra a standard library sem argumentos extras de sysroot; o gate focado
+  passou. Plataformas nao Apple ignoram essa variavel CMake.
 - [RESOLVED-HISTORICAL] [ROUND-STATUS-STALE] `ROUND_STATUS.md` foi reconciliado
   primeiro para o baseline intermediario `d34f92d`. Esse snapshot foi superado
   pelo HEAD publicado `d376431` e pelo marco P0 no working tree; o status atual
