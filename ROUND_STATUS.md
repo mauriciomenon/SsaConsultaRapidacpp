@@ -8,8 +8,8 @@ Ultima verificacao local: 2026-07-18
 ## Marco Activity, importacao parametrizada e SQLite
 
 - Branch: `master`.
-- HEAD de codigo validado: `1cea684`, precedido por `90990ee`, `2dd9aec` e
-  `4e74790`. Bitbucket foi confirmado em `1cea684`. O push GitLab `origin`
+- HEAD de codigo validado: `360d18b`, precedido por `652b102`, `1cea684` e
+  `2dd9aec`. Bitbucket foi confirmado em `360d18b`. O push GitLab `origin`
   falhou antes de transferir dados porque o OAuth continua com
   `invalid_grant`.
 - O working tree tracked restante contem somente esta reconciliacao documental
@@ -24,9 +24,11 @@ Ultima verificacao local: 2026-07-18
 - Backlog legado: `0.0/100 -> 0.0/100`; nenhum item legado recebeu credito.
 - Estado separado: o full build, `581/581` e security ampla validam `4e74790`;
   o target de integracao e `7/7` focados validam `2dd9aec`; `3/3`, `45/45` e o
-  benchmark de 30 processos validam `1cea684`. Todos estao commitados
-  localmente e `1cea684` foi comprovado no Bitbucket. GitLab e plataformas nao
-  locais permanecem prova externa pendente.
+  benchmark de 30 processos validam `1cea684`. Em `360d18b`, o target de
+  integracao, 60 repeticoes dos 2 contratos concorrentes, `13/13` da familia
+  de derivadas e `8/8` de leitura/cancelamento passaram. Todos estao
+  commitados localmente e `360d18b` foi comprovado no Bitbucket. GitLab e
+  plataformas nao locais permanecem prova externa pendente.
 
 ### Fechamento local de 2026-07-18
 
@@ -48,7 +50,12 @@ Ultima verificacao local: 2026-07-18
 - `1cea684` especializa igualdade BINARY somente para `numero_ssa` canonico de
   9 digitos. Campos textuais, valores nao canonicos, busca geral, quick sector
   e status preservam `COLLATE NOCASE`; nenhum schema ou indice mudou.
-- As oito falhas informadas do gate de 564 casos passaram `8/8` em `10.57 s`.
+- `360d18b` limita `derivedCountSummaryMutex_` a eleicao e publicacao de
+  estado. Lock de arquivo, open, handlers, transacao, DDL/DML e log ficam fora
+  do mutex; callers concorrentes usam fallback read-only e cancelamento ou
+  excecao libera a eleicao para retry imediato.
+- As oito falhas informadas do gate de 564 casos passaram novamente `8/8` em
+  `10.09 s` no registro atual. A matriz configurada agora possui 587 casos.
   Activity/SQLite passou `79/79` em `3.23 s`.
 - Em `4e74790`, build `dev` completo passou 476 passos e CTest sequencial
   passou `581/581` em `82.06 s`, incluindo RSS de importacao de 250 mil linhas
@@ -82,10 +89,20 @@ Ultima verificacao local: 2026-07-18
   falha/cancelamento. `page()` p50/p95 caiu de `157.501/219.458 ms` para
   `0.133/0.229 ms`; batch 4 x 20 caiu de `3281.940/14109.139 ms` para
   `2.902/4.241 ms`. Repeated open p95 ficou em `0.145 ms`.
+- Mutex do resumo: o RED falhou em `fallbackReady` em `1.06 s`. Depois do
+  patch, os 2 contratos passaram em `0.13 s`, 60 repeticoes passaram em
+  `3.34 s`, a familia de derivadas passou `13/13` em `1.43 s` e o gate de
+  transacoes/readAll/cancelamento/benchmark smoke passou `8/8` em `0.22 s`.
+  Sol xhigh e Terra high encontraram a mesma lacuna P2 de cancelamento do
+  initializer; o teste foi adicionado e os dois re-reviews terminaram em GO.
 - Security ampla: Semgrep 507 arquivos e zero finding; Gitleaks 1.42 GB e zero
   leak; TruffleHog 8,853 chunks e zero segredo verificado ou desconhecido.
 - Sol xhigh e Terra high deram GO final. Clawpatch nao gerou review porque seu
   Codex CLI interno e antigo para `gpt-5.6-sol`; isso nao recebeu credito.
+
+Proxima atividade unica: provar a semantica WAL da publicacao do rescan. Um
+leitor em transacao deve manter o snapshot antigo ate encerrar e observar o
+novo snapshot na transacao seguinte.
 
 ## Marco P0 historico
 - Ultimo slice: commit `e0b5401`, dois polls sincronos de `quickSector()`
@@ -349,8 +366,8 @@ preparacao da release.
 
 | Remote | Provedor | Funcao | Estado confirmado |
 | --- | --- | --- | --- |
-| `origin` | GitLab | Repositorio e CI primarios | push de `1cea684` bloqueado por OAuth `invalid_grant` |
-| `bitbucket` | Bitbucket | Mirror obrigatorio | `1cea684` confirmado em `master`; tag `v0.9.10` preservada |
+| `origin` | GitLab | Repositorio e CI primarios | push de `360d18b` bloqueado por OAuth `invalid_grant` |
+| `bitbucket` | Bitbucket | Mirror obrigatorio | `360d18b` confirmado em `master`; tag `v0.9.10` preservada |
 | `gh` | GitHub | Mirror inativo | HTTP 403; conta suspensa |
 
 Todo fetch ou pull operacional vem de `origin`:

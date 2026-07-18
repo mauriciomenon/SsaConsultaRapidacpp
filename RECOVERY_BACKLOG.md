@@ -4,35 +4,35 @@
 
 ### Sequencia ativa preservada
 
-1. Retirar espera e I/O SQLite de dentro de `derivedCountSummaryMutex_` sem
-   permitir dois inicializadores; callers concorrentes devem usar fallback e
-   continuar observando seu proprio stop token.
+1. Adicionar recheck WAL da publicacao do rescan: leitor em transacao deve
+   manter o snapshot antigo ate encerrar e observar o novo snapshot depois.
 2. Completar profiling valido do prefetch; harness, 30 amostras e relatorio
    isolado ja estao resolvidos no working tree. `xctrace` nao possui `Time
    Profiler` nesta instalacao e `CPU Counters` falhou com `DTServiceHub` e
    politica do kernel; nenhum credito de profiling foi atribuido.
 3. Validar `ImportFileConsolidator` em Windows/UNC real; o split local entre
    staging owned pre-commit e consolidacao post-commit ja esta implementado.
-4. Adicionar recheck WAL da publicacao do rescan: leitor em transacao deve
-   manter o snapshot antigo ate encerrar e observar o novo snapshot depois.
-5. Canonizar `clang-tidy` macOS com sysroot e reproduzir IDs das regras Semgrep
+4. Canonizar `clang-tidy` macOS com sysroot e reproduzir IDs das regras Semgrep
    antes de dividir fixtures.
-6. Revalidar em plataformas reais handles, URL UNC, PowerShell e packaging.
+5. Revalidar em plataformas reais handles, URL UNC, PowerShell e packaging.
 
 Contadores auditados: plano original `99.0/100`, divida nova `78.6/100`
-(11 de 14 itens enumerados aceitos) e backlog legado sem denominador definido.
+(11 de 14 itens enumerados aceitos) e backlog legado `0.0/100`, sem denominador
+aceito.
 O credito novo pertence a `SQLITE-READ-CONNECTION-CHURN`, agora medido em 30
 processos e sem justificativa para pool. Findings descobertos depois da lista
 fixa de 14 itens nao reduzem retroativamente esse percentual.
 
-Fechamento de 2026-07-18: HEAD `1cea684`, precedido por `90990ee`, `2dd9aec` e
-`4e74790`. Em `4e74790`, build dev completo e o marco `581/581` permanecem
+Fechamento de 2026-07-18: HEAD `360d18b`, precedido por `652b102`, `1cea684` e
+`2dd9aec`. Em `4e74790`, build dev completo e o marco `581/581` permanecem
 validos; o benchmark focado passou `1/1` em `0.37 s` e 30 amostras terminaram
 sem falha. Em `2dd9aec`, o target de integracao compilou e o gate passou `3/3`
 e depois `7/7`. Em `1cea684`, `3/3` e `45/45` passaram; 30 processos
 confirmaram `page()` p50/p95 `0.133/0.229 ms` em 2,400 reads corretos.
-Bitbucket foi confirmado em `1cea684`; o push GitLab continua bloqueado por
-OAuth `invalid_grant`.
+Em `360d18b`, 2 contratos concorrentes passaram, suas 60 repeticoes ficaram
+estaveis, a familia de derivadas passou `13/13` e o gate de leitura passou
+`8/8`. Bitbucket foi confirmado em `360d18b`; o push GitLab continua bloqueado
+por OAuth `invalid_grant`.
 
 Ultimo fechamento: commit `e0b5401`, build e CTest da suite de painel `1/1`
 passaram em `2.96 s`. O polling de `activeFilterEntries()` continua pendente
@@ -177,11 +177,13 @@ Matriz completa de acertos, adicoes, erros e ordem de execucao:
   30 processos terminaram 2,400/2,400 reads, zero falha/cancelamento, com
   p50/p95 `0.133/0.229 ms` e batch `2.902/4.241 ms`.
 
-- [MED-CONCURRENCY] [DERIVED-SUMMARY-MUTEX-IO] A inicializacao do resumo de
-  derivadas segura `derivedCountSummaryMutex_` durante lock e I/O SQLite. Uma
-  segunda leitura espera sem observar seu stop token. Aceite: um inicializador
-  executa fora do mutex; callers concorrentes usam fallback temporario sem
-  duplicar escrita e sem perder cancelamento.
+- [RESOLVED] [DERIVED-SUMMARY-MUTEX-IO] `360d18b` limita o mutex a eleicao e
+  publicacao de estado. Um unico initializer executa QLockFile e I/O SQLite
+  fora do mutex; callers concorrentes usam fallback read-only. Cancelamento e
+  excecoes limpam a eleicao e permitem retry imediato. O RED bloqueou o
+  fallback; depois do patch, 2/2 passaram, 60 repeticoes ficaram estaveis,
+  `13/13` cobriram a familia de derivadas e `8/8` cobriram leitura e
+  cancelamento. Sol xhigh e Terra high terminaram em GO.
 
 - [RESOLVED-WT] [SQL-DERIVADAS-BUILDER-BOUNDARY] `derivadasDiretas()` agora
   recebe SQL e binding de `SqlQueryBuilder::buildDirectDerivations()`. Colunas,
