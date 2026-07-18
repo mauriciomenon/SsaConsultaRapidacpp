@@ -1,5 +1,20 @@
 # Recovery Backlog
 
+## Reconciliacao do macro report - 2026-07-18
+
+- [RESOLVED-HISTORICAL] [P4] O macro report atual ja usa
+  `COUNT(DISTINCT "ssa_number")` via `ActivityAnalyticsSqlBuilder`; o repositorio
+  so le as linhas agrupadas. O antigo `map<ReportKey,set<string>>` nao existe no
+  HEAD e nao ha migracao pendente.
+- Contratos locais `3/3` em `0.13 s` provam SQL compilado, filtros completos e
+  resultado agrupado. Nenhum benchmark novo recebeu credito: o finding de
+  gargalo foi refutado, mas escala futura do report ainda nao foi medida.
+- Contadores sem mudanca: plano `99.0/100`, divida nova `13/14 = 92.9%`, legado
+  placeholder `0.0/100`, fila operacional `5/8 = 62.5%`.
+
+Proxima atividade unica: medir formatacao eager da tabela antes de qualquer
+cache lazy ou mudanca de GUI.
+
 ## Determinismo causal do repositorio SQLite - 2026-07-18
 
 - [RESOLVED-LOCAL] `28700b3` substitui o polling de lock e waits arbitrarios de
@@ -460,7 +475,9 @@ Matriz completa de acertos, adicoes, erros e ordem de execucao:
   composto DESC, instalado pelo writer na proxima escrita. O benchmark de
   `250000` linhas mostrou plano indexado sem `TEMP B-TREE`; generated column
   continua desnecessaria sem evidencia de gargalo adicional.
-- [MED] [P4] Macro report agrupa em memoria (`map<ReportKey,set<string>>` so pra .size()). Deveria ser `GROUP BY ... COUNT(DISTINCT)` em SQL.
+- [RESOLVED-HISTORICAL] [P4] Macro report ja usa analytics SQL com
+  `COUNT(DISTINCT "ssa_number")`; o antigo agregador em memoria nao existe no
+  HEAD. Contratos de SQL, filtros e resultado agrupado passaram `3/3` em `0.13 s`.
 - [MED] [P7] Eager date/string formatting: formata 500x12 celulas antes de exibir; QML so renderiza visiveis. Lazy exigiria repensar `SsaTableDisplayValues`/`displayCache_` - ciclo dedicado.
 
 ### Qualidade / duplicacao

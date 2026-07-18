@@ -5,6 +5,23 @@ antes de interpretar sincronizacao Git, validacao local ou estado externo.
 
 Ultima verificacao local: 2026-07-18
 
+## Reconciliacao do macro report - 2026-07-18
+
+- O finding P4 de agregacao `map<ReportKey,set<string>>` esta obsoleto no HEAD:
+  `SqlQueryBuilder::buildExecutadasReport()` delega ao analytics SQL, que usa
+  `COUNT(DISTINCT "ssa_number")`; `SqliteSsaRepository` apenas materializa o
+  resultado. Nao existe agregacao equivalente em memoria para migrar.
+- Evidencia local: os CTests de SQL compilado, propagacao completa de filtros e
+  resultado agrupado passaram `3/3` em `0.13 s`. Nenhum benchmark novo foi
+  criado, pois o gargalo descrito ja nao existe; escala futura segue sem medicao
+  especifica de macro report.
+- Contadores sem mudanca: plano original `99.0/100`; divida nova
+  `13/14 = 92.9%`; backlog legado `0.0/100` como placeholder; fila operacional
+  `5/8 = 62.5%`.
+
+Proxima atividade unica: medir o custo real de formatacao eager da tabela antes
+de considerar cache lazy ou qualquer mudanca de GUI.
+
 ## Determinismo causal do repositorio SQLite - 2026-07-18
 
 - Branch `master`; HEAD de codigo `28700b3`. Bitbucket confirma o mesmo hash;
