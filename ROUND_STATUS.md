@@ -8,8 +8,8 @@ Ultima verificacao local: 2026-07-18
 ## Marco Activity, importacao parametrizada e SQLite
 
 - Branch: `master`.
-- HEAD de codigo validado: `7f396b0`, precedido por `610fbf3`, `09fa97b` e
-  `360d18b`. Bitbucket foi confirmado em `7f396b0`. O push GitLab `origin`
+- HEAD de codigo validado: `7291082`, precedido por `0025d44`, `7f396b0` e
+  `610fbf3`. Bitbucket foi confirmado em `7291082`. O push GitLab `origin`
   falhou antes de transferir dados porque o OAuth continua com
   `invalid_grant`.
 - O working tree tracked restante contem somente esta reconciliacao documental
@@ -37,6 +37,15 @@ Ultima verificacao local: 2026-07-18
 - `eede38e` adiciona `ImportExecutionOptions`: chunks de 1 a 1,000 linhas e
   SQLite busy wait de 0 a 3,000 ms em passos de 5 ms, validados antes de staging
   e lock e propagados por full, incremental, external e recovery.
+- `7291082` fecha a propagacao que ainda estava incompleta: `sqliteBusyWait`
+  agora governa lookup e cleanup do journal, resume, external, rescan, SAM e
+  publicacao. Callers diretos preservam default de 250 ms e cancelamento ja
+  solicitado limita o lookup a no maximo 250 ms.
+- O RED de recovery terminou cedo aos 250 ms apesar do request de 3,000 ms.
+  Depois do patch, preflight, publicacao e cleanup passaram 30 execucoes; a
+  familia ampliada de journal, cancelamento, WAL, SAM e rescan passou `15/15`
+  em `2.67 s`. Os oito nomes do registro antigo passaram `8/8` em `9.77 s` na
+  matriz atual de 588 casos.
 - `d54a693` separa primeira passagem de reabertura idempotente no benchmark,
   separa o gate RSS do benchmark Activity e mantem o probe POSIX fora de
   Windows.
@@ -107,9 +116,9 @@ Ultima verificacao local: 2026-07-18
 - Sol xhigh e Terra high deram GO final. Clawpatch nao gerou review porque seu
   Codex CLI interno e antigo para `gpt-5.6-sol`; isso nao recebeu credito.
 
-Proxima atividade unica: fazer `sqliteBusyWait` valer para `SQLITE_BUSY` e
-`SQLITE_LOCKED` nas duas conexoes do SQLite Backup API, com deadline,
-cancelamento e preservacao fail-closed de banco e fontes.
+Proxima atividade unica: persistir `schemaVersion()` em `PRAGMA user_version`,
+aceitar legado zero somente apos validacao estrutural e rejeitar versoes
+futuras antes de qualquer DDL/DML.
 
 ## Marco P0 historico
 - Ultimo slice: commit `e0b5401`, dois polls sincronos de `quickSector()`
@@ -353,16 +362,14 @@ HEAD `d376431`; nenhuma sugestao foi aceita apenas pela severidade alegada.
 
 ## Pendencias ativas priorizadas
 
-1. Fazer o Backup API respeitar `sqliteBusyWait` tanto para `SQLITE_BUSY`
-   quanto para `SQLITE_LOCKED`, nas conexoes source e destination.
-2. Persistir `schemaVersion()` em `PRAGMA user_version`, aceitando legado zero
+1. Persistir `schemaVersion()` em `PRAGMA user_version`, aceitando legado zero
    compativel e rejeitando versao futura antes de DDL/DML.
-3. Produzir profiling valido do prefetch; `xctrace` nao oferece `Time Profiler`
+2. Produzir profiling valido do prefetch; `xctrace` nao oferece `Time Profiler`
    nesta instalacao e `CPU Counters` falhou com `DTServiceHub`/politica do
    kernel.
-4. Canonizar `clang-tidy` macOS com sysroot e reproduzir IDs Semgrep antes de
+3. Canonizar `clang-tidy` macOS com sysroot e reproduzir IDs Semgrep antes de
    dividir fixtures.
-5. Revalidar handles, PowerShell, packaging e URL UNC em plataformas reais.
+4. Revalidar handles, PowerShell, packaging e URL UNC em plataformas reais.
 
 Detalhes, criterios e itens de prioridade menor ficam em
 `RECOVERY_BACKLOG.md`. O plano executavel fica em
@@ -374,8 +381,8 @@ preparacao da release.
 
 | Remote | Provedor | Funcao | Estado confirmado |
 | --- | --- | --- | --- |
-| `origin` | GitLab | Repositorio e CI primarios | push de `7f396b0` bloqueado por OAuth `invalid_grant` |
-| `bitbucket` | Bitbucket | Mirror obrigatorio | `7f396b0` confirmado em `master`; tag `v0.9.10` preservada |
+| `origin` | GitLab | Repositorio e CI primarios | push de `7291082` bloqueado por OAuth `invalid_grant`; local 44 commits a frente |
+| `bitbucket` | Bitbucket | Mirror obrigatorio | `7291082` confirmado em `master`; divergencia `0/0`; tag `v0.9.10` preservada |
 | `gh` | GitHub | Mirror inativo | HTTP 403; conta suspensa |
 
 Todo fetch ou pull operacional vem de `origin`:

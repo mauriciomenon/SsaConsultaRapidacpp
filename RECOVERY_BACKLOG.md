@@ -4,19 +4,17 @@
 
 ### Sequencia ativa preservada
 
-1. Corrigir `SQLITE-BACKUP-BUSY-RETRY`: `sqliteBusyWait` deve cobrir
-   `SQLITE_BUSY` e `SQLITE_LOCKED` nas conexoes source e destination.
-2. Adicionar `SQLITE-SCHEMA-VERSION-GATE`: persistir `schemaVersion()` em
+1. Adicionar `SQLITE-SCHEMA-VERSION-GATE`: persistir `schemaVersion()` em
    `PRAGMA user_version` e rejeitar versoes futuras antes de DDL/DML.
-3. Completar profiling valido do prefetch; harness, 30 amostras e relatorio
+2. Completar profiling valido do prefetch; harness, 30 amostras e relatorio
    isolado ja estao resolvidos no working tree. `xctrace` nao possui `Time
    Profiler` nesta instalacao e `CPU Counters` falhou com `DTServiceHub` e
    politica do kernel; nenhum credito de profiling foi atribuido.
-4. Validar `ImportFileConsolidator` em Windows/UNC real; o split local entre
+3. Validar `ImportFileConsolidator` em Windows/UNC real; o split local entre
    staging owned pre-commit e consolidacao post-commit ja esta implementado.
-5. Canonizar `clang-tidy` macOS com sysroot e reproduzir IDs das regras Semgrep
+4. Canonizar `clang-tidy` macOS com sysroot e reproduzir IDs das regras Semgrep
    antes de dividir fixtures.
-6. Revalidar em plataformas reais handles, URL UNC, PowerShell e packaging.
+5. Revalidar em plataformas reais handles, URL UNC, PowerShell e packaging.
 
 Contadores auditados: plano original `99.0/100`, divida nova `78.6/100`
 (11 de 14 itens enumerados aceitos) e backlog legado `0.0/100`, sem denominador
@@ -25,23 +23,24 @@ O credito novo pertence a `SQLITE-READ-CONNECTION-CHURN`, agora medido em 30
 processos e sem justificativa para pool. Findings descobertos depois da lista
 fixa de 14 itens nao reduzem retroativamente esse percentual.
 
-Fechamento de 2026-07-18: HEAD de codigo `7f396b0`, precedido por `610fbf3`,
-`09fa97b` e `360d18b`. `610fbf3` fecha o recheck WAL por snapshot. Em
+Fechamento de 2026-07-18: HEAD de codigo `7291082`, precedido por `0025d44`,
+`7f396b0` e `610fbf3`. `610fbf3` fecha o recheck WAL por snapshot. Em
 `7f396b0`, os targets afetados compilaram; conversor passou 20/20, SAM passou
 20/20 suites completas, Details passou 10/10 e CurrentWeek passou 20/20 sem
 patch. O CTest sequencial final passou `588/588` em `78.30 s`. Semgrep amplo
 escaneou 508 arquivos sem finding; Gitleaks escaneou 1.42 GB sem leak e
 TruffleHog escaneou 9,029 chunks sem segredo. Bitbucket foi confirmado em
-`7f396b0`; o push GitLab continua bloqueado por OAuth `invalid_grant`.
+`7291082`; o push GitLab continua bloqueado por OAuth `invalid_grant`.
 
 - [RESOLVED] [SQLITE-RESCAN-WAL-SNAPSHOT] `610fbf3` prova que um leitor WAL em
   transacao preserva o snapshot antigo durante a publicacao e observa o novo
   somente apos encerrar e iniciar outra transacao.
-- [PENDING-P1] [SQLITE-BACKUP-BUSY-RETRY] O request expoe
-  `sqliteBusyWait=3000 ms`, mas o loop do Backup API retenta somente
-  `SQLITE_LOCKED`; `SQLITE_BUSY` pode falhar imediatamente sob contencao
-  normal. Instalar busy handler tambem na source, retentar os dois codigos ate
-  o deadline e preservar cancelamento e fail-closed.
+- [RESOLVED] [SQLITE-BACKUP-BUSY-RETRY] `7291082` provou que o busy handler do
+  Backup API ja aguarda contencao temporaria no preflight e na publicacao e
+  corrigiu o gap real: recovery lookup e journal cleanup ignoravam o prazo do
+  request e usavam 250 ms fixos. Os tres contratos passaram 30 execucoes e a
+  familia ampliada passou `15/15` em `2.67 s`, preservando fail-closed,
+  cancelamento, integridade e fontes.
 - [PENDING-P1] [SQLITE-SCHEMA-VERSION-GATE] `schemaVersion()==1` nao e
   persistido nem validado. Aceitar banco legado `user_version=0` somente apos
   compatibilidade estrutural, aceitar a versao atual, rejeitar futuras antes de
