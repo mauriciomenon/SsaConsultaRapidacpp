@@ -637,11 +637,12 @@ namespace ssa::infra::sqlite {
 
         Storage(const std::filesystem::path& databasePath,
                 const std::vector<domain::ColumnDef>& configuredColumns, std::string tableName,
-                const bool replaceAll, std::stop_token stopToken)
-            : connection(databasePath, SqliteOpenMode::ReadWriteCreate),
-              busy(connection.handle(), stopToken), progress(connection.handle(), stopToken),
-              stopToken(std::move(stopToken)), columns(configuredColumns),
-              tableName(std::move(tableName)) {
+                const bool replaceAll, std::stop_token stopToken,
+                const std::chrono::milliseconds sqliteBusyWait)
+            : connection(databasePath, SqliteOpenMode::ReadWriteCreate, sqliteBusyWait),
+              busy(connection.handle(), stopToken, sqliteBusyWait),
+              progress(connection.handle(), stopToken), stopToken(std::move(stopToken)),
+              columns(configuredColumns), tableName(std::move(tableName)) {
             auto* db = connection.handle();
             transaction = std::make_unique<SqliteWriteTransaction>(db, busy.cancellationObserved());
             try {
@@ -957,10 +958,11 @@ namespace ssa::infra::sqlite {
     }
 
     SqliteSsaImportWriter::WriteSession
-    SqliteSsaImportWriter::startSession(const bool replaceAll, std::stop_token stopToken) const {
+    SqliteSsaImportWriter::startSession(const bool replaceAll, std::stop_token stopToken,
+                                        const std::chrono::milliseconds sqliteBusyWait) const {
         throwIfCanceled(stopToken);
         return WriteSession{std::make_unique<WriteSession::Storage>(
-            databasePath_, columns_, tableName_, replaceAll, std::move(stopToken))};
+            databasePath_, columns_, tableName_, replaceAll, std::move(stopToken), sqliteBusyWait)};
     }
 
     std::vector<importing::ImportConsolidationMove>

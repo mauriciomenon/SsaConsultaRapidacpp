@@ -17,6 +17,7 @@
 #include "infra/sqlite/SqliteSsaImportWriter.h"
 #include "infra/sqlite/SqliteSsaRepository.h"
 #include "platform/SupervisedProcessRunner.h"
+#include "ports/OperationError.h"
 #include "qt/FilesystemPath.h"
 
 #include <QCryptographicHash>
@@ -425,6 +426,28 @@ TEST_CASE("spreadsheet import workflow rejects a stopped token before staging") 
     REQUIRE(result.importSummary->files.size() == 1);
     REQUIRE(result.importSummary->files.front().source == "source.xlsx");
     REQUIRE(result.importSummary->files.front().status == ssa::ports::ImportFileStatus::Canceled);
+    REQUIRE_FALSE(std::filesystem::exists(inputDirectory));
+    REQUIRE_FALSE(std::filesystem::exists(dbPath));
+}
+
+TEST_CASE("spreadsheet import workflow rejects invalid execution options before staging") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+    ssa::ports::ImportExternalFilesRequest request;
+    request.files = {root / "source.xlsx"};
+    request.execution.rowsPerChunk = 0;
+
+    const auto result = port.importExternalFiles(request);
+
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
+    CHECK(result.message.find("invalid_import_execution_options") != std::string::npos);
+    CHECK(result.message.find("rows_per_chunk") != std::string::npos);
     REQUIRE_FALSE(std::filesystem::exists(inputDirectory));
     REQUIRE_FALSE(std::filesystem::exists(dbPath));
 }
@@ -1474,31 +1497,28 @@ TEST_CASE("spreadsheet workflow counts equal duplicates across chunk boundaries"
     const auto dbPath = root / "data" / "ssas.db";
     std::filesystem::create_directories(inputDirectory);
     std::filesystem::create_directories(dbPath.parent_path());
-    std::string rowsXml = row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Descricao"),
-                                  inlineCell("C1", "Data Cadastro")});
-    for (std::size_t index = 0; index < 1'001; ++index) {
-        const auto rowNumber = index + 2;
-        const auto suffix = std::to_string(rowNumber);
-        const auto numberRef = "A" + suffix;
-        const auto descriptionRef = "B" + suffix;
-        const auto dateRef = "C" + suffix;
-        rowsXml += row(rowNumber, {inlineCell(numberRef.c_str(), "202600302"),
-                                   inlineCell(descriptionRef.c_str(), "Duplicate"),
-                                   inlineCell(dateRef.c_str(), "2026-07-14")});
-    }
+    const auto rowsXml = row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Descricao"),
+                                 inlineCell("C1", "Data Cadastro")}) +
+                         row(2, {inlineCell("A2", "202600302"), inlineCell("B2", "Duplicate"),
+                                 inlineCell("C2", "2026-07-14")}) +
+                         row(3, {inlineCell("A3", "202600302"), inlineCell("B3", "Duplicate"),
+                                 inlineCell("C3", "2026-07-14")});
     writeWorkbook(inputDirectory / "duplicates.xlsx", rowsXml);
     writeWorkbook(inputDirectory / "z-empty.xlsx",
                   row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Descricao"),
                           inlineCell("C1", "Data Cadastro")}));
     ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
                                                               importColumns());
+    ssa::ports::RescanRequest request;
+    request.mode = ssa::ports::RescanMode::Incremental;
+    request.execution.rowsPerChunk = 1;
 
-    const auto result = port.rescan({ssa::ports::RescanMode::Incremental});
+    const auto result = port.rescan(request);
 
     INFO(result.message);
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
     REQUIRE(result.warning);
-    REQUIRE(result.message.find("duplicates=1000") != std::string::npos);
+    REQUIRE(result.message.find("duplicates=1") != std::string::npos);
 }
 
 TEST_CASE("spreadsheet workflow keeps chunk counters when a later worksheet fails") {
@@ -1665,6 +1685,33 @@ TEST_CASE("sqlite import stops promptly while locked and remains reusable") {
                       "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600206'") == 0);
     REQUIRE(sqlite3_close(verification) == SQLITE_OK);
     REQUIRE(writer.write(replacement, 1, 0, true).rowsWritten == 1);
+}
+
+TEST_CASE("sqlite import writer honors zero busy wait under an exclusive lock") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto dbPath = std::filesystem::path{tempDir.path().toStdString()} / "ssas.db";
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(sqliteWriterAccess(), dbPath,
+                                                           importColumns());
+    ssa::infra::importing::ResolvedSsaImportRows previous;
+    previous.rows.push_back({{"numero_ssa", "202600216"}, {"descricao_ssa", "Anterior"}});
+    REQUIRE(writer.write(previous, 1, 0, false).rowsWritten == 1);
+
+    ssa::infra::sqlite::SqliteConnection blocker(dbPath,
+                                                 ssa::infra::sqlite::SqliteOpenMode::ReadWrite);
+    REQUIRE(sqlite3_exec(blocker.handle(), "BEGIN EXCLUSIVE", nullptr, nullptr, nullptr) ==
+            SQLITE_OK);
+    QElapsedTimer elapsed;
+    elapsed.start();
+
+    REQUIRE_THROWS_AS(writer.startSession(false, {}, std::chrono::milliseconds{0}),
+                      ssa::ports::OperationError);
+    CHECK(elapsed.elapsed() < 500);
+    REQUIRE(sqlite3_exec(blocker.handle(), "ROLLBACK", nullptr, nullptr, nullptr) == SQLITE_OK);
+
+    auto retry = writer.startSession(false, {}, std::chrono::milliseconds{0});
+    REQUIRE_NOTHROW(retry.rollback());
 }
 
 TEST_CASE("sqlite import cancels a blocked commit and rolls back explicitly") {

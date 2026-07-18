@@ -205,6 +205,70 @@ TEST_CASE("cli exposes explicit incremental rescan") {
     REQUIRE(importPort->lastRequest.mode == ssa::ports::RescanMode::Incremental);
 }
 
+TEST_CASE("cli propagates bounded import execution parameters") {
+    auto importPort = std::make_shared<CapturingImportPort>();
+    auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(importPort);
+    const auto controller = controllerWithWorkflow(workflows);
+    const auto databasePath = existingDatabaseArgument();
+
+    const int exitCode = controller.run({"ssa", "--incremental-rescan", "--import-chunk-rows",
+                                         "128", "--sqlite-busy-wait-ms", "250", "--db",
+                                         databasePath.c_str(), "--docs-dir", "."});
+
+    REQUIRE(exitCode == 0);
+    REQUIRE(importPort->called);
+    CHECK(importPort->lastRequest.execution.rowsPerChunk == 128);
+    CHECK(importPort->lastRequest.execution.sqliteBusyWait == std::chrono::milliseconds{250});
+}
+
+TEST_CASE("cli rejects invalid import execution parameters before the workflow") {
+    SECTION("nonnumeric chunk size") {
+        auto importPort = std::make_shared<CapturingImportPort>();
+        auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(importPort);
+        const auto controller = controllerWithWorkflow(workflows);
+        const auto databasePath = existingDatabaseArgument();
+        StderrCapture stderrCapture;
+
+        const int exitCode =
+            controller.run({"ssa", "--incremental-rescan", "--import-chunk-rows", "many", "--db",
+                            databasePath.c_str(), "--docs-dir", "."});
+
+        CHECK(exitCode == 1);
+        CHECK_FALSE(importPort->called);
+        CHECK(stderrCapture.text().find("invalid import execution options") != std::string::npos);
+    }
+
+    SECTION("busy wait outside retry granularity") {
+        auto importPort = std::make_shared<CapturingImportPort>();
+        auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(importPort);
+        const auto controller = controllerWithWorkflow(workflows);
+        const auto databasePath = existingDatabaseArgument();
+        StderrCapture stderrCapture;
+
+        const int exitCode = controller.run({"ssa", "--incremental-rescan", "--sqlite-busy-wait-ms",
+                                             "7", "--db", databasePath.c_str(), "--docs-dir", "."});
+
+        CHECK(exitCode == 1);
+        CHECK_FALSE(importPort->called);
+        CHECK(stderrCapture.text().find("invalid import execution options") != std::string::npos);
+    }
+
+    SECTION("import execution options without a rescan command") {
+        auto importPort = std::make_shared<CapturingImportPort>();
+        auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(importPort);
+        const auto controller = controllerWithWorkflow(workflows);
+        const auto databasePath = existingDatabaseArgument();
+        StderrCapture stderrCapture;
+
+        const int exitCode = controller.run(
+            {"ssa", "--import-chunk-rows", "10", "--db", databasePath.c_str(), "--docs-dir", "."});
+
+        CHECK(exitCode == 1);
+        CHECK_FALSE(importPort->called);
+        CHECK(stderrCapture.text().find("require a rescan command") != std::string::npos);
+    }
+}
+
 TEST_CASE("cli preserves unicode database and import paths") {
     QTemporaryDir directory;
     REQUIRE(directory.isValid());

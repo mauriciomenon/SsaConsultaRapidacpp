@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <optional>
 #include <string>
 
 namespace {
@@ -32,15 +33,57 @@ namespace {
                 "unsupported --acao value: " + action.toStdString()};
     }
 
-    ssa::ports::WorkflowResult
-    incrementalRescan(const QCommandLineParser&,
-                      const ssa::application::SsaWorkflowService& workflows) {
-        return workflows.rescan({ssa::ports::RescanMode::Incremental});
+    std::optional<ssa::ports::ImportExecutionOptions>
+    importExecutionOptions(const QCommandLineParser& parser, std::string& error) {
+        ssa::ports::ImportExecutionOptions options;
+        const auto parse = [&parser, &error](const char* name, long long& value) {
+            if (!parser.isSet(name)) {
+                return true;
+            }
+            bool parsed = false;
+            value = parser.value(name).toLongLong(&parsed);
+            if (!parsed || value < 0) {
+                error = "invalid import execution options: --" + std::string{name} +
+                        " requires a nonnegative integer";
+                return false;
+            }
+            return true;
+        };
+        auto rowsPerChunk = static_cast<long long>(options.rowsPerChunk);
+        auto sqliteBusyWait = options.sqliteBusyWait.count();
+        if (!parse("import-chunk-rows", rowsPerChunk) ||
+            !parse("sqlite-busy-wait-ms", sqliteBusyWait)) {
+            return std::nullopt;
+        }
+        options.rowsPerChunk = static_cast<std::size_t>(rowsPerChunk);
+        options.sqliteBusyWait = std::chrono::milliseconds{sqliteBusyWait};
+        if (const auto validation = options.validationError(); !validation.empty()) {
+            error = "invalid import execution options: " + validation;
+            return std::nullopt;
+        }
+        return options;
     }
 
-    ssa::ports::WorkflowResult fullRescan(const QCommandLineParser&,
+    ssa::ports::WorkflowResult rescan(const QCommandLineParser& parser,
+                                      const ssa::application::SsaWorkflowService& workflows,
+                                      const ssa::ports::RescanMode mode) {
+        std::string error;
+        const auto execution = importExecutionOptions(parser, error);
+        if (!execution) {
+            return {ssa::ports::WorkflowStatus::Rejected, std::move(error)};
+        }
+        return workflows.rescan({mode, *execution});
+    }
+
+    ssa::ports::WorkflowResult
+    incrementalRescan(const QCommandLineParser& parser,
+                      const ssa::application::SsaWorkflowService& workflows) {
+        return rescan(parser, workflows, ssa::ports::RescanMode::Incremental);
+    }
+
+    ssa::ports::WorkflowResult fullRescan(const QCommandLineParser& parser,
                                           const ssa::application::SsaWorkflowService& workflows) {
-        return workflows.rescan({ssa::ports::RescanMode::Full});
+        return rescan(parser, workflows, ssa::ports::RescanMode::Full);
     }
 
     // Python compatibility: --rescan is an alias for --force-rescan.
@@ -70,6 +113,10 @@ namespace {
         return parser.isSet("acao");
     }
 
+    bool hasImportExecutionOptions(const QCommandLineParser& parser) {
+        return parser.isSet("import-chunk-rows") || parser.isSet("sqlite-busy-wait-ms");
+    }
+
     WorkflowCommandSelection selectedWorkflowCommand(const QCommandLineParser& parser) {
         WorkflowCommandSelection selection;
         for (const auto& command : kWorkflowCommands) {
@@ -88,6 +135,12 @@ namespace {
         if (hasAcao) {
             return rejectUnsupportedAction(parser.value("acao"));
         }
+        const bool hasRescan = parser.isSet("rescan") || parser.isSet("force-rescan") ||
+                               parser.isSet("incremental-rescan");
+        if (hasImportExecutionOptions(parser) && !hasRescan) {
+            return {ssa::ports::WorkflowStatus::Rejected,
+                    "import execution options require a rescan command"};
+        }
         if (selection.selectedCommands > 1) {
             return rejectMultipleWorkflowCommands();
         }
@@ -102,7 +155,7 @@ namespace {
 namespace ssa::app::cli {
 
     bool SsaCliWorkflowRunner::hasWorkflowCommand(const QCommandLineParser& parser) {
-        return isAcaoRequested(parser) ||
+        return isAcaoRequested(parser) || hasImportExecutionOptions(parser) ||
                std::ranges::any_of(kWorkflowCommands, [&parser](const auto& command) {
                    return parser.isSet(command.option);
                });

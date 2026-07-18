@@ -40,7 +40,6 @@ namespace ssa::infra::importing {
             std::size_t summaryIndex = 0;
         };
 
-        constexpr std::size_t kImportRowsPerChunk = 1'000;
         constexpr std::size_t kMaxWorkflowDiagnosticBytes = 4'096;
         constexpr int kDatabaseBackupPagesPerStep = 256;
         constexpr auto kDatabaseBackupRetryDelay = std::chrono::milliseconds{10};
@@ -70,6 +69,7 @@ namespace ssa::infra::importing {
         void readAndImportChunkedWorkbook(const StagedImportFile& file, const bool replaceAll,
                                           const SsaImportConflictResolver& conflictResolver,
                                           sqlite::SqliteSsaImportWriter::WriteSession& writeSession,
+                                          const std::size_t rowsPerChunk,
                                           const std::stop_token& stopToken,
                                           ChunkedWorkbookImportResult& result) {
             result = {};
@@ -81,7 +81,7 @@ namespace ssa::infra::importing {
             std::vector<std::string> headerRow;
             result.batch.sourcePath = file.workbookPath;
             XlsxWorkbookReader::readSheetChunks(
-                file.workbookPath, kImportRowsPerChunk,
+                file.workbookPath, rowsPerChunk,
                 [&](SpreadsheetTable table, const bool firstInSheet, const bool) {
                     if (fatalMapping || invalidTrailingWorksheet || result.invalidFullBatch ||
                         result.duplicateConflict) {
@@ -581,6 +581,12 @@ namespace ssa::infra::importing {
 
     ports::WorkflowResult SpreadsheetImportWorkflowPort::importExternalFiles(
         const ports::ImportExternalFilesRequest& request, const std::stop_token stopToken) {
+        if (const auto validation = request.execution.validationError(); !validation.empty()) {
+            return withSummary(
+                {ports::WorkflowStatus::Rejected,
+                 "import_external_files invalid_import_execution_options " + validation},
+                selectedFilesFailureSummary(request.files));
+        }
         if (request.files.empty()) {
             return withSummary(
                 {ports::WorkflowStatus::Rejected, "import_external_files no_files_selected"}, {});
@@ -602,7 +608,7 @@ namespace ssa::infra::importing {
         const auto staging = stager_.stageExternalFiles(request.files, stopToken);
         if (auto resumed = resumePendingConsolidation(stopToken)) {
             if (resumed->status == ports::WorkflowStatus::Canceled) {
-                return importDiscoveredFiles(staging, false, stopToken);
+                return importDiscoveredFiles(staging, false, stopToken, request.execution);
             }
             const auto cleanupDiagnostic = stager_.discardOwnedArtifacts(staging);
             if (!cleanupDiagnostic.empty()) {
@@ -612,7 +618,7 @@ namespace ssa::infra::importing {
             }
             return std::move(*resumed);
         }
-        return importDiscoveredFiles(staging, false, stopToken);
+        return importDiscoveredFiles(staging, false, stopToken, request.execution);
     }
 
     ports::WorkflowResult
@@ -667,18 +673,22 @@ namespace ssa::infra::importing {
                 staging.rejectionReason = "sam_staging_incomplete";
             }
         }
-        return importDiscoveredFiles(staging, false, stopToken, &request.artifacts);
+        return importDiscoveredFiles(staging, false, stopToken, {}, &request.artifacts);
     }
 
     ports::WorkflowResult SpreadsheetImportWorkflowPort::rescan(const ports::RescanRequest& request,
                                                                 const std::stop_token stopToken) {
+        if (const auto validation = request.execution.validationError(); !validation.empty()) {
+            return {ports::WorkflowStatus::Rejected,
+                    "rescan invalid_import_execution_options " + validation};
+        }
         if (stopToken.stop_requested()) {
             return canceled("rescan");
         }
         const bool replaceAll = request.mode == ports::RescanMode::Full;
         const auto directoryStatus = stager_.validateInputDirectory(stopToken);
         if (!directoryStatus.rejectionReason.empty()) {
-            return importDiscoveredFiles(directoryStatus, replaceAll, stopToken);
+            return importDiscoveredFiles(directoryStatus, replaceAll, stopToken, request.execution);
         }
         if (!importLockPathDiagnostic_.empty()) {
             return importLockFailure(QLockFile::UnknownError, {}, importLockPathDiagnostic_);
@@ -693,26 +703,27 @@ namespace ssa::infra::importing {
         }
         auto staging = stager_.stageInputFiles(stopToken, replaceAll);
         if (staging.operationalFailure || !staging.rejectionReason.empty()) {
-            return importDiscoveredFiles(staging, replaceAll, stopToken);
+            return importDiscoveredFiles(staging, replaceAll, stopToken, request.execution);
         }
         if (auto resumed = resumePendingConsolidation(stopToken)) {
             if (resumed->status == ports::WorkflowStatus::Canceled) {
-                return replaceAll ? importDiscoveredFiles(staging, true, stopToken)
-                                  : importIncrementalFiles(staging, stopToken);
+                return replaceAll
+                           ? importDiscoveredFiles(staging, true, stopToken, request.execution)
+                           : importIncrementalFiles(staging, stopToken, request.execution);
             }
             if (!resumed->ok() || resumed->warning) {
                 return std::move(*resumed);
             }
             staging = stager_.stageInputFiles(stopToken, replaceAll);
             if (staging.operationalFailure || !staging.rejectionReason.empty()) {
-                return importDiscoveredFiles(staging, replaceAll, stopToken);
+                return importDiscoveredFiles(staging, replaceAll, stopToken, request.execution);
             }
             if (staging.files.empty()) {
                 return std::move(*resumed);
             }
         }
         if (staging.files.empty()) {
-            return importDiscoveredFiles(staging, replaceAll, stopToken);
+            return importDiscoveredFiles(staging, replaceAll, stopToken, request.execution);
         }
         std::error_code databaseDirectoryError;
         const auto databaseDirectory = databasePath_.parent_path();
@@ -736,7 +747,8 @@ namespace ssa::infra::importing {
             copyDatabaseSnapshot(databasePath_, workingDatabase, stopToken);
             SpreadsheetImportWorkflowPort workingPort(inputFolder_, workingDatabase, columns_,
                                                       false);
-            auto result = workingPort.importDiscoveredFiles(staging, replaceAll, stopToken);
+            auto result = workingPort.importDiscoveredFiles(staging, replaceAll, stopToken,
+                                                            request.execution);
             if (!result.ok()) {
                 return result;
             }
@@ -839,12 +851,12 @@ namespace ssa::infra::importing {
         }
     }
 
-    ports::WorkflowResult
-    SpreadsheetImportWorkflowPort::importIncrementalFiles(const ImportStagingResult& files,
-                                                          const std::stop_token& stopToken) const {
+    ports::WorkflowResult SpreadsheetImportWorkflowPort::importIncrementalFiles(
+        const ImportStagingResult& files, const std::stop_token& stopToken,
+        const ports::ImportExecutionOptions& execution) const {
         constexpr const char* operation = "import_xlsx_to_sqlite";
         if (files.files.size() <= 1 || files.operationalFailure || !files.rejectionReason.empty()) {
-            return importDiscoveredFiles(files, false, stopToken);
+            return importDiscoveredFiles(files, false, stopToken, execution);
         }
 
         auto summary = makeImportSummary(files);
@@ -873,7 +885,7 @@ namespace ssa::infra::importing {
             single.discoveredXlsxSources.push_back(
                 files.discoveredXlsxSources[files.files[fileIndex].summaryIndex]);
             single.discovered = 1;
-            auto result = importDiscoveredFiles(single, false, stopToken);
+            auto result = importDiscoveredFiles(single, false, stopToken, execution);
             if (!result.importSummary || result.importSummary->files.size() != 1) {
                 result = {ports::WorkflowStatus::Failed, "import_xlsx_to_sqlite summary_failed",
                           false, "single-file import did not return one file result"};
@@ -953,6 +965,7 @@ namespace ssa::infra::importing {
 
     ports::WorkflowResult SpreadsheetImportWorkflowPort::importDiscoveredFiles(
         const ImportStagingResult& files, const bool replaceAll, const std::stop_token& stopToken,
+        const ports::ImportExecutionOptions& execution,
         const std::vector<ports::SamArtifact>* samArtifacts) const {
         constexpr const char* operation = "import_xlsx_to_sqlite";
         auto importSummary = makeImportSummary(files);
@@ -1023,7 +1036,7 @@ namespace ssa::infra::importing {
         std::unique_ptr<sqlite::SqliteSsaImportWriter::WriteSession> writeSession;
         try {
             writeSession = std::make_unique<sqlite::SqliteSsaImportWriter::WriteSession>(
-                writer_.startSession(replaceAll, stopToken));
+                writer_.startSession(replaceAll, stopToken, execution.sqliteBusyWait));
         } catch (const std::system_error& error) {
             if (error.code() == std::make_error_code(std::errc::operation_canceled)) {
                 return discardBeforeCommit(canceled(operation));
@@ -1111,7 +1124,8 @@ namespace ssa::infra::importing {
                 } else {
                     hasChunkedWorkbookResult = true;
                     readAndImportChunkedWorkbook(file, replaceAll, conflictResolver_, *writeSession,
-                                                 stopToken, chunkedWorkbookResult);
+                                                 execution.rowsPerChunk, stopToken,
+                                                 chunkedWorkbookResult);
                     applyChunkedWorkbookResult();
                 }
             } catch (const std::system_error& error) {

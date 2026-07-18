@@ -4,6 +4,7 @@
 #include "infra/SsaImportData.h"
 #include "infra/import/ImportConsolidation.h"
 
+#include <chrono>
 #include <filesystem>
 #include <memory>
 #include <stop_token>
@@ -66,8 +67,9 @@ namespace ssa::infra::sqlite {
         [[nodiscard]] importing::SsaImportWriteSummary
         write(const importing::ResolvedSsaImportRows& rows, std::size_t fileCount,
               std::size_t skippedRows, bool replaceAll, std::stop_token stopToken = {}) const;
-        [[nodiscard]] WriteSession startSession(bool replaceAll,
-                                                std::stop_token stopToken = {}) const;
+        [[nodiscard]] WriteSession startSession(
+            bool replaceAll, std::stop_token stopToken = {},
+            std::chrono::milliseconds sqliteBusyWait = std::chrono::milliseconds{3'000}) const;
         [[nodiscard]] std::vector<importing::ImportConsolidationMove>
         pendingConsolidation(const std::stop_token& stopToken = {}) const;
         void

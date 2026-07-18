@@ -76,8 +76,33 @@ namespace ssa::ports {
         }
     };
 
+    struct ImportExecutionOptions final {
+        static constexpr std::size_t kDefaultRowsPerChunk = 1'000;
+        static constexpr std::size_t kMaxRowsPerChunk = 1'000;
+        static constexpr auto kDefaultSqliteBusyWait = std::chrono::milliseconds{3'000};
+        static constexpr auto kMaxSqliteBusyWait = std::chrono::milliseconds{3'000};
+        static constexpr auto kSqliteBusyRetryGranularity = std::chrono::milliseconds{5};
+
+        std::size_t rowsPerChunk{kDefaultRowsPerChunk};
+        std::chrono::milliseconds sqliteBusyWait{kDefaultSqliteBusyWait};
+
+        [[nodiscard]] std::string validationError() const {
+            if (rowsPerChunk == 0 || rowsPerChunk > kMaxRowsPerChunk) {
+                return "rows_per_chunk must be between 1 and 1000";
+            }
+            if (sqliteBusyWait.count() < 0 || sqliteBusyWait > kMaxSqliteBusyWait) {
+                return "sqlite_busy_wait_ms must be between 0 and 3000";
+            }
+            if (sqliteBusyWait.count() % kSqliteBusyRetryGranularity.count() != 0) {
+                return "sqlite_busy_wait_ms must be a multiple of 5";
+            }
+            return {};
+        }
+    };
+
     struct ImportExternalFilesRequest {
         std::vector<std::filesystem::path> files;
+        ImportExecutionOptions execution;
     };
 
     struct ImportDerivationsRequest {
@@ -125,6 +150,7 @@ namespace ssa::ports {
 
     struct RescanRequest {
         RescanMode mode = RescanMode::Incremental;
+        ImportExecutionOptions execution;
     };
 
     struct ExportFilteredListRequest {

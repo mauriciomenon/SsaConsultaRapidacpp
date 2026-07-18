@@ -33,10 +33,11 @@ namespace ssa::infra::importing {
         [[nodiscard]] ports::WorkflowResult
         importDiscoveredFiles(const ImportStagingResult& files, bool replaceAll,
                               const std::stop_token& stopToken,
+                              const ports::ImportExecutionOptions& execution,
                               const std::vector<ports::SamArtifact>* samArtifacts = nullptr) const;
         [[nodiscard]] ports::WorkflowResult
-        importIncrementalFiles(const ImportStagingResult& files,
-                               const std::stop_token& stopToken) const;
+        importIncrementalFiles(const ImportStagingResult& files, const std::stop_token& stopToken,
+                               const ports::ImportExecutionOptions& execution) const;
         [[nodiscard]] std::optional<ports::WorkflowResult>
         resumePendingConsolidation(const std::stop_token& stopToken) const;
 

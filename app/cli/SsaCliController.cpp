@@ -52,6 +52,12 @@ namespace {
         parser.addOption(QCommandLineOption(QStringList{"force-rescan"}, "Run full rescan."));
         parser.addOption(
             QCommandLineOption(QStringList{"incremental-rescan"}, "Run incremental rescan."));
+        parser.addOption(QCommandLineOption(QStringList{"import-chunk-rows"},
+                                            "Rows buffered per XLSX import chunk (1-1000).",
+                                            "rows"));
+        parser.addOption(QCommandLineOption(
+            QStringList{"sqlite-busy-wait-ms"},
+            "SQLite import write wait in milliseconds (0-3000, multiple of 5).", "ms"));
         parser.addOption(QCommandLineOption(QStringList{"skip-import"},
                                             "Deprecated compatibility flag; accepted as no-op."));
         parser.addOption(QCommandLineOption(QStringList{"reset-db"}, "Reset the local database."));
