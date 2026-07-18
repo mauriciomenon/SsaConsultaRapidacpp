@@ -8,6 +8,7 @@
 
 #include <chrono>
 #include <filesystem>
+#include <functional>
 #include <mutex>
 #include <optional>
 #include <stop_token>
@@ -19,8 +20,12 @@ namespace ssa::infra::sqlite {
     class SqliteSsaRepository final : public ports::ISsaRepository,
                                       public ports::IExecutadasReportPort {
       public:
+        using DerivedCountCooldownNow = std::function<std::chrono::steady_clock::time_point()>;
+
         explicit SqliteSsaRepository(std::filesystem::path dbPath);
         SqliteSsaRepository(std::filesystem::path dbPath, query::SqlQueryBuilder queryBuilder);
+        SqliteSsaRepository(std::filesystem::path dbPath, query::SqlQueryBuilder queryBuilder,
+                            DerivedCountCooldownNow now);
 
         [[nodiscard]] domain::SsaPageResult page(const domain::SsaPageRequest& request,
                                                  std::stop_token stopToken = {}) const override;
@@ -69,6 +74,7 @@ namespace ssa::infra::sqlite {
 
         std::filesystem::path dbPath_;
         query::SqlQueryBuilder queryBuilder_;
+        DerivedCountCooldownNow now_;
         mutable std::mutex derivedCountSummaryMutex_;
         mutable bool derivedCountSummaryInitializing_{false};
         mutable bool derivedCountSummaryAvailable_{false};

@@ -81,7 +81,14 @@ namespace ssa::infra::sqlite {
 
     SqliteSsaRepository::SqliteSsaRepository(std::filesystem::path dbPath,
                                              query::SqlQueryBuilder queryBuilder)
-        : dbPath_(std::move(dbPath)), queryBuilder_(std::move(queryBuilder)) {}
+        : SqliteSsaRepository(std::move(dbPath), std::move(queryBuilder),
+                              [] { return std::chrono::steady_clock::now(); }) {}
+
+    SqliteSsaRepository::SqliteSsaRepository(std::filesystem::path dbPath,
+                                             query::SqlQueryBuilder queryBuilder,
+                                             DerivedCountCooldownNow now)
+        : dbPath_(std::move(dbPath)), queryBuilder_(std::move(queryBuilder)), now_(std::move(now)) {
+    }
 
     bool SqliteSsaRepository::ensureDerivedCountSummary(const std::stop_token stopToken) const {
         throwIfCanceled(stopToken);
@@ -91,7 +98,7 @@ namespace ssa::infra::sqlite {
                 return true;
             }
             if (derivedCountSummaryUnsupported_ || derivedCountSummaryInitializing_ ||
-                std::chrono::steady_clock::now() < derivedCountSummaryRetryAfter_) {
+                now_() < derivedCountSummaryRetryAfter_) {
                 return false;
             }
             derivedCountSummaryInitializing_ = true;
@@ -108,8 +115,7 @@ namespace ssa::infra::sqlite {
                     std::unique_lock guard(derivedCountSummaryMutex_);
                     shouldLog = derivedCountSummaryFailure_ != failure;
                     derivedCountSummaryFailure_ = failure;
-                    derivedCountSummaryRetryAfter_ =
-                        std::chrono::steady_clock::now() + std::chrono::seconds{1};
+                    derivedCountSummaryRetryAfter_ = now_() + std::chrono::seconds{1};
                     derivedCountSummaryInitializing_ = false;
                 }
                 if (shouldLog) {
@@ -153,8 +159,7 @@ namespace ssa::infra::sqlite {
                 std::unique_lock guard(derivedCountSummaryMutex_);
                 shouldLog = derivedCountSummaryFailure_ != DerivedCountSummaryFailure::Readonly;
                 derivedCountSummaryFailure_ = DerivedCountSummaryFailure::Readonly;
-                derivedCountSummaryRetryAfter_ =
-                    std::chrono::steady_clock::now() + std::chrono::seconds{1};
+                derivedCountSummaryRetryAfter_ = now_() + std::chrono::seconds{1};
                 derivedCountSummaryInitializing_ = false;
             }
             if (shouldLog) {
@@ -173,8 +178,7 @@ namespace ssa::infra::sqlite {
                 std::unique_lock guard(derivedCountSummaryMutex_);
                 shouldLog = derivedCountSummaryFailure_ != DerivedCountSummaryFailure::Readonly;
                 derivedCountSummaryFailure_ = DerivedCountSummaryFailure::Readonly;
-                derivedCountSummaryRetryAfter_ =
-                    std::chrono::steady_clock::now() + std::chrono::seconds{1};
+                derivedCountSummaryRetryAfter_ = now_() + std::chrono::seconds{1};
                 derivedCountSummaryInitializing_ = false;
             }
             if (shouldLog) {

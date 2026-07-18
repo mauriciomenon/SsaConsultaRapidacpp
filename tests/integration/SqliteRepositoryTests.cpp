@@ -756,42 +756,45 @@ TEST_CASE_METHOD(SqliteRepositoryFixture,
     ssa::domain::SsaPageRequest request;
     request.pageSize = 10;
     request.visibleColumns = {"numero_ssa", "qtd_derivadas"};
+    auto now = std::chrono::steady_clock::time_point{};
+    ssa::infra::sqlite::SqliteSsaRepository cooldownRepository(path, ssa::query::SqlQueryBuilder{},
+                                                               [&now] { return now; });
+    const auto derivedCountForParent = [](const ssa::domain::SsaPageResult& page) {
+        const auto parent = std::ranges::find_if(
+            page.rows, [](const auto& row) { return row.valueOf("numero_ssa") == "202500002"; });
+        REQUIRE(parent != page.rows.end());
+        return parent->valueOf("qtd_derivadas");
+    };
+    const auto summaryExists = [this] {
+        ssa::infra::sqlite::SqliteConnection connection(path);
+        ssa::infra::sqlite::SqliteStatement summary(
+            connection.handle(), "SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table' "
+                                 "AND name = 'ssa_table_derived_counts'");
+        REQUIRE(summary.step());
+        return summary.columnInt64(0) == 1;
+    };
+
     {
         const ssa::infra::sqlite::SqliteDatabaseWriteLock heldLock(path);
         REQUIRE(heldLock.acquired());
-        const auto page = repository.page(request);
-
-        const auto parent = std::ranges::find_if(page.rows, [](const ssa::domain::SsaRecord& row) {
-            return row.valueOf("numero_ssa") == "202500002";
-        });
-        REQUIRE(parent != page.rows.end());
-        REQUIRE(parent->valueOf("qtd_derivadas") == "1");
-        ssa::infra::sqlite::SqliteConnection connection(path);
-        ssa::infra::sqlite::SqliteStatement summary(
-            connection.handle(), "SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table' "
-                                 "AND name = 'ssa_table_derived_counts'");
-        REQUIRE(summary.step());
-        REQUIRE(summary.columnInt64(0) == 0);
+        const auto page = cooldownRepository.page(request);
+        REQUIRE(derivedCountForParent(page) == "1");
+        REQUIRE_FALSE(summaryExists());
     }
 
-    static_cast<void>(repository.page(request));
-    {
-        ssa::infra::sqlite::SqliteConnection connection(path);
-        ssa::infra::sqlite::SqliteStatement summary(
-            connection.handle(), "SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table' "
-                                 "AND name = 'ssa_table_derived_counts'");
-        REQUIRE(summary.step());
-        REQUIRE(summary.columnInt64(0) == 0);
-    }
+    const auto sameTimePage = cooldownRepository.page(request);
+    REQUIRE(derivedCountForParent(sameTimePage) == "1");
+    REQUIRE_FALSE(summaryExists());
 
-    std::this_thread::sleep_for(std::chrono::milliseconds{1'050});
-    static_cast<void>(repository.page(request));
-    ssa::infra::sqlite::SqliteConnection connection(path);
-    ssa::infra::sqlite::SqliteStatement summary(
-        connection.handle(), "SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table' "
-                             "AND name = 'ssa_table_derived_counts'");
-    REQUIRE(summary.step());
-    REQUIRE(summary.columnInt64(0) == 1);
+    now += std::chrono::milliseconds{999};
+    const auto beforeDeadlinePage = cooldownRepository.page(request);
+    REQUIRE(derivedCountForParent(beforeDeadlinePage) == "1");
+    REQUIRE_FALSE(summaryExists());
+
+    now += std::chrono::milliseconds{1};
+    const auto deadlinePage = cooldownRepository.page(request);
+    REQUIRE(derivedCountForParent(deadlinePage) == "1");
+    REQUIRE(summaryExists());
 }
 
 TEST_CASE("sqlite repository reads derived counts from a legacy readonly database") {
