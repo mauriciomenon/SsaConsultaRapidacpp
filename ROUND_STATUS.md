@@ -8,11 +8,10 @@ Ultima verificacao local: 2026-07-18
 ## Marco Activity, importacao parametrizada e SQLite
 
 - Branch: `master`.
-- HEAD de codigo validado: `2dd9aec`, precedido por `4e74790`, `d54a693`,
-  `eede38e` e `91c60a1`. Bitbucket foi confirmado em `2dd9aec`. O push GitLab
-  `origin` falhou antes de transferir dados porque `gitlab.com` nao resolveu no
-  ambiente atual; o bloqueio OAuth `invalid_grant` continua historicamente
-  pendente.
+- HEAD de codigo validado: `1cea684`, precedido por `90990ee`, `2dd9aec` e
+  `4e74790`. Bitbucket foi confirmado em `1cea684`. O push GitLab `origin`
+  falhou antes de transferir dados porque o OAuth continua com
+  `invalid_grant`.
 - O working tree tracked restante contem somente esta reconciliacao documental
   e mudancas locais preexistentes fora de escopo, listadas pelo `git status`.
 - Plano original: `89.0/100 -> 99.0/100`. O P0 pertence a divida nova; 3.9
@@ -24,9 +23,10 @@ Ultima verificacao local: 2026-07-18
   depois da enumeracao permanecem registrados fora desse denominador fixo.
 - Backlog legado: `0.0/100 -> 0.0/100`; nenhum item legado recebeu credito.
 - Estado separado: o full build, `581/581` e security ampla validam `4e74790`;
-  o target de integracao e `7/7` focados validam `2dd9aec`. Ambos estao
-  commitados localmente e `2dd9aec` foi comprovado no Bitbucket. GitLab e
-  plataformas nao locais permanecem prova externa pendente.
+  o target de integracao e `7/7` focados validam `2dd9aec`; `3/3`, `45/45` e o
+  benchmark de 30 processos validam `1cea684`. Todos estao commitados
+  localmente e `1cea684` foi comprovado no Bitbucket. GitLab e plataformas nao
+  locais permanecem prova externa pendente.
 
 ### Fechamento local de 2026-07-18
 
@@ -45,6 +45,9 @@ Ultima verificacao local: 2026-07-18
   no handle de destino. Busy wait e stop token sao propagados; falha ou
   cancelamento antes de `SQLITE_DONE` preserva banco e fontes, enquanto commit
   concluido vence stop tardio e segue para consolidacao.
+- `1cea684` especializa igualdade BINARY somente para `numero_ssa` canonico de
+  9 digitos. Campos textuais, valores nao canonicos, busca geral, quick sector
+  e status preservam `COLLATE NOCASE`; nenhum schema ou indice mudou.
 - As oito falhas informadas do gate de 564 casos passaram `8/8` em `10.57 s`.
   Activity/SQLite passou `79/79` em `3.23 s`.
 - Em `4e74790`, build `dev` completo passou 476 passos e CTest sequencial
@@ -66,11 +69,19 @@ Ultima verificacao local: 2026-07-18
   `numero_ssa` compila com `COLLATE NOCASE`, incompatibilidade que transforma o
   indice BINARY em scan. No banco real, count/rows atuais visitaram 94,879
   linhas em `43/71 ms`; a comparacao BINARY produziu `SEARCH` em `2/<1 ms`.
-  O proximo slice restringe essa otimizacao ao numero SSA canonico de 9 digitos.
+  `1cea684` restringiu essa otimizacao ao numero SSA canonico de 9 digitos.
 - Publicacao de rescan: os 3 casos antes RED passaram `3/3` em `0.22 s`; o gate
   ampliado de atomicidade, lock, cancelamento e consolidacao passou `7/7` em
   `0.35 s`. Review Sol encontrou 1 P1 de stop tardio apos `SQLITE_DONE`; o
   finding foi corrigido e o re-review terminou sem P0-P2.
+- Igualdade SSA: os 2 contratos canonicos falharam RED enquanto o fallback
+  NOCASE passou; depois do patch, os 3 casos passaram `3/3` em `0.12 s` e o
+  gate correlato passou `45/45` em `2.02 s`. O planner usa `SEARCH` em page e
+  count. Sol xhigh terminou sem P0-P3.
+- Benchmark pos-fix, 30 processos e 250 mil linhas: 2,400/2,400 reads, zero
+  falha/cancelamento. `page()` p50/p95 caiu de `157.501/219.458 ms` para
+  `0.133/0.229 ms`; batch 4 x 20 caiu de `3281.940/14109.139 ms` para
+  `2.902/4.241 ms`. Repeated open p95 ficou em `0.145 ms`.
 - Security ampla: Semgrep 507 arquivos e zero finding; Gitleaks 1.42 GB e zero
   leak; TruffleHog 8,853 chunks e zero segredo verificado ou desconhecido.
 - Sol xhigh e Terra high deram GO final. Clawpatch nao gerou review porque seu
@@ -318,17 +329,15 @@ HEAD `d376431`; nenhuma sugestao foi aceita apenas pela severidade alegada.
 
 ## Pendencias ativas priorizadas
 
-1. Compilar igualdade BINARY somente para `numero_ssa` canonico e repetir
-   `EXPLAIN QUERY PLAN` mais o benchmark de 30 processos.
-2. Retirar lock e I/O SQLite de dentro de `derivedCountSummaryMutex_`, mantendo
+1. Retirar lock e I/O SQLite de dentro de `derivedCountSummaryMutex_`, mantendo
    um unico inicializador e cancelamento por caller.
-3. Produzir profiling valido do prefetch; `xctrace` nao oferece `Time Profiler`
+2. Produzir profiling valido do prefetch; `xctrace` nao oferece `Time Profiler`
    nesta instalacao e `CPU Counters` falhou com `DTServiceHub`/politica do
    kernel.
-4. Revalidar a publicacao do rescan com reader WAL em transacao.
-5. Canonizar `clang-tidy` macOS com sysroot e reproduzir IDs Semgrep antes de
+3. Revalidar a publicacao do rescan com reader WAL em transacao.
+4. Canonizar `clang-tidy` macOS com sysroot e reproduzir IDs Semgrep antes de
    dividir fixtures.
-6. Revalidar handles, PowerShell, packaging e URL UNC em plataformas reais.
+5. Revalidar handles, PowerShell, packaging e URL UNC em plataformas reais.
 
 Detalhes, criterios e itens de prioridade menor ficam em
 `RECOVERY_BACKLOG.md`. O plano executavel fica em
@@ -340,8 +349,8 @@ preparacao da release.
 
 | Remote | Provedor | Funcao | Estado confirmado |
 | --- | --- | --- | --- |
-| `origin` | GitLab | Repositorio e CI primarios | push de `2dd9aec` falhou por DNS; OAuth `invalid_grant` historico |
-| `bitbucket` | Bitbucket | Mirror obrigatorio | `2dd9aec` confirmado em `master`; tag `v0.9.10` preservada |
+| `origin` | GitLab | Repositorio e CI primarios | push de `1cea684` bloqueado por OAuth `invalid_grant` |
+| `bitbucket` | Bitbucket | Mirror obrigatorio | `1cea684` confirmado em `master`; tag `v0.9.10` preservada |
 | `gh` | GitHub | Mirror inativo | HTTP 403; conta suspensa |
 
 Todo fetch ou pull operacional vem de `origin`:

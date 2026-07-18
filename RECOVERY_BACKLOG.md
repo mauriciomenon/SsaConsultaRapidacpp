@@ -4,24 +4,20 @@
 
 ### Sequencia ativa preservada
 
-1. Compilar igualdade BINARY somente para `numero_ssa` canonico de 9 digitos.
-   `EXPLAIN QUERY PLAN` confirmou que `COLLATE NOCASE` causa dois scans; count e
-   rows devem usar `SEARCH ... (numero_ssa=?)`, preservando NOCASE nos campos
-   textuais e nos valores nao canonicos. Repetir o benchmark de 30 processos.
+1. Retirar espera e I/O SQLite de dentro de `derivedCountSummaryMutex_` sem
+   permitir dois inicializadores; callers concorrentes devem usar fallback e
+   continuar observando seu proprio stop token.
 2. Completar profiling valido do prefetch; harness, 30 amostras e relatorio
    isolado ja estao resolvidos no working tree. `xctrace` nao possui `Time
    Profiler` nesta instalacao e `CPU Counters` falhou com `DTServiceHub` e
    politica do kernel; nenhum credito de profiling foi atribuido.
 3. Validar `ImportFileConsolidator` em Windows/UNC real; o split local entre
    staging owned pre-commit e consolidacao post-commit ja esta implementado.
-4. Retirar espera e I/O SQLite de dentro de `derivedCountSummaryMutex_` sem
-   permitir dois inicializadores; callers concorrentes devem usar fallback e
-   continuar observando seu proprio stop token.
-5. Adicionar recheck WAL da publicacao do rescan: leitor em transacao deve
+4. Adicionar recheck WAL da publicacao do rescan: leitor em transacao deve
    manter o snapshot antigo ate encerrar e observar o novo snapshot depois.
-6. Canonizar `clang-tidy` macOS com sysroot e reproduzir IDs das regras Semgrep
+5. Canonizar `clang-tidy` macOS com sysroot e reproduzir IDs das regras Semgrep
    antes de dividir fixtures.
-7. Revalidar em plataformas reais handles, URL UNC, PowerShell e packaging.
+6. Revalidar em plataformas reais handles, URL UNC, PowerShell e packaging.
 
 Contadores auditados: plano original `99.0/100`, divida nova `78.6/100`
 (11 de 14 itens enumerados aceitos) e backlog legado sem denominador definido.
@@ -29,13 +25,14 @@ O credito novo pertence a `SQLITE-READ-CONNECTION-CHURN`, agora medido em 30
 processos e sem justificativa para pool. Findings descobertos depois da lista
 fixa de 14 itens nao reduzem retroativamente esse percentual.
 
-Fechamento de 2026-07-18: commits `91c60a1`, `eede38e`, `d54a693`, `4e74790` e
-`2dd9aec`. Em `4e74790`, build dev completo e o marco `581/581` permanecem
+Fechamento de 2026-07-18: HEAD `1cea684`, precedido por `90990ee`, `2dd9aec` e
+`4e74790`. Em `4e74790`, build dev completo e o marco `581/581` permanecem
 validos; o benchmark focado passou `1/1` em `0.37 s` e 30 amostras terminaram
 sem falha. Em `2dd9aec`, o target de integracao compilou e o gate passou `3/3`
-e depois `7/7`.
-Bitbucket foi confirmado em `2dd9aec`; o push GitLab falhou por DNS nesta
-tentativa e o OAuth `invalid_grant` continua pendente fora do ambiente local.
+e depois `7/7`. Em `1cea684`, `3/3` e `45/45` passaram; 30 processos
+confirmaram `page()` p50/p95 `0.133/0.229 ms` em 2,400 reads corretos.
+Bitbucket foi confirmado em `1cea684`; o push GitLab continua bloqueado por
+OAuth `invalid_grant`.
 
 Ultimo fechamento: commit `e0b5401`, build e CTest da suite de painel `1/1`
 passaram em `2.96 s`. O polling de `activeFilterEntries()` continua pendente
@@ -169,15 +166,16 @@ Matriz completa de acertos, adicoes, erros e ordem de execucao:
   fail-closed sob lock, integridade, sidecars, full rescan e cancelamento.
   Resta recheck WAL e validacao Windows real, sem reabrir o finding POSIX.
 
-- [HIGH-CONFIRMED] [SQLITE-PAGE-FILTER-CONCURRENT-LATENCY] O benchmark real
+- [RESOLVED] [SQLITE-PAGE-FILTER-CONCURRENT-LATENCY] O benchmark real
   mediu 2,400 chamadas de `page()` com filtro exato em 250 mil linhas: wall
   p50/p95 `157.501/219.458 ms`; batch 4 x 20 p50/p95
   `3281.940/14109.139 ms`. `EXPLAIN QUERY PLAN` provou a causa: `Equals` em
   `numero_ssa` adiciona `COLLATE NOCASE`, mas o indice e BINARY. No banco real,
   count/rows atuais fizeram scan de 94,879 linhas em `43/71 ms`; sem NOCASE,
-  ambos usaram `SEARCH` em `2/<1 ms`. Proximo aceite: BINARY somente para SSA
-  canonica, NOCASE textual preservado, p95 de `page()` ate 25 ms e zero falha
-  nas 2,400 leituras.
+  ambos usaram `SEARCH` em `2/<1 ms`. `1cea684` usa igualdade BINARY somente
+  para SSA canonica e preserva NOCASE textual. O planner passou em page/count;
+  30 processos terminaram 2,400/2,400 reads, zero falha/cancelamento, com
+  p50/p95 `0.133/0.229 ms` e batch `2.902/4.241 ms`.
 
 - [MED-CONCURRENCY] [DERIVED-SUMMARY-MUTEX-IO] A inicializacao do resumo de
   derivadas segura `derivedCountSummaryMutex_` durante lock e I/O SQLite. Uma
