@@ -1584,7 +1584,36 @@ TEST_CASE("spreadsheet workflow keeps chunk counters when a later worksheet fail
     REQUIRE(scalarInt(
                 db, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='ssa_table'") ==
             0);
+    REQUIRE(scalarInt(db, "PRAGMA user_version") == 0);
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("sqlite import writer rejects a future schema before mutation") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto dbPath = std::filesystem::path{tempDir.path().toStdString()} / "ssas.db";
+    {
+        ssa::infra::sqlite::SqliteConnection connection(
+            dbPath, ssa::infra::sqlite::SqliteOpenMode::ReadWriteCreate);
+        REQUIRE(sqlite3_exec(connection.handle(),
+                             "CREATE TABLE sentinel(value TEXT);"
+                             "INSERT INTO sentinel VALUES('preserved');"
+                             "PRAGMA user_version=2;",
+                             nullptr, nullptr, nullptr) == SQLITE_OK);
+    }
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(sqliteWriterAccess(), dbPath,
+                                                           importColumns());
+
+    REQUIRE_THROWS_AS(writer.startSession(false), ssa::ports::OperationError);
+
+    ssa::infra::sqlite::SqliteConnection verification(dbPath,
+                                                      ssa::infra::sqlite::SqliteOpenMode::ReadOnly);
+    REQUIRE(scalarInt(verification.handle(), "PRAGMA user_version") == 2);
+    REQUIRE(scalarText(verification.handle(), "SELECT value FROM sentinel") == "preserved");
+    REQUIRE(scalarInt(verification.handle(),
+                      "SELECT COUNT(*) FROM sqlite_schema WHERE type='table' AND "
+                      "name IN ('ssa_table','ssa_import_consolidation_journal')") == 0);
 }
 
 TEST_CASE("sqlite import writer rejects a stopped token before creating the database") {
@@ -1842,6 +1871,7 @@ TEST_CASE("sqlite import survives process death before and after commit") {
                 (commitBeforeKill ? 1 : 0));
         REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM sqlite_schema WHERE type='index' AND "
                               "name='idx_ssa_table_numero_ssa'") == 0);
+        REQUIRE(scalarInt(db, "PRAGMA user_version") == (commitBeforeKill ? 1 : 0));
         if (commitBeforeKill) {
             REQUIRE(scalarText(db, "SELECT sql FROM sqlite_master WHERE "
                                    "name='ux_ssa_table_numero_ssa'") == kFullUniqueSsaIndexSql);
@@ -1958,6 +1988,41 @@ TEST_CASE("sqlite consolidation journal migrates legacy identity columns during 
                                            "('source_identity', 'source_size')") == 2);
     REQUIRE(scalarInt(connection.handle(),
                       "SELECT COUNT(*) FROM ssa_import_consolidation_journal") == 0);
+}
+
+TEST_CASE("consolidation cleanup rejects a future schema after lookup") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto dbPath = root / "ssas.db";
+    const auto source = root / "docs_entrada" / "pending.xlsx";
+    const auto destination = root / "docs_entrada" / "processadas" / "pending.xlsx";
+    std::filesystem::create_directories(source.parent_path());
+    createSparseFile(source, 1);
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(sqliteWriterAccess(), dbPath,
+                                                           importColumns());
+    auto session = writer.startSession(false);
+    session.recordConsolidation({{{source, destination, true}}});
+    static_cast<void>(session.finish());
+    const auto pending = writer.pendingConsolidation();
+    REQUIRE(pending.size() == 1);
+    {
+        ssa::infra::sqlite::SqliteConnection connection(
+            dbPath, ssa::infra::sqlite::SqliteOpenMode::ReadWrite);
+        REQUIRE(sqlite3_exec(connection.handle(), "PRAGMA user_version=2", nullptr, nullptr,
+                             nullptr) == SQLITE_OK);
+    }
+
+    REQUIRE_THROWS_AS(writer.completeConsolidation(pending), ssa::ports::OperationError);
+
+    REQUIRE(std::filesystem::exists(source));
+    REQUIRE_FALSE(std::filesystem::exists(destination));
+    ssa::infra::sqlite::SqliteConnection verification(dbPath,
+                                                      ssa::infra::sqlite::SqliteOpenMode::ReadOnly);
+    REQUIRE(scalarInt(verification.handle(), "PRAGMA user_version") == 2);
+    REQUIRE(scalarInt(verification.handle(),
+                      "SELECT COUNT(*) FROM ssa_import_consolidation_journal") == 1);
 }
 
 TEST_CASE("pending consolidation rejects an already stopped token on an unlocked database") {
@@ -2087,6 +2152,53 @@ TEST_CASE("spreadsheet workflow resumes committed consolidation after process de
         REQUIRE(second.status == ssa::ports::WorkflowStatus::Rejected);
         REQUIRE(std::filesystem::exists(destination));
     }
+}
+
+TEST_CASE("consolidation recovery rejects a future schema before moving files") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    const auto source = inputDirectory / "pending.xlsx";
+    const auto destination = inputDirectory / "processadas" / "pending.xlsx";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    createSparseFile(source, 1);
+
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(sqliteWriterAccess(), dbPath,
+                                                           importColumns());
+    ssa::infra::importing::ResolvedSsaImportRows rows;
+    rows.rows.push_back({{"numero_ssa", "202600214"}, {"descricao_ssa", "Preserved"}});
+    auto session = writer.startSession(false);
+    REQUIRE(session.write(rows, 1, 0).rowsWritten == 1);
+    session.recordConsolidation({{{source, destination, true}}});
+    static_cast<void>(session.finish());
+    {
+        ssa::infra::sqlite::SqliteConnection connection(
+            dbPath, ssa::infra::sqlite::SqliteOpenMode::ReadWrite);
+        REQUIRE(sqlite3_exec(connection.handle(), "PRAGMA user_version=2", nullptr, nullptr,
+                             nullptr) == SQLITE_OK);
+    }
+
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+    const auto result = port.rescan({ssa::ports::RescanMode::Incremental});
+
+    INFO(result.message);
+    INFO(result.diagnostic);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
+    REQUIRE(result.message == "import_consolidation_resume_failed");
+    REQUIRE(std::filesystem::exists(source));
+    REQUIRE_FALSE(std::filesystem::exists(destination));
+    ssa::infra::sqlite::SqliteConnection verification(dbPath,
+                                                      ssa::infra::sqlite::SqliteOpenMode::ReadOnly);
+    REQUIRE(scalarInt(verification.handle(), "PRAGMA user_version") == 2);
+    REQUIRE(scalarInt(verification.handle(),
+                      "SELECT COUNT(*) FROM ssa_import_consolidation_journal") == 1);
+    REQUIRE(scalarInt(verification.handle(),
+                      "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600214'") == 1);
 }
 
 TEST_CASE("rescan resumes completed journal moves and keeps partial failure resumable") {
@@ -4468,6 +4580,54 @@ TEST_CASE("full rescan honors busy wait when publication destination is locked")
     REQUIRE_FALSE(std::filesystem::exists(dbPath.string() + "-journal"));
     REQUIRE_FALSE(std::filesystem::exists(dbPath.string() + "-wal"));
     REQUIRE_FALSE(std::filesystem::exists(dbPath.string() + "-shm"));
+}
+
+TEST_CASE("full rescan rejects a future schema before replacing database or source") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    ssa::infra::importing::ResolvedSsaImportRows seedRows;
+    seedRows.rows.push_back({{"numero_ssa", "202600131"}, {"descricao_ssa", "Original"}});
+    const ssa::infra::sqlite::SqliteSsaImportWriter seedWriter(sqliteWriterAccess(), dbPath,
+                                                               importColumns());
+    REQUIRE(seedWriter.write(seedRows, 1, 0, false).rowsWritten == 1);
+    {
+        ssa::infra::sqlite::SqliteConnection connection(
+            dbPath, ssa::infra::sqlite::SqliteOpenMode::ReadWrite);
+        REQUIRE(sqlite3_exec(connection.handle(), "PRAGMA user_version=2", nullptr, nullptr,
+                             nullptr) == SQLITE_OK);
+    }
+
+    const auto workbook = inputDirectory / "future-schema.xlsx";
+    writeWorkbook(
+        workbook,
+        row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao")}) +
+            row(2, {inlineCell("A2", "202600132"), inlineCell("B2", "ASE"),
+                    inlineCell("C2", "Must not publish"), inlineCell("D2", "2026-07-01")}));
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+
+    const auto result = port.rescan({ssa::ports::RescanMode::Full});
+
+    INFO(result.message);
+    INFO(result.diagnostic);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
+    REQUIRE(std::filesystem::exists(workbook));
+    REQUIRE_FALSE(std::filesystem::exists(inputDirectory / "processadas" / workbook.filename()));
+    ssa::infra::sqlite::SqliteConnection verification(dbPath,
+                                                      ssa::infra::sqlite::SqliteOpenMode::ReadOnly);
+    REQUIRE(scalarText(verification.handle(), "PRAGMA integrity_check") == "ok");
+    REQUIRE(scalarInt(verification.handle(), "PRAGMA user_version") == 2);
+    REQUIRE(scalarInt(verification.handle(),
+                      "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600131'") == 1);
+    REQUIRE(scalarInt(verification.handle(),
+                      "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600132'") == 0);
 }
 
 TEST_CASE("external import consolidates its staged copy and preserves the selected source") {

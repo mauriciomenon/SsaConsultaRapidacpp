@@ -65,6 +65,20 @@ namespace ssa::infra::sqlite {
         }
 
         ports::DatabaseValidationResult validateSchema(sqlite3* database) {
+            SqliteStatement version(database, "PRAGMA user_version");
+            if (!version.step()) {
+                return {ports::DatabaseValidationStatus::Invalid,
+                        "Schema incompativel: PRAGMA user_version indisponivel",
+                        {}};
+            }
+            const auto actualVersion = version.columnInt64(0);
+            const auto currentVersion = domain::ColumnCatalog::schemaVersion();
+            if (actualVersion != 0 && actualVersion != currentVersion) {
+                return {ports::DatabaseValidationStatus::Invalid,
+                        "Schema incompativel: versao " + std::to_string(actualVersion) +
+                            " nao suportada (atual " + std::to_string(currentVersion) + ")",
+                        {}};
+            }
             const auto actual = schema(database);
             for (const auto& expected : domain::ColumnCatalog::schemaColumns()) {
                 const auto found = actual.find(expected.key);
@@ -116,6 +130,7 @@ namespace ssa::infra::sqlite {
         try {
             SqliteConnection connection(path, SqliteOpenMode::ReadOnly);
             SqliteProgressHandler progress(connection.handle(), stopToken);
+            SqliteReadTransaction transaction(connection.handle(), stopToken);
             if (!hasValidHeader(connection.handle())) {
                 return {ports::DatabaseValidationStatus::Invalid,
                         "O arquivo nao e um banco SQLite valido",
@@ -134,6 +149,7 @@ namespace ssa::infra::sqlite {
                         "A tabela ssa_table nao contem registros",
                         {}};
             }
+            transaction.commit();
             return {ports::DatabaseValidationStatus::Valid, {}, {}};
         } catch (const std::system_error& exception) {
             if (exception.code() == std::errc::operation_canceled) {

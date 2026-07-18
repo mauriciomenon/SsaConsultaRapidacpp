@@ -157,17 +157,36 @@ TEST_CASE("database validator reports a request canceled before SQLite opens") {
     REQUIRE(result.message == "Validacao do banco cancelada");
 }
 
-TEST_CASE("database validator accepts a populated compatible database read-only") {
+TEST_CASE("database validator accepts legacy and current populated databases read-only") {
     const TemporaryDirectory temporary;
-    const auto databasePath = temporary.path() / "valid.db";
-    executeSql(databasePath, compatibleSchema(true));
-    executeSql(databasePath, "INSERT INTO ssa_table (id, numero_ssa) VALUES (1, 'SSA-1')");
+    const ssa::infra::sqlite::SqliteDatabaseValidator validator;
+    for (const int version : {0, ssa::domain::ColumnCatalog::schemaVersion()}) {
+        const auto databasePath = temporary.path() / ("valid_" + std::to_string(version) + ".db");
+        executeSql(databasePath, compatibleSchema(true));
+        executeSql(databasePath, "INSERT INTO ssa_table (id, numero_ssa) VALUES (1, 'SSA-1')");
+        executeSql(databasePath, "PRAGMA user_version = " + std::to_string(version));
 
-    std::filesystem::permissions(databasePath, std::filesystem::perms::owner_read,
-                                 std::filesystem::perm_options::replace);
+        std::filesystem::permissions(databasePath, std::filesystem::perms::owner_read,
+                                     std::filesystem::perm_options::replace);
+        const auto result = validator.validate(databasePath);
+
+        INFO(version);
+        REQUIRE(result.status == ssa::ports::DatabaseValidationStatus::Valid);
+        REQUIRE(result.message.empty());
+    }
+}
+
+TEST_CASE("database validator rejects a populated future schema") {
+    const TemporaryDirectory temporary;
+    const auto databasePath = temporary.path() / "future.db";
+    executeSql(databasePath, compatibleSchema());
+    executeSql(databasePath, "INSERT INTO ssa_table (id, numero_ssa) VALUES (1, 'SSA-1')");
+    executeSql(databasePath, "PRAGMA user_version = " +
+                                 std::to_string(ssa::domain::ColumnCatalog::schemaVersion() + 1));
+
     const ssa::infra::sqlite::SqliteDatabaseValidator validator;
     const auto result = validator.validate(databasePath);
 
-    REQUIRE(result.status == ssa::ports::DatabaseValidationStatus::Valid);
-    REQUIRE(result.message.empty());
+    REQUIRE(result.status == ssa::ports::DatabaseValidationStatus::Invalid);
+    REQUIRE(result.message == "Schema incompativel: versao 2 nao suportada (atual 1)");
 }

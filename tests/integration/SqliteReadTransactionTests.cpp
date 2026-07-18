@@ -55,3 +55,47 @@ TEST_CASE("sqlite read transaction honors cancellation before begin") {
         std::system_error);
     CHECK(sqlite3_get_autocommit(connection.handle()) != 0);
 }
+
+TEST_CASE("sqlite read transaction keeps one WAL snapshot until commit") {
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+    const auto path = std::filesystem::path{directory.path().toStdString()} / "snapshot.sqlite";
+    ssa::infra::sqlite::SqliteConnection writer(
+        path, ssa::infra::sqlite::SqliteOpenMode::ReadWriteCreate);
+    REQUIRE(sqlite3_exec(writer.handle(),
+                         "PRAGMA journal_mode=WAL;"
+                         "CREATE TABLE state(value TEXT NOT NULL);"
+                         "INSERT INTO state VALUES('before');"
+                         "PRAGMA user_version=1;",
+                         nullptr, nullptr, nullptr) == SQLITE_OK);
+    ssa::infra::sqlite::SqliteConnection reader(path, ssa::infra::sqlite::SqliteOpenMode::ReadOnly);
+
+    ssa::infra::sqlite::SqliteReadTransaction transaction(reader.handle());
+    {
+        ssa::infra::sqlite::SqliteStatement version(reader.handle(), "PRAGMA user_version");
+        REQUIRE(version.step());
+        REQUIRE(version.columnInt64(0) == 1);
+    }
+    REQUIRE(sqlite3_exec(writer.handle(),
+                         "BEGIN IMMEDIATE;"
+                         "UPDATE state SET value='after';"
+                         "PRAGMA user_version=2;"
+                         "COMMIT;",
+                         nullptr, nullptr, nullptr) == SQLITE_OK);
+    {
+        ssa::infra::sqlite::SqliteStatement version(reader.handle(), "PRAGMA user_version");
+        REQUIRE(version.step());
+        REQUIRE(version.columnInt64(0) == 1);
+        ssa::infra::sqlite::SqliteStatement value(reader.handle(), "SELECT value FROM state");
+        REQUIRE(value.step());
+        REQUIRE(value.columnText(0) == "before");
+    }
+
+    transaction.commit();
+    ssa::infra::sqlite::SqliteStatement version(reader.handle(), "PRAGMA user_version");
+    REQUIRE(version.step());
+    REQUIRE(version.columnInt64(0) == 2);
+    ssa::infra::sqlite::SqliteStatement value(reader.handle(), "SELECT value FROM state");
+    REQUIRE(value.step());
+    REQUIRE(value.columnText(0) == "after");
+}

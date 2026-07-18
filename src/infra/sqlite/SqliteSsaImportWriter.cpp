@@ -55,6 +55,24 @@ namespace ssa::infra::sqlite {
             sqlite3_free(error);
         }
 
+        bool usesLegacySchemaVersion(sqlite3* db,
+                                     const std::atomic_bool* busyCancellationObserved = nullptr) {
+            SqliteStatement version(db, "PRAGMA user_version", busyCancellationObserved);
+            if (!version.step()) {
+                throw ports::OperationError("Falha ao validar versao do schema SQLite",
+                                            "sqlite user_version query returned no row");
+            }
+            const auto actualVersion = version.columnInt64(0);
+            const auto currentVersion = domain::ColumnCatalog::schemaVersion();
+            if (actualVersion != 0 && actualVersion != currentVersion) {
+                throw ports::OperationError(
+                    "Falha ao validar versao do schema SQLite",
+                    "unsupported sqlite user_version=" + std::to_string(actualVersion) +
+                        " current=" + std::to_string(currentVersion));
+            }
+            return actualVersion == 0;
+        }
+
         std::string createConsolidationJournalSql() {
             return "CREATE TABLE IF NOT EXISTS " + std::string{kConsolidationJournalTable} +
                    " (source TEXT PRIMARY KEY NOT NULL, destination TEXT NOT NULL, "
@@ -646,6 +664,8 @@ namespace ssa::infra::sqlite {
             auto* db = connection.handle();
             transaction = std::make_unique<SqliteWriteTransaction>(db, busy.cancellationObserved());
             try {
+                const bool stampLegacySchemaVersion =
+                    usesLegacySchemaVersion(db, busy.cancellationObserved());
                 ensureConsolidationJournalSchema(db, busy.cancellationObserved());
                 executeSql(db, createTableSql(this->tableName, columns),
                            busy.cancellationObserved());
@@ -689,6 +709,12 @@ namespace ssa::infra::sqlite {
                 }
                 for (const auto& indexSql : createFilterIndexesSql(this->tableName, columns)) {
                     executeSql(db, indexSql, busy.cancellationObserved());
+                }
+                if (stampLegacySchemaVersion) {
+                    executeSql(db,
+                               "PRAGMA user_version = " +
+                                   std::to_string(domain::ColumnCatalog::schemaVersion()),
+                               busy.cancellationObserved());
                 }
                 insert = std::make_unique<SqliteStatement>(db, insertSql(this->tableName, columns),
                                                            busy.cancellationObserved());
@@ -979,6 +1005,10 @@ namespace ssa::infra::sqlite {
         SqliteConnection connection(databasePath_, SqliteOpenMode::ReadOnly, sqliteBusyWait);
         SqliteBusyHandler busy(connection.handle(), stopToken, sqliteBusyWait);
         SqliteProgressHandler progress(connection.handle(), stopToken);
+        SqliteReadTransaction transaction(connection.handle(), stopToken,
+                                          busy.cancellationObserved());
+        static_cast<void>(
+            usesLegacySchemaVersion(connection.handle(), busy.cancellationObserved()));
         SqliteStatement tableExists(
             connection.handle(), "SELECT COUNT(*) FROM sqlite_schema WHERE type='table' AND name=?",
             busy.cancellationObserved());
@@ -1012,6 +1042,7 @@ namespace ssa::infra::sqlite {
             pending.push_back({journalPath(select.columnText(0)), journalPath(select.columnText(1)),
                                select.columnInt64(2) != 0, select.columnText(3), sourceSize});
         }
+        transaction.commit();
         return pending;
     }
 
@@ -1024,6 +1055,8 @@ namespace ssa::infra::sqlite {
         SqliteConnection connection(databasePath_, SqliteOpenMode::ReadWrite, sqliteBusyWait);
         SqliteBusyHandler busy(connection.handle(), {}, sqliteBusyWait);
         SqliteWriteTransaction transaction(connection.handle(), busy.cancellationObserved());
+        static_cast<void>(
+            usesLegacySchemaVersion(connection.handle(), busy.cancellationObserved()));
         ensureConsolidationJournalSchema(connection.handle(), busy.cancellationObserved());
         SqliteStatement erase(connection.handle(),
                               "DELETE FROM " + std::string{kConsolidationJournalTable} +
