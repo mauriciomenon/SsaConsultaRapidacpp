@@ -1751,8 +1751,11 @@ namespace {
             QCOMPARE(browse.filterUndoDepth(), 0);
             QCOMPARE(preferencesSaveSpy.count(), 2);
 
+            QTRY_VERIFY_WITH_TIMEOUT(!browse.backgroundWorkRunning(), 1000);
+            const auto startedRequestCountBeforeInvalidUndo = repository->startedRequests().size();
             browse.undoFilterLevels(1);
-            QTest::qWait(50);
+            QVERIFY(!browse.backgroundWorkRunning());
+            QCOMPARE(repository->startedRequests().size(), startedRequestCountBeforeInvalidUndo);
             QCOMPARE(repository->requests().size(), std::size_t{4});
             QCOMPARE(preferencesSaveSpy.count(), 2);
         }
@@ -1801,19 +1804,25 @@ namespace {
             }
             QCOMPARE(browse.filterUndoDepth(), 10);
 
+            QTRY_VERIFY_WITH_TIMEOUT(!browse.backgroundWorkRunning(), 1000);
             const auto requestCountBeforeRepeatedApply = repository->requests().size();
+            const auto startedRequestCountBeforeRepeatedApply =
+                repository->startedRequests().size();
             browse.apply();
-            QTest::qWait(50);
+            QVERIFY(!browse.status()->loading());
+            QTRY_VERIFY_WITH_TIMEOUT(!browse.backgroundWorkRunning(), 1000);
             QCOMPARE(repository->requests().size(), requestCountBeforeRepeatedApply);
-            QTRY_VERIFY_WITH_TIMEOUT(!browse.status()->loading(), 1000);
+            QCOMPARE(repository->startedRequests().size(), startedRequestCountBeforeRepeatedApply);
             QCOMPARE(browse.filterUndoDepth(), 10);
 
             const auto requestCountBeforeUndo = repository->requests().size();
+            const auto startedRequestCountBeforeUndo = repository->startedRequests().size();
             browse.undoFilterLevels(10);
             QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), requestCountBeforeUndo + 1,
                                       1000);
-            QTest::qWait(50);
+            QTRY_VERIFY_WITH_TIMEOUT(!browse.backgroundWorkRunning(), 1000);
             QCOMPARE(repository->requests().size(), requestCountBeforeUndo + 1);
+            QCOMPARE(repository->startedRequests().size(), startedRequestCountBeforeUndo + 1);
             QCOMPARE(browse.search()->text(), QString("1"));
             QCOMPARE(browse.filterUndoDepth(), 0);
 
