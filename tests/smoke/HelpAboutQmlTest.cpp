@@ -97,21 +97,32 @@ namespace {
         return window.isNull();
     }
 
-    bool captureDialogScreenshot(QObject& dialog, const QString& fileName) {
+    QString captureDialogScreenshot(QObject& dialog, const QString& fileName) {
         auto* window = qobject_cast<QQuickWindow*>(&dialog);
         if (window == nullptr) {
-            return false;
+            return QStringLiteral(
+                       "screenshot target is not a QQuickWindow: objectName='%1' title='%2'")
+                .arg(dialog.objectName(), dialog.property("title").toString());
         }
+        const auto outputPath = QDir(QCoreApplication::applicationDirPath()).filePath(fileName);
         QSignalSpy frameSpy(window, &QQuickWindow::frameSwapped);
         window->show();
         window->requestUpdate();
         if (frameSpy.isEmpty() && !frameSpy.wait(1000)) {
-            return false;
+            window->hide();
+            return QStringLiteral("frameSwapped timed out after 1000ms: outputPath='%1'")
+                .arg(outputPath);
         }
         const auto image = window->grabWindow();
         window->hide();
-        return !image.isNull() &&
-               image.save(QDir(QCoreApplication::applicationDirPath()).filePath(fileName));
+        if (image.isNull()) {
+            return QStringLiteral("grabWindow returned a null image: outputPath='%1'")
+                .arg(outputPath);
+        }
+        if (!image.save(outputPath)) {
+            return QStringLiteral("failed to save screenshot: outputPath='%1'").arg(outputPath);
+        }
+        return {};
     }
 
     bool dialogCanOpenCloseAndReopen(QObject& mainWindow, const char* openMethod,
@@ -178,7 +189,9 @@ namespace {
             QVERIFY(helpText.contains(QStringLiteral("=termo")));
             QVERIFY(helpText.contains(QStringLiteral("Filtros por coluna")));
             QVERIFY(helpText.contains(QStringLiteral("Filtros avancados")));
-            QVERIFY(captureDialogScreenshot(*dialog, QStringLiteral("help-dialog.png")));
+            const auto screenshotError =
+                captureDialogScreenshot(*dialog, QStringLiteral("help-dialog.png"));
+            QVERIFY2(screenshotError.isEmpty(), qPrintable(screenshotError));
         }
 
         void about_dialog_uses_runtime_application_version() {
@@ -192,7 +205,9 @@ namespace {
                      QStringLiteral("SSA Consulta Rapida"));
             QCOMPARE(dialog->property("authorName").toString(), QStringLiteral("Mauricio Menon"));
             QCOMPARE(dialog->property("productVersion").toString(), QStringLiteral("9.8.7-test"));
-            QVERIFY(captureDialogScreenshot(*dialog, QStringLiteral("about-dialog.png")));
+            const auto screenshotError =
+                captureDialogScreenshot(*dialog, QStringLiteral("about-dialog.png"));
+            QVERIFY2(screenshotError.isEmpty(), qPrintable(screenshotError));
         }
 
         void help_menu_keeps_installation_guide() {
@@ -955,17 +970,26 @@ namespace {
             viewModel.browse()->status()->setLoading(true);
             QTRY_VERIFY_WITH_TIMEOUT(cancelButton->property("visible").toBool(), 1000);
             QCOMPARE(cancelButton->property("text").toString(), QStringLiteral("Cancelar"));
-            QVERIFY(captureDialogScreenshot(*mainWindow, QStringLiteral("status-cancel.png")));
+            const auto statusCancelScreenshotError =
+                captureDialogScreenshot(*mainWindow, QStringLiteral("status-cancel.png"));
+            QVERIFY2(statusCancelScreenshotError.isEmpty(),
+                     qPrintable(statusCancelScreenshotError));
 
             QTRY_VERIFY_WITH_TIMEOUT(cancelAll->property("enabled").toBool(), 1000);
             QVERIFY(QMetaObject::invokeMethod(cancelAll, "triggered"));
             QTRY_COMPARE_WITH_TIMEOUT(cancelButton->property("text").toString(),
                                       QStringLiteral("Cancelando..."), 1000);
-            QVERIFY(captureDialogScreenshot(*mainWindow, QStringLiteral("status-canceling.png")));
+            const auto statusCancelingScreenshotError =
+                captureDialogScreenshot(*mainWindow, QStringLiteral("status-canceling.png"));
+            QVERIFY2(statusCancelingScreenshotError.isEmpty(),
+                     qPrintable(statusCancelingScreenshotError));
 
             QVERIFY(QMetaObject::invokeMethod(forceShutdownDialog, "open"));
             QTRY_VERIFY_WITH_TIMEOUT(forceShutdownDialog->property("visible").toBool(), 1000);
-            QVERIFY(captureDialogScreenshot(*mainWindow, QStringLiteral("force-shutdown.png")));
+            const auto forceShutdownScreenshotError =
+                captureDialogScreenshot(*mainWindow, QStringLiteral("force-shutdown.png"));
+            QVERIFY2(forceShutdownScreenshotError.isEmpty(),
+                     qPrintable(forceShutdownScreenshotError));
             QVERIFY(QMetaObject::invokeMethod(forceShutdownDialog, "close"));
             viewModel.browse()->status()->setLoading(false);
         }
