@@ -219,6 +219,34 @@ TEST_CASE("sqlite connection preserves unicode database paths") {
     REQUIRE(statement.columnText(0) == "ok");
 }
 
+TEST_CASE("sqlite statement preserves embedded NUL text bytes") {
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+
+    const auto databasePath =
+        std::filesystem::path{directory.filePath(QStringLiteral("embedded-nul.db")).toStdString()};
+    ssa::infra::sqlite::SqliteConnection connection(
+        databasePath, ssa::infra::sqlite::SqliteOpenMode::ReadWriteCreate);
+    REQUIRE(sqlite3_exec(connection.handle(), "CREATE TABLE payload(value TEXT)", nullptr, nullptr,
+                         nullptr) == SQLITE_OK);
+
+    const std::string expected{"abc\0def", 7};
+    ssa::infra::sqlite::SqliteStatement insert(connection.handle(),
+                                               "INSERT INTO payload(value) VALUES(?)");
+    insert.bindTextOneBased(1, expected);
+    insert.executeAndReset();
+
+    ssa::infra::sqlite::SqliteStatement select(
+        connection.handle(),
+        "SELECT value, typeof(value), length(CAST(value AS BLOB)) FROM payload");
+    REQUIRE(select.step());
+    const auto actual = select.columnText(0);
+    REQUIRE(select.columnText(1) == "text");
+    REQUIRE(select.columnInt64(2) == 7);
+    CHECK(actual.size() == expected.size());
+    CHECK(actual == expected);
+}
+
 TEST_CASE_METHOD(SqliteRepositoryFixture, "sqlite repository pages and filters rows") {
     ssa::domain::SsaPageRequest request;
     request.pageSize = 10;

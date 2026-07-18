@@ -211,7 +211,11 @@ namespace ssa::infra::sqlite {
     std::string SqliteStatement::columnText(const int column) const {
         requireCurrentRow();
         const auto* text = reinterpret_cast<const char*>(sqlite3_column_text(statement_, column));
-        return text == nullptr ? std::string{} : std::string{text};
+        if (text == nullptr) {
+            return {};
+        }
+        const auto size = static_cast<std::size_t>(sqlite3_column_bytes(statement_, column));
+        return std::string{text, size};
     }
 
     long long SqliteStatement::columnInt64(const int column) const {
