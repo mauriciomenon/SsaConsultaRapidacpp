@@ -4,26 +4,38 @@
 
 ### Sequencia ativa preservada
 
-1. Completar profiling valido do prefetch; harness, 30 amostras e relatorio
+1. Substituir a publicacao do rescan por SQLite Backup API no arquivo de
+   destino. `QSaveFile` troca o arquivo enquanto readers podem manter handles
+   abertos; SQLite classifica rename/unlink nessa condicao como comportamento
+   indefinido. Propagar busy wait e cancelamento, preservar banco/fontes na
+   falha e provar que um handle aberto observa o snapshot novo.
+2. Investigar por `EXPLAIN QUERY PLAN` a latencia medida de `page()` em 250 mil
+   linhas. Nao alterar indice ou SQL antes de separar custo do filtro, count e
+   rows.
+3. Completar profiling valido do prefetch; harness, 30 amostras e relatorio
    isolado ja estao resolvidos no working tree. `xctrace` nao possui `Time
    Profiler` nesta instalacao e `CPU Counters` falhou com `DTServiceHub` e
    politica do kernel; nenhum credito de profiling foi atribuido.
-2. Validar `ImportFileConsolidator` em Windows/UNC real; o split local entre
+4. Validar `ImportFileConsolidator` em Windows/UNC real; o split local entre
    staging owned pre-commit e consolidacao post-commit ja esta implementado.
-3. Canonizar `clang-tidy` macOS com sysroot e reproduzir IDs das regras Semgrep
+5. Retirar espera e I/O SQLite de dentro de `derivedCountSummaryMutex_` sem
+   permitir dois inicializadores; callers concorrentes devem usar fallback e
+   continuar observando seu proprio stop token.
+6. Canonizar `clang-tidy` macOS com sysroot e reproduzir IDs das regras Semgrep
    antes de dividir fixtures.
-4. Revalidar em plataformas reais handles, URL UNC, PowerShell e packaging.
+7. Revalidar em plataformas reais handles, URL UNC, PowerShell e packaging.
 
-Contadores auditados: plano original `99.0/100`, divida nova `71.4/100`
-(10 de 14 itens enumerados aceitos) e backlog legado sem denominador definido.
-O valor volta a `71.4/100` somente porque `SQLITE-IMPORT-NORMALIZE-FULL-SCAN`
-agora tem 30 amostras por cenario e contrato validado. Os dois lookups, polling
-e melhorias de teste continuam fora do denominador.
+Contadores auditados: plano original `99.0/100`, divida nova `78.6/100`
+(11 de 14 itens enumerados aceitos) e backlog legado sem denominador definido.
+O credito novo pertence a `SQLITE-READ-CONNECTION-CHURN`, agora medido em 30
+processos e sem justificativa para pool. Findings descobertos depois da lista
+fixa de 14 itens nao reduzem retroativamente esse percentual.
 
-Fechamento de 2026-07-18: commits `91c60a1`, `eede38e` e `d54a693`; build dev
-completo passou, CTest sequencial passou `581/581` em `82.06 s` e security
-ampla ficou limpa. Bitbucket foi confirmado em `d54a693`; GitLab continua
-bloqueado por OAuth `invalid_grant`.
+Fechamento de 2026-07-18: commits `91c60a1`, `eede38e`, `d54a693` e `4e74790`;
+build dev completo e o marco `581/581` permanecem validos. O novo target focado
+compilou, o smoke passou `1/1` em `0.37 s` e 30 amostras terminaram sem falha.
+Bitbucket foi confirmado em `4e74790`; GitLab continua bloqueado por OAuth
+`invalid_grant`.
 
 Ultimo fechamento: commit `e0b5401`, build e CTest da suite de painel `1/1`
 passaram em `2.96 s`. O polling de `activeFilterEntries()` continua pendente
@@ -139,10 +151,35 @@ Matriz completa de acertos, adicoes, erros e ordem de execucao:
   canonicalidade e indices foram verificados em toda amostra; nenhuma mudanca
   de schema foi justificada pelos numeros atuais.
 
-- [MED-MEASURE] [SQLITE-READ-CONNECTION-CHURN] O repository abre conexao,
-  busy/progress handlers e statements por read. Isso tambem isola threads e
-  tokens de cancelamento, portanto nao e bug comprovado. Medir cold/warm,
-  keystrokes concorrentes e RSS antes de propor conexao longeva ou pool.
+- [RESOLVED-BENCHMARK] [SQLITE-READ-CONNECTION-CHURN] O repository abre
+  conexao, busy/progress handlers e statements por read, isolando threads e
+  tokens. Em 30 processos sobre 250 mil linhas, first read wall p50/p95 foi
+  `6.948/12.897 ms`; open/read/close repetido, 3,000 observacoes, ficou em
+  `1.390/3.296 ms`; RSS repeated p95 foi `16,384` bytes. As 2,400 chamadas
+  concorrentes de `page()` completaram sem falha ou cancelamento, com wall
+  agregado por read `157.501/219.458 ms`. O cache de paginas do SO nao foi
+  controlado. Pool ou handle persistente nao foi justificado; handlers e
+  cancelamento por operacao permanecem preservados.
+
+- [P1-CORRECTNESS] [SQLITE-RESCAN-OPEN-HANDLE-PUBLICATION] O rescan publica o
+  working database por `QSaveFile`, que troca o arquivo de destino enquanto
+  readers QtConcurrent podem manter SQLite aberto. Em POSIX isso separa handles
+  antigos e novos sob o mesmo nome; no Windows a troca pode falhar. Aceite:
+  publicar pelo SQLite Backup API no handle de destino, respeitar busy wait e
+  stop token, preservar banco e fontes na falha e passar integrity check sem
+  sidecars misturados.
+
+- [HIGH-MEASURE] [SQLITE-PAGE-FILTER-CONCURRENT-LATENCY] O benchmark real
+  mediu 2,400 chamadas de `page()` com filtro exato em 250 mil linhas: wall
+  p50/p95 `157.501/219.458 ms`; batch 4 x 20 p50/p95
+  `3281.940/14109.139 ms`. Separar com `EXPLAIN QUERY PLAN` o custo de count,
+  rows e predicado antes de propor indice ou mudanca SQL.
+
+- [MED-CONCURRENCY] [DERIVED-SUMMARY-MUTEX-IO] A inicializacao do resumo de
+  derivadas segura `derivedCountSummaryMutex_` durante lock e I/O SQLite. Uma
+  segunda leitura espera sem observar seu stop token. Aceite: um inicializador
+  executa fora do mutex; callers concorrentes usam fallback temporario sem
+  duplicar escrita e sem perder cancelamento.
 
 - [RESOLVED-WT] [SQL-DERIVADAS-BUILDER-BOUNDARY] `derivadasDiretas()` agora
   recebe SQL e binding de `SqlQueryBuilder::buildDirectDerivations()`. Colunas,
