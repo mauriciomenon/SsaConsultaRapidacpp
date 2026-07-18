@@ -70,10 +70,12 @@ namespace ssa::infra::sqlite {
         [[nodiscard]] WriteSession startSession(
             bool replaceAll, std::stop_token stopToken = {},
             std::chrono::milliseconds sqliteBusyWait = std::chrono::milliseconds{3'000}) const;
-        [[nodiscard]] std::vector<importing::ImportConsolidationMove>
-        pendingConsolidation(const std::stop_token& stopToken = {}) const;
-        void
-        completeConsolidation(const std::vector<importing::ImportConsolidationMove>& moves) const;
+        [[nodiscard]] std::vector<importing::ImportConsolidationMove> pendingConsolidation(
+            const std::stop_token& stopToken = {},
+            std::chrono::milliseconds sqliteBusyWait = std::chrono::milliseconds{250}) const;
+        void completeConsolidation(
+            const std::vector<importing::ImportConsolidationMove>& moves,
+            std::chrono::milliseconds sqliteBusyWait = std::chrono::milliseconds{250}) const;
 
       private:
         std::filesystem::path databasePath_;

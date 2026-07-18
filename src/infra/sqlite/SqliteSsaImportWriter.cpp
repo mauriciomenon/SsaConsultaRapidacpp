@@ -965,8 +965,8 @@ namespace ssa::infra::sqlite {
             databasePath_, columns_, tableName_, replaceAll, std::move(stopToken), sqliteBusyWait)};
     }
 
-    std::vector<importing::ImportConsolidationMove>
-    SqliteSsaImportWriter::pendingConsolidation(const std::stop_token& stopToken) const {
+    std::vector<importing::ImportConsolidationMove> SqliteSsaImportWriter::pendingConsolidation(
+        const std::stop_token& stopToken, const std::chrono::milliseconds sqliteBusyWait) const {
         throwIfCanceled(stopToken);
         std::error_code error;
         const bool databaseExists = std::filesystem::exists(databasePath_, error);
@@ -976,9 +976,8 @@ namespace ssa::infra::sqlite {
         if (!databaseExists) {
             return {};
         }
-        SqliteConnection connection(databasePath_, SqliteOpenMode::ReadOnly,
-                                    std::chrono::milliseconds{0});
-        SqliteBusyHandler busy(connection.handle(), stopToken, std::chrono::milliseconds{250});
+        SqliteConnection connection(databasePath_, SqliteOpenMode::ReadOnly, sqliteBusyWait);
+        SqliteBusyHandler busy(connection.handle(), stopToken, sqliteBusyWait);
         SqliteProgressHandler progress(connection.handle(), stopToken);
         SqliteStatement tableExists(
             connection.handle(), "SELECT COUNT(*) FROM sqlite_schema WHERE type='table' AND name=?",
@@ -1017,13 +1016,13 @@ namespace ssa::infra::sqlite {
     }
 
     void SqliteSsaImportWriter::completeConsolidation(
-        const std::vector<importing::ImportConsolidationMove>& moves) const {
+        const std::vector<importing::ImportConsolidationMove>& moves,
+        const std::chrono::milliseconds sqliteBusyWait) const {
         if (moves.empty()) {
             return;
         }
-        SqliteConnection connection(databasePath_, SqliteOpenMode::ReadWrite,
-                                    std::chrono::milliseconds{0});
-        SqliteBusyHandler busy(connection.handle(), {}, std::chrono::milliseconds{250});
+        SqliteConnection connection(databasePath_, SqliteOpenMode::ReadWrite, sqliteBusyWait);
+        SqliteBusyHandler busy(connection.handle(), {}, sqliteBusyWait);
         SqliteWriteTransaction transaction(connection.handle(), busy.cancellationObserved());
         ensureConsolidationJournalSchema(connection.handle(), busy.cancellationObserved());
         SqliteStatement erase(connection.handle(),

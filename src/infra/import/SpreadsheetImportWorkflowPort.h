@@ -39,7 +39,8 @@ namespace ssa::infra::importing {
         importIncrementalFiles(const ImportStagingResult& files, const std::stop_token& stopToken,
                                const ports::ImportExecutionOptions& execution) const;
         [[nodiscard]] std::optional<ports::WorkflowResult>
-        resumePendingConsolidation(const std::stop_token& stopToken) const;
+        resumePendingConsolidation(const std::stop_token& stopToken,
+                                   std::chrono::milliseconds sqliteBusyWait) const;
 
         std::filesystem::path inputFolder_;
         std::filesystem::path databasePath_;

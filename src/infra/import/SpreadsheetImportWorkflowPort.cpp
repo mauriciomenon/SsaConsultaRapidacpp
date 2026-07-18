@@ -483,11 +483,15 @@ namespace ssa::infra::importing {
     }
 
     std::optional<ports::WorkflowResult> SpreadsheetImportWorkflowPort::resumePendingConsolidation(
-        const std::stop_token& stopToken) const {
+        const std::stop_token& stopToken, const std::chrono::milliseconds sqliteBusyWait) const {
         std::vector<ImportConsolidationMove> pending;
         try {
             const auto lookupToken = stopToken.stop_requested() ? std::stop_token{} : stopToken;
-            pending = writer_.pendingConsolidation(lookupToken);
+            const auto lookupBusyWait =
+                stopToken.stop_requested() && sqliteBusyWait > std::chrono::milliseconds{250}
+                    ? std::chrono::milliseconds{250}
+                    : sqliteBusyWait;
+            pending = writer_.pendingConsolidation(lookupToken, lookupBusyWait);
         } catch (const std::system_error& error) {
             if (error.code() == std::make_error_code(std::errc::operation_canceled)) {
                 return ports::WorkflowResult{ports::WorkflowStatus::Canceled,
@@ -531,7 +535,7 @@ namespace ssa::infra::importing {
             }
         }
         try {
-            writer_.completeConsolidation(completedMoves);
+            writer_.completeConsolidation(completedMoves, sqliteBusyWait);
         } catch (const ports::OperationError& error) {
             journalFailures = completedMoves.size();
             appendWorkflowDiagnostic(diagnostic, error.diagnostic());
@@ -586,7 +590,8 @@ namespace ssa::infra::importing {
                                      lockDiagnostic, lockFailureOrigin);
         }
         const auto staging = stager_.stageExternalFiles(request.files, stopToken);
-        if (auto resumed = resumePendingConsolidation(stopToken)) {
+        if (auto resumed =
+                resumePendingConsolidation(stopToken, request.execution.sqliteBusyWait)) {
             if (resumed->status == ports::WorkflowStatus::Canceled) {
                 return importDiscoveredFiles(staging, false, stopToken, request.execution);
             }
@@ -630,7 +635,8 @@ namespace ssa::infra::importing {
             return importLockFailure(lockError, selectedFilesFailureSummary(files), lockDiagnostic,
                                      lockFailureOrigin);
         }
-        if (auto resumed = resumePendingConsolidation(stopToken)) {
+        if (auto resumed = resumePendingConsolidation(
+                stopToken, ports::ImportExecutionOptions::kDefaultSqliteBusyWait)) {
             if (!resumed->ok()) {
                 return std::move(*resumed);
             }
@@ -685,7 +691,8 @@ namespace ssa::infra::importing {
         if (staging.operationalFailure || !staging.rejectionReason.empty()) {
             return importDiscoveredFiles(staging, replaceAll, stopToken, request.execution);
         }
-        if (auto resumed = resumePendingConsolidation(stopToken)) {
+        if (auto resumed =
+                resumePendingConsolidation(stopToken, request.execution.sqliteBusyWait)) {
             if (resumed->status == ports::WorkflowStatus::Canceled) {
                 return replaceAll
                            ? importDiscoveredFiles(staging, true, stopToken, request.execution)
@@ -804,7 +811,7 @@ namespace ssa::infra::importing {
                 }
             }
             try {
-                writer_.completeConsolidation(completedMoves);
+                writer_.completeConsolidation(completedMoves, request.execution.sqliteBusyWait);
             } catch (const ports::OperationError& error) {
                 journalFailures = completedMoves.size();
                 appendWorkflowDiagnostic(result.diagnostic, error.diagnostic());
@@ -1291,7 +1298,7 @@ namespace ssa::infra::importing {
             }
         }
         try {
-            writer_.completeConsolidation(completedMoves);
+            writer_.completeConsolidation(completedMoves, execution.sqliteBusyWait);
         } catch (const ports::OperationError& error) {
             journalFailures = completedMoves.size();
             appendWorkflowDiagnostic(diagnostic, error.diagnostic());

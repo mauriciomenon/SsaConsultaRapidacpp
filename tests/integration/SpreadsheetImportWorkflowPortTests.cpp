@@ -2018,7 +2018,17 @@ TEST_CASE("consolidation journal cleanup is one bounded atomic batch") {
     REQUIRE(elapsed.elapsed() < 1'000);
     REQUIRE(sqlite3_exec(blocker.handle(), "ROLLBACK", nullptr, nullptr, nullptr) == SQLITE_OK);
     REQUIRE(writer.pendingConsolidation().size() == 65);
-    writer.completeConsolidation(persistedMoves);
+
+    REQUIRE(sqlite3_exec(blocker.handle(), "BEGIN EXCLUSIVE", nullptr, nullptr, nullptr) ==
+            SQLITE_OK);
+    auto cleanup = std::async(std::launch::async, [&] {
+        writer.completeConsolidation(persistedMoves, std::chrono::milliseconds{1'000});
+    });
+    const auto blockedStatus = cleanup.wait_for(std::chrono::milliseconds{500});
+    REQUIRE(sqlite3_exec(blocker.handle(), "ROLLBACK", nullptr, nullptr, nullptr) == SQLITE_OK);
+    REQUIRE(blockedStatus == std::future_status::timeout);
+    REQUIRE(cleanup.wait_for(std::chrono::seconds{2}) == std::future_status::ready);
+    cleanup.get();
     REQUIRE(writer.pendingConsolidation().empty());
 }
 
@@ -4290,7 +4300,88 @@ TEST_CASE("full rescan preserves a WAL reader snapshot across backup publication
     REQUIRE(processedExists);
 }
 
-TEST_CASE("full rescan fails closed when publication cannot acquire the destination") {
+TEST_CASE("full rescan honors configured busy wait while database preflight is locked") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    ssa::infra::importing::ResolvedSsaImportRows seedRows;
+    seedRows.rows.push_back({{"numero_ssa", "202600129"}, {"descricao_ssa", "Original"}});
+    const ssa::infra::sqlite::SqliteSsaImportWriter seedWriter(sqliteWriterAccess(), dbPath,
+                                                               importColumns());
+    REQUIRE(seedWriter.write(seedRows, 1, 0, false).rowsWritten == 1);
+
+    ssa::infra::sqlite::SqliteConnection blocker(dbPath,
+                                                 ssa::infra::sqlite::SqliteOpenMode::ReadWrite);
+    REQUIRE(sqlite3_exec(blocker.handle(), "PRAGMA journal_mode=DELETE", nullptr, nullptr,
+                         nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(blocker.handle(), "BEGIN EXCLUSIVE", nullptr, nullptr, nullptr) ==
+            SQLITE_OK);
+
+    const auto workbook = inputDirectory / "busy-source.xlsx";
+    writeWorkbook(workbook, row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                                    inlineCell("C1", "Descricao da SSA"),
+                                    inlineCell("D1", "Data de emissao")}) +
+                                row(2, {inlineCell("A2", "202600130"), inlineCell("B2", "ASE"),
+                                        inlineCell("C2", "Published after source retry"),
+                                        inlineCell("D2", "2026-07-01")}));
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+    ssa::ports::RescanRequest request;
+    request.mode = ssa::ports::RescanMode::Full;
+    request.execution.sqliteBusyWait = std::chrono::milliseconds{0};
+
+    auto immediateFuture = std::async(std::launch::async, [&] { return port.rescan(request); });
+    const auto immediateStatus = immediateFuture.wait_for(std::chrono::seconds{1});
+    REQUIRE(sqlite3_exec(blocker.handle(), "ROLLBACK", nullptr, nullptr, nullptr) == SQLITE_OK);
+    REQUIRE(immediateStatus == std::future_status::ready);
+    const auto immediateResult = immediateFuture.get();
+
+    INFO(immediateResult.message);
+    INFO(immediateResult.diagnostic);
+    REQUIRE(immediateResult.status == ssa::ports::WorkflowStatus::Failed);
+    REQUIRE(immediateResult.message == "import_consolidation_resume_failed");
+    REQUIRE(immediateResult.diagnostic.find("rc=5") != std::string::npos);
+    REQUIRE(std::filesystem::exists(workbook));
+    REQUIRE(scalarText(blocker.handle(), "PRAGMA integrity_check") == "ok");
+    REQUIRE(scalarInt(blocker.handle(),
+                      "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600129'") == 1);
+    REQUIRE(scalarInt(blocker.handle(),
+                      "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600130'") == 0);
+
+    REQUIRE(sqlite3_exec(blocker.handle(), "BEGIN EXCLUSIVE", nullptr, nullptr, nullptr) ==
+            SQLITE_OK);
+    request.execution.sqliteBusyWait = std::chrono::milliseconds{3'000};
+    auto retryFuture = std::async(std::launch::async, [&] { return port.rescan(request); });
+    const auto blockedStatus = retryFuture.wait_for(std::chrono::milliseconds{500});
+    REQUIRE(sqlite3_exec(blocker.handle(), "ROLLBACK", nullptr, nullptr, nullptr) == SQLITE_OK);
+    REQUIRE(blockedStatus == std::future_status::timeout);
+    REQUIRE(retryFuture.wait_for(std::chrono::seconds{4}) == std::future_status::ready);
+    const auto result = retryFuture.get();
+
+    INFO(result.message);
+    INFO(result.diagnostic);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE_FALSE(result.warning);
+    REQUIRE(result.importSummary.has_value());
+    REQUIRE(result.importSummary->consolidated == 1);
+    REQUIRE_FALSE(std::filesystem::exists(workbook));
+    REQUIRE(std::filesystem::exists(inputDirectory / "processadas" / workbook.filename()));
+    sqlite3* verification = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &verification) == SQLITE_OK);
+    REQUIRE(scalarText(verification, "PRAGMA integrity_check") == "ok");
+    REQUIRE(scalarInt(verification,
+                      "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600129'") == 0);
+    REQUIRE(scalarInt(verification,
+                      "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600130'") == 1);
+    REQUIRE(sqlite3_close(verification) == SQLITE_OK);
+}
+
+TEST_CASE("full rescan honors busy wait when publication destination is locked") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
 
@@ -4338,15 +4429,41 @@ TEST_CASE("full rescan fails closed when publication cannot acquire the destinat
     REQUIRE_FALSE(std::filesystem::exists(inputDirectory / "processadas" / workbook.filename()));
     REQUIRE(sqlite3_finalize(statement) == SQLITE_OK);
     REQUIRE(sqlite3_exec(blocker, "ROLLBACK", nullptr, nullptr, nullptr) == SQLITE_OK);
+    REQUIRE(scalarText(blocker, "PRAGMA integrity_check") == "ok");
+    REQUIRE(scalarInt(blocker, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600127'") == 1);
+    REQUIRE(scalarInt(blocker, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600128'") == 0);
+
+    REQUIRE(sqlite3_exec(blocker, "BEGIN", nullptr, nullptr, nullptr) == SQLITE_OK);
+    statement = nullptr;
+    REQUIRE(sqlite3_prepare_v2(blocker, "SELECT COUNT(*) FROM ssa_table", -1, &statement,
+                               nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_step(statement) == SQLITE_ROW);
+    request.execution.sqliteBusyWait = std::chrono::milliseconds{3'000};
+    auto retryFuture = std::async(std::launch::async, [&] { return port.rescan(request); });
+    const auto blockedStatus = retryFuture.wait_for(std::chrono::milliseconds{250});
+    REQUIRE(sqlite3_finalize(statement) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(blocker, "ROLLBACK", nullptr, nullptr, nullptr) == SQLITE_OK);
+    REQUIRE(blockedStatus == std::future_status::timeout);
+    REQUIRE(retryFuture.wait_for(std::chrono::seconds{4}) == std::future_status::ready);
+    const auto retryResult = retryFuture.get();
+
+    INFO(retryResult.message);
+    INFO(retryResult.diagnostic);
+    REQUIRE(retryResult.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE_FALSE(retryResult.warning);
+    REQUIRE(retryResult.importSummary.has_value());
+    REQUIRE(retryResult.importSummary->consolidated == 1);
+    REQUIRE_FALSE(std::filesystem::exists(workbook));
+    REQUIRE(std::filesystem::exists(inputDirectory / "processadas" / workbook.filename()));
     REQUIRE(sqlite3_close(blocker) == SQLITE_OK);
 
     sqlite3* verification = nullptr;
     REQUIRE(sqlite3_open(dbPath.string().c_str(), &verification) == SQLITE_OK);
     REQUIRE(scalarText(verification, "PRAGMA integrity_check") == "ok");
     REQUIRE(scalarInt(verification,
-                      "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600127'") == 1);
+                      "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600127'") == 0);
     REQUIRE(scalarInt(verification,
-                      "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600128'") == 0);
+                      "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600128'") == 1);
     REQUIRE(sqlite3_close(verification) == SQLITE_OK);
     REQUIRE_FALSE(std::filesystem::exists(dbPath.string() + "-journal"));
     REQUIRE_FALSE(std::filesystem::exists(dbPath.string() + "-wal"));
