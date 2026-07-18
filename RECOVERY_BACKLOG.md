@@ -1,5 +1,27 @@
 # Recovery Backlog
 
+## Indice status-last de producao - 2026-07-18
+
+- [RESOLVED-LOCAL] `4396e1c` instala no writer o indice de expressao
+  `idx_<table>_status_last_numero_ssa_desc`, com a mesma expressao do query
+  builder e somente em tabelas que possuem `numero_ssa` e `situacao`.
+  Bancos existentes recebem o indice na proxima escrita, sem alterar
+  `user_version` ou fazer migracao em leitura.
+- A integracao prova DDL e plano exatos, recriacao apos indice ausente, tabela
+  customizada legacy e colisao homonima fail-closed que nao remove o indice de
+  outra tabela. O primeiro review Terra ultra encontrou dois P2 (ownership e
+  fixture legacy), ambos corrigidos; o review final retornou `SEM FINDINGS`.
+- Gates locais limpos: diff, clang-format, cppcheck, detect-secrets e Semgrep
+  com `62` regras/zero finding; `clang-tidy` so avisos preexistentes fora do
+  diff. Build afetado passou; CTest direto `38/38` em `1.14 s`.
+- Publicacao: Bitbucket confirmado em `4396e1c`; GitLab `origin` bloqueado por
+  OAuth `invalid_grant`; local `69` commits a frente de `origin/master`.
+- Sem credito novo: plano `99.0/100`, divida nova `13/14 = 92.9%`, legado
+  placeholder `0.0/100` e fila operacional `5/8 = 62.5%`.
+
+Proxima atividade unica: remover polling temporal de `SqliteRepositoryTests`
+com sinais causais ja presentes em lock, busy handler e progress handler.
+
 ## Benchmark SQLite status-last - 2026-07-18
 
 - `1d950e3` entrega somente o harness isolado: fixture de `250000` linhas,
@@ -414,7 +436,10 @@ Matriz completa de acertos, adicoes, erros e ordem de execucao:
 ## Varredura de codigo (junho 2026) - pendentes
 
 ### Performance estrutural (deferido - exige migration/schema)
-- [MED] [P2] status-last CASE sort (`UPPER(COALESCE(...))<>'STE'` por linha) nao-sargable, forca full-sort. Generated column `_status_is_ste` + composite index resolveria, mas exige migration robusta para DBs antigos (CREATE TABLE IF NOT EXISTS nao recria). Revertido - precisa de ALTER TABLE idempotente + fallback no builder.
+- [RESOLVED-LOCAL] [P2] status-last CASE sort agora usa indice de expressao
+  composto DESC, instalado pelo writer na proxima escrita. O benchmark de
+  `250000` linhas mostrou plano indexado sem `TEMP B-TREE`; generated column
+  continua desnecessaria sem evidencia de gargalo adicional.
 - [MED] [P4] Macro report agrupa em memoria (`map<ReportKey,set<string>>` so pra .size()). Deveria ser `GROUP BY ... COUNT(DISTINCT)` em SQL.
 - [MED] [P7] Eager date/string formatting: formata 500x12 celulas antes de exibir; QML so renderiza visiveis. Lazy exigiria repensar `SsaTableDisplayValues`/`displayCache_` - ciclo dedicado.
 

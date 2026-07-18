@@ -5,6 +5,34 @@ antes de interpretar sincronizacao Git, validacao local ou estado externo.
 
 Ultima verificacao local: 2026-07-18
 
+## Indice status-last de producao - 2026-07-18
+
+- Branch `master`; HEAD de codigo `4396e1c`. Bitbucket foi confirmado no mesmo
+  hash; GitLab `origin` continua bloqueado por OAuth `invalid_grant`. O local
+  esta `69` commits a frente de `origin/master`.
+- `SqlQueryBuilder` e `SqliteSsaImportWriter` compartilham a mesma expressao
+  `CASE` e o writer instala o indice DESC somente quando a tabela possui
+  `numero_ssa` e `situacao`. Bancos existentes recebem o indice na proxima
+  escrita; nao houve bump de schema nem migracao durante leitura.
+- O contrato cobre DDL exato, plano sem `TEMP B-TREE`, recriacao apos remocao,
+  tabela legacy customizada e colisao de nome fail-closed que preserva o indice
+  de outra tabela. O primeiro review Terra ultra encontrou dois P2 de ownership
+  e cobertura legacy; ambos foram corrigidos. Review final Terra ultra:
+  `SEM FINDINGS`.
+- Gate: `git diff --check`, clang-format, cppcheck e detect-secrets passaram;
+  Semgrep executou `62` regras com zero finding. `clang-tidy` so reportou tres
+  avisos preexistentes fora do diff. Build dos targets afetados passou; CTest
+  direto passou `38/38` em `1.14 s`, incluindo importacao, query e smoke do
+  benchmark.
+- Contadores sem mudanca: plano original `99.0/100`; divida nova
+  `13/14 = 92.9%`; backlog legado `0.0/100` como placeholder; fila operacional
+  `5/8 = 62.5%`. O ganho nao recebe credito novo fora dos denominadores fixos.
+- Risco residual: o indice so aparece apos a proxima escrita e nao substitui
+  prova de filtros arbitrarios, GUI completa ou profiling valido do prefetch.
+
+Proxima atividade unica: substituir polling temporal de `SqliteRepositoryTests`
+por sinais causais de lock, busy e progress do SQLite.
+
 ## Benchmark SQLite status-last - 2026-07-18
 
 - O commit `1d950e3` entrega o harness isolado de `status-last`: fixture de
