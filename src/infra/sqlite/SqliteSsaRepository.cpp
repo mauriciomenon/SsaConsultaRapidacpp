@@ -82,13 +82,19 @@ namespace ssa::infra::sqlite {
     SqliteSsaRepository::SqliteSsaRepository(std::filesystem::path dbPath,
                                              query::SqlQueryBuilder queryBuilder)
         : SqliteSsaRepository(std::move(dbPath), std::move(queryBuilder),
-                              [] { return std::chrono::steady_clock::now(); }) {}
+                              [] { return std::chrono::steady_clock::now(); }, {}) {}
 
     SqliteSsaRepository::SqliteSsaRepository(std::filesystem::path dbPath,
                                              query::SqlQueryBuilder queryBuilder,
                                              DerivedCountCooldownNow now)
-        : dbPath_(std::move(dbPath)), queryBuilder_(std::move(queryBuilder)), now_(std::move(now)) {
-    }
+        : SqliteSsaRepository(std::move(dbPath), std::move(queryBuilder), std::move(now), {}) {}
+
+    SqliteSsaRepository::SqliteSsaRepository(
+        std::filesystem::path dbPath, query::SqlQueryBuilder queryBuilder,
+        DerivedCountCooldownNow now,
+        const SynchronizationSignals& synchronization) // NOLINT(modernize-pass-by-value)
+        : dbPath_(std::move(dbPath)), queryBuilder_(std::move(queryBuilder)), now_(std::move(now)),
+          synchronization_(synchronization) {}
 
     bool SqliteSsaRepository::ensureDerivedCountSummary(const std::stop_token stopToken) const {
         throwIfCanceled(stopToken);
@@ -125,8 +131,12 @@ namespace ssa::infra::sqlite {
                 }
                 return false;
             }
+            if (synchronization_.derivedCountWriteLockAcquired != nullptr) {
+                synchronization_.derivedCountWriteLockAcquired->release();
+            }
             SqliteConnection sqlite(dbPath_, SqliteOpenMode::ReadWrite);
-            SqliteBusyHandler busy(sqlite.handle(), stopToken);
+            SqliteBusyHandler busy(sqlite.handle(), stopToken, std::chrono::milliseconds{3000},
+                                   synchronization_.busyEntered.get());
             SqliteProgressHandler progress(sqlite.handle(), stopToken);
             if (!hasDerivedCountColumns(sqlite.handle(), queryBuilder_.rawTableName(),
                                         busy.cancellationObserved())) {
@@ -198,8 +208,10 @@ namespace ssa::infra::sqlite {
         const bool usesDerivedCount =
             requestUsesDerivedCount(request) && ensureDerivedCountSummary(stopToken);
         SqliteConnection sqlite(dbPath_);
-        SqliteBusyHandler busy(sqlite.handle(), stopToken);
-        SqliteProgressHandler progress(sqlite.handle(), stopToken);
+        SqliteBusyHandler busy(sqlite.handle(), stopToken, std::chrono::milliseconds{3000},
+                               synchronization_.busyEntered.get());
+        SqliteProgressHandler progress(sqlite.handle(), stopToken,
+                                       synchronization_.progressEntered.get());
         const auto queries = queryBuilder_.build(request, usesDerivedCount);
         SqliteReadTransaction transaction(sqlite.handle(), stopToken, busy.cancellationObserved());
 
@@ -298,8 +310,10 @@ namespace ssa::infra::sqlite {
         const bool usesDerivedCount =
             requestUsesDerivedCount(request) && ensureDerivedCountSummary(stopToken);
         SqliteConnection sqlite(dbPath_);
-        SqliteBusyHandler busy(sqlite.handle(), stopToken);
-        SqliteProgressHandler progress(sqlite.handle(), stopToken);
+        SqliteBusyHandler busy(sqlite.handle(), stopToken, std::chrono::milliseconds{3000},
+                               synchronization_.busyEntered.get());
+        SqliteProgressHandler progress(sqlite.handle(), stopToken,
+                                       synchronization_.progressEntered.get());
         SqliteReadTransaction transaction(sqlite.handle(), stopToken, busy.cancellationObserved());
         // pageSize == 0 means unbounded streaming (single query, no LIMIT).
         // pageSize > 0 means paginated streaming: read in chunks so peak memory

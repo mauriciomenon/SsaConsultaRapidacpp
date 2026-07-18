@@ -173,7 +173,7 @@ TEST_CASE("sqlite progress handler interrupts after entering sqlite and remains 
     ssa::infra::sqlite::SqliteConnection connection(fixture.path,
                                                     ssa::infra::sqlite::SqliteOpenMode::ReadWrite);
     std::stop_source stopSource;
-    std::binary_semaphore progressEntered(0);
+    ssa::infra::sqlite::SqliteSynchronizationSemaphore progressEntered(0);
 
     auto query = std::async(std::launch::async, [&] {
         ssa::infra::sqlite::SqliteProgressHandler progress(
@@ -616,20 +616,20 @@ TEST_CASE_METHOD(
     REQUIRE(sqlite3_exec(blocker.handle(), "BEGIN IMMEDIATE", nullptr, nullptr, nullptr) ==
             SQLITE_OK);
 
-    const auto lockPath = ssa::infra::sqlite::SqliteDatabaseWriteLock::pathForDatabase(path);
-    std::error_code lockPathError;
-    std::filesystem::remove(lockPath, lockPathError);
-    lockPathError.clear();
+    auto writeLockAcquired =
+        std::make_shared<ssa::infra::sqlite::SqliteSsaRepository::SynchronizationSemaphore>(0);
+    const ssa::infra::sqlite::SqliteSsaRepository::SynchronizationSignals synchronization{
+        .derivedCountWriteLockAcquired = writeLockAcquired};
+    const ssa::infra::sqlite::SqliteSsaRepository signaledRepository(
+        path, ssa::query::SqlQueryBuilder{}, [] { return std::chrono::steady_clock::now(); },
+        synchronization);
 
-    auto initializer = std::async(std::launch::async, [&] { return repository.page(request); });
-    const auto lockDeadline = std::chrono::steady_clock::now() + std::chrono::seconds{1};
-    while (!std::filesystem::exists(lockPath, lockPathError) && !lockPathError &&
-           std::chrono::steady_clock::now() < lockDeadline) {
-        std::this_thread::sleep_for(std::chrono::milliseconds{1});
-    }
-    const bool initializerOwnsLock = !lockPathError && std::filesystem::exists(lockPath);
+    auto initializer =
+        std::async(std::launch::async, [&] { return signaledRepository.page(request); });
+    REQUIRE(writeLockAcquired->try_acquire_for(std::chrono::seconds{1}));
 
-    auto fallback = std::async(std::launch::async, [&] { return repository.page(request); });
+    auto fallback =
+        std::async(std::launch::async, [&] { return signaledRepository.page(request); });
     const bool fallbackReady =
         fallback.wait_for(std::chrono::milliseconds{500}) == std::future_status::ready;
 
@@ -640,7 +640,7 @@ TEST_CASE_METHOD(
         canceledStarted.release();
         canceledProceed.acquire();
         try {
-            static_cast<void>(repository.page(request, stopSource.get_token()));
+            static_cast<void>(signaledRepository.page(request, stopSource.get_token()));
             return std::error_code{};
         } catch (const std::system_error& error) {
             return error.code();
@@ -664,7 +664,6 @@ TEST_CASE_METHOD(
         REQUIRE(parent != page.rows.end());
         return parent->valueOf("qtd_derivadas");
     };
-    REQUIRE(initializerOwnsLock);
     REQUIRE(fallbackReady);
     REQUIRE(canceledReady);
     REQUIRE(rollbackResult == SQLITE_OK);
@@ -697,28 +696,27 @@ TEST_CASE_METHOD(SqliteRepositoryFixture,
     REQUIRE(sqlite3_exec(blocker.handle(), "BEGIN IMMEDIATE", nullptr, nullptr, nullptr) ==
             SQLITE_OK);
 
-    const auto lockPath = ssa::infra::sqlite::SqliteDatabaseWriteLock::pathForDatabase(path);
-    std::error_code lockPathError;
-    std::filesystem::remove(lockPath, lockPathError);
-    lockPathError.clear();
+    auto writeLockAcquired =
+        std::make_shared<ssa::infra::sqlite::SqliteSsaRepository::SynchronizationSemaphore>(0);
+    auto busyEntered =
+        std::make_shared<ssa::infra::sqlite::SqliteSsaRepository::SynchronizationSemaphore>(0);
+    const ssa::infra::sqlite::SqliteSsaRepository::SynchronizationSignals synchronization{
+        .derivedCountWriteLockAcquired = writeLockAcquired, .busyEntered = busyEntered};
+    const ssa::infra::sqlite::SqliteSsaRepository signaledRepository(
+        path, ssa::query::SqlQueryBuilder{}, [] { return std::chrono::steady_clock::now(); },
+        synchronization);
 
     std::stop_source stopSource;
     auto initializer = std::async(std::launch::async, [&] {
         try {
-            static_cast<void>(repository.page(request, stopSource.get_token()));
+            static_cast<void>(signaledRepository.page(request, stopSource.get_token()));
             return std::error_code{};
         } catch (const std::system_error& error) {
             return error.code();
         }
     });
-    const auto lockDeadline = std::chrono::steady_clock::now() + std::chrono::seconds{1};
-    while (!std::filesystem::exists(lockPath, lockPathError) && !lockPathError &&
-           std::chrono::steady_clock::now() < lockDeadline) {
-        std::this_thread::sleep_for(std::chrono::milliseconds{1});
-    }
-    const bool initializerOwnsLock = !lockPathError && std::filesystem::exists(lockPath);
-    const bool initializerBlocked =
-        initializer.wait_for(std::chrono::milliseconds{50}) == std::future_status::timeout;
+    REQUIRE(writeLockAcquired->try_acquire_for(std::chrono::seconds{1}));
+    REQUIRE(busyEntered->try_acquire_for(std::chrono::seconds{1}));
 
     stopSource.request_stop();
     const bool canceledReady =
@@ -728,13 +726,11 @@ TEST_CASE_METHOD(SqliteRepositoryFixture,
         sqlite3_exec(blocker.handle(), "ROLLBACK", nullptr, nullptr, nullptr);
     const auto cancellationError = initializer.get();
 
-    REQUIRE(initializerOwnsLock);
-    REQUIRE(initializerBlocked);
     REQUIRE(canceledReady);
     REQUIRE(rollbackResult == SQLITE_OK);
     REQUIRE(cancellationError == std::make_error_code(std::errc::operation_canceled));
 
-    const auto retryPage = repository.page(request);
+    const auto retryPage = signaledRepository.page(request);
     const auto parent = std::ranges::find_if(
         retryPage.rows, [](const auto& row) { return row.valueOf("numero_ssa") == "202500002"; });
     REQUIRE(parent != retryPage.rows.end());
@@ -1098,8 +1094,13 @@ TEST_CASE_METHOD(SqliteRepositoryFixture,
         )
         SELECT value AS numero_ssa FROM counter;
     )SQL");
-    ssa::infra::sqlite::SqliteSsaRepository slowRepository(
-        path, ssa::query::SqlQueryBuilder{"slow_ssa_table"});
+    auto progressEntered =
+        std::make_shared<ssa::infra::sqlite::SqliteSsaRepository::SynchronizationSemaphore>(0);
+    const ssa::infra::sqlite::SqliteSsaRepository::SynchronizationSignals synchronization{
+        .progressEntered = progressEntered};
+    const ssa::infra::sqlite::SqliteSsaRepository slowRepository(
+        path, ssa::query::SqlQueryBuilder{"slow_ssa_table"},
+        [] { return std::chrono::steady_clock::now(); }, synchronization);
     ssa::domain::SsaPageRequest request;
     request.excludeScaSesSte = false;
     std::stop_source stopSource;
@@ -1112,7 +1113,7 @@ TEST_CASE_METHOD(SqliteRepositoryFixture,
             return error.code();
         }
     });
-    REQUIRE(query.wait_for(std::chrono::milliseconds{10}) == std::future_status::timeout);
+    REQUIRE(progressEntered->try_acquire_for(std::chrono::seconds{1}));
 
     stopSource.request_stop();
 
@@ -1134,7 +1135,7 @@ TEST_CASE_METHOD(SqliteRepositoryFixture,
             return error.code();
         }
     });
-    REQUIRE(read.wait_for(std::chrono::milliseconds{10}) == std::future_status::timeout);
+    REQUIRE(progressEntered->try_acquire_for(std::chrono::seconds{1}));
 
     readStopSource.request_stop();
 
@@ -1153,7 +1154,7 @@ TEST_CASE_METHOD(SqliteRepositoryFixture,
             SQLITE_OK);
 
     std::stop_source stopSource;
-    std::binary_semaphore busyEntered(0);
+    ssa::infra::sqlite::SqliteSynchronizationSemaphore busyEntered(0);
     auto query = std::async(std::launch::async, [&] {
         try {
             ssa::infra::sqlite::SqliteConnection waiting(path);

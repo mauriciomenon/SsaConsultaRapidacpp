@@ -4,11 +4,14 @@
 
 #include <atomic>
 #include <chrono>
+#include <climits>
 #include <semaphore>
 #include <stop_token>
 #include <system_error>
 
 namespace ssa::infra::sqlite {
+
+    using SqliteSynchronizationSemaphore = std::counting_semaphore<INT_MAX>;
 
     inline void throwIfCanceled(const std::stop_token& stopToken) {
         if (stopToken.stop_requested()) {
@@ -22,7 +25,7 @@ namespace ssa::infra::sqlite {
         explicit SqliteBusyHandler(
             sqlite3* db, std::stop_token stopToken,
             std::chrono::milliseconds maxWait = std::chrono::milliseconds{3000},
-            std::binary_semaphore* busyEntered = nullptr)
+            SqliteSynchronizationSemaphore* busyEntered = nullptr)
             : db_(db), stopToken_(std::move(stopToken)),
               maxRetries_(static_cast<int>(maxWait.count() / kRetryDelayMs)),
               busyEntered_(busyEntered) {
@@ -74,7 +77,7 @@ namespace ssa::infra::sqlite {
         sqlite3* db_ = nullptr;
         std::stop_token stopToken_;
         int maxRetries_ = 0;
-        std::binary_semaphore* busyEntered_ = nullptr;
+        SqliteSynchronizationSemaphore* busyEntered_ = nullptr;
         std::atomic_bool cancellationObserved_{false};
         std::atomic_flag busyReported_ = ATOMIC_FLAG_INIT;
     };
@@ -82,7 +85,7 @@ namespace ssa::infra::sqlite {
     class SqliteProgressHandler final {
       public:
         explicit SqliteProgressHandler(sqlite3* db, std::stop_token stopToken,
-                                       std::binary_semaphore* progressEntered = nullptr)
+                                       SqliteSynchronizationSemaphore* progressEntered = nullptr)
             : db_(db), stopToken_(std::move(stopToken)), progressEntered_(progressEntered) {
             throwIfCanceled(stopToken_);
             if (stopToken_.stop_possible()) {
@@ -118,7 +121,7 @@ namespace ssa::infra::sqlite {
 
         sqlite3* db_ = nullptr;
         std::stop_token stopToken_;
-        std::binary_semaphore* progressEntered_ = nullptr;
+        SqliteSynchronizationSemaphore* progressEntered_ = nullptr;
         std::atomic_flag progressReported_ = ATOMIC_FLAG_INIT;
         bool installed_ = false;
     };

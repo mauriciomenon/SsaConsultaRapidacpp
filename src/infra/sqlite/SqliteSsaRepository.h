@@ -2,6 +2,7 @@
 
 #include "infra/sqlite/SqliteConnection.h"
 #include "infra/sqlite/SqliteDerivedCountSummary.h"
+#include "infra/sqlite/SqliteProgressHandler.h"
 #include "ports/IExecutadasReportPort.h"
 #include "ports/ISsaRepository.h"
 #include "query/SqlQueryBuilder.h"
@@ -9,6 +10,7 @@
 #include <chrono>
 #include <filesystem>
 #include <functional>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <stop_token>
@@ -21,11 +23,21 @@ namespace ssa::infra::sqlite {
                                       public ports::IExecutadasReportPort {
       public:
         using DerivedCountCooldownNow = std::function<std::chrono::steady_clock::time_point()>;
+        using SynchronizationSemaphore = SqliteSynchronizationSemaphore;
+
+        struct SynchronizationSignals {
+            std::shared_ptr<SynchronizationSemaphore> derivedCountWriteLockAcquired = nullptr;
+            std::shared_ptr<SynchronizationSemaphore> busyEntered = nullptr;
+            std::shared_ptr<SynchronizationSemaphore> progressEntered = nullptr;
+        };
 
         explicit SqliteSsaRepository(std::filesystem::path dbPath);
         SqliteSsaRepository(std::filesystem::path dbPath, query::SqlQueryBuilder queryBuilder);
         SqliteSsaRepository(std::filesystem::path dbPath, query::SqlQueryBuilder queryBuilder,
                             DerivedCountCooldownNow now);
+        SqliteSsaRepository(std::filesystem::path dbPath, query::SqlQueryBuilder queryBuilder,
+                            DerivedCountCooldownNow now,
+                            const SynchronizationSignals& synchronization);
 
         [[nodiscard]] domain::SsaPageResult page(const domain::SsaPageRequest& request,
                                                  std::stop_token stopToken = {}) const override;
@@ -75,6 +87,7 @@ namespace ssa::infra::sqlite {
         std::filesystem::path dbPath_;
         query::SqlQueryBuilder queryBuilder_;
         DerivedCountCooldownNow now_;
+        SynchronizationSignals synchronization_;
         mutable std::mutex derivedCountSummaryMutex_;
         mutable bool derivedCountSummaryInitializing_{false};
         mutable bool derivedCountSummaryAvailable_{false};
