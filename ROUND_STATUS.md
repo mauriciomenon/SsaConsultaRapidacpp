@@ -5,6 +5,33 @@ antes de interpretar sincronizacao Git, validacao local ou estado externo.
 
 Ultima verificacao local: 2026-07-18
 
+## Checkpoint causal de copia/staging - 2026-07-18
+
+- Branch `master`; codigo em `79f8200`, confirmado no Bitbucket. GitLab
+  `origin` continua bloqueado por OAuth `invalid_grant`; isto e dependencia
+  externa, nao falha do codigo nem publicacao confirmada no GitLab.
+- Sete contratos de staging deixaram de procurar `.part` em loop de `1 ms`.
+  `CancelableFileCopy` agora expoe um hook opcional apos a primeira escrita
+  aceita; `ImportFileStager` e o workflow o propagam sem comportamento extra
+  quando o hook esta vazio. Os contratos exercitam cancelamento, troca/remocao
+  de fonte, inventario parcial, importacao externa e cleanup com permissao.
+- O RED de callback que lanca confirmou que a excecao escapava. Dois reviews
+  Terra ultra classificaram o caminho como P2. A fronteira agora fecha e tenta
+  remover o temporario, retornando `Failed` ou `CleanupFailed` com diagnostico;
+  review final: `SEM FINDINGS`.
+- Gate local: diff, clang-format, cppcheck, detect-secrets e Semgrep (`11`
+  regras, zero finding) limpos. `clang-tidy` nao encontrou aviso novo no diff;
+  ele repetiu avisos preexistentes de parametros no workflow. Build de
+  `ssa_integration_tests` passou; RED `1/1` falhou como esperado; CTest focado
+  `8/8` em `0.80 s`; workflow completo `174/174` em `8.65 s`. Hooks do commit
+  passaram clang-format, Gitleaks, detect-secrets e TruffleHog.
+- Contadores sem inflacao: plano original `99.0/100`; divida nova
+  `13/14 = 92.9%`; backlog legado `0.0/100` como placeholder; fila operacional
+  `5/8 = 62.5%`. Nenhum credito funcional foi atribuido.
+
+Proxima atividade unica: substituir o polling de processo restante do conversor
+legacy por handshake causal, sem mudar regras de importacao ou schema.
+
 ## Polling de staging e corpus lock removido - 2026-07-18
 
 - Branch `master`; codigo em `1f99a90`, confirmado no Bitbucket. GitLab

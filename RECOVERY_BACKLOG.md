@@ -1,5 +1,29 @@
 # Recovery Backlog
 
+## Checkpoint causal de copia/staging - 2026-07-18
+
+- [RESOLVED-LOCAL] [IMPORT-STAGING-FIRST-CHUNK-CAUSAL] `79f8200` remove sete
+  polls de `.part` em `SpreadsheetImportWorkflowPortTests.cpp`. O hook opcional
+  de primeira escrita e injetado apenas pelos contratos e atravessa
+  `SpreadsheetImportWorkflowPort` ate `CancelableFileCopy`; uso normal sem hook
+  preserva o fluxo de producao.
+- A seam permite provocar deterministicamente cancelamento, alteracao de fonte,
+  falha de staging e cleanup sem thread auxiliar, deadline ou leitura repetida
+  de diretorio. Excecao do hook vira `Failed`/`CleanupFailed` depois de fechar e
+  tentar remover o temporario; nao ha swallow, retry ou fallback silencioso.
+- O RED `1/1` confirmou a excecao escapando. Dois reviews Terra ultra apontaram
+  P2 no caminho de cleanup; apos a correcao, review final `SEM FINDINGS`.
+- Gates: build `ssa_integration_tests`; CTest focado `8/8` em `0.80 s`; suite
+  workflow `174/174` em `8.65 s`. Diff, formato, cppcheck, detect-secrets e
+  Semgrep limpos; clang-tidy sem aviso novo no diff. Hooks staged passaram
+  Gitleaks e TruffleHog. Bitbucket confirma `79f8200`; GitLab `origin` segue
+  OAuth `invalid_grant`.
+- Sem credito novo: plano `99.0/100`, divida nova `13/14 = 92.9%`, legado
+  placeholder `0.0/100`, fila operacional `5/8 = 62.5%`.
+
+Proxima atividade unica: trocar polling de processo do conversor legacy por um
+handshake causal que prove inicio e cancelamento sem timeout como sucesso.
+
 ## Polling de staging e corpus lock removido - 2026-07-18
 
 - [RESOLVED-LOCAL] [IMPORT-STAGING-CORPUS-CAUSAL] `1f99a90` remove tres
