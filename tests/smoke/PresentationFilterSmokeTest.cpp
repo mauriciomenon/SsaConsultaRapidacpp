@@ -24,6 +24,7 @@
 #include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QObject>
+#include <QScopeGuard>
 #include <QSignalSpy>
 #include <QString>
 #include <QThreadPool>
@@ -33,10 +34,12 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <iterator>
 #include <map>
 #include <memory>
 #include <mutex>
+#include <semaphore>
 #include <set>
 #include <string>
 #include <system_error>
@@ -63,10 +66,14 @@ namespace {
         ssa::domain::SsaPageResult page(const ssa::domain::SsaPageRequest&,
                                         const std::stop_token stopToken = {}) const override {
             started_.store(true, std::memory_order_release);
-            while (!stopToken.stop_requested()) {
-                std::this_thread::yield();
+            {
+                std::unique_lock lock(pageMutex_);
+                pageCondition_.wait(lock, stopToken, [] { return false; });
+                pageStopObserved_.store(stopToken.stop_requested(), std::memory_order_release);
             }
-            std::this_thread::sleep_for(std::chrono::milliseconds{100});
+            if (!pageTerminalRelease_.try_acquire_for(std::chrono::seconds{2})) {
+                pageGateTimedOut_.store(true, std::memory_order_release);
+            }
             finished_.store(true, std::memory_order_release);
             throw std::system_error(std::make_error_code(std::errc::operation_canceled));
         }
@@ -133,6 +140,18 @@ namespace {
             return finished_.load(std::memory_order_acquire);
         }
 
+        [[nodiscard]] bool pageStopObserved() const {
+            return pageStopObserved_.load(std::memory_order_acquire);
+        }
+
+        void releasePageTerminal() const {
+            pageTerminalRelease_.release();
+        }
+
+        [[nodiscard]] bool pageGateTimedOut() const {
+            return pageGateTimedOut_.load(std::memory_order_acquire);
+        }
+
         [[nodiscard]] bool metricsStarted() const {
             return metricsStarted_.load(std::memory_order_acquire);
         }
@@ -156,10 +175,15 @@ namespace {
         bool failAfterDistinctCancel_{false};
         mutable std::atomic_bool started_{false};
         mutable std::atomic_bool finished_{false};
+        mutable std::atomic_bool pageStopObserved_{false};
+        mutable std::atomic_bool pageGateTimedOut_{false};
         mutable std::atomic_bool metricsStarted_{false};
         mutable std::atomic_bool metricsFinished_{false};
         mutable std::atomic_int distinctCalls_{0};
+        mutable std::condition_variable_any pageCondition_;
         mutable std::mutex metricsMutex_;
+        mutable std::mutex pageMutex_;
+        mutable std::binary_semaphore pageTerminalRelease_{0};
         mutable std::thread::id distinctThread_;
         mutable std::thread::id maxLengthThread_;
     };
@@ -467,16 +491,28 @@ namespace {
             return finished_.load(std::memory_order_acquire);
         }
 
+        void releaseCompletion() {
+            completionRelease_.release();
+        }
+
+        [[nodiscard]] bool gateTimedOut() const {
+            return gateTimedOut_.load(std::memory_order_acquire);
+        }
+
       private:
         ssa::ports::WorkflowResult run() {
             started_.store(true, std::memory_order_release);
-            std::this_thread::sleep_for(std::chrono::milliseconds{100});
+            if (!completionRelease_.try_acquire_for(std::chrono::seconds{2})) {
+                gateTimedOut_.store(true, std::memory_order_release);
+            }
             finished_.store(true, std::memory_order_release);
             return {ssa::ports::WorkflowStatus::Succeeded, "finished"};
         }
 
         std::atomic_bool started_{false};
         std::atomic_bool finished_{false};
+        std::atomic_bool gateTimedOut_{false};
+        std::binary_semaphore completionRelease_{0};
     };
 
     class ThrowingExportPort final : public ssa::ports::IExportPort {
@@ -821,6 +857,8 @@ namespace {
 
         void page_query_destructor_is_non_blocking_and_drops_callback() {
             auto repository = std::make_shared<BlockingPageRepository>();
+            auto releasePageTerminal =
+                qScopeGuard([repository] { repository->releasePageTerminal(); });
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
             int callbackCount = 0;
             QElapsedTimer destructionTimer;
@@ -839,13 +877,18 @@ namespace {
             }
 
             QVERIFY(destructionTimer.elapsed() < 50);
+            QTRY_VERIFY_WITH_TIMEOUT(repository->pageStopObserved(), 1000);
+            QVERIFY(!repository->finished());
+            releasePageTerminal.commit();
             QTRY_VERIFY_WITH_TIMEOUT(repository->finished(), 1000);
+            QVERIFY(!repository->pageGateTimedOut());
             QCoreApplication::processEvents();
             QCOMPARE(callbackCount, 0);
         }
 
         void workflow_runner_destructor_is_non_blocking_and_drops_callback() {
             auto importPort = std::make_shared<BlockingImportPort>();
+            auto releaseCompletion = qScopeGuard([importPort] { importPort->releaseCompletion(); });
             auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(importPort);
             int callbackCount = 0;
             QElapsedTimer destructionTimer;
@@ -860,7 +903,10 @@ namespace {
             }
 
             QVERIFY(destructionTimer.elapsed() < 50);
+            QVERIFY(!importPort->finished());
+            releaseCompletion.commit();
             QTRY_VERIFY_WITH_TIMEOUT(importPort->finished(), 1000);
+            QVERIFY(!importPort->gateTimedOut());
             QCoreApplication::processEvents();
             QCOMPARE(callbackCount, 0);
         }
