@@ -10,8 +10,11 @@
 #include <QUrl>
 
 #include <atomic>
+#include <chrono>
+#include <condition_variable>
 #include <filesystem>
 #include <memory>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 
@@ -25,29 +28,60 @@ namespace {
             lastPath = path;
             validationThread = QThread::currentThread();
             ++calls;
-            while (blocked.load() && !stopToken.stop_requested()) {
-                QThread::msleep(1);
-            }
+            std::unique_lock lock(mutex_);
+            validationStarted_ = true;
+            condition_.notify_all();
+            condition_.wait(lock, stopToken, [this] { return !blocked_; });
+            validationCompleted_ = true;
+            lock.unlock();
+            condition_.notify_all();
             if (stopToken.stop_requested()) {
                 stopObserved = true;
-                validationCompleted = true;
                 return {ssa::ports::DatabaseValidationStatus::Canceled,
                         "Validacao do banco cancelada",
                         {}};
             }
-            validationCompleted = true;
             if (failAfterCompletion) {
                 throw std::runtime_error("late validation failure");
             }
             return result;
         }
 
+        void blockValidation() {
+            const std::scoped_lock lock(mutex_);
+            blocked_ = true;
+            validationStarted_ = false;
+            validationCompleted_ = false;
+        }
+
+        void releaseValidation() {
+            {
+                const std::scoped_lock lock(mutex_);
+                blocked_ = false;
+            }
+            condition_.notify_all();
+        }
+
+        [[nodiscard]] bool
+        waitForValidationCompleted(const std::chrono::milliseconds timeout) const {
+            std::unique_lock lock(mutex_);
+            return condition_.wait_for(lock, timeout, [this] { return validationCompleted_; });
+        }
+
+        [[nodiscard]] bool waitForValidationStart(const std::chrono::milliseconds timeout) const {
+            std::unique_lock lock(mutex_);
+            return condition_.wait_for(lock, timeout, [this] { return validationStarted_; });
+        }
+
         mutable std::filesystem::path lastPath;
         mutable QThread* validationThread = nullptr;
         mutable std::atomic_int calls = 0;
         mutable std::atomic_bool stopObserved = false;
-        mutable std::atomic_bool validationCompleted = false;
-        std::atomic_bool blocked = false;
+        mutable std::condition_variable_any condition_;
+        mutable std::mutex mutex_;
+        mutable bool validationStarted_ = false;
+        mutable bool validationCompleted_ = false;
+        bool blocked_ = false;
         bool failAfterCompletion = false;
         ssa::ports::DatabaseValidationResult result{
             ssa::ports::DatabaseValidationStatus::Valid, {}, {}};
@@ -145,14 +179,14 @@ namespace {
             QCOMPARE(validator->calls.load(), 0);
             QCOMPARE(model.errorMessage(), QStringLiteral("Selecione um arquivo de banco local"));
 
-            validator->blocked = true;
+            validator->blockValidation();
             const auto firstPath = temporary.filePath("first.db");
             model.openDatabase(QUrl::fromLocalFile(firstPath));
-            QTRY_VERIFY_WITH_TIMEOUT(model.running(), 1000);
+            QVERIFY(model.running());
+            QVERIFY(validator->waitForValidationStart(std::chrono::seconds{1}));
             model.openDatabase(QUrl::fromLocalFile(temporary.filePath("second.db")));
-            QTest::qWait(20);
             QCOMPARE(validator->calls.load(), 1);
-            validator->blocked = false;
+            validator->releaseValidation();
             QTRY_VERIFY_WITH_TIMEOUT(!model.running(), 3000);
             QCOMPARE(launcher->calls, 1);
             QCOMPARE(launcher->lastPath, std::filesystem::path{firstPath.toStdString()});
@@ -162,7 +196,7 @@ namespace {
             const QTemporaryDir temporary;
             QVERIFY(temporary.isValid());
             auto validator = std::make_shared<FakeValidator>();
-            validator->blocked = true;
+            validator->blockValidation();
             auto launcher = std::make_shared<FakeLauncher>();
             auto model =
                 std::make_unique<ssa::presentation::DatabaseSwitchViewModel>(validator, launcher);
@@ -185,7 +219,7 @@ namespace {
             const QTemporaryDir temporary;
             QVERIFY(temporary.isValid());
             auto validator = std::make_shared<FakeValidator>();
-            validator->blocked = true;
+            validator->blockValidation();
             auto launcher = std::make_shared<FakeLauncher>();
             ssa::presentation::DatabaseSwitchViewModel model(validator, launcher);
 
@@ -205,7 +239,7 @@ namespace {
             QTRY_VERIFY_WITH_TIMEOUT(validator->stopObserved.load(), 1000);
             QCOMPARE(launcher->calls, 0);
 
-            validator->blocked = false;
+            validator->releaseValidation();
             QTRY_VERIFY_WITH_TIMEOUT(!model.running(), 3000);
             QVERIFY(!model.canceling());
             QVERIFY(!model.canCancel());
@@ -221,12 +255,7 @@ namespace {
             ssa::presentation::DatabaseSwitchViewModel model(validator, launcher);
 
             model.openDatabase(QUrl::fromLocalFile(temporary.filePath("valid.db")));
-            QElapsedTimer completionTimer;
-            completionTimer.start();
-            while (!validator->validationCompleted.load() && completionTimer.elapsed() < 1000) {
-                QThread::msleep(1);
-            }
-            QVERIFY(validator->validationCompleted.load());
+            QVERIFY(validator->waitForValidationCompleted(std::chrono::seconds{1}));
             QVERIFY(model.running());
 
             model.cancel();
@@ -246,12 +275,7 @@ namespace {
             ssa::presentation::DatabaseSwitchViewModel model(validator, launcher);
 
             model.openDatabase(QUrl::fromLocalFile(temporary.filePath("valid.db")));
-            QElapsedTimer completionTimer;
-            completionTimer.start();
-            while (!validator->validationCompleted.load() && completionTimer.elapsed() < 1000) {
-                QThread::msleep(1);
-            }
-            QVERIFY(validator->validationCompleted.load());
+            QVERIFY(validator->waitForValidationCompleted(std::chrono::seconds{1}));
             QTest::ignoreMessage(QtWarningMsg, "Database validation failed after cancellation: "
                                                "late validation failure");
 
