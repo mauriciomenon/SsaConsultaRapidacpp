@@ -204,13 +204,7 @@ namespace ssa::query {
         std::string orderByClause(const domain::SsaPageRequest& request) {
             std::ostringstream order;
             if (request.sort.statusLast) {
-                static const std::string kStatusLastSortCode =
-                    uppercaseCopy(domain::ColumnCatalog::statusLastSortCode());
-                order << "CASE WHEN UPPER(COALESCE("
-                      << quoteColumnIdentifier(
-                             std::string{domain::ColumnCatalog::statusColumnKey()})
-                      << ", '')) <> " << singleQuotedSqlLiteral(kStatusLastSortCode)
-                      << " THEN 0 ELSE 1 END ASC, ";
+                order << statusLastSortExpression() << " ASC, ";
             }
             const auto& sortKey = request.sort.columnKey.empty()
                                       ? std::string{domain::kSsaNumberColumnKey}

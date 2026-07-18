@@ -180,6 +180,18 @@ namespace ssa::infra::sqlite {
                    query::quoteColumnIdentifier(ssaNumberColumn) + ")";
         }
 
+        std::string statusLastIndexName(const std::string& tableName) {
+            return "idx_" + tableName + "_status_last_numero_ssa_desc";
+        }
+
+        std::string createStatusLastIndexSql(const std::string& tableName) {
+            return "CREATE INDEX " + query::quoteTableIdentifier(statusLastIndexName(tableName)) +
+                   " ON " + query::quoteTableIdentifier(tableName) + " (" +
+                   query::statusLastSortExpression() + " ASC, " +
+                   query::quoteColumnIdentifier(std::string{domain::kSsaNumberColumnKey}) +
+                   " DESC)";
+        }
+
         std::string dirtyCanonicalLedgerIndexName(const std::string& tableName) {
             return "idx_" + tableName + "_import_dirty_canonical";
         }
@@ -237,12 +249,13 @@ namespace ssa::infra::sqlite {
             return statement.step() && statement.columnText(0) == expectedSql;
         }
 
-        bool hasNamedIndex(sqlite3* db, const std::string& indexName,
+        bool hasNamedIndex(sqlite3* db, const std::string& tableName, const std::string& indexName,
                            const std::atomic_bool* busyCancellationObserved) {
-            SqliteStatement statement(db,
-                                      "SELECT 1 FROM sqlite_master WHERE type='index' AND name=?",
-                                      busyCancellationObserved);
+            SqliteStatement statement(
+                db, "SELECT 1 FROM sqlite_master WHERE type='index' AND name=? AND tbl_name=?",
+                busyCancellationObserved);
             statement.bindTextOneBased(1, indexName);
+            statement.bindTextOneBased(2, tableName);
             return statement.step();
         }
 
@@ -252,11 +265,27 @@ namespace ssa::infra::sqlite {
             if (hasExactIndexSql(db, tableName, indexName, createSql, busyCancellationObserved)) {
                 return;
             }
-            if (hasNamedIndex(db, indexName, busyCancellationObserved)) {
+            if (hasNamedIndex(db, tableName, indexName, busyCancellationObserved)) {
                 executeSql(db, "DROP INDEX " + query::quoteTableIdentifier(indexName),
                            busyCancellationObserved);
             }
             executeSql(db, createSql, busyCancellationObserved);
+        }
+
+        void ensureStatusLastIndex(sqlite3* db, const std::string& tableName,
+                                   const std::vector<domain::ColumnDef>& columns,
+                                   const std::atomic_bool* busyCancellationObserved) {
+            const auto hasColumn = [&columns](const std::string_view key) {
+                return std::ranges::any_of(
+                    columns, [key](const domain::ColumnDef& column) { return column.key == key; });
+            };
+            if (!hasColumn(domain::kSsaNumberColumnKey) ||
+                !hasColumn(domain::ColumnCatalog::statusColumnKey())) {
+                return;
+            }
+            const auto indexName = statusLastIndexName(tableName);
+            ensureExactIndex(db, tableName, indexName, createStatusLastIndexSql(tableName),
+                             busyCancellationObserved);
         }
 
         bool dirtyCanonicalLedgerHasRows(sqlite3* db, const std::string& tableName,
@@ -290,7 +319,7 @@ namespace ssa::infra::sqlite {
         void dropLegacyDirtyCanonicalIndexes(sqlite3* db, const std::string& tableName,
                                              const std::atomic_bool* busyCancellationObserved) {
             for (const auto& indexName : legacyDirtyCanonicalIndexNames(tableName)) {
-                if (hasNamedIndex(db, indexName, busyCancellationObserved)) {
+                if (hasNamedIndex(db, tableName, indexName, busyCancellationObserved)) {
                     executeSql(db, "DROP INDEX " + query::quoteTableIdentifier(indexName),
                                busyCancellationObserved);
                 }
@@ -300,7 +329,7 @@ namespace ssa::infra::sqlite {
         void dropLegacySsaNumberIndex(sqlite3* db, const std::string& tableName,
                                       const std::atomic_bool* busyCancellationObserved) {
             const auto indexName = legacySsaNumberIndexName(tableName);
-            if (hasNamedIndex(db, indexName, busyCancellationObserved)) {
+            if (hasNamedIndex(db, tableName, indexName, busyCancellationObserved)) {
                 executeSql(db, "DROP INDEX " + query::quoteTableIdentifier(indexName),
                            busyCancellationObserved);
             }
@@ -325,14 +354,14 @@ namespace ssa::infra::sqlite {
             const bool hasTrustedUniqueIndex = hasExactIndexSql(
                 db, tableName, uniqueIndexName, uniqueIndexSql, busyCancellationObserved);
             if (!hasTrustedUniqueIndex &&
-                hasNamedIndex(db, uniqueIndexName, busyCancellationObserved)) {
+                hasNamedIndex(db, tableName, uniqueIndexName, busyCancellationObserved)) {
                 executeSql(db, "DROP INDEX " + query::quoteTableIdentifier(uniqueIndexName),
                            busyCancellationObserved);
             }
             if (!hasTrustedUniqueIndex) {
                 dropLegacySsaNumberIndex(db, tableName, busyCancellationObserved);
                 const auto ledgerIndexName = dirtyCanonicalLedgerIndexName(tableName);
-                if (hasNamedIndex(db, ledgerIndexName, busyCancellationObserved)) {
+                if (hasNamedIndex(db, tableName, ledgerIndexName, busyCancellationObserved)) {
                     executeSql(db, "DROP INDEX " + query::quoteTableIdentifier(ledgerIndexName),
                                busyCancellationObserved);
                 }
@@ -707,6 +736,7 @@ namespace ssa::infra::sqlite {
                         "Falha ao validar identificadores SSA existentes",
                         "dirty canonical ledger still contains rows after normalization");
                 }
+                ensureStatusLastIndex(db, this->tableName, columns, busy.cancellationObserved());
                 for (const auto& indexSql : createFilterIndexesSql(this->tableName, columns)) {
                     executeSql(db, indexSql, busy.cancellationObserved());
                 }

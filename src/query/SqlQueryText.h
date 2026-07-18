@@ -9,6 +9,7 @@ namespace ssa::query {
     [[nodiscard]] std::string quoteColumnIdentifier(const std::string& key);
     [[nodiscard]] std::string quoteTableIdentifier(const std::string& name);
     [[nodiscard]] std::string uppercaseCopy(std::string_view value);
+    [[nodiscard]] std::string statusLastSortExpression();
     void appendSqlAndSeparator(std::ostringstream& stream, bool hasCondition);
 
 } // namespace ssa::query

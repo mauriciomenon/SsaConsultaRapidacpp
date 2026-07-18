@@ -37,6 +37,14 @@ namespace ssa::query {
         return upper;
     }
 
+    std::string statusLastSortExpression() {
+        const auto statusColumn =
+            quoteColumnIdentifier(std::string{domain::ColumnCatalog::statusColumnKey()});
+        const auto statusCode = uppercaseCopy(domain::ColumnCatalog::statusLastSortCode());
+        return "CASE WHEN UPPER(COALESCE(" + statusColumn + ", '')) <> '" + statusCode +
+               "' THEN 0 ELSE 1 END";
+    }
+
     void appendSqlAndSeparator(std::ostringstream& stream, const bool hasCondition) {
         stream << (hasCondition ? " AND " : "");
     }

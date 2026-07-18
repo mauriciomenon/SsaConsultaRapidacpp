@@ -19,6 +19,7 @@
 #include "platform/SupervisedProcessRunner.h"
 #include "ports/OperationError.h"
 #include "qt/FilesystemPath.h"
+#include "query/SqlQueryBuilder.h"
 
 #include <QCryptographicHash>
 #include <QDir>
@@ -257,6 +258,11 @@ xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><s
 
     constexpr std::string_view kFullUniqueSsaIndexSql =
         "CREATE UNIQUE INDEX \"ux_ssa_table_numero_ssa\" ON \"ssa_table\" (\"numero_ssa\")";
+
+    constexpr std::string_view kFullStatusLastNumeroSsaDescIndexSql =
+        "CREATE INDEX \"idx_ssa_table_status_last_numero_ssa_desc\" ON \"ssa_table\" "
+        "(CASE WHEN UPPER(COALESCE(\"situacao\", '')) <> 'STE' THEN 0 ELSE 1 END ASC, "
+        "\"numero_ssa\" DESC)";
 
     constexpr std::string_view kFullDirtyCanonicalLedgerSql =
         "CREATE INDEX \"idx_ssa_table_import_dirty_canonical\" ON \"ssa_table\" "
@@ -3484,6 +3490,121 @@ TEST_CASE("sqlite import keeps a canonical second session on the dirty-index fas
 
     REQUIRE(summary.rowsWritten == 1);
     REQUIRE(summary.rowsUpdated == 0);
+}
+
+TEST_CASE("sqlite import writer keeps the status-last expression index across replacement") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto dbPath = std::filesystem::path{tempDir.path().toStdString()} / "ssas.db";
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(sqliteWriterAccess(), dbPath,
+                                                           importColumns());
+    ssa::infra::importing::ResolvedSsaImportRows initial;
+    initial.rows = {
+        {{"numero_ssa", "202600710"}, {"descricao_ssa", "Approved"}, {"situacao", "APV"}},
+        {{"numero_ssa", "202600711"}, {"descricao_ssa", "Finished"}, {"situacao", "STE"}}};
+    REQUIRE(writer.write(initial, 1, 0, false).rowsWritten == 2);
+
+    ssa::domain::SsaPageRequest request;
+    request.visibleColumns = {"numero_ssa"};
+    request.pageSize = 0;
+    request.excludeScaSesSte = false;
+    request.sort = {"numero_ssa", false, true};
+    const auto built = ssa::query::SqlQueryBuilder{}.buildRows(request);
+    const auto explainSql = "EXPLAIN QUERY PLAN " + built.sql;
+    const auto verifyStatusLastIndex = [&] {
+        sqlite3* db = nullptr;
+        REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+        REQUIRE(scalarText(db, "SELECT sql FROM sqlite_master WHERE "
+                               "name='idx_ssa_table_status_last_numero_ssa_desc'") ==
+                kFullStatusLastNumeroSsaDescIndexSql);
+        const auto plan = queryPlanText(db, explainSql.c_str());
+        REQUIRE(plan.find("idx_ssa_table_status_last_numero_ssa_desc") != std::string::npos);
+        REQUIRE(plan.find("TEMP B-TREE") == std::string::npos);
+        REQUIRE(sqlite3_close(db) == SQLITE_OK);
+    };
+    verifyStatusLastIndex();
+
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(db, "DROP INDEX idx_ssa_table_status_last_numero_ssa_desc", nullptr,
+                         nullptr, nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+
+    ssa::infra::importing::ResolvedSsaImportRows replacement;
+    replacement.rows = {{{"numero_ssa", "202600712"},
+                         {"descricao_ssa", "Replacement approved"},
+                         {"situacao", "APV"}},
+                        {{"numero_ssa", "202600713"},
+                         {"descricao_ssa", "Replacement finished"},
+                         {"situacao", "STE"}}};
+    REQUIRE(writer.write(replacement, 1, 0, true).rowsWritten == 2);
+    verifyStatusLastIndex();
+}
+
+TEST_CASE("sqlite import writer creates the status-last index for a legacy custom table") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto dbPath = std::filesystem::path{tempDir.path().toStdString()} / "ssas.db";
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(db,
+                         "CREATE TABLE ssa_custom (numero_ssa TEXT, descricao_ssa TEXT, "
+                         "situacao TEXT)",
+                         nullptr, nullptr, nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+
+    const std::vector<ssa::domain::ColumnDef> columns{
+        {.key = "numero_ssa"}, {.key = "descricao_ssa"}, {.key = "situacao"}};
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(sqliteWriterAccess(), dbPath, columns,
+                                                           "ssa_custom");
+    ssa::infra::importing::ResolvedSsaImportRows incoming;
+    incoming.rows.push_back(
+        {{"numero_ssa", "202600714"}, {"descricao_ssa", "Legacy custom"}, {"situacao", "APV"}});
+    REQUIRE(writer.write(incoming, 1, 0, false).rowsWritten == 1);
+
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarText(db, "SELECT sql FROM sqlite_master WHERE "
+                           "name='idx_ssa_custom_status_last_numero_ssa_desc'") ==
+            "CREATE INDEX \"idx_ssa_custom_status_last_numero_ssa_desc\" ON \"ssa_custom\" "
+            "(CASE WHEN UPPER(COALESCE(\"situacao\", '')) <> 'STE' THEN 0 ELSE 1 END ASC, "
+            "\"numero_ssa\" DESC)");
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("sqlite import writer preserves a status-last index owned by another table") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto dbPath = std::filesystem::path{tempDir.path().toStdString()} / "ssas.db";
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(db,
+                         "CREATE TABLE ssa_custom (numero_ssa TEXT, descricao_ssa TEXT, "
+                         "situacao TEXT)",
+                         nullptr, nullptr, nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(db, "CREATE TABLE other_table (numero_ssa TEXT)", nullptr, nullptr,
+                         nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(db,
+                         "CREATE INDEX idx_ssa_custom_status_last_numero_ssa_desc ON "
+                         "other_table(numero_ssa)",
+                         nullptr, nullptr, nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+
+    const std::vector<ssa::domain::ColumnDef> columns{
+        {.key = "numero_ssa"}, {.key = "descricao_ssa"}, {.key = "situacao"}};
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(sqliteWriterAccess(), dbPath, columns,
+                                                           "ssa_custom");
+    ssa::infra::importing::ResolvedSsaImportRows incoming;
+    incoming.rows.push_back(
+        {{"numero_ssa", "202600715"}, {"descricao_ssa", "Collision"}, {"situacao", "APV"}});
+    REQUIRE_THROWS_AS(writer.write(incoming, 1, 0, false), ssa::ports::OperationError);
+
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarText(db, "SELECT tbl_name FROM sqlite_master WHERE "
+                           "name='idx_ssa_custom_status_last_numero_ssa_desc'") == "other_table");
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
 TEST_CASE("sqlite import coalesces identity indexes for a custom table name") {
