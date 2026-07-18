@@ -1,8 +1,10 @@
 #include "PresentationSmokeFakes.h"
 #include "qt/FilesystemPath.h"
 
+#include "application/ActivityAnalyticsService.h"
 #include "application/SsaWorkflowService.h"
 #include "domain/SsaTypes.h"
+#include "ports/IActivityAnalyticsPort.h"
 #include "presentation/AdvancedDerivationFilterViewModel.h"
 #include "presentation/AdvancedTextFilterViewModel.h"
 #include "presentation/AdvancedWeekFilterViewModel.h"
@@ -75,6 +77,45 @@ namespace {
       private:
         mutable std::mutex mutex_;
         QThread* executedThread_{nullptr};
+    };
+
+    class BlockingActivityAnalyticsPort final : public ssa::ports::IActivityAnalyticsPort {
+      public:
+        explicit BlockingActivityAnalyticsPort(const bool blockSeries = false)
+            : blockSeries_(blockSeries) {}
+
+        ssa::domain::AnalyticsSeriesResult series(const ssa::domain::AnalyticsRequest&,
+                                                  std::stop_token stopToken = {}) const override {
+            started_.store(true, std::memory_order_release);
+            while (blockSeries_ && !stopToken.stop_requested()) {
+                std::this_thread::yield();
+            }
+            stopObserved_.store(stopToken.stop_requested(), std::memory_order_release);
+            return {};
+        }
+
+        ssa::domain::AnalyticsDimensionValues dimensionValues(const ssa::domain::AnalyticsRequest&,
+                                                              std::stop_token = {}) const override {
+            return {};
+        }
+
+        std::vector<ssa::domain::AnalyticsMetricAvailability>
+        availability(std::stop_token = {}) const override {
+            return {};
+        }
+
+        [[nodiscard]] bool started() const noexcept {
+            return started_.load(std::memory_order_acquire);
+        }
+
+        [[nodiscard]] bool stopObserved() const noexcept {
+            return stopObserved_.load(std::memory_order_acquire);
+        }
+
+      private:
+        bool blockSeries_{false};
+        mutable std::atomic_bool started_{false};
+        mutable std::atomic_bool stopObserved_{false};
     };
 
     class BlockingCancelableExportPort final : public ssa::ports::IExportPort {
@@ -2171,6 +2212,69 @@ namespace {
             QCOMPARE(importPort->requests().back().mode, ssa::ports::RescanMode::Incremental);
             QTRY_COMPARE_WITH_TIMEOUT(model.browse()->status()->message(),
                                       QString("Reescaneamento concluido"), 1000);
+        }
+
+        void analytics_is_exposed_and_invalidated_after_successful_import() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            auto importPort = std::make_shared<CapturingImportPort>();
+            auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(importPort);
+            auto analyticsPort = std::make_shared<BlockingActivityAnalyticsPort>();
+            auto analyticsService =
+                std::make_shared<ssa::application::ActivityAnalyticsService>(analyticsPort);
+            ssa::presentation::MainViewModel model(service, commands, nullptr, nullptr, workflows,
+                                                   nullptr, nullptr, nullptr, nullptr,
+                                                   analyticsService);
+
+            QVERIFY(model.analytics() != nullptr);
+            QSignalSpy invalidatedSpy(model.analytics(),
+                                      &ssa::presentation::ActivityAnalyticsViewModel::invalidated);
+
+            model.actions()->workflows()->rescanIncremental();
+
+            QTRY_COMPARE_WITH_TIMEOUT(importPort->requests().size(), std::size_t{1}, 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(invalidatedSpy.size(), 1, 1000);
+        }
+
+        void global_cancel_stops_active_analytics_query() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            auto analyticsPort = std::make_shared<BlockingActivityAnalyticsPort>(true);
+            auto analyticsService =
+                std::make_shared<ssa::application::ActivityAnalyticsService>(analyticsPort);
+            ssa::presentation::MainViewModel model(service, commands, nullptr, nullptr, nullptr,
+                                                   nullptr, nullptr, nullptr, nullptr,
+                                                   analyticsService);
+            bool sawCancelableState = false;
+            bool sawTerminalState = false;
+            connect(&model, &ssa::presentation::MainViewModel::activityStateChanged, &model, [&] {
+                const bool cancelable = model.canCancelActivity();
+                sawCancelableState = sawCancelableState || cancelable;
+                sawTerminalState = sawTerminalState || (sawCancelableState && !cancelable &&
+                                                        !model.cancelingActivity());
+            });
+            const ssa::domain::AnalyticsRequest request{
+                .metric = ssa::domain::AnalyticsMetric::Executed,
+                .period = {.first = {2026, 1}, .last = {2026, 2}},
+                .grain = ssa::domain::TimeGrain::WholePeriod,
+                .breakdown = ssa::domain::Breakdown::Division,
+                .personRole = ssa::domain::PersonRole::Executor,
+                .divisions = {"DIV"},
+            };
+
+            model.analytics()->loadCustomSeries(request);
+            QTRY_VERIFY_WITH_TIMEOUT(analyticsPort->started(), 1000);
+            QVERIFY(model.canCancelActivity());
+            QTRY_VERIFY_WITH_TIMEOUT(sawCancelableState, 1000);
+
+            model.requestCancelAll();
+
+            QTRY_VERIFY_WITH_TIMEOUT(analyticsPort->stopObserved(), 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(!model.analytics()->loading(), 1000);
+            QVERIFY(!model.canCancelActivity());
+            QTRY_VERIFY_WITH_TIMEOUT(sawTerminalState, 1000);
         }
 
         void import_external_files_uses_workflow_port_and_updates_status() {

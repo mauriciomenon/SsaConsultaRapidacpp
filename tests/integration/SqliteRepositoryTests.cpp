@@ -699,6 +699,7 @@ TEST_CASE_METHOD(SqliteRepositoryFixture,
         INSERT INTO ssa_table VALUES
             ('202500003','APV','','LOC-6','Casa de forca','EQ-F',202501,'2025-01-06','A','A','SEM','SMM','Ana','Bruno','Caio','SAM','SYS','f.xlsx','2025-01-06','A','B',202502,202503,0,0),
             ('202500005','APV','','LOC-7','Casa de forca','EQ-G',202501,'2025-01-07','A','A','SEM','SMM2','Ana','Bruno','Caio','SAM','SYS','g.xlsx','2025-01-07','A','B',202502,202503,0,0),
+            ('202500005','APV','','LOC-7','Casa de forca','EQ-G',202503,'2025-01-07','A','A','SEM','SMM2','Ana','Bruno','Caio','SAM','SYS','g-copy.xlsx','2025-01-07','A','B',202502,202503,0,0),
             ('202500006','APV','','LOC-8','Casa de forca','EQ-H',202501,'2025-01-08','A','A','SEM','SMM2','Ana','Bruno','','SAM','SYS','h.xlsx','2025-01-08','A','B',202502,202503,0,0);
     )SQL");
 
@@ -725,6 +726,16 @@ TEST_CASE_METHOD(SqliteRepositoryFixture,
     });
     REQUIRE(emptyPerson != byDivision.end());
     REQUIRE(emptyPerson->count == 1);
+
+    request.quickSector = "SMM2";
+    request.columnFilters["responsavel_execucao"] = "=Caio";
+    request.advancedFilters.textFilters["descricao_ssa"] = "=A";
+    const auto filtered = repository.executadasReport(request, true);
+    REQUIRE(filtered.size() == 1);
+    CHECK(filtered.front().group == "SMM");
+    CHECK(filtered.front().week == "202503");
+    CHECK(filtered.front().person == "Caio");
+    CHECK(filtered.front().count == 1);
 }
 
 TEST_CASE_METHOD(SqliteRepositoryFixture,

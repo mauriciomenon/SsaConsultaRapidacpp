@@ -47,9 +47,9 @@ qt_policy(SET QTP0004 NEW)
 
 add_library(
   ssa_domain STATIC
-  src/domain/ColumnCatalog.cpp src/domain/ColumnValuePriorityPolicy.cpp
-  src/domain/SsaImportPolicy.cpp src/domain/SsaRelationGraph.cpp
-  src/domain/TextFilterToken.cpp)
+  src/domain/ActivityAnalyticsTypes.cpp src/domain/ColumnCatalog.cpp
+  src/domain/ColumnValuePriorityPolicy.cpp src/domain/SsaImportPolicy.cpp
+  src/domain/SsaRelationGraph.cpp src/domain/TextFilterToken.cpp)
 target_include_directories(ssa_domain PUBLIC src)
 
 add_library(ssa_ports INTERFACE)
@@ -58,6 +58,7 @@ target_link_libraries(ssa_ports INTERFACE ssa_domain)
 
 add_library(
   ssa_query STATIC
+  src/query/ActivityAnalyticsSqlBuilder.cpp
   src/query/SearchParser.cpp
   src/query/AdvancedFilterSqlCompiler.cpp
   src/query/SqlPredicateBuilder.cpp
@@ -74,6 +75,8 @@ target_link_libraries(ssa_core INTERFACE ssa_domain ssa_ports ssa_query)
 
 add_library(
   ssa_application STATIC
+  src/application/ActivityAnalyticsChartModelBuilder.cpp
+  src/application/ActivityAnalyticsService.cpp
   src/application/FilterPresetService.cpp
   src/application/SsaColumnLabelCatalog.cpp
   src/application/SsaBrowseService.cpp
@@ -107,7 +110,10 @@ add_library(
   src/infra/import/SsaSpreadsheetMapper.cpp
   src/infra/import/XlsxPackage.cpp
   src/infra/import/XlsxWorkbookReader.cpp
+  src/infra/sqlite/SqliteActivityAnalyticsInitializer.cpp
   src/infra/sqlite/SqliteConnection.cpp
+  src/infra/sqlite/SqliteActivityAnalyticsProjection.cpp
+  src/infra/sqlite/SqliteSsaAnalyticsPort.cpp
   src/infra/sqlite/SqliteDatabaseValidator.cpp
   src/infra/sqlite/SqliteDerivadasPort.cpp
   src/infra/sqlite/SqliteDerivedCountSummary.cpp
@@ -174,6 +180,7 @@ add_library(
   src/presentation/BrowseRequestCoordinator.cpp
   src/presentation/BrowsePageLifecycleCoordinator.cpp
   src/presentation/BrowseViewModel.cpp
+  src/presentation/ActivityAnalyticsViewModel.cpp
   src/presentation/ColumnFilterViewModel.cpp
   src/presentation/ColumnSettingsModel.cpp
   src/presentation/CurrentWeekViewModel.cpp
@@ -252,6 +259,19 @@ qt_add_qml_module(
   QML_FILES
   app/desktop/qml/Main.qml
   app/desktop/qml/Theme.qml
+  app/desktop/qml/analytics/AnalyticsChart.qml
+  app/desktop/qml/analytics/AnalyticsChartCanvas.qml
+  app/desktop/qml/analytics/AnalyticsChartLegend.qml
+  app/desktop/qml/analytics/AnalyticsChartTable.qml
+  app/desktop/qml/analytics/AnalyticsChartTooltip.qml
+  app/desktop/qml/analytics/AnalyticsChartCard.qml
+  app/desktop/qml/analytics/AnalyticsCustomAnalysis.qml
+  app/desktop/qml/analytics/AnalyticsDashboard.qml
+  app/desktop/qml/analytics/AnalyticsWindow.qml
+  app/desktop/qml/analytics/PercentStackedBarChart.qml
+  app/desktop/qml/analytics/SimpleBarChart.qml
+  app/desktop/qml/analytics/StackedBarChart.qml
+  app/desktop/qml/analytics/TrendLineChart.qml
   app/desktop/qml/components/ActionButton.qml
   app/desktop/qml/components/AboutDialog.qml
   app/desktop/qml/components/AppCheckBox.qml
@@ -343,7 +363,15 @@ endif()
 add_custom_target(
   run_import_normalization_benchmark_30
   COMMAND $<TARGET_FILE:ssa_import_normalization_benchmark> --samples 30 --rows
-          250000
+          250000 --phase warm
+  DEPENDS ssa_import_normalization_benchmark
+  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+  USES_TERMINAL)
+
+add_custom_target(
+  run_import_normalization_benchmark_cold_30
+  COMMAND $<TARGET_FILE:ssa_import_normalization_benchmark> --samples 30 --rows
+          250000 --phase cold
   DEPENDS ssa_import_normalization_benchmark
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
   USES_TERMINAL)
@@ -396,6 +424,10 @@ if(SSA_BUILD_TESTS)
   add_executable(
     ssa_unit_tests
     tests/unit/ApplicationTests.cpp
+    tests/unit/ActivityAnalyticsChartModelBuilderTests.cpp
+    tests/unit/ActivityAnalyticsDomainTests.cpp
+    tests/unit/ActivityAnalyticsServiceTests.cpp
+    tests/unit/ActivityAnalyticsSqlBuilderTests.cpp
     tests/unit/CliControllerTests.cpp
     tests/unit/DomainTests.cpp
     tests/unit/SsaImportPolicyTests.cpp
@@ -440,8 +472,12 @@ if(SSA_BUILD_TESTS)
     ssa_integration_tests
     tests/integration/ExportPortTests.cpp
     tests/integration/DerivadasImportTests.cpp
+    tests/integration/ActivityAnalyticsInitializerTests.cpp
+    tests/integration/ActivityAnalyticsProjectionTests.cpp
     tests/integration/JsonPreferencesStoreTests.cpp
     tests/integration/RotatingLogWriterTests.cpp
+    tests/integration/SqliteReadTransactionTests.cpp
+    tests/integration/SqliteSsaAnalyticsPortTests.cpp
     tests/integration/SpreadsheetImportWorkflowPortTests.cpp
     tests/integration/SsaSpreadsheetHeaderCatalogTests.cpp
     tests/integration/XlsxWorkbookReaderTests.cpp
@@ -471,10 +507,15 @@ if(SSA_BUILD_TESTS)
   set_tests_properties(ssa_prefetch_benchmark_smoke PROPERTIES TIMEOUT 15
                                                                RUN_SERIAL TRUE)
 
-  add_test(NAME ssa_import_normalization_benchmark_smoke
+  add_test(NAME ssa_import_normalization_benchmark_cold_smoke
            COMMAND $<TARGET_FILE:ssa_import_normalization_benchmark> --samples
-                   1 --rows 1000)
-  set_tests_properties(ssa_import_normalization_benchmark_smoke
+                   1 --rows 1000 --phase cold)
+  set_tests_properties(ssa_import_normalization_benchmark_cold_smoke
+                       PROPERTIES TIMEOUT 240 RUN_SERIAL TRUE)
+  add_test(NAME ssa_import_normalization_benchmark_warm_smoke
+           COMMAND $<TARGET_FILE:ssa_import_normalization_benchmark> --samples
+                   1 --rows 1000 --phase warm)
+  set_tests_properties(ssa_import_normalization_benchmark_warm_smoke
                        PROPERTIES TIMEOUT 240 RUN_SERIAL TRUE)
 
   add_executable(ssa_qt_desktop_log_tests tests/smoke/DesktopLogSinkTest.cpp
@@ -551,6 +592,40 @@ if(SSA_BUILD_TESTS)
   set_tests_properties(
     ssa_qml_advanced_popup_tests
     PROPERTIES TIMEOUT 10 RUN_SERIAL TRUE ENVIRONMENT
+               "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Basic")
+
+  add_executable(ssa_qml_activity_analytics_tests
+                 tests/smoke/ActivityAnalyticsQmlTest.cpp)
+  target_link_libraries(
+    ssa_qml_activity_analytics_tests PRIVATE Qt6::Qml Qt6::Quick
+                                             Qt6::QuickControls2 Qt6::Test)
+  add_test(NAME ssa_qml_activity_analytics_tests
+           COMMAND ssa_qml_activity_analytics_tests)
+  set_tests_properties(
+    ssa_qml_activity_analytics_tests
+    PROPERTIES TIMEOUT 15 RUN_SERIAL TRUE ENVIRONMENT
+               "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Basic")
+
+  add_executable(ssa_qt_activity_analytics_view_model_tests
+                 tests/smoke/ActivityAnalyticsViewModelTest.cpp)
+  target_link_libraries(ssa_qt_activity_analytics_view_model_tests
+                        PRIVATE ssa_presentation ssa_query Qt6::Test)
+  add_test(NAME ssa_qt_activity_analytics_view_model_tests
+           COMMAND ssa_qt_activity_analytics_view_model_tests)
+  set_tests_properties(
+    ssa_qt_activity_analytics_view_model_tests
+    PROPERTIES TIMEOUT 15 ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+  add_executable(ssa_qml_activity_analytics_window_tests
+                 tests/smoke/ActivityAnalyticsWindowQmlTest.cpp)
+  target_link_libraries(
+    ssa_qml_activity_analytics_window_tests
+    PRIVATE Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::Test)
+  add_test(NAME ssa_qml_activity_analytics_window_tests
+           COMMAND ssa_qml_activity_analytics_window_tests)
+  set_tests_properties(
+    ssa_qml_activity_analytics_window_tests
+    PROPERTIES TIMEOUT 20 RUN_SERIAL TRUE ENVIRONMENT
                "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Basic")
 
   add_executable(ssa_qml_theme_gallery_tests

@@ -2,6 +2,7 @@
 
 #include "domain/ColumnCatalog.h"
 #include "domain/ColumnValuePriorityPolicy.h"
+#include "query/ActivityAnalyticsSqlBuilder.h"
 #include "query/SqlQueryText.h"
 
 #include <array>
@@ -319,27 +320,31 @@ namespace ssa::query {
     SqlQuery SqlQueryBuilder::buildExecutadasReport(const domain::SsaPageRequest& request,
                                                     const bool byDivision) const {
         const auto where = whereClauseFromRequest(request, parser_, predicateBuilder_);
-        const auto sector = "TRIM(COALESCE(" + quoteColumnIdentifier("setor_executor") + ", ''))";
-        const auto group =
-            byDivision ? "SUBSTR(UPPER(" + sector + "), 1, 3)" : "UPPER(" + sector + ")";
-        const auto week = "TRIM(COALESCE(" + quoteColumnIdentifier("semana_executada") + ", ''))";
-        const auto person = "COALESCE(NULLIF(TRIM(COALESCE(" +
-                            quoteColumnIdentifier("responsavel_execucao") + ", '')), ''), '-')";
-        const auto ssa = "TRIM(COALESCE(" +
-                         quoteColumnIdentifier(std::string{domain::kSsaNumberColumnKey}) + ", ''))";
+        const int first = request.advancedFilters.executionWeekStart.value_or(190001);
+        const int last = request.advancedFilters.executionWeekEnd.value_or(299952);
+        const domain::AnalyticsRequest analyticsRequest{
+            .metric = domain::AnalyticsMetric::Executed,
+            .period = {{first / domain::kYearWeekMultiplier, first % domain::kYearWeekMultiplier},
+                       {last / domain::kYearWeekMultiplier, last % domain::kYearWeekMultiplier}},
+            .grain = domain::TimeGrain::IsoWeek,
+            .breakdown = byDivision ? domain::Breakdown::DivisionPerson
+                                    : domain::Breakdown::DivisionSectorPerson,
+            .personRole = domain::PersonRole::Executor,
+        };
+        const auto analytics =
+            ActivityAnalyticsSqlBuilder{tableName_}.buildSeries(analyticsRequest, where);
+        const std::string group = byDivision ? "\"division\"" : "\"sector\"";
+        const std::string week = "SUBSTR(\"bucket_key\", 1, 4) || SUBSTR(\"bucket_key\", 7, 2)";
+        const std::string person =
+            "CASE WHEN \"person\" = 'Nao atribuido' THEN '-' ELSE \"person\" END";
 
         std::ostringstream sql;
         sql << "SELECT " << group << " AS \"group\", " << week << " AS \"week\", " << person
-            << " AS \"person\", COUNT(DISTINCT " << ssa << ") AS \"count\" FROM "
-            << quoteTableIdentifier(tableName_) << " WHERE " << group << " <> '' AND " << week
-            << " <> '' AND " << ssa << " <> ''";
-        if (!where.sql.empty()) {
-            sql << " AND (" << where.sql << ")";
-        }
-        sql << " GROUP BY " << group << ", " << week << ", " << person << " ORDER BY " << group
+            << " AS \"person\", \"count\" AS \"count\" FROM (" << analytics.sql
+            << ") AS \"analytics_rows\" WHERE " << group << " <> 'Nao atribuido' ORDER BY " << group
             << " COLLATE NOCASE ASC, " << group << " ASC, " << week << " ASC, " << person
             << " COLLATE NOCASE ASC, " << person << " ASC";
-        return {sql.str(), where.bindings};
+        return {sql.str(), analytics.bindings};
     }
 
     SqlRecordQuery SqlQueryBuilder::buildRecordBySsaNumber(const domain::SsaNumber& number) const {

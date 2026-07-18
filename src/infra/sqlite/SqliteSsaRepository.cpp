@@ -74,64 +74,6 @@ namespace ssa::infra::sqlite {
             return domain::SsaRecord{std::move(schema), std::move(values)};
         }
 
-        bool isCanceledSqlResult(const int rc, const std::atomic_bool* busyCanceled) {
-            return rc == SQLITE_INTERRUPT ||
-                   ((rc == SQLITE_BUSY || rc == SQLITE_LOCKED) && busyCanceled != nullptr &&
-                    busyCanceled->load(std::memory_order_relaxed));
-        }
-
-        void executeSql(sqlite3* db, const std::string_view sql,
-                        const std::atomic_bool* busyCanceled) {
-            char* error = nullptr;
-            const int rc = sqlite3_exec(db, std::string{sql}.c_str(), nullptr, nullptr, &error);
-            if (rc != SQLITE_OK) {
-                const std::string message = error == nullptr ? sqlite3_errmsg(db) : error;
-                sqlite3_free(error);
-                if (isCanceledSqlResult(rc, busyCanceled)) {
-                    throw std::system_error(std::make_error_code(std::errc::operation_canceled),
-                                            "sqlite query canceled");
-                }
-                throw ports::OperationError(
-                    "Falha ao acessar o banco de dados",
-                    "sqlite command failed: rc=" + std::to_string(rc) + " extended_rc=" +
-                        std::to_string(sqlite3_extended_errcode(db)) + " message=" + message);
-            }
-            sqlite3_free(error);
-        }
-
-        class ReadTransaction final {
-          public:
-            ReadTransaction(sqlite3* db, std::stop_token stopToken,
-                            const std::atomic_bool* busyCanceled)
-                : db_(db), stopToken_(std::move(stopToken)), busyCanceled_(busyCanceled) {
-                throwIfCanceled(stopToken_);
-                executeSql(db_, "BEGIN", busyCanceled_);
-            }
-
-            ~ReadTransaction() {
-                if (active_) {
-                    char* error = nullptr;
-                    sqlite3_exec(db_, "ROLLBACK", nullptr, nullptr, &error);
-                    sqlite3_free(error);
-                }
-            }
-
-            ReadTransaction(const ReadTransaction&) = delete;
-            ReadTransaction& operator=(const ReadTransaction&) = delete;
-
-            void commit() {
-                throwIfCanceled(stopToken_);
-                executeSql(db_, "COMMIT", busyCanceled_);
-                active_ = false;
-            }
-
-          private:
-            sqlite3* db_;
-            std::stop_token stopToken_;
-            const std::atomic_bool* busyCanceled_;
-            bool active_ = true;
-        };
-
     } // namespace
 
     SqliteSsaRepository::SqliteSsaRepository(std::filesystem::path dbPath)
@@ -217,7 +159,7 @@ namespace ssa::infra::sqlite {
         SqliteBusyHandler busy(sqlite.handle(), stopToken);
         SqliteProgressHandler progress(sqlite.handle(), stopToken);
         const auto queries = queryBuilder_.build(request, usesDerivedCount);
-        ReadTransaction transaction(sqlite.handle(), stopToken, busy.cancellationObserved());
+        SqliteReadTransaction transaction(sqlite.handle(), stopToken, busy.cancellationObserved());
 
         domain::SsaPageResult result;
         result.totalRows =
@@ -316,7 +258,7 @@ namespace ssa::infra::sqlite {
         SqliteConnection sqlite(dbPath_);
         SqliteBusyHandler busy(sqlite.handle(), stopToken);
         SqliteProgressHandler progress(sqlite.handle(), stopToken);
-        ReadTransaction transaction(sqlite.handle(), stopToken, busy.cancellationObserved());
+        SqliteReadTransaction transaction(sqlite.handle(), stopToken, busy.cancellationObserved());
         // pageSize == 0 means unbounded streaming (single query, no LIMIT).
         // pageSize > 0 means paginated streaming: read in chunks so peak memory
         // stays bounded to one page even for large filtered result sets.

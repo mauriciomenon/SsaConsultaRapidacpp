@@ -10,6 +10,7 @@
 #include <limits>
 #include <ranges>
 #include <stdexcept>
+#include <string_view>
 
 TEST_CASE("sql query builder uses bound parameters for search text") {
     ssa::domain::SsaPageRequest request;
@@ -81,12 +82,40 @@ TEST_CASE("sql query builder compiles the executadas report in SQLite") {
 
     const auto query = ssa::query::SqlQueryBuilder{}.buildExecutadasReport(request, true);
 
-    REQUIRE(query.sql.find("COUNT(DISTINCT TRIM(COALESCE(\"numero_ssa\", '')))") !=
-            std::string::npos);
-    REQUIRE(query.sql.find("GROUP BY SUBSTR(UPPER(TRIM(COALESCE(\"setor_executor\", '')))") !=
-            std::string::npos);
+    REQUIRE(query.sql.find("WITH event_rows AS") != std::string::npos);
+    REQUIRE(query.sql.find("COUNT(DISTINCT \"ssa_number\")") != std::string::npos);
+    REQUIRE(query.sql.find("AS \"group\"") != std::string::npos);
+    REQUIRE(query.sql.find("AS \"week\"") != std::string::npos);
+    REQUIRE(query.sql.find("AS \"person\"") != std::string::npos);
     REQUIRE(query.sql.find("SELECT *") == std::string::npos);
-    REQUIRE(query.bindings == std::vector<std::string>{"202503", "202503"});
+    REQUIRE(query.bindings == std::vector<std::string>{"202503", "202503", "202503", "202503"});
+}
+
+TEST_CASE("executadas report forwards the complete compiled SSA filter to analytics") {
+    ssa::domain::SsaPageRequest request;
+    request.searchText = "motor";
+    request.quickSector = "SMM2";
+    request.excludeScaSesSte = true;
+    request.columnFilters["responsavel_execucao"] = "=Caio";
+    request.advancedFilters.textFilters["descricao_ssa"] = "=Inspecao";
+    request.advancedFilters.executionWeekStart = 202503;
+    request.advancedFilters.executionWeekEnd = 202504;
+
+    const auto query = ssa::query::SqlQueryBuilder{}.buildExecutadasReport(request, false);
+
+    REQUIRE(query.sql.find("WITH event_rows AS") != std::string::npos);
+    REQUIRE(query.sql.find("setor_executor") != std::string::npos);
+    REQUIRE(query.sql.find("responsavel_execucao") != std::string::npos);
+    REQUIRE(query.sql.find("descricao_ssa") != std::string::npos);
+    const auto hasBinding = [&query](const std::string_view expected) {
+        return std::ranges::any_of(query.bindings, [expected](const auto& binding) {
+            return binding.find(expected) != std::string::npos;
+        });
+    };
+    REQUIRE(hasBinding("MOTOR"));
+    REQUIRE(hasBinding("SMM2"));
+    REQUIRE(hasBinding("CAIO"));
+    REQUIRE(hasBinding("INSPECAO"));
 }
 
 TEST_CASE("sql query builder rejects distinct values for derived count column") {

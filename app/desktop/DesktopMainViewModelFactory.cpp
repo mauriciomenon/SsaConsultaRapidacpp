@@ -1,5 +1,6 @@
 #include "DesktopMainViewModelFactory.h"
 
+#include "application/ActivityAnalyticsService.h"
 #include "application/SsaBrowseService.h"
 #include "application/SsaWorkflowService.h"
 #include "domain/ColumnCatalog.h"
@@ -8,9 +9,11 @@
 #include "infra/import/SpreadsheetImportWorkflowPort.h"
 #include "infra/preferences/JsonFilterPresetStore.h"
 #include "infra/preferences/JsonUserPreferencesStore.h"
+#include "infra/sqlite/SqliteActivityAnalyticsInitializer.h"
 #include "infra/sqlite/SqliteDatabaseValidator.h"
 #include "infra/sqlite/SqliteDerivadasPort.h"
 #include "infra/sqlite/SqliteMaintenancePort.h"
+#include "infra/sqlite/SqliteSsaAnalyticsPort.h"
 #include "infra/sqlite/SqliteSsaRepository.h"
 #include "platform/DesktopApplicationLauncher.h"
 #include "platform/DesktopExternalCommandPort.h"
@@ -19,8 +22,11 @@
 #include "qt/FilesystemPath.h"
 #include "query/SsaQueryService.h"
 
+#include <QDate>
+#include <QDebug>
 #include <QUrl>
 
+#include <exception>
 #include <filesystem>
 #include <memory>
 #include <vector>
@@ -40,6 +46,21 @@ namespace ssa::app::desktop {
         std::shared_ptr<ssa::ports::ISsaRepository>
         createRepository(const ssa::platform::StartupOptions& options) {
             return std::make_shared<ssa::infra::sqlite::SqliteSsaRepository>(databasePath(options));
+        }
+
+        std::shared_ptr<const ssa::application::ActivityAnalyticsService>
+        createAnalyticsService(const ssa::platform::StartupOptions& options) {
+            const auto dbPath = databasePath(options);
+            const auto observedDate = QDate::currentDate();
+            int observedIsoYear = 0;
+            const int observedIsoWeek = observedDate.weekNumber(&observedIsoYear);
+            static_cast<void>(ssa::infra::sqlite::SqliteActivityAnalyticsInitializer::initialize(
+                dbPath, observedIsoYear * 100 + observedIsoWeek,
+                observedDate.toString(Qt::ISODate).toStdString()));
+            const auto analyticsPort =
+                std::make_shared<ssa::infra::sqlite::SqliteSsaAnalyticsPort>(dbPath);
+            return std::make_shared<ssa::application::ActivityAnalyticsService>(analyticsPort,
+                                                                                analyticsPort);
         }
 
         std::shared_ptr<ssa::application::SsaWorkflowService>
@@ -98,10 +119,18 @@ namespace ssa::app::desktop {
             std::make_shared<ssa::infra::sqlite::SqliteDatabaseValidator>();
         const auto applicationLauncher =
             std::make_shared<ssa::platform::DesktopApplicationLauncher>(options);
+        std::shared_ptr<const ssa::application::ActivityAnalyticsService> analyticsService;
+        try {
+            analyticsService = createAnalyticsService(options);
+        } catch (const std::exception& exception) {
+            qWarning() << "Activity analytics unavailable:" << exception.what();
+        } catch (...) {
+            qWarning() << "Activity analytics unavailable: unknown initialization error";
+        }
 
         return std::make_unique<ssa::presentation::MainViewModel>(
             browseService, commands, preferences, filterPresets, workflows, databaseValidator,
-            applicationLauncher, queryService);
+            applicationLauncher, queryService, nullptr, analyticsService);
     }
 
 } // namespace ssa::app::desktop

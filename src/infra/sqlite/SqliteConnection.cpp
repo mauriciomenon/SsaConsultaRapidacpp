@@ -1,5 +1,6 @@
 #include "infra/sqlite/SqliteConnection.h"
 
+#include "infra/sqlite/SqliteProgressHandler.h"
 #include "ports/OperationError.h"
 #include "qt/FilesystemPath.h"
 
@@ -55,6 +56,24 @@ namespace ssa::infra::sqlite {
             return std::string{operation} + " failed: rc=" + std::to_string(rc) +
                    " extended_rc=" + std::to_string(sqlite3_extended_errcode(db)) +
                    " message=" + sqlite3_errmsg(db);
+        }
+
+        void executeReadTransactionCommand(sqlite3* db, const std::string_view command,
+                                           const std::atomic_bool* busyCancellationObserved) {
+            char* error = nullptr;
+            const int rc = sqlite3_exec(db, std::string{command}.c_str(), nullptr, nullptr, &error);
+            const std::string detail = error == nullptr ? sqlite3_errmsg(db) : error;
+            sqlite3_free(error);
+            if (isCanceledResult(rc, busyCancellationObserved)) {
+                throw std::system_error(std::make_error_code(std::errc::operation_canceled),
+                                        "sqlite read transaction canceled");
+            }
+            if (rc != SQLITE_OK) {
+                throw ports::OperationError(
+                    "Falha ao acessar o banco de dados",
+                    sqliteErrorMessage(db, "sqlite read transaction " + std::string{command}, rc) +
+                        " detail=" + detail);
+            }
         }
 
     } // namespace
@@ -227,6 +246,54 @@ namespace ssa::infra::sqlite {
         if (!hasCurrentRow_) {
             throw std::logic_error("sqlite column access requires current row");
         }
+    }
+
+    SqliteReadTransaction::SqliteReadTransaction(sqlite3* db, std::stop_token stopToken,
+                                                 const std::atomic_bool* busyCancellationObserved)
+        : db_(db), stopToken_(std::move(stopToken)),
+          busyCancellationObserved_(busyCancellationObserved) {
+        if (db_ == nullptr) {
+            throw std::invalid_argument("sqlite read transaction requires a connection");
+        }
+        throwIfCanceled(stopToken_);
+        executeReadTransactionCommand(db_, "BEGIN", busyCancellationObserved_);
+        if (sqlite3_get_autocommit(db_) != 0) {
+            throw ports::OperationError("Falha ao acessar o banco de dados",
+                                        "sqlite read transaction begin left autocommit enabled");
+        }
+        active_ = true;
+    }
+
+    SqliteReadTransaction::~SqliteReadTransaction() {
+        if (!active_) {
+            return;
+        }
+        char* error = nullptr;
+        const int rc = sqlite3_exec(db_, "ROLLBACK", nullptr, nullptr, &error);
+        if (rc != SQLITE_OK) {
+            sqlite3_log(rc, "sqlite read transaction rollback failed: %s",
+                        error == nullptr ? sqlite3_errmsg(db_) : error);
+        } else if (sqlite3_get_autocommit(db_) == 0) {
+            sqlite3_log(SQLITE_ERROR, "sqlite read transaction rollback left transaction active");
+        }
+        sqlite3_free(error);
+    }
+
+    void SqliteReadTransaction::commit() {
+        if (!active_) {
+            throw std::logic_error("sqlite read transaction is not active");
+        }
+        throwIfCanceled(stopToken_);
+        executeReadTransactionCommand(db_, "COMMIT", busyCancellationObserved_);
+        if (sqlite3_get_autocommit(db_) == 0) {
+            throw ports::OperationError("Falha ao acessar o banco de dados",
+                                        "sqlite read transaction commit left transaction active");
+        }
+        active_ = false;
+    }
+
+    bool SqliteReadTransaction::active() const noexcept {
+        return active_;
     }
 
     SqliteWriteTransaction::SqliteWriteTransaction(sqlite3* db,

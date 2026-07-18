@@ -233,6 +233,17 @@ ApplicationWindow {
         }
 
         Menu {
+            title: "Analises"
+
+            MenuItem {
+                objectName: "openAnalyticsMenuItem"
+                text: "Analises de SSA"
+                enabled: root.vm.analytics !== null
+                onTriggered: root.openAnalyticsWindow()
+            }
+        }
+
+        Menu {
             title: "Manutencao"
 
             MenuItem {
@@ -603,6 +614,20 @@ ApplicationWindow {
         }
     }
 
+    Loader {
+        id: analyticsWindowLoader
+        objectName: "analyticsWindowLoader"
+        active: false
+        sourceComponent: AnalyticsWindow {
+            analyticsViewModel: root.vm.analytics
+        }
+        onLoaded: {
+            const window = item as AnalyticsWindow;
+            if (window !== null)
+                window.open();
+        }
+    }
+
     ColumnSelectorPopup {
         id: columnSelectorPopup
         objectName: "columnSelectorPopup"
@@ -651,6 +676,18 @@ ApplicationWindow {
 
     function openSamRefreshDialog() {
         samRefreshDialogLoader.active = true;
+    }
+
+    function openAnalyticsWindow() {
+        if (root.vm.analytics === null)
+            return;
+        if (!analyticsWindowLoader.active) {
+            analyticsWindowLoader.active = true;
+            return;
+        }
+        const window = analyticsWindowLoader.item as AnalyticsWindow;
+        if (window !== null)
+            window.open();
     }
 
     Component {

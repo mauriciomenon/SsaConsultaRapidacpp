@@ -41,6 +41,8 @@ namespace ssa::infra::sqlite {
             write(const importing::ResolvedSsaImportRows& rows, std::size_t fileCount,
                   std::size_t skippedRows);
             void recordConsolidation(const std::vector<importing::ImportConsolidationMove>& moves);
+            [[nodiscard]] importing::SsaImportWriteSummary
+            finishWithAnalytics(int observedIsoYearWeek, std::string observedDate);
             [[nodiscard]] importing::SsaImportWriteSummary finish();
             void rollback();
 

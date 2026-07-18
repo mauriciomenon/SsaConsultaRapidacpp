@@ -5,6 +5,7 @@
 #include "ports/IExecutadasReportPort.h"
 #include "ports/ISsaBrowsePort.h"
 #include "ports/IUserPreferencesStore.h"
+#include "presentation/ActivityAnalyticsViewModel.h"
 #include "presentation/BrowseViewModel.h"
 #include "presentation/ColumnSettingsModel.h"
 #include "presentation/DatabaseSwitchViewModel.h"
@@ -32,6 +33,7 @@ namespace ssa::presentation {
         Q_PROPERTY(ColumnSettingsModel* columns READ columns CONSTANT)
         Q_PROPERTY(UiSettingsViewModel* ui READ ui CONSTANT)
         Q_PROPERTY(DatabaseSwitchViewModel* databaseSwitch READ databaseSwitch CONSTANT)
+        Q_PROPERTY(ActivityAnalyticsViewModel* analytics READ analytics CONSTANT)
         Q_PROPERTY(RecentLogModel* logs READ logs CONSTANT)
         Q_PROPERTY(QObject* columnFlow READ columnFlow CONSTANT)
         Q_PROPERTY(QObject* selectionFlow READ selectionFlow CONSTANT)
@@ -52,7 +54,9 @@ namespace ssa::presentation {
                       std::shared_ptr<ports::IDatabaseValidator> databaseValidator = nullptr,
                       std::shared_ptr<ports::IApplicationLauncher> applicationLauncher = nullptr,
                       std::shared_ptr<ports::IExecutadasReportPort> reportPort = nullptr,
-                      QObject* parent = nullptr);
+                      QObject* parent = nullptr,
+                      std::shared_ptr<const application::ActivityAnalyticsService>
+                          analyticsService = nullptr);
         ~MainViewModel() override;
 
         [[nodiscard]] BrowseViewModel* browse();
@@ -60,6 +64,7 @@ namespace ssa::presentation {
         [[nodiscard]] ColumnSettingsModel* columns();
         [[nodiscard]] UiSettingsViewModel* ui();
         [[nodiscard]] DatabaseSwitchViewModel* databaseSwitch();
+        [[nodiscard]] ActivityAnalyticsViewModel* analytics();
         [[nodiscard]] RecentLogModel* logs();
         [[nodiscard]] QObject* columnFlow();
         [[nodiscard]] QObject* selectionFlow();
@@ -107,6 +112,7 @@ namespace ssa::presentation {
         bool shutdownReady_{false};
         bool forceCloseAvailable_{false};
         bool backgroundCanceling_{false};
+        std::unique_ptr<ActivityAnalyticsViewModel> analytics_;
     };
 
 } // namespace ssa::presentation

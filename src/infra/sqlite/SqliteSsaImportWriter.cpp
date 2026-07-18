@@ -2,7 +2,9 @@
 
 #include "domain/SsaImportPolicy.h"
 #include "domain/SsaTypes.h"
+#include "domain/WhitespaceTrim.h"
 #include "infra/import/CancelableFileCopy.h"
+#include "infra/sqlite/SqliteActivityAnalyticsProjection.h"
 #include "infra/sqlite/SqliteConnection.h"
 #include "infra/sqlite/SqliteDerivedCountSummary.h"
 #include "infra/sqlite/SqliteProgressHandler.h"
@@ -12,6 +14,7 @@
 
 #include <sqlite3.h>
 
+#include <algorithm>
 #include <array>
 #include <charconv>
 #include <memory>
@@ -144,26 +147,191 @@ namespace ssa::infra::sqlite {
             return sql.str();
         }
 
-        std::string ssaNumberIndexName(const std::string& tableName) {
+        std::string legacySsaNumberIndexName(const std::string& tableName) {
             const auto ssaNumberColumn = std::string{domain::kSsaNumberColumnKey};
             return "idx_" + tableName + "_" + ssaNumberColumn;
         }
 
-        std::string createSsaNumberIndexSql(const std::string& tableName) {
+        bool isSsaReferenceColumn(std::string_view key);
+
+        std::string createUniqueSsaNumberIndexSql(const std::string& tableName) {
             const auto ssaNumberColumn = std::string{domain::kSsaNumberColumnKey};
-            return "CREATE INDEX IF NOT EXISTS " +
-                   query::quoteTableIdentifier(ssaNumberIndexName(tableName)) + " ON " +
+            return "CREATE UNIQUE INDEX " +
+                   query::quoteTableIdentifier("ux_" + tableName + "_" + ssaNumberColumn) + " ON " +
                    query::quoteTableIdentifier(tableName) + " (" +
                    query::quoteColumnIdentifier(ssaNumberColumn) + ")";
         }
 
-        std::string createUniqueSsaNumberIndexSql(const std::string& tableName) {
-            const auto ssaNumberColumn = std::string{domain::kSsaNumberColumnKey};
-            return "CREATE UNIQUE INDEX IF NOT EXISTS " +
-                   query::quoteTableIdentifier("ux_" + tableName + "_" + ssaNumberColumn) + " ON " +
+        std::string dirtyCanonicalLedgerIndexName(const std::string& tableName) {
+            return "idx_" + tableName + "_import_dirty_canonical";
+        }
+
+        std::string dirtyCanonicalTerm(const std::string_view columnName, const bool isIdentity) {
+            const auto column = query::quoteColumnIdentifier(std::string{columnName});
+            const auto embeddedNul = "INSTR(" + column + ", CHAR(0)) <> 0";
+            const auto notExactNumber =
+                column + " NOT GLOB '[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]'";
+            if (isIdentity) {
+                return "(" + column + " IS NULL OR TYPEOF(" + column + ") <> 'text' OR " +
+                       embeddedNul + " OR " + notExactNumber + ")";
+            }
+            return "(" + column + " IS NOT NULL AND (TYPEOF(" + column + ") <> 'text' OR " +
+                   embeddedNul + " OR (" + column + " <> '' AND " + notExactNumber + ")))";
+        }
+
+        std::vector<std::string>
+        ssaReferenceColumns(const std::vector<domain::ColumnDef>& columns) {
+            std::vector<std::string> references;
+            for (const auto& column : columns) {
+                if (isSsaReferenceColumn(column.key)) {
+                    references.push_back(column.key);
+                }
+            }
+            std::ranges::sort(references);
+            return references;
+        }
+
+        std::string dirtyCanonicalPredicate(const std::vector<domain::ColumnDef>& columns) {
+            std::string predicate = dirtyCanonicalTerm(domain::kSsaNumberColumnKey, true);
+            for (const auto& reference : ssaReferenceColumns(columns)) {
+                predicate += " OR " + dirtyCanonicalTerm(reference, false);
+            }
+            return predicate;
+        }
+
+        std::string createDirtyCanonicalLedgerSql(const std::string& tableName,
+                                                  const std::string& predicate) {
+            return "CREATE INDEX " +
+                   query::quoteTableIdentifier(dirtyCanonicalLedgerIndexName(tableName)) + " ON " +
                    query::quoteTableIdentifier(tableName) + " (" +
-                   query::quoteColumnIdentifier(ssaNumberColumn) + ") WHERE TRIM(COALESCE(" +
-                   query::quoteColumnIdentifier(ssaNumberColumn) + ", '')) <> ''";
+                   query::quoteColumnIdentifier(std::string{domain::kSsaNumberColumnKey}) +
+                   ") WHERE " + predicate;
+        }
+
+        bool hasExactIndexSql(sqlite3* db, const std::string& tableName,
+                              const std::string& indexName, const std::string& expectedSql,
+                              const std::atomic_bool* busyCancellationObserved) {
+            SqliteStatement statement(
+                db, "SELECT sql FROM sqlite_master WHERE type='index' AND name=? AND tbl_name=?",
+                busyCancellationObserved);
+            statement.bindTextOneBased(1, indexName);
+            statement.bindTextOneBased(2, tableName);
+            return statement.step() && statement.columnText(0) == expectedSql;
+        }
+
+        bool hasNamedIndex(sqlite3* db, const std::string& indexName,
+                           const std::atomic_bool* busyCancellationObserved) {
+            SqliteStatement statement(db,
+                                      "SELECT 1 FROM sqlite_master WHERE type='index' AND name=?",
+                                      busyCancellationObserved);
+            statement.bindTextOneBased(1, indexName);
+            return statement.step();
+        }
+
+        void ensureExactIndex(sqlite3* db, const std::string& tableName,
+                              const std::string& indexName, const std::string& createSql,
+                              const std::atomic_bool* busyCancellationObserved) {
+            if (hasExactIndexSql(db, tableName, indexName, createSql, busyCancellationObserved)) {
+                return;
+            }
+            if (hasNamedIndex(db, indexName, busyCancellationObserved)) {
+                executeSql(db, "DROP INDEX " + query::quoteTableIdentifier(indexName),
+                           busyCancellationObserved);
+            }
+            executeSql(db, createSql, busyCancellationObserved);
+        }
+
+        bool dirtyCanonicalLedgerHasRows(sqlite3* db, const std::string& tableName,
+                                         const std::string& predicate,
+                                         const std::atomic_bool* busyCancellationObserved) {
+            const auto indexName = dirtyCanonicalLedgerIndexName(tableName);
+            const auto sql = "SELECT 1 FROM " + query::quoteTableIdentifier(tableName) +
+                             " INDEXED BY " + query::quoteTableIdentifier(indexName) + " WHERE " +
+                             predicate + " LIMIT 1";
+            SqliteStatement statement(db, sql, busyCancellationObserved);
+            return statement.step();
+        }
+
+        std::vector<std::string> legacyDirtyCanonicalIndexNames(const std::string& tableName) {
+            std::vector<std::string> columns{std::string{domain::kSsaNumberColumnKey}};
+            for (const auto& column : domain::ColumnCatalog::all()) {
+                if (isSsaReferenceColumn(column.key)) {
+                    columns.push_back(column.key);
+                }
+            }
+            std::ranges::sort(columns);
+            columns.erase(std::unique(columns.begin(), columns.end()), columns.end());
+            std::vector<std::string> names;
+            names.reserve(columns.size());
+            for (const auto& column : columns) {
+                names.push_back("idx_" + tableName + "_import_dirty_" + column);
+            }
+            return names;
+        }
+
+        void dropLegacyDirtyCanonicalIndexes(sqlite3* db, const std::string& tableName,
+                                             const std::atomic_bool* busyCancellationObserved) {
+            for (const auto& indexName : legacyDirtyCanonicalIndexNames(tableName)) {
+                if (hasNamedIndex(db, indexName, busyCancellationObserved)) {
+                    executeSql(db, "DROP INDEX " + query::quoteTableIdentifier(indexName),
+                               busyCancellationObserved);
+                }
+            }
+        }
+
+        void dropLegacySsaNumberIndex(sqlite3* db, const std::string& tableName,
+                                      const std::atomic_bool* busyCancellationObserved) {
+            const auto indexName = legacySsaNumberIndexName(tableName);
+            if (hasNamedIndex(db, indexName, busyCancellationObserved)) {
+                executeSql(db, "DROP INDEX " + query::quoteTableIdentifier(indexName),
+                           busyCancellationObserved);
+            }
+        }
+
+        void ensureDirtyCanonicalLedger(sqlite3* db, const std::string& tableName,
+                                        const std::vector<domain::ColumnDef>& columns,
+                                        const std::atomic_bool* busyCancellationObserved) {
+            const auto predicate = dirtyCanonicalPredicate(columns);
+            const auto indexName = dirtyCanonicalLedgerIndexName(tableName);
+            ensureExactIndex(db, tableName, indexName,
+                             createDirtyCanonicalLedgerSql(tableName, predicate),
+                             busyCancellationObserved);
+        }
+
+        bool normalizeExistingSsaNumbersIfNeeded(sqlite3* db, const std::string& tableName,
+                                                 const std::vector<domain::ColumnDef>& columns,
+                                                 const std::atomic_bool* busyCancellationObserved) {
+            const auto numberColumn = std::string{domain::kSsaNumberColumnKey};
+            const auto uniqueIndexName = "ux_" + tableName + "_" + numberColumn;
+            const auto uniqueIndexSql = createUniqueSsaNumberIndexSql(tableName);
+            const bool hasTrustedUniqueIndex = hasExactIndexSql(
+                db, tableName, uniqueIndexName, uniqueIndexSql, busyCancellationObserved);
+            if (!hasTrustedUniqueIndex &&
+                hasNamedIndex(db, uniqueIndexName, busyCancellationObserved)) {
+                executeSql(db, "DROP INDEX " + query::quoteTableIdentifier(uniqueIndexName),
+                           busyCancellationObserved);
+            }
+            if (!hasTrustedUniqueIndex) {
+                dropLegacySsaNumberIndex(db, tableName, busyCancellationObserved);
+                const auto ledgerIndexName = dirtyCanonicalLedgerIndexName(tableName);
+                if (hasNamedIndex(db, ledgerIndexName, busyCancellationObserved)) {
+                    executeSql(db, "DROP INDEX " + query::quoteTableIdentifier(ledgerIndexName),
+                               busyCancellationObserved);
+                }
+                dropLegacyDirtyCanonicalIndexes(db, tableName, busyCancellationObserved);
+                return true;
+            }
+
+            const auto predicate = dirtyCanonicalPredicate(columns);
+            const auto ledgerIndexName = dirtyCanonicalLedgerIndexName(tableName);
+            const auto ledgerSql = createDirtyCanonicalLedgerSql(tableName, predicate);
+            if (!hasExactIndexSql(db, tableName, ledgerIndexName, ledgerSql,
+                                  busyCancellationObserved)) {
+                dropLegacyDirtyCanonicalIndexes(db, tableName, busyCancellationObserved);
+                ensureExactIndex(db, tableName, ledgerIndexName, ledgerSql,
+                                 busyCancellationObserved);
+            }
+            return dirtyCanonicalLedgerHasRows(db, tableName, predicate, busyCancellationObserved);
         }
 
         // Columns used by interactive filters/sorts/distinct lookups. Indexing them
@@ -351,13 +519,13 @@ namespace ssa::infra::sqlite {
             const auto numberColumn =
                 query::quoteColumnIdentifier(std::string{domain::kSsaNumberColumnKey});
             std::vector<std::string> referenceColumns;
-            std::string selectSql = "SELECT rowid, COALESCE(" + numberColumn + ", '')";
+            std::string selectSql = "SELECT rowid, " + numberColumn;
             for (const auto& column : columns) {
                 if (!isSsaReferenceColumn(column.key)) {
                     continue;
                 }
                 referenceColumns.push_back(column.key);
-                selectSql += ", COALESCE(" + query::quoteColumnIdentifier(column.key) + ", '')";
+                selectSql += ", " + query::quoteColumnIdentifier(column.key);
             }
             selectSql += " FROM " + query::quoteTableIdentifier(tableName);
             executeSql(db,
@@ -375,9 +543,7 @@ namespace ssa::infra::sqlite {
                     .append(quoted)
                     .append(" = CASE WHEN ")
                     .append(quoted)
-                    .append(" IS NOT NULL AND TRIM(")
-                    .append(quoted)
-                    .append(") <> '' THEN ? ELSE ")
+                    .append(" IS NOT NULL THEN ? ELSE ")
                     .append(quoted)
                     .append(" END");
             }
@@ -388,6 +554,7 @@ namespace ssa::infra::sqlite {
             while (select.step()) {
                 throwIfCanceled(stopToken);
                 const auto rowId = select.columnInt64(0);
+                const int numberStorageType = sqlite3_column_type(select.handle(), 1);
                 const auto rawNumber = select.columnText(1);
                 const auto normalizedNumber = domain::SsaImportPolicy::normalizeNumber(rawNumber);
                 if (normalizedNumber.empty()) {
@@ -404,18 +571,27 @@ namespace ssa::infra::sqlite {
                 std::vector<std::string> normalizedReferences;
                 rawReferences.reserve(referenceColumns.size());
                 normalizedReferences.reserve(referenceColumns.size());
+                bool requiresStorageNormalization = numberStorageType != SQLITE_TEXT;
                 for (std::size_t index = 0; index < referenceColumns.size(); ++index) {
-                    auto raw = select.columnText(static_cast<int>(index + 2));
-                    auto normalized =
-                        raw.empty() ? std::string{} : domain::SsaImportPolicy::normalizeNumber(raw);
-                    if (!raw.empty() && normalized.empty()) {
+                    const auto columnIndex = static_cast<int>(index + 2);
+                    const int storageType = sqlite3_column_type(select.handle(), columnIndex);
+                    auto raw = select.columnText(columnIndex);
+                    const auto trimmed = domain::trimWhitespace(raw);
+                    auto normalized = trimmed.empty()
+                                          ? std::string{}
+                                          : domain::SsaImportPolicy::normalizeNumber(raw);
+                    if (!trimmed.empty() && normalized.empty()) {
                         throw ports::OperationError("Falha ao validar referencias SSA existentes",
                                                     "invalid SSA reference in existing database");
                     }
+                    requiresStorageNormalization =
+                        requiresStorageNormalization ||
+                        (storageType != SQLITE_NULL && storageType != SQLITE_TEXT);
                     rawReferences.push_back(std::move(raw));
                     normalizedReferences.push_back(std::move(normalized));
                 }
-                if (rawNumber == normalizedNumber && rawReferences == normalizedReferences) {
+                if (!requiresStorageNormalization && rawNumber == normalizedNumber &&
+                    rawReferences == normalizedReferences) {
                     continue;
                 }
                 int bindIndex = 1;
@@ -474,19 +650,42 @@ namespace ssa::infra::sqlite {
                            busy.cancellationObserved());
                 ensureDerivedCountSummary(db, this->tableName, columns,
                                           busy.cancellationObserved());
+                bool normalizedExistingRows = false;
                 if (replaceAll) {
+                    dropLegacySsaNumberIndex(db, this->tableName, busy.cancellationObserved());
                     executeSql(db, "DELETE FROM " + query::quoteTableIdentifier(this->tableName),
                                busy.cancellationObserved());
                 } else {
-                    const auto normalizedRows = normalizeExistingSsaNumbers(
-                        db, this->tableName, columns, this->stopToken, busy.cancellationObserved());
-                    summary.rowsWritten += normalizedRows;
-                    summary.rowsUpdated += normalizedRows;
+                    if (normalizeExistingSsaNumbersIfNeeded(db, this->tableName, columns,
+                                                            busy.cancellationObserved())) {
+                        const auto normalizedRows = normalizeExistingSsaNumbers(
+                            db, this->tableName, columns, this->stopToken,
+                            busy.cancellationObserved());
+                        summary.rowsWritten += normalizedRows;
+                        summary.rowsUpdated += normalizedRows;
+                        normalizedExistingRows = true;
+                    }
                 }
-                executeSql(db, createSsaNumberIndexSql(this->tableName),
-                           busy.cancellationObserved());
-                executeSql(db, createUniqueSsaNumberIndexSql(this->tableName),
-                           busy.cancellationObserved());
+                const auto uniqueIndexName =
+                    "ux_" + this->tableName + "_" + std::string{domain::kSsaNumberColumnKey};
+                ensureExactIndex(db, this->tableName, uniqueIndexName,
+                                 createUniqueSsaNumberIndexSql(this->tableName),
+                                 busy.cancellationObserved());
+                if (replaceAll || normalizedExistingRows) {
+                    if (replaceAll) {
+                        dropLegacyDirtyCanonicalIndexes(db, this->tableName,
+                                                        busy.cancellationObserved());
+                    }
+                    ensureDirtyCanonicalLedger(db, this->tableName, columns,
+                                               busy.cancellationObserved());
+                }
+                const auto dirtyPredicate = dirtyCanonicalPredicate(columns);
+                if (dirtyCanonicalLedgerHasRows(db, this->tableName, dirtyPredicate,
+                                                busy.cancellationObserved())) {
+                    throw ports::OperationError(
+                        "Falha ao validar identificadores SSA existentes",
+                        "dirty canonical ledger still contains rows after normalization");
+                }
                 for (const auto& indexSql : createFilterIndexesSql(this->tableName, columns)) {
                     executeSql(db, indexSql, busy.cancellationObserved());
                 }
@@ -623,6 +822,24 @@ namespace ssa::infra::sqlite {
             return summary;
         }
 
+        [[nodiscard]] importing::SsaImportWriteSummary
+        finishWithAnalytics(const int observedIsoYearWeek, std::string observedDate) {
+            if (state != State::Active) {
+                throw std::logic_error("sqlite import session is closed");
+            }
+            const auto fingerprint = SqliteActivityAnalyticsProjection::canonicalSourceFingerprint(
+                connection.handle(), tableName, stopToken, busy.cancellationObserved());
+            const ActivityAnalyticsCaptureContext context{
+                .observedIsoYearWeek = observedIsoYearWeek,
+                .observedDate = std::move(observedDate),
+                .sourceRevision = fingerprint,
+                .sourceFingerprint = fingerprint,
+            };
+            static_cast<void>(SqliteActivityAnalyticsProjection::capture(
+                connection.handle(), tableName, context, stopToken, busy.cancellationObserved()));
+            return finish();
+        }
+
         void recordConsolidation(const std::vector<importing::ImportConsolidationMove>& moves) {
             if (state != State::Active) {
                 throw std::logic_error("sqlite import session is closed");
@@ -715,6 +932,12 @@ namespace ssa::infra::sqlite {
 
     importing::SsaImportWriteSummary SqliteSsaImportWriter::WriteSession::finish() {
         return storage_->finish();
+    }
+
+    importing::SsaImportWriteSummary
+    SqliteSsaImportWriter::WriteSession::finishWithAnalytics(const int observedIsoYearWeek,
+                                                             std::string observedDate) {
+        return storage_->finishWithAnalytics(observedIsoYearWeek, std::move(observedDate));
     }
 
     void SqliteSsaImportWriter::WriteSession::rollback() {

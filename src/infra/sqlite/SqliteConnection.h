@@ -5,6 +5,7 @@
 #include <atomic>
 #include <chrono>
 #include <filesystem>
+#include <stop_token>
 #include <string>
 
 namespace ssa::infra::sqlite {
@@ -64,6 +65,27 @@ namespace ssa::infra::sqlite {
         sqlite3_stmt* statement_{nullptr};
         const std::atomic_bool* busyCancellationObserved_{nullptr};
         bool hasCurrentRow_ = false;
+    };
+
+    class SqliteReadTransaction final {
+      public:
+        explicit SqliteReadTransaction(sqlite3* db, std::stop_token stopToken = {},
+                                       const std::atomic_bool* busyCancellationObserved = nullptr);
+        ~SqliteReadTransaction();
+
+        SqliteReadTransaction(const SqliteReadTransaction&) = delete;
+        SqliteReadTransaction& operator=(const SqliteReadTransaction&) = delete;
+        SqliteReadTransaction(SqliteReadTransaction&&) = delete;
+        SqliteReadTransaction& operator=(SqliteReadTransaction&&) = delete;
+
+        void commit();
+        [[nodiscard]] bool active() const noexcept;
+
+      private:
+        sqlite3* db_{nullptr};
+        std::stop_token stopToken_;
+        const std::atomic_bool* busyCancellationObserved_{nullptr};
+        bool active_{false};
     };
 
     class SqliteWriteTransaction final {

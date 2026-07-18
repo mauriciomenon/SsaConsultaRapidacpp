@@ -10,15 +10,16 @@
 
 namespace ssa::presentation {
 
-    MainViewModel::MainViewModel(std::shared_ptr<ports::ISsaBrowsePort> browsePort,
-                                 std::shared_ptr<ports::IExternalCommandPort> commandPort,
-                                 std::shared_ptr<ports::IUserPreferencesStore> preferencesStore,
-                                 std::shared_ptr<ports::IFilterPresetStore> filterPresetStore,
-                                 std::shared_ptr<application::SsaWorkflowService> workflowService,
-                                 std::shared_ptr<ports::IDatabaseValidator> databaseValidator,
-                                 std::shared_ptr<ports::IApplicationLauncher> applicationLauncher,
-                                 std::shared_ptr<ports::IExecutadasReportPort> reportPort,
-                                 QObject* parent)
+    MainViewModel::MainViewModel(
+        std::shared_ptr<ports::ISsaBrowsePort> browsePort,
+        std::shared_ptr<ports::IExternalCommandPort> commandPort,
+        std::shared_ptr<ports::IUserPreferencesStore> preferencesStore,
+        std::shared_ptr<ports::IFilterPresetStore> filterPresetStore,
+        std::shared_ptr<application::SsaWorkflowService> workflowService,
+        std::shared_ptr<ports::IDatabaseValidator> databaseValidator,
+        std::shared_ptr<ports::IApplicationLauncher> applicationLauncher,
+        std::shared_ptr<ports::IExecutadasReportPort> reportPort, QObject* parent,
+        std::shared_ptr<const application::ActivityAnalyticsService> analyticsService)
         : QObject(parent), browse_(std::move(browsePort), std::move(reportPort), this),
           columns_(this), ui_(this), preferences_(std::move(preferencesStore), this),
           databaseSwitch_(std::move(databaseValidator), std::move(applicationLauncher), this),
@@ -37,6 +38,14 @@ namespace ssa::presentation {
                                                                 std::move(columnWidths));
               }),
           selectionFlow_(browse_, *actions_.commands()), requestFlow_(browse_) {
+        if (analyticsService) {
+            analytics_ =
+                std::make_unique<ActivityAnalyticsViewModel>(std::move(analyticsService), this);
+            connect(analytics_.get(), &ActivityAnalyticsViewModel::activeOperationsChanged, this,
+                    &MainViewModel::handleActivityStateChanged);
+            connect(analytics_.get(), &ActivityAnalyticsViewModel::stateChanged, this,
+                    &MainViewModel::handleActivityStateChanged);
+        }
         shutdownPoll_.setInterval(25);
         connect(&shutdownPoll_, &QTimer::timeout, this, &MainViewModel::checkShutdownReady);
         forceCloseTimer_.setSingleShot(true);
@@ -104,6 +113,9 @@ namespace ssa::presentation {
         connect(actions_.workflows(), &WorkflowCommandViewModel::lastResultChanged, &browse_,
                 [this] {
                     if (actions_.workflows()->lastSucceeded()) {
+                        if (analytics_) {
+                            analytics_->invalidateAfterImport();
+                        }
                         pendingWorkflowRefreshMessage_ = actions_.workflows()->successMessage();
                         pendingWorkflowRefreshWarning_ = actions_.workflows()->lastWarning()
                                                              ? actions_.workflows()->lastMessage()
@@ -142,6 +154,10 @@ namespace ssa::presentation {
 
     DatabaseSwitchViewModel* MainViewModel::databaseSwitch() {
         return &databaseSwitch_;
+    }
+
+    ActivityAnalyticsViewModel* MainViewModel::analytics() {
+        return analytics_.get();
     }
 
     RecentLogModel* MainViewModel::logs() {
@@ -198,13 +214,14 @@ namespace ssa::presentation {
         return queryCancelable || (browse_.backgroundWorkRunning() && !backgroundCanceling_) ||
                actions_.workflows()->canCancel() || actions_.exports()->canCancel() ||
                databaseSwitch_.canCancel() || preferences_.canCancel() ||
-               preferencesFlow_.canCancel();
+               preferencesFlow_.canCancel() || (analytics_ && analytics_->canCancel());
     }
 
     bool MainViewModel::cancelingActivity() {
         return backgroundCanceling_ || actions_.workflows()->canceling() ||
                actions_.exports()->canceling() || databaseSwitch_.canceling() ||
                preferences_.canceling() || preferencesFlow_.canceling() ||
+               (analytics_ && analytics_->canceling()) ||
                (browse_.status()->loading() &&
                 browse_.status()->message() == QStringLiteral("Cancelando..."));
     }
@@ -216,6 +233,9 @@ namespace ssa::presentation {
         actions_.workflows()->cancel();
         actions_.exports()->cancel();
         databaseSwitch_.cancel();
+        if (analytics_) {
+            analytics_->cancel();
+        }
         preferencesFlow_.cancel();
         preferences_.cancel();
         if (hadActivity) {
@@ -260,7 +280,8 @@ namespace ssa::presentation {
         return browse_.status()->loading() || actions_.workflows()->running() ||
                actions_.exports()->running() || databaseSwitch_.running() ||
                actions_.commands()->running() || preferences_.running() ||
-               preferencesFlow_.running() || browse_.backgroundWorkRunning();
+               preferencesFlow_.running() || browse_.backgroundWorkRunning() ||
+               (analytics_ && analytics_->hasActiveOperations());
     }
 
     void MainViewModel::handleActivityStateChanged() {

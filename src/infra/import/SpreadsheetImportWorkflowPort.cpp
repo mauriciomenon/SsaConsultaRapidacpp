@@ -1,5 +1,6 @@
 #include "infra/import/SpreadsheetImportWorkflowPort.h"
 
+#include "domain/SsaTypes.h"
 #include "infra/import/SsaSpreadsheetMapper.h"
 #include "infra/import/XlsxWorkbookReader.h"
 #include "infra/sqlite/SqliteConnection.h"
@@ -7,6 +8,7 @@
 #include "ports/OperationError.h"
 #include "qt/FilesystemPath.h"
 
+#include <QDate>
 #include <QFile>
 #include <QLockFile>
 #include <QSaveFile>
@@ -1224,7 +1226,12 @@ namespace ssa::infra::importing {
                 journalMoves.insert(journalMoves.end(), entry.moves.begin(), entry.moves.end());
             }
             writeSession->recordConsolidation(journalMoves);
-            const auto writeSummary = writeSession->finish();
+            int observedIsoYear = 0;
+            const auto observedDate = QDate::currentDate();
+            const int observedIsoWeek = observedDate.weekNumber(&observedIsoYear);
+            const auto writeSummary = writeSession->finishWithAnalytics(
+                observedIsoYear * domain::kYearWeekMultiplier + observedIsoWeek,
+                observedDate.toString(Qt::ISODate).toStdString());
             totalSummary.rowsWritten = writeSummary.rowsWritten;
             totalSummary.rowsInserted = writeSummary.rowsInserted;
             totalSummary.rowsUpdated = writeSummary.rowsUpdated;

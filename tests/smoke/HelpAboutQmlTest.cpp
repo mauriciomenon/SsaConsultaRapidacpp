@@ -2,6 +2,8 @@
 
 #include "DesktopSmokeObjectNames.h"
 
+#include "application/ActivityAnalyticsService.h"
+#include "ports/IActivityAnalyticsPort.h"
 #include "presentation/MainViewModel.h"
 #include "query/SsaQueryService.h"
 
@@ -24,6 +26,8 @@
 #include <QtQml/qqml.h>
 
 #include <memory>
+#include <stop_token>
+#include <vector>
 
 namespace {
 
@@ -129,6 +133,24 @@ namespace {
         return true;
     }
 
+    class PassiveAnalyticsPort final : public ssa::ports::IActivityAnalyticsPort {
+      public:
+        ssa::domain::AnalyticsSeriesResult series(const ssa::domain::AnalyticsRequest&,
+                                                  std::stop_token) const override {
+            return {};
+        }
+
+        ssa::domain::AnalyticsDimensionValues dimensionValues(const ssa::domain::AnalyticsRequest&,
+                                                              std::stop_token) const override {
+            return {};
+        }
+
+        std::vector<ssa::domain::AnalyticsMetricAvailability>
+        availability(std::stop_token) const override {
+            return {};
+        }
+    };
+
     class HelpAboutQmlTest final : public QObject {
         Q_OBJECT
 
@@ -198,6 +220,91 @@ namespace {
             QVERIFY(!mainQml.isEmpty());
             QVERIFY(mainQml.contains(QStringLiteral("text: \"Cancelar consulta\"")));
             QVERIFY(mainQml.contains(QStringLiteral("onTriggered: root.vm.requestCancelAll()")));
+        }
+
+        void desktop_factory_composes_activity_analytics() {
+            const QString factory =
+                readSource(QStringLiteral("app/desktop/DesktopMainViewModelFactory.cpp"));
+            QVERIFY(!factory.isEmpty());
+            QVERIFY(
+                factory.contains(QStringLiteral("SqliteActivityAnalyticsInitializer::initialize")));
+            QVERIFY(factory.contains(QStringLiteral("SqliteSsaAnalyticsPort")));
+            QVERIFY(factory.contains(QStringLiteral("ActivityAnalyticsService")));
+            QVERIFY(factory.simplified().contains(QStringLiteral("analyticsPort, analyticsPort")));
+            QVERIFY(factory.contains(QStringLiteral("analyticsService")));
+        }
+
+        void analytics_menu_is_disabled_without_service() {
+            auto repository = std::make_shared<ssa::tests::presentation_smoke::FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<ssa::tests::presentation_smoke::FakeCommands>();
+            ssa::presentation::MainViewModel viewModel(service, commands);
+            SourceQmlUrlInterceptor sourceInterceptor;
+            QQmlEngine engine;
+            engine.addUrlInterceptor(&sourceInterceptor);
+            engine.addImportPath(QStringLiteral(SSA_BUILD_DIR));
+            QQmlComponent component(&engine, QUrl::fromLocalFile(repositoryRoot().filePath(
+                                                 QStringLiteral("app/desktop/qml/Main.qml"))));
+            QVariantMap initialProperties;
+            initialProperties.insert(QStringLiteral("mainViewModel"),
+                                     QVariant::fromValue<QObject*>(&viewModel));
+            const auto mainWindow =
+                std::unique_ptr<QObject>(component.createWithInitialProperties(initialProperties));
+            QVERIFY2(mainWindow != nullptr, qPrintable(component.errorString()));
+
+            auto* openAnalytics =
+                mainWindow->findChild<QObject*>(QStringLiteral("openAnalyticsMenuItem"));
+            auto* analyticsLoader =
+                mainWindow->findChild<QObject*>(QStringLiteral("analyticsWindowLoader"));
+            QVERIFY(openAnalytics != nullptr);
+            QVERIFY(analyticsLoader != nullptr);
+            QVERIFY(!openAnalytics->property("enabled").toBool());
+            QVERIFY(!analyticsLoader->property("active").toBool());
+            QVERIFY(QMetaObject::invokeMethod(mainWindow.get(), "openAnalyticsWindow"));
+            QVERIFY(!analyticsLoader->property("active").toBool());
+        }
+
+        void analytics_window_reopens_the_same_instance() {
+            auto repository = std::make_shared<ssa::tests::presentation_smoke::FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<ssa::tests::presentation_smoke::FakeCommands>();
+            auto analyticsService = std::make_shared<ssa::application::ActivityAnalyticsService>(
+                std::make_shared<PassiveAnalyticsPort>());
+            ssa::presentation::MainViewModel viewModel(service, commands, nullptr, nullptr, nullptr,
+                                                       nullptr, nullptr, nullptr, nullptr,
+                                                       analyticsService);
+            SourceQmlUrlInterceptor sourceInterceptor;
+            QQmlEngine engine;
+            engine.addUrlInterceptor(&sourceInterceptor);
+            engine.addImportPath(QStringLiteral(SSA_BUILD_DIR));
+            QQmlComponent component(&engine, QUrl::fromLocalFile(repositoryRoot().filePath(
+                                                 QStringLiteral("app/desktop/qml/Main.qml"))));
+            QVariantMap initialProperties;
+            initialProperties.insert(QStringLiteral("mainViewModel"),
+                                     QVariant::fromValue<QObject*>(&viewModel));
+            const auto mainWindow =
+                std::unique_ptr<QObject>(component.createWithInitialProperties(initialProperties));
+            QVERIFY2(mainWindow != nullptr, qPrintable(component.errorString()));
+
+            auto* openAnalytics =
+                mainWindow->findChild<QObject*>(QStringLiteral("openAnalyticsMenuItem"));
+            auto* analyticsLoader =
+                mainWindow->findChild<QObject*>(QStringLiteral("analyticsWindowLoader"));
+            QVERIFY(openAnalytics != nullptr);
+            QVERIFY(analyticsLoader != nullptr);
+            QVERIFY(openAnalytics->property("enabled").toBool());
+            QVERIFY(QMetaObject::invokeMethod(mainWindow.get(), "openAnalyticsWindow"));
+            auto* firstWindow = waitForVisibleWindow(QStringLiteral("Analises de SSA"));
+            QVERIFY(firstWindow != nullptr);
+            QCOMPARE(analyticsLoader->property("item").value<QObject*>(), firstWindow);
+
+            firstWindow->close();
+            QTRY_VERIFY_WITH_TIMEOUT(!firstWindow->isVisible(), 1000);
+            QVERIFY(QMetaObject::invokeMethod(mainWindow.get(), "openAnalyticsWindow"));
+            auto* reopenedWindow = waitForVisibleWindow(QStringLiteral("Analises de SSA"));
+            QVERIFY(reopenedWindow != nullptr);
+            QCOMPARE(reopenedWindow, firstWindow);
+            reopenedWindow->close();
         }
 
         void sam_refresh_dialog_renders_offscreen_screenshot() {

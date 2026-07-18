@@ -42,6 +42,7 @@
 #include <memory>
 #include <stop_token>
 #include <string>
+#include <string_view>
 #include <system_error>
 #include <thread>
 #include <vector>
@@ -214,15 +215,81 @@ xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><s
         return value;
     }
 
-    std::string scalarText(sqlite3* db, const char* sql) {
+    std::string scalarText(sqlite3* db, const char* sql, const int column = 0) {
         sqlite3_stmt* statement = nullptr;
         REQUIRE(sqlite3_prepare_v2(db, sql, -1, &statement, nullptr) == SQLITE_OK);
         REQUIRE(sqlite3_step(statement) == SQLITE_ROW);
-        const auto* text = reinterpret_cast<const char*>(sqlite3_column_text(statement, 0));
+        const auto* text = reinterpret_cast<const char*>(sqlite3_column_text(statement, column));
         std::string value = text == nullptr ? std::string{} : std::string{text};
         REQUIRE(sqlite3_finalize(statement) == SQLITE_OK);
         return value;
     }
+
+    void executeBoundBytes(sqlite3* db, const char* sql, const std::string& value,
+                           const bool bindAsBlob) {
+        sqlite3_stmt* statement = nullptr;
+        REQUIRE(sqlite3_prepare_v2(db, sql, -1, &statement, nullptr) == SQLITE_OK);
+        const auto size = static_cast<int>(value.size());
+        const int bindResult =
+            bindAsBlob ? sqlite3_bind_blob(statement, 1, value.data(), size, SQLITE_TRANSIENT)
+                       : sqlite3_bind_text(statement, 1, value.data(), size, SQLITE_TRANSIENT);
+        REQUIRE(bindResult == SQLITE_OK);
+        REQUIRE(sqlite3_step(statement) == SQLITE_DONE);
+        REQUIRE(sqlite3_finalize(statement) == SQLITE_OK);
+    }
+
+    std::string queryPlanText(sqlite3* db, const char* sql) {
+        sqlite3_stmt* statement = nullptr;
+        REQUIRE(sqlite3_prepare_v2(db, sql, -1, &statement, nullptr) == SQLITE_OK);
+        std::string plan;
+        int result = SQLITE_OK;
+        while ((result = sqlite3_step(statement)) == SQLITE_ROW) {
+            const auto* detail = reinterpret_cast<const char*>(sqlite3_column_text(statement, 3));
+            if (detail != nullptr) {
+                plan.append(detail).push_back('\n');
+            }
+        }
+        REQUIRE(result == SQLITE_DONE);
+        REQUIRE(sqlite3_finalize(statement) == SQLITE_OK);
+        return plan;
+    }
+
+    constexpr std::string_view kFullUniqueSsaIndexSql =
+        "CREATE UNIQUE INDEX \"ux_ssa_table_numero_ssa\" ON \"ssa_table\" (\"numero_ssa\")";
+
+    constexpr std::string_view kFullDirtyCanonicalLedgerSql =
+        "CREATE INDEX \"idx_ssa_table_import_dirty_canonical\" ON \"ssa_table\" "
+        "(\"numero_ssa\") WHERE (\"numero_ssa\" IS NULL OR TYPEOF(\"numero_ssa\") <> 'text' "
+        "OR INSTR(\"numero_ssa\", CHAR(0)) <> 0 OR \"numero_ssa\" NOT GLOB "
+        "'[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]') OR (\"derivada_de\" IS NOT "
+        "NULL AND (TYPEOF(\"derivada_de\") <> 'text' OR INSTR(\"derivada_de\", CHAR(0)) <> 0 "
+        "OR (\"derivada_de\" <> '' AND \"derivada_de\" NOT GLOB "
+        "'[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]'))) OR "
+        "(\"numero_ssa_relacionada_1\" IS NOT NULL AND (TYPEOF(\"numero_ssa_relacionada_1\") "
+        "<> 'text' OR INSTR(\"numero_ssa_relacionada_1\", CHAR(0)) <> 0 OR "
+        "(\"numero_ssa_relacionada_1\" <> '' AND \"numero_ssa_relacionada_1\" NOT GLOB "
+        "'[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]'))) OR "
+        "(\"numero_ssa_relacionada_2\" IS NOT NULL AND (TYPEOF(\"numero_ssa_relacionada_2\") "
+        "<> 'text' OR INSTR(\"numero_ssa_relacionada_2\", CHAR(0)) <> 0 OR "
+        "(\"numero_ssa_relacionada_2\" <> '' AND \"numero_ssa_relacionada_2\" NOT GLOB "
+        "'[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]'))) OR "
+        "(\"numero_ssa_relacionada_3\" IS NOT NULL AND (TYPEOF(\"numero_ssa_relacionada_3\") "
+        "<> 'text' OR INSTR(\"numero_ssa_relacionada_3\", CHAR(0)) <> 0 OR "
+        "(\"numero_ssa_relacionada_3\" <> '' AND \"numero_ssa_relacionada_3\" NOT GLOB "
+        "'[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]')))";
+
+    constexpr std::string_view kCustomDirtyCanonicalLedgerSql =
+        "CREATE INDEX \"idx_ssa_table_import_dirty_canonical\" ON \"ssa_table\" "
+        "(\"numero_ssa\") WHERE (\"numero_ssa\" IS NULL OR TYPEOF(\"numero_ssa\") <> 'text' "
+        "OR INSTR(\"numero_ssa\", CHAR(0)) <> 0 OR \"numero_ssa\" NOT GLOB "
+        "'[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]') OR (\"derivada_de\" IS NOT "
+        "NULL AND (TYPEOF(\"derivada_de\") <> 'text' OR INSTR(\"derivada_de\", CHAR(0)) <> 0 "
+        "OR (\"derivada_de\" <> '' AND \"derivada_de\" NOT GLOB "
+        "'[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]'))) OR "
+        "(\"numero_ssa_relacionada_2\" IS NOT NULL AND (TYPEOF(\"numero_ssa_relacionada_2\") "
+        "<> 'text' OR INSTR(\"numero_ssa_relacionada_2\", CHAR(0)) <> 0 OR "
+        "(\"numero_ssa_relacionada_2\" <> '' AND \"numero_ssa_relacionada_2\" NOT GLOB "
+        "'[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]')))";
 
     std::string readFile(const std::filesystem::path& path) {
         std::ifstream input(path, std::ios::binary);
@@ -1695,7 +1762,16 @@ TEST_CASE("sqlite import survives process death before and after commit") {
         REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600211'") ==
                 (commitBeforeKill ? 1 : 0));
         REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM sqlite_schema WHERE type='index' AND "
-                              "name='idx_ssa_table_numero_ssa'") == (commitBeforeKill ? 1 : 0));
+                              "name='ux_ssa_table_numero_ssa'") == (commitBeforeKill ? 1 : 0));
+        REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM sqlite_schema WHERE type='index' AND "
+                              "name='idx_ssa_table_import_dirty_canonical'") ==
+                (commitBeforeKill ? 1 : 0));
+        REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM sqlite_schema WHERE type='index' AND "
+                              "name='idx_ssa_table_numero_ssa'") == 0);
+        if (commitBeforeKill) {
+            REQUIRE(scalarText(db, "SELECT sql FROM sqlite_master WHERE "
+                                   "name='ux_ssa_table_numero_ssa'") == kFullUniqueSsaIndexSql);
+        }
         REQUIRE(sqlite3_close(db) == SQLITE_OK);
 
         const std::vector<ssa::domain::ColumnDef> columns{{.key = "numero_ssa"},
@@ -2176,6 +2252,12 @@ TEST_CASE("spreadsheet import workflow stages xlsx and writes sqlite rows") {
     REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 1);
     REQUIRE(scalarText(db, "SELECT setor_executor FROM ssa_table WHERE numero_ssa='202600001'") ==
             "MEL1");
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM activity_analytics_snapshot") == 6);
+    const auto analyticsRevision =
+        scalarText(db, "SELECT active_source_revision FROM activity_analytics_meta");
+    REQUIRE_FALSE(analyticsRevision.empty());
+    REQUIRE(scalarText(db, "SELECT source_revision FROM activity_analytics_snapshot "
+                           "WHERE metric='pending'") == analyticsRevision);
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
@@ -3057,8 +3139,6 @@ TEST_CASE("sqlite import rejects semantic SSA collisions before mutation") {
     REQUIRE(writer.write(legacy, 1, 0, false).rowsWritten == 2);
     sqlite3* db = nullptr;
     REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
-    REQUIRE(sqlite3_exec(db, "DROP INDEX ux_ssa_table_numero_ssa", nullptr, nullptr, nullptr) ==
-            SQLITE_OK);
     REQUIRE(sqlite3_exec(db,
                          "UPDATE ssa_table SET numero_ssa='2026-00512' WHERE "
                          "descricao_ssa='First'",
@@ -3076,7 +3156,18 @@ TEST_CASE("sqlite import rejects semantic SSA collisions before mutation") {
 
     REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
     REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 2);
+    REQUIRE(scalarText(db, "SELECT numero_ssa FROM ssa_table WHERE descricao_ssa='First'") ==
+            "2026-00512");
+    REQUIRE(scalarText(db, "SELECT numero_ssa FROM ssa_table WHERE descricao_ssa='Second'") ==
+            "202600512.0");
     REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600513'") == 0);
+    REQUIRE(scalarText(db, "SELECT sql FROM sqlite_master WHERE "
+                           "name='ux_ssa_table_numero_ssa'") == kFullUniqueSsaIndexSql);
+    REQUIRE(scalarText(db, "SELECT sql FROM sqlite_master WHERE "
+                           "name='idx_ssa_table_import_dirty_canonical'") ==
+            kFullDirtyCanonicalLedgerSql);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM sqlite_master WHERE "
+                          "name='idx_ssa_table_numero_ssa'") == 0);
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
@@ -3123,6 +3214,584 @@ TEST_CASE("sqlite import normalizes unique legacy SSA values transactionally") {
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
+TEST_CASE("sqlite import keeps a canonical second session on the dirty-index fast path") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto dbPath = std::filesystem::path{tempDir.path().toStdString()} / "ssas.db";
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(sqliteWriterAccess(), dbPath,
+                                                           importColumns());
+    ssa::infra::importing::ResolvedSsaImportRows seed;
+    seed.rows.push_back({{"numero_ssa", "202600610"}, {"descricao_ssa", "Canonical"}});
+    REQUIRE(writer.write(seed, 1, 0, false).rowsWritten == 1);
+
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarText(db, "SELECT sql FROM sqlite_master WHERE "
+                           "name='ux_ssa_table_numero_ssa'") == kFullUniqueSsaIndexSql);
+    REQUIRE(scalarInt(db, "SELECT partial FROM pragma_index_list('ssa_table') WHERE "
+                          "name='ux_ssa_table_numero_ssa'") == 0);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM sqlite_master WHERE "
+                          "name='idx_ssa_table_numero_ssa'") == 0);
+    REQUIRE(scalarText(db, "SELECT sql FROM sqlite_master WHERE "
+                           "name='idx_ssa_table_import_dirty_canonical'") ==
+            kFullDirtyCanonicalLedgerSql);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM sqlite_master WHERE name IN ("
+                          "'idx_ssa_table_import_dirty_numero_ssa', "
+                          "'idx_ssa_table_import_dirty_derivada_de', "
+                          "'idx_ssa_table_import_dirty_numero_ssa_relacionada_1', "
+                          "'idx_ssa_table_import_dirty_numero_ssa_relacionada_2', "
+                          "'idx_ssa_table_import_dirty_numero_ssa_relacionada_3')") == 0);
+    const auto ledgerSql = std::string{kFullDirtyCanonicalLedgerSql};
+    const auto predicate = ledgerSql.substr(ledgerSql.find(" WHERE ") + 7);
+    const auto explainSql = "EXPLAIN QUERY PLAN SELECT 1 FROM ssa_table INDEXED BY "
+                            "idx_ssa_table_import_dirty_canonical WHERE " +
+                            predicate + " LIMIT 1";
+    REQUIRE(scalarText(db, explainSql.c_str(), 3)
+                .find("USING INDEX idx_ssa_table_import_dirty_canonical") != std::string::npos);
+    const auto equalityPlan =
+        queryPlanText(db, "EXPLAIN QUERY PLAN SELECT descricao_ssa FROM ssa_table "
+                          "WHERE numero_ssa='202600610'");
+    const auto updatePlan =
+        queryPlanText(db, "EXPLAIN QUERY PLAN UPDATE ssa_table SET descricao_ssa='Plan only' "
+                          "WHERE numero_ssa='202600610'");
+    const auto orderPlan = queryPlanText(db, "EXPLAIN QUERY PLAN SELECT numero_ssa FROM ssa_table "
+                                             "ORDER BY numero_ssa");
+    const auto realLookupPlan =
+        queryPlanText(db, "EXPLAIN QUERY PLAN SELECT * FROM ssa_table "
+                          "WHERE numero_ssa='202600610' ORDER BY id LIMIT 1");
+    REQUIRE(equalityPlan.find("ux_ssa_table_numero_ssa") != std::string::npos);
+    REQUIRE(updatePlan.find("ux_ssa_table_numero_ssa") != std::string::npos);
+    REQUIRE(orderPlan.find("ux_ssa_table_numero_ssa") != std::string::npos);
+    REQUIRE(orderPlan.find("TEMP B-TREE") == std::string::npos);
+    REQUIRE(realLookupPlan.find("ux_ssa_table_numero_ssa") != std::string::npos);
+    REQUIRE(realLookupPlan.find("TEMP B-TREE") == std::string::npos);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+
+    ssa::infra::importing::ResolvedSsaImportRows incoming;
+    incoming.rows.push_back({{"numero_ssa", "202600611"}, {"descricao_ssa", "Next"}});
+    const auto summary = writer.write(incoming, 1, 0, false);
+
+    REQUIRE(summary.rowsWritten == 1);
+    REQUIRE(summary.rowsUpdated == 0);
+}
+
+TEST_CASE("sqlite import coalesces identity indexes for a custom table name") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto dbPath = std::filesystem::path{tempDir.path().toStdString()} / "ssas.db";
+    const std::vector<ssa::domain::ColumnDef> columns{{.key = "numero_ssa"},
+                                                      {.key = "descricao_ssa"}};
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(sqliteWriterAccess(), dbPath, columns,
+                                                           "ssa_custom");
+    ssa::infra::importing::ResolvedSsaImportRows seed;
+    seed.rows.push_back({{"numero_ssa", "202600642"}, {"descricao_ssa", "Custom"}});
+    REQUIRE(writer.write(seed, 1, 0, false).rowsWritten == 1);
+
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarText(db, "SELECT sql FROM sqlite_master WHERE "
+                           "name='ux_ssa_custom_numero_ssa'") ==
+            "CREATE UNIQUE INDEX \"ux_ssa_custom_numero_ssa\" ON \"ssa_custom\" "
+            "(\"numero_ssa\")");
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM sqlite_master WHERE "
+                          "name='idx_ssa_custom_numero_ssa'") == 0);
+    const auto lookupPlan = queryPlanText(db, "EXPLAIN QUERY PLAN SELECT * FROM ssa_custom "
+                                              "WHERE numero_ssa='202600642'");
+    REQUIRE(lookupPlan.find("ux_ssa_custom_numero_ssa") != std::string::npos);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("sqlite import upgrades partial unique and redundant legacy indexes") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto dbPath = std::filesystem::path{tempDir.path().toStdString()} / "ssas.db";
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(sqliteWriterAccess(), dbPath,
+                                                           importColumns());
+    ssa::infra::importing::ResolvedSsaImportRows seed;
+    seed.rows.push_back({{"numero_ssa", "202600640"}, {"descricao_ssa", "Canonical"}});
+    REQUIRE(writer.write(seed, 1, 0, false).rowsWritten == 1);
+
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(db, "DROP INDEX idx_ssa_table_import_dirty_canonical", nullptr, nullptr,
+                         nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(db, "DROP INDEX ux_ssa_table_numero_ssa", nullptr, nullptr, nullptr) ==
+            SQLITE_OK);
+    REQUIRE(sqlite3_exec(db,
+                         "CREATE UNIQUE INDEX ux_ssa_table_numero_ssa ON "
+                         "ssa_table(numero_ssa) WHERE TRIM(COALESCE(numero_ssa, '')) <> ''",
+                         nullptr, nullptr, nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(db, "CREATE INDEX idx_ssa_table_numero_ssa ON ssa_table(numero_ssa)",
+                         nullptr, nullptr, nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(db,
+                         "CREATE INDEX idx_ssa_table_import_dirty_numero_ssa ON "
+                         "ssa_table(numero_ssa) WHERE numero_ssa IS NULL",
+                         nullptr, nullptr, nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(db,
+                         "CREATE INDEX idx_ssa_table_import_dirty_derivada_de ON "
+                         "ssa_table(derivada_de) WHERE derivada_de <> ''",
+                         nullptr, nullptr, nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+
+    ssa::infra::importing::ResolvedSsaImportRows incoming;
+    incoming.rows.push_back({{"numero_ssa", "202600641"}, {"descricao_ssa", "Incoming"}});
+    const auto summary = writer.write(incoming, 1, 0, false);
+
+    REQUIRE(summary.rowsUpdated == 0);
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarText(db, "SELECT sql FROM sqlite_master WHERE "
+                           "name='ux_ssa_table_numero_ssa'") == kFullUniqueSsaIndexSql);
+    REQUIRE(scalarInt(db, "SELECT partial FROM pragma_index_list('ssa_table') WHERE "
+                          "name='ux_ssa_table_numero_ssa'") == 0);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM sqlite_master WHERE "
+                          "name='idx_ssa_table_numero_ssa'") == 0);
+    REQUIRE(scalarText(db, "SELECT sql FROM sqlite_master WHERE "
+                           "name='idx_ssa_table_import_dirty_canonical'") ==
+            kFullDirtyCanonicalLedgerSql);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM sqlite_master WHERE name IN ("
+                          "'idx_ssa_table_import_dirty_numero_ssa', "
+                          "'idx_ssa_table_import_dirty_derivada_de')") == 0);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("sqlite import detects external noncanonical identities through dirty indexes") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto dbPath = std::filesystem::path{tempDir.path().toStdString()} / "ssas.db";
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(sqliteWriterAccess(), dbPath,
+                                                           importColumns());
+    ssa::infra::importing::ResolvedSsaImportRows seed;
+    seed.rows.push_back({{"numero_ssa", "202600612"}, {"descricao_ssa", "Legacy"}});
+    REQUIRE(writer.write(seed, 1, 0, false).rowsWritten == 1);
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(db,
+                         "UPDATE ssa_table SET numero_ssa='2026-00612.0' WHERE "
+                         "numero_ssa='202600612'",
+                         nullptr, nullptr, nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+
+    ssa::infra::importing::ResolvedSsaImportRows incoming;
+    incoming.rows.push_back({{"numero_ssa", "202600613"}, {"descricao_ssa", "Incoming"}});
+    const auto summary = writer.write(incoming, 1, 0, false);
+
+    REQUIRE(summary.rowsUpdated == 1);
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600612'") == 1);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("sqlite import converts an external nine-digit BLOB identity to TEXT") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto dbPath = std::filesystem::path{tempDir.path().toStdString()} / "ssas.db";
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(sqliteWriterAccess(), dbPath,
+                                                           importColumns());
+    ssa::infra::importing::ResolvedSsaImportRows seed;
+    seed.rows.push_back({{"numero_ssa", "202600660"}, {"descricao_ssa", "External blob"}});
+    REQUIRE(writer.write(seed, 1, 0, false).rowsWritten == 1);
+
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    const std::string externalIdentity{"202600661"};
+    executeBoundBytes(db, "UPDATE ssa_table SET numero_ssa=? WHERE descricao_ssa='External blob'",
+                      externalIdentity, true);
+    REQUIRE(scalarText(db, "SELECT typeof(numero_ssa) FROM ssa_table WHERE "
+                           "descricao_ssa='External blob'") == "blob");
+    REQUIRE(scalarInt(db, "SELECT length(CAST(numero_ssa AS BLOB)) FROM ssa_table WHERE "
+                          "descricao_ssa='External blob'") == 9);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+
+    ssa::infra::importing::ResolvedSsaImportRows incoming;
+    incoming.rows.push_back({{"numero_ssa", "202600662"}, {"descricao_ssa", "Incoming"}});
+    const auto summary = writer.write(incoming, 1, 0, false);
+
+    CHECK(summary.rowsUpdated == 1);
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    CHECK(scalarText(db, "SELECT typeof(numero_ssa) FROM ssa_table WHERE "
+                         "descricao_ssa='External blob'") == "text");
+    CHECK(scalarText(db, "SELECT numero_ssa FROM ssa_table WHERE "
+                         "descricao_ssa='External blob'") == externalIdentity);
+    CHECK(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600662'") == 1);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("sqlite import rejects an external BLOB identity duplicating TEXT") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto dbPath = std::filesystem::path{tempDir.path().toStdString()} / "ssas.db";
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(sqliteWriterAccess(), dbPath,
+                                                           importColumns());
+    ssa::infra::importing::ResolvedSsaImportRows seed;
+    seed.rows = {{{"numero_ssa", "202600670"}, {"descricao_ssa", "Text identity"}},
+                 {{"numero_ssa", "202600671"}, {"descricao_ssa", "Blob identity"}}};
+    REQUIRE(writer.write(seed, 1, 0, false).rowsWritten == 2);
+
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    const std::string duplicateIdentity{"202600670"};
+    executeBoundBytes(db, "UPDATE ssa_table SET numero_ssa=? WHERE descricao_ssa='Blob identity'",
+                      duplicateIdentity, true);
+    REQUIRE(scalarText(db, "SELECT typeof(numero_ssa) FROM ssa_table WHERE "
+                           "descricao_ssa='Text identity'") == "text");
+    REQUIRE(scalarText(db, "SELECT typeof(numero_ssa) FROM ssa_table WHERE "
+                           "descricao_ssa='Blob identity'") == "blob");
+    REQUIRE(scalarText(db, "SELECT hex(numero_ssa) FROM ssa_table WHERE "
+                           "descricao_ssa='Text identity'") ==
+            scalarText(db, "SELECT hex(numero_ssa) FROM ssa_table WHERE "
+                           "descricao_ssa='Blob identity'"));
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+
+    ssa::infra::importing::ResolvedSsaImportRows incoming;
+    incoming.rows.push_back({{"numero_ssa", "202600672"}, {"descricao_ssa", "Must not enter"}});
+    CHECK_THROWS(writer.write(incoming, 1, 0, false));
+
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    CHECK(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600672'") == 0);
+    CHECK(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE typeof(numero_ssa)='text' AND "
+                        "hex(numero_ssa)=hex('202600670')") == 1);
+    CHECK(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE typeof(numero_ssa)='blob' AND "
+                        "hex(numero_ssa)=hex('202600670')") == 1);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("sqlite import fails closed for embedded-NUL identities and references") {
+    struct EmbeddedNulCase {
+        bool identity;
+        bool blob;
+    };
+    const EmbeddedNulCase testCases[] = {
+        {.identity = true, .blob = false},
+        {.identity = true, .blob = true},
+        {.identity = false, .blob = false},
+        {.identity = false, .blob = true},
+    };
+
+    for (const auto testCase : testCases) {
+        DYNAMIC_SECTION((testCase.identity ? "identity" : "reference")
+                        << " stored as " << (testCase.blob ? "BLOB" : "TEXT")) {
+            QTemporaryDir tempDir;
+            REQUIRE(tempDir.isValid());
+
+            const auto dbPath = std::filesystem::path{tempDir.path().toStdString()} / "ssas.db";
+            const ssa::infra::sqlite::SqliteSsaImportWriter writer(sqliteWriterAccess(), dbPath,
+                                                                   importColumns());
+            ssa::infra::importing::ResolvedSsaImportRows seed;
+            if (testCase.identity) {
+                seed.rows.push_back({{"numero_ssa", "202600681"}, {"descricao_ssa", "Target"}});
+            } else {
+                seed.rows = {{{"numero_ssa", "202600680"}, {"descricao_ssa", "Parent"}},
+                             {{"numero_ssa", "202600681"},
+                              {"descricao_ssa", "Target"},
+                              {"derivada_de", "202600680"}}};
+            }
+            REQUIRE(writer.write(seed, 1, 0, false).rowsWritten == seed.rows.size());
+
+            const auto column = testCase.identity ? "numero_ssa" : "derivada_de";
+            const auto selector =
+                testCase.identity ? "descricao_ssa='Target'" : "numero_ssa='202600681'";
+            const auto updateSql =
+                "UPDATE ssa_table SET " + std::string{column} + "=? WHERE " + selector;
+            const auto typeSql =
+                "SELECT typeof(" + std::string{column} + ") FROM ssa_table WHERE " + selector;
+            const auto byteLengthSql = "SELECT length(CAST(" + std::string{column} +
+                                       " AS BLOB)) FROM ssa_table WHERE " + selector;
+            const auto storageLengthSql =
+                "SELECT length(" + std::string{column} + ") FROM ssa_table WHERE " + selector;
+            const auto hexSql =
+                "SELECT hex(" + std::string{column} + ") FROM ssa_table WHERE " + selector;
+            std::string invalidValue{"202600680"};
+            invalidValue.push_back('\0');
+            invalidValue.append("suffix");
+
+            sqlite3* db = nullptr;
+            REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+            executeBoundBytes(db, updateSql.c_str(), invalidValue, testCase.blob);
+            const std::string expectedType = testCase.blob ? "blob" : "text";
+            REQUIRE(scalarText(db, typeSql.c_str()) == expectedType);
+            REQUIRE(scalarInt(db, byteLengthSql.c_str()) == static_cast<int>(invalidValue.size()));
+            REQUIRE(scalarInt(db, storageLengthSql.c_str()) ==
+                    (testCase.blob ? static_cast<int>(invalidValue.size()) : 9));
+            const auto rawHex = scalarText(db, hexSql.c_str());
+            REQUIRE_FALSE(rawHex.empty());
+            REQUIRE(sqlite3_close(db) == SQLITE_OK);
+
+            ssa::infra::importing::ResolvedSsaImportRows incoming;
+            incoming.rows.push_back(
+                {{"numero_ssa", "202600682"}, {"descricao_ssa", "Must not enter"}});
+            CHECK_THROWS(writer.write(incoming, 1, 0, false));
+
+            REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+            CHECK(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600682'") ==
+                  0);
+            CHECK(scalarText(db, typeSql.c_str()) == expectedType);
+            CHECK(scalarInt(db, byteLengthSql.c_str()) == static_cast<int>(invalidValue.size()));
+            CHECK(scalarText(db, hexSql.c_str()) == rawHex);
+            REQUIRE(sqlite3_close(db) == SQLITE_OK);
+        }
+    }
+}
+
+TEST_CASE("sqlite import fails closed for external null and empty identities") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto dbPath = std::filesystem::path{tempDir.path().toStdString()} / "ssas.db";
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(sqliteWriterAccess(), dbPath,
+                                                           importColumns());
+    ssa::infra::importing::ResolvedSsaImportRows seed;
+    seed.rows.push_back({{"numero_ssa", "202600650"}, {"descricao_ssa", "Existing"}});
+    REQUIRE(writer.write(seed, 1, 0, false).rowsWritten == 1);
+
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(db, "UPDATE ssa_table SET numero_ssa=NULL", nullptr, nullptr, nullptr) ==
+            SQLITE_OK);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+
+    ssa::infra::importing::ResolvedSsaImportRows incoming;
+    incoming.rows.push_back({{"numero_ssa", "202600651"}, {"descricao_ssa", "Must not enter"}});
+    REQUIRE_THROWS(writer.write(incoming, 1, 0, false));
+
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa IS NULL") == 1);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600651'") == 0);
+    REQUIRE(sqlite3_exec(db, "UPDATE ssa_table SET numero_ssa='' WHERE numero_ssa IS NULL", nullptr,
+                         nullptr, nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+
+    REQUIRE_THROWS(writer.write(incoming, 1, 0, false));
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa=''") == 1);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600651'") == 0);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("sqlite import detects external noncanonical references through dirty indexes") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto dbPath = std::filesystem::path{tempDir.path().toStdString()} / "ssas.db";
+    const auto allColumns = importColumns();
+    std::vector<ssa::domain::ColumnDef> customColumns;
+    for (const std::string_view key :
+         {"numero_ssa_relacionada_2", "derivada_de", "descricao_ssa", "numero_ssa"}) {
+        for (const auto& column : allColumns) {
+            if (column.key == key) {
+                customColumns.push_back(column);
+                break;
+            }
+        }
+    }
+    REQUIRE(customColumns.size() == 4);
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(sqliteWriterAccess(), dbPath,
+                                                           std::move(customColumns));
+    ssa::infra::importing::ResolvedSsaImportRows seed;
+    seed.rows = {{{"numero_ssa", "202600614"}, {"descricao_ssa", "Parent"}},
+                 {{"numero_ssa", "202600615"},
+                  {"descricao_ssa", "Child"},
+                  {"derivada_de", "202600614"},
+                  {"numero_ssa_relacionada_2", "202600614"}}};
+    REQUIRE(writer.write(seed, 1, 0, false).rowsWritten == 2);
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(db,
+                         "UPDATE ssa_table SET numero_ssa='2026-00614.0', derivada_de='   ' "
+                         "WHERE numero_ssa='202600614'",
+                         nullptr, nullptr, nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+
+    ssa::infra::importing::ResolvedSsaImportRows incoming;
+    incoming.rows.push_back({{"numero_ssa", "202600616"}, {"descricao_ssa", "Incoming"}});
+    const auto summary = writer.write(incoming, 1, 0, false);
+
+    REQUIRE(summary.rowsUpdated == 1);
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarText(db, "SELECT numero_ssa FROM ssa_table WHERE descricao_ssa='Parent'") ==
+            "202600614");
+    REQUIRE(scalarText(db, "SELECT derivada_de FROM ssa_table WHERE descricao_ssa='Parent'") == "");
+    REQUIRE(scalarText(db, "SELECT sql FROM sqlite_master WHERE "
+                           "name='idx_ssa_table_import_dirty_canonical'") ==
+            kCustomDirtyCanonicalLedgerSql);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM sqlite_master WHERE "
+                          "name LIKE 'idx_ssa_table_import_dirty_%' AND "
+                          "name <> 'idx_ssa_table_import_dirty_canonical'") == 0);
+    REQUIRE(sqlite3_exec(db,
+                         "UPDATE ssa_table SET derivada_de=' 202600614 ' WHERE "
+                         "numero_ssa='202600615'",
+                         nullptr, nullptr, nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+
+    incoming.rows.front()["numero_ssa"] = "202600617";
+    const auto wrappedSummary = writer.write(incoming, 1, 0, false);
+
+    REQUIRE(wrappedSummary.rowsUpdated == 1);
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarText(db, "SELECT derivada_de FROM ssa_table WHERE numero_ssa='202600615'") ==
+            "202600614");
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("sqlite import normalizes an isolated whitespace-only reference") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto dbPath = std::filesystem::path{tempDir.path().toStdString()} / "ssas.db";
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(sqliteWriterAccess(), dbPath,
+                                                           importColumns());
+    ssa::infra::importing::ResolvedSsaImportRows seed;
+    seed.rows = {
+        {{"numero_ssa", "202600630"}, {"descricao_ssa", "Parent"}},
+        {{"numero_ssa", "202600631"}, {"descricao_ssa", "Child"}, {"derivada_de", "202600630"}}};
+    REQUIRE(writer.write(seed, 1, 0, false).rowsWritten == 2);
+
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(db,
+                         "UPDATE ssa_table SET derivada_de='   ' WHERE "
+                         "numero_ssa='202600631'",
+                         nullptr, nullptr, nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+
+    ssa::infra::importing::ResolvedSsaImportRows incoming;
+    incoming.rows.push_back({{"numero_ssa", "202600632"}, {"descricao_ssa", "Incoming"}});
+    const auto summary = writer.write(incoming, 1, 0, false);
+
+    REQUIRE(summary.rowsUpdated == 1);
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarText(db, "SELECT derivada_de FROM ssa_table WHERE numero_ssa='202600631'") == "");
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("sqlite import rejects a non-digit nine-character external reference") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto dbPath = std::filesystem::path{tempDir.path().toStdString()} / "ssas.db";
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(sqliteWriterAccess(), dbPath,
+                                                           importColumns());
+    ssa::infra::importing::ResolvedSsaImportRows seed;
+    seed.rows = {
+        {{"numero_ssa", "202600633"}, {"descricao_ssa", "Parent"}},
+        {{"numero_ssa", "202600634"}, {"descricao_ssa", "Child"}, {"derivada_de", "202600633"}}};
+    REQUIRE(writer.write(seed, 1, 0, false).rowsWritten == 2);
+
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(db,
+                         "UPDATE ssa_table SET derivada_de='20260063X' WHERE "
+                         "numero_ssa='202600634'",
+                         nullptr, nullptr, nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+
+    ssa::infra::importing::ResolvedSsaImportRows incoming;
+    incoming.rows.push_back({{"numero_ssa", "202600635"}, {"descricao_ssa", "Must not enter"}});
+    REQUIRE_THROWS(writer.write(incoming, 1, 0, false));
+
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarText(db, "SELECT derivada_de FROM ssa_table WHERE numero_ssa='202600634'") ==
+            "20260063X");
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600635'") == 0);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("sqlite import replaces an adulterated dirty ledger before trusting it") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto dbPath = std::filesystem::path{tempDir.path().toStdString()} / "ssas.db";
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(sqliteWriterAccess(), dbPath,
+                                                           importColumns());
+    ssa::infra::importing::ResolvedSsaImportRows seed;
+    seed.rows = {
+        {{"numero_ssa", "202600617"}, {"descricao_ssa", "Parent"}},
+        {{"numero_ssa", "202600618"}, {"descricao_ssa", "Child"}, {"derivada_de", "202600617"}}};
+    REQUIRE(writer.write(seed, 1, 0, false).rowsWritten == 2);
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(db, "DROP INDEX idx_ssa_table_import_dirty_canonical", nullptr, nullptr,
+                         nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(db,
+                         "CREATE INDEX idx_ssa_table_import_dirty_canonical "
+                         "ON ssa_table(descricao_ssa)",
+                         nullptr, nullptr, nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(db,
+                         "UPDATE ssa_table SET derivada_de='2026-00617.0' WHERE "
+                         "numero_ssa='202600618'",
+                         nullptr, nullptr, nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+
+    ssa::infra::importing::ResolvedSsaImportRows incoming;
+    incoming.rows.push_back({{"numero_ssa", "202600619"}, {"descricao_ssa", "Incoming"}});
+    const auto summary = writer.write(incoming, 1, 0, false);
+
+    REQUIRE(summary.rowsUpdated == 1);
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarText(db, "SELECT sql FROM sqlite_master WHERE "
+                           "name='idx_ssa_table_import_dirty_canonical'") ==
+            kFullDirtyCanonicalLedgerSql);
+    REQUIRE(scalarText(db, "SELECT derivada_de FROM ssa_table WHERE numero_ssa='202600618'") ==
+            "202600617");
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("sqlite import normalizes before replacing an incorrect unique index") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto dbPath = std::filesystem::path{tempDir.path().toStdString()} / "ssas.db";
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(sqliteWriterAccess(), dbPath,
+                                                           importColumns());
+    ssa::infra::importing::ResolvedSsaImportRows seed;
+    seed.rows = {{{"numero_ssa", "202600619"}, {"descricao_ssa", "First"}},
+                 {{"numero_ssa", "202600620"}, {"descricao_ssa", "Second"}}};
+    REQUIRE(writer.write(seed, 1, 0, false).rowsWritten == 2);
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(db, "DROP INDEX ux_ssa_table_numero_ssa", nullptr, nullptr, nullptr) ==
+            SQLITE_OK);
+    REQUIRE(sqlite3_exec(db,
+                         "CREATE UNIQUE INDEX ux_ssa_table_numero_ssa "
+                         "ON ssa_table(descricao_ssa)",
+                         nullptr, nullptr, nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(db, "CREATE INDEX idx_ssa_table_numero_ssa ON ssa_table(numero_ssa)",
+                         nullptr, nullptr, nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(db,
+                         "CREATE INDEX idx_ssa_table_import_dirty_derivada_de ON "
+                         "ssa_table(derivada_de) WHERE derivada_de <> ''",
+                         nullptr, nullptr, nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(db,
+                         "UPDATE ssa_table SET numero_ssa='202600619' WHERE "
+                         "numero_ssa='202600620'",
+                         nullptr, nullptr, nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+
+    ssa::infra::importing::ResolvedSsaImportRows incoming;
+    incoming.rows.push_back({{"numero_ssa", "202600621"}, {"descricao_ssa", "Must not enter"}});
+    REQUIRE_THROWS(writer.write(incoming, 1, 0, false));
+
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600619'") == 2);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600621'") == 0);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM sqlite_master WHERE "
+                          "name='idx_ssa_table_import_dirty_derivada_de'") == 1);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM sqlite_master WHERE "
+                          "name='idx_ssa_table_numero_ssa'") == 1);
+    REQUIRE(scalarText(db, "SELECT sql FROM sqlite_master WHERE "
+                           "name='idx_ssa_table_import_dirty_canonical'") ==
+            kFullDirtyCanonicalLedgerSql);
+    REQUIRE(scalarText(db, "SELECT sql FROM sqlite_master WHERE "
+                           "name='ux_ssa_table_numero_ssa'") ==
+            "CREATE UNIQUE INDEX ux_ssa_table_numero_ssa ON ssa_table(descricao_ssa)");
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
 TEST_CASE("sqlite full import replaces exact duplicate legacy identities") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
@@ -3137,6 +3806,8 @@ TEST_CASE("sqlite full import replaces exact duplicate legacy identities") {
     REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
     REQUIRE(sqlite3_exec(db, "DROP INDEX ux_ssa_table_numero_ssa", nullptr, nullptr, nullptr) ==
             SQLITE_OK);
+    REQUIRE(sqlite3_exec(db, "CREATE INDEX idx_ssa_table_numero_ssa ON ssa_table(numero_ssa)",
+                         nullptr, nullptr, nullptr) == SQLITE_OK);
     REQUIRE(sqlite3_exec(
                 db,
                 "INSERT INTO ssa_table(numero_ssa, descricao_ssa) VALUES('202600519', 'Second')",
@@ -3151,6 +3822,8 @@ TEST_CASE("sqlite full import replaces exact duplicate legacy identities") {
     REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
     REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 1);
     REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600520'") == 1);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM sqlite_master WHERE "
+                          "name='idx_ssa_table_numero_ssa'") == 0);
     REQUIRE(scalarText(db, "PRAGMA integrity_check") == "ok");
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
@@ -4642,6 +5315,69 @@ TEST_CASE("incremental cancellation during snapshot publication preserves the or
     REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600607'") == 1);
     REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600606'") == 0);
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("incremental rescan cancels promptly while the source snapshot is locked") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    const auto workbook = inputDirectory / "locked-snapshot.xlsx";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    writeWorkbook(
+        workbook,
+        row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao")}) +
+            row(2, {inlineCell("A2", "202600608"), inlineCell("B2", "ASE"),
+                    inlineCell("C2", "After snapshot cancel"), inlineCell("D2", "2026-07-01")}));
+
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(sqliteWriterAccess(), dbPath,
+                                                           importColumns());
+    ssa::infra::importing::ResolvedSsaImportRows previous;
+    previous.rows.push_back({{"numero_ssa", "202600609"}, {"descricao_ssa", "Original"}});
+    REQUIRE(writer.write(previous, 1, 0, false).rowsWritten == 1);
+
+    ssa::infra::sqlite::SqliteConnection blocker(dbPath,
+                                                 ssa::infra::sqlite::SqliteOpenMode::ReadWrite);
+    REQUIRE(sqlite3_exec(blocker.handle(), "PRAGMA journal_mode=DELETE", nullptr, nullptr,
+                         nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(blocker.handle(), "BEGIN EXCLUSIVE", nullptr, nullptr, nullptr) ==
+            SQLITE_OK);
+
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+    std::stop_source stopSource;
+    auto operation = std::async(std::launch::async, [&] {
+        return port.rescan({ssa::ports::RescanMode::Incremental}, stopSource.get_token());
+    });
+    REQUIRE(operation.wait_for(std::chrono::milliseconds{50}) == std::future_status::timeout);
+
+    stopSource.request_stop();
+    const bool canceledPromptly =
+        operation.wait_for(std::chrono::milliseconds{500}) == std::future_status::ready;
+    REQUIRE(sqlite3_exec(blocker.handle(), "ROLLBACK", nullptr, nullptr, nullptr) == SQLITE_OK);
+    REQUIRE(operation.wait_for(std::chrono::seconds{4}) == std::future_status::ready);
+    const auto canceledResult = operation.get();
+
+    CHECK(canceledPromptly);
+    REQUIRE(canceledResult.status == ssa::ports::WorkflowStatus::Canceled);
+    REQUIRE(std::filesystem::exists(workbook));
+    sqlite3* verification = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &verification) == SQLITE_OK);
+    REQUIRE(scalarText(verification, "PRAGMA integrity_check") == "ok");
+    REQUIRE(scalarInt(verification,
+                      "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600609'") == 1);
+    REQUIRE(scalarInt(verification,
+                      "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600608'") == 0);
+    REQUIRE(sqlite3_close(verification) == SQLITE_OK);
+
+    const auto retried = port.rescan({ssa::ports::RescanMode::Incremental});
+    INFO(retried.message);
+    INFO(retried.diagnostic);
+    REQUIRE(retried.ok());
 }
 
 TEST_CASE("full rescan rejects an unrecognized header without clearing or moving the source") {
