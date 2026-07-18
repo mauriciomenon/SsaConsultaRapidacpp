@@ -5,6 +5,37 @@ antes de interpretar sincronizacao Git, validacao local ou estado externo.
 
 Ultima verificacao local: 2026-07-18
 
+## Recovery de staged journalizado antes de rescan - 2026-07-18
+
+- Branch `master`; codigo em `1d04ab0`, publicado no Bitbucket. GitLab
+  `origin` continua bloqueado por OAuth `invalid_grant`; isto e dependencia
+  externa, nao falha de codigo nem publicacao confirmada no GitLab.
+- O `rescan()` agora retoma a consolidacao journalizada logo apos adquirir os
+  locks e antes de `stageInputFiles()` limpar artifacts `.ssa-staged-*`. Assim,
+  um crash entre o commit SQLite e o move de uma importacao externa preserva a
+  copia owned ate o `ImportFileConsolidator` concluir o move idempotente.
+- RED real: o contrato de processo passou a journalizar
+  `.ssa-staged-crashed_123_0.xlsx`; no baseline, `rescan` apagava a fonte e
+  falhava com `consolidation source and destination state is ambiguous` em
+  `0.06 s`. O patch tambem remove `importIncrementalFiles`, private sem call
+  site que so era alcancado pelo ramo de cancelamento antigo e quebrava a
+  atomicidade do lote.
+- Gate local: diff, clang-format, cppcheck, detect-secrets e Semgrep (`11`
+  regras, zero finding) limpos; clang-tidy repetiu quatro avisos preexistentes
+  de assinatura/copia fora do diff. Build de `ssa_integration_tests`; contratos
+  diretos `5/5` em `0.47 s`; workflow `174/174` em `9.43 s`; recovery de crash
+  repetido `20x` em `1.07 s`. Review Terra ultra final: `SEM FINDINGS`.
+  `clawpatch` ficou indisponivel por CLI/modelo local antigo e selecionou
+  arquivo externo ao slice; nao conta como review concluido. Hooks staged
+  passaram clang-format, Gitleaks, detect-secrets e TruffleHog.
+- Contadores sem inflacao: plano original `99.0/100`; divida nova
+  `13/14 = 92.9%`; backlog legado `0.0/100` placeholder e fila operacional
+  `5/8 = 62.5%`. Nenhum credito funcional foi atribuido.
+
+Proxima atividade unica: substituir a espera temporal de cancelamento sob lock
+em `SqliteDerivadasPort` por sinal causal de `SQLITE_BUSY`, sem mudar regra de
+derivadas ou schema.
+
 ## Handshake causal dos crash probes SQLite - 2026-07-18
 
 - Branch `master`; codigo em `6bcf65e`, confirmado no Bitbucket. GitLab

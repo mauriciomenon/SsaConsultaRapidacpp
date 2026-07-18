@@ -1,5 +1,31 @@
 # Recovery Backlog
 
+## Recovery de staged journalizado antes de rescan - 2026-07-18
+
+- [RESOLVED-LOCAL] [IMPORT-STAGED-JOURNAL-RECOVERY] `1d04ab0` corrige a ordem
+  de `rescan()`: a retomada do journal ocorre sob os locks antes de
+  `stageInputFiles()` remover artifacts owned abandonados. A copia
+  `.ssa-staged-*` que representa um move pos-commit agora permanece disponivel
+  para consolidacao idempotente apos crash.
+- O RED usa o crash probe com fonte `.ssa-staged-crashed_123_0.xlsx`; no
+  baseline o cleanup apagava a fonte, o destination nao existia e o journal
+  ficava pendente com `consolidation source and destination state is ambiguous`.
+  Depois do patch, o move chega a `processadas/` e o journal fica vazio.
+- `importIncrementalFiles` foi removida: nao tinha call site fora do antigo
+  ramo de cancelamento e processava arquivos incrementalmente, contrariando a
+  atomicidade ja coberta pelo rescan por snapshot.
+- Gates: build de `ssa_integration_tests`; CTest direto `5/5` em `0.47 s`,
+  workflow `174/174` em `9.43 s`, recovery `20x` em `1.07 s`; diff, formato,
+  cppcheck, detect-secrets e Semgrep limpos. clang-tidy apenas repetiu avisos
+  preexistentes. Review Terra ultra final `SEM FINDINGS`; clawpatch indisponivel
+  por tooling local. Bitbucket confirma `1d04ab0`; GitLab `origin` segue OAuth
+  `invalid_grant`.
+- Sem credito novo: plano `99.0/100`, divida nova `13/14 = 92.9%`, legado
+  placeholder `0.0/100`, fila operacional `5/8 = 62.5%`.
+
+Proxima atividade unica: trocar o wait temporal do cancelamento SQLite de
+derivadas por uma precondicao causal de contencao real.
+
 ## Handshake causal dos crash probes SQLite - 2026-07-18
 
 - [RESOLVED-LOCAL] [SQLITE-CRASH-PROBE-CAUSAL] `6bcf65e` troca tres polls de
