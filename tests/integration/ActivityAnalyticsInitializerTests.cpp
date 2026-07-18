@@ -189,6 +189,24 @@ TEST_CASE("activity analytics initializer validates metadata and the complete me
         REQUIRE(sqlite3_close(db) == SQLITE_OK);
     }
 
+    SECTION("stale active source revision") {
+        sqlite3* db = openReadWrite(path);
+        execute(db, "UPDATE activity_analytics_meta SET active_source_revision='stale' "
+                    "WHERE dataset='SSA'");
+        REQUIRE(sqlite3_close(db) == SQLITE_OK);
+
+        const auto repaired = ssa::infra::sqlite::SqliteActivityAnalyticsInitializer::initialize(
+            path, 202605, "2026-02-01");
+
+        CHECK(repaired.changed);
+        db = openReadWrite(path);
+        CHECK(scalarText(db, "SELECT active_source_revision FROM activity_analytics_meta "
+                             "WHERE dataset='SSA'") ==
+              scalarText(db, "SELECT source_revision FROM activity_analytics_snapshot "
+                             "WHERE dataset='SSA' AND observed_iso_week=202605 LIMIT 1"));
+        REQUIRE(sqlite3_close(db) == SQLITE_OK);
+    }
+
     SECTION("metadata numeric storage classes") {
         sqlite3* db = openReadWrite(path);
         execute(db, "UPDATE activity_analytics_meta SET schema_version='1junk', "
@@ -208,6 +226,23 @@ TEST_CASE("activity analytics initializer validates metadata and the complete me
                             "WHERE dataset='SSA'") == 1);
         CHECK(scalarInt(db, "SELECT baseline_iso_week FROM activity_analytics_meta "
                             "WHERE dataset='SSA'") == 202605);
+        REQUIRE(sqlite3_close(db) == SQLITE_OK);
+    }
+
+    SECTION("corrupt warning window") {
+        sqlite3* db = openReadWrite(path);
+        execute(db, "PRAGMA ignore_check_constraints=ON; "
+                    "UPDATE activity_analytics_meta SET warning_window_days=999 "
+                    "WHERE dataset='SSA'; PRAGMA ignore_check_constraints=OFF");
+        REQUIRE(sqlite3_close(db) == SQLITE_OK);
+
+        const auto repaired = ssa::infra::sqlite::SqliteActivityAnalyticsInitializer::initialize(
+            path, 202605, "2026-02-01");
+
+        CHECK(repaired.changed);
+        db = openReadWrite(path);
+        CHECK(scalarInt(db, "SELECT warning_window_days IS NULL FROM activity_analytics_meta "
+                            "WHERE dataset='SSA'") == 1);
         REQUIRE(sqlite3_close(db) == SQLITE_OK);
     }
 
@@ -302,6 +337,27 @@ TEST_CASE("activity analytics initializer validates metadata and the complete me
         REQUIRE(sqlite3_close(db) == SQLITE_OK);
     }
 
+    SECTION("invalid metadata and current orphan point") {
+        sqlite3* db = openReadWrite(path);
+        execute(db, "UPDATE activity_analytics_meta SET active_source_revision='' "
+                    "WHERE dataset='SSA'");
+        execute(db, "INSERT INTO activity_analytics_point("
+                    "dataset, observed_iso_week, metric, division, sector, person_role, person, "
+                    "registration_iso_week, deadline_source_state, deadline_offset_days, count) "
+                    "VALUES('SSA',202605,'legacy_metric','DIV','SEC','executor','Person',NULL,'',"
+                    "NULL,1)");
+        REQUIRE(sqlite3_close(db) == SQLITE_OK);
+
+        const auto repaired = ssa::infra::sqlite::SqliteActivityAnalyticsInitializer::initialize(
+            path, 202605, "2026-02-01");
+
+        CHECK(repaired.changed);
+        db = openReadWrite(path);
+        CHECK(scalarInt(db, "SELECT COUNT(*) FROM activity_analytics_point "
+                            "WHERE dataset='SSA' AND metric='legacy_metric'") == 0);
+        REQUIRE(sqlite3_close(db) == SQLITE_OK);
+    }
+
     SECTION("duplicate point group") {
         sqlite3* db = openReadWrite(path);
         execute(db, "INSERT INTO activity_analytics_point("
@@ -343,6 +399,212 @@ TEST_CASE("activity analytics initializer validates metadata and the complete me
                             "WHERE dataset='SSA' AND observed_iso_week=202606") == 6);
         CHECK(scalarInt(db, "SELECT COUNT(*) FROM activity_analytics_snapshot "
                             "WHERE dataset='SSA' AND metric='legacy_metric'") == 1);
+        REQUIRE(sqlite3_close(db) == SQLITE_OK);
+    }
+
+    SECTION("historical observed date mismatches ISO week") {
+        sqlite3* db = openReadWrite(path);
+        execute(db, "INSERT INTO activity_analytics_snapshot(dataset, observed_iso_week, metric, "
+                    "source_revision, source_fingerprint, observed_date, complete, reason) "
+                    "SELECT dataset, 202604, metric, source_revision, source_fingerprint, "
+                    "'2026-01-18', complete, reason FROM activity_analytics_snapshot "
+                    "WHERE dataset='SSA' AND observed_iso_week=202605");
+        execute(db, "UPDATE activity_analytics_meta SET baseline_iso_week=202604 "
+                    "WHERE dataset='SSA'");
+        execute(db,
+                "INSERT INTO activity_analytics_point(dataset, observed_iso_week, metric, "
+                "division, sector, person_role, person, registration_iso_week, "
+                "deadline_source_state, deadline_offset_days, count) "
+                "SELECT dataset, 202604, metric, division, sector, person_role, person, "
+                "registration_iso_week, deadline_source_state, deadline_offset_days, count "
+                "FROM activity_analytics_point WHERE dataset='SSA' AND observed_iso_week=202605");
+        REQUIRE(sqlite3_close(db) == SQLITE_OK);
+
+        REQUIRE_THROWS_AS(ssa::infra::sqlite::SqliteActivityAnalyticsInitializer::initialize(
+                              path, 202605, "2026-02-01"),
+                          ssa::ports::OperationError);
+    }
+
+    SECTION("historical source identity uses blobs") {
+        sqlite3* db = openReadWrite(path);
+        execute(db, "INSERT INTO activity_analytics_snapshot(dataset, observed_iso_week, metric, "
+                    "source_revision, source_fingerprint, observed_date, complete, reason) "
+                    "SELECT dataset, 202604, metric, source_revision, source_fingerprint, "
+                    "'2026-01-25', complete, reason FROM activity_analytics_snapshot "
+                    "WHERE dataset='SSA' AND observed_iso_week=202605");
+        execute(db, "UPDATE activity_analytics_meta SET baseline_iso_week=202604 "
+                    "WHERE dataset='SSA'");
+        execute(db,
+                "INSERT INTO activity_analytics_point(dataset, observed_iso_week, metric, "
+                "division, sector, person_role, person, registration_iso_week, "
+                "deadline_source_state, deadline_offset_days, count) "
+                "SELECT dataset, 202604, metric, division, sector, person_role, person, "
+                "registration_iso_week, deadline_source_state, deadline_offset_days, count "
+                "FROM activity_analytics_point WHERE dataset='SSA' AND observed_iso_week=202605");
+        execute(db, "UPDATE activity_analytics_snapshot SET source_revision=X'01' "
+                    "WHERE dataset='SSA' AND observed_iso_week=202604");
+        REQUIRE(sqlite3_close(db) == SQLITE_OK);
+
+        REQUIRE_THROWS_AS(ssa::infra::sqlite::SqliteActivityAnalyticsInitializer::initialize(
+                              path, 202605, "2026-02-01"),
+                          ssa::ports::OperationError);
+    }
+
+    SECTION("current observed date mismatches ISO week") {
+        sqlite3* db = openReadWrite(path);
+        execute(db, "UPDATE activity_analytics_snapshot SET observed_date='2026-01-25' "
+                    "WHERE dataset='SSA' AND observed_iso_week=202605");
+        REQUIRE(sqlite3_close(db) == SQLITE_OK);
+
+        const auto repaired = ssa::infra::sqlite::SqliteActivityAnalyticsInitializer::initialize(
+            path, 202605, "2026-02-01");
+
+        CHECK(repaired.changed);
+        db = openReadWrite(path);
+        CHECK(scalarText(db, "SELECT observed_date FROM activity_analytics_snapshot "
+                             "WHERE dataset='SSA' AND observed_iso_week=202605 LIMIT 1") ==
+              "2026-02-01");
+        REQUIRE(sqlite3_close(db) == SQLITE_OK);
+    }
+
+    SECTION("current observed date repairs while preserving history") {
+        sqlite3* db = openReadWrite(path);
+        execute(db, "INSERT INTO activity_analytics_snapshot(dataset, observed_iso_week, metric, "
+                    "source_revision, source_fingerprint, observed_date, complete, reason) "
+                    "SELECT dataset, 202604, metric, source_revision, source_fingerprint, "
+                    "'2026-01-25', complete, reason FROM activity_analytics_snapshot "
+                    "WHERE dataset='SSA' AND observed_iso_week=202605");
+        execute(db,
+                "INSERT INTO activity_analytics_point(dataset, observed_iso_week, metric, "
+                "division, sector, person_role, person, registration_iso_week, "
+                "deadline_source_state, deadline_offset_days, count) "
+                "SELECT dataset, 202604, metric, division, sector, person_role, person, "
+                "registration_iso_week, deadline_source_state, deadline_offset_days, count "
+                "FROM activity_analytics_point WHERE dataset='SSA' AND observed_iso_week=202605");
+        execute(db, "UPDATE activity_analytics_meta SET baseline_iso_week=202604 "
+                    "WHERE dataset='SSA'; UPDATE activity_analytics_snapshot "
+                    "SET observed_date='2026-01-25' WHERE dataset='SSA' "
+                    "AND observed_iso_week=202605");
+        REQUIRE(sqlite3_close(db) == SQLITE_OK);
+
+        const auto repaired = ssa::infra::sqlite::SqliteActivityAnalyticsInitializer::initialize(
+            path, 202605, "2026-02-01");
+
+        CHECK(repaired.changed);
+        db = openReadWrite(path);
+        CHECK(scalarInt(db, "SELECT COUNT(*) FROM activity_analytics_snapshot "
+                            "WHERE dataset='SSA' AND observed_iso_week=202604") == 6);
+        CHECK(scalarText(db, "SELECT observed_date FROM activity_analytics_snapshot "
+                             "WHERE dataset='SSA' AND observed_iso_week=202605 LIMIT 1") ==
+              "2026-02-01");
+        REQUIRE(sqlite3_close(db) == SQLITE_OK);
+    }
+
+    SECTION("point person role null is rejected") {
+        sqlite3* db = openReadWrite(path);
+        execute(db, "ALTER TABLE activity_analytics_point RENAME TO activity_analytics_point_old");
+        execute(db, "CREATE TABLE activity_analytics_point("
+                    "dataset TEXT, observed_iso_week INTEGER, metric TEXT, division TEXT, "
+                    "sector TEXT, person_role TEXT, person TEXT, registration_iso_week INTEGER, "
+                    "deadline_source_state TEXT, deadline_offset_days INTEGER, count INTEGER)");
+        execute(db, "INSERT INTO activity_analytics_point(dataset, observed_iso_week, metric, "
+                    "division, sector, person_role, person, registration_iso_week, "
+                    "deadline_source_state, deadline_offset_days, count) "
+                    "SELECT dataset, observed_iso_week, metric, division, sector, "
+                    "CASE WHEN rowid=(SELECT MIN(rowid) FROM activity_analytics_point_old) "
+                    "THEN NULL ELSE person_role END, person, registration_iso_week, "
+                    "deadline_source_state, deadline_offset_days, count "
+                    "FROM activity_analytics_point_old");
+        REQUIRE(sqlite3_close(db) == SQLITE_OK);
+
+        REQUIRE_THROWS_AS(ssa::infra::sqlite::SqliteActivityAnalyticsInitializer::initialize(
+                              path, 202605, "2026-02-01"),
+                          ssa::ports::OperationError);
+        db = openReadWrite(path);
+        CHECK(scalarInt(db, "SELECT COUNT(*) FROM activity_analytics_point "
+                            "WHERE person_role IS NULL") == 1);
+        REQUIRE(sqlite3_close(db) == SQLITE_OK);
+    }
+
+    SECTION("current repair rejects a point with null ISO week") {
+        sqlite3* db = openReadWrite(path);
+        execute(db, "UPDATE activity_analytics_meta SET active_source_revision='' "
+                    "WHERE dataset='SSA'");
+        execute(db, "ALTER TABLE activity_analytics_point RENAME TO activity_analytics_point_old");
+        execute(db, "CREATE TABLE activity_analytics_point("
+                    "dataset TEXT, observed_iso_week INTEGER, metric TEXT, division TEXT, "
+                    "sector TEXT, person_role TEXT, person TEXT, registration_iso_week INTEGER, "
+                    "deadline_source_state TEXT, deadline_offset_days INTEGER, count INTEGER)");
+        execute(db, "INSERT INTO activity_analytics_point SELECT dataset, observed_iso_week, "
+                    "metric, division, sector, person_role, person, registration_iso_week, "
+                    "deadline_source_state, deadline_offset_days, count "
+                    "FROM activity_analytics_point_old");
+        execute(db, "INSERT INTO activity_analytics_point SELECT dataset, NULL, metric, "
+                    "division, sector, person_role, person, registration_iso_week, "
+                    "deadline_source_state, deadline_offset_days, count "
+                    "FROM activity_analytics_point_old LIMIT 1");
+        REQUIRE(sqlite3_close(db) == SQLITE_OK);
+
+        REQUIRE_THROWS_AS(ssa::infra::sqlite::SqliteActivityAnalyticsInitializer::initialize(
+                              path, 202605, "2026-02-01"),
+                          ssa::ports::OperationError);
+        db = openReadWrite(path);
+        CHECK(scalarInt(db, "SELECT COUNT(*) FROM activity_analytics_point "
+                            "WHERE observed_iso_week IS NULL") == 1);
+        REQUIRE(sqlite3_close(db) == SQLITE_OK);
+    }
+
+    SECTION("mixed snapshot ISO week storage is repaired deterministically") {
+        sqlite3* db = openReadWrite(path);
+        execute(
+            db,
+            "ALTER TABLE activity_analytics_snapshot RENAME TO activity_analytics_snapshot_old");
+        execute(db, "CREATE TABLE activity_analytics_snapshot("
+                    "dataset TEXT, observed_iso_week, metric TEXT, source_revision TEXT, "
+                    "source_fingerprint TEXT, observed_date TEXT, complete INTEGER, reason TEXT)");
+        execute(db, "INSERT INTO activity_analytics_snapshot SELECT dataset, "
+                    "CAST(observed_iso_week AS INTEGER), metric, source_revision, "
+                    "source_fingerprint, observed_date, complete, reason "
+                    "FROM activity_analytics_snapshot_old WHERE metric<>'pending_deadline' "
+                    "ORDER BY metric");
+        execute(db, "INSERT INTO activity_analytics_snapshot SELECT dataset, "
+                    "CAST(observed_iso_week AS REAL), metric, source_revision, "
+                    "source_fingerprint, observed_date, complete, reason "
+                    "FROM activity_analytics_snapshot_old WHERE metric='pending_deadline'");
+        REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM activity_analytics_snapshot") == 6);
+        REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM activity_analytics_snapshot "
+                              "WHERE TYPEOF(observed_iso_week)='real'") == 1);
+        REQUIRE(sqlite3_close(db) == SQLITE_OK);
+
+        const auto repaired = ssa::infra::sqlite::SqliteActivityAnalyticsInitializer::initialize(
+            path, 202605, "2026-02-01");
+
+        CHECK(repaired.changed);
+        db = openReadWrite(path);
+        CHECK(scalarInt(db, "SELECT COUNT(*) FROM activity_analytics_snapshot "
+                            "WHERE TYPEOF(observed_iso_week)='real'") == 0);
+        CHECK(scalarInt(db, "SELECT COUNT(*) FROM activity_analytics_snapshot "
+                            "WHERE TYPEOF(observed_iso_week)='integer'") == 6);
+        REQUIRE(sqlite3_close(db) == SQLITE_OK);
+    }
+
+    SECTION("current repair preserves a valid warning window") {
+        sqlite3* db = openReadWrite(path);
+        execute(db, "UPDATE activity_analytics_meta SET warning_window_days=14 "
+                    "WHERE dataset='SSA'; UPDATE activity_analytics_snapshot "
+                    "SET observed_date='2026-01-25' WHERE dataset='SSA' "
+                    "AND observed_iso_week=202605");
+        REQUIRE(sqlite3_close(db) == SQLITE_OK);
+
+        const auto repaired = ssa::infra::sqlite::SqliteActivityAnalyticsInitializer::initialize(
+            path, 202605, "2026-02-01");
+
+        CHECK(repaired.changed);
+        db = openReadWrite(path);
+        CHECK(scalarText(db, "SELECT TYPEOF(warning_window_days) "
+                             "FROM activity_analytics_meta WHERE dataset='SSA'") == "integer");
+        CHECK(scalarInt(db, "SELECT warning_window_days FROM activity_analytics_meta "
+                            "WHERE dataset='SSA'") == 14);
         REQUIRE(sqlite3_close(db) == SQLITE_OK);
     }
 }

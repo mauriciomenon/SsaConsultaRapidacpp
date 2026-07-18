@@ -225,6 +225,34 @@ TEST_CASE("activity analytics projection fingerprints verified sources determini
     CHECK(first.size() == 16);
 }
 
+TEST_CASE("activity analytics projection fingerprints source boundaries") {
+    std::string combined{"a"};
+    combined.push_back(static_cast<char>(0xff));
+    combined.push_back('b');
+
+    const auto separate = ssa::infra::sqlite::SqliteActivityAnalyticsProjection::sourceFingerprint(
+        std::vector<std::string>{"a", "b"});
+    const auto packed = ssa::infra::sqlite::SqliteActivityAnalyticsProjection::sourceFingerprint(
+        std::vector<std::string>{combined});
+
+    CHECK(separate != packed);
+}
+
+TEST_CASE("activity analytics projection trims deadline dates") {
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+    sqlite3* db = openFixture(std::filesystem::path{directory.path().toStdString()} / "ssas.db");
+    execute(db, "UPDATE ssa_table SET prazo_limite=' 2026-02-05  ' "
+                "WHERE numero_ssa='202600001'");
+
+    REQUIRE(ssa::infra::sqlite::SqliteActivityAnalyticsProjection::capture(db, "ssa_table",
+                                                                           captureContext())
+                .changed);
+    CHECK(scalarInt(db, "SELECT deadline_offset_days FROM activity_analytics_point "
+                        "WHERE metric='pending_deadline' AND person='Exec A'") == 4);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
 TEST_CASE("activity analytics projection fingerprints canonical rows deterministically") {
     QTemporaryDir directory;
     REQUIRE(directory.isValid());

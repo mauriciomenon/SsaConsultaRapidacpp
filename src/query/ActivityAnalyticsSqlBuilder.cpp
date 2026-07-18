@@ -436,7 +436,7 @@ namespace ssa::query {
                                          const std::string& weekColumn,
                                          const std::string_view sourceTable) {
             const auto week = weekExpression(weekColumn);
-            const auto valid = week + " IS NOT NULL";
+            const auto valid = week + " IS NOT NULL AND " + numberExpression() + " <> ''";
             return "SELECT '" + std::string{metric} + "' AS \"metric\", MIN(CASE WHEN " + valid +
                    " THEN " + week + " END) AS \"first_iso_week\", MAX(CASE WHEN " + valid +
                    " THEN " + week + " END) AS \"last_iso_week\", CASE WHEN SUM(CASE WHEN " +

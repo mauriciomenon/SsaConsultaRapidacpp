@@ -30,6 +30,32 @@ namespace ssa::domain {
                    breakdown == Breakdown::DivisionSectorPerson;
         }
 
+        std::string_view normalizedDeadlineState(std::string_view value) noexcept {
+            while (!value.empty() && value.front() == ' ') {
+                value.remove_prefix(1);
+            }
+            while (!value.empty() && value.back() == ' ') {
+                value.remove_suffix(1);
+            }
+            return value;
+        }
+
+        bool equalsAsciiCaseInsensitive(const std::string_view left,
+                                        const std::string_view right) noexcept {
+            if (left.size() != right.size()) {
+                return false;
+            }
+            for (std::size_t index = 0; index < left.size(); ++index) {
+                const char value = left[index] >= 'a' && left[index] <= 'z'
+                                       ? static_cast<char>(left[index] - ('a' - 'A'))
+                                       : left[index];
+                if (value != right[index]) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
         IsoWeek isoWeekForThursday(const std::chrono::sys_days thursday) {
             using namespace std::chrono;
             const year_month_day date{thursday};
@@ -203,11 +229,12 @@ namespace ssa::domain {
     DeadlineClass classifyDeadline(const std::string_view sourceState,
                                    const std::optional<int>& deadlineOffsetDays,
                                    const int warningWindowDays) noexcept {
-        if (sourceState == "Fora de Prazo") {
+        const auto normalizedState = normalizedDeadlineState(sourceState);
+        if (equalsAsciiCaseInsensitive(normalizedState, "FORA DE PRAZO")) {
             return DeadlineClass::Overdue;
         }
-        if (sourceState == "Nao Se Aplica" || !deadlineOffsetDays.has_value() ||
-            warningWindowDays < 0 || warningWindowDays > 365) {
+        if (equalsAsciiCaseInsensitive(normalizedState, "NAO SE APLICA") ||
+            !deadlineOffsetDays.has_value() || warningWindowDays < 0 || warningWindowDays > 365) {
             return DeadlineClass::NotApplicableOrUnknown;
         }
         if (*deadlineOffsetDays < 0) {

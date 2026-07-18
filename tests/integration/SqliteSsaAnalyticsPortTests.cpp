@@ -356,6 +356,14 @@ TEST_CASE("analytics sqlite port cascades dimension values") {
     CHECK(values.people == std::vector<std::string>{"Exec A", "Exec B"});
 }
 
+TEST_CASE("analytics sqlite port rejects stock dimensions without projection schema") {
+    const AnalyticsFixture fixture;
+    const ssa::infra::sqlite::SqliteSsaAnalyticsPort port(fixture.dbPath());
+
+    CHECK_THROWS_AS(port.dimensionValues(requestFor(AnalyticsMetric::Pending)),
+                    ssa::ports::OperationError);
+}
+
 TEST_CASE("analytics sqlite port reports live and projected availability") {
     AnalyticsFixture fixture;
     fixture.captureHistory();
@@ -389,6 +397,18 @@ TEST_CASE("analytics sqlite port keeps events available without projection schem
     CHECK_FALSE(result.available());
     CHECK(result.points.empty());
     CHECK_FALSE(result.unavailableReason.empty());
+}
+
+TEST_CASE("analytics sqlite port requires real SSA numbers for event availability") {
+    AnalyticsFixture fixture;
+    fixture.executeSql("UPDATE ssa_table SET numero_ssa='  '");
+    const ssa::infra::sqlite::SqliteSsaAnalyticsPort port(fixture.dbPath());
+
+    const auto values = port.availability();
+
+    CHECK_FALSE(availabilityFor(values, AnalyticsMetric::Issued).available);
+    CHECK_FALSE(availabilityFor(values, AnalyticsMetric::Registered).available);
+    CHECK_FALSE(availabilityFor(values, AnalyticsMetric::Executed).available);
 }
 
 TEST_CASE("analytics sqlite port honors pre-canceled reads") {

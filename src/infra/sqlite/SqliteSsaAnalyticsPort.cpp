@@ -512,10 +512,11 @@ namespace ssa::infra::sqlite {
         SqliteProgressHandler progress(connection.handle(), stopToken);
         SqliteReadTransaction transaction(connection.handle(), stopToken,
                                           busy.cancellationObserved());
-        if (!eventMetric &&
-            !projectionState(connection.handle(), busy.cancellationObserved()).available) {
-            transaction.commit();
-            return {};
+        if (!eventMetric) {
+            const auto state = projectionState(connection.handle(), busy.cancellationObserved());
+            if (!state.available) {
+                throwInvalidAnalyticsData(state.reason);
+            }
         }
 
         domain::AnalyticsDimensionValues result{

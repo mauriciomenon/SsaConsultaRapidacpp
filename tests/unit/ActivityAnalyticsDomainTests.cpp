@@ -134,3 +134,10 @@ TEST_CASE("activity analytics classifies pending deadlines") {
     CHECK(ssa::domain::classifyDeadline("Dentro do Prazo", std::nullopt, 14) ==
           DeadlineClass::NotApplicableOrUnknown);
 }
+
+TEST_CASE("activity analytics normalizes deadline source states") {
+    using ssa::domain::DeadlineClass;
+
+    CHECK(ssa::domain::classifyDeadline("  fOrA dE pRaZo  ", 20, 14) == DeadlineClass::Overdue);
+    CHECK(ssa::domain::classifyDeadline("  dEnTrO dO pRaZo  ", 14, 14) == DeadlineClass::Warning);
+}

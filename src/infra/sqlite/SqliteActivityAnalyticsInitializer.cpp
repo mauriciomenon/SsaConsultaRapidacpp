@@ -50,17 +50,24 @@ namespace ssa::infra::sqlite {
 
             SqliteStatement weeks(
                 db,
-                "SELECT observed_iso_week, COUNT(*), COUNT(DISTINCT metric), "
+                "SELECT MAX(CASE WHEN TYPEOF(observed_iso_week)='integer' THEN "
+                "observed_iso_week END), COUNT(*), COUNT(DISTINCT metric), "
                 "COALESCE(SUM(CASE WHEN metric IN ('partial_attention','spg','apg','apl',"
                 "'pending','pending_deadline') THEN 1 ELSE 0 END),0), "
-                "COUNT(DISTINCT source_revision), COALESCE(MIN(LENGTH(source_revision)),0), "
-                "COUNT(DISTINCT source_fingerprint), "
-                "COALESCE(MIN(LENGTH(source_fingerprint)),0), COUNT(DISTINCT observed_date), "
-                "COALESCE(SUM(CASE WHEN LENGTH(observed_date)=10 AND "
+                "COUNT(DISTINCT source_revision), COALESCE(SUM(CASE WHEN "
+                "TYPEOF(source_revision)='text' AND LENGTH(source_revision)>0 THEN 1 ELSE 0 "
+                "END),0), COUNT(DISTINCT source_fingerprint), COALESCE(SUM(CASE WHEN "
+                "TYPEOF(source_fingerprint)='text' AND LENGTH(source_fingerprint)>0 THEN 1 "
+                "ELSE 0 END),0), COUNT(DISTINCT observed_date), COALESCE(SUM(CASE WHEN "
+                "TYPEOF(observed_date)='text' AND LENGTH(observed_date)=10 AND "
                 "DATE(observed_date)=observed_date THEN 1 ELSE 0 END),0), "
-                "COALESCE(SUM(CASE WHEN (metric='partial_attention' AND complete=0 AND "
-                "reason<>'') OR (metric IN ('spg','apg','apl','pending','pending_deadline') "
-                "AND complete=1 AND reason='') THEN 1 ELSE 0 END),0) "
+                "COALESCE(SUM(CASE WHEN TYPEOF(complete)='integer' AND TYPEOF(reason)='text' "
+                "AND ((metric='partial_attention' AND complete=0 AND reason<>'') OR "
+                "(metric IN ('spg','apg','apl','pending','pending_deadline') AND complete=1 "
+                "AND reason='')) THEN 1 ELSE 0 END),0), COALESCE(SUM(CASE WHEN "
+                "TYPEOF(observed_iso_week)='integer' THEN 1 ELSE 0 END),0), "
+                "MIN(source_revision), "
+                "MIN(observed_date) "
                 "FROM activity_analytics_snapshot WHERE dataset=? GROUP BY observed_iso_week "
                 "ORDER BY observed_iso_week",
                 busyCancellationObserved);
@@ -68,6 +75,7 @@ namespace ssa::infra::sqlite {
             int weekCount = 0;
             int firstWeek = 0;
             int lastWeek = 0;
+            std::string latestSourceRevision;
             bool currentInvalid = false;
             while (weeks.step()) {
                 const int week = static_cast<int>(weeks.columnInt64(0));
@@ -80,15 +88,19 @@ namespace ssa::infra::sqlite {
                     firstWeek = week;
                 }
                 lastWeek = week;
+                latestSourceRevision = weeks.columnText(12);
                 ++weekCount;
                 const domain::IsoWeek isoWeek{week / 100, week % 100};
+                const auto dateWeek = domain::isoWeekForDate(weeks.columnText(13));
                 const bool valid =
                     domain::isValidIsoWeek(isoWeek) && weeks.columnInt64(1) == kMetricCount &&
                     weeks.columnInt64(2) == kMetricCount && weeks.columnInt64(3) == kMetricCount &&
-                    weeks.columnInt64(4) == 1 && weeks.columnInt64(5) > 0 &&
-                    weeks.columnInt64(6) == 1 && weeks.columnInt64(7) > 0 &&
+                    weeks.columnInt64(4) == 1 && weeks.columnInt64(5) == kMetricCount &&
+                    weeks.columnInt64(6) == 1 && weeks.columnInt64(7) == kMetricCount &&
                     weeks.columnInt64(8) == 1 && weeks.columnInt64(9) == kMetricCount &&
-                    weeks.columnInt64(10) == kMetricCount;
+                    weeks.columnInt64(10) == kMetricCount &&
+                    weeks.columnInt64(11) == kMetricCount && dateWeek.has_value() &&
+                    domain::toIsoYearWeek(*dateWeek) == week;
                 if (valid) {
                     continue;
                 }
@@ -107,7 +119,8 @@ namespace ssa::infra::sqlite {
 
             SqliteStatement meta(
                 db,
-                "SELECT schema_version, active_source_revision, baseline_iso_week FROM "
+                "SELECT schema_version, active_source_revision, baseline_iso_week, "
+                "warning_window_days FROM "
                 "activity_analytics_meta WHERE dataset=?",
                 busyCancellationObserved);
             meta.bindTextOneBased(1, std::string{kDataset});
@@ -118,7 +131,11 @@ namespace ssa::infra::sqlite {
                 validMeta = sqlite3_column_type(meta.handle(), 0) == SQLITE_INTEGER &&
                             sqlite3_column_type(meta.handle(), 1) == SQLITE_TEXT &&
                             sqlite3_column_type(meta.handle(), 2) == SQLITE_INTEGER &&
+                            (sqlite3_column_type(meta.handle(), 3) == SQLITE_NULL ||
+                             (sqlite3_column_type(meta.handle(), 3) == SQLITE_INTEGER &&
+                              meta.columnInt64(3) >= 0 && meta.columnInt64(3) <= 365)) &&
                             meta.columnInt64(0) == kSchemaVersion && !meta.columnText(1).empty() &&
+                            meta.columnText(1) == latestSourceRevision &&
                             baselineWeek == firstWeek && domain::isValidIsoWeek(baseline) &&
                             !meta.step();
             }
@@ -130,6 +147,11 @@ namespace ssa::infra::sqlite {
                 }
                 return BaselineState::RepairCurrent;
             }
+            const bool metaRepairable = !validMeta && weekCount == 1 &&
+                                        firstWeek == observedIsoYearWeek &&
+                                        lastWeek == observedIsoYearWeek;
+            const bool currentRepairable =
+                (currentInvalid || metaRepairable) && observedIsoYearWeek == lastWeek;
             SqliteStatement pointSchema(
                 db,
                 "SELECT dataset, observed_iso_week, metric, division, sector, person_role, "
@@ -145,14 +167,17 @@ namespace ssa::infra::sqlite {
                 "activity_analytics_snapshot AS snapshots ON snapshots.dataset=points.dataset "
                 "AND snapshots.observed_iso_week=points.observed_iso_week AND "
                 "snapshots.metric=points.metric WHERE points.dataset=? AND "
-                "(?=0 OR points.observed_iso_week<>?) AND ("
+                "(?=0 OR points.observed_iso_week IS NOT ?) AND ("
                 "snapshots.metric IS NULL OR snapshots.complete<>1 OR points.metric NOT IN "
                 "('spg','apg','apl','pending','pending_deadline') OR points.person_role NOT IN "
-                "('requester','planner','executor') OR TYPEOF(points.observed_iso_week)<>"
+                "('requester','planner','executor') OR TYPEOF(points.metric)<>'text' OR "
+                "TYPEOF(points.person_role)<>'text' OR TYPEOF(points.observed_iso_week)<>"
                 "'integer' OR TYPEOF(points.division)<>'text' OR points.division='' OR "
                 "TYPEOF(points.sector)<>'text' OR points.sector='' OR TYPEOF(points.person)<>"
                 "'text' OR points.person='' OR TYPEOF(points.deadline_source_state)<>'text' OR "
                 "TYPEOF(points.count)<>'integer' OR points.count<=0 OR "
+                "(points.registration_iso_week IS NOT NULL AND "
+                "TYPEOF(points.registration_iso_week)<>'integer') OR "
                 "(points.registration_iso_week IS NOT NULL AND " +
                     registrationWeek +
                     " IS NULL) OR (points.deadline_offset_days IS NOT NULL AND "
@@ -162,7 +187,7 @@ namespace ssa::infra::sqlite {
                     "points.deadline_offset_days IS NOT NULL))) LIMIT 1",
                 busyCancellationObserved);
             invalidPoint.bindTextOneBased(1, std::string{kDataset});
-            invalidPoint.bindInt64OneBased(2, currentInvalid ? 1 : 0);
+            invalidPoint.bindInt64OneBased(2, currentRepairable ? 1 : 0);
             invalidPoint.bindInt64OneBased(3, observedIsoYearWeek);
             if (invalidPoint.step()) {
                 throw ports::OperationError(
@@ -172,31 +197,31 @@ namespace ssa::infra::sqlite {
             SqliteStatement duplicatePoint(
                 db,
                 "SELECT 1 FROM activity_analytics_point WHERE dataset=? AND "
-                "(?=0 OR observed_iso_week<>?) GROUP BY dataset, "
+                "(?=0 OR observed_iso_week IS NOT ?) GROUP BY dataset, "
                 "observed_iso_week, metric, division, sector, person_role, person, "
                 "registration_iso_week, deadline_source_state, deadline_offset_days "
                 "HAVING COUNT(*)>1 LIMIT 1",
                 busyCancellationObserved);
             duplicatePoint.bindTextOneBased(1, std::string{kDataset});
-            duplicatePoint.bindInt64OneBased(2, currentInvalid ? 1 : 0);
+            duplicatePoint.bindInt64OneBased(2, currentRepairable ? 1 : 0);
             duplicatePoint.bindInt64OneBased(3, observedIsoYearWeek);
             if (duplicatePoint.step()) {
                 throw ports::OperationError("Falha ao inicializar analises",
                                             "activity analytics point groups contain duplicates");
             }
-            if (!validMeta) {
-                if (weekCount != 1 || firstWeek != observedIsoYearWeek) {
-                    throw ports::OperationError(
-                        "Falha ao inicializar analises",
-                        "activity analytics metadata is invalid for historical snapshots");
-                }
-                return BaselineState::RepairCurrent;
-            }
             if (currentInvalid) {
-                if (observedIsoYearWeek != lastWeek) {
+                if (!currentRepairable) {
                     throw ports::OperationError(
                         "Falha ao inicializar analises",
                         "activity analytics repair target is not the latest snapshot");
+                }
+                return BaselineState::RepairCurrent;
+            }
+            if (!validMeta) {
+                if (!metaRepairable) {
+                    throw ports::OperationError(
+                        "Falha ao inicializar analises",
+                        "activity analytics metadata is invalid for historical snapshots");
                 }
                 return BaselineState::RepairCurrent;
             }

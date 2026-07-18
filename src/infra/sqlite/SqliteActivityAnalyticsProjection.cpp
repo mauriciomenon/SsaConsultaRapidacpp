@@ -170,11 +170,18 @@ namespace ssa::infra::sqlite {
                     "COALESCE(SUM(CASE WHEN (metric='partial_attention' AND complete=0 AND "
                     "reason<>'') OR (metric IN ('spg','apg','apl','pending','pending_deadline') "
                     "AND complete=1 AND reason='') THEN 1 ELSE 0 END), 0), "
+                    "COALESCE(SUM(CASE WHEN TYPEOF(dataset)='text' AND "
+                    "TYPEOF(observed_iso_week)='integer' AND TYPEOF(metric)='text' AND "
+                    "TYPEOF(source_revision)='text' AND TYPEOF(source_fingerprint)='text' AND "
+                    "TYPEOF(observed_date)='text' AND TYPEOF(complete)='integer' AND "
+                    "TYPEOF(reason)='text' THEN 1 ELSE 0 END), 0), "
                     "COALESCE((SELECT schema_version=? AND active_source_revision=(SELECT "
                     "source_revision FROM activity_analytics_snapshot WHERE dataset=? ORDER BY "
                     "observed_iso_week DESC, metric LIMIT 1) AND "
                     "baseline_iso_week=(SELECT MIN(observed_iso_week) FROM "
-                    "activity_analytics_snapshot WHERE dataset=?) FROM activity_analytics_meta "
+                    "activity_analytics_snapshot WHERE dataset=?) AND "
+                    "(warning_window_days IS NULL OR (TYPEOF(warning_window_days)='integer' "
+                    "AND warning_window_days BETWEEN 0 AND 365)) FROM activity_analytics_meta "
                     "WHERE dataset=?), "
                     "0) FROM activity_analytics_snapshot WHERE dataset=? AND observed_iso_week=?",
                 busyCancellationObserved);
@@ -187,11 +194,13 @@ namespace ssa::infra::sqlite {
             statement.bindTextOneBased(7, std::string{kDataset});
             statement.bindTextOneBased(8, std::string{kDataset});
             statement.bindInt64OneBased(9, context.observedIsoYearWeek);
-            return statement.step() && statement.columnInt64(0) == kMetrics.size() &&
-                   statement.columnInt64(1) == kMetrics.size() &&
-                   statement.columnInt64(2) == kMetrics.size() &&
-                   statement.columnInt64(3) == kMetrics.size() &&
-                   statement.columnInt64(4) == kMetrics.size() && statement.columnInt64(5) == 1;
+            constexpr auto expectedMetricCount = static_cast<long long>(kMetrics.size());
+            return statement.step() && statement.columnInt64(0) == expectedMetricCount &&
+                   statement.columnInt64(1) == expectedMetricCount &&
+                   statement.columnInt64(2) == expectedMetricCount &&
+                   statement.columnInt64(3) == expectedMetricCount &&
+                   statement.columnInt64(4) == expectedMetricCount &&
+                   statement.columnInt64(5) == expectedMetricCount && statement.columnInt64(6) == 1;
         }
 
         void replaceWeek(sqlite3* db, const ActivityAnalyticsCaptureContext& context,
@@ -224,7 +233,9 @@ namespace ssa::infra::sqlite {
                 "activity_analytics_snapshot WHERE dataset=excluded.dataset ORDER BY "
                 "observed_iso_week DESC, metric LIMIT 1), "
                 "baseline_iso_week=(SELECT MIN(observed_iso_week) FROM "
-                "activity_analytics_snapshot WHERE dataset=excluded.dataset)",
+                "activity_analytics_snapshot WHERE dataset=excluded.dataset), "
+                "warning_window_days=CASE WHEN TYPEOF(warning_window_days)='integer' AND "
+                "warning_window_days BETWEEN 0 AND 365 THEN warning_window_days ELSE NULL END",
                 busyCancellationObserved);
             statement.bindTextOneBased(1, std::string{kDataset});
             statement.bindInt64OneBased(2, kSchemaVersion);
@@ -260,7 +271,7 @@ namespace ssa::infra::sqlite {
             const std::string deadlineOffset =
                 metric.deadline
                     ? "CASE WHEN julianday(NULLIF(TRIM(COALESCE(prazo_limite, '')), '')) "
-                      "IS NULL THEN NULL ELSE CAST(julianday(prazo_limite) - julianday(?) "
+                      "IS NULL THEN NULL ELSE CAST(julianday(TRIM(prazo_limite)) - julianday(?) "
                       "AS INTEGER) END"
                     : "NULL";
             const auto registrationWeek = query::canonicalIsoWeekSqlExpression("semana_cadastro");
@@ -355,13 +366,21 @@ namespace ssa::infra::sqlite {
     SqliteActivityAnalyticsProjection::sourceFingerprint(std::vector<std::string> verifiedSources) {
         std::ranges::sort(verifiedSources);
         std::uint64_t hash = 14695981039346656037ULL;
-        for (const auto& source : verifiedSources) {
-            for (const unsigned char byte : source) {
-                hash ^= byte;
-                hash *= 1099511628211ULL;
-            }
-            hash ^= 0xffU;
+        const auto appendByte = [&hash](const unsigned char byte) {
+            hash ^= byte;
             hash *= 1099511628211ULL;
+        };
+        const auto appendLength = [&appendByte](const std::uint64_t size) {
+            for (int shift = 56; shift >= 0; shift -= 8) {
+                appendByte(static_cast<unsigned char>(size >> shift));
+            }
+        };
+        appendLength(verifiedSources.size());
+        for (const auto& source : verifiedSources) {
+            appendLength(source.size());
+            for (const unsigned char byte : source) {
+                appendByte(byte);
+            }
         }
         return formatFingerprint(hash);
     }
