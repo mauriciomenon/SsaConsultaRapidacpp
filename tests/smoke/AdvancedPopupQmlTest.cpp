@@ -1191,6 +1191,19 @@ namespace {
             }
         }
 
+        void derivation_graph_model_delegates_windows_file_urls_to_qt() {
+            ssa::presentation::DerivadasGraphModel graphModel;
+            const std::array<QUrl, 2> localUrls = {
+                QUrl(QStringLiteral("file:///C:/SSA/graph.png")),
+                QUrl(QStringLiteral("file://server/share/graph.png")),
+            };
+
+            for (const auto& url : localUrls) {
+                QVERIFY(url.isLocalFile());
+                QCOMPARE(graphModel.localFilePath(url), url.toLocalFile());
+            }
+        }
+
         void filter_summary_distributes_surplus_and_preserves_natural_widths() {
             QQmlEngine engine;
             QQmlComponent component(&engine);

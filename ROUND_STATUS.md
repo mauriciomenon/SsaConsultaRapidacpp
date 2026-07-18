@@ -5,6 +5,23 @@ antes de interpretar sincronizacao Git, validacao local ou estado externo.
 
 Ultima verificacao local: 2026-07-18
 
+## Cobertura sintetica de URL Windows/UNC - 2026-07-18
+
+- HEAD anterior: `e76e722`. O working tree adiciona somente em
+  `AdvancedPopupQmlTest.cpp` um contrato para `file:///C:/SSA/graph.png` e
+  `file://server/share/graph.png`: `DerivadasGraphModel::localFilePath()`
+  delega exatamente para `QUrl::toLocalFile()`.
+- Validacao local: `ssa_qml_advanced_popup_tests` `1/1` em `2.16 s`;
+  `git diff --check`, clang-format e detect-secrets passaram; Semgrep executou
+  53 regras com zero finding. Review Terra ultra terminou sem findings.
+- Sem producao e sem credito: plano original `99.0/100`; divida nova
+  `13/14 = 92.9%`; backlog legado `0.0/100` como placeholder; fila operacional
+  `5/8 = 62.5%`.
+- Risco residual: cobertura sintetica nao prova SMB, `CreateFileW`, reparse
+  points, handles de diretorio ou gravacao em share. Proxima atividade unica:
+  prova Windows/UNC real para importacao e grafo. Profiling do prefetch continua
+  bloqueado.
+
 ## Fechamento local de tooling
 
 - Branch `master`; HEAD de codigo `2e2476b`. Bitbucket foi confirmado com
