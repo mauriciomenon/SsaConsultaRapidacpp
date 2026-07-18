@@ -1,5 +1,27 @@
 # Recovery Backlog
 
+## Polling de staging e corpus lock removido - 2026-07-18
+
+- [RESOLVED-LOCAL] [IMPORT-STAGING-CORPUS-CAUSAL] `1f99a90` remove tres
+  precondicoes temporais de `SpreadsheetImportWorkflowPortTests.cpp`, sem
+  alterar producao, schema ou timeout SQLite. Cada teste injeta um semaforo
+  novo e consome o primeiro `writerBusyEntered` apos staging real.
+- Os contratos preservam a evidencia externa: arquivo staged antes do
+  cancelamento, cleanup owned com falha visivel de permissao e exclusao do
+  `QLockFile` concorrente enquanto o rescan esta bloqueado.
+- Review Terra ultra apontou P1 porque `snapshotLocked` nunca seria emitido no
+  preflight de #456. A correcao usa `writerBusyEntered`; review final:
+  `SEM FINDINGS`.
+- Gates: build de `ssa_integration_tests`; CTest focado `3/3` em `0.48 s` e
+  suite workflow `174/174` em `7.72 s`. Diff, formato, detect-secrets e
+  Semgrep limpos; hooks staged passaram Gitleaks e TruffleHog. Bitbucket
+  confirma `1f99a90`; GitLab `origin` permanece OAuth `invalid_grant`.
+- Sem credito novo: plano `99.0/100`, divida nova `13/14 = 92.9%`, legado
+  placeholder `0.0/100`, fila operacional `5/8 = 62.5%`.
+
+Proxima atividade unica: remover polling de staging direto somente com uma seam
+de evento que prove copia ou conversao em andamento.
+
 ## Sinais causais de contencao SQLite na importacao - 2026-07-18
 
 - [RESOLVED-LOCAL] [IMPORT-RESCAN-CAUSAL-BUSY-SIGNALS] `f62ea53` elimina

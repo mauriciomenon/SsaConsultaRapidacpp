@@ -5,6 +5,33 @@ antes de interpretar sincronizacao Git, validacao local ou estado externo.
 
 Ultima verificacao local: 2026-07-18
 
+## Polling de staging e corpus lock removido - 2026-07-18
+
+- Branch `master`; codigo em `1f99a90`, confirmado no Bitbucket. GitLab
+  `origin` continua bloqueado por OAuth `invalid_grant`; isso nao reduz a
+  validacao local nem equivale a publicacao no GitLab.
+- O patch altera somente `SpreadsheetImportWorkflowPortTests.cpp`. Tres
+  contratos agora aguardam `writerBusyEntered`, que ocorre apos staging e na
+  primeira contencao SQLite real: cancelamento apos staging, cleanup owned com
+  permissao negada e retencao do corpus lock durante rescan.
+- Foram removidos os loops de `QElapsedTimer`/`msleep(5)` e o wait fixo de
+  `50 ms`. As assercoes observaveis permanecem: workbook staged, cleanup,
+  rollback SQLite e o `QLockFile` concorrente nao pode adquirir o corpus lock.
+- O primeiro review Terra ultra encontrou P1: `snapshotLocked` so ocorre na
+  publication, enquanto o rescan deste teste bloqueia no preflight. O patch
+  foi corrigido para `writerBusyEntered`; reinspecao final: `SEM FINDINGS`.
+- Gate local: diff, clang-format, detect-secrets e Semgrep limpos; cppcheck nao
+  tinha arquivo de producao neste slice. Build de `ssa_integration_tests`
+  passou. CTest focado `3/3` em `0.48 s`; workflow completo `174/174` em
+  `7.72 s`. Hooks do commit passaram clang-format, Gitleaks, detect-secrets e
+  TruffleHog.
+- Contadores sem inflacao: plano original `99.0/100`; divida nova
+  `13/14 = 92.9%`; backlog legado `0.0/100` como placeholder; fila operacional
+  `5/8 = 62.5%`. Nenhum credito funcional foi atribuido.
+
+Proxima atividade unica: substituir o proximo grupo de polling de staging
+direto por sinal causal sem alterar o comportamento de producao.
+
 ## Sinais causais de contencao SQLite na importacao - 2026-07-18
 
 - Branch `master`; HEAD de codigo `f62ea53`. Bitbucket confirma o mesmo hash.
