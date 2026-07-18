@@ -8,6 +8,7 @@
 #include "infra/sqlite/SqliteSsaRepository.h"
 #include "ports/OperationError.h"
 #include "qt/FilesystemPath.h"
+#include "query/SqlQueryBuilder.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -29,6 +30,7 @@
 #include <sstream>
 #include <stop_token>
 #include <string>
+#include <string_view>
 #include <system_error>
 #include <thread>
 #include <vector>
@@ -257,6 +259,56 @@ TEST_CASE_METHOD(SqliteRepositoryFixture, "sqlite repository pages and filters r
     REQUIRE(page.totalRows == 1);
     REQUIRE(page.rows.size() == 1);
     REQUIRE(page.rows[0].valueOf("numero_ssa") == "202500003");
+}
+
+TEST_CASE_METHOD(SqliteRepositoryFixture,
+                 "canonical SSA equality uses the binary index for page and count") {
+    constexpr std::string_view indexName = "idx_test_ssa_number_binary";
+    ssa::infra::sqlite::SqliteConnection connection(path,
+                                                    ssa::infra::sqlite::SqliteOpenMode::ReadWrite);
+    {
+        ssa::infra::sqlite::SqliteStatement createIndex(connection.handle(),
+                                                        "CREATE INDEX idx_test_ssa_number_binary "
+                                                        "ON ssa_table(numero_ssa COLLATE BINARY)");
+        createIndex.executeAndReset();
+    }
+
+    ssa::domain::SsaPageRequest request;
+    request.pageSize = 10;
+    request.excludeScaSesSte = false;
+    request.visibleColumns = {"numero_ssa"};
+    request.columnFilters = {{"numero_ssa", "=202500003"}};
+    const auto queries = ssa::query::SqlQueryBuilder{}.build(request);
+    const auto explain = [&connection](const ssa::query::SqlQuery& query) {
+        ssa::infra::sqlite::SqliteStatement statement(connection.handle(),
+                                                      "EXPLAIN QUERY PLAN " + query.sql);
+        for (std::size_t index = 0; index < query.bindings.size(); ++index) {
+            statement.bindTextOneBased(static_cast<int>(index + 1), query.bindings[index]);
+        }
+        std::string details;
+        while (statement.step()) {
+            if (!details.empty()) {
+                details += '\n';
+            }
+            details += statement.columnText(3);
+        }
+        return details;
+    };
+
+    const auto pagePlan = explain(queries.page);
+    const auto countPlan = explain(queries.count);
+    CAPTURE(pagePlan, countPlan);
+    REQUIRE(pagePlan.find("SEARCH") != std::string::npos);
+    REQUIRE(pagePlan.find(indexName) != std::string::npos);
+    REQUIRE(pagePlan.find("SCAN") == std::string::npos);
+    REQUIRE(countPlan.find("SEARCH") != std::string::npos);
+    REQUIRE(countPlan.find(indexName) != std::string::npos);
+    REQUIRE(countPlan.find("SCAN") == std::string::npos);
+
+    const auto page = repository.page(request);
+    REQUIRE(page.totalRows == 1);
+    REQUIRE(page.rows.size() == 1);
+    REQUIRE(page.rows.front().valueOf("numero_ssa") == "202500003");
 }
 
 TEST_CASE_METHOD(SqliteRepositoryFixture,

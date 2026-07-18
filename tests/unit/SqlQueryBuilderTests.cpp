@@ -153,6 +153,39 @@ TEST_CASE("sql query builder uses SSA number descending as default order") {
     REQUIRE(queries.page.sql.find("\"numero_ssa\" DESC") != std::string::npos);
 }
 
+TEST_CASE("sql query builder uses binary equality for canonical SSA number filters") {
+    ssa::domain::SsaPageRequest request;
+    request.excludeScaSesSte = false;
+    request.columnFilters = {{"numero_ssa", "=202500003"}};
+
+    const auto queries = ssa::query::SqlQueryBuilder{}.build(request);
+
+    const std::string binaryPredicate = R"("numero_ssa" = ?)";
+    const std::string nocasePredicate = R"("numero_ssa" = ? COLLATE NOCASE)";
+    REQUIRE(queries.page.sql.find(binaryPredicate) != std::string::npos);
+    REQUIRE(queries.count.sql.find(binaryPredicate) != std::string::npos);
+    REQUIRE(queries.page.sql.find(nocasePredicate) == std::string::npos);
+    REQUIRE(queries.count.sql.find(nocasePredicate) == std::string::npos);
+}
+
+TEST_CASE("sql query builder keeps nocase equality for noncanonical text filters") {
+    const auto requireNocase = [](const std::string& key, const std::string& value) {
+        CAPTURE(key, value);
+        ssa::domain::SsaPageRequest request;
+        request.excludeScaSesSte = false;
+        request.columnFilters = {{key, "=" + value}};
+
+        const auto queries = ssa::query::SqlQueryBuilder{}.build(request);
+        const std::string predicate = "\"" + key + "\" = ? COLLATE NOCASE";
+        REQUIRE(queries.page.sql.find(predicate) != std::string::npos);
+        REQUIRE(queries.count.sql.find(predicate) != std::string::npos);
+    };
+
+    requireNocase("situacao", "APV");
+    requireNocase("numero_ssa", "20250003");
+    requireNocase("numero_ssa", "20250000A");
+}
+
 TEST_CASE("sql query builder orders requested text columns in both directions") {
     ssa::domain::SsaPageRequest request;
     request.sort.columnKey = "situacao";

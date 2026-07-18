@@ -98,6 +98,17 @@ namespace ssa::query {
             return {patternFor(mode, upperText), comparatorFor(mode), false};
         }
 
+        CompiledSearchTerm compileColumnSearchTerm(const std::string& key, const SearchTerm& term) {
+            auto compiled = compileSearchTerm(term.text, term.mode);
+            if (key == domain::kSsaNumberColumnKey && term.mode == domain::MatchMode::Equals &&
+                term.text.size() == 9 && std::ranges::all_of(term.text, [](const char ch) {
+                    return ch >= '0' && ch <= '9';
+                })) {
+                compiled.comparator = " = ? ";
+            }
+            return compiled;
+        }
+
         std::vector<std::string> uppercaseExcludedStatusCodes() {
             std::vector<std::string> result;
             const auto excludedCodes = domain::ColumnCatalog::excludedStatusCodes();
@@ -155,7 +166,7 @@ namespace ssa::query {
                 if (hasPredicate) {
                     group << " OR ";
                 }
-                const CompiledSearchTerm compiled = compileSearchTerm(term.text, term.mode);
+                const CompiledSearchTerm compiled = compileColumnSearchTerm(key, term);
                 appendCompiledTermForColumn(group, groupBindings, key, compiled);
                 hasPredicate = true;
             }
@@ -181,7 +192,7 @@ namespace ssa::query {
                 if (hasPredicate) {
                     group << " OR ";
                 }
-                const CompiledSearchTerm compiled = compileSearchTerm(term.text, term.mode);
+                const CompiledSearchTerm compiled = compileColumnSearchTerm(key, term);
                 appendCompiledTermForColumn(group, groupBindings, key, compiled);
                 hasPredicate = true;
             }
