@@ -421,12 +421,18 @@ namespace {
             }
             if (call == 0) {
                 firstStarted_.store(true, std::memory_order_release);
-                const auto deadline =
-                    std::chrono::steady_clock::now() + std::chrono::milliseconds{500};
-                while (!stopToken.stop_requested() && std::chrono::steady_clock::now() < deadline) {
-                    std::this_thread::yield();
+                {
+                    std::unique_lock lock(firstGateMutex_);
+                    const bool released = firstGateCondition_.wait_for(
+                        lock, stopToken, std::chrono::seconds{2}, [] { return false; });
+                    if (!released && !stopToken.stop_requested()) {
+                        firstStopWaitTimedOut_.store(true, std::memory_order_release);
+                    }
                 }
-                std::this_thread::sleep_for(std::chrono::milliseconds{200});
+                firstStopObserved_.store(stopToken.stop_requested(), std::memory_order_release);
+                if (!firstTerminalRelease_.try_acquire_for(std::chrono::seconds{2})) {
+                    firstGateTimedOut_.store(true, std::memory_order_release);
+                }
                 firstFinished_.store(true, std::memory_order_release);
                 if (stopToken.stop_requested()) {
                     throw std::system_error(std::make_error_code(std::errc::operation_canceled));
@@ -485,6 +491,22 @@ namespace {
             return firstFinished_.load(std::memory_order_acquire);
         }
 
+        void releaseFirstTerminal() const {
+            firstTerminalRelease_.release();
+        }
+
+        [[nodiscard]] bool firstStopObserved() const {
+            return firstStopObserved_.load(std::memory_order_acquire);
+        }
+
+        [[nodiscard]] bool firstGateTimedOut() const {
+            return firstGateTimedOut_.load(std::memory_order_acquire);
+        }
+
+        [[nodiscard]] bool firstStopWaitTimedOut() const {
+            return firstStopWaitTimedOut_.load(std::memory_order_acquire);
+        }
+
         [[nodiscard]] bool secondStarted() const {
             return secondStarted_.load(std::memory_order_acquire);
         }
@@ -498,7 +520,13 @@ namespace {
         mutable std::atomic_int calls_{0};
         mutable std::atomic_bool firstStarted_{false};
         mutable std::atomic_bool firstFinished_{false};
+        mutable std::atomic_bool firstStopObserved_{false};
+        mutable std::atomic_bool firstGateTimedOut_{false};
+        mutable std::atomic_bool firstStopWaitTimedOut_{false};
         mutable std::atomic_bool secondStarted_{false};
+        mutable std::condition_variable_any firstGateCondition_;
+        mutable std::mutex firstGateMutex_;
+        mutable std::binary_semaphore firstTerminalRelease_{0};
         mutable std::mutex mutex_;
         mutable std::vector<ssa::domain::SsaPageRequest> requests_;
     };
@@ -718,6 +746,8 @@ namespace {
 
         void macro_report_is_async_latest_wins_and_does_not_publish_filter_state() {
             auto repository = std::make_shared<BlockingMacroReportRepository>();
+            auto releaseFirstTerminal =
+                qScopeGuard([repository] { repository->releaseFirstTerminal(); });
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
             ssa::presentation::FilterPanelViewModel filterPanel(service);
             auto* advanced = qobject_cast<ssa::presentation::FilterPanelAdvancedViewModel*>(
@@ -742,6 +772,7 @@ namespace {
             macro->setSelectedMacro(QStringLiteral("ssas_executadas_divisao"));
 
             QTRY_VERIFY_WITH_TIMEOUT(repository->secondStarted(), 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(repository->firstStopObserved(), 1000);
             QVERIFY(!repository->firstFinished());
             QTRY_VERIFY_WITH_TIMEOUT(!macro->reportLoading(), 1000);
             QCOMPARE(macro->reportError(), QString());
@@ -754,12 +785,29 @@ namespace {
             QCOMPARE(requests.size(), std::size_t{2});
             QCOMPARE(requests.at(0).pageSize, std::size_t{0});
             QCOMPARE(requests.at(1).pageSize, std::size_t{0});
+            const auto reportSpyCount = reportSpy.count();
+            const auto reportRows = macro->reportRows();
+            const auto reportText = macro->reportText();
+            const auto reportError = macro->reportError();
+            const auto reportTitle = macro->reportTitle();
+            releaseFirstTerminal.commit();
             QTRY_VERIFY_WITH_TIMEOUT(repository->firstFinished(), 1000);
-            QCOMPARE(macro->reportTitle(), QString("SSA Executadas Divisao"));
+            QTRY_VERIFY_WITH_TIMEOUT(!macro->hasActiveOperations(), 1000);
+            QVERIFY(!repository->firstGateTimedOut());
+            QVERIFY(!repository->firstStopWaitTimedOut());
+            QCoreApplication::processEvents();
+            QCOMPARE(reportSpy.count(), reportSpyCount);
+            QCOMPARE(macro->reportRows(), reportRows);
+            QCOMPARE(macro->reportText(), reportText);
+            QCOMPARE(macro->reportError(), reportError);
+            QCOMPARE(macro->reportTitle(), reportTitle);
+            QCOMPARE(filterStateSpy.count(), 0);
         }
 
         void macro_report_destructor_is_non_blocking_and_keeps_worker_dependencies_alive() {
             auto repository = std::make_shared<BlockingMacroReportRepository>();
+            auto releaseFirstTerminal =
+                qScopeGuard([repository] { repository->releaseFirstTerminal(); });
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
             QElapsedTimer destructionTimer;
             {
@@ -772,7 +820,12 @@ namespace {
             }
 
             QVERIFY(destructionTimer.elapsed() < 50);
+            QTRY_VERIFY_WITH_TIMEOUT(repository->firstStopObserved(), 1000);
+            QVERIFY(!repository->firstFinished());
+            releaseFirstTerminal.commit();
             QTRY_VERIFY_WITH_TIMEOUT(repository->firstFinished(), 1000);
+            QVERIFY(!repository->firstGateTimedOut());
+            QVERIFY(!repository->firstStopWaitTimedOut());
         }
 
         void cancelAfterMacroWorkerCompletedBeforeTerminalDoesNotPublishReport() {
