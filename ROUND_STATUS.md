@@ -3,6 +3,24 @@
 Fonte operacional para humanos e agentes de codigo. Verifique este arquivo
 antes de interpretar sincronizacao Git, validacao local ou estado externo.
 
+## Checkpoint causal no ciclo de preferencias - 2026-07-19
+
+- **ENTREGUE localmente**: `PreferenceLifecycleTest` deixou de usar
+  `sleep_for(20ms)` para liberar o primeiro save. O teste agora chama
+  `beginShutdown(latest)` e libera o save bloqueado imediatamente, usando o
+  estado funcional do coordinator como sincronizacao causal.
+- Review final: diff check, clang-format, Semgrep C/security (0 findings) e
+  detect-secrets limpos. Cppcheck nao selecionou arquivo de teste pelo hook
+  configurado; isto nao foi tratado como gate verde de cppcheck.
+- Build e CTest focados: target `ssa_qt_preference_lifecycle_tests` compilado;
+  `1/1` passou em `0.64 s`. Nenhuma regra de producao, schema ou layout mudou.
+- Contadores sem inflacao: plano original `99.0/100`; divida nova P0
+  `14/14 = 100.0%`; backlog legado `N/A`; fila operacional local `6/8 =
+  75.0%`.
+
+Proxima atividade unica: fechar outro item local de determinismo ou
+importacao/SQLite com evidencia causal, mantendo provas externas separadas.
+
 ## Auditoria do backlog legado - 2026-07-19
 
 - Um item obsoleto foi identificado e corrigido: o texto antigo de

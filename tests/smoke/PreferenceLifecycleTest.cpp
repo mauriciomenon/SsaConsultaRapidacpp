@@ -239,13 +239,9 @@ namespace {
             coordinator.saveNowOrSchedule(first);
             QVERIFY(preferences->waitForFirstSave(std::chrono::seconds{1}));
             coordinator.saveNowOrSchedule(latest);
-            std::thread releaser([preferences] {
-                std::this_thread::sleep_for(std::chrono::milliseconds{20});
-                preferences->releaseFirstSave();
-            });
 
             coordinator.beginShutdown(latest);
-            releaser.join();
+            preferences->releaseFirstSave();
             QTRY_COMPARE_WITH_TIMEOUT(shutdownSpy.size(), 1, 1000);
 
             QCOMPARE(preferences->savedDensities(), std::vector<std::string>({"first", "latest"}));

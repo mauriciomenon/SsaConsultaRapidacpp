@@ -1,5 +1,20 @@
 # Recovery Backlog
 
+## Determinismo do shutdown de preferencias - 2026-07-19
+
+- [RESOLVED-LOCAL] O teste de shutdown persistindo o snapshot final nao usa
+  mais `sleep_for(20ms)` nem thread releaser temporal. A ordem funcional
+  agora e: primeiro save bloqueado, `beginShutdown(latest)`, liberacao causal,
+  conclusao do shutdown.
+- Build do target e CTest focado passaram `1/1` em `0.64 s`. Review final de
+  diff, clang-format, Semgrep e detect-secrets foi limpo. Cppcheck nao
+  selecionou teste pelo hook e permanece explicitamente sem evidencia nesta
+  fatia.
+- Nenhum codigo de producao, schema, menu ou layout foi alterado.
+
+Proxima atividade unica: selecionar outro teste com espera temporal evitavel ou
+uma pendencia local de importacao/SQLite.
+
 ## Auditoria do legado e itens obsoletos - 2026-07-19
 
 - [RESOLVED-LOCAL] A entrada antiga de `TYPESCALE-POINTSIZE` dizia que
