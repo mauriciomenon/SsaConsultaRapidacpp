@@ -416,6 +416,8 @@ TEST_CASE("SSA import rejects invalid execution date fields before merge") {
 TEST_CASE("SSA import field timestamps reject surrounding text") {
     REQUIRE(ssa::domain::SsaImportPolicy::normalizeSnapshotTimestamp("21/10/2025 11:10:36") ==
             "2025-10-21 11:10:36");
+    REQUIRE(ssa::domain::SsaImportPolicy::normalizeSnapshotTimestamp("21/10/2025 11:10") ==
+            "2025-10-21 11:10:00");
     REQUIRE(ssa::domain::SsaImportPolicy::normalizeSnapshotTimestamp("2025-10-21T11:10:36") ==
             "2025-10-21 11:10:36");
     REQUIRE(ssa::domain::SsaImportPolicy::normalizeSnapshotTimestamp("prefix 21/10/2025 11:10:36")

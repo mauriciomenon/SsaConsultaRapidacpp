@@ -1,15 +1,34 @@
 # Recovery Backlog
 
+## Corpus real sem linhas invalidas - 2026-07-19
+
+- [RESOLVED-LOCAL] [IMPORT-CORPUS-INVALID-NUMBER] O rescan C++ isolado do
+  corpus real terminou com 1692 arquivos, 458864 linhas validas e zero em
+  `invalid_rows`, `invalid_number`, `invalid_description`, `invalid_date` e
+  `failed`. O banco clone passou `PRAGMA integrity_check=ok`, publicou 96479
+  registros e nao teve alteracao de schema.
+- A causa adicional encontrada foi registrada por formato: `pai_sam_api.xlsx`
+  e seus pares sao export bruto SAM e ficam preservados para o fluxo SAM
+  dedicado; `Todas as SSAs` tem quatro linhas historicas sem descricao/data e
+  status SCC/ADI/ASE, ignoradas somente nesse nome/perfil. Uma planilha normal
+  com a mesma omissao continua rejeitada.
+- O mapeamento de `Prazo Limite` para `status_execucao_prazo` eliminou o erro
+  de data, e `Data Limite` continua tipado como data. Rotulos reais de
+  reprogramacao foram normalizados sem aceitar texto desconhecido.
+- Validacao: 5/5 testes focados, build de integracao e CLI, Semgrep,
+  clang-format, diff check e detect-secrets limpos. O rescan integral levou
+  aproximadamente 12 minutos observados em clone APFS.
+- Contadores: plano original `99.0/100`; divida nova `14/14 = 100.0%` para o
+  item P0 fechado; backlog legado `N/A`, sem denominador ativo; fila
+  operacional segue `5/8 = 62.5%` por depender de provas externas.
+- Proxima atividade unica: rodar CTest completo e, se verde, criar o commit
+  atomico deste slice e publicar nos dois remotos.
+
 ## Fila ativa reconciliada - 2026-07-19
 
-- [P0-ACTIVE] [IMPORT-CORPUS-INVALID-NUMBER] A importacao real exibiu
-  `files=1692`, `rows=0`, `invalid_rows=994` e `invalid_number=994`, sem
-  publicar linhas. Em outra tentativa, `invalid_rows=2980` e
-  `duplicate_conflict=1`. Isto e uma falha funcional de importacao para o
-  corpus atual, nao uma falha comprovada de SQLite: o fluxo fail-closed evitou
-  publicar uma carga parcial. Proximo corte: capturar uma celula real rejeitada,
-  reproduzir em fixture minima, identificar a normalizacao e preservar a
-  atomicidade antes de aceitar qualquer formato novo.
+- [RESOLVED-LOCAL] [IMPORT-CORPUS-INVALID-NUMBER] Mantido abaixo como historico
+  da falha inicial. O caso foi reproduzido, corrigido por formato e aceito no
+  rescan integral descrito na secao acima.
 - [RETIRED-FROM-ACTIVE] [FILTER-DIFFERENT-SEMANTICS] e
   [DISTINCT-ADVANCED-TEXT-FILTERS] continuam no historico abaixo, mas sairam da
   fila. `!STE` e not-contains; `!=STE` e diferente exato. Distinct remove

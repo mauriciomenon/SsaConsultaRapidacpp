@@ -3,6 +3,35 @@
 Fonte operacional para humanos e agentes de codigo. Verifique este arquivo
 antes de interpretar sincronizacao Git, validacao local ou estado externo.
 
+## Importacao integral do corpus corrigida - 2026-07-19
+
+- **ENTREGUE**: o importador C++ concluiu o rescan isolado de 1692 XLSX. O
+  resultado foi `rows=458864`, `invalid_rows=0`, `invalid_number=0`,
+  `invalid_description=0`, `invalid_date=0`, `failed=0`.
+- Foram corrigidos quatro formatos reais sem abrir o contrato geral: `Prazo
+  Limite` e status textual, rotulos `Reschedule #N`/`Reprogramacao #N`,
+  relatorios auxiliares de derivadas/relacoes e export bruto SAM. Linhas
+  historicas incompletas de `Todas as SSAs` sao ignoradas apenas nesse perfil;
+  relatorios normais continuam fail-closed.
+- Evidencia SQLite no clone `/private/tmp/ssa_import_validation_19/ssas.db`:
+  `PRAGMA integrity_check` retornou `ok`, `COUNT(*)=96479`, sem schema novo.
+  O mesmo clone registrou `inserted=96479`, `updated=362385`,
+  `unchanged=1241540`, `duplicates=1603953`, `conflicts=0`.
+- Testes desta rodada: 5/5 casos focados de mapeamento, build dos targets
+  `ssa_integration_tests` e `ssa_consulta_rapida_cli`, e rescan integral com
+  aproximadamente 12 minutos observados. Review imediato: diff check,
+  clang-format, Semgrep C/security e detect-secrets, todos sem findings.
+- Contadores atuais: plano original `99.0/100`; divida nova `14/14 = 100.0%`
+  para o P0 de importacao reproduzido; backlog legado `N/A` sem denominador;
+  fila operacional `5/8 = 62.5%`, pois Windows/UNC real e outras provas
+  externas continuam sem credito local.
+- Risco residual: o corpus foi validado em clone macOS; nao e prova de
+  Windows/UNC, SAM dedicado real ou todos os arquivos futuros. Nenhuma fonte
+  de producao foi movida nesta validacao.
+
+Proxima atividade unica: executar a suite completa apos este slice, atualizar
+o commit atomico e publicar em `origin` e `bitbucket` se os remotos aceitarem.
+
 ## Reconciliacao ativa - 2026-07-19
 
 - HEAD publicado: `874e31b` em `master`, `origin/master` e
@@ -13,9 +42,8 @@ antes de interpretar sincronizacao Git, validacao local ou estado externo.
   `ssa_qml_theme_gallery_tests` `1/1` em `0.70 s`; smoke da janela principal
   `ssa_qml_layout_smoke_1180x760` `1/1` em `3.95 s`; `all_qmllint` e hook
   staged passaram. Nenhum menu ou fluxo de banco foi alterado.
-- Fila ativa: somente [IMPORT-CORPUS-INVALID-NUMBER]. Os logs reais mostram
-  importacao fail-closed com `rows=0` e `invalid_number`; ainda falta fixture
-  com celula real rejeitada antes de mudar normalizacao ou SQLite.
+- Fila ativa: [IMPORT-WINDOWS-UNC-EXTERNAL] e provas de plataforma. O antigo
+  [IMPORT-CORPUS-INVALID-NUMBER] foi resolvido e mantem a evidencia acima.
 - Itens de filtros e distinct foram retirados da fila ativa: `!STE` significa
   not-contains e `!=STE` significa diferente exato; distinct remove somente o
   self-filter e aplica os demais filtros avancados. O legado fica `N/A`, sem

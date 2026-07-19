@@ -574,9 +574,14 @@ namespace ssa::infra::importing {
         ports::WorkflowResult failed(const char* operation, const ImportStagingResult& files,
                                      const SsaImportWriteSummary& summary,
                                      const std::size_t failedFiles, std::string diagnostic) {
-            return {ports::WorkflowStatus::Failed,
-                    workflowMessage(operation, files, summary, {failedFiles, "operation_failed"}),
-                    false, std::move(diagnostic)};
+            auto message =
+                workflowMessage(operation, files, summary, {failedFiles, "operation_failed"});
+            if (diagnostic.starts_with("file=")) {
+                const auto separator = diagnostic.find(';');
+                message += " " + diagnostic.substr(0, separator);
+            }
+            return {ports::WorkflowStatus::Failed, std::move(message), false,
+                    std::move(diagnostic)};
         }
 
         ports::WorkflowResult rollbackSession(sqlite::SqliteSsaImportWriter::WriteSession& session,
@@ -917,12 +922,18 @@ namespace ssa::infra::importing {
             }
             std::vector<ImportManifestEntry> manifest;
             manifest.reserve(staging.files.size());
+            std::vector<const StagedImportFile*> consolidableFiles;
+            consolidableFiles.reserve(staging.files.size());
             for (const auto& file : staging.files) {
                 const auto& fileResult = result.importSummary->files[file.summaryIndex];
+                if (fileResult.status == ports::ImportFileStatus::Rejected) {
+                    continue;
+                }
                 const bool hasValidRows = fileResult.status == ports::ImportFileStatus::Applied ||
                                           fileResult.status == ports::ImportFileStatus::NoChanges;
                 manifest.push_back(
                     {file.consolidationSources, hasValidRows, file.consolidationFilename});
+                consolidableFiles.push_back(&file);
             }
             const auto consolidationPlan = consolidator_.plan(manifest, stopToken);
             if (consolidationPlan.canceled || !consolidationPlan.error.empty()) {
@@ -950,7 +961,8 @@ namespace ssa::infra::importing {
                     consolidation.entries[index].completed != manifest[index].sources.size()) {
                     continue;
                 }
-                auto& fileResult = result.importSummary->files[staging.files[index].summaryIndex];
+                auto& fileResult =
+                    result.importSummary->files[consolidableFiles[index]->summaryIndex];
                 fileResult.consolidated = true;
                 fileResult.noSurvivor = !manifest[index].hasValidRows;
                 ++completedFiles;
@@ -1078,6 +1090,7 @@ namespace ssa::infra::importing {
 
         SsaImportWriteSummary totalSummary;
         totalSummary.files = files.files.size();
+        bool ignoredUnrecognizedWorkbook = false;
         std::unique_ptr<sqlite::SqliteSsaImportWriter::WriteSession> writeSession;
         try {
             writeSession = std::make_unique<sqlite::SqliteSsaImportWriter::WriteSession>(
@@ -1179,21 +1192,22 @@ namespace ssa::infra::importing {
                     return discardBeforeCommit(rollbackSession(*writeSession, canceled(operation)));
                 }
                 ++failedFiles;
-                return discardBeforeCommit(
-                    rollbackSession(*writeSession, failed(operation, files, totalSummary,
-                                                          failedFiles, error.what())));
+                return discardBeforeCommit(rollbackSession(
+                    *writeSession, failed(operation, files, totalSummary, failedFiles,
+                                          "file=" + file.originalFilename + "; " + error.what())));
             } catch (const ports::OperationError& error) {
                 applyChunkedWorkbookResult();
                 ++failedFiles;
-                return discardBeforeCommit(
-                    rollbackSession(*writeSession, failed(operation, files, totalSummary,
-                                                          failedFiles, error.diagnostic())));
+                return discardBeforeCommit(rollbackSession(
+                    *writeSession,
+                    failed(operation, files, totalSummary, failedFiles,
+                           "file=" + file.originalFilename + "; " + error.diagnostic())));
             } catch (const std::exception& exc) {
                 applyChunkedWorkbookResult();
                 ++failedFiles;
-                return discardBeforeCommit(
-                    rollbackSession(*writeSession, failed(operation, files, totalSummary,
-                                                          failedFiles, exc.what())));
+                return discardBeforeCommit(rollbackSession(
+                    *writeSession, failed(operation, files, totalSummary, failedFiles,
+                                          "file=" + file.originalFilename + "; " + exc.what())));
             }
             if (stopToken.stop_requested()) {
                 return discardBeforeCommit(rollbackSession(*writeSession, canceled(operation)));
@@ -1223,19 +1237,23 @@ namespace ssa::infra::importing {
                      workflowMessage(operation, files, totalSummary, {0, "duplicate_conflict"})}));
             }
             if (batch.mappingStatus == SpreadsheetMappingStatus::HeaderNotRecognized) {
-                return discardBeforeCommit(rollbackSession(
-                    *writeSession, {ports::WorkflowStatus::Rejected,
-                                    std::string{operation} + " header_not_recognized"}));
+                fileResult.status = ports::ImportFileStatus::Rejected;
+                ++importSummary.rejected;
+                ++importSummary.preserved;
+                ignoredUnrecognizedWorkbook = true;
+                continue;
             }
             if (batch.mappingStatus == SpreadsheetMappingStatus::RequiredColumnsMissing) {
                 return discardBeforeCommit(rollbackSession(
                     *writeSession, {ports::WorkflowStatus::Rejected,
-                                    std::string{operation} + " required_columns_missing"}));
+                                    std::string{operation} + " required_columns_missing file=" +
+                                        file.originalFilename}));
             }
             if (batch.mappingStatus == SpreadsheetMappingStatus::AmbiguousHeaders) {
                 return discardBeforeCommit(rollbackSession(
-                    *writeSession, {ports::WorkflowStatus::Rejected,
-                                    std::string{operation} + " ambiguous_headers"}));
+                    *writeSession,
+                    {ports::WorkflowStatus::Rejected,
+                     std::string{operation} + " ambiguous_headers file=" + file.originalFilename}));
             }
             if (invalidFullBatch) {
                 return discardBeforeCommit(rollbackSession(
@@ -1257,7 +1275,7 @@ namespace ssa::infra::importing {
                                     ? ports::ImportFileStatus::Applied
                                     : ports::ImportFileStatus::NoChanges;
         }
-        if (!replaceAll && !pendingOutcomes.empty() &&
+        if (pendingOutcomes.empty() ||
             std::ranges::none_of(pendingOutcomes, [](const PendingImportOutcome& outcome) {
                 return outcome.hasValidRows;
             })) {
@@ -1327,7 +1345,7 @@ namespace ssa::infra::importing {
             return withSummary({status, workflowMessage(operation, files, totalSummary),
                                 files.warning || files.failedCopies > 0 ||
                                     files.failedLegacyXls > 0 || totalSummary.invalidRows > 0 ||
-                                    totalSummary.duplicateRows > 0,
+                                    totalSummary.duplicateRows > 0 || ignoredUnrecognizedWorkbook,
                                 files.diagnostic},
                                importSummary);
         }
@@ -1397,7 +1415,8 @@ namespace ssa::infra::importing {
              workflowMessage(operation, files, totalSummary, {failedFiles, consolidationState}),
              files.warning || files.failedCopies > 0 || files.failedLegacyXls > 0 ||
                  consolidation.failed > 0 || consolidation.canceled || journalFailures > 0 ||
-                 totalSummary.invalidRows > 0 || totalSummary.duplicateRows > 0,
+                 totalSummary.invalidRows > 0 || totalSummary.duplicateRows > 0 ||
+                 ignoredUnrecognizedWorkbook,
              std::move(diagnostic)},
             importSummary);
     }

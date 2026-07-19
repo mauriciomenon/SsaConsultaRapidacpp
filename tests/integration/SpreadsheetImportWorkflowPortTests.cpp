@@ -2958,6 +2958,7 @@ TEST_CASE("external import rejects a workbook without the required date column")
 
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
     REQUIRE(result.message.find("required_columns_missing") != std::string::npos);
+    REQUIRE(result.message.find("schema-incompleto.xlsx") != std::string::npos);
     REQUIRE(std::filesystem::exists(source));
     REQUIRE_FALSE(std::filesystem::exists(inputDirectory / "processadas"));
     sqlite3* db = nullptr;
@@ -3097,7 +3098,7 @@ TEST_CASE("external import rejects equal snapshot conflicts across files") {
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
-TEST_CASE("incremental rescan rejects an unrecognized workbook without moving it") {
+TEST_CASE("incremental rescan preserves an unrecognized workbook without moving it") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
 
@@ -3121,7 +3122,7 @@ TEST_CASE("incremental rescan rejects an unrecognized workbook without moving it
     const auto result = port.rescan({ssa::ports::RescanMode::Incremental});
 
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
-    REQUIRE(result.message.find("header_not_recognized") != std::string::npos);
+    REQUIRE(result.message.find("no_valid_rows") != std::string::npos);
     REQUIRE(std::filesystem::exists(workbook));
     REQUIRE_FALSE(std::filesystem::exists(inputDirectory / "processadas"));
     sqlite3* db = nullptr;
@@ -3151,6 +3152,23 @@ TEST_CASE("spreadsheet mapper rejects invalid rows and accepts date exempt state
     REQUIRE(result.invalidDateRows == 2);
     REQUIRE(ssa::infra::importing::rowValue(result.rows[0], "numero_ssa") == "202600003");
     REQUIRE(ssa::infra::importing::rowValue(result.rows[1], "numero_ssa") == "202600004");
+}
+
+TEST_CASE("spreadsheet mapper ignores continuation-only waiting rows") {
+    ssa::infra::importing::SpreadsheetTable table;
+    table.sourcePath = "waiting-continuation.xlsx";
+    table.rows = {{"Numero SSA", "Situacao", "Descricao da SSA", "Data de emissao",
+                   "Registros de Espera", "Situacao de Espera"},
+                  {"202600004", "APV", "Primary record", "2026-01-01", "Espera #1", "AAT"},
+                  {"", "", "", "", "Espera #2", "APV"}};
+
+    const auto result = ssa::infra::importing::SsaSpreadsheetMapper{}.map(table);
+
+    REQUIRE(result.mappingStatus == ssa::infra::importing::SpreadsheetMappingStatus::Mapped);
+    REQUIRE(result.rows.size() == 1);
+    REQUIRE(result.skippedRows == 0);
+    REQUIRE(result.invalidRows == 0);
+    REQUIRE(ssa::infra::importing::rowValue(result.rows.front(), "numero_ssa") == "202600004");
 }
 
 TEST_CASE("spreadsheet workflow reports invalid row causes without cell content") {
@@ -5119,6 +5137,8 @@ TEST_CASE("spreadsheet import workflow reports xlsx read failure cause") {
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
     REQUIRE(result.message.find("failed=1") != std::string::npos);
     REQUIRE(result.message.find("error=operation_failed") != std::string::npos);
+    REQUIRE(result.message.find("file=broken.xlsx") != std::string::npos);
+    REQUIRE(result.diagnostic.find("file=broken.xlsx") != std::string::npos);
     REQUIRE(result.diagnostic.find("cannot read xlsx zip package") != std::string::npos);
 }
 
@@ -6073,7 +6093,7 @@ TEST_CASE("rejected workbook summary preserves source and reports no applied row
     REQUIRE(std::filesystem::exists(workbook));
 }
 
-TEST_CASE("incremental rescan rolls back the batch when a later file is rejected") {
+TEST_CASE("incremental rescan publishes valid files and preserves a later rejection") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
 
@@ -6097,24 +6117,27 @@ TEST_CASE("incremental rescan rolls back the batch when a later file is rejected
                                                               importColumns());
     const auto result = port.rescan({ssa::ports::RescanMode::Incremental});
 
-    REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
+    REQUIRE(result.ok());
+    REQUIRE(result.warning);
     REQUIRE(result.importSummary.has_value());
     const auto& summary = *result.importSummary;
     REQUIRE(summary.discovered == 2);
-    REQUIRE(summary.accepted == 0);
-    REQUIRE(summary.rejected == 2);
-    REQUIRE(summary.preserved == 2);
-    REQUIRE(summary.inserts == 0);
+    REQUIRE(summary.accepted == 1);
+    REQUIRE(summary.rejected == 1);
+    REQUIRE(summary.preserved == 1);
+    REQUIRE(summary.inserts == 1);
     REQUIRE(summary.files.size() == 2);
-    REQUIRE(summary.files[0].status == ssa::ports::ImportFileStatus::Rejected);
-    REQUIRE_FALSE(summary.files[0].consolidated);
+    REQUIRE(summary.files[0].status == ssa::ports::ImportFileStatus::Applied);
     REQUIRE(summary.files[1].status == ssa::ports::ImportFileStatus::Rejected);
     REQUIRE_FALSE(summary.files[1].consolidated);
-    REQUIRE(std::filesystem::exists(validWorkbook));
-    REQUIRE_FALSE(
-        std::filesystem::exists(inputDirectory / "processadas" / validWorkbook.filename()));
+    REQUIRE(std::filesystem::exists(inputDirectory / "processadas" / validWorkbook.filename()));
     REQUIRE(std::filesystem::exists(invalidWorkbook));
-    REQUIRE_FALSE(std::filesystem::exists(dbPath));
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarText(db, "PRAGMA integrity_check") == "ok");
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 1);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600602'") == 1);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
 TEST_CASE("incremental cancellation before publication preserves the original database") {
@@ -6307,7 +6330,7 @@ TEST_CASE("incremental rescan cancels promptly after SQLite busy is observed") {
     REQUIRE(retried.ok());
 }
 
-TEST_CASE("full rescan rejects an unrecognized header without clearing or moving the source") {
+TEST_CASE("full rescan rejects an unrelated-only folder without clearing or moving the source") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
 
@@ -6332,7 +6355,7 @@ TEST_CASE("full rescan rejects an unrecognized header without clearing or moving
     const auto result = port.rescan({ssa::ports::RescanMode::Full});
 
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
-    REQUIRE(result.message.find("header_not_recognized") != std::string::npos);
+    REQUIRE(result.message.find("no_valid_rows") != std::string::npos);
     REQUIRE(std::filesystem::exists(workbook));
     REQUIRE_FALSE(std::filesystem::exists(inputDirectory / "processadas"));
     sqlite3* db = nullptr;
@@ -6554,7 +6577,7 @@ TEST_CASE("full rescan rejects mixed valid and invalid rows without clearing the
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
-TEST_CASE("full rescan rolls back a valid workbook when a later header is unrecognized") {
+TEST_CASE("full rescan imports valid workbooks while preserving an unrelated workbook") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
 
@@ -6585,17 +6608,15 @@ TEST_CASE("full rescan rolls back a valid workbook when a later header is unreco
                                                               importColumns());
     const auto result = port.rescan({ssa::ports::RescanMode::Full});
 
-    REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
-    REQUIRE(result.message.find("header_not_recognized") != std::string::npos);
-    REQUIRE(std::filesystem::exists(validWorkbook));
+    REQUIRE(result.ok());
+    REQUIRE(result.warning);
     REQUIRE(std::filesystem::exists(invalidWorkbook));
-    REQUIRE_FALSE(std::filesystem::exists(inputDirectory / "processadas"));
     sqlite3* db = nullptr;
     REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
     REQUIRE(scalarText(db, "PRAGMA integrity_check") == "ok");
     REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 1);
-    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600404'") == 1);
-    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600405'") == 0);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600404'") == 0);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600405'") == 1);
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 

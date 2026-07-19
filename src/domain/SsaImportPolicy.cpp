@@ -196,6 +196,9 @@ namespace ssa::domain {
             static constexpr std::array<FieldSlice, 6> monthFirstDateTimeFields{
                 FieldSlice{3, 2},  FieldSlice{0, 2},  FieldSlice{6, 4},
                 FieldSlice{11, 2}, FieldSlice{14, 2}, FieldSlice{17, 2}};
+            static constexpr std::array<FieldSlice, 6> dayFirstMinuteFields{
+                FieldSlice{0, 2},  FieldSlice{3, 2},  FieldSlice{6, 4},
+                FieldSlice{11, 2}, FieldSlice{14, 2}, FieldSlice{0, 0}};
             static constexpr std::array<FieldSlice, 6> dateFields{
                 FieldSlice{0, 4}, FieldSlice{5, 2}, FieldSlice{8, 2},
                 FieldSlice{0, 0}, FieldSlice{0, 0}, FieldSlice{0, 0}};
@@ -216,6 +219,10 @@ namespace ssa::domain {
                     return dayFirst;
                 }
                 return parseFields(text, monthFirstDateTimeFields, true);
+            }
+            if (text.size() == 16 && text[2] == '/' && text[5] == '/' && text[10] == ' ' &&
+                text[13] == ':') {
+                return parseFields(text, dayFirstMinuteFields, true);
             }
             if (text.size() != 10) {
                 return std::nullopt;

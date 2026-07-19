@@ -10,11 +10,12 @@
 
 TEST_CASE("SSA spreadsheet header catalog preserves the Python import contract") {
     using Catalog = ssa::infra::importing::SsaSpreadsheetHeaderCatalog;
-    static constexpr std::array<std::pair<std::string_view, std::string_view>, 12> samples{
+    static constexpr std::array<std::pair<std::string_view, std::string_view>, 13> samples{
         std::pair{"Nº SSA*", "numero_ssa"},
         std::pair{"process_status", "situacao"},
         std::pair{"Fecha de Emision", "data_cadastro"},
-        std::pair{"Prazo Limite", "prazo_limite"},
+        std::pair{"Prazo Limite", "status_execucao_prazo"},
+        std::pair{"Data Limite", "data_limite"},
         std::pair{"Tempo TPE Plan.", "total_tempo_tpe_planejado"},
         std::pair{"Total Tempo TEX Executada", "total_tempo_tex_executada"},
         std::pair{"Registros de Espera", "registros_espera"},
@@ -30,6 +31,13 @@ TEST_CASE("SSA spreadsheet header catalog preserves the Python import contract")
         INFO(header);
         REQUIRE(Catalog::canonicalColumnForHeader(std::string{header}) == expected);
     }
+
+    const auto* deadlineStatus = ssa::domain::ColumnCatalog::find("status_execucao_prazo");
+    const auto* deadlineDate = ssa::domain::ColumnCatalog::find("data_limite");
+    REQUIRE(deadlineStatus != nullptr);
+    REQUIRE(deadlineStatus->type == ssa::domain::ColumnType::Text);
+    REQUIRE(deadlineDate != nullptr);
+    REQUIRE(deadlineDate->type == ssa::domain::ColumnType::DateText);
 }
 
 TEST_CASE("SSA spreadsheet aliases converge to stable ASCII schema keys") {
@@ -98,6 +106,54 @@ TEST_CASE("SSA spreadsheet mapper resolves repeated semantic header families by 
     REQUIRE(imported.at("ate_2") == "A2");
 }
 
+TEST_CASE("SSA spreadsheet mapper identifies a derivation relation report as auxiliary") {
+    ssa::infra::importing::SpreadsheetTable table;
+    table.sourcePath = "SSAs Derivadas e Relacionadas.xlsx";
+    table.rows = {
+        {"Numero da SSA", "Localizacao", "Situacao", "Numero da SSA", "Situacao", "Relacao",
+         "Numero da SSA", "Situacao"},
+        {"202300227", "T075Q002", "STE", "202300204", "STE", "Derivada da", "202223156", "STE"},
+    };
+
+    const auto batch = ssa::infra::importing::SsaSpreadsheetMapper::map(table);
+
+    REQUIRE(batch.mappingStatus ==
+            ssa::infra::importing::SpreadsheetMappingStatus::HeaderNotRecognized);
+    REQUIRE(batch.rows.empty());
+}
+
+TEST_CASE("SSA spreadsheet mapper identifies a compact related-SSA report as auxiliary") {
+    ssa::infra::importing::SpreadsheetTable table;
+    table.sourcePath = "SSAs Relacionadas.xlsx";
+    table.rows = {
+        {"Categoria", "Numero da SSA", "Localizacao", "Setor Emissor", "Setor Executor",
+         "Situacao"},
+        {"Consequencia", "202604849", "T075Q002", "IEE3", "MEL4", "SEE"},
+    };
+
+    const auto batch = ssa::infra::importing::SsaSpreadsheetMapper::map(table);
+
+    REQUIRE(batch.mappingStatus ==
+            ssa::infra::importing::SpreadsheetMappingStatus::HeaderNotRecognized);
+    REQUIRE(batch.rows.empty());
+}
+
+TEST_CASE("SSA spreadsheet mapper preserves raw SAM API reports for the dedicated flow") {
+    ssa::infra::importing::SpreadsheetTable table;
+    table.sourcePath = "pai_sam_api.xlsx";
+    table.rows = {{"ssa_number", "localization", "description", "issue_datetime",
+                   "emission_datetime", "emitter_sector", "executor_sector", "year_week",
+                   "situation_desc", "process_status", "detail_present"},
+                  {"202600233", "M075A006", "Description", "2026-01-07T13:56:00Z", "", "MEL4",
+                   "IEE3", "202602", "", "", "0"}};
+
+    const auto batch = ssa::infra::importing::SsaSpreadsheetMapper::map(table);
+
+    REQUIRE(batch.mappingStatus ==
+            ssa::infra::importing::SpreadsheetMappingStatus::HeaderNotRecognized);
+    REQUIRE(batch.rows.empty());
+}
+
 TEST_CASE("SSA spreadsheet mapper extracts the integer from a real deviation label") {
     ssa::infra::importing::SpreadsheetTable table;
     table.sourcePath = "SSAs com Desvio.xlsx";
@@ -109,6 +165,60 @@ TEST_CASE("SSA spreadsheet mapper extracts the integer from a real deviation lab
     REQUIRE(batch.mappingStatus == ssa::infra::importing::SpreadsheetMappingStatus::Mapped);
     REQUIRE(batch.rows.size() == 1);
     REQUIRE(batch.rows.front().at("numero_desvios") == "2");
+}
+
+TEST_CASE("SSA spreadsheet mapper extracts the integer from a reschedule label") {
+    ssa::infra::importing::SpreadsheetTable table;
+    table.sourcePath = "SSAsRescheduled.xlsx";
+    table.rows = {{"Numero SSA", "Descricao", "Data Cadastro", "Reprogramacoes"},
+                  {"202600001", "Rescheduled", "2026-07-14", "Reschedule #2"}};
+
+    const auto batch = ssa::infra::importing::SsaSpreadsheetMapper::map(table);
+
+    REQUIRE(batch.mappingStatus == ssa::infra::importing::SpreadsheetMappingStatus::Mapped);
+    REQUIRE(batch.rows.size() == 1);
+    REQUIRE(batch.rows.front().at("num_reprogramacoes") == "2");
+}
+
+TEST_CASE("SSA spreadsheet mapper omits a nonnumeric final reschedule label") {
+    ssa::infra::importing::SpreadsheetTable table;
+    table.sourcePath = "SSAsRescheduled.xlsx";
+    table.rows = {{"Numero SSA", "Descricao", "Data Cadastro", "Reprogramacoes"},
+                  {"202600001", "Rescheduled", "2026-07-14", "Final reschedule"}};
+
+    const auto batch = ssa::infra::importing::SsaSpreadsheetMapper::map(table);
+
+    REQUIRE(batch.mappingStatus == ssa::infra::importing::SpreadsheetMappingStatus::Mapped);
+    REQUIRE(batch.rows.size() == 1);
+    REQUIRE_FALSE(batch.rows.front().contains("num_reprogramacoes"));
+}
+
+TEST_CASE("SSA spreadsheet mapper ignores known incomplete legacy summary rows") {
+    ssa::infra::importing::SpreadsheetTable table;
+    table.sourcePath = "Todas as SSAs - 14-07-2022.xlsx";
+    table.rows = {
+        {"Numero da SSA", "Situacao", "Descricao da SSA", "Emitida Em", "Semana de Cadastro"},
+        {"202213482", "SCC", "", "", "202223"}};
+
+    const auto batch = ssa::infra::importing::SsaSpreadsheetMapper::map(table);
+
+    REQUIRE(batch.mappingStatus == ssa::infra::importing::SpreadsheetMappingStatus::Mapped);
+    REQUIRE(batch.rows.empty());
+    REQUIRE(batch.invalidRows == 0);
+    REQUIRE(batch.skippedRows == 1);
+}
+
+TEST_CASE("SSA spreadsheet mapper still rejects incomplete rows from normal reports") {
+    ssa::infra::importing::SpreadsheetTable table;
+    table.sourcePath = "SSAs executadas.xlsx";
+    table.rows = {
+        {"Numero da SSA", "Situacao", "Descricao da SSA", "Emitida Em", "Semana de Cadastro"},
+        {"202213482", "SCC", "", "", "202223"}};
+
+    const auto batch = ssa::infra::importing::SsaSpreadsheetMapper::map(table);
+
+    REQUIRE(batch.invalidRows == 1);
+    REQUIRE(batch.invalidDescriptionRows == 1);
 }
 
 TEST_CASE("SSA spreadsheet mapper exposes the validated header for continuation chunks") {

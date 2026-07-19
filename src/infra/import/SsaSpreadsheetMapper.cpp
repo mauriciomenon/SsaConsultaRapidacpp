@@ -6,6 +6,9 @@
 #include "infra/import/SsaSpreadsheetHeaderCatalog.h"
 #include "qt/FilesystemPath.h"
 
+#include <QChar>
+#include <QString>
+
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -42,6 +45,37 @@ namespace ssa::infra::importing {
                                suffix, [](const unsigned char ch) { return std::isdigit(ch) != 0; })
                        ? std::string{suffix}
                        : value;
+        }
+
+        std::string normalizeReprogrammingNumber(const std::string& value) {
+            const auto decomposed =
+                QString::fromUtf8(value.data(), static_cast<qsizetype>(value.size()))
+                    .normalized(QString::NormalizationForm_KD);
+            QString folded;
+            folded.reserve(decomposed.size());
+            for (const auto character : decomposed) {
+                if (character.category() != QChar::Mark_NonSpacing) {
+                    folded.push_back(character.toLower());
+                }
+            }
+            const auto normalized = folded.trimmed().toStdString();
+            if (normalized == "final reschedule" || normalized == "reprogramacao final") {
+                return {};
+            }
+            static constexpr std::array<std::string_view, 2> prefixes{"reschedule #",
+                                                                      "reprogramacao #"};
+            for (const auto prefix : prefixes) {
+                if (!normalized.starts_with(prefix)) {
+                    continue;
+                }
+                const auto suffix = std::string_view{normalized}.substr(prefix.size());
+                if (!suffix.empty() && std::ranges::all_of(suffix, [](const unsigned char ch) {
+                        return std::isdigit(ch) != 0;
+                    })) {
+                    return std::string{suffix};
+                }
+            }
+            return value;
         }
 
         void throwIfMappingCanceled(const std::stop_token& stopToken) {
@@ -239,12 +273,75 @@ namespace ssa::infra::importing {
             return rowValue(row, key);
         }
 
+        bool isLegacyIncompleteSummaryRow(const SpreadsheetTable& table, const SsaImportRow& row) {
+            const auto filename = table.originalFilename.empty()
+                                      ? qt::toUtf8(table.sourcePath.filename())
+                                      : table.originalFilename;
+            auto normalizedFilename = filename;
+            std::ranges::transform(normalizedFilename, normalizedFilename.begin(),
+                                   [](const unsigned char character) {
+                                       return static_cast<char>(std::tolower(character));
+                                   });
+            if (normalizedFilename.find("todas as ssas") == std::string::npos ||
+                !valueFor(row, "descricao_ssa").empty() ||
+                !valueFor(row, "data_cadastro").empty() ||
+                valueFor(row, "semana_cadastro").empty()) {
+                return false;
+            }
+            const auto status = valueFor(row, "situacao");
+            return status == "SCC" || status == "ADI" || status == "ASE";
+        }
+
         bool hasRequiredColumns(const HeaderColumns& columnByIndex) {
             const auto hasColumn = [&](const std::string_view key) {
                 return std::ranges::any_of(
                     columnByIndex, [key](const auto& column) { return column.second == key; });
             };
             return std::ranges::all_of(domain::ColumnCatalog::requiredSchemaColumns(), hasColumn);
+        }
+
+        bool isRelationCategoryHeader(const std::string& header) {
+            const auto decomposed =
+                QString::fromUtf8(header.data(), static_cast<qsizetype>(header.size()))
+                    .normalized(QString::NormalizationForm_KD);
+            QString folded;
+            folded.reserve(decomposed.size());
+            for (const auto character : decomposed) {
+                if (character.category() != QChar::Mark_NonSpacing) {
+                    folded.push_back(character.toLower());
+                }
+            }
+            return folded.trimmed() == "categoria" || folded.trimmed() == "category";
+        }
+
+        bool isSamApiReport(const std::vector<std::string>& header) {
+            static constexpr std::array<std::string_view, 11> expected{
+                "ssa_number",        "localization",   "description",     "issue_datetime",
+                "emission_datetime", "emitter_sector", "executor_sector", "year_week",
+                "situation_desc",    "process_status", "detail_present"};
+            return header.size() == expected.size() &&
+                   std::ranges::equal(header, expected,
+                                      [](const std::string& actual, const std::string_view wanted) {
+                                          return domain::trimWhitespace(actual) == wanted;
+                                      });
+        }
+
+        bool isDerivationRelationReport(const HeaderColumns& columnByIndex,
+                                        const std::vector<std::string>& header) {
+            const auto hasColumn = [&](const std::string_view key) {
+                return std::ranges::any_of(
+                    columnByIndex, [key](const auto& column) { return column.second == key; });
+            };
+            const bool multiSsaRelation = hasColumn("relacao") && hasColumn("numero_ssa") &&
+                                          hasColumn("numero_ssa_relacionada_1") &&
+                                          hasColumn("numero_ssa_relacionada_2");
+            const bool compactRelation =
+                hasColumn("numero_ssa") && hasColumn("localizacao_codigo") &&
+                hasColumn("setor_emissor") && hasColumn("setor_executor") &&
+                hasColumn("situacao") && !hasColumn("descricao_ssa") &&
+                !hasColumn("data_cadastro") &&
+                std::ranges::any_of(header, isRelationCategoryHeader);
+            return multiSsaRelation || compactRelation;
         }
 
     } // namespace
@@ -263,10 +360,22 @@ namespace ssa::infra::importing {
             return batch;
         }
         const auto& header = hasExternalHeader ? table.headerRow : table.rows[*headerIndex];
+        if (isSamApiReport(header)) {
+            batch.mappingStatus = SpreadsheetMappingStatus::HeaderNotRecognized;
+            batch.skippedRows =
+                hasExternalHeader ? table.rows.size() : table.rows.size() - *headerIndex - 1;
+            return batch;
+        }
         const auto columnMap = columnMapFromHeader(header, headerCache);
         batch.mappedColumns = columnMap.columns.size();
         if (columnMap.ambiguous) {
             batch.mappingStatus = SpreadsheetMappingStatus::AmbiguousHeaders;
+            batch.skippedRows =
+                hasExternalHeader ? table.rows.size() : table.rows.size() - *headerIndex - 1;
+            return batch;
+        }
+        if (isDerivationRelationReport(columnMap.columns, header)) {
+            batch.mappingStatus = SpreadsheetMappingStatus::HeaderNotRecognized;
             batch.skippedRows =
                 hasExternalHeader ? table.rows.size() : table.rows.size() - *headerIndex - 1;
             return batch;
@@ -292,6 +401,8 @@ namespace ssa::infra::importing {
                     value = domain::SsaImportPolicy::normalizeNumber(value);
                 } else if (columnKey == "numero_desvios") {
                     value = normalizeDeviationNumber(value);
+                } else if (columnKey == "num_reprogramacoes") {
+                    value = normalizeReprogrammingNumber(value);
                 } else if (const auto* column = domain::ColumnCatalog::find(columnKey);
                            column != nullptr && column->type == domain::ColumnType::DateText) {
                     const auto normalized = domain::SsaImportPolicy::normalizeDateText(value);
@@ -313,7 +424,12 @@ namespace ssa::infra::importing {
                     }
                 }
             }
-            if (row.empty()) {
+            if (row.empty() ||
+                (valueFor(row, "numero_ssa").empty() && valueFor(row, "descricao_ssa").empty())) {
+                continue;
+            }
+            if (isLegacyIncompleteSummaryRow(table, row)) {
+                ++batch.skippedRows;
                 continue;
             }
             const auto validation = domain::SsaImportPolicy::validateRow(row);

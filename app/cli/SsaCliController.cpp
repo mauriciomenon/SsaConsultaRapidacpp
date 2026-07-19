@@ -298,6 +298,9 @@ namespace ssa::app::cli {
         ports::WorkflowResult result;
         result = SsaCliWorkflowRunner::runSelected(parser, workflows);
         std::cerr << result.message << '\n';
+        if (!result.diagnostic.empty()) {
+            std::cerr << result.diagnostic << '\n';
+        }
         if (result.status == ports::WorkflowStatus::NotImplemented) {
             return 3;
         }

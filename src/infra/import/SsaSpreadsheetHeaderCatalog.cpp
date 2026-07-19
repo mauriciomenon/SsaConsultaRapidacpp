@@ -117,7 +117,7 @@ namespace ssa::infra::importing {
             HeaderAlias{"total tempo tex executada", "total_tempo_tex_executada"},
             HeaderAlias{"parciais", "parciais"},
             HeaderAlias{"situacao da parcial", "situacao_da_parcial"},
-            HeaderAlias{"prazo limite", "prazo_limite"},
+            HeaderAlias{"prazo limite", "status_execucao_prazo"},
             HeaderAlias{"situacao do prazo", "status_execucao_prazo"},
             HeaderAlias{"status prazo", "status_execucao_prazo"},
             HeaderAlias{"tempo disp.", "tempo_disponivel"},
