@@ -23,8 +23,10 @@ antes de interpretar sincronizacao Git, validacao local ou estado externo.
   backlog legado `N/A`; fila operacional `6/8 = 75.0%` antes da prova
   Windows/UNC.
 
-Estado apos commit local: `0c28720`; publicacao nos remotes sera confirmada
-abaixo, mantendo a prova Windows/UNC como dependencia externa.
+Estado apos publicacao: commits `0c28720` e `f1f1232`; `HEAD`,
+`origin/master` e `bitbucket/master` estao no hash `f1f12324d8d1f0f5c04a08fb737d0c7723687cbc`.
+Working tree segue dirty somente por arquivos locais preexistentes. A prova
+Windows/UNC continua dependencia externa.
 
 ## Importacao externa em blocos e normalizacao de desvios - 2026-07-19
 
