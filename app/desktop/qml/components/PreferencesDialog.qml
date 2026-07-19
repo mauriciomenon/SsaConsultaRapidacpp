@@ -63,7 +63,7 @@ Window {
 
             Rectangle {
                 Layout.fillWidth: true
-                Layout.preferredHeight: 92
+                Layout.preferredHeight: 142
                 color: Theme.surface
                 border.color: Theme.border
                 radius: Theme.radius
@@ -133,6 +133,34 @@ Window {
                         implicitWidth: 150
                         enabled: root.themeDialog !== null
                         onClicked: root.themeDialog.open()
+                    }
+
+                    Label {
+                        text: "Linhas por lote"
+                        color: Theme.text
+                        font.bold: true
+                    }
+                    AppSpinBox {
+                        from: 1
+                        to: 1000
+                        value: root.viewModel.actions.workflows.importRowsPerChunk
+                        stepSize: 1
+                        Layout.preferredWidth: 120
+                        onValueModified: root.viewModel.actions.workflows.importRowsPerChunk = value
+                    }
+
+                    Label {
+                        text: "Espera SQLite (ms)"
+                        color: Theme.text
+                        font.bold: true
+                    }
+                    AppSpinBox {
+                        from: 0
+                        to: 3000
+                        value: root.viewModel.actions.workflows.importSqliteBusyWaitMs
+                        stepSize: 5
+                        Layout.preferredWidth: 120
+                        onValueModified: root.viewModel.actions.workflows.importSqliteBusyWaitMs = value
                     }
 
                     Label {

@@ -142,6 +142,14 @@ namespace ssa::presentation {
         return samScope_;
     }
 
+    int WorkflowCommandViewModel::importRowsPerChunk() const {
+        return importRowsPerChunk_;
+    }
+
+    int WorkflowCommandViewModel::importSqliteBusyWaitMs() const {
+        return importSqliteBusyWaitMs_;
+    }
+
     void
     WorkflowCommandViewModel::applyPreferences(const ports::UserPreferencesSnapshot& snapshot) {
         const auto& preferences = snapshot.samRefresh;
@@ -153,8 +161,18 @@ namespace ssa::presentation {
         samBaseUrl_ = QString::fromStdString(preferences.baseUrl);
         samExecutorSectors_ = QString::fromStdString(preferences.executorSectors);
         samScope_ = QString::fromStdString(preferences.scope);
+        importRowsPerChunk_ =
+            std::clamp(snapshot.importExecution.rowsPerChunk, 1,
+                       ports::ImportExecutionPreferencesSnapshot::kMaxRowsPerChunk);
+        const auto busyWait =
+            std::clamp(snapshot.importExecution.sqliteBusyWaitMs, 0,
+                       ports::ImportExecutionPreferencesSnapshot::kMaxSqliteBusyWaitMs);
+        importSqliteBusyWaitMs_ =
+            busyWait -
+            busyWait % ports::ImportExecutionPreferencesSnapshot::kSqliteBusyRetryGranularityMs;
         syncSamRefreshTimer();
         emit samRefreshSettingsChanged();
+        emit importExecutionSettingsChanged();
     }
 
     void
@@ -167,6 +185,8 @@ namespace ssa::presentation {
         snapshot.samRefresh.baseUrl = samBaseUrl_.toStdString();
         snapshot.samRefresh.executorSectors = samExecutorSectors_.toStdString();
         snapshot.samRefresh.scope = samScope_.toStdString();
+        snapshot.importExecution.rowsPerChunk = importRowsPerChunk_;
+        snapshot.importExecution.sqliteBusyWaitMs = importSqliteBusyWaitMs_;
     }
 
     void WorkflowCommandViewModel::importExternalFiles(const QVariantList& selectedFiles) {
@@ -186,7 +206,7 @@ namespace ssa::presentation {
                       false);
             return;
         }
-        runner_.importExternalFiles(files);
+        runner_.importExternalFiles(files, importExecutionOptions());
     }
 
     void WorkflowCommandViewModel::rescanIncremental() {
@@ -309,6 +329,31 @@ namespace ssa::presentation {
         setSamTextSetting(samScope_, scope.trimmed());
     }
 
+    void WorkflowCommandViewModel::setImportRowsPerChunk(const int rows) {
+        const auto value =
+            std::clamp(rows, 1, ports::ImportExecutionPreferencesSnapshot::kMaxRowsPerChunk);
+        if (importRowsPerChunk_ == value) {
+            return;
+        }
+        importRowsPerChunk_ = value;
+        emit importExecutionSettingsChanged();
+        emit preferencesSaveRequested();
+    }
+
+    void WorkflowCommandViewModel::setImportSqliteBusyWaitMs(const int milliseconds) {
+        const auto clamped = std::clamp(
+            milliseconds, 0, ports::ImportExecutionPreferencesSnapshot::kMaxSqliteBusyWaitMs);
+        const auto value =
+            clamped -
+            clamped % ports::ImportExecutionPreferencesSnapshot::kSqliteBusyRetryGranularityMs;
+        if (importSqliteBusyWaitMs_ == value) {
+            return;
+        }
+        importSqliteBusyWaitMs_ = value;
+        emit importExecutionSettingsChanged();
+        emit preferencesSaveRequested();
+    }
+
     void WorkflowCommandViewModel::syncSamRefreshTimer() {
         samRefreshTimer_.setInterval(samIntervalMinutes_ * 60'000);
         if (samRefreshEnabled_ && samAutoRefreshEnabled_) {
@@ -334,12 +379,19 @@ namespace ssa::presentation {
         return request;
     }
 
+    ports::ImportExecutionOptions WorkflowCommandViewModel::importExecutionOptions() const {
+        ports::ImportExecutionOptions options;
+        options.rowsPerChunk = static_cast<std::size_t>(importRowsPerChunk_);
+        options.sqliteBusyWait = std::chrono::milliseconds{importSqliteBusyWaitMs_};
+        return options;
+    }
+
     void WorkflowCommandViewModel::startRescan(const ports::RescanMode mode) {
         if (runner_.running()) {
             return;
         }
         operation_ = Operation::Rescan;
-        runner_.rescan(mode);
+        runner_.rescan(mode, importExecutionOptions());
     }
 
     void WorkflowCommandViewModel::applyResult(const ports::WorkflowResult& result) {

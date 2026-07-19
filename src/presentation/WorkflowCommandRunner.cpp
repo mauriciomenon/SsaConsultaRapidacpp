@@ -54,7 +54,8 @@ namespace ssa::presentation {
         return workflows_ && workflows_->legacySpreadsheetConverterAvailable();
     }
 
-    void WorkflowCommandRunner::importExternalFiles(const std::vector<QString>& files) {
+    void WorkflowCommandRunner::importExternalFiles(const std::vector<QString>& files,
+                                                    ports::ImportExecutionOptions execution) {
         if (running() || shuttingDown_) {
             return;
         }
@@ -65,6 +66,7 @@ namespace ssa::presentation {
         }
 
         ports::ImportExternalFilesRequest request;
+        request.execution = execution;
         request.files.reserve(files.size());
         for (const auto& path : files) {
             request.files.emplace_back(qt::toFileSystemPath(path));
@@ -98,7 +100,8 @@ namespace ssa::presentation {
         });
     }
 
-    void WorkflowCommandRunner::rescan(const ports::RescanMode mode) {
+    void WorkflowCommandRunner::rescan(const ports::RescanMode mode,
+                                       ports::ImportExecutionOptions execution) {
         if (running() || shuttingDown_) {
             return;
         }
@@ -110,6 +113,7 @@ namespace ssa::presentation {
 
         ports::RescanRequest request;
         request.mode = mode;
+        request.execution = execution;
 
         auto workflows = workflows_;
         start([workflows = std::move(workflows), request](const std::stop_token& stopToken) {

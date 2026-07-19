@@ -38,6 +38,10 @@ namespace ssa::presentation {
                        NOTIFY samRefreshSettingsChanged)
         Q_PROPERTY(
             QString samScope READ samScope WRITE setSamScope NOTIFY samRefreshSettingsChanged)
+        Q_PROPERTY(int importRowsPerChunk READ importRowsPerChunk WRITE setImportRowsPerChunk NOTIFY
+                       importExecutionSettingsChanged)
+        Q_PROPERTY(int importSqliteBusyWaitMs READ importSqliteBusyWaitMs WRITE
+                       setImportSqliteBusyWaitMs NOTIFY importExecutionSettingsChanged)
 
       public:
         explicit WorkflowCommandViewModel(
@@ -62,6 +66,8 @@ namespace ssa::presentation {
         [[nodiscard]] QString samBaseUrl() const;
         [[nodiscard]] QString samExecutorSectors() const;
         [[nodiscard]] QString samScope() const;
+        [[nodiscard]] int importRowsPerChunk() const;
+        [[nodiscard]] int importSqliteBusyWaitMs() const;
         void applyPreferences(const ports::UserPreferencesSnapshot& snapshot);
         void writePreferences(ports::UserPreferencesSnapshot& snapshot) const;
 
@@ -70,6 +76,7 @@ namespace ssa::presentation {
         void runningChanged();
         void stateChanged();
         void samRefreshSettingsChanged();
+        void importExecutionSettingsChanged();
         void preferencesSaveRequested();
         void logEntryRequested(const QString& severity, const QString& source,
                                const QString& message, const QString& detail);
@@ -91,6 +98,8 @@ namespace ssa::presentation {
         void setSamBaseUrl(const QString& url);
         void setSamExecutorSectors(const QString& sectors);
         void setSamScope(const QString& scope);
+        void setImportRowsPerChunk(int rows);
+        void setImportSqliteBusyWaitMs(int milliseconds);
 
       private:
         struct OperationMessages {
@@ -108,6 +117,7 @@ namespace ssa::presentation {
         void syncSamRefreshTimer();
         void setSamTextSetting(QString& target, const QString& value);
         [[nodiscard]] ports::SamRefreshRequest samRefreshRequest() const;
+        [[nodiscard]] ports::ImportExecutionOptions importExecutionOptions() const;
         [[nodiscard]] OperationMessages messagesForCurrentOperation() const;
 
         enum class Operation {
@@ -136,6 +146,9 @@ namespace ssa::presentation {
         int samIntervalMinutes_{30'000};
         bool samRefreshEnabled_{false};
         bool samAutoRefreshEnabled_{false};
+        int importRowsPerChunk_{ports::ImportExecutionPreferencesSnapshot::kDefaultRowsPerChunk};
+        int importSqliteBusyWaitMs_{
+            ports::ImportExecutionPreferencesSnapshot::kDefaultSqliteBusyWaitMs};
     };
 
 } // namespace ssa::presentation

@@ -32,9 +32,10 @@ namespace ssa::presentation {
         [[nodiscard]] bool canceling() const;
         [[nodiscard]] bool canCancel() const;
         [[nodiscard]] bool legacySpreadsheetConverterAvailable() const;
-        void importExternalFiles(const std::vector<QString>& files);
+        void importExternalFiles(const std::vector<QString>& files,
+                                 ports::ImportExecutionOptions execution = {});
         void importDerivations(const std::vector<QString>& files);
-        void rescan(ports::RescanMode mode);
+        void rescan(ports::RescanMode mode, ports::ImportExecutionOptions execution = {});
         void refreshSam(ports::SamRefreshRequest request);
         void cleanOrphanDerivations();
         void compactDatabase();

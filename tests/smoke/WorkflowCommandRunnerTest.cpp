@@ -12,6 +12,7 @@
 #include <condition_variable>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <stop_token>
 
 namespace {
@@ -146,13 +147,21 @@ namespace {
     class ImmediateImportPort final : public ssa::ports::IImportWorkflowPort {
       public:
         ssa::ports::WorkflowResult
-        importExternalFiles(const ssa::ports::ImportExternalFilesRequest&,
+        importExternalFiles(const ssa::ports::ImportExternalFilesRequest& request,
                             const std::stop_token stopToken) override {
+            {
+                const std::scoped_lock lock(mutex_);
+                lastImportRequest_ = request;
+            }
             return finish(stopToken);
         }
 
-        ssa::ports::WorkflowResult rescan(const ssa::ports::RescanRequest&,
+        ssa::ports::WorkflowResult rescan(const ssa::ports::RescanRequest& request,
                                           const std::stop_token stopToken) override {
+            {
+                const std::scoped_lock lock(mutex_);
+                lastRescanRequest_ = request;
+            }
             return finish(stopToken);
         }
 
@@ -162,6 +171,17 @@ namespace {
 
         [[nodiscard]] bool stopObserved() const {
             return stopObserved_.load(std::memory_order_acquire);
+        }
+
+        [[nodiscard]] std::optional<ssa::ports::ImportExternalFilesRequest>
+        lastImportRequest() const {
+            const std::scoped_lock lock(mutex_);
+            return lastImportRequest_;
+        }
+
+        [[nodiscard]] std::optional<ssa::ports::RescanRequest> lastRescanRequest() const {
+            const std::scoped_lock lock(mutex_);
+            return lastRescanRequest_;
         }
 
       private:
@@ -175,6 +195,9 @@ namespace {
 
         std::atomic_int calls_{0};
         std::atomic_bool stopObserved_{false};
+        mutable std::mutex mutex_;
+        std::optional<ssa::ports::ImportExternalFilesRequest> lastImportRequest_;
+        std::optional<ssa::ports::RescanRequest> lastRescanRequest_;
     };
 
     class WorkflowCommandRunnerTest final : public QObject {
@@ -374,6 +397,30 @@ namespace {
             ssa::ports::UserPreferencesSnapshot written;
             model.writePreferences(written);
             QCOMPARE(written.samRefresh, preferences.samRefresh);
+        }
+
+        void import_execution_preferences_reach_import_and_rescan_requests() {
+            auto importPort = std::make_shared<ImmediateImportPort>();
+            auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(importPort);
+            ssa::presentation::WorkflowCommandViewModel model(workflows);
+            ssa::ports::UserPreferencesSnapshot preferences;
+            preferences.importExecution.rowsPerChunk = 321;
+            preferences.importExecution.sqliteBusyWaitMs = 125;
+            model.applyPreferences(preferences);
+
+            model.importExternalFiles({QUrl::fromLocalFile("/tmp/selected.xlsx")});
+            QTRY_COMPARE_WITH_TIMEOUT(importPort->calls(), 1, 1000);
+            const auto importRequest = importPort->lastImportRequest();
+            QVERIFY(importRequest.has_value());
+            QCOMPARE(importRequest->execution.rowsPerChunk, std::size_t{321});
+            QCOMPARE(importRequest->execution.sqliteBusyWait, std::chrono::milliseconds{125});
+
+            model.rescanIncremental();
+            QTRY_COMPARE_WITH_TIMEOUT(importPort->calls(), 2, 1000);
+            const auto rescanRequest = importPort->lastRescanRequest();
+            QVERIFY(rescanRequest.has_value());
+            QCOMPARE(rescanRequest->execution.rowsPerChunk, std::size_t{321});
+            QCOMPARE(rescanRequest->execution.sqliteBusyWait, std::chrono::milliseconds{125});
         }
     };
 

@@ -3,6 +3,28 @@
 Fonte operacional para humanos e agentes de codigo. Verifique este arquivo
 antes de interpretar sincronizacao Git, validacao local ou estado externo.
 
+## Parametros de execucao de importacao ligados ao workflow - 2026-07-19
+
+- **ENTREGUE localmente**: `WorkflowCommandViewModel` aplica e persiste os
+  parametros `rows_per_chunk` e `sqlite_busy_wait_ms` do schema 14, com
+  limites e granularidade validados antes de criar o request.
+- **ENTREGUE localmente**: `WorkflowCommandRunner` propaga os parametros para
+  importacao externa e reescaneamento. O SQLite continua usando as opcoes
+  tipadas existentes; nao houve mudanca de schema de dados.
+- **ENTREGUE localmente**: Preferencias agora exibem os dois parametros com
+  controles limitados a 1..1000 linhas e 0..3000 ms em passos de 5 ms.
+- Review final do diff: diff check, clang-format, cppcheck, Semgrep
+  C/security, detect-secrets e qmlformat sem findings.
+- Validacao local: build de `ssa_qt_presentation_tests` e `all_qmllint`; CTest
+  focado `ssa_qt_presentation_tests` + `ssa_qml_layout_smoke_1180x760`, 2/2 em
+  `10.46 s`. O teste novo prova os valores em importacao e rescan.
+- Contadores: plano original `99.0/100`; divida nova P0 `14/14 = 100.0%`;
+  backlog legado `N/A`; fila operacional `6/8 = 75.0%` antes da prova
+  Windows/UNC.
+
+Proxima atividade unica: executar CTest completo no fechamento e publicar o
+slice, mantendo a prova Windows/UNC como dependencia externa.
+
 ## Importacao externa em blocos e normalizacao de desvios - 2026-07-19
 
 - **ENTREGUE e commitado**: selecoes externas com mais de 64 arquivos nao

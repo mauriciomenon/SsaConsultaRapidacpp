@@ -1,5 +1,17 @@
 # Recovery Backlog
 
+## Parametros de execucao realmente usados pelo importador - 2026-07-19
+
+- [RESOLVED-LOCAL] O bloco `import_execution` do schema 14 deixou de ser
+  somente persistencia: o ViewModel valida os valores, o Runner os envia ao
+  request e o workflow usa o mesmo contrato para importacao externa e rescan.
+- Preferencias expõem `Linhas por lote` (1..1000) e `Espera SQLite (ms)`
+  (0..3000, passo 5), sem alterar o schema das tabelas de dados.
+- Teste focal prova `321` linhas e `125 ms` nos dois requests; QML layout e
+  qmllint passaram. CTest focado: 2/2 em `10.46 s`.
+- Risco residual: os valores sao configuraveis por preferencias, mas a prova
+  de bloqueio concorrente em Windows/UNC continua externa.
+
 ## Fechamento da regressao de importacao externa - 2026-07-19
 
 - [RESOLVED-LOCAL] O limite de 64 deixou de ser rejeicao total. A selecao
