@@ -26,6 +26,25 @@ Ultima verificacao local: 2026-07-18
   `5/8 = 62.5%`. Estabilidade de release nao elimina pendencias de produto ou
   validacao em plataforma real.
 
+## Recheck pos-tag v0.9.11 - 2026-07-19
+
+- `master` esta em `03d71dad`, doze commits apos a tag anotada `v0.9.11` em
+  `84462d4`. A tag ja existe nos dois remotos e nao foi movida ou recriada;
+  uma proxima publicacao precisa de versao e tag distintas.
+- O build canonico `dev` passou. O Ninja repetiu `premature end of file;
+  recovering`, ruido do cache local que nao recebe credito como validacao.
+- CTest sequencial atual passou `609/609` em `72.84 s`, inclusive os oito
+  nomes do log historico com falha: analytics, derivadas, full rescan e Qt
+  presentation. O log de `8/564` nao reproduz neste HEAD e nao e bloqueador
+  ativo.
+- Semgrep passou `24` regras em `512` arquivos; Gitleaks passou `714` commits;
+  TruffleHog no historico Git terminou com zero segredo verificado ou
+  desconhecido. Um scan filesystem separado terminou `183`, com exemplos em
+  `.deepsec` local, XLSX historicos e erros de leitura de binarios; ele nao e
+  registrado como gate verde nem como segredo de produto.
+- Contadores permanecem: plano `99.0/100`, divida `13/14 = 92.9%`, legado
+  `0.0/100` placeholder e fila operacional `5/8 = 62.5%`.
+
 ## Sincronizacao remota restaurada - 2026-07-18
 
 - `origin/master` e `bitbucket/master` foram confirmados ate `09cc0c4`, que

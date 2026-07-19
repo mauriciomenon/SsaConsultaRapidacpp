@@ -13,6 +13,22 @@
   GitLab `origin` permanece bloqueado por OAuth `invalid_grant`; isto nao pode
   ser contabilizado como publicacao confirmada.
 
+## Recheck pos-tag v0.9.11 - 2026-07-19
+
+- [RESOLVED-LOCAL] O HEAD `03d71dad`, doze commits apos `v0.9.11` em
+  `84462d4`, compilou no preset `dev` e passou CTest sequencial `609/609` em
+  `72.84 s`. Os oito nomes do log historico `8/564` passaram; aquele log nao
+  reproduz no HEAD atual.
+- [RESOLVED-LOCAL] Semgrep (`24` regras, `512` arquivos), Gitleaks (`714`
+  commits) e TruffleHog no historico Git passaram sem segredo. TruffleHog
+  filesystem saiu `183` por exemplos em `.deepsec` local, fixtures XLSX e
+  erros de leitura binaria; isto permanece resultado de ambiente, nao um gate
+  verde nem finding de codigo confirmado.
+- [NO-RETAG] `v0.9.11` ja e uma tag anotada publicada nos dois remotos. Ela
+  nao foi sobrescrita para marcar commits posteriores; proxima release exige
+  nova versao e tag. Contadores permanecem plano `99.0/100`, divida
+  `13/14 = 92.9%`, legado `0.0/100` e fila `5/8 = 62.5%`.
+
 ## Sincronizacao remota restaurada - 2026-07-18
 
 - `origin/master` e `bitbucket/master` foram confirmados ate `09cc0c4`; a tag
