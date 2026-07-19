@@ -60,7 +60,7 @@ namespace {
                                     "SsaConsultaRapida", 1, 0, "AppCheckBox") >= 0);
         }
 
-        void shared_controls_use_point_sizes_without_clipping() {
+        void action_button_uses_pixels_and_other_shared_controls_use_point_sizes() {
             static constexpr auto kHarness = R"QML(
 import QtQuick
 import QtQuick.Controls
@@ -116,6 +116,10 @@ ApplicationWindow {
                 const QFont font = qvariant_cast<QFont>(item.property("font"));
                 return font.pointSizeF() > 0.0 && font.pixelSize() == -1;
             };
+            const auto usesPixelSize = [](const QObject& item) {
+                const QFont font = qvariant_cast<QFont>(item.property("font"));
+                return font.pointSizeF() == -1.0 && font.pixelSize() == 12;
+            };
             const auto pointSize = [](const QObject& item) {
                 return qvariant_cast<QFont>(item.property("font")).pointSizeF();
             };
@@ -153,7 +157,13 @@ ApplicationWindow {
             QVERIFY(comboDelegate != nullptr);
             const qreal comboDelegatePointSize = pointSize(*comboDelegate);
 
-            for (QQuickItem* control : {actionButton, comboBox, spinBox, comboDelegate}) {
+            QVERIFY(usesPixelSize(*actionButton));
+            const auto* actionContent = contentItem(*actionButton);
+            QVERIFY(actionContent != nullptr);
+            QVERIFY(usesPixelSize(*actionContent));
+            QVERIFY(contentFits(*actionButton));
+
+            for (QQuickItem* control : {comboBox, spinBox, comboDelegate}) {
                 QVERIFY(usesPointSize(*control));
                 const auto* content = contentItem(*control);
                 QVERIFY(content != nullptr);
@@ -161,7 +171,7 @@ ApplicationWindow {
                 QVERIFY(contentFits(*control));
             }
 
-            for (QQuickItem* control : {actionButton, comboBox, spinBox}) {
+            for (QQuickItem* control : {comboBox, spinBox}) {
                 const qreal initialPointSize = pointSize(*control);
                 QVERIFY(initialPointSize > 0.0);
                 QVERIFY(scaleFont(*control));
