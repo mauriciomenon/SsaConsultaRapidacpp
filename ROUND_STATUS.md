@@ -26,6 +26,14 @@ Ultima verificacao local: 2026-07-18
   `5/8 = 62.5%`. Estabilidade de release nao elimina pendencias de produto ou
   validacao em plataforma real.
 
+## Sincronizacao remota restaurada - 2026-07-18
+
+- `origin/master` e `bitbucket/master` foram confirmados ate `19e4543`, que
+  registra a decisao medida sobre o ledger analytics. A tag anotada
+  `v0.9.11^{}` tambem foi confirmada em `84462d4` nos dois remotos.
+- Os registros anteriores de OAuth `invalid_grant` permanecem historicos para
+  auditoria, mas nao bloqueiam a publicacao atual.
+
 ## Recheck UX-GRID-ALIGN - 2026-07-18
 
 - A reproducao offscreen atual em `1580x940` nao reproduziu o desalinhamento

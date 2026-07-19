@@ -13,6 +13,13 @@
   GitLab `origin` permanece bloqueado por OAuth `invalid_grant`; isto nao pode
   ser contabilizado como publicacao confirmada.
 
+## Sincronizacao remota restaurada - 2026-07-18
+
+- `origin/master` e `bitbucket/master` foram confirmados ate `19e4543`; a tag
+  anotada `v0.9.11^{}` tambem foi confirmada em `84462d4` nos dois remotos.
+- As linhas anteriores de OAuth `invalid_grant` sao historicas. O bloqueio nao
+  vale para a publicacao atual.
+
 ## Recheck UX-GRID-ALIGN - 2026-07-18
 
 - [NOT-REPRODUCED-LOCAL] A captura offscreen atual em `1580x940` nao reproduz
