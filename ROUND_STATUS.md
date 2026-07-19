@@ -15,6 +15,9 @@ antes de interpretar sincronizacao Git, validacao local ou estado externo.
 - SQLite descartavel passou `PRAGMA integrity_check=ok` e terminou com
   `COUNT(*)=96479`. Esta e a prova direta do fluxo completo apos os dois
   slices de importacao; nao depende do clone anterior.
+- Estado Git: branch `master`, HEAD `4052c2a`; `origin/master` e
+  `bitbucket/master` confirmados no mesmo commit. Working tree continua dirty
+  somente por arquivos locais preexistentes nao relacionados ao slice.
 - Contadores: plano original `99.0/100`; divida nova `14/14 = 100.0%` no P0;
   backlog legado `N/A`; fila operacional `5/8 = 62.5%` por provas externas.
 
