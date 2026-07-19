@@ -3713,6 +3713,39 @@ TEST_CASE("sqlite import repairs invalid legacy optional integers while updating
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
+TEST_CASE("sqlite import keeps invalid legacy non-deviation integers fail-closed") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto dbPath = std::filesystem::path{tempDir.path().toStdString()} / "ssas.db";
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(sqliteWriterAccess(), dbPath,
+                                                           importColumns());
+    ssa::infra::importing::ResolvedSsaImportRows seed;
+    seed.rows.push_back({{"numero_ssa", "202600148"},
+                         {"descricao_ssa", "Legacy week"},
+                         {"data_cadastro", "2026-07-14"},
+                         {"semana_programada", "202628"}});
+    REQUIRE(writer.write(seed, 1, 0, false).rowsWritten == 1);
+
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(db,
+                         "UPDATE ssa_table SET semana_programada='invalid' "
+                         "WHERE numero_ssa='202600148'",
+                         nullptr, nullptr, nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+
+    ssa::infra::importing::ResolvedSsaImportRows incoming;
+    incoming.rows.push_back(
+        {{"numero_ssa", "202600148"}, {"data_cadastro", "2026-07-14"}, {"numero_desvios", "1"}});
+
+    REQUIRE_THROWS(writer.write(incoming, 1, 0, false));
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarText(db, "SELECT semana_programada FROM ssa_table "
+                           "WHERE numero_ssa='202600148'") == "invalid");
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
 TEST_CASE("sqlite import rejects semantic SSA collisions before mutation") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());

@@ -7,13 +7,15 @@
   normalizacao e o bind abortava o lote ao atualizar uma planilha valida.
 - [RESOLVED-LOCAL] A normalizacao de `numero_desvios` agora e uma politica de
   dominio compartilhada: labels `Desvio #N` preservam o numero, `sem desvio`
-  preserva zero e texto desconhecido legado torna-se `NULL`.
+  preserva zero e texto desconhecido legado torna-se `NULL`. Outros inteiros
+  continuam fail-closed e nao sao alterados por este reparo.
 - [RESOLVED-LOCAL] O teste de workflow importa dois arquivos: atualiza uma
   linha legada e continua com a proxima. O resultado e `Succeeded`, com
   `Desvio #2`, zero e duas linhas persistidas.
-- Evidencia: build afetado concluido; CTest focal `3/3` em `0.14 s`; familia
-  importacao/SQLite `86/86` em `2.48 s`; review diff, formatacao, cppcheck,
-  Semgrep (11 regras, zero findings) e detect-secrets limpo.
+- Evidencia: build afetado concluido; CTest focal `4/4` em `0.17 s`; familia
+  importacao/SQLite `87/87` em `3.95 s`; review diff, formatacao, cppcheck,
+  Semgrep (11 regras, zero findings) e detect-secrets limpo. Uma prova de
+  fronteira confirma que `semana_programada` invalida continua fail-closed.
 - Nenhuma mudanca de schema, layout ou menu. Contadores fixos permanecem
   plano `99.0/100`, divida P0 `14/14 = 100.0%`, backlog legado `N/A` e fila
   `6/8 = 75.0%`.

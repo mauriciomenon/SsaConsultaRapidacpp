@@ -559,39 +559,22 @@ namespace ssa::infra::sqlite {
             return changed;
         }
 
-        bool normalizeExistingIntegerValues(importing::SsaImportRow& row,
-                                            const std::vector<domain::ColumnDef>& columns) {
-            bool changed = false;
-            for (const auto& column : columns) {
-                if (column.type != domain::ColumnType::Integer || isIdColumnKey(column.key)) {
-                    continue;
-                }
-                const auto value = row.find(column.key);
-                if (value == row.end() || value->second.empty()) {
-                    continue;
-                }
-                long long parsed = 0;
-                const auto normalized = domain::trimWhitespace(value->second);
-                auto canonical = normalized;
-                if (column.key == "numero_desvios") {
-                    canonical = domain::SsaImportPolicy::normalizeDeviationCount(normalized);
-                } else if (parseInteger(normalized, parsed)) {
-                    canonical = std::to_string(parsed);
-                } else {
-                    canonical.clear();
-                }
-                if (canonical.empty()) {
-                    value->second.clear();
-                    row.erase(value);
-                    changed = true;
-                    continue;
-                }
-                if (value->second != canonical) {
-                    value->second = canonical;
-                    changed = true;
-                }
+        bool normalizeExistingDeviationCount(importing::SsaImportRow& row) {
+            constexpr std::string_view key = "numero_desvios";
+            const auto value = row.find(std::string{key});
+            if (value == row.end() || value->second.empty()) {
+                return false;
             }
-            return changed;
+            const auto canonical = domain::SsaImportPolicy::normalizeDeviationCount(value->second);
+            if (canonical.empty()) {
+                row.erase(value);
+                return true;
+            }
+            if (value->second == canonical) {
+                return false;
+            }
+            value->second = canonical;
+            return true;
         }
 
         std::size_t normalizeExistingSsaNumbers(sqlite3* db, const std::string& tableName,
@@ -871,8 +854,7 @@ namespace ssa::infra::sqlite {
                 }
                 selectExisting->resetAndClearBindings();
                 const bool normalizedExistingDates = normalizeDateValues(existing, columns);
-                const bool normalizedExistingIntegers =
-                    normalizeExistingIntegerValues(existing, columns);
+                const bool normalizedExistingDeviation = normalizeExistingDeviationCount(existing);
 
                 const auto merged = domain::SsaImportPolicy::merge(existing, normalizedRow);
                 if (merged.conflict) {
@@ -881,7 +863,7 @@ namespace ssa::infra::sqlite {
                     return result;
                 }
                 if (!existing.empty() && !merged.changed && !normalizedExistingDates &&
-                    !normalizedExistingIntegers) {
+                    !normalizedExistingDeviation) {
                     ++summary.rowsUnchanged;
                     ++result.rowsUnchanged;
                     continue;
