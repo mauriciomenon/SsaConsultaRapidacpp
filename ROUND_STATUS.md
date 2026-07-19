@@ -56,17 +56,20 @@ Ultima verificacao local: 2026-07-18
 - Estado separado: implementado e validado localmente no commit `44411da`;
   Bitbucket confirmou `master` em `44411da`; GitLab `origin` recusou push por
   OAuth `invalid_grant`, dependencia externa sem publicacao alegada.
-- Nenhum atalho de producao pula o fingerprint canonico. Uma reducao segura
-  de custo exige revision ledger transacional atualizado por todos os
-  escritores de `ssa_table`; sem isso, pular capture pode ocultar mutacao
-  externa, reparo de schema ou mudanca de data.
+- Diagnostico Terra ultra mapeou import writer, Derivadas, Maintenance e a
+  publicacao do rescan por backup. Um ledger seguro seria sidecar no mesmo DB,
+  com triggers para DML externo, bootstrap fail-closed e copia junto com o DB
+  temporario; `capture` ainda teria de executar para data e integridade.
+- Nenhum schema foi aprovado: o fingerprint isolado historico de 250 mil
+  linhas mede `239.838 ms`, cerca de `2.32%` do no-op real de `10338.718 ms`.
+  Triggers por linha, bootstrap legado e contratos de rollback/publicacao
+  ainda nao foram medidos. O ganho marginal nao justifica este risco agora.
 - Contadores sem inflacao: plano original `99.0/100`; divida nova
   `13/14 = 92.9%`; backlog legado `0.0/100` placeholder; fila operacional
   `5/8 = 62.5%`.
 
-Proxima atividade unica: mapear todos os escritores SQLite de `ssa_table` e
-decidir se um revision ledger transacional preserva atomicidade antes de propor
-qualquer mudanca de schema ou cache.
+Proxima atividade unica: diagnosticar contraste AA e point size da GUI QML,
+medindo impacto antes de alterar layout ou TypeScale.
 
 ## UX-NAV: cadeia de derivadas fixa durante navegacao - 2026-07-18
 

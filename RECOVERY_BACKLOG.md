@@ -38,19 +38,23 @@
 - Gate focado: `28/28` CTest em `14.67 s`; formatacao, cppcheck, Semgrep e
   detect-secrets limpos. clang-tidy saiu zero sem aviso novo no diff, mas
   reporta avisos baseline de Catch2 e do teste existente.
-- [PENDING-DESIGN] [ANALYTICS-REVISION-LEDGER] O no-op ainda custa `10338.718
-  ms` porque parse, fingerprint e capture permanecem sincronos e atomicos. Um
-  fast path seguro requer revision ledger transacional atualizado por todo
-  escritor de `ssa_table`. Nao foi aceito cache por arquivo ou salto baseado
-  apenas em `rowsWritten`, pois poderiam ocultar mutacao externa, reparo de
-  schema ou mudanca de data.
+- [DEFERRED-MEASURED] [ANALYTICS-REVISION-LEDGER] O diagnostico mapeou os tres
+  mutadores internos (import writer, Derivadas e Maintenance) e a publicacao
+  de rescan por backup. O menor desenho seguro e sidecar no mesmo DB, triggers
+  de DML, bootstrap fail-closed e reutilizacao apenas do hash canonico; ainda
+  deve chamar `capture` para data, schema e integridade. Nao e um fast path
+  seguro para pular analytics.
+- A economia maxima conhecida e fingerprint historico `239.838 ms` sobre no-op
+  real `10338.718 ms`, aproximadamente `2.32%`, antes de custo de trigger por
+  linha e contratos novos de rollback, DB legado e publication. Sem SLA nem
+  benchmark de trigger, schema/cache foi rejeitado nesta rodada. Cache por
+  filename ou `rowsWritten` continua proibido.
 - Publicacao: Bitbucket confirmou `44411da`; GitLab `origin` recusou por OAuth
   `invalid_grant`, dependencia externa. Sem credito novo: plano `99.0/100`,
   divida nova `13/14 = 92.9%`, legado placeholder `0.0/100`, fila `5/8 = 62.5%`.
 
-Proxima atividade unica: mapear escritores SQLite de `ssa_table` e os limites
-de transacao para decidir se `ANALYTICS-REVISION-LEDGER` e seguro antes de
-qualquer schema ou cache de producao.
+Proxima atividade unica: diagnosticar contraste AA e point size da GUI QML
+antes de editar TypeScale ou qualquer layout.
 
 ## UX-NAV: cadeia de derivadas fixa - 2026-07-18
 
