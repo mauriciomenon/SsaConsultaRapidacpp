@@ -23,7 +23,7 @@
   operacional segue `5/8 = 62.5%` por depender de provas externas.
 - CTest final passou `617/617` em `67.61 s`. O codigo foi publicado em
   `5e3de3b`; o fechamento documental foi publicado no Bitbucket em
-  `e7bcf43`. GitLab `origin` permanece em `428302d` por OAuth
+  `342e205`. GitLab `origin` permanece em `428302d` por OAuth
   `invalid_grant`.
 - Proxima atividade unica: executar Windows/UNC real; nao reabrir este P0.
 
