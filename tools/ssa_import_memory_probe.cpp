@@ -1,6 +1,5 @@
 #include "domain/ColumnCatalog.h"
 #include "infra/import/SpreadsheetImportWorkflowPort.h"
-#include "infra/sqlite/SqliteActivityAnalyticsProjection.h"
 #include "infra/sqlite/SqliteConnection.h"
 #include "ports/IWorkflowPorts.h"
 
@@ -34,14 +33,20 @@
 namespace {
 
     constexpr std::size_t kFixtureRows = 250'000;
+    constexpr std::int64_t kFirstSsaNumber = 700'000'000;
     constexpr std::uint64_t kMaxAdditionalRssBytes = 256ULL * 1024ULL * 1024ULL;
+
+    struct FixtureSpec final {
+        std::int64_t firstSsaNumber{kFirstSsaNumber};
+        std::size_t rowCount{kFixtureRows};
+    };
 
     bool addEntry(mz_zip_archive& zip, const char* path, const std::string& content) {
         return mz_zip_writer_add_mem(&zip, path, content.data(), content.size(),
                                      MZ_BEST_COMPRESSION) != 0;
     }
 
-    bool writeWorksheetXml(const std::filesystem::path& path) {
+    bool writeWorksheetXml(const std::filesystem::path& path, const FixtureSpec& fixture) {
         std::ofstream output(path, std::ios::binary | std::ios::trunc);
         if (!output) {
             return false;
@@ -49,27 +54,30 @@ namespace {
         output
             << R"(<?xml version="1.0" encoding="UTF-8"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-<dimension ref="A1:C250001"/><sheetData>)"
-            << R"(<row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="s"><v>1</v></c><c r="C1" t="s"><v>2</v></c></row>)";
-        for (std::size_t index = 0; index < kFixtureRows; ++index) {
+<dimension ref="A1:D)"
+            << fixture.rowCount + 1
+            << R"("/><sheetData><row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="s"><v>1</v></c><c r="C1" t="s"><v>2</v></c><c r="D1" t="s"><v>3</v></c></row>)";
+        for (std::size_t index = 0; index < fixture.rowCount; ++index) {
             const auto rowNumber = index + 2;
-            const auto ssaNumber = 700'000'000 + index;
+            const auto ssaNumber = fixture.firstSsaNumber + static_cast<std::int64_t>(index);
             output << "<row r=\"" << rowNumber << "\"><c r=\"A" << rowNumber << "\"><v>"
                    << ssaNumber << "</v></c><c r=\"B" << rowNumber
-                   << "\" t=\"s\"><v>3</v></c><c r=\"C" << rowNumber
-                   << "\" t=\"s\"><v>4</v></c></row>";
+                   << "\" t=\"s\"><v>4</v></c><c r=\"C" << rowNumber
+                   << "\" t=\"s\"><v>5</v></c><c r=\"D" << rowNumber
+                   << "\" t=\"s\"><v>6</v></c></row>";
         }
         output << "</sheetData></worksheet>";
         return output.good();
     }
 
-    bool writeFixture(const std::filesystem::path& inputDirectory) {
+    bool writeFixture(const std::filesystem::path& inputDirectory, const std::string_view filename,
+                      const FixtureSpec fixture = {}) {
         std::filesystem::create_directories(inputDirectory);
         const auto worksheet = inputDirectory.parent_path() / "sheet1.xml";
-        if (!writeWorksheetXml(worksheet)) {
+        if (!writeWorksheetXml(worksheet, fixture)) {
             return false;
         }
-        const auto workbook = inputDirectory / "memory-probe.xlsx";
+        const auto workbook = inputDirectory / std::string{filename};
         mz_zip_archive zip{};
         const bool opened = mz_zip_writer_init_file(&zip, workbook.string().c_str(), 0) != 0;
         const bool metadataAdded =
@@ -88,9 +96,9 @@ xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
 <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
 </Relationships>)") &&
             addEntry(zip, "xl/sharedStrings.xml", R"(<?xml version="1.0" encoding="UTF-8"?>
-<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="5" uniqueCount="5">
-<si><t>Numero SSA</t></si><si><t>Descricao</t></si><si><t>Data Cadastro</t></si>
-<si><t>Memory probe</t></si><si><t>2026-07-14</t></si></sst>)") &&
+<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="7" uniqueCount="7">
+<si><t>Numero SSA</t></si><si><t>Descricao</t></si><si><t>Data Cadastro</t></si><si><t>Situacao</t></si>
+<si><t>Memory probe</t></si><si><t>2026-07-14</t></si><si><t>SPG</t></si></sst>)") &&
             mz_zip_writer_add_file(&zip, "xl/worksheets/sheet1.xml", worksheet.string().c_str(),
                                    nullptr, 0, MZ_BEST_COMPRESSION) != 0;
         const bool finalized = metadataAdded && mz_zip_writer_finalize_archive(&zip) != 0;
@@ -165,53 +173,86 @@ xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
         return finalized ? value : -1;
     }
 
-    void dropAnalyticsProjection(sqlite3* database) {
-        char* error = nullptr;
-        const int result = sqlite3_exec(database,
-                                        "DROP TABLE IF EXISTS activity_analytics_point;"
-                                        "DROP TABLE IF EXISTS activity_analytics_snapshot;"
-                                        "DROP TABLE IF EXISTS activity_analytics_meta;",
-                                        nullptr, nullptr, &error);
-        const std::string detail = error == nullptr ? sqlite3_errmsg(database) : error;
-        sqlite3_free(error);
-        if (result != SQLITE_OK) {
-            throw std::runtime_error("cannot reset analytics benchmark projection: " + detail);
+    std::string scalarText(sqlite3* database, const char* sql) {
+        sqlite3_stmt* statement = nullptr;
+        if (sqlite3_prepare_v2(database, sql, -1, &statement, nullptr) != SQLITE_OK) {
+            return {};
         }
+        const bool hasValue = sqlite3_step(statement) == SQLITE_ROW;
+        const auto* text = hasValue ? sqlite3_column_text(statement, 0) : nullptr;
+        const std::string value =
+            text == nullptr ? std::string{} : reinterpret_cast<const char*>(text);
+        const bool finalized = sqlite3_finalize(statement) == SQLITE_OK;
+        return finalized ? value : std::string{};
     }
 
-    bool benchmarkAnalytics(const std::filesystem::path& databasePath) {
+    struct AnalyticsState final {
+        long long rows{0};
+        long long snapshots{0};
+        long long points{0};
+        long long spgExecutorRows{0};
+        std::string revision;
+    };
+
+    AnalyticsState analyticsState(const std::filesystem::path& databasePath) {
         ssa::infra::sqlite::SqliteConnection connection(
-            databasePath, ssa::infra::sqlite::SqliteOpenMode::ReadWrite);
+            databasePath, ssa::infra::sqlite::SqliteOpenMode::ReadOnly);
         auto* database = connection.handle();
-        const auto fingerprint = measurePhase("fingerprint", [&] {
-            return ssa::infra::sqlite::SqliteActivityAnalyticsProjection::
-                canonicalSourceFingerprint(database, "ssa_table");
+        return {.rows = scalarCount(database, "SELECT COUNT(*) FROM ssa_table"),
+                .snapshots =
+                    scalarCount(database, "SELECT COUNT(*) FROM activity_analytics_snapshot "
+                                          "WHERE dataset='SSA'"),
+                .points = scalarCount(database, "SELECT COUNT(*) FROM activity_analytics_point "
+                                                "WHERE dataset='SSA'"),
+                .spgExecutorRows = scalarCount(
+                    database, "SELECT COALESCE(SUM(count), 0) FROM activity_analytics_point "
+                              "WHERE dataset='SSA' AND metric='spg' AND person_role='executor'"),
+                .revision = scalarText(database, "SELECT active_source_revision FROM "
+                                                 "activity_analytics_meta WHERE dataset='SSA'")};
+    }
+
+    bool benchmarkAnalytics(ssa::infra::importing::SpreadsheetImportWorkflowPort& port,
+                            const std::filesystem::path& root) {
+        const auto inputDirectory = root / "docs_entrada";
+        const auto databasePath = root / "data" / "ssas.db";
+        const auto base = analyticsState(databasePath);
+        const auto processedWorkbook = inputDirectory / "processadas" / "memory-probe-base.xlsx";
+        const auto noOpWorkbook = inputDirectory / "memory-probe-base.xlsx";
+        std::error_code restoreError;
+        std::filesystem::rename(processedWorkbook, noOpWorkbook, restoreError);
+        if (std::cmp_not_equal(base.rows, kFixtureRows) || base.snapshots != 6 ||
+            base.points <= 0 || std::cmp_not_equal(base.spgExecutorRows, kFixtureRows) ||
+            base.revision.size() != 16 || restoreError) {
+            return false;
+        }
+        const auto noOpResult = measurePhase("analytics_noop_rescan", [&] {
+            return port.rescan({ssa::ports::RescanMode::Incremental});
         });
-        dropAnalyticsProjection(database);
-        const ssa::infra::sqlite::ActivityAnalyticsCaptureContext context{
-            .observedIsoYearWeek = 202605,
-            .observedDate = "2026-02-01",
-            .sourceRevision = fingerprint,
-            .sourceFingerprint = fingerprint,
-        };
-        const auto initial = measurePhase("initial_capture", [&] {
-            return ssa::infra::sqlite::SqliteActivityAnalyticsProjection::capture(
-                database, "ssa_table", context);
+        const auto noOp = analyticsState(databasePath);
+        if (!noOpResult.ok() || !noOpResult.importSummary ||
+            noOpResult.importSummary->inserts != 0 || noOpResult.importSummary->updates != 0 ||
+            std::cmp_not_equal(noOpResult.importSummary->unchangedRows, kFixtureRows) ||
+            noOp.rows != base.rows || noOp.snapshots != base.snapshots ||
+            noOp.points != base.points || noOp.spgExecutorRows != base.spgExecutorRows ||
+            noOp.revision != base.revision ||
+            !writeFixture(
+                inputDirectory, "memory-probe-delta.xlsx",
+                {.firstSsaNumber = kFirstSsaNumber + static_cast<std::int64_t>(kFixtureRows),
+                 .rowCount = 1})) {
+            return false;
+        }
+        const auto deltaResult = measurePhase("analytics_delta_rescan", [&] {
+            return port.rescan({ssa::ports::RescanMode::Incremental});
         });
-        const auto repeated = measurePhase("idempotent_capture", [&] {
-            return ssa::infra::sqlite::SqliteActivityAnalyticsProjection::capture(
-                database, "ssa_table", context);
-        });
-        const auto snapshots = scalarCount(
-            database, "SELECT COUNT(*) FROM activity_analytics_snapshot WHERE dataset='SSA'");
-        const auto points = scalarCount(
-            database, "SELECT COUNT(*) FROM activity_analytics_point WHERE dataset='SSA'");
-        std::cout << "SSA_ACTIVITY_CONTRACT fingerprint_bytes=" << fingerprint.size()
-                  << " snapshots=" << snapshots << " points=" << points
-                  << " initial_changed=" << initial.changed
-                  << " repeated_changed=" << repeated.changed << '\n';
-        return fingerprint.size() == 16 && initial.changed && !repeated.changed && snapshots == 6 &&
-               points > 0;
+        const auto delta = analyticsState(databasePath);
+        std::cout << "SSA_ACTIVITY_CONTRACT base_rows=" << base.rows << " noop_rows=" << noOp.rows
+                  << " delta_rows=" << delta.rows << " snapshots=" << delta.snapshots
+                  << " points=" << delta.points << " spg_executor_rows=" << delta.spgExecutorRows
+                  << '\n';
+        return deltaResult.ok() && delta.rows == base.rows + 1 &&
+               delta.snapshots == base.snapshots && delta.points == base.points &&
+               delta.spgExecutorRows == base.spgExecutorRows + 1 && delta.revision.size() == 16 &&
+               delta.revision != base.revision;
     }
 
     std::size_t importedRows(const std::filesystem::path& databasePath) {
@@ -245,37 +286,38 @@ xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
         const auto columns = ssa::domain::ColumnCatalog::all();
         ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, databasePath,
                                                                   {columns.begin(), columns.end()});
-        const auto result = measurePhase(
-            "import_total", [&] { return port.rescan({ssa::ports::RescanMode::Incremental}); });
-        const auto peak = peakRssBytes();
-        if (baseline == 0 || peak <= baseline) {
-            std::cerr << "SSA_IMPORT_RSS measurement unavailable baseline=" << baseline
-                      << " peak=" << peak << '\n';
-            return 5;
-        }
-        const auto additional = peak - baseline;
-        const auto rows = importedRows(databasePath);
-        std::cout << "SSA_IMPORT_RSS rows=" << rows << " baseline=" << baseline << " peak=" << peak
-                  << " additional=" << additional << '\n';
+        const auto result =
+            measurePhase(includeActivityBenchmark ? "analytics_base_rescan" : "import_total",
+                         [&] { return port.rescan({ssa::ports::RescanMode::Incremental}); });
         if (!result.ok()) {
             std::cerr << result.message << '\n' << result.diagnostic << '\n';
             return 2;
         }
-        if (rows != kFixtureRows) {
+        if (importedRows(databasePath) != kFixtureRows) {
             return 3;
-        }
-        if (additional > kMaxAdditionalRssBytes) {
-            return 4;
         }
         if (includeActivityBenchmark) {
             try {
-                if (!benchmarkAnalytics(databasePath)) {
+                if (!benchmarkAnalytics(port, root)) {
                     return 6;
                 }
             } catch (const std::exception& error) {
                 std::cerr << "SSA_ACTIVITY_BENCH failed: " << error.what() << '\n';
                 return 6;
             }
+        }
+        const auto peak = peakRssBytes();
+        const auto rows = importedRows(databasePath);
+        if (baseline == 0 || peak <= baseline) {
+            std::cerr << "SSA_IMPORT_RSS measurement unavailable baseline=" << baseline
+                      << " peak=" << peak << '\n';
+            return 5;
+        }
+        const auto additional = peak - baseline;
+        std::cout << "SSA_IMPORT_RSS rows=" << rows << " baseline=" << baseline << " peak=" << peak
+                  << " additional=" << additional << '\n';
+        if (additional > kMaxAdditionalRssBytes) {
+            return 4;
         }
         return 0;
     }
@@ -301,7 +343,7 @@ int main(int argc, char* argv[]) {
         return 2;
     }
     const auto root = std::filesystem::path{temporary.path().toStdString()};
-    if (!writeFixture(root / "docs_entrada")) {
+    if (!writeFixture(root / "docs_entrada", "memory-probe-base.xlsx")) {
         return 3;
     }
     QProcess worker;

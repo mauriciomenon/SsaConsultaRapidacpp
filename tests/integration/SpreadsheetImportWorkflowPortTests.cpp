@@ -2444,6 +2444,60 @@ TEST_CASE("spreadsheet import workflow stages xlsx and writes sqlite rows") {
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
+TEST_CASE("spreadsheet import workflow rolls analytics failure back before commit") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto databasePath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(databasePath.parent_path());
+    const auto workbook = inputDirectory / "analytics-failure.xlsx";
+    writeWorkbook(
+        workbook,
+        row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao")}) +
+            row(2, {inlineCell("A2", "202600901"), inlineCell("B2", "SPG"),
+                    inlineCell("C2", "Must roll back"), inlineCell("D2", "2026-07-18")}));
+
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(sqliteWriterAccess(), databasePath,
+                                                           importColumns());
+    ssa::infra::importing::ResolvedSsaImportRows seed;
+    seed.rows.push_back({{"numero_ssa", "202600900"}, {"descricao_ssa", "Existing"}});
+    REQUIRE(writer.write(seed, 1, 0, false).rowsWritten == 1);
+
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(databasePath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(db, "CREATE TABLE activity_analytics_point(broken TEXT)", nullptr, nullptr,
+                         nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, databasePath,
+                                                              importColumns());
+    const auto result = port.rescan({ssa::ports::RescanMode::Incremental});
+
+    INFO(result.message);
+    INFO(result.diagnostic);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
+    REQUIRE(result.diagnostic.find("activity analytics SQL failed") != std::string::npos);
+    REQUIRE(std::filesystem::exists(workbook));
+    REQUIRE_FALSE(std::filesystem::exists(inputDirectory / "processadas" / workbook.filename()));
+    REQUIRE(writer.pendingConsolidation().empty());
+
+    REQUIRE(sqlite3_open(databasePath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 1);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600901'") == 0);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM sqlite_master WHERE "
+                          "name='activity_analytics_snapshot'") == 0);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM sqlite_master WHERE "
+                          "name='activity_analytics_meta'") == 0);
+    REQUIRE(scalarText(db, "SELECT sql FROM sqlite_master WHERE "
+                           "name='activity_analytics_point'")
+                .find("broken TEXT") != std::string::npos);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
 TEST_CASE("spreadsheet import persists a real deviation label as an integer") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
