@@ -1219,6 +1219,9 @@ namespace ssa::infra::importing {
             }
             fileResult.validRows = validRows;
             fileResult.invalidRows = batch.invalidRows;
+            fileResult.invalidNumberRows = batch.invalidNumberRows;
+            fileResult.invalidDescriptionRows = batch.invalidDescriptionRows;
+            fileResult.invalidDateRows = batch.invalidDateRows;
             importSummary.validRows += validRows;
             importSummary.invalidRows += batch.invalidRows;
             importSummary.invalidNumberRows += batch.invalidNumberRows;
@@ -1256,10 +1259,15 @@ namespace ssa::infra::importing {
                      std::string{operation} + " ambiguous_headers file=" + file.originalFilename}));
             }
             if (invalidFullBatch) {
+                std::ostringstream invalidDiagnostic;
+                invalidDiagnostic << "invalid_rows file=" << file.originalFilename
+                                  << " invalid_number=" << batch.invalidNumberRows
+                                  << " invalid_description=" << batch.invalidDescriptionRows
+                                  << " invalid_date=" << batch.invalidDateRows;
                 return discardBeforeCommit(rollbackSession(
-                    *writeSession,
-                    {ports::WorkflowStatus::Rejected,
-                     workflowMessage(operation, files, totalSummary, {0, "invalid_rows"})}));
+                    *writeSession, {ports::WorkflowStatus::Rejected,
+                                    workflowMessage(operation, files, totalSummary,
+                                                    {0, invalidDiagnostic.str()})}));
             }
             pendingOutcomes.push_back({&file, validRows > 0, file.summaryIndex});
             if (validRows == 0) {

@@ -34,6 +34,9 @@ namespace ssa::ports {
         ImportFileStatus status = ImportFileStatus::Rejected;
         std::size_t validRows = 0;
         std::size_t invalidRows = 0;
+        std::size_t invalidNumberRows = 0;
+        std::size_t invalidDescriptionRows = 0;
+        std::size_t invalidDateRows = 0;
         std::size_t inserts = 0;
         std::size_t updates = 0;
         std::size_t unchangedRows = 0;

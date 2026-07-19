@@ -6615,6 +6615,13 @@ TEST_CASE("full rescan rejects mixed valid and invalid rows without clearing the
 
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
     REQUIRE(result.message.find("invalid_rows=1") != std::string::npos);
+    REQUIRE(result.message.find("error=invalid_rows file=mixed.xlsx invalid_number=1") !=
+            std::string::npos);
+    REQUIRE(result.importSummary.has_value());
+    REQUIRE(result.importSummary->files.size() == 1);
+    REQUIRE(result.importSummary->files.front().invalidNumberRows == 1);
+    REQUIRE(result.importSummary->files.front().invalidDescriptionRows == 0);
+    REQUIRE(result.importSummary->files.front().invalidDateRows == 0);
     REQUIRE(std::filesystem::exists(workbook));
     REQUIRE_FALSE(std::filesystem::exists(inputDirectory / "processadas"));
     sqlite3* db = nullptr;

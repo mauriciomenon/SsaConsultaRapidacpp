@@ -3,6 +3,26 @@
 Fonte operacional para humanos e agentes de codigo. Verifique este arquivo
 antes de interpretar sincronizacao Git, validacao local ou estado externo.
 
+## Diagnostico por arquivo no importador - 2026-07-19
+
+- **ENTREGUE**: `ImportFileResult` agora preserva por arquivo os contadores de
+  `invalid_number`, `invalid_description` e `invalid_date`. A rejeicao de full
+  rescan tambem informa `file=<nome>` e os tres contadores na mensagem publica.
+- RED/GREEN: o caso de linha invalida passou a provar a origem
+  `file=mixed.xlsx invalid_number=1`; os tres casos focados passaram `3/3` em
+  `0.09 s`. Nao ha conteudo de celula sensivel na mensagem.
+- Review inicial encontrou somente quebra de clang-format; a correcao foi
+  reaplicada e o review final de diff, clang-format, cppcheck, Semgrep C e
+  detect-secrets terminou sem findings.
+- CTest sequencial final passou `618/618` em `72.23 s`, incluindo importacao,
+  SQLite, journal, filtros avancados, QML e benchmarks smoke.
+- Nenhum schema, layout, menu ou regra de aceite foi alterado. Contadores:
+  plano original `99.0/100`; divida nova `14/14 = 100.0%` no P0; legado
+  `N/A`; fila operacional `5/8 = 62.5%` por provas externas.
+
+Proxima atividade unica: selecionar outra pendencia local de alto impacto ou
+executar a prova Windows/UNC real.
+
 ## Regressao de `Prazo Limite` fechada - 2026-07-19
 
 - **ENTREGUE**: foi acrescentado um teste de workflow que semeia uma SSA ja

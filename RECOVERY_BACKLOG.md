@@ -1,5 +1,14 @@
 # Recovery Backlog
 
+## Diagnostico de linhas invalidas por arquivo - 2026-07-19
+
+- [RESOLVED-LOCAL] O resumo do importador deixou de esconder a origem de uma
+  rejeicao: cada arquivo informa contadores de numero, descricao e data, e o
+  full rescan inclui o nome do arquivo na mensagem de erro.
+- O contrato foi provado com `mixed.xlsx`: `invalid_number=1` no arquivo
+  correto, banco anterior preservado e `PRAGMA integrity_check=ok`.
+- Review e CTest final passaram; nao houve mudanca de schema ou de regra.
+
 ## Prova de atualizacao de deadline existente - 2026-07-19
 
 - [RESOLVED-LOCAL] O workflow agora tem evidencia automatizada para o caso
