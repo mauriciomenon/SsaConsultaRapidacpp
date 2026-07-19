@@ -3,6 +3,24 @@
 Fonte operacional para humanos e agentes de codigo. Verifique este arquivo
 antes de interpretar sincronizacao Git, validacao local ou estado externo.
 
+## Corpus atual no binario recem-compilado - 2026-07-19
+
+- **ENTREGUE**: a copia descartavel do corpus atual foi processada pelo CLI
+  recem-compilado, sem tocar `docs_entrada` do repositorio.
+- Resultado real: `files=1692`, `rows=458864`, `inserted=96479`,
+  `updated=362385`, `unchanged=1241540`, `skipped=256115`,
+  `duplicates=1603953`, `conflicts=0`, `invalid_rows=0`,
+  `invalid_number=0`, `invalid_description=0`, `invalid_date=0`,
+  `failed=0`, `legacy_xls=135`, `unsupported=2`.
+- SQLite descartavel passou `PRAGMA integrity_check=ok` e terminou com
+  `COUNT(*)=96479`. Esta e a prova direta do fluxo completo apos os dois
+  slices de importacao; nao depende do clone anterior.
+- Contadores: plano original `99.0/100`; divida nova `14/14 = 100.0%` no P0;
+  backlog legado `N/A`; fila operacional `5/8 = 62.5%` por provas externas.
+
+Proxima atividade unica: selecionar outra pendencia local de alto impacto ou
+executar a prova Windows/UNC real.
+
 ## Diagnostico por arquivo no importador - 2026-07-19
 
 - **ENTREGUE**: `ImportFileResult` agora preserva por arquivo os contadores de

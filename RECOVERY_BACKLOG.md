@@ -1,5 +1,14 @@
 # Recovery Backlog
 
+## Corpus atual revalidado no CLI - 2026-07-19
+
+- [RESOLVED-LOCAL] O corpus atual foi importado novamente em copia
+  descartavel pelo binario recem-compilado: `1692` arquivos, `458864` linhas,
+  `96479` insercoes, zero invalidos e zero falhas.
+- SQLite passou `PRAGMA integrity_check=ok` e `COUNT(*)=96479`. O print com
+  `invalid_number=994` nao reproduz no processo atual; permanece evidencia
+  historica de binario anterior.
+
 ## Diagnostico de linhas invalidas por arquivo - 2026-07-19
 
 - [RESOLVED-LOCAL] O resumo do importador deixou de esconder a origem de uma
