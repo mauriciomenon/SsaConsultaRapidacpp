@@ -34,6 +34,53 @@ Ultima verificacao local: 2026-07-18
 - Os registros anteriores de OAuth `invalid_grant` permanecem historicos para
   auditoria, mas nao bloqueiam a publicacao atual.
 
+## Contrato externo Windows/UNC preparado - 2026-07-18
+
+- [IMPLEMENTED-LOCAL] O CTest `ssa_windows_unc_import_contract` esta pronto
+  para Windows real e share SMB gravavel. Ele fica fora da descoberta normal
+  (`TEST_SPEC "~[windows-unc]"`) e so e registrado quando
+  `SSA_ENABLE_WINDOWS_UNC_CONTRACT=ON` e
+  `SSA_WINDOWS_UNC_TEST_ROOT` foi definido durante a configuracao. Ativar sem
+  root falha no CMake de modo explicito; com a opcao desligada, o CMake apenas
+  informa que o contrato externo esta desabilitado.
+- O caso `[windows-unc]` rejeita namespaces locais `//?/` e `//./`, exige
+  servidor e share, cria somente um filho temporario owned com segmento
+  Unicode, executa dois full rescans no corpus e DB do share, valida
+  `PRAGMA integrity_check`, linha publicada e move para `processadas`. Entre
+  os rescans ele segura o `.ssa_import.lock` do corpus e exige
+  `import_already_running` com a fonte preservada. Isto prova contencao na
+  mesma maquina/share, nao entre hosts SMB.
+- As fixtures XLSX agora passam caminhos por `qt::toUtf8()` ao miniz, inclusive
+  padding e workbook multi-sheet. O backend miniz MSVC converte UTF-8 para
+  wide; o teste deixa de depender de `std::filesystem::path::string()` e pode
+  realmente atingir o filho Unicode.
+- Validacao local: diagnostico e implementacao Terra ultra; review inicial
+  encontrou dois P1 e dois P2 (registro ausente, namespace local, Unicode e
+  RAII), todos corrigidos; re-review final `SEM FINDINGS`. `git diff --check`,
+  clang-format, Semgrep (2 regras, 0 finding) e detect-secrets passaram. CMake
+  `dev` e `ssa_integration_tests` compilaram; CTest focal de rescan/lock
+  passou `5/5` em `0.16 s`, e o gate de paths Unicode/multi-sheet passou
+  `4/4` em `0.36 s`. `ctest -N -R '^ssa_windows_unc_import_contract$'`
+  retornou zero no macOS, como esperado: este resultado nao e prova Windows.
+- O Ninja emitiu `premature end of file; recovering` e refez o target durante
+  os builds. O link terminou com sucesso, mas o aviso de cache de build nao e
+  tratado como validacao adicional nem como defeito de importacao provado.
+- Execucao externa ainda pendente, sem credito: Windows 11 real, por exemplo
+  PowerShell `$env:SSA_WINDOWS_UNC_TEST_ROOT='\\server\share'; cmake --preset dev
+  -DSSA_ENABLE_WINDOWS_UNC_CONTRACT=ON; cmake --build --preset dev --target
+  ssa_integration_tests; ctest --preset dev -R
+  '^ssa_windows_unc_import_contract$' --output-on-failure`. O comando deve
+  registrar versao Windows/SMB, share, resultado e erros Win32. Corrida entre
+  hosts, reparse/junction, crash/recovery, troca TOCTOU e exportacao real de
+  grafo seguem fora deste contrato.
+- Contadores sem inflacao: plano original `99.0/100`; divida nova
+  `13/14 = 92.9%`; backlog legado `0.0/100`; fila operacional `5/8 = 62.5%`.
+  O aceite de `IMPORT-STAGER-HUB` continua externo.
+
+Proxima atividade unica: executar `ssa_windows_unc_import_contract` em Windows
+11 com share UNC gravavel e registrar a evidencia de plataforma antes de
+considerar o ultimo item de importacao aceito.
+
 ## Contraste AA contextual QML - 2026-07-18
 
 - [RESOLVED-LOCAL] [THEME-PY-AA] `Theme.readableText(background, preferred)`

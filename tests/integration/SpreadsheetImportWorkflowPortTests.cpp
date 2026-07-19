@@ -124,7 +124,8 @@ namespace {
                        const std::uintmax_t paddingBytes = 0,
                        const std::string& sharedStringsXml = {}) {
         mz_zip_archive zip = {};
-        REQUIRE(mz_zip_writer_init_file(&zip, path.string().c_str(), 0) != 0);
+        const auto utf8Path = ssa::qt::toUtf8(path);
+        REQUIRE(mz_zip_writer_init_file(&zip, utf8Path.c_str(), 0) != 0);
         addZipEntry(zip, "[Content_Types].xml", R"(<?xml version="1.0" encoding="UTF-8"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
 <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
@@ -147,10 +148,12 @@ xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
 <dimension ref="A1:E4"/><sheetData>)" +
                         rowsXml + "</sheetData></worksheet>");
-        const auto paddingPath = path.string() + ".padding";
+        auto paddingPath = path;
+        paddingPath += ".padding";
         if (paddingBytes > 0) {
             createSparseFile(paddingPath, paddingBytes);
-            REQUIRE(mz_zip_writer_add_file(&zip, "padding.bin", paddingPath.c_str(), nullptr, 0,
+            const auto utf8PaddingPath = ssa::qt::toUtf8(paddingPath);
+            REQUIRE(mz_zip_writer_add_file(&zip, "padding.bin", utf8PaddingPath.c_str(), nullptr, 0,
                                            MZ_NO_COMPRESSION) != 0);
         }
         REQUIRE(mz_zip_writer_finalize_archive(&zip) != 0);
@@ -163,7 +166,8 @@ xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
     void writeWorkbookSheets(const std::filesystem::path& path,
                              const std::vector<std::string>& sheets) {
         mz_zip_archive zip{};
-        REQUIRE(mz_zip_writer_init_file(&zip, path.string().c_str(), 0) != 0);
+        const auto utf8Path = ssa::qt::toUtf8(path);
+        REQUIRE(mz_zip_writer_init_file(&zip, utf8Path.c_str(), 0) != 0);
         addZipEntry(zip, "[Content_Types].xml", R"(<?xml version="1.0" encoding="UTF-8"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
 <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
@@ -5128,6 +5132,92 @@ TEST_CASE("spreadsheet import workflow rejects a second instance before discover
     REQUIRE(std::filesystem::exists(workbook));
     REQUIRE_FALSE(std::filesystem::exists(dbPath));
 }
+
+#ifdef _WIN32
+TEST_CASE("Windows UNC same-machine share import contract", "[windows-unc]") {
+    const QString shareRootText = qEnvironmentVariable("SSA_WINDOWS_UNC_TEST_ROOT");
+    REQUIRE_FALSE(shareRootText.isEmpty());
+    const QString normalizedShareRoot = QDir::fromNativeSeparators(shareRootText);
+    const auto uncSegments = normalizedShareRoot.split(QStringLiteral("/"), Qt::SkipEmptyParts);
+    REQUIRE(normalizedShareRoot.startsWith(QStringLiteral("//")));
+    REQUIRE(uncSegments.size() >= 2);
+    REQUIRE(uncSegments.front() != QStringLiteral("?"));
+    REQUIRE(uncSegments.front() != QStringLiteral("."));
+
+    const QString temporarySegment = QString::fromUtf8("ssa_windows_unc_\xC3\xA7_XXXXXX");
+    QTemporaryDir tempDir(normalizedShareRoot + QStringLiteral("/") + temporarySegment);
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdWString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto processedDirectory = inputDirectory / "processadas";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+
+    const auto firstWorkbook = inputDirectory / "unc-first.xlsx";
+    writeWorkbook(
+        firstWorkbook,
+        row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao")}) +
+            row(2, {inlineCell("A2", "202600801"), inlineCell("B2", "ASE"),
+                    inlineCell("C2", "UNC first import"), inlineCell("D2", "2026-07-19")}));
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+
+    const auto first = port.rescan({ssa::ports::RescanMode::Full});
+
+    INFO(first.message);
+    INFO(first.diagnostic);
+    REQUIRE(first.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE_FALSE(std::filesystem::exists(firstWorkbook));
+    REQUIRE(std::filesystem::exists(processedDirectory / firstWorkbook.filename()));
+    {
+        ssa::infra::sqlite::SqliteConnection verification(
+            dbPath, ssa::infra::sqlite::SqliteOpenMode::ReadOnly);
+        REQUIRE(scalarText(verification.handle(), "PRAGMA integrity_check") == "ok");
+        REQUIRE(scalarInt(verification.handle(), "SELECT COUNT(*) FROM ssa_table") == 1);
+        REQUIRE(scalarInt(verification.handle(),
+                          "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600801'") == 1);
+    }
+
+    const auto secondWorkbook = inputDirectory / "unc-second.xlsx";
+    writeWorkbook(
+        secondWorkbook,
+        row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao")}) +
+            row(2, {inlineCell("A2", "202600802"), inlineCell("B2", "ASE"),
+                    inlineCell("C2", "UNC lock contention"), inlineCell("D2", "2026-07-19")}));
+    QLockFile heldLock(ssa::qt::toQString(root / ".ssa_import.lock"));
+    heldLock.setStaleLockTime(0);
+    REQUIRE(heldLock.tryLock(0));
+
+    const auto locked = port.rescan({ssa::ports::RescanMode::Full});
+
+    INFO(locked.message);
+    INFO(locked.diagnostic);
+    REQUIRE(locked.status == ssa::ports::WorkflowStatus::Failed);
+    REQUIRE(locked.message == "import_already_running");
+    REQUIRE(std::filesystem::exists(secondWorkbook));
+    heldLock.unlock();
+
+    const auto resumed = port.rescan({ssa::ports::RescanMode::Full});
+
+    INFO(resumed.message);
+    INFO(resumed.diagnostic);
+    REQUIRE(resumed.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE_FALSE(std::filesystem::exists(secondWorkbook));
+    REQUIRE(std::filesystem::exists(processedDirectory / secondWorkbook.filename()));
+    {
+        ssa::infra::sqlite::SqliteConnection verification(
+            dbPath, ssa::infra::sqlite::SqliteOpenMode::ReadOnly);
+        REQUIRE(scalarText(verification.handle(), "PRAGMA integrity_check") == "ok");
+        REQUIRE(scalarInt(verification.handle(), "SELECT COUNT(*) FROM ssa_table") == 1);
+        REQUIRE(scalarInt(verification.handle(),
+                          "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600802'") == 1);
+    }
+}
+#endif
 
 TEST_CASE("spreadsheet import corpus lock resolves input directory symlink aliases") {
     QTemporaryDir tempDir;

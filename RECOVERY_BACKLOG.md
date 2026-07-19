@@ -20,6 +20,37 @@
 - As linhas anteriores de OAuth `invalid_grant` sao historicas. O bloqueio nao
   vale para a publicacao atual.
 
+## Contrato executavel Windows/UNC - 2026-07-18
+
+- [IMPLEMENTED-LOCAL] [IMPORT-STAGER-HUB-WINDOWS-UNC-CONTRACT] CMake possui a
+  opcao opt-in `SSA_ENABLE_WINDOWS_UNC_CONTRACT`. Em Windows, ativar a opcao
+  sem `SSA_WINDOWS_UNC_TEST_ROOT` falha na configuracao; com root definido, o
+  CTest nomeado `ssa_windows_unc_import_contract` chama somente o caso Catch2
+  `[windows-unc]`. Sem opt-in ele fica fora da suite normal e o CMake informa
+  a condicao externa, evitando passar o contrato por omissao.
+- O caso exige UNC sintatico com servidor/share e rejeita `//?/` e `//./`.
+  Em filho temporario owned Unicode do share, cobre full rescan, DB SQLite,
+  integridade, consolidacao e lock do corpus na mesma maquina/share. O XLSX de
+  fixture usa `qt::toUtf8()` ao entrar no miniz, que usa wide no backend MSVC.
+- Gate local: review Terra ultra encontrou e corrigiu dois P1 e dois P2;
+  re-review `SEM FINDINGS`. diff/formatacao, Semgrep e detect-secrets limpos;
+  build de `ssa_integration_tests`, CTest rescan/lock `5/5` em `0.16 s` e
+  paths Unicode/multi-sheet `4/4` em `0.36 s` passaram. O CTest externo nao
+  existe no macOS por desenho, portanto nenhum resultado local e apresentado
+  como prova Windows.
+- [PENDING-EXTERNAL] Executar no Windows 11 real com SMB gravavel, usando
+  `SSA_WINDOWS_UNC_TEST_ROOT=\\server\share`, configuracao com
+  `-DSSA_ENABLE_WINDOWS_UNC_CONTRACT=ON` e CTest nomeado. Registrar versao
+  Windows/SMB e erros Win32. Este contrato nao prova dois hosts, crash/recovery,
+  TOCTOU sob SMB, reparse/junction ou exportacao de grafo para UNC.
+- O Ninja local reportou `premature end of file; recovering` e refez o target.
+  O link concluiu, mas isto fica como ruido de cache de build sem credito de
+  validacao e sem abrir refactor fora do risco principal.
+
+Proxima atividade unica: executar o contrato externo Windows/UNC e registrar a
+evidencia de plataforma; os contadores seguem `99.0/100`, `13/14`, `0.0/100`
+e `5/8`.
+
 ## Contraste AA contextual QML - 2026-07-18
 
 - [RESOLVED-LOCAL] [THEME-PY-AA] O helper `Theme.readableText(background,

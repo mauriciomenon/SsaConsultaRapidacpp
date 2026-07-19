@@ -12,6 +12,8 @@ set(CMAKE_AUTOMOC ON)
 
 option(SSA_BUILD_TESTS "Build tests" ON)
 option(SSA_BUILD_ARROW_TOOL "Build the optional read-only Arrow inspector" OFF)
+option(SSA_ENABLE_WINDOWS_UNC_CONTRACT
+       "Enable the external Windows UNC import contract test" OFF)
 
 find_package(
   Qt6 6.6 REQUIRED
@@ -548,7 +550,36 @@ if(SSA_BUILD_TESTS)
       SSA_SQLITE_CRASH_PROBE_PATH="$<TARGET_FILE:ssa_sqlite_import_crash_probe>"
   )
   add_dependencies(ssa_integration_tests ssa_sqlite_import_crash_probe)
-  catch_discover_tests(ssa_integration_tests PROPERTIES TIMEOUT 30)
+  catch_discover_tests(ssa_integration_tests TEST_SPEC "~[windows-unc]"
+                       PROPERTIES TIMEOUT 30)
+
+  if(WIN32)
+    if(SSA_ENABLE_WINDOWS_UNC_CONTRACT)
+      if("$ENV{SSA_WINDOWS_UNC_TEST_ROOT}" STREQUAL "")
+        message(
+          FATAL_ERROR
+            "SSA_ENABLE_WINDOWS_UNC_CONTRACT=ON requires SSA_WINDOWS_UNC_TEST_ROOT to name a writable UNC share."
+        )
+      endif()
+      add_test(NAME ssa_windows_unc_import_contract
+               COMMAND $<TARGET_FILE:ssa_integration_tests> "[windows-unc]")
+      set_tests_properties(
+        ssa_windows_unc_import_contract
+        PROPERTIES TIMEOUT
+                   120
+                   RUN_SERIAL
+                   TRUE
+                   LABELS
+                   "external;windows;unc;import"
+                   ENVIRONMENT
+                   "SSA_WINDOWS_UNC_TEST_ROOT=$ENV{SSA_WINDOWS_UNC_TEST_ROOT}")
+    else()
+      message(
+        STATUS
+          "Windows UNC import contract disabled; enable with -DSSA_ENABLE_WINDOWS_UNC_CONTRACT=ON."
+      )
+    endif()
+  endif()
 
   add_executable(ssa_qt_presentation_tests
                  tests/smoke/PresentationSmokeTest.cpp)
