@@ -1,5 +1,18 @@
 # Recovery Backlog
 
+## Prova de atualizacao de deadline existente - 2026-07-19
+
+- [RESOLVED-LOCAL] O workflow agora tem evidencia automatizada para o caso
+  operacional que gerou `invalid_number=994`: uma SSA ja existente e
+  atualizada por uma planilha com `Prazo Limite` textual e `Data Limite`
+  tipada, sem converter status em data e sem apagar o `prazo_limite` legado.
+- O teste passou `1/1` em `0.04 s`; o CTest completo passou `618/618` em
+  `70.92 s`. Uma planilha real com `Prazo Limite` foi importada pelo binario
+  atual com `38` linhas aceitas e zero invalidas.
+- Nenhuma divida nova foi criada. O print com `invalid_number=994` continua
+  sendo resultado historico de uma execucao anterior; a evidencia de corpus
+  atual permanece com zero linhas invalidas.
+
 ## Corpus real sem linhas invalidas - 2026-07-19
 
 - [RESOLVED-LOCAL] [IMPORT-CORPUS-INVALID-NUMBER] O rescan C++ isolado do

@@ -3,6 +3,32 @@
 Fonte operacional para humanos e agentes de codigo. Verifique este arquivo
 antes de interpretar sincronizacao Git, validacao local ou estado externo.
 
+## Regressao de `Prazo Limite` fechada - 2026-07-19
+
+- **ENTREGUE**: foi acrescentado um teste de workflow que semeia uma SSA ja
+  existente, importa uma linha com `Prazo Limite= Dentro do Prazo` e
+  `Data Limite=2026-07-31`, e verifica a atualizacao no mesmo SQLite.
+- O teste prova que `Prazo Limite` vai para `status_execucao_prazo` textual,
+  `Data Limite` vai para `data_limite`, o valor legado `prazo_limite` nao e
+  sobrescrito e a importacao termina com `invalid_rows=0` e
+  `invalid_number=0`. Uma planilha real com esse cabecalho tambem foi
+  executada no binario atual: `38/38` linhas aceitas.
+- RED inicial foi somente uma expectativa errada do teste (`data_limite` e
+  armazenada como `YYYY-MM-DD`); o ajuste foi revisado e o GREEN passou `1/1`
+  em `0.04 s`.
+- CTest sequencial final passou `618/618` em `70.92 s`. Isto inclui a familia
+  completa de importacao/SQLite e os testes de filtros avancados.
+- Contadores permanecem: plano original `99.0/100`; divida nova `14/14 =
+  100.0%` para o P0 de importacao; backlog legado `N/A`; fila operacional
+  `5/8 = 62.5%` por provas externas ainda sem credito.
+- O erro `invalid_number=994` do print nao foi reproduzido no binario atual;
+  a evidencia anterior de corpus integral permanece `invalid_number=0`. Nao
+  ha alteracao de schema nem de regra de importacao nesta rodada, somente a
+  prova de regressao.
+
+Proxima atividade unica: continuar uma pendencia local de alto impacto ou
+executar a prova Windows/UNC real; nao reabrir o mapeamento ja validado.
+
 ## Importacao integral do corpus corrigida - 2026-07-19
 
 - **ENTREGUE**: o importador C++ concluiu o rescan isolado de 1692 XLSX. O

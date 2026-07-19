@@ -3154,6 +3154,55 @@ TEST_CASE("spreadsheet mapper rejects invalid rows and accepts date exempt state
     REQUIRE(ssa::infra::importing::rowValue(result.rows[1], "numero_ssa") == "202600004");
 }
 
+TEST_CASE("spreadsheet workflow keeps deadline status textual and updates existing SSA") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(sqliteWriterAccess(), dbPath,
+                                                           importColumns());
+    ssa::infra::importing::ResolvedSsaImportRows previous;
+    previous.rows.push_back({{"numero_ssa", "202600777"},
+                             {"situacao", "APV"},
+                             {"descricao_ssa", "Existing description"},
+                             {"data_cadastro", "2026-07-01 00:00:00"},
+                             {"prazo_limite", "2026-06-30 00:00:00"}});
+    REQUIRE(writer.write(previous, 1, 0, false).rowsWritten == 1);
+
+    const auto workbook = inputDirectory / "deadline-status.xlsx";
+    writeWorkbook(
+        workbook,
+        row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao"),
+                inlineCell("E1", "Prazo Limite"), inlineCell("F1", "Data Limite")}) +
+            row(2, {inlineCell("A2", "202600777"), inlineCell("B2", "APV"),
+                    inlineCell("C2", "Updated description"), inlineCell("D2", "2026-07-02"),
+                    inlineCell("E2", "Dentro do Prazo"), inlineCell("F2", "2026-07-31")}));
+
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+    const auto result = port.rescan({ssa::ports::RescanMode::Incremental});
+
+    REQUIRE(result.ok());
+    REQUIRE(result.message.find("invalid_rows=0") != std::string::npos);
+    REQUIRE(result.message.find("invalid_number=0") != std::string::npos);
+
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarText(db, "SELECT status_execucao_prazo FROM ssa_table "
+                           "WHERE numero_ssa='202600777'") == "Dentro do Prazo");
+    REQUIRE(scalarText(db, "SELECT data_limite FROM ssa_table "
+                           "WHERE numero_ssa='202600777'") == "2026-07-31");
+    REQUIRE(scalarText(db, "SELECT prazo_limite FROM ssa_table "
+                           "WHERE numero_ssa='202600777'") == "2026-06-30 00:00:00");
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
 TEST_CASE("spreadsheet mapper ignores continuation-only waiting rows") {
     ssa::infra::importing::SpreadsheetTable table;
     table.sourcePath = "waiting-continuation.xlsx";
