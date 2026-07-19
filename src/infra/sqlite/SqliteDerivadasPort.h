@@ -1,5 +1,6 @@
 #pragma once
 
+#include "infra/sqlite/SqliteProgressHandler.h"
 #include "ports/IWorkflowPorts.h"
 
 #include <filesystem>
@@ -13,8 +14,15 @@ namespace ssa::infra::sqlite {
 
     class SqliteDerivadasPort final : public ports::IDerivadasPort {
       public:
+        using SynchronizationSemaphore = SqliteSynchronizationSemaphore;
+
+        struct SynchronizationSignals {
+            std::shared_ptr<SynchronizationSemaphore> busyEntered;
+        };
+
         SqliteDerivadasPort(std::filesystem::path databasePath,
-                            std::shared_ptr<importing::LegacySpreadsheetConverter> legacyConverter);
+                            std::shared_ptr<importing::LegacySpreadsheetConverter> legacyConverter,
+                            SynchronizationSignals synchronization = {});
 
         [[nodiscard]] bool legacySpreadsheetConverterAvailable() const override;
         [[nodiscard]] ports::WorkflowResult
@@ -27,6 +35,7 @@ namespace ssa::infra::sqlite {
       private:
         std::filesystem::path databasePath_;
         std::shared_ptr<importing::LegacySpreadsheetConverter> legacyConverter_;
+        SynchronizationSignals synchronization_;
     };
 
 } // namespace ssa::infra::sqlite

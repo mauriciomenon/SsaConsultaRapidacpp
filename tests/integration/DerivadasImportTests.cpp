@@ -439,18 +439,27 @@ TEST_CASE("derivadas import cancels while waiting for SQLite and remains reusabl
                                                  ssa::infra::sqlite::SqliteOpenMode::ReadWrite);
     REQUIRE(sqlite3_exec(blocker.handle(), "BEGIN EXCLUSIVE", nullptr, nullptr, nullptr) ==
             SQLITE_OK);
-    ssa::infra::sqlite::SqliteDerivadasPort port(fixture.databasePath,
-                                                 unavailableLegacyConverter());
+    const auto busyEntered =
+        std::make_shared<ssa::infra::sqlite::SqliteDerivadasPort::SynchronizationSemaphore>(0);
+    ssa::infra::sqlite::SqliteDerivadasPort port(fixture.databasePath, unavailableLegacyConverter(),
+                                                 {.busyEntered = busyEntered});
     std::stop_source stopSource;
     auto operation = std::async(std::launch::async, [&] {
         return port.importDerivations(requestFor(source), stopSource.get_token());
     });
 
-    REQUIRE(operation.wait_for(std::chrono::milliseconds{50}) == std::future_status::timeout);
+    const bool busyObserved = busyEntered->try_acquire_for(std::chrono::seconds{1});
     stopSource.request_stop();
-    REQUIRE(operation.wait_for(std::chrono::milliseconds{500}) == std::future_status::ready);
-    REQUIRE(operation.get().status == ssa::ports::WorkflowStatus::Canceled);
+    const bool canceledPromptly =
+        operation.wait_for(std::chrono::milliseconds{500}) == std::future_status::ready;
     REQUIRE(sqlite3_exec(blocker.handle(), "ROLLBACK", nullptr, nullptr, nullptr) == SQLITE_OK);
+    if (!canceledPromptly) {
+        REQUIRE(operation.wait_for(std::chrono::seconds{1}) == std::future_status::ready);
+    }
+    const auto result = operation.get();
+    REQUIRE(busyObserved);
+    REQUIRE(canceledPromptly);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Canceled);
     REQUIRE(fixture.parentOf("202600002").empty());
     REQUIRE(port.importDerivations(requestFor(source)).status ==
             ssa::ports::WorkflowStatus::Succeeded);

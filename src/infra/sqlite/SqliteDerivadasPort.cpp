@@ -176,8 +176,10 @@ namespace ssa::infra::sqlite {
 
     SqliteDerivadasPort::SqliteDerivadasPort(
         std::filesystem::path databasePath,
-        std::shared_ptr<importing::LegacySpreadsheetConverter> legacyConverter)
-        : databasePath_(std::move(databasePath)), legacyConverter_(std::move(legacyConverter)) {}
+        std::shared_ptr<importing::LegacySpreadsheetConverter> legacyConverter,
+        SynchronizationSignals synchronization)
+        : databasePath_(std::move(databasePath)), legacyConverter_(std::move(legacyConverter)),
+          synchronization_(std::move(synchronization)) {}
 
     bool SqliteDerivadasPort::legacySpreadsheetConverterAvailable() const {
         return legacyConverter_ && legacyConverter_->available();
@@ -223,7 +225,8 @@ namespace ssa::infra::sqlite {
                            : importFailed(std::string{writeLock.diagnostic()});
             }
             SqliteConnection connection(databasePath_, SqliteOpenMode::ReadWrite);
-            SqliteBusyHandler busy(connection.handle(), stopToken);
+            SqliteBusyHandler busy(connection.handle(), stopToken, std::chrono::milliseconds{3000},
+                                   synchronization_.busyEntered.get());
             SqliteProgressHandler progress(connection.handle(), stopToken);
             SqliteWriteTransaction transaction(connection.handle(), busy.cancellationObserved());
 
@@ -317,7 +320,8 @@ namespace ssa::infra::sqlite {
                                                   : failed(std::string{writeLock.diagnostic()});
             }
             SqliteConnection connection(databasePath_, SqliteOpenMode::ReadWrite);
-            SqliteBusyHandler busy(connection.handle(), stopToken);
+            SqliteBusyHandler busy(connection.handle(), stopToken, std::chrono::milliseconds{3000},
+                                   synchronization_.busyEntered.get());
             SqliteProgressHandler progress(connection.handle(), stopToken);
             SqliteWriteTransaction transaction(connection.handle(), busy.cancellationObserved());
 
