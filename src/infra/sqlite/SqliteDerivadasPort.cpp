@@ -197,6 +197,9 @@ namespace ssa::infra::sqlite {
             if (request.files.empty()) {
                 return importRejected("derivadas import requires at least one source");
             }
+            if (const auto validation = request.execution.validationError(); !validation.empty()) {
+                return importRejected("invalid_import_execution_options " + validation);
+            }
             if (!legacyConverter_) {
                 return importFailed("legacy XLS converter is not configured");
             }
@@ -232,7 +235,7 @@ namespace ssa::infra::sqlite {
                            : importFailed(std::string{writeLock.diagnostic()});
             }
             SqliteConnection connection(databasePath_, SqliteOpenMode::ReadWrite);
-            SqliteBusyHandler busy(connection.handle(), stopToken, std::chrono::milliseconds{3000},
+            SqliteBusyHandler busy(connection.handle(), stopToken, request.execution.sqliteBusyWait,
                                    synchronization_.busyEntered.get());
             SqliteProgressHandler progress(connection.handle(), stopToken);
             SqliteWriteTransaction transaction(connection.handle(), busy.cancellationObserved());

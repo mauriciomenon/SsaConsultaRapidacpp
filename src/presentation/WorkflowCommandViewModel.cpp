@@ -230,7 +230,7 @@ namespace ssa::presentation {
                       false);
             return;
         }
-        runner_.importDerivations(files);
+        runner_.importDerivations(files, importExecutionOptions());
     }
 
     bool WorkflowCommandViewModel::legacyDerivadasConverterAvailable() const {

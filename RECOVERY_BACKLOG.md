@@ -1,5 +1,19 @@
 # Recovery Backlog
 
+## Opcoes de execucao no importador de derivadas - 2026-07-19
+
+- [RESOLVED-LOCAL] `ImportDerivationsRequest` recebe `ImportExecutionOptions`
+  e o ViewModel/Runner entrega os valores persistidos de preferencias.
+- [RESOLVED-LOCAL] O port rejeita `rows_per_chunk` ou busy wait fora do
+  contrato antes de acessar arquivos e usa `sqlite_busy_wait_ms` no handler
+  SQLite; o merger continua atomico e com estado entre fontes.
+- Evidencia: dispatch `321`/`125 ms`, rejeicao pre-leitura, focused CTest
+  `22/22` em `10.36 s` e suite `620/620` em `81.22 s`.
+- Limite honesto: `rows_per_chunk` particiona o leitor XLSX externo. Derivadas
+  leem as arestas por fonte e nao recebem uma promessa falsa de chunking.
+- Risco residual: SAM refresh, Windows/UNC e packaging continuam em filas
+  separadas; nenhum schema de dados foi modificado.
+
 ## Parametros de execucao realmente usados pelo importador - 2026-07-19
 
 - [RESOLVED-LOCAL] O bloco `import_execution` do schema 14 deixou de ser

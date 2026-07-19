@@ -34,7 +34,8 @@ namespace ssa::presentation {
         [[nodiscard]] bool legacySpreadsheetConverterAvailable() const;
         void importExternalFiles(const std::vector<QString>& files,
                                  ports::ImportExecutionOptions execution = {});
-        void importDerivations(const std::vector<QString>& files);
+        void importDerivations(const std::vector<QString>& files,
+                               ports::ImportExecutionOptions execution = {});
         void rescan(ports::RescanMode mode, ports::ImportExecutionOptions execution = {});
         void refreshSam(ports::SamRefreshRequest request);
         void cleanOrphanDerivations();

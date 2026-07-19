@@ -2580,6 +2580,10 @@ namespace {
                 std::make_shared<CapturingImportPort>(), nullptr, nullptr, derivadasPort);
             ssa::presentation::MainViewModel model(service, commands, nullptr, nullptr, workflows);
             QCOMPARE(model.actions()->workflows()->legacyDerivadasConverterAvailable(), true);
+            ssa::ports::UserPreferencesSnapshot preferences;
+            preferences.importExecution.rowsPerChunk = 321;
+            preferences.importExecution.sqliteBusyWaitMs = 125;
+            model.actions()->workflows()->applyPreferences(preferences);
             const auto first = QDir::temp().filePath(QStringLiteral("derivadas.csv"));
             const auto second = QDir::temp().filePath(QStringLiteral("derivadas.xlsx"));
             QVariantList selectedFiles{QUrl::fromLocalFile(first), QUrl::fromLocalFile(second)};
@@ -2591,6 +2595,8 @@ namespace {
             QCOMPARE(requests.front().files.size(), std::size_t{2});
             QCOMPARE(requests.front().files[0], ssa::qt::toFileSystemPath(first));
             QCOMPARE(requests.front().files[1], ssa::qt::toFileSystemPath(second));
+            QCOMPARE(requests.front().execution.rowsPerChunk, std::size_t{321});
+            QCOMPARE(requests.front().execution.sqliteBusyWait, std::chrono::milliseconds{125});
             QTRY_COMPARE_WITH_TIMEOUT(model.browse()->status()->message(),
                                       QString("Importacao de derivadas concluida"), 1000);
             QCOMPARE(model.actions()->workflows()->lastSucceeded(), true);

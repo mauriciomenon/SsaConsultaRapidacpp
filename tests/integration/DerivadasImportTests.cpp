@@ -333,6 +333,22 @@ TEST_CASE("derivadas import keeps an earlier valid source atomic when a later so
     REQUIRE(fixture.parentOf("202600002").empty());
 }
 
+TEST_CASE("derivadas import rejects invalid execution options before reading") {
+    const Fixture fixture;
+    const auto source = fixture.path("invalid-options.csv");
+    writeText(source, "parent_ssa,child_ssa\n202600001,202600002\n");
+    ssa::ports::ImportDerivationsRequest request{{source}};
+    request.execution.sqliteBusyWait = std::chrono::milliseconds{1};
+    ssa::infra::sqlite::SqliteDerivadasPort port(fixture.databasePath,
+                                                 unavailableLegacyConverter());
+
+    const auto result = port.importDerivations(request);
+
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
+    REQUIRE(result.message.find("invalid_import_execution_options") != std::string::npos);
+    REQUIRE(fixture.parentOf("202600002").empty());
+}
+
 TEST_CASE("derivadas import reports no changes when an edge is already stored") {
     const Fixture fixture;
     const auto source = fixture.path("same.csv");

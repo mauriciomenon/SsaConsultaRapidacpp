@@ -3,6 +3,29 @@
 Fonte operacional para humanos e agentes de codigo. Verifique este arquivo
 antes de interpretar sincronizacao Git, validacao local ou estado externo.
 
+## Parametros de execucao no fluxo de derivadas - 2026-07-19
+
+- **ENTREGUE localmente**: `ImportDerivationsRequest` agora carrega o mesmo
+  contrato tipado de execucao usado pelo importador externo.
+- **ENTREGUE localmente**: ViewModel e Runner propagam `rows_per_chunk` e
+  `sqlite_busy_wait_ms` ao fluxo de derivadas; o port valida os limites antes
+  de ler qualquer fonte e usa o busy wait configurado na escrita SQLite.
+- `rows_per_chunk` continua sendo o tamanho de lote do leitor XLSX externo;
+  o merger de derivadas preserva seu estado entre fontes e nao finge uma
+  particionacao de arestas que ainda nao existe nesse fluxo.
+- Provas: teste de dispatch confirma `321` e `125 ms`; teste rejeita opcoes
+  invalidas antes da leitura; CTest focado `22/22` em `10.36 s`; suite
+  completa `620/620` em `81.22 s`.
+- Review final do codigo: diff check, clang-format, cppcheck, Semgrep
+  C/security e detect-secrets sem findings. Nenhum schema de dados, menu ou
+  layout foi alterado.
+- Estado desta fatia: implementada e validada no working tree; commit e
+  publicacao ainda pendentes. Contadores permanecem plano original
+  `99.0/100`, divida nova P0 `14/14 = 100.0%`, backlog legado `N/A`.
+
+Proxima atividade unica: commit atomico, push para GitLab e Bitbucket e
+confirmacao dos dois refs.
+
 ## Parametros de execucao de importacao ligados ao workflow - 2026-07-19
 
 - **ENTREGUE localmente**: `WorkflowCommandViewModel` aplica e persiste os

@@ -78,7 +78,8 @@ namespace ssa::presentation {
         });
     }
 
-    void WorkflowCommandRunner::importDerivations(const std::vector<QString>& files) {
+    void WorkflowCommandRunner::importDerivations(const std::vector<QString>& files,
+                                                  ports::ImportExecutionOptions execution) {
         if (running() || shuttingDown_) {
             return;
         }
@@ -89,6 +90,7 @@ namespace ssa::presentation {
         }
 
         ports::ImportDerivationsRequest request;
+        request.execution = execution;
         request.files.reserve(files.size());
         for (const auto& path : files) {
             request.files.emplace_back(qt::toFileSystemPath(path));

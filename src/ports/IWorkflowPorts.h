@@ -110,6 +110,7 @@ namespace ssa::ports {
 
     struct ImportDerivationsRequest {
         std::vector<std::filesystem::path> files;
+        ImportExecutionOptions execution;
     };
 
     struct SamArtifact {
