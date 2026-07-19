@@ -28,8 +28,8 @@ Ultima verificacao local: 2026-07-18
 
 ## Sincronizacao remota restaurada - 2026-07-18
 
-- `origin/master` e `bitbucket/master` foram confirmados ate `19e4543`, que
-  registra a decisao medida sobre o ledger analytics. A tag anotada
+- `origin/master` e `bitbucket/master` foram confirmados ate `09cc0c4`, que
+  publica o contrato executavel Windows/UNC. A tag anotada
   `v0.9.11^{}` tambem foi confirmada em `84462d4` nos dois remotos.
 - Os registros anteriores de OAuth `invalid_grant` permanecem historicos para
   auditoria, mas nao bloqueiam a publicacao atual.
@@ -65,6 +65,10 @@ Ultima verificacao local: 2026-07-18
 - O Ninja emitiu `premature end of file; recovering` e refez o target durante
   os builds. O link terminou com sucesso, mas o aviso de cache de build nao e
   tratado como validacao adicional nem como defeito de importacao provado.
+- [PUBLISHED] O commit `09cc0c4` foi publicado em `origin/master` e
+  `bitbucket/master`; os dois refs e o HEAD local foram conferidos no mesmo
+  SHA, sem divergencia. O hook staged passou clang-format, cmake-format,
+  Gitleaks, detect-secrets e TruffleHog.
 - Execucao externa ainda pendente, sem credito: Windows 11 real, por exemplo
   PowerShell `$env:SSA_WINDOWS_UNC_TEST_ROOT='\\server\share'; cmake --preset dev
   -DSSA_ENABLE_WINDOWS_UNC_CONTRACT=ON; cmake --build --preset dev --target

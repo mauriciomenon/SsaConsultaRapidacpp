@@ -15,7 +15,7 @@
 
 ## Sincronizacao remota restaurada - 2026-07-18
 
-- `origin/master` e `bitbucket/master` foram confirmados ate `19e4543`; a tag
+- `origin/master` e `bitbucket/master` foram confirmados ate `09cc0c4`; a tag
   anotada `v0.9.11^{}` tambem foi confirmada em `84462d4` nos dois remotos.
 - As linhas anteriores de OAuth `invalid_grant` sao historicas. O bloqueio nao
   vale para a publicacao atual.
@@ -46,6 +46,10 @@
 - O Ninja local reportou `premature end of file; recovering` e refez o target.
   O link concluiu, mas isto fica como ruido de cache de build sem credito de
   validacao e sem abrir refactor fora do risco principal.
+- [PUBLISHED] `09cc0c4` publicou este contrato em `origin/master` e
+  `bitbucket/master`; ambos os refs foram conferidos no SHA do HEAD. O hook
+  staged passou clang-format, cmake-format, Gitleaks, detect-secrets e
+  TruffleHog.
 
 Proxima atividade unica: executar o contrato externo Windows/UNC e registrar a
 evidencia de plataforma; os contadores seguem `99.0/100`, `13/14`, `0.0/100`
