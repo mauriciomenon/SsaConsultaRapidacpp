@@ -63,9 +63,32 @@ Ultima verificacao local: 2026-07-18
   original `99.0/100`; divida nova `13/14 = 92.9%`; backlog legado `0.0/100`
   placeholder; fila operacional `5/8 = 62.5%`.
 
-Proxima atividade unica: diagnosticar o primeiro slice seguro de
-`TYPESCALE-POINTSIZE`, com inventario de alturas fixas e contrato visual antes
-de qualquer troca global de unidade.
+## Prazo SQLite configuravel no importador SAM - 2026-07-18
+
+- [IMPLEMENTED-LOCAL] [SAM-SQLITE-BUSY-WAIT] `SamImportRequest` agora recebe
+  `sqliteBusyWait`, com o default ja usado por `ImportExecutionOptions` de
+  3000 ms. Antes, SAM fixava o prazo durante o recovery e descartava a
+  configuracao ao iniciar a escrita.
+- A faixa e o passo existentes sao validados antes de staging ou locks. A mesma
+  opcao segue para a retomada do journal e para a escrita do lote. O refresh
+  atual continua no default; expor configuracao de usuario e outro slice, sem
+  misturar GUI, schema ou confiabilidade de importacao.
+- RED: 1 ms era aceito e 0 ms ainda aguardava lock. GREEN: tres contratos
+  causais passaram `3/3` em `0.61 s`: rejeicao antes de staging, escrita
+  bloqueada e recovery de journal bloqueado. A familia importacao/SQLite
+  passou `207/207` em `65.19 s`, com fonte, journal e integridade preservados
+  antes do retry bem-sucedido.
+- `git diff --check`, clang-format, cppcheck, Semgrep (11 regras, zero
+  finding) e detect-secrets passaram. clang-tidy nao trouxe warning novo; os
+  cinco avisos sao baseline. Review Terra ultra final: `SEM FINDINGS`.
+- O target de integracao ligou, mas Ninja repetiu `premature end of file;
+  recovering`; isto e ruido de cache e nao recebe credito de validacao.
+- Contadores sem inflacao: plano original `99.0/100`; divida nova
+  `13/14 = 92.9%`; backlog legado `0.0/100` placeholder; fila operacional
+  `5/8 = 62.5%`.
+
+Proxima atividade unica: iniciar o RED de `TYPESCALE-POINTSIZE` em controles
+compartilhados, com contrato de fonte e altura antes de qualquer conversao.
 
 ## Contrato externo Windows/UNC preparado - 2026-07-18
 

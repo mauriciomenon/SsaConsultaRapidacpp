@@ -119,6 +119,7 @@ namespace ssa::ports {
 
     struct SamImportRequest {
         std::vector<SamArtifact> artifacts;
+        std::chrono::milliseconds sqliteBusyWait{ImportExecutionOptions::kDefaultSqliteBusyWait};
     };
 
     struct SamRefreshRequest {

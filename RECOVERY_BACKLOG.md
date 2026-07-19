@@ -38,8 +38,30 @@
   legado `0.0/100` placeholder e fila `5/8 = 62.5%`. O aceite Windows/UNC de
   `IMPORT-STAGER-HUB` permanece dependente de plataforma real.
 
-Proxima atividade unica: diagnosticar `TYPESCALE-POINTSIZE` por alturas fixas,
-densidade e contrato visual, sem conversao mecanica global.
+## Prazo SQLite configuravel no importador SAM - 2026-07-18
+
+- [RESOLVED-LOCAL] [SAM-SQLITE-BUSY-WAIT] `SamImportRequest` agora transporta
+  `sqliteBusyWait` com o default de 3000 ms ja definido por
+  `ImportExecutionOptions`. Antes, SAM usava 3000 ms no recovery e ignorava o
+  valor ao encaminhar a escrita.
+- A validacao reutiliza a faixa e o passo existentes antes de staging/lock. O
+  mesmo prazo e aplicado a recovery de journal e a `WriteSession`. O refresh
+  atual mantem o default; preferencia de usuario continua slice separado, sem
+  schema ou GUI nesta correcao.
+- RED confirmou que 1 ms era aceito e que 0 ms esperava a contencao. GREEN
+  causal `3/3` em `0.61 s` cobre rejeicao pre-staging, escrita bloqueada e
+  journal pendente bloqueado. A familia importacao/SQLite passou `207/207` em
+  `65.19 s`, com fonte, journal e `PRAGMA integrity_check` preservados antes
+  do retry.
+- diff, clang-format, cppcheck, Semgrep (11 regras, zero finding) e
+  detect-secrets limpos. clang-tidy nao adicionou warning; cinco sao baseline.
+  Re-review Terra ultra: `SEM FINDINGS`. O warning Ninja de cache nao recebeu
+  credito de validacao.
+- Sem credito nos denominadores fixos: plano `99.0/100`, divida
+  `13/14 = 92.9%`, legado `0.0/100` placeholder e fila `5/8 = 62.5%`.
+
+Proxima atividade unica: iniciar o RED de `TYPESCALE-POINTSIZE` em controles
+compartilhados, com fonte e altura testadas antes de conversao global.
 
 ## Contrato executavel Windows/UNC - 2026-07-18
 

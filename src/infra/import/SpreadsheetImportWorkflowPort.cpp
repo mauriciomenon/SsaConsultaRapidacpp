@@ -789,15 +789,22 @@ namespace ssa::infra::importing {
     ports::WorkflowResult
     SpreadsheetImportWorkflowPort::importSamArtifacts(const ports::SamImportRequest& request,
                                                       const std::stop_token stopToken) {
+        std::vector<std::filesystem::path> files;
+        files.reserve(request.artifacts.size());
+        for (const auto& artifact : request.artifacts) {
+            files.push_back(artifact.path);
+        }
+        ports::ImportExecutionOptions execution;
+        execution.sqliteBusyWait = request.sqliteBusyWait;
+        if (const auto validation = execution.validationError(); !validation.empty()) {
+            return withSummary({ports::WorkflowStatus::Rejected,
+                                "sam_import invalid_import_execution_options " + validation},
+                               selectedFilesFailureSummary(files));
+        }
         if (request.artifacts.empty()) {
             return withSummary({ports::WorkflowStatus::Rejected, "sam_import no_artifacts"}, {});
         }
         if (!importLockPathDiagnostic_.empty()) {
-            std::vector<std::filesystem::path> files;
-            files.reserve(request.artifacts.size());
-            for (const auto& artifact : request.artifacts) {
-                files.push_back(artifact.path);
-            }
             return importLockFailure(QLockFile::UnknownError, selectedFilesFailureSummary(files),
                                      importLockPathDiagnostic_);
         }
@@ -807,16 +814,10 @@ namespace ssa::infra::importing {
         const auto importLock = acquireImportLocks(importLockPath_, databasePath_, lockError,
                                                    lockDiagnostic, lockFailureOrigin);
         if (!importLock) {
-            std::vector<std::filesystem::path> files;
-            files.reserve(request.artifacts.size());
-            for (const auto& artifact : request.artifacts) {
-                files.push_back(artifact.path);
-            }
             return importLockFailure(lockError, selectedFilesFailureSummary(files), lockDiagnostic,
                                      lockFailureOrigin);
         }
-        if (auto resumed = resumePendingConsolidation(
-                stopToken, ports::ImportExecutionOptions::kDefaultSqliteBusyWait)) {
+        if (auto resumed = resumePendingConsolidation(stopToken, execution.sqliteBusyWait)) {
             if (!resumed->ok()) {
                 return std::move(*resumed);
             }
@@ -826,11 +827,6 @@ namespace ssa::infra::importing {
                 return std::move(*resumed);
             }
         }
-        std::vector<std::filesystem::path> files;
-        files.reserve(request.artifacts.size());
-        for (const auto& artifact : request.artifacts) {
-            files.push_back(artifact.path);
-        }
         auto staging = stager_.stageExternalFiles(files, stopToken);
         if (staging.files.size() != request.artifacts.size() || staging.failedCopies > 0 ||
             staging.legacyXls > 0 || staging.unsupported > 0) {
@@ -839,7 +835,7 @@ namespace ssa::infra::importing {
                 staging.rejectionReason = "sam_staging_incomplete";
             }
         }
-        return importDiscoveredFiles(staging, false, stopToken, {}, &request.artifacts);
+        return importDiscoveredFiles(staging, false, stopToken, execution, &request.artifacts);
     }
 
     ports::WorkflowResult SpreadsheetImportWorkflowPort::rescan(const ports::RescanRequest& request,

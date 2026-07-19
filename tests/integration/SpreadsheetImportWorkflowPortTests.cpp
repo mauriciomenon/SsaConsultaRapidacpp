@@ -7102,6 +7102,180 @@ TEST_CASE("SAM import stages every sector before opening the atomic write sessio
     REQUIRE_FALSE(std::filesystem::exists(inputDirectory / "processadas"));
 }
 
+TEST_CASE("SAM import rejects invalid SQLite busy wait before staging") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto sourceDirectory = root / "sam";
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(sourceDirectory);
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    const auto workbook = sourceDirectory / "invalid-busy-wait.xlsx";
+    writeWorkbook(workbook, samWorkbookRows("202600708", "IEE3", "Invalid busy wait"));
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+    ssa::ports::SamImportRequest request;
+    request.artifacts = {{workbook, "IEE3", 1, 1, 0}};
+    request.sqliteBusyWait = std::chrono::milliseconds{1};
+
+    const auto result = port.importSamArtifacts(request);
+
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
+    REQUIRE(
+        result.message ==
+        "sam_import invalid_import_execution_options sqlite_busy_wait_ms must be a multiple of 5");
+    REQUIRE(std::filesystem::exists(workbook));
+    REQUIRE_FALSE(std::filesystem::exists(inputDirectory / "processadas"));
+    REQUIRE_FALSE(std::filesystem::exists(dbPath));
+}
+
+TEST_CASE("SAM import honors zero SQLite busy wait while writing") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto sourceDirectory = root / "sam";
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(sourceDirectory);
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    ssa::infra::importing::ResolvedSsaImportRows seedRows;
+    seedRows.rows.push_back({{"numero_ssa", "202600709"}, {"descricao_ssa", "Original"}});
+    const ssa::infra::sqlite::SqliteSsaImportWriter seedWriter(sqliteWriterAccess(), dbPath,
+                                                               importColumns());
+    REQUIRE(seedWriter.write(seedRows, 1, 0, false).rowsWritten == 1);
+
+    sqlite3* blocker = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &blocker) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(blocker, "PRAGMA journal_mode=DELETE", nullptr, nullptr, nullptr) ==
+            SQLITE_OK);
+    REQUIRE(sqlite3_exec(blocker, "BEGIN", nullptr, nullptr, nullptr) == SQLITE_OK);
+    sqlite3_stmt* statement = nullptr;
+    REQUIRE(sqlite3_prepare_v2(blocker, "SELECT COUNT(*) FROM ssa_table", -1, &statement,
+                               nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_step(statement) == SQLITE_ROW);
+
+    const auto workbook = sourceDirectory / "zero-busy-wait.xlsx";
+    writeWorkbook(workbook, samWorkbookRows("202600710", "IEE3", "Zero busy wait"));
+    const auto writerBusyEntered =
+        std::make_shared<ssa::infra::sqlite::SqliteSsaImportWriter::SynchronizationSemaphore>(0);
+    ssa::infra::importing::SpreadsheetImportWorkflowPort::SynchronizationSignals synchronization;
+    synchronization.writerBusyEntered = writerBusyEntered;
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(
+        inputDirectory, dbPath, importColumns(), true, synchronization);
+    ssa::ports::SamImportRequest request;
+    request.artifacts = {{workbook, "IEE3", 1, 1, 0}};
+    request.sqliteBusyWait = std::chrono::milliseconds{0};
+
+    auto operation =
+        std::async(std::launch::async, [&] { return port.importSamArtifacts(request); });
+    REQUIRE(writerBusyEntered->try_acquire_for(std::chrono::seconds{1}));
+    const auto immediateStatus = operation.wait_for(std::chrono::milliseconds{500});
+    REQUIRE(sqlite3_finalize(statement) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(blocker, "ROLLBACK", nullptr, nullptr, nullptr) == SQLITE_OK);
+    REQUIRE(operation.wait_for(std::chrono::seconds{4}) == std::future_status::ready);
+    const auto result = operation.get();
+
+    INFO(result.message);
+    INFO(result.diagnostic);
+    REQUIRE(immediateStatus == std::future_status::ready);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
+    REQUIRE(std::filesystem::exists(workbook));
+    REQUIRE_FALSE(std::filesystem::exists(inputDirectory / "processadas" / workbook.filename()));
+    REQUIRE(scalarText(blocker, "PRAGMA integrity_check") == "ok");
+    REQUIRE(scalarInt(blocker, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600709'") == 1);
+    REQUIRE(scalarInt(blocker, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600710'") == 0);
+
+    const auto retry = port.importSamArtifacts(request);
+
+    INFO(retry.message);
+    INFO(retry.diagnostic);
+    REQUIRE(retry.ok());
+    REQUIRE(std::filesystem::exists(workbook));
+    REQUIRE(std::filesystem::exists(inputDirectory / "processadas" / workbook.filename()));
+    REQUIRE(scalarText(blocker, "PRAGMA integrity_check") == "ok");
+    REQUIRE(scalarInt(blocker, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600709'") == 1);
+    REQUIRE(scalarInt(blocker, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600710'") == 1);
+    REQUIRE(sqlite3_close(blocker) == SQLITE_OK);
+}
+
+TEST_CASE("SAM import honors zero SQLite busy wait while resuming consolidation") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto sourceDirectory = root / "sam";
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    const auto pendingSource = inputDirectory / "pending.xlsx";
+    const auto pendingDestination = inputDirectory / "processadas" / "pending.xlsx";
+    std::filesystem::create_directories(sourceDirectory);
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    createSparseFile(pendingSource, 1);
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(sqliteWriterAccess(), dbPath,
+                                                           importColumns());
+    auto session = writer.startSession(false);
+    session.recordConsolidation({{{pendingSource, pendingDestination, true}}});
+    static_cast<void>(session.finish());
+
+    sqlite3* blocker = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &blocker) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(blocker, "PRAGMA journal_mode=DELETE", nullptr, nullptr, nullptr) ==
+            SQLITE_OK);
+    REQUIRE(sqlite3_exec(blocker, "BEGIN EXCLUSIVE", nullptr, nullptr, nullptr) == SQLITE_OK);
+
+    const auto workbook = sourceDirectory / "zero-resume-busy-wait.xlsx";
+    writeWorkbook(workbook, samWorkbookRows("202600711", "IEE3", "Zero resume busy wait"));
+    const auto writerBusyEntered =
+        std::make_shared<ssa::infra::sqlite::SqliteSsaImportWriter::SynchronizationSemaphore>(0);
+    ssa::infra::importing::SpreadsheetImportWorkflowPort::SynchronizationSignals synchronization;
+    synchronization.writerBusyEntered = writerBusyEntered;
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(
+        inputDirectory, dbPath, importColumns(), true, synchronization);
+    ssa::ports::SamImportRequest request;
+    request.artifacts = {{workbook, "IEE3", 1, 1, 0}};
+    request.sqliteBusyWait = std::chrono::milliseconds{0};
+
+    auto operation =
+        std::async(std::launch::async, [&] { return port.importSamArtifacts(request); });
+    REQUIRE(writerBusyEntered->try_acquire_for(std::chrono::seconds{1}));
+    const auto immediateStatus = operation.wait_for(std::chrono::milliseconds{500});
+    REQUIRE(sqlite3_exec(blocker, "ROLLBACK", nullptr, nullptr, nullptr) == SQLITE_OK);
+    REQUIRE(operation.wait_for(std::chrono::seconds{4}) == std::future_status::ready);
+    const auto result = operation.get();
+
+    INFO(result.message);
+    INFO(result.diagnostic);
+    REQUIRE(immediateStatus == std::future_status::ready);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
+    REQUIRE(result.message == "import_consolidation_resume_failed");
+    REQUIRE(std::filesystem::exists(pendingSource));
+    REQUIRE_FALSE(std::filesystem::exists(pendingDestination));
+    REQUIRE(std::filesystem::exists(workbook));
+    REQUIRE(writer.pendingConsolidation().size() == 1);
+    REQUIRE(scalarText(blocker, "PRAGMA integrity_check") == "ok");
+    REQUIRE(scalarInt(blocker, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600711'") == 0);
+
+    const auto retry = port.importSamArtifacts(request);
+
+    INFO(retry.message);
+    INFO(retry.diagnostic);
+    REQUIRE(retry.ok());
+    REQUIRE_FALSE(std::filesystem::exists(pendingSource));
+    REQUIRE(std::filesystem::exists(pendingDestination));
+    REQUIRE(std::filesystem::exists(workbook));
+    REQUIRE(std::filesystem::exists(inputDirectory / "processadas" / workbook.filename()));
+    REQUIRE(writer.pendingConsolidation().empty());
+    REQUIRE(scalarText(blocker, "PRAGMA integrity_check") == "ok");
+    REQUIRE(scalarInt(blocker, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600711'") == 1);
+    REQUIRE(sqlite3_close(blocker) == SQLITE_OK);
+}
+
 TEST_CASE("SAM import resumes prior consolidation and still imports the current batch") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
