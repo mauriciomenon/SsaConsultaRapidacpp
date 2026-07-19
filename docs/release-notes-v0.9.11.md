@@ -22,11 +22,14 @@ migracao de schema nesta versao.
 
 ## Validacao de release
 
-O candidato passou os gates estaticos do slice, os targets afetados, CTest
-focado `2/2` em `14.87 s`, `all_qmllint` e os scanners staged do hook. A tag
-`v0.9.11` somente sera criada apos a suite completa sequencial e as verificacoes
-amplas de release passarem; seus resultados serao registrados em
-`ROUND_STATUS.md`.
+- CMake `dev` reconfigurou e o build canonico passou. O warning de miniz e
+  preexistente na dependencia cacheada e nao pertence a este release.
+- CTest sequencial completo passou `602/602` em `64.93 s`, incluindo checks de
+  versao GUI/CLI, importacao, SQLite, derivadas, QML, memoria e benchmarks.
+- Semgrep amplo passou `24` regras em `512` arquivos; Gitleaks escaneou
+  `1.43 GB`; TruffleHog nao encontrou segredo verificado ou desconhecido.
+- Os hooks dos commits passaram formatacao e scanners staged. A tag anotada
+  `v0.9.11` marca este HEAD validado.
 
 ## Limites conhecidos
 

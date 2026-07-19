@@ -1,5 +1,19 @@
 # Recovery Backlog
 
+## Gate local de release v0.9.11 - 2026-07-18
+
+- [RESOLVED-LOCAL] CMake `dev` e build canonico passaram; CTest sequencial
+  completo passou `602/602` em `64.93 s`, incluindo versao GUI/CLI, importacao,
+  SQLite, derivadas, QML, memoria e benchmarks smoke.
+- [RESOLVED-LOCAL] Semgrep amplo (`24` regras, `512` arquivos), Gitleaks
+  (`1.43 GB`) e TruffleHog passaram sem segredo. O warning de miniz e
+  preexistente em source cache de dependencia e nao pertence ao diff.
+- [PENDING-EXTERNAL] Criar/publicar a tag anotada `v0.9.11` e confirmar
+  Bitbucket. GitLab `origin` permanece bloqueado por OAuth `invalid_grant`;
+  isto nao pode ser contabilizado como publicacao confirmada.
+
+Proxima atividade unica: publicar a tag `v0.9.11` e verificar os remotes.
+
 ## UX-NAV: cadeia de derivadas fixa - 2026-07-18
 
 - [RESOLVED-LOCAL] [UX-NAV] `08991b6` faz a selecao da tabela possuir o

@@ -5,6 +5,29 @@ antes de interpretar sincronizacao Git, validacao local ou estado externo.
 
 Ultima verificacao local: 2026-07-18
 
+## Gate de estabilizacao para v0.9.11 - 2026-07-18
+
+- CMake `dev` reconfigurou e build canonico passou. O unico warning foi a
+  deprecacao preexistente no source cache de miniz, fora do diff e sem mudanca
+  de comportamento.
+- CTest sequencial completo passou `602/602` em `64.93 s`, incluindo os
+  checks de versao GUI/CLI `0.9.11`, importacao, SQLite, derivadas, QML,
+  memoria e benchmarks smoke. Nenhum timeout foi aceito como sucesso.
+- Release security: Semgrep completo passou `24` regras em `512` arquivos;
+  Gitleaks escaneou `1.43 GB` sem segredo; TruffleHog terminou sem segredo
+  verificado ou desconhecido. Os scanners staged dos dois commits tambem
+  passaram.
+- A tag anotada `v0.9.11` pode marcar o HEAD deste gate. Publicacao no
+  Bitbucket sera verificada separadamente; GitLab `origin` continua dependente
+  de OAuth `invalid_grant` e nao sera declarado como sucesso sem evidencia.
+- Contadores nao mudam: plano original `99.0/100`; divida nova
+  `13/14 = 92.9%`; backlog legado `0.0/100` placeholder; fila operacional
+  `5/8 = 62.5%`. Estabilidade de release nao elimina pendencias de produto ou
+  validacao em plataforma real.
+
+Proxima atividade unica: criar e publicar a tag anotada `v0.9.11`, verificando
+os dois remotes de forma independente.
+
 ## UX-NAV: cadeia de derivadas fixa durante navegacao - 2026-07-18
 
 - Branch `master`; codigo no HEAD `08991b6`. A confirmacao externa ainda e
