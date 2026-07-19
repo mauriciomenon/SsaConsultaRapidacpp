@@ -3,6 +3,26 @@
 Fonte operacional para humanos e agentes de codigo. Verifique este arquivo
 antes de interpretar sincronizacao Git, validacao local ou estado externo.
 
+## Falha no segundo bloco de importacao externa - 2026-07-19
+
+- **ENTREGUE localmente**: o contrato de importacao externa agora cobre a
+  falha de uma planilha invalida no segundo bloco de 64. O primeiro bloco
+  permanece commitado no SQLite e em `processadas`; a fonte invalida continua
+  no diretorio externo para retry.
+- Evidencia: `64` insercoes, `64` fontes consolidadas, `65` arquivos
+  descobertos, diagnostico `batch=2 file=invalid_second_block.xlsx` e
+  `PRAGMA integrity_check=ok`.
+- O comportamento existente nao foi alterado neste slice; foi adicionada uma
+  prova Catch2 do contrato incremental. Review estatico final limpo.
+- RED inicial foi uma assercao no campo errado (`message` em vez de
+  `diagnostic`); corrigida e revalidada. CTest focal passou `5/5` em `0.96 s`.
+- Contadores sem inflacao: plano original `99.0/100`; divida nova
+  `14/14 = 100.0%` no P0; backlog legado `N/A`; fila operacional local
+  permanece `6/8 = 75.0%`.
+
+Proxima atividade unica: selecionar a proxima pendencia local de confiabilidade
+SQLite/importacao, preservando o contrato de blocos e as provas externas separadas.
+
 ## Checkpoint causal do mapper de importacao - 2026-07-19
 
 - **ENTREGUE localmente**: `SsaSpreadsheetMapper` aceita um checkpoint opcional

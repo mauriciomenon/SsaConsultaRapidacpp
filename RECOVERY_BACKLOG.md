@@ -1,5 +1,20 @@
 # Recovery Backlog
 
+## Atomicidade incremental entre blocos externos - 2026-07-19
+
+- [RESOLVED-LOCAL] [IMPORT-BLOCK-FAILURE] O teste cobre 65 arquivos externos:
+  64 validos no primeiro bloco e um XLSX invalido no segundo. O primeiro bloco
+  persiste `64` linhas e move `64` fontes; o segundo falha sem apagar sua fonte.
+- SQLite termina com `COUNT(*)=64` e `PRAGMA integrity_check=ok`. O nome da
+  fonte falha no diagnostico agregado como `batch=2 file=...`, mantendo a
+  mensagem de contadores estavel.
+- RED inicial encontrou apenas uma expectativa no campo errado; GREEN final
+  passou os cinco contratos relacionados em `0.96 s`. Nenhuma prova Windows/UNC
+  ou mudanca de schema foi inferida.
+
+Proxima atividade unica: selecionar a proxima pendencia local de confiabilidade
+SQLite/importacao com evidencia causal.
+
 ## Cancelamento causal do mapper de importacao - 2026-07-19
 
 - [RESOLVED-LOCAL] [TEST-DETERMINISM-MAPPER] O teste de cancelamento de uma
