@@ -21,8 +21,9 @@
 - Contadores: plano original `99.0/100`; divida nova `14/14 = 100.0%` para o
   item P0 fechado; backlog legado `N/A`, sem denominador ativo; fila
   operacional segue `5/8 = 62.5%` por depender de provas externas.
-- Proxima atividade unica: rodar CTest completo e, se verde, criar o commit
-  atomico deste slice e publicar nos dois remotos.
+- CTest final passou `617/617` em `67.61 s`. Commit atomico `5e3de3b` foi
+  publicado e conferido em `origin/master` e `bitbucket/master`.
+- Proxima atividade unica: executar Windows/UNC real; nao reabrir este P0.
 
 ## Fila ativa reconciliada - 2026-07-19
 

@@ -28,9 +28,12 @@ antes de interpretar sincronizacao Git, validacao local ou estado externo.
 - Risco residual: o corpus foi validado em clone macOS; nao e prova de
   Windows/UNC, SAM dedicado real ou todos os arquivos futuros. Nenhuma fonte
   de producao foi movida nesta validacao.
+- Fechamento: CTest final passou `617/617` em `67.61 s` apos o ajuste de
+  expectativa do teste incremental. Commit `5e3de3b` foi publicado em
+  `origin/master` e `bitbucket/master`; os dois refs conferem o mesmo SHA.
 
-Proxima atividade unica: executar a suite completa apos este slice, atualizar
-o commit atomico e publicar em `origin` e `bitbucket` se os remotos aceitarem.
+Proxima atividade unica: iniciar a prova Windows/UNC real ou selecionar outro
+item externo, sem reabrir este P0 ja aceito.
 
 ## Reconciliacao ativa - 2026-07-19
 
