@@ -268,6 +268,7 @@ namespace {
                                                       std::stop_token = {}) override {
             ++calls;
             samArtifacts = request.artifacts;
+            samBusyWait = request.sqliteBusyWait;
             return nextResult;
         }
 
@@ -279,6 +280,7 @@ namespace {
         int calls = 0;
         std::vector<std::filesystem::path> files;
         std::vector<ssa::ports::SamArtifact> samArtifacts;
+        std::chrono::milliseconds samBusyWait{};
         ssa::ports::WorkflowResult nextResult{ssa::ports::WorkflowStatus::Succeeded,
                                               "import committed"};
     };
@@ -340,6 +342,20 @@ namespace {
 
             QCOMPARE(result.status, ssa::ports::WorkflowStatus::Rejected);
             QVERIFY(result.message.find("scope") != std::string::npos);
+        }
+
+        void port_rejects_invalid_busy_wait_before_starting_process() {
+            QTemporaryDir root;
+            QVERIFY(root.isValid());
+            auto request = validRequest(root);
+            request.sqliteBusyWait = std::chrono::milliseconds{1};
+            ssa::platform::ScrapReportSamRefreshPort port(
+                QCoreApplication::applicationFilePath().toStdString());
+
+            const auto result = port.fetch(request);
+
+            QCOMPARE(result.status, ssa::ports::WorkflowStatus::Rejected);
+            QVERIFY(result.message.find("invalid_import_execution_options") != std::string::npos);
         }
 
         void port_rejects_entire_batch_when_one_manifest_fails() {
@@ -874,13 +890,16 @@ namespace {
             const ssa::application::SsaWorkflowService service(importPort, nullptr, nullptr,
                                                                nullptr, samPort, importPort);
 
-            const auto result = service.refreshSam({});
+            ssa::ports::SamRefreshRequest request;
+            request.sqliteBusyWait = std::chrono::milliseconds{125};
+            const auto result = service.refreshSam(request);
 
             QVERIFY(result.ok());
             QCOMPARE(importPort->calls, 1);
             QCOMPARE(importPort->samArtifacts.size(), std::size_t{2});
             QCOMPARE(importPort->samArtifacts.front().executorSector, std::string{"IEE3"});
             QCOMPARE(importPort->samArtifacts.front().manifestRows, std::size_t{17});
+            QCOMPARE(importPort->samBusyWait, std::chrono::milliseconds{125});
             QCOMPARE(samPort->discardCalls, 1);
         }
 

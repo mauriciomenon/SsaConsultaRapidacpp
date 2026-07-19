@@ -116,8 +116,10 @@ namespace ssa::application {
         if (!samImportPort_) {
             return withCleanupStatus(notImplemented("SAM import"), samPort_->discardArtifacts());
         }
-        auto result = samImportPort_->importSamArtifacts(
-            {.artifacts = std::move(fetchResult.artifacts)}, stopToken);
+        auto result =
+            samImportPort_->importSamArtifacts({.artifacts = std::move(fetchResult.artifacts),
+                                                .sqliteBusyWait = request.sqliteBusyWait},
+                                               stopToken);
         return withCleanupStatus(std::move(result), samPort_->discardArtifacts());
     }
 

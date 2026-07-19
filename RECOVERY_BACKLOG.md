@@ -1,5 +1,15 @@
 # Recovery Backlog
 
+## Release de codigo v0.9.12 - 2026-07-19
+
+- [RESOLVED-LOCAL] Versao CMake atualizada de `0.9.11` para `0.9.12` apos
+  confirmar que `v0.9.12` nao existe nos dois remotes.
+- [RESOLVED-LOCAL] Build release e CTest release passaram `620/620` em
+  `60.45 s`; build dev e CTest dev passaram `620/620` em `81.07 s`.
+- [EXTERNAL-BLOCKED] DMG/ZIP 0.9.12 nao foram publicados: `hdiutil` retornou
+  `Dispositivo nao configurado` e o cleanup removeu o staging. Nao contar como
+  pacote entregue ate executar em host macOS com dispositivo configurado.
+
 ## Opcoes de execucao no importador de derivadas - 2026-07-19
 
 - [RESOLVED-LOCAL] `ImportDerivationsRequest` recebe `ImportExecutionOptions`

@@ -376,6 +376,7 @@ namespace ssa::presentation {
         }
         request.scope = samScope_.toStdString();
         request.intervalMinutes = samIntervalMinutes_;
+        request.sqliteBusyWait = std::chrono::milliseconds{importSqliteBusyWaitMs_};
         return request;
     }
 

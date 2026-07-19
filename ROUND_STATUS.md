@@ -3,6 +3,28 @@
 Fonte operacional para humanos e agentes de codigo. Verifique este arquivo
 antes de interpretar sincronizacao Git, validacao local ou estado externo.
 
+## Release de codigo v0.9.12 - 2026-07-19
+
+- **ENTREGUE**: `CMakeLists.txt` agora declara `PROJECT_VERSION 0.9.12`.
+  `v0.9.12` nao existia em `origin` nem `bitbucket`; `0.9.13` nao foi usado.
+- **ENTREGUE**: refresh SAM preserva `sqlite_busy_wait_ms` ate o writer SQLite
+  e rejeita valores invalidos antes do processo externo.
+- **ENTREGUE**: teste de workflow espera o terminal antes do rescan seguinte;
+  `ssa_qt_workflow_runner_tests` e `ssa_qt_sam_refresh_tests` passaram `2/2`
+  em `7.57 s`.
+- Build `dev` e `all_qmllint` passaram. CTest dev passou `620/620` em
+  `81.07 s`. O script canonico tambem concluiu build release e CTest release
+  `620/620` em `60.45 s`.
+- Packaging: `macdeployqt` concluiu, mas `hdiutil` falhou com
+  `Dispositivo nao configurado`; o cleanup removeu o staging. `build/release`
+  existe e foi validado; nenhum ZIP/DMG 0.9.12 e declarado.
+- Review final: diff check, clang-format, cppcheck, Semgrep C/security,
+  detect-secrets e hooks staged sem findings. Commit/tag/push pendentes nesta
+  secao.
+
+Proxima atividade unica: commit atomico, tag anotada `v0.9.12` e push dos dois
+refs; DMG continua pendencia do host macOS.
+
 ## Parametros de execucao no fluxo de derivadas - 2026-07-19
 
 - **ENTREGUE localmente**: `ImportDerivationsRequest` agora carrega o mesmo

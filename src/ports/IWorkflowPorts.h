@@ -135,6 +135,7 @@ namespace ssa::ports {
         std::string scope = "consulta";
         int intervalMinutes = 30'000;
         std::chrono::milliseconds processTimeout{180'000};
+        std::chrono::milliseconds sqliteBusyWait{ImportExecutionOptions::kDefaultSqliteBusyWait};
     };
 
     struct SamFetchResult {

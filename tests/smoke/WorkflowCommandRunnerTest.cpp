@@ -106,9 +106,10 @@ namespace {
 
     class BlockingSamPort final : public ssa::ports::ISamRefreshPort {
       public:
-        ssa::ports::SamFetchResult fetch(const ssa::ports::SamRefreshRequest&,
+        ssa::ports::SamFetchResult fetch(const ssa::ports::SamRefreshRequest& request,
                                          const std::stop_token stopToken) override {
             std::unique_lock lock(mutex_);
+            request_ = request;
             ++calls_;
             started_ = true;
             changed_.notify_all();
@@ -136,12 +137,18 @@ namespace {
             return calls_;
         }
 
+        [[nodiscard]] std::optional<ssa::ports::SamRefreshRequest> request() const {
+            const std::scoped_lock lock(mutex_);
+            return request_;
+        }
+
       private:
         mutable std::mutex mutex_;
         std::condition_variable_any changed_;
         bool started_ = false;
         bool canceled_ = false;
         int calls_ = 0;
+        std::optional<ssa::ports::SamRefreshRequest> request_;
     };
 
     class ImmediateImportPort final : public ssa::ports::IImportWorkflowPort {
@@ -380,6 +387,7 @@ namespace {
             preferences.samRefresh.caFile = "/tmp/ca.pem";
             preferences.samRefresh.baseUrl = "https://apps.example.test/SAM/rest";
             preferences.samRefresh.executorSectors = "IEE3,MEL4";
+            preferences.importExecution.sqliteBusyWaitMs = 125;
 
             model.applyPreferences(preferences);
 
@@ -391,6 +399,7 @@ namespace {
 
             QVERIFY(QMetaObject::invokeMethod(timers.front(), "timeout", Qt::DirectConnection));
             QVERIFY(samPort->waitUntilStarted(std::chrono::seconds{1}));
+            QCOMPARE(samPort->request()->sqliteBusyWait, std::chrono::milliseconds{125});
             QVERIFY(QMetaObject::invokeMethod(timers.front(), "timeout", Qt::DirectConnection));
             QCOMPARE(samPort->calls(), 1);
 
@@ -414,6 +423,7 @@ namespace {
             QVERIFY(importRequest.has_value());
             QCOMPARE(importRequest->execution.rowsPerChunk, std::size_t{321});
             QCOMPARE(importRequest->execution.sqliteBusyWait, std::chrono::milliseconds{125});
+            QTRY_VERIFY_WITH_TIMEOUT(!model.running(), 1000);
 
             model.rescanIncremental();
             QTRY_COMPARE_WITH_TIMEOUT(importPort->calls(), 2, 1000);

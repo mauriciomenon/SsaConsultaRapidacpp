@@ -61,6 +61,11 @@ namespace ssa::platform {
             if (request.processTimeout <= 0ms) {
                 return "SAM process timeout must be positive";
             }
+            ports::ImportExecutionOptions execution;
+            execution.sqliteBusyWait = request.sqliteBusyWait;
+            if (const auto validation = execution.validationError(); !validation.empty()) {
+                return "SAM invalid_import_execution_options " + validation;
+            }
             if (!isDirectory(request.scrapReportRoot) ||
                 !isRegularFile(request.scrapReportRoot / "pyproject.toml") ||
                 !isRegularFile(request.scrapReportRoot / "uv.lock") ||
