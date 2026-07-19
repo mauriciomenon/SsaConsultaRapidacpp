@@ -87,8 +87,34 @@ Ultima verificacao local: 2026-07-18
   `13/14 = 92.9%`; backlog legado `0.0/100` placeholder; fila operacional
   `5/8 = 62.5%`.
 
-Proxima atividade unica: iniciar o RED de `TYPESCALE-POINTSIZE` em controles
-compartilhados, com contrato de fonte e altura antes de qualquer conversao.
+## TypeScale em controles compartilhados - 2026-07-18
+
+- [PARTIAL-LOCAL] [TYPESCALE-POINTSIZE] O primeiro corte troca somente
+  `ActionButton`, `AppComboBox`, seu delegate e `AppSpinBox` para o novo
+  `Theme.fontPointSizeBody` de 9 pt. `Theme.controlHeight` continua minimo;
+  a altura implicita cresce apenas quando o conteudo exige.
+- O contrato QML instancia os tres controles com `Agypq`, abre o popup e exige
+  `QFont.pointSizeF() > 0`, ausencia de `pixelSize` e area disponivel para o
+  contentItem. Em 1.5x, ele tambem prova que o delegate herda o novo tamanho e
+  continua sem clipping.
+- RED final falhou na fonte em pixels. GREEN: `ssa_qml_theme_gallery_tests`
+  passou `1/1` em `0.79 s`, incluindo 12 paletas em 960 e 720 px. Capturas
+  offscreen de `ayu-light` e `flexoki-dark` foram inspecionadas sem clipping
+  ou desalinhamento observavel.
+- Formato, qmllint, Semgrep QML (5 regras, zero finding), Semgrep C (2 regras,
+  zero finding) e detect-secrets passaram. O hook QML original nao podia
+  escrever em `~/.semgrep` no sandbox; a mesma policy passou com `HOME` em
+  `/private/tmp`. Review Terra ultra encontrou P2 no delegate 1.5x, corrigido;
+  re-review final `SEM FINDINGS`.
+- Nao e migracao global: AppTextField, AppCheckBox, filtros, cards e os demais
+  QML continuam em pixel ou precisam de contrato proprio. Falta validar fonte
+  grande em macOS, Windows e Linux reais. O warning Ninja de cache nao recebe
+  credito de validacao.
+- Contadores sem inflacao: plano `99.0/100`, divida `13/14 = 92.9%`, legado
+  `0.0/100` placeholder e fila `5/8 = 62.5%`.
+
+Proxima atividade unica: selecionar a maior pendencia local antiga com
+evidencia suficiente, sem alegar que o TypeScale parcial conclui os 36 QML.
 
 ## Contrato externo Windows/UNC preparado - 2026-07-18
 

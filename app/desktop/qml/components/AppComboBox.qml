@@ -7,11 +7,11 @@ import SsaConsultaRapida
 ComboBox {
     id: root
 
-    implicitHeight: Theme.controlHeight
+    implicitHeight: Math.max(Theme.controlHeight, implicitContentHeight + topPadding + bottomPadding)
     leftPadding: 10
     rightPadding: 22
     font.family: Theme.fontFamily
-    font.pixelSize: Theme.fontSizeBody
+    font.pointSize: Theme.fontPointSizeBody
 
     function clampedPopupX(popupWidth) {
         const overlayRoot = Overlay.overlay;
@@ -35,19 +35,20 @@ ComboBox {
 
     delegate: ItemDelegate {
         id: delegateRoot
+        objectName: "appComboBoxDelegate"
         required property int index
         required property var modelData
         width: root.popup.width
-        height: Theme.controlHeight
+        height: Math.max(Theme.controlHeight, implicitContentHeight + topPadding + bottomPadding)
         text: root.textRole.length > 0 && modelData[root.textRole] !== undefined ? modelData[root.textRole] : modelData
-        font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSizeBody
+        font: root.font
         highlighted: root.highlightedIndex === index
 
         contentItem: Text {
             text: delegateRoot.text
             textFormat: Text.PlainText
             color: delegateRoot.highlighted ? Theme.readableText(Theme.accentSoft, Theme.accentStrong) : Theme.readableText(Theme.panelRaised, Theme.text)
+            font: delegateRoot.font
             verticalAlignment: Text.AlignVCenter
             elide: Text.ElideRight
         }
@@ -143,6 +144,7 @@ ComboBox {
 
     popup: Popup {
         id: comboPopup
+        objectName: "appComboBoxPopup"
         parent: Overlay.overlay
         x: root.clampedPopupX(width)
         y: root.clampedPopupY(height)

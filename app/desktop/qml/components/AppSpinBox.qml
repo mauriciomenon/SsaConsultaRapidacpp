@@ -10,13 +10,13 @@ SpinBox {
     readonly property int indicatorWidth: 27
     readonly property string reservedDigitProbe: "888"
 
-    implicitHeight: Theme.controlHeight
+    implicitHeight: Math.max(Theme.controlHeight, implicitContentHeight + topPadding + bottomPadding)
     implicitWidth: Math.max(Theme.controlHeight * 2, Math.ceil(reservedDigitMetrics.width) + root.indicatorWidth + (root.horizontalTextPadding * 2))
     leftPadding: root.horizontalTextPadding
     rightPadding: root.indicatorWidth + root.horizontalTextPadding
     editable: false
     font.family: Theme.fontFamily
-    font.pixelSize: Theme.fontSizeBody
+    font.pointSize: Theme.fontPointSizeBody
 
     TextMetrics {
         id: reservedDigitMetrics

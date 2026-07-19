@@ -1,6 +1,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
+#include <QFont>
 #include <QImage>
 #include <QObject>
 #include <QQmlComponent>
@@ -10,6 +11,7 @@
 #include <QSignalSpy>
 #include <QStringList>
 #include <QTest>
+#include <QtGlobal>
 #include <QtQml/qqml.h>
 
 #include <memory>
@@ -22,6 +24,18 @@ namespace {
             qFatal("test repository root could not be resolved");
         }
         return root;
+    }
+
+    QQuickItem* findVisualChild(QQuickItem& root, const QString& objectName) {
+        if (root.objectName() == objectName) {
+            return &root;
+        }
+        for (auto* child : root.childItems()) {
+            if (auto* found = findVisualChild(*child, objectName)) {
+                return found;
+            }
+        }
+        return nullptr;
     }
 
     class ThemeGallerySmokeTest final : public QObject {
@@ -40,8 +54,127 @@ namespace {
                                     "SsaConsultaRapida", 1, 0, "AppTextField") >= 0);
             QVERIFY(qmlRegisterType(QUrl::fromLocalFile(components.filePath("AppComboBox.qml")),
                                     "SsaConsultaRapida", 1, 0, "AppComboBox") >= 0);
+            QVERIFY(qmlRegisterType(QUrl::fromLocalFile(components.filePath("AppSpinBox.qml")),
+                                    "SsaConsultaRapida", 1, 0, "AppSpinBox") >= 0);
             QVERIFY(qmlRegisterType(QUrl::fromLocalFile(components.filePath("AppCheckBox.qml")),
                                     "SsaConsultaRapida", 1, 0, "AppCheckBox") >= 0);
+        }
+
+        void shared_controls_use_point_sizes_without_clipping() {
+            static constexpr auto kHarness = R"QML(
+import QtQuick
+import QtQuick.Controls
+import SsaConsultaRapida
+
+ApplicationWindow {
+    width: 420
+    height: 220
+    visible: true
+
+    ActionButton {
+        objectName: "typeScaleActionButton"
+        x: 16
+        y: 16
+        width: 180
+        text: "Agypq"
+    }
+
+    AppComboBox {
+        objectName: "typeScaleComboBox"
+        x: 16
+        y: 76
+        width: 180
+        model: ["Agypq"]
+        currentIndex: 0
+    }
+
+    AppSpinBox {
+        objectName: "typeScaleSpinBox"
+        x: 16
+        y: 136
+        width: 180
+        from: 0
+        to: 999
+        value: 888
+    }
+}
+)QML";
+
+            QQmlEngine engine;
+            QQmlComponent component(&engine);
+            component.setData(kHarness, QUrl(QStringLiteral("inmemory:/TypeScaleHarness.qml")));
+            QTRY_VERIFY_WITH_TIMEOUT(component.status() != QQmlComponent::Loading, 1000);
+            QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+
+            std::unique_ptr<QObject> object(component.create());
+            QVERIFY2(object != nullptr, qPrintable(component.errorString()));
+            auto* window = qobject_cast<QQuickWindow*>(object.get());
+            QVERIFY(window != nullptr);
+            window->show();
+
+            const auto usesPointSize = [](const QObject& item) {
+                const QFont font = qvariant_cast<QFont>(item.property("font"));
+                return font.pointSizeF() > 0.0 && font.pixelSize() == -1;
+            };
+            const auto pointSize = [](const QObject& item) {
+                return qvariant_cast<QFont>(item.property("font")).pointSizeF();
+            };
+            const auto contentItem = [](QQuickItem& control) {
+                return qvariant_cast<QQuickItem*>(control.property("contentItem"));
+            };
+            const auto contentFits = [&contentItem](QQuickItem& control) {
+                const auto* content = contentItem(control);
+                return content != nullptr &&
+                       control.property("availableHeight").toReal() >= content->implicitHeight();
+            };
+            const auto scaleFont = [](QQuickItem& control) {
+                QFont font = qvariant_cast<QFont>(control.property("font"));
+                font.setPointSizeF(font.pointSizeF() * 1.5);
+                return control.setProperty("font", font);
+            };
+
+            auto* actionButton =
+                window->findChild<QQuickItem*>(QStringLiteral("typeScaleActionButton"));
+            auto* comboBox = window->findChild<QQuickItem*>(QStringLiteral("typeScaleComboBox"));
+            auto* spinBox = window->findChild<QQuickItem*>(QStringLiteral("typeScaleSpinBox"));
+            auto* comboPopup = window->findChild<QObject*>(QStringLiteral("appComboBoxPopup"));
+            QVERIFY(actionButton != nullptr);
+            QVERIFY(comboBox != nullptr);
+            QVERIFY(spinBox != nullptr);
+            QVERIFY(comboPopup != nullptr);
+            QVERIFY(QMetaObject::invokeMethod(comboPopup, "open"));
+            auto* popupContent = qvariant_cast<QQuickItem*>(comboPopup->property("contentItem"));
+            QVERIFY(popupContent != nullptr);
+            QTRY_VERIFY_WITH_TIMEOUT(
+                findVisualChild(*popupContent, QStringLiteral("appComboBoxDelegate")) != nullptr,
+                1000);
+            auto* comboDelegate =
+                findVisualChild(*popupContent, QStringLiteral("appComboBoxDelegate"));
+            QVERIFY(comboDelegate != nullptr);
+            const qreal comboDelegatePointSize = pointSize(*comboDelegate);
+
+            for (QQuickItem* control : {actionButton, comboBox, spinBox, comboDelegate}) {
+                QVERIFY(usesPointSize(*control));
+                const auto* content = contentItem(*control);
+                QVERIFY(content != nullptr);
+                QVERIFY(usesPointSize(*content));
+                QVERIFY(contentFits(*control));
+            }
+
+            for (QQuickItem* control : {actionButton, comboBox, spinBox}) {
+                const qreal initialPointSize = pointSize(*control);
+                QVERIFY(initialPointSize > 0.0);
+                QVERIFY(scaleFont(*control));
+                QTRY_VERIFY_WITH_TIMEOUT(
+                    qFuzzyCompare(pointSize(*control), initialPointSize * 1.5) &&
+                        contentFits(*control),
+                    1000);
+            }
+            QTRY_VERIFY_WITH_TIMEOUT(
+                qFuzzyCompare(pointSize(*comboDelegate), comboDelegatePointSize * 1.5) &&
+                    contentFits(*comboDelegate),
+                1000);
+            window->hide();
         }
 
         void new_themes_render_at_normal_and_narrow_widths() {

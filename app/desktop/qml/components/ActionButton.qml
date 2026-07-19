@@ -5,15 +5,14 @@ import SsaConsultaRapida
 Button {
     id: control
     property bool danger: false
-    implicitHeight: Theme.controlHeight
-    padding: 10
-    topInset: 0
-    bottomInset: 0
-    leftInset: 0
-    rightInset: 0
+    implicitHeight: Math.max(Theme.controlHeight, implicitContentHeight + topPadding + bottomPadding)
+    leftPadding: 10
+    rightPadding: 10
+    topPadding: 0
+    bottomPadding: 0
 
     font.family: Theme.fontFamily
-    font.pixelSize: Theme.fontSizeBody
+    font.pointSize: Theme.fontPointSizeBody
     font.bold: false
     implicitWidth: 100
     opacity: enabled ? 1.0 : 0.8
@@ -43,9 +42,7 @@ Button {
     contentItem: Text {
         text: control.text
         color: control.effectiveForeground
-        font.family: control.font.family
-        font.pixelSize: control.font.pixelSize
-        font.bold: control.font.bold
+        font: control.font
         horizontalAlignment: Text.AlignHCenter
         verticalAlignment: Text.AlignVCenter
         elide: Text.ElideRight

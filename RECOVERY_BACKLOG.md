@@ -60,8 +60,29 @@
 - Sem credito nos denominadores fixos: plano `99.0/100`, divida
   `13/14 = 92.9%`, legado `0.0/100` placeholder e fila `5/8 = 62.5%`.
 
-Proxima atividade unica: iniciar o RED de `TYPESCALE-POINTSIZE` em controles
-compartilhados, com fonte e altura testadas antes de conversao global.
+## TypeScale em controles compartilhados - 2026-07-18
+
+- [PARTIAL-LOCAL] [TYPESCALE-POINTSIZE] `Theme.fontPointSizeBody` de 9 pt
+  atende agora `ActionButton`, `AppComboBox`, delegate e `AppSpinBox`. A altura
+  implicita mantem 30 como minimo e cresce apenas por conteudo; nao houve
+  conversao global, schema ou reposicionamento de tela.
+- O novo contrato offscreen exige ponto sem pixel e contentItem cabendo nos
+  tres controles e no delegate. Ao aplicar 1.5x ao combo, ele prova a mesma
+  fonte e fit no popup. RED atingiu `pixelSize`; GREEN Theme Gallery passou
+  `1/1` em `0.79 s`, com 12 paletas nos tamanhos 960/720.
+- Formatacao, qmllint, Semgrep QML (5 regras), Semgrep C (2 regras) e
+  detect-secrets limpos. O hook Semgrep QML foi impedido de escrever em home
+  pelo sandbox; a policy identica com `HOME=/private/tmp` passou. Terra ultra
+  achou P2 de delegate nao escalado no teste; a correcao recebeu re-review
+  `SEM FINDINGS`. Capturas offscreen claras/escura foram verificadas.
+- Permanece parcial: AppTextField, AppCheckBox, filtros, cards e 32 QML nao
+  recebem credito; fontes Large e HiDPI reais de macOS/Windows/Linux seguem
+  externas. Ninja repetiu o warning de cache sem credito adicional.
+- Denominadores imutaveis neste slice: plano `99.0/100`, divida
+  `13/14 = 92.9%`, legado `0.0/100` placeholder e fila `5/8 = 62.5%`.
+
+Proxima atividade unica: selecionar a maior pendencia local antiga com
+evidencia suficiente, sem converter TypeScale globalmente por suposicao.
 
 ## Contrato executavel Windows/UNC - 2026-07-18
 
@@ -1101,7 +1122,10 @@ Matriz completa de acertos, adicoes, erros e ordem de execucao:
   de mutar os literais Python. O contrato percorre todas as 39 paletas, inclui
   normal/hover de analytics e preserva tokens quando ja legiveis.
 - [PENDING] [GUI-CONTRACT-WEEK-DERIVATION] Decidir se a GUI deve restaurar o filtro generico de semana e o seletor de derivacao descritos em `docs/contracts/gui-behavior.md`. O runtime atual expoe apenas os cards de emissao e execucao e nao oferece controle visual para `derivationMode`. Nao alterar o layout ate uma decisao de produto explicita.
-- [PENDING] [TYPESCALE-POINTSIZE] Migrar TypeScale de `font.pixelSize` para `font.pointSize` para respeitar a escala de fonte/DPI do SO (acessibilidade - fonte grande). Impacto: revalidar todos os 36 QML em Retina/HiDPI e telas com fonte do SO em Large. Slice dedicado.
+- [PARTIAL-LOCAL] [TYPESCALE-POINTSIZE] O primeiro corte migrou
+  `ActionButton`, `AppComboBox`/delegate e `AppSpinBox` com contrato 1.5x.
+  Restam AppTextField, AppCheckBox, filtros, cards e 32 QML, alem de Retina,
+  HiDPI e fonte Large em plataformas reais. Nao considerar o item fechado.
 
 ## Cobertura de seguranca consolidada (julho 2026)
 
