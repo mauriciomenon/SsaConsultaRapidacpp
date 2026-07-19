@@ -10,12 +10,13 @@
   morte de processo, XLSX e lotes acima de 64.
 - [EXTERNAL] O script de macOS chegou ate deploy Qt e assinatura, mas o host
   recusou a criacao do DMG com `hdiutil: Dispositivo nao configurado`; ZIP e
-  DMG nao recebem credito. A tag `v0.9.13` sera criada depois do commit.
+  DMG nao recebem credito. A tag `v0.9.13` foi criada e publicada somente no
+  Bitbucket.
 - [EXTERNAL] Bitbucket esta operacional; GitLab permanece pendente por
   `oauth2 invalid_grant` e exige renovacao de credencial.
 
-Proxima atividade unica: criar e publicar `v0.9.13` no Bitbucket, sem ocultar a
-dependencia externa do GitLab ou do DMG.
+Proxima atividade unica: renovar a credencial GitLab, sem ocultar a
+dependencia externa do DMG.
 
 ## Continuidade apos falha no lote intermediario - 2026-07-19
 

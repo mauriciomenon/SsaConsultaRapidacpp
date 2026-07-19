@@ -17,14 +17,15 @@ antes de interpretar sincronizacao Git, validacao local ou estado externo.
 - O pacote canonico executou build, `macdeployqt` e assinatura, mas `hdiutil`
   falhou com `Dispositivo nao configurado`; nenhum ZIP/DMG e tratado como
   entregue. O build release e a prova local de versao ficam preservados.
-- Estado externo: Bitbucket confirma `709d905`; GitLab continua bloqueado por
-  `oauth2 invalid_grant`. A nova tag `v0.9.13` ainda sera criada apos o commit.
+- Estado externo: Bitbucket confirma o commit `db1324a` e a tag `v0.9.13`.
+  GitLab continua bloqueado por `oauth2 invalid_grant`; o push nao foi tratado
+  como sucesso.
 - Contadores sem inflacao: plano original `99.0/100`; divida nova P0
   `14/14 = 100.0%`; backlog legado `N/A`; fila operacional local `6/8 =
   75.0%`.
 
-Proxima atividade unica: criar `v0.9.13`, publicar no Bitbucket e depois
-retomar a proxima pendencia local de maior impacto.
+Proxima atividade unica: renovar a credencial GitLab e depois retomar a
+proxima pendencia local de maior impacto.
 
 ## Atomicidade e continuidade entre tres lotes externos - 2026-07-19
 
