@@ -892,6 +892,7 @@ namespace ssa::infra::importing {
             files.push_back(artifact.path);
         }
         ports::ImportExecutionOptions execution;
+        execution.rowsPerChunk = request.rowsPerChunk;
         execution.sqliteBusyWait = request.sqliteBusyWait;
         if (const auto validation = execution.validationError(); !validation.empty()) {
             return withSummary({ports::WorkflowStatus::Rejected,

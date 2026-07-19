@@ -268,6 +268,7 @@ namespace {
                                                       std::stop_token = {}) override {
             ++calls;
             samArtifacts = request.artifacts;
+            samRowsPerChunk = request.rowsPerChunk;
             samBusyWait = request.sqliteBusyWait;
             return nextResult;
         }
@@ -280,6 +281,7 @@ namespace {
         int calls = 0;
         std::vector<std::filesystem::path> files;
         std::vector<ssa::ports::SamArtifact> samArtifacts;
+        std::size_t samRowsPerChunk = 0;
         std::chrono::milliseconds samBusyWait{};
         ssa::ports::WorkflowResult nextResult{ssa::ports::WorkflowStatus::Succeeded,
                                               "import committed"};
@@ -356,6 +358,21 @@ namespace {
 
             QCOMPARE(result.status, ssa::ports::WorkflowStatus::Rejected);
             QVERIFY(result.message.find("invalid_import_execution_options") != std::string::npos);
+        }
+
+        void port_rejects_invalid_rows_per_chunk_before_starting_process() {
+            QTemporaryDir root;
+            QVERIFY(root.isValid());
+            auto request = validRequest(root);
+            request.rowsPerChunk = 0;
+            ssa::platform::ScrapReportSamRefreshPort port(
+                QCoreApplication::applicationFilePath().toStdString());
+
+            const auto result = port.fetch(request);
+
+            QCOMPARE(result.status, ssa::ports::WorkflowStatus::Rejected);
+            QVERIFY(result.message.find("invalid_import_execution_options") != std::string::npos);
+            QVERIFY(result.message.find("rows_per_chunk") != std::string::npos);
         }
 
         void port_rejects_entire_batch_when_one_manifest_fails() {
@@ -891,6 +908,7 @@ namespace {
                                                                nullptr, samPort, importPort);
 
             ssa::ports::SamRefreshRequest request;
+            request.rowsPerChunk = 321;
             request.sqliteBusyWait = std::chrono::milliseconds{125};
             const auto result = service.refreshSam(request);
 
@@ -899,6 +917,7 @@ namespace {
             QCOMPARE(importPort->samArtifacts.size(), std::size_t{2});
             QCOMPARE(importPort->samArtifacts.front().executorSector, std::string{"IEE3"});
             QCOMPARE(importPort->samArtifacts.front().manifestRows, std::size_t{17});
+            QCOMPARE(importPort->samRowsPerChunk, std::size_t{321});
             QCOMPARE(importPort->samBusyWait, std::chrono::milliseconds{125});
             QCOMPARE(samPort->discardCalls, 1);
         }

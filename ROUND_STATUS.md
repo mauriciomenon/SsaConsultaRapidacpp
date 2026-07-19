@@ -3,6 +3,31 @@
 Fonte operacional para humanos e agentes de codigo. Verifique este arquivo
 antes de interpretar sincronizacao Git, validacao local ou estado externo.
 
+## Parametro de lote propagado no refresh SAM - 2026-07-19
+
+- **ENTREGUE localmente**: `rows_per_chunk` agora percorre o contrato completo
+  do refresh SAM: ViewModel, `SamRefreshRequest`, service, fetch e writer.
+  O caminho SAM deixa de usar silenciosamente o default quando a preferencia
+  define outro valor.
+- O valor `321` foi observado no request do workflow e no port de importacao.
+  Valor zero e rejeitado antes de iniciar o processo externo ou criar staging,
+  com diagnostico `invalid_import_execution_options rows_per_chunk`.
+- Arquivos alterados: contratos em `src/ports`, propagacao em
+  `src/application`, `src/presentation`, `src/platform` e
+  `src/infra/import`; provas em `tests/smoke` e `tests/integration`. Nenhum
+  schema, layout, menu ou regra de filtros mudou.
+- Review final: `git diff --check`, clang-format, Semgrep C/security com 62
+  regras e zero findings, e detect-secrets passaram. O build dos tres targets
+  afetados passou `156/156` etapas.
+- CTest focal passou `5/5` em `7.60 s`: workflow runner, SAM refresh, importacao
+  de workbook real e rejeicoes pre-staging de busy wait e rows per chunk.
+- Contadores sem inflacao: plano original `99.0/100`; divida nova P0
+  `14/14 = 100.0%`; backlog legado `N/A`; fila operacional local `6/8 =
+  75.0%`. A lacuna SAM foi fechada fora do denominador fixo.
+
+Proxima atividade unica: seguir para a proxima pendencia local de alto impacto
+em importacao/SQLite, mantendo Windows/UNC, GitLab e DMG como provas externas.
+
 ## Versao 0.9.13 e validacao funcional minima - 2026-07-19
 
 - **ENTREGUE localmente**: `PROJECT_VERSION` foi atualizado de `0.9.12` para

@@ -388,6 +388,7 @@ namespace {
             preferences.samRefresh.caFile = "/tmp/ca.pem";
             preferences.samRefresh.baseUrl = "https://apps.example.test/SAM/rest";
             preferences.samRefresh.executorSectors = "IEE3,MEL4";
+            preferences.importExecution.rowsPerChunk = 321;
             preferences.importExecution.sqliteBusyWaitMs = 125;
 
             model.applyPreferences(preferences);
@@ -400,6 +401,7 @@ namespace {
 
             QVERIFY(QMetaObject::invokeMethod(timers.front(), "timeout", Qt::DirectConnection));
             QVERIFY(samPort->waitUntilStarted(std::chrono::seconds{1}));
+            QCOMPARE(samPort->request()->rowsPerChunk, std::size_t{321});
             QCOMPARE(samPort->request()->sqliteBusyWait, std::chrono::milliseconds{125});
             QVERIFY(QMetaObject::invokeMethod(timers.front(), "timeout", Qt::DirectConnection));
             QCOMPARE(samPort->calls(), 1);

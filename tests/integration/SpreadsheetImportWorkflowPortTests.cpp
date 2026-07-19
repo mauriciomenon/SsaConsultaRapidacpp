@@ -7377,6 +7377,35 @@ TEST_CASE("SAM import rejects invalid SQLite busy wait before staging") {
     REQUIRE_FALSE(std::filesystem::exists(dbPath));
 }
 
+TEST_CASE("SAM import rejects invalid rows per chunk before staging") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto sourceDirectory = root / "sam";
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(sourceDirectory);
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    const auto workbook = sourceDirectory / "invalid-rows-per-chunk.xlsx";
+    writeWorkbook(workbook, samWorkbookRows("202600712", "IEE3", "Invalid rows per chunk"));
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+    ssa::ports::SamImportRequest request;
+    request.artifacts = {{workbook, "IEE3", 1, 1, 0}};
+    request.rowsPerChunk = 0;
+
+    const auto result = port.importSamArtifacts(request);
+
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
+    REQUIRE(result.message.find("invalid_import_execution_options") != std::string::npos);
+    REQUIRE(result.message.find("rows_per_chunk") != std::string::npos);
+    REQUIRE(std::filesystem::exists(workbook));
+    REQUIRE_FALSE(std::filesystem::exists(inputDirectory / "processadas"));
+    REQUIRE_FALSE(std::filesystem::exists(dbPath));
+}
+
 TEST_CASE("SAM import honors zero SQLite busy wait while writing") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());

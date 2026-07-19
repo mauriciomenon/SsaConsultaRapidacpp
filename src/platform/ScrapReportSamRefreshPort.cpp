@@ -62,6 +62,7 @@ namespace ssa::platform {
                 return "SAM process timeout must be positive";
             }
             ports::ImportExecutionOptions execution;
+            execution.rowsPerChunk = request.rowsPerChunk;
             execution.sqliteBusyWait = request.sqliteBusyWait;
             if (const auto validation = execution.validationError(); !validation.empty()) {
                 return "SAM invalid_import_execution_options " + validation;

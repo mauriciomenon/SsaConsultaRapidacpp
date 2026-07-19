@@ -376,6 +376,7 @@ namespace ssa::presentation {
         }
         request.scope = samScope_.toStdString();
         request.intervalMinutes = samIntervalMinutes_;
+        request.rowsPerChunk = static_cast<std::size_t>(importRowsPerChunk_);
         request.sqliteBusyWait = std::chrono::milliseconds{importSqliteBusyWaitMs_};
         return request;
     }

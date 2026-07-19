@@ -1,5 +1,23 @@
 # Recovery Backlog
 
+## Parametro `rows_per_chunk` no refresh SAM - 2026-07-19
+
+- [RESOLVED-LOCAL] O refresh SAM agora transporta `rows_per_chunk` desde as
+  preferencias ate o leitor XLSX e o writer SQLite. O valor configurado nao e
+  mais descartado nesse caminho.
+- [RESOLVED-LOCAL] O port rejeita zero antes de iniciar o processo externo ou
+  criar staging. A prova observa `rows_per_chunk=321` no dispatch e valida a
+  rejeicao pre-staging sem banco ou arquivo movido.
+- Evidencia: build dos tres targets afetados `156/156`; CTest focal `5/5` em
+  `7.60 s`; review com diff check, clang-format, Semgrep C/security (62 regras,
+  zero findings) e detect-secrets limpo.
+- Nenhuma mudanca de schema, layout ou menu. O item nao altera os
+  denominadores fixos: plano `99.0/100`, divida P0 `14/14 = 100.0%`, backlog
+  legado `N/A`, fila operacional `6/8 = 75.0%`.
+
+Proxima atividade unica: escolher o proximo contrato local de importacao ou
+SQLite com risco mensuravel.
+
 ## Release 0.9.13 e pacote por versao - 2026-07-19
 
 - [RESOLVED-LOCAL] `PROJECT_VERSION` agora e `0.9.13`, pois `v0.9.12` ja

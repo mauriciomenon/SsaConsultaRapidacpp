@@ -123,6 +123,7 @@ namespace ssa::ports {
 
     struct SamImportRequest {
         std::vector<SamArtifact> artifacts;
+        std::size_t rowsPerChunk{ImportExecutionOptions::kDefaultRowsPerChunk};
         std::chrono::milliseconds sqliteBusyWait{ImportExecutionOptions::kDefaultSqliteBusyWait};
     };
 
@@ -135,6 +136,7 @@ namespace ssa::ports {
         std::string scope = "consulta";
         int intervalMinutes = 30'000;
         std::chrono::milliseconds processTimeout{180'000};
+        std::size_t rowsPerChunk{ImportExecutionOptions::kDefaultRowsPerChunk};
         std::chrono::milliseconds sqliteBusyWait{ImportExecutionOptions::kDefaultSqliteBusyWait};
     };
 

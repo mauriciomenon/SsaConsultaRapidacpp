@@ -118,6 +118,7 @@ namespace ssa::application {
         }
         auto result =
             samImportPort_->importSamArtifacts({.artifacts = std::move(fetchResult.artifacts),
+                                                .rowsPerChunk = request.rowsPerChunk,
                                                 .sqliteBusyWait = request.sqliteBusyWait},
                                                stopToken);
         return withCleanupStatus(std::move(result), samPort_->discardArtifacts());
