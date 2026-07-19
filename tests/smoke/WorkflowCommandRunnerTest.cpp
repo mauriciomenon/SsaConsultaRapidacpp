@@ -369,7 +369,8 @@ namespace {
             runner.rescan(ssa::ports::RescanMode::Incremental);
 
             QTRY_COMPARE_WITH_TIMEOUT(finishedCount, 1, 1000);
-            QTest::qWait(50);
+            QTRY_COMPARE_WITH_TIMEOUT(runner.state(),
+                                      ssa::presentation::WorkflowCommandRunner::State::Idle, 1000);
             QCOMPARE(importPort->calls(), 1);
             QCOMPARE(runner.state(), ssa::presentation::WorkflowCommandRunner::State::Idle);
         }

@@ -1,5 +1,17 @@
 # Recovery Backlog
 
+## Determinismo da reentrancia do workflow - 2026-07-19
+
+- [RESOLVED-LOCAL] O teste terminal reentrante nao usa mais `QTest::qWait(50)`;
+  a assercao espera o estado `WorkflowCommandRunner::Idle` diretamente.
+- Build e CTest focado passaram `1/1` em `3.40 s`. O primeiro review encontrou
+  somente formatacao, corrigida antes do build; o review final ficou limpo.
+  Cppcheck nao selecionou arquivo de teste pelo hook.
+- Nenhuma mudanca de producao, schema, menu ou layout foi feita.
+
+Proxima atividade unica: remover outro atraso temporal somente com checkpoint
+causal ou voltar a importacao/SQLite.
+
 ## Determinismo do shutdown de preferencias - 2026-07-19
 
 - [RESOLVED-LOCAL] O teste de shutdown persistindo o snapshot final nao usa

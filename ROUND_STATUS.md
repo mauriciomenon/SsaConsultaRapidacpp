@@ -3,6 +3,23 @@
 Fonte operacional para humanos e agentes de codigo. Verifique este arquivo
 antes de interpretar sincronizacao Git, validacao local ou estado externo.
 
+## Checkpoint causal de reentrancia do workflow - 2026-07-19
+
+- **ENTREGUE localmente**: `WorkflowCommandRunnerTest` deixou de usar
+  `QTest::qWait(50)` no caso de reentrancia terminal. O teste agora espera
+  explicitamente o estado `Idle`, que e a condicao funcional relevante.
+- Review final apos correcao de formatacao: diff check, clang-format, Semgrep
+  C/security (0 findings) e detect-secrets limpos. Cppcheck nao selecionou
+  arquivo de teste pelo hook configurado.
+- Build e CTest focados: target `ssa_qt_workflow_runner_tests` compilado;
+  `1/1` passou em `3.40 s`. Nenhuma regra de producao, schema ou layout mudou.
+- Contadores sem inflacao: plano original `99.0/100`; divida nova P0
+  `14/14 = 100.0%`; backlog legado `N/A`; fila operacional local `6/8 =
+  75.0%`.
+
+Proxima atividade unica: selecionar outro atraso temporal comprovadamente
+evitavel ou retornar ao proximo corte local de importacao/SQLite.
+
 ## Checkpoint causal no ciclo de preferencias - 2026-07-19
 
 - **ENTREGUE localmente**: `PreferenceLifecycleTest` deixou de usar
