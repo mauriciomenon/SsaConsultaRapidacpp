@@ -13,6 +13,8 @@
   leem as arestas por fonte e nao recebem uma promessa falsa de chunking.
 - Risco residual: SAM refresh, Windows/UNC e packaging continuam em filas
   separadas; nenhum schema de dados foi modificado.
+- Publicacao: commit `f7ae4ab` confirmado em `origin/master` e
+  `bitbucket/master`.
 
 ## Parametros de execucao realmente usados pelo importador - 2026-07-19
 

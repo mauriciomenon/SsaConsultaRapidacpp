@@ -19,12 +19,13 @@ antes de interpretar sincronizacao Git, validacao local ou estado externo.
 - Review final do codigo: diff check, clang-format, cppcheck, Semgrep
   C/security e detect-secrets sem findings. Nenhum schema de dados, menu ou
   layout foi alterado.
-- Estado desta fatia: implementada e validada no working tree; commit e
-  publicacao ainda pendentes. Contadores permanecem plano original
+- Estado desta fatia: commit `f7ae4ab` publicado em `origin/master` e
+  `bitbucket/master`; os dois refs conferem. Contadores permanecem plano original
   `99.0/100`, divida nova P0 `14/14 = 100.0%`, backlog legado `N/A`.
 
-Proxima atividade unica: commit atomico, push para GitLab e Bitbucket e
-confirmacao dos dois refs.
+Working tree segue dirty somente por artefatos locais preexistentes fora da
+fatia. Proxima atividade unica: selecionar a proxima pendencia local de alto
+impacto; SAM refresh e Windows/UNC continuam separados.
 
 ## Parametros de execucao de importacao ligados ao workflow - 2026-07-19
 
