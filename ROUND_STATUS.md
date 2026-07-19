@@ -17,16 +17,16 @@ Ultima verificacao local: 2026-07-18
   Gitleaks escaneou `1.43 GB` sem segredo; TruffleHog terminou sem segredo
   verificado ou desconhecido. Os scanners staged dos dois commits tambem
   passaram.
-- A tag anotada `v0.9.11` pode marcar o HEAD deste gate. Publicacao no
-  Bitbucket sera verificada separadamente; GitLab `origin` continua dependente
-  de OAuth `invalid_grant` e nao sera declarado como sucesso sem evidencia.
+- A tag anotada `v0.9.11` marca este HEAD. Bitbucket confirmou `master` e
+  `v0.9.11^{}` em `84462d4`. GitLab `origin` recusou push por OAuth
+  `invalid_grant`; isto permanece dependencia externa, nao sucesso alegado.
 - Contadores nao mudam: plano original `99.0/100`; divida nova
   `13/14 = 92.9%`; backlog legado `0.0/100` placeholder; fila operacional
   `5/8 = 62.5%`. Estabilidade de release nao elimina pendencias de produto ou
   validacao em plataforma real.
 
-Proxima atividade unica: criar e publicar a tag anotada `v0.9.11`, verificando
-os dois remotes de forma independente.
+Proxima atividade unica: reproduzir com evidencia offscreen o backlog
+`UX-GRID-ALIGN` antes de qualquer mudanca de layout.
 
 ## UX-NAV: cadeia de derivadas fixa durante navegacao - 2026-07-18
 

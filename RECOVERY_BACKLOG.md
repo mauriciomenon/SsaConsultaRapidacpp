@@ -8,11 +8,12 @@
 - [RESOLVED-LOCAL] Semgrep amplo (`24` regras, `512` arquivos), Gitleaks
   (`1.43 GB`) e TruffleHog passaram sem segredo. O warning de miniz e
   preexistente em source cache de dependencia e nao pertence ao diff.
-- [PENDING-EXTERNAL] Criar/publicar a tag anotada `v0.9.11` e confirmar
-  Bitbucket. GitLab `origin` permanece bloqueado por OAuth `invalid_grant`;
+- [RESOLVED-BITBUCKET] A tag anotada `v0.9.11` e `master` foram confirmados em
+  `84462d4`. GitLab `origin` permanece bloqueado por OAuth `invalid_grant`;
   isto nao pode ser contabilizado como publicacao confirmada.
 
-Proxima atividade unica: publicar a tag `v0.9.11` e verificar os remotes.
+Proxima atividade unica: reproduzir `UX-GRID-ALIGN` offscreen antes de editar
+Macro ou Reprogramacoes.
 
 ## UX-NAV: cadeia de derivadas fixa - 2026-07-18
 

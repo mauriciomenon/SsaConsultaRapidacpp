@@ -30,6 +30,9 @@ migracao de schema nesta versao.
   `1.43 GB`; TruffleHog nao encontrou segredo verificado ou desconhecido.
 - Os hooks dos commits passaram formatacao e scanners staged. A tag anotada
   `v0.9.11` marca este HEAD validado.
+- Bitbucket confirma `master` e a tag em `84462d4`. GitLab `origin` permanece
+  bloqueado por OAuth `invalid_grant`; esta nota nao trata esse remote como
+  publicado.
 
 ## Limites conhecidos
 
