@@ -3,6 +3,24 @@
 Fonte operacional para humanos e agentes de codigo. Verifique este arquivo
 antes de interpretar sincronizacao Git, validacao local ou estado externo.
 
+## Auditoria do backlog legado - 2026-07-19
+
+- Um item obsoleto foi identificado e corrigido: o texto antigo de
+  `TYPESCALE-POINTSIZE` ainda listava `AppTextField` e `AppCheckBox` como
+  pendentes, embora ambos ja estejam migrados e testados localmente.
+- `DERIVADAS-SYNC-COMPLETE` continua uma decisao de produto sem contrato para
+  precedencia, multiparent, ciclos, orfaos e remocao de arestas; nao foi
+  alterado por inferencia.
+- FTS5, LIMIT/OFFSET tipado, `SELECT *`, Windows/UNC, PowerShell e DMG seguem
+  deferidos ou externos com evidencia. O legado `0.0/100` e placeholder sem
+  denominador ativo, nao credito executavel.
+- Resultado: um texto stale removido, zero regressao funcional e contadores
+  preservados: plano original `99.0/100`, divida nova P0 `14/14 = 100.0%`,
+  backlog legado `N/A`.
+
+Proxima atividade unica: atacar uma pendencia local de alto impacto ou
+executar Windows/UNC real quando o host estiver disponivel.
+
 ## Fechamento do gate SQLite apos filtro do dirty ledger - 2026-07-19
 
 - **ENTREGUE localmente**: a suite CTest dev sequencial foi executada apos o

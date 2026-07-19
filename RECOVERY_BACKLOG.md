@@ -1,5 +1,22 @@
 # Recovery Backlog
 
+## Auditoria do legado e itens obsoletos - 2026-07-19
+
+- [RESOLVED-LOCAL] A entrada antiga de `TYPESCALE-POINTSIZE` dizia que
+  `AppTextField` e `AppCheckBox` ainda estavam pendentes. Os dois controles
+  foram migrados para `font.pointSize` e cobertos pelo smoke Qt/QML; a entrada
+  atual abaixo foi corrigida para refletir somente consumidores restantes.
+- [VALID] `DERIVADAS-SYNC-COMPLETE` continua pendente por decisao de produto:
+  falta contrato para precedencia, multiparent, ciclos, orfaos e remocao de
+  arestas ausentes. Nao e um item obsoleto nem deve receber patch especulativo.
+- [VALID] FTS5, binding tipado de LIMIT/OFFSET, `SELECT *` de detalhes,
+  Windows/UNC, PowerShell e DMG continuam deferidos ou externos com evidencia
+  registrada. O placeholder historico de backlog legado `0.0/100` nao possui
+  denominador ativo e nao representa trabalho local nao auditado.
+
+Resultado da auditoria: um texto obsoleto corrigido; nenhum item resolvido foi
+reaberto e nenhum credito foi inflado.
+
 ## Gate completo apos normalizacao SQLite - 2026-07-19
 
 - [RESOLVED-LOCAL] O CTest dev sequencial foi repetido apos o filtro do dirty
@@ -1375,10 +1392,11 @@ Matriz completa de acertos, adicoes, erros e ordem de execucao:
   de mutar os literais Python. O contrato percorre todas as 39 paletas, inclui
   normal/hover de analytics e preserva tokens quando ja legiveis.
 - [PENDING] [GUI-CONTRACT-WEEK-DERIVATION] Decidir se a GUI deve restaurar o filtro generico de semana e o seletor de derivacao descritos em `docs/contracts/gui-behavior.md`. O runtime atual expoe apenas os cards de emissao e execucao e nao oferece controle visual para `derivationMode`. Nao alterar o layout ate uma decisao de produto explicita.
-- [PARTIAL-LOCAL] [TYPESCALE-POINTSIZE] O primeiro corte migrou
-  `ActionButton`, `AppComboBox`/delegate e `AppSpinBox` com contrato 1.5x.
-  Restam AppTextField, AppCheckBox, filtros, cards e 32 QML, alem de Retina,
-  HiDPI e fonte Large em plataformas reais. Nao considerar o item fechado.
+- [PARTIAL-LOCAL] [TYPESCALE-POINTSIZE] `ActionButton`, `AppComboBox`/delegate,
+  `AppSpinBox`, `AppTextField` e `AppCheckBox` ja usam a escala tipada e tem
+  cobertura local. Restam filtros, cards e outros consumidores QML, alem de
+  Retina, HiDPI e fonte Large em plataformas reais. Nao considerar o item
+  fechado sem essas provas.
 
 ## Cobertura de seguranca consolidada (julho 2026)
 
