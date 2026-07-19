@@ -1,5 +1,34 @@
 # Recovery Backlog
 
+## Fila ativa reconciliada - 2026-07-19
+
+- [P0-ACTIVE] [IMPORT-CORPUS-INVALID-NUMBER] A importacao real exibiu
+  `files=1692`, `rows=0`, `invalid_rows=994` e `invalid_number=994`, sem
+  publicar linhas. Em outra tentativa, `invalid_rows=2980` e
+  `duplicate_conflict=1`. Isto e uma falha funcional de importacao para o
+  corpus atual, nao uma falha comprovada de SQLite: o fluxo fail-closed evitou
+  publicar uma carga parcial. Proximo corte: capturar uma celula real rejeitada,
+  reproduzir em fixture minima, identificar a normalizacao e preservar a
+  atomicidade antes de aceitar qualquer formato novo.
+- [RETIRED-FROM-ACTIVE] [FILTER-DIFFERENT-SEMANTICS] e
+  [DISTINCT-ADVANCED-TEXT-FILTERS] continuam no historico abaixo, mas sairam da
+  fila. `!STE` e not-contains; `!=STE` e diferente exato. Distinct remove
+  somente o filtro da propria coluna e aplica os demais filtros avancados.
+- [STATUS] O backlog legado nao possui denominador ativo aceito; registrar
+  `N/A`, nunca `0.0/100`. Plano original permanece `99.0/100`; divida nova
+  permanece `13/14 = 92.9%`. A fila operacional ativa tem um P0.
+
+## Regressao visual de botoes corrigida - 2026-07-19
+
+- [RESOLVED-LOCAL] `874e31b` remove `pointSize` de `ActionButton` e restaura
+  `font.pixelSize: Theme.fontSizeBody`. Somente `Importar XLSX` e
+  `Preferencias` pedem `Theme.fontSizeLabel`; menus, comboboxes, spinboxes e
+  importacao nao mudaram.
+- RED `ssa_qml_theme_gallery_tests` falhou no contrato de pixel; GREEN passou
+  `1/1` em `0.70 s`. `ssa_qml_layout_smoke_1180x760` passou `1/1` em `3.95 s`;
+  `all_qmllint`, formatacao, Semgrep e scanners staged passaram. A verificacao
+  em tela pelo usuario em macOS continua a evidencia visual final.
+
 ## Gate local de release v0.9.11 - 2026-07-18
 
 - [RESOLVED-LOCAL] CMake `dev` e build canonico passaram; CTest sequencial

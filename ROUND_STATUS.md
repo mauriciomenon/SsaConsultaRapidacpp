@@ -3,6 +3,25 @@
 Fonte operacional para humanos e agentes de codigo. Verifique este arquivo
 antes de interpretar sincronizacao Git, validacao local ou estado externo.
 
+## Reconciliacao ativa - 2026-07-19
+
+- HEAD publicado: `874e31b` em `master`, `origin/master` e
+  `bitbucket/master`. O slice corrige apenas a regressao visual dos botoes:
+  `ActionButton` usa pixel size novamente e os botoes `Importar XLSX` e
+  `Preferencias` usam `Theme.fontSizeLabel`.
+- Validacao desta rodada: RED de fonte falhou como esperado; GREEN
+  `ssa_qml_theme_gallery_tests` `1/1` em `0.70 s`; smoke da janela principal
+  `ssa_qml_layout_smoke_1180x760` `1/1` em `3.95 s`; `all_qmllint` e hook
+  staged passaram. Nenhum menu ou fluxo de banco foi alterado.
+- Fila ativa: somente [IMPORT-CORPUS-INVALID-NUMBER]. Os logs reais mostram
+  importacao fail-closed com `rows=0` e `invalid_number`; ainda falta fixture
+  com celula real rejeitada antes de mudar normalizacao ou SQLite.
+- Itens de filtros e distinct foram retirados da fila ativa: `!STE` significa
+  not-contains e `!=STE` significa diferente exato; distinct remove somente o
+  self-filter e aplica os demais filtros avancados. O legado fica `N/A`, sem
+  denominador ativo inventado. Plano original `99.0/100`; divida nova
+  `13/14 = 92.9%`.
+
 Ultima verificacao local: 2026-07-18
 
 ## Gate de estabilizacao para v0.9.11 - 2026-07-18
