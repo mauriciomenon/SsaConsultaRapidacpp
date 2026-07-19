@@ -12,7 +12,7 @@ Button {
     bottomPadding: 0
 
     font.family: Theme.fontFamily
-    font.pixelSize: Theme.fontSizeBody
+    font.pointSize: Theme.fontPointSizeBody
     font.bold: false
     implicitWidth: 100
     opacity: enabled ? 1.0 : 0.8

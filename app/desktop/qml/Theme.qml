@@ -965,6 +965,7 @@ QtObject {
     readonly property int fontSizeBody: 12 // ms(0) - body, inputs, base
     readonly property real fontPointSizeBody: 9.0 // 12px at 96 DPI, shared controls
     readonly property int fontSizeLabel: 13 // ms(1) - primary field labels
+    readonly property real fontPointSizeLabel: 9.75 // 13px at 96 DPI, toolbar labels
     readonly property int fontSizeTitle: 14 // ms(2) - card/section titles
     readonly property int fontSizeHeader: 16 // ms(3) - header/title text
 

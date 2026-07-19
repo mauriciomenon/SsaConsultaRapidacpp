@@ -3,6 +3,29 @@
 Fonte operacional para humanos e agentes de codigo. Verifique este arquivo
 antes de interpretar sincronizacao Git, validacao local ou estado externo.
 
+## Tipografia dos controles compartilhados - 2026-07-19
+
+- **ENTREGUE localmente**: `ActionButton` e os botoes `Importar XLSX` e
+  `Preferencias` agora usam somente `font.pointSize`. O label permanece em
+  `9.75 pt`, equivalente a `13 px` em 96 DPI; padding, largura, posicao e
+  menus nao mudaram.
+- O teste de escala agora verifica point-size no controle e no conteudo,
+  encaixe inicial e escala de 1.5x do botao. O alerta de conflito point/pixel
+  nao apareceu no CTest focado; o warning independente de alias `Sans Serif`
+  continua fora deste slice.
+- Review final: diff check, clang-format, qmlformat, qmllint, Semgrep
+  C/security e detect-secrets passaram sem findings.
+- Validacao: build `all_qmllint` e `ssa_qml_theme_gallery_tests` passaram;
+  CTest QML/GUI passou `6/6` em `2.62 s`, incluindo 1580, 1180 e layout
+  1180x760. Nenhuma mudanca de schema, importacao, rescan ou regra de filtro.
+- Contadores honestos: plano original `99.0/100`; divida nova P0
+  `14/14 = 100.0%`; backlog legado `N/A`; fila operacional local `6/8 =
+  75.0%`. Este ajuste visual nao recebe credito adicional sem aceite visual
+  externo em plataformas reais.
+
+Proxima atividade unica: retomar a proxima pendencia local de maior impacto,
+sem reabrir importacao ou alterar menus neste ciclo.
+
 ## Correcao de legado `Desvio #N` durante importacao - 2026-07-19
 
 - **ENTREGUE localmente**: o banco local tinha `2599` valores TEXT

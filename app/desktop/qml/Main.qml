@@ -340,7 +340,7 @@ ApplicationWindow {
 
                 ActionButton {
                     text: "Importar XLSX"
-                    font.pixelSize: Theme.fontSizeLabel
+                    font.pointSize: Theme.fontPointSizeLabel
                     enabled: !root.vm.actions.workflows.running
                     implicitWidth: 112
                     onClicked: fileDialogs.openImportData()
@@ -388,7 +388,7 @@ ApplicationWindow {
                 }
                 ActionButton {
                     text: "Preferencias"
-                    font.pixelSize: Theme.fontSizeLabel
+                    font.pointSize: Theme.fontPointSizeLabel
                     onClicked: preferencesDialog.open()
                 }
 

@@ -72,7 +72,7 @@ namespace {
                                     "SsaConsultaRapida", 1, 0, "AppCheckBox") >= 0);
         }
 
-        void action_button_uses_pixels_and_other_shared_controls_use_point_sizes() {
+        void shared_controls_use_point_sizes_and_fit_content() {
             static constexpr auto kHarness = R"QML(
 import QtQuick
 import QtQuick.Controls
@@ -147,10 +147,6 @@ ApplicationWindow {
                 const QFont font = qvariant_cast<QFont>(item.property("font"));
                 return font.pointSizeF() > 0.0 && font.pixelSize() == -1;
             };
-            const auto usesPixelSize = [](const QObject& item) {
-                const QFont font = qvariant_cast<QFont>(item.property("font"));
-                return font.pointSizeF() == -1.0 && font.pixelSize() == 12;
-            };
             const auto pointSize = [](const QObject& item) {
                 return qvariant_cast<QFont>(item.property("font")).pointSizeF();
             };
@@ -199,10 +195,10 @@ ApplicationWindow {
             QVERIFY(comboDelegate != nullptr);
             const qreal comboDelegatePointSize = pointSize(*comboDelegate);
 
-            QVERIFY(usesPixelSize(*actionButton));
+            QVERIFY(usesPointSize(*actionButton));
             const auto* actionContent = contentItem(*actionButton);
             QVERIFY(actionContent != nullptr);
-            QVERIFY(usesPixelSize(*actionContent));
+            QVERIFY(usesPointSize(*actionContent));
             QVERIFY(contentFits(*actionButton));
 
             for (QQuickItem* control : {comboBox, spinBox, comboDelegate}) {
@@ -229,7 +225,7 @@ ApplicationWindow {
                                    .arg(content->implicitHeight())));
             }
 
-            for (QQuickItem* control : {comboBox, spinBox}) {
+            for (QQuickItem* control : {actionButton, comboBox, spinBox}) {
                 const qreal initialPointSize = pointSize(*control);
                 QVERIFY(initialPointSize > 0.0);
                 QVERIFY(scaleFont(*control));

@@ -1,5 +1,23 @@
 # Recovery Backlog
 
+## Tipografia de botoes da barra - 2026-07-19
+
+- [RESOLVED-LOCAL] `ActionButton` e os overrides de `Importar XLSX` e
+  `Preferencias` usam uma unidade tipografica unica em `pointSize`. O label
+  conserva `13 px` no baseline por meio de `9.75 pt`; nenhuma geometria ou
+  acao foi alterada.
+- [RESOLVED-LOCAL] Smoke de escala confirma point-size no controle/conteudo,
+  encaixe em 1.5x e telas 1580/1180/1180x760. O alerta especifico de conflito
+  nao apareceu; o aviso externo de alias `Sans Serif` permanece separado.
+- Validacao final: `all_qmllint`, `ssa_qml_theme_gallery_tests` e CTest
+  focado `6/6` em `2.62 s`, com review de diff, formatacao, Semgrep e
+  detect-secrets sem findings.
+- [EXTERNAL-PENDING] Validacao DPI real em Windows/Linux ainda nao foi feita;
+  nao e contada como aceite externo nem altera os contadores.
+
+Proxima atividade unica: escolher a proxima pendencia local de importacao ou
+SQLite com evidencia causal.
+
 ## Legado SQLite `Desvio #N` bloqueava atualizacao valida - 2026-07-19
 
 - [RESOLVED-LOCAL] O banco local continha `2599` valores TEXT `Desvio #1` em
