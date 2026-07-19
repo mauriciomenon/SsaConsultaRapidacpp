@@ -3,6 +3,27 @@
 Fonte operacional para humanos e agentes de codigo. Verifique este arquivo
 antes de interpretar sincronizacao Git, validacao local ou estado externo.
 
+## TypeScale dos controles de entrada - 2026-07-19
+
+- **ENTREGUE localmente**: `AppTextField` e `AppCheckBox` agora definem uma
+  fonte unica por familia e `Theme.fontPointSizeBody`, sem combinar
+  `pointSize` e `pixelSize` no mesmo controle.
+- O checkbox reutiliza a fonte do controle no `contentItem`; o smoke cobre
+  fonte, content item e fit na altura real. O helper do teste usa
+  `availableHeight` quando valido e `height` como fallback para controles que
+  nao expoem essa propriedade.
+- Review final: qmlformat, qmllint, clang-format, Semgrep C/security e
+  detect-secrets sem findings. REDs do smoke foram corrigidos com diagnostico
+  causal; nenhum sleep foi adicionado.
+- Validacao: `ssa_qml_theme_gallery_tests` `1/1` em `0.73 s`; smokes de popup
+  e layout `4/4` em `1.81 s`; `all_qmllint` passou.
+- `ActionButton`, `AppComboBox` e `AppSpinBox` permanecem cobertos. Ainda
+  faltam outros consumidores TypeScale e provas HiDPI reais; nenhum credito
+  externo e inferido.
+
+Proxima atividade unica: selecionar o proximo consumidor QML parcial ou
+retomar a fila local de confiabilidade, mantendo Windows/UNC e DMG externos.
+
 ## Release de codigo v0.9.12 - 2026-07-19
 
 - **ENTREGUE**: `CMakeLists.txt` agora declara `PROJECT_VERSION 0.9.12`.

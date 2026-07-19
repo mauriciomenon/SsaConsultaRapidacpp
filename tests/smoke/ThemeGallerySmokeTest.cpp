@@ -38,6 +38,18 @@ namespace {
         return nullptr;
     }
 
+    QQuickItem* findFontBearingChild(QQuickItem& root) {
+        for (auto* child : root.childItems()) {
+            if (child->property("font").isValid()) {
+                return child;
+            }
+            if (auto* found = findFontBearingChild(*child)) {
+                return found;
+            }
+        }
+        return nullptr;
+    }
+
     class ThemeGallerySmokeTest final : public QObject {
         Q_OBJECT
 
@@ -68,7 +80,7 @@ import SsaConsultaRapida
 
 ApplicationWindow {
     width: 420
-    height: 220
+    height: 340
     visible: true
 
     ActionButton {
@@ -97,6 +109,25 @@ ApplicationWindow {
         to: 999
         value: 888
     }
+
+    AppTextField {
+        objectName: "typeScaleTextField"
+        x: 216
+        y: 16
+        width: 180
+        height: Theme.controlHeight
+        text: "Agypq"
+    }
+
+    AppCheckBox {
+        objectName: "typeScaleCheckBox"
+        x: 216
+        y: 76
+        width: 180
+        height: Theme.controlHeight
+        text: "Agypq"
+        checked: true
+    }
 }
 )QML";
 
@@ -124,12 +155,19 @@ ApplicationWindow {
                 return qvariant_cast<QFont>(item.property("font")).pointSizeF();
             };
             const auto contentItem = [](QQuickItem& control) {
-                return qvariant_cast<QQuickItem*>(control.property("contentItem"));
+                if (auto* content = qvariant_cast<QQuickItem*>(control.property("contentItem"))) {
+                    return content;
+                }
+                return findFontBearingChild(control);
             };
             const auto contentFits = [&contentItem](QQuickItem& control) {
                 const auto* content = contentItem(control);
-                return content != nullptr &&
-                       control.property("availableHeight").toReal() >= content->implicitHeight();
+                if (content == nullptr) {
+                    return false;
+                }
+                const auto availableHeight = control.property("availableHeight").toReal();
+                const auto height = availableHeight > 0.0 ? availableHeight : control.height();
+                return height >= content->implicitHeight();
             };
             const auto scaleFont = [](QQuickItem& control) {
                 QFont font = qvariant_cast<QFont>(control.property("font"));
@@ -141,10 +179,14 @@ ApplicationWindow {
                 window->findChild<QQuickItem*>(QStringLiteral("typeScaleActionButton"));
             auto* comboBox = window->findChild<QQuickItem*>(QStringLiteral("typeScaleComboBox"));
             auto* spinBox = window->findChild<QQuickItem*>(QStringLiteral("typeScaleSpinBox"));
+            auto* textField = window->findChild<QQuickItem*>(QStringLiteral("typeScaleTextField"));
+            auto* checkBox = window->findChild<QQuickItem*>(QStringLiteral("typeScaleCheckBox"));
             auto* comboPopup = window->findChild<QObject*>(QStringLiteral("appComboBoxPopup"));
             QVERIFY(actionButton != nullptr);
             QVERIFY(comboBox != nullptr);
             QVERIFY(spinBox != nullptr);
+            QVERIFY(textField != nullptr);
+            QVERIFY(checkBox != nullptr);
             QVERIFY(comboPopup != nullptr);
             QVERIFY(QMetaObject::invokeMethod(comboPopup, "open"));
             auto* popupContent = qvariant_cast<QQuickItem*>(comboPopup->property("contentItem"));
@@ -169,6 +211,22 @@ ApplicationWindow {
                 QVERIFY(content != nullptr);
                 QVERIFY(usesPointSize(*content));
                 QVERIFY(contentFits(*control));
+            }
+
+            for (QQuickItem* control : {textField, checkBox}) {
+                QVERIFY(usesPointSize(*control));
+                const auto* content = contentItem(*control);
+                QVERIFY2(
+                    content != nullptr,
+                    qPrintable(
+                        QStringLiteral("missing content item: %1").arg(control->objectName())));
+                QVERIFY(usesPointSize(*content));
+                QVERIFY2(
+                    contentFits(*control),
+                    qPrintable(QStringLiteral("content does not fit: %1 available=%2 implicit=%3")
+                                   .arg(control->objectName())
+                                   .arg(control->property("availableHeight").toReal())
+                                   .arg(content->implicitHeight())));
             }
 
             for (QQuickItem* control : {comboBox, spinBox}) {

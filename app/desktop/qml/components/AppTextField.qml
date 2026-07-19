@@ -6,6 +6,8 @@ TextField {
     id: root
 
     implicitHeight: Theme.controlHeight
+    font.family: Theme.fontFamily
+    font.pointSize: Theme.fontPointSizeBody
     leftPadding: 10
     rightPadding: 10
     color: Theme.text

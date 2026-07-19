@@ -1,5 +1,19 @@
 # Recovery Backlog
 
+## TypeScale de entrada fechado localmente - 2026-07-19
+
+- [RESOLVED-LOCAL] [TYPESCALE-POINTSIZE-INPUTS] `AppTextField` e `AppCheckBox`
+  usam `Theme.fontPointSizeBody` e fonte herdada no texto, eliminando o
+  binding misto nos dois controles.
+- RED/GREEN: o smoke inicialmente detectou `contentItem` nao exposto como
+  QVariant e `availableHeight=0`; o teste foi ajustado para localizar o filho
+  visual e usar a altura real quando a propriedade nao existe. Nenhum polling
+  novo foi criado.
+- Validacao: theme gallery `1/1` em `0.73 s`, smokes popup/layout `4/4` em
+  `1.81 s`, qmllint e review estatico limpos.
+- Parcial restante: outros consumidores QML, HiDPI e fonte Large em plataformas
+  reais continuam sem credito.
+
 ## Release de codigo v0.9.12 - 2026-07-19
 
 - [RESOLVED-LOCAL] Versao CMake atualizada de `0.9.11` para `0.9.12` apos

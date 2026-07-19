@@ -5,14 +5,16 @@ import SsaConsultaRapida
 CheckBox {
     id: root
     spacing: 8
+    font.family: Theme.fontFamily
+    font.pointSize: Theme.fontPointSizeBody
+    font.weight: Font.Normal
 
     contentItem: Text {
         leftPadding: root.indicator.width + root.spacing
         text: root.text
         textFormat: Text.PlainText
         color: root.enabled ? Theme.text : Theme.mutedText
-        font.pixelSize: Theme.fontSizeMicro
-        font.weight: Font.Normal
+        font: root.font
         verticalAlignment: Text.AlignVCenter
         elide: Text.ElideRight
     }
