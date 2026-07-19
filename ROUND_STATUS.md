@@ -36,9 +36,37 @@ Ultima verificacao local: 2026-07-18
   mesmo `Flow`. O item exige reproducer no monitor afetado ou contrato
   geometrico antes de qualquer mudanca de layout.
 
-Proxima atividade unica: medir o custo e o contrato de analytics sincrono no
-fim da importacao SQLite incremental de 250 mil linhas, separando no-op, delta,
-atomicidade e cancelamento antes de propor otimizacao.
+## Analytics atomico na importacao incremental - 2026-07-18
+
+- `44411da` adiciona um contrato de workflow que injeta schema invalido em
+  `activity_analytics_point`. A falha e identificada como analytics, retorna
+  `Failed` e mantem fonte, SSA anterior, journal e tabelas analytics sem
+  publicacao parcial. Isto prova rollback do mesmo commit SQLite, nao apenas
+  uma falha generica anterior.
+- O target manual real `run_activity_analytics_benchmark_250k` agora percorre
+  `rescan -> finishWithAnalytics`: base de 250000 linhas, no-op com o mesmo
+  XLSX fisico restaurado e delta de uma linha. A rodada validada mediu base
+  `12239.400 ms`, no-op `10338.718 ms`, delta `2514.052 ms`; contrato
+  `250000 -> 250000 -> 250001`, seis snapshots, nove pontos e agregado SPG
+  `250001`. O pico adicional de RSS foi `121978880` bytes, abaixo de 256 MiB.
+- O gate focado passou `28/28` em `14.67 s`; o benchmark manual passou sem
+  limite temporal artificial. Formatacao, cppcheck, Semgrep e detect-secrets
+  passaram; clang-tidy saiu zero sem finding novo, mas ainda imprime avisos
+  preexistentes de Catch2 e do arquivo de teste.
+- Estado separado: implementado e validado localmente no commit `44411da`;
+  Bitbucket confirmou `master` em `44411da`; GitLab `origin` recusou push por
+  OAuth `invalid_grant`, dependencia externa sem publicacao alegada.
+- Nenhum atalho de producao pula o fingerprint canonico. Uma reducao segura
+  de custo exige revision ledger transacional atualizado por todos os
+  escritores de `ssa_table`; sem isso, pular capture pode ocultar mutacao
+  externa, reparo de schema ou mudanca de data.
+- Contadores sem inflacao: plano original `99.0/100`; divida nova
+  `13/14 = 92.9%`; backlog legado `0.0/100` placeholder; fila operacional
+  `5/8 = 62.5%`.
+
+Proxima atividade unica: mapear todos os escritores SQLite de `ssa_table` e
+decidir se um revision ledger transacional preserva atomicidade antes de propor
+qualquer mudanca de schema ou cache.
 
 ## UX-NAV: cadeia de derivadas fixa durante navegacao - 2026-07-18
 

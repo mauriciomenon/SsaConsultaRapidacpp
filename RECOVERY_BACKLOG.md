@@ -23,9 +23,34 @@
   `Flow`. O item continua aguardando reproducer no monitor afetado ou contrato
   geometrico antes de qualquer mudanca de layout.
 
-Proxima atividade unica: medir o custo e o contrato de analytics sincrono no
-fim da importacao SQLite incremental de 250 mil linhas, separando no-op, delta,
-atomicidade e cancelamento antes de propor otimizacao.
+## Analytics atomico na importacao incremental - 2026-07-18
+
+- [MEASURED-LOCAL] [ANALYTICS-IMPORT-ATOMIC-BENCHMARK] `44411da` cobre uma
+  projection analytics deliberadamente invalida no workflow real. A falha
+  retorna diagnostico de analytics e preserva fonte, SSA anterior, journal e
+  ausencia de snapshot/meta parciais antes do commit.
+- O harness manual executa `rescan -> finishWithAnalytics` em base, no-op e
+  delta, sem chamar projection diretamente. O no-op restaura o mesmo XLSX
+  fisico para nao medir update de filename. A rodada validada obteve base
+  `12239.400 ms`, no-op `10338.718 ms`, delta `2514.052 ms`, contrato
+  `250000 -> 250000 -> 250001`, seis snapshots, nove pontos, SPG `250001` e
+  RSS adicional `121978880` bytes, abaixo do limite de 256 MiB.
+- Gate focado: `28/28` CTest em `14.67 s`; formatacao, cppcheck, Semgrep e
+  detect-secrets limpos. clang-tidy saiu zero sem aviso novo no diff, mas
+  reporta avisos baseline de Catch2 e do teste existente.
+- [PENDING-DESIGN] [ANALYTICS-REVISION-LEDGER] O no-op ainda custa `10338.718
+  ms` porque parse, fingerprint e capture permanecem sincronos e atomicos. Um
+  fast path seguro requer revision ledger transacional atualizado por todo
+  escritor de `ssa_table`. Nao foi aceito cache por arquivo ou salto baseado
+  apenas em `rowsWritten`, pois poderiam ocultar mutacao externa, reparo de
+  schema ou mudanca de data.
+- Publicacao: Bitbucket confirmou `44411da`; GitLab `origin` recusou por OAuth
+  `invalid_grant`, dependencia externa. Sem credito novo: plano `99.0/100`,
+  divida nova `13/14 = 92.9%`, legado placeholder `0.0/100`, fila `5/8 = 62.5%`.
+
+Proxima atividade unica: mapear escritores SQLite de `ssa_table` e os limites
+de transacao para decidir se `ANALYTICS-REVISION-LEDGER` e seguro antes de
+qualquer schema ou cache de producao.
 
 ## UX-NAV: cadeia de derivadas fixa - 2026-07-18
 
