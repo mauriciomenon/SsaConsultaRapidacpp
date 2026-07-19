@@ -14,6 +14,9 @@ antes de interpretar sincronizacao Git, validacao local ou estado externo.
   configurado; isto nao foi tratado como gate verde de cppcheck.
 - Build e CTest focados: target `ssa_qt_preference_lifecycle_tests` compilado;
   `1/1` passou em `0.64 s`. Nenhuma regra de producao, schema ou layout mudou.
+- Publicacao separada: Bitbucket confirma `e338874` e `v0.9.12`; GitLab
+  recusou o push por OAuth `invalid_grant` e continua pendente de renovacao de
+  credencial. Nenhum sucesso externo e inferido para `origin`.
 - Contadores sem inflacao: plano original `99.0/100`; divida nova P0
   `14/14 = 100.0%`; backlog legado `N/A`; fila operacional local `6/8 =
   75.0%`.

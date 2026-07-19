@@ -11,6 +11,9 @@
   selecionou teste pelo hook e permanece explicitamente sem evidencia nesta
   fatia.
 - Nenhum codigo de producao, schema, menu ou layout foi alterado.
+- Publicacao: Bitbucket confirma `e338874`; GitLab ficou pendente por
+  `invalid_grant` do OAuth. O commit local nao deve ser tratado como
+  sincronizado em `origin` ate a renovacao da credencial.
 
 Proxima atividade unica: selecionar outro teste com espera temporal evitavel ou
 uma pendencia local de importacao/SQLite.
