@@ -68,12 +68,16 @@ namespace ssa::infra::importing {
 
         std::optional<std::vector<std::string>>
         parseDelimitedLine(const std::string& line, const char delimiter,
-                           const std::stop_token& stopToken) {
+                           const std::stop_token& stopToken,
+                           const std::function<void()>& afterFirstParsingChunk) {
             std::vector<std::string> fields;
             std::string field;
             bool quoted = false;
             for (std::size_t index = 0; index < line.size(); ++index) {
                 if ((index & 4095U) == 0U) {
+                    if (index == 4096U && afterFirstParsingChunk) {
+                        afterFirstParsingChunk();
+                    }
                     throwIfCanceled(stopToken);
                 }
                 const char ch = line[index];
@@ -106,7 +110,8 @@ namespace ssa::infra::importing {
         };
 
         DelimitedReadResult readDelimited(const std::filesystem::path& source, const char delimiter,
-                                          const std::stop_token& stopToken) {
+                                          const std::stop_token& stopToken,
+                                          const std::function<void()>& afterFirstParsingChunk) {
             std::ifstream input(source, std::ios::binary);
             if (!input.is_open()) {
                 return {{},
@@ -120,7 +125,8 @@ namespace ssa::infra::importing {
                 if (!line.empty() && line.back() == '\r') {
                     line.pop_back();
                 }
-                auto parsed = parseDelimitedLine(line, delimiter, stopToken);
+                auto parsed =
+                    parseDelimitedLine(line, delimiter, stopToken, afterFirstParsingChunk);
                 if (!parsed) {
                     return {{},
                             rejected("derivadas source has malformed delimited data", rows.size())};
@@ -281,6 +287,14 @@ namespace ssa::infra::importing {
 
     DerivadasMergeResult DerivadasEdgeMerger::add(const std::span<const DerivationEdge> edges,
                                                   const std::stop_token& stopToken) {
+        return add(edges, stopToken, {});
+    }
+
+    DerivadasMergeResult
+    DerivadasEdgeMerger::add(const std::span<const DerivationEdge> edges,
+                             const std::stop_token& stopToken,
+                             const std::function<void()>& afterFirstEdgeMerged) {
+        bool firstEdgeMerged = false;
         for (const auto& edge : edges) {
             if (stopToken.stop_requested()) {
                 return {DerivadasMergeStatus::Canceled, "derivadas import canceled"};
@@ -293,6 +307,15 @@ namespace ssa::infra::importing {
             if (!inserted && current->second != edge.parent) {
                 return {DerivadasMergeStatus::Rejected,
                         "derivadas source contains multiple parents for one child"};
+            }
+            if (!firstEdgeMerged) {
+                firstEdgeMerged = true;
+                if (afterFirstEdgeMerged) {
+                    afterFirstEdgeMerged();
+                    if (stopToken.stop_requested()) {
+                        return {DerivadasMergeStatus::Canceled, "derivadas import canceled"};
+                    }
+                }
             }
         }
         return {DerivadasMergeStatus::Succeeded, {}};
@@ -308,6 +331,13 @@ namespace ssa::infra::importing {
 
     DerivadasSourceResult DerivadasSourceReader::read(const std::filesystem::path& source,
                                                       const std::stop_token& stopToken) {
+        return read(source, stopToken, {});
+    }
+
+    DerivadasSourceResult
+    DerivadasSourceReader::read(const std::filesystem::path& source,
+                                const std::stop_token& stopToken,
+                                const std::function<void()>& afterFirstParsingChunk) {
         try {
             throwIfCanceled(stopToken);
             std::error_code error;
@@ -316,7 +346,8 @@ namespace ssa::infra::importing {
             }
             const auto extension = lowercaseExtension(source);
             if (extension == ".csv" || extension == ".txt" || extension == ".tsv") {
-                auto delimited = readDelimited(source, extension == ".tsv" ? '\t' : ',', stopToken);
+                auto delimited = readDelimited(source, extension == ".tsv" ? '\t' : ',', stopToken,
+                                               afterFirstParsingChunk);
                 if (delimited.error) {
                     return std::move(*delimited.error);
                 }

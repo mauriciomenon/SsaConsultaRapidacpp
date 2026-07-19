@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <functional>
 #include <map>
 #include <set>
 #include <span>
@@ -8,7 +9,13 @@
 #include <string>
 #include <vector>
 
+namespace ssa::infra::sqlite {
+    class SqliteDerivadasPort;
+}
+
 namespace ssa::infra::importing {
+
+    class DerivadasImportTestAccess;
 
     enum class DerivadasSourceStatus { Succeeded, Rejected, Canceled, Failed };
 
@@ -44,6 +51,12 @@ namespace ssa::infra::importing {
         [[nodiscard]] std::size_t duplicates() const;
 
       private:
+        friend class ssa::infra::sqlite::SqliteDerivadasPort;
+
+        [[nodiscard]] DerivadasMergeResult add(std::span<const DerivationEdge> edges,
+                                               const std::stop_token& stopToken,
+                                               const std::function<void()>& afterFirstEdgeMerged);
+
         std::map<std::string, std::string> parentByChild_;
         std::set<std::pair<std::string, std::string>> uniqueEdges_;
         std::size_t duplicates_ = 0;
@@ -53,6 +66,14 @@ namespace ssa::infra::importing {
       public:
         [[nodiscard]] static DerivadasSourceResult read(const std::filesystem::path& source,
                                                         const std::stop_token& stopToken = {});
+
+      private:
+        friend class ssa::infra::sqlite::SqliteDerivadasPort;
+        friend class DerivadasImportTestAccess;
+
+        [[nodiscard]] static DerivadasSourceResult
+        read(const std::filesystem::path& source, const std::stop_token& stopToken,
+             const std::function<void()>& afterFirstParsingChunk);
     };
 
 } // namespace ssa::infra::importing

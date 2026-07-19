@@ -1,3 +1,4 @@
+#include "DerivadasImportTestAccess.h"
 #include "infra/import/DerivadasSourceReader.h"
 #include "infra/import/LegacySpreadsheetConverter.h"
 #include "infra/sqlite/SqliteConnection.h"
@@ -11,8 +12,8 @@
 #include <filesystem>
 #include <fstream>
 #include <future>
-#include <latch>
 #include <memory>
+#include <semaphore>
 #include <stop_token>
 #include <string>
 #include <vector>
@@ -361,26 +362,37 @@ TEST_CASE("derivadas import observes a stopped token before changing data") {
     REQUIRE(fixture.parentOf("202600002").empty());
 }
 
-TEST_CASE("derivadas import cancels during parsing and leaves the database reusable") {
+TEST_CASE("derivadas import cancels at a parsing checkpoint and leaves the database reusable") {
     const Fixture fixture;
     const auto source = fixture.path("large.csv");
-    std::string content = "parent_ssa,child_ssa\n";
-    content.reserve(6'000'000);
-    for (std::size_t index = 0; index < 250'000; ++index) {
-        content += "202600001,202600002\n";
-    }
-    writeText(source, content);
+    writeText(source, "parent_ssa,child_ssa\n" + std::string(8'192, 'x') + ",202600002\n");
+    std::stop_source stopSource;
+    std::binary_semaphore parsingEntered{0};
+    std::binary_semaphore resumeAfterParsing{0};
+    const auto blockAtParsingCheckpoint = [&] {
+        parsingEntered.release();
+        std::stop_callback resumeOnStop(stopSource.get_token(),
+                                        [&] { resumeAfterParsing.release(); });
+        resumeAfterParsing.acquire();
+    };
     ssa::infra::sqlite::SqliteDerivadasPort port(fixture.databasePath,
                                                  unavailableLegacyConverter());
-    std::stop_source stopSource;
     auto operation = std::async(std::launch::async, [&] {
-        return port.importDerivations(requestFor(source), stopSource.get_token());
+        return ssa::infra::importing::DerivadasImportTestAccess::importWithCheckpoints(
+            port, requestFor(source), stopSource.get_token(), blockAtParsingCheckpoint);
     });
 
-    REQUIRE(operation.wait_for(std::chrono::milliseconds{1}) == std::future_status::timeout);
+    const bool parsingObserved = parsingEntered.try_acquire_for(std::chrono::seconds{1});
     stopSource.request_stop();
-    REQUIRE(operation.wait_for(std::chrono::seconds{2}) == std::future_status::ready);
-    REQUIRE(operation.get().status == ssa::ports::WorkflowStatus::Canceled);
+    const bool canceledPromptly =
+        operation.wait_for(std::chrono::milliseconds{500}) == std::future_status::ready;
+    if (!canceledPromptly) {
+        REQUIRE(operation.wait_for(std::chrono::seconds{1}) == std::future_status::ready);
+    }
+    const auto result = operation.get();
+    REQUIRE(parsingObserved);
+    REQUIRE(canceledPromptly);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Canceled);
     REQUIRE(fixture.parentOf("202600002").empty());
 
     writeText(source, "parent_ssa,child_ssa\n202600001,202600002\n");
@@ -392,43 +404,71 @@ TEST_CASE("derivadas reader cancels a single large delimited line") {
     const Fixture fixture;
     const auto source = fixture.path("single-large-line.csv");
     std::string content = "parent_ssa,numero_ssa\n";
-    content.append(32U * 1024U * 1024U, 'x');
+    content.append(8U * 1024U, 'x');
     content += ",202600002\n";
     writeText(source, content);
     std::stop_source stopSource;
-    std::latch started{1};
+    std::binary_semaphore parsingEntered{0};
+    std::binary_semaphore resumeAfterParsing{0};
+    const auto blockAtParsingCheckpoint = [&] {
+        parsingEntered.release();
+        std::stop_callback resumeOnStop(stopSource.get_token(),
+                                        [&] { resumeAfterParsing.release(); });
+        resumeAfterParsing.acquire();
+    };
     auto operation = std::async(std::launch::async, [&] {
-        started.count_down();
-        return ssa::infra::importing::DerivadasSourceReader::read(source, stopSource.get_token());
+        return ssa::infra::importing::DerivadasImportTestAccess::readWithParsingCheckpoint(
+            source, stopSource.get_token(), blockAtParsingCheckpoint);
     });
 
-    started.wait();
-    REQUIRE(operation.wait_for(std::chrono::milliseconds{10}) == std::future_status::timeout);
+    const bool parsingObserved = parsingEntered.try_acquire_for(std::chrono::seconds{1});
     stopSource.request_stop();
-    REQUIRE(operation.wait_for(std::chrono::milliseconds{500}) == std::future_status::ready);
-    REQUIRE(operation.get().status == ssa::infra::importing::DerivadasSourceStatus::Canceled);
+    const bool canceledPromptly =
+        operation.wait_for(std::chrono::milliseconds{500}) == std::future_status::ready;
+    if (!canceledPromptly) {
+        REQUIRE(operation.wait_for(std::chrono::seconds{1}) == std::future_status::ready);
+    }
+    const auto result = operation.get();
+    REQUIRE(parsingObserved);
+    REQUIRE(canceledPromptly);
+    REQUIRE(result.status == ssa::infra::importing::DerivadasSourceStatus::Canceled);
 }
 
-TEST_CASE("derivadas edge merger cancels while aggregating a large batch") {
-    std::vector<ssa::infra::importing::DerivationEdge> edges;
-    edges.reserve(200'000);
-    for (std::size_t index = 0; index < 200'000; ++index) {
-        edges.push_back({"1" + std::to_string(index), "2" + std::to_string(index)});
-    }
-    ssa::infra::importing::DerivadasEdgeMerger merger;
+TEST_CASE("derivadas import cancels after the first merged edge and remains reusable") {
+    const Fixture fixture;
+    const auto source = fixture.path("merge.csv");
+    writeText(source, "parent_ssa,child_ssa\n202600001,202600002\n202600003,202600004\n");
     std::stop_source stopSource;
-    std::latch started{1};
+    std::binary_semaphore mergeEntered{0};
+    std::binary_semaphore resumeAfterMerge{0};
+    const auto blockAfterFirstMerge = [&] {
+        mergeEntered.release();
+        std::stop_callback resumeOnStop(stopSource.get_token(),
+                                        [&] { resumeAfterMerge.release(); });
+        resumeAfterMerge.acquire();
+    };
+    ssa::infra::sqlite::SqliteDerivadasPort port(fixture.databasePath,
+                                                 unavailableLegacyConverter());
     auto operation = std::async(std::launch::async, [&] {
-        started.count_down();
-        return merger.add(edges, stopSource.get_token());
+        return ssa::infra::importing::DerivadasImportTestAccess::importWithCheckpoints(
+            port, requestFor(source), stopSource.get_token(), {}, blockAfterFirstMerge);
     });
 
-    started.wait();
-    REQUIRE(operation.wait_for(std::chrono::milliseconds{10}) == std::future_status::timeout);
+    const bool mergeObserved = mergeEntered.try_acquire_for(std::chrono::seconds{1});
     stopSource.request_stop();
-    REQUIRE(operation.wait_for(std::chrono::milliseconds{500}) == std::future_status::ready);
-    REQUIRE(operation.get().status == ssa::infra::importing::DerivadasMergeStatus::Canceled);
-    REQUIRE(merger.parentByChild().size() < edges.size());
+    const bool canceledPromptly =
+        operation.wait_for(std::chrono::milliseconds{500}) == std::future_status::ready;
+    if (!canceledPromptly) {
+        REQUIRE(operation.wait_for(std::chrono::seconds{1}) == std::future_status::ready);
+    }
+    const auto result = operation.get();
+    REQUIRE(mergeObserved);
+    REQUIRE(canceledPromptly);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Canceled);
+    REQUIRE(fixture.parentOf("202600002").empty());
+    REQUIRE(fixture.parentOf("202600004").empty());
+    REQUIRE(port.importDerivations(requestFor(source)).status ==
+            ssa::ports::WorkflowStatus::Succeeded);
 }
 
 TEST_CASE("derivadas import cancels while waiting for SQLite and remains reusable") {

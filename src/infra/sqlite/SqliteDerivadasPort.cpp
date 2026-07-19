@@ -61,62 +61,6 @@ namespace ssa::infra::sqlite {
             return extension;
         }
 
-        importing::DerivadasSourceResult
-        readLegacySource(const std::filesystem::path& source,
-                         const importing::LegacySpreadsheetConverter& converter,
-                         const std::stop_token& stopToken) {
-            QTemporaryDir temporaryDirectory;
-            if (!temporaryDirectory.isValid()) {
-                return {importing::DerivadasSourceStatus::Failed,
-                        {},
-                        0,
-                        "cannot create legacy XLS import directory"};
-            }
-            const auto temporaryRoot = qt::toFileSystemPath(temporaryDirectory.path());
-            auto output = temporaryRoot / source.filename();
-            output.replace_extension(".xlsx");
-            const auto conversion = converter.convertToXlsx({source, output}, stopToken);
-            if (conversion.status == importing::LegacySpreadsheetConversionStatus::Canceled) {
-                return {
-                    importing::DerivadasSourceStatus::Canceled, {}, 0, "derivadas import canceled"};
-            }
-            if (conversion.status ==
-                importing::LegacySpreadsheetConversionStatus::ToolUnavailable) {
-                return {importing::DerivadasSourceStatus::Rejected,
-                        {},
-                        0,
-                        "Legacy XLS import requires LibreOffice",
-                        conversion.diagnostic};
-            }
-            if (!conversion.ok() || !conversion.diagnostic.empty()) {
-                return {importing::DerivadasSourceStatus::Failed,
-                        {},
-                        0,
-                        conversion.message.empty() ? "legacy XLS conversion failed"
-                                                   : conversion.message,
-                        conversion.diagnostic};
-            }
-            auto result = importing::DerivadasSourceReader::read(conversion.outputPath, stopToken);
-            if (!temporaryDirectory.remove()) {
-                if (!result.diagnostic.empty()) {
-                    result.diagnostic += "; ";
-                }
-                result.status = importing::DerivadasSourceStatus::Failed;
-                result.message = "cannot clean legacy XLS import directory";
-                result.diagnostic += "temporary XLS conversion output could not be removed";
-            }
-            return result;
-        }
-
-        importing::DerivadasSourceResult
-        readSource(const std::filesystem::path& source,
-                   const importing::LegacySpreadsheetConverter& converter,
-                   const std::stop_token& stopToken) {
-            return lowercaseExtension(source) == ".xls"
-                       ? readLegacySource(source, converter, stopToken)
-                       : importing::DerivadasSourceReader::read(source, stopToken);
-        }
-
         ports::WorkflowResult sourceFailure(const importing::DerivadasSourceResult& result) {
             switch (result.status) {
             case importing::DerivadasSourceStatus::Rejected:
@@ -185,9 +129,70 @@ namespace ssa::infra::sqlite {
         return legacyConverter_ && legacyConverter_->available();
     }
 
+    importing::DerivadasSourceResult SqliteDerivadasPort::readLegacySource(
+        const std::filesystem::path& source, const importing::LegacySpreadsheetConverter& converter,
+        const std::stop_token& stopToken, const TestCheckpoint& afterFirstParsingChunk) {
+        QTemporaryDir temporaryDirectory;
+        if (!temporaryDirectory.isValid()) {
+            return {importing::DerivadasSourceStatus::Failed,
+                    {},
+                    0,
+                    "cannot create legacy XLS import directory"};
+        }
+        const auto temporaryRoot = qt::toFileSystemPath(temporaryDirectory.path());
+        auto output = temporaryRoot / source.filename();
+        output.replace_extension(".xlsx");
+        const auto conversion = converter.convertToXlsx({source, output}, stopToken);
+        if (conversion.status == importing::LegacySpreadsheetConversionStatus::Canceled) {
+            return {importing::DerivadasSourceStatus::Canceled, {}, 0, "derivadas import canceled"};
+        }
+        if (conversion.status == importing::LegacySpreadsheetConversionStatus::ToolUnavailable) {
+            return {importing::DerivadasSourceStatus::Rejected,
+                    {},
+                    0,
+                    "Legacy XLS import requires LibreOffice",
+                    conversion.diagnostic};
+        }
+        if (!conversion.ok() || !conversion.diagnostic.empty()) {
+            return {importing::DerivadasSourceStatus::Failed,
+                    {},
+                    0,
+                    conversion.message.empty() ? "legacy XLS conversion failed"
+                                               : conversion.message,
+                    conversion.diagnostic};
+        }
+        auto result = importing::DerivadasSourceReader::read(conversion.outputPath, stopToken,
+                                                             afterFirstParsingChunk);
+        if (!temporaryDirectory.remove()) {
+            if (!result.diagnostic.empty()) {
+                result.diagnostic += "; ";
+            }
+            result.status = importing::DerivadasSourceStatus::Failed;
+            result.message = "cannot clean legacy XLS import directory";
+            result.diagnostic += "temporary XLS conversion output could not be removed";
+        }
+        return result;
+    }
+
+    importing::DerivadasSourceResult SqliteDerivadasPort::readSource(
+        const std::filesystem::path& source, const importing::LegacySpreadsheetConverter& converter,
+        const std::stop_token& stopToken, const TestCheckpoint& afterFirstParsingChunk) {
+        return lowercaseExtension(source) == ".xls"
+                   ? readLegacySource(source, converter, stopToken, afterFirstParsingChunk)
+                   : importing::DerivadasSourceReader::read(source, stopToken,
+                                                            afterFirstParsingChunk);
+    }
+
     ports::WorkflowResult
     SqliteDerivadasPort::importDerivations(const ports::ImportDerivationsRequest& request,
                                            const std::stop_token stopToken) {
+        return importDerivations(request, stopToken, {});
+    }
+
+    ports::WorkflowResult
+    SqliteDerivadasPort::importDerivations(const ports::ImportDerivationsRequest& request,
+                                           const std::stop_token& stopToken,
+                                           const TestCheckpoints& checkpoints) {
         try {
             if (request.files.empty()) {
                 return importRejected("derivadas import requires at least one source");
@@ -201,11 +206,13 @@ namespace ssa::infra::sqlite {
                 if (stopToken.stop_requested()) {
                     return importCanceled();
                 }
-                auto sourceResult = readSource(source, *legacyConverter_, stopToken);
+                auto sourceResult = readSource(source, *legacyConverter_, stopToken,
+                                               checkpoints.afterFirstParsingChunk);
                 if (!sourceResult.ok()) {
                     return sourceFailure(sourceResult);
                 }
-                const auto mergeResult = merger.add(sourceResult.edges, stopToken);
+                const auto mergeResult =
+                    merger.add(sourceResult.edges, stopToken, checkpoints.afterFirstEdgeMerged);
                 if (mergeResult.status == importing::DerivadasMergeStatus::Canceled) {
                     return importCanceled();
                 }
