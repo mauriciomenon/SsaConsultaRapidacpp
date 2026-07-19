@@ -5,6 +5,44 @@ antes de interpretar sincronizacao Git, validacao local ou estado externo.
 
 Ultima verificacao local: 2026-07-18
 
+## UX-NAV: cadeia de derivadas fixa durante navegacao - 2026-07-18
+
+- Branch `master`; codigo no HEAD `08991b6`. A confirmacao externa ainda e
+  pendente neste ponto do registro. GitLab `origin` segue bloqueado por OAuth
+  `invalid_grant`, dependencia externa separada da validacao local.
+- A selecao da tabela e a unica dona do snapshot da cadeia. `setRecord()` cria
+  a geracao e carrega filhas diretas; navegar por relacao atualiza somente o
+  registro exibido. Nova selecao, lookup externo e limpar detalhes invalidam
+  o snapshot e resultados async antigos por ID/geracao.
+- O carregamento de filhas e o de registro possuem lanes independentes. Cada
+  lane conserva seu erro; `relationError` prioriza Record. Assim a conclusao
+  de filhas nao apaga `SSA nao encontrada`, e a navegacao bem-sucedida nao
+  apaga uma falha de filhas. Navigator e janela de grafo exibem erro antes de
+  loading. O QML encaminha indice, nao SSA, preservando a linha correta quando
+  uma cadeia contem a mesma SSA duas vezes.
+- REDs adicionados: cadeia era reconstruida, filhas pendentes eram canceladas,
+  indice duplicado era perdido, e os dois sentidos de erro concorrente. O
+  primeiro review Terra ultra encontrou P1 de cancelamento de filhas e P2 de
+  indice; o segundo encontrou P2 de erro global. Todos foram corrigidos;
+  re-review final Terra ultra `SEM FINDINGS`.
+- Gate local: `git diff --check`, clang-format, cppcheck, clang-tidy,
+  qmlformat, qmllint, detect-secrets e Semgrep (`11` regras, zero finding)
+  limpos. Build dos dois targets afetados; CTest
+  `ssa_qt_presentation_tests` e `ssa_qml_advanced_popup_tests` passou `2/2`
+  em `14.87 s`; `all_qmllint` passou. O hook do commit passou clang-format,
+  qmlformat, qmllint, Semgrep QML, Gitleaks, detect-secrets e TruffleHog.
+- Contadores sem inflacao: plano original `99.0/100`; divida nova
+  `13/14 = 92.9%`; backlog legado `0.0/100` placeholder e fila operacional
+  `5/8 = 62.5%`. UX-NAV e hardening adicional fora desses denominadores.
+- Diagnostico da sync completa de derivadas: C++ persiste apenas
+  `ssa_table.derivada_de` e filhas diretas. A referencia externa usa
+  procedencia, matriz, closure, resumo e sync runs. Antes de DDL ou fluxo novo
+  faltam cinco politicas de produto: prioridade de fonte, multiparent, ciclos,
+  orfaos e desativacao de arestas ausentes. Nenhuma mudanca de schema foi feita.
+
+Proxima atividade unica: executar o gate completo de estabilizacao do candidato
+`0.9.11`; criar a tag somente se a suite e as verificacoes de release passarem.
+
 ## Checkpoints causais privados de parsing e merge de derivadas - 2026-07-18
 
 - Branch `master`; codigo em `77fd3e0`, confirmado no Bitbucket. GitLab

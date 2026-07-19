@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.24)
 
 project(
   SSAConsultaRapidaCpp
-  VERSION 0.9.10
+  VERSION 0.9.11
   LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)

@@ -1,5 +1,26 @@
 # Recovery Backlog
 
+## UX-NAV: cadeia de derivadas fixa - 2026-07-18
+
+- [RESOLVED-LOCAL] [UX-NAV] `08991b6` faz a selecao da tabela possuir o
+  snapshot da cadeia. A navegacao carrega somente o registro exibido, sem
+  reconstruir relacoes ou mudar a raiz do grafo.
+- Filhas diretas e lookup de registro sao lanes async separadas. IDs e geracao
+  descartam resultados stale; erros tambem sao separados e Record tem
+  prioridade. QML mostra erro antes de loading e envia o indice da relacao,
+  preservando ocorrencias duplicadas da mesma SSA.
+- REDs cobriram cadeia fixa, filhas pendentes, indice duplicado e os dois
+  sentidos de erro concorrente. Review Terra ultra encontrou P1 de
+  cancelamento e dois P2 (indice e erro global); re-review final `SEM FINDINGS`.
+- Gates: formatacao, cppcheck, clang-tidy, Semgrep, detect-secrets e QML
+  limpos; targets afetados compilados; CTest `2/2` em `14.87 s`; `all_qmllint`
+  passou. Hook do commit passou scanners staged. Sem schema ou mudanca de
+  layout. Sem credito nos denominadores: plano `99.0/100`, divida nova
+  `13/14 = 92.9%`, legado placeholder `0.0/100`, fila `5/8 = 62.5%`.
+
+Proxima atividade unica: gate completo do candidato `0.9.11`; tag somente se
+suite e verificacoes de release estiverem verdes.
+
 ## Checkpoints causais privados de parsing e merge de derivadas - 2026-07-18
 
 - [RESOLVED-LOCAL] [DERIVADAS-PARSER-MERGE-CAUSAL] `77fd3e0` remove tres
@@ -633,7 +654,14 @@ Matriz completa de acertos, adicoes, erros e ordem de execucao:
   Windows dedicado, com validacao real em Windows antes de alterar a saida dos
   scripts ou o comportamento de links de artefatos.
 
-- [PENDING] Implementar sincronizacao completa de derivadas com regras de negocio e fonte externa, incluindo modelagem de grafo/fluxo derivado.
+- [PENDING-PRODUCT] [DERIVADAS-SYNC-COMPLETE] A referencia externa possui
+  fonte/procedencia, matriz, closure, resumo e historico de sync. O C++ atual
+  importa somente arestas diretas para `ssa_table.derivada_de`, conta filhas e
+  limpa orfaos. Nao iniciar DDL nem refactor de grafo ate decidir: prioridade
+  entre fonte DB e planilha, multiparent, ciclos, orfaos e desativacao de
+  arestas ausentes. Tambem falta corpus sanitizado para equivalencia. O menor
+  corte futuro seguro e `verify-only` read-only apos essas decisoes; a sync
+  mutavel exigira migracao, transacao e contrato proprio.
 - [RESOLVED-v0.9.7] SAM foi validado ate SQLite com adapter do schema real,
   contagem de manifesto e rejeicao fail-closed no limite potencialmente
   truncado de 200 registros.
@@ -893,7 +921,11 @@ Matriz completa de acertos, adicoes, erros e ordem de execucao:
 - [PENDING] [L6] Bind de LIMIT/OFFSET como int64. Hoje bindings sao `std::vector<std::string>` (text) em todo o pipeline; SQLite coerciona em runtime sem custo real, mas o contrato deveria ser tipado. Exige variante de binding (text vs int64) atravessando SqlQuery/bindAll/fakes/testes. Ganho marginal; adiar ate outro refactor do query builder justificar o custo.
 - [PENDING] [L7] `recordBySsaNumber` com `SELECT *`. A tela de detalhes mostra todas as colunas, entao `SELECT *` e apropriado hoje. Reavaliar se a tela de detalhes passar a projetar um subconjunto.
 
-- [PENDING] [UX-NAV] Navegacao por setas <> no DetailsPanel e confusa. As setas percorrem a cadeia de derivadas da SSA em exibicao (Current/Mae/Filhas), mas ao carregar uma SSA relacionada a cadeia muda para a dela e o indice restaurado pode apontar para posicao inconsistente. Considerar historico de navegacao (back/forward) ou manter a cadeia original fixa durante a navegacao. Commit 990667c documenta o funcionamento atual em detalhe.
+- [RESOLVED-LOCAL] [UX-NAV] `08991b6` fixa a cadeia criada pela selecao da
+  tabela durante navegacao interna. As setas e o clique QML passam o indice,
+  nao fazem relookup por SSA e mantem duplicatas corretas. Resta somente
+  decidir produto se no futuro for desejado historico back/forward distinto da
+  cadeia fixa.
 
 - [PENDING] [UX-TABLE] Usuario reporta linhas verticais "grossas" entre colunas de dados da tabela, mas analise de pixels no screenshot offscreen (3 medicoes) nao encontra linhas verticais estruturais - apenas pixels de texto. Pode ser problema de DPI/scaling/font rendering no monitor do usuario ou versao compilada intermediaria. Investigar com o usuario apontando exatamente onde ve as linhas em zoom.
 
