@@ -3,6 +3,29 @@
 Fonte operacional para humanos e agentes de codigo. Verifique este arquivo
 antes de interpretar sincronizacao Git, validacao local ou estado externo.
 
+## Checkpoint causal do mapper de importacao - 2026-07-19
+
+- **ENTREGUE localmente**: `SsaSpreadsheetMapper` aceita um checkpoint opcional
+  apos a primeira linha mapeada. O fluxo normal continua chamando a sobrecarga
+  sem callback; nenhuma regra de importacao, schema ou layout mudou.
+- O teste de cancelamento deixou de depender de `QThread::msleep(5)`. Ele agora
+  bloqueia no checkpoint real, pede `stop_token` e libera o worker por
+  `stop_callback`, provando cancelamento durante o mapeamento e reuso do banco.
+- Review automatico final: diff check, clang-format, cppcheck, Semgrep C/security
+  (11 regras, zero findings) e detect-secrets limpos. O review inicial encontrou
+  somente formatacao, corrigida antes do build.
+- Build: target `ssa_integration_tests` passou. CTest focal de importacao,
+  lote, rescan e cancelamento passou `5/5` em `0.64 s`.
+- O comando inicial com regex `ssa_integration_tests` nao encontrou um CTest
+  desse nome; a matriz registra casos Catch2 individuais. A execucao correta foi
+  feita pelos nomes reais e o comando incorreto nao foi contado como teste.
+- Contadores sem inflacao: plano original `99.0/100`; divida nova
+  `14/14 = 100.0%` no P0; backlog legado `N/A`; fila operacional local
+  permanece `6/8 = 75.0%`, com Windows/UNC e DMG externos separados.
+
+Proxima atividade unica: executar a proxima pendencia local de confiabilidade
+SQLite/importacao, sem reabrir o limite de 64 ja fechado.
+
 ## TypeScale dos controles de entrada - 2026-07-19
 
 - **ENTREGUE localmente**: `AppTextField` e `AppCheckBox` agora definem uma

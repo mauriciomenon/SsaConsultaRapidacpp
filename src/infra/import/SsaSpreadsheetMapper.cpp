@@ -371,6 +371,12 @@ namespace ssa::infra::importing {
 
     SsaImportBatch SsaSpreadsheetMapper::map(const SpreadsheetTable& table,
                                              const std::stop_token& stopToken) {
+        return map(table, stopToken, {});
+    }
+
+    SsaImportBatch SsaSpreadsheetMapper::map(const SpreadsheetTable& table,
+                                             const std::stop_token& stopToken,
+                                             const MappingCheckpoint& afterFirstRowMapped) {
         throwIfMappingCanceled(stopToken);
         SsaImportBatch batch;
         batch.sourcePath = table.sourcePath;
@@ -412,6 +418,7 @@ namespace ssa::infra::importing {
         batch.headerRow = header;
         batch.mappingStatus = SpreadsheetMappingStatus::Mapped;
         const std::size_t firstDataRow = hasExternalHeader ? 0 : *headerIndex + 1;
+        bool checkpointCalled = false;
         for (std::size_t rowIndex = firstDataRow; rowIndex < table.rows.size(); ++rowIndex) {
             throwIfMappingCanceled(stopToken);
             SsaImportRow row;
@@ -436,6 +443,11 @@ namespace ssa::infra::importing {
                 if (!value.empty()) {
                     row.emplace(columnKey, value);
                 }
+            }
+            if (!checkpointCalled && afterFirstRowMapped) {
+                checkpointCalled = true;
+                afterFirstRowMapped();
+                throwIfMappingCanceled(stopToken);
             }
             if (valueFor(row, "data_cadastro").empty() && columnMap.fallbackTimestampColumn) {
                 const auto fallbackColumn = *columnMap.fallbackTimestampColumn;

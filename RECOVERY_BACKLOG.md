@@ -1,5 +1,20 @@
 # Recovery Backlog
 
+## Cancelamento causal do mapper de importacao - 2026-07-19
+
+- [RESOLVED-LOCAL] [TEST-DETERMINISM-MAPPER] O teste de cancelamento de uma
+  worksheet grande nao usa mais `QThread::msleep(5)`. Um checkpoint opcional
+  apos a primeira linha mapeada permite sincronizar o pedido de parada com o
+  trabalho real; a sobrecarga normal permanece sem callback.
+- RED/GREEN: o gate inicial encontrou somente formatacao; depois da correcao,
+  o build de `ssa_integration_tests` passou e os cinco contratos de importacao,
+  lotes acima de 64, rescan e cancelamento passaram `5/5` em `0.64 s`.
+- Nenhuma mudanca de schema, layout, menu, regra de filtro ou semantica de
+  consolidacao. Nenhuma prova Windows/UNC foi inferida.
+
+Proxima atividade unica: selecionar a proxima pendencia local de confiabilidade
+SQLite/importacao com evidencia causal e manter provas externas separadas.
+
 ## TypeScale de entrada fechado localmente - 2026-07-19
 
 - [RESOLVED-LOCAL] [TYPESCALE-POINTSIZE-INPUTS] `AppTextField` e `AppCheckBox`

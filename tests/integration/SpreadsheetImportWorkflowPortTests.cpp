@@ -26,7 +26,6 @@
 #include <QLockFile>
 #include <QProcess>
 #include <QTemporaryDir>
-#include <QThread>
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers.hpp>
@@ -6617,20 +6616,24 @@ TEST_CASE("spreadsheet mapper observes cancellation during a large worksheet") {
         table.rows.push_back({"202600321", "Large worksheet", "2026-07-14"});
     }
     std::stop_source stopSource;
-    std::latch started{1};
+    std::binary_semaphore mappingEntered{0};
+    std::binary_semaphore resumeAfterMapping{0};
+    const auto blockAfterFirstRowMapped = [&] {
+        mappingEntered.release();
+        std::stop_callback resumeOnStop(stopSource.get_token(),
+                                        [&] { resumeAfterMapping.release(); });
+        resumeAfterMapping.acquire();
+    };
     auto operation = std::async(std::launch::async, [&] {
-        started.count_down();
         try {
-            static_cast<void>(
-                ssa::infra::importing::SsaSpreadsheetMapper::map(table, stopSource.get_token()));
+            static_cast<void>(ssa::infra::importing::SsaSpreadsheetMapper::map(
+                table, stopSource.get_token(), blockAfterFirstRowMapped));
             return false;
         } catch (const std::system_error& error) {
             return error.code() == std::make_error_code(std::errc::operation_canceled);
         }
     });
-    started.wait();
-    QThread::msleep(5);
-
+    REQUIRE(mappingEntered.try_acquire_for(std::chrono::seconds{1}));
     stopSource.request_stop();
 
     REQUIRE(operation.wait_for(std::chrono::seconds{1}) == std::future_status::ready);
