@@ -2404,6 +2404,186 @@ TEST_CASE("canceling committed consolidation reports success and remains resumab
     REQUIRE(writer.pendingConsolidation().empty());
 }
 
+TEST_CASE("external import resumes a prior journal and imports distinct selected files") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto sourceDirectory = root / "external";
+    const auto dbPath = root / "data" / "ssas.db";
+    const auto pendingSource = inputDirectory / "pending.xlsx";
+    const auto pendingDestination = inputDirectory / "processadas" / "pending.xlsx";
+    const auto selectedSource = sourceDirectory / "selected.xlsx";
+    const auto selectedDestination = inputDirectory / "processadas" / "selected.xlsx";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(sourceDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    createSparseFile(pendingSource, 1);
+
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(sqliteWriterAccess(), dbPath,
+                                                           importColumns());
+    ssa::infra::importing::ResolvedSsaImportRows pendingRows;
+    pendingRows.rows.push_back(
+        {{"numero_ssa", "202600214"}, {"descricao_ssa", "Recovered journal row"}});
+    auto session = writer.startSession(false);
+    REQUIRE(session.write(pendingRows, 1, 0).rowsWritten == 1);
+    session.recordConsolidation({{{pendingSource, pendingDestination, true}}});
+    static_cast<void>(session.finish());
+
+    writeWorkbook(
+        selectedSource,
+        row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao")}) +
+            row(2, {inlineCell("A2", "202600215"), inlineCell("B2", "ASE"),
+                    inlineCell("C2", "Selected after recovery"), inlineCell("D2", "2026-07-18")}));
+
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+    const auto result = port.importExternalFiles({.files = {pendingSource, selectedSource}});
+
+    INFO(result.message);
+    INFO(result.diagnostic);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE_FALSE(result.warning);
+    REQUIRE(std::filesystem::exists(selectedSource));
+    REQUIRE_FALSE(std::filesystem::exists(pendingSource));
+    REQUIRE(std::filesystem::exists(pendingDestination));
+    REQUIRE(std::filesystem::exists(selectedDestination));
+    REQUIRE(writer.pendingConsolidation().empty());
+    ssa::infra::sqlite::SqliteConnection verification(dbPath,
+                                                      ssa::infra::sqlite::SqliteOpenMode::ReadOnly);
+    REQUIRE(scalarText(verification.handle(), "PRAGMA integrity_check") == "ok");
+    REQUIRE(scalarInt(verification.handle(),
+                      "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600214'") == 1);
+    REQUIRE(scalarInt(verification.handle(),
+                      "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600215'") == 1);
+}
+
+TEST_CASE("external import does not repeat a selected source recovered from staged journal") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto sourceDirectory = root / "external";
+    const auto inputDirectory = root / "docs_entrada";
+    const auto processedDirectory = inputDirectory / "processadas";
+    const auto dbPath = root / "data" / "ssas.db";
+    const auto source = sourceDirectory / "selected.xlsx";
+    std::filesystem::create_directories(sourceDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    writeWorkbook(
+        source,
+        row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao")}) +
+            row(2, {inlineCell("A2", "202600216"), inlineCell("B2", "ASE"),
+                    inlineCell("C2", "Recovered staged source"), inlineCell("D2", "2026-07-18")}));
+
+    const ssa::infra::importing::ImportFileStager stager(inputDirectory);
+    const auto staged = stager.stageExternalFiles({source});
+    REQUIRE(staged.files.size() == 1);
+    const ssa::infra::importing::ImportFileConsolidator consolidator(inputDirectory);
+    const auto plan = consolidator.plan({{staged.files.front().consolidationSources, true,
+                                          staged.files.front().consolidationFilename}});
+    REQUIRE(plan.error.empty());
+    REQUIRE(plan.entries.size() == 1);
+
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(sqliteWriterAccess(), dbPath,
+                                                           importColumns());
+    ssa::infra::importing::ResolvedSsaImportRows rows;
+    rows.rows.push_back(
+        {{"numero_ssa", "202600216"}, {"descricao_ssa", "Recovered staged source"}});
+    auto session = writer.startSession(false);
+    REQUIRE(session.write(rows, 1, 0).rowsWritten == 1);
+    session.recordConsolidation(plan.entries.front().moves);
+    static_cast<void>(session.finish());
+
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+    const auto result = port.importExternalFiles({.files = {source}});
+
+    INFO(result.message);
+    INFO(result.diagnostic);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE_FALSE(result.warning);
+    REQUIRE(std::filesystem::exists(source));
+    REQUIRE(directWorkbookCount(inputDirectory) == 0);
+    REQUIRE(directWorkbookCount(processedDirectory) == 1);
+    REQUIRE(std::filesystem::exists(processedDirectory / source.filename()));
+    REQUIRE(writer.pendingConsolidation().empty());
+    ssa::infra::sqlite::SqliteConnection verification(dbPath,
+                                                      ssa::infra::sqlite::SqliteOpenMode::ReadOnly);
+    REQUIRE(scalarText(verification.handle(), "PRAGMA integrity_check") == "ok");
+    REQUIRE(scalarInt(verification.handle(),
+                      "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600216'") == 1);
+}
+
+TEST_CASE("external import continues a changed selected source after staged journal recovery") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto sourceDirectory = root / "external";
+    const auto inputDirectory = root / "docs_entrada";
+    const auto processedDirectory = inputDirectory / "processadas";
+    const auto dbPath = root / "data" / "ssas.db";
+    const auto source = sourceDirectory / "selected.xlsx";
+    std::filesystem::create_directories(sourceDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    writeWorkbook(
+        source,
+        row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao")}) +
+            row(2, {inlineCell("A2", "202600217"), inlineCell("B2", "ASE"),
+                    inlineCell("C2", "Recovered staged source"), inlineCell("D2", "2026-07-18")}));
+
+    const ssa::infra::importing::ImportFileStager stager(inputDirectory);
+    const auto staged = stager.stageExternalFiles({source});
+    REQUIRE(staged.files.size() == 1);
+    const ssa::infra::importing::ImportFileConsolidator consolidator(inputDirectory);
+    const auto plan = consolidator.plan({{staged.files.front().consolidationSources, true,
+                                          staged.files.front().consolidationFilename}});
+    REQUIRE(plan.error.empty());
+    REQUIRE(plan.entries.size() == 1);
+
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(sqliteWriterAccess(), dbPath,
+                                                           importColumns());
+    ssa::infra::importing::ResolvedSsaImportRows recoveredRows;
+    recoveredRows.rows.push_back(
+        {{"numero_ssa", "202600217"}, {"descricao_ssa", "Recovered staged source"}});
+    auto session = writer.startSession(false);
+    REQUIRE(session.write(recoveredRows, 1, 0).rowsWritten == 1);
+    session.recordConsolidation(plan.entries.front().moves);
+    static_cast<void>(session.finish());
+
+    writeWorkbook(
+        source,
+        row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao")}) +
+            row(2, {inlineCell("A2", "202600218"), inlineCell("B2", "ASE"),
+                    inlineCell("C2", "Changed selected source"), inlineCell("D2", "2026-07-18")}));
+
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+    const auto result = port.importExternalFiles({.files = {source}});
+
+    INFO(result.message);
+    INFO(result.diagnostic);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE_FALSE(result.warning);
+    REQUIRE(std::filesystem::exists(source));
+    REQUIRE(directWorkbookCount(inputDirectory) == 0);
+    REQUIRE(directWorkbookCount(processedDirectory) == 2);
+    REQUIRE(writer.pendingConsolidation().empty());
+    ssa::infra::sqlite::SqliteConnection verification(dbPath,
+                                                      ssa::infra::sqlite::SqliteOpenMode::ReadOnly);
+    REQUIRE(scalarText(verification.handle(), "PRAGMA integrity_check") == "ok");
+    REQUIRE(scalarInt(verification.handle(),
+                      "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600217'") == 1);
+    REQUIRE(scalarInt(verification.handle(),
+                      "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600218'") == 1);
+}
+
 TEST_CASE("spreadsheet import workflow stages xlsx and writes sqlite rows") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());

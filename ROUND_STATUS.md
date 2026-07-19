@@ -34,6 +34,39 @@ Ultima verificacao local: 2026-07-18
 - Os registros anteriores de OAuth `invalid_grant` permanecem historicos para
   auditoria, mas nao bloqueiam a publicacao atual.
 
+## Recovery de selecao externa apos journal - 2026-07-18
+
+- [IMPLEMENTED-LOCAL] [IMPORT-EXTERNAL-JOURNAL-REPLAY] Uma selecao externa
+  distinta podia ser staged e descartada quando a chamada encontrava um
+  journal de consolidacao anterior e o retomava com sucesso. O retorno era
+  sucesso de recovery, mas o lote selecionado nao chegava ao SQLite nem a
+  `processadas`.
+- O workflow agora compara apenas candidatos com o mesmo nome de origem ao
+  snapshot staged pendente. A igualdade usa tamanho e bytes completos,
+  observa cancelamento e falha fechada em erro de I/O. A copia que representa
+  o replay e removida; os demais snapshots ja staged seguem para importacao
+  sem segundo copy ou restage.
+- Os contratos distinguem tres casos: arquivo externo distinto continua apos
+  recovery; o mesmo snapshot externo nao repete nem gera `duplicate_conflict`;
+  e arquivo com o mesmo nome, mas bytes alterados, continua como lote novo.
+  Todos exigem journal vazio e `PRAGMA integrity_check = ok`.
+- Validacao local: RED do replay falhou `1/1` com `duplicate_conflict`; GREEN
+  focal passou `7/7` em `0.51 s`; familia importacao/SQLite passou `196/196`
+  em `7.60 s`. `git diff --check`, clang-format, cppcheck, Semgrep (`11`
+  regras, zero finding) e detect-secrets passaram. clang-tidy nao mostrou
+  warning novo; os cinco avisos restantes sao baseline do lock/construtor.
+  Review Terra ultra final: `SEM FINDINGS`.
+- O target `ssa_integration_tests` ligou com sucesso. O Ninja repetiu
+  `premature end of file; recovering`; isto continua ruido do cache de build,
+  sem credito adicional de validacao e sem refactor fora deste slice.
+- Sem schema, layout ou API publica nova. Contadores sem inflacao: plano
+  original `99.0/100`; divida nova `13/14 = 92.9%`; backlog legado `0.0/100`
+  placeholder; fila operacional `5/8 = 62.5%`.
+
+Proxima atividade unica: diagnosticar o primeiro slice seguro de
+`TYPESCALE-POINTSIZE`, com inventario de alturas fixas e contrato visual antes
+de qualquer troca global de unidade.
+
 ## Contrato externo Windows/UNC preparado - 2026-07-18
 
 - [IMPLEMENTED-LOCAL] O CTest `ssa_windows_unc_import_contract` esta pronto

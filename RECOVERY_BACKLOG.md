@@ -20,6 +20,27 @@
 - As linhas anteriores de OAuth `invalid_grant` sao historicas. O bloqueio nao
   vale para a publicacao atual.
 
+## Recovery de selecao externa apos journal - 2026-07-18
+
+- [RESOLVED-LOCAL] [IMPORT-EXTERNAL-JOURNAL-REPLAY] `importExternalFiles`
+  descartava o lote externo staged depois de recuperar journal anterior. O
+  retorno era sucesso, mas uma planilha distinta selecionada nao era importada.
+- A correcao reconhece replay somente entre candidatos de mesmo nome e por
+  igualdade completa de bytes do snapshot staged, cancelavel e fail-closed.
+  Remove apenas a copia que ja pertence ao journal e entrega os outros
+  snapshots ao mesmo `WriteSession`, sem segundo copy/restage.
+- RED: replay externo falhou `1/1` por `duplicate_conflict`. GREEN: sete
+  contratos de recovery passaram `7/7` em `0.51 s`, inclusive mesmo nome com
+  bytes alterados como novo lote. A familia importacao/SQLite passou `196/196`
+  em `7.60 s`; checks estaticos limpos e review Terra ultra final
+  `SEM FINDINGS`. Nao houve schema, layout ou API publica.
+- Sem credito nos contadores fixos: plano `99.0/100`, divida `13/14 = 92.9%`,
+  legado `0.0/100` placeholder e fila `5/8 = 62.5%`. O aceite Windows/UNC de
+  `IMPORT-STAGER-HUB` permanece dependente de plataforma real.
+
+Proxima atividade unica: diagnosticar `TYPESCALE-POINTSIZE` por alturas fixas,
+densidade e contrato visual, sem conversao mecanica global.
+
 ## Contrato executavel Windows/UNC - 2026-07-18
 
 - [IMPLEMENTED-LOCAL] [IMPORT-STAGER-HUB-WINDOWS-UNC-CONTRACT] CMake possui a

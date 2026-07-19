@@ -15,8 +15,11 @@
 
 #include <sqlite3.h>
 
+#include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
+#include <fstream>
 #include <memory>
 #include <sstream>
 #include <string_view>
@@ -41,11 +44,130 @@ namespace ssa::infra::importing {
 
         constexpr std::size_t kMaxWorkflowDiagnosticBytes = 4'096;
         constexpr int kDatabaseBackupPagesPerStep = 256;
+        constexpr std::size_t kFileComparisonBlockBytes = std::size_t{64} * 1024;
+
+        enum class FileContentsComparison {
+            Same,
+            Different,
+            Canceled,
+            Failed,
+        };
 
         enum class DatabaseSnapshotPhase {
             InitialCopy,
             Publication,
         };
+
+        [[nodiscard]] bool isRecoveryCopyCandidate(const StagedImportFile& selected,
+                                                   const ImportConsolidationMove& pending) {
+            const auto sourceName = qt::toQString(pending.source.filename());
+            if (sourceName == qt::toQString(selected.consolidationFilename)) {
+                return true;
+            }
+            const auto stagedPrefix = QStringLiteral(".ssa-staged-") +
+                                      qt::toQString(selected.consolidationFilename.stem()) +
+                                      QStringLiteral("_");
+            return sourceName.startsWith(stagedPrefix) &&
+                   pending.source.extension() == selected.consolidationFilename.extension();
+        }
+
+        [[nodiscard]] FileContentsComparison
+        compareFileContents(const std::filesystem::path& first, const std::filesystem::path& second,
+                            const std::stop_token& stopToken, std::string& diagnostic) {
+            std::error_code error;
+            const auto firstSize = std::filesystem::file_size(first, error);
+            if (error) {
+                diagnostic = "cannot inspect staged recovery candidate";
+                return FileContentsComparison::Failed;
+            }
+            const auto secondSize = std::filesystem::file_size(second, error);
+            if (error) {
+                diagnostic = "cannot inspect pending recovery source";
+                return FileContentsComparison::Failed;
+            }
+            if (firstSize != secondSize) {
+                return FileContentsComparison::Different;
+            }
+            std::ifstream firstInput(first, std::ios::binary);
+            std::ifstream secondInput(second, std::ios::binary);
+            if (!firstInput || !secondInput) {
+                diagnostic = "cannot open recovery duplicate candidate";
+                return FileContentsComparison::Failed;
+            }
+            std::array<char, kFileComparisonBlockBytes> firstBuffer{};
+            std::array<char, kFileComparisonBlockBytes> secondBuffer{};
+            for (;;) {
+                if (stopToken.stop_requested()) {
+                    return FileContentsComparison::Canceled;
+                }
+                firstInput.read(firstBuffer.data(),
+                                static_cast<std::streamsize>(firstBuffer.size()));
+                secondInput.read(secondBuffer.data(),
+                                 static_cast<std::streamsize>(secondBuffer.size()));
+                const auto firstBytes = firstInput.gcount();
+                const auto secondBytes = secondInput.gcount();
+                if (firstBytes != secondBytes) {
+                    return FileContentsComparison::Different;
+                }
+                if (firstBytes == 0) {
+                    break;
+                }
+                const auto comparedBytes = static_cast<std::size_t>(firstBytes);
+                if (!std::equal(firstBuffer.begin(), firstBuffer.begin() + comparedBytes,
+                                secondBuffer.begin())) {
+                    return FileContentsComparison::Different;
+                }
+            }
+            if (!firstInput.eof() || !secondInput.eof()) {
+                diagnostic = "cannot read recovery duplicate candidate";
+                return FileContentsComparison::Failed;
+            }
+            return FileContentsComparison::Same;
+        }
+
+        [[nodiscard]] FileContentsComparison
+        compareSelectedStaging(const StagedImportFile& selected,
+                               const ImportConsolidationMove& pending,
+                               const std::stop_token& stopToken, std::string& diagnostic) {
+            std::error_code error;
+            if (std::filesystem::equivalent(selected.workbookPath, pending.source, error) &&
+                !error) {
+                return FileContentsComparison::Same;
+            }
+            if (!isRecoveryCopyCandidate(selected, pending)) {
+                return FileContentsComparison::Different;
+            }
+            return compareFileContents(selected.workbookPath, pending.source, stopToken,
+                                       diagnostic);
+        }
+
+        void removeStagedSummaryIndices(ImportStagingResult& staging,
+                                        const std::vector<std::size_t>& discardedIndices) {
+            std::vector<bool> discarded(staging.discoveredXlsxSources.size(), false);
+            for (const auto index : discardedIndices) {
+                discarded[index] = true;
+            }
+            std::vector<std::size_t> remappedIndices(discarded.size());
+            std::vector<std::string> remainingSources;
+            remainingSources.reserve(staging.discoveredXlsxSources.size());
+            std::size_t discardedCount = 0;
+            for (std::size_t index = 0; index < staging.discoveredXlsxSources.size(); ++index) {
+                if (discarded[index]) {
+                    ++discardedCount;
+                    continue;
+                }
+                remappedIndices[index] = remainingSources.size();
+                remainingSources.push_back(std::move(staging.discoveredXlsxSources[index]));
+            }
+            std::erase_if(staging.files, [&discarded](const StagedImportFile& file) {
+                return discarded[file.summaryIndex];
+            });
+            for (auto& file : staging.files) {
+                file.summaryIndex = remappedIndices[file.summaryIndex];
+            }
+            staging.discovered -= discardedCount;
+            staging.discoveredXlsxSources = std::move(remainingSources);
+        }
 
         [[nodiscard]] SamSpreadsheetAdaptResult
         readAndAdaptSamWorkbook(const StagedImportFile& file, const ports::SamArtifact& artifact,
@@ -494,7 +616,9 @@ namespace ssa::infra::importing {
     }
 
     std::optional<ports::WorkflowResult> SpreadsheetImportWorkflowPort::resumePendingConsolidation(
-        const std::stop_token& stopToken, const std::chrono::milliseconds sqliteBusyWait) const {
+        const std::stop_token& stopToken, const std::chrono::milliseconds sqliteBusyWait,
+        const ImportStagingResult* const selectedStaging,
+        std::vector<std::size_t>* const selectedPendingSummaryIndices) const {
         std::vector<ImportConsolidationMove> pending;
         try {
             const auto lookupToken = stopToken.stop_requested() ? std::stop_token{} : stopToken;
@@ -520,6 +644,29 @@ namespace ssa::infra::importing {
         }
         if (pending.empty()) {
             return std::nullopt;
+        }
+        if (selectedStaging != nullptr && selectedPendingSummaryIndices != nullptr) {
+            selectedPendingSummaryIndices->reserve(selectedStaging->files.size());
+            for (const auto& selected : selectedStaging->files) {
+                for (const auto& move : pending) {
+                    std::string matchingDiagnostic;
+                    const auto comparison =
+                        compareSelectedStaging(selected, move, stopToken, matchingDiagnostic);
+                    if (comparison == FileContentsComparison::Canceled) {
+                        return ports::WorkflowResult{ports::WorkflowStatus::Canceled,
+                                                     "import_consolidation_resume canceled"};
+                    }
+                    if (comparison == FileContentsComparison::Failed) {
+                        return ports::WorkflowResult{ports::WorkflowStatus::Failed,
+                                                     "import_consolidation_resume_failed", false,
+                                                     std::move(matchingDiagnostic)};
+                    }
+                    if (comparison == FileContentsComparison::Same) {
+                        selectedPendingSummaryIndices->push_back(selected.summaryIndex);
+                        break;
+                    }
+                }
+            }
         }
 
         ImportConsolidationPlan plan;
@@ -600,19 +747,41 @@ namespace ssa::infra::importing {
             return importLockFailure(lockError, selectedFilesFailureSummary(request.files),
                                      lockDiagnostic, lockFailureOrigin);
         }
-        const auto staging = stager_.stageExternalFiles(request.files, stopToken);
-        if (auto resumed =
-                resumePendingConsolidation(stopToken, request.execution.sqliteBusyWait)) {
+        auto staging = stager_.stageExternalFiles(request.files, stopToken);
+        std::vector<std::size_t> selectedPendingSummaryIndices;
+        if (auto resumed = resumePendingConsolidation(stopToken, request.execution.sqliteBusyWait,
+                                                      &staging, &selectedPendingSummaryIndices)) {
             if (resumed->status == ports::WorkflowStatus::Canceled) {
                 return importDiscoveredFiles(staging, false, stopToken, request.execution);
             }
-            const auto cleanupDiagnostic = stager_.discardOwnedArtifacts(staging);
+            if (!resumed->ok() || resumed->warning) {
+                const auto cleanupDiagnostic = stager_.discardOwnedArtifacts(staging);
+                if (!cleanupDiagnostic.empty()) {
+                    resumed->status = ports::WorkflowStatus::Failed;
+                    resumed->message = "import_xlsx_to_sqlite staging_cleanup_failed";
+                    appendWorkflowDiagnostic(resumed->diagnostic, cleanupDiagnostic);
+                }
+                return std::move(*resumed);
+            }
+            ImportStagingResult pendingSelection;
+            for (const auto& file : staging.files) {
+                if (std::ranges::find(selectedPendingSummaryIndices, file.summaryIndex) !=
+                    selectedPendingSummaryIndices.end()) {
+                    pendingSelection.files.push_back(file);
+                }
+            }
+            const auto cleanupDiagnostic = stager_.discardOwnedArtifacts(pendingSelection);
             if (!cleanupDiagnostic.empty()) {
                 resumed->status = ports::WorkflowStatus::Failed;
                 resumed->message = "import_xlsx_to_sqlite staging_cleanup_failed";
                 appendWorkflowDiagnostic(resumed->diagnostic, cleanupDiagnostic);
+                return std::move(*resumed);
             }
-            return std::move(*resumed);
+            removeStagedSummaryIndices(staging, selectedPendingSummaryIndices);
+            if (staging.discovered == 0) {
+                return std::move(*resumed);
+            }
+            return importDiscoveredFiles(staging, false, stopToken, request.execution);
         }
         return importDiscoveredFiles(staging, false, stopToken, request.execution);
     }

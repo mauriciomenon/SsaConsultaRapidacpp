@@ -7,9 +7,11 @@
 #include "infra/sqlite/SqliteSsaImportWriter.h"
 #include "ports/IWorkflowPorts.h"
 
+#include <cstddef>
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace ssa::infra::importing {
 
@@ -45,9 +47,10 @@ namespace ssa::infra::importing {
                               const std::stop_token& stopToken,
                               const ports::ImportExecutionOptions& execution,
                               const std::vector<ports::SamArtifact>* samArtifacts = nullptr) const;
-        [[nodiscard]] std::optional<ports::WorkflowResult>
-        resumePendingConsolidation(const std::stop_token& stopToken,
-                                   std::chrono::milliseconds sqliteBusyWait) const;
+        [[nodiscard]] std::optional<ports::WorkflowResult> resumePendingConsolidation(
+            const std::stop_token& stopToken, std::chrono::milliseconds sqliteBusyWait,
+            const ImportStagingResult* selectedStaging = nullptr,
+            std::vector<std::size_t>* selectedPendingSummaryIndices = nullptr) const;
 
         std::filesystem::path inputFolder_;
         std::filesystem::path databasePath_;
