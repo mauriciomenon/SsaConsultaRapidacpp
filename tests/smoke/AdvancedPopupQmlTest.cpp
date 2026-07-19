@@ -887,7 +887,7 @@ namespace {
             QCOMPARE(harness->property("detailsCount").toInt(), 2);
         }
 
-        void relation_navigator_activates_relation_from_keyboard() {
+        void relation_navigator_activates_relation_index_from_keyboard() {
             QQmlEngine engine;
             QQmlComponent component(&engine);
             component.setData(R"QML(
@@ -900,19 +900,20 @@ namespace {
                     width: 640
                     height: 100
                     property int loadCount: 0
-                    property string loadedSsa: ""
+                    property int loadedIndex: -1
 
                     QtObject {
                         id: relationModel
                         property var relations: [
-                            { ssa: "202600001", role: "current", status: "APV", kind: "Atual" },
-                            { ssa: "202600002", role: "child", status: "STE", kind: "Derivada" }
+                            { ssa: "202600001", role: "parent", status: "APV", kind: "Origem" },
+                            { ssa: "202600002", role: "current", status: "APV", kind: "Atual" },
+                            { ssa: "202600001", role: "related", status: "", kind: "Relacionada" }
                         ]
                         property int relationCount: relations.length
-                        property bool relationLoading: false
-                        property string relationError: ""
+                        property bool relationLoading: true
+                        property string relationError: "Falha de navegacao"
                         property string selectedSsaNumber: "202600001"
-                        property int currentRelationIndex: 0
+                        property int currentRelationIndex: 2
                         property bool canSelectPreviousRelation: currentRelationIndex > 0
                         property bool canSelectNextRelation: currentRelationIndex + 1 < relationCount
                         function selectPreviousRelation() {
@@ -926,8 +927,8 @@ namespace {
                     DetailsRelationNavigator {
                         anchors.fill: parent
                         viewModel: relationModel
-                        onLoadRelationRequested: ssaNumber => {
-                            harness.loadedSsa = ssaNumber;
+                        onLoadRelationRequested: relationIndex => {
+                            harness.loadedIndex = relationIndex;
                             harness.loadCount += 1;
                         }
                     }
@@ -948,14 +949,18 @@ namespace {
 
             QTRY_VERIFY_WITH_TIMEOUT(window.isExposed(), 1000);
             auto* relation = findQuickItemByProperty(window.contentItem(), "objectName",
-                                                     QStringLiteral("relationNode-1"));
+                                                     QStringLiteral("relationNode-2"));
             QTRY_VERIFY_WITH_TIMEOUT(relation != nullptr && relation->isVisible(), 1000);
+            auto* status = findQuickItemByProperty(window.contentItem(), "objectName",
+                                                   QStringLiteral("relationStatus"));
+            QTRY_VERIFY_WITH_TIMEOUT(status != nullptr && status->isVisible(), 1000);
+            QCOMPARE(status->property("text").toString(), QString("Falha de navegacao"));
             relation->forceActiveFocus();
             QTRY_VERIFY_WITH_TIMEOUT(relation->hasActiveFocus(), 1000);
             QTest::keyClick(&window, Qt::Key_Return);
 
             QTRY_COMPARE_WITH_TIMEOUT(harness->property("loadCount").toInt(), 1, 1000);
-            QCOMPARE(harness->property("loadedSsa").toString(), QString("202600002"));
+            QCOMPARE(harness->property("loadedIndex").toInt(), 2);
         }
 
         void saved_filter_activates_from_keyboard() {

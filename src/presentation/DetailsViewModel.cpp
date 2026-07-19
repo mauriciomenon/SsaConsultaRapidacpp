@@ -138,17 +138,27 @@ namespace ssa::presentation {
         return fields_.rowCount();
     }
 
-    void DetailsViewModel::setRecord(const domain::SsaRecord& record) {
+    bool DetailsViewModel::applySelectedRecord(const domain::SsaRecord& record) {
         const auto selectedSsa = record.valueOf(domain::kSsaNumberColumnKey);
-        selectedSsa_ =
+        const auto selected =
             QString::fromUtf8(selectedSsa.data(), static_cast<qsizetype>(selectedSsa.size()));
-        if (selectedSsa_.isEmpty()) {
+        if (selected.isEmpty()) {
+            return false;
+        }
+        selectedSsa_ = selected;
+        title_ = "SSA " + selectedSsa_;
+        fields_.setRecord(record);
+        return true;
+    }
+
+    void DetailsViewModel::setRecord(const domain::SsaRecord& record) {
+        if (!applySelectedRecord(record)) {
             clearRecord();
             return;
         }
-        title_ = "SSA " + selectedSsa_;
+        relationChainSsa_ = selectedSsa_;
+        ++relationChainGeneration_;
         rebuildDerivadas(record);
-        fields_.setRecord(record);
         emit changed();
         // Emit relationNavigationChanged after changed() so the QML sees the
         // updated relationCount before re-evaluating canSelect* flags.
@@ -159,15 +169,19 @@ namespace ssa::presentation {
 
     void DetailsViewModel::clearRecord() {
         stopRelationQueries();
-        latestRelationQueryId_ = 0;
+        latestRecordQueryId_ = 0;
+        latestDirectChildrenQueryId_ = 0;
+        ++relationChainGeneration_;
         fields_.clear();
         selectedSsa_.clear();
+        relationChainSsa_.clear();
         relations_.clear();
         graphModel_.buildFromRelations({}, {});
         title_ = "Nenhuma SSA selecionada";
-        const bool statusChanged = relationLoading_ || !relationError_.isEmpty();
+        const bool statusChanged = relationLoading_ || !relationError().isEmpty();
         relationLoading_ = false;
-        relationError_.clear();
+        recordRelationError_.clear();
+        directChildrenRelationError_.clear();
         setCurrentRelationIndex(0);
         emit changed();
         if (statusChanged) {
@@ -181,16 +195,28 @@ namespace ssa::presentation {
 
     void DetailsViewModel::rebuildDerivadas(const domain::SsaRecord& record) {
         relations_ = buildLocalRelations(record);
-        graphModel_.buildFromRelations(selectedSsa_, relations_);
+        graphModel_.buildFromRelations(relationChainSsa_, relations_);
     }
 
     void DetailsViewModel::startRelationQuery(const QString& ssaNumber,
-                                              const RelationQueryKind kind) {
-        stopRelationQueries();
+                                              const RelationQueryKind kind,
+                                              const bool preserveRelationChain) {
+        const bool resetsRelationChain =
+            kind == RelationQueryKind::DirectChildren || !preserveRelationChain;
+        const bool hadError = !relationError().isEmpty();
+        if (resetsRelationChain) {
+            stopRelationQueries();
+            latestRecordQueryId_ = 0;
+            latestDirectChildrenQueryId_ = 0;
+            recordRelationError_.clear();
+            directChildrenRelationError_.clear();
+        } else {
+            stopRelationRecordQueries();
+            recordRelationError_.clear();
+        }
         if (!browsePort_ || ssaNumber.isEmpty() || shuttingDown_) {
-            const bool statusChanged = relationLoading_ || !relationError_.isEmpty();
+            const bool statusChanged = relationLoading_ || hadError;
             relationLoading_ = false;
-            relationError_.clear();
             if (statusChanged) {
                 emit relationStatusChanged();
             }
@@ -201,6 +227,8 @@ namespace ssa::presentation {
         operation->id = ++nextRelationQueryId_;
         operation->ssaNumber = ssaNumber;
         operation->kind = kind;
+        operation->preserveRelationChain = preserveRelationChain;
+        operation->chainGeneration = relationChainGeneration_;
         operation->state = std::make_shared<RelationQueryState>();
         const auto operationId = operation->id;
         const auto number = operation->ssaNumber.toStdString();
@@ -210,11 +238,14 @@ namespace ssa::presentation {
         connect(&operation->watcher, &QFutureWatcher<void>::finished, this,
                 [this, operationId] { finishRelationQuery(operationId); });
         auto* watcher = &operation->watcher;
-        latestRelationQueryId_ = operationId;
+        if (kind == RelationQueryKind::DirectChildren) {
+            latestDirectChildrenQueryId_ = operationId;
+        } else {
+            latestRecordQueryId_ = operationId;
+        }
         relationQueries_.push_back(std::move(operation));
         emit activeOperationsChanged();
         relationLoading_ = true;
-        relationError_.clear();
         emit relationStatusChanged();
 
         watcher->setFuture(QtConcurrent::run([browsePort, number, state, stopToken, kind] {
@@ -252,9 +283,10 @@ namespace ssa::presentation {
         auto& operation = **found;
         operation.completed = true;
         emit activeOperationsChanged();
-        const bool targetsCurrentRecord =
-            operation.kind == RelationQueryKind::Record || operation.ssaNumber == selectedSsa_;
-        if (!shuttingDown_ && operation.id == latestRelationQueryId_ && targetsCurrentRecord) {
+        if (!shuttingDown_ && isCurrentRelationQuery(operation)) {
+            auto& operationError = operation.kind == RelationQueryKind::Record
+                                       ? recordRelationError_
+                                       : directChildrenRelationError_;
             std::vector<domain::SsaDerivadaEntry> children;
             std::optional<domain::SsaRecord> record = std::nullopt;
             std::exception_ptr error;
@@ -268,34 +300,42 @@ namespace ssa::presentation {
             }
             if (canceled) {
                 logAsyncOperationError("Relation query failed after cancellation:", error);
-                relationLoading_ = false;
-                relationError_.clear();
+                relationLoading_ = currentRelationQueryPending();
+                operationError.clear();
                 emit relationStatusChanged();
             } else if (error) {
-                relationLoading_ = false;
-                relationError_.clear();
+                relationLoading_ = currentRelationQueryPending();
+                operationError.clear();
                 try {
                     std::rethrow_exception(error);
                 } catch (const std::exception& exception) {
-                    relationError_ = QString::fromUtf8(exception.what());
+                    operationError = QString::fromUtf8(exception.what());
                 } catch (...) {
-                    relationError_ = QStringLiteral("Falha interna ao consultar relacoes");
+                    operationError = QStringLiteral("Falha interna ao consultar relacoes");
                 }
                 emit relationStatusChanged();
             } else if (operation.kind == RelationQueryKind::Record) {
                 if (!record) {
-                    relationLoading_ = false;
-                    relationError_ = QStringLiteral("SSA nao encontrada");
+                    relationLoading_ = currentRelationQueryPending();
+                    recordRelationError_ = QStringLiteral("SSA nao encontrada");
+                    emit relationStatusChanged();
+                } else if (operation.preserveRelationChain) {
+                    relationLoading_ = currentRelationQueryPending();
+                    recordRelationError_.clear();
+                    if (!applySelectedRecord(*record)) {
+                        recordRelationError_ = QStringLiteral("SSA nao encontrada");
+                    } else {
+                        emit changed();
+                    }
                     emit relationStatusChanged();
                 } else {
                     setRecord(*record);
                 }
             } else {
-                relationLoading_ = false;
-                relationError_.clear();
+                relationLoading_ = currentRelationQueryPending();
+                directChildrenRelationError_.clear();
                 appendDirectChildren(relations_, children);
-                graphModel_.buildFromRelations(selectedSsa_, relations_);
-                currentRelationIndex_ = currentRelationIndexFor(relations_, selectedSsa_);
+                graphModel_.buildFromRelations(relationChainSsa_, relations_);
                 emit changed();
                 emit relationNavigationChanged();
                 emit relationStatusChanged();
@@ -313,6 +353,15 @@ namespace ssa::presentation {
         }
     }
 
+    void DetailsViewModel::stopRelationRecordQueries() {
+        for (const auto& operation : relationQueries_) {
+            if (!operation->completed && operation->kind == RelationQueryKind::Record) {
+                operation->stopSource.request_stop();
+                operation->watcher.cancel();
+            }
+        }
+    }
+
     void DetailsViewModel::pruneCompletedQueries() {
         std::erase_if(relationQueries_, [](const auto& operation) { return operation->completed; });
     }
@@ -323,6 +372,10 @@ namespace ssa::presentation {
             return;
         }
         startRelationQuery(trimmed, RelationQueryKind::Record);
+    }
+
+    void DetailsViewModel::requestLoadRelationAt(const int index) {
+        loadRelation(index);
     }
 
     int DetailsViewModel::currentRelationIndex() const {
@@ -342,7 +395,7 @@ namespace ssa::presentation {
     }
 
     QString DetailsViewModel::relationError() const {
-        return relationError_;
+        return recordRelationError_.isEmpty() ? directChildrenRelationError_ : recordRelationError_;
     }
 
     void DetailsViewModel::cancel() {
@@ -385,8 +438,23 @@ namespace ssa::presentation {
         // the UI must reflect the user's position in the chain.
         setCurrentRelationIndex(index);
         if (!ssa.isEmpty() && ssa != selectedSsa_) {
-            requestLoadBySsaNumber(ssa);
+            startRelationQuery(ssa, RelationQueryKind::Record, true);
         }
+    }
+
+    bool DetailsViewModel::isCurrentRelationQuery(const RelationQueryOperation& operation) const {
+        if (operation.kind == RelationQueryKind::Record) {
+            return operation.id == latestRecordQueryId_;
+        }
+        return operation.id == latestDirectChildrenQueryId_ &&
+               operation.chainGeneration == relationChainGeneration_ &&
+               operation.ssaNumber == relationChainSsa_;
+    }
+
+    bool DetailsViewModel::currentRelationQueryPending() const {
+        return std::ranges::any_of(relationQueries_, [this](const auto& operation) {
+            return !operation->completed && isCurrentRelationQuery(*operation);
+        });
     }
 
     QString DetailsViewModel::selectedSsa() const {

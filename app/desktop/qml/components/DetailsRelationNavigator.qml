@@ -13,7 +13,7 @@ Rectangle {
     readonly property int relationNodeHeight: Theme.densityValue(root.density, 36, 40, 44)
     readonly property int relationNodeMinWidth: Theme.densityValue(root.density, 78, 86, 94)
     signal graphWindowRequested
-    signal loadRelationRequested(string ssaNumber)
+    signal loadRelationRequested(int relationIndex)
 
     function relationBadge(role) {
         if (role === "parent")
@@ -88,9 +88,10 @@ Rectangle {
         spacing: 3
 
         Label {
+            objectName: "relationStatus"
             Layout.fillWidth: true
             visible: root.viewModel.relationLoading || root.viewModel.relationError.length > 0
-            text: root.viewModel.relationLoading ? "Carregando relacoes" : root.viewModel.relationError
+            text: root.viewModel.relationError.length > 0 ? root.viewModel.relationError : "Carregando relacoes"
             textFormat: Text.PlainText
             color: root.viewModel.relationError.length > 0 ? Theme.danger : Theme.mutedText
             font.pixelSize: Theme.fontSizeMicro
@@ -143,8 +144,7 @@ Rectangle {
                                 id: relationBox
                                 objectName: "relationNode-" + relationRow.index
                                 function activateRelation() {
-                                    if (relationRow.modelData.ssa !== root.viewModel.selectedSsaNumber)
-                                        root.loadRelationRequested(relationRow.modelData.ssa);
+                                    root.loadRelationRequested(relationRow.index);
                                 }
 
                                 width: Math.max(root.relationNodeMinWidth + 18, relationText.implicitWidth + 28)

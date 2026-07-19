@@ -15,7 +15,7 @@ Rectangle {
     signal graphWindowRequested
     // Emitted when the user clicks a relation node: the main view loads that
     // SSA into the details panel (not open SAM).
-    signal loadRelationRequested(string ssaNumber)
+    signal loadRelationRequested(int relationIndex)
 
     function isLongField(key) {
         return key === "descricao_ssa" || key === "descricao_execucao" || key === "justificativa" || key === "parciais";
@@ -36,7 +36,7 @@ Rectangle {
             viewModel: root.viewModel
             density: root.density
             onGraphWindowRequested: root.graphWindowRequested()
-            onLoadRelationRequested: ssaNumber => root.loadRelationRequested(ssaNumber)
+            onLoadRelationRequested: relationIndex => root.loadRelationRequested(relationIndex)
         }
 
         ListView {

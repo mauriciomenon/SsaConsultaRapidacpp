@@ -480,7 +480,7 @@ ApplicationWindow {
                     viewModel: root.vm.browse.details
                     density: root.vm.ui.density
                     onGraphWindowRequested: root.openDetailsWindow()
-                    onLoadRelationRequested: ssaNumber => root.vm.browse.details.requestLoadBySsaNumber(ssaNumber)
+                    onLoadRelationRequested: relationIndex => root.vm.browse.details.requestLoadRelationAt(relationIndex)
                 }
             }
 

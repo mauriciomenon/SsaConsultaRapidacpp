@@ -331,7 +331,26 @@ namespace {
 
         std::vector<ssa::domain::SsaDerivadaEntry>
         derivadasDiretas(const ssa::domain::SsaNumber& number,
-                         std::stop_token = {}) const override {
+                         const std::stop_token stopToken = {}) const override {
+            {
+                std::unique_lock lock(childrenMutex_);
+                if (heldChildrenNumber_ == number.value()) {
+                    childrenStarted_.store(true, std::memory_order_release);
+                    std::stop_callback stopCallback(stopToken,
+                                                    [this] { childrenCondition_.notify_all(); });
+                    childrenCondition_.wait(lock, [this, &stopToken] {
+                        return childrenReleased_ || stopToken.stop_requested();
+                    });
+                    if (stopToken.stop_requested()) {
+                        childrenCanceled_.store(true, std::memory_order_release);
+                        throw std::system_error(
+                            std::make_error_code(std::errc::operation_canceled));
+                    }
+                }
+            }
+            if (failedChildrenNumber_ == number.value()) {
+                throw std::runtime_error("root children failed");
+            }
             const auto found = children_.find(number.value());
             if (found == children_.end()) {
                 return {};
@@ -363,9 +382,42 @@ namespace {
             children_.insert_or_assign(std::move(number), std::move(children));
         }
 
+        void holdChildrenFor(std::string number) {
+            const std::scoped_lock lock(childrenMutex_);
+            heldChildrenNumber_ = std::move(number);
+            childrenReleased_ = false;
+        }
+
+        void failChildrenFor(std::string number) {
+            failedChildrenNumber_ = std::move(number);
+        }
+
+        void releaseChildren() {
+            {
+                const std::scoped_lock lock(childrenMutex_);
+                childrenReleased_ = true;
+            }
+            childrenCondition_.notify_all();
+        }
+
+        [[nodiscard]] bool childrenStarted() const {
+            return childrenStarted_.load(std::memory_order_acquire);
+        }
+
+        [[nodiscard]] bool childrenCanceled() const {
+            return childrenCanceled_.load(std::memory_order_acquire);
+        }
+
       private:
         std::map<std::string, ssa::domain::SsaRecord> records_;
         std::map<std::string, std::vector<ssa::domain::SsaDerivadaEntry>> children_;
+        mutable std::mutex childrenMutex_;
+        mutable std::condition_variable childrenCondition_;
+        mutable std::atomic_bool childrenStarted_{false};
+        mutable std::atomic_bool childrenCanceled_{false};
+        std::string heldChildrenNumber_;
+        std::string failedChildrenNumber_;
+        bool childrenReleased_{false};
     };
 
     class SlowDetailsRepository final : public ssa::ports::ISsaRepository {
@@ -731,7 +783,7 @@ namespace {
             QCOMPARE(details.currentRelationIndex(), 0);
         }
 
-        void details_load_relation_clamps_index_after_successful_shorter_chain_load() {
+        void details_relation_navigation_preserves_the_table_selection_chain() {
             auto repository = std::make_shared<DetailsRelationRepository>();
             repository->setRecord("202500001", ssa::domain::SsaRecord{{{"numero_ssa", "202500001"},
                                                                        {"situacao", "APV"}}});
@@ -746,10 +798,118 @@ namespace {
 
             QTRY_COMPARE_WITH_TIMEOUT(details.selectedSsa(), QString("202500001"), 1000);
             QTRY_VERIFY_WITH_TIMEOUT(!details.relationLoading(), 1000);
-            QTRY_COMPARE_WITH_TIMEOUT(details.relationCount(), 1, 1000);
+            QCOMPARE(details.relationCount(), 2);
             QCOMPARE(details.currentRelationIndex(), 0);
-            QVERIFY(!details.canSelectNextRelation());
+            QCOMPARE(details.graphModel()->target(), QString("202500003"));
+            QVERIFY(details.canSelectNextRelation());
             QVERIFY(!details.canSelectPreviousRelation());
+        }
+
+        void details_relation_click_preserves_the_table_selection_chain() {
+            auto repository = std::make_shared<DetailsRelationRepository>();
+            repository->setRecord("202500001", ssa::domain::SsaRecord{{{"numero_ssa", "202500001"},
+                                                                       {"situacao", "APV"}}});
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::DetailsViewModel details(service);
+
+            details.setRecord(ssa::domain::SsaRecord{
+                {{"numero_ssa", "202500003"}, {"situacao", "APV"}, {"derivada_de", "202500001"}}});
+
+            details.requestLoadRelationAt(0);
+
+            QTRY_COMPARE_WITH_TIMEOUT(details.selectedSsa(), QString("202500001"), 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(!details.relationLoading(), 1000);
+            QCOMPARE(details.relationCount(), 2);
+            QCOMPARE(details.currentRelationIndex(), 0);
+            QCOMPARE(details.graphModel()->target(), QString("202500003"));
+            QVERIFY(details.canSelectNextRelation());
+            QVERIFY(!details.canSelectPreviousRelation());
+        }
+
+        void details_navigation_keeps_pending_root_children() {
+            auto repository = std::make_shared<DetailsRelationRepository>();
+            repository->setRecord("202500001", ssa::domain::SsaRecord{{{"numero_ssa", "202500001"},
+                                                                       {"situacao", "APV"}}});
+            repository->setChildren("202500003", {{"202500004", "STE"}});
+            repository->holdChildrenFor("202500003");
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::DetailsViewModel details(service);
+
+            details.setRecord(ssa::domain::SsaRecord{
+                {{"numero_ssa", "202500003"}, {"situacao", "APV"}, {"derivada_de", "202500001"}}});
+            QTRY_VERIFY_WITH_TIMEOUT(repository->childrenStarted(), 1000);
+
+            details.selectPreviousRelation();
+
+            QTRY_COMPARE_WITH_TIMEOUT(details.selectedSsa(), QString("202500001"), 1000);
+            repository->releaseChildren();
+            QTRY_COMPARE_WITH_TIMEOUT(details.relationCount(), 3, 1000);
+            QCOMPARE(details.relations().at(2).toMap().value("ssa").toString(),
+                     QString("202500004"));
+            QCOMPARE(details.currentRelationIndex(), 0);
+            QCOMPARE(details.graphModel()->target(), QString("202500003"));
+            QVERIFY(!repository->childrenCanceled());
+        }
+
+        void details_pending_root_children_keep_navigation_error() {
+            auto repository = std::make_shared<DetailsRelationRepository>();
+            repository->setChildren("202500003", {{"202500004", "STE"}});
+            repository->holdChildrenFor("202500003");
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::DetailsViewModel details(service);
+
+            details.setRecord(ssa::domain::SsaRecord{
+                {{"numero_ssa", "202500003"}, {"situacao", "APV"}, {"derivada_de", "202500001"}}});
+            QTRY_VERIFY_WITH_TIMEOUT(repository->childrenStarted(), 1000);
+
+            details.selectPreviousRelation();
+
+            QTRY_COMPARE_WITH_TIMEOUT(details.relationError(), QString("SSA nao encontrada"), 1000);
+            repository->releaseChildren();
+            QTRY_COMPARE_WITH_TIMEOUT(details.relationCount(), 3, 1000);
+            QCOMPARE(details.relationError(), QString("SSA nao encontrada"));
+        }
+
+        void details_navigation_success_keeps_root_children_error() {
+            auto repository = std::make_shared<DetailsRelationRepository>();
+            repository->setRecord("202500001", ssa::domain::SsaRecord{{{"numero_ssa", "202500001"},
+                                                                       {"situacao", "APV"}}});
+            repository->failChildrenFor("202500003");
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::DetailsViewModel details(service);
+
+            details.setRecord(ssa::domain::SsaRecord{
+                {{"numero_ssa", "202500003"}, {"situacao", "APV"}, {"derivada_de", "202500001"}}});
+            QTRY_COMPARE_WITH_TIMEOUT(details.relationError(), QString("root children failed"),
+                                      1000);
+
+            details.selectPreviousRelation();
+
+            QTRY_COMPARE_WITH_TIMEOUT(details.selectedSsa(), QString("202500001"), 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(!details.relationLoading(), 1000);
+            QCOMPARE(details.relationError(), QString("root children failed"));
+        }
+
+        void details_relation_navigation_keeps_duplicate_relation_index() {
+            auto repository = std::make_shared<DetailsRelationRepository>();
+            repository->setRecord("202500001", ssa::domain::SsaRecord{{{"numero_ssa", "202500001"},
+                                                                       {"situacao", "APV"}}});
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::DetailsViewModel details(service);
+
+            details.setRecord(ssa::domain::SsaRecord{{{"numero_ssa", "202500003"},
+                                                      {"situacao", "APV"},
+                                                      {"derivada_de", "202500001"},
+                                                      {"numero_ssa_relacionada_1", "202500001"}}});
+
+            QCOMPARE(details.relationCount(), 3);
+            QCOMPARE(details.currentRelationIndex(), 1);
+            details.selectNextRelation();
+
+            QTRY_COMPARE_WITH_TIMEOUT(details.selectedSsa(), QString("202500001"), 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(!details.relationLoading(), 1000);
+            QCOMPARE(details.currentRelationIndex(), 2);
+            QCOMPARE(details.relationCount(), 3);
         }
 
         void details_relation_query_is_async_latest_wins_and_discards_stale_result() {
