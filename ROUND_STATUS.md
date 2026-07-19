@@ -3,6 +3,25 @@
 Fonte operacional para humanos e agentes de codigo. Verifique este arquivo
 antes de interpretar sincronizacao Git, validacao local ou estado externo.
 
+## Smoke runtime de contraste para controles QML - 2026-07-19
+
+- **ENTREGUE localmente, parcial no item**: o smoke agora instancia
+  `ActionButton` e `FilterTabButton` reais e percorre as `39` paletas,
+  comparando foreground e fundo efetivos contra WCAG AA `4.5:1`.
+- Build do target e CTest focal passaram `1/1` em `2.29 s`. Nenhuma cor,
+  paleta, geometria ou handler de producao mudou.
+- `AppComboBox`, `ThemeDialog`, `AboutDialog`, `SsaTable` e analytics seguem
+  com cobertura semantica ou testes existentes, mas ainda nao recebem credito
+  de smoke runtime dedicado neste item.
+- O target ainda emite warnings point/pixel em cards antigos e um TypeError
+  preexistente de `SsaTable.qml:300` em teste ja verde; esses riscos ficam
+  separados e nao foram mascarados.
+- Contadores permanecem plano `99.0/100`, divida nova P0 `14/14 = 100.0%`,
+  backlog legado `N/A` e fila operacional `6/8 = 75.0%`.
+
+Proxima atividade unica: completar os consumidores QML restantes somente com
+smokes observaveis ou registrar cada limite como externo/deferido.
+
 ## Gate completo apos prova real e TypeScale - 2026-07-19
 
 - **ENTREGUE localmente**: CTest dev sequencial foi executado depois da prova

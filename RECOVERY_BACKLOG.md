@@ -1,5 +1,20 @@
 # Recovery Backlog
 
+## Smoke runtime AA de controles compartilhados - 2026-07-19
+
+- [RESOLVED-LOCAL] O novo contrato instancia `ActionButton` e
+  `FilterTabButton` reais em offscreen, percorre 39 paletas e exige contraste
+  minimo `4.5:1` para foreground/fundo efetivos. CTest focal `1/1` em `2.29 s`.
+- [PARTIAL-LOCAL] `AppComboBox`, `ThemeDialog`, `AboutDialog`, `SsaTable` e
+  analytics permanecem com cobertura semantica ou testes existentes, sem
+  credito de smoke runtime dedicado neste corte.
+- Warnings point/pixel de cards antigos e o TypeError preexistente em
+  `SsaTable.qml:300` foram observados, nao escondidos e nao alterados neste
+  slice.
+
+Proxima atividade unica: completar ou classificar os consumidores restantes
+com evidencia runtime, sem alterar layout por suposicao.
+
 ## Gate completo depois da prova real - 2026-07-19
 
 - [RESOLVED-LOCAL] CTest dev sequencial passou `627/627` em `76.22 s`, sem

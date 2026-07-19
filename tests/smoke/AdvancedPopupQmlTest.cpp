@@ -389,6 +389,8 @@ namespace {
             QVERIFY(
                 qmlRegisterType(QUrl::fromLocalFile(components.filePath("PagerQuickFilters.qml")),
                                 "SsaConsultaRapida", 1, 0, "PagerQuickFilters") >= 0);
+            QVERIFY(qmlRegisterType(QUrl::fromLocalFile(components.filePath("FilterTabButton.qml")),
+                                    "SsaConsultaRapida", 1, 0, "FilterTabButton") >= 0);
         }
 
         void reprogramming_value_combo_loads_cold_cache_once() {
@@ -1437,6 +1439,106 @@ namespace {
 
             if (!failures.isEmpty()) {
                 QFAIL(qPrintable(QStringLiteral("runtime text contrast below AA (4.5:1):\n%1")
+                                     .arg(failures.join('\n'))));
+            }
+        }
+
+        void action_button_and_filter_tab_keep_wcag_aa_at_runtime() {
+            static constexpr auto kHarness = R"QML(
+                import QtQuick
+                import QtQuick.Controls
+                import SsaConsultaRapida
+
+                Window {
+                    id: root
+                    width: 640
+                    height: 180
+                    visible: true
+                    color: Theme.surface
+                    property string selectedTheme: Theme.themeName
+                    readonly property var themeNames: Object.keys(Theme.palettes)
+                    readonly property color surfaceColor: Theme.surface
+                    readonly property color accentColor: Theme.accent
+
+                    onSelectedThemeChanged: Theme.themeName = selectedTheme
+
+                    ActionButton {
+                        objectName: "aaActionButton"
+                        x: 16
+                        y: 16
+                        width: 180
+                        text: "Acao"
+                    }
+
+                    FilterTabButton {
+                        objectName: "aaFilterTabButton"
+                        x: 16
+                        y: 124
+                        width: 180
+                        text: "Filtro"
+                        checked: true
+                    }
+                }
+            )QML";
+
+            QQmlEngine engine;
+            QQmlComponent component(&engine);
+            component.setData(kHarness, QUrl(QStringLiteral("inmemory:/AaControlsHarness.qml")));
+            QTRY_VERIFY_WITH_TIMEOUT(component.status() != QQmlComponent::Loading, 1000);
+            QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+
+            std::unique_ptr<QObject> object(component.create());
+            QVERIFY2(object != nullptr, qPrintable(component.errorString()));
+            auto* window = qobject_cast<QQuickWindow*>(object.get());
+            QVERIFY(window != nullptr);
+            window->show();
+            QTRY_VERIFY_WITH_TIMEOUT(window->isExposed(), 1000);
+
+            auto* action = window->findChild<QQuickItem*>(QStringLiteral("aaActionButton"));
+            auto* tab = window->findChild<QQuickItem*>(QStringLiteral("aaFilterTabButton"));
+            QVERIFY(action != nullptr);
+            QVERIFY(tab != nullptr);
+            auto* tabContent = qvariant_cast<QQuickItem*>(tab->property("contentItem"));
+            QVERIFY(tabContent != nullptr);
+
+            const QVariantList themeNames =
+                object->property("themeNames").value<QJSValue>().toVariant().toList();
+            QCOMPARE(themeNames.size(), 39);
+            const QString initialTheme = object->property("selectedTheme").toString();
+            QVERIFY(!initialTheme.isEmpty());
+            const auto restoreTheme =
+                qScopeGuard([&] { object->setProperty("selectedTheme", initialTheme); });
+
+            QStringList failures;
+            for (const QVariant& theme : themeNames) {
+                const QString themeName = theme.toString();
+                object->setProperty("selectedTheme", themeName);
+                QTRY_COMPARE_WITH_TIMEOUT(object->property("selectedTheme").toString(), themeName,
+                                          1000);
+
+                const QColor surface = object->property("surfaceColor").value<QColor>();
+                const QColor accent = object->property("accentColor").value<QColor>();
+                const QColor actionBackground =
+                    action->property("effectiveBackground").value<QColor>();
+                const QColor actionForeground =
+                    action->property("effectiveForeground").value<QColor>();
+                const QColor tabForeground = tabContent->property("color").value<QColor>();
+                const auto check = [&failures, &themeName](const QString& label,
+                                                           const QColor& foreground,
+                                                           const QColor& background) {
+                    if (!foreground.isValid() || !background.isValid() ||
+                        contrastRatio(foreground, background) < 4.5) {
+                        failures.append(QStringLiteral("%1: %2 contrast=%3:1")
+                                            .arg(themeName, label)
+                                            .arg(contrastRatio(foreground, background), 0, 'f', 2));
+                    }
+                };
+                check(QStringLiteral("ActionButton"), actionForeground, actionBackground);
+                check(QStringLiteral("FilterTabButton"), tabForeground, accent);
+            }
+
+            if (!failures.isEmpty()) {
+                QFAIL(qPrintable(QStringLiteral("runtime shared control contrast below AA:\n%1")
                                      .arg(failures.join('\n'))));
             }
         }
