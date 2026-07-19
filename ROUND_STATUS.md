@@ -11,7 +11,7 @@ antes de interpretar sincronizacao Git, validacao local ou estado externo.
   de migracao quando o banco possui poucos registros legados.
 - Medicao anterior do harness existente, 30 amostras e 250000 linhas:
   reabertura canonica p50/p95 `2.10/3.49 ms`; legacy p50/p95
-  `1.99/3.34 ms` na fase idempotente. Na primeira passada, canonical
+  `2.03/3.81 ms` na fase idempotente. Na primeira passada, canonical
   p50/p95 `1.05/1.52 s` e legacy `1.99/3.34 s`, com RSS adicional legacy
   p95 de aproximadamente `104 MB`. O custo e de migracao unica; nenhum
   refactor especulativo foi aplicado alem do filtro seguro.

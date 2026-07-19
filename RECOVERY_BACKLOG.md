@@ -6,7 +6,7 @@
   predicado do indice parcial ao `SELECT` de normalizacao. Bancos com poucos
   registros legados nao percorrem linhas canonicas desnecessarias.
 - Evidencia: harness existente com 30 amostras/250000 linhas mediu reabertura
-  canonica em p50/p95 `2.10/3.49 ms` e legacy em `1.99/3.34 ms`; primeira
+  canonica em p50/p95 `2.10/3.49 ms` e legacy em `2.03/3.81 ms`; primeira
   passada legacy ficou em p50/p95 `1.99/3.34 s`, com RSS p95 de ~104 MB.
   O custo de migracao total foi medido e permanece explicitamente separado do
   caminho idempotente.
