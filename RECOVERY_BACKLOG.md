@@ -1,5 +1,22 @@
 # Recovery Backlog
 
+## Release 0.9.13 e pacote por versao - 2026-07-19
+
+- [RESOLVED-LOCAL] `PROJECT_VERSION` agora e `0.9.13`, pois `v0.9.12` ja
+  existia. O build `dev` e o build `release` foram recompilados com a nova
+  versao; os testes de versao release passaram `2/2` em `0.42 s`.
+- [RESOLVED-LOCAL] O caminho funcional minimo de importacao e SQLite passou
+  `7/7` testes focados em `1.69 s`, incluindo rollback, criacao, resiliencia a
+  morte de processo, XLSX e lotes acima de 64.
+- [EXTERNAL] O script de macOS chegou ate deploy Qt e assinatura, mas o host
+  recusou a criacao do DMG com `hdiutil: Dispositivo nao configurado`; ZIP e
+  DMG nao recebem credito. A tag `v0.9.13` sera criada depois do commit.
+- [EXTERNAL] Bitbucket esta operacional; GitLab permanece pendente por
+  `oauth2 invalid_grant` e exige renovacao de credencial.
+
+Proxima atividade unica: criar e publicar `v0.9.13` no Bitbucket, sem ocultar a
+dependencia externa do GitLab ou do DMG.
+
 ## Continuidade apos falha no lote intermediario - 2026-07-19
 
 - [RESOLVED-LOCAL] O contrato de importacao externa agora prova tres lotes:
