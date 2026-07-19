@@ -30,8 +30,8 @@ antes de interpretar sincronizacao Git, validacao local ou estado externo.
   de producao foi movida nesta validacao.
 - Fechamento: CTest final passou `617/617` em `67.61 s` apos o ajuste de
   expectativa do teste incremental. O codigo esta em `5e3de3b`; o fechamento
-  documental esta em `342e205` no Bitbucket. `bitbucket/master` confere
-  `342e205`; `origin/master` permanece em `428302d` por OAuth GitLab
+  documental esta publicado no Bitbucket; `bitbucket/master` contem este
+  fechamento. `origin/master` permanece em `428302d` por OAuth GitLab
   `invalid_grant`, sem alegacao de sincronizacao.
 
 Proxima atividade unica: iniciar a prova Windows/UNC real ou selecionar outro

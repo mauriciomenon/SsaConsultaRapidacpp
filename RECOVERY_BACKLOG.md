@@ -22,8 +22,8 @@
   item P0 fechado; backlog legado `N/A`, sem denominador ativo; fila
   operacional segue `5/8 = 62.5%` por depender de provas externas.
 - CTest final passou `617/617` em `67.61 s`. O codigo foi publicado em
-  `5e3de3b`; o fechamento documental foi publicado no Bitbucket em
-  `342e205`. GitLab `origin` permanece em `428302d` por OAuth
+  `5e3de3b`; o fechamento documental foi publicado no Bitbucket. GitLab
+  `origin` permanece em `428302d` por OAuth
   `invalid_grant`.
 - Proxima atividade unica: executar Windows/UNC real; nao reabrir este P0.
 
