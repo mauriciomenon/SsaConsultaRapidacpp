@@ -11,7 +11,7 @@
 
 namespace ssa::ports {
 
-    inline constexpr int kCurrentUserPreferencesSchemaVersion = 13;
+    inline constexpr int kCurrentUserPreferencesSchemaVersion = 14;
     inline constexpr std::size_t kMaxSavedFilterCount = 200;
     inline constexpr std::size_t kMaxSavedFilterNameLength = 128;
     inline constexpr std::size_t kMaxFilterExpressionLength = 4096;
@@ -57,6 +57,19 @@ namespace ssa::ports {
         bool operator==(const SamRefreshPreferencesSnapshot&) const = default;
     };
 
+    struct ImportExecutionPreferencesSnapshot {
+        static constexpr int kDefaultRowsPerChunk = 1'000;
+        static constexpr int kMaxRowsPerChunk = 1'000;
+        static constexpr int kDefaultSqliteBusyWaitMs = 3'000;
+        static constexpr int kMaxSqliteBusyWaitMs = 3'000;
+        static constexpr int kSqliteBusyRetryGranularityMs = 5;
+
+        int rowsPerChunk{kDefaultRowsPerChunk};
+        int sqliteBusyWaitMs{kDefaultSqliteBusyWaitMs};
+
+        bool operator==(const ImportExecutionPreferencesSnapshot&) const = default;
+    };
+
     struct UserPreferencesSnapshot {
         std::vector<std::string> visibleColumns;
         std::map<std::string, int> columnWidths;
@@ -66,6 +79,7 @@ namespace ssa::ports {
         std::string sortColumnKey{"numero_ssa"};
         FilterPreferencesSnapshot filters;
         SamRefreshPreferencesSnapshot samRefresh;
+        ImportExecutionPreferencesSnapshot importExecution;
         int schemaVersion{kCurrentUserPreferencesSchemaVersion};
         int pageSize{domain::kDefaultPageSize};
         int detailsPanelWidth{ports::kDefaultDetailsPanelWidth};

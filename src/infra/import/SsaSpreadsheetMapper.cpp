@@ -30,21 +30,44 @@ namespace ssa::infra::importing {
             return SsaSpreadsheetHeaderCatalog::canonicalColumnForHeader(header);
         }
 
-        std::string normalizeDeviationNumber(std::string value) {
-            auto normalized = value;
+        std::string normalizeDeviationNumber(const std::string& value) {
+            auto normalized = domain::trimWhitespace(value);
             std::ranges::transform(normalized, normalized.begin(), [](const unsigned char ch) {
                 return static_cast<char>(std::tolower(ch));
             });
-            static constexpr std::string_view prefix{"desvio #"};
-            if (!normalized.starts_with(prefix)) {
-                return value;
+            if (normalized.empty()) {
+                return {};
             }
-            const auto suffix = std::string_view{value}.substr(prefix.size());
-            return !suffix.empty() &&
-                           std::ranges::all_of(
-                               suffix, [](const unsigned char ch) { return std::isdigit(ch) != 0; })
-                       ? std::string{suffix}
-                       : value;
+            const auto digitsOnly = [](const std::string_view candidate) {
+                return !candidate.empty() &&
+                       std::ranges::all_of(
+                           candidate, [](const unsigned char ch) { return std::isdigit(ch) != 0; });
+            };
+            if (digitsOnly(normalized)) {
+                return normalized;
+            }
+            if (normalized.starts_with("desvio")) {
+                auto suffix = std::string_view{normalized}.substr(6);
+                while (!suffix.empty() &&
+                       std::isspace(static_cast<unsigned char>(suffix.front()))) {
+                    suffix.remove_prefix(1);
+                }
+                if (!suffix.empty() && suffix.front() == '#') {
+                    suffix.remove_prefix(1);
+                    while (!suffix.empty() &&
+                           std::isspace(static_cast<unsigned char>(suffix.front()))) {
+                        suffix.remove_prefix(1);
+                    }
+                }
+                if (digitsOnly(suffix)) {
+                    return std::string{suffix};
+                }
+            }
+            if (normalized == "sem desvio" || normalized == "sem desvios" ||
+                normalized == "nenhum" || normalized == "nao") {
+                return "0";
+            }
+            return {};
         }
 
         std::string normalizeReprogrammingNumber(const std::string& value) {

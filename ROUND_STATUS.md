@@ -3,6 +3,39 @@
 Fonte operacional para humanos e agentes de codigo. Verifique este arquivo
 antes de interpretar sincronizacao Git, validacao local ou estado externo.
 
+## Importacao externa em blocos e normalizacao de desvios - 2026-07-19
+
+- **ENTREGUE no working tree**: selecoes externas com mais de 64 arquivos nao
+  sao mais rejeitadas. O C++ divide o trabalho em blocos sequenciais de ate
+  64, valida cada bloco, cria staging atomico e executa a transacao SQLite e o
+  journal do bloco antes de seguir para o proximo.
+- Prova ponta a ponta: 65 XLSX externos em 2 blocos, 65 insercoes no SQLite,
+  65 arquivos em `processadas`, sem falha, teste focal `1/1` em `0.40 s`.
+  O stager isolado tambem passou `1/1` em `0.34 s`.
+- **ENTREGUE no working tree**: `numero_desvios` aceita inteiro puro,
+  `Desvio #N` com espacos, `sem desvio`/`sem desvios` e descarta texto nao
+  numerico opcional sem abortar a planilha. O teste inclui os tres casos e
+  passou junto com o fluxo externo.
+- **ENTREGUE no working tree**: o slice de preferencias schema 14 foi fechado.
+  Valores `import_execution` ausentes ou de tipo invalido mantem os defaults;
+  migracao schema 12 e persistencia schema 14 passaram.
+- Review final do diff: `git diff --check`, clang-format, cppcheck,
+  Semgrep C/security (2 regras, 0 findings) e detect-secrets passaram.
+  Achados corrigidos durante o ciclo: formatacao, parametro por valor,
+  assinatura/constante do lote e default de busy wait ausente.
+- Suite completa sequencial: `619/619` em `70.29 s`. Nao houve timeout
+  contabilizado como sucesso.
+- Estado antes do commit: branch `master`, HEAD `d1f9f9c`; working tree dirty
+  contem o slice desta rodada mais arquivos locais preexistentes. Remotes
+  ainda apontam para `d1f9f9c`; nenhuma prova externa foi presumida.
+- Contadores: plano original `99.0/100`; divida nova P0 permanece
+  `14/14 = 100.0%`, com esta regressao operacional fechada fora do denominador
+  historico; backlog legado `N/A`; fila operacional local `6/8 = 75.0%`, com
+  Windows/UNC real ainda sem credito.
+
+Proxima atividade unica: commit atomico deste slice, push para `origin` e
+`bitbucket`, confirmar os dois refs e entao iniciar a proxima pendencia local.
+
 ## Corpus atual no binario recem-compilado - 2026-07-19
 
 - **ENTREGUE**: a copia descartavel do corpus atual foi processada pelo CLI

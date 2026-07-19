@@ -419,6 +419,29 @@ namespace ssa::infra::preferences {
             return preferences;
         }
 
+        ports::ImportExecutionPreferencesSnapshot
+        readImportExecutionPreferences(const QJsonObject& root) {
+            ports::ImportExecutionPreferencesSnapshot preferences;
+            const auto object = root.value("import_execution").toObject();
+            const auto rowsPerChunkValue = object.value("rows_per_chunk");
+            const auto rowsPerChunk = rowsPerChunkValue.toInt();
+            if (rowsPerChunkValue.isDouble() && rowsPerChunk >= 1 &&
+                rowsPerChunk <= ports::ImportExecutionPreferencesSnapshot::kMaxRowsPerChunk) {
+                preferences.rowsPerChunk = rowsPerChunk;
+            }
+            const auto sqliteBusyWaitValue = object.value("sqlite_busy_wait_ms");
+            const auto sqliteBusyWaitMs = sqliteBusyWaitValue.toInt();
+            if (sqliteBusyWaitValue.isDouble() && sqliteBusyWaitMs >= 0 &&
+                sqliteBusyWaitMs <=
+                    ports::ImportExecutionPreferencesSnapshot::kMaxSqliteBusyWaitMs &&
+                sqliteBusyWaitMs %
+                        ports::ImportExecutionPreferencesSnapshot::kSqliteBusyRetryGranularityMs ==
+                    0) {
+                preferences.sqliteBusyWaitMs = sqliteBusyWaitMs;
+            }
+            return preferences;
+        }
+
         QJsonObject
         samRefreshPreferencesToJson(const ports::SamRefreshPreferencesSnapshot& preferences) {
             return {{"scrap_report_root", QString::fromStdString(preferences.scrapReportRoot)},
@@ -429,6 +452,20 @@ namespace ssa::infra::preferences {
                     {"interval_minutes", std::clamp(preferences.intervalMinutes, 1, 30'000)},
                     {"enabled", preferences.enabled},
                     {"auto_refresh_enabled", preferences.autoRefreshEnabled}};
+        }
+
+        QJsonObject importExecutionPreferencesToJson(
+            const ports::ImportExecutionPreferencesSnapshot& preferences) {
+            const auto rowsPerChunk =
+                std::clamp(preferences.rowsPerChunk, 1,
+                           ports::ImportExecutionPreferencesSnapshot::kMaxRowsPerChunk);
+            const auto busyWaitLimit =
+                ports::ImportExecutionPreferencesSnapshot::kMaxSqliteBusyWaitMs;
+            const auto busyWait =
+                std::clamp(preferences.sqliteBusyWaitMs, 0, busyWaitLimit) /
+                ports::ImportExecutionPreferencesSnapshot::kSqliteBusyRetryGranularityMs *
+                ports::ImportExecutionPreferencesSnapshot::kSqliteBusyRetryGranularityMs;
+            return {{"rows_per_chunk", rowsPerChunk}, {"sqlite_busy_wait_ms", busyWait}};
         }
 
         void writeWindowPreferences(QJsonObject& root,
@@ -481,6 +518,7 @@ namespace ssa::infra::preferences {
         snapshot.columnWidths = readColumnWidths(root);
         snapshot.savedFilters = readSavedFilters(root);
         snapshot.samRefresh = readSamRefreshPreferences(root);
+        snapshot.importExecution = readImportExecutionPreferences(root);
         migrateDefaultColumnWidths(snapshot);
         migrateSchema6ColumnWidths(snapshot);
         migrateSchema7ColumnWidths(snapshot);
@@ -500,6 +538,7 @@ namespace ssa::infra::preferences {
         writeWindowPreferences(root, snapshot);
         writeColumnPreferences(root, snapshot);
         root.insert("sam_refresh", samRefreshPreferencesToJson(snapshot.samRefresh));
+        root.insert("import_execution", importExecutionPreferencesToJson(snapshot.importExecution));
         FilterPreferencesJsonCodec{}.writeFilters(root, snapshot.filters);
         return QJsonDocument(root);
     }

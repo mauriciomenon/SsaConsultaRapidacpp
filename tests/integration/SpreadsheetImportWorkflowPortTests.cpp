@@ -2699,7 +2699,13 @@ TEST_CASE("spreadsheet import persists a real deviation label as an integer") {
                           inlineCell("E1", "Desvio")}) +
                       row(2, {inlineCell("A2", "202600136"), inlineCell("B2", "APV"),
                               inlineCell("C2", "Deviation"), inlineCell("D2", "2026-07-14"),
-                              inlineCell("E2", "Desvio #2")}));
+                              inlineCell("E2", "Desvio # 2")}) +
+                      row(3, {inlineCell("A3", "202600137"), inlineCell("B3", "APV"),
+                              inlineCell("C3", "No deviation"), inlineCell("D3", "2026-07-14"),
+                              inlineCell("E3", "sem desvio")}) +
+                      row(4, {inlineCell("A4", "202600138"), inlineCell("B4", "APV"),
+                              inlineCell("C4", "Unknown deviation label"),
+                              inlineCell("D4", "2026-07-14"), inlineCell("E4", "pending")}));
 
     ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
                                                               importColumns());
@@ -2710,6 +2716,10 @@ TEST_CASE("spreadsheet import persists a real deviation label as an integer") {
     REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
     REQUIRE(scalarInt(db, "SELECT numero_desvios FROM ssa_table "
                           "WHERE numero_ssa='202600136'") == 2);
+    REQUIRE(scalarInt(db, "SELECT numero_desvios FROM ssa_table "
+                          "WHERE numero_ssa='202600137'") == 0);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600138' "
+                          "AND numero_desvios IS NULL") == 1);
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
@@ -5226,6 +5236,47 @@ TEST_CASE("spreadsheet import workflow processes more than 64 discovered files")
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
+TEST_CASE("external import processes selected files in blocks of 64") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto sourceDirectory = root / "external";
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(sourceDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    std::vector<std::filesystem::path> files;
+    files.reserve(65);
+    for (std::size_t index = 0; index < 65; ++index) {
+        const auto workbook = sourceDirectory / ("external_" + std::to_string(index) + ".xlsx");
+        writeWorkbook(workbook,
+                      row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Descricao"),
+                              inlineCell("C1", "Data Cadastro")}) +
+                          row(2, {inlineCell("A2", std::to_string(202601000 + index)),
+                                  inlineCell("B2", "External windowed import"),
+                                  inlineCell("C2", "2026-07-14")}));
+        files.push_back(workbook);
+    }
+
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+    const auto result = port.importExternalFiles({.files = files});
+
+    INFO(result.message);
+    INFO(result.diagnostic);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE(result.message.find("batches=2") != std::string::npos);
+    REQUIRE(result.importSummary.has_value());
+    REQUIRE(result.importSummary->discovered == 65);
+    REQUIRE(result.importSummary->inserts == 65);
+    REQUIRE(directWorkbookCount(inputDirectory / "processadas") == 65);
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 65);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
 TEST_CASE("spreadsheet import workflow reports missing selected file metadata as failed") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
@@ -5267,7 +5318,7 @@ TEST_CASE("import file stager accepts exactly 64 files") {
     REQUIRE(result.files.size() == 64);
 }
 
-TEST_CASE("import file stager rejects more than 64 externally selected files") {
+TEST_CASE("import file stager processes externally selected files in blocks of 64") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
 
@@ -5285,9 +5336,10 @@ TEST_CASE("import file stager rejects more than 64 externally selected files") {
     const ssa::infra::importing::ImportFileStager stager(inputDirectory);
     const auto result = stager.stageExternalFiles(files);
 
-    REQUIRE(result.rejectionReason == "too_many_files max=64");
-    REQUIRE(result.files.empty());
-    REQUIRE_FALSE(std::filesystem::exists(inputDirectory));
+    REQUIRE(result.rejectionReason.empty());
+    REQUIRE(result.files.size() == 65);
+    REQUIRE(result.failedCopies == 0);
+    REQUIRE(directWorkbookCount(inputDirectory) == 65);
 }
 
 TEST_CASE("input file stager inventories 1769 xlsx files without a quantity rejection") {

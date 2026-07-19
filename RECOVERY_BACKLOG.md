@@ -1,5 +1,31 @@
 # Recovery Backlog
 
+## Fechamento da regressao de importacao externa - 2026-07-19
+
+- [RESOLVED-LOCAL] O limite de 64 deixou de ser rejeicao total. A selecao
+  externa agora e processada em blocos de ate 64, com staging, transacao
+  SQLite e journal independentes por bloco; o limite de tamanho por bloco
+  continua ativo.
+- Prova real sintetica de contrato: 65 arquivos selecionados, 2 blocos,
+  65 linhas inseridas, 65 fontes consolidadas em `processadas` e integridade
+  confirmada pelo teste focal.
+- [RESOLVED-LOCAL] Valores opcionais de `numero_desvios` fora do formato
+  numerico nao derrubam mais o arquivo: rotulos numericos sao normalizados e
+  texto desconhecido fica NULL. O teste cobre `Desvio # 2`, `sem desvio` e
+  texto desconhecido.
+- [RESOLVED-LOCAL] A migracao de preferencias schema 12 para schema 14
+  preserva defaults de importacao quando `import_execution` esta ausente ou
+  invalido. O bug de `toInt()` em valor JSON ausente foi corrigido.
+- Validacao desta rodada: review estatico final limpo; build do target
+  `ssa_integration_tests`; 5 testes focados passaram em `0.51 s`; CTest
+  completo passou `619/619` em `70.29 s`.
+- Nenhum schema SQLite de dados, layout, menu ou regra de filtro foi alterado.
+  O schema 14 e somente o contrato JSON de preferencias ja iniciado no
+  working tree e agora esta coberto por teste.
+
+Proxima atividade unica: publicar o commit atomico nos dois remotes e manter
+provas Windows/UNC separadas de validacao local.
+
 ## Corpus atual revalidado no CLI - 2026-07-19
 
 - [RESOLVED-LOCAL] O corpus atual foi importado novamente em copia

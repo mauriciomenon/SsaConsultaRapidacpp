@@ -24,7 +24,7 @@ namespace ssa::infra::importing {
 
     namespace {
 
-        constexpr std::size_t kMaxSelectedImportFiles = 64;
+        constexpr std::size_t kMaxImportFilesPerBatch = 64;
         constexpr std::uintmax_t kMaxImportFileBytes = 128ULL * 1024ULL * 1024ULL;
         constexpr std::uintmax_t kMaxImportBatchBytes = 1024ULL * 1024ULL * 1024ULL;
         constexpr std::size_t kMaxDestinationAttempts = 10'000;
@@ -129,13 +129,9 @@ namespace ssa::infra::importing {
         }
 
         std::string preflightFiles(const std::vector<std::filesystem::path>& files,
-                                   const std::stop_token& stopToken, std::string& diagnostic,
-                                   const bool enforceSelectionLimit) {
+                                   const std::stop_token& stopToken, std::string& diagnostic) {
             if (stopToken.stop_requested()) {
                 return "canceled";
-            }
-            if (enforceSelectionLimit && files.size() > kMaxSelectedImportFiles) {
-                return "too_many_files max=64";
             }
             std::uintmax_t totalBytes = 0;
             for (const auto& file : files) {
@@ -222,7 +218,7 @@ namespace ssa::infra::importing {
         for (const auto& source : files) {
             recordDiscoveredFile(result, source);
         }
-        result.rejectionReason = preflightFiles(files, stopToken, result.diagnostic, true);
+        result.rejectionReason = preflightFiles(files, stopToken, result.diagnostic);
         if (!result.rejectionReason.empty()) {
             result.operationalFailure = result.rejectionReason == "file_size_unavailable";
             return result;
@@ -245,69 +241,71 @@ namespace ssa::infra::importing {
             return result;
         }
 
-        const auto prefix = batchPrefix();
         std::size_t fileIndex = 0;
         std::size_t summaryIndex = 0;
-        for (const auto& source : files) {
-            if (stopToken.stop_requested()) {
-                cancelStaging(result);
-                return result;
-            }
-            if (isExcelLockFile(source)) {
-                continue;
-            }
-            const bool isXlsx = isXlsxFile(source);
-            const auto currentSummaryIndex = summaryIndex;
-            summaryIndex += isXlsx ? 1 : 0;
-            const auto filename = source.filename();
-            if (!isSafeImportFilename(filename)) {
-                ++result.failedCopies;
-                continue;
-            }
-            if (isLegacyXlsFile(source)) {
-                continue;
-            }
-            if (!isXlsx) {
-                continue;
-            }
-            const auto destination = stagedDestination({source, prefix, fileIndex});
-            ++fileIndex;
-            error.clear();
-            const auto timestamp = sourceModifiedTimestamp(source, error);
-            if (error) {
-                ++result.failedCopies;
-                appendDiagnostic(result.diagnostic,
-                                 "cannot read source modification time: " + error.message());
-                continue;
-            }
-            const auto copy =
-                copyFileAtomically({source, destination, afterFirstChunkWritten_}, stopToken);
-            if (copy.status == FileCopyStatus::Canceled) {
-                cancelStaging(result);
-                return result;
-            }
-            if (!copy.ok()) {
-                ++result.failedCopies;
-                appendDiagnostic(result.diagnostic, copy.diagnostic);
-                if (copy.status == FileCopyStatus::CleanupFailed) {
-                    result.rejectionReason = "staging_cleanup_failed";
-                    cancelStaging(result);
-                    return result;
-                }
+        for (std::size_t batchStart = 0; batchStart < files.size();
+             batchStart += kMaxImportFilesPerBatch) {
+            const auto prefix = batchPrefix();
+            const auto batchEnd = (std::min)(files.size(), batchStart + kMaxImportFilesPerBatch);
+            for (std::size_t sourceIndex = batchStart; sourceIndex < batchEnd; ++sourceIndex) {
+                const auto& source = files[sourceIndex];
                 if (stopToken.stop_requested()) {
                     cancelStaging(result);
                     return result;
                 }
-                continue;
+                if (isExcelLockFile(source)) {
+                    continue;
+                }
+                const bool isXlsx = isXlsxFile(source);
+                const auto currentSummaryIndex = summaryIndex;
+                summaryIndex += isXlsx ? 1 : 0;
+                const auto filename = source.filename();
+                if (!isSafeImportFilename(filename)) {
+                    ++result.failedCopies;
+                    continue;
+                }
+                if (isLegacyXlsFile(source) || !isXlsx) {
+                    continue;
+                }
+                const auto destination = stagedDestination({source, prefix, fileIndex});
+                ++fileIndex;
+                error.clear();
+                const auto timestamp = sourceModifiedTimestamp(source, error);
+                if (error) {
+                    ++result.failedCopies;
+                    appendDiagnostic(result.diagnostic,
+                                     "cannot read source modification time: " + error.message());
+                    continue;
+                }
+                const auto copy =
+                    copyFileAtomically({source, destination, afterFirstChunkWritten_}, stopToken);
+                if (copy.status == FileCopyStatus::Canceled) {
+                    cancelStaging(result);
+                    return result;
+                }
+                if (!copy.ok()) {
+                    ++result.failedCopies;
+                    appendDiagnostic(result.diagnostic, copy.diagnostic);
+                    if (copy.status == FileCopyStatus::CleanupFailed) {
+                        result.rejectionReason = "staging_cleanup_failed";
+                        cancelStaging(result);
+                        return result;
+                    }
+                    if (stopToken.stop_requested()) {
+                        cancelStaging(result);
+                        return result;
+                    }
+                    continue;
+                }
+                result.files.push_back({destination,
+                                        {destination},
+                                        true,
+                                        qt::toUtf8(source.filename()),
+                                        timestamp,
+                                        currentSummaryIndex,
+                                        sourceCreatedTimestamp(source),
+                                        source.filename()});
             }
-            result.files.push_back({destination,
-                                    {destination},
-                                    true,
-                                    qt::toUtf8(source.filename()),
-                                    timestamp,
-                                    currentSummaryIndex,
-                                    sourceCreatedTimestamp(source),
-                                    source.filename()});
         }
         if (stopToken.stop_requested()) {
             cancelStaging(result);
@@ -558,8 +556,7 @@ namespace ssa::infra::importing {
         for (const auto& path : importCandidates) {
             result.discoveredXlsxSources.push_back(qt::toUtf8(path.filename()));
         }
-        result.rejectionReason =
-            preflightFiles(importCandidates, stopToken, result.diagnostic, false);
+        result.rejectionReason = preflightFiles(importCandidates, stopToken, result.diagnostic);
         if (!result.rejectionReason.empty()) {
             result.operationalFailure = result.rejectionReason == "file_size_unavailable";
             return result;

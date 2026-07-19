@@ -43,6 +43,7 @@ namespace ssa::infra::importing {
         };
 
         constexpr std::size_t kMaxWorkflowDiagnosticBytes = 4'096;
+        constexpr std::size_t kMaxImportFilesPerBatch = 64;
         constexpr int kDatabaseBackupPagesPerStep = 256;
         constexpr std::size_t kFileComparisonBlockBytes = std::size_t{64} * 1024;
 
@@ -535,6 +536,43 @@ namespace ssa::infra::importing {
                                summary);
         }
 
+        void mergeImportSummary(ports::ImportSummary& total, const ports::ImportSummary& batch) {
+            total.discovered += batch.discovered;
+            total.accepted += batch.accepted;
+            total.rejected += batch.rejected;
+            total.pending += batch.pending;
+            total.preserved += batch.preserved;
+            total.validRows += batch.validRows;
+            total.invalidRows += batch.invalidRows;
+            total.invalidNumberRows += batch.invalidNumberRows;
+            total.invalidDescriptionRows += batch.invalidDescriptionRows;
+            total.invalidDateRows += batch.invalidDateRows;
+            total.skippedRows += batch.skippedRows;
+            total.duplicateRows += batch.duplicateRows;
+            total.inserts += batch.inserts;
+            total.updates += batch.updates;
+            total.unchangedRows += batch.unchangedRows;
+            total.conflicts += batch.conflicts;
+            total.consolidated += batch.consolidated;
+            total.noSurvivor += batch.noSurvivor;
+            total.files.insert(total.files.end(), batch.files.begin(), batch.files.end());
+        }
+
+        std::string batchedImportMessage(const ports::ImportSummary& summary,
+                                         const std::size_t batches) {
+            std::ostringstream output;
+            output << "import_xlsx_to_sqlite batches=" << batches
+                   << " files=" << summary.files.size() << " rows=" << summary.validRows
+                   << " inserted=" << summary.inserts << " updated=" << summary.updates
+                   << " unchanged=" << summary.unchangedRows << " skipped=" << summary.skippedRows
+                   << " duplicates=" << summary.duplicateRows << " conflicts=" << summary.conflicts
+                   << " invalid_rows=" << summary.invalidRows
+                   << " invalid_number=" << summary.invalidNumberRows
+                   << " invalid_description=" << summary.invalidDescriptionRows
+                   << " invalid_date=" << summary.invalidDateRows;
+            return output.str();
+        }
+
         std::string workflowMessage(const char* operation, const ImportStagingResult& files,
                                     const SsaImportWriteSummary& writeSummary,
                                     const WorkflowFailure& failure = WorkflowFailure{}) {
@@ -728,6 +766,60 @@ namespace ssa::infra::importing {
 
     ports::WorkflowResult SpreadsheetImportWorkflowPort::importExternalFiles(
         const ports::ImportExternalFilesRequest& request, const std::stop_token stopToken) {
+        if (request.files.size() <= kMaxImportFilesPerBatch) {
+            return importExternalFilesBatch(request, stopToken);
+        }
+
+        ports::ImportSummary totalSummary;
+        totalSummary.files.reserve(request.files.size());
+        std::string diagnostic;
+        bool warning = false;
+        bool anySuccess = false;
+        bool hadFailure = false;
+        bool hadRejection = false;
+        std::size_t batchCount = 0;
+        for (std::size_t batchStart = 0; batchStart < request.files.size();
+             batchStart += kMaxImportFilesPerBatch) {
+            const auto batchEnd =
+                (std::min)(request.files.size(), batchStart + kMaxImportFilesPerBatch);
+            ports::ImportExternalFilesRequest batchRequest;
+            batchRequest.execution = request.execution;
+            batchRequest.files.assign(
+                request.files.begin() + static_cast<std::ptrdiff_t>(batchStart),
+                request.files.begin() + static_cast<std::ptrdiff_t>(batchEnd));
+            const auto batchResult = importExternalFilesBatch(batchRequest, stopToken);
+            ++batchCount;
+            if (batchResult.importSummary) {
+                mergeImportSummary(totalSummary, *batchResult.importSummary);
+            }
+            if (!batchResult.diagnostic.empty()) {
+                appendWorkflowDiagnostic(diagnostic, "batch=" + std::to_string(batchCount) + " " +
+                                                         batchResult.diagnostic);
+            }
+            warning = warning || batchResult.warning;
+            anySuccess = anySuccess || batchResult.ok();
+            hadFailure = hadFailure || batchResult.status == ports::WorkflowStatus::Failed;
+            hadRejection = hadRejection || batchResult.status == ports::WorkflowStatus::Rejected;
+            if (batchResult.status == ports::WorkflowStatus::Canceled ||
+                stopToken.stop_requested()) {
+                return withSummary(
+                    {ports::WorkflowStatus::Canceled,
+                     "import_xlsx_to_sqlite canceled batch=" + std::to_string(batchCount), true,
+                     std::move(diagnostic)},
+                    totalSummary);
+            }
+        }
+        const auto status = hadFailure   ? ports::WorkflowStatus::Failed
+                            : anySuccess ? ports::WorkflowStatus::Succeeded
+                                         : ports::WorkflowStatus::Rejected;
+        warning = warning || hadFailure || hadRejection;
+        return withSummary({status, batchedImportMessage(totalSummary, batchCount), warning,
+                            std::move(diagnostic)},
+                           totalSummary);
+    }
+
+    ports::WorkflowResult SpreadsheetImportWorkflowPort::importExternalFilesBatch(
+        const ports::ImportExternalFilesRequest& request, const std::stop_token stopToken) const {
         if (const auto validation = request.execution.validationError(); !validation.empty()) {
             return withSummary(
                 {ports::WorkflowStatus::Rejected,

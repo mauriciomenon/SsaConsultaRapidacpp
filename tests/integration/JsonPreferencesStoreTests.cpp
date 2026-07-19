@@ -262,7 +262,7 @@ TEST_CASE("json preferences reject duplicate visible columns") {
     REQUIRE(error == "duplicate visible column: numero_ssa");
 }
 
-TEST_CASE("user preference snapshots and saved documents use schema 13") {
+TEST_CASE("user preference snapshots and saved documents use schema 14") {
     QTemporaryDir directory;
     REQUIRE(directory.isValid());
 
@@ -270,7 +270,7 @@ TEST_CASE("user preference snapshots and saved documents use schema 13") {
     const ssa::infra::preferences::JsonUserPreferencesStore store(path);
     ssa::ports::UserPreferencesSnapshot snapshot;
 
-    REQUIRE(snapshot.schemaVersion == 13);
+    REQUIRE(snapshot.schemaVersion == 14);
     REQUIRE(snapshot.schemaVersion == ssa::ports::kCurrentUserPreferencesSchemaVersion);
     snapshot.schemaVersion = 3;
     store.save(snapshot);
@@ -280,6 +280,9 @@ TEST_CASE("user preference snapshots and saved documents use schema 13") {
     REQUIRE(parseError.error == QJsonParseError::NoError);
     REQUIRE(document.object().value("schema_version").toInt() ==
             ssa::ports::kCurrentUserPreferencesSchemaVersion);
+    REQUIRE(
+        document.object().value("import_execution").toObject().value("rows_per_chunk").toInt() ==
+        ssa::ports::ImportExecutionPreferencesSnapshot::kDefaultRowsPerChunk);
     REQUIRE(store.load().schemaVersion == ssa::ports::kCurrentUserPreferencesSchemaVersion);
 }
 
@@ -298,7 +301,11 @@ TEST_CASE("schema 12 preferences migrate to disabled SAM refresh defaults") {
     REQUIRE(loaded.samRefresh.intervalMinutes == 30'000);
     REQUIRE(loaded.samRefresh.baseUrl == "https://apps.itaipu.gov.br/SAM_SMA_API/rest/SSA_API");
     REQUIRE(loaded.samRefresh.scope == "consulta");
-    REQUIRE(loaded.schemaVersion == 13);
+    REQUIRE(loaded.schemaVersion == 14);
+    REQUIRE(loaded.importExecution.rowsPerChunk ==
+            ssa::ports::ImportExecutionPreferencesSnapshot::kDefaultRowsPerChunk);
+    REQUIRE(loaded.importExecution.sqliteBusyWaitMs ==
+            ssa::ports::ImportExecutionPreferencesSnapshot::kDefaultSqliteBusyWaitMs);
 }
 
 TEST_CASE("json preferences store rejects missing invalid and future schemas") {
@@ -321,7 +328,7 @@ TEST_CASE("json preferences store rejects missing invalid and future schemas") {
         REQUIRE_THROWS(store.load());
     }
     SECTION("future") {
-        writeObject(path, QJsonObject{{"schema_version", 14}});
+        writeObject(path, QJsonObject{{"schema_version", 15}});
         REQUIRE_THROWS(store.load());
     }
 }
