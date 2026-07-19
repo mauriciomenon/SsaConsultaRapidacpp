@@ -23,8 +23,9 @@
   O schema 14 e somente o contrato JSON de preferencias ja iniciado no
   working tree e agora esta coberto por teste.
 
-Proxima atividade unica: publicar o commit atomico nos dois remotes e manter
-provas Windows/UNC separadas de validacao local.
+Publicacao confirmada: commit `8955a6f` esta em `origin/master` e
+`bitbucket/master`; a proxima atividade unica e manter provas Windows/UNC
+separadas da validacao local e iniciar o proximo item de alto impacto.
 
 ## Corpus atual revalidado no CLI - 2026-07-19
 
