@@ -3,6 +3,23 @@
 Fonte operacional para humanos e agentes de codigo. Verifique este arquivo
 antes de interpretar sincronizacao Git, validacao local ou estado externo.
 
+## Guarda de binding no menu da tabela - 2026-07-19
+
+- **ENTREGUE localmente**: `SsaTable.qml` nao acessa mais
+  `sortColumnKey.length` quando o viewModel ainda nao expos a propriedade.
+  A binding agora trata null/undefined sem alterar layout, menu ou acao.
+- O smoke QML afetado passou `1/1` em `1.94 s`; a execucao verbose nao
+  registrou o `TypeError` de `SsaTable.qml:300`.
+- Permanecem warnings point/pixel de controles antigos em outros cenarios;
+  eles nao foram mascarados nem tratados neste slice.
+- Review final: diff-check, qmlformat, qmllint, Semgrep e detect-secrets sem
+  findings bloqueantes. Contadores seguem plano original `99.0/100`, divida
+  nova P0 `14/14 = 100.0%`, backlog legado `N/A` e fila operacional
+  `6/8 = 75.0%`.
+
+Proxima atividade unica: eliminar o proximo warning point/pixel com um
+componente e teste especificos, sem conversao global de fontes.
+
 ## Importacao tolerante de `numero_desvios` Excel - 2026-07-19
 
 - **ENTREGUE localmente**: o dominio agora canoniza inteiros Excel como `2.0`

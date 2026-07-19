@@ -1,5 +1,18 @@
 # Recovery Backlog
 
+## Binding defensivo do menu de ordenacao - 2026-07-19
+
+- [RESOLVED-LOCAL] `SsaTable.qml` protege `sortColumnKey` contra
+  null/undefined antes de calcular `length`; o warning de runtime observado
+  em `SsaTable.qml:300` desapareceu.
+- Evidencia: build do target oficial e CTest `ssa_qml_advanced_popup_tests`
+  `1/1` em `1.94 s`; verbose sem `TypeError`.
+- [PARTIAL-LOCAL] Warnings point/pixel continuam em componentes antigos e
+  permanecem separados para um slice dedicado.
+
+Proxima atividade unica: tratar um componente point/pixel especifico e
+validar somente os testes que o instanciam.
+
 ## Importacao tolerante de `numero_desvios` Excel - 2026-07-19
 
 - [RESOLVED-LOCAL] A politica aceita `2.0`/`2,0`, `Desvio #N` e

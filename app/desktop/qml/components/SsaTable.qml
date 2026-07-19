@@ -297,7 +297,7 @@ Rectangle {
                                 objectName: "resetSortAction"
                                 property string actionId: "reset_sort"
                                 text: "Limpar ordenacao"
-                                enabled: root.viewModel.sortColumnKey.length > 0
+                                enabled: root.viewModel !== null && root.viewModel.sortColumnKey !== undefined && root.viewModel.sortColumnKey !== null && String(root.viewModel.sortColumnKey).length > 0
                                 onTriggered: root.viewModel.resetSort()
                             }
                             MenuSeparator {}
