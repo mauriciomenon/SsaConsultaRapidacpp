@@ -20,6 +20,23 @@
 - As linhas anteriores de OAuth `invalid_grant` sao historicas. O bloqueio nao
   vale para a publicacao atual.
 
+## Contraste AA contextual QML - 2026-07-18
+
+- [RESOLVED-LOCAL] [THEME-PY-AA] O helper `Theme.readableText(background,
+  preferred)` preserva token semantico somente com contraste `>= 4.5`; caso
+  contrario usa candidato existente ou preto/branco AA. Nenhum literal das 13
+  paletas Python foi alterado.
+- Combo, botoes, tabs, atalhos, lista de temas, tabela, analytics e Sobre usam
+  foreground contra o fundo efetivo. O link de analytics cobre normal e hover.
+- Gate: RED/GREEN com 39 paletas e 37 pares; CTest focal `1/1` em `2.30 s` e
+  fechamento QML `5/5` em `6.49 s`; `all_qmllint`, qmlformat, clang-format,
+  Semgrep e detect-secrets limpos. Review Terra ultra corrigiu dois P2 (hover
+  e restauracao do singleton) e terminou `SEM FINDINGS`.
+- [PENDING] [QML-AA-BINDING-SMOKE] O contrato central valida os pares de
+  foreground declarados, mas nao instancia cada um dos oito consumidores.
+  Criar smoke runtime limitado por componente quando houver demanda de GUI;
+  nao e defeito funcional provado e nao altera os denominadores atuais.
+
 ## Recheck UX-GRID-ALIGN - 2026-07-18
 
 - [NOT-REPRODUCED-LOCAL] A captura offscreen atual em `1580x940` nao reproduz
@@ -60,8 +77,8 @@
   `invalid_grant`, dependencia externa. Sem credito novo: plano `99.0/100`,
   divida nova `13/14 = 92.9%`, legado placeholder `0.0/100`, fila `5/8 = 62.5%`.
 
-Proxima atividade unica: diagnosticar contraste AA e point size da GUI QML
-antes de editar TypeScale ou qualquer layout.
+Proxima atividade unica: mapear a prova Windows/UNC real do ultimo item de
+confiabilidade de importacao, sem alterar schema ou staging especulativamente.
 
 ## UX-NAV: cadeia de derivadas fixa - 2026-07-18
 
@@ -1002,10 +1019,9 @@ Matriz completa de acertos, adicoes, erros e ordem de execucao:
 
 ## Consolidacao GUI QML/Qt (julho 2026) - pendentes
 
-- [PENDING] [THEME-PY-AA] Revisar em slice proprio os 18 contrastes AA legados
-  em `classicopy`, `darkpy`, `solarized-darkpy`, `solarized-lightpy`,
-  `mint-lightpy` e `paperpy`. Este ciclo preserva as paletas Python importadas
-  ipsis litteris e aplica o gate novo somente aos temas nativos adicionados.
+- [RESOLVED-LOCAL] [THEME-PY-AA] Fechado por foreground contextual AA em vez
+  de mutar os literais Python. O contrato percorre todas as 39 paletas, inclui
+  normal/hover de analytics e preserva tokens quando ja legiveis.
 - [PENDING] [GUI-CONTRACT-WEEK-DERIVATION] Decidir se a GUI deve restaurar o filtro generico de semana e o seletor de derivacao descritos em `docs/contracts/gui-behavior.md`. O runtime atual expoe apenas os cards de emissao e execucao e nao oferece controle visual para `derivationMode`. Nao alterar o layout ate uma decisao de produto explicita.
 - [PENDING] [TYPESCALE-POINTSIZE] Migrar TypeScale de `font.pixelSize` para `font.pointSize` para respeitar a escala de fonte/DPI do SO (acessibilidade - fonte grande). Impacto: revalidar todos os 36 QML em Retina/HiDPI e telas com fonte do SO em Large. Slice dedicado.
 

@@ -191,7 +191,7 @@ Rectangle {
                             anchors.topMargin: 4
                             anchors.bottomMargin: 4
                             text: headerCell.effectiveLabel + (headerCell.modelData.sorted ? (headerCell.modelData.sortAscending ? "  ^" : "  v") : "")
-                            color: Theme.accentStrong
+                            color: Theme.readableText(headerCell.color, Theme.accentStrong)
                             font.bold: true
                             font.pixelSize: root.textSize
                             horizontalAlignment: headerCell.centerText ? Text.AlignHCenter : Text.AlignLeft
@@ -205,7 +205,7 @@ Rectangle {
                             anchors.rightMargin: 3
                             anchors.verticalCenter: parent.verticalCenter
                             text: "f"
-                            color: Theme.accentStrong
+                            color: Theme.readableText(headerCell.color, Theme.accentStrong)
                             font.bold: true
                             font.pixelSize: Math.max(9, root.textSize - 3)
                         }
@@ -472,7 +472,7 @@ Rectangle {
                     anchors.rightMargin: 8
                     text: cellDelegate.cellText
                     textFormat: Text.PlainText
-                    color: cellDelegate.opensSam || cellDelegate.isDerivationLink || cellDelegate.opensDerivationGraph ? Theme.accentStrong : Theme.text
+                    color: cellDelegate.opensSam || cellDelegate.isDerivationLink || cellDelegate.opensDerivationGraph ? Theme.readableText(cellDelegate.color, Theme.accentStrong) : Theme.readableText(cellDelegate.color, Theme.text)
                     horizontalAlignment: cellDelegate.centerText ? Text.AlignHCenter : Text.AlignLeft
                     verticalAlignment: Text.AlignVCenter
                     elide: Text.ElideRight

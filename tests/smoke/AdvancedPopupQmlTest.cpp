@@ -20,6 +20,7 @@
 #include <QQmlEngine>
 #include <QQuickItem>
 #include <QQuickWindow>
+#include <QScopeGuard>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
@@ -166,6 +167,20 @@ namespace {
             count += countQuickItemsByObjectName(child, objectName);
         }
         return count;
+    }
+
+    [[nodiscard]] qreal linearChannel(const qreal channel) {
+        return channel <= 0.04045 ? channel / 12.92 : std::pow((channel + 0.055) / 1.055, 2.4);
+    }
+
+    [[nodiscard]] qreal contrastRatio(const QColor& first, const QColor& second) {
+        const auto luminance = [](const QColor& color) {
+            return 0.2126 * linearChannel(color.redF()) + 0.7152 * linearChannel(color.greenF()) +
+                   0.0722 * linearChannel(color.blueF());
+        };
+        const qreal lighter = std::max(luminance(first), luminance(second));
+        const qreal darker = std::min(luminance(first), luminance(second));
+        return (lighter + 0.05) / (darker + 0.05);
     }
 
     constexpr auto kReprogrammingHarness = R"QML(
@@ -1306,6 +1321,199 @@ namespace {
                      "narrow summary did not preserve overflowing natural widths");
         }
 
+        void theme_palette_foregrounds_meet_wcag_aa() {
+            QQmlEngine engine;
+            QQmlComponent component(&engine);
+            component.setData(R"QML(
+                import QtQuick
+                import SsaConsultaRapida
+
+                QtObject {
+                    id: harness
+                    property string selectedTheme: Theme.themeName
+                    property string backgroundRole: "window"
+                    property string preferredRole: ""
+                    readonly property string activeTheme: Theme.themeName
+                    readonly property color resolvedForeground: {
+                        const selectedPalette = Theme.palette;
+                        const preferred = preferredRole.length > 0 ? Qt.color(selectedPalette[preferredRole]) : undefined;
+                        return Theme.readableText(Qt.color(selectedPalette[backgroundRole]), preferred);
+                    }
+
+                    onSelectedThemeChanged: Theme.themeName = selectedTheme
+                }
+            )QML",
+                              QUrl(QStringLiteral("inmemory:/ThemeForegroundHarness.qml")));
+            QTRY_VERIFY_WITH_TIMEOUT(component.status() != QQmlComponent::Loading, 1000);
+            QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+
+            std::unique_ptr<QObject> harness(component.create());
+            QVERIFY2(harness != nullptr, qPrintable(component.errorString()));
+            const QString initialTheme = harness->property("activeTheme").toString();
+            QVERIFY(!initialTheme.isEmpty());
+            const auto restoreTheme =
+                qScopeGuard([&] { harness->setProperty("selectedTheme", initialTheme); });
+
+            QQmlComponent paletteComponent(&engine);
+            paletteComponent.setData(R"QML(
+                import QtQuick
+                import SsaConsultaRapida
+
+                QtObject {
+                    readonly property var allPalettes: Theme.palettes
+                    readonly property var allOptions: Theme.themeOptions
+                }
+            )QML",
+                                     QUrl(QStringLiteral("inmemory:/ThemePaletteHarness.qml")));
+            QTRY_VERIFY_WITH_TIMEOUT(paletteComponent.status() != QQmlComponent::Loading, 1000);
+            QVERIFY2(paletteComponent.isReady(), qPrintable(paletteComponent.errorString()));
+
+            std::unique_ptr<QObject> paletteHarness(paletteComponent.create());
+            QVERIFY2(paletteHarness != nullptr, qPrintable(paletteComponent.errorString()));
+            const QVariantMap palettes =
+                paletteHarness->property("allPalettes").value<QJSValue>().toVariant().toMap();
+            const QVariantList options =
+                paletteHarness->property("allOptions").value<QJSValue>().toVariant().toList();
+            QCOMPARE(palettes.size(), 39);
+            QVERIFY(options.contains(QStringLiteral("system")));
+            QCOMPARE(options.size(), palettes.size() + 1);
+
+            struct ForegroundRequirement {
+                QString component;
+                QString backgroundRole;
+                QString preferredRole;
+            };
+            const std::array requirements{
+                ForegroundRequirement{
+                    QStringLiteral("Theme generic"), QStringLiteral("accent"), {}},
+                ForegroundRequirement{
+                    QStringLiteral("Theme generic"), QStringLiteral("accentSoft"), {}},
+                ForegroundRequirement{
+                    QStringLiteral("Theme generic"), QStringLiteral("accentStrong"), {}},
+                ForegroundRequirement{
+                    QStringLiteral("Theme generic"), QStringLiteral("dangerSoft"), {}},
+                ForegroundRequirement{
+                    QStringLiteral("Theme generic"), QStringLiteral("danger"), {}},
+                ForegroundRequirement{
+                    QStringLiteral("Theme generic"), QStringLiteral("dangerStrong"), {}},
+                ForegroundRequirement{QStringLiteral("Theme generic"), QStringLiteral("link"), {}},
+                ForegroundRequirement{
+                    QStringLiteral("Theme generic"), QStringLiteral("mutedText"), {}},
+                ForegroundRequirement{QStringLiteral("AppComboBox highlighted"),
+                                      QStringLiteral("accentSoft"), QStringLiteral("accentStrong")},
+                ForegroundRequirement{QStringLiteral("ActionButton normal"),
+                                      QStringLiteral("accent"), QStringLiteral("accentText")},
+                ForegroundRequirement{QStringLiteral("ActionButton quiet"),
+                                      QStringLiteral("panelRaised"),
+                                      QStringLiteral("accentStrong")},
+                ForegroundRequirement{QStringLiteral("ActionButton hover"),
+                                      QStringLiteral("accentSoft"), QStringLiteral("accentText")},
+                ForegroundRequirement{QStringLiteral("ActionButton down"),
+                                      QStringLiteral("accentStrong"), QStringLiteral("accentText")},
+                ForegroundRequirement{QStringLiteral("ActionButton danger"),
+                                      QStringLiteral("dangerSoft"), QStringLiteral("dangerStrong")},
+                ForegroundRequirement{QStringLiteral("ActionButton danger hover"),
+                                      QStringLiteral("danger"), QStringLiteral("dangerStrong")},
+                ForegroundRequirement{QStringLiteral("ActionButton danger down"),
+                                      QStringLiteral("dangerStrong"),
+                                      QStringLiteral("dangerStrong")},
+                ForegroundRequirement{QStringLiteral("ActionButton disabled"),
+                                      QStringLiteral("rowAlt"), QStringLiteral("mutedText")},
+                ForegroundRequirement{QStringLiteral("FilterTabButton checked"),
+                                      QStringLiteral("accent"), QStringLiteral("accentText")},
+                ForegroundRequirement{QStringLiteral("FilterTabButton normal"),
+                                      QStringLiteral("panelRaised"), QStringLiteral("text")},
+                ForegroundRequirement{QStringLiteral("Pager included"), QStringLiteral("accent"),
+                                      QStringLiteral("accentText")},
+                ForegroundRequirement{QStringLiteral("Pager excluded"), QStringLiteral("mutedText"),
+                                      QStringLiteral("panel")},
+                ForegroundRequirement{QStringLiteral("Pager hover"), QStringLiteral("accentSoft"),
+                                      QStringLiteral("text")},
+                ForegroundRequirement{QStringLiteral("Pager normal"), QStringLiteral("panelRaised"),
+                                      QStringLiteral("text")},
+                ForegroundRequirement{QStringLiteral("ThemeDialog highlighted"),
+                                      QStringLiteral("accentSoft"), QStringLiteral("accentText")},
+                ForegroundRequirement{QStringLiteral("ThemeDialog normal"),
+                                      QStringLiteral("surface"), QStringLiteral("text")},
+                ForegroundRequirement{QStringLiteral("SsaTable header"),
+                                      QStringLiteral("tableHeader"),
+                                      QStringLiteral("accentStrong")},
+                ForegroundRequirement{QStringLiteral("SsaTable reorder"),
+                                      QStringLiteral("accentSoft"), QStringLiteral("accentStrong")},
+                ForegroundRequirement{QStringLiteral("SsaTable link"), QStringLiteral("surface"),
+                                      QStringLiteral("accentStrong")},
+                ForegroundRequirement{QStringLiteral("SsaTable striped link"),
+                                      QStringLiteral("rowAlt"), QStringLiteral("accentStrong")},
+                ForegroundRequirement{QStringLiteral("SsaTable selected link"),
+                                      QStringLiteral("rowSelected"),
+                                      QStringLiteral("accentStrong")},
+                ForegroundRequirement{QStringLiteral("SsaTable normal"), QStringLiteral("surface"),
+                                      QStringLiteral("text")},
+                ForegroundRequirement{QStringLiteral("SsaTable striped"), QStringLiteral("rowAlt"),
+                                      QStringLiteral("text")},
+                ForegroundRequirement{QStringLiteral("SsaTable selected"),
+                                      QStringLiteral("rowSelected"), QStringLiteral("text")},
+                ForegroundRequirement{QStringLiteral("AnalyticsChart quality"),
+                                      QStringLiteral("panel"), QStringLiteral("dangerStrong")},
+                ForegroundRequirement{QStringLiteral("AnalyticsChart link"),
+                                      QStringLiteral("panel"), QStringLiteral("link")},
+                ForegroundRequirement{QStringLiteral("AnalyticsChart link hover"),
+                                      QStringLiteral("surface"), QStringLiteral("link")},
+                ForegroundRequirement{QStringLiteral("AboutDialog version"),
+                                      QStringLiteral("panel"), QStringLiteral("accent")},
+            };
+
+            int paletteCount = 0;
+            int pythonThemeCount = 0;
+            for (const QVariant& option : options) {
+                const QString themeName = option.toString();
+                if (themeName == QStringLiteral("system")) {
+                    continue;
+                }
+                ++paletteCount;
+                if (themeName.endsWith(QStringLiteral("py"))) {
+                    ++pythonThemeCount;
+                }
+                QVERIFY2(palettes.contains(themeName), qPrintable("missing palette: " + themeName));
+                const QVariantMap palette = palettes.value(themeName).toMap();
+
+                harness->setProperty("selectedTheme", themeName);
+                QTRY_COMPARE_WITH_TIMEOUT(harness->property("activeTheme").toString(), themeName,
+                                          1000);
+                for (const ForegroundRequirement& requirement : requirements) {
+                    const QColor background{palette.value(requirement.backgroundRole).toString()};
+                    QVERIFY2(background.isValid(), qPrintable(themeName + " invalid role: " +
+                                                              requirement.backgroundRole));
+                    QColor preferred;
+                    if (!requirement.preferredRole.isEmpty()) {
+                        preferred = QColor{palette.value(requirement.preferredRole).toString()};
+                        QVERIFY2(preferred.isValid(),
+                                 qPrintable(themeName + " invalid preferred role: " +
+                                            requirement.preferredRole));
+                    }
+                    harness->setProperty("backgroundRole", requirement.backgroundRole);
+                    harness->setProperty("preferredRole", requirement.preferredRole);
+                    const QColor foreground{
+                        harness->property("resolvedForeground").value<QColor>()};
+                    QVERIFY2(
+                        foreground.isValid(),
+                        qPrintable(themeName + " invalid foreground for " + requirement.component));
+                    QVERIFY2(
+                        contrastRatio(foreground, background) >= 4.5,
+                        qPrintable(themeName + " contrast failed for " + requirement.component));
+                    if (preferred.isValid() && contrastRatio(preferred, background) >= 4.5) {
+                        QCOMPARE(foreground, preferred);
+                    }
+                }
+            }
+            QCOMPARE(paletteCount, 39);
+            QCOMPARE(pythonThemeCount, 13);
+
+            harness->setProperty("selectedTheme", initialTheme);
+            QTRY_COMPARE_WITH_TIMEOUT(harness->property("activeTheme").toString(), initialTheme,
+                                      1000);
+        }
+
         void native_theme_palettes_are_restrained_and_accessible() {
             QQmlEngine engine;
             QQmlComponent component(&engine);
@@ -1367,21 +1575,6 @@ namespace {
             }
             QCOMPARE(pythonThemeCount, 13);
 
-            const auto linearChannel = [](const qreal channel) {
-                return channel <= 0.04045 ? channel / 12.92
-                                          : std::pow((channel + 0.055) / 1.055, 2.4);
-            };
-            const auto luminance = [&linearChannel](const QColor& color) {
-                return 0.2126 * linearChannel(color.redF()) +
-                       0.7152 * linearChannel(color.greenF()) +
-                       0.0722 * linearChannel(color.blueF());
-            };
-            const auto contrast = [&luminance](const QColor& first, const QColor& second) {
-                const qreal lighter = std::max(luminance(first), luminance(second));
-                const qreal darker = std::min(luminance(first), luminance(second));
-                return (lighter + 0.05) / (darker + 0.05);
-            };
-
             for (const QString& themeName : nativeThemes) {
                 QVERIFY2(options.contains(themeName),
                          qPrintable("missing theme option: " + themeName));
@@ -1402,9 +1595,9 @@ namespace {
                 QVERIFY(window.isValid());
                 QVERIFY2(accent.hslSaturationF() <= 0.55,
                          qPrintable(themeName + " accent is too saturated"));
-                QVERIFY2(contrast(accentText, accent) >= 4.5,
+                QVERIFY2(contrastRatio(accentText, accent) >= 4.5,
                          qPrintable(themeName + " accent contrast is below WCAG AA"));
-                QVERIFY2(contrast(link, window) >= 4.5,
+                QVERIFY2(contrastRatio(link, window) >= 4.5,
                          qPrintable(themeName + " link contrast is below WCAG AA"));
 
                 const QColor panelRaised{palette.value(QStringLiteral("panelRaised")).toString()};
@@ -1412,9 +1605,9 @@ namespace {
                     const QColor background{palette.value(role).toString()};
                     QVERIFY2(background.isValid(),
                              qPrintable(themeName + " invalid role: " + role));
-                    const qreal bestContrast =
-                        std::max({contrast(text, background), contrast(accentText, background),
-                                  contrast(panelRaised, background)});
+                    const qreal bestContrast = std::max({contrastRatio(text, background),
+                                                         contrastRatio(accentText, background),
+                                                         contrastRatio(panelRaised, background)});
                     QVERIFY2(bestContrast >= 4.5,
                              qPrintable(themeName + " has no AA foreground for " + role));
                 }
@@ -1423,15 +1616,27 @@ namespace {
                     const QColor background{palette.value(role).toString()};
                     QVERIFY2(background.isValid(),
                              qPrintable(themeName + " invalid role: " + role));
-                    QVERIFY2(contrast(text, background) >= 4.5,
+                    QVERIFY2(contrastRatio(text, background) >= 4.5,
                              qPrintable(themeName + " text contrast failed on " + role));
-                    QVERIFY2(contrast(mutedText, background) >= 4.5,
+                    QVERIFY2(contrastRatio(mutedText, background) >= 4.5,
                              qPrintable(themeName + " muted contrast failed on " + role));
                     if (isDark) {
-                        QVERIFY2(luminance(background) >= 0.02,
+                        const qreal luminance = [&] {
+                            const qreal red = linearChannel(background.redF());
+                            const qreal green = linearChannel(background.greenF());
+                            const qreal blue = linearChannel(background.blueF());
+                            return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+                        }();
+                        QVERIFY2(luminance >= 0.02,
                                  qPrintable(themeName + " contains a crushed dark surface"));
                     } else {
-                        QVERIFY2(luminance(background) <= 0.94,
+                        const qreal luminance = [&] {
+                            const qreal red = linearChannel(background.redF());
+                            const qreal green = linearChannel(background.greenF());
+                            const qreal blue = linearChannel(background.blueF());
+                            return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+                        }();
+                        QVERIFY2(luminance <= 0.94,
                                  qPrintable(themeName + " contains a glaring light surface"));
                     }
                 }

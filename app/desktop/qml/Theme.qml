@@ -1209,7 +1209,9 @@ QtObject {
         return (Math.max(firstLuminance, secondLuminance) + 0.05) / (Math.min(firstLuminance, secondLuminance) + 0.05);
     }
 
-    function readableText(background) {
+    function readableText(background, preferred) {
+        if (preferred !== undefined && contrastRatio(preferred, background) >= 4.5)
+            return preferred;
         const candidates = [text, accentText, panelRaised];
         let best = candidates[0];
         let bestContrast = contrastRatio(best, background);
@@ -1220,7 +1222,11 @@ QtObject {
                 bestContrast = candidateContrast;
             }
         }
-        return best;
+        if (bestContrast >= 4.5)
+            return best;
+        const black = Qt.color("#000000");
+        const white = Qt.color("#ffffff");
+        return contrastRatio(black, background) >= contrastRatio(white, background) ? black : white;
     }
 
     // True when the background tint is dark enough that a light foreground

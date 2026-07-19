@@ -103,7 +103,7 @@ Rectangle {
                 visible: root.qualityText.length > 0
                 text: root.qualityText
                 textFormat: Text.PlainText
-                color: Theme.dangerStrong
+                color: Theme.readableText(Theme.panel, Theme.dangerStrong)
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSizeCaption
                 wrapMode: Text.Wrap
@@ -181,7 +181,7 @@ Rectangle {
             contentItem: Text {
                 text: tableButton.text
                 textFormat: Text.PlainText
-                color: Theme.link
+                color: Theme.readableText(tableButton.hovered ? Theme.surface : Theme.panel, Theme.link)
                 font: tableButton.font
                 horizontalAlignment: Text.AlignHCenter
                 verticalAlignment: Text.AlignVCenter

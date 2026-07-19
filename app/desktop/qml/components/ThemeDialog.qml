@@ -101,7 +101,7 @@ Window {
                             }
                             contentItem: Label {
                                 text: themeDelegate.text
-                                color: themeDelegate.highlighted ? Theme.accentText : Theme.text
+                                color: themeDelegate.highlighted ? Theme.readableText(Theme.accentSoft, Theme.accentText) : Theme.readableText(Theme.surface, Theme.text)
                                 font.bold: themeDelegate.highlighted
                             }
                             background: Rectangle {

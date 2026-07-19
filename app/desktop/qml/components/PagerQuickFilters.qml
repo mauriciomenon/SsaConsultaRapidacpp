@@ -91,6 +91,8 @@ RowLayout {
                             }
                             readonly property bool included: shortcutState === 1
                             readonly property bool excluded: shortcutState === 2
+                            readonly property color effectiveBackground: included ? Theme.accent : excluded ? Theme.mutedText : hovered ? Theme.accentSoft : Theme.panelRaised
+                            readonly property color preferredForeground: included ? Theme.accentText : excluded ? Theme.panel : Theme.text
                             width: statusShortcutFrame.fittedShortcutWidth
                             height: Theme.statusShortcutHeight
                             text: modelData
@@ -108,7 +110,7 @@ RowLayout {
                                 // Included: accent fill. Excluded: invert text/bg colors for
                                 // clear visual distinction without extra borders/danger.
                                 // None: default panel.
-                                color: statusShortcut.included ? Theme.accent : statusShortcut.excluded ? Theme.mutedText : statusShortcut.hovered ? Theme.accentSoft : Theme.panelRaised
+                                color: statusShortcut.effectiveBackground
                                 border.color: statusShortcut.included ? Theme.accentStrong : Theme.border
                                 radius: Theme.radius
                             }
@@ -116,7 +118,7 @@ RowLayout {
                             contentItem: Text {
                                 text: statusShortcut.text
                                 // Excluded: text color inverts to the panel (dark on light bg).
-                                color: statusShortcut.included ? Theme.accentText : statusShortcut.excluded ? Theme.panel : Theme.text
+                                color: Theme.readableText(statusShortcut.effectiveBackground, statusShortcut.preferredForeground)
                                 font.family: statusShortcut.font.family
                                 font.pixelSize: statusShortcut.font.pixelSize
                                 font.bold: statusShortcut.font.bold

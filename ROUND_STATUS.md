@@ -34,6 +34,32 @@ Ultima verificacao local: 2026-07-18
 - Os registros anteriores de OAuth `invalid_grant` permanecem historicos para
   auditoria, mas nao bloqueiam a publicacao atual.
 
+## Contraste AA contextual QML - 2026-07-18
+
+- [RESOLVED-LOCAL] [THEME-PY-AA] `Theme.readableText(background, preferred)`
+  preserva a cor semantica preferida somente quando ela ja atende WCAG AA
+  `4.5:1`; senao tenta os candidatos existentes e escolhe preto ou branco
+  quando necessario. As paletas `*py` continuam importadas ipsis litteris.
+- Os foregrounds de combo, botoes, tabs, atalhos, seletor de tema, tabela,
+  analytics e Sobre agora usam o contexto efetivo. O link do grafico tambem
+  recalcula contra `surface` no hover, em vez de assumir `panel`.
+- O RED/GREEN percorre 39 paletas (26 nativas e 13 `*py`) e 37 pares de estado
+  contextualizados. O CTest focal passou `1/1` em `2.30 s`; o fechamento QML
+  passou `5/5` em `6.49 s` (popup, analytics, janela analytics, galeria e
+  Sobre). `all_qmllint`, qmlformat, clang-format, Semgrep e detect-secrets
+  passaram. cppcheck nao seleciona arquivo de teste e nao houve C++ de
+  producao neste slice.
+- Review Terra ultra encontrou dois P2 reais: contraste do hover do link e
+  restauracao incorreta do singleton de tema em falha. Ambos foram corrigidos;
+  re-review final: `SEM FINDINGS`. P3 residual: o contrato testa a funcao e
+  os pares declarados, mas nao instancia os oito bindings de consumidores.
+- A migracao `TYPESCALE-POINTSIZE` permanece pendente: ha 100 usos de pixel
+  em 36 QML, varios com altura fixa. Troca mecanica alteraria densidade e pode
+  causar clipping; exige slice proprio e validacao macOS/Windows/Linux real.
+- Contadores sem inflacao: plano original `99.0/100`; divida nova
+  `13/14 = 92.9%`; backlog legado `0.0/100` placeholder; fila operacional
+  `5/8 = 62.5%`. Este fechamento e hardening adicional fora dos denominadores.
+
 ## Recheck UX-GRID-ALIGN - 2026-07-18
 
 - A reproducao offscreen atual em `1580x940` nao reproduziu o desalinhamento
@@ -76,8 +102,8 @@ Ultima verificacao local: 2026-07-18
   `13/14 = 92.9%`; backlog legado `0.0/100` placeholder; fila operacional
   `5/8 = 62.5%`.
 
-Proxima atividade unica: diagnosticar contraste AA e point size da GUI QML,
-medindo impacto antes de alterar layout ou TypeScale.
+Proxima atividade unica: mapear a prova Windows/UNC real do ultimo item de
+confiabilidade de importacao, sem alterar schema ou staging especulativamente.
 
 ## UX-NAV: cadeia de derivadas fixa durante navegacao - 2026-07-18
 

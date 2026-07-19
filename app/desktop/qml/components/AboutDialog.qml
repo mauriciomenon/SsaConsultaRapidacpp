@@ -51,7 +51,7 @@ Window {
             Label {
                 Layout.alignment: Qt.AlignHCenter
                 text: "Versao " + root.productVersion
-                color: Theme.accent
+                color: Theme.readableText(Theme.panel, Theme.accent)
                 font.pixelSize: Theme.fontSizeBody
             }
             Label {
