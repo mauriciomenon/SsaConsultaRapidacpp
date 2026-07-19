@@ -10,9 +10,9 @@ antes de interpretar sincronizacao Git, validacao local ou estado externo.
 - Resultado real: `621/621` testes passaram, `0` falhas, em `68.12 s`.
   Importacao por blocos, rescan, derivadas, filtros e integridade SQLite
   permaneceram verdes.
-- Estado separado: working tree continua dirty somente por artefatos locais
-  preexistentes; HEAD permanece `56b125e`; nenhum novo commit foi criado
-  nesta validacao.
+- Estado separado: o gate rodou com HEAD `56b125e`; depois o report foi
+  commitado em `a06219c`. Working tree continua dirty somente por artefatos
+  locais preexistentes.
 - Contadores sem inflacao: plano original `99.0/100`; divida nova P0
   `14/14 = 100.0%`; backlog legado `N/A`; fila operacional local `6/8 =
   75.0%`. Windows/UNC e DMG continuam provas externas.
