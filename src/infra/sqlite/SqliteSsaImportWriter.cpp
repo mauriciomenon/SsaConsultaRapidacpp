@@ -574,7 +574,8 @@ namespace ssa::infra::sqlite {
                 referenceColumns.push_back(column.key);
                 selectSql += ", " + query::quoteColumnIdentifier(column.key);
             }
-            selectSql += " FROM " + query::quoteTableIdentifier(tableName);
+            selectSql += " FROM " + query::quoteTableIdentifier(tableName) + " WHERE " +
+                         dirtyCanonicalPredicate(columns);
             executeSql(db,
                        "CREATE TEMP TABLE ssa_import_normalized_numbers (normalized TEXT "
                        "PRIMARY KEY NOT NULL)",

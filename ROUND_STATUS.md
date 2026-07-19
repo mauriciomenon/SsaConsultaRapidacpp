@@ -3,6 +3,29 @@
 Fonte operacional para humanos e agentes de codigo. Verifique este arquivo
 antes de interpretar sincronizacao Git, validacao local ou estado externo.
 
+## Normalizacao SQLite filtrada pelo dirty ledger - 2026-07-19
+
+- **ENTREGUE localmente**: `normalizeExistingSsaNumbers` agora le somente as
+  linhas que satisfazem o mesmo predicado do indice parcial
+  `idx_ssa_table_import_dirty_canonical`. Linhas canonicas nao entram no scan
+  de migracao quando o banco possui poucos registros legados.
+- Medicao anterior do harness existente, 30 amostras e 250000 linhas:
+  reabertura canonica p50/p95 `2.10/3.49 ms`; legacy p50/p95
+  `1.99/3.34 ms` na fase idempotente. Na primeira passada, canonical
+  p50/p95 `1.05/1.52 s` e legacy `1.99/3.34 s`, com RSS adicional legacy
+  p95 de aproximadamente `104 MB`. O custo e de migracao unica; nenhum
+  refactor especulativo foi aplicado alem do filtro seguro.
+- Review automatico: diff check, clang-format, cppcheck, Semgrep C/security
+  (11 regras, zero findings) e detect-secrets limpos.
+- Validacao: writer SQLite/importacao `7/7` em `0.31 s`; benchmark smokes
+  `2/2` em `0.15 s`; nenhuma mudanca de schema ou contrato de consolidacao.
+- Contadores sem inflacao: plano original `99.0/100`; divida nova
+  `14/14 = 100.0%` no P0; backlog legado `N/A`; fila operacional local
+  permanece `6/8 = 75.0%`.
+
+Proxima atividade unica: medir o proximo gargalo local de importacao/SQLite
+antes de qualquer nova mudanca estrutural.
+
 ## Falha no segundo bloco de importacao externa - 2026-07-19
 
 - **ENTREGUE localmente**: o contrato de importacao externa agora cobre a

@@ -1,5 +1,20 @@
 # Recovery Backlog
 
+## Dirty ledger limita o scan de normalizacao SQLite - 2026-07-19
+
+- [RESOLVED-LOCAL] [SQLITE-DIRTY-LEDGER-SCAN] O writer passou a adicionar o
+  predicado do indice parcial ao `SELECT` de normalizacao. Bancos com poucos
+  registros legados nao percorrem linhas canonicas desnecessarias.
+- Evidencia: harness existente com 30 amostras/250000 linhas mediu reabertura
+  canonica em p50/p95 `2.10/3.49 ms` e legacy em `1.99/3.34 ms`; primeira
+  passada legacy ficou em p50/p95 `1.99/3.34 s`, com RSS p95 de ~104 MB.
+  O custo de migracao total foi medido e permanece explicitamente separado do
+  caminho idempotente.
+- GREEN: contratos SQLite/importacao `7/7` em `0.31 s` e benchmark smokes
+  `2/2` em `0.15 s`. Nenhum schema ou layout mudou.
+
+Proxima atividade unica: medir o proximo gargalo local de importacao/SQLite.
+
 ## Atomicidade incremental entre blocos externos - 2026-07-19
 
 - [RESOLVED-LOCAL] [IMPORT-BLOCK-FAILURE] O teste cobre 65 arquivos externos:
