@@ -3,6 +3,27 @@
 Fonte operacional para humanos e agentes de codigo. Verifique este arquivo
 antes de interpretar sincronizacao Git, validacao local ou estado externo.
 
+## Prova end-to-end C++ com corpus real - 2026-07-19
+
+- **ENTREGUE localmente**: o executavel C++ `ssa_consulta_rapida_cli` criou e
+  atualizou um banco temporario a partir de tres planilhas reais ja
+  processadas: `SSAs Executadas`, `Em Execucao` e `Pendentes de Execucao`.
+  Nao houve leitor Python nesta prova.
+- Primeira rodada incremental: `files=3`, `rows=2803`, `inserted=2803`,
+  `invalid_rows=0`, `invalid_number=0`, `invalid_date=0`, `failed=0`.
+  As tres fontes foram consolidadas na copia temporaria de `docs_entrada`.
+- Segunda rodada com uma planilha republicada: `files=1`, `rows=0`,
+  `unchanged=872`, `failed=0`. O banco permaneceu com `2803` linhas e
+  `PRAGMA integrity_check=ok`.
+- A prova usou `--import-chunk-rows 64` e `--sqlite-busy-wait-ms 500`.
+  Nenhum arquivo, banco ou fonte do repositorio foi alterado.
+- Contadores honestos permanecem: plano original `99.0/100`; divida nova P0
+  `14/14 = 100.0%`; backlog legado `N/A`; fila operacional `6/8 = 75.0%`.
+  Esta e evidencia funcional local, nao prova Windows/UNC ou GitLab.
+
+Proxima atividade unica: selecionar a proxima pendencia local real com impacto
+mensuravel, evitando refactor especulativo.
+
 ## Tipografia dos controles compartilhados - 2026-07-19
 
 - **ENTREGUE localmente**: `ActionButton` e os botoes `Importar XLSX` e

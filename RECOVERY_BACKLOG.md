@@ -1,5 +1,21 @@
 # Recovery Backlog
 
+## Prova end-to-end C++ com planilhas reais - 2026-07-19
+
+- [RESOLVED-LOCAL] O CLI C++ criou um banco temporario e importou tres fontes
+  reais do corpus local, com chunk de 64: `2803` linhas inseridas,
+  `invalid_rows=0`, `invalid_number=0`, `invalid_date=0` e `failed=0`.
+- [RESOLVED-LOCAL] A mesma planilha republicada foi reprocessada sem duplicar
+  dados: `872` linhas unchanged, `2803` linhas no banco e
+  `PRAGMA integrity_check=ok`.
+- A fonte foi movida apenas dentro de `/tmp`; o repositorio e seu banco real
+  nao foram tocados. A prova confirma o leitor C++ e nao usa Python.
+- [EXTERNAL-PENDING] A mesma prova em Windows/UNC e SMB gravavel continua
+  externa e nao recebe credito local.
+
+Proxima atividade unica: escolher a maior pendencia local implementavel com
+evidencia causal.
+
 ## Tipografia de botoes da barra - 2026-07-19
 
 - [RESOLVED-LOCAL] `ActionButton` e os overrides de `Importar XLSX` e
