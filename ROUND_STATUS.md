@@ -17,16 +17,28 @@ Ultima verificacao local: 2026-07-18
   Gitleaks escaneou `1.43 GB` sem segredo; TruffleHog terminou sem segredo
   verificado ou desconhecido. Os scanners staged dos dois commits tambem
   passaram.
-- A tag anotada `v0.9.11` marca este HEAD. Bitbucket confirmou `master` e
-  `v0.9.11^{}` em `84462d4`. GitLab `origin` recusou push por OAuth
-  `invalid_grant`; isto permanece dependencia externa, nao sucesso alegado.
+- A tag anotada `v0.9.11` marca o gate de release `84462d4`. Bitbucket
+  confirmou `v0.9.11^{}` em `84462d4` e `master` em `6a0bfa4`, que registra a
+  publicacao do gate. GitLab `origin` recusou push por OAuth `invalid_grant`;
+  isto permanece dependencia externa, nao sucesso alegado.
 - Contadores nao mudam: plano original `99.0/100`; divida nova
   `13/14 = 92.9%`; backlog legado `0.0/100` placeholder; fila operacional
   `5/8 = 62.5%`. Estabilidade de release nao elimina pendencias de produto ou
   validacao em plataforma real.
 
-Proxima atividade unica: reproduzir com evidencia offscreen o backlog
-`UX-GRID-ALIGN` antes de qualquer mudanca de layout.
+## Recheck UX-GRID-ALIGN - 2026-07-18
+
+- A reproducao offscreen atual em `1580x940` nao reproduziu o desalinhamento
+  reportado: Macro e Reprogramacoes mostram baseline, padding e altura visual
+  coerentes com os cards de texto adjacentes. Nenhum QML foi alterado.
+- O CTest `ssa_qml_advanced_popup_tests` passou `1/1` em `1.58 s`. A lacuna
+  restante e apenas cobertura automatica que compare as tres geometrias no
+  mesmo `Flow`. O item exige reproducer no monitor afetado ou contrato
+  geometrico antes de qualquer mudanca de layout.
+
+Proxima atividade unica: medir o custo e o contrato de analytics sincrono no
+fim da importacao SQLite incremental de 250 mil linhas, separando no-op, delta,
+atomicidade e cancelamento antes de propor otimizacao.
 
 ## UX-NAV: cadeia de derivadas fixa durante navegacao - 2026-07-18
 

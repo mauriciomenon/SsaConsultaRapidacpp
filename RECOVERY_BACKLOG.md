@@ -8,12 +8,24 @@
 - [RESOLVED-LOCAL] Semgrep amplo (`24` regras, `512` arquivos), Gitleaks
   (`1.43 GB`) e TruffleHog passaram sem segredo. O warning de miniz e
   preexistente em source cache de dependencia e nao pertence ao diff.
-- [RESOLVED-BITBUCKET] A tag anotada `v0.9.11` e `master` foram confirmados em
-  `84462d4`. GitLab `origin` permanece bloqueado por OAuth `invalid_grant`;
-  isto nao pode ser contabilizado como publicacao confirmada.
+- [RESOLVED-BITBUCKET] A tag anotada `v0.9.11^{}` foi confirmada em `84462d4`;
+  `master` foi confirmado em `6a0bfa4`, que registra a publicacao do gate.
+  GitLab `origin` permanece bloqueado por OAuth `invalid_grant`; isto nao pode
+  ser contabilizado como publicacao confirmada.
 
-Proxima atividade unica: reproduzir `UX-GRID-ALIGN` offscreen antes de editar
-Macro ou Reprogramacoes.
+## Recheck UX-GRID-ALIGN - 2026-07-18
+
+- [NOT-REPRODUCED-LOCAL] A captura offscreen atual em `1580x940` nao reproduz
+  os tres sintomas reportados: Macro e Reprogramacoes usam baseline, padding e
+  altura visual coerentes com os cards de texto adjacentes. Nenhum QML mudou.
+- O CTest `ssa_qml_advanced_popup_tests` passou `1/1` em `1.58 s`. Falta apenas
+  uma assercao automatica que compare as geometrias de tres cards no mesmo
+  `Flow`. O item continua aguardando reproducer no monitor afetado ou contrato
+  geometrico antes de qualquer mudanca de layout.
+
+Proxima atividade unica: medir o custo e o contrato de analytics sincrono no
+fim da importacao SQLite incremental de 250 mil linhas, separando no-op, delta,
+atomicidade e cancelamento antes de propor otimizacao.
 
 ## UX-NAV: cadeia de derivadas fixa - 2026-07-18
 
@@ -944,11 +956,13 @@ Matriz completa de acertos, adicoes, erros e ordem de execucao:
 
 - [PENDING] [UX-TABLE] Usuario reporta linhas verticais "grossas" entre colunas de dados da tabela, mas analise de pixels no screenshot offscreen (3 medicoes) nao encontra linhas verticais estruturais - apenas pixels de texto. Pode ser problema de DPI/scaling/font rendering no monitor do usuario ou versao compilada intermediaria. Investigar com o usuario apontando exatamente onde ve as linhas em zoom.
 
-- [PENDING] [UX-GRID-ALIGN] Apos o slice `e348c32` (merge de Macro e Reprogramacoes no grid), 3 refinos pendentes (reportados por usuario em validacao visual):
-  1. **Macro card texto desalinhado**: o texto/label da Macro card esta "para cima" (topo), fora do alinhamento vertical dos demais titulos (Setor emissor, Prioridade emissao, etc). A Macro card usa `GridLayout` interno enquanto as text cards usam `ColumnLayout`. Padronizar para mesma baseline vertical.
-  2. **Macro card texto deve ir ao mesmo lugar que os demais**: o titulo da Macro card deve estar na MESMA posicao relativa que os titulos das text cards (canto superior esquerdo, mesma fonte/tamanho). Hoje esta em posicao diferente.
-  3. **Reprogramming card com espaco maior**: a Reprogramacoes card tem espaco interno maior que as outras (provavelmente por causa do `cardHeight: 70` vs `textCellHeight: 56`). Padronizar a altura para `56` igual as outras, ou revisar o layout interno para nao sobrar espaco.
-  Cuidado: cada refino deve ser slice separado e cirurgico, sem quebrar o reflow do Flow + Repeater do `AdvancedTextFilterGrid.qml`.
+- [NOT-REPRODUCED-LOCAL] [UX-GRID-ALIGN] O recheck offscreen atual em
+  `1580x940` nao reproduziu os tres sintomas originalmente reportados. Macro
+  e Reprogramacoes usam baseline, padding e altura visual coerentes com os
+  cards de texto adjacentes; nenhum layout foi alterado sem reproducer. O
+  CTest `ssa_qml_advanced_popup_tests` passou `1/1` em `1.58 s`. Falta
+  reproducer no monitor afetado ou contrato que compare geometricamente tres
+  cards no mesmo `Flow` antes de fechar o item ou alterar layout.
 
 ## Consolidacao GUI QML/Qt (julho 2026) - pendentes
 
