@@ -5,6 +5,37 @@ antes de interpretar sincronizacao Git, validacao local ou estado externo.
 
 Ultima verificacao local: 2026-07-18
 
+## Cancelamento causal de derivadas sob SQLite bloqueado - 2026-07-18
+
+- Branch `master`; codigo em `6e818c0`, publicado no Bitbucket. GitLab
+  `origin` continua bloqueado por OAuth `invalid_grant`; isto e dependencia
+  externa, nao falha de codigo nem publicacao confirmada no GitLab.
+- `SqliteDerivadasPort` agora aceita sinal opcional `busyEntered`, retido por
+  `shared_ptr` e encaminhado apenas ao `SqliteBusyHandler` de escopo local. O
+  caminho normal recebe sinal vazio; importacao de derivadas e limpeza de orfas
+  preservam API, schema, SQL e regras existentes.
+- Dois contratos deixam de usar `wait_for(50ms)`: cada um toma `BEGIN
+  EXCLUSIVE`, aguarda o primeiro `SQLITE_BUSY` real, pede stop e faz ROLLBACK
+  antes das assercoes. O watchdog de `500 ms` continua falha, nunca sucesso.
+  Assim ambos provam cancelamento sob contencao e reuso posterior do banco.
+- RED: o teste primeiro falhou por API ausente. O gate encontrou duas lacunas
+  de portabilidade e elas foram corrigidas: clang macOS rejeitava inicializador
+  redundante da struct aninhada com default `{}`, e `counting_semaphore` exige
+  contagem inicial `0`. Review Terra ultra final: `SEM FINDINGS`.
+- Gate local: diff, clang-format, cppcheck, clang-tidy, detect-secrets e
+  Semgrep (`11` regras, zero finding) limpos. Build de `ssa_integration_tests`;
+  contratos causais `2/2` em `0.07 s`, repetidos `60/60` em `2.57 s`; familia
+  derivadas `22/22` em `0.61 s`; SQLite Repository `31/31` em `0.76 s`.
+  `clawpatch` ficou indisponivel por CLI/modelo local antigo e selecionou
+  arquivo externo ao slice; nao conta como review concluido. Hooks staged
+  passaram clang-format, Gitleaks, detect-secrets e TruffleHog.
+- Contadores sem inflacao: plano original `99.0/100`; divida nova
+  `13/14 = 92.9%`; backlog legado `0.0/100` placeholder e fila operacional
+  `5/8 = 62.5%`. Nenhum credito funcional foi atribuido.
+
+Proxima atividade unica: tornar causal o cancelamento durante parsing e merge
+de derivadas, em corte separado do SQLite para nao criar falso acoplamento.
+
 ## Recovery de staged journalizado antes de rescan - 2026-07-18
 
 - Branch `master`; codigo em `1d04ab0`, publicado no Bitbucket. GitLab

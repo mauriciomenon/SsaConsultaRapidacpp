@@ -1,5 +1,30 @@
 # Recovery Backlog
 
+## Cancelamento causal de derivadas sob SQLite bloqueado - 2026-07-18
+
+- [RESOLVED-LOCAL] [DERIVADAS-SQLITE-BUSY-CAUSAL] `6e818c0` encaminha sinal
+  opcional `busyEntered` de `SqliteDerivadasPort` ao `SqliteBusyHandler` tanto
+  na importacao quanto na limpeza de orfas. O sinal e inert em producao sem
+  `shared_ptr` e tem lifetime seguro durante cada chamada.
+- Os contratos de importacao e cleanup agora bloqueiam SQLite de verdade com
+  `BEGIN EXCLUSIVE`, consomem o primeiro `SQLITE_BUSY`, pedem cancelamento,
+  fazem ROLLBACK e exigem reuso posterior. Os antigos `wait_for(50ms)` nao
+  provavam a fase bloqueada e foram removidos.
+- RED inicial expos API ausente; o build revelou e o patch corrigiu duas
+  regras do libc++ macOS: `shared_ptr` default da struct aninhada e construcao
+  de `counting_semaphore` com contagem `0`. Review Terra ultra final:
+  `SEM FINDINGS`.
+- Gates: build `ssa_integration_tests`; causal `2/2` em `0.07 s`, repeticao
+  `60/60` em `2.57 s`, derivadas `22/22` em `0.61 s`, SQLite Repository
+  `31/31` em `0.76 s`; diff, formato, cppcheck, clang-tidy, detect-secrets e
+  Semgrep limpos. Bitbucket confirma `6e818c0`; GitLab `origin` segue OAuth
+  `invalid_grant`; clawpatch indisponivel por tooling local.
+- Sem credito novo: plano `99.0/100`, divida nova `13/14 = 92.9%`, legado
+  placeholder `0.0/100`, fila operacional `5/8 = 62.5%`.
+
+Proxima atividade unica: remover waits temporais residuais de parsing e merge
+de derivadas com checkpoints locais, sem reutilizar sinal SQLite fora de fase.
+
 ## Recovery de staged journalizado antes de rescan - 2026-07-18
 
 - [RESOLVED-LOCAL] [IMPORT-STAGED-JOURNAL-RECOVERY] `1d04ab0` corrige a ordem
