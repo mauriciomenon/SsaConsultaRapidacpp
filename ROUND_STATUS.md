@@ -3,6 +3,24 @@
 Fonte operacional para humanos e agentes de codigo. Verifique este arquivo
 antes de interpretar sincronizacao Git, validacao local ou estado externo.
 
+## Fechamento do gate SQLite apos filtro do dirty ledger - 2026-07-19
+
+- **ENTREGUE localmente**: a suite CTest dev sequencial foi executada apos o
+  patch de producao em `SqliteSsaImportWriter`.
+- Resultado real: `621/621` testes passaram, `0` falhas, em `68.12 s`.
+  Importacao por blocos, rescan, derivadas, filtros e integridade SQLite
+  permaneceram verdes.
+- Estado separado: working tree continua dirty somente por artefatos locais
+  preexistentes; HEAD permanece `56b125e`; nenhum novo commit foi criado
+  nesta validacao.
+- Contadores sem inflacao: plano original `99.0/100`; divida nova P0
+  `14/14 = 100.0%`; backlog legado `N/A`; fila operacional local `6/8 =
+  75.0%`. Windows/UNC e DMG continuam provas externas.
+
+Proxima atividade unica: selecionar um corte local de alto impacto em
+importacao/SQLite ou executar a prova externa Windows/UNC quando a plataforma
+estiver disponivel.
+
 ## Normalizacao SQLite filtrada pelo dirty ledger - 2026-07-19
 
 - **ENTREGUE localmente**: `normalizeExistingSsaNumbers` agora le somente as

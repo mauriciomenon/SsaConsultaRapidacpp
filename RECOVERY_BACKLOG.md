@@ -1,5 +1,17 @@
 # Recovery Backlog
 
+## Gate completo apos normalizacao SQLite - 2026-07-19
+
+- [RESOLVED-LOCAL] O CTest dev sequencial foi repetido apos o filtro do dirty
+  ledger no writer SQLite: `621/621` passaram, `0` falhas, em `68.12 s`.
+- A suite cobre importacao em blocos, rescan, derivadas, filtros,
+  concorrencia e integridade SQLite. Nenhuma regressao foi observada.
+- O resultado nao prova Windows/UNC, packaging DMG ou comportamento em outro
+  host; essas dependencias continuam explicitamente externas.
+
+Proxima atividade unica: escolher um corte local de alto impacto ou registrar
+prova Windows/UNC real, sem inflar os contadores.
+
 ## Dirty ledger limita o scan de normalizacao SQLite - 2026-07-19
 
 - [RESOLVED-LOCAL] [SQLITE-DIRTY-LEDGER-SCAN] O writer passou a adicionar o
