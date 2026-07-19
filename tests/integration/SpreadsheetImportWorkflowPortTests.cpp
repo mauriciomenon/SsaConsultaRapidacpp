@@ -3140,6 +3140,7 @@ TEST_CASE("spreadsheet mapper rejects invalid rows and accepts date exempt state
                   {"2026-00002", "APV", "Missing date", ""},
                   {"2026-00003", "ASE", "Exempt date", "", "202601"},
                   {"2026-00005", "APV", "Invalid optional date", "2026-01-01", "", "not-a-date"},
+                  {"", "", "", "", "", ""},
                   {"202600004.0", "APV", "Valid", "2026-01-01"}};
 
     const auto result = ssa::infra::importing::SsaSpreadsheetMapper{}.map(table);

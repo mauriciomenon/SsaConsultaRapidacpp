@@ -313,6 +313,9 @@ namespace ssa::infra::importing {
                     }
                 }
             }
+            if (row.empty()) {
+                continue;
+            }
             const auto validation = domain::SsaImportPolicy::validateRow(row);
             if (validation != domain::SsaImportPolicy::RowValidationIssue::None) {
                 ++batch.skippedRows;
