@@ -45,6 +45,29 @@ Ultima verificacao local: 2026-07-18
 - Contadores permanecem: plano `99.0/100`, divida `13/14 = 92.9%`, legado
   `0.0/100` placeholder e fila operacional `5/8 = 62.5%`.
 
+## Contraste runtime do setor rapido - 2026-07-19
+
+- [RESOLVED-LOCAL] O Label `Setor:` de `PagerQuickFilters` usava
+  `Theme.accent` direto sobre o `Theme.surface` declarado por `SearchAndPager`.
+  O RED runtime encontrou contraste abaixo de AA em 17 das 39 paletas, de
+  `2.23:1` a `4.21:1` nos casos que falharam.
+- O patch de producao e uma unica cor contextual:
+  `Theme.readableText(Theme.surface, Theme.accent)`. Ele preserva accent onde
+  ja atende AA e seleciona texto legivel nos demais temas, sem mudar geometria,
+  handlers, paletas ou tokens globais.
+- O contrato instancia `PagerQuickFilters` real sob `Theme.surface`, le a cor
+  resolvida do Label e percorre exatamente as 39 chaves de `Theme.palettes`.
+  O primeiro review encontrou P1 de proxy sintetico e P2 de conjunto incompleto;
+  ambos foram corrigidos antes do GREEN. Review Terra ultra final: `SEM FINDINGS`.
+- Validacao local: diff, qmlformat, qmllint, clang-format, Semgrep QML (5
+  regras), Semgrep C/security (2 regras) e detect-secrets passaram.
+  `ssa_qml_advanced_popup_tests` GREEN `1/1` em `1.99 s`; `all_qmllint`
+  passou. O warning Ninja de cache nao conta como validacao adicional.
+- [PARTIAL-LOCAL] `QML-AA-BINDING-SMOKE` agora cobre este consumidor runtime;
+  os outros sete consumidores permanecem pendentes de smokes dedicados.
+  Contadores sem inflacao: plano `99.0/100`, divida `13/14 = 92.9%`, legado
+  `0.0/100` e fila `5/8 = 62.5%`.
+
 ## Sincronizacao remota restaurada - 2026-07-18
 
 - `origin/master` e `bitbucket/master` foram confirmados ate `09cc0c4`, que

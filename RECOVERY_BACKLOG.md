@@ -29,6 +29,24 @@
   nova versao e tag. Contadores permanecem plano `99.0/100`, divida
   `13/14 = 92.9%`, legado `0.0/100` e fila `5/8 = 62.5%`.
 
+## Contraste runtime do setor rapido - 2026-07-19
+
+- [RESOLVED-LOCAL] [QML-AA-PAGER-SECTOR] O Label `Setor:` em
+  `PagerQuickFilters` tinha `Theme.accent` direto sobre `Theme.surface` e
+  falhava AA em 17/39 paletas. Agora usa
+  `Theme.readableText(Theme.surface, Theme.accent)`, sem alterar layout,
+  paletas ou tokens globais.
+- RED runtime `1/1` falhou em `5.72 s`; GREEN `1/1` passou em `1.99 s`.
+  O contrato instancia o componente real, valida o fundo declarado por
+  `SearchAndPager` e exige o conjunto exato de 39 paletas (26 nativas, 13
+  `*py`). P1 de proxy sintetico e P2 de cobertura de conjunto foram corrigidos
+  antes do GREEN; review Terra ultra final `SEM FINDINGS`.
+- [PARTIAL-LOCAL] Este e somente o primeiro consumidor de
+  `QML-AA-BINDING-SMOKE`. Os outros sete bindings continuam pendentes, sem
+  credito em denominador. Gates QML/C++ focados e `all_qmllint` passaram;
+  contadores seguem plano `99.0/100`, divida `13/14 = 92.9%`, legado `0.0/100`
+  e fila `5/8 = 62.5%`.
+
 ## Sincronizacao remota restaurada - 2026-07-18
 
 - `origin/master` e `bitbucket/master` foram confirmados ate `09cc0c4`; a tag
@@ -147,10 +165,9 @@ e `5/8`.
   fechamento QML `5/5` em `6.49 s`; `all_qmllint`, qmlformat, clang-format,
   Semgrep e detect-secrets limpos. Review Terra ultra corrigiu dois P2 (hover
   e restauracao do singleton) e terminou `SEM FINDINGS`.
-- [PENDING] [QML-AA-BINDING-SMOKE] O contrato central valida os pares de
-  foreground declarados, mas nao instancia cada um dos oito consumidores.
-  Criar smoke runtime limitado por componente quando houver demanda de GUI;
-  nao e defeito funcional provado e nao altera os denominadores atuais.
+- [PARTIAL-LOCAL] [QML-AA-BINDING-SMOKE] O runtime de `PagerQuickFilters` ja
+  esta coberto em 39 paletas e corrigido. Ainda faltam smokes limitados para
+  os outros sete consumidores; isto nao altera os denominadores atuais.
 
 ## Recheck UX-GRID-ALIGN - 2026-07-18
 

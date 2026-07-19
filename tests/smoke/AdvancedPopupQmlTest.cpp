@@ -21,6 +21,7 @@
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QScopeGuard>
+#include <QSet>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
@@ -309,9 +310,11 @@ namespace {
         import QtQuick
         import SsaConsultaRapida
 
-        Item {
+        Rectangle {
+            objectName: "quickSectorHarnessSurface"
             width: 1000
             height: 60
+            color: Theme.surface
 
             QtObject {
                 id: browseModel
@@ -1321,7 +1324,124 @@ namespace {
                      "narrow summary did not preserve overflowing natural widths");
         }
 
-        void theme_palette_foregrounds_meet_wcag_aa() {
+        void pager_quick_filters_sector_label_meets_wcag_aa_at_runtime() {
+            QFile searchAndPagerFile(
+                repositoryRoot().filePath("app/desktop/qml/components/SearchAndPager.qml"));
+            QVERIFY2(searchAndPagerFile.open(QIODevice::ReadOnly | QIODevice::Text),
+                     qPrintable(searchAndPagerFile.errorString()));
+            const QString searchAndPager = QString::fromUtf8(searchAndPagerFile.readAll());
+            QVERIFY(searchAndPager.contains(QStringLiteral("color: Theme.surface")));
+            QVERIFY(searchAndPager.contains(QStringLiteral("PagerQuickFilters {")));
+
+            auto repository = std::make_shared<CountingRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::FilterPanelViewModel filters(service);
+            QQmlEngine engine;
+            engine.rootContext()->setContextProperty(QStringLiteral("testFilterViewModel"),
+                                                     &filters);
+
+            QQmlComponent pagerComponent(&engine);
+            pagerComponent.setData(kQuickSectorHarness,
+                                   QUrl(QStringLiteral("inmemory:/QuickSectorThemeHarness.qml")));
+            QTRY_VERIFY_WITH_TIMEOUT(pagerComponent.status() != QQmlComponent::Loading, 1000);
+            QVERIFY2(pagerComponent.isReady(), qPrintable(pagerComponent.errorString()));
+            std::unique_ptr<QObject> pagerHarness(pagerComponent.create());
+            QVERIFY2(pagerHarness != nullptr, qPrintable(pagerComponent.errorString()));
+            auto* sectorLabel =
+                findOwnedQuickItemByProperty(pagerHarness.get(), "text", QStringLiteral("Setor:"));
+            QTRY_VERIFY_WITH_TIMEOUT(sectorLabel != nullptr, 1000);
+
+            QQmlComponent themeComponent(&engine);
+            themeComponent.setData(
+                R"QML(
+                import QtQuick
+                import SsaConsultaRapida
+
+                QtObject {
+                    property string selectedTheme: Theme.themeName
+                    readonly property string activeTheme: Theme.themeName
+                    readonly property var allPalettes: Theme.palettes
+                    readonly property var allOptions: Theme.themeOptions
+
+                    onSelectedThemeChanged: Theme.themeName = selectedTheme
+                }
+            )QML",
+                QUrl(QStringLiteral("inmemory:/PagerQuickFiltersThemeHarness.qml")));
+            QTRY_VERIFY_WITH_TIMEOUT(themeComponent.status() != QQmlComponent::Loading, 1000);
+            QVERIFY2(themeComponent.isReady(), qPrintable(themeComponent.errorString()));
+            std::unique_ptr<QObject> themeHarness(themeComponent.create());
+            QVERIFY2(themeHarness != nullptr, qPrintable(themeComponent.errorString()));
+            const QString initialTheme = themeHarness->property("activeTheme").toString();
+            QVERIFY(!initialTheme.isEmpty());
+            const auto restoreTheme =
+                qScopeGuard([&] { themeHarness->setProperty("selectedTheme", initialTheme); });
+
+            const QVariantMap palettes =
+                themeHarness->property("allPalettes").value<QJSValue>().toVariant().toMap();
+            const QVariantList options =
+                themeHarness->property("allOptions").value<QJSValue>().toVariant().toList();
+            QCOMPARE(palettes.size(), 39);
+            QCOMPARE(options.size(), palettes.size() + 1);
+            QVERIFY(options.contains(QStringLiteral("system")));
+
+            QSet<QString> paletteNames;
+            for (auto it = palettes.cbegin(); it != palettes.cend(); ++it) {
+                paletteNames.insert(it.key());
+            }
+            QStringList themeNames;
+            QSet<QString> distinctThemeNames;
+            for (const QVariant& option : options) {
+                const QString themeName = option.toString();
+                if (themeName == QStringLiteral("system")) {
+                    continue;
+                }
+                themeNames.append(themeName);
+                distinctThemeNames.insert(themeName);
+            }
+            int pythonThemeCount = 0;
+            for (const QString& themeName : distinctThemeNames) {
+                if (themeName.endsWith(QStringLiteral("py"))) {
+                    ++pythonThemeCount;
+                }
+            }
+            QCOMPARE(distinctThemeNames.size(), 39);
+            QCOMPARE(pythonThemeCount, 13);
+            QCOMPARE(distinctThemeNames.size() - pythonThemeCount, 26);
+            QVERIFY(distinctThemeNames == paletteNames);
+
+            QStringList failures;
+            for (const QString& themeName : themeNames) {
+                const QVariantMap palette = palettes.value(themeName).toMap();
+                const QColor expectedSurface{palette.value(QStringLiteral("surface")).toString()};
+                QVERIFY2(expectedSurface.isValid(),
+                         qPrintable(themeName + " invalid surface palette color"));
+
+                themeHarness->setProperty("selectedTheme", themeName);
+                QTRY_COMPARE_WITH_TIMEOUT(themeHarness->property("activeTheme").toString(),
+                                          themeName, 1000);
+                QTRY_COMPARE_WITH_TIMEOUT(pagerHarness->property("color").value<QColor>(),
+                                          expectedSurface, 1000);
+
+                const QColor labelColor{sectorLabel->property("color").value<QColor>()};
+                if (!labelColor.isValid()) {
+                    failures.append(themeName + " invalid Setor label color");
+                    continue;
+                }
+                const qreal ratio = contrastRatio(labelColor, expectedSurface);
+                if (ratio < 4.5) {
+                    failures.append(
+                        QStringLiteral("%1: PagerQuickFilters Setor label on surface (%2:1)")
+                            .arg(themeName, QString::number(ratio, 'f', 2)));
+                }
+            }
+
+            if (!failures.isEmpty()) {
+                QFAIL(qPrintable(QStringLiteral("runtime text contrast below AA (4.5:1):\n%1")
+                                     .arg(failures.join('\n'))));
+            }
+        }
+
+        void theme_semantic_foreground_pairs_meet_wcag_aa() {
             QQmlEngine engine;
             QQmlComponent component(&engine);
             component.setData(R"QML(
@@ -1332,10 +1452,14 @@ namespace {
                     id: harness
                     property string selectedTheme: Theme.themeName
                     property string backgroundRole: "window"
+                    property string foregroundRole: "text"
                     property string preferredRole: ""
+                    property bool usesReadableText: true
                     readonly property string activeTheme: Theme.themeName
                     readonly property color resolvedForeground: {
                         const selectedPalette = Theme.palette;
+                        if (!usesReadableText)
+                            return Qt.color(selectedPalette[foregroundRole]);
                         const preferred = preferredRole.length > 0 ? Qt.color(selectedPalette[preferredRole]) : undefined;
                         return Theme.readableText(Qt.color(selectedPalette[backgroundRole]), preferred);
                     }
@@ -1378,93 +1502,64 @@ namespace {
             QVERIFY(options.contains(QStringLiteral("system")));
             QCOMPARE(options.size(), palettes.size() + 1);
 
-            struct ForegroundRequirement {
+            struct TextForegroundBinding {
                 QString component;
                 QString backgroundRole;
+                QString foregroundRole;
                 QString preferredRole;
+                bool usesReadableText;
             };
-            const std::array requirements{
-                ForegroundRequirement{
-                    QStringLiteral("Theme generic"), QStringLiteral("accent"), {}},
-                ForegroundRequirement{
-                    QStringLiteral("Theme generic"), QStringLiteral("accentSoft"), {}},
-                ForegroundRequirement{
-                    QStringLiteral("Theme generic"), QStringLiteral("accentStrong"), {}},
-                ForegroundRequirement{
-                    QStringLiteral("Theme generic"), QStringLiteral("dangerSoft"), {}},
-                ForegroundRequirement{
-                    QStringLiteral("Theme generic"), QStringLiteral("danger"), {}},
-                ForegroundRequirement{
-                    QStringLiteral("Theme generic"), QStringLiteral("dangerStrong"), {}},
-                ForegroundRequirement{QStringLiteral("Theme generic"), QStringLiteral("link"), {}},
-                ForegroundRequirement{
-                    QStringLiteral("Theme generic"), QStringLiteral("mutedText"), {}},
-                ForegroundRequirement{QStringLiteral("AppComboBox highlighted"),
-                                      QStringLiteral("accentSoft"), QStringLiteral("accentStrong")},
-                ForegroundRequirement{QStringLiteral("ActionButton normal"),
-                                      QStringLiteral("accent"), QStringLiteral("accentText")},
-                ForegroundRequirement{QStringLiteral("ActionButton quiet"),
+            const std::array bindings{
+                TextForegroundBinding{QStringLiteral("AppComboBox enabled"),
                                       QStringLiteral("panelRaised"),
-                                      QStringLiteral("accentStrong")},
-                ForegroundRequirement{QStringLiteral("ActionButton hover"),
-                                      QStringLiteral("accentSoft"), QStringLiteral("accentText")},
-                ForegroundRequirement{QStringLiteral("ActionButton down"),
-                                      QStringLiteral("accentStrong"), QStringLiteral("accentText")},
-                ForegroundRequirement{QStringLiteral("ActionButton danger"),
-                                      QStringLiteral("dangerSoft"), QStringLiteral("dangerStrong")},
-                ForegroundRequirement{QStringLiteral("ActionButton danger hover"),
-                                      QStringLiteral("danger"), QStringLiteral("dangerStrong")},
-                ForegroundRequirement{QStringLiteral("ActionButton danger down"),
-                                      QStringLiteral("dangerStrong"),
-                                      QStringLiteral("dangerStrong")},
-                ForegroundRequirement{QStringLiteral("ActionButton disabled"),
-                                      QStringLiteral("rowAlt"), QStringLiteral("mutedText")},
-                ForegroundRequirement{QStringLiteral("FilterTabButton checked"),
-                                      QStringLiteral("accent"), QStringLiteral("accentText")},
-                ForegroundRequirement{QStringLiteral("FilterTabButton normal"),
-                                      QStringLiteral("panelRaised"), QStringLiteral("text")},
-                ForegroundRequirement{QStringLiteral("Pager included"), QStringLiteral("accent"),
-                                      QStringLiteral("accentText")},
-                ForegroundRequirement{QStringLiteral("Pager excluded"), QStringLiteral("mutedText"),
-                                      QStringLiteral("panel")},
-                ForegroundRequirement{QStringLiteral("Pager hover"), QStringLiteral("accentSoft"),
-                                      QStringLiteral("text")},
-                ForegroundRequirement{QStringLiteral("Pager normal"), QStringLiteral("panelRaised"),
-                                      QStringLiteral("text")},
-                ForegroundRequirement{QStringLiteral("ThemeDialog highlighted"),
-                                      QStringLiteral("accentSoft"), QStringLiteral("accentText")},
-                ForegroundRequirement{QStringLiteral("ThemeDialog normal"),
-                                      QStringLiteral("surface"), QStringLiteral("text")},
-                ForegroundRequirement{QStringLiteral("SsaTable header"),
+                                      QStringLiteral("text"),
+                                      {},
+                                      false},
+                TextForegroundBinding{QStringLiteral("ActionButton normal"),
+                                      QStringLiteral("accent"),
+                                      {},
+                                      QStringLiteral("accentText"),
+                                      true},
+                TextForegroundBinding{QStringLiteral("FilterTabButton checked"),
+                                      QStringLiteral("accent"),
+                                      {},
+                                      QStringLiteral("accentText"),
+                                      true},
+                TextForegroundBinding{QStringLiteral("PagerQuickFilters hover"),
+                                      QStringLiteral("accentSoft"),
+                                      {},
+                                      QStringLiteral("text"),
+                                      true},
+                TextForegroundBinding{QStringLiteral("ThemeDialog selected theme"),
+                                      QStringLiteral("accentSoft"),
+                                      {},
+                                      QStringLiteral("accentText"),
+                                      true},
+                TextForegroundBinding{QStringLiteral("SsaTable reorder target"),
+                                      QStringLiteral("accentSoft"),
+                                      {},
+                                      QStringLiteral("accentStrong"),
+                                      true},
+                TextForegroundBinding{QStringLiteral("AnalyticsChart table link"),
+                                      QStringLiteral("panel"),
+                                      {},
+                                      QStringLiteral("link"),
+                                      true},
+                TextForegroundBinding{QStringLiteral("AnalyticsChartTable header"),
                                       QStringLiteral("tableHeader"),
-                                      QStringLiteral("accentStrong")},
-                ForegroundRequirement{QStringLiteral("SsaTable reorder"),
-                                      QStringLiteral("accentSoft"), QStringLiteral("accentStrong")},
-                ForegroundRequirement{QStringLiteral("SsaTable link"), QStringLiteral("surface"),
-                                      QStringLiteral("accentStrong")},
-                ForegroundRequirement{QStringLiteral("SsaTable striped link"),
-                                      QStringLiteral("rowAlt"), QStringLiteral("accentStrong")},
-                ForegroundRequirement{QStringLiteral("SsaTable selected link"),
-                                      QStringLiteral("rowSelected"),
-                                      QStringLiteral("accentStrong")},
-                ForegroundRequirement{QStringLiteral("SsaTable normal"), QStringLiteral("surface"),
-                                      QStringLiteral("text")},
-                ForegroundRequirement{QStringLiteral("SsaTable striped"), QStringLiteral("rowAlt"),
-                                      QStringLiteral("text")},
-                ForegroundRequirement{QStringLiteral("SsaTable selected"),
-                                      QStringLiteral("rowSelected"), QStringLiteral("text")},
-                ForegroundRequirement{QStringLiteral("AnalyticsChart quality"),
-                                      QStringLiteral("panel"), QStringLiteral("dangerStrong")},
-                ForegroundRequirement{QStringLiteral("AnalyticsChart link"),
-                                      QStringLiteral("panel"), QStringLiteral("link")},
-                ForegroundRequirement{QStringLiteral("AnalyticsChart link hover"),
-                                      QStringLiteral("surface"), QStringLiteral("link")},
-                ForegroundRequirement{QStringLiteral("AboutDialog version"),
-                                      QStringLiteral("panel"), QStringLiteral("accent")},
+                                      QStringLiteral("text"),
+                                      {},
+                                      false},
+                TextForegroundBinding{QStringLiteral("AboutDialog version"),
+                                      QStringLiteral("panel"),
+                                      {},
+                                      QStringLiteral("accent"),
+                                      true},
             };
 
             int paletteCount = 0;
             int pythonThemeCount = 0;
+            QStringList failures;
             for (const QVariant& option : options) {
                 const QString themeName = option.toString();
                 if (themeName == QStringLiteral("system")) {
@@ -1480,34 +1575,55 @@ namespace {
                 harness->setProperty("selectedTheme", themeName);
                 QTRY_COMPARE_WITH_TIMEOUT(harness->property("activeTheme").toString(), themeName,
                                           1000);
-                for (const ForegroundRequirement& requirement : requirements) {
-                    const QColor background{palette.value(requirement.backgroundRole).toString()};
-                    QVERIFY2(background.isValid(), qPrintable(themeName + " invalid role: " +
-                                                              requirement.backgroundRole));
+                for (const TextForegroundBinding& binding : bindings) {
+                    const QColor background{palette.value(binding.backgroundRole).toString()};
+                    QVERIFY2(background.isValid(),
+                             qPrintable(themeName + " invalid role: " + binding.backgroundRole));
                     QColor preferred;
-                    if (!requirement.preferredRole.isEmpty()) {
-                        preferred = QColor{palette.value(requirement.preferredRole).toString()};
+                    if (!binding.preferredRole.isEmpty()) {
+                        preferred = QColor{palette.value(binding.preferredRole).toString()};
                         QVERIFY2(preferred.isValid(),
-                                 qPrintable(themeName + " invalid preferred role: " +
-                                            requirement.preferredRole));
+                                 qPrintable(themeName +
+                                            " invalid preferred role: " + binding.preferredRole));
                     }
-                    harness->setProperty("backgroundRole", requirement.backgroundRole);
-                    harness->setProperty("preferredRole", requirement.preferredRole);
+                    harness->setProperty("backgroundRole", binding.backgroundRole);
+                    harness->setProperty("preferredRole", binding.preferredRole);
+                    if (binding.usesReadableText) {
+                        harness->setProperty("usesReadableText", true);
+                        harness->setProperty("foregroundRole", binding.foregroundRole);
+                    } else {
+                        harness->setProperty("foregroundRole", binding.foregroundRole);
+                        harness->setProperty("usesReadableText", false);
+                    }
                     const QColor foreground{
                         harness->property("resolvedForeground").value<QColor>()};
-                    QVERIFY2(
-                        foreground.isValid(),
-                        qPrintable(themeName + " invalid foreground for " + requirement.component));
-                    QVERIFY2(
-                        contrastRatio(foreground, background) >= 4.5,
-                        qPrintable(themeName + " contrast failed for " + requirement.component));
-                    if (preferred.isValid() && contrastRatio(preferred, background) >= 4.5) {
-                        QCOMPARE(foreground, preferred);
+                    if (!foreground.isValid()) {
+                        failures.append(themeName + " invalid foreground for " + binding.component);
+                        continue;
+                    }
+                    const qreal ratio = contrastRatio(foreground, background);
+                    if (ratio < 4.5) {
+                        failures.append(
+                            QStringLiteral("%1: %2 uses %3 on %4 (%5:1)")
+                                .arg(themeName, binding.component,
+                                     binding.usesReadableText ? QStringLiteral("Theme.readableText")
+                                                              : binding.foregroundRole,
+                                     binding.backgroundRole, QString::number(ratio, 'f', 2)));
+                    }
+                    if (binding.usesReadableText && preferred.isValid() &&
+                        contrastRatio(preferred, background) >= 4.5 && foreground != preferred) {
+                        failures.append(themeName + " did not preserve preferred foreground for " +
+                                        binding.component);
                     }
                 }
             }
             QCOMPARE(paletteCount, 39);
             QCOMPARE(pythonThemeCount, 13);
+
+            if (!failures.isEmpty()) {
+                QFAIL(qPrintable(QStringLiteral("text contrast below AA (4.5:1):\n%1")
+                                     .arg(failures.join('\n'))));
+            }
 
             harness->setProperty("selectedTheme", initialTheme);
             QTRY_COMPARE_WITH_TIMEOUT(harness->property("activeTheme").toString(), initialTheme,

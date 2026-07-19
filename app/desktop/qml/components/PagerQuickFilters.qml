@@ -134,7 +134,7 @@ RowLayout {
     }
     Label {
         text: "Setor:"
-        color: Theme.accent
+        color: Theme.readableText(Theme.surface, Theme.accent)
         font.pixelSize: Theme.fontSizeBody
         font.bold: false
         horizontalAlignment: Text.AlignRight
