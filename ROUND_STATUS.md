@@ -3,6 +3,21 @@
 Fonte operacional para humanos e agentes de codigo. Verifique este arquivo
 antes de interpretar sincronizacao Git, validacao local ou estado externo.
 
+## Gate completo apos prova real e TypeScale - 2026-07-19
+
+- **ENTREGUE localmente**: CTest dev sequencial foi executado depois da prova
+  end-to-end C++ e do ajuste de tipografia compartilhada.
+- Resultado real: `627/627` testes passaram, `0` falhas, em `76.22 s`.
+  O gate inclui importacao em blocos, rescan, SQLite, filtros, workflow,
+  analytics, QML, RSS de 250 mil linhas e estresse de memoria.
+- Nenhum timeout foi usado como sucesso. O resultado nao prova Windows/UNC,
+  SMB, GitLab ou DMG, que continuam estados externos separados.
+- Contadores honestos permanecem: plano original `99.0/100`; divida nova P0
+  `14/14 = 100.0%`; backlog legado `N/A`; fila operacional `6/8 = 75.0%`.
+
+Proxima atividade unica: atacar a maior pendencia local implementavel com
+evidencia causal, sem reabrir os contratos verdes.
+
 ## Prova end-to-end C++ com corpus real - 2026-07-19
 
 - **ENTREGUE localmente**: o executavel C++ `ssa_consulta_rapida_cli` criou e

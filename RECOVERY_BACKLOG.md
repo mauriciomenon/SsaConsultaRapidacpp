@@ -1,5 +1,17 @@
 # Recovery Backlog
 
+## Gate completo depois da prova real - 2026-07-19
+
+- [RESOLVED-LOCAL] CTest dev sequencial passou `627/627` em `76.22 s`, sem
+  falhas ou timeouts aceitos como sucesso.
+- O marco cobre importacao por blocos, rescan, integridade SQLite, filtros,
+  workflow, analytics, QML, RSS de 250 mil linhas e memoria.
+- [EXTERNAL-PENDING] Windows/UNC, SMB, GitLab e DMG permanecem fora da prova
+  local e nao recebem credito.
+
+Proxima atividade unica: escolher uma pendencia local implementavel com risco
+mensuravel.
+
 ## Prova end-to-end C++ com planilhas reais - 2026-07-19
 
 - [RESOLVED-LOCAL] O CLI C++ criou um banco temporario e importou tres fontes
