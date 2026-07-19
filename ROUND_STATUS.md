@@ -17,13 +17,14 @@ antes de interpretar sincronizacao Git, validacao local ou estado externo.
   C/security, detect-secrets e qmlformat sem findings.
 - Validacao local: build de `ssa_qt_presentation_tests` e `all_qmllint`; CTest
   focado `ssa_qt_presentation_tests` + `ssa_qml_layout_smoke_1180x760`, 2/2 em
-  `10.46 s`. O teste novo prova os valores em importacao e rescan.
+  `10.46 s`, e suite completa `619/619` em `72.05 s`. O teste novo prova os
+  valores em importacao e rescan.
 - Contadores: plano original `99.0/100`; divida nova P0 `14/14 = 100.0%`;
   backlog legado `N/A`; fila operacional `6/8 = 75.0%` antes da prova
   Windows/UNC.
 
-Proxima atividade unica: executar CTest completo no fechamento e publicar o
-slice, mantendo a prova Windows/UNC como dependencia externa.
+Estado apos commit local: `0c28720`; publicacao nos remotes sera confirmada
+abaixo, mantendo a prova Windows/UNC como dependencia externa.
 
 ## Importacao externa em blocos e normalizacao de desvios - 2026-07-19
 
