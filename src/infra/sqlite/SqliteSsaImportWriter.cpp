@@ -826,6 +826,16 @@ namespace ssa::infra::sqlite {
                     ++result.duplicateRows;
                 }
                 normalizedRow[ssaNumberKey] = number;
+                const auto deviation = normalizedRow.find("numero_desvios");
+                if (deviation != normalizedRow.end()) {
+                    const auto canonical =
+                        domain::SsaImportPolicy::normalizeDeviationCount(deviation->second);
+                    if (canonical.empty()) {
+                        normalizedRow.erase(deviation);
+                    } else {
+                        deviation->second = canonical;
+                    }
+                }
                 for (const auto& column : columns) {
                     if (!isSsaReferenceColumn(column.key)) {
                         continue;

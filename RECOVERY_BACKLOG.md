@@ -1,5 +1,21 @@
 # Recovery Backlog
 
+## Importacao tolerante de `numero_desvios` Excel - 2026-07-19
+
+- [RESOLVED-LOCAL] A politica aceita `2.0`/`2,0`, `Desvio #N` e
+  `Desvios: N`; o writer aplica a mesma politica antes do bind SQLite.
+- [RESOLVED-LOCAL] Valor desconhecido de `numero_desvios`, que e opcional,
+  nao aborta uma linha valida: ele e omitido e persiste como NULL. Outros
+  inteiros continuam rejeitados sem mutacao parcial.
+- Evidencia: build `dev`; testes diretos `4/4` em `0.09 s`; familia de
+  importacao/SQLite `82/82` em `4.43 s`; review final sem findings.
+- [EXTERNAL-PENDING] As planilhas exatas reportadas em 19/07 nao estao no
+  workspace. A confirmacao final depende de repetir o import com esses
+  arquivos e registrar o valor bruto que ainda falhar, se houver.
+
+Proxima atividade unica: validar o mesmo caminho com os arquivos reais que
+geraram `invalid integer value for column numero_desvios`.
+
 ## Smoke runtime AA de controles compartilhados - 2026-07-19
 
 - [RESOLVED-LOCAL] O novo contrato instancia `ActionButton` e

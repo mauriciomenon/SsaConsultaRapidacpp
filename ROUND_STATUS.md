@@ -3,6 +3,30 @@
 Fonte operacional para humanos e agentes de codigo. Verifique este arquivo
 antes de interpretar sincronizacao Git, validacao local ou estado externo.
 
+## Importacao tolerante de `numero_desvios` Excel - 2026-07-19
+
+- **ENTREGUE localmente**: o dominio agora canoniza inteiros Excel como `2.0`
+  e `2,0`, labels `Desvio #N`/`Desvios: N` e estados sem desvio. O writer
+  tambem normaliza a linha de entrada antes do bind, cobrindo caminhos que
+  chegam sem o mapper; label desconhecido desse campo opcional vira NULL.
+- Os demais inteiros continuam fail-closed. Nenhum schema, layout, menu,
+  rescan, regra de filtro ou politica de consolidacao mudou.
+- Review final apos a ultima edicao: diff-check, clang-format, Semgrep
+  C/security e detect-secrets sem findings. Build `dev` concluido.
+- Testes reais: casos diretos `4/4` em `0.09 s`; familia importacao/SQLite
+  `82/82` em `4.43 s`, incluindo blocos de 64, rescan, rollback, legado e
+  integridade SQLite. A suite completa nao foi repetida nesta rodada; o ultimo
+  marco completo validado foi `627/627` em `76.22 s` no commit anterior.
+- A causa foi reproduzida com valores equivalentes ao formato Excel, mas as
+  planilhas exatas do usuario nao estao no workspace. Isso nao e apresentado
+  como validacao externa.
+- Contadores permanecem plano original `99.0/100`, divida nova P0
+  `14/14 = 100.0%`, backlog legado `N/A` e fila operacional `6/8 = 75.0%`.
+
+Proxima atividade unica: repetir uma importacao real com as planilhas que
+falharam e, se ainda houver erro, capturar o valor bruto da celula no
+diagnostico antes de tocar outra area.
+
 ## Smoke runtime de contraste para controles QML - 2026-07-19
 
 - **ENTREGUE localmente, parcial no item**: o smoke agora instancia

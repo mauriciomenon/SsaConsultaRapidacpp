@@ -56,6 +56,13 @@ TEST_CASE("SSA import normalization preserves deviation labels as counts") {
     REQUIRE(ssa::domain::SsaImportPolicy::normalizeDeviationCount("N/A").empty());
 }
 
+TEST_CASE("SSA import normalization accepts Excel integer representations") {
+    REQUIRE(ssa::domain::SsaImportPolicy::normalizeDeviationCount("2.0") == "2");
+    REQUIRE(ssa::domain::SsaImportPolicy::normalizeDeviationCount("2,0") == "2");
+    REQUIRE(ssa::domain::SsaImportPolicy::normalizeDeviationCount("Desvios: 3") == "3");
+    REQUIRE(ssa::domain::SsaImportPolicy::normalizeDeviationCount("1.5").empty());
+}
+
 TEST_CASE("SSA import merge fails closed when neither snapshot is valid") {
     using Values = ssa::domain::SsaImportPolicy::Values;
     const Values existing{

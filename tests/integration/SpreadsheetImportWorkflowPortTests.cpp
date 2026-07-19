@@ -3713,6 +3713,33 @@ TEST_CASE("sqlite import repairs invalid legacy optional integers while updating
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
+TEST_CASE("sqlite import normalizes raw deviation values before binding") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto dbPath = std::filesystem::path{tempDir.path().toStdString()} / "ssas.db";
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(sqliteWriterAccess(), dbPath,
+                                                           importColumns());
+    ssa::infra::importing::ResolvedSsaImportRows incoming;
+    incoming.rows = {{{"numero_ssa", "202600149"},
+                      {"descricao_ssa", "Excel numeric deviation"},
+                      {"numero_desvios", "2.0"}},
+                     {{"numero_ssa", "202600150"},
+                      {"descricao_ssa", "Unknown optional deviation"},
+                      {"numero_desvios", "N/A"}}};
+
+    const auto result = writer.write(incoming, 1, 0, false);
+
+    REQUIRE(result.rowsInserted == 2);
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarInt(db, "SELECT numero_desvios FROM ssa_table WHERE numero_ssa='202600149'") ==
+            2);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600150' "
+                          "AND numero_desvios IS NULL") == 1);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
 TEST_CASE("sqlite import keeps invalid legacy non-deviation integers fail-closed") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());

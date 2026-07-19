@@ -485,32 +485,49 @@ namespace ssa::domain {
         std::ranges::transform(normalized, normalized.begin(), [](const unsigned char ch) {
             return static_cast<char>(std::tolower(ch));
         });
-        const auto digitsOnly = [](const std::string_view candidate) {
-            return !candidate.empty() && std::ranges::all_of(candidate, [](const unsigned char ch) {
-                return std::isdigit(ch) != 0;
-            });
+        const auto integerLiteral = [](const std::string_view candidate) {
+            const auto separator = candidate.find_first_of(".,");
+            const auto digitsOnly = [](const std::string_view text) {
+                return !text.empty() && std::ranges::all_of(text, [](const unsigned char ch) {
+                    return std::isdigit(ch) != 0;
+                });
+            };
+            if (separator == std::string_view::npos) {
+                return digitsOnly(candidate) ? std::string{candidate} : std::string{};
+            }
+            if (separator == 0 || separator + 1 >= candidate.size() ||
+                !digitsOnly(candidate.substr(0, separator)) ||
+                !digitsOnly(candidate.substr(separator + 1)) ||
+                !std::ranges::all_of(candidate.substr(separator + 1),
+                                     [](const unsigned char ch) { return ch == '0'; })) {
+                return std::string{};
+            }
+            return std::string{candidate.substr(0, separator)};
         };
-        if (digitsOnly(normalized)) {
-            return normalized;
+        if (const auto numeric = integerLiteral(normalized); !numeric.empty()) {
+            return numeric;
         }
-        if (normalized.starts_with("desvio")) {
-            auto suffix = std::string_view{normalized}.substr(6);
+        if (normalized.starts_with("desvio") || normalized.starts_with("desvios")) {
+            auto suffix =
+                std::string_view{normalized}.substr(normalized.starts_with("desvios") ? 7 : 6);
             while (!suffix.empty() && std::isspace(static_cast<unsigned char>(suffix.front()))) {
                 suffix.remove_prefix(1);
             }
-            if (!suffix.empty() && suffix.front() == '#') {
+            if (!suffix.empty() &&
+                (suffix.front() == '#' || suffix.front() == ':' || suffix.front() == '-')) {
                 suffix.remove_prefix(1);
                 while (!suffix.empty() &&
                        std::isspace(static_cast<unsigned char>(suffix.front()))) {
                     suffix.remove_prefix(1);
                 }
             }
-            if (digitsOnly(suffix)) {
-                return std::string{suffix};
+            if (const auto numeric = integerLiteral(suffix); !numeric.empty()) {
+                return numeric;
             }
         }
         if (normalized == "sem desvio" || normalized == "sem desvios" || normalized == "nenhum" ||
-            normalized == "nao") {
+            normalized == "nao" || normalized == "0 sem desvio" || normalized == "0 - sem desvio" ||
+            normalized == "sem desvio (0)") {
             return "0";
         }
         return {};
