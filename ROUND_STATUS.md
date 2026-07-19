@@ -5,6 +5,40 @@ antes de interpretar sincronizacao Git, validacao local ou estado externo.
 
 Ultima verificacao local: 2026-07-18
 
+## Checkpoints causais privados de parsing e merge de derivadas - 2026-07-18
+
+- Branch `master`; codigo em `77fd3e0`, confirmado no Bitbucket. GitLab
+  `origin` continua bloqueado por OAuth `invalid_grant`; isto e dependencia
+  externa, nao falha de codigo nem publicacao confirmada no GitLab.
+- Tres contratos deixaram de usar `wait_for(1/10ms)` como precondicao. O parser
+  para no primeiro intervalo real de 4 KiB e o fluxo completo para logo apos a
+  primeira edge mergeada; em ambos, o stop ocorre antes do watchdog e o banco
+  precisa permanecer vazio e reutilizavel.
+- `DerivadasImportTestAccess` existe somente em `tests/` e chama overloads
+  privados por chamada. As APIs publicas de reader, merger e port voltaram as
+  assinaturas anteriores; sem hooks o caminho normal nao cria semaforo, callback
+  ou estado adicional. Nao houve mudanca de schema, SQL ou regra de derivadas.
+- RED inicial confirmou API ausente. O primeiro review Terra ultra encontrou
+  P2 de sinais expostos na API publica e P1 de merge fora do port; ambos foram
+  corrigidos por um segundo RED com acesso privado. Dois re-reviews Terra ultra
+  finais deram `SEM FINDINGS` para contrato e concorrencia.
+- Gate local: diff, clang-format, cppcheck, clang-tidy, detect-secrets e
+  Semgrep (`11` regras, zero finding) limpos; build de `ssa_integration_tests`;
+  causal `3/3` em `0.08 s`, repeticao `90/90` em `1.90 s` e familia derivadas
+  `22/22` em `0.49 s`. O hook do commit passou clang-format, Gitleaks,
+  detect-secrets e TruffleHog. `clawpatch` continua indisponivel por CLI/modelo
+  local antigo e seleciona arquivo externo ao slice; nao conta como review.
+- Risco residual: o cancelamento continua cooperativo; `std::getline` nao pode
+  interromper um read de SO ja bloqueado. Os checkpoints provam parse e merge,
+  nao I/O externo bloqueado.
+- Contadores sem inflacao: plano original `99.0/100`; divida nova
+  `13/14 = 92.9%`; backlog legado `0.0/100` placeholder e fila operacional
+  `5/8 = 62.5%`. Nenhum credito funcional foi atribuido.
+
+Proxima atividade unica: diagnosticar a pendencia legada de sincronizacao
+completa de derivadas com regras de negocio e fonte externa, primeiro mapeando
+contrato e dados reais sem alterar fluxo ou schema.
+
 ## Cancelamento causal de derivadas sob SQLite bloqueado - 2026-07-18
 
 - Branch `master`; codigo em `6e818c0`, publicado no Bitbucket. GitLab

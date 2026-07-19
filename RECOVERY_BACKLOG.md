@@ -1,5 +1,30 @@
 # Recovery Backlog
 
+## Checkpoints causais privados de parsing e merge de derivadas - 2026-07-18
+
+- [RESOLVED-LOCAL] [DERIVADAS-PARSER-MERGE-CAUSAL] `77fd3e0` remove tres
+  precondicoes temporais de `DerivadasImportTests`. O parser sinaliza somente
+  depois de processar 4 KiB de uma linha delimitada, e o merger sinaliza depois
+  de aceitar a primeira edge no fluxo real de `SqliteDerivadasPort`.
+- O primeiro patch publicou sinais no reader/merger e recebeu P2 de superficie
+  publica e P1 de cobertura de merge isolado. O corte final usa
+  `DerivadasImportTestAccess` sob `tests/`, overloads privados por chamada e
+  callbacks/sinalizacao com lifetime limitado ao teste. APIs, schema, SQL e
+  regras normais permanecem inalterados.
+- Gates: build `ssa_integration_tests`; causal `3/3` em `0.08 s`, repeticao
+  `90/90` em `1.90 s`, derivadas `22/22` em `0.49 s`; diff, formato, cppcheck,
+  clang-tidy, detect-secrets e Semgrep limpos. Dois re-reviews Terra ultra
+  finais `SEM FINDINGS`. Bitbucket confirma `77fd3e0`; GitLab `origin` segue
+  OAuth `invalid_grant`; clawpatch indisponivel por tooling local.
+- Limite conhecido: a prova e cooperativa dentro do parse/merge; nao transforma
+  `std::getline` em I/O cancelavel durante bloqueio externo.
+- Sem credito novo: plano `99.0/100`, divida nova `13/14 = 92.9%`, legado
+  placeholder `0.0/100`, fila operacional `5/8 = 62.5%`.
+
+Proxima atividade unica: diagnosticar a sincronizacao completa de derivadas
+pendente com regras de negocio e fonte externa antes de propor schema, UI ou
+refactor de grafo.
+
 ## Cancelamento causal de derivadas sob SQLite bloqueado - 2026-07-18
 
 - [RESOLVED-LOCAL] [DERIVADAS-SQLITE-BUSY-CAUSAL] `6e818c0` encaminha sinal
