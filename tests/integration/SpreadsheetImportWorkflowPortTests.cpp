@@ -5327,6 +5327,67 @@ TEST_CASE("external import preserves a failed second block after committing the 
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
+TEST_CASE("external import continues after a failed middle block") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto sourceDirectory = root / "external";
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(sourceDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    std::vector<std::filesystem::path> files;
+    files.reserve(129);
+    const auto writeValidWorkbook = [&](const std::string& name, const int number,
+                                        const std::string& description) {
+        const auto workbook = sourceDirectory / name;
+        writeWorkbook(workbook,
+                      row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Descricao"),
+                              inlineCell("C1", "Data Cadastro")}) +
+                          row(2, {inlineCell("A2", std::to_string(number)),
+                                  inlineCell("B2", description), inlineCell("C2", "2026-07-14")}));
+        files.push_back(workbook);
+    };
+    for (int index = 0; index < 64; ++index) {
+        writeValidWorkbook("first_" + std::to_string(index) + ".xlsx", 202602000 + index,
+                           "First block");
+    }
+    const auto invalid = sourceDirectory / "invalid_middle_block.xlsx";
+    std::ofstream invalidOutput(invalid);
+    REQUIRE(invalidOutput.is_open());
+    invalidOutput << "not a zip package";
+    invalidOutput.close();
+    files.push_back(invalid);
+    for (int index = 0; index < 64; ++index) {
+        writeValidWorkbook("third_" + std::to_string(index) + ".xlsx", 202602100 + index,
+                           "Third block");
+    }
+
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+    const auto result = port.importExternalFiles({.files = files});
+
+    INFO(result.message);
+    INFO(result.diagnostic);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
+    REQUIRE(result.importSummary.has_value());
+    REQUIRE(result.importSummary->discovered == 129);
+    REQUIRE(result.importSummary->inserts == 65);
+    REQUIRE(result.message.find("batches=3") != std::string::npos);
+    REQUIRE(result.diagnostic.find("batch=2 file=invalid_middle_block.xlsx") != std::string::npos);
+    REQUIRE(directWorkbookCount(inputDirectory / "processadas") == 65);
+    REQUIRE(std::filesystem::exists(invalid));
+
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 65);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa LIKE '2026021%'") == 1);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202602163'") == 1);
+    REQUIRE(scalarText(db, "PRAGMA integrity_check") == "ok");
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
 TEST_CASE("spreadsheet import workflow reports missing selected file metadata as failed") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());

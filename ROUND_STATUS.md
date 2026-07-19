@@ -3,6 +3,26 @@
 Fonte operacional para humanos e agentes de codigo. Verifique este arquivo
 antes de interpretar sincronizacao Git, validacao local ou estado externo.
 
+## Atomicidade e continuidade entre tres lotes externos - 2026-07-19
+
+- **ENTREGUE localmente**: novo contrato cobre 129 arquivos: 64 validos no
+  lote 1, arquivo invalido mais 63 validos no lote 2 e 1 valido no lote 3.
+- Evidencia GREEN: status final `Failed`, `batches=3`, `65` insercoes,
+  `65` fontes em `processadas`, arquivo invalido preservado, ultimo arquivo do
+  lote 3 publicado, `COUNT(*)=65` e `PRAGMA integrity_check=ok`.
+- O RED inicial revelou e confirmou a regra correta: o lote que contem erro e
+  atomico e reverte seus 63 validos; lotes posteriores continuam. Nenhuma
+  mudanca de producao ou de schema foi necessaria.
+- Review final: diff check, clang-format, Semgrep C/security (0 findings) e
+  detect-secrets limpos. Build de `ssa_integration_tests` e CTest focado
+  passaram `1/1` em `0.80 s`.
+- Contadores sem inflacao: plano original `99.0/100`; divida nova P0
+  `14/14 = 100.0%`; backlog legado `N/A`; fila operacional local `6/8 =
+  75.0%`.
+
+Proxima atividade unica: continuar com um contrato local de importacao/SQLite
+ou fechar outra pendencia de determinismo com evidencia causal.
+
 ## Checkpoint causal de reentrancia do workflow - 2026-07-19
 
 - **ENTREGUE localmente**: `WorkflowCommandRunnerTest` deixou de usar

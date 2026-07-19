@@ -1,5 +1,21 @@
 # Recovery Backlog
 
+## Continuidade apos falha no lote intermediario - 2026-07-19
+
+- [RESOLVED-LOCAL] O contrato de importacao externa agora prova tres lotes:
+  64 validos, um lote intermediario atomico com um XLSX invalido e um lote
+  final com um arquivo valido.
+- GREEN: `batches=3`, status `Failed`, `65` insercoes, `65` fontes movidas,
+  invalido preservado, ultimo arquivo publicado e `PRAGMA integrity_check=ok`.
+- O RED inicial estava incorreto ao esperar 128 insercoes; a regra correta e
+  reverter todo o lote que falhou e continuar no lote seguinte. Nenhuma
+  mudanca de producao foi necessaria.
+- Build de `ssa_integration_tests` e CTest focado passaram `1/1` em `0.80 s`;
+  review final ficou limpo.
+
+Proxima atividade unica: selecionar o proximo contrato local de importacao ou
+SQLite com risco e ganho mensuraveis.
+
 ## Determinismo da reentrancia do workflow - 2026-07-19
 
 - [RESOLVED-LOCAL] O teste terminal reentrante nao usa mais `QTest::qWait(50)`;
