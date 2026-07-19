@@ -19,11 +19,14 @@ antes de interpretar sincronizacao Git, validacao local ou estado externo.
   `Dispositivo nao configurado`; o cleanup removeu o staging. `build/release`
   existe e foi validado; nenhum ZIP/DMG 0.9.12 e declarado.
 - Review final: diff check, clang-format, cppcheck, Semgrep C/security,
-  detect-secrets e hooks staged sem findings. Commit/tag/push pendentes nesta
-  secao.
+  detect-secrets e hooks staged sem findings.
+- Commit `e2b9c28` e tag anotada `v0.9.12` publicados e confirmados em
+  `origin/master`, `origin/v0.9.12`, `bitbucket/master` e
+  `bitbucket/v0.9.12`.
 
-Proxima atividade unica: commit atomico, tag anotada `v0.9.12` e push dos dois
-refs; DMG continua pendencia do host macOS.
+Working tree segue dirty somente por artefatos locais preexistentes fora da
+fatia. Proxima atividade unica: resolver o bloqueio de DMG em host macOS
+configurado ou seguir para a proxima divida local; nao contar DMG como entregue.
 
 ## Parametros de execucao no fluxo de derivadas - 2026-07-19
 

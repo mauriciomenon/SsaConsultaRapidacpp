@@ -9,6 +9,8 @@
 - [EXTERNAL-BLOCKED] DMG/ZIP 0.9.12 nao foram publicados: `hdiutil` retornou
   `Dispositivo nao configurado` e o cleanup removeu o staging. Nao contar como
   pacote entregue ate executar em host macOS com dispositivo configurado.
+- Codigo publicado: commit `e2b9c28` e tag `v0.9.12` confirmados nos dois
+  remotes.
 
 ## Opcoes de execucao no importador de derivadas - 2026-07-19
 

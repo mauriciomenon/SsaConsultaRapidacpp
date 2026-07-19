@@ -28,6 +28,8 @@ cada operacao. Nenhuma tabela SQLite ou regra de negocio foi alterada.
   DMG foi bloqueada pelo host (`hdiutil: Dispositivo nao configurado`), e os
   artefatos temporarios foram removidos pelo cleanup do script; nao ha ZIP ou
   DMG 0.9.12 declarado como entregue.
+- Commit `e2b9c28` e tag anotada `v0.9.12` foram publicados em `origin` e
+  `bitbucket`; os refs de branch e tag apontam para o mesmo commit.
 
 ## Limites conhecidos
 
