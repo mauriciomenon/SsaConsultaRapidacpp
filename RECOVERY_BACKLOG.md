@@ -1,5 +1,26 @@
 # Recovery Backlog
 
+## Legado SQLite `Desvio #N` bloqueava atualizacao valida - 2026-07-19
+
+- [RESOLVED-LOCAL] O banco local continha `2599` valores TEXT `Desvio #1` em
+  uma coluna SQLite declarada INTEGER. O merge lia esses valores sem
+  normalizacao e o bind abortava o lote ao atualizar uma planilha valida.
+- [RESOLVED-LOCAL] A normalizacao de `numero_desvios` agora e uma politica de
+  dominio compartilhada: labels `Desvio #N` preservam o numero, `sem desvio`
+  preserva zero e texto desconhecido legado torna-se `NULL`.
+- [RESOLVED-LOCAL] O teste de workflow importa dois arquivos: atualiza uma
+  linha legada e continua com a proxima. O resultado e `Succeeded`, com
+  `Desvio #2`, zero e duas linhas persistidas.
+- Evidencia: build afetado concluido; CTest focal `3/3` em `0.14 s`; familia
+  importacao/SQLite `86/86` em `2.48 s`; review diff, formatacao, cppcheck,
+  Semgrep (11 regras, zero findings) e detect-secrets limpo.
+- Nenhuma mudanca de schema, layout ou menu. Contadores fixos permanecem
+  plano `99.0/100`, divida P0 `14/14 = 100.0%`, backlog legado `N/A` e fila
+  `6/8 = 75.0%`.
+
+Proxima atividade unica: escolher o proximo risco local de importacao ou
+SQLite com evidencia causal.
+
 ## Parametro `rows_per_chunk` no refresh SAM - 2026-07-19
 
 - [RESOLVED-LOCAL] O refresh SAM agora transporta `rows_per_chunk` desde as

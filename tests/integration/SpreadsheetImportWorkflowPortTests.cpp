@@ -2722,6 +2722,61 @@ TEST_CASE("spreadsheet import persists a real deviation label as an integer") {
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
+TEST_CASE("external import updates legacy deviation text and continues with the next file") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto sourceDirectory = root / "external";
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(sourceDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+
+    ssa::infra::sqlite::SqliteSsaImportWriter seedWriter(sqliteWriterAccess(), dbPath,
+                                                         importColumns());
+    ssa::infra::importing::ResolvedSsaImportRows seed;
+    seed.rows.push_back({{"numero_ssa", "202600146"},
+                         {"descricao_ssa", "Legacy deviation"},
+                         {"data_cadastro", "2026-07-14"},
+                         {"numero_desvios", "1"}});
+    REQUIRE(seedWriter.write(seed, 1, 0, false).rowsWritten == 1);
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(db,
+                         "UPDATE ssa_table SET numero_desvios='Desvio #1' "
+                         "WHERE numero_ssa='202600146'",
+                         nullptr, nullptr, nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+
+    const auto update = sourceDirectory / "legacy-update.xlsx";
+    const auto addition = sourceDirectory / "next-file.xlsx";
+    const auto headers = row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                                 inlineCell("C1", "Descricao da SSA"),
+                                 inlineCell("D1", "Data de emissao"), inlineCell("E1", "Desvio")});
+    writeWorkbook(update,
+                  headers + row(2, {inlineCell("A2", "202600146"), inlineCell("B2", "APV"),
+                                    inlineCell("C2", "Updated"), inlineCell("D2", "2026-07-14"),
+                                    inlineCell("E2", "Desvio #2")}));
+    writeWorkbook(addition,
+                  headers + row(2, {inlineCell("A2", "202600147"), inlineCell("B2", "APV"),
+                                    inlineCell("C2", "Added"), inlineCell("D2", "2026-07-14"),
+                                    inlineCell("E2", "sem desvio")}));
+
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+    const auto result = port.importExternalFiles({.files = {update, addition}});
+
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarInt(db, "SELECT numero_desvios FROM ssa_table WHERE numero_ssa='202600146'") ==
+            2);
+    REQUIRE(scalarInt(db, "SELECT numero_desvios FROM ssa_table WHERE numero_ssa='202600147'") ==
+            0);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 2);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
 TEST_CASE("external import preserves original filename and spreadsheet timestamp metadata") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
@@ -3621,6 +3676,40 @@ TEST_CASE("sqlite import rejects invalid integer values before mutation") {
     REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 1);
     REQUIRE(scalarText(db, "SELECT descricao_ssa FROM ssa_table WHERE numero_ssa='202600134'") ==
             "Existing");
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("sqlite import repairs invalid legacy optional integers while updating a valid row") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto dbPath = std::filesystem::path{tempDir.path().toStdString()} / "ssas.db";
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(sqliteWriterAccess(), dbPath,
+                                                           importColumns());
+    ssa::infra::importing::ResolvedSsaImportRows seed;
+    seed.rows.push_back({{"numero_ssa", "202600146"},
+                         {"descricao_ssa", "Existing"},
+                         {"data_cadastro", "2026-07-14"},
+                         {"numero_desvios", "2"}});
+    REQUIRE(writer.write(seed, 1, 0, false).rowsWritten == 1);
+
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(db,
+                         "UPDATE ssa_table SET numero_desvios='Desvio #1' "
+                         "WHERE numero_ssa='202600146'",
+                         nullptr, nullptr, nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+
+    ssa::infra::importing::ResolvedSsaImportRows incoming;
+    incoming.rows.push_back({{"numero_ssa", "202600146"}, {"data_cadastro", "2026-07-14"}});
+
+    const auto result = writer.write(incoming, 1, 0, false);
+
+    REQUIRE(result.rowsUpdated == 1);
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarInt(db, "SELECT numero_desvios FROM ssa_table WHERE numero_ssa='202600146'") ==
+            1);
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 

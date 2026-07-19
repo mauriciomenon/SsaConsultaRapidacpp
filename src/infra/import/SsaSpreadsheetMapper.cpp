@@ -30,46 +30,6 @@ namespace ssa::infra::importing {
             return SsaSpreadsheetHeaderCatalog::canonicalColumnForHeader(header);
         }
 
-        std::string normalizeDeviationNumber(const std::string& value) {
-            auto normalized = domain::trimWhitespace(value);
-            std::ranges::transform(normalized, normalized.begin(), [](const unsigned char ch) {
-                return static_cast<char>(std::tolower(ch));
-            });
-            if (normalized.empty()) {
-                return {};
-            }
-            const auto digitsOnly = [](const std::string_view candidate) {
-                return !candidate.empty() &&
-                       std::ranges::all_of(
-                           candidate, [](const unsigned char ch) { return std::isdigit(ch) != 0; });
-            };
-            if (digitsOnly(normalized)) {
-                return normalized;
-            }
-            if (normalized.starts_with("desvio")) {
-                auto suffix = std::string_view{normalized}.substr(6);
-                while (!suffix.empty() &&
-                       std::isspace(static_cast<unsigned char>(suffix.front()))) {
-                    suffix.remove_prefix(1);
-                }
-                if (!suffix.empty() && suffix.front() == '#') {
-                    suffix.remove_prefix(1);
-                    while (!suffix.empty() &&
-                           std::isspace(static_cast<unsigned char>(suffix.front()))) {
-                        suffix.remove_prefix(1);
-                    }
-                }
-                if (digitsOnly(suffix)) {
-                    return std::string{suffix};
-                }
-            }
-            if (normalized == "sem desvio" || normalized == "sem desvios" ||
-                normalized == "nenhum" || normalized == "nao") {
-                return "0";
-            }
-            return {};
-        }
-
         std::string normalizeReprogrammingNumber(const std::string& value) {
             const auto decomposed =
                 QString::fromUtf8(value.data(), static_cast<qsizetype>(value.size()))
@@ -430,7 +390,7 @@ namespace ssa::infra::importing {
                 if (columnKey == "numero_ssa" || columnKey.starts_with("numero_ssa_relacionada")) {
                     value = domain::SsaImportPolicy::normalizeNumber(value);
                 } else if (columnKey == "numero_desvios") {
-                    value = normalizeDeviationNumber(value);
+                    value = domain::SsaImportPolicy::normalizeDeviationCount(value);
                 } else if (columnKey == "num_reprogramacoes") {
                     value = normalizeReprogrammingNumber(value);
                 } else if (const auto* column = domain::ColumnCatalog::find(columnKey);

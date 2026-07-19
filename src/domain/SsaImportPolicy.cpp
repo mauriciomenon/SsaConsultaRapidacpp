@@ -480,6 +480,42 @@ namespace ssa::domain {
         return text;
     }
 
+    std::string SsaImportPolicy::normalizeDeviationCount(const std::string& value) {
+        auto normalized = trimWhitespace(value);
+        std::ranges::transform(normalized, normalized.begin(), [](const unsigned char ch) {
+            return static_cast<char>(std::tolower(ch));
+        });
+        const auto digitsOnly = [](const std::string_view candidate) {
+            return !candidate.empty() && std::ranges::all_of(candidate, [](const unsigned char ch) {
+                return std::isdigit(ch) != 0;
+            });
+        };
+        if (digitsOnly(normalized)) {
+            return normalized;
+        }
+        if (normalized.starts_with("desvio")) {
+            auto suffix = std::string_view{normalized}.substr(6);
+            while (!suffix.empty() && std::isspace(static_cast<unsigned char>(suffix.front()))) {
+                suffix.remove_prefix(1);
+            }
+            if (!suffix.empty() && suffix.front() == '#') {
+                suffix.remove_prefix(1);
+                while (!suffix.empty() &&
+                       std::isspace(static_cast<unsigned char>(suffix.front()))) {
+                    suffix.remove_prefix(1);
+                }
+            }
+            if (digitsOnly(suffix)) {
+                return std::string{suffix};
+            }
+        }
+        if (normalized == "sem desvio" || normalized == "sem desvios" || normalized == "nenhum" ||
+            normalized == "nao") {
+            return "0";
+        }
+        return {};
+    }
+
     std::string SsaImportPolicy::normalizeDateText(const std::string& value) {
         const auto text = trimWhitespace(value);
         const auto normalized = normalizeSnapshotTimestamp(text);

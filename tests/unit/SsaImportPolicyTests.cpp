@@ -50,6 +50,12 @@ TEST_CASE("SSA import normalization trims spaces and whitespace-only values") {
     REQUIRE(ssa::domain::SsaImportPolicy::normalizeNumber("") == "");
 }
 
+TEST_CASE("SSA import normalization preserves deviation labels as counts") {
+    REQUIRE(ssa::domain::SsaImportPolicy::normalizeDeviationCount("Desvio #1") == "1");
+    REQUIRE(ssa::domain::SsaImportPolicy::normalizeDeviationCount("sem desvio") == "0");
+    REQUIRE(ssa::domain::SsaImportPolicy::normalizeDeviationCount("N/A").empty());
+}
+
 TEST_CASE("SSA import merge fails closed when neither snapshot is valid") {
     using Values = ssa::domain::SsaImportPolicy::Values;
     const Values existing{

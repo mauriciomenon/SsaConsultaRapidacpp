@@ -3,6 +3,33 @@
 Fonte operacional para humanos e agentes de codigo. Verifique este arquivo
 antes de interpretar sincronizacao Git, validacao local ou estado externo.
 
+## Correcao de legado `Desvio #N` durante importacao - 2026-07-19
+
+- **ENTREGUE localmente**: o banco local tinha `2599` valores TEXT
+  `Desvio #1` em `ssa_table.numero_desvios`. Ao atualizar uma SSA, o merge
+  preservava o texto e o bind INTEGER abortava a sessao inteira. A politica
+  canonica agora e compartilhada pelo mapper e pelo writer: `Desvio #N` vira
+  `N`, `sem desvio` vira `0` e texto desconhecido vira `NULL` somente para
+  dados legados opcionais.
+- O teste de workflow prova o caminho que falhava: uma planilha atualiza a
+  linha legada para `Desvio #2` e o arquivo seguinte tambem e importado, com
+  status `Succeeded` e duas linhas no banco. A prova nao depende de banco de
+  producao e nao move fontes reais.
+- Arquivos de producao: `SsaImportPolicy`, `SsaSpreadsheetMapper` e
+  `SqliteSsaImportWriter`; testes unitarios e de workflow adicionados. Nenhum
+  schema, layout, menu, filtro ou regra de consolidacao mudou.
+- Review final: diff check, clang-format, cppcheck, Semgrep C/security (11
+  regras, zero findings) e detect-secrets passaram. Build dos targets afetados
+  passou; CTest focado da familia importacao/SQLite passou `86/86` em `2.48 s`
+  e os tres testes novos/relacionados passaram `3/3` em `0.14 s`.
+- Contadores sem inflacao: plano original `99.0/100`; divida nova P0
+  `14/14 = 100.0%`; backlog legado `N/A`; fila operacional local `6/8 =
+  75.0%`. Esta era uma divida adicional descoberta e foi fechada fora do
+  denominador fixo.
+
+Proxima atividade unica: retomar a proxima pendencia local de maior impacto,
+sem reabrir o contrato de importacao agora validado.
+
 ## Parametro de lote propagado no refresh SAM - 2026-07-19
 
 - **ENTREGUE localmente**: `rows_per_chunk` agora percorre o contrato completo
