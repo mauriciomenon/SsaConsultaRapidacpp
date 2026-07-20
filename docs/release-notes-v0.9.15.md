@@ -13,6 +13,10 @@
 - Commit funcional `9415847`; smoke/version `736edcc`.
 - `./run-macos-smoke-clean`: `642/642`, `81.94 s`, exit zero.
 - PNG 1580x940 novo e banco runtime identico ao banco fonte.
+- Package release: `642/642` em `67.10 s`; ZIP integro; DMG UDZO/CRC32;
+  assinatura deep/strict valida; somente driver SQLite no bundle.
+- SHA-256 ZIP: `dae29615c7139d78e45a79498afcbd918599384cc02d1a9578320b2be83e6465`.
+- SHA-256 DMG: `3131270ced9ed2e305c6849eaa89fd5d3161087f3b33a1384ea5b2464f75a580`.
 - Corpus real anterior: 1692 arquivos, 458864 linhas, integridade e FK verdes,
   `numero_desvios` somente integer/null.
 

@@ -22,6 +22,11 @@
   operacional `5/8 = 62.5%`.
 - Estado externo anterior a publicacao v0.9.15: Bitbucket em `7291eae`; GitLab
   ainda sujeito ao OAuth `invalid_grant`; GitHub suspenso/403.
+- Pacote release no host: `642/642` em `67.10 s`; ZIP 54 MiB e DMG 63 MiB.
+  ZIP passou integridade, DMG e UDZO/CRC32, assinatura deep/strict passou e o
+  bundle contem somente `libqsqlite.dylib`.
+- SHA-256 ZIP: `dae29615c7139d78e45a79498afcbd918599384cc02d1a9578320b2be83e6465`.
+  SHA-256 DMG: `3131270ced9ed2e305c6849eaa89fd5d3161087f3b33a1384ea5b2464f75a580`.
 
 Proxima atividade unica: fechar docs, pacote release, tag `v0.9.15` e publicar
 em GitLab/Bitbucket com verificacao independente dos refs.
