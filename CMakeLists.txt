@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.24)
 
 project(
   SSAConsultaRapidaCpp
-  VERSION 0.9.14
+  VERSION 0.9.15
   LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -520,7 +520,7 @@ if(SSA_BUILD_TESTS)
       --source-commit test-fixture)
   set_tests_properties(
     ssa_theme_lab_cli_generates_report
-    PROPERTIES PASS_REGULAR_EXPRESSION
+    PROPERTIES TIMEOUT 15 PASS_REGULAR_EXPRESSION
                "THEME_LAB input=1 accepted=1 rejected=0 shortlisted=1")
 
   add_executable(ssa_sqlite_import_crash_probe
@@ -907,5 +907,14 @@ if(SSA_BUILD_TESTS)
         ${CMAKE_CURRENT_SOURCE_DIR}/cmake/RunMemStressArgumentFailure.cmake)
     set_tests_properties(ssa_mem_stress_rejects_invalid_max_delta
                          PROPERTIES TIMEOUT 10)
+  endif()
+
+  if(APPLE)
+    add_test(
+      NAME ssa_macos_smoke_core_contract
+      COMMAND
+        bash
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/scripts/macos-smoke-core-tests.sh)
+    set_tests_properties(ssa_macos_smoke_core_contract PROPERTIES TIMEOUT 15)
   endif()
 endif()

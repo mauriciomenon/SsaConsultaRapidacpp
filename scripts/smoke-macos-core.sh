@@ -81,7 +81,19 @@ run_macos_smoke_core() {
   local preferences_src="${8}"
   local launch_mode="${9:-screenshot}"
 
-  prepare_macos_build_dir "${project_root}" "${preset}" "${clean_requested}"
+  if ! rm -f "${screenshot}"; then
+    echo "Unable to remove stale smoke screenshot: ${screenshot}" >&2
+    return 1
+  fi
+  if [[ ! -f "${preferences_src}" ]]; then
+    echo "Smoke preferences template not found: ${preferences_src}" >&2
+    return 1
+  fi
+
+  if ! prepare_macos_build_dir "${project_root}" "${preset}" "${clean_requested}"; then
+    echo "Smoke build preparation failed for preset: ${preset}" >&2
+    return 1
+  fi
   if ! cmake --build --preset "${preset}"; then
     echo "Build failed for preset: ${preset}" >&2
     return 1
@@ -95,12 +107,38 @@ run_macos_smoke_core() {
     echo "Database file not found: ${db_path}" >&2
     return 1
   fi
-  mkdir -p "${runtime_dir}" "${config_dir}"
-  cp "${db_path}" "${runtime_dir}/ssas.db"
-  if [[ -f "${preferences_src}" ]]; then
-    cp "${preferences_src}" "${config_dir}/$(macos_preferences_filename)"
+  if ! mkdir -p "${runtime_dir}" "${config_dir}"; then
+    echo "Unable to create smoke runtime directories: ${runtime_dir}" >&2
+    return 1
+  fi
+  if ! cp "${db_path}" "${runtime_dir}/ssas.db"; then
+    echo "Unable to copy smoke database: ${db_path}" >&2
+    return 1
+  fi
+  if ! cp "${preferences_src}" "${config_dir}/$(macos_preferences_filename)"; then
+    echo "Unable to copy smoke preferences: ${preferences_src}" >&2
+    return 1
   fi
 
-  run_macos_app "${project_root}" "${preset}" "${runtime_dir}/ssas.db" "${config_dir}" \
-    "${screenshot}" "${launch_mode}" "${runtime_dir}"
+  if [[ "${launch_mode}" == "open" ]]; then
+    if ! run_macos_app "${project_root}" "${preset}" "${runtime_dir}/ssas.db" \
+      "${config_dir}" "${screenshot}" "screenshot" "${runtime_dir}"; then
+      echo "Offscreen smoke launch failed." >&2
+      return 1
+    fi
+    if [[ ! -s "${screenshot}" ]]; then
+      echo "Smoke screenshot was not produced: ${screenshot}" >&2
+      return 1
+    fi
+  fi
+
+  if ! run_macos_app "${project_root}" "${preset}" "${runtime_dir}/ssas.db" \
+    "${config_dir}" "${screenshot}" "${launch_mode}" "${runtime_dir}"; then
+    echo "macOS smoke launch failed in ${launch_mode} mode." >&2
+    return 1
+  fi
+  if [[ "${launch_mode}" == "screenshot" && ! -s "${screenshot}" ]]; then
+    echo "Smoke screenshot was not produced: ${screenshot}" >&2
+    return 1
+  fi
 }

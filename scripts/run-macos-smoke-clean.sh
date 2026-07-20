@@ -10,4 +10,4 @@ while [[ -L "${source}" ]]; do
   [[ "${source}" != /* ]] && source="${dir}/${source}"
 done
 script_dir="$(cd "$(dirname "${source}")" && pwd)"
-exec "${script_dir}/smoke-macos.sh" --open "$@"
+exec "${script_dir}/smoke-macos.sh" "$@"

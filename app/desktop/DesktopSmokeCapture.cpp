@@ -23,6 +23,7 @@ namespace ssa::app::desktop {
     namespace {
 
         constexpr int smokeCaptureFailureExitCode = 2;
+        constexpr int smokeCaptureTimeoutMs = 12000;
         constexpr int defaultScreenshotDelayMs = 900;
 
         struct DesktopSmokeCaptureOptions {
@@ -306,6 +307,10 @@ namespace ssa::app::desktop {
         QObject::connect(
             &controller, &DesktopSmokeController::captureFailureReported, &engine,
             [completion] { completion(smokeCaptureFailureExitCode); }, Qt::SingleShotConnection);
+        QTimer::singleShot(smokeCaptureTimeoutMs, &engine, [completion] {
+            qWarning() << "Smoke screenshot capture timed out.";
+            completion(smokeCaptureFailureExitCode);
+        });
         scheduleCapture(engine, controller, options, completion);
     }
 
