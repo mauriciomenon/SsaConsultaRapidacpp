@@ -2,17 +2,20 @@
 
 ## Release v0.9.14 - 2026-07-20
 
+- [RESOLVED-BITBUCKET] Commit `7291eae` e tag anotada `v0.9.14` confirmados;
+  branch e tag peeled apontam para o mesmo SHA e a divergencia e `0/0`.
+
 - [RESOLVED-LOCAL] Build release limpo e CTest `641/641` em `63.02 s`.
 - [RESOLVED-LOCAL] ZIP e DMG arm64 gerados e verificados; app e CLI reportam
   `0.9.14`; aliases latest foram atualizados.
 - [RESOLVED-LOCAL] Bundle assinado ad-hoc validado e somente driver SQLite
   presente. Hashes SHA-256 estao registrados no status da rodada.
-- [EXTERNAL-BLOCKED] GitLab continua `invalid_grant`; publicacao e tag devem
-  ser verificadas separadamente no Bitbucket.
+- [EXTERNAL-BLOCKED] GitLab continua `invalid_grant`; branch e tag nao foram
+  publicados nesse remoto.
 - [EXTERNAL-PENDING] Windows/UNC, SMB e pacotes nao-macOS continuam fora deste
   aceite e nao alteram a matriz `5/8`.
 
-Proxima atividade unica: commit e tag `v0.9.14`.
+Proxima atividade unica: renovar OAuth GitLab e retomar a matriz operacional.
 
 ## Importacao e rescan estabilizados - 2026-07-20
 

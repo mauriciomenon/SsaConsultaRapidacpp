@@ -2,6 +2,12 @@
 
 ## Release macOS v0.9.14 - 2026-07-20
 
+- **ENTREGUE NO BITBUCKET**: commit `7291eae` e tag anotada `v0.9.14`
+  publicados. Branch e tag peeled apontam para
+  `7291eae2bf62857299a3621a2b27c95eb17f46a3`; divergencia `0/0`.
+- **NAO ENTREGUE NO GITLAB**: `git push origin master v0.9.14` falhou por
+  OAuth `invalid_grant`. Nenhum sucesso GitLab e alegado.
+
 - **ENTREGUE localmente**: `PROJECT_VERSION` passou de `0.9.13` para
   `0.9.14`, com backup local timestampado fora do commit.
 - O pacote canonico release foi reconstruido do zero e passou `641/641` testes
@@ -16,11 +22,11 @@
 - O bundle final contem somente o driver SQL `libqsqlite.dylib`; warnings do
   `macdeployqt` sobre Mimer/Postgres foram emitidos antes da poda e nao
   representam dependencias do pacote final.
-- A tag e a publicacao remota ainda dependem do commit desta secao. GitLab
-  segue bloqueado por OAuth `invalid_grant`.
+- A tag foi publicada somente no Bitbucket. GitLab segue bloqueado por OAuth
+  `invalid_grant`.
 
-Proxima atividade unica: commit/tag `v0.9.14`, push Bitbucket e tentativa
-GitLab com estados separados.
+Proxima atividade unica: renovar a credencial GitLab; depois retomar o maior
+item da matriz operacional sem reabrir a release validada.
 
 ## Fechamento de estabilizacao de importacao - 2026-07-20
 
