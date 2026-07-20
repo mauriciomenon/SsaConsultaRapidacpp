@@ -4,6 +4,7 @@
 
 #include <chrono>
 #include <filesystem>
+#include <functional>
 #include <optional>
 #include <stop_token>
 #include <string>
@@ -103,9 +104,37 @@ namespace ssa::ports {
         }
     };
 
+    enum class WorkflowProgressStage {
+        Preparing,
+        Discovering,
+        CopyingDatabase,
+        ProcessingFile,
+        UpdatingAnalytics,
+        Committing,
+        PublishingDatabase,
+        Consolidating,
+        Completed,
+    };
+
+    enum class WorkflowProgressLevel { Information, Warning, Error };
+
+    struct WorkflowProgress {
+        WorkflowProgressStage stage = WorkflowProgressStage::Preparing;
+        WorkflowProgressLevel level = WorkflowProgressLevel::Information;
+        std::size_t currentFile = 0;
+        std::size_t totalFiles = 0;
+        int percentage = 0;
+        std::string fileName;
+        std::string status;
+        std::string detail;
+    };
+
+    using WorkflowProgressCallback = std::function<void(const WorkflowProgress&)>;
+
     struct ImportExternalFilesRequest {
         std::vector<std::filesystem::path> files;
         ImportExecutionOptions execution;
+        WorkflowProgressCallback progress;
     };
 
     struct ImportDerivationsRequest {
@@ -159,6 +188,7 @@ namespace ssa::ports {
     struct RescanRequest {
         RescanMode mode = RescanMode::Incremental;
         ImportExecutionOptions execution;
+        WorkflowProgressCallback progress;
     };
 
     struct ExportFilteredListRequest {

@@ -655,6 +655,12 @@ ApplicationWindow {
         viewModel: root.vm
     }
 
+    WorkflowProgressDialog {
+        id: workflowProgressDialog
+        objectName: "workflowProgressDialog"
+        workflowViewModel: root.vm.actions.workflows
+    }
+
     function openDetailsWindow() {
         const ssaNumber = root.vm.browse.details.selectedSsaNumber;
         if (ssaNumber.length === 0)

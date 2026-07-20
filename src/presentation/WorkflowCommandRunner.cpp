@@ -4,6 +4,7 @@
 #include "qt/FilesystemPath.h"
 
 #include <QDebug>
+#include <QPromise>
 #include <QThreadPool>
 #include <QtConcurrentRun>
 
@@ -16,7 +17,9 @@ namespace ssa::presentation {
     WorkflowCommandRunner::WorkflowCommandRunner(
         std::shared_ptr<application::SsaWorkflowService> workflows, QObject* parent)
         : QObject(parent), workflows_(std::move(workflows)) {
-        connect(&watcher_, &QFutureWatcher<void>::finished, this, &WorkflowCommandRunner::finish);
+        connect(&watcher_, &QFutureWatcher<int>::resultReadyAt, this,
+                &WorkflowCommandRunner::forwardProgress);
+        connect(&watcher_, &QFutureWatcher<int>::finished, this, &WorkflowCommandRunner::finish);
     }
 
     WorkflowCommandRunner::~WorkflowCommandRunner() {
@@ -72,8 +75,10 @@ namespace ssa::presentation {
             request.files.emplace_back(qt::toFileSystemPath(path));
         }
         auto workflows = workflows_;
-        start([workflows = std::move(workflows),
-               request = std::move(request)](const std::stop_token& stopToken) {
+        start([workflows = std::move(workflows), request = std::move(request)](
+                  const std::stop_token& stopToken,
+                  const ports::WorkflowProgressCallback& progress) mutable {
+            request.progress = progress;
             return workflows->importExternalFiles(request, stopToken);
         });
     }
@@ -96,8 +101,8 @@ namespace ssa::presentation {
             request.files.emplace_back(qt::toFileSystemPath(path));
         }
         auto workflows = workflows_;
-        start([workflows = std::move(workflows),
-               request = std::move(request)](const std::stop_token& stopToken) {
+        start([workflows = std::move(workflows), request = std::move(request)](
+                  const std::stop_token& stopToken, const ports::WorkflowProgressCallback&) {
             return workflows->importDerivations(request, stopToken);
         });
     }
@@ -118,7 +123,10 @@ namespace ssa::presentation {
         request.execution = execution;
 
         auto workflows = workflows_;
-        start([workflows = std::move(workflows), request](const std::stop_token& stopToken) {
+        start([workflows = std::move(workflows), request = std::move(request)](
+                  const std::stop_token& stopToken,
+                  const ports::WorkflowProgressCallback& progress) mutable {
+            request.progress = progress;
             return workflows->rescan(request, stopToken);
         });
     }
@@ -134,8 +142,8 @@ namespace ssa::presentation {
         }
 
         auto workflows = workflows_;
-        start([workflows = std::move(workflows),
-               request = std::move(request)](const std::stop_token& stopToken) {
+        start([workflows = std::move(workflows), request = std::move(request)](
+                  const std::stop_token& stopToken, const ports::WorkflowProgressCallback&) {
             return workflows->refreshSam(request, stopToken);
         });
     }
@@ -151,7 +159,8 @@ namespace ssa::presentation {
         }
 
         auto workflows = workflows_;
-        start([workflows = std::move(workflows)](const std::stop_token& stopToken) {
+        start([workflows = std::move(workflows)](const std::stop_token& stopToken,
+                                                 const ports::WorkflowProgressCallback&) {
             return workflows->cleanOrphanDerivations(stopToken);
         });
     }
@@ -167,29 +176,57 @@ namespace ssa::presentation {
         }
 
         auto workflows = workflows_;
-        start([workflows = std::move(workflows)](const std::stop_token& stopToken) {
+        start([workflows = std::move(workflows)](const std::stop_token& stopToken,
+                                                 const ports::WorkflowProgressCallback&) {
             return workflows->vacuumAnalyze(stopToken);
         });
     }
 
-    void
-    WorkflowCommandRunner::start(std::function<ports::WorkflowResult(std::stop_token)> operation) {
+    void WorkflowCommandRunner::start(Operation operation) {
         const auto state = std::make_shared<ResultState>();
         resultState_ = state;
         stopSource_ = std::stop_source{};
         const auto stopToken = stopSource_.get_token();
         setState(State::Running);
-        watcher_.setFuture(QtConcurrent::run(QThreadPool::globalInstance(),
-                                             [state, operation = std::move(operation), stopToken] {
-                                                 try {
-                                                     auto result = operation(stopToken);
-                                                     const std::scoped_lock lock(state->mutex);
-                                                     state->result = std::move(result);
-                                                 } catch (...) {
-                                                     const std::scoped_lock lock(state->mutex);
-                                                     state->error = std::current_exception();
-                                                 }
-                                             }));
+        watcher_.setFuture(QtConcurrent::run(
+            QThreadPool::globalInstance(),
+            [state, operation = std::move(operation), stopToken](QPromise<int>& promise) {
+                const ports::WorkflowProgressCallback progress =
+                    [state, &promise](const ports::WorkflowProgress& update) {
+                        int resultIndex = 0;
+                        {
+                            const std::scoped_lock lock(state->mutex);
+                            state->progress.push_back(update);
+                            resultIndex = static_cast<int>(state->progress.size() - 1);
+                        }
+                        promise.addResult(resultIndex);
+                    };
+                try {
+                    auto result = operation(stopToken, progress);
+                    const std::scoped_lock lock(state->mutex);
+                    state->result = std::move(result);
+                } catch (...) {
+                    const std::scoped_lock lock(state->mutex);
+                    state->error = std::current_exception();
+                }
+            }));
+    }
+
+    void WorkflowCommandRunner::forwardProgress(const int futureResultIndex) {
+        if (shuttingDown_ || !resultState_) {
+            return;
+        }
+        const auto progressIndex = watcher_.resultAt(futureResultIndex);
+        ports::WorkflowProgress progress;
+        {
+            const std::scoped_lock lock(resultState_->mutex);
+            if (progressIndex < 0 ||
+                static_cast<std::size_t>(progressIndex) >= resultState_->progress.size()) {
+                return;
+            }
+            progress = resultState_->progress[static_cast<std::size_t>(progressIndex)];
+        }
+        emit progressReported(std::move(progress));
     }
 
     void WorkflowCommandRunner::cancel() {

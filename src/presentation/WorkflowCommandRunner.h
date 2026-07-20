@@ -46,6 +46,7 @@ namespace ssa::presentation {
       signals:
         void stateChanged(ssa::presentation::WorkflowCommandRunner::State state);
         void runningChanged(bool running);
+        void progressReported(ssa::ports::WorkflowProgress progress);
         void finished(ssa::ports::WorkflowResult result);
 
       private:
@@ -53,14 +54,19 @@ namespace ssa::presentation {
             std::mutex mutex;
             std::optional<ports::WorkflowResult> result = std::nullopt;
             std::exception_ptr error;
+            std::vector<ports::WorkflowProgress> progress;
         };
 
-        void start(std::function<ports::WorkflowResult(std::stop_token)> operation);
+        using Operation = std::function<ports::WorkflowResult(
+            std::stop_token, const ports::WorkflowProgressCallback&)>;
+
+        void start(Operation operation);
+        void forwardProgress(int futureResultIndex);
         void finish();
         void setState(State state);
 
         std::shared_ptr<application::SsaWorkflowService> workflows_;
-        QFutureWatcher<void> watcher_;
+        QFutureWatcher<int> watcher_;
         std::shared_ptr<ResultState> resultState_;
         std::stop_source stopSource_;
         State state_{State::Idle};

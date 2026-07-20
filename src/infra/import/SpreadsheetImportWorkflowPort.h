@@ -42,14 +42,32 @@ namespace ssa::infra::importing {
                                                    std::stop_token stopToken = {}) override;
 
       private:
+        struct ProgressContext {
+            const ports::WorkflowProgressCallback* callback = nullptr;
+            std::size_t fileOffset = 0;
+            std::size_t totalFiles = 0;
+            std::size_t batchIndex = 0;
+            bool rescan = false;
+        };
+
         [[nodiscard]] ports::WorkflowResult
         importDiscoveredFiles(const ImportStagingResult& files, bool replaceAll,
                               const std::stop_token& stopToken,
                               const ports::ImportExecutionOptions& execution,
-                              const std::vector<ports::SamArtifact>* samArtifacts = nullptr) const;
+                              const std::vector<ports::SamArtifact>* samArtifacts = nullptr,
+                              const ProgressContext* progress = nullptr) const;
         [[nodiscard]] ports::WorkflowResult
         importExternalFilesBatch(const ports::ImportExternalFilesRequest& request,
-                                 std::stop_token stopToken) const;
+                                 const std::stop_token& stopToken,
+                                 const ProgressContext& progress) const;
+        [[nodiscard]] ports::WorkflowResult rescanInternal(const ports::RescanRequest& request,
+                                                           const std::stop_token& stopToken,
+                                                           ProgressContext& progress);
+        static void reportProgress(const ProgressContext& context,
+                                   ports::WorkflowProgressStage stage,
+                                   ports::WorkflowProgressLevel level, std::size_t currentFile,
+                                   int percentage, std::string status, std::string detail = {},
+                                   std::string fileName = {}) noexcept;
         [[nodiscard]] std::optional<ports::WorkflowResult> resumePendingConsolidation(
             const std::stop_token& stopToken, std::chrono::milliseconds sqliteBusyWait,
             const ImportStagingResult* selectedStaging = nullptr,

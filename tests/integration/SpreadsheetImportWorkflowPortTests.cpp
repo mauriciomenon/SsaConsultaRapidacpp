@@ -5369,8 +5369,11 @@ TEST_CASE("spreadsheet import workflow processes more than 64 discovered files")
     }
     ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
                                                               importColumns());
+    std::vector<ssa::ports::WorkflowProgress> progress;
+    ssa::ports::RescanRequest request{ssa::ports::RescanMode::Incremental};
+    request.progress = [&](const auto& update) { progress.push_back(update); };
 
-    const auto result = port.rescan({ssa::ports::RescanMode::Incremental});
+    const auto result = port.rescan(request);
 
     INFO(result.message);
     INFO(result.diagnostic);
@@ -5378,9 +5381,109 @@ TEST_CASE("spreadsheet import workflow processes more than 64 discovered files")
     REQUIRE(result.importSummary.has_value());
     REQUIRE(result.importSummary->discovered == 65);
     REQUIRE(result.importSummary->inserts == 65);
+    REQUIRE_FALSE(progress.empty());
+    for (std::size_t index = 1; index < progress.size(); ++index) {
+        CHECK(progress[index - 1].percentage <= progress[index].percentage);
+    }
+    CHECK(std::ranges::count_if(progress, [](const auto& update) {
+              return update.stage == ssa::ports::WorkflowProgressStage::Completed &&
+                     update.percentage == 100;
+          }) == 1);
+    REQUIRE(progress.back().stage == ssa::ports::WorkflowProgressStage::Completed);
+    CHECK(progress.back().percentage == 100);
+    const auto publishing = std::ranges::find_if(progress, [](const auto& update) {
+        return update.stage == ssa::ports::WorkflowProgressStage::PublishingDatabase;
+    });
+    const auto consolidating = std::ranges::find_if(progress, [](const auto& update) {
+        return update.stage == ssa::ports::WorkflowProgressStage::Consolidating &&
+               update.percentage == 95;
+    });
+    REQUIRE(publishing != progress.end());
+    REQUIRE(consolidating != progress.end());
+    CHECK(publishing < consolidating);
+    CHECK(consolidating < progress.end() - 1);
+    REQUIRE(directWorkbookCount(inputDirectory / "processadas") == 65);
     sqlite3* db = nullptr;
     REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
     REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 65);
+    REQUIRE(scalarText(db, "PRAGMA integrity_check") == "ok");
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("full rescan progress follows processing order across root and processed files") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto processedDirectory = inputDirectory / "processadas";
+    const auto dbPath = root / "data" / "ssas.db";
+    const auto rootWorkbook = inputDirectory / "z.xlsx";
+    const auto processedWorkbook = processedDirectory / "a.xlsx";
+    std::filesystem::create_directories(processedDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    writeWorkbook(rootWorkbook,
+                  row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Descricao"),
+                          inlineCell("C1", "Data Cadastro")}) +
+                      row(2, {inlineCell("A2", "202603101"), inlineCell("B2", "Root workbook"),
+                              inlineCell("C2", "2026-07-19")}));
+    writeWorkbook(processedWorkbook,
+                  row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Descricao"),
+                          inlineCell("C1", "Data Cadastro")}) +
+                      row(2, {inlineCell("A2", "202603102"), inlineCell("B2", "Processed workbook"),
+                              inlineCell("C2", "2026-07-19")}));
+
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+    std::vector<ssa::ports::WorkflowProgress> progress;
+    ssa::ports::RescanRequest request{ssa::ports::RescanMode::Full};
+    request.progress = [&](const auto& update) { progress.push_back(update); };
+
+    const auto result = port.rescan(request);
+
+    INFO(result.message);
+    INFO(result.diagnostic);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE(result.importSummary.has_value());
+    REQUIRE(result.importSummary->discovered == 2);
+    REQUIRE(result.importSummary->inserts == 2);
+
+    std::vector<ssa::ports::WorkflowProgress> processing;
+    std::ranges::copy_if(progress, std::back_inserter(processing), [](const auto& update) {
+        return update.stage == ssa::ports::WorkflowProgressStage::ProcessingFile;
+    });
+    REQUIRE(processing.size() == 2);
+    CHECK(processing[0].currentFile == 1);
+    CHECK(processing[0].totalFiles == 2);
+    CHECK(processing[0].fileName == "a.xlsx");
+    CHECK(processing[1].currentFile == 2);
+    CHECK(processing[1].totalFiles == 2);
+    CHECK(processing[1].fileName == "z.xlsx");
+    for (std::size_t index = 1; index < progress.size(); ++index) {
+        CHECK(progress[index - 1].percentage <= progress[index].percentage);
+    }
+    CHECK(std::ranges::count_if(progress, [](const auto& update) {
+              return update.stage == ssa::ports::WorkflowProgressStage::Completed &&
+                     update.percentage == 100;
+          }) == 1);
+    REQUIRE(progress.back().stage == ssa::ports::WorkflowProgressStage::Completed);
+    CHECK(progress.back().percentage == 100);
+    const auto publishing = std::ranges::find_if(progress, [](const auto& update) {
+        return update.stage == ssa::ports::WorkflowProgressStage::PublishingDatabase;
+    });
+    const auto consolidating = std::ranges::find_if(progress, [](const auto& update) {
+        return update.stage == ssa::ports::WorkflowProgressStage::Consolidating;
+    });
+    REQUIRE(publishing != progress.end());
+    REQUIRE(consolidating != progress.end());
+    CHECK(publishing < consolidating);
+    CHECK(consolidating < progress.end() - 1);
+
+    REQUIRE(directWorkbookCount(processedDirectory) == 2);
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 2);
+    REQUIRE(scalarText(db, "PRAGMA integrity_check") == "ok");
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
@@ -5409,7 +5512,14 @@ TEST_CASE("external import processes selected files in blocks of 64") {
 
     ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
                                                               importColumns());
-    const auto result = port.importExternalFiles({.files = files});
+    std::vector<ssa::ports::WorkflowProgress> progress;
+    std::vector<int> callbackSequence;
+    ssa::ports::ImportExternalFilesRequest request{.files = files};
+    request.progress = [calls = 0, &progress, &callbackSequence](const auto& update) mutable {
+        progress.push_back(update);
+        callbackSequence.push_back(++calls);
+    };
+    const auto result = port.importExternalFiles(request);
 
     INFO(result.message);
     INFO(result.diagnostic);
@@ -5419,6 +5529,28 @@ TEST_CASE("external import processes selected files in blocks of 64") {
     REQUIRE(result.importSummary->discovered == 65);
     REQUIRE(result.importSummary->inserts == 65);
     REQUIRE(directWorkbookCount(inputDirectory / "processadas") == 65);
+    const auto processingFile = [&](const std::size_t currentFile) {
+        return std::ranges::find_if(progress, [&](const auto& update) {
+                   return update.stage == ssa::ports::WorkflowProgressStage::ProcessingFile &&
+                          update.currentFile == currentFile && update.totalFiles == 65;
+               }) != progress.end();
+    };
+    CHECK(processingFile(1));
+    CHECK(processingFile(64));
+    CHECK(processingFile(65));
+    REQUIRE(callbackSequence.size() == progress.size());
+    for (std::size_t index = 0; index < progress.size(); ++index) {
+        CHECK(callbackSequence[index] == static_cast<int>(index + 1));
+        if (index > 0) {
+            CHECK(progress[index - 1].percentage <= progress[index].percentage);
+        }
+    }
+    CHECK(std::ranges::count_if(progress, [](const auto& update) {
+              return update.stage == ssa::ports::WorkflowProgressStage::Completed &&
+                     update.percentage == 100;
+          }) == 1);
+    REQUIRE(progress.back().stage == ssa::ports::WorkflowProgressStage::Completed);
+    CHECK(progress.back().percentage == 100);
     sqlite3* db = nullptr;
     REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
     REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 65);
@@ -5515,7 +5647,9 @@ TEST_CASE("external import continues after a failed middle block") {
 
     ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
                                                               importColumns());
-    const auto result = port.importExternalFiles({.files = files});
+    std::vector<ssa::ports::WorkflowProgress> progress;
+    const auto result = port.importExternalFiles(
+        {.files = files, .progress = [&](const auto& update) { progress.push_back(update); }});
 
     INFO(result.message);
     INFO(result.diagnostic);
@@ -5527,12 +5661,72 @@ TEST_CASE("external import continues after a failed middle block") {
     REQUIRE(result.diagnostic.find("batch=2 file=invalid_middle_block.xlsx") != std::string::npos);
     REQUIRE(directWorkbookCount(inputDirectory / "processadas") == 65);
     REQUIRE(std::filesystem::exists(invalid));
+    const auto processingCount = [&](const std::size_t currentFile) {
+        return std::ranges::count_if(progress, [&](const auto& update) {
+            return update.stage == ssa::ports::WorkflowProgressStage::ProcessingFile &&
+                   update.currentFile == currentFile && update.totalFiles == 129;
+        });
+    };
+    CHECK(processingCount(1) == 1);
+    CHECK(processingCount(65) == 1);
+    CHECK(processingCount(129) == 1);
+    for (std::size_t index = 1; index < progress.size(); ++index) {
+        CHECK(progress[index - 1].percentage <= progress[index].percentage);
+    }
+    CHECK(std::ranges::count_if(progress, [](const auto& update) {
+              return update.stage == ssa::ports::WorkflowProgressStage::Completed &&
+                     update.percentage == 100;
+          }) == 1);
+    REQUIRE(progress.back().stage == ssa::ports::WorkflowProgressStage::Completed);
+    CHECK(progress.back().percentage == 100);
 
     sqlite3* db = nullptr;
     REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
     REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 65);
     REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa LIKE '2026021%'") == 1);
     REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202602163'") == 1);
+    REQUIRE(scalarText(db, "PRAGMA integrity_check") == "ok");
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("progress callback failure does not alter import commit or consolidation") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto sourceDirectory = root / "external";
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    const auto workbook = sourceDirectory / "callback_failure.xlsx";
+    std::filesystem::create_directories(sourceDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    writeWorkbook(workbook, row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Descricao"),
+                                    inlineCell("C1", "Data Cadastro")}) +
+                                row(2, {inlineCell("A2", "202603001"),
+                                        inlineCell("B2", "Observer failure must not alter import"),
+                                        inlineCell("C2", "2026-07-14")}));
+
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+    ssa::ports::ImportExternalFilesRequest request{.files = {workbook}};
+    request.progress = [calls = 0](const auto&) mutable {
+        if (++calls == 1) {
+            throw std::runtime_error("progress observer failed");
+        }
+    };
+
+    const auto result = port.importExternalFiles(request);
+
+    INFO(result.message);
+    INFO(result.diagnostic);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE(result.importSummary.has_value());
+    REQUIRE(result.importSummary->inserts == 1);
+    REQUIRE(directWorkbookCount(inputDirectory / "processadas") == 1);
+    REQUIRE(std::filesystem::exists(workbook));
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 1);
     REQUIRE(scalarText(db, "PRAGMA integrity_check") == "ok");
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }

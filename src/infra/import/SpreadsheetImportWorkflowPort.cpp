@@ -10,6 +10,7 @@
 #include "qt/FilesystemPath.h"
 
 #include <QDate>
+#include <QDebug>
 #include <QLockFile>
 #include <QTemporaryDir>
 
@@ -766,8 +767,21 @@ namespace ssa::infra::importing {
 
     ports::WorkflowResult SpreadsheetImportWorkflowPort::importExternalFiles(
         const ports::ImportExternalFilesRequest& request, const std::stop_token stopToken) {
+        const ProgressContext globalProgress{&request.progress, 0, request.files.size(), 0, false};
+        const auto complete = [&](ports::WorkflowResult&& result) {
+            const auto level = result.ok() ? result.warning
+                                                 ? ports::WorkflowProgressLevel::Warning
+                                                 : ports::WorkflowProgressLevel::Information
+                               : result.status == ports::WorkflowStatus::Canceled
+                                   ? ports::WorkflowProgressLevel::Warning
+                                   : ports::WorkflowProgressLevel::Error;
+            reportProgress(globalProgress, ports::WorkflowProgressStage::Completed, level,
+                           request.files.size(), 100, result.message, result.diagnostic);
+            return std::move(result);
+        };
         if (request.files.size() <= kMaxImportFilesPerBatch) {
-            return importExternalFilesBatch(request, stopToken);
+            return complete(importExternalFilesBatch(
+                request, stopToken, {&request.progress, 0, request.files.size(), 1, false}));
         }
 
         ports::ImportSummary totalSummary;
@@ -777,7 +791,7 @@ namespace ssa::infra::importing {
         bool anySuccess = false;
         bool hadFailure = false;
         bool hadRejection = false;
-        std::size_t batchCount = 0;
+        std::size_t completedBatchCount = 0;
         for (std::size_t batchStart = 0; batchStart < request.files.size();
              batchStart += kMaxImportFilesPerBatch) {
             const auto batchEnd =
@@ -787,14 +801,17 @@ namespace ssa::infra::importing {
             batchRequest.files.assign(
                 request.files.begin() + static_cast<std::ptrdiff_t>(batchStart),
                 request.files.begin() + static_cast<std::ptrdiff_t>(batchEnd));
-            const auto batchResult = importExternalFilesBatch(batchRequest, stopToken);
-            ++batchCount;
+            const ProgressContext progress{&request.progress, batchStart, request.files.size(),
+                                           batchStart / kMaxImportFilesPerBatch + 1, false};
+            const auto batchResult = importExternalFilesBatch(batchRequest, stopToken, progress);
+            ++completedBatchCount;
             if (batchResult.importSummary) {
                 mergeImportSummary(totalSummary, *batchResult.importSummary);
             }
             if (!batchResult.diagnostic.empty()) {
-                appendWorkflowDiagnostic(diagnostic, "batch=" + std::to_string(batchCount) + " " +
-                                                         batchResult.diagnostic);
+                appendWorkflowDiagnostic(diagnostic,
+                                         "batch=" + std::to_string(completedBatchCount) + " " +
+                                             batchResult.diagnostic);
             }
             warning = warning || batchResult.warning;
             anySuccess = anySuccess || batchResult.ok();
@@ -802,24 +819,31 @@ namespace ssa::infra::importing {
             hadRejection = hadRejection || batchResult.status == ports::WorkflowStatus::Rejected;
             if (batchResult.status == ports::WorkflowStatus::Canceled ||
                 stopToken.stop_requested()) {
-                return withSummary(
+                return complete(withSummary(
                     {ports::WorkflowStatus::Canceled,
-                     "import_xlsx_to_sqlite canceled batch=" + std::to_string(batchCount), true,
-                     std::move(diagnostic)},
-                    totalSummary);
+                     "import_xlsx_to_sqlite canceled batch=" + std::to_string(completedBatchCount),
+                     true, std::move(diagnostic)},
+                    totalSummary));
             }
         }
         const auto status = hadFailure   ? ports::WorkflowStatus::Failed
                             : anySuccess ? ports::WorkflowStatus::Succeeded
                                          : ports::WorkflowStatus::Rejected;
         warning = warning || hadFailure || hadRejection;
-        return withSummary({status, batchedImportMessage(totalSummary, batchCount), warning,
-                            std::move(diagnostic)},
-                           totalSummary);
+        return complete(
+            withSummary({status, batchedImportMessage(totalSummary, completedBatchCount), warning,
+                         std::move(diagnostic)},
+                        totalSummary));
     }
 
     ports::WorkflowResult SpreadsheetImportWorkflowPort::importExternalFilesBatch(
-        const ports::ImportExternalFilesRequest& request, const std::stop_token stopToken) const {
+        const ports::ImportExternalFilesRequest& request, const std::stop_token& stopToken,
+        const ProgressContext& progress) const {
+        if (progress.batchIndex == 1) {
+            reportProgress(progress, ports::WorkflowProgressStage::Preparing,
+                           ports::WorkflowProgressLevel::Information, progress.fileOffset, 0,
+                           "Preparando importacao");
+        }
         if (const auto validation = request.execution.validationError(); !validation.empty()) {
             return withSummary(
                 {ports::WorkflowStatus::Rejected,
@@ -845,11 +869,22 @@ namespace ssa::infra::importing {
                                      lockDiagnostic, lockFailureOrigin);
         }
         auto staging = stager_.stageExternalFiles(request.files, stopToken);
+        if (progress.batchIndex == 1) {
+            reportProgress(progress, ports::WorkflowProgressStage::Discovering,
+                           ports::WorkflowProgressLevel::Information, progress.fileOffset, 5,
+                           "Arquivos preparados");
+        }
         std::vector<std::size_t> selectedPendingSummaryIndices;
+        if (progress.batchIndex == 1) {
+            reportProgress(progress, ports::WorkflowProgressStage::Consolidating,
+                           ports::WorkflowProgressLevel::Information, progress.fileOffset, 5,
+                           "Verificando consolidacao pendente");
+        }
         if (auto resumed = resumePendingConsolidation(stopToken, request.execution.sqliteBusyWait,
                                                       &staging, &selectedPendingSummaryIndices)) {
             if (resumed->status == ports::WorkflowStatus::Canceled) {
-                return importDiscoveredFiles(staging, false, stopToken, request.execution);
+                return importDiscoveredFiles(staging, false, stopToken, request.execution, nullptr,
+                                             &progress);
             }
             if (!resumed->ok() || resumed->warning) {
                 const auto cleanupDiagnostic = stager_.discardOwnedArtifacts(staging);
@@ -878,9 +913,11 @@ namespace ssa::infra::importing {
             if (staging.discovered == 0) {
                 return std::move(*resumed);
             }
-            return importDiscoveredFiles(staging, false, stopToken, request.execution);
+            return importDiscoveredFiles(staging, false, stopToken, request.execution, nullptr,
+                                         &progress);
         }
-        return importDiscoveredFiles(staging, false, stopToken, request.execution);
+        return importDiscoveredFiles(staging, false, stopToken, request.execution, nullptr,
+                                     &progress);
     }
 
     ports::WorkflowResult
@@ -938,6 +975,25 @@ namespace ssa::infra::importing {
 
     ports::WorkflowResult SpreadsheetImportWorkflowPort::rescan(const ports::RescanRequest& request,
                                                                 const std::stop_token stopToken) {
+        ProgressContext progress{&request.progress, 0, 0, 1, true};
+        auto result = rescanInternal(request, stopToken, progress);
+        const auto level = result.ok() ? result.warning ? ports::WorkflowProgressLevel::Warning
+                                                        : ports::WorkflowProgressLevel::Information
+                           : result.status == ports::WorkflowStatus::Canceled
+                               ? ports::WorkflowProgressLevel::Warning
+                               : ports::WorkflowProgressLevel::Error;
+        reportProgress(progress, ports::WorkflowProgressStage::Completed, level,
+                       progress.totalFiles, 100, result.message, result.diagnostic);
+        return result;
+    }
+
+    ports::WorkflowResult
+    SpreadsheetImportWorkflowPort::rescanInternal(const ports::RescanRequest& request,
+                                                  const std::stop_token& stopToken,
+                                                  ProgressContext& progress) {
+        reportProgress(progress, ports::WorkflowProgressStage::Preparing,
+                       ports::WorkflowProgressLevel::Information, 0, 0,
+                       "Preparando reescaneamento");
         if (const auto validation = request.execution.validationError(); !validation.empty()) {
             return {ports::WorkflowStatus::Rejected,
                     "rescan invalid_import_execution_options " + validation};
@@ -961,12 +1017,19 @@ namespace ssa::infra::importing {
         if (!importLock) {
             return importLockFailure(lockError, {}, lockDiagnostic, lockFailureOrigin);
         }
+        reportProgress(progress, ports::WorkflowProgressStage::Preparing,
+                       ports::WorkflowProgressLevel::Information, 0, 3,
+                       "Verificando consolidacao pendente");
         auto resumed = resumePendingConsolidation(stopToken, request.execution.sqliteBusyWait);
         if (resumed && (resumed->status == ports::WorkflowStatus::Canceled || !resumed->ok() ||
                         resumed->warning)) {
             return std::move(*resumed);
         }
         auto staging = stager_.stageInputFiles(stopToken, replaceAll);
+        progress.totalFiles = staging.files.size();
+        reportProgress(progress, ports::WorkflowProgressStage::Discovering,
+                       ports::WorkflowProgressLevel::Information, 0, 5,
+                       "Arquivos descobertos: " + std::to_string(progress.totalFiles));
         if (staging.operationalFailure || !staging.rejectionReason.empty()) {
             return importDiscoveredFiles(staging, replaceAll, stopToken, request.execution);
         }
@@ -995,13 +1058,16 @@ namespace ssa::infra::importing {
         const auto workingDatabase =
             qt::toFileSystemPath(workingDirectory.path()) / databasePath_.filename();
         try {
+            reportProgress(progress, ports::WorkflowProgressStage::CopyingDatabase,
+                           ports::WorkflowProgressLevel::Information, 0, 8,
+                           "Copiando banco para validacao");
             backupDatabaseSnapshot(
                 databasePath_, workingDatabase, stopToken, request.execution.sqliteBusyWait,
                 DatabaseSnapshotPhase::InitialCopy, synchronization_.snapshotLocked.get());
             SpreadsheetImportWorkflowPort workingPort(inputFolder_, workingDatabase, columns_,
                                                       false, synchronization_);
             auto result = workingPort.importDiscoveredFiles(staging, replaceAll, stopToken,
-                                                            request.execution);
+                                                            request.execution, nullptr, &progress);
             if (!result.ok()) {
                 return result;
             }
@@ -1039,9 +1105,15 @@ namespace ssa::infra::importing {
                                                                 : consolidationPlan.error);
                 return result;
             }
+            reportProgress(progress, ports::WorkflowProgressStage::PublishingDatabase,
+                           ports::WorkflowProgressLevel::Information, progress.totalFiles, 90,
+                           "Publicando banco validado");
             backupDatabaseSnapshot(
                 workingDatabase, databasePath_, stopToken, request.execution.sqliteBusyWait,
                 DatabaseSnapshotPhase::Publication, synchronization_.snapshotLocked.get());
+            reportProgress(progress, ports::WorkflowProgressStage::Consolidating,
+                           ports::WorkflowProgressLevel::Information, progress.totalFiles, 95,
+                           "Consolidando arquivos processados");
             const auto consolidation = consolidator_.consolidate(consolidationPlan, stopToken);
             appendWorkflowDiagnostic(result.diagnostic, consolidation.error);
             result.warning = result.warning || consolidation.canceled || consolidation.failed > 0;
@@ -1116,7 +1188,8 @@ namespace ssa::infra::importing {
     ports::WorkflowResult SpreadsheetImportWorkflowPort::importDiscoveredFiles(
         const ImportStagingResult& files, const bool replaceAll, const std::stop_token& stopToken,
         const ports::ImportExecutionOptions& execution,
-        const std::vector<ports::SamArtifact>* samArtifacts) const {
+        const std::vector<ports::SamArtifact>* samArtifacts,
+        const ProgressContext* const progress) const {
         constexpr const char* operation = "import_xlsx_to_sqlite";
         auto importSummary = makeImportSummary(files);
         const auto discardBeforeCommit = [this, &files,
@@ -1205,6 +1278,18 @@ namespace ssa::infra::importing {
         for (std::size_t fileIndex = 0; fileIndex < files.files.size(); ++fileIndex) {
             const auto& file = files.files[fileIndex];
             auto& fileResult = importSummary.files[file.summaryIndex];
+            if (progress != nullptr) {
+                const auto currentFile = progress->fileOffset + fileIndex + 1;
+                const auto percentage =
+                    progress->totalFiles == 0
+                        ? 10
+                        : 10 + static_cast<int>(70 * currentFile / progress->totalFiles);
+                reportProgress(*progress, ports::WorkflowProgressStage::ProcessingFile,
+                               ports::WorkflowProgressLevel::Information, currentFile, percentage,
+                               "Arquivo " + std::to_string(currentFile) + "/" +
+                                   std::to_string(progress->totalFiles),
+                               "Processando: " + file.originalFilename, file.originalFilename);
+            }
             if (stopToken.stop_requested()) {
                 return discardBeforeCommit(rollbackSession(*writeSession, canceled(operation)));
             }
@@ -1407,6 +1492,12 @@ namespace ssa::infra::importing {
             int observedIsoYear = 0;
             const auto observedDate = QDate::currentDate();
             const int observedIsoWeek = observedDate.weekNumber(&observedIsoYear);
+            if (progress != nullptr) {
+                const auto currentFile = progress->fileOffset + files.files.size();
+                reportProgress(*progress, ports::WorkflowProgressStage::UpdatingAnalytics,
+                               ports::WorkflowProgressLevel::Information, currentFile,
+                               progress->rescan ? 82 : -1, "Atualizando indicadores");
+            }
             const auto writeSummary = writeSession->finishWithAnalytics(
                 observedIsoYear * domain::kYearWeekMultiplier + observedIsoWeek,
                 observedDate.toString(Qt::ISODate).toStdString());
@@ -1424,6 +1515,12 @@ namespace ssa::infra::importing {
             importSummary.invalidNumberRows = totalSummary.invalidNumberRows;
             importSummary.invalidDescriptionRows = totalSummary.invalidDescriptionRows;
             importSummary.invalidDateRows = totalSummary.invalidDateRows;
+            if (progress != nullptr) {
+                const auto currentFile = progress->fileOffset + files.files.size();
+                reportProgress(*progress, ports::WorkflowProgressStage::Committing,
+                               ports::WorkflowProgressLevel::Information, currentFile,
+                               progress->rescan ? 85 : -1, "Transacao confirmada");
+            }
         } catch (const std::system_error& error) {
             if (error.code() == std::make_error_code(std::errc::operation_canceled)) {
                 return discardBeforeCommit(rollbackSession(*writeSession, canceled(operation)));
@@ -1449,6 +1546,12 @@ namespace ssa::infra::importing {
                                     totalSummary.duplicateRows > 0 || ignoredUnrecognizedWorkbook,
                                 files.diagnostic},
                                importSummary);
+        }
+        if (progress != nullptr) {
+            const auto currentFile = progress->fileOffset + files.files.size();
+            reportProgress(*progress, ports::WorkflowProgressStage::Consolidating,
+                           ports::WorkflowProgressLevel::Information, currentFile,
+                           progress->rescan ? 95 : -1, "Consolidando arquivos processados");
         }
         const auto consolidation = consolidator_.consolidate(consolidationPlan, stopToken);
         auto diagnostic = files.diagnostic;
@@ -1520,6 +1623,32 @@ namespace ssa::infra::importing {
                  ignoredUnrecognizedWorkbook,
              std::move(diagnostic)},
             importSummary);
+    }
+
+    void SpreadsheetImportWorkflowPort::reportProgress(const ProgressContext& context,
+                                                       const ports::WorkflowProgressStage stage,
+                                                       const ports::WorkflowProgressLevel level,
+                                                       const std::size_t currentFile,
+                                                       const int percentage, std::string status,
+                                                       std::string detail,
+                                                       std::string fileName) noexcept {
+        if (context.callback == nullptr || !*context.callback) {
+            return;
+        }
+        const auto resolvedPercentage =
+            percentage >= 0 ? percentage
+            : context.totalFiles == 0
+                ? 0
+                : 10 + static_cast<int>(70 * currentFile / context.totalFiles);
+        try {
+            (*context.callback)({stage, level, currentFile, context.totalFiles,
+                                 (std::clamp)(resolvedPercentage, 0, 100), std::move(fileName),
+                                 std::move(status), std::move(detail)});
+        } catch (const std::exception& error) {
+            qWarning().noquote() << "Workflow progress callback failed:" << error.what();
+        } catch (...) {
+            qWarning() << "Workflow progress callback failed: unknown exception";
+        }
     }
 
 } // namespace ssa::infra::importing

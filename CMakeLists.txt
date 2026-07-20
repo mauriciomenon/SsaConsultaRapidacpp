@@ -303,6 +303,7 @@ qt_add_qml_module(
   app/desktop/qml/components/FilterSummaryBar.qml
   app/desktop/qml/components/HelpDialog.qml
   app/desktop/qml/components/LogHistoryDialog.qml
+  app/desktop/qml/components/WorkflowProgressDialog.qml
   app/desktop/qml/components/ColumnConfigList.qml
   app/desktop/qml/components/PagerQuickFilters.qml
   app/desktop/qml/components/PreferencesDialog.qml
@@ -749,6 +750,18 @@ if(SSA_BUILD_TESTS)
   set_tests_properties(
     ssa_qml_activity_analytics_window_tests
     PROPERTIES TIMEOUT 20 RUN_SERIAL TRUE ENVIRONMENT
+               "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Basic")
+
+  add_executable(ssa_qml_workflow_progress_dialog_tests
+                 tests/smoke/WorkflowProgressDialogQmlTest.cpp)
+  target_link_libraries(
+    ssa_qml_workflow_progress_dialog_tests
+    PRIVATE Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::Test)
+  add_test(NAME ssa_qml_workflow_progress_dialog_tests
+           COMMAND ssa_qml_workflow_progress_dialog_tests)
+  set_tests_properties(
+    ssa_qml_workflow_progress_dialog_tests
+    PROPERTIES TIMEOUT 10 RUN_SERIAL TRUE ENVIRONMENT
                "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Basic")
 
   add_executable(ssa_qml_theme_gallery_tests

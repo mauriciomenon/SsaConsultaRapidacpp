@@ -78,6 +78,12 @@ namespace ssa::presentation {
         void samRefreshSettingsChanged();
         void importExecutionSettingsChanged();
         void preferencesSaveRequested();
+        void progressSessionStarted(const QString& operationLabel);
+        void progressChanged(int percentage, const QString& status, int currentFile, int totalFiles,
+                             const QString& fileName);
+        void progressOutputLine(const QString& line);
+        void progressErrorLine(const QString& line);
+        void progressSessionFinished(bool succeeded, bool canceled, const QString& message);
         void logEntryRequested(const QString& severity, const QString& source,
                                const QString& message, const QString& detail);
 
@@ -110,6 +116,10 @@ namespace ssa::presentation {
         };
 
         void startRescan(ports::RescanMode mode);
+        void startProgressSession(const QString& operationLabel);
+        void handleProgress(const ports::WorkflowProgress& progress);
+        void finishProgressSession(const ports::WorkflowResult& result, const QString& message,
+                                   bool canceled);
         void applyResult(const ports::WorkflowResult& result);
         void handleRunnerStateChanged(WorkflowCommandRunner::State state);
         void setResult(QString message, bool succeeded, bool warning = false,
@@ -137,6 +147,12 @@ namespace ssa::presentation {
         bool lastCanceled_{false};
         bool running_{false};
         bool canceling_{false};
+        bool progressSessionActive_{false};
+        bool progressCompletedReceived_{false};
+        int progressPercentage_{0};
+        std::size_t progressCurrentFile_{0};
+        std::size_t progressTotalFiles_{0};
+        QString progressFileName_;
         QTimer samRefreshTimer_;
         QString samScrapReportRoot_;
         QString samCaFile_;

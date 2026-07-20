@@ -39,6 +39,8 @@ namespace ssa::presentation {
                 &WorkflowCommandViewModel::handleRunnerStateChanged);
         connect(&runner_, &WorkflowCommandRunner::finished, this,
                 &WorkflowCommandViewModel::applyResult);
+        connect(&runner_, &WorkflowCommandRunner::progressReported, this,
+                &WorkflowCommandViewModel::handleProgress);
         connect(&samRefreshTimer_, &QTimer::timeout, this,
                 &WorkflowCommandViewModel::refreshSamNow);
     }
@@ -206,6 +208,7 @@ namespace ssa::presentation {
                       false);
             return;
         }
+        startProgressSession(tr("Importacao em andamento"));
         runner_.importExternalFiles(files, importExecutionOptions());
     }
 
@@ -393,12 +396,78 @@ namespace ssa::presentation {
             return;
         }
         operation_ = Operation::Rescan;
+        startProgressSession(tr("Reescaneamento em andamento"));
         runner_.rescan(mode, importExecutionOptions());
+    }
+
+    void WorkflowCommandViewModel::startProgressSession(const QString& operationLabel) {
+        progressSessionActive_ = true;
+        progressCompletedReceived_ = false;
+        progressPercentage_ = 0;
+        progressCurrentFile_ = 0;
+        progressTotalFiles_ = 0;
+        progressFileName_.clear();
+        emit progressSessionStarted(operationLabel);
+    }
+
+    void WorkflowCommandViewModel::handleProgress(const ports::WorkflowProgress& progress) {
+        if (!progressSessionActive_) {
+            return;
+        }
+        progressPercentage_ = progress.percentage;
+        progressCurrentFile_ = progress.currentFile;
+        progressTotalFiles_ = progress.totalFiles;
+        progressFileName_ = QString::fromStdString(progress.fileName);
+        progressCompletedReceived_ =
+            progressCompletedReceived_ || progress.stage == ports::WorkflowProgressStage::Completed;
+        const auto status = QString::fromStdString(progress.status);
+        emit progressChanged(progressPercentage_, status, static_cast<int>(progressCurrentFile_),
+                             static_cast<int>(progressTotalFiles_), progressFileName_);
+        auto line = status;
+        const auto detail = QString::fromStdString(progress.detail);
+        if (!detail.isEmpty()) {
+            line = line.isEmpty() ? detail : line + QStringLiteral(": ") + detail;
+        }
+        if (line.isEmpty()) {
+            return;
+        }
+        if (progress.level == ports::WorkflowProgressLevel::Information) {
+            emit progressOutputLine(line);
+        } else {
+            emit progressErrorLine(line);
+        }
+    }
+
+    void WorkflowCommandViewModel::finishProgressSession(const ports::WorkflowResult& result,
+                                                         const QString& message,
+                                                         const bool canceled) {
+        if (!progressSessionActive_) {
+            return;
+        }
+        progressSessionActive_ = false;
+        if (!progressCompletedReceived_) {
+            if (result.ok()) {
+                progressPercentage_ = 100;
+            }
+            emit progressChanged(progressPercentage_, message,
+                                 static_cast<int>(progressCurrentFile_),
+                                 static_cast<int>(progressTotalFiles_), progressFileName_);
+            const auto diagnostic = QString::fromStdString(result.diagnostic);
+            const auto terminalLine =
+                diagnostic.isEmpty() ? message : message + QStringLiteral(": ") + diagnostic;
+            if (result.ok() && !result.warning) {
+                emit progressOutputLine(terminalLine);
+            } else {
+                emit progressErrorLine(terminalLine);
+            }
+        }
+        emit progressSessionFinished(result.ok(), canceled, message);
     }
 
     void WorkflowCommandViewModel::applyResult(const ports::WorkflowResult& result) {
         if (result.status == ports::WorkflowStatus::Canceled) {
             const auto message = messagesForCurrentOperation().canceled;
+            finishProgressSession(result, message, true);
             emit logEntryRequested(QStringLiteral("Warning"), QStringLiteral("Workflow"), message,
                                    QString::fromStdString(result.diagnostic));
             setResult(message, false, false, true);
@@ -407,6 +476,7 @@ namespace ssa::presentation {
         if (result.ok()) {
             const auto message = QString::fromStdString(
                 result.message.empty() ? successMessage().toStdString() : result.message);
+            finishProgressSession(result, message, false);
             emit logEntryRequested(
                 result.warning ? QStringLiteral("Warning") : QStringLiteral("Info"),
                 QStringLiteral("Workflow"), message, QString::fromStdString(result.diagnostic));
@@ -414,6 +484,7 @@ namespace ssa::presentation {
             return;
         }
         const auto message = QString::fromStdString(result.message);
+        finishProgressSession(result, message, false);
         emit logEntryRequested(QStringLiteral("Error"), QStringLiteral("Workflow"), message,
                                QString::fromStdString(result.diagnostic));
         setResult(message, false);

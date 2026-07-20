@@ -5,7 +5,9 @@
 #include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QScopeGuard>
+#include <QSignalSpy>
 #include <QTest>
+#include <QThread>
 #include <QTimer>
 
 #include <chrono>
@@ -20,14 +22,14 @@ namespace {
     class BlockingImportPort final : public ssa::ports::IImportWorkflowPort {
       public:
         ssa::ports::WorkflowResult
-        importExternalFiles(const ssa::ports::ImportExternalFilesRequest&,
+        importExternalFiles(const ssa::ports::ImportExternalFilesRequest& request,
                             const std::stop_token stopToken) override {
-            return waitForCancellation(stopToken);
+            return waitForCancellation(stopToken, request.progress);
         }
 
-        ssa::ports::WorkflowResult rescan(const ssa::ports::RescanRequest&,
+        ssa::ports::WorkflowResult rescan(const ssa::ports::RescanRequest& request,
                                           const std::stop_token stopToken) override {
-            return waitForCancellation(stopToken);
+            return waitForCancellation(stopToken, request.progress);
         }
 
         [[nodiscard]] bool waitUntilStarted(const std::chrono::milliseconds timeout) {
@@ -74,7 +76,9 @@ namespace {
         }
 
       private:
-        ssa::ports::WorkflowResult waitForCancellation(const std::stop_token stopToken) {
+        ssa::ports::WorkflowResult
+        waitForCancellation(const std::stop_token stopToken,
+                            const ssa::ports::WorkflowProgressCallback& progress) {
             std::unique_lock lock(mutex_);
             ++calls_;
             started_ = true;
@@ -83,6 +87,16 @@ namespace {
             stopObserved_ = stopToken.stop_requested();
             stopWaitTimedOut_ = !stopObserved_;
             canceled_ = stopObserved_;
+            if (progress) {
+                progress({ssa::ports::WorkflowProgressStage::ProcessingFile,
+                          ssa::ports::WorkflowProgressLevel::Information,
+                          1,
+                          1,
+                          50,
+                          "shutdown.xlsx",
+                          "late progress",
+                          {}});
+            }
             changed_.notify_all();
             const bool released = changed_.wait_for(lock, std::chrono::seconds{2},
                                                     [this] { return releaseTerminal_; });
@@ -159,7 +173,10 @@ namespace {
             {
                 const std::scoped_lock lock(mutex_);
                 lastImportRequest_ = request;
+                lastImportRequest_->progress = {};
+                importProgressAttached_ = static_cast<bool>(request.progress);
             }
+            reportProgress(request.progress, "import.xlsx");
             return finish(stopToken);
         }
 
@@ -168,7 +185,10 @@ namespace {
             {
                 const std::scoped_lock lock(mutex_);
                 lastRescanRequest_ = request;
+                lastRescanRequest_->progress = {};
+                rescanProgressAttached_ = static_cast<bool>(request.progress);
             }
+            reportProgress(request.progress, "rescan.xlsx");
             return finish(stopToken);
         }
 
@@ -191,13 +211,41 @@ namespace {
             return lastRescanRequest_;
         }
 
+        [[nodiscard]] bool importProgressAttached() const {
+            const std::scoped_lock lock(mutex_);
+            return importProgressAttached_;
+        }
+
+        [[nodiscard]] bool rescanProgressAttached() const {
+            const std::scoped_lock lock(mutex_);
+            return rescanProgressAttached_;
+        }
+
       private:
+        static void reportProgress(const ssa::ports::WorkflowProgressCallback& progress,
+                                   const std::string& fileName) {
+            if (!progress) {
+                return;
+            }
+            progress({ssa::ports::WorkflowProgressStage::ProcessingFile,
+                      ssa::ports::WorkflowProgressLevel::Information, 1, 1, 50, fileName,
+                      "processing", "information detail"});
+            progress({ssa::ports::WorkflowProgressStage::Consolidating,
+                      ssa::ports::WorkflowProgressLevel::Warning, 1, 1, 90, fileName,
+                      "source warning", "warning detail"});
+            progress({ssa::ports::WorkflowProgressStage::Completed,
+                      ssa::ports::WorkflowProgressLevel::Warning, 1, 1, 100, fileName, "succeeded",
+                      "terminal diagnostic"});
+        }
+
         ssa::ports::WorkflowResult finish(const std::stop_token stopToken) {
             calls_.fetch_add(1, std::memory_order_acq_rel);
             stopObserved_.store(stopToken.stop_requested(), std::memory_order_release);
             return {stopToken.stop_requested() ? ssa::ports::WorkflowStatus::Canceled
                                                : ssa::ports::WorkflowStatus::Succeeded,
-                    stopToken.stop_requested() ? "canceled" : "succeeded"};
+                    stopToken.stop_requested() ? "canceled" : "succeeded",
+                    !stopToken.stop_requested(),
+                    stopToken.stop_requested() ? std::string{} : "terminal diagnostic"};
         }
 
         std::atomic_int calls_{0};
@@ -205,6 +253,8 @@ namespace {
         mutable std::mutex mutex_;
         std::optional<ssa::ports::ImportExternalFilesRequest> lastImportRequest_;
         std::optional<ssa::ports::RescanRequest> lastRescanRequest_;
+        bool importProgressAttached_ = false;
+        bool rescanProgressAttached_ = false;
     };
 
     class WorkflowCommandRunnerTest final : public QObject {
@@ -216,12 +266,15 @@ namespace {
             const auto releaseTerminal = qScopeGuard([&] { importPort->releaseTerminal(); });
             auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(importPort);
             int callbacks = 0;
+            int progressCallbacks = 0;
             QElapsedTimer destructionTimer;
 
             {
                 ssa::presentation::WorkflowCommandRunner runner(workflows);
                 connect(&runner, &ssa::presentation::WorkflowCommandRunner::finished, this,
                         [&callbacks] { ++callbacks; });
+                connect(&runner, &ssa::presentation::WorkflowCommandRunner::progressReported, this,
+                        [&progressCallbacks] { ++progressCallbacks; });
                 runner.rescan(ssa::ports::RescanMode::Incremental);
                 QVERIFY(importPort->waitUntilStarted(std::chrono::seconds{1}));
                 destructionTimer.start();
@@ -237,6 +290,7 @@ namespace {
             QVERIFY(!importPort->terminalTimedOut());
             QCoreApplication::processEvents();
             QCOMPARE(callbacks, 0);
+            QCOMPARE(progressCallbacks, 0);
         }
 
         void shutdown_rejects_new_work() {
@@ -244,6 +298,9 @@ namespace {
             const auto releaseTerminal = qScopeGuard([&] { importPort->releaseTerminal(); });
             auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(importPort);
             ssa::presentation::WorkflowCommandRunner runner(workflows);
+            int progressCount = 0;
+            connect(&runner, &ssa::presentation::WorkflowCommandRunner::progressReported, this,
+                    [&progressCount] { ++progressCount; });
 
             runner.rescan(ssa::ports::RescanMode::Incremental);
             QVERIFY(importPort->waitUntilStarted(std::chrono::seconds{1}));
@@ -255,12 +312,165 @@ namespace {
             QVERIFY(runner.running());
             QTRY_VERIFY_WITH_TIMEOUT(importPort->stopObserved(), 1000);
             QVERIFY(importPort->canceled());
+            QCoreApplication::processEvents();
+            QCOMPARE(progressCount, 0);
             QVERIFY(!importPort->finished());
             importPort->releaseTerminal();
             QTRY_VERIFY_WITH_TIMEOUT(importPort->finished(), 1000);
             QVERIFY(!importPort->stopWaitTimedOut());
             QVERIFY(!importPort->terminalTimedOut());
             QTRY_VERIFY_WITH_TIMEOUT(!runner.running(), 1000);
+            QCOMPARE(progressCount, 0);
+        }
+
+        void progress_is_main_thread_only_and_other_operations_remain_terminal() {
+            auto importPort = std::make_shared<ImmediateImportPort>();
+            auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(importPort);
+            ssa::presentation::WorkflowCommandRunner runner(workflows);
+            int progressCount = 0;
+            int finishedCount = 0;
+            QThread* progressThread = nullptr;
+            bool allProgressOnRunnerThread = true;
+            std::vector<ssa::ports::WorkflowStatus> statuses;
+            std::vector<ssa::ports::WorkflowProgressStage> progressStages;
+            std::vector<QString> eventLog;
+            const std::vector expectedStages{ssa::ports::WorkflowProgressStage::ProcessingFile,
+                                             ssa::ports::WorkflowProgressStage::Consolidating,
+                                             ssa::ports::WorkflowProgressStage::Completed};
+            const std::vector expectedEvents{QStringLiteral("progress"), QStringLiteral("progress"),
+                                             QStringLiteral("progress"),
+                                             QStringLiteral("finished")};
+            connect(&runner, &ssa::presentation::WorkflowCommandRunner::progressReported, this,
+                    [&](const ssa::ports::WorkflowProgress& progress) {
+                        ++progressCount;
+                        progressThread = QThread::currentThread();
+                        allProgressOnRunnerThread =
+                            allProgressOnRunnerThread && progressThread == runner.thread();
+                        progressStages.push_back(progress.stage);
+                        eventLog.push_back(QStringLiteral("progress"));
+                    });
+            connect(&runner, &ssa::presentation::WorkflowCommandRunner::finished, this,
+                    [&](const ssa::ports::WorkflowResult& result) {
+                        ++finishedCount;
+                        statuses.push_back(result.status);
+                        eventLog.push_back(QStringLiteral("finished"));
+                    });
+
+            runner.importExternalFiles({QStringLiteral("/tmp/import.xlsx")});
+            QTRY_COMPARE_WITH_TIMEOUT(finishedCount, 1, 1000);
+            QCOMPARE(progressCount, 3);
+            QVERIFY(importPort->importProgressAttached());
+            QCOMPARE(progressThread, runner.thread());
+            QVERIFY(allProgressOnRunnerThread);
+            QCOMPARE(progressStages, expectedStages);
+            QCOMPARE(eventLog, expectedEvents);
+
+            progressStages.clear();
+            eventLog.clear();
+            runner.rescan(ssa::ports::RescanMode::Incremental);
+            QTRY_COMPARE_WITH_TIMEOUT(finishedCount, 2, 1000);
+            QCOMPARE(progressCount, 6);
+            QVERIFY(importPort->rescanProgressAttached());
+            QCOMPARE(progressStages, expectedStages);
+            QCOMPARE(eventLog, expectedEvents);
+
+            runner.importDerivations({QStringLiteral("/tmp/derivadas.xlsx")});
+            QTRY_COMPARE_WITH_TIMEOUT(finishedCount, 3, 1000);
+            runner.refreshSam({});
+            QTRY_COMPARE_WITH_TIMEOUT(finishedCount, 4, 1000);
+            runner.cleanOrphanDerivations();
+            QTRY_COMPARE_WITH_TIMEOUT(finishedCount, 5, 1000);
+            runner.compactDatabase();
+            QTRY_COMPARE_WITH_TIMEOUT(finishedCount, 6, 1000);
+
+            QCOMPARE(progressCount, 6);
+            QCOMPARE(statuses[0], ssa::ports::WorkflowStatus::Succeeded);
+            QCOMPARE(statuses[1], ssa::ports::WorkflowStatus::Succeeded);
+            for (std::size_t index = 2; index < statuses.size(); ++index) {
+                QCOMPARE(statuses[index], ssa::ports::WorkflowStatus::NotImplemented);
+            }
+        }
+
+        void view_model_publishes_one_progress_terminal_for_import_and_rescan() {
+            auto importPort = std::make_shared<ImmediateImportPort>();
+            auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(importPort);
+            ssa::presentation::WorkflowCommandViewModel model(workflows);
+            QSignalSpy started(
+                &model, &ssa::presentation::WorkflowCommandViewModel::progressSessionStarted);
+            QSignalSpy finished(
+                &model, &ssa::presentation::WorkflowCommandViewModel::progressSessionFinished);
+            QSignalSpy changed(&model,
+                               &ssa::presentation::WorkflowCommandViewModel::progressChanged);
+            QSignalSpy output(&model,
+                              &ssa::presentation::WorkflowCommandViewModel::progressOutputLine);
+            QSignalSpy errors(&model,
+                              &ssa::presentation::WorkflowCommandViewModel::progressErrorLine);
+
+            model.importExternalFiles({QUrl::fromLocalFile("/tmp/import.xlsx")});
+            QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 1, 1000);
+            QCOMPARE(started.count(), 1);
+            QCOMPARE(changed.count(), 3);
+            QCOMPARE(output.count(), 1);
+            QCOMPARE(errors.count(), 2);
+            QCOMPARE(finished.at(0).at(0).toBool(), true);
+            QCOMPARE(finished.at(0).at(1).toBool(), false);
+            QTRY_VERIFY_WITH_TIMEOUT(!model.running(), 1000);
+
+            model.rescanFull();
+            QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 2, 1000);
+            QCOMPARE(started.count(), 2);
+            QCOMPARE(changed.count(), 6);
+            QCOMPARE(output.count(), 2);
+            QCOMPARE(errors.count(), 4);
+            QCOMPARE(finished.at(1).at(0).toBool(), true);
+            QCOMPARE(finished.at(1).at(1).toBool(), false);
+            QTRY_VERIFY_WITH_TIMEOUT(!model.running(), 1000);
+        }
+
+        void view_model_uses_one_fallback_terminal_for_config_failure() {
+            ssa::presentation::WorkflowCommandViewModel model(nullptr);
+            QSignalSpy started(
+                &model, &ssa::presentation::WorkflowCommandViewModel::progressSessionStarted);
+            QSignalSpy finished(
+                &model, &ssa::presentation::WorkflowCommandViewModel::progressSessionFinished);
+            QSignalSpy changed(&model,
+                               &ssa::presentation::WorkflowCommandViewModel::progressChanged);
+            QSignalSpy errors(&model,
+                              &ssa::presentation::WorkflowCommandViewModel::progressErrorLine);
+
+            model.importExternalFiles({QUrl::fromLocalFile("/tmp/import.xlsx")});
+
+            QCOMPARE(started.count(), 1);
+            QCOMPARE(changed.count(), 1);
+            QCOMPARE(errors.count(), 1);
+            QCOMPARE(finished.count(), 1);
+            QCOMPARE(finished.at(0).at(0).toBool(), false);
+            QCOMPARE(finished.at(0).at(1).toBool(), false);
+        }
+
+        void view_model_publishes_one_canceled_terminal() {
+            auto importPort = std::make_shared<BlockingImportPort>();
+            const auto releaseTerminal = qScopeGuard([&] { importPort->releaseTerminal(); });
+            auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(importPort);
+            ssa::presentation::WorkflowCommandViewModel model(workflows);
+            QSignalSpy finished(
+                &model, &ssa::presentation::WorkflowCommandViewModel::progressSessionFinished);
+            QSignalSpy output(&model,
+                              &ssa::presentation::WorkflowCommandViewModel::progressOutputLine);
+            QSignalSpy errors(&model,
+                              &ssa::presentation::WorkflowCommandViewModel::progressErrorLine);
+
+            model.rescanIncremental();
+            QVERIFY(importPort->waitUntilStarted(std::chrono::seconds{1}));
+            model.cancel();
+            QTRY_VERIFY_WITH_TIMEOUT(importPort->stopObserved(), 1000);
+            importPort->releaseTerminal();
+            QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 1, 1000);
+
+            QCOMPARE(output.count(), 1);
+            QCOMPARE(errors.count(), 1);
+            QCOMPARE(finished.at(0).at(0).toBool(), false);
+            QCOMPARE(finished.at(0).at(1).toBool(), true);
         }
 
         void sam_refresh_is_single_flight_and_canceled_on_shutdown() {
