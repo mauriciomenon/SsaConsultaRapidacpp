@@ -756,7 +756,7 @@ if(SSA_BUILD_TESTS)
                  tests/smoke/WorkflowProgressDialogQmlTest.cpp)
   target_link_libraries(
     ssa_qml_workflow_progress_dialog_tests
-    PRIVATE Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::Test)
+    PRIVATE ssa_presentation Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::Test)
   add_test(NAME ssa_qml_workflow_progress_dialog_tests
            COMMAND ssa_qml_workflow_progress_dialog_tests)
   set_tests_properties(

@@ -1,3 +1,7 @@
+#include "application/SsaWorkflowService.h"
+#include "ports/IWorkflowPorts.h"
+#include "presentation/WorkflowCommandViewModel.h"
+
 #include <QDebug>
 #include <QDir>
 #include <QFileInfo>
@@ -10,12 +14,32 @@
 #include <QQuickWindow>
 #include <QRectF>
 #include <QTest>
+#include <QUrl>
 #include <QtQml/qqml.h>
 
 #include <algorithm>
 #include <memory>
+#include <mutex>
+#include <vector>
 
 namespace {
+
+    constexpr auto kWorkflowProgressHarness = R"QML(
+import QtQuick
+import QtQuick.Controls
+import SsaConsultaRapida
+
+ApplicationWindow {
+    width: testWindowWidth
+    height: testWindowHeight
+    visible: true
+
+    WorkflowProgressDialog {
+        objectName: "workflowProgressDialog"
+        workflowViewModel: fakeWorkflow
+    }
+}
+)QML";
 
     [[nodiscard]] QDir repositoryRoot() {
         QDir root = QFileInfo(QString::fromUtf8(__FILE__)).dir();
@@ -83,6 +107,94 @@ namespace {
         int cancelCount_ = 0;
     };
 
+    class ScriptedImportWorkflowPort final : public ssa::ports::IImportWorkflowPort {
+      public:
+        [[nodiscard]] ssa::ports::WorkflowResult
+        importExternalFiles(const ssa::ports::ImportExternalFilesRequest& request,
+                            std::stop_token stopToken = {}) override {
+            (void)stopToken;
+            {
+                const std::scoped_lock lock(mutex_);
+                externalFileCount_ = request.files.size();
+            }
+            if (request.files.size() != 65) {
+                request.progress({ssa::ports::WorkflowProgressStage::Completed,
+                                  ssa::ports::WorkflowProgressLevel::Warning, 1, 1, 100,
+                                  "ignorado.xlsx", "Importacao concluida com avisos",
+                                  "workbook ignorado"});
+                return {ssa::ports::WorkflowStatus::Succeeded, "importacao com avisos", true,
+                        "workbook ignorado"};
+            }
+            request.progress({ssa::ports::WorkflowProgressStage::ProcessingFile,
+                              ssa::ports::WorkflowProgressLevel::Information,
+                              64,
+                              65,
+                              98,
+                              "arquivo_64.xlsx",
+                              "Arquivo 64/65",
+                              {}});
+            request.progress({ssa::ports::WorkflowProgressStage::ProcessingFile,
+                              ssa::ports::WorkflowProgressLevel::Information,
+                              65,
+                              65,
+                              99,
+                              "arquivo_65.xlsx",
+                              "Arquivo 65/65",
+                              {}});
+            request.progress({ssa::ports::WorkflowProgressStage::Completed,
+                              ssa::ports::WorkflowProgressLevel::Warning,
+                              65,
+                              65,
+                              100,
+                              {},
+                              "Falha parcial",
+                              "arquivo 65 rejeitado"});
+            return {ssa::ports::WorkflowStatus::Failed, "importacao parcial", true,
+                    "arquivo 65 rejeitado"};
+        }
+
+        [[nodiscard]] ssa::ports::WorkflowResult rescan(const ssa::ports::RescanRequest& request,
+                                                        std::stop_token stopToken = {}) override {
+            (void)stopToken;
+            {
+                const std::scoped_lock lock(mutex_);
+                rescanModes_.push_back(request.mode);
+            }
+            request.progress({ssa::ports::WorkflowProgressStage::Preparing,
+                              ssa::ports::WorkflowProgressLevel::Information,
+                              0,
+                              0,
+                              0,
+                              {},
+                              "Preparando reescaneamento",
+                              {}});
+            request.progress({ssa::ports::WorkflowProgressStage::Completed,
+                              ssa::ports::WorkflowProgressLevel::Information,
+                              0,
+                              0,
+                              100,
+                              {},
+                              "Reescaneamento concluido",
+                              {}});
+            return {ssa::ports::WorkflowStatus::Succeeded, "Reescaneamento concluido"};
+        }
+
+        [[nodiscard]] std::size_t externalFileCount() const {
+            const std::scoped_lock lock(mutex_);
+            return externalFileCount_;
+        }
+
+        [[nodiscard]] std::vector<ssa::ports::RescanMode> rescanModes() const {
+            const std::scoped_lock lock(mutex_);
+            return rescanModes_;
+        }
+
+      private:
+        mutable std::mutex mutex_;
+        std::size_t externalFileCount_ = 0;
+        std::vector<ssa::ports::RescanMode> rescanModes_;
+    };
+
     class WorkflowProgressDialogQmlTest final : public QObject {
         Q_OBJECT
 
@@ -112,23 +224,6 @@ namespace {
         void dialog_tracks_progress_cancel_and_terminal_close() {
             QFETCH(int, windowWidth);
             QFETCH(int, windowHeight);
-            static constexpr auto kHarness = R"QML(
-import QtQuick
-import QtQuick.Controls
-import SsaConsultaRapida
-
-ApplicationWindow {
-    width: testWindowWidth
-    height: testWindowHeight
-    visible: true
-
-    WorkflowProgressDialog {
-        objectName: "workflowProgressDialog"
-        workflowViewModel: fakeWorkflow
-    }
-}
-)QML";
-
             FakeWorkflowViewModel workflow;
             QQmlEngine engine;
             engine.rootContext()->setContextProperty(QStringLiteral("fakeWorkflow"), &workflow);
@@ -137,7 +232,7 @@ ApplicationWindow {
             engine.rootContext()->setContextProperty(QStringLiteral("testWindowHeight"),
                                                      windowHeight);
             QQmlComponent component(&engine);
-            component.setData(kHarness,
+            component.setData(kWorkflowProgressHarness,
                               QUrl(QStringLiteral("inmemory:/WorkflowProgressHarness.qml")));
             QTRY_VERIFY_WITH_TIMEOUT(component.status() != QQmlComponent::Loading, 1000);
             QVERIFY2(component.isReady(), qPrintable(component.errorString()));
@@ -382,6 +477,100 @@ ApplicationWindow {
             QCOMPARE(progressBar->property("value").toInt(), 100);
             QVERIFY(dialog->property("visible").toBool());
             QVERIFY(closeButton->property("enabled").toBool());
+        }
+
+        void real_view_model_routes_import_and_rescan_progress() {
+            auto importPort = std::make_shared<ScriptedImportWorkflowPort>();
+            auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(importPort);
+            ssa::presentation::WorkflowCommandViewModel workflowModel(workflows);
+
+            QQmlEngine engine;
+            engine.rootContext()->setContextProperty(QStringLiteral("fakeWorkflow"),
+                                                     &workflowModel);
+            engine.rootContext()->setContextProperty(QStringLiteral("testWindowWidth"), 1180);
+            engine.rootContext()->setContextProperty(QStringLiteral("testWindowHeight"), 760);
+            QQmlComponent component(&engine);
+            component.setData(kWorkflowProgressHarness,
+                              QUrl(QStringLiteral("inmemory:/RealWorkflowProgressHarness.qml")));
+            QTRY_VERIFY_WITH_TIMEOUT(component.status() != QQmlComponent::Loading, 1000);
+            QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+
+            std::unique_ptr<QObject> object(component.create());
+            QVERIFY2(object != nullptr, qPrintable(component.errorString()));
+            auto* window = qobject_cast<QQuickWindow*>(object.get());
+            QVERIFY(window != nullptr);
+            window->show();
+            QTRY_VERIFY_WITH_TIMEOUT(window->isExposed(), 1000);
+
+            auto* dialog = window->findChild<QObject*>(QStringLiteral("workflowProgressDialog"));
+            auto* output = window->findChild<QObject*>(QStringLiteral("workflowProgressOutput"));
+            auto* errors = window->findChild<QObject*>(QStringLiteral("workflowProgressErrors"));
+            auto* closeButton =
+                window->findChild<QObject*>(QStringLiteral("workflowProgressCloseButton"));
+            QVERIFY(dialog != nullptr);
+            QVERIFY(output != nullptr);
+            QVERIFY(errors != nullptr);
+            QVERIFY(closeButton != nullptr);
+
+            QVariantList selectedFiles;
+            selectedFiles.reserve(65);
+            for (int file = 1; file <= 65; ++file) {
+                selectedFiles.push_back(
+                    QUrl::fromLocalFile(QStringLiteral("/tmp/ssa_progress_%1.xlsx").arg(file)));
+            }
+            workflowModel.importExternalFiles(selectedFiles);
+            QTRY_VERIFY_WITH_TIMEOUT(dialog->property("visible").toBool(), 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(closeButton->property("enabled").toBool(), 2000);
+            QTRY_VERIFY_WITH_TIMEOUT(!workflowModel.running(), 2000);
+            QCOMPARE(importPort->externalFileCount(), std::size_t{65});
+            QCOMPARE(dialog->property("title").toString(),
+                     QStringLiteral("Importacao em andamento - 65/65"));
+            QVERIFY(output->property("text").toString().contains(QStringLiteral("Arquivo 64/65")));
+            QVERIFY(output->property("text").toString().contains(QStringLiteral("Arquivo 65/65")));
+            QVERIFY(errors->property("text").toString().contains(
+                QStringLiteral("Falha parcial: arquivo 65 rejeitado")));
+            QVERIFY(!workflowModel.lastSucceeded());
+            QVERIFY(dialog->property("terminal").toBool());
+            QVERIFY(QMetaObject::invokeMethod(closeButton, "clicked"));
+            QTRY_VERIFY_WITH_TIMEOUT(!dialog->property("visible").toBool(), 1000);
+
+            workflowModel.importExternalFiles(
+                {QUrl::fromLocalFile(QStringLiteral("/tmp/ignorado.xlsx"))});
+            QTRY_VERIFY_WITH_TIMEOUT(dialog->property("visible").toBool(), 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(closeButton->property("enabled").toBool(), 2000);
+            QTRY_VERIFY_WITH_TIMEOUT(!workflowModel.running(), 2000);
+            QCOMPARE(importPort->externalFileCount(), std::size_t{1});
+            QCOMPARE(dialog->property("title").toString(),
+                     QStringLiteral("Importacao em andamento - 1/1"));
+            QVERIFY(errors->property("text").toString().contains(
+                QStringLiteral("Importacao concluida com avisos: workbook ignorado")));
+            QVERIFY(workflowModel.lastSucceeded());
+            QVERIFY(workflowModel.lastWarning());
+            QVERIFY(dialog->property("terminal").toBool());
+            QVERIFY(closeButton->property("enabled").toBool());
+            QVERIFY(QMetaObject::invokeMethod(closeButton, "clicked"));
+            QTRY_VERIFY_WITH_TIMEOUT(!dialog->property("visible").toBool(), 1000);
+
+            workflowModel.rescanIncremental();
+            QTRY_VERIFY_WITH_TIMEOUT(dialog->property("visible").toBool(), 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(closeButton->property("enabled").toBool(), 2000);
+            QTRY_VERIFY_WITH_TIMEOUT(!workflowModel.running(), 2000);
+            QCOMPARE(importPort->rescanModes().size(), std::size_t{1});
+            QCOMPARE(importPort->rescanModes().front(), ssa::ports::RescanMode::Incremental);
+            QVERIFY(workflowModel.lastSucceeded());
+            QVERIFY(QMetaObject::invokeMethod(closeButton, "clicked"));
+            QTRY_VERIFY_WITH_TIMEOUT(!dialog->property("visible").toBool(), 1000);
+
+            workflowModel.rescanFull();
+            QTRY_VERIFY_WITH_TIMEOUT(dialog->property("visible").toBool(), 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(closeButton->property("enabled").toBool(), 2000);
+            QTRY_VERIFY_WITH_TIMEOUT(!workflowModel.running(), 2000);
+            const auto modes = importPort->rescanModes();
+            QCOMPARE(modes.size(), std::size_t{2});
+            QCOMPARE(modes[0], ssa::ports::RescanMode::Incremental);
+            QCOMPARE(modes[1], ssa::ports::RescanMode::Full);
+            QVERIFY(workflowModel.lastSucceeded());
+            QVERIFY(dialog->property("terminal").toBool());
         }
     };
 
