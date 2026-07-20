@@ -97,6 +97,7 @@ Dialog {
         }
 
         Label {
+            objectName: "workflowProgressOutputLabel"
             text: "Saida da execucao atual"
             color: Theme.text
             font.bold: true
@@ -104,9 +105,12 @@ Dialog {
         }
 
         ScrollView {
+            objectName: "workflowProgressOutputScroll"
+            implicitHeight: 0
             Layout.fillWidth: true
             Layout.fillHeight: true
             Layout.minimumHeight: 120
+            Layout.preferredHeight: 120
 
             TextArea {
                 id: outputArea
@@ -127,6 +131,7 @@ Dialog {
         }
 
         Label {
+            objectName: "workflowProgressErrorLabel"
             text: "Erros e avisos"
             color: Theme.text
             font.bold: true
@@ -134,9 +139,11 @@ Dialog {
         }
 
         ScrollView {
+            objectName: "workflowProgressErrorScroll"
+            implicitHeight: 0
             Layout.fillWidth: true
-            Layout.fillHeight: true
             Layout.minimumHeight: 100
+            Layout.preferredHeight: 100
 
             TextArea {
                 id: errorArea
