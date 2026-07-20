@@ -1,5 +1,19 @@
 # Recovery Backlog
 
+## Release v0.9.14 - 2026-07-20
+
+- [RESOLVED-LOCAL] Build release limpo e CTest `641/641` em `63.02 s`.
+- [RESOLVED-LOCAL] ZIP e DMG arm64 gerados e verificados; app e CLI reportam
+  `0.9.14`; aliases latest foram atualizados.
+- [RESOLVED-LOCAL] Bundle assinado ad-hoc validado e somente driver SQLite
+  presente. Hashes SHA-256 estao registrados no status da rodada.
+- [EXTERNAL-BLOCKED] GitLab continua `invalid_grant`; publicacao e tag devem
+  ser verificadas separadamente no Bitbucket.
+- [EXTERNAL-PENDING] Windows/UNC, SMB e pacotes nao-macOS continuam fora deste
+  aceite e nao alteram a matriz `5/8`.
+
+Proxima atividade unica: commit e tag `v0.9.14`.
+
 ## Importacao e rescan estabilizados - 2026-07-20
 
 - [RESOLVED-LOCAL] Resultado por arquivo e agregados separam workbooks

@@ -1,5 +1,27 @@
 # Status Da Rodada
 
+## Release macOS v0.9.14 - 2026-07-20
+
+- **ENTREGUE localmente**: `PROJECT_VERSION` passou de `0.9.13` para
+  `0.9.14`, com backup local timestampado fora do commit.
+- O pacote canonico release foi reconstruido do zero e passou `641/641` testes
+  em `63.02 s`. Uma primeira tentativa sandbox tambem passou `641/641` em
+  `70.60 s`, mas nao publicou artefatos porque `hdiutil` nao tinha acesso ao
+  subsistema de dispositivos; a repeticao no host terminou com sucesso.
+- Artefatos arm64 gerados: app versionado, ZIP de 54 MiB e DMG de 61 MiB.
+  ZIP passou teste de integridade; DMG e UDZO checksummed; `codesign --deep
+  --strict` passou; Info.plist e CLI release reportam `0.9.14`.
+- SHA-256 ZIP: `47ff5666f9735a3ed097b7c2b7e5153756043e35b1fefaec7ad62a20db4e7f59`.
+  SHA-256 DMG: `5eb92038ba4e2046d5a3edb672646bec95d2c2eb88af571f5d96184126d30986`.
+- O bundle final contem somente o driver SQL `libqsqlite.dylib`; warnings do
+  `macdeployqt` sobre Mimer/Postgres foram emitidos antes da poda e nao
+  representam dependencias do pacote final.
+- A tag e a publicacao remota ainda dependem do commit desta secao. GitLab
+  segue bloqueado por OAuth `invalid_grant`.
+
+Proxima atividade unica: commit/tag `v0.9.14`, push Bitbucket e tentativa
+GitLab com estados separados.
+
 ## Fechamento de estabilizacao de importacao - 2026-07-20
 
 - **ENTREGUE localmente**: importacao externa e rescan agora preservam um
