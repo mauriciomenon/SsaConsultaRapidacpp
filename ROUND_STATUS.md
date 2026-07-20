@@ -20,16 +20,19 @@
 - Contadores autoritativos, sem recontar snapshots antigos: plano original
   `99.0/100`; divida nova P0 `14/14 = 100.0%`; backlog legado `N/A`; matriz
   operacional `5/8 = 62.5%`.
-- Estado externo anterior a publicacao v0.9.15: Bitbucket em `7291eae`; GitLab
-  ainda sujeito ao OAuth `invalid_grant`; GitHub suspenso/403.
+- **PUBLICADO**: tag `v0.9.15` aponta para `0d56421` e foi confirmada, junto
+  com `master`, em GitLab e Bitbucket; ambos possuem divergencia `0/0` nesse
+  ponto. GitHub permanece suspenso/403.
+- GitLab CI do SHA `0d56421`: jobs `secret-scan` e `linux-verify` falharam sem
+  iniciar por `ci_quota_exceeded`. E bloqueio externo, nao falha de teste.
 - Pacote release no host: `642/642` em `67.10 s`; ZIP 54 MiB e DMG 63 MiB.
   ZIP passou integridade, DMG e UDZO/CRC32, assinatura deep/strict passou e o
   bundle contem somente `libqsqlite.dylib`.
 - SHA-256 ZIP: `dae29615c7139d78e45a79498afcbd918599384cc02d1a9578320b2be83e6465`.
   SHA-256 DMG: `3131270ced9ed2e305c6849eaa89fd5d3161087f3b33a1384ea5b2464f75a580`.
 
-Proxima atividade unica: fechar docs, pacote release, tag `v0.9.15` e publicar
-em GitLab/Bitbucket com verificacao independente dos refs.
+Proxima atividade unica: quando houver nova sessao, atacar o primeiro item
+canonico do backlog sem reabrir esta release; este agente deve parar agora.
 
 Os blocos abaixo sao historicos append-only. Em conflito, este bloco superior
 e o handoff v0.9.15 sao a fonte atual.

@@ -8,7 +8,8 @@
   relatorio existem; falta trace valido no host permitido.
 - [EXTERNAL-PENDING] Importacao e grafo em Windows/UNC/SMB real; handles,
   PowerShell e packaging Windows/Linux em plataformas reais.
-- [EXTERNAL-BLOCKED] GitLab OAuth `invalid_grant` ate nova verificacao de push.
+- [EXTERNAL-BLOCKED] GitLab CI sem quota: os jobs do SHA `0d56421` retornaram
+  `ci_quota_exceeded`; branch e tag foram publicados com sucesso.
 
 ### Produto
 

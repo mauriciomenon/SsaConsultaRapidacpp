@@ -26,5 +26,5 @@
 - Profiling valido do prefetch continua bloqueado.
 - A troca acidental de tema pelo seletor circular nao foi alterada nesta
   release; `ssa-dark` continua disponivel em Preferencias.
-- Estado de publicacao deve ser confirmado por refs remotos; nao inferir pelo
-  sucesso local.
+- Tag `v0.9.15` e `master` foram confirmados no SHA `0d56421` em GitLab e
+  Bitbucket. GitLab CI nao iniciou por `ci_quota_exceeded`.

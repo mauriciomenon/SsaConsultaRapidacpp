@@ -11,7 +11,8 @@ inferiores sao historico. O handoff ativo e
 Categorias atuais:
 
 - Produto: derivadas, filtros ocultos, paginacao SAM e negacao/hifen.
-- Evidencia externa: Windows/UNC/SMB, packaging multiplataforma e profiling.
+- Evidencia externa: Windows/UNC/SMB, packaging multiplataforma, profiling e
+  CI GitLab bloqueado por quota.
 - GUI: troca acidental de tema, AA restante e validacao HiDPI.
 - Medido/deferido: FTS5, `roleNames()` e LIMIT/OFFSET tipado.
 
