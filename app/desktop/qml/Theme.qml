@@ -957,15 +957,12 @@ QtObject {
     // TypeScale - modular scale (base 12px, ratio 8:9 = 1.125, data-dense UI).
     // Every font.pixelSize in the app must reference one of these. No literal
     // font sizes in component bodies.
-    // Base 12px is intentional for the dense SSA table UI. Shared controls
-    // migrate to font.pointSize one scale step at a time.
+    // Base 12px is intentional for the dense SSA table UI.
     // ---------------------------------------------------------------------------
     readonly property int fontSizeCaption: 10 // ms(-2) - badges, micro metadata
     readonly property int fontSizeMicro: 11 // ms(-1) - secondary value labels
     readonly property int fontSizeBody: 12 // ms(0) - body, inputs, base
-    readonly property real fontPointSizeBody: 9.0 // 12px at 96 DPI, shared controls
     readonly property int fontSizeLabel: 13 // ms(1) - primary field labels
-    readonly property real fontPointSizeLabel: 9.75 // 13px at 96 DPI, toolbar labels
     readonly property int fontSizeTitle: 14 // ms(2) - card/section titles
     readonly property int fontSizeHeader: 16 // ms(3) - header/title text
 

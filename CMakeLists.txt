@@ -811,7 +811,7 @@ if(SSA_BUILD_TESTS)
     set_tests_properties(
       ssa_qml_popup_smoke_${popup_width}
       PROPERTIES TIMEOUT 15 RUN_SERIAL TRUE PASS_REGULAR_EXPRESSION
-                 "QML_POPUP_SMOKE.*success.*true")
+                 "QML_POPUP_SMOKE.*\"success\":true")
   endforeach()
 
   add_test(
@@ -824,7 +824,7 @@ if(SSA_BUILD_TESTS)
   set_tests_properties(
     ssa_qml_layout_smoke_1180x760
     PROPERTIES TIMEOUT 15 RUN_SERIAL TRUE PASS_REGULAR_EXPRESSION
-               "QML_LAYOUT_SMOKE.*success.*true")
+               "QML_LAYOUT_SMOKE.*\"success\":true")
 
   add_test(
     NAME ssa_qml_details_timeout

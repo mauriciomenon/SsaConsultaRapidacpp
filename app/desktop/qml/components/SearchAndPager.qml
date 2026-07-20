@@ -48,6 +48,7 @@ Rectangle {
             spacing: Theme.gap
 
             ActionButton {
+                objectName: "mainUndoButton"
                 text: "Desfazer"
                 enabled: root.viewModel.canUndoFilters
                 implicitWidth: 88
@@ -55,6 +56,7 @@ Rectangle {
                 onClicked: root.viewModel.undoFilters()
             }
             ActionButton {
+                objectName: "mainClearButton"
                 text: "Limpar"
                 implicitWidth: 88
                 implicitHeight: Theme.densityValue(root.density, 26, Theme.controlHeight, 34)
@@ -73,6 +75,7 @@ Rectangle {
                 }
             }
             ActionButton {
+                objectName: "mainApplyButton"
                 text: "Aplicar"
                 implicitWidth: 82
                 implicitHeight: Theme.densityValue(root.density, 26, Theme.controlHeight, 34)

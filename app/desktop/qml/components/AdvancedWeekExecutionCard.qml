@@ -101,6 +101,7 @@ FilterCard {
 
             AppTextField {
                 id: rangeStartField
+                objectName: "executionWeekStartField"
                 Layout.minimumWidth: 70
                 Layout.fillWidth: true
                 Layout.preferredHeight: Theme.filterRowHeight
@@ -119,6 +120,7 @@ FilterCard {
 
             AppTextField {
                 id: rangeEndField
+                objectName: "executionWeekEndField"
                 Layout.minimumWidth: 70
                 Layout.fillWidth: true
                 Layout.preferredHeight: Theme.filterRowHeight

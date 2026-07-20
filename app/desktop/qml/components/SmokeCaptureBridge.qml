@@ -23,6 +23,70 @@ QtObject {
     property int popupSmokeAttempts: 0
     property int layoutSmokeAttempts: 0
 
+    readonly property list<string> fitProbeNames: ["mainImportXlsxButton", "mainPreferencesButton", "mainUndoButton", "mainClearButton", "mainApplyButton", "mainFiltersButton", "advancedValueSelector_setor_emissor", "advancedValueSelector_situacao", "issueWeekStartField", "issueWeekEndField", "executionWeekStartField", "executionWeekEndField"]
+
+    function findVisualItem(item, objectName) {
+        if (item.objectName === objectName)
+            return item;
+        for (var index = 0; index < item.children.length; ++index) {
+            const match = root.findVisualItem(item.children[index], objectName);
+            if (match !== null)
+                return match;
+        }
+        return null;
+    }
+
+    function controlFitMetrics(item) {
+        const content = item.contentItem;
+        const hasContent = content !== undefined && content !== null;
+        const availableWidth = item.smokeAvailableWidth !== undefined ? item.smokeAvailableWidth : item.availableWidth;
+        const availableHeight = item.smokeAvailableHeight !== undefined ? item.smokeAvailableHeight : item.availableHeight;
+        const contentWidth = item.smokeContentWidth !== undefined ? item.smokeContentWidth : hasContent ? content.implicitWidth : item.implicitContentWidth;
+        const contentHeight = item.smokeContentHeight !== undefined ? item.smokeContentHeight : hasContent ? content.implicitHeight : item.implicitContentHeight;
+        const tolerance = 0.5;
+        return {
+            availableWidth: availableWidth,
+            availableHeight: availableHeight,
+            contentWidth: contentWidth,
+            contentHeight: contentHeight,
+            fit: availableWidth + tolerance >= contentWidth && availableHeight + tolerance >= contentHeight,
+            visible: item.visible
+        };
+    }
+
+    function collectControlFitMetrics() {
+        const controls = {};
+        const expectedCount = root.fitProbeNames.length;
+        var foundCount = 0;
+        var visibleCount = 0;
+        var fitCount = 0;
+        for (var index = 0; index < root.fitProbeNames.length; ++index) {
+            const objectName = root.fitProbeNames[index];
+            const item = root.findVisualItem(root.rootContentItem, objectName);
+            if (item === null) {
+                controls[objectName] = {
+                    found: false
+                };
+                continue;
+            }
+            const metrics = root.controlFitMetrics(item);
+            metrics.found = true;
+            controls[objectName] = metrics;
+            foundCount += 1;
+            if (metrics.visible)
+                visibleCount += 1;
+            if (metrics.fit)
+                fitCount += 1;
+        }
+        return {
+            expectedCount: expectedCount,
+            foundCount: foundCount,
+            visibleCount: visibleCount,
+            fitCount: fitCount,
+            controls: controls
+        };
+    }
+
     function itemMetrics(item) {
         const origin = item.mapToItem(root.rootContentItem, 0, 0);
         return {
@@ -57,7 +121,8 @@ QtObject {
 
         layoutSmokeRetry.stop();
         const tolerance = 0.5;
-        const success = root.itemInsideContent(table) && root.itemInsideContent(bottom) && root.itemInsideContent(status) && status.visible && table.height >= 200 && bottom.height >= 200 && table.y + table.height <= bottom.y + tolerance && bottom.y + bottom.height <= status.y + tolerance;
+        const controlFit = root.collectControlFitMetrics();
+        const success = root.itemInsideContent(table) && root.itemInsideContent(bottom) && root.itemInsideContent(status) && status.visible && table.height >= 200 && bottom.height >= 200 && table.y + table.height <= bottom.y + tolerance && bottom.y + bottom.height <= status.y + tolerance && controlFit.foundCount === controlFit.expectedCount && controlFit.visibleCount === controlFit.expectedCount && controlFit.fitCount === controlFit.expectedCount;
         root.smokeController.reportLayoutMetrics({
             success: success,
             content: {
@@ -66,7 +131,8 @@ QtObject {
             },
             table: table,
             bottomPane: bottom,
-            status: status
+            status: status,
+            controlFit: controlFit
         });
     }
 
@@ -156,13 +222,15 @@ QtObject {
         popupSmokeRetry.stop();
         root.popupSmokeStage = 0;
         const grid = root.filterPanel.smokeGridGeometry();
-        const success = root.popupSmokeClosedBefore.modelCount === 0 && root.popupSmokeClosedBefore.activeDelegateCount === 0 && root.popupInsideOverlay(root.popupSmokeOpened) && Math.abs(grid.height - grid.contentHeight) < 0.5;
+        const controlFit = root.collectControlFitMetrics();
+        const success = root.popupSmokeClosedBefore.modelCount === 0 && root.popupSmokeClosedBefore.activeDelegateCount === 0 && root.popupInsideOverlay(root.popupSmokeOpened) && Math.abs(grid.height - grid.contentHeight) < 0.5 && controlFit.foundCount === controlFit.expectedCount && controlFit.visibleCount === controlFit.expectedCount && controlFit.fitCount === controlFit.expectedCount;
         root.smokeController.reportAdvancedPopupMetrics({
             success: success,
             closedBefore: root.popupSmokeClosedBefore,
             opened: root.popupSmokeOpened,
             closedAfter: root.popupSmokeClosedAfter,
-            grid: grid
+            grid: grid,
+            controlFit: controlFit
         });
     }
 

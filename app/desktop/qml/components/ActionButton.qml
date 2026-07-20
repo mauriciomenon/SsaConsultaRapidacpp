@@ -6,13 +6,14 @@ Button {
     id: control
     property bool danger: false
     implicitHeight: Math.max(Theme.controlHeight, implicitContentHeight + topPadding + bottomPadding)
-    leftPadding: 10
-    rightPadding: 10
+    padding: 10
+    leftPadding: padding
+    rightPadding: padding
     topPadding: 0
     bottomPadding: 0
 
     font.family: Theme.fontFamily
-    font.pointSize: Theme.fontPointSizeBody
+    font.pixelSize: Theme.fontSizeBody
     font.bold: false
     implicitWidth: 100
     opacity: enabled ? 1.0 : 0.8

@@ -27,10 +27,10 @@ set(ARGUMENTS
 
 if(MODE STREQUAL "popup")
   list(APPEND ARGUMENTS --smoke-advanced-popup)
-  set(EXPECTED "QML_POPUP_SMOKE.*success.*true")
+  set(EXPECTED "QML_POPUP_SMOKE.*\"success\":true")
 elseif(MODE STREQUAL "layout")
   list(APPEND ARGUMENTS --smoke-layout)
-  set(EXPECTED "QML_LAYOUT_SMOKE.*success.*true")
+  set(EXPECTED "QML_LAYOUT_SMOKE.*\"success\":true")
 else()
   message(FATAL_ERROR "unsupported smoke MODE '${MODE}'")
 endif()
@@ -46,6 +46,10 @@ execute_process(
 set(COMBINED "${output}${error}")
 if(NOT result EQUAL 0)
   message(FATAL_ERROR "${MODE} smoke failed with ${result}\n${COMBINED}")
+endif()
+if(COMBINED MATCHES "Both point size and pixel size set\\. Using pixel size\\.")
+  message(
+    FATAL_ERROR "${MODE} smoke emitted conflicting font sizes\n${COMBINED}")
 endif()
 if(NOT COMBINED MATCHES "${EXPECTED}")
   message(FATAL_ERROR "${MODE} smoke returned no valid metrics\n${COMBINED}")

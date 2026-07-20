@@ -99,6 +99,7 @@ FilterCard {
 
             AppComboBox {
                 id: advancedValueSelector
+                objectName: "advancedValueSelector_" + root.key
                 Layout.minimumWidth: Theme.valueMinWidth
                 Layout.fillWidth: true
                 Layout.preferredWidth: Math.max(Theme.valuePreferredWidth, root.cardWidth * Theme.valuePreferredRatio)

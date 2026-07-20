@@ -141,6 +141,7 @@ Item {
 
         ActionButton {
             id: filterMenuButton
+            objectName: "mainFiltersButton"
             text: "Filtros"
             implicitWidth: 96
             implicitHeight: Theme.densityValue(root.density, 26, Theme.controlHeight, 34)

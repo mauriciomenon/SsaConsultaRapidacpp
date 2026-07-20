@@ -11,7 +11,7 @@ ComboBox {
     leftPadding: 10
     rightPadding: 22
     font.family: Theme.fontFamily
-    font.pointSize: Theme.fontPointSizeBody
+    font.pixelSize: Theme.fontSizeBody
 
     function clampedPopupX(popupWidth) {
         const overlayRoot = Overlay.overlay;

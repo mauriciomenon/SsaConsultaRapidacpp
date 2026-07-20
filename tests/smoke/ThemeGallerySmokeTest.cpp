@@ -72,7 +72,8 @@ namespace {
                                     "SsaConsultaRapida", 1, 0, "AppCheckBox") >= 0);
         }
 
-        void shared_controls_use_point_sizes_and_fit_content() {
+        void shared_controls_use_pixel_sizes_and_fit_content() {
+            QTest::failOnWarning("Both point size and pixel size set. Using pixel size.");
             static constexpr auto kHarness = R"QML(
 import QtQuick
 import QtQuick.Controls
@@ -128,6 +129,40 @@ ApplicationWindow {
         text: "Agypq"
         checked: true
     }
+
+    ActionButton {
+        objectName: "compactGraphButton"
+        x: 16
+        y: 196
+        implicitWidth: 42
+        implicitHeight: 19
+        padding: 0
+        font.pixelSize: Theme.fontSizeCaption
+        text: "Grafo"
+    }
+
+    ActionButton {
+        objectName: "compactEllipsisButton"
+        x: 76
+        y: 196
+        implicitWidth: Theme.commandWidth
+        implicitHeight: Theme.filterRowHeight
+        padding: 0
+        font.pixelSize: Theme.fontSizeBody
+        text: "..."
+    }
+
+    ActionButton {
+        objectName: "compactClearButton"
+        x: 124
+        y: 196
+        implicitWidth: 28
+        implicitHeight: Theme.filterRowHeight
+        padding: 0
+        font.bold: true
+        font.pixelSize: Theme.fontSizeBody
+        text: "X"
+    }
 }
 )QML";
 
@@ -143,12 +178,9 @@ ApplicationWindow {
             QVERIFY(window != nullptr);
             window->show();
 
-            const auto usesPointSize = [](const QObject& item) {
+            const auto usesPixelSize = [](const QObject& item) {
                 const QFont font = qvariant_cast<QFont>(item.property("font"));
-                return font.pointSizeF() > 0.0 && font.pixelSize() == -1;
-            };
-            const auto pointSize = [](const QObject& item) {
-                return qvariant_cast<QFont>(item.property("font")).pointSizeF();
+                return font.pixelSize() > 0 && font.pointSizeF() == -1.0;
             };
             const auto contentItem = [](QQuickItem& control) {
                 if (auto* content = qvariant_cast<QQuickItem*>(control.property("contentItem"))) {
@@ -161,14 +193,11 @@ ApplicationWindow {
                 if (content == nullptr) {
                     return false;
                 }
+                const auto availableWidth = control.property("availableWidth").toReal();
+                const auto width = availableWidth > 0.0 ? availableWidth : control.width();
                 const auto availableHeight = control.property("availableHeight").toReal();
                 const auto height = availableHeight > 0.0 ? availableHeight : control.height();
-                return height >= content->implicitHeight();
-            };
-            const auto scaleFont = [](QQuickItem& control) {
-                QFont font = qvariant_cast<QFont>(control.property("font"));
-                font.setPointSizeF(font.pointSizeF() * 1.5);
-                return control.setProperty("font", font);
+                return width >= content->implicitWidth() && height >= content->implicitHeight();
             };
 
             auto* actionButton =
@@ -177,12 +206,21 @@ ApplicationWindow {
             auto* spinBox = window->findChild<QQuickItem*>(QStringLiteral("typeScaleSpinBox"));
             auto* textField = window->findChild<QQuickItem*>(QStringLiteral("typeScaleTextField"));
             auto* checkBox = window->findChild<QQuickItem*>(QStringLiteral("typeScaleCheckBox"));
+            auto* graphButton =
+                window->findChild<QQuickItem*>(QStringLiteral("compactGraphButton"));
+            auto* ellipsisButton =
+                window->findChild<QQuickItem*>(QStringLiteral("compactEllipsisButton"));
+            auto* clearButton =
+                window->findChild<QQuickItem*>(QStringLiteral("compactClearButton"));
             auto* comboPopup = window->findChild<QObject*>(QStringLiteral("appComboBoxPopup"));
             QVERIFY(actionButton != nullptr);
             QVERIFY(comboBox != nullptr);
             QVERIFY(spinBox != nullptr);
             QVERIFY(textField != nullptr);
             QVERIFY(checkBox != nullptr);
+            QVERIFY(graphButton != nullptr);
+            QVERIFY(ellipsisButton != nullptr);
+            QVERIFY(clearButton != nullptr);
             QVERIFY(comboPopup != nullptr);
             QVERIFY(QMetaObject::invokeMethod(comboPopup, "open"));
             auto* popupContent = qvariant_cast<QQuickItem*>(comboPopup->property("contentItem"));
@@ -193,30 +231,28 @@ ApplicationWindow {
             auto* comboDelegate =
                 findVisualChild(*popupContent, QStringLiteral("appComboBoxDelegate"));
             QVERIFY(comboDelegate != nullptr);
-            const qreal comboDelegatePointSize = pointSize(*comboDelegate);
-
-            QVERIFY(usesPointSize(*actionButton));
+            QVERIFY(usesPixelSize(*actionButton));
             const auto* actionContent = contentItem(*actionButton);
             QVERIFY(actionContent != nullptr);
-            QVERIFY(usesPointSize(*actionContent));
+            QVERIFY(usesPixelSize(*actionContent));
             QVERIFY(contentFits(*actionButton));
 
             for (QQuickItem* control : {comboBox, spinBox, comboDelegate}) {
-                QVERIFY(usesPointSize(*control));
+                QVERIFY(usesPixelSize(*control));
                 const auto* content = contentItem(*control);
                 QVERIFY(content != nullptr);
-                QVERIFY(usesPointSize(*content));
+                QVERIFY(usesPixelSize(*content));
                 QVERIFY(contentFits(*control));
             }
 
             for (QQuickItem* control : {textField, checkBox}) {
-                QVERIFY(usesPointSize(*control));
+                QVERIFY(usesPixelSize(*control));
                 const auto* content = contentItem(*control);
                 QVERIFY2(
                     content != nullptr,
                     qPrintable(
                         QStringLiteral("missing content item: %1").arg(control->objectName())));
-                QVERIFY(usesPointSize(*content));
+                QVERIFY(usesPixelSize(*content));
                 QVERIFY2(
                     contentFits(*control),
                     qPrintable(QStringLiteral("content does not fit: %1 available=%2 implicit=%3")
@@ -225,19 +261,14 @@ ApplicationWindow {
                                    .arg(content->implicitHeight())));
             }
 
-            for (QQuickItem* control : {actionButton, comboBox, spinBox}) {
-                const qreal initialPointSize = pointSize(*control);
-                QVERIFY(initialPointSize > 0.0);
-                QVERIFY(scaleFont(*control));
-                QTRY_VERIFY_WITH_TIMEOUT(
-                    qFuzzyCompare(pointSize(*control), initialPointSize * 1.5) &&
-                        contentFits(*control),
-                    1000);
+            for (QQuickItem* control : {graphButton, ellipsisButton, clearButton}) {
+                QCOMPARE(control->property("leftPadding").toReal(), 0.0);
+                QCOMPARE(control->property("rightPadding").toReal(), 0.0);
+                QVERIFY(usesPixelSize(*control));
+                QVERIFY2(contentFits(*control),
+                         qPrintable(QStringLiteral("compact content does not fit: %1")
+                                        .arg(control->objectName())));
             }
-            QTRY_VERIFY_WITH_TIMEOUT(
-                qFuzzyCompare(pointSize(*comboDelegate), comboDelegatePointSize * 1.5) &&
-                    contentFits(*comboDelegate),
-                1000);
             window->hide();
         }
 

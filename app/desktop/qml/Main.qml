@@ -339,8 +339,9 @@ ApplicationWindow {
                 spacing: Theme.gap
 
                 ActionButton {
+                    objectName: "mainImportXlsxButton"
                     text: "Importar XLSX"
-                    font.pointSize: Theme.fontPointSizeLabel
+                    font.pixelSize: Theme.fontSizeLabel
                     enabled: !root.vm.actions.workflows.running
                     implicitWidth: 112
                     onClicked: fileDialogs.openImportData()
@@ -387,8 +388,9 @@ ApplicationWindow {
                     }
                 }
                 ActionButton {
+                    objectName: "mainPreferencesButton"
                     text: "Preferencias"
-                    font.pointSize: Theme.fontPointSizeLabel
+                    font.pixelSize: Theme.fontSizeLabel
                     onClicked: preferencesDialog.open()
                 }
 

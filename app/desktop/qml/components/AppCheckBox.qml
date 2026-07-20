@@ -6,7 +6,7 @@ CheckBox {
     id: root
     spacing: 8
     font.family: Theme.fontFamily
-    font.pointSize: Theme.fontPointSizeBody
+    font.pixelSize: Theme.fontSizeMicro
     font.weight: Font.Normal
 
     contentItem: Text {
