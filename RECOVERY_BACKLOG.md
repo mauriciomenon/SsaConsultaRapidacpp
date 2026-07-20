@@ -1,5 +1,45 @@
 # Recovery Backlog
 
+## Fonte canonica pos-v0.9.15 - 2026-07-20
+
+### P1 externo
+
+- [EXTERNAL-BLOCKED] Profiling valido do prefetch: harness, 30 amostras e
+  relatorio existem; falta trace valido no host permitido.
+- [EXTERNAL-PENDING] Importacao e grafo em Windows/UNC/SMB real; handles,
+  PowerShell e packaging Windows/Linux em plataformas reais.
+- [EXTERNAL-BLOCKED] GitLab OAuth `invalid_grant` ate nova verificacao de push.
+
+### Produto
+
+- [PENDING] Sincronizacao completa de derivadas: multiparent, ciclos,
+  relacoes orfas e equivalencia do corpus.
+- [PENDING] Filtros genericos de semana e derivacao permanecem ocultos ate um
+  ciclo GUI dedicado.
+- [PENDING] Paginacao SAM acima de 200 e single-flight entre processos exigem
+  contrato externo real.
+- [PENDING] Confirmar paridade intencional de hifen inicial e negacao Python.
+- [P1] Impedir troca e persistencia acidental do tema pelo botao circular;
+  `ssa-dark` permanece intacto e pode ser selecionado em Preferencias.
+
+### Evidencia GUI e longo prazo
+
+- [PENDING] AA runtime dos consumidores restantes, Retina/HiDPI/Large Font e
+  UX de tabela somente no monitor onde o defeito for reproduzido.
+- [DEFERRED] FTS5, cache de `roleNames()` e binding int64 LIMIT/OFFSET somente
+  se medicao justificar o refactor.
+- [P3] cppcheck reporta shadowFunction nos sinais
+  `advancedPopupMetricsReady` e `layoutMetricsReady`; preexistente, fora das
+  linhas do watchdog v0.9.15.
+
+Itens antigos que dizem que as planilhas reais nao estavam no workspace ou
+que a migracao para `pointSize` estava resolvida estao SUPERSEDED. O corpus de
+1692 arquivos foi provado depois; a tipografia estavel voltou a `pixelSize`.
+Os blocos abaixo sao snapshots historicos, nao a fila atual.
+
+Proxima atividade unica apos a release: impedir troca acidental de tema sem
+alterar paletas, seguida da maior prova externa disponivel.
+
 ## Release v0.9.14 - 2026-07-20
 
 - [RESOLVED-BITBUCKET] Commit `7291eae` e tag anotada `v0.9.14` confirmados;

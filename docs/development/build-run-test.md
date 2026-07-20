@@ -11,7 +11,18 @@ O fluxo completo usado pelo operador e o wrapper versionado na raiz:
 Esse comando resolve o symlink para `scripts/run-macos-smoke-clean.sh`, remove
 somente `build/dev`, reconfigura o preset `dev` com Qt 6.11, compila, executa
 `ctest --preset dev --output-on-failure`, copia `data/ssas.db` para o runtime
-isolado e abre a GUI. A janela permanece aberta ate o operador encerra-la.
+isolado e gera um screenshot offscreen novo. Captura antiga e removida antes
+dos gates; template ausente, build, CTest, launch, watchdog ou arquivo vazio
+retornam falha.
+
+Para abrir a GUI somente depois do mesmo preflight validado:
+
+```bash
+./run-macos-smoke-clean --open
+```
+
+A janela interativa permanece aberta ate o operador encerra-la. Ela nao faz
+parte do contrato deterministico sem argumentos.
 
 Para o mesmo clean, build e teste em automacao, sem janela persistente, use o
 smoke offscreen. Ele gera `build/runtime/macos/main.png`:

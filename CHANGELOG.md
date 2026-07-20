@@ -2,6 +2,33 @@
 
 Mudancas relevantes deste projeto sao registradas neste arquivo.
 
+## 0.9.15 - 2026-07-20
+
+### Corrigido
+
+- O dialogo de importacao e rescan agora termina com titulo humano, resumo
+  unico e inventario causal por arquivo, sem repetir o payload tecnico.
+- O grafo de derivadas usa bounds reais, centra o conjunto no viewport e
+  roteia ligacoes da segunda fileira sem atravessar os nos da primeira.
+- O smoke macOS padrao nao depende mais de janela interativa, remove evidencia
+  antiga antes dos gates, exige banco e preferencias novos e falha se a
+  captura nao terminar ou nao produzir arquivo.
+- Todas as fronteiras relevantes do smoke propagam falha explicitamente, sem
+  depender da semantica fragil de `set -e` dentro de funcoes condicionais.
+
+### Validacao
+
+- `./run-macos-smoke-clean`: exit zero, `642/642` testes em `81.94 s`.
+- PNG novo `1580x940`, 236228 bytes; banco runtime igual ao banco fonte.
+- Semgrep, Gitleaks, TruffleHog, detect-secrets, formatadores, ShellCheck e
+  clang-tidy sem finding novo bloqueante.
+
+### Operacao
+
+- `./run-macos-smoke-clean` e deterministico/offscreen por default.
+- `./run-macos-smoke-clean --open` adiciona a janela interativa depois do
+  preflight; seu tempo de vida depende do operador.
+
 ## 0.9.9 - 2026-07-15
 
 ### Corrigido

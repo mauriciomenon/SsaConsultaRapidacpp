@@ -1,5 +1,34 @@
 # Status Da Rodada
 
+## Candidato v0.9.15 - 2026-07-20
+
+- Branch `master`; codigo funcional em `9415847`; smoke fail-closed e versao
+  `0.9.15` em `736edcc`. O dirty restante e preexistente e esta fora do stage.
+- Importacao/rescan: terminal humano, resumo sem duplicacao, nomes e motivos
+  por arquivo e historico tecnico permanente preservado.
+- Grafo: bounds reais, centragem do conjunto, orientacao preservada no primeiro
+  layout e rota horizontal entre fileiras, compartilhada por QML e SVG.
+- `./run-macos-smoke-clean` agora e offscreen por default. A primeira prova
+  encontrou `642/642` verdes, mas falhou ao forcar janela visual no sandbox.
+  Depois da correcao, a repeticao exata terminou com exit `0`, `642/642` em
+  `81.94 s`, PNG novo `1580x940` e banco runtime identico ao fonte.
+- Security ampla do codigo funcional: Semgrep 514 arquivos, Gitleaks 1.51 GB e
+  TruffleHog 10298 chunks, zero segredos/findings. O fechamento documental e o
+  pacote release ainda serao revisados antes da tag.
+- `ssa-dark` nao foi removido. A perda do aspecto glossy ocorreu porque a
+  preferencia runtime foi persistida como `classico` pelo seletor circular.
+- Contadores autoritativos, sem recontar snapshots antigos: plano original
+  `99.0/100`; divida nova P0 `14/14 = 100.0%`; backlog legado `N/A`; matriz
+  operacional `5/8 = 62.5%`.
+- Estado externo anterior a publicacao v0.9.15: Bitbucket em `7291eae`; GitLab
+  ainda sujeito ao OAuth `invalid_grant`; GitHub suspenso/403.
+
+Proxima atividade unica: fechar docs, pacote release, tag `v0.9.15` e publicar
+em GitLab/Bitbucket com verificacao independente dos refs.
+
+Os blocos abaixo sao historicos append-only. Em conflito, este bloco superior
+e o handoff v0.9.15 sao a fonte atual.
+
 ## Release macOS v0.9.14 - 2026-07-20
 
 - **ENTREGUE NO BITBUCKET**: commit `7291eae` e tag anotada `v0.9.14`

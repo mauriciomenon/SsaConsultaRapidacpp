@@ -1,5 +1,10 @@
 # SSA Theme Lab
 
+Para reproduzir o relevo glossy de `ssa-dark` em uma paleta candidata, siga
+`docs/development/theme-authoring.md`. O efeito atual vem de camadas e bordas,
+nao de gradiente. Nao adicione um tema ao tratamento `quietAccent` sem gate de
+contraste e smoke runtime.
+
 This developer-only tool imports a pinned Tinted Base16 catalog, maps it to
 the semantic roles used by `Theme.qml`, rejects inaccessible palettes, and
 produces a perceptually deduplicated shortlist. Build and runtime stay fully

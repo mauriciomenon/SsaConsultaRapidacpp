@@ -1,5 +1,21 @@
 # Roadmap: SSA Consulta Rapida C++
 
+## Estado autoritativo apos v0.9.15
+
+O roadmap abaixo preserva historia desde v0.9.10. Nao use listas antigas como
+fila atual. A ordem atual e:
+
+1. Provas reais Windows/UNC/SMB e packaging multiplataforma.
+2. Profiling valido do prefetch, sem aceitar trace invalido.
+3. Sincronizacao completa de derivadas e equivalencia do corpus.
+4. Paginacao SAM e coordenacao entre processos somente com contrato externo.
+5. Impedir troca acidental de tema e fechar AA/HiDPI restante.
+6. Refactors de performance apenas depois de medicao.
+
+Entregue na v0.9.15: dialogo terminal humano, inventario causal por arquivo,
+grafo centrado com rotas fora dos nos e smoke macOS deterministico. O CLI REPL
+continua explicitamente fora de escopo.
+
 Plan derived from `docs/contracts/functional-coverage.md` parity gaps and from
 the PyQt6 reference repository (sibling project). Goals: keep C++
 memory advantage (already ~7x lower than PyQt6 GUI), close functional parity

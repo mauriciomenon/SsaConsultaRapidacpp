@@ -10,6 +10,12 @@ Consulte [`ROUND_STATUS.md`](ROUND_STATUS.md) antes de avaliar sincronizacao,
 publicacao ou CI. Neste repositorio, `origin` aponta para GitLab, `bitbucket`
 aponta para Bitbucket e `gh` aponta para o mirror GitHub atualmente indisponivel.
 
+Para transferencia de contexto da v0.9.15, inclusive erros conhecidos e
+pendencias canonicas, leia
+[`docs/plans/2026-07-20-v0.9.15-glm-5.2-handoff.md`](docs/plans/2026-07-20-v0.9.15-glm-5.2-handoff.md).
+O guia para reproduzir o relevo glossy de `ssa-dark` esta em
+[`docs/development/theme-authoring.md`](docs/development/theme-authoring.md).
+
 ## Comandos rapidos
 
 ### Binarios, CLI e arquivos gerados
@@ -80,8 +86,11 @@ Artefatos de distribuicao, quando gerados por `./scripts/package-macos.sh`, fica
 ### Smoke completo (build + test + execucao com screenshot) no macOS e Debian
 
 ```bash
-# Default smoke flow (no args): build/test/offscreen with default db and defaults.
-./scripts/smoke-macos.sh
+# Contrato canonico: clean, build, CTest, captura offscreen validada e exit.
+./run-macos-smoke-clean
+
+# Mesmo fluxo, seguido de janela visual aberta ate o operador fecha-la.
+./run-macos-smoke-clean --open
 
 # Help on the default flow
 ./scripts/smoke-macos.sh --help
@@ -439,17 +448,18 @@ clang-format --version
 
 ## Smoke visual
 
-O wrapper usado para validacao manual faz clean de `build/dev`, configura Qt
-6.11, compila, executa toda a suite e abre a GUI:
+O wrapper canonico faz clean de `build/dev`, configura Qt 6.11, compila,
+executa toda a suite e exige uma captura offscreen nova:
 
 ```bash
 ./run-macos-smoke-clean
 ```
 
-Ele usa `data/ssas.db`, copia o banco para `build/runtime/macos/` e espera a
-janela ser fechada. Para CI ou execucao nao interativa com o mesmo core de
-clean/build/test, use `./scripts/smoke-macos.sh`; o screenshot fica em
-`build/runtime/macos/main.png`.
+Ele usa `data/ssas.db`, copia banco e preferencias para
+`build/runtime/macos/`, remove qualquer screenshot antigo antes dos gates e
+so retorna zero se build, CTest, app offscreen e gravacao do novo PNG passarem.
+O screenshot fica em `build/runtime/macos/main.png`. Para abrir a GUI depois
+do mesmo preflight use `./run-macos-smoke-clean --open`.
 
 ## Packaging e artefatos finais por plataforma
 

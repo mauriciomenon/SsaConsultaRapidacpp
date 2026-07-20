@@ -3,6 +3,18 @@
 This directory stores deferred work only. Functional parity is tracked in
 `docs/contracts/functional-coverage.md`.
 
+O backlog operacional canonico e `RECOVERY_BACKLOG.md` na raiz. Para a
+v0.9.15, use somente o bloco superior `Fonte canonica pos-v0.9.15`; secoes
+inferiores sao historico. O handoff ativo e
+`docs/plans/2026-07-20-v0.9.15-glm-5.2-handoff.md`.
+
+Categorias atuais:
+
+- Produto: derivadas, filtros ocultos, paginacao SAM e negacao/hifen.
+- Evidencia externa: Windows/UNC/SMB, packaging multiplataforma e profiling.
+- GUI: troca acidental de tema, AA restante e validacao HiDPI.
+- Medido/deferido: FTS5, `roleNames()` e LIMIT/OFFSET tipado.
+
 ## Deferred
 
 - Complete the remaining GUI and CLI gaps tracked in
