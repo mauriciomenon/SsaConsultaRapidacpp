@@ -60,6 +60,8 @@ namespace ssa::presentation {
 
       private:
         void relayout();
+        [[nodiscard]] qreal verticalRouteY(qreal fromY, qreal toY,
+                                           const QString& destination) const;
 
         struct GraphNode {
             QString ssa;

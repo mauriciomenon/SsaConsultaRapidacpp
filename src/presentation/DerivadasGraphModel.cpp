@@ -47,10 +47,13 @@ namespace ssa::presentation {
     void DerivadasGraphModel::setViewportSize(const qreal width, const qreal height) {
         const bool nextVertical = width > 0 && (width < kVerticalLayoutWidthThreshold ||
                                                 (height > 0 && height > width * 1.2));
-        if (nextVertical == verticalLayout_ || nodes_.empty()) {
+        if (nextVertical == verticalLayout_) {
             return;
         }
         verticalLayout_ = nextVertical;
+        if (nodes_.empty()) {
+            return;
+        }
         relayout();
         emit graphChanged();
     }
@@ -255,29 +258,37 @@ namespace ssa::presentation {
         qreal maxX = minX + kNodeWidth;
         qreal minY = nodes_.front().position.y();
         qreal maxY = minY + kNodeHeight;
-        QPointF actualTarget = targetPosition;
         for (const auto& node : nodes_) {
             minX = (std::min)(minX, node.position.x());
             maxX = (std::max)(maxX, node.position.x() + kNodeWidth);
             minY = (std::min)(minY, node.position.y());
             maxY = (std::max)(maxY, node.position.y() + kNodeHeight);
-            if (node.isTarget) {
-                actualTarget = node.position;
-            }
         }
 
-        const qreal targetCenterX = actualTarget.x() + kNodeWidth / 2.0;
-        const qreal targetCenterY = actualTarget.y() + kNodeHeight / 2.0;
-        const qreal halfWidth = (std::max)(targetCenterX - minX, maxX - targetCenterX);
-        const qreal halfHeight = (std::max)(targetCenterY - minY, maxY - targetCenterY);
-        const qreal translateX = kMargin + halfWidth - targetCenterX;
-        const qreal translateY = kMargin + halfHeight - targetCenterY;
+        const qreal translateX = kMargin - minX;
+        const qreal translateY = kMargin - minY;
         for (auto& node : nodes_) {
             node.position += QPointF(translateX, translateY);
         }
 
-        graphWidth_ = 2 * halfWidth + 2 * kMargin;
-        graphHeight_ = 2 * halfHeight + 2 * kMargin;
+        graphWidth_ = maxX - minX + 2 * kMargin;
+        graphHeight_ = maxY - minY + 2 * kMargin;
+    }
+
+    qreal DerivadasGraphModel::verticalRouteY(const qreal fromY, const qreal toY,
+                                              const QString& destination) const {
+        qreal previousRowBottom = fromY;
+        for (const auto& node : nodes_) {
+            if (node.ssa == destination) {
+                continue;
+            }
+            const qreal top = node.position.y();
+            const qreal bottom = top + kNodeHeight;
+            if (top > fromY && bottom < toY) {
+                previousRowBottom = (std::max)(previousRowBottom, bottom);
+            }
+        }
+        return (previousRowBottom + toY) / 2.0;
     }
 
     int DerivadasGraphModel::rowCount() const {
@@ -326,7 +337,7 @@ namespace ssa::presentation {
                 const qreal fromY = fromIt->second.y() + kNodeHeight / 2.0;
                 const qreal toX = toIt->second.x();
                 const qreal toY = toIt->second.y() - kNodeHeight / 2.0;
-                const qreal routeY = (fromY + toY) / 2.0;
+                const qreal routeY = verticalRouteY(fromY, toY, edge.to);
                 path = QStringLiteral("M %1 %2 V %3 H %4 V %5")
                            .arg(fromX)
                            .arg(fromY)
@@ -454,7 +465,7 @@ namespace ssa::presentation {
                 entry.insert(QStringLiteral("toY"), toIt->second.y() - kNodeHeight / 2.0);
                 const qreal fromY = entry.value(QStringLiteral("fromY")).toReal();
                 const qreal toY = entry.value(QStringLiteral("toY")).toReal();
-                entry.insert(QStringLiteral("routeY"), (fromY + toY) / 2.0);
+                entry.insert(QStringLiteral("routeY"), verticalRouteY(fromY, toY, edge.to));
             } else {
                 const bool leftToRight = fromIt->second.x() <= toIt->second.x();
                 entry.insert(QStringLiteral("fromX"),

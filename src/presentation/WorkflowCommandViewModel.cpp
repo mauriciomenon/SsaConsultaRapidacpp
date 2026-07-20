@@ -2,6 +2,8 @@
 
 #include "qt/FilesystemPath.h"
 
+#include <QLocale>
+#include <QStringList>
 #include <QUrl>
 
 #include <algorithm>
@@ -28,6 +30,104 @@ namespace ssa::presentation {
                 files.push_back(url.toLocalFile());
             }
             return FileSelectionError::None;
+        }
+
+        QString localizedNumber(const std::size_t value) {
+            static const QLocale locale{QLocale::Portuguese, QLocale::Brazil};
+            return locale.toString(static_cast<qulonglong>(value));
+        }
+
+        QString counted(const std::size_t value, const QString& singular, const QString& plural) {
+            return localizedNumber(value) + QStringLiteral(" ") + (value == 1 ? singular : plural);
+        }
+
+        QString workflowDetail(const std::string& detail) {
+            if (detail == "consolidation canceled") {
+                return QStringLiteral("consolidacao cancelada");
+            }
+            return QString::fromStdString(detail);
+        }
+
+        QString importResultMessage(const ports::WorkflowResult& result, QString prefix,
+                                    const bool hideTechnicalWithoutSummary) {
+            if (!result.importSummary.has_value()) {
+                if (hideTechnicalWithoutSummary && result.ok() && result.warning &&
+                    !result.message.empty()) {
+                    return prefix + QStringLiteral(" com avisos: ") +
+                           workflowDetail(result.message);
+                }
+                if (hideTechnicalWithoutSummary || result.message.empty()) {
+                    return prefix;
+                }
+                return QString::fromStdString(result.message);
+            }
+            if (result.ok() && result.warning) {
+                prefix += QStringLiteral(" com avisos");
+            }
+            const auto& summary = *result.importSummary;
+            QStringList facts{
+                counted(summary.discovered, QStringLiteral("arquivo examinado"),
+                        QStringLiteral("arquivos examinados")),
+                counted(summary.accepted, QStringLiteral("aplicado"), QStringLiteral("aplicados"))};
+            if (summary.ignored > 0) {
+                facts.push_back(counted(summary.ignored, QStringLiteral("ignorado"),
+                                        QStringLiteral("ignorados")));
+            }
+            if (summary.rejected > 0) {
+                facts.push_back(counted(summary.rejected, QStringLiteral("rejeitado"),
+                                        QStringLiteral("rejeitados")));
+            }
+            if (summary.failed > 0) {
+                facts.push_back(
+                    counted(summary.failed, QStringLiteral("falhou"), QStringLiteral("falharam")));
+            }
+            if (summary.inserts > 0) {
+                facts.push_back(counted(summary.inserts, QStringLiteral("SSA inserida"),
+                                        QStringLiteral("SSAs inseridas")));
+            }
+            if (summary.updates > 0) {
+                facts.push_back(counted(summary.updates, QStringLiteral("SSA atualizada"),
+                                        QStringLiteral("SSAs atualizadas")));
+            }
+            if (summary.failed == 0 && summary.rejected == 0 && summary.invalidRows == 0 &&
+                summary.conflicts == 0) {
+                facts.push_back(QStringLiteral("nenhuma falha"));
+            }
+            return prefix + QStringLiteral(": ") + facts.join(QStringLiteral("; "));
+        }
+
+        QString fileReason(const std::string& reason) {
+            if (reason == "header_not_recognized") {
+                return QStringLiteral("cabecalho SSA nao reconhecido");
+            }
+            if (reason == "required_columns_missing") {
+                return QStringLiteral("colunas obrigatorias ausentes");
+            }
+            if (reason == "ambiguous_headers") {
+                return QStringLiteral("cabecalhos ambiguos");
+            }
+            if (reason == "duplicate_conflict") {
+                return QStringLiteral("conflito entre linhas duplicadas");
+            }
+            if (reason == "invalid_rows") {
+                return QStringLiteral("linhas invalidas");
+            }
+            if (reason == "no_valid_rows") {
+                return QStringLiteral("nenhuma linha valida");
+            }
+            if (reason == "sam_rejected") {
+                return QStringLiteral("arquivo rejeitado pelo SAM");
+            }
+            if (reason == "batch_rejected") {
+                return QStringLiteral("lote revertido por rejeicao de outro arquivo");
+            }
+            if (reason == "operation_failed") {
+                return QStringLiteral("falha operacional");
+            }
+            if (reason == "canceled") {
+                return QStringLiteral("operacao cancelada");
+            }
+            return QStringLiteral("motivo disponivel no log tecnico");
         }
 
     } // namespace
@@ -402,7 +502,6 @@ namespace ssa::presentation {
 
     void WorkflowCommandViewModel::startProgressSession(const QString& operationLabel) {
         progressSessionActive_ = true;
-        progressCompletedReceived_ = false;
         progressPercentage_ = 0;
         progressCurrentFile_ = 0;
         progressTotalFiles_ = 0;
@@ -418,8 +517,9 @@ namespace ssa::presentation {
         progressCurrentFile_ = progress.currentFile;
         progressTotalFiles_ = progress.totalFiles;
         progressFileName_ = QString::fromStdString(progress.fileName);
-        progressCompletedReceived_ =
-            progressCompletedReceived_ || progress.stage == ports::WorkflowProgressStage::Completed;
+        if (progress.stage == ports::WorkflowProgressStage::Completed) {
+            return;
+        }
         const auto status = QString::fromStdString(progress.status);
         emit progressChanged(progressPercentage_, status, static_cast<int>(progressCurrentFile_),
                              static_cast<int>(progressTotalFiles_), progressFileName_);
@@ -445,23 +545,41 @@ namespace ssa::presentation {
             return;
         }
         progressSessionActive_ = false;
-        if (!progressCompletedReceived_) {
-            if (result.ok()) {
-                progressPercentage_ = 100;
-            }
-            emit progressChanged(progressPercentage_, message,
-                                 static_cast<int>(progressCurrentFile_),
-                                 static_cast<int>(progressTotalFiles_), progressFileName_);
-            const auto diagnostic = QString::fromStdString(result.diagnostic);
-            const auto terminalLine =
-                diagnostic.isEmpty() ? message : message + QStringLiteral(": ") + diagnostic;
-            if (result.ok() && !result.warning) {
-                emit progressOutputLine(terminalLine);
-            } else {
-                emit progressErrorLine(terminalLine);
+        if (result.ok()) {
+            progressPercentage_ = 100;
+        }
+        emit progressChanged(progressPercentage_, message, static_cast<int>(progressCurrentFile_),
+                             static_cast<int>(progressTotalFiles_), progressFileName_);
+        bool terminalDetailEmitted = false;
+        if (result.importSummary.has_value()) {
+            for (const auto& file : result.importSummary->files) {
+                if (file.status != ports::ImportFileStatus::Ignored &&
+                    file.status != ports::ImportFileStatus::Rejected &&
+                    file.status != ports::ImportFileStatus::Failed) {
+                    continue;
+                }
+                const auto reason = fileReason(file.reason);
+                const auto line = QString::fromStdString(file.source) +
+                                  (reason.isEmpty() ? QString{} : QStringLiteral(" - ") + reason);
+                emit progressErrorLine(line);
+                terminalDetailEmitted = true;
             }
         }
-        emit progressSessionFinished(result.ok(), canceled, message);
+        const auto diagnostic = QString::fromStdString(result.diagnostic);
+        if (!diagnostic.isEmpty()) {
+            emit progressErrorLine(diagnostic);
+            terminalDetailEmitted = true;
+        }
+        if (!terminalDetailEmitted && (!result.ok() || canceled || result.warning)) {
+            emit progressErrorLine(message);
+        }
+        const auto messages = messagesForCurrentOperation();
+        const auto title =
+            canceled ? messages.canceled
+            : result.ok()
+                ? messages.success + (result.warning ? QStringLiteral(" com avisos") : QString{})
+                : messages.failure;
+        emit progressSessionFinished(result.ok(), canceled, title, message);
     }
 
     void WorkflowCommandViewModel::applyResult(const ports::WorkflowResult& result) {
@@ -474,18 +592,20 @@ namespace ssa::presentation {
             return;
         }
         if (result.ok()) {
-            const auto message = QString::fromStdString(
-                result.message.empty() ? successMessage().toStdString() : result.message);
+            const auto message =
+                importResultMessage(result, successMessage(), progressSessionActive_);
             finishProgressSession(result, message, false);
             emit logEntryRequested(
                 result.warning ? QStringLiteral("Warning") : QStringLiteral("Info"),
-                QStringLiteral("Workflow"), message, QString::fromStdString(result.diagnostic));
+                QStringLiteral("Workflow"), QString::fromStdString(result.message),
+                QString::fromStdString(result.diagnostic));
             setResult(message, true, result.warning);
             return;
         }
-        const auto message = QString::fromStdString(result.message);
+        const auto message = importResultMessage(result, failureMessage(), progressSessionActive_);
         finishProgressSession(result, message, false);
-        emit logEntryRequested(QStringLiteral("Error"), QStringLiteral("Workflow"), message,
+        emit logEntryRequested(QStringLiteral("Error"), QStringLiteral("Workflow"),
+                               QString::fromStdString(result.message),
                                QString::fromStdString(result.diagnostic));
         setResult(message, false);
     }

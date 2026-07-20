@@ -83,7 +83,8 @@ namespace ssa::presentation {
                              const QString& fileName);
         void progressOutputLine(const QString& line);
         void progressErrorLine(const QString& line);
-        void progressSessionFinished(bool succeeded, bool canceled, const QString& message);
+        void progressSessionFinished(bool succeeded, bool canceled, const QString& title,
+                                     const QString& message);
         void logEntryRequested(const QString& severity, const QString& source,
                                const QString& message, const QString& detail);
 
@@ -148,7 +149,6 @@ namespace ssa::presentation {
         bool running_{false};
         bool canceling_{false};
         bool progressSessionActive_{false};
-        bool progressCompletedReceived_{false};
         int progressPercentage_{0};
         std::size_t progressCurrentFile_{0};
         std::size_t progressTotalFiles_{0};

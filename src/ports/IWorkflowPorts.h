@@ -45,6 +45,7 @@ namespace ssa::ports {
         std::size_t conflicts = 0;
         bool consolidated = false;
         bool noSurvivor = false;
+        std::string reason;
     };
 
     struct ImportSummary {

@@ -633,6 +633,7 @@ TEST_CASE("external import rejects a directory source as not regular") {
     REQUIRE(result.importSummary->rejected == 1);
     REQUIRE(result.importSummary->ignored == 0);
     REQUIRE(result.importSummary->failed == 0);
+    REQUIRE(result.importSummary->files.front().reason == "batch_rejected");
     REQUIRE(result.importSummary->preserved == 1);
     REQUIRE(result.importSummary->files.front().status == ssa::ports::ImportFileStatus::Rejected);
     REQUIRE(std::filesystem::is_directory(source));
@@ -3210,6 +3211,7 @@ TEST_CASE("external import rejects a workbook without the required date column")
     REQUIRE(result.importSummary->rejected == 1);
     REQUIRE(result.importSummary->ignored == 0);
     REQUIRE(result.importSummary->failed == 0);
+    REQUIRE(result.importSummary->files.front().reason == "required_columns_missing");
     REQUIRE(std::filesystem::exists(source));
     REQUIRE_FALSE(std::filesystem::exists(inputDirectory / "processadas"));
     sqlite3* db = nullptr;
@@ -6939,6 +6941,7 @@ TEST_CASE("ignored workbook summary preserves source and current global status")
     REQUIRE(summary.files.size() == 1);
     REQUIRE(summary.files.front().source == "unknown-header.xlsx");
     REQUIRE(summary.files.front().status == ssa::ports::ImportFileStatus::Ignored);
+    REQUIRE(summary.files.front().reason == "header_not_recognized");
     REQUIRE_FALSE(summary.files.front().consolidated);
     REQUIRE(std::filesystem::exists(workbook));
     REQUIRE(result.message.find("ignored=1") != std::string::npos);
@@ -7255,6 +7258,7 @@ TEST_CASE("spreadsheet workflow rejects ambiguous positional headers without mov
     REQUIRE(result.importSummary->rejected == 1);
     REQUIRE(result.importSummary->ignored == 0);
     REQUIRE(result.importSummary->failed == 0);
+    REQUIRE(result.importSummary->files.front().reason == "ambiguous_headers");
     REQUIRE(std::filesystem::exists(workbook));
     REQUIRE_FALSE(std::filesystem::exists(inputDirectory / "processadas"));
 }

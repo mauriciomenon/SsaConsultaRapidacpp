@@ -17,6 +17,7 @@ Dialog {
     property int percentage: 0
     property bool cancelRequested: false
     property bool terminal: false
+    property string terminalLabel: ""
 
     parent: Overlay.overlay
     anchors.centerIn: parent
@@ -25,7 +26,7 @@ Dialog {
     width: Math.min(800, parent.width - 32)
     height: Math.min(620, parent.height - 32)
     padding: 16
-    title: operationLabel + (totalFiles > 0 ? " - " + currentFile + "/" + totalFiles : "")
+    title: (terminal ? terminalLabel : operationLabel) + (totalFiles > 0 ? " - " + currentFile + "/" + totalFiles : "")
 
     function appendLine(existingText, line) {
         if (line.length === 0)
@@ -42,6 +43,7 @@ Dialog {
         percentage = 0;
         cancelRequested = false;
         terminal = false;
+        terminalLabel = "";
         outputArea.text = "";
         errorArea.text = "";
         open();
@@ -166,15 +168,9 @@ Dialog {
 
     footer: RowLayout {
         spacing: Theme.gap
-        layoutDirection: Qt.RightToLeft
 
-        ActionButton {
-            id: closeButton
-            objectName: "workflowProgressCloseButton"
-            text: "Fechar"
-            enabled: root.terminal
-            implicitWidth: 100
-            onClicked: root.close()
+        Item {
+            Layout.fillWidth: true
         }
 
         ActionButton {
@@ -190,6 +186,15 @@ Dialog {
                 root.statusText = "Cancelamento solicitado";
                 root.workflowViewModel.cancel();
             }
+        }
+
+        ActionButton {
+            id: closeButton
+            objectName: "workflowProgressCloseButton"
+            text: "Fechar"
+            enabled: root.terminal
+            implicitWidth: 100
+            onClicked: root.close()
         }
     }
 
@@ -217,8 +222,9 @@ Dialog {
             errorArea.text = root.appendLine(errorArea.text, line);
         }
 
-        function onProgressSessionFinished(succeeded, canceled, message) {
+        function onProgressSessionFinished(succeeded, canceled, title, message) {
             root.terminal = true;
+            root.terminalLabel = title;
             root.percentage = succeeded ? 100 : root.percentage;
             root.statusText = message;
         }

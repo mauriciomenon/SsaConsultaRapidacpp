@@ -516,6 +516,21 @@ namespace ssa::infra::importing {
                 default:
                     break;
                 }
+                if (file.reason.empty()) {
+                    switch (file.status) {
+                    case ports::ImportFileStatus::Rejected:
+                        file.reason = "batch_rejected";
+                        break;
+                    case ports::ImportFileStatus::Failed:
+                        file.reason = "operation_failed";
+                        break;
+                    case ports::ImportFileStatus::Canceled:
+                        file.reason = "canceled";
+                        break;
+                    default:
+                        break;
+                    }
+                }
                 file.inserts = 0;
                 file.updates = 0;
                 file.unchangedRows = 0;
@@ -1437,12 +1452,14 @@ namespace ssa::infra::importing {
                 if (error.code() == std::make_error_code(std::errc::operation_canceled)) {
                     return discardBeforeCommit(rollbackSession(*writeSession, canceled(operation)));
                 }
+                fileResult.reason = "operation_failed";
                 ++failedFiles;
                 return discardBeforeCommit(rollbackSession(
                     *writeSession, failed(operation, files, totalSummary, failedFiles,
                                           "file=" + file.originalFilename + "; " + error.what())));
             } catch (const ports::OperationError& error) {
                 applyChunkedWorkbookResult();
+                fileResult.reason = "operation_failed";
                 ++failedFiles;
                 return discardBeforeCommit(rollbackSession(
                     *writeSession,
@@ -1450,6 +1467,7 @@ namespace ssa::infra::importing {
                            "file=" + file.originalFilename + "; " + error.diagnostic())));
             } catch (const std::exception& exc) {
                 applyChunkedWorkbookResult();
+                fileResult.reason = "operation_failed";
                 ++failedFiles;
                 return discardBeforeCommit(rollbackSession(
                     *writeSession, failed(operation, files, totalSummary, failedFiles,
@@ -1459,6 +1477,7 @@ namespace ssa::infra::importing {
                 return discardBeforeCommit(rollbackSession(*writeSession, canceled(operation)));
             }
             if (!samRejectionReason.empty()) {
+                fileResult.reason = "sam_rejected";
                 return discardBeforeCommit(rollbackSession(
                     *writeSession, {ports::WorkflowStatus::Rejected,
                                     std::string{operation} + " " + samRejectionReason}));
@@ -1480,6 +1499,7 @@ namespace ssa::infra::importing {
             totalSummary.invalidDescriptionRows += batch.invalidDescriptionRows;
             totalSummary.invalidDateRows += batch.invalidDateRows;
             if (duplicateConflict) {
+                fileResult.reason = "duplicate_conflict";
                 return discardBeforeCommit(rollbackSession(
                     *writeSession,
                     {ports::WorkflowStatus::Rejected,
@@ -1487,24 +1507,28 @@ namespace ssa::infra::importing {
             }
             if (batch.mappingStatus == SpreadsheetMappingStatus::HeaderNotRecognized) {
                 fileResult.status = ports::ImportFileStatus::Ignored;
+                fileResult.reason = "header_not_recognized";
                 ++importSummary.ignored;
                 ++importSummary.preserved;
                 ignoredUnrecognizedWorkbook = true;
                 continue;
             }
             if (batch.mappingStatus == SpreadsheetMappingStatus::RequiredColumnsMissing) {
+                fileResult.reason = "required_columns_missing";
                 return discardBeforeCommit(rollbackSession(
                     *writeSession, {ports::WorkflowStatus::Rejected,
                                     std::string{operation} + " required_columns_missing file=" +
                                         file.originalFilename}));
             }
             if (batch.mappingStatus == SpreadsheetMappingStatus::AmbiguousHeaders) {
+                fileResult.reason = "ambiguous_headers";
                 return discardBeforeCommit(rollbackSession(
                     *writeSession,
                     {ports::WorkflowStatus::Rejected,
                      std::string{operation} + " ambiguous_headers file=" + file.originalFilename}));
             }
             if (invalidFullBatch) {
+                fileResult.reason = "invalid_rows";
                 std::ostringstream invalidDiagnostic;
                 invalidDiagnostic << "invalid_rows file=" << file.originalFilename
                                   << " invalid_number=" << batch.invalidNumberRows
@@ -1519,6 +1543,7 @@ namespace ssa::infra::importing {
             if (validRows == 0) {
                 fileResult.status = ports::ImportFileStatus::NoValidRows;
                 if (replaceAll) {
+                    fileResult.reason = "no_valid_rows";
                     return discardBeforeCommit(rollbackSession(
                         *writeSession, {ports::WorkflowStatus::Rejected,
                                         std::string{operation} + " no_valid_rows"}));

@@ -87,10 +87,11 @@ ApplicationWindow {
             emit progressErrorLine(line);
         }
 
-        void finish(const bool succeeded, const bool canceled, const QString& message) {
+        void finish(const bool succeeded, const bool canceled, const QString& title,
+                    const QString& message) {
             canCancel_ = false;
             emit stateChanged();
-            emit progressSessionFinished(succeeded, canceled, message);
+            emit progressSessionFinished(succeeded, canceled, title, message);
         }
 
       signals:
@@ -100,7 +101,8 @@ ApplicationWindow {
                              const QString& fileName);
         void progressOutputLine(const QString& line);
         void progressErrorLine(const QString& line);
-        void progressSessionFinished(bool succeeded, bool canceled, const QString& message);
+        void progressSessionFinished(bool succeeded, bool canceled, const QString& title,
+                                     const QString& message);
 
       private:
         bool canCancel_ = false;
@@ -118,12 +120,21 @@ ApplicationWindow {
                 externalFileCount_ = request.files.size();
             }
             if (request.files.size() != 65) {
+                ssa::ports::ImportSummary summary;
+                summary.discovered = 1;
+                summary.ignored = 1;
+                summary.preserved = 1;
+                ssa::ports::ImportFileResult file;
+                file.source = "ignorado.xlsx";
+                file.status = ssa::ports::ImportFileStatus::Ignored;
+                file.reason = "header_not_recognized";
+                summary.files.push_back(std::move(file));
                 request.progress({ssa::ports::WorkflowProgressStage::Completed,
                                   ssa::ports::WorkflowProgressLevel::Warning, 1, 1, 100,
                                   "ignorado.xlsx", "Importacao concluida com avisos",
                                   "workbook ignorado"});
                 return {ssa::ports::WorkflowStatus::Succeeded, "importacao com avisos", true,
-                        "workbook ignorado"};
+                        "workbook ignorado", std::move(summary)};
             }
             request.progress({ssa::ports::WorkflowProgressStage::ProcessingFile,
                               ssa::ports::WorkflowProgressLevel::Information,
@@ -149,8 +160,22 @@ ApplicationWindow {
                               {},
                               "Falha parcial",
                               "arquivo 65 rejeitado"});
+            ssa::ports::ImportSummary summary;
+            summary.discovered = 65;
+            summary.rejected = 1;
+            summary.failed = 1;
+            ssa::ports::ImportFileResult rejected;
+            rejected.source = "rejeitado.xlsx";
+            rejected.status = ssa::ports::ImportFileStatus::Rejected;
+            rejected.reason = "required_columns_missing";
+            summary.files.push_back(std::move(rejected));
+            ssa::ports::ImportFileResult failed;
+            failed.source = "falhou.xlsx";
+            failed.status = ssa::ports::ImportFileStatus::Failed;
+            failed.reason = "operation_failed";
+            summary.files.push_back(std::move(failed));
             return {ssa::ports::WorkflowStatus::Failed, "importacao parcial", true,
-                    "arquivo 65 rejeitado"};
+                    "arquivo 65 rejeitado", std::move(summary)};
         }
 
         [[nodiscard]] ssa::ports::WorkflowResult rescan(const ssa::ports::RescanRequest& request,
@@ -458,8 +483,11 @@ ApplicationWindow {
                               QStringLiteral("lote_04.xlsx"));
             QCOMPARE(status->property("text").toString(),
                      QStringLiteral("Cancelamento solicitado"));
-            workflow.finish(false, true, QStringLiteral("Importacao cancelada"));
+            workflow.finish(false, true, QStringLiteral("Importacao cancelada"),
+                            QStringLiteral("Importacao cancelada"));
             QCOMPARE(status->property("text").toString(), QStringLiteral("Importacao cancelada"));
+            QCOMPARE(dialog->property("title").toString(),
+                     QStringLiteral("Importacao cancelada - 4/10"));
             QVERIFY(dialog->property("visible").toBool());
             QVERIFY(closeButton->property("enabled").toBool());
             QVERIFY(QMetaObject::invokeMethod(closeButton, "clicked"));
@@ -473,10 +501,18 @@ ApplicationWindow {
                               QStringLiteral("corpus.xlsx"));
             QCOMPARE(dialog->property("title").toString(),
                      QStringLiteral("Reescaneamento em andamento - 65/65"));
-            workflow.finish(true, false, QStringLiteral("Reescaneamento concluido"));
+            workflow.finish(true, false, QStringLiteral("Reescaneamento concluido"),
+                            QStringLiteral("Reescaneamento concluido"));
             QCOMPARE(progressBar->property("value").toInt(), 100);
+            QCOMPARE(dialog->property("title").toString(),
+                     QStringLiteral("Reescaneamento concluido - 65/65"));
             QVERIFY(dialog->property("visible").toBool());
             QVERIFY(closeButton->property("enabled").toBool());
+
+            const auto cancelRect = sceneRect(qobject_cast<QQuickItem*>(cancelButton));
+            const auto closeRect = sceneRect(qobject_cast<QQuickItem*>(closeButton));
+            QVERIFY(cancelRect.right() <= closeRect.left() + 0.5);
+            QVERIFY(closeRect.left() - cancelRect.right() <= 16.0);
         }
 
         void real_view_model_routes_import_and_rescan_progress() {
@@ -524,11 +560,15 @@ ApplicationWindow {
             QTRY_VERIFY_WITH_TIMEOUT(!workflowModel.running(), 2000);
             QCOMPARE(importPort->externalFileCount(), std::size_t{65});
             QCOMPARE(dialog->property("title").toString(),
-                     QStringLiteral("Importacao em andamento - 65/65"));
+                     QStringLiteral("Falha ao importar arquivos - 65/65"));
             QVERIFY(output->property("text").toString().contains(QStringLiteral("Arquivo 64/65")));
             QVERIFY(output->property("text").toString().contains(QStringLiteral("Arquivo 65/65")));
             QVERIFY(errors->property("text").toString().contains(
-                QStringLiteral("Falha parcial: arquivo 65 rejeitado")));
+                QStringLiteral("rejeitado.xlsx - colunas obrigatorias ausentes")));
+            QVERIFY(errors->property("text").toString().contains(
+                QStringLiteral("falhou.xlsx - falha operacional")));
+            QVERIFY(errors->property("text").toString().contains(
+                QStringLiteral("arquivo 65 rejeitado")));
             QVERIFY(!workflowModel.lastSucceeded());
             QVERIFY(dialog->property("terminal").toBool());
             QVERIFY(QMetaObject::invokeMethod(closeButton, "clicked"));
@@ -541,9 +581,14 @@ ApplicationWindow {
             QTRY_VERIFY_WITH_TIMEOUT(!workflowModel.running(), 2000);
             QCOMPARE(importPort->externalFileCount(), std::size_t{1});
             QCOMPARE(dialog->property("title").toString(),
-                     QStringLiteral("Importacao em andamento - 1/1"));
+                     QStringLiteral("Importacao concluida com avisos - 1/1"));
             QVERIFY(errors->property("text").toString().contains(
-                QStringLiteral("Importacao concluida com avisos: workbook ignorado")));
+                QStringLiteral("ignorado.xlsx - cabecalho SSA nao reconhecido")));
+            QVERIFY(!errors->property("text").toString().contains(
+                QStringLiteral("importacao com avisos")));
+            QCOMPARE(workflowModel.lastMessage(),
+                     QStringLiteral("Importacao concluida com avisos: 1 arquivo examinado; "
+                                    "0 aplicados; 1 ignorado; nenhuma falha"));
             QVERIFY(workflowModel.lastSucceeded());
             QVERIFY(workflowModel.lastWarning());
             QVERIFY(dialog->property("terminal").toBool());

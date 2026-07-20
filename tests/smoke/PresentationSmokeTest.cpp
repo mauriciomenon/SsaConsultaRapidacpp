@@ -1235,15 +1235,40 @@ namespace {
 
             model.setViewportSize(640, 480);
             QCOMPARE(model.orientation(), QString("vertical"));
-            const auto targetCenter = model.nodeCenter(2);
-            QVERIFY(qAbs(targetCenter.x() - model.graphWidth() / 2.0) < 1.0);
-            QVERIFY(qAbs(targetCenter.y() - model.graphHeight() / 2.0) < 1.0);
+            qreal minLeft = model.graphWidth();
+            qreal minTop = model.graphHeight();
+            qreal maxRight = 0;
+            qreal maxBottom = 0;
+            for (int row = 0; row < model.rowCount(); ++row) {
+                const auto center = model.nodeCenter(row);
+                minLeft = std::min(minLeft, center.x() - model.nodeWidth() / 2.0);
+                minTop = std::min(minTop, center.y() - model.nodeHeight() / 2.0);
+                maxRight = std::max(maxRight, center.x() + model.nodeWidth() / 2.0);
+                maxBottom = std::max(maxBottom, center.y() + model.nodeHeight() / 2.0);
+            }
+            QCOMPARE(minLeft, 8.0);
+            QCOMPARE(minTop, 8.0);
+            QCOMPARE(model.graphWidth() - maxRight, 8.0);
+            QCOMPARE(model.graphHeight() - maxBottom, 8.0);
 
             for (const auto& edgeValue : model.edges()) {
                 const auto edge = edgeValue.toMap();
                 QVERIFY(edge.contains("routeY"));
                 QVERIFY(edge.value("fromY").toReal() < edge.value("toY").toReal());
             }
+        }
+
+        void derivadas_graph_model_remembers_empty_narrow_viewport() {
+            ssa::presentation::DerivadasGraphModel model;
+            model.setViewportSize(640, 480);
+
+            QVariantList relations;
+            relations.push_back(QVariantMap{{"role", "current"}, {"ssa", "202500100"}});
+            relations.push_back(QVariantMap{{"role", "child"}, {"ssa", "202500101"}});
+            model.buildFromRelations(QStringLiteral("202500100"), relations);
+
+            QCOMPARE(model.orientation(), QString("vertical"));
+            QVERIFY(model.nodeCenter(1).y() > model.nodeCenter(0).y());
         }
 
         void derivadas_graph_model_fans_many_children_below_target() {
@@ -1279,6 +1304,30 @@ namespace {
                 QVERIFY(edge.value("toY").toReal() > edge.value("fromY").toReal());
                 QVERIFY(edge.value("routeX").toReal() > edge.value("fromX").toReal());
                 QVERIFY(edge.value("routeX").toReal() < edge.value("toX").toReal());
+            }
+        }
+
+        void derivadas_graph_model_routes_second_row_between_node_rows() {
+            ssa::presentation::DerivadasGraphModel model;
+            QVariantList relations;
+            relations.push_back(QVariantMap{{"role", "current"}, {"ssa", "202500100"}});
+            for (int index = 0; index < 8; ++index) {
+                relations.push_back(QVariantMap{
+                    {"role", "child"},
+                    {"ssa", QStringLiteral("2025001%1").arg(index + 1, 2, 10, QChar('0'))}});
+            }
+
+            model.setViewportSize(640, 480);
+            model.buildFromRelations(QStringLiteral("202500100"), relations);
+
+            const auto firstRowBottom = model.nodeCenter(1).y() + model.nodeHeight() / 2.0;
+            const auto secondRowTop = model.nodeCenter(5).y() - model.nodeHeight() / 2.0;
+            const auto edges = model.edges();
+            QCOMPARE(edges.size(), 8);
+            for (int index = 4; index < edges.size(); ++index) {
+                const auto routeY = edges.at(index).toMap().value("routeY").toReal();
+                QVERIFY(routeY > firstRowBottom);
+                QVERIFY(routeY < secondRowTop);
             }
         }
 
@@ -1348,9 +1397,6 @@ namespace {
                     QVERIFY(routeCoordinate <= routeLimit);
                 }
 
-                const auto targetCenter = model.nodeCenter(3);
-                QVERIFY(qAbs(targetCenter.x() - model.graphWidth() / 2.0) < 1.0);
-                QVERIFY(qAbs(targetCenter.y() - model.graphHeight() / 2.0) < 1.0);
                 const auto firstSvg = model.svg();
 
                 model.buildFromRelations(QStringLiteral("202500500"), relations);
@@ -2511,7 +2557,9 @@ namespace {
             QTRY_COMPARE_WITH_TIMEOUT(model.browse()->status()->message(),
                                       QString("Importacao concluida"), 1000);
             QTRY_COMPARE_WITH_TIMEOUT(model.browse()->status()->error(),
-                                      QString("consolidation canceled"), 1000);
+                                      QString("Importacao concluida com avisos: consolidacao "
+                                              "cancelada"),
+                                      1000);
         }
 
         void import_external_files_rejects_non_local_url() {

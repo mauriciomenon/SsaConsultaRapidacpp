@@ -1102,13 +1102,16 @@ namespace {
             QTRY_VERIFY_WITH_TIMEOUT(window.isExposed(), 1000);
             auto* graph = harness->findChild<QQuickItem*>(QStringLiteral("keyboardGraph"));
             QVERIFY(graph != nullptr);
+            auto* canvas = harness->findChild<QQuickItem*>(QStringLiteral("derivadasGraphCanvas"));
+            QVERIFY(canvas != nullptr);
+            QTRY_VERIFY_WITH_TIMEOUT(canvas->width() > 0.0 && canvas->height() > 0.0, 1000);
+            QCOMPARE(canvas->x(), (graph->width() - canvas->width()) / 2.0);
+            QCOMPARE(canvas->y(), (graph->height() - canvas->height()) / 2.0);
             graph->forceActiveFocus();
             QTRY_VERIFY_WITH_TIMEOUT(graph->hasActiveFocus(), 1000);
             QTest::keyClick(&window, Qt::Key_Right);
             QCOMPARE(graph->property("currentNodeIndex").toInt(), 1);
-            QVERIFY(graph->property("contentY").toReal() > 0.0);
-            QVERIFY(graph->property("contentY").toReal() <=
-                    graph->property("contentHeight").toReal() - graph->height());
+            QCOMPARE(graph->property("contentY").toReal(), 0.0);
             QTest::keyClick(&window, Qt::Key_Return);
 
             QTRY_COMPARE_WITH_TIMEOUT(harness->property("clickCount").toInt(), 1, 1000);

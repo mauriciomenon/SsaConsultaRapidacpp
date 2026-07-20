@@ -145,10 +145,11 @@ Flickable {
 
     Canvas {
         id: canvas
-        x: 0
-        y: 0
-        width: root.contentWidth
-        height: root.contentHeight
+        objectName: "derivadasGraphCanvas"
+        x: Math.max(0, (root.width - width) / 2)
+        y: Math.max(0, (root.height - height) / 2)
+        width: root.graphModel ? root.graphModel.graphWidth : 0
+        height: root.graphModel ? root.graphModel.graphHeight : 0
 
         readonly property real nodeWidth: root.graphModel ? root.graphModel.nodeWidth : 0
         readonly property real nodeHeight: root.graphModel ? root.graphModel.nodeHeight : 0
