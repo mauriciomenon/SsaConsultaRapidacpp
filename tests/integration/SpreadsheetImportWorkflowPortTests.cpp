@@ -248,6 +248,15 @@ xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><s
         return value;
     }
 
+    void requireClassificationMessage(const ssa::ports::WorkflowResult& result) {
+        REQUIRE(result.importSummary.has_value());
+        const auto& summary = *result.importSummary;
+        const auto suffix = " ignored=" + std::to_string(summary.ignored) +
+                            " rejected=" + std::to_string(summary.rejected) +
+                            " failed_files=" + std::to_string(summary.failed);
+        REQUIRE(result.message.ends_with(suffix));
+    }
+
     void executeBoundBytes(sqlite3* db, const char* sql, const std::string& value,
                            const bool bindAsBlob) {
         sqlite3_stmt* statement = nullptr;
@@ -540,11 +549,12 @@ TEST_CASE("spreadsheet import workflow rejects invalid execution options before 
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
     CHECK(result.message.find("invalid_import_execution_options") != std::string::npos);
     CHECK(result.message.find("rows_per_chunk") != std::string::npos);
+    requireClassificationMessage(result);
     REQUIRE_FALSE(std::filesystem::exists(inputDirectory));
     REQUIRE_FALSE(std::filesystem::exists(dbPath));
 }
 
-TEST_CASE("external import preflight preserves the rejected XLSX source in its summary") {
+TEST_CASE("external import preflight preserves the failed XLSX source in its summary") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
 
@@ -559,7 +569,9 @@ TEST_CASE("external import preflight preserves the rejected XLSX source in its s
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
     REQUIRE(result.importSummary.has_value());
     REQUIRE(result.importSummary->discovered == 1);
-    REQUIRE(result.importSummary->rejected == 1);
+    REQUIRE(result.importSummary->rejected == 0);
+    REQUIRE(result.importSummary->ignored == 0);
+    REQUIRE(result.importSummary->failed == 1);
     REQUIRE(result.importSummary->preserved == 1);
     REQUIRE(result.importSummary->files.size() == 1);
     REQUIRE(result.importSummary->files.front().source == "missing.xlsx");
@@ -589,7 +601,76 @@ TEST_CASE("external import rejects a symlink source before copying") {
     REQUIRE_FALSE(std::filesystem::exists(root / "docs_entrada"));
     REQUIRE(std::filesystem::exists(source));
     REQUIRE(std::filesystem::exists(link));
+
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(
+        root / "docs_entrada", root / "data" / "ssas.db", importColumns());
+    const auto workflow = port.importExternalFiles({.files = {link}});
+
+    REQUIRE(workflow.status == ssa::ports::WorkflowStatus::Rejected);
+    REQUIRE(workflow.message.find("source_symlink") != std::string::npos);
+    REQUIRE(workflow.importSummary.has_value());
+    REQUIRE(workflow.importSummary->rejected == 1);
+    REQUIRE(workflow.importSummary->ignored == 0);
+    REQUIRE(workflow.importSummary->failed == 0);
+    REQUIRE(workflow.importSummary->files.front().status == ssa::ports::ImportFileStatus::Rejected);
 }
+
+TEST_CASE("external import rejects a directory source as not regular") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto source = root / "selected.xlsx";
+    std::filesystem::create_directory(source);
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(
+        root / "docs_entrada", root / "data" / "ssas.db", importColumns());
+
+    const auto result = port.importExternalFiles({.files = {source}});
+
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
+    REQUIRE(result.message.find("source_not_regular") != std::string::npos);
+    REQUIRE(result.importSummary.has_value());
+    REQUIRE(result.importSummary->rejected == 1);
+    REQUIRE(result.importSummary->ignored == 0);
+    REQUIRE(result.importSummary->failed == 0);
+    REQUIRE(result.importSummary->preserved == 1);
+    REQUIRE(result.importSummary->files.front().status == ssa::ports::ImportFileStatus::Rejected);
+    REQUIRE(std::filesystem::is_directory(source));
+}
+
+#ifndef _WIN32
+TEST_CASE("external import classifies unavailable source status as operational failure") {
+    if (::geteuid() == 0) {
+        SKIP("source status permission failure cannot be simulated as root");
+    }
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto sourceDirectory = root / "blocked";
+    const auto source = sourceDirectory / "selected.xlsx";
+    std::filesystem::create_directory(sourceDirectory);
+    createSparseFile(source, 1);
+    std::error_code permissionError;
+    std::filesystem::permissions(sourceDirectory, std::filesystem::perms::none,
+                                 std::filesystem::perm_options::replace, permissionError);
+    REQUIRE_FALSE(permissionError);
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(
+        root / "docs_entrada", root / "data" / "ssas.db", importColumns());
+
+    const auto result = port.importExternalFiles({.files = {source}});
+
+    std::filesystem::permissions(sourceDirectory, std::filesystem::perms::owner_all,
+                                 std::filesystem::perm_options::replace, permissionError);
+    REQUIRE_FALSE(permissionError);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
+    REQUIRE(result.message.find("source_status_unavailable") != std::string::npos);
+    REQUIRE(result.importSummary.has_value());
+    REQUIRE(result.importSummary->failed == 1);
+    REQUIRE(result.importSummary->rejected == 0);
+    requireClassificationMessage(result);
+}
+#endif
 
 TEST_CASE("import file stager rejects a stopped token before copying") {
     QTemporaryDir tempDir;
@@ -673,6 +754,31 @@ TEST_CASE("file copy reports a first chunk callback failure and removes the temp
     REQUIRE(std::filesystem::exists(source));
     REQUIRE_FALSE(std::filesystem::exists(destination));
     REQUIRE(std::filesystem::is_empty(destination.parent_path()));
+}
+
+TEST_CASE("external import reports a total staged copy failure causally") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto source = root / "selected.xlsx";
+    createSparseFile(source, 1);
+    ssa::infra::importing::SpreadsheetImportWorkflowPort::SynchronizationSignals synchronization;
+    synchronization.afterFirstChunkWritten = [] { throw std::runtime_error{"copy hook failed"}; };
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(
+        root / "docs_entrada", root / "data" / "ssas.db", importColumns(), true, synchronization);
+
+    const auto result = port.importExternalFiles({.files = {source}});
+
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
+    REQUIRE(result.message.find("staging_failed") != std::string::npos);
+    REQUIRE(result.diagnostic.find("staged file copy callback failed: copy hook failed") !=
+            std::string::npos);
+    REQUIRE(result.importSummary.has_value());
+    REQUIRE(result.importSummary->failed == 1);
+    REQUIRE(result.importSummary->preserved == 1);
+    REQUIRE(std::filesystem::exists(source));
+    requireClassificationMessage(result);
 }
 
 TEST_CASE("file copy rejects a source changed during the staged copy") {
@@ -825,7 +931,9 @@ TEST_CASE("external import reports one applied and one failed staging source") {
     const auto& summary = *result.importSummary;
     REQUIRE(summary.discovered == 2);
     REQUIRE(summary.accepted == 1);
-    REQUIRE(summary.rejected == 1);
+    REQUIRE(summary.rejected == 0);
+    REQUIRE(summary.ignored == 0);
+    REQUIRE(summary.failed == 1);
     REQUIRE(summary.preserved == 1);
     REQUIRE(summary.files.size() == 2);
     REQUIRE(summary.files[0].status == ssa::ports::ImportFileStatus::Applied);
@@ -2459,6 +2567,57 @@ TEST_CASE("external import resumes a prior journal and imports distinct selected
                       "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600215'") == 1);
 }
 
+TEST_CASE("external import resume failure reports selected inventory and cleans staging") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto sourceDirectory = root / "external";
+    const auto dbPath = root / "data" / "ssas.db";
+    const auto pendingSource = inputDirectory / "pending.xlsx";
+    const auto pendingDestination = inputDirectory / "processadas" / "pending.xlsx";
+    const auto selectedSource = sourceDirectory / "selected.xlsx";
+    const auto stagedSelection = inputDirectory / selectedSource.filename();
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(sourceDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    createSparseFile(pendingSource, 1);
+
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(sqliteWriterAccess(), dbPath,
+                                                           importColumns());
+    auto session = writer.startSession(false);
+    session.recordConsolidation({{{pendingSource, pendingDestination, true}}});
+    static_cast<void>(session.finish());
+    REQUIRE(std::filesystem::remove(pendingSource));
+    writeWorkbook(
+        selectedSource,
+        row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao")}) +
+            row(2, {inlineCell("A2", "202603007"), inlineCell("B2", "ASE"),
+                    inlineCell("C2", "Selected inventory"), inlineCell("D2", "2026-07-01")}));
+
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+    const auto result = port.importExternalFiles({.files = {selectedSource}});
+
+    INFO(result.message);
+    INFO(result.diagnostic);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
+    REQUIRE(result.importSummary.has_value());
+    REQUIRE(result.importSummary->discovered == 1);
+    REQUIRE(result.importSummary->files.size() == 1);
+    REQUIRE(result.importSummary->preserved == 1);
+    REQUIRE(result.importSummary->failed == 1);
+    REQUIRE(result.importSummary->files.front().source == selectedSource.filename().string());
+    REQUIRE(result.importSummary->files.front().status == ssa::ports::ImportFileStatus::Failed);
+    requireClassificationMessage(result);
+    REQUIRE(std::filesystem::exists(selectedSource));
+    REQUIRE_FALSE(std::filesystem::exists(stagedSelection));
+    REQUIRE_FALSE(std::filesystem::exists(pendingDestination));
+    REQUIRE(writer.pendingConsolidation().size() == 1);
+}
+
 TEST_CASE("external import does not repeat a selected source recovered from staged journal") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
@@ -2681,7 +2840,7 @@ TEST_CASE("spreadsheet import workflow rolls analytics failure back before commi
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
-TEST_CASE("spreadsheet import persists a real deviation label as an integer") {
+TEST_CASE("spreadsheet import normalizes real deviation formats into SQLite integers or null") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
 
@@ -2697,14 +2856,26 @@ TEST_CASE("spreadsheet import persists a real deviation label as an integer") {
                           inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao"),
                           inlineCell("E1", "Desvio")}) +
                       row(2, {inlineCell("A2", "202600136"), inlineCell("B2", "APV"),
-                              inlineCell("C2", "Deviation"), inlineCell("D2", "2026-07-14"),
-                              inlineCell("E2", "Desvio # 2")}) +
+                              inlineCell("C2", "Integer"), inlineCell("D2", "2026-07-14"),
+                              inlineCell("E2", "2")}) +
                       row(3, {inlineCell("A3", "202600137"), inlineCell("B3", "APV"),
-                              inlineCell("C3", "No deviation"), inlineCell("D3", "2026-07-14"),
-                              inlineCell("E3", "sem desvio")}) +
+                              inlineCell("C3", "Decimal dot"), inlineCell("D3", "2026-07-14"),
+                              inlineCell("E3", "2.0")}) +
                       row(4, {inlineCell("A4", "202600138"), inlineCell("B4", "APV"),
-                              inlineCell("C4", "Unknown deviation label"),
-                              inlineCell("D4", "2026-07-14"), inlineCell("E4", "pending")}));
+                              inlineCell("C4", "Decimal comma"), inlineCell("D4", "2026-07-14"),
+                              inlineCell("E4", "2,0")}) +
+                      row(5, {inlineCell("A5", "202600139"), inlineCell("B5", "APV"),
+                              inlineCell("C5", "Deviation label"), inlineCell("D5", "2026-07-14"),
+                              inlineCell("E5", "Desvio #4")}) +
+                      row(6, {inlineCell("A6", "202600140"), inlineCell("B6", "APV"),
+                              inlineCell("C6", "Deviation count"), inlineCell("D6", "2026-07-14"),
+                              inlineCell("E6", "Desvios: 5")}) +
+                      row(7, {inlineCell("A7", "202600141"), inlineCell("B7", "APV"),
+                              inlineCell("C7", "No deviation"), inlineCell("D7", "2026-07-14"),
+                              inlineCell("E7", "sem desvio")}) +
+                      row(8, {inlineCell("A8", "202600142"), inlineCell("B8", "APV"),
+                              inlineCell("C8", "Unknown optional deviation"),
+                              inlineCell("D8", "2026-07-14"), inlineCell("E8", "N/A")}));
 
     ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
                                                               importColumns());
@@ -2713,12 +2884,24 @@ TEST_CASE("spreadsheet import persists a real deviation label as an integer") {
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
     sqlite3* db = nullptr;
     REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
-    REQUIRE(scalarInt(db, "SELECT numero_desvios FROM ssa_table "
-                          "WHERE numero_ssa='202600136'") == 2);
-    REQUIRE(scalarInt(db, "SELECT numero_desvios FROM ssa_table "
-                          "WHERE numero_ssa='202600137'") == 0);
-    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600138' "
+    REQUIRE(scalarInt(db, "SELECT numero_desvios FROM ssa_table WHERE numero_ssa='202600136'") ==
+            2);
+    REQUIRE(scalarInt(db, "SELECT numero_desvios FROM ssa_table WHERE numero_ssa='202600137'") ==
+            2);
+    REQUIRE(scalarInt(db, "SELECT numero_desvios FROM ssa_table WHERE numero_ssa='202600138'") ==
+            2);
+    REQUIRE(scalarInt(db, "SELECT numero_desvios FROM ssa_table WHERE numero_ssa='202600139'") ==
+            4);
+    REQUIRE(scalarInt(db, "SELECT numero_desvios FROM ssa_table WHERE numero_ssa='202600140'") ==
+            5);
+    REQUIRE(scalarInt(db, "SELECT numero_desvios FROM ssa_table WHERE numero_ssa='202600141'") ==
+            0);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600142' "
                           "AND numero_desvios IS NULL") == 1);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE "
+                          "typeof(numero_desvios) NOT IN ('integer', 'null')") == 0);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM pragma_foreign_key_check") == 0);
+    REQUIRE(scalarText(db, "PRAGMA integrity_check") == "ok");
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
@@ -3023,6 +3206,10 @@ TEST_CASE("external import rejects a workbook without the required date column")
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
     REQUIRE(result.message.find("required_columns_missing") != std::string::npos);
     REQUIRE(result.message.find("schema-incompleto.xlsx") != std::string::npos);
+    REQUIRE(result.importSummary.has_value());
+    REQUIRE(result.importSummary->rejected == 1);
+    REQUIRE(result.importSummary->ignored == 0);
+    REQUIRE(result.importSummary->failed == 0);
     REQUIRE(std::filesystem::exists(source));
     REQUIRE_FALSE(std::filesystem::exists(inputDirectory / "processadas"));
     sqlite3* db = nullptr;
@@ -3115,6 +3302,7 @@ TEST_CASE("external import rejects duplicate conflicts and preserves the source"
     REQUIRE(result.message.find("conflicts=1") != std::string::npos);
     REQUIRE(result.message.find("SECRET_") == std::string::npos);
     REQUIRE(result.diagnostic.find("SECRET_") == std::string::npos);
+    requireClassificationMessage(result);
     REQUIRE(std::filesystem::exists(source));
     REQUIRE_FALSE(std::filesystem::exists(inputDirectory / "processadas"));
     sqlite3* db = nullptr;
@@ -5107,7 +5295,9 @@ TEST_CASE("full rescan honors busy wait when publication destination is locked")
     INFO(result.message);
     INFO(result.diagnostic);
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
-    REQUIRE(result.message == "rescan database snapshot failed");
+    REQUIRE(result.message ==
+            "rescan database snapshot failed ignored=0 rejected=0 failed_files=1");
+    REQUIRE(result.diagnostic.find("rc=5") != std::string::npos);
     REQUIRE(std::filesystem::exists(workbook));
     REQUIRE_FALSE(std::filesystem::exists(inputDirectory / "processadas" / workbook.filename()));
     REQUIRE(sqlite3_finalize(statement) == SQLITE_OK);
@@ -5347,6 +5537,35 @@ TEST_CASE("spreadsheet import workflow reports xlsx read failure cause") {
     REQUIRE(result.message.find("file=broken.xlsx") != std::string::npos);
     REQUIRE(result.diagnostic.find("file=broken.xlsx") != std::string::npos);
     REQUIRE(result.diagnostic.find("cannot read xlsx zip package") != std::string::npos);
+}
+
+TEST_CASE("classification message does not rewrite counter-like workbook names") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto sourceDirectory = root / "source";
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(sourceDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+
+    const auto workbook = sourceDirectory / "x ignored=9 rejected=8 failed_files=7 error=tail.xlsx";
+    writeWorkbook(workbook, row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                                    inlineCell("C1", "Descricao da SSA")}) +
+                                row(2, {inlineCell("A2", "202600504"), inlineCell("B2", "ASE"),
+                                        inlineCell("C2", "Sem coluna de data")}));
+
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+    const auto result = port.importExternalFiles({.files = {workbook}});
+
+    const std::string classification = " ignored=0 rejected=1 failed_files=0";
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
+    REQUIRE(result.message.find("file=x ignored=9 rejected=8 failed_files=7 error=tail.xlsx") !=
+            std::string::npos);
+    REQUIRE(result.message.ends_with(classification));
+    requireClassificationMessage(result);
 }
 
 TEST_CASE("spreadsheet import workflow processes more than 64 discovered files") {
@@ -5608,6 +5827,54 @@ TEST_CASE("external import preserves a failed second block after committing the 
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
+TEST_CASE("external import cancellation after the first block reports aggregate classification") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto sourceDirectory = root / "external";
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(sourceDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    std::vector<std::filesystem::path> files;
+    files.reserve(65);
+    for (std::size_t index = 0; index < 65; ++index) {
+        const auto workbook = sourceDirectory / ("cancel_" + std::to_string(index) + ".xlsx");
+        writeWorkbook(workbook,
+                      row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Descricao"),
+                              inlineCell("C1", "Data Cadastro")}) +
+                          row(2, {inlineCell("A2", std::to_string(202602000 + index)),
+                                  inlineCell("B2", "Cancel after first block"),
+                                  inlineCell("C2", "2026-07-14")}));
+        files.push_back(workbook);
+    }
+
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+    std::stop_source stopSource;
+    ssa::ports::ImportExternalFilesRequest request{.files = files};
+    request.progress = [&](const auto& update) {
+        if (update.stage == ssa::ports::WorkflowProgressStage::Consolidating &&
+            update.currentFile == 64) {
+            stopSource.request_stop();
+        }
+    };
+
+    const auto result = port.importExternalFiles(request, stopSource.get_token());
+
+    REQUIRE(stopSource.stop_requested());
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Canceled);
+    REQUIRE(result.message.find("canceled batch=1") != std::string::npos);
+    REQUIRE(result.importSummary.has_value());
+    REQUIRE(result.importSummary->discovered == 65);
+    REQUIRE(result.importSummary->accepted == 64);
+    REQUIRE(result.importSummary->preserved == 65);
+    REQUIRE(result.importSummary->files.size() == 65);
+    REQUIRE(result.importSummary->files.back().status == ssa::ports::ImportFileStatus::Canceled);
+    requireClassificationMessage(result);
+}
+
 TEST_CASE("external import continues after a failed middle block") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
@@ -5835,7 +6102,7 @@ TEST_CASE("input file stager removes abandoned owned staging artifacts") {
 }
 
 #ifndef _WIN32
-TEST_CASE("input file stager reports an abandoned staging artifact that cannot be removed") {
+TEST_CASE("workflow reports an abandoned staging artifact that cannot be removed") {
     if (::geteuid() == 0) {
         SKIP("permission cleanup failure cannot be simulated as root");
     }
@@ -5844,21 +6111,28 @@ TEST_CASE("input file stager reports an abandoned staging artifact that cannot b
 
     const auto inputDirectory =
         std::filesystem::path{tempDir.path().toStdString()} / "docs_entrada";
+    const auto dbPath = std::filesystem::path{tempDir.path().toStdString()} / "data" / "ssas.db";
     const auto abandoned = inputDirectory / ".ssa-staged-crashed_123_0.xlsx";
     std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
     createSparseFile(abandoned, 1);
     std::filesystem::permissions(
         inputDirectory, std::filesystem::perms::owner_read | std::filesystem::perms::owner_exec,
         std::filesystem::perm_options::replace);
-    const ssa::infra::importing::ImportFileStager stager(inputDirectory);
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
 
-    const auto result = stager.stageInputFiles();
+    const auto result = port.rescan({ssa::ports::RescanMode::Incremental});
 
     std::filesystem::permissions(inputDirectory, std::filesystem::perms::owner_all,
                                  std::filesystem::perm_options::replace);
-    REQUIRE(result.rejectionReason == "staging_cleanup_failed");
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
+    REQUIRE(result.message.find("staging_cleanup_failed") != std::string::npos);
+    requireClassificationMessage(result);
     REQUIRE(result.diagnostic.find("operation=remove_abandoned_staging") != std::string::npos);
-    REQUIRE(result.diagnostic.find("path=" + abandoned.string()) != std::string::npos);
+    REQUIRE(result.diagnostic.find(
+                "path=" + (std::filesystem::weakly_canonical(inputDirectory) / abandoned.filename())
+                              .string()) != std::string::npos);
     REQUIRE(result.diagnostic.find("error=") != std::string::npos);
     REQUIRE(result.diagnostic.find("pending=true") != std::string::npos);
     REQUIRE(std::filesystem::exists(abandoned));
@@ -5884,7 +6158,8 @@ TEST_CASE("spreadsheet import workflow rejects a second instance before discover
     const auto result = port.rescan({ssa::ports::RescanMode::Incremental});
 
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
-    REQUIRE(result.message == "import_already_running");
+    REQUIRE(result.message.starts_with("import_already_running"));
+    requireClassificationMessage(result);
     REQUIRE(std::filesystem::exists(workbook));
     REQUIRE_FALSE(std::filesystem::exists(dbPath));
 }
@@ -5953,7 +6228,8 @@ TEST_CASE("Windows UNC same-machine share import contract", "[windows-unc]") {
     INFO(locked.message);
     INFO(locked.diagnostic);
     REQUIRE(locked.status == ssa::ports::WorkflowStatus::Failed);
-    REQUIRE(locked.message == "import_already_running");
+    REQUIRE(locked.message.starts_with("import_already_running"));
+    requireClassificationMessage(locked);
     REQUIRE(std::filesystem::exists(secondWorkbook));
     heldLock.unlock();
 
@@ -6000,7 +6276,8 @@ TEST_CASE("spreadsheet import corpus lock resolves input directory symlink alias
     const auto result = port.rescan({ssa::ports::RescanMode::Incremental});
 
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
-    REQUIRE(result.message == "import_already_running");
+    REQUIRE(result.message.starts_with("import_already_running"));
+    requireClassificationMessage(result);
     REQUIRE(std::filesystem::exists(inputDirectory / "pending.xlsx"));
     REQUIRE_FALSE(std::filesystem::exists(dbPath));
 }
@@ -6075,7 +6352,8 @@ TEST_CASE("spreadsheet import rejects a second input root targeting the same dat
     const auto result = port.rescan({ssa::ports::RescanMode::Incremental});
 
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
-    REQUIRE(result.message == "database_write_lock_failed");
+    REQUIRE(result.message.starts_with("database_write_lock_failed"));
+    requireClassificationMessage(result);
     REQUIRE(std::filesystem::exists(secondInput / "pending.xlsx"));
     REQUIRE_FALSE(std::filesystem::exists(dbPath));
 }
@@ -6140,7 +6418,8 @@ TEST_CASE("spreadsheet import lock resolves database symlink aliases") {
     const auto result = port.rescan({ssa::ports::RescanMode::Incremental});
 
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
-    REQUIRE(result.message == "database_write_lock_failed");
+    REQUIRE(result.message.starts_with("database_write_lock_failed"));
+    requireClassificationMessage(result);
     REQUIRE(std::filesystem::exists(inputDirectory / "pending.xlsx"));
 }
 
@@ -6215,17 +6494,20 @@ TEST_CASE("external import lock failure preserves the selected file inventory") 
     const auto result = port.importExternalFiles({.files = {first, second}});
 
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
-    REQUIRE(result.message == "import_already_running");
+    REQUIRE(result.message.starts_with("import_already_running"));
     REQUIRE_FALSE(result.diagnostic.empty());
     REQUIRE(result.importSummary.has_value());
     REQUIRE(result.importSummary->discovered == 2);
-    REQUIRE(result.importSummary->rejected == 2);
+    REQUIRE(result.importSummary->rejected == 0);
+    REQUIRE(result.importSummary->ignored == 0);
+    REQUIRE(result.importSummary->failed == 2);
     REQUIRE(result.importSummary->preserved == 2);
     REQUIRE(result.importSummary->files.size() == 2);
     REQUIRE(result.importSummary->files[0].source == "first.xlsx");
     REQUIRE(result.importSummary->files[0].status == ssa::ports::ImportFileStatus::Failed);
     REQUIRE(result.importSummary->files[1].source == "second.xlsx");
     REQUIRE(result.importSummary->files[1].status == ssa::ports::ImportFileStatus::Failed);
+    requireClassificationMessage(result);
     REQUIRE_FALSE(std::filesystem::exists(dbPath));
 }
 
@@ -6247,10 +6529,11 @@ TEST_CASE("database write lock failure preserves its public error code") {
     const auto result = port.importExternalFiles({.files = {source}});
 
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
-    REQUIRE(result.message == "database_write_lock_failed");
+    REQUIRE(result.message.starts_with("database_write_lock_failed"));
     REQUIRE(result.diagnostic.find("database write lock") != std::string::npos);
     REQUIRE(result.importSummary.has_value());
     REQUIRE(result.importSummary->preserved == 1);
+    requireClassificationMessage(result);
     REQUIRE_FALSE(std::filesystem::exists(dbPath));
 }
 
@@ -6278,12 +6561,13 @@ TEST_CASE("external import lock permission failure includes a technical diagnost
     std::filesystem::permissions(root, std::filesystem::perms::owner_all,
                                  std::filesystem::perm_options::replace);
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
-    REQUIRE(result.message == "import_lock_failed");
+    REQUIRE(result.message.starts_with("import_lock_failed"));
     REQUIRE_FALSE(result.diagnostic.empty());
     REQUIRE(result.importSummary.has_value());
     REQUIRE(result.importSummary->discovered == 1);
     REQUIRE(result.importSummary->preserved == 1);
     REQUIRE(result.importSummary->files.front().source == "selected.xlsx");
+    requireClassificationMessage(result);
     REQUIRE_FALSE(std::filesystem::exists(dbPath));
 }
 #endif
@@ -6357,6 +6641,10 @@ TEST_CASE("spreadsheet import workflow rejects files larger than 128 MiB before 
 
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
     REQUIRE(result.message.find("file_too_large max_bytes=134217728") != std::string::npos);
+    REQUIRE(result.importSummary.has_value());
+    REQUIRE(result.importSummary->rejected == 1);
+    REQUIRE(result.importSummary->ignored == 0);
+    REQUIRE(result.importSummary->failed == 0);
     REQUIRE_FALSE(std::filesystem::exists(dbPath));
 }
 
@@ -6384,6 +6672,10 @@ TEST_CASE("spreadsheet import workflow rejects batches larger than 1 GiB before 
 
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
     REQUIRE(result.message.find("batch_too_large max_bytes=1073741824") != std::string::npos);
+    REQUIRE(result.importSummary.has_value());
+    REQUIRE(result.importSummary->rejected == 9);
+    REQUIRE(result.importSummary->ignored == 0);
+    REQUIRE(result.importSummary->failed == 0);
     REQUIRE_FALSE(std::filesystem::exists(dbPath));
 }
 
@@ -6548,6 +6840,7 @@ TEST_CASE("full rescan rejects empty input without clearing the database") {
 
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
     REQUIRE(result.message.find("no_importable_files") != std::string::npos);
+    requireClassificationMessage(result);
     sqlite3* db = nullptr;
     REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
     REQUIRE(scalarText(db, "PRAGMA integrity_check") == "ok");
@@ -6615,7 +6908,7 @@ TEST_CASE("incremental import exposes truthful per-file and aggregate summary") 
     REQUIRE(summary.files[1].noSurvivor);
 }
 
-TEST_CASE("rejected workbook summary preserves source and reports no applied rows") {
+TEST_CASE("ignored workbook summary preserves source and current global status") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
 
@@ -6636,19 +6929,25 @@ TEST_CASE("rejected workbook summary preserves source and reports no applied row
     const auto& summary = *result.importSummary;
     REQUIRE(summary.discovered == 1);
     REQUIRE(summary.accepted == 0);
-    REQUIRE(summary.rejected == 1);
+    REQUIRE(summary.rejected == 0);
+    REQUIRE(summary.ignored == 1);
+    REQUIRE(summary.failed == 0);
     REQUIRE(summary.preserved == 1);
     REQUIRE(summary.validRows == 0);
     REQUIRE(summary.inserts == 0);
     REQUIRE(summary.updates == 0);
     REQUIRE(summary.files.size() == 1);
     REQUIRE(summary.files.front().source == "unknown-header.xlsx");
-    REQUIRE(summary.files.front().status == ssa::ports::ImportFileStatus::Rejected);
+    REQUIRE(summary.files.front().status == ssa::ports::ImportFileStatus::Ignored);
     REQUIRE_FALSE(summary.files.front().consolidated);
     REQUIRE(std::filesystem::exists(workbook));
+    REQUIRE(result.message.find("ignored=1") != std::string::npos);
+    REQUIRE(result.message.find("rejected=0") != std::string::npos);
+    REQUIRE(result.message.find("failed_files=0") != std::string::npos);
+    requireClassificationMessage(result);
 }
 
-TEST_CASE("incremental rescan publishes valid files and preserves a later rejection") {
+TEST_CASE("incremental rescan publishes valid files and preserves a later ignored workbook") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
 
@@ -6678,12 +6977,14 @@ TEST_CASE("incremental rescan publishes valid files and preserves a later reject
     const auto& summary = *result.importSummary;
     REQUIRE(summary.discovered == 2);
     REQUIRE(summary.accepted == 1);
-    REQUIRE(summary.rejected == 1);
+    REQUIRE(summary.rejected == 0);
+    REQUIRE(summary.ignored == 1);
+    REQUIRE(summary.failed == 0);
     REQUIRE(summary.preserved == 1);
     REQUIRE(summary.inserts == 1);
     REQUIRE(summary.files.size() == 2);
     REQUIRE(summary.files[0].status == ssa::ports::ImportFileStatus::Applied);
-    REQUIRE(summary.files[1].status == ssa::ports::ImportFileStatus::Rejected);
+    REQUIRE(summary.files[1].status == ssa::ports::ImportFileStatus::Ignored);
     REQUIRE_FALSE(summary.files[1].consolidated);
     REQUIRE(std::filesystem::exists(inputDirectory / "processadas" / validWorkbook.filename()));
     REQUIRE(std::filesystem::exists(invalidWorkbook));
@@ -6692,6 +6993,8 @@ TEST_CASE("incremental rescan publishes valid files and preserves a later reject
     REQUIRE(scalarText(db, "PRAGMA integrity_check") == "ok");
     REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 1);
     REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600602'") == 1);
+    REQUIRE(result.message.find("ignored=1") != std::string::npos);
+    REQUIRE(result.message.find("failed_files=0") != std::string::npos);
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
@@ -6911,6 +7214,7 @@ TEST_CASE("full rescan rejects an unrelated-only folder without clearing or movi
 
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
     REQUIRE(result.message.find("no_valid_rows") != std::string::npos);
+    requireClassificationMessage(result);
     REQUIRE(std::filesystem::exists(workbook));
     REQUIRE_FALSE(std::filesystem::exists(inputDirectory / "processadas"));
     sqlite3* db = nullptr;
@@ -6947,6 +7251,10 @@ TEST_CASE("spreadsheet workflow rejects ambiguous positional headers without mov
     INFO(result.message);
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
     REQUIRE(result.message.find("ambiguous_headers") != std::string::npos);
+    REQUIRE(result.importSummary.has_value());
+    REQUIRE(result.importSummary->rejected == 1);
+    REQUIRE(result.importSummary->ignored == 0);
+    REQUIRE(result.importSummary->failed == 0);
     REQUIRE(std::filesystem::exists(workbook));
     REQUIRE_FALSE(std::filesystem::exists(inputDirectory / "processadas"));
 }
@@ -7132,6 +7440,7 @@ TEST_CASE("full rescan rejects mixed valid and invalid rows without clearing the
     REQUIRE(result.importSummary->files.front().invalidNumberRows == 1);
     REQUIRE(result.importSummary->files.front().invalidDescriptionRows == 0);
     REQUIRE(result.importSummary->files.front().invalidDateRows == 0);
+    requireClassificationMessage(result);
     REQUIRE(std::filesystem::exists(workbook));
     REQUIRE_FALSE(std::filesystem::exists(inputDirectory / "processadas"));
     sqlite3* db = nullptr;
@@ -7290,7 +7599,186 @@ TEST_CASE("full rescan reports database open failure for a valid workbook") {
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
     REQUIRE(result.message.find("rescan database snapshot failed") != std::string::npos);
     REQUIRE_FALSE(result.diagnostic.empty());
+    REQUIRE(result.importSummary.has_value());
+    REQUIRE(result.importSummary->discovered == 1);
+    REQUIRE(result.importSummary->accepted == 0);
+    REQUIRE(result.importSummary->inserts == 0);
+    REQUIRE(result.importSummary->updates == 0);
+    REQUIRE(result.importSummary->preserved == 1);
+    REQUIRE(result.importSummary->files.size() == 1);
+    REQUIRE(result.importSummary->files.front().source == workbook.filename().string());
+    REQUIRE(result.importSummary->files.front().status == ssa::ports::ImportFileStatus::Failed);
+    requireClassificationMessage(result);
     REQUIRE(std::filesystem::exists(workbook));
+}
+
+TEST_CASE("full rescan plan failure preserves discovered inventory before publication") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(sqliteWriterAccess(), dbPath,
+                                                           importColumns());
+    ssa::infra::importing::ResolvedSsaImportRows seed;
+    seed.rows.push_back({{"numero_ssa", "202603001"}, {"descricao_ssa", "Seed intacto"}});
+    REQUIRE(writer.write(seed, 1, 0, false).rowsWritten == 1);
+    const auto workbook = inputDirectory / "valid.xlsx";
+    writeWorkbook(workbook, row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                                    inlineCell("C1", "Descricao da SSA"),
+                                    inlineCell("D1", "Data de emissao")}) +
+                                row(2, {inlineCell("A2", "202603002"), inlineCell("B2", "ASE"),
+                                        inlineCell("C2", "Nova"), inlineCell("D2", "2026-07-01")}));
+
+    const auto withheldWorkbook = root / "withheld.xlsx";
+    bool blockedPlan = false;
+    ssa::ports::RescanRequest request{ssa::ports::RescanMode::Full};
+    request.progress = [&](const auto& update) {
+        if (!blockedPlan && update.stage == ssa::ports::WorkflowProgressStage::Committing) {
+            std::filesystem::rename(workbook, withheldWorkbook);
+            blockedPlan = true;
+        }
+    };
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+    const auto result = port.rescan(request);
+    std::filesystem::rename(withheldWorkbook, workbook);
+
+    REQUIRE(blockedPlan);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
+    REQUIRE(result.importSummary.has_value());
+    REQUIRE(result.importSummary->discovered == 1);
+    REQUIRE(result.importSummary->accepted == 0);
+    REQUIRE(result.importSummary->inserts == 0);
+    REQUIRE(result.importSummary->updates == 0);
+    REQUIRE(result.importSummary->preserved == 1);
+    REQUIRE(result.importSummary->files.size() == 1);
+    REQUIRE(result.importSummary->files.front().status == ssa::ports::ImportFileStatus::Failed);
+    REQUIRE(std::filesystem::exists(workbook));
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202603001'") == 1);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202603002'") == 0);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("full rescan plan failure preserves ignored workbook classification") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(sqliteWriterAccess(), dbPath,
+                                                           importColumns());
+    ssa::infra::importing::ResolvedSsaImportRows seed;
+    seed.rows.push_back({{"numero_ssa", "202603005"}, {"descricao_ssa", "Seed intacto"}});
+    REQUIRE(writer.write(seed, 1, 0, false).rowsWritten == 1);
+    const auto validWorkbook = inputDirectory / "01-valid.xlsx";
+    writeWorkbook(
+        validWorkbook,
+        row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao")}) +
+            row(2, {inlineCell("A2", "202603006"), inlineCell("B2", "ASE"),
+                    inlineCell("C2", "Nova"), inlineCell("D2", "2026-07-01")}));
+    const auto ignoredWorkbook = inputDirectory / "02-unknown.xlsx";
+    writeWorkbook(ignoredWorkbook,
+                  row(1, {inlineCell("A1", "Unknown one"), inlineCell("B1", "Unknown two")}) +
+                      row(2, {inlineCell("A2", "value"), inlineCell("B2", "value")}));
+
+    const auto withheldWorkbook = root / "withheld-valid.xlsx";
+    bool blockedPlan = false;
+    ssa::ports::RescanRequest request{ssa::ports::RescanMode::Full};
+    request.progress = [&](const auto& update) {
+        if (!blockedPlan && update.stage == ssa::ports::WorkflowProgressStage::Committing) {
+            std::filesystem::rename(validWorkbook, withheldWorkbook);
+            blockedPlan = true;
+        }
+    };
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+    const auto result = port.rescan(request);
+    std::filesystem::rename(withheldWorkbook, validWorkbook);
+
+    REQUIRE(blockedPlan);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
+    REQUIRE(result.importSummary.has_value());
+    const auto& summary = *result.importSummary;
+    REQUIRE(summary.discovered == 2);
+    REQUIRE(summary.accepted == 0);
+    REQUIRE(summary.inserts == 0);
+    REQUIRE(summary.updates == 0);
+    REQUIRE(summary.ignored == 1);
+    REQUIRE(summary.failed == 1);
+    REQUIRE(summary.preserved == 2);
+    REQUIRE(summary.files.size() == 2);
+    REQUIRE(summary.files[0].source == validWorkbook.filename().string());
+    REQUIRE(summary.files[0].status == ssa::ports::ImportFileStatus::Failed);
+    REQUIRE(summary.files[1].source == ignoredWorkbook.filename().string());
+    REQUIRE(summary.files[1].status == ssa::ports::ImportFileStatus::Ignored);
+    requireClassificationMessage(result);
+    REQUIRE(std::filesystem::exists(validWorkbook));
+    REQUIRE(std::filesystem::exists(ignoredWorkbook));
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202603005'") == 1);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202603006'") == 0);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("full rescan cancellation at commit preserves discovered inventory") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(sqliteWriterAccess(), dbPath,
+                                                           importColumns());
+    ssa::infra::importing::ResolvedSsaImportRows seed;
+    seed.rows.push_back({{"numero_ssa", "202603003"}, {"descricao_ssa", "Seed intacto"}});
+    REQUIRE(writer.write(seed, 1, 0, false).rowsWritten == 1);
+    const auto workbook = inputDirectory / "cancel-at-commit.xlsx";
+    writeWorkbook(workbook, row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                                    inlineCell("C1", "Descricao da SSA"),
+                                    inlineCell("D1", "Data de emissao")}) +
+                                row(2, {inlineCell("A2", "202603004"), inlineCell("B2", "ASE"),
+                                        inlineCell("C2", "Nova"), inlineCell("D2", "2026-07-01")}));
+
+    std::stop_source stopSource;
+    ssa::ports::RescanRequest request{ssa::ports::RescanMode::Full};
+    request.progress = [&](const auto& update) {
+        if (update.stage == ssa::ports::WorkflowProgressStage::Committing) {
+            stopSource.request_stop();
+        }
+    };
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+    const auto result = port.rescan(request, stopSource.get_token());
+
+    REQUIRE(stopSource.stop_requested());
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Canceled);
+    REQUIRE(result.importSummary.has_value());
+    REQUIRE(result.importSummary->discovered == 1);
+    REQUIRE(result.importSummary->accepted == 0);
+    REQUIRE(result.importSummary->inserts == 0);
+    REQUIRE(result.importSummary->updates == 0);
+    REQUIRE(result.importSummary->preserved == 1);
+    REQUIRE(result.importSummary->files.size() == 1);
+    REQUIRE(result.importSummary->files.front().status == ssa::ports::ImportFileStatus::Canceled);
+    REQUIRE(std::filesystem::exists(workbook));
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202603003'") == 1);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202603004'") == 0);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
 TEST_CASE("spreadsheet import workflow leaves selected legacy xls pending") {
@@ -7712,9 +8200,9 @@ TEST_CASE("SAM import rejects invalid SQLite busy wait before staging") {
     const auto result = port.importSamArtifacts(request);
 
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
-    REQUIRE(
-        result.message ==
-        "sam_import invalid_import_execution_options sqlite_busy_wait_ms must be a multiple of 5");
+    REQUIRE(result.message.starts_with(
+        "sam_import invalid_import_execution_options sqlite_busy_wait_ms must be a multiple of 5"));
+    requireClassificationMessage(result);
     REQUIRE(std::filesystem::exists(workbook));
     REQUIRE_FALSE(std::filesystem::exists(inputDirectory / "processadas"));
     REQUIRE_FALSE(std::filesystem::exists(dbPath));

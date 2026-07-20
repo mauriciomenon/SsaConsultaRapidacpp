@@ -1,5 +1,42 @@
 # Status Da Rodada
 
+## Fechamento de estabilizacao de importacao - 2026-07-20
+
+- **ENTREGUE localmente**: importacao externa e rescan agora preservam um
+  inventario tipado por arquivo (`Applied`, `NoChanges`, `Ignored`, `Rejected`,
+  `Failed` e `Canceled`) e apresentam uma unica classificacao agregada no
+  resultado. Falhas operacionais, rejeicoes de contrato e workbooks ignorados
+  nao sao mais misturados.
+- **ENTREGUE localmente**: lotes acima de 64 mantem numeracao global; uma falha
+  atomica em um lote nao impede o processamento dos lotes seguintes. Falha ou
+  cancelamento antes da publicacao preserva banco, fontes e inventario.
+- Prova real pelo CLI C++ em clone descartavel: `1692` arquivos, `458864`
+  linhas validas, `96479` registros publicados, `ignored=228`, `rejected=0`,
+  `failed_files=0`, exit code `0` em `252 s`. SQLite passou
+  `integrity_check=ok`, zero violacoes de FK e `numero_desvios` somente como
+  `integer` (`13339`) ou `null` (`83140`).
+- O mesmo dialogo atende importacao externa, rescan incremental e full rescan.
+  A geometria dos paineis permanece fixa durante crescimento da saida e o
+  cancelamento continua aberto ate resultado terminal. A aparencia atual foi
+  aceita visualmente pelo proprietario; nenhuma nova mudanca de layout ocorreu
+  neste slice.
+- Gate oficial: build `dev`; CTest focado `20/20` em `2.55 s`; suite completa
+  `641/641` em `75.43 s`. A primeira passagem encontrou uma expectativa antiga
+  no teste de lock; o backend ja falhava corretamente com `rc=5`. A expectativa
+  foi alinhada ao novo sufixo causal e o teste passou antes da suite final.
+- Review: diff-check, clang-format, cppcheck, qmllint, Semgrep amplo (514
+  arquivos, zero findings), detect-secrets, Gitleaks (765 commits, zero leaks)
+  e TruffleHog (zero segredos) passaram. Clang-tidy manteve quatro P3 antigos
+  fora das linhas alteradas.
+- As alegacoes anteriores de `pointSize` e arquivos reais indisponiveis estao
+  superadas pelo fonte e pela evidencia atual. GitLab voltou a responder
+  `invalid_grant` nesta rodada e permanece **NAO ENTREGUE EXTERNAMENTE**.
+- Contadores sem inflacao: plano original `99.0/100`; divida nova P0
+  `14/14 = 100.0%`; backlog legado `N/A`; fila operacional `5/8 = 62.5%`.
+
+Proxima atividade unica: publicar no Bitbucket, tentar GitLab sem alegar
+sucesso se o OAuth falhar e preparar `v0.9.14` somente com gates verdes.
+
 Fonte operacional para humanos e agentes de codigo. Verifique este arquivo
 antes de interpretar sincronizacao Git, validacao local ou estado externo.
 

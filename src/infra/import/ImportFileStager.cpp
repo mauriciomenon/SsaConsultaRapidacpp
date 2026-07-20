@@ -220,7 +220,8 @@ namespace ssa::infra::importing {
         }
         result.rejectionReason = preflightFiles(files, stopToken, result.diagnostic);
         if (!result.rejectionReason.empty()) {
-            result.operationalFailure = result.rejectionReason == "file_size_unavailable";
+            result.operationalFailure = result.rejectionReason == "file_size_unavailable" ||
+                                        result.rejectionReason == "source_status_unavailable";
             return result;
         }
         result.rejectionReason = inputDirectoryRejectionReason(inputFolder_, result.diagnostic);
@@ -273,6 +274,7 @@ namespace ssa::infra::importing {
                 const auto timestamp = sourceModifiedTimestamp(source, error);
                 if (error) {
                     ++result.failedCopies;
+                    result.operationalFailure = true;
                     appendDiagnostic(result.diagnostic,
                                      "cannot read source modification time: " + error.message());
                     continue;
@@ -285,6 +287,7 @@ namespace ssa::infra::importing {
                 }
                 if (!copy.ok()) {
                     ++result.failedCopies;
+                    result.operationalFailure = true;
                     appendDiagnostic(result.diagnostic, copy.diagnostic);
                     if (copy.status == FileCopyStatus::CleanupFailed) {
                         result.rejectionReason = "staging_cleanup_failed";
@@ -558,7 +561,8 @@ namespace ssa::infra::importing {
         }
         result.rejectionReason = preflightFiles(importCandidates, stopToken, result.diagnostic);
         if (!result.rejectionReason.empty()) {
-            result.operationalFailure = result.rejectionReason == "file_size_unavailable";
+            result.operationalFailure = result.rejectionReason == "file_size_unavailable" ||
+                                        result.rejectionReason == "source_status_unavailable";
             return result;
         }
 

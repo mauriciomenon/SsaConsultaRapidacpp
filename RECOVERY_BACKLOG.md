@@ -1,5 +1,33 @@
 # Recovery Backlog
 
+## Importacao e rescan estabilizados - 2026-07-20
+
+- [RESOLVED-LOCAL] Resultado por arquivo e agregados separam workbooks
+  ignorados, rejeicoes de contrato, falhas operacionais e cancelamento.
+- [RESOLVED-LOCAL] Mais de 64 arquivos sao processados em blocos com contador
+  global; uma falha atomica intermediaria preserva seu lote e nao impede os
+  lotes posteriores.
+- [RESOLVED-LOCAL] Full rescan e incremental preservam banco, fontes e
+  inventario em falha/cancelamento antes da publicacao. Journal e consolidacao
+  continuam posteriores ao commit duravel.
+- [RESOLVED-LOCAL] Corpus real: `1692` arquivos, `458864` linhas, `96479`
+  registros, zero invalidos/conflitos/falhas, `228` ignorados causais e exit
+  code `0`. SQLite: integridade OK, zero FKs invalidas e nenhum TEXT em
+  `numero_desvios`.
+- [RESOLVED-LOCAL] O dialogo unico cobre importacao externa, rescan incremental
+  e full; o teste injeta 100 linhas em cada painel e exige geometria invariavel.
+- [RESOLVED-LOCAL] Gate final `641/641` em `75.43 s`; security ampla sem
+  findings ou segredos.
+- [EXTERNAL-PENDING] Windows/UNC, SMB gravavel e packaging multiplataforma
+  continuam sem prova real. Profiling valido do prefetch tambem permanece.
+- Contadores: plano `99.0/100`, divida P0 `100.0%`, legado `N/A`, fila
+  operacional `5/8 = 62.5%`, conforme a matriz auditavel existente.
+- [EXTERNAL-BLOCKED] GitLab `origin` voltou a falhar com OAuth
+  `invalid_grant`; Bitbucket deve ser verificado separadamente.
+
+Proxima atividade unica: publicacao Bitbucket e preparacao da release
+`v0.9.14`; GitLab permanece pendente ate renovacao da credencial.
+
 ## Binding defensivo do menu de ordenacao - 2026-07-19
 
 - [RESOLVED-LOCAL] `SsaTable.qml` protege `sortColumnKey` contra

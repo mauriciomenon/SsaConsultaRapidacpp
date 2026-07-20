@@ -25,6 +25,7 @@ namespace ssa::ports {
         Applied,
         NoChanges,
         NoValidRows,
+        Ignored,
         Rejected,
         Failed,
         Canceled,
@@ -50,6 +51,8 @@ namespace ssa::ports {
         std::size_t discovered = 0;
         std::size_t accepted = 0;
         std::size_t rejected = 0;
+        std::size_t ignored = 0;
+        std::size_t failed = 0;
         std::size_t pending = 0;
         std::size_t preserved = 0;
         std::size_t validRows = 0;
