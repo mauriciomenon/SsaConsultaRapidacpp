@@ -218,7 +218,7 @@ jobs:
         shell: pwsh
         run: |
           $root = "dist/windows/${{ matrix.artifact }}"
-          $prefix = "ssa_consulta_rapida-${{ needs.resolve.outputs.version }}-${{ matrix.artifact }}-windows"
+          $prefix = "ssa_consulta_rapida_cpp-windows-${{ matrix.artifact }}-${{ needs.resolve.outputs.version }}"
           $zip = @(Get-ChildItem -Path $root -File -Filter "$prefix.zip")
           $installer = @(Get-ChildItem -Path $root -File -Filter "$prefix-installer.exe")
           if ($zip.Count -ne 1 -or $installer.Count -ne 1) {

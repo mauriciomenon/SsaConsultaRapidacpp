@@ -60,9 +60,9 @@ exit /b 0
 
         & $script:buildScript -ProjectRoot $script:repoRoot
 
-        (Test-Path -LiteralPath $script:configureMarker -PathType Leaf) | Should Be $true
-        (Get-Content -LiteralPath $script:configureMarker) | Should Be "dev|--fresh|msvc2022_64"
-        (Get-Content -LiteralPath $script:cmakeLog) | Should Match "--build --preset dev"
+        (Test-Path -LiteralPath $script:configureMarker -PathType Leaf) | Should -BeTrue
+        (Get-Content -LiteralPath $script:configureMarker) | Should -Be "dev|--fresh|msvc2022_64"
+        (Get-Content -LiteralPath $script:cmakeLog) | Should -Match "--build --preset dev"
     }
 
     It "reconfigures when a Windows cache has no generated Ninja files" {
@@ -75,8 +75,8 @@ exit /b 0
 
         & $script:buildScript -ProjectRoot $script:repoRoot
 
-        (Test-Path -LiteralPath $script:configureMarker -PathType Leaf) | Should Be $true
-        (Get-Content -LiteralPath $script:configureMarker) | Should Be "dev|--fresh|msvc2022_64"
+        (Test-Path -LiteralPath $script:configureMarker -PathType Leaf) | Should -BeTrue
+        (Get-Content -LiteralPath $script:configureMarker) | Should -Be "dev|--fresh|msvc2022_64"
     }
 
     It "adds the linked vcpkg SQLite runtime before invoking CMake" {
@@ -102,10 +102,10 @@ exit /b 0
 
         & $script:buildScript -ProjectRoot $script:repoRoot
 
-        (Test-Path -LiteralPath $script:configureMarker -PathType Leaf) | Should Be $false
+        (Test-Path -LiteralPath $script:configureMarker -PathType Leaf) | Should -BeFalse
         $buildPath = Get-Content -LiteralPath $script:pathLog
-        $buildPath | Should Match ('^' + [regex]::Escape("$sqliteBin;"))
-        $buildPath | Should Match ([regex]::Escape((Join-Path $qtPrefix "bin")))
+        $buildPath | Should -Match ('^' + [regex]::Escape("$sqliteBin;"))
+        $buildPath | Should -Match ([regex]::Escape((Join-Path $qtPrefix "bin")))
     }
 
     It "restores the machine PATHEXT before invoking native tools" {
@@ -118,9 +118,9 @@ exit /b 0
 
         & $script:buildScript -ProjectRoot $script:repoRoot
 
-        (Get-Content -LiteralPath $script:configureMarker) | Should Be "dev|--fresh|msvc2022_64"
-        (Get-Content -LiteralPath $script:cmakeLog) | Should Match "--build --preset dev"
-        $env:PATHEXT | Should Match "\.EXE"
+        (Get-Content -LiteralPath $script:configureMarker) | Should -Be "dev|--fresh|msvc2022_64"
+        (Get-Content -LiteralPath $script:cmakeLog) | Should -Match "--build --preset dev"
+        $env:PATHEXT | Should -Match "\.EXE"
     }
 
     It "refreshes when an explicit Qt kit differs from the cached kit" {
@@ -137,6 +137,18 @@ exit /b 0
 
         & $script:buildScript -ProjectRoot $script:repoRoot -QtSubdir msvc2022_64
 
-        (Get-Content -LiteralPath $script:configureMarker) | Should Be "dev|--fresh|msvc2022_64"
+        (Get-Content -LiteralPath $script:configureMarker) | Should -Be "dev|--fresh|msvc2022_64"
+    }
+
+    It "throws when CMake returns a nonzero exit code" {
+        @'
+@echo off
+echo %*>>"%SSA_TEST_CMAKE_LOG%"
+exit /b 23
+'@ | Set-Content -LiteralPath (Join-Path $script:fakeBin "cmake.cmd") -Encoding ASCII
+
+        {
+            & $script:buildScript -ProjectRoot $script:repoRoot
+        } | Should -Throw -ExpectedMessage "*CMake*exit code 23*"
     }
 }

@@ -113,8 +113,14 @@ if ($SkipTests) {
     $buildParams.Target = "ssa_consulta_rapida"
 }
 & $buildScript @buildParams
+if ($LASTEXITCODE -ne 0) {
+    throw "Windows build failed with exit code $LASTEXITCODE."
+}
 if (-not $SkipTests) {
     ctest --preset $preset --output-on-failure
+    if ($LASTEXITCODE -ne 0) {
+        throw "Windows tests failed with exit code $LASTEXITCODE."
+    }
 }
 
 $binary = Join-Path $buildDir "ssa_consulta_rapida.exe"
@@ -150,7 +156,7 @@ $cmakeCache = Join-Path $buildDir "CMakeCache.txt"
 if (Test-Path $cmakeCache) {
     $cacheQtLine = Select-String -Path $cmakeCache -Pattern '^Qt6_DIR:PATH=(.+)$' -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($cacheQtLine) {
-        $cacheQtDir = (Split-Path (Split-Path $cacheQtLine.Matches[0].Groups[1].Value.Trim()))
+        $cacheQtDir = (Split-Path (Split-Path (Split-Path $cacheQtLine.Matches[0].Groups[1].Value.Trim())))
         if ($cacheQtDir -and (Test-Path (Join-Path $cacheQtDir "bin\windeployqt.exe"))) {
             $qtBinDir = Join-Path $cacheQtDir "bin"
         }
@@ -230,6 +236,9 @@ if (-not $tarCommand) {
     throw "tar.exe not found. Install Windows tar support or use a Developer PowerShell where tar.exe is available."
 }
 & $tarCommand.Source -a -c -f "$zipPath" -C "$artifactRoot" $artifactName
+if ($LASTEXITCODE -ne 0) {
+    throw "tar failed to generate the Windows package with exit code $LASTEXITCODE."
+}
 
 Set-LatestArtifactLink -DistRoot $artifactRoot -ArtifactDir $artifactDir
 Set-LatestArtifactAlias -DistRoot $artifactRoot -AliasName "latest.zip" -TargetPath $zipPath

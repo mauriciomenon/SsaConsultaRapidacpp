@@ -193,3 +193,6 @@ if ($Target) {
     $buildArgs += @("--target", $Target)
 }
 & $cmakeExecutable @buildArgs
+if ($LASTEXITCODE -ne 0) {
+    throw "CMake build failed with exit code $LASTEXITCODE."
+}
