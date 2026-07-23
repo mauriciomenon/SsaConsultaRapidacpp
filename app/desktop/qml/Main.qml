@@ -343,7 +343,7 @@ ApplicationWindow {
                     text: "Importar XLSX"
                     font.pixelSize: Theme.fontSizeLabel
                     enabled: !root.vm.actions.workflows.running
-                    implicitWidth: 112
+                    implicitWidth: Math.max(112, implicitContentWidth + leftPadding + rightPadding)
                     onClicked: fileDialogs.openImportData()
                 }
                 Item {

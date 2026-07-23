@@ -42,6 +42,15 @@ else()
   set(SSA_SQLITE_TARGET ssa_sqlite3)
 endif()
 
+if(WIN32)
+  get_filename_component(SSA_SQLITE_LIBRARY_DIR "${SQLite3_LIBRARY}" DIRECTORY)
+  get_filename_component(SSA_SQLITE_PREFIX "${SSA_SQLITE_LIBRARY_DIR}" DIRECTORY)
+  set(SSA_SQLITE_RUNTIME "${SSA_SQLITE_PREFIX}/bin/sqlite3.dll")
+  if(NOT EXISTS "${SSA_SQLITE_RUNTIME}")
+    message(FATAL_ERROR "SQLite runtime DLL not found: ${SSA_SQLITE_RUNTIME}")
+  endif()
+endif()
+
 include(cmake/Dependencies.cmake)
 
 qt_standard_project_setup(REQUIRES 6.6)
@@ -443,6 +452,19 @@ target_link_libraries(ssa_consulta_rapida_cli PRIVATE ssa_cli ssa_infra
 target_compile_definitions(ssa_consulta_rapida_cli
                            PRIVATE SSA_PROJECT_VERSION="${PROJECT_VERSION}")
 
+if(WIN32)
+  foreach(SSA_WINDOWS_EXECUTABLE IN ITEMS ssa_consulta_rapida
+                                         ssa_consulta_rapida_cli)
+    add_custom_command(
+      TARGET ${SSA_WINDOWS_EXECUTABLE}
+      POST_BUILD
+      COMMAND
+        ${CMAKE_COMMAND} -E copy_if_different "${SSA_SQLITE_RUNTIME}"
+        "$<TARGET_FILE_DIR:${SSA_WINDOWS_EXECUTABLE}>/sqlite3.dll"
+      COMMENT "Staging SQLite runtime beside ${SSA_WINDOWS_EXECUTABLE}")
+  endforeach()
+endif()
+
 set_target_properties(
   ssa_consulta_rapida
   PROPERTIES MACOSX_BUNDLE TRUE
@@ -791,8 +813,15 @@ if(SSA_BUILD_TESTS)
   add_test(NAME ssa_qml_help_about_tests COMMAND ssa_qml_help_about_tests)
   set_tests_properties(
     ssa_qml_help_about_tests
-    PROPERTIES TIMEOUT 15 RUN_SERIAL TRUE ENVIRONMENT
+    PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE ENVIRONMENT
                "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Basic")
+
+  if(WIN32)
+    set_property(
+      TEST ssa_qml_theme_gallery_tests ssa_qml_help_about_tests
+      APPEND
+      PROPERTY ENVIRONMENT "QT_QPA_FONTDIR=$ENV{WINDIR}/Fonts")
+  endif()
 
   add_executable(ssa_icon_artifact_tests tests/smoke/IconArtifactTest.cpp)
   target_compile_definitions(ssa_icon_artifact_tests

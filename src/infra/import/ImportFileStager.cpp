@@ -8,13 +8,11 @@
 #include <QFileInfo>
 
 #include <algorithm>
-#include <array>
 #include <atomic>
 #include <cctype>
 #include <cerrno>
 #include <chrono>
 #include <cstring>
-#include <ctime>
 #include <optional>
 #include <stdexcept>
 #include <string_view>
@@ -84,29 +82,19 @@ namespace ssa::infra::importing {
 
         std::string sourceModifiedTimestamp(const std::filesystem::path& source,
                                             std::error_code& error) {
-            const auto modified = std::filesystem::last_write_time(source, error);
-            if (error) {
+            const QFileInfo information{qt::toQString(source)};
+            if (!information.exists()) {
+                error = std::make_error_code(std::errc::no_such_file_or_directory);
                 return {};
             }
-            const auto instant = std::chrono::floor<std::chrono::system_clock::duration>(
-                std::filesystem::file_time_type::clock::to_sys(modified));
-            const auto time = std::chrono::system_clock::to_time_t(instant);
-            std::tm local{};
-#ifdef _WIN32
-            const bool conversionFailed = localtime_s(&local, &time) != 0;
-#else
-            const bool conversionFailed = localtime_r(&time, &local) == nullptr;
-#endif
-            if (conversionFailed) {
+            const auto modified = information.lastModified();
+            if (!modified.isValid()) {
                 error = std::make_error_code(std::errc::invalid_argument);
                 return {};
             }
-            std::array<char, 20> buffer{};
-            if (std::strftime(buffer.data(), buffer.size(), "%Y-%m-%d %H:%M:%S", &local) == 0) {
-                error = std::make_error_code(std::errc::value_too_large);
-                return {};
-            }
-            return buffer.data();
+            const auto encoded =
+                modified.toLocalTime().toString(QStringLiteral("yyyy-MM-dd HH:mm:ss")).toUtf8();
+            return {encoded.constData(), static_cast<std::size_t>(encoded.size())};
         }
 
         std::string sourceCreatedTimestamp(const std::filesystem::path& source) {

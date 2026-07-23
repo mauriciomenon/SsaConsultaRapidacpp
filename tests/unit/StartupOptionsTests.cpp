@@ -199,8 +199,10 @@ TEST_CASE("startup options preserve unicode filesystem paths") {
 
     const auto options = ssa::platform::StartupOptions::fromParser(parser);
 
-    REQUIRE(options.projectRoot == QFileInfo(projectRoot).canonicalFilePath());
-    REQUIRE(options.databasePath == QFileInfo(databasePath).canonicalFilePath());
+    REQUIRE(QFileInfo(options.projectRoot).canonicalFilePath() ==
+            QFileInfo(projectRoot).canonicalFilePath());
+    REQUIRE(QFileInfo(options.databasePath).canonicalFilePath() ==
+            QFileInfo(databasePath).canonicalFilePath());
 }
 
 TEST_CASE("startup options reject invalid SAM URL") {

@@ -11,9 +11,13 @@ function Resolve-PackageVersion {
 
     $cmakeLists = Join-Path $RepoRoot "CMakeLists.txt"
     if (Test-Path $cmakeLists) {
-        $versionLine = Select-String -Path $cmakeLists -Pattern '^[ \t]*project\(\s*SSAConsultaRapidaCpp\s+VERSION\s+([0-9]+\.[0-9]+\.[0-9]+)' -AllMatches | Select-Object -First 1
-        if ($versionLine.Matches.Count -gt 0) {
-            return $versionLine.Matches[0].Groups[1].Value
+        $cmakeContent = Get-Content -LiteralPath $cmakeLists -Raw
+        $versionMatch = [regex]::Match(
+            $cmakeContent,
+            '(?m)^[ \t]*project\(\s*SSAConsultaRapidaCpp\s+VERSION\s+([0-9]+\.[0-9]+\.[0-9]+)'
+        )
+        if ($versionMatch.Success) {
+            return $versionMatch.Groups[1].Value
         }
     }
 

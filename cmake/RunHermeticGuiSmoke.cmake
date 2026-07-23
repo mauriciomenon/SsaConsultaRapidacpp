@@ -35,15 +35,24 @@ else()
   message(FATAL_ERROR "unsupported smoke MODE '${MODE}'")
 endif()
 
+set(QT_ENVIRONMENT QT_QPA_PLATFORM=offscreen QT_QUICK_CONTROLS_STYLE=Basic)
+if(WIN32)
+  list(APPEND QT_ENVIRONMENT "QT_QPA_FONTDIR=$ENV{WINDIR}/Fonts")
+endif()
+
 execute_process(
-  COMMAND "${CMAKE_COMMAND}" -E env QT_QPA_PLATFORM=offscreen
-          QT_QUICK_CONTROLS_STYLE=Basic "${APP}" ${ARGUMENTS}
+  COMMAND "${CMAKE_COMMAND}" -E env ${QT_ENVIRONMENT} "${APP}" ${ARGUMENTS}
   RESULT_VARIABLE result
   OUTPUT_VARIABLE output
   ERROR_VARIABLE error
   TIMEOUT 12)
 
 set(COMBINED "${output}${error}")
+set(LOG_FILE "${WORK_DIR}/root/config/logs/ssa.log")
+if(EXISTS "${LOG_FILE}")
+  file(READ "${LOG_FILE}" log_output)
+  string(APPEND COMBINED "${log_output}")
+endif()
 if(NOT result EQUAL 0)
   message(FATAL_ERROR "${MODE} smoke failed with ${result}\n${COMBINED}")
 endif()

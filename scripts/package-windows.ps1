@@ -60,26 +60,26 @@ $buildDir = Join-Path $repoRoot "build\$preset"
 $configureScript = Join-Path $repoRoot "tools\configure-dev.ps1"
 $version = Resolve-PackageVersion -RepoRoot $repoRoot -ExplicitVersion $Version
 $arch = Resolve-WindowsArch -RequestedArch $Arch
-$artifactRoot = Join-Path (if ($DistDir) { $DistDir } else { Join-Path $repoRoot "dist\windows" }) $arch
+$distRoot = if ($DistDir) { $DistDir } else { Join-Path $repoRoot "dist\windows" }
+$artifactRoot = Join-Path $distRoot $arch
 $artifactName = "ssa_consulta_rapida-$version-$arch-windows"
 $artifactDir = Join-Path $artifactRoot $artifactName
 $zipPath = Join-Path $artifactRoot ("{0}.zip" -f $artifactName)
 $installerPath = Join-Path $artifactRoot ("{0}-installer.exe" -f $artifactName)
 $nsiPath = Join-Path $artifactRoot "installer.nsi"
 
-$configureParams = @("-Preset", $preset)
+$configureParams = @{ Preset = $preset }
 if ($QtDir) {
-    $configureParams += @("-QtDir", $QtDir)
+    $configureParams.QtDir = $QtDir
 }
 if ($QtRoot) {
-    $configureParams += @("-QtRoot", $QtRoot)
+    $configureParams.QtRoot = $QtRoot
 }
 if ($QtSubdir) {
-    $configureParams += @("-QtSubdir", $QtSubdir)
+    $configureParams.QtSubdir = $QtSubdir
 }
 if ($CmakeExtraArgs -and $CmakeExtraArgs.Count -gt 0) {
-    $configureParams += "-CmakeExtraArgs"
-    $configureParams += $CmakeExtraArgs
+    $configureParams.CmakeExtraArgs = $CmakeExtraArgs
 }
 & $configureScript @configureParams | Out-Null
 
@@ -102,6 +102,11 @@ if (Test-Path $installerPath) {
 New-Item -ItemType Directory -Path $artifactDir -Force | Out-Null
 
 Copy-Item $binary (Join-Path $artifactDir "ssa_consulta_rapida.exe")
+$sqliteRuntime = Join-Path $buildDir "sqlite3.dll"
+if (-not (Test-Path -LiteralPath $sqliteRuntime -PathType Leaf)) {
+    throw "SQLite runtime not found after build: $sqliteRuntime"
+}
+Copy-Item $sqliteRuntime (Join-Path $artifactDir "sqlite3.dll")
 Copy-Item (Join-Path $repoRoot "resources\app_icon.ico") (Join-Path $artifactDir "app_icon.ico")
 Copy-Item (Join-Path $repoRoot "THIRD_PARTY_NOTICES.md") $artifactDir
 Copy-Item (Join-Path $repoRoot "third_party\tinted-themes\LICENSE") (Join-Path $artifactDir "TINTED_SCHEMES_LICENSE.txt")

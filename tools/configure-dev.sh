@@ -12,6 +12,9 @@ if [[ $# -gt 1 ]]; then
 fi
 preset="${1:-dev}"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(cd "${script_dir}/.." && pwd)"
+build_dir="${repo_root}/build/${preset}"
+cache_file="${build_dir}/CMakeCache.txt"
 
 # shellcheck disable=SC1091
 source "${script_dir}/qt-detect.conf"
@@ -288,7 +291,21 @@ if ! command -v c++ >/dev/null 2>&1 && ! command -v clang++ >/dev/null 2>&1 && !
 fi
 
 print_compiler_choices
+cmake_fresh_args=()
+if [[ -f "${cache_file}" ]]; then
+  cached_build_dir="$(sed -n 's/^CMAKE_CACHEFILE_DIR:INTERNAL=//p' "${cache_file}" | head -n 1)"
+  cached_generator="$(sed -n 's/^CMAKE_GENERATOR:INTERNAL=//p' "${cache_file}" | head -n 1)"
+  cached_make_program="$(sed -n 's/^CMAKE_MAKE_PROGRAM:FILEPATH=//p' "${cache_file}" | head -n 1)"
+  cached_compiler="$(sed -n 's/^CMAKE_CXX_COMPILER:FILEPATH=//p' "${cache_file}" | head -n 1)"
+  if [[ "${cached_build_dir}" != "${build_dir}" || "${cached_generator}" != "Ninja" ||
+    ! -x "${cached_make_program}" ||
+    (-n "${cached_compiler}" && ! -x "${cached_compiler}") ]]; then
+    printf 'Refreshing foreign or stale CMake cache: %s\n' "${cache_file}"
+    cmake_fresh_args+=(--fresh)
+  fi
+fi
 cmake --preset "${preset}" \
+  "${cmake_fresh_args[@]}" \
   '-UQt6*_DIR' \
   '-U*DEPLOYQT_EXECUTABLE' \
   -DCMAKE_PREFIX_PATH="${qt_dir}" \

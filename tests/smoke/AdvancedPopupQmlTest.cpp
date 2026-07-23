@@ -1303,19 +1303,23 @@ namespace {
             const auto wideTags = visibleTags();
             std::vector<qreal> widths;
             widths.reserve(static_cast<std::size_t>(wideTags.size()));
+            qreal totalNaturalWidth = 0;
             for (const auto* tag : wideTags) {
                 const qreal naturalWidth = tag->property("naturalWidth").toReal();
                 QVERIFY2(tag->width() > naturalWidth,
                          "wide summary did not distribute available width");
                 widths.push_back(tag->width());
+                totalNaturalWidth += naturalWidth;
             }
             const auto [minimumWidth, maximumWidth] = std::ranges::minmax_element(widths);
             QVERIFY2(*maximumWidth - *minimumWidth <= 1.0,
                      "wide summary did not distribute final widths symmetrically");
 
-            harnessItem->setWidth(320);
-            window.setWidth(320);
-            QTRY_COMPARE_WITH_TIMEOUT(summary->width(), 320, 1000);
+            const auto narrowWidth =
+                (std::max)(1, static_cast<int>(std::floor(totalNaturalWidth)) - 1);
+            harnessItem->setWidth(narrowWidth);
+            window.setWidth(narrowWidth);
+            QTRY_COMPARE_WITH_TIMEOUT(summary->width(), narrowWidth, 1000);
             const auto narrowTags = visibleTags();
             QCOMPARE(narrowTags.size(), 3);
             qreal narrowContentWidth = 0;

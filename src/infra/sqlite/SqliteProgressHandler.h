@@ -28,8 +28,8 @@ namespace ssa::infra::sqlite {
             SqliteSynchronizationSemaphore* busyEntered = nullptr,
             std::atomic_flag* externalBusyReported = nullptr)
             : db_(db), stopToken_(std::move(stopToken)),
-              maxRetries_(static_cast<int>(maxWait.count() / kRetryDelayMs)),
-              busyEntered_(busyEntered), externalBusyReported_(externalBusyReported) {
+              deadline_(std::chrono::steady_clock::now() + maxWait), busyEntered_(busyEntered),
+              externalBusyReported_(externalBusyReported) {
             sqlite3_busy_handler(db_, &SqliteBusyHandler::shouldRetry, this);
         }
 
@@ -55,7 +55,7 @@ namespace ssa::infra::sqlite {
       private:
         static constexpr int kRetryDelayMs = 5;
 
-        static int shouldRetry(void* context, const int retryCount) noexcept {
+        static int shouldRetry(void* context, const int) noexcept {
             auto* handler = static_cast<SqliteBusyHandler*>(context);
             auto& busyReported = handler->externalBusyReported_ != nullptr
                                      ? *handler->externalBusyReported_
@@ -64,23 +64,31 @@ namespace ssa::infra::sqlite {
                 !busyReported.test_and_set(std::memory_order_relaxed)) {
                 handler->busyEntered_->release();
             }
-            if (handler->stopToken_.stop_requested() || retryCount >= handler->maxRetries_) {
+            const auto now = std::chrono::steady_clock::now();
+            if (handler->stopToken_.stop_requested() || now >= handler->deadline_) {
                 if (handler->stopToken_.stop_requested()) {
                     handler->cancellationObserved_.store(true, std::memory_order_relaxed);
                 }
                 return 0;
             }
-            sqlite3_sleep(kRetryDelayMs);
+            const auto remaining =
+                std::chrono::duration_cast<std::chrono::milliseconds>(handler->deadline_ - now);
+            if (remaining < std::chrono::milliseconds{1}) {
+                return 0;
+            }
+            sqlite3_sleep(remaining < std::chrono::milliseconds{kRetryDelayMs}
+                              ? static_cast<int>(remaining.count())
+                              : kRetryDelayMs);
             if (handler->stopToken_.stop_requested()) {
                 handler->cancellationObserved_.store(true, std::memory_order_relaxed);
                 return 0;
             }
-            return 1;
+            return std::chrono::steady_clock::now() < handler->deadline_ ? 1 : 0;
         }
 
         sqlite3* db_ = nullptr;
         std::stop_token stopToken_;
-        int maxRetries_ = 0;
+        std::chrono::steady_clock::time_point deadline_;
         SqliteSynchronizationSemaphore* busyEntered_ = nullptr;
         std::atomic_flag* externalBusyReported_ = nullptr;
         std::atomic_bool cancellationObserved_{false};

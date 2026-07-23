@@ -50,13 +50,14 @@ namespace {
             return true;
         };
         auto rowsPerChunk = static_cast<long long>(options.rowsPerChunk);
-        auto sqliteBusyWait = options.sqliteBusyWait.count();
+        auto sqliteBusyWait = static_cast<long long>(options.sqliteBusyWait.count());
         if (!parse("import-chunk-rows", rowsPerChunk) ||
             !parse("sqlite-busy-wait-ms", sqliteBusyWait)) {
             return std::nullopt;
         }
         options.rowsPerChunk = static_cast<std::size_t>(rowsPerChunk);
-        options.sqliteBusyWait = std::chrono::milliseconds{sqliteBusyWait};
+        options.sqliteBusyWait =
+            std::chrono::milliseconds{static_cast<std::chrono::milliseconds::rep>(sqliteBusyWait)};
         if (const auto validation = options.validationError(); !validation.empty()) {
             error = "invalid import execution options: " + validation;
             return std::nullopt;

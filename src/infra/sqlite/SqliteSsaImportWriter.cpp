@@ -1128,7 +1128,13 @@ namespace ssa::infra::sqlite {
         ensureConsolidationJournalSchema(connection.handle(), busy.cancellationObserved());
         SqliteStatement erase(connection.handle(),
                               "DELETE FROM " + std::string{kConsolidationJournalTable} +
+#ifdef _WIN32
+                                  " WHERE replace(source, '/', '\\')="
+                                  "replace(?, '/', '\\') AND replace(destination, '/', '\\')="
+                                  "replace(?, '/', '\\') AND source_identity IS ? "
+#else
                                   " WHERE source=? AND destination=? AND source_identity IS ? "
+#endif
                                   "AND source_size IS ?",
                               busy.cancellationObserved());
         for (const auto& move : moves) {

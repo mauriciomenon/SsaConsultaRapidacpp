@@ -24,5 +24,10 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/.." && pwd)"
 preset="dev"
 
+# Do not inherit Windows temporary directories when invoked from WSL.
+export TMPDIR=/tmp
+export TMP=/tmp
+export TEMP=/tmp
+
 "${repo_root}/tools/configure-dev.sh" "${preset}"
 (cd "${repo_root}" && cmake --build --preset "${preset}")

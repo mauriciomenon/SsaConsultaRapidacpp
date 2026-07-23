@@ -47,22 +47,6 @@ namespace ssa::infra::importing {
             return SourceSnapshot{identity->size, modified, identity->value};
         }
 
-        bool replaceAtomically(const std::filesystem::path& source,
-                               const std::filesystem::path& destination, std::error_code& error) {
-#ifdef _WIN32
-            if (MoveFileExW(source.c_str(), destination.c_str(),
-                            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0) {
-                error.clear();
-                return true;
-            }
-            error = {static_cast<int>(GetLastError()), std::system_category()};
-            return false;
-#else
-            std::filesystem::rename(source, destination, error);
-            return !error;
-#endif
-        }
-
     } // namespace
 
     std::optional<FileIdentitySnapshot> inspectFileIdentity(const std::filesystem::path& path,
@@ -248,9 +232,9 @@ namespace ssa::infra::importing {
             }
             return {FileCopyStatus::Failed, "source changed during staged file copy"};
         }
-        const auto temporary = qt::toFileSystemPath(output.fileName());
-        if (!replaceAtomically(temporary, request.destination, error)) {
-            const auto diagnostic = "cannot publish staged file copy: " + error.message();
+        if (!output.rename(request.destination)) {
+            const auto diagnostic =
+                "cannot publish staged file copy: " + output.errorString().toStdString();
             const auto cleanupDiagnostic = removeTemporary();
             if (!cleanupDiagnostic.empty()) {
                 return {FileCopyStatus::CleanupFailed, diagnostic + "; " + cleanupDiagnostic};

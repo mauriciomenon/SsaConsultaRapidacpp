@@ -14,7 +14,7 @@ namespace ssa::app::desktop::smoke_object_names {
 
 namespace ssa::app::desktop {
 
-    class DesktopSmokeObjectNames final : public QObject {
+    class DesktopSmokeObjectNames : public QObject {
         Q_OBJECT
         QML_ELEMENT
         QML_SINGLETON

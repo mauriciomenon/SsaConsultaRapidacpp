@@ -39,6 +39,7 @@
 #include <QUrl>
 #include <QVariantMap>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -1747,9 +1748,13 @@ namespace {
             QCOMPARE(startedSpy.size(), 1);
             const auto prefetchedRequests = repository->requests();
             QCOMPARE(prefetchedRequests.size(), std::size_t{3});
-            QCOMPARE(prefetchedRequests[0].pageIndex, std::size_t{0});
-            QCOMPARE(prefetchedRequests[1].pageIndex, std::size_t{1});
-            QCOMPARE(prefetchedRequests[2].pageIndex, std::size_t{2});
+            std::vector<std::size_t> prefetchedPageIndices;
+            prefetchedPageIndices.reserve(prefetchedRequests.size());
+            for (const auto& request : prefetchedRequests) {
+                prefetchedPageIndices.push_back(request.pageIndex);
+            }
+            std::ranges::sort(prefetchedPageIndices);
+            QCOMPARE(prefetchedPageIndices, std::vector<std::size_t>({0, 1, 2}));
 
             auto second = first;
             second.pageIndex = 1;

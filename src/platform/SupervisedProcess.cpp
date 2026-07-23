@@ -59,6 +59,7 @@ namespace ssa::platform {
             }
 
             HANDLE job = nullptr;
+            std::optional<std::chrono::steady_clock::time_point> emptySince;
         };
 
         std::vector<std::shared_ptr<RegisteredTreeEntry>> processRegistry;
@@ -299,8 +300,9 @@ namespace ssa::platform {
                     InitializeProcThreadAttributeList(startup.lpAttributeList, 1, 0, &bytes) != 0;
                 valid = initialized &&
                         UpdateProcThreadAttribute(startup.lpAttributeList, 0,
-                                                  PROC_THREAD_ATTRIBUTE_JOB_LIST, &jobHandle,
-                                                  sizeof(jobHandle), nullptr, nullptr) != 0;
+                                                  PROC_THREAD_ATTRIBUTE_JOB_LIST,
+                                                  static_cast<void*>(&jobHandle), sizeof(jobHandle),
+                                                  nullptr, nullptr) != 0;
             }
 
             ~WindowsStartup() {
@@ -591,7 +593,12 @@ namespace ssa::platform {
         }
 
 #ifdef Q_OS_WIN
-        const auto residualTree = treeActive(job, processGroup);
+        auto residualTree = treeActive(job, processGroup);
+        const auto accountingDeadline = std::chrono::steady_clock::now() + kGracePeriod;
+        while (residualTree && std::chrono::steady_clock::now() < accountingDeadline) {
+            QThread::msleep(static_cast<unsigned long>(kPollInterval.count()));
+            residualTree = treeActive(job, processGroup);
+        }
         const auto stoppedResidual = !residualTree || terminateTree(process, job, processGroup);
 #else
         const auto residualTree = treeActive(processGroup);
@@ -618,6 +625,7 @@ namespace ssa::platform {
         forceStopRequested.store(true, std::memory_order_relaxed);
         bool stopped = true;
 #ifdef Q_OS_WIN
+        const auto observationTime = std::chrono::steady_clock::now();
         for (auto entry = processRegistry.begin(); entry != processRegistry.end();) {
 #ifdef SSA_SUPERVISED_PROCESS_TESTING
             const auto signaled = !stopFailureForTesting.load(std::memory_order_relaxed) &&
@@ -629,8 +637,15 @@ namespace ssa::platform {
             const auto active = jobActive((*entry)->job);
             if (!active) {
                 stopped = false;
+                (*entry)->emptySince.reset();
                 ++entry;
             } else if (*active) {
+                (*entry)->emptySince.reset();
+                ++entry;
+            } else if (!(*entry)->emptySince) {
+                (*entry)->emptySince = observationTime;
+                ++entry;
+            } else if (observationTime - *(*entry)->emptySince < kPollInterval) {
                 ++entry;
             } else {
                 entry = processRegistry.erase(entry);

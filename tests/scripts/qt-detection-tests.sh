@@ -76,6 +76,28 @@ grep -Fxq -- '-UQt6*_DIR' "${cmake_args}" || \
 grep -Fxq -- '-U*DEPLOYQT_EXECUTABLE' "${cmake_args}" || \
   fail "configure must invalidate cached Qt deployment tools"
 
+fixture_repo="${fixture_root}/repo"
+fixture_configure="${fixture_repo}/tools/configure-dev.sh"
+mkdir -p "${fixture_repo}/tools" "${fixture_repo}/build/dev"
+cp "${configure_script}" "${fixture_configure}"
+cp "${repo_root}/tools/qt-detect.conf" "${fixture_repo}/tools/qt-detect.conf"
+cat >"${fixture_repo}/build/dev/CMakeCache.txt" <<'EOF'
+CMAKE_CACHEFILE_DIR:INTERNAL=C:/Users/mauri/project/build/dev
+CMAKE_GENERATOR:INTERNAL=Ninja
+CMAKE_MAKE_PROGRAM:FILEPATH=C:/Qt/Tools/Ninja/ninja.exe
+EOF
+: >"${cmake_args}"
+HOME="${fixture_root}" \
+  QT_INSTALL_ROOT="${fixture_root}/Qt" \
+  QT_DIR='' \
+  Qt6_DIR='' \
+  CMAKE_PREFIX_PATH='' \
+  QT_TEST_CMAKE_ARGS="${cmake_args}" \
+  PATH="${mock_bin}:/usr/bin:/bin" \
+  "${fixture_configure}" dev >/dev/null 2>&1
+grep -Fxq -- '--fresh' "${cmake_args}" || \
+  fail "configure must refresh a foreign Windows cache"
+
 if HOME="${fixture_root}" \
   QT_INSTALL_ROOT="${fixture_root}/Qt" \
   QT_DIR="${fixture_root}/Qt/6.12.0/macos" \

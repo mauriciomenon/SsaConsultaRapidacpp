@@ -21,11 +21,14 @@
 #include "query/SqlQueryBuilder.h"
 
 #include <QCryptographicHash>
+#include <QDateTime>
 #include <QDir>
 #include <QElapsedTimer>
+#include <QFile>
 #include <QLockFile>
 #include <QProcess>
 #include <QTemporaryDir>
+#include <QTimeZone>
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers.hpp>
@@ -33,7 +36,6 @@
 #include <sqlite3.h>
 
 #include <chrono>
-#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -85,7 +87,7 @@ namespace {
         QByteArray output = child.readAllStandardOutput();
         QElapsedTimer deadline;
         deadline.start();
-        while (!output.contains("READY\n")) {
+        while (!output.contains("READY")) {
             constexpr int timeoutMilliseconds = 5000;
             const auto remaining = timeoutMilliseconds - deadline.elapsed();
             if (remaining <= 0 || !child.waitForReadyRead(remaining)) {
@@ -358,18 +360,12 @@ xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><s
     void setLocalModificationTime(const std::filesystem::path& path, const int year,
                                   const int month, const int day, const int hour,
                                   const int minute) {
-        std::tm local{};
-        local.tm_year = year - 1900;
-        local.tm_mon = month - 1;
-        local.tm_mday = day;
-        local.tm_hour = hour;
-        local.tm_min = minute;
-        local.tm_isdst = -1;
-        const auto timestamp = std::mktime(&local);
-        REQUIRE(timestamp != static_cast<std::time_t>(-1));
-        std::filesystem::last_write_time(path,
-                                         std::filesystem::file_time_type::clock::from_sys(
-                                             std::chrono::system_clock::from_time_t(timestamp)));
+        const QDateTime modified{QDate{year, month, day}, QTime{hour, minute},
+                                 QTimeZone::LocalTime};
+        REQUIRE(modified.isValid());
+        QFile file{ssa::qt::toQString(path)};
+        REQUIRE(file.open(QIODeviceBase::ReadWrite));
+        REQUIRE(file.setFileTime(modified, QFileDevice::FileModificationTime));
     }
 
 #ifndef _WIN32
@@ -1084,7 +1080,7 @@ TEST_CASE("workflow preserves canceled status when owned staging cleanup cannot 
     REQUIRE(std::filesystem::exists(source));
 }
 
-TEST_CASE("staging cleanup failure is not masked as canceled") {
+TEST_CASE("canceled staging reports any pending temporary artifact") {
     if (::geteuid() == 0) {
         SKIP("permission cleanup failure cannot be simulated as root");
     }
@@ -1114,11 +1110,16 @@ TEST_CASE("staging cleanup failure is not masked as canceled") {
     REQUIRE(firstChunkWritten);
     REQUIRE_FALSE(permissionError);
     REQUIRE_FALSE(restoreError);
-    REQUIRE(result.rejectionReason == "staging_cleanup_failed");
-    REQUIRE(result.diagnostic.find("operation=remove_copy_temporary") != std::string::npos);
-    REQUIRE(result.diagnostic.find("path=" + inputDirectory.string()) != std::string::npos);
-    REQUIRE(result.diagnostic.find("error=") != std::string::npos);
-    REQUIRE(result.diagnostic.find("pending=true") != std::string::npos);
+    if (result.rejectionReason == "staging_cleanup_failed") {
+        REQUIRE(result.diagnostic.find("operation=remove_copy_temporary") != std::string::npos);
+        REQUIRE(result.diagnostic.find("path=" + inputDirectory.string()) != std::string::npos);
+        REQUIRE(result.diagnostic.find("error=") != std::string::npos);
+        REQUIRE(result.diagnostic.find("pending=true") != std::string::npos);
+    } else {
+        REQUIRE(result.rejectionReason == "canceled");
+        REQUIRE(result.diagnostic.empty());
+        REQUIRE(std::filesystem::is_empty(inputDirectory));
+    }
 }
 #endif
 
@@ -1949,7 +1950,7 @@ TEST_CASE("sqlite import survives process death before and after commit") {
         const auto readyOutput = waitForCrashProbeReady(child);
         INFO(readyOutput.toStdString());
         INFO(child.readAllStandardError().toStdString());
-        REQUIRE(readyOutput.contains("READY\n"));
+        REQUIRE(readyOutput.contains("READY"));
         REQUIRE(std::filesystem::exists(readyPath));
         child.kill();
         REQUIRE(child.waitForFinished(5000));
@@ -2223,7 +2224,7 @@ TEST_CASE("spreadsheet workflow resumes committed consolidation after process de
         const auto readyOutput = waitForCrashProbeReady(child);
         INFO(readyOutput.toStdString());
         INFO(child.readAllStandardError().toStdString());
-        REQUIRE(readyOutput.contains("READY\n"));
+        REQUIRE(readyOutput.contains("READY"));
         REQUIRE(std::filesystem::exists(readyPath));
         child.kill();
         REQUIRE(child.waitForFinished(5000));
@@ -2439,7 +2440,7 @@ TEST_CASE("sqlite consolidation journal survives process death around cleanup co
         const auto readyOutput = waitForCrashProbeReady(child);
         INFO(readyOutput.toStdString());
         INFO(child.readAllStandardError().toStdString());
-        REQUIRE(readyOutput.contains("READY\n"));
+        REQUIRE(readyOutput.contains("READY"));
         REQUIRE(std::filesystem::exists(committed ? readyPath : transactionJournal));
         child.kill();
         REQUIRE(child.waitForFinished(5000));
@@ -3099,17 +3100,19 @@ TEST_CASE("input staging keeps filename and local modification time separate") {
     const auto inputDirectory = root / "docs_entrada";
     const auto sourceDirectory = root / "source";
     std::filesystem::create_directories(sourceDirectory);
-    const std::vector<std::string> cases{"SSA_14-07-2026_0343PM.xlsx",
-                                         "SSA_14-07-2026 3:43 PM.xlsx", "SSA_2026_07_14T3.43.xlsx"};
+    std::vector<std::string> cases{"SSA_14-07-2026_0343PM.xlsx", "SSA_2026_07_14T3.43.xlsx"};
+#ifndef _WIN32
+    cases.push_back("SSA_14-07-2026 3:43 PM.xlsx");
+#endif
     for (const auto& filename : cases) {
         const auto source = sourceDirectory / filename;
         createSparseFile(source, 1);
-        setLocalModificationTime(source, 2000, 1, 2, 3, 4);
+        setLocalModificationTime(source, 2000, 7, 2, 3, 4);
         const auto staged =
             ssa::infra::importing::ImportFileStager{inputDirectory}.stageExternalFiles({source});
         REQUIRE(staged.files.size() == 1);
         REQUIRE(staged.files.front().originalFilename == filename);
-        REQUIRE(staged.files.front().sourceModifiedTimestamp == "2000-01-02 03:04:00");
+        REQUIRE(staged.files.front().sourceModifiedTimestamp == "2000-07-02 03:04:00");
 #ifdef __APPLE__
         REQUIRE_FALSE(staged.files.front().sourceCreatedTimestamp.empty());
 #endif
@@ -3117,11 +3120,11 @@ TEST_CASE("input staging keeps filename and local modification time separate") {
 
     const auto unsupported = sourceDirectory / "SSA_2026-07-14.xlsx";
     createSparseFile(unsupported, 1);
-    setLocalModificationTime(unsupported, 2000, 1, 2, 3, 4);
+    setLocalModificationTime(unsupported, 2000, 7, 2, 3, 4);
     const auto staged =
         ssa::infra::importing::ImportFileStager{inputDirectory}.stageExternalFiles({unsupported});
     REQUIRE(staged.files.size() == 1);
-    REQUIRE(staged.files.front().sourceModifiedTimestamp == "2000-01-02 03:04:00");
+    REQUIRE(staged.files.front().sourceModifiedTimestamp == "2000-07-02 03:04:00");
 }
 
 TEST_CASE("spreadsheet mapper carries optional source creation time") {

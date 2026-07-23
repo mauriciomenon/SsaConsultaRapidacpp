@@ -5,10 +5,12 @@ set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 # Cache fetched dependencies outside the build directory so a clean rebuild
 # (e.g. make_clean, smoke-macos --clean) does not force a network re-download.
 # This makes the build resilient to offline / DNS failures after the first
-# successful fetch. The cache lives under <repo>/.deps-cache and is reused by
-# every preset (dev, release, dev-asan, dev-tsan, dev-cov).
+# successful fetch. Build trees are isolated by host and compiler because
+# Windows, Linux, MSVC, and MinGW CMake caches are not interchangeable.
+set(SSA_FETCHCACHE_PLATFORM
+    "${CMAKE_HOST_SYSTEM_NAME}-${CMAKE_CXX_COMPILER_ID}")
 set(SSA_FETCHCACHE_DIR
-    "${CMAKE_SOURCE_DIR}/.deps-cache"
+    "${CMAKE_SOURCE_DIR}/.deps-cache/${SSA_FETCHCACHE_PLATFORM}"
     CACHE PATH "Persistent fetch cache for third-party deps")
 set(FETCHCONTENT_BASE_DIR "${SSA_FETCHCACHE_DIR}")
 option(SSA_FETCHCONTENT_UPDATES_DISCONNECTED

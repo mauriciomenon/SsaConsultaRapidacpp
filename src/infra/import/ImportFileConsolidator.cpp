@@ -143,9 +143,9 @@ namespace ssa::infra::importing {
         DirectoryEntryState directoryEntryState(const DirectoryHandle& directory,
                                                 const std::filesystem::path& filename,
                                                 std::error_code& error) {
-            std::array<std::byte, 64 * 1024> buffer{};
+            std::array<std::byte, std::size_t{64} * 1024> buffer{};
             auto infoClass = FileIdBothDirectoryRestartInfo;
-            const auto nativeFilename = filename.native();
+            const auto& nativeFilename = filename.native();
             for (;;) {
                 if (GetFileInformationByHandleEx(directory.native(), infoClass, buffer.data(),
                                                  static_cast<DWORD>(buffer.size())) == 0) {
@@ -219,12 +219,13 @@ namespace ssa::infra::importing {
                                       : std::make_error_code(std::errc::permission_denied);
                 return false;
             }
-            const auto destinationName = destination.filename().native();
-            const DWORD nameBytes = static_cast<DWORD>(destinationName.size() * sizeof(wchar_t));
-            std::vector<std::byte> buffer(offsetof(FILE_RENAME_INFO, FileName) + nameBytes);
+            const auto& destinationName = destination.native();
+            const auto nameBytes = static_cast<DWORD>(destinationName.size() * sizeof(wchar_t));
+            std::vector<std::byte> buffer(offsetof(FILE_RENAME_INFO, FileName) + nameBytes +
+                                          sizeof(wchar_t));
             auto* rename = reinterpret_cast<FILE_RENAME_INFO*>(buffer.data());
             rename->ReplaceIfExists = FALSE;
-            rename->RootDirectory = destinationDirectory.native();
+            rename->RootDirectory = nullptr;
             rename->FileNameLength = nameBytes;
             std::memcpy(rename->FileName, destinationName.data(), nameBytes);
             const bool renamed = SetFileInformationByHandle(sourceHandle, FileRenameInfo, rename,
