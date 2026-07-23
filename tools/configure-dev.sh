@@ -2,12 +2,23 @@
 set -euo pipefail
 
 print_qt_prefix=false
-if [[ "${1-}" == "--print-qt-prefix" ]]; then
-  print_qt_prefix=true
-  shift
-fi
+check_mode=""
+case "${1-}" in
+  --print-qt-prefix)
+    print_qt_prefix=true
+    shift
+    ;;
+  --check)
+    check_mode=development
+    shift
+    ;;
+  --check-package)
+    check_mode=package
+    shift
+    ;;
+esac
 if [[ $# -gt 1 ]]; then
-  printf 'Usage: %s [--print-qt-prefix] [preset]\n' "$0" >&2
+  printf 'Usage: %s [--print-qt-prefix|--check|--check-package] [preset]\n' "$0" >&2
   exit 2
 fi
 preset="${1:-dev}"
@@ -262,9 +273,167 @@ EOF
   esac
 }
 
+command_version() {
+  local command_path="$1"
+  local output version
+  output="$("${command_path}" --version 2>/dev/null | head -n 1 || true)"
+  version="$(grep -Eo '[0-9]+([.][0-9]+){1,2}' <<<"${output}" | head -n 1 || true)"
+  printf '%s\n' "${version:-unknown}"
+}
+
+print_check_record() {
+  printf '%s %s path=%s version=%s\n' "$1" "$2" "$3" "$4"
+}
+
+print_linux_hint() {
+  if command -v pacman >/dev/null 2>&1; then
+    printf '%s\n' 'HINT dependencies sudo pacman -S --needed base-devel cmake ninja pkgconf sqlite'
+  else
+    printf '%s\n' 'HINT dependencies sudo apt install -y build-essential cmake ninja-build pkg-config libsqlite3-dev'
+  fi
+}
+
+print_check_hint() {
+  local dependency="$1"
+  case "$(uname -s)" in
+    Darwin)
+      printf 'HINT %s brew install qt cmake ninja sqlite\n' "${dependency}"
+      ;;
+    Linux)
+      print_linux_hint
+      if [[ "${dependency}" == "qt" ]]; then
+        printf '%s\n' 'HINT qt Qt 6.11.x: https://www.qt.io/download-qt-installer-oss'
+      fi
+      ;;
+    *)
+      printf 'HINT %s install the required tool for this platform\n' "${dependency}"
+      ;;
+  esac
+}
+
+check_command_dependency() {
+  local dependency="$1"
+  local command_name="$2"
+  local command_path
+  if command_path="$(command -v "${command_name}" 2>/dev/null)"; then
+    print_check_record OK "${dependency}" "${command_path}" "$(command_version "${command_path}")"
+    return 0
+  fi
+  print_check_record MISSING "${dependency}" - -
+  print_check_hint "${dependency}"
+  return 1
+}
+
+check_qt_dependency() {
+  local candidate="" version=""
+  if [[ -n "${QT_DIR:-}" ]]; then
+    candidate="$(qt_prefix_from_cmake_dir "${QT_DIR}")"
+  elif [[ -n "${Qt6_DIR:-}" ]]; then
+    candidate="$(qt_prefix_from_cmake_dir "${Qt6_DIR}")"
+  fi
+
+  if [[ -n "${candidate}" ]]; then
+    if ! is_qt_prefix "${candidate}"; then
+      print_check_record MISSING qt "${candidate}" -
+      print_check_hint qt
+      return 1
+    fi
+    version="$(qt_version_for_prefix "${candidate}" || true)"
+    if [[ -z "${version}" ]] || ! qt_version_matches_family "${version}"; then
+      print_check_record UNSUPPORTED qt "${candidate}" "${version:-unknown}"
+      print_check_hint qt
+      return 1
+    fi
+  elif candidate="$(detect_qt_dir 2>/dev/null)"; then
+    version="$(qt_version_for_prefix "${candidate}" || true)"
+  else
+    print_check_record MISSING qt - -
+    print_check_hint qt
+    return 1
+  fi
+
+  checked_qt_dir="${candidate}"
+  print_check_record OK qt "${candidate}" "${version}"
+}
+
+check_sqlite_dependency() {
+  local version path
+  if command -v pkg-config >/dev/null 2>&1 && pkg-config --exists sqlite3; then
+    version="$(pkg-config --modversion sqlite3)"
+    path="$(pkg-config --variable=includedir sqlite3)"
+    print_check_record OK sqlite "${path}" "${version}"
+    return 0
+  fi
+  print_check_record MISSING sqlite - -
+  print_check_hint sqlite
+  return 1
+}
+
+run_dependency_check() {
+  local failed=0 compiler=""
+  checked_qt_dir=""
+  check_qt_dependency || failed=1
+  check_command_dependency cmake cmake || failed=1
+  check_command_dependency ninja ninja || failed=1
+  for compiler in "${CXX:-}" c++ clang++ g++; do
+    [[ -n "${compiler}" ]] || continue
+    if command -v "${compiler}" >/dev/null 2>&1; then
+      break
+    fi
+    compiler=""
+  done
+  if [[ -n "${compiler}" ]]; then
+    compiler="$(command -v "${compiler}")"
+    print_check_record OK compiler "${compiler}" "$(command_version "${compiler}")"
+  else
+    print_check_record MISSING compiler - -
+    print_check_hint compiler
+    failed=1
+  fi
+  check_sqlite_dependency || failed=1
+
+  if [[ "${check_mode}" == "package" ]]; then
+    case "$(uname -s)" in
+      Darwin)
+        if [[ -x "${checked_qt_dir}/bin/macdeployqt" ]]; then
+          print_check_record OK package-macdeployqt "${checked_qt_dir}/bin/macdeployqt" "$(command_version "${checked_qt_dir}/bin/macdeployqt")"
+        else
+          print_check_record MISSING package-macdeployqt - -
+          print_check_hint package-macdeployqt
+          failed=1
+        fi
+        check_command_dependency package-ditto ditto || failed=1
+        check_command_dependency package-lipo lipo || failed=1
+        check_command_dependency package-hdiutil hdiutil || failed=1
+        check_command_dependency package-codesign codesign || failed=1
+        ;;
+      Linux)
+        check_command_dependency package-tar tar || failed=1
+        check_command_dependency package-file file || failed=1
+        if command -v pacman >/dev/null 2>&1; then
+          check_command_dependency package-makepkg makepkg || failed=1
+        else
+          check_command_dependency package-dpkg dpkg-deb || failed=1
+          check_command_dependency package-fakeroot fakeroot || failed=1
+        fi
+        ;;
+      *)
+        print_check_record UNSUPPORTED package-platform "$(uname -s)" -
+        failed=1
+        ;;
+    esac
+  fi
+  return "${failed}"
+}
+
 if [[ -z "${QT_VERSION:-}" || -z "${QT_VERSION_FAMILY:-}" ]]; then
   printf 'Missing required variable: QT_VERSION or QT_VERSION_FAMILY\n' >&2
   exit 1
+fi
+
+if [[ -n "${check_mode}" ]]; then
+  run_dependency_check
+  exit $?
 fi
 
 qt_dir=""

@@ -34,14 +34,34 @@ Defaults:
   Latest pointers: symbolic links when permitted, copied fallback otherwise.
 
   Generated files:
-  - ssa_consulta_rapida-<version>-<arch>-windows.zip
-  - latest-binary points to the portable application executable
-  - run-ssa_consulta_rapida.bat for quick start from extracted zip
-  - Optional: installer .exe when MakeNSIS is installed
-    - ssa_consulta_rapida-<version>-<arch>-windows-installer.exe
-    - latest.exe points to the installer only when it exists
+  - final\<repo-name>.exe (single portable executable)
+  - final\<repo-name>-installer.exe
+  - final\<repo-name>.zip
+  - versioned copies are created only from a clean matching Git tag
 "@
     Write-Output $helpText
+}
+
+function Resolve-MakeNsisPath {
+    $command = Get-Command "makensis.exe" -ErrorAction SilentlyContinue
+    if ($command) {
+        return $command.Source
+    }
+
+    $candidates = @()
+    if ($env:NSIS_HOME) { $candidates += Join-Path $env:NSIS_HOME "makensis.exe" }
+    if ($env:NSISDIR) { $candidates += Join-Path $env:NSISDIR "makensis.exe" }
+    if ($env:ProgramFiles) { $candidates += Join-Path $env:ProgramFiles "NSIS\makensis.exe" }
+    if (${env:ProgramFiles(x86)}) {
+        $candidates += Join-Path ${env:ProgramFiles(x86)} "NSIS\makensis.exe"
+    }
+    $candidates += "C:\Tools\NSIS\makensis.exe"
+    foreach ($candidate in $candidates) {
+        if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+            return $candidate
+        }
+    }
+    return $null
 }
 
 if ($Help) {
@@ -57,33 +77,42 @@ $commonHelpers = Join-Path $scriptDir "lib\package_common.ps1"
 $preset = if ($Preset) { $Preset } else { "release" }
 $buildDir = Join-Path $repoRoot "build\$preset"
 
-$configureScript = Join-Path $repoRoot "tools\configure-dev.ps1"
+$buildScript = Join-Path $repoRoot "scripts\build-windows.ps1"
 $version = Resolve-PackageVersion -RepoRoot $repoRoot -ExplicitVersion $Version
 $arch = Resolve-WindowsArch -RequestedArch $Arch
+$repoName = Split-Path $repoRoot -Leaf
 $distRoot = if ($DistDir) { $DistDir } else { Join-Path $repoRoot "dist\windows" }
 $artifactRoot = Join-Path $distRoot $arch
-$artifactName = "ssa_consulta_rapida-$version-$arch-windows"
+$artifactName = "$repoName-windows-$arch-$version"
 $artifactDir = Join-Path $artifactRoot $artifactName
 $zipPath = Join-Path $artifactRoot ("{0}.zip" -f $artifactName)
 $installerPath = Join-Path $artifactRoot ("{0}-installer.exe" -f $artifactName)
-$nsiPath = Join-Path $artifactRoot "installer.nsi"
+$finalRoot = Join-Path $artifactRoot "final"
+$portableStagePath = Join-Path $artifactRoot ".$repoName-portable-$PID.exe"
+$portableNsiPath = Join-Path $artifactRoot ".$repoName-portable-$PID.nsi"
+$installerNsiPath = Join-Path $artifactRoot ".$repoName-installer-$PID.nsi"
+$makeNsisPath = Resolve-MakeNsisPath
+if (-not $makeNsisPath) {
+    throw "MakeNSIS not found. NSIS is required for the portable EXE and installer."
+}
 
-$configureParams = @{ Preset = $preset }
+$buildParams = @{ Preset = $preset; ProjectRoot = $repoRoot }
 if ($QtDir) {
-    $configureParams.QtDir = $QtDir
+    $buildParams.QtDir = $QtDir
 }
 if ($QtRoot) {
-    $configureParams.QtRoot = $QtRoot
+    $buildParams.QtRoot = $QtRoot
 }
 if ($QtSubdir) {
-    $configureParams.QtSubdir = $QtSubdir
+    $buildParams.QtSubdir = $QtSubdir
 }
 if ($CmakeExtraArgs -and $CmakeExtraArgs.Count -gt 0) {
-    $configureParams.CmakeExtraArgs = $CmakeExtraArgs
+    $buildParams.CmakeExtraArgs = $CmakeExtraArgs
 }
-& $configureScript @configureParams | Out-Null
-
-cmake --build --preset $preset
+if ($SkipTests) {
+    $buildParams.Target = "ssa_consulta_rapida"
+}
+& $buildScript @buildParams
 if (-not $SkipTests) {
     ctest --preset $preset --output-on-failure
 }
@@ -99,6 +128,8 @@ if (Test-Path $artifactDir) {
 if (Test-Path $installerPath) {
     Remove-Item $installerPath -Force
 }
+Get-Item -LiteralPath $portableStagePath, $portableNsiPath, $installerNsiPath -Force -ErrorAction SilentlyContinue |
+    Remove-Item -Force
 New-Item -ItemType Directory -Path $artifactDir -Force | Out-Null
 
 Copy-Item $binary (Join-Path $artifactDir "ssa_consulta_rapida.exe")
@@ -202,8 +233,41 @@ if (-not $tarCommand) {
 
 Set-LatestArtifactLink -DistRoot $artifactRoot -ArtifactDir $artifactDir
 Set-LatestArtifactAlias -DistRoot $artifactRoot -AliasName "latest.zip" -TargetPath $zipPath
-Set-LatestArtifactAlias -DistRoot $artifactRoot -AliasName "latest-binary" -TargetPath (Join-Path $artifactDir "ssa_consulta_rapida.exe")
-Set-LatestArtifactAlias -DistRoot $artifactRoot -AliasName "latest-run.bat" -TargetPath (Join-Path $artifactDir "run-ssa_consulta_rapida.bat")
+
+$portableNsisScript = @"
+!include "FileFunc.nsh"
+Name "SSA Consulta Rapida Cpp Portable"
+OutFile "$portableStagePath"
+RequestExecutionLevel user
+SilentInstall silent
+AutoCloseWindow true
+Icon "$artifactDir\app_icon.ico"
+SetCompressor /SOLID lzma
+Section
+InitPluginsDir
+SetOutPath "`$PLUGINSDIR\app"
+File /r "$artifactDir\*.*"
+`${GetParameters} `$0
+ExecWait '"`$PLUGINSDIR\app\ssa_consulta_rapida.exe" `$0' `$1
+SetErrorLevel `$1
+SectionEnd
+"@
+Set-Content -Path $portableNsiPath -Value $portableNsisScript -Encoding UTF8
+& $makeNsisPath $portableNsiPath | Out-Null
+if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $portableStagePath -PathType Leaf)) {
+    throw "MakeNSIS failed to generate the portable executable: $portableStagePath"
+}
+
+$uninstallFileCommands = @(Get-ChildItem -LiteralPath $artifactDir -File -Recurse | ForEach-Object {
+        $relativePath = $_.FullName.Substring($artifactDir.Length).TrimStart('\')
+        'Delete "$INSTDIR\{0}"' -f $relativePath
+    }) -join "`r`n"
+$uninstallDirectoryCommands = @(Get-ChildItem -LiteralPath $artifactDir -Directory -Recurse |
+    Sort-Object { $_.FullName.Length } -Descending |
+    ForEach-Object {
+        $relativePath = $_.FullName.Substring($artifactDir.Length).TrimStart('\')
+        'RMDir "$INSTDIR\{0}"' -f $relativePath
+    }) -join "`r`n"
 
 $nsisScript = @"
 !define APP_NAME "SSA Consulta Rapida"
@@ -212,33 +276,82 @@ $nsisScript = @"
 !define APP_EXE "ssa_consulta_rapida.exe"
 !define APP_DIR "$artifactDir"
 
+Name "`${APP_NAME}"
 OutFile "$installerPath"
 InstallDir "`$PROGRAMFILES64\ssa-consulta-rapida-cpp"
 RequestExecutionLevel admin
+SetCompressor /SOLID lzma
 Page directory
 Page instfiles
+UninstPage uninstConfirm
+UninstPage instfiles
+Function un.onInit
+SetRegView 64
+ReadRegStr `$0 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\SSAConsultaRapida" "InstallLocation"
+StrCmp `$0 "`$INSTDIR" valid_install
+MessageBox MB_ICONSTOP|MB_OK "Installer identity mismatch. Uninstall aborted."
+Abort
+valid_install:
+FunctionEnd
 Section
 SetOutPath "`$INSTDIR"
 File /r "$artifactDir\*.*"
-CreateShortCut "`$DESKTOP\\${APP_NAME}.lnk" "`$INSTDIR\\ssa_consulta_rapida.exe" "" "`$INSTDIR\\app_icon.ico"
+CreateShortCut "`$DESKTOP\\`${APP_NAME}.lnk" "`$INSTDIR\\ssa_consulta_rapida.exe" "" "`$INSTDIR\\app_icon.ico"
+WriteUninstaller "`$INSTDIR\\uninstall.exe"
+SetRegView 64
+WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\SSAConsultaRapida" "DisplayName" "`${APP_NAME}"
+WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\SSAConsultaRapida" "DisplayVersion" "`${APP_VERSION}"
+WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\SSAConsultaRapida" "Publisher" "`${APP_PUBLISHER}"
+WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\SSAConsultaRapida" "DisplayIcon" "`$INSTDIR\\app_icon.ico"
+WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\SSAConsultaRapida" "InstallLocation" "`$INSTDIR"
+WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\SSAConsultaRapida" "UninstallString" '"`$INSTDIR\\uninstall.exe"'
+SectionEnd
+Section "Uninstall"
+SetRegView 64
+Delete "`$DESKTOP\\`${APP_NAME}.lnk"
+$uninstallFileCommands
+Delete "`$INSTDIR\\uninstall.exe"
+DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\SSAConsultaRapida"
+$uninstallDirectoryCommands
+RMDir "`$INSTDIR"
 SectionEnd
 "@
 
-$makeNsis = Get-Command "makensis.exe" -ErrorAction SilentlyContinue
-if ($makeNsis) {
-    if (-not $hasQtCore) {
-        Write-Warning "Skipping installer because required Qt runtime DLLs were not staged."
-    } else {
-        Set-Content -Path $nsiPath -Value $nsisScript -Encoding UTF8
-        & $makeNsis.Source $nsiPath | Out-Null
-        Remove-Item $nsiPath -Force
-    }
+if (-not $hasQtCore) {
+    throw "Required Qt runtime DLLs were not staged for the installer."
+}
+Set-Content -Path $installerNsiPath -Value $nsisScript -Encoding UTF8
+& $makeNsisPath $installerNsiPath | Out-Null
+if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $installerPath -PathType Leaf)) {
+    throw "MakeNSIS failed to generate the installer: $installerPath"
 }
 
-if (Test-Path $installerPath) {
-    Set-LatestArtifactAlias -DistRoot $artifactRoot -AliasName "latest.exe" -TargetPath $installerPath
-    Set-LatestArtifactAlias -DistRoot $artifactRoot -AliasName "latest-installer.exe" -TargetPath $installerPath
-}
+$taggedRelease = Test-ExactReleaseTag -RepoRoot $repoRoot -Version $version
+Publish-FinalArtifact -SourcePath $portableStagePath -FinalRoot $finalRoot `
+    -LatestName "$repoName.exe" -VersionedName "$repoName-$version.exe" `
+    -TaggedRelease $taggedRelease
+Publish-FinalArtifact -SourcePath $installerPath -FinalRoot $finalRoot `
+    -LatestName "$repoName-installer.exe" `
+    -VersionedName "$repoName-installer-$version.exe" `
+    -TaggedRelease $taggedRelease
+Publish-FinalArtifact -SourcePath $zipPath -FinalRoot $finalRoot `
+    -LatestName "$repoName.zip" -VersionedName "$repoName-$version.zip" `
+    -TaggedRelease $taggedRelease
+
+$finalPortablePath = Join-Path $finalRoot "$repoName.exe"
+Set-LatestArtifactAlias -DistRoot $artifactRoot -AliasName "latest-binary" `
+    -TargetPath $finalPortablePath
+Set-LatestArtifactAlias -DistRoot $artifactRoot -AliasName "latest.exe" `
+    -TargetPath $installerPath
+Set-LatestArtifactAlias -DistRoot $artifactRoot -AliasName "latest-installer.exe" `
+    -TargetPath $installerPath
+Set-Content -Path (Join-Path $artifactRoot "latest-run.bat") -Value @"
+@echo off
+setlocal
+"%~dp0final\$repoName.exe" %*
+"@ -Encoding UTF8
+Get-Item -LiteralPath $portableStagePath, $portableNsiPath, $installerNsiPath -Force -ErrorAction SilentlyContinue |
+    Remove-Item -Force
 
 Write-Output "Windows release artifacts generated:"
 Write-Output "  project_root: $repoRoot"
@@ -250,8 +363,8 @@ Write-Output "  latest_zip: $artifactRoot/latest.zip"
 Write-Output "  latest_binary: $artifactRoot/latest-binary"
 Write-Output "  latest_run: $artifactRoot/latest-run.bat"
 Write-Output "  latest: $artifactRoot/latest"
-if (Test-Path $installerPath) {
-    Write-Output "  latest_exe: $artifactRoot/latest.exe"
-    Write-Output "  latest_installer: $artifactRoot/latest-installer.exe"
-    Write-Output "  installer: $installerPath"
-}
+Write-Output "  latest_exe: $artifactRoot/latest.exe"
+Write-Output "  latest_installer: $artifactRoot/latest-installer.exe"
+Write-Output "  installer: $installerPath"
+Write-Output "  final_root: $finalRoot"
+Write-Output "  tagged_release: $taggedRelease"

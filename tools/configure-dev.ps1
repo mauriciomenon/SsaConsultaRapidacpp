@@ -6,7 +6,9 @@ param(
     [string]$SQLiteRoot,
     [string]$Preset = "dev",
     [string[]]$CmakeExtraArgs = @(),
-    [switch]$PrintQtSelection
+    [switch]$PrintQtSelection,
+    [switch]$Check,
+    [switch]$CheckPackage
 )
 
 $ErrorActionPreference = "Stop"
@@ -408,8 +410,11 @@ function Find-SqliteRoot {
     param([string]$ExplicitSQLiteRoot)
 
     $normalizedExplicit = ConvertTo-NormalizedPath $ExplicitSQLiteRoot
-    if ($normalizedExplicit -and (Test-SqlitePrefix $normalizedExplicit)) {
-        return $normalizedExplicit
+    if ($normalizedExplicit) {
+        if (Test-SqlitePrefix $normalizedExplicit) {
+            return $normalizedExplicit
+        }
+        return $null
     }
 
     return Find-SqliteFromKnownPath @(
@@ -417,6 +422,215 @@ function Find-SqliteRoot {
         $env:SQLITE_ROOT,
         (Find-SqliteFromVcpkg)
     )
+}
+
+function Write-DependencyRecord {
+    param(
+        [string]$Status,
+        [string]$Dependency,
+        [string]$Path,
+        [string]$Version
+    )
+    Write-Output "$Status $Dependency path=$Path version=$Version"
+}
+
+function Get-CommandVersion {
+    param([System.Management.Automation.CommandInfo]$Command)
+    $version = $Command.Version
+    if ($version) {
+        return $version.ToString()
+    }
+    if ($Command.Source -and (Test-Path $Command.Source)) {
+        $fileVersion = (Get-Item $Command.Source).VersionInfo.ProductVersion
+        if ($fileVersion) {
+            return $fileVersion
+        }
+    }
+    return "unknown"
+}
+
+function Write-WindowsHint {
+    param([string]$Dependency)
+    switch ($Dependency) {
+        "qt" { Write-Output "HINT qt https://www.qt.io/download-qt-installer-oss" }
+        "compiler" { Write-Output "HINT compiler https://visualstudio.microsoft.com/downloads/" }
+        "cmake" { Write-Output "HINT cmake https://cmake.org/download/" }
+        "ninja" { Write-Output "HINT ninja https://github.com/ninja-build/ninja/releases" }
+        "sqlite" { Write-Output "HINT sqlite vcpkg install sqlite3:$(Get-DefaultVcpkgTriplet)" }
+        "nsis" { Write-Output "HINT nsis https://nsis.sourceforge.io/Download" }
+    }
+}
+
+function Write-CommandCheck {
+    param(
+        [string]$Dependency,
+        [string]$Name
+    )
+    $command = Get-Command $Name -ErrorAction SilentlyContinue
+    if ($command) {
+        Write-DependencyRecord -Status "OK" -Dependency $Dependency -Path $command.Source -Version (Get-CommandVersion $command)
+        return
+    }
+    Write-DependencyRecord -Status "MISSING" -Dependency $Dependency -Path "-" -Version "-"
+    Write-WindowsHint $Dependency
+    $script:checkFailed = $true
+}
+
+function Find-VisualStudioInstallation {
+    $vswhere = Get-Command "vswhere.exe" -ErrorAction SilentlyContinue
+    if (-not $vswhere -and ${env:ProgramFiles(x86)}) {
+        $candidate = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+        if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+            $vswhere = Get-Item -LiteralPath $candidate
+        }
+    }
+    if ($vswhere) {
+        $vswherePath = if ($vswhere.Source) { $vswhere.Source } else { $vswhere.FullName }
+        $installation = & $vswherePath -latest -prerelease -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath |
+            Select-Object -First 1
+        if ($installation) {
+            return $installation.Trim()
+        }
+    }
+
+    $vsSetup = Get-Module -ListAvailable VSSetup | Select-Object -First 1
+    if ($vsSetup) {
+        Import-Module $vsSetup -ErrorAction Stop
+        $instance = Get-VSSetupInstance -All | Select-VSSetupInstance -Latest
+        if ($instance) {
+            return $instance.InstallationPath
+        }
+    }
+
+    if ($env:ProgramFiles) {
+        $devShell = Get-ChildItem -Path (Join-Path $env:ProgramFiles 'Microsoft Visual Studio\*\*\Common7\Tools\Microsoft.VisualStudio.DevShell.dll') -File -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1
+        if ($devShell) {
+            return $devShell.Directory.Parent.Parent.FullName
+        }
+    }
+    return $null
+}
+
+function Find-NsisCommand {
+    $command = Get-Command "makensis.exe" -ErrorAction SilentlyContinue
+    if ($command) {
+        return $command.Source
+    }
+    $candidates = @()
+    if ($env:NSIS_HOME) { $candidates += Join-Path $env:NSIS_HOME "makensis.exe" }
+    if ($env:NSISDIR) { $candidates += Join-Path $env:NSISDIR "makensis.exe" }
+    if ($env:ProgramFiles) { $candidates += Join-Path $env:ProgramFiles "NSIS\makensis.exe" }
+    if (${env:ProgramFiles(x86)}) {
+        $candidates += Join-Path ${env:ProgramFiles(x86)} "NSIS\makensis.exe"
+    }
+    $candidates += "C:\Tools\NSIS\makensis.exe"
+    foreach ($candidate in $candidates) {
+        if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+            return $candidate
+        }
+    }
+    return $null
+}
+
+function Invoke-DependencyCheck {
+    param(
+        [string]$EffectiveQtRoot,
+        [switch]$IncludePackage
+    )
+    $selection = $null
+    $script:checkFailed = $false
+    try {
+        $selection = Find-QtSelection -ExplicitQtDir $QtDir -Root $EffectiveQtRoot -RequestedSubdir $QtSubdir
+    } catch {
+        $candidate = ConvertFrom-QtCmakeDir $QtDir
+        $version = if ($candidate) { Get-QtVersionForPrefix $candidate } else { $null }
+        if ($candidate -and $version -and -not (Test-QtVersionFamily $version)) {
+            Write-DependencyRecord -Status "UNSUPPORTED" -Dependency "qt" -Path $candidate -Version $version.ToString()
+        } else {
+            $detectedPath = if ($candidate) { $candidate } else { "-" }
+            $detectedVersion = if ($version) { $version.ToString() } else { "-" }
+            Write-DependencyRecord -Status "UNSUPPORTED" -Dependency "qt" -Path $detectedPath -Version $detectedVersion
+        }
+        Write-WindowsHint "qt"
+        $script:checkFailed = $true
+    }
+    if ($selection) {
+        Write-DependencyRecord -Status "OK" -Dependency "qt" -Path $selection.Path -Version $selection.Version.ToString()
+    } elseif (-not $QtDir) {
+        Write-DependencyRecord -Status "MISSING" -Dependency "qt" -Path "-" -Version "-"
+        Write-WindowsHint "qt"
+        $script:checkFailed = $true
+    }
+
+    Write-CommandCheck -Dependency "cmake" -Name "cmake"
+    Write-CommandCheck -Dependency "ninja" -Name "ninja"
+
+    $compiler = if ($selection) { Get-CompilerForQtSelection -Selection $selection -Root $EffectiveQtRoot } else { $null }
+    if (-not $compiler -and $selection -and $selection.Subdir -like "msvc*") {
+        $vsInstallation = Find-VisualStudioInstallation
+        if ($vsInstallation) {
+            $cl = Get-ChildItem -Path (Join-Path $vsInstallation 'VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe') -File -ErrorAction SilentlyContinue |
+                Sort-Object FullName -Descending |
+                Select-Object -First 1
+            if ($cl) {
+                $compiler = [PSCustomObject]@{
+                    C = ""
+                    Cxx = $cl.FullName
+                    BinDir = ""
+                    Name = "MSVC"
+                }
+            }
+        }
+    }
+    if ($compiler) {
+        $compilerCommand = if ($compiler.Cxx) { $compiler.Cxx } else { (Get-Command "cl.exe").Source }
+        $compilerVersion = if ($selection.Subdir -like "msvc*") {
+            (Get-Item -LiteralPath $compilerCommand).VersionInfo.ProductVersion
+        } else {
+            $compiler.Name
+        }
+        Write-DependencyRecord -Status "OK" -Dependency "compiler" -Path $compilerCommand -Version $(if ($compilerVersion) { $compilerVersion } else { "unknown" })
+    } else {
+        Write-DependencyRecord -Status "MISSING" -Dependency "compiler" -Path "-" -Version "-"
+        Write-WindowsHint "compiler"
+        $script:checkFailed = $true
+    }
+
+    $sqlite = Find-SqliteRoot -ExplicitSQLiteRoot $SQLiteRoot
+    if ($sqlite) {
+        $versionLine = Select-String -Path (Join-Path $sqlite "include\sqlite3.h") -Pattern '^#define SQLITE_VERSION\s+"([0-9.]+)"' |
+            Select-Object -First 1
+        $sqliteVersion = if ($versionLine) { $versionLine.Matches[0].Groups[1].Value } else { "unknown" }
+        Write-DependencyRecord -Status "OK" -Dependency "sqlite" -Path $sqlite -Version $sqliteVersion
+    } else {
+        Write-DependencyRecord -Status "MISSING" -Dependency "sqlite" -Path "-" -Version "-"
+        Write-WindowsHint "sqlite"
+        $script:checkFailed = $true
+    }
+
+    if ($IncludePackage) {
+        $winDeployQt = if ($selection) { Join-Path $selection.Path "bin\windeployqt.exe" } else { $null }
+        if ($winDeployQt -and (Test-Path -LiteralPath $winDeployQt -PathType Leaf)) {
+            Write-DependencyRecord -Status "OK" -Dependency "windeployqt" -Path $winDeployQt -Version $selection.Version.ToString()
+        } else {
+            Write-DependencyRecord -Status "MISSING" -Dependency "windeployqt" -Path "-" -Version "-"
+            Write-WindowsHint "qt"
+            $script:checkFailed = $true
+        }
+        Write-CommandCheck -Dependency "robocopy" -Name "robocopy.exe"
+        Write-CommandCheck -Dependency "tar" -Name "tar.exe"
+        $nsis = Find-NsisCommand
+        if ($nsis) {
+            $nsisVersion = (Get-Item -LiteralPath $nsis).VersionInfo.ProductVersion
+            Write-DependencyRecord -Status "OK" -Dependency "nsis" -Path $nsis -Version $(if ($nsisVersion) { $nsisVersion } else { "unknown" })
+        } else {
+            Write-DependencyRecord -Status "MISSING" -Dependency "nsis" -Path "-" -Version "-"
+            Write-WindowsHint "nsis"
+            $script:checkFailed = $true
+        }
+    }
 }
 
 function Confirm-ClangFormat {
@@ -453,6 +667,20 @@ $effectiveQtRoot = if ($QtRoot) {
     ConvertTo-NormalizedPath $env:QT_INSTALL_ROOT
 } else {
     "C:\Qt"
+}
+if ($Check -or $CheckPackage) {
+    if (-not (($env:PATHEXT -split ';') -contains '.EXE')) {
+        $machinePathExt = [Environment]::GetEnvironmentVariable('PATHEXT', 'Machine')
+        if (-not $machinePathExt -or -not (($machinePathExt -split ';') -contains '.EXE')) {
+            throw 'PATHEXT does not contain .EXE in the process or Machine environment.'
+        }
+        $env:PATHEXT = $machinePathExt
+    }
+    Invoke-DependencyCheck -EffectiveQtRoot $effectiveQtRoot -IncludePackage:$CheckPackage
+    if ($script:checkFailed) {
+        throw "Dependency check failed. Review MISSING and UNSUPPORTED records."
+    }
+    return
 }
 $selection = Find-QtSelection -ExplicitQtDir $QtDir -Root $effectiveQtRoot -RequestedSubdir $QtSubdir
 if (-not $selection) {

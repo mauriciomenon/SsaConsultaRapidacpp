@@ -6,8 +6,7 @@ show_help() {
 Usage:
   ./scripts/package-linux.sh [--preset <preset>] [--arch <arch>] [--dist-dir <dir>] [--project-root <dir>] [--version <version>] [--skip-tests]
 
-Build and package Linux release artifacts as a self contained tarball with no
-arguments.
+Build and package Linux release artifacts with no arguments.
 
 Defaults:
   Preset: release
@@ -23,11 +22,9 @@ Parameters:
   --skip-tests
 
 Generated files:
-  - ssa_consulta_rapida-<version>-<arch>-linux.tar.gz
-  - dist/linux/<arch>/ssa_consulta_rapida-<version>-<arch>-linux/ssa_consulta_rapida
-  - dist/linux/<arch>/ssa_consulta_rapida-<version>-<arch>-linux/run-ssa_consulta_rapida.sh
-  - dist/linux/<arch>/ssa_consulta_rapida-<version>-<arch>-linux/bin/ssa_consulta_rapida (raw binary)
-  - dist/linux/<arch>/ssa_consulta_rapida-<version>-<arch>-linux/lib/<runtime libs>
+  - final/<repo-name> (single self-extracting executable)
+  - final/<repo-name>.zip
+  - versioned copies are created only from a clean matching Git tag
 EOF
 }
 
@@ -111,14 +108,20 @@ if [[ -z "${version}" ]]; then
 fi
 
 build_dir="${repo_root}/build/${preset}"
-artifact_name="ssa_consulta_rapida-${version}-${arch}-linux"
+repo_name="$(package_repo_name "${repo_root}")"
+artifact_name="${repo_name}-linux-${arch}-${version}"
 artifact_root="${dist_root}/${artifact_name}"
 archive_path="${dist_root}/${artifact_name}.tar.gz"
+final_root="${dist_root}/final"
+direct_stage="${dist_root}/.${repo_name}.$$.direct"
+zip_stage="${dist_root}/.${repo_name}.$$.zip"
 
 "${repo_root}/tools/configure-dev.sh" "${preset}"
-cmake --build --preset "${preset}"
 if [[ "${run_tests}" == "true" ]]; then
+  cmake --build --preset "${preset}"
   ctest --preset "${preset}" --output-on-failure
+else
+  cmake --build --preset "${preset}" --target ssa_consulta_rapida
 fi
 
 binary="${build_dir}/ssa_consulta_rapida"
@@ -197,6 +200,23 @@ Binary:
 EOF_README
 
 tar -czf "${archive_path}" -C "${dist_root}" "${artifact_name}"
+package_create_linux_direct_executable "${artifact_root}" "${direct_stage}"
+(
+  cd "${dist_root}"
+  zip -qr "${zip_stage}" "${artifact_name}"
+)
+
+tagged_release="false"
+if package_is_exact_release_tag "${repo_root}" "${version}"; then
+  tagged_release="true"
+fi
+package_publish_final_artifact \
+  "${direct_stage}" "${final_root}" "${repo_name}" \
+  "${repo_name}-${version}" "${tagged_release}"
+package_publish_final_artifact \
+  "${zip_stage}" "${final_root}" "${repo_name}.zip" \
+  "${repo_name}-${version}.zip" "${tagged_release}"
+rm -f "${direct_stage}" "${zip_stage}"
 
 cat <<EOF_REPORT
 Linux release artifacts generated:
@@ -210,4 +230,6 @@ Linux release artifacts generated:
   latest_binary: ${dist_root}/latest-binary
   latest_run: ${dist_root}/latest-run.sh
   latest: ${dist_root}/latest
+  final_root: ${final_root}
+  tagged_release: ${tagged_release}
 EOF_REPORT

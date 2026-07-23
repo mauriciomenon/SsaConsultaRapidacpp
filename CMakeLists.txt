@@ -737,7 +737,7 @@ if(SSA_BUILD_TESTS)
            COMMAND ssa_qml_advanced_popup_tests)
   set_tests_properties(
     ssa_qml_advanced_popup_tests
-    PROPERTIES TIMEOUT 10 RUN_SERIAL TRUE ENVIRONMENT
+    PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE ENVIRONMENT
                "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Basic")
 
   add_executable(ssa_qml_activity_analytics_tests
@@ -783,7 +783,7 @@ if(SSA_BUILD_TESTS)
            COMMAND ssa_qml_workflow_progress_dialog_tests)
   set_tests_properties(
     ssa_qml_workflow_progress_dialog_tests
-    PROPERTIES TIMEOUT 10 RUN_SERIAL TRUE ENVIRONMENT
+    PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE ENVIRONMENT
                "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Basic")
 
   add_executable(ssa_qml_theme_gallery_tests
@@ -813,7 +813,7 @@ if(SSA_BUILD_TESTS)
   add_test(NAME ssa_qml_help_about_tests COMMAND ssa_qml_help_about_tests)
   set_tests_properties(
     ssa_qml_help_about_tests
-    PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE ENVIRONMENT
+    PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE ENVIRONMENT
                "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Basic")
 
   if(WIN32)

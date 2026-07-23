@@ -205,6 +205,13 @@ namespace {
                      QStringLiteral("SSA Consulta Rapida"));
             QCOMPARE(dialog->property("authorName").toString(), QStringLiteral("Mauricio Menon"));
             QCOMPARE(dialog->property("productVersion").toString(), QStringLiteral("9.8.7-test"));
+            const QString toolchainSupport = dialog->property("toolchainSupportText").toString();
+            QCOMPARE(toolchainSupport,
+                     QStringLiteral("Validado: Windows 11 amd64 - MSVC 19.51 | Debian/WSL "
+                                    "amd64 - GCC 14.2\nHistorico: macOS arm64 - Apple Clang 21\n"
+                                    "Reconhecidos sem gate: LLVM-MinGW 17.0.6 | MinGW GCC "
+                                    "13.1.0/11.2.0\nNao suportado nesta versao: clang-cl 22.1.3 "
+                                    "com Qt MSVC"));
             const auto screenshotError =
                 captureDialogScreenshot(*dialog, QStringLiteral("about-dialog.png"));
             QVERIFY2(screenshotError.isEmpty(), qPrintable(screenshotError));
@@ -578,6 +585,15 @@ namespace {
             QTRY_VERIFY_WITH_TIMEOUT(headerHandles.menu->property("visible").toBool(), 1000);
             clickMenuAction(resetSortAction);
             QTRY_VERIFY_WITH_TIMEOUT(viewModel.browse()->sortColumnKey().isEmpty(), 1000);
+            auto* preferenceFlow = qobject_cast<ssa::presentation::MainPreferenceFlowCoordinator*>(
+                viewModel.preferenceFlow());
+            QVERIFY(preferenceFlow != nullptr);
+            auto* preferencesCoordinator =
+                viewModel.findChild<ssa::presentation::UserPreferencesCoordinator*>();
+            QVERIFY(preferencesCoordinator != nullptr);
+            preferenceFlow->saveNowOrSchedule();
+            QTRY_VERIFY_WITH_TIMEOUT(!preferencesCoordinator->running(), 1000);
+            const auto saveCountBeforeHide = preferences->saveCount();
 
             QTRY_VERIFY_WITH_TIMEOUT((!(headerHandles = locateHeaderMenu()).cell.isNull() &&
                                       !headerHandles.menu.isNull()),
@@ -606,7 +622,7 @@ namespace {
             clickMenuAction(hideColumnAction);
             QTRY_COMPARE_WITH_TIMEOUT(viewModel.browse()->visibleColumns().size(),
                                       visibleColumnsBeforeHide - 1, 1000);
-            QTRY_COMPARE_WITH_TIMEOUT(preferences->saveCount(), 1, 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(preferences->saveCount(), saveCountBeforeHide + 1, 1000);
 
             cellMenu->setProperty("x", 900);
             cellMenu->setProperty("y", 100);

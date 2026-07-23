@@ -22,12 +22,14 @@ Parameters:
   --skip-tests
 
 Generated files:
-  - ssa_consulta_rapida-<version>-<arch>-linux.deb
-  - latest.deb points to the newest .deb for this architecture
-  - dist/linux/<arch>/ssa_consulta_rapida-<version>-<arch>-linux/ (extracted bundle)
+  - final/<repo-name> (single self-extracting executable)
+  - final/<repo-name>.deb
+  - final/<repo-name>.zip
+  - versioned copies are created only from a clean matching Git tag
 
 Requirements (Debian/Ubuntu host):
-  - dpkg-deb, fakeroot (dpkg-dev package)
+  - dpkg-deb and dpkg-shlibdeps; fakeroot is optional
+  - file, zip and tar
   - Qt6 dev and runtime, sqlite3, cmake, ninja (same as build)
 EOF
 }
@@ -112,12 +114,17 @@ if [[ -z "${version}" ]]; then
 fi
 
 build_dir="${repo_root}/build/${preset}"
-artifact_name="ssa_consulta_rapida-${version}-${arch}-linux"
+repo_name="$(package_repo_name "${repo_root}")"
+artifact_name="${repo_name}-debian-${arch}-${version}"
 artifact_root="${dist_root}/${artifact_name}"
 deb_path="${dist_root}/${artifact_name}.deb"
-stage_root="${dist_root}/.${artifact_name}.staging.$$"
+final_root="${dist_root}/final"
+stage_root="$(mktemp -d "${TMPDIR:-/tmp}/${artifact_name}.XXXXXX")"
+trap 'rm -rf "${stage_root}"' EXIT
 stage_artifact_root="${stage_root}/${artifact_name}"
 stage_deb_path="${stage_root}/${artifact_name}.deb"
+stage_direct_path="${stage_root}/${repo_name}"
+stage_zip_path="${stage_root}/${repo_name}.zip"
 
 # Map uname arch to Debian arch when running on non-dpkg hosts is not needed:
 # this script is meant to run on a Debian/Ubuntu host where dpkg exists.
@@ -125,11 +132,19 @@ if ! command -v dpkg-deb >/dev/null 2>&1; then
   echo "dpkg-deb not found. This script must run on a Debian/Ubuntu host." >&2
   exit 1
 fi
+for required_tool in dpkg-shlibdeps file objdump zip tar; do
+  if ! command -v "${required_tool}" >/dev/null 2>&1; then
+    echo "${required_tool} not found. Install the Debian packaging prerequisites." >&2
+    exit 1
+  fi
+done
 
 "${repo_root}/tools/configure-dev.sh" "${preset}"
-cmake --build --preset "${preset}"
 if [[ "${run_tests}" == "true" ]]; then
+  cmake --build --preset "${preset}"
   ctest --preset "${preset}" --output-on-failure
+else
+  cmake --build --preset "${preset}" --target ssa_consulta_rapida
 fi
 
 binary="${build_dir}/ssa_consulta_rapida"
@@ -139,8 +154,7 @@ if [[ ! -x "${binary}" ]]; then
 fi
 
 # Stage the .deb payload under the classic Debian install layout.
-pkgroot="${build_dir}/_deb_stage/${artifact_name}"
-rm -rf "${pkgroot}"
+pkgroot="${stage_root}/pkgroot"
 install_prefix="${pkgroot}/usr"
 mkdir -p "${install_prefix}/lib/ssa_consulta_rapida/bin" \
          "${install_prefix}/lib/ssa_consulta_rapida/lib" \
@@ -169,7 +183,8 @@ cp "${repo_root}/resources/ssa-consulta-rapida.desktop" \
 cat > "${install_prefix}/lib/ssa_consulta_rapida/ssa_consulta_rapida" <<'EOF_LAUNCHER'
 #!/usr/bin/env bash
 set -euo pipefail
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="$(cd "$(dirname "${SCRIPT_PATH}")" && pwd)"
 if [[ -n "${LD_LIBRARY_PATH-}" ]]; then
   export LD_LIBRARY_PATH="${SCRIPT_DIR}/lib:${LD_LIBRARY_PATH}"
 else
@@ -221,6 +236,67 @@ maintainer="Mauricio Menon <mauriciomenon@users.noreply.github.com>"
 installed_size_kb="$(du -sk "${install_prefix}" | awk '{print $1}')"
 
 mkdir -p "${pkgroot}/DEBIAN"
+mkdir -p "${stage_root}/debian"
+cat > "${stage_root}/debian/control" <<EOF_SHLIB_CONTROL
+Source: ssa-consulta-rapida
+Section: utils
+Priority: optional
+Maintainer: ${maintainer}
+Standards-Version: 4.6.2
+
+Package: ssa-consulta-rapida
+Architecture: any
+Description: Consulta rapida de SSAs
+EOF_SHLIB_CONTROL
+
+mapfile -d '' elf_files < <(
+  find "${install_prefix}/lib/ssa_consulta_rapida" -type f -print0 |
+    while IFS= read -r -d '' candidate; do
+      if file -Lb "${candidate}" |
+        grep -Eq '^ELF .* (executable|shared object),'; then
+        printf '%s\0' "${candidate}"
+      fi
+    done
+)
+mapfile -d '' bundled_shared_libraries < <(
+  find "${install_prefix}/lib/ssa_consulta_rapida" -type f -name '*.so*' \
+    -print0
+)
+printf '' > "${stage_root}/debian/shlibs.local"
+for bundled_library in "${bundled_shared_libraries[@]}"; do
+  soname="$(objdump -p "${bundled_library}" |
+    awk '$1 == "SONAME" { value = $2 } END { print value }')"
+  if [[ "${soname}" =~ ^(.+)\.so\.([0-9]+)(\..*)?$ ]]; then
+    printf '%s %s ssa-consulta-rapida (= %s)\n' \
+      "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${version}" \
+      >> "${stage_root}/debian/shlibs.local"
+  fi
+done
+sort -u -o "${stage_root}/debian/shlibs.local" \
+  "${stage_root}/debian/shlibs.local"
+
+mapfile -d '' private_lib_dirs < <(
+  find "${install_prefix}/lib/ssa_consulta_rapida" -type f -name '*.so*' \
+    -printf '%h\0' | sort -zu
+)
+shlib_args=()
+for private_lib_dir in "${private_lib_dirs[@]}"; do
+  shlib_args+=("-l${private_lib_dir}")
+done
+for elf_file in "${elf_files[@]}"; do
+  shlib_args+=("-e${elf_file}")
+done
+runtime_depends="$(
+  cd "${stage_root}"
+  dpkg-shlibdeps -O --package=ssa-consulta-rapida \
+    -xssa-consulta-rapida "${shlib_args[@]}" |
+    sed -n 's/^shlibs:Depends=//p'
+)"
+if [[ -z "${runtime_depends}" ]]; then
+  echo "dpkg-shlibdeps did not produce runtime dependencies." >&2
+  exit 1
+fi
+
 cat > "${pkgroot}/DEBIAN/control" <<EOF_CONTROL
 Package: ssa-consulta-rapida
 Version: ${version}
@@ -233,7 +309,7 @@ Description: Consulta rapida de SSAs (ordens de servico)
  Aplicacao desktop C++/Qt6/QML para consulta de SSAs, com filtros,
  exportacao e detalhes. Bundle autossuficiente com bibliotecas Qt
  incluidas quando possivel.
-Depends: libc6, libsqlite3-0, libgl1, libegl1, libxkbcommon0, libdbus-1-3, libfontconfig1, libfreetype6
+Depends: ${runtime_depends}
 EOF_CONTROL
 
 cat > "${pkgroot}/DEBIAN/postinst" <<'EOF_POSTINST'
@@ -257,18 +333,38 @@ fi
 mkdir -p "${stage_artifact_root}"
 cp -R "${install_prefix}" "${stage_artifact_root}/usr"
 cp "${pkgroot}/DEBIAN/control" "${stage_artifact_root}/control"
+package_create_linux_direct_executable \
+  "${stage_artifact_root}" "${stage_direct_path}"
+(
+  cd "${stage_root}"
+  zip -qr "${stage_zip_path}" "${artifact_name}"
+)
 
 rm -rf "${artifact_root}"
 mv "${stage_artifact_root}" "${artifact_root}"
 mv "${stage_deb_path}" "${deb_path}"
-rmdir "${stage_root}"
 
 package_set_latest_link "${dist_root}" "${artifact_name}"
 package_set_latest_alias "${dist_root}" "latest.deb" "${artifact_name}.deb"
 package_set_latest_alias "${dist_root}" "latest-binary" \
-  "${artifact_name}/usr/lib/ssa_consulta_rapida/bin/ssa_consulta_rapida"
+  "${artifact_name}/usr/bin/ssa_consulta_rapida"
 
-rm -rf "${pkgroot}"
+tagged_release="false"
+if package_is_exact_release_tag "${repo_root}" "${version}"; then
+  tagged_release="true"
+fi
+package_publish_final_artifact \
+  "${stage_direct_path}" "${final_root}" "${repo_name}" \
+  "${repo_name}-${version}" "${tagged_release}"
+package_publish_final_artifact \
+  "${deb_path}" "${final_root}" "${repo_name}.deb" \
+  "${repo_name}-${version}.deb" "${tagged_release}"
+package_publish_final_artifact \
+  "${stage_zip_path}" "${final_root}" "${repo_name}.zip" \
+  "${repo_name}-${version}.zip" "${tagged_release}"
+
+rm -rf "${stage_root}"
+trap - EXIT
 
 cat <<EOF_REPORT
 Debian release artifacts generated:
@@ -281,4 +377,7 @@ Debian release artifacts generated:
   latest_deb: ${dist_root}/latest.deb
   latest_binary: ${dist_root}/latest-binary
   latest: ${dist_root}/latest
+  final_root: ${final_root}
+  dependencies: ${runtime_depends}
+  tagged_release: ${tagged_release}
 EOF_REPORT

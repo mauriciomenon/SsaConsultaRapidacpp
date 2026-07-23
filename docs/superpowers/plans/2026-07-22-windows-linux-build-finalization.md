@@ -1,12 +1,19 @@
 # Windows And Linux Build Finalization Implementation Plan
 
+> Historical correction (2026-07-22): the SQLite system PATH work described
+> below was abandoned. The final implementation stages the matching
+> `sqlite3.dll` beside each Windows executable and includes it in the portable
+> package. End users do not install SQLite and no SQLite runtime directory is
+> added to the system or user PATH.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Finish the Windows and Linux build recovery, remove the remaining runtime and test failures, and publish atomic commits to GitLab and Bitbucket.
 
-**Architecture:** Keep platform environment setup in the existing build scripts and system PATH, keep QML geometry data-driven through implicit sizing, and keep concurrent prefetch completion order outside the functional contract. Python remains an installer and fixture-tool dependency only; the application runtime stays C++20 and Qt 6.
+**Architecture:** Keep platform environment setup in the existing build scripts, stage application runtimes beside the executables, keep QML geometry data-driven through implicit sizing, and keep concurrent prefetch completion order outside the functional contract. Python remains an installer and fixture-tool dependency only; the application runtime stays C++20 and Qt 6.
 
-**Tech Stack:** C++20, Qt 6.11.1, QML, CMake, Ninja, PowerShell, Pester, Bash, CTest, uv.
+**Tech Stack:** C++20, Qt 6.11.x (CI/reference 6.11.0; local validation 6.11.1),
+QML, CMake, Ninja, PowerShell, Pester, Bash, CTest, uv.
 
 ## Global Constraints
 
@@ -18,32 +25,13 @@
 
 ---
 
-### Task 1: Persist The Windows SQLite Runtime
+### Task 1: Superseded Windows SQLite PATH Proposal
 
-**Files:**
-- Verify: `scripts/build-windows.ps1`
-- Verify: `tests/scripts/WindowsBuildCache.Tests.ps1`
-- Update outside Git: Windows Machine PATH and timestamped environment backup
-
-**Interfaces:**
-- Consumes: `SQLite3_LIBRARY` from the CMake cache.
-- Produces: direct Windows process resolution of `sqlite3.dll` without a Developer Prompt.
-
-- [ ] **Step 1: Prove the missing runtime path**
-
-Run a clean Windows process with the persisted Machine and User PATH and verify that `where.exe sqlite3.dll` fails while `C:\vcpkg\installed\x64-windows\bin\sqlite3.dll` exists.
-
-- [ ] **Step 2: Back up the current environment configuration**
-
-Export Machine/User PATH and relevant Git, PowerShell, Qt, vcpkg, and terminal configuration into a new timestamped directory under `C:\Users\mauri\Downloads`.
-
-- [ ] **Step 3: Add the runtime directory once**
-
-Insert `C:\vcpkg\installed\x64-windows\bin` immediately after `C:\vcpkg` in Machine PATH, preserving all other ordering and canonical uniqueness.
-
-- [ ] **Step 4: Verify direct runtime resolution**
-
-Run `where.exe sqlite3.dll`, the CLI `--version`, and the GUI version smoke from a fresh Windows process that has not entered a Developer Prompt.
+This proposal was rejected after review. A private application DLL does not
+belong in Machine or User PATH. The accepted implementation resolves
+`sqlite3.dll` from the SQLite prefix selected for linking, stages it beside the
+GUI and CLI executables, and requires the portable package to contain it. The
+PATH was left without a SQLite runtime entry.
 
 ### Task 2: Preserve The QML Import Button Natural Width
 
@@ -105,7 +93,7 @@ Run the focused test repeatedly, the complete presentation test binary, and the 
 
 **Files:**
 - Verify: `scripts/smoke-import-large-xlsx.sh`
-- Update outside Git: `C:\Users\mauri\Downloads\SSA_BUILD_LESSONS_LEARNED.md`
+- Update outside Git: `%USERPROFILE%\Downloads\SSA_BUILD_LESSONS_LEARNED.md`
 
 **Interfaces:**
 - Consumes: Python only for `aqtinstall` and shell-embedded fixture scripts.
@@ -117,7 +105,7 @@ Run `multiprocessing.Manager` under Python 3.13.13, 3.14.5, and 3.15.0b2 with `T
 
 - [ ] **Step 2: Verify the installed Qt base kit**
 
-Confirm `/home/menon/Qt/6.11.1/gcc_64` exposes Core, Gui, Qml, Quick, QuickControls2, Sql, Concurrent, and Test. Do not reinstall or add WebEngine when the exact kit is already valid.
+Confirm `$HOME/Qt/6.11.1/gcc_64` exposes Core, Gui, Qml, Quick, QuickControls2, Sql, Concurrent, and Test. Do not reinstall or add WebEngine when the exact kit is already valid.
 
 - [ ] **Step 3: Validate Python fixture syntax**
 

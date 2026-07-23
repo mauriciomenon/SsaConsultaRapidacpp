@@ -110,10 +110,12 @@ if [[ -z "${version}" ]]; then
   exit 1
 fi
 build_dir="${repo_root}/build/${preset}"
-artifact_name="ssa_consulta_rapida-${version}-${arch}-macos"
+repo_name="$(package_repo_name "${repo_root}")"
+artifact_name="${repo_name}-macos-${arch}-${version}"
 artifact_root="${dist_root}/${artifact_name}"
 zip_path="${dist_root}/${artifact_name}.zip"
 dmg_path="${dist_root}/${artifact_name}.dmg"
+final_root="${dist_root}/final"
 staging_id="${artifact_name}.$$.staging"
 staged_artifact_root="${dist_root}/.${staging_id}"
 staged_zip_path="${dist_root}/.${staging_id}.zip"
@@ -130,9 +132,11 @@ cleanup_package_stage() {
 trap cleanup_package_stage EXIT
 
 "${repo_root}/tools/configure-dev.sh" "${preset}"
-cmake --build --preset "${preset}"
 if [[ "${run_tests}" == "true" ]]; then
+  cmake --build --preset "${preset}"
   ctest --preset "${preset}" --output-on-failure
+else
+  cmake --build --preset "${preset}" --target ssa_consulta_rapida
 fi
 
 executable="${build_dir}/ssa_consulta_rapida.app/Contents/MacOS/ssa_consulta_rapida"
@@ -244,6 +248,20 @@ package_set_latest_alias "${dist_root}" "latest-binary" "${artifact_name}/ssa_co
 package_set_latest_alias "${dist_root}" "latest.app" "${artifact_name}/ssa_consulta_rapida.app"
 package_set_latest_alias "${dist_root}" "latest-run.sh" "${artifact_name}/run-ssa_consulta_rapida.sh"
 
+tagged_release="false"
+if package_is_exact_release_tag "${repo_root}" "${version}"; then
+  tagged_release="true"
+fi
+package_publish_final_artifact \
+  "${zip_path}" "${final_root}" "${repo_name}.zip" \
+  "${repo_name}-${version}.zip" "${tagged_release}"
+package_publish_final_artifact \
+  "${dmg_path}" "${final_root}" "${repo_name}.dmg" \
+  "${repo_name}-${version}.dmg" "${tagged_release}"
+package_publish_final_artifact \
+  "${final_bundle}" "${final_root}" "${repo_name}.app" \
+  "${repo_name}-${version}.app" "${tagged_release}"
+
 cat <<EOF_REPORT
 macOS artifacts generated:
   project_root: ${repo_root}
@@ -259,4 +277,6 @@ macOS artifacts generated:
   latest_app: ${dist_root}/latest.app
   latest_run: ${dist_root}/latest-run.sh
   latest: ${dist_root}/latest
+  final_root: ${final_root}
+  tagged_release: ${tagged_release}
 EOF_REPORT

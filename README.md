@@ -75,7 +75,7 @@ Artefatos de distribuicao, quando gerados por `./scripts/package-macos.sh`, fica
 ```
 
 ```powershell
-# Windows 11 (executar no Developer PowerShell for VS 2022)
+# Windows 11 (o script inicializa sozinho o Developer PowerShell MSVC x64)
 ./scripts/build-windows.ps1
 ./scripts/run-windows.ps1
 
@@ -133,13 +133,15 @@ QT_DIR=/meu/qt ./tools/configure-dev.sh
 
 ```powershell
 # Windows
-.\tools\configure-dev.ps1 -QtDir "D:\Qt\6.11.0\msvc2022_64"
+.\tools\configure-dev.ps1 -QtDir "D:\Qt\6.11.1\msvc2022_64"
 .\tools\configure-dev.ps1 -SQLiteRoot "C:\vcpkg\installed\<triplet>"
 ```
 
 ### Verificacao de toolchain
 
-- No Windows, rode `.\scripts\build-windows.ps1` dentro de um shell com `cl.exe` no PATH (`vswhere` + `vcvarsall`).
+- No Windows, `.\scripts\build-windows.ps1` localiza o modulo do Visual Studio
+  e inicializa host x64 e target x64 quando MSVC e selecionado. Nao e
+  necessario abrir Developer PowerShell manualmente.
 - Em caso de erro de SQLite, valide `vcpkg install sqlite3:<triplet>` e rode:
 
 ```powershell
@@ -166,14 +168,14 @@ usa `arm64-windows` em sessao ARM64 e `x64-windows` nos demais casos.
 Se a versao ou o caminho mudar:
 
 ```powershell
-.\tools\configure-dev.ps1 -QtDir "D:\Qt\6.11.0\msvc2022_64"
+.\tools\configure-dev.ps1 -QtDir "D:\Qt\6.11.1\msvc2022_64"
 ```
 
 Se o SQLite estiver em outro prefixo:
 
 ```powershell
 .\tools\configure-dev.ps1 `
-  -QtDir "C:\Qt\6.11.0\msvc2022_64" `
+  -QtDir "C:\Qt\6.11.1\msvc2022_64" `
   -SQLiteRoot "C:\vcpkg\installed\<triplet>"
 ```
 
@@ -185,12 +187,23 @@ Se o SQLite estiver em outro prefixo:
 - SQLite3
 - Compilador C++20
 
-Versao local usada no desenvolvimento atual:
+O CI e a referencia de deteccao em `tools/qt-detect.conf` usam Qt 6.11.0. Os
+scripts aceitam qualquer patch da familia 6.11.x e selecionam o mais alto
+valido. Versoes validadas no desenvolvimento local atual:
 
-- Qt 6.11.0
-- macOS arm64 com Homebrew
-- Windows 11 com Visual Studio 2022 Build Tools
-- Debian/Ubuntu com pacotes Qt 6 do sistema
+- Windows 11 amd64: Qt 6.11.1 `msvc2022_64`, Visual Studio 2026 18.8 e
+  MSVC 19.51.
+- Debian/WSL amd64: Qt 6.11.1 `gcc_64` e GCC 14.2.
+- macOS arm64: Qt 6.11.x e Apple Clang, validados em rodadas anteriores.
+
+Ordem dos toolchains Windows para este projeto:
+
+| Ordem | Toolchain | Estado |
+| --- | --- | --- |
+| 1 | MSVC 19.51 com Qt `msvc2022_64` | Validado; build principal |
+| 2 | LLVM-MinGW 17.0.6 com Qt `llvm-mingw_64` | Reconhecido; sem gate completo |
+| 3 | MinGW GCC 13.1/11.2 com Qt `mingw_64` | Reconhecido; sem gate completo |
+| 4 | clang-cl 22.1.3 com Qt MSVC | Nao suportado nesta versao; use somente para diagnostico |
 
 ## Configuracao rapida
 
@@ -222,6 +235,9 @@ Os scripts tentam detectar:
 - compilador C++ disponivel
 
 Se a deteccao falhar, o script imprime o caminho esperado e uma sugestao de instalacao.
+
+Os modos `--check`/`--check-package` e `-Check`/`-CheckPackage` imprimem
+`OK`, `MISSING` ou `UNSUPPORTED` e encerram antes da configuracao CMake.
 
 A versao alvo e caminhos padrao ficam centralizados em:
 
@@ -260,13 +276,19 @@ QT_DIR=/opt/homebrew/opt/qt ./tools/configure-dev.sh
 ### Debian ou Ubuntu
 
 ```bash
-sudo apt update
-sudo apt install -y \
-  build-essential cmake ninja-build libsqlite3-dev \
-  qt6-base-dev qt6-base-dev-tools \
-  qt6-declarative-dev qt6-tools-dev-tools \
-  qml6-module-qtquick qml6-module-qtquick-controls
+sudo apt-get update
+sudo apt-get install -y \
+  build-essential cmake ninja-build pkg-config libsqlite3-dev sqlite3 \
+  libdbus-1-dev libgl1-mesa-dev libegl1 libopengl0 \
+  libxkbcommon-dev libxkbcommon-x11-0 libxcb-cursor0 \
+  binutils dpkg-dev fakeroot file tar zip
 ```
+
+Debian Trixie fornece Qt 6.8.x, que nao atende a familia 6.11.x exigida pelo
+preflight. Instale Qt 6.11.x `linux_gcc_64` pelo
+[Qt Online Installer](https://doc.qt.io/qt-6/get-and-install-qt.html), apenas
+com Qt Base e Qt Declarative. WebEngine nao e necessario. O caminho convencional
+e `~/Qt/<versao>/gcc_64`.
 
 Depois:
 
@@ -276,24 +298,33 @@ cmake --build --preset dev
 ctest --preset dev --output-on-failure
 ```
 
+O comando `pacman` e a politica Qt 6.11.x de Arch/Artix estao em
+[packaging/linux/README.md](packaging/linux/README.md).
+
 ### Windows 11
 
-- Instale Visual Studio 2022 Build Tools com "Desktop development with C++".
-- Instale Qt 6.11.0 para MSVC 2022 64-bit.
-- Instale CMake e Ninja.
-- Instale SQLite para MSVC, preferencialmente com `vcpkg install sqlite3:<triplet>`.
-- Rode os comandos no "Developer PowerShell for VS 2022".
+- Instale [Visual Studio 2026 ou Build Tools](https://visualstudio.microsoft.com/downloads/)
+  com C++ desktop, Qt 6.11.x `msvc2022_64`, CMake, Ninja e vcpkg standalone.
+- Instale SQLite com `vcpkg install sqlite3:x64-windows` ou o triplet do alvo.
+- Instale [NSIS](https://nsis.sourceforge.io/Download); `makensis.exe` e
+  obrigatorio para o EXE portatil unico e para o instalador.
+- Consulte [packaging/windows/README.md](packaging/windows/README.md) para os
+  downloads oficiais e o bootstrap completo.
 
 Seu caminho esperado hoje:
 
 ```powershell
-C:\Qt\6.11.0\msvc2022_64
+C:\Qt\6.11.1\msvc2022_64
 ```
+
+`sqlite3.h` e `sqlite3.lib` sao dependencias de build; a `sqlite3.dll`
+correspondente entra no pacote. O usuario final nao instala SQLite nem altera
+PATH.
 
 Build direto:
 
 ```powershell
-$env:QT_DIR = "C:\Qt\6.11.0\msvc2022_64"
+$env:QT_DIR = "C:\Qt\6.11.1\msvc2022_64"
 $env:SQLite3_ROOT = "C:\vcpkg\installed\<triplet>"
 $env:Path = "$env:QT_DIR\bin;$env:Path"
 cmake --preset dev `
@@ -327,7 +358,7 @@ C:\Qt\*\msvc2022_64
 Tambem e possivel passar o caminho:
 
 ```powershell
-.\tools\configure-dev.ps1 -QtDir "D:\Qt\6.11.0\msvc2022_64"
+.\tools\configure-dev.ps1 -QtDir "D:\Qt\6.11.1\msvc2022_64"
 ```
 
 ## Build manual
@@ -351,7 +382,7 @@ ctest --preset dev --output-on-failure
 Windows 11 PowerShell:
 
 ```powershell
-$env:QT_DIR = "C:\Qt\6.11.0\msvc2022_64"
+$env:QT_DIR = "C:\Qt\6.11.1\msvc2022_64"
 $env:SQLite3_ROOT = "C:\vcpkg\installed\<triplet>"
 $env:Path = "$env:QT_DIR\bin;$env:Path"
 cmake --preset dev `
@@ -463,81 +494,63 @@ do mesmo preflight use `./run-macos-smoke-clean --open`.
 
 ## Packaging e artefatos finais por plataforma
 
-Comandos padrao sem argumentos (sem variavel de ambiente e sem parametros) geram pasta final persistente em `dist/<so>/<arquitetura>/`:
+Os scripts oficiais usam somente o preset `release` e preservam `dist/` durante
+`./scripts/make_clean`. Para uma entrega completa, nao use `--skip-tests` ou
+`-SkipTests`; esses switches existem apenas para iteracao de empacotamento.
 
 ```bash
-./scripts/package-macos.sh      # gera dist/macos/<arch>/ssa_consulta_rapida-<ver>-<arch>-macos.* (.zip e .dmg)
-./scripts/package-linux.sh      # comando principal para Linux tarball
-./scripts/package-linux.sh --skip-tests    # gera o mesmo pacote sem executar ctest
-./scripts/package-debian.sh     # wrapper de compatibilidade; nao gera pacote .deb
+./scripts/package-macos.sh
+./scripts/package-debian.sh
+./scripts/package-linux.sh
+./scripts/package-arch.sh
 ```
 
 ```powershell
-./scripts/package-windows.ps1   # gera dist/windows/<arch>/ssa_consulta_rapida-<ver>-<arch>-windows.zip e installer .exe opcional
-./scripts/package-windows.ps1 -SkipTests   # gera o mesmo pacote sem executar ctest
+.\scripts\package-windows.ps1
 ```
 
-Existem wrappers com argumento em `scripts/lazy_scripts` para cenarios com controle manual:
+### Pasta final canonica
 
-```bash
-./scripts/lazy_scripts/package-macos.sh --preset <preset> --arch <arch> --dist-dir <dir>
-./scripts/lazy_scripts/package-debian.sh --preset <preset> --arch <arch> --dist-dir <dir>
-.\scripts\lazy_scripts\package-windows.ps1 -Preset <preset> -Arch <arch> -DistDir <dir>
+O nome base e sempre o nome do repositorio: `ssa_consulta_rapida_cpp`.
+Uma compilacao bem-sucedida atualiza as copias sem versao:
+
+| Plataforma | Diretorio | Arquivos |
+| --- | --- | --- |
+| Windows | `dist/windows/<arch>/final/` | `ssa_consulta_rapida_cpp.exe`, `ssa_consulta_rapida_cpp-installer.exe`, `ssa_consulta_rapida_cpp.zip` |
+| Debian | `dist/linux/<arch>/final/` | `ssa_consulta_rapida_cpp`, `ssa_consulta_rapida_cpp.deb`, `ssa_consulta_rapida_cpp.zip` |
+| macOS | `dist/macos/<arch>/final/` | `ssa_consulta_rapida_cpp.app`, `ssa_consulta_rapida_cpp.dmg`, `ssa_consulta_rapida_cpp.zip` |
+
+O EXE Windows e um arquivo portatil unico que extrai o runtime em diretorio
+temporario. O instalador e separado. O executavel Debian tambem e unico e
+autoextraivel. Qt e SQLite fazem parte dos bundles; o usuario final nao instala
+essas bibliotecas separadamente.
+
+Quando `HEAD` esta limpo e aponta exatamente para `v<version>`, os mesmos
+scripts criam uma copia imutavel com a versao no final do nome:
+
+```text
+ssa_consulta_rapida_cpp-<version>.exe
+ssa_consulta_rapida_cpp-installer-<version>.exe
+ssa_consulta_rapida_cpp-<version>.deb
+ssa_consulta_rapida_cpp-<version>.app
+ssa_consulta_rapida_cpp-<version>.dmg
+ssa_consulta_rapida_cpp-<version>.zip
 ```
 
-Formatos persistentes criados:
+Builds sujos ou commits sem a tag exata atualizam somente os nomes sem versao.
+Uma versao final existente nunca e sobrescrita. Os aliases legados `latest*`
+continuam disponiveis fora de `final/` para compatibilidade.
 
-- macOS: `ssa_consulta_rapida-<ver>-<arch>-macos.zip` e `ssa_consulta_rapida-<ver>-<arch>-macos.dmg`
-  pacote persistente em `ssa_consulta_rapida-<ver>-<arch>-macos/ssa_consulta_rapida.app` e `run-ssa_consulta_rapida.sh`
-- Debian/Linux: `ssa_consulta_rapida-<ver>-<arch>-linux.tar.gz`
-  pacote persistente em `ssa_consulta_rapida-<ver>-<arch>-linux/` com `bin/`, `lib/` e `run-ssa_consulta_rapida.sh`
-- Windows: `ssa_consulta_rapida-<ver>-<arch>-windows.zip` e `ssa_consulta_rapida-<ver>-<arch>-windows-installer.exe` (quando MakeNSIS esta instalado)
-  pacote persistente em `ssa_consulta_rapida-<ver>-<arch>-windows/` com `ssa_consulta_rapida.exe` e `run-ssa_consulta_rapida.bat`
-
-Todos os pacotes sao gerados apos build+test no preset `release` e sao organizados em `dist/<so>/<arch>/`.
-Cada pacote cria tambem o ponteiro `dist/<so>/<arch>/latest` para o artefato atual.
-No Windows, esses ponteiros sao links quando o sistema permite; caso contrario, os scripts usam copia como fallback.
-Com base no ponteiro `latest`, ficam fixos tambem:
-
-- `dist/linux/<arch>/latest-binary` (self sufficient wrapper script)
-- `dist/linux/<arch>/latest-raw` (raw binary in `bin/`, requires `LD_LIBRARY_PATH` from `lib/`)
-- `dist/linux/<arch>/latest-run.sh` (same launcher)
-- `dist/linux/<arch>/latest.tar.gz`
-- `dist/macos/<arch>/latest.app`
-- `dist/macos/<arch>/latest-binary`
-- `dist/macos/<arch>/latest-run.sh`
-- `dist/macos/<arch>/latest.zip`
-- `dist/macos/<arch>/latest.dmg`
-- `dist/windows/<arch>/latest.exe` (installer alias, only when generated)
-- `dist/windows/<arch>/latest-binary` (portable application executable)
-- `dist/windows/<arch>/latest-run.bat`
-- `dist/windows/<arch>/latest.zip`
-- `dist/windows/<arch>/latest-installer.exe` (quando gerado)
-
-Execucao direta dos artefatos persistentes:
+### Execucao direta
 
 ```bash
-./dist/linux/<arch>/ssa_consulta_rapida-<ver>-<arch>-linux/run-ssa_consulta_rapida.sh --project-root <repo> --db <db>
-./dist/linux/<arch>/latest/bin/ssa_consulta_rapida --project-root <repo> --db <db>
-./dist/linux/<arch>/latest-binary --project-root <repo> --db <db>
-./dist/linux/<arch>/latest-raw --project-root <repo> --db <db> # requer LD_LIBRARY_PATH
-./dist/linux/<arch>/latest-run.sh --project-root <repo> --db <db>
-./dist/macos/<arch>/ssa_consulta_rapida-<ver>-<arch>-macos/run-ssa_consulta_rapida.sh --project-root <repo> --db <db>
-./dist/macos/<arch>/latest/run-ssa_consulta_rapida.sh --project-root <repo> --db <db>
-./dist/macos/<arch>/latest-binary --project-root <repo> --db <db>
-./dist/macos/<arch>/latest.app/Contents/MacOS/ssa_consulta_rapida --project-root <repo> --db <db>
-./dist/macos/<arch>/latest.dmg
-./dist/macos/<arch>/latest.zip
+./dist/linux/<arch>/final/ssa_consulta_rapida_cpp --db <db>
+open ./dist/macos/<arch>/final/ssa_consulta_rapida_cpp.app
 ```
 
 ```powershell
-.\dist\windows\<arch>\ssa_consulta_rapida-<ver>-<arch>-windows\ssa_consulta_rapida.exe --project-root <repo> --db <db>
-.\dist\windows\<arch>\latest\ssa_consulta_rapida.exe --project-root <repo> --db <db>
-.\dist\windows\<arch>\latest-binary --project-root <repo> --db <db>
-.\dist\windows\<arch>\latest-run.bat
-.\dist\windows\<arch>\latest.zip
-.\dist\windows\<arch>\latest.exe
-.\dist\windows\<arch>\latest-installer.exe
+.\dist\windows\<arch>\final\ssa_consulta_rapida_cpp.exe --db <db>
+.\dist\windows\<arch>\final\ssa_consulta_rapida_cpp-installer.exe
 ```
 
 ## Execucao
@@ -560,7 +573,7 @@ Debian:
 Windows 11 PowerShell:
 
 ```powershell
-$env:QT_DIR = "C:\Qt\6.11.0\msvc2022_64"
+$env:QT_DIR = "C:\Qt\6.11.1\msvc2022_64"
 $env:Path = "$env:QT_DIR\bin;$env:Path"
 .\build\dev\ssa_consulta_rapida.exe `
   --db C:\caminho\para\ssas.db `
@@ -573,9 +586,9 @@ Para gerar uma pasta executavel fora do ambiente de build no Windows:
 & "$env:QT_DIR\bin\windeployqt.exe" .\build\dev\ssa_consulta_rapida.exe
 ```
 
-Se voce usou `tools\configure-dev.ps1`, `QT_DIR` fica definido na sessao atual,
-mas o script nao altera `Path` globalmente. Para executar ferramentas Qt
-manualmente, chame o caminho completo:
+`tools\configure-dev.ps1` usa o prefixo Qt apenas na configuracao e nao altera
+`QT_DIR` nem o `Path` global. Para executar ferramentas Qt manualmente, defina
+`QT_DIR` na sessao ou chame o caminho completo:
 
 ```powershell
 & "$env:QT_DIR\bin\windeployqt.exe" .\build\dev\ssa_consulta_rapida.exe

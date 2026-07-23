@@ -48,6 +48,97 @@ package_project_version() {
   printf '%s\n' "${version}"
 }
 
+package_repo_name() {
+  basename "${1%/}"
+}
+
+package_is_exact_release_tag() {
+  local repo_root="$1"
+  local version="$2"
+
+  git -C "${repo_root}" diff --quiet -- &&
+    git -C "${repo_root}" diff --cached --quiet -- &&
+    [[ -z "$(git -C "${repo_root}" ls-files --others --exclude-standard)" ]] &&
+    git -C "${repo_root}" tag --points-at HEAD --list "v${version}" |
+      grep -Fxq "v${version}"
+}
+
+package_publish_final_artifact() {
+  local source_path="$1"
+  local final_root="$2"
+  local latest_name="$3"
+  local versioned_name="$4"
+  local tagged_release="$5"
+  local latest_path="${final_root}/${latest_name}"
+  local versioned_path="${final_root}/${versioned_name}"
+  local staged_path="${final_root}/.${latest_name}.$$.staging"
+
+  mkdir -p "${final_root}"
+  rm -rf "${staged_path}"
+  if [[ -d "${source_path}" ]]; then
+    cp -R "${source_path}" "${staged_path}"
+    rm -rf "${latest_path}"
+  else
+    cp -p "${source_path}" "${staged_path}"
+  fi
+  mv -f "${staged_path}" "${latest_path}"
+
+  if [[ "${tagged_release}" == "true" ]]; then
+    if [[ -e "${versioned_path}" || -L "${versioned_path}" ]]; then
+      printf 'Preserving existing final artifact: %s\n' "${versioned_path}"
+    elif [[ -d "${source_path}" ]]; then
+      cp -R "${source_path}" "${versioned_path}"
+    else
+      cp -p "${source_path}" "${versioned_path}"
+    fi
+  fi
+}
+
+package_create_linux_direct_executable() {
+  local bundle_root="$1"
+  local output_path="$2"
+
+  cat > "${output_path}" <<'EOF_DIRECT'
+#!/bin/sh
+set -eu
+
+archive_line="$(awk '/^__SSA_ARCHIVE_BELOW__$/ { print NR + 1; exit }' "$0")"
+if [ -z "${archive_line}" ]; then
+  echo "Embedded application archive not found." >&2
+  exit 1
+fi
+
+runtime_root="$(mktemp -d "${TMPDIR:-/tmp}/ssa-consulta-rapida.XXXXXX")"
+cleanup() {
+  rm -rf "${runtime_root}"
+}
+trap cleanup EXIT HUP INT TERM
+
+tail -n +"${archive_line}" "$0" | tar -xzf - -C "${runtime_root}"
+bundle_root="$(find "${runtime_root}" -mindepth 1 -maxdepth 1 -type d -print -quit)"
+if [ -x "${bundle_root}/ssa_consulta_rapida" ]; then
+  launcher="${bundle_root}/ssa_consulta_rapida"
+elif [ -x "${bundle_root}/usr/lib/ssa_consulta_rapida/ssa_consulta_rapida" ]; then
+  launcher="${bundle_root}/usr/lib/ssa_consulta_rapida/ssa_consulta_rapida"
+elif [ -x "${bundle_root}/usr/bin/ssa_consulta_rapida" ]; then
+  launcher="${bundle_root}/usr/bin/ssa_consulta_rapida"
+else
+  echo "Embedded application launcher not found." >&2
+  exit 1
+fi
+
+set +e
+"${launcher}" "$@"
+status=$?
+set -e
+exit "${status}"
+__SSA_ARCHIVE_BELOW__
+EOF_DIRECT
+  tar -czf - -C "$(dirname "${bundle_root}")" "$(basename "${bundle_root}")" \
+    >> "${output_path}"
+  chmod 0755 "${output_path}"
+}
+
 package_set_latest_link() {
   local dist_root="$1"
   local artifact_name="$2"
@@ -133,56 +224,80 @@ package_resolve_macdeployqt() {
 package_copy_runtime_libraries() {
   local binary="$1"
   local output_dir="$2"
+  local current
   local lib_path
   local binary_dir
-  local -a libs=()
-  binary_dir="$(cd "$(dirname "${binary}")" && pwd)"
+  local line
+  local missing="false"
+  local cursor=0
+  local -a pending=("${binary}")
+  local -A copied=()
+  local -A scanned=()
 
   if ! command -v ldd >/dev/null 2>&1; then
     return 0
   fi
 
-  while IFS= read -r line; do
-    if [[ "${line}" == *"=>"* ]]; then
-      lib_path="${line#*=> }"
-      lib_path="${lib_path%% *}"
-      if [[ "${lib_path}" == "not" || "${lib_path}" == "not found" ]]; then
+  while ((cursor < ${#pending[@]})); do
+    current="${pending[${cursor}]}"
+    cursor=$((cursor + 1))
+    if [[ -n "${scanned["${current}"]+x}" ]]; then
+      continue
+    fi
+    scanned["${current}"]=1
+    binary_dir="$(cd "$(dirname "${current}")" && pwd)"
+
+    while IFS= read -r line; do
+      line="${line#"${line%%[![:space:]]*}"}"
+      if [[ "${line}" == *"=>"* ]]; then
+        lib_path="${line#*=> }"
+        lib_path="${lib_path%% *}"
+        if [[ "${lib_path}" == "not" ]]; then
+          echo "Missing runtime library for ${current}: ${line}" >&2
+          missing="true"
+          continue
+        fi
+      elif [[ "${line}" == *"("* && "${line}" == *"/"* ]]; then
+        lib_path="${line%% *}"
+      else
         continue
       fi
-    elif [[ "${line}" == *"("* && "${line}" == *"/"* ]]; then
-      lib_path="${line%% *}"
-    else
-      continue
-    fi
-    if [[ -z "${lib_path}" || "${lib_path}" == "not" ]]; then
-      continue
-    fi
-    if [[ "${lib_path}" == /lib/* || "${lib_path}" == /lib64/* ]]; then
-      case "${lib_path##*/}" in
-        linux-vdso.so.1|ld-linux-*|libc.so.*|libdl.so.*|libm.so.*|libpthread.so.*|librt.so.*|libutil.so.*|libcrypt.so.*|libresolv.so.*|libnsl.so.*|libgcc_s.so.*|libstdc\+\+.so.*)
-          continue
-          ;;
-        *)
-          ;;
-      esac
-    fi
-    if [[ "${lib_path}" == /* ]]; then
-      :
-    elif [[ -f "${binary_dir}/${lib_path}" ]]; then
-      lib_path="${binary_dir}/${lib_path}"
-    else
-      continue
-    fi
-    if [[ -f "${lib_path}" ]]; then
-      libs+=("${lib_path}")
-    fi
-  done < <(ldd "${binary}")
+      if [[ -z "${lib_path}" ]]; then
+        continue
+      fi
+      if [[ "${lib_path}" == /lib/* || "${lib_path}" == /lib64/* ]]; then
+        case "${lib_path##*/}" in
+          linux-vdso.so.1|ld-linux-*|libc.so.*|libdl.so.*|libm.so.*|libpthread.so.*|librt.so.*|libutil.so.*|libcrypt.so.*|libresolv.so.*|libnsl.so.*|libgcc_s.so.*|libstdc\+\+.so.*)
+            continue
+            ;;
+          *)
+            ;;
+        esac
+      fi
+      if [[ "${lib_path}" == /* ]]; then
+        :
+      elif [[ -f "${binary_dir}/${lib_path}" ]]; then
+        lib_path="${binary_dir}/${lib_path}"
+      else
+        continue
+      fi
+      if [[ ! -f "${lib_path}" ]]; then
+        continue
+      fi
 
-  if [[ "${#libs[@]}" -gt 0 ]]; then
-    # -L resolve symlinks (Qt envia libs versionadas como symlinks; cp sem -L
-    # copiaria o link apontando para lugar inexistente no destino).
-    cp -fL "${libs[@]}" "${output_dir}/"
-  fi
+      pending+=("${lib_path}")
+      if [[ -z "${copied["${lib_path##*/}"]+x}" ]]; then
+        # -L resolve symlinks; the target must exist inside the bundle.
+        if [[ ! -e "${output_dir}/${lib_path##*/}" ||
+              ! "${lib_path}" -ef "${output_dir}/${lib_path##*/}" ]]; then
+          cp -fL "${lib_path}" "${output_dir}/${lib_path##*/}"
+        fi
+        copied["${lib_path##*/}"]=1
+      fi
+    done < <(ldd "${current}" 2>/dev/null)
+  done
+
+  [[ "${missing}" == "false" ]]
 }
 
 # Descobre o prefix de instalacao do Qt6 a partir de um binario linkado contra
@@ -251,8 +366,8 @@ package_copy_qt_resources() {
   local qt_prefix
 
   qt_prefix="$(package_resolve_qt_prefix "${binary}")" || {
-    echo "package_copy_qt_resources: nao foi possivel resolver o prefix Qt; pulando deploy de plugins/QML." >&2
-    return 0
+    echo "package_copy_qt_resources: nao foi possivel resolver o prefix Qt." >&2
+    return 1
   }
 
   local plugins_src="${qt_prefix}/plugins"
@@ -278,11 +393,14 @@ package_copy_qt_resources() {
     # Plugins dependem de libs Qt (libQt6Gui, libQt6DBus, libQt6Wayland*, etc).
     # Copiar as deps transitivas de cada .so de plugin para o lib/ do bundle.
     local plugin_so
+    local plugin_source
     while IFS= read -r -d '' plugin_so; do
-      package_copy_runtime_libraries "${plugin_so}" "${bundle_dir}/lib"
+      plugin_source="${plugins_src}/${plugin_so#"${plugins_dst}/"}"
+      package_copy_runtime_libraries "${plugin_source}" "${bundle_dir}/lib"
     done < <(find "${plugins_dst}" -type f -name '*.so' -print0 2>/dev/null)
   else
-    echo "package_copy_qt_resources: ${plugins_src} nao encontrado; plugins nao copiados." >&2
+    echo "package_copy_qt_resources: diretorio de plugins nao encontrado: ${plugins_src}" >&2
+    return 1
   fi
 
   if [[ -d "${qml_src}" ]]; then
@@ -295,9 +413,32 @@ package_copy_qt_resources() {
         cp -RL "${qml_src}/${mod}" "${qml_dst}/"
       fi
     done
+    find "${qml_dst}" -type f -name '*.o' -delete
+    # Imports QML tambem carregam plugins .so com bibliotecas privadas do Qt.
+    # Copiar essas dependencias evita resolver uma Qt diferente do sistema.
+    local qml_plugin_so
+    local qml_plugin_source
+    while IFS= read -r -d '' qml_plugin_so; do
+      qml_plugin_source="${qml_src}/${qml_plugin_so#"${qml_dst}/"}"
+      package_copy_runtime_libraries "${qml_plugin_source}" "${bundle_dir}/lib"
+    done < <(find "${qml_dst}" -type f -name '*.so' -print0 2>/dev/null)
   else
-    echo "package_copy_qt_resources: ${qml_src} nao encontrado; imports QML nao copiados." >&2
+    echo "package_copy_qt_resources: diretorio QML nao encontrado: ${qml_src}" >&2
+    return 1
   fi
+
+  if ! compgen -G "${plugins_dst}/platforms/*.so*" >/dev/null; then
+    echo "package_copy_qt_resources: plugin de plataforma ausente no bundle." >&2
+    return 1
+  fi
+
+  local qml_module
+  for qml_module in QtQml QtQuick QtQuick/Controls QtQuick/Dialogs QtQuick/Layouts QtQuick/Window; do
+    if [[ ! -f "${qml_dst}/${qml_module}/qmldir" ]]; then
+      echo "package_copy_qt_resources: import QML ausente no bundle: ${qml_module}" >&2
+      return 1
+    fi
+  done
 
   echo "${qt_prefix}"
 }

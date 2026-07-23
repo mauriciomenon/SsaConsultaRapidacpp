@@ -55,6 +55,21 @@ Nao crie diretorios de build alternativos para contornar falhas. Os unicos
 presets oficiais sao `dev` e `release`; scripts de clean, smoke e package usam
 esses mesmos diretorios e preservam `data/`, `dist/` e configuracoes locais.
 
+## Entregas finais locais
+
+Os scripts de pacote mantem a ultima entrega bem-sucedida em:
+
+```text
+dist/windows/<arch>/final/ssa_consulta_rapida_cpp{.exe,-installer.exe,.zip}
+dist/linux/<arch>/final/ssa_consulta_rapida_cpp{,.deb,.zip}
+dist/macos/<arch>/final/ssa_consulta_rapida_cpp{.app,.dmg,.zip}
+```
+
+Quando o working tree esta limpo e `HEAD` aponta exatamente para
+`v<version>`, uma copia com `-<version>` no final do nome e criada sem
+sobrescrever releases anteriores. Builds intermediarios atualizam somente os
+nomes sem versao. `./scripts/make_clean` nunca remove essas entregas.
+
 O warning `cmake_minimum_required` sob `.deps-cache/miniz-src` vem do source
 cache da dependencia. Nao edite o cache gerado. A correcao pertence a uma
 atualizacao validada do pin em `cmake/Dependencies.cmake`.
@@ -86,26 +101,36 @@ Execucao manual do binario, quando necessaria:
 
 ## Linux
 
-Instale Qt 6.11.x, CMake, Ninja, SQLite e um compilador C++20. O configurador
-usa `QT_DIR`, `Qt6_DIR` ou `CMAKE_PREFIX_PATH` quando definidos; sem isso,
-procura Qt 6.11.x em `~/Qt/*/gcc_64` e nos caminhos de sistema registrados em
-`tools/qt-detect.conf`. O CI mantem 6.11.0 como patch reproduzivel, mas o
-script local aceita qualquer patch compativel da familia 6.11.
+Use o guia canonico de [Linux](../../packaging/linux/README.md) para os comandos
+`apt-get` de Debian/Ubuntu, `pacman` de Arch/Artix e a instalacao separada do Qt
+6.11.x. Debian Trixie fornece Qt 6.8.x, que nao atende a familia configurada.
+O configurador procura Qt em `QT_DIR`, `Qt6_DIR`, `CMAKE_PREFIX_PATH`,
+`QT_INSTALL_ROOT`, `~/Qt/*/gcc_64` e caminhos de sistema.
+O CI e a referencia de deteccao em `tools/qt-detect.conf` usam Qt 6.11.0; o
+host local desta rodada usou Qt 6.11.1. O configurador aceita patches da
+familia 6.11.x.
 
 ## Windows
 
-Instale Qt 6.11.x, CMake, Ninja, SQLite e um compilador C++20. A busca padrao
-usa `C:\Qt`, seleciona o patch 6.11.x mais alto valido e prioriza os kits:
+Use o guia canonico de [Windows](../../packaging/windows/README.md) para links
+oficiais, vcpkg/SQLite e requisitos de package. A busca padrao usa `C:\Qt`,
+seleciona o patch 6.11.x mais alto valido e prioriza os kits:
 
 1. `msvc2022_64`;
 2. `llvm-mingw_64`;
 3. `mingw_64`.
 
-MSVC permanece o default. Se o kit ou `cl.exe` nao estiver disponivel e a
-escolha nao tiver sido explicita, o configurador tenta LLVM MinGW e depois
-MinGW. Uma escolha explicita nunca muda de compilador silenciosamente.
+MSVC permanece o default. O script de build inicializa sozinho o Developer
+PowerShell com host x64 e target x64. O comando normal de package usa o mesmo
+bootstrap quando MSVC e selecionado. Se o kit ou compilador nao estiver
+disponivel e a escolha nao tiver sido explicita, o configurador tenta LLVM
+MinGW e depois MinGW. Uma escolha explicita nunca muda de ABI silenciosamente.
 
 ```powershell
+# Preflight somente leitura.
+.\tools\configure-dev.ps1 -Check
+.\tools\configure-dev.ps1 -CheckPackage
+
 # Default: MSVC, com fallback automatico de kit desktop.
 .\scripts\build-windows.ps1
 
@@ -128,7 +153,24 @@ aplicativo desktop; um alvo WASM exigiria preset e empacotamento proprios.
 
 O `windeployqt` e o `macdeployqt` continuam sendo resolvidos a partir do cache
 do build. Assim, a ferramenta de deploy usa exatamente o mesmo patch Qt do
-binario e nao mistura 6.11.0 com 6.11.1.
+binario e nao mistura patches diferentes da familia 6.11.x.
+
+## Matriz de compiladores
+
+| Plataforma | Compilador | Estado atual |
+| --- | --- | --- |
+| Windows amd64 | MSVC 19.51, VS 2026 18.8 | Build, testes e pacote validados |
+| Windows amd64 | LLVM-MinGW 17.0.6 | Toolchain/kit independente reconhecido, sem gate completo nesta rodada |
+| Windows amd64 | MinGW GCC 13.1 ou 11.2 | Toolchain/kit independente reconhecido; versao deve casar com o kit Qt; sem gate completo |
+| Windows amd64 | clang-cl 22.1.3 | Instalado para diagnostico; combinacao com Qt MSVC nao suportada nesta versao |
+| Debian/WSL amd64 | GCC 14.2 | Build e 641 testes validados |
+| Debian/WSL amd64 | Clang 19.1.7 | Suportado pelo fonte, sem gate completo nesta rodada |
+| macOS arm64 | Apple Clang | Historicamente validado; nao executado nesta rodada |
+
+`msvc2022_64`, `llvm-mingw_64` e `mingw_64` sao produtos Qt com ABIs
+diferentes. Mistura entre eles e `UNSUPPORTED`. O fato de clang-cl usar ABI
+MSVC nao basta para declarar o kit Qt MSVC validado; esse par exige um gate
+completo proprio. Kits `wasm_*` tambem nao sao alvos deste aplicativo desktop.
 
 Testes isolados da deteccao:
 
@@ -258,17 +300,18 @@ IWYU requires the Homebrew clang toolchain to match the build. Since the build
 uses Apple clang, IWYU shows `<array> not found`. Running IWYU would require a
 separate build using Homebrew clang, which is blocked on the Apple-SDK issue.
 
-## Linux build container (Debian Trixie)
+## Linux build container legado (Debian Trixie)
 
-A `Containerfile.debian-build` at `scripts/container/` produces a Debian Trixie
-image with all build tools and linters for Linux CI / reproducible builds.
+O `scripts/container/Containerfile.debian-build` instala Qt 6.8.x do Debian
+Trixie. Esse container nao satisfaz atualmente o preflight Qt 6.11.x e nao deve
+ser apresentado como build canonico ate receber o mesmo kit Qt do CI/host.
 
 ### Contents
 
 - **Compilers**: g++ 14, clang 14, mingw-w64 (cross to Windows)
 - **Build**: cmake 3.31, ninja, make, automake, autoconf, libtool, pkg-config
 - **Linters**: clang-tidy, clang-format, cppcheck 2.10
-- **Qt 6.8** (Trixie ships Qt 6.8.x; project requires >= 6.6, Bookworm only has 6.4)
+- **Qt 6.8** (inventario legado; `UNSUPPORTED` pelo preflight Qt 6.11.x atual)
 - **Tools**: gdb, bison, flex, gawk, lsd, git, sqlite3, curl, network utilities
 
 ### Build and run with Apple Container
@@ -344,7 +387,7 @@ ditto -c -k --sequesterRsrc --keepParent \
   dist/ssa_consulta_rapida-macos.zip
 QT_QPA_PLATFORM=offscreen \
   build/dev/ssa_consulta_rapida.app/Contents/MacOS/ssa_consulta_rapida \
-  --db /Users/menon/git/SSA_Consulta_Rapida/data/ssas.db \
+  --db "$HOME/path/to/ssa-consulta-rapida/data/ssas.db" \
   --screenshot /tmp/ssa-cpp-smoke.png \
   --smoke-exit-ms 1500
 ```

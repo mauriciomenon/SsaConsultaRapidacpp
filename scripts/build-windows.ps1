@@ -6,6 +6,8 @@ param(
     [string]$QtSubdir = "",
     [string]$SQLiteRoot = "",
     [string]$ProjectRoot = "",
+    [string]$Target = "",
+    [string[]]$CmakeExtraArgs = @(),
     [switch]$Help
 )
 
@@ -30,7 +32,7 @@ Defaults:
   Repository root: directory that contains this script.
 
 Explicit options can be used through:
-  .\scripts\build-windows.ps1 -Preset <preset> [-QtDir <qt-dir>] [-QtRoot <root>] [-QtSubdir <kit>] [-SQLiteRoot <path>]
+  .\scripts\build-windows.ps1 -Preset <preset> [-QtDir <qt-dir>] [-QtRoot <root>] [-QtSubdir <kit>] [-SQLiteRoot <path>] [-Target <target>] [-CmakeExtraArgs <args>]
 
 Qt kit examples:
   .\scripts\build-windows.ps1
@@ -143,9 +145,15 @@ if ($QtSubdir) {
     $configureParams.QtSubdir = 'msvc2022_64'
 }
 if ($SQLiteRoot) { $configureParams.SQLiteRoot = $SQLiteRoot }
+$effectiveCmakeExtraArgs = @($CmakeExtraArgs | Where-Object { $_ })
 if ((Test-Path -LiteralPath $cacheFile -PathType Leaf) -and -not $cacheIsReusable) {
     Write-Output "Refreshing foreign or stale CMake cache: $cacheFile"
-    $configureParams.CmakeExtraArgs = @('--fresh')
+    if ($effectiveCmakeExtraArgs -notcontains '--fresh') {
+        $effectiveCmakeExtraArgs = @('--fresh') + $effectiveCmakeExtraArgs
+    }
+}
+if ($effectiveCmakeExtraArgs.Count -gt 0) {
+    $configureParams.CmakeExtraArgs = $effectiveCmakeExtraArgs
 }
 
 if ($configureParams.Count -gt 1 -or -not $cacheIsReusable) {
@@ -180,4 +188,8 @@ if ($sqliteLibraryLine) {
     }
 }
 
-& $cmakeExecutable --build --preset $preset
+$buildArgs = @("--build", "--preset", $preset)
+if ($Target) {
+    $buildArgs += @("--target", $Target)
+}
+& $cmakeExecutable @buildArgs

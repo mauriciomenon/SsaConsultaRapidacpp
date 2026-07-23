@@ -117,3 +117,71 @@ function Resolve-WindowsArch {
 
     return $arch
 }
+
+function Test-ExactReleaseTag {
+    param(
+        [Parameter(Mandatory)]
+        [string]$RepoRoot,
+        [Parameter(Mandatory)]
+        [string]$Version
+    )
+
+    & git -C $RepoRoot diff --quiet --
+    if ($LASTEXITCODE -ne 0) {
+        return $false
+    }
+    & git -C $RepoRoot diff --cached --quiet --
+    if ($LASTEXITCODE -ne 0) {
+        return $false
+    }
+    $untracked = @(& git -C $RepoRoot ls-files --others --exclude-standard)
+    if ($LASTEXITCODE -ne 0 -or $untracked.Count -ne 0) {
+        return $false
+    }
+    $tags = @(& git -C $RepoRoot tag --points-at HEAD --list "v$Version")
+    return $LASTEXITCODE -eq 0 -and $tags -contains "v$Version"
+}
+
+function Publish-FinalArtifact {
+    param(
+        [Parameter(Mandatory)]
+        [string]$SourcePath,
+        [Parameter(Mandatory)]
+        [string]$FinalRoot,
+        [Parameter(Mandatory)]
+        [string]$LatestName,
+        [Parameter(Mandatory)]
+        [string]$VersionedName,
+        [Parameter(Mandatory)]
+        [bool]$TaggedRelease
+    )
+
+    New-Item -ItemType Directory -Path $FinalRoot -Force | Out-Null
+    $latestPath = Join-Path $FinalRoot $LatestName
+    $versionedPath = Join-Path $FinalRoot $VersionedName
+    $stagedPath = Join-Path $FinalRoot ".$LatestName.$PID.staging"
+    Get-Item -LiteralPath $stagedPath -Force -ErrorAction SilentlyContinue |
+        Remove-Item -Recurse -Force
+
+    if (Test-Path -LiteralPath $SourcePath -PathType Container) {
+        Copy-Item -LiteralPath $SourcePath -Destination $stagedPath -Recurse
+        Get-Item -LiteralPath $latestPath -Force -ErrorAction SilentlyContinue |
+            Remove-Item -Recurse -Force
+    }
+    else {
+        Copy-Item -LiteralPath $SourcePath -Destination $stagedPath
+    }
+    Move-Item -LiteralPath $stagedPath -Destination $latestPath -Force
+
+    if ($TaggedRelease) {
+        if (Test-Path -LiteralPath $versionedPath) {
+            Write-Output "Preserving existing final artifact: $versionedPath"
+        }
+        elseif (Test-Path -LiteralPath $SourcePath -PathType Container) {
+            Copy-Item -LiteralPath $SourcePath -Destination $versionedPath -Recurse
+        }
+        else {
+            Copy-Item -LiteralPath $SourcePath -Destination $versionedPath
+        }
+    }
+}

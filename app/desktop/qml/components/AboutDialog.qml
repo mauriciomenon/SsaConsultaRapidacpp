@@ -12,6 +12,7 @@ Window {
     readonly property string productName: "SSA Consulta Rapida"
     readonly property string authorName: "Mauricio Menon"
     readonly property string productVersion: Qt.application.version.length > 0 ? Qt.application.version : "0.0.0"
+    readonly property string toolchainSupportText: "Validado: Windows 11 amd64 - MSVC 19.51 | Debian/WSL amd64 - GCC 14.2\nHistorico: macOS arm64 - Apple Clang 21\nReconhecidos sem gate: LLVM-MinGW 17.0.6 | MinGW GCC 13.1.0/11.2.0\nNao suportado nesta versao: clang-cl 22.1.3 com Qt MSVC"
 
     title: "Sobre"
     modality: Qt.ApplicationModal
@@ -59,6 +60,14 @@ Window {
                 text: "Autor: " + root.authorName
                 color: Theme.text
                 font.pixelSize: Theme.fontSizeBody
+            }
+            Label {
+                Layout.fillWidth: true
+                text: root.toolchainSupportText
+                color: Theme.mutedText
+                font.pixelSize: Theme.fontSizeCaption
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.WordWrap
             }
             Item {
                 Layout.fillHeight: true

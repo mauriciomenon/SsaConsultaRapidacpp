@@ -89,4 +89,107 @@ Describe "Windows Qt detection" {
         { & $script:configureScript -QtDir $qtDir -PrintQtSelection } |
             Should -Throw "*detected unknown*"
     }
+
+    Context "read-only dependency checks" {
+        BeforeEach {
+            $script:fixtureRepo = Join-Path $TestDrive "repo"
+            $script:fixtureTools = Join-Path $script:fixtureRepo "tools"
+            $script:fixtureBuild = Join-Path $script:fixtureRepo "build/dev"
+            $script:fixtureBin = Join-Path $TestDrive "bin"
+            New-Item -ItemType Directory -Path $script:fixtureTools, $script:fixtureBuild, $script:fixtureBin -Force |
+                Out-Null
+            Copy-Item $script:configureScript (Join-Path $script:fixtureTools "configure-dev.ps1")
+            Copy-Item (Join-Path (Split-Path $script:configureScript -Parent) "qt-detect.conf") $script:fixtureTools
+            $script:checkScript = Join-Path $script:fixtureTools "configure-dev.ps1"
+            $script:cachePath = Join-Path $script:fixtureBuild "CMakeCache.txt"
+            Set-Content -Path $script:cachePath -Value "unchanged-cache" -NoNewline
+            $script:cacheBefore = [System.IO.File]::ReadAllBytes($script:cachePath)
+
+            Initialize-FakeQtPrefix -Root $script:qtRoot -Version "6.11.1" -Subdir "msvc2022_64"
+            $qtBin = Join-Path $script:qtRoot "6.11.1/msvc2022_64/bin"
+            New-Item -ItemType Directory -Path $qtBin -Force | Out-Null
+            $script:sqliteRoot = Join-Path $TestDrive "vcpkg/installed/x64-windows"
+            New-Item -ItemType Directory -Path (Join-Path $script:sqliteRoot "include"), (Join-Path $script:sqliteRoot "lib") -Force |
+                Out-Null
+            New-Item -ItemType File -Path (Join-Path $script:sqliteRoot "include/sqlite3.h"), (Join-Path $script:sqliteRoot "lib/sqlite3.lib") -Force |
+                Out-Null
+
+            $nativeExecutable = if ($IsWindows -or $PSVersionTable.PSVersion.Major -le 5) {
+                $env:ComSpec
+            } else {
+                (Get-Command true).Source
+            }
+            Copy-Item $nativeExecutable (Join-Path $script:fixtureBin "cl.exe")
+            Copy-Item $nativeExecutable (Join-Path $qtBin "windeployqt.exe")
+            Copy-Item $nativeExecutable (Join-Path $script:fixtureBin "robocopy.exe")
+            Copy-Item $nativeExecutable (Join-Path $script:fixtureBin "tar.exe")
+            foreach ($commandName in @("cmake", "ninja")) {
+                if ($IsWindows -or $PSVersionTable.PSVersion.Major -le 5) {
+                    Set-Content -Path (Join-Path $script:fixtureBin "$commandName.cmd") -Value "@exit /b 0" -Encoding ASCII
+                } else {
+                    Copy-Item $nativeExecutable (Join-Path $script:fixtureBin $commandName)
+                }
+            }
+            $script:originalPath = $env:Path
+            $script:originalNsisHome = $env:NSIS_HOME
+            $script:nsisRoot = Join-Path $TestDrive "NSIS"
+            New-Item -ItemType Directory -Path $script:nsisRoot -Force | Out-Null
+            Copy-Item $nativeExecutable (Join-Path $script:nsisRoot "makensis.exe")
+            $env:NSIS_HOME = $script:nsisRoot
+            $env:Path = "$script:fixtureBin$([IO.Path]::PathSeparator)$env:Path"
+        }
+
+        AfterEach {
+            $env:Path = $script:originalPath
+            $env:NSIS_HOME = $script:originalNsisHome
+        }
+
+        It "reports detected development dependencies and preserves the selected cache" {
+            $output = & $script:checkScript -QtRoot $script:qtRoot -SQLiteRoot $script:sqliteRoot -Check
+
+            $output | Should -Contain "OK qt path=$(Join-Path $script:qtRoot '6.11.1/msvc2022_64') version=6.11.1"
+            ($output | Where-Object { $_ -like "OK compiler path=* version=*" }) | Should -Not -BeNullOrEmpty
+            ($output | Where-Object { $_ -like "OK sqlite path=* version=*" }) | Should -Not -BeNullOrEmpty
+            [System.IO.File]::ReadAllBytes($script:cachePath) | Should -Be $script:cacheBefore
+        }
+
+        It "reports official downloads and the vcpkg command for missing dependencies" {
+            Remove-Item (Join-Path $script:sqliteRoot "lib/sqlite3.lib")
+
+            $hostExecutable = (Get-Process -Id $PID).Path
+            $output = & $hostExecutable -NoProfile -File $script:checkScript -QtRoot $script:qtRoot -SQLiteRoot $script:sqliteRoot -Check 2>&1
+            $LASTEXITCODE | Should -Not -Be 0
+
+            $output | Should -Contain "MISSING sqlite path=- version=-"
+            $output | Should -Contain "HINT sqlite vcpkg install sqlite3:x64-windows"
+
+            Remove-Item $script:qtRoot -Recurse -Force
+            $missingOutput = & $hostExecutable -NoProfile -File $script:checkScript -QtRoot $script:qtRoot -SQLiteRoot $script:sqliteRoot -Check 2>&1
+            $LASTEXITCODE | Should -Not -Be 0
+            ($missingOutput | Where-Object { $_ -match '^HINT (qt|compiler) https://' }).Count |
+                Should -BeGreaterThan 0
+        }
+
+        It "checks package tools without configuring CMake" {
+            $output = & $script:checkScript -QtRoot $script:qtRoot -SQLiteRoot $script:sqliteRoot -CheckPackage 2>&1
+
+            ($output | Where-Object { $_ -match '^OK nsis path=' }).Count | Should -Be 1
+            ($output | Where-Object { $_ -match '^OK windeployqt path=' }).Count | Should -Be 1
+            ($output | Where-Object { $_ -match '^OK robocopy path=' }).Count | Should -Be 1
+            ($output | Where-Object { $_ -match '^OK tar path=' }).Count | Should -Be 1
+            [System.IO.File]::ReadAllBytes($script:cachePath) | Should -Be $script:cacheBefore
+        }
+
+        It "distinguishes an unsupported Qt family" {
+            Initialize-FakeQtPrefix -Root $script:qtRoot -Version "6.12.0" -Subdir "msvc2022_64"
+            $qtDir = Join-Path $script:qtRoot "6.12.0/msvc2022_64"
+
+            $hostExecutable = (Get-Process -Id $PID).Path
+            $output = & $hostExecutable -NoProfile -File $script:checkScript -QtDir $qtDir -SQLiteRoot $script:sqliteRoot -Check 2>&1
+
+            $LASTEXITCODE | Should -Not -Be 0
+            $output | Should -Contain "UNSUPPORTED qt path=$qtDir version=6.12.0"
+            [System.IO.File]::ReadAllBytes($script:cachePath) | Should -Be $script:cacheBefore
+        }
+    }
 }

@@ -82,7 +82,7 @@ mkdir -p "${fixture_repo}/tools" "${fixture_repo}/build/dev"
 cp "${configure_script}" "${fixture_configure}"
 cp "${repo_root}/tools/qt-detect.conf" "${fixture_repo}/tools/qt-detect.conf"
 cat >"${fixture_repo}/build/dev/CMakeCache.txt" <<'EOF'
-CMAKE_CACHEFILE_DIR:INTERNAL=C:/Users/mauri/project/build/dev
+CMAKE_CACHEFILE_DIR:INTERNAL=C:/foreign/project/build/dev
 CMAKE_GENERATOR:INTERNAL=Ninja
 CMAKE_MAKE_PROGRAM:FILEPATH=C:/Qt/Tools/Ninja/ninja.exe
 EOF
@@ -108,5 +108,72 @@ if HOME="${fixture_root}" \
 fi
 grep -q '6\.11' "${fixture_root}/stderr" || \
   fail "family rejection must explain the required Qt 6.11 family"
+
+cache_snapshot="${fixture_root}/CMakeCache.snapshot"
+cp "${fixture_repo}/build/dev/CMakeCache.txt" "${cache_snapshot}"
+check_output="$({
+  HOME="${fixture_root}" \
+    QT_INSTALL_ROOT="${fixture_root}/Qt" \
+    QT_DIR='' \
+    Qt6_DIR='' \
+    CMAKE_PREFIX_PATH='' \
+    PATH="${mock_bin}:/usr/bin:/bin" \
+    "${fixture_configure}" --check dev
+} 2>&1)" || fail "dependency check must pass with the detected development tools"
+grep -Eq "^OK qt path=${fixture_root}/Qt/6\.11\.0/macos version=6\.11\.0$" <<<"${check_output}" || \
+  fail "check must report the detected Qt path and version"
+grep -Eq '^OK (cmake|ninja|compiler|sqlite) path=.+ version=.+$' <<<"${check_output}" || \
+  fail "check must emit deterministic OK records"
+cmp -s "${cache_snapshot}" "${fixture_repo}/build/dev/CMakeCache.txt" || \
+  fail "check must leave CMakeCache.txt unchanged"
+
+if unsupported_output="$({
+  HOME="${fixture_root}" \
+    QT_INSTALL_ROOT="${fixture_root}/Qt" \
+    QT_DIR="${fixture_root}/Qt/6.12.0/macos" \
+    Qt6_DIR='' \
+    CMAKE_PREFIX_PATH='' \
+    PATH="${mock_bin}:/usr/bin:/bin" \
+    "${fixture_configure}" --check dev
+} 2>&1)"; then
+  fail "check must fail for an explicit Qt outside the supported family"
+fi
+grep -Eq "^UNSUPPORTED qt path=${fixture_root}/Qt/6\.12\.0/macos version=6\.12\.0$" \
+  <<<"${unsupported_output}" || fail "check must distinguish unsupported Qt from missing Qt"
+
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"${mock_bin}/pacman"
+chmod +x "${mock_bin}/pacman"
+if arch_output="$({
+  HOME="${fixture_root}" \
+    QT_INSTALL_ROOT="${fixture_root}/missing-qt" \
+    QT_DIR='' \
+    Qt6_DIR='' \
+    CMAKE_PREFIX_PATH='' \
+    PATH="${mock_bin}:/usr/bin:/bin" \
+    "${fixture_configure}" --check-package dev
+} 2>&1)"; then
+  fail "package check must fail when Qt is missing"
+fi
+grep -q '^MISSING qt path=- version=-$' <<<"${arch_output}" || \
+  fail "package check must report missing Qt deterministically"
+grep -q 'sudo pacman -S' <<<"${arch_output}" || \
+  fail "Arch and Artix checks must print a pacman installation hint"
+rm -f "${mock_bin}/pacman"
+
+if debian_output="$({
+  HOME="${fixture_root}" \
+    QT_INSTALL_ROOT="${fixture_root}/missing-qt" \
+    QT_DIR='' \
+    Qt6_DIR='' \
+    CMAKE_PREFIX_PATH='' \
+    PATH="${mock_bin}:/usr/bin:/bin" \
+    "${fixture_configure}" --check dev
+} 2>&1)"; then
+  fail "dependency check must fail when Qt is missing"
+fi
+grep -q 'sudo apt install' <<<"${debian_output}" || \
+  fail "Debian checks must print an apt installation hint"
+cmp -s "${cache_snapshot}" "${fixture_repo}/build/dev/CMakeCache.txt" || \
+  fail "all check modes must leave CMakeCache.txt unchanged"
 
 printf 'PASS: POSIX Qt family detection\n'
