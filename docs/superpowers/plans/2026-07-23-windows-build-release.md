@@ -120,4 +120,3 @@ NSIS and GitHub Actions.
 - [ ] Verify release hashes, PE architecture and clean staging.
 - [ ] Push `master` to `origin` and `bitbucket`, then verify both remote refs.
 - [ ] Record external CI separately from local validation.
-
