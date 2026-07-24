@@ -129,24 +129,22 @@ Para distribuicao, use sempre o script de pacote abaixo.
 Assim como o build, o comando normal de package inicializa o Developer
 PowerShell MSVC com host x64 e target x64 quando esse kit e selecionado.
 
-Saidas em `dist\windows\<arch>\`:
+Saidas canonicas em `dist\windows\<arch>\`:
 
-- `ssa_consulta_rapida_cpp-windows-<arch>-<version>.zip`;
-- pasta portatil com EXE, `sqlite3.dll`, DLLs Qt, plugins e imports QML;
-- `latest.zip`, `latest-binary` e `latest-run.bat`;
-- `ssa_consulta_rapida_cpp-windows-<arch>-<version>-installer.exe`;
-- aliases `latest.exe` e `latest-installer.exe`.
+- `final\`: substituido somente com o conjunto completo;
+- `releases\<version>-<commit>\`: entregas imutaveis com `SHA256SUMS`;
+- `current.json`: identifica a entrega completa atual.
 
-Saidas canonicas em `dist\windows\<arch>\final\`:
+O diretorio `final\` contem:
 
 - `ssa_consulta_rapida_cpp.exe`: executavel portatil unico e autoextraivel;
 - `ssa_consulta_rapida_cpp-installer.exe`: instalador NSIS;
 - `ssa_consulta_rapida_cpp.zip`: bundle portatil para extracao.
+- `ssa_consulta_rapida_cpp-standalone\`: PE nativo e runtime sem extracao por
+  abertura.
 
-Em um `HEAD` limpo apontando exatamente para `v<version>`, o script tambem
-preserva `ssa_consulta_rapida_cpp-<version>.exe`,
-`ssa_consulta_rapida_cpp-installer-<version>.exe` e
-`ssa_consulta_rapida_cpp-<version>.zip`. Builds sem tag atualizam somente os
-nomes sem versao.
+Cada conjunto completo e preservado em `releases\<version>-<commit>\`.
+Uma nova publicacao do mesmo identificador so e aceita quando todos os hashes
+coincidem; `final\` e `current.json` sao atualizados juntos.
 
 Nao inclua bancos reais, configuracoes locais, logs, screenshots ou segredos.

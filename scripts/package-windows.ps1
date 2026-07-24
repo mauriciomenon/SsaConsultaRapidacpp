@@ -31,13 +31,14 @@ Defaults:
   Optional parameters: -Preset, -ProjectRoot, -Arch, -DistDir, -Version,
     -QtDir, -QtRoot, -QtSubdir
   Optional switch: -SkipTests
-  Latest pointers: symbolic links when permitted, copied fallback otherwise.
 
   Generated files:
   - final\<repo-name>.exe (single portable executable)
   - final\<repo-name>-installer.exe
   - final\<repo-name>.zip
-  - versioned copies are created only from a clean matching Git tag
+  - final\<repo-name>-standalone\<repo-name>.exe (native PE plus runtime)
+  - releases\<version>-<commit>\ contains immutable delivery sets
+  - current.json identifies the current complete release
 "@
     Write-Output $helpText
 }
@@ -84,13 +85,18 @@ $repoName = Split-Path $repoRoot -Leaf
 $distRoot = if ($DistDir) { $DistDir } else { Join-Path $repoRoot "dist\windows" }
 $artifactRoot = Join-Path $distRoot $arch
 $artifactName = "$repoName-windows-$arch-$version"
-$artifactDir = Join-Path $artifactRoot $artifactName
-$zipPath = Join-Path $artifactRoot ("{0}.zip" -f $artifactName)
-$installerPath = Join-Path $artifactRoot ("{0}-installer.exe" -f $artifactName)
+$stagingRoot = Join-Path $artifactRoot ".staging"
+$runStage = Join-Path $stagingRoot "$PID-$([guid]::NewGuid().ToString('N').Substring(0, 8))"
+$releaseStage = Join-Path $runStage "release"
+$artifactDir = Join-Path $runStage "app"
+$zipPath = Join-Path $releaseStage "$repoName.zip"
+$installerPath = Join-Path $releaseStage "$repoName-installer.exe"
 $finalRoot = Join-Path $artifactRoot "final"
-$portableStagePath = Join-Path $artifactRoot ".$repoName-portable-$PID.exe"
-$portableNsiPath = Join-Path $artifactRoot ".$repoName-portable-$PID.nsi"
-$installerNsiPath = Join-Path $artifactRoot ".$repoName-installer-$PID.nsi"
+$portableStagePath = Join-Path $releaseStage "$repoName.exe"
+$portableNsiPath = Join-Path $runStage "$repoName-portable.nsi"
+$installerNsiPath = Join-Path $runStage "$repoName-installer.nsi"
+$standaloneStagePath = Join-Path $releaseStage "$repoName-standalone"
+$standaloneExecutableName = "$repoName.exe"
 $makeNsisPath = Resolve-MakeNsisPath
 if (-not $makeNsisPath) {
     throw "MakeNSIS not found. NSIS is required for the portable EXE and installer."
@@ -128,16 +134,9 @@ if (-not (Test-Path $binary)) {
     throw "Binary not found after build: $binary"
 }
 
-if (Test-Path $artifactDir) {
-    Remove-Item $artifactDir -Recurse -Force
-}
-if (Test-Path $installerPath) {
-    Remove-Item $installerPath -Force
-}
-Get-Item -LiteralPath $portableStagePath, $portableNsiPath, $installerNsiPath -Force -ErrorAction SilentlyContinue |
-    Remove-Item -Force
-New-Item -ItemType Directory -Path $artifactDir -Force | Out-Null
+New-Item -ItemType Directory -Path $artifactDir, $releaseStage -Force | Out-Null
 
+try {
 Copy-Item $binary (Join-Path $artifactDir "ssa_consulta_rapida.exe")
 $sqliteRuntime = Join-Path $buildDir "sqlite3.dll"
 if (-not (Test-Path -LiteralPath $sqliteRuntime -PathType Leaf)) {
@@ -220,28 +219,9 @@ if ($qtBinDir -and (Test-Path (Join-Path $qtBinDir "windeployqt.exe"))) {
     throw "windeployqt.exe not found. Cannot generate a self contained Windows package."
 }
 
-if (Test-Path $zipPath) {
-    Remove-Item $zipPath -Force
-}
-
 Set-Content -Path (Join-Path $artifactDir "run-ssa_consulta_rapida.bat") -Value '@echo off
 setlocal
 "%~dp0ssa_consulta_rapida.exe" %*' -Encoding UTF8
-
-$tarCommand = Get-Command "tar.exe" -ErrorAction SilentlyContinue
-if (-not $tarCommand) {
-    $tarCommand = Get-Command "tar" -ErrorAction SilentlyContinue
-}
-if (-not $tarCommand) {
-    throw "tar.exe not found. Install Windows tar support or use a Developer PowerShell where tar.exe is available."
-}
-& $tarCommand.Source -a -c -f "$zipPath" -C "$artifactRoot" $artifactName
-if ($LASTEXITCODE -ne 0) {
-    throw "tar failed to generate the Windows package with exit code $LASTEXITCODE."
-}
-
-Set-LatestArtifactLink -DistRoot $artifactRoot -ArtifactDir $artifactDir
-Set-LatestArtifactAlias -DistRoot $artifactRoot -AliasName "latest.zip" -TargetPath $zipPath
 
 $portableNsisScript = @"
 !include "FileFunc.nsh"
@@ -335,45 +315,63 @@ if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $installerPath -PathTyp
     throw "MakeNSIS failed to generate the installer: $installerPath"
 }
 
-$taggedRelease = Test-ExactReleaseTag -RepoRoot $repoRoot -Version $version
-Publish-FinalArtifact -SourcePath $portableStagePath -FinalRoot $finalRoot `
-    -LatestName "$repoName.exe" -VersionedName "$repoName-$version.exe" `
-    -TaggedRelease $taggedRelease
-Publish-FinalArtifact -SourcePath $installerPath -FinalRoot $finalRoot `
-    -LatestName "$repoName-installer.exe" `
-    -VersionedName "$repoName-installer-$version.exe" `
-    -TaggedRelease $taggedRelease
-Publish-FinalArtifact -SourcePath $zipPath -FinalRoot $finalRoot `
-    -LatestName "$repoName.zip" -VersionedName "$repoName-$version.zip" `
-    -TaggedRelease $taggedRelease
+New-Item -ItemType Directory -Path $standaloneStagePath -Force | Out-Null
+$standaloneRuntimePath = Join-Path $standaloneStagePath "ssa_consulta_rapida.exe"
+Copy-Item -Path (Join-Path $artifactDir "*") -Destination $standaloneStagePath -Recurse
+Rename-Item -LiteralPath $standaloneRuntimePath `
+    -NewName $standaloneExecutableName
+Set-Content -LiteralPath (Join-Path $standaloneStagePath "README.txt") -Encoding UTF8 -Value @"
+Native Windows executable. Run:
+  .\$standaloneExecutableName --db <path-to-ssas.db>
 
-$finalPortablePath = Join-Path $finalRoot "$repoName.exe"
-Set-LatestArtifactAlias -DistRoot $artifactRoot -AliasName "latest-binary" `
-    -TargetPath $finalPortablePath
-Set-LatestArtifactAlias -DistRoot $artifactRoot -AliasName "latest.exe" `
-    -TargetPath $installerPath
-Set-LatestArtifactAlias -DistRoot $artifactRoot -AliasName "latest-installer.exe" `
-    -TargetPath $installerPath
-Set-Content -Path (Join-Path $artifactRoot "latest-run.bat") -Value @"
-@echo off
-setlocal
-"%~dp0final\$repoName.exe" %*
-"@ -Encoding UTF8
-Get-Item -LiteralPath $portableStagePath, $portableNsiPath, $installerNsiPath -Force -ErrorAction SilentlyContinue |
-    Remove-Item -Force
+The Qt, QML and SQLite runtime files must remain beside the executable.
+"@
+
+$zipSourceDir = Join-Path $runStage $artifactName
+Rename-Item -LiteralPath $artifactDir -NewName $artifactName
+$tarCommand = Get-Command "tar.exe" -ErrorAction SilentlyContinue
+if (-not $tarCommand) {
+    $tarCommand = Get-Command "tar" -ErrorAction SilentlyContinue
+}
+if (-not $tarCommand) {
+    throw "tar.exe not found. Install Windows tar support or use a Developer PowerShell where tar.exe is available."
+}
+& $tarCommand.Source -a -c -f "$zipPath" -C "$runStage" $artifactName
+if ($LASTEXITCODE -ne 0) {
+    throw "tar failed to generate the Windows package with exit code $LASTEXITCODE."
+}
+if (-not (Test-Path -LiteralPath $zipSourceDir -PathType Container)) {
+    throw "Windows ZIP source directory was not staged: $zipSourceDir"
+}
+
+$commitSha = @(& git -C $repoRoot rev-parse --short=12 HEAD) | Select-Object -First 1
+if ($LASTEXITCODE -ne 0 -or -not $commitSha) {
+    throw "Could not resolve Git commit for Windows release publication."
+}
+$commitSha = $commitSha.Trim()
+$taggedRelease = Test-ExactReleaseTag -RepoRoot $repoRoot -Version $version
+Publish-WindowsReleaseSet -StageDir $releaseStage -DistRoot $artifactRoot `
+    -Version $version -CommitSha $commitSha
+}
+finally {
+    Get-Item -LiteralPath $runStage -Force -ErrorAction SilentlyContinue |
+        Remove-Item -Recurse -Force
+    if ((Test-Path -LiteralPath $stagingRoot -PathType Container) -and
+        -not (Get-ChildItem -LiteralPath $stagingRoot -Force | Select-Object -First 1)) {
+        Remove-Item -LiteralPath $stagingRoot -Force
+    }
+}
 
 Write-Output "Windows release artifacts generated:"
 Write-Output "  project_root: $repoRoot"
 Write-Output "  version: $version"
 Write-Output "  preset: $preset"
 Write-Output "  architecture: $arch"
-Write-Output "  package: $zipPath"
-Write-Output "  latest_zip: $artifactRoot/latest.zip"
-Write-Output "  latest_binary: $artifactRoot/latest-binary"
-Write-Output "  latest_run: $artifactRoot/latest-run.bat"
-Write-Output "  latest: $artifactRoot/latest"
-Write-Output "  latest_exe: $artifactRoot/latest.exe"
-Write-Output "  latest_installer: $artifactRoot/latest-installer.exe"
-Write-Output "  installer: $installerPath"
+Write-Output "  package: $finalRoot\$repoName.zip"
+Write-Output "  portable: $finalRoot\$repoName.exe"
+Write-Output "  installer: $finalRoot\$repoName-installer.exe"
+Write-Output "  standalone: $finalRoot\$repoName-standalone\$standaloneExecutableName"
 Write-Output "  final_root: $finalRoot"
+Write-Output "  release: $artifactRoot\releases\$version-$commitSha"
+Write-Output "  current: $artifactRoot\current.json"
 Write-Output "  tagged_release: $taggedRelease"

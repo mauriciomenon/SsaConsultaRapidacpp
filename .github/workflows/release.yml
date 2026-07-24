@@ -217,19 +217,21 @@ jobs:
       - name: Validate Windows artifacts
         shell: pwsh
         run: |
-          $root = "dist/windows/${{ matrix.artifact }}"
-          $prefix = "ssa_consulta_rapida_cpp-windows-${{ matrix.artifact }}-${{ needs.resolve.outputs.version }}"
-          $zip = @(Get-ChildItem -Path $root -File -Filter "$prefix.zip")
-          $installer = @(Get-ChildItem -Path $root -File -Filter "$prefix-installer.exe")
-          if ($zip.Count -ne 1 -or $installer.Count -ne 1) {
-            throw "Expected one Windows zip and one installer, found $($zip.Count) zip and $($installer.Count) installer"
+          $root = "dist/windows/${{ matrix.artifact }}/final"
+          $zip = @(Get-ChildItem -Path $root -File -Filter "ssa_consulta_rapida_cpp.zip")
+          $installer = @(Get-ChildItem -Path $root -File -Filter "ssa_consulta_rapida_cpp-installer.exe")
+          $hashes = Join-Path $root "SHA256SUMS"
+          $current = "dist/windows/${{ matrix.artifact }}/current.json"
+          if ($zip.Count -ne 1 -or $installer.Count -ne 1 -or
+              -not (Test-Path -LiteralPath $hashes) -or -not (Test-Path -LiteralPath $current)) {
+            throw "Windows final release set is incomplete"
           }
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: release-windows-${{ matrix.artifact }}
           path: |
-            dist/windows/**/*.zip
-            dist/windows/**/*-installer.exe
+            dist/windows/${{ matrix.artifact }}/final/**
+            dist/windows/${{ matrix.artifact }}/current.json
           if-no-files-found: error
 
   debian:
