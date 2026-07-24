@@ -7,13 +7,12 @@ Usage:
   ./scripts/make_clean [--dry-run]
   ./make_clean [--dry-run]
 
-Clean generated CMake artifacts for the standard local presets.
+Clean all generated CMake artifacts under build/.
 
 Runs:
-  cmake --build --preset dev --target clean
-  cmake --build --preset release --target clean
+  rm -rf <repo>/build
 
-This does not remove data/, dist/, config files, or source files.
+This preserves .deps-cache/, data/, dist/, packaging/, config files, and source files.
 EOF_USAGE
 }
 
@@ -39,26 +38,13 @@ done
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/.." && pwd)"
 
-run_clean() {
-  local preset="${1}"
-  local build_dir="${repo_root}/build/${preset}"
-
-  # rm -rf e mais robusto que "cmake --build --target clean" porque o target
-  # clean exige configure previo (falha em fresh checkout). O Ninja nao tem
-  # estado incremental que sobre-viva a remocao do diretorio de build.
-  if [[ "${dry_run}" == "true" ]]; then
-    printf 'Would run: rm -rf %q\n' "${build_dir}"
-    return
-  fi
-
-  if [[ -d "${build_dir}" ]]; then
-    echo "Cleaning CMake preset: ${preset} (rm -rf ${build_dir})"
-    rm -rf "${build_dir}"
-  else
-    echo "Skipping preset ${preset}: ${build_dir} not present (nothing to clean)."
-  fi
-}
-
 cd "${repo_root}"
-run_clean dev
-run_clean release
+build_root="${repo_root}/build"
+if [[ "${dry_run}" == "true" ]]; then
+  printf 'Would run: rm -rf -- %q\n' "${build_root}"
+elif [[ -d "${build_root}" ]]; then
+  echo "Cleaning all CMake build artifacts: ${build_root}"
+  rm -rf -- "${build_root}"
+else
+  echo "Skipping build cleanup: ${build_root} not present."
+fi

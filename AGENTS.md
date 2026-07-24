@@ -143,8 +143,8 @@ Qt6 fica em `~/Qt/6.11.0/macos`; exportar antes dos comandos se precisar.
 
 Notas:
 - Para screenshots offscreen, `QT_QPA_PLATFORM=offscreen` no ambiente.
-- make_clean roda `cmake --build --preset <p> --target clean`, nao apaga
-  pastas de build. Para reconstrucao total, o proprio build/package recria.
+- make_clean remove todo `build/`, incluindo presets e builds Windows antigos,
+  mas preserva `.deps-cache/`, `dist/`, `data/`, `packaging/` e config.
 - build/release nao e reconstruido por `build-macos.sh` (so dev). Para
   release+dist, usar `package-macos.sh`.
 
