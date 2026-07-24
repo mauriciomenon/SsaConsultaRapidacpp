@@ -63,6 +63,15 @@ package_is_exact_release_tag() {
       grep -Fxq "v${version}"
 }
 
+package_json_escape() {
+  local value="$1"
+  value="${value//\\/\\\\}"
+  value="${value//\"/\\\"}"
+  value="${value//$'\r'/\\r}"
+  value="${value//$'\n'/\\n}"
+  printf '%s' "${value}"
+}
+
 package_publish_final_artifact() {
   local source_path="$1"
   local final_root="$2"
@@ -101,8 +110,16 @@ package_publish_release_set() {
   local commit_sha="$4"
   local platform="$5"
   local arch="$6"
-  local preset="$7"
-  shift 7
+  local toolchain="$7"
+  local preset="$8"
+  local qt_kit="$9"
+  local repo_root="${10}"
+  local compiler="${11}"
+  local compiler_version="${12}"
+  local linker="${13}"
+  local linker_version="${14}"
+  local tagged_release="${15}"
+  shift 15
   local -a required_paths=("$@")
   local required_path
 
@@ -116,22 +133,38 @@ package_publish_release_set() {
       return 1
     fi
   done
-  for required_path in "${version}" "${commit_sha}" "${platform}" "${arch}" "${preset}"; do
+  for required_path in "${version}" "${commit_sha}" "${platform}" "${arch}" "${toolchain}" "${preset}"; do
     if [[ ! "${required_path}" =~ ^[A-Za-z0-9._-]+$ ]]; then
       echo "Release identity contains an unsupported value: ${required_path}" >&2
       return 1
     fi
   done
 
-  local release_id="${version}-${commit_sha}"
+  local release_id="${version}-${commit_sha}-${platform}-${arch}-${toolchain}"
+  local qt_kit_json
+  local compiler_json
+  local compiler_version_json
+  local linker_json
+  local linker_version_json
+  qt_kit_json="$(package_json_escape "${qt_kit}")"
+  compiler_json="$(package_json_escape "${compiler}")"
+  compiler_version_json="$(package_json_escape "${compiler_version}")"
+  linker_json="$(package_json_escape "${linker}")"
+  linker_version_json="$(package_json_escape "${linker_version}")"
   cat > "${stage_dir}/release.json" <<EOF_RELEASE
 {
   "version": "${version}",
   "commit": "${commit_sha}",
   "release": "${release_id}",
   "platform": "${platform}",
-  "arch": "${arch}",
-  "preset": "${preset}"
+  "architecture": "${arch}",
+  "toolchain": "${toolchain}",
+  "preset": "${preset}",
+  "qtKit": "${qt_kit_json}",
+  "compiler": "${compiler_json}",
+  "compilerVersion": "${compiler_version_json}",
+  "linker": "${linker_json}",
+  "linkerVersion": "${linker_version_json}"
 }
 EOF_RELEASE
 
@@ -157,29 +190,61 @@ EOF_RELEASE
     local candidate_dir="${dist_root}/.release-$$-staging"
     local final_dir="${dist_root}/final"
     local next_final_dir="${dist_root}/.final-$$-staging"
-    local previous_final_dir="${dist_root}/.final-$$-previous"
+    local previous_dir="${dist_root}/previous"
+    local next_previous_dir="${dist_root}/.previous-$$-staging"
+    local prior_final_dir="${dist_root}/.final-$$-prior"
+    local prior_previous_dir="${dist_root}/.previous-$$-prior"
     local current_path="${dist_root}/current.json"
+    local previous_path="${dist_root}/previous.json"
     local next_current_path="${dist_root}/.current-$$.json"
+    local next_previous_path="${dist_root}/.previous-$$.json"
+    local prior_current_path="${dist_root}/.current-$$-prior.json"
+    local prior_previous_path="${dist_root}/.previous-$$-prior.json"
+    local source_dir="${stage_dir}"
     local final_promoted="false"
-    local previous_final_moved="false"
+    local current_promoted="false"
+    local final_moved="false"
+    local current_moved="false"
+    local previous_moved="false"
+    local previous_record_moved="false"
+    local previous_promoted="false"
+    local previous_record_promoted="false"
 
     # Called indirectly by the EXIT trap below.
     # shellcheck disable=SC2317
     cleanup_release_publication() {
       local status=$?
       trap - EXIT
-      rm -rf "${candidate_dir}" "${next_final_dir}"
-      rm -f "${next_current_path}"
+      rm -rf "${candidate_dir}" "${next_final_dir}" "${next_previous_dir}"
+      rm -f "${next_current_path}" "${next_previous_path}"
       if [[ "${status}" -ne 0 ]]; then
         if [[ "${final_promoted}" == "true" ]]; then
           rm -rf "${final_dir}"
         fi
-        if [[ "${previous_final_moved}" == "true" &&
-              -d "${previous_final_dir}" ]]; then
-          mv "${previous_final_dir}" "${final_dir}"
+        if [[ "${current_promoted}" == "true" ]]; then
+          rm -f "${current_path}"
+        fi
+        if [[ "${final_moved}" == "true" && -d "${prior_final_dir}" ]]; then
+          mv "${prior_final_dir}" "${final_dir}"
+        fi
+        if [[ "${current_moved}" == "true" && -f "${prior_current_path}" ]]; then
+          mv "${prior_current_path}" "${current_path}"
+        fi
+        if [[ "${previous_promoted}" == "true" ]]; then
+          rm -rf "${previous_dir}"
+        fi
+        if [[ "${previous_record_promoted}" == "true" ]]; then
+          rm -f "${previous_path}"
+        fi
+        if [[ "${previous_moved}" == "true" && -d "${prior_previous_dir}" ]]; then
+          mv "${prior_previous_dir}" "${previous_dir}"
+        fi
+        if [[ "${previous_record_moved}" == "true" && -f "${prior_previous_path}" ]]; then
+          mv "${prior_previous_path}" "${previous_path}"
         fi
       else
-        rm -rf "${previous_final_dir}"
+        rm -rf "${prior_final_dir}" "${prior_previous_dir}"
+        rm -f "${prior_current_path}" "${prior_previous_path}"
       fi
       if ! rmdir "${lock_dir}" 2>/dev/null; then
         echo "Release publication left lock directory: ${lock_dir}" >&2
@@ -190,36 +255,108 @@ EOF_RELEASE
     trap 'exit 1' HUP INT TERM
 
     mkdir -p "${releases_root}"
-    rm -rf "${candidate_dir}" "${next_final_dir}" "${previous_final_dir}"
-    cp -a "${stage_dir}/." "${candidate_dir}/"
-    if [[ -d "${release_dir}" ]]; then
+    rm -rf "${candidate_dir}" "${next_final_dir}" "${next_previous_dir}" \
+      "${prior_final_dir}" "${prior_previous_dir}"
+    rm -f "${next_current_path}" "${next_previous_path}" \
+      "${prior_current_path}" "${prior_previous_path}"
+    if [[ "${tagged_release}" == "true" ]]; then
+      cp -a "${stage_dir}/." "${candidate_dir}/"
+    fi
+    if [[ "${tagged_release}" == "true" && -d "${release_dir}" ]]; then
       if ! cmp -s "${candidate_dir}/SHA256SUMS" \
         "${release_dir}/SHA256SUMS"; then
         echo "Immutable release already exists with different hashes: ${release_id}" >&2
         exit 1
       fi
       rm -rf "${candidate_dir}"
-    else
+      source_dir="${release_dir}"
+    elif [[ "${tagged_release}" == "true" ]]; then
       mv "${candidate_dir}" "${release_dir}"
+      source_dir="${release_dir}"
     fi
-    rm -rf "${stage_dir}"
 
-    cp -a "${release_dir}" "${next_final_dir}"
+    cp -a "${source_dir}" "${next_final_dir}"
     cat > "${next_current_path}" <<EOF_CURRENT
 {
   "version": "${version}",
   "commit": "${commit_sha}",
-  "release": "${release_id}"
+  "release": "${release_id}",
+  "platform": "${platform}",
+  "architecture": "${arch}",
+  "toolchain": "${toolchain}",
+  "preset": "${preset}",
+  "qtKit": "${qt_kit_json}",
+  "compiler": "${compiler_json}",
+  "compilerVersion": "${compiler_version_json}",
+  "linker": "${linker_json}",
+  "linkerVersion": "${linker_version_json}"
 }
 EOF_CURRENT
 
     if [[ -d "${final_dir}" ]]; then
-      mv "${final_dir}" "${previous_final_dir}"
-      previous_final_moved="true"
+      cp -a "${final_dir}" "${next_previous_dir}"
+      if [[ -f "${current_path}" ]]; then
+        cp "${current_path}" "${next_previous_path}"
+      elif [[ -f "${final_dir}/release.json" ]]; then
+        cp "${final_dir}/release.json" "${next_previous_path}"
+      else
+        rm -rf "${next_previous_dir}"
+      fi
+      mv "${final_dir}" "${prior_final_dir}"
+      final_moved="true"
+      if [[ -f "${current_path}" ]]; then
+        mv "${current_path}" "${prior_current_path}"
+        current_moved="true"
+      fi
     fi
     mv "${next_final_dir}" "${final_dir}"
     final_promoted="true"
     mv -f "${next_current_path}" "${current_path}"
+    current_promoted="true"
+    if [[ "${final_moved}" == "true" && -d "${next_previous_dir}" && -f "${next_previous_path}" ]]; then
+      if [[ -d "${previous_dir}" ]]; then
+        mv "${previous_dir}" "${prior_previous_dir}"
+        previous_moved="true"
+      fi
+      if [[ -f "${previous_path}" ]]; then
+        mv "${previous_path}" "${prior_previous_path}"
+        previous_record_moved="true"
+      fi
+      mv "${next_previous_dir}" "${previous_dir}"
+      previous_promoted="true"
+      mv "${next_previous_path}" "${previous_path}"
+      previous_record_promoted="true"
+    elif [[ "${final_moved}" == "true" ]]; then
+      rm -rf "${previous_dir}"
+      rm -f "${previous_path}"
+    fi
+
+    if [[ "${tagged_release}" != "true" ]]; then
+      rm -rf "${stage_dir}"
+    fi
+    for release_candidate in "${releases_root}"/*; do
+      [[ -d "${release_candidate}" && -f "${release_candidate}/release.json" ]] || continue
+      if ! command -v jq >/dev/null 2>&1; then
+        echo "Preserving release because jq is unavailable: ${release_candidate}" >&2
+        continue
+      fi
+      if ! jq -e --arg release "$(basename "${release_candidate}")" \
+        --arg platform "${platform}" --arg arch "${arch}" --arg toolchain "${toolchain}" \
+        '.release == $release and .platform == $platform and .architecture == $arch and .toolchain == $toolchain and .release == (.version + "-" + .commit + "-" + $platform + "-" + $arch + "-" + $toolchain)' \
+        "${release_candidate}/release.json" >/dev/null; then
+        echo "Preserving release with invalid identity: ${release_candidate}" >&2
+        continue
+      fi
+      candidate_version="$(jq -r '.version' "${release_candidate}/release.json")"
+      candidate_commit="$(jq -r '.commit' "${release_candidate}/release.json")"
+      if ! candidate_tags="$(git -C "${repo_root}" tag --points-at "${candidate_commit}" --list "v${candidate_version}")"; then
+        echo "Preserving release because tag verification failed: ${release_candidate}" >&2
+        continue
+      fi
+      if ! grep -Fxq "v${candidate_version}" <<<"${candidate_tags}"; then
+        rm -rf "${release_candidate}"
+      fi
+    done
   )
 }
 

@@ -11,7 +11,7 @@ Build and package a Debian (.deb) release artifact.
 Defaults:
   Preset: release
   Architecture: dpkg --print-architecture (fallback to uname -m)
-  Artifact dir: dist/linux/<arch>/
+  Artifact dir: dist/linux/<arch>/gcc/
 
 Parameters:
   --preset <preset>
@@ -22,11 +22,11 @@ Parameters:
   --skip-tests
 
 Generated files:
-  - final/<repo-name> (single self-extracting executable)
-  - final/<repo-name>-standalone/<repo-name> (native ELF plus runtime)
-  - final/<repo-name>.deb
-  - final/<repo-name>.zip
-  - releases/<version>-<commit>/ contains immutable delivery sets
+  - final/<repo>-<version>-<commit>-debian-<arch>-gcc (single self-extracting executable)
+  - final/<repo>-<version>-<commit>-debian-<arch>-gcc-standalone/<repo>-<version>-<commit>-debian-<arch>-gcc
+  - final/<repo>-<version>-<commit>-debian-<arch>-gcc.deb
+  - final/<repo>-<version>-<commit>-debian-<arch>-gcc.zip
+  - releases/<version>-<commit>-debian-<arch>-gcc contains immutable delivery sets
   - current.json identifies the current complete release
 
 Requirements (Debian/Ubuntu host):
@@ -105,7 +105,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z "${dist_root}" ]]; then
-  dist_root="${repo_root}/dist/linux/${arch}"
+  dist_root="${repo_root}/dist/linux/${arch}/gcc"
 fi
 
 if [[ -z "${version}" ]]; then
@@ -118,7 +118,9 @@ fi
 
 build_dir="${repo_root}/build/${preset}"
 repo_name="$(package_repo_name "${repo_root}")"
-artifact_name="${repo_name}-debian-${arch}-${version}"
+toolchain="gcc"
+commit_sha="$(git -C "${repo_root}" rev-parse --short=12 HEAD)"
+artifact_name="${repo_name}-${version}-${commit_sha}-debian-${arch}-${toolchain}"
 final_root="${dist_root}/final"
 stage_root="$(mktemp -d "${TMPDIR:-/tmp}/${artifact_name}.XXXXXX")"
 cleanup_package() {
@@ -128,10 +130,10 @@ trap cleanup_package EXIT
 trap 'exit 1' HUP INT TERM
 stage_artifact_root="${stage_root}/${artifact_name}"
 release_stage="${stage_root}/release"
-stage_deb_path="${release_stage}/${repo_name}.deb"
-stage_direct_path="${release_stage}/${repo_name}"
-stage_zip_path="${release_stage}/${repo_name}.zip"
-stage_standalone_root="${release_stage}/${repo_name}-standalone"
+stage_deb_path="${release_stage}/${artifact_name}.deb"
+stage_direct_path="${release_stage}/${artifact_name}"
+stage_zip_path="${release_stage}/${artifact_name}.zip"
+stage_standalone_root="${release_stage}/${artifact_name}-standalone"
 
 # Map uname arch to Debian arch when running on non-dpkg hosts is not needed:
 # this script is meant to run on a Debian/Ubuntu host where dpkg exists.
@@ -350,47 +352,66 @@ package_create_linux_direct_executable \
 
 mkdir -p "${stage_standalone_root}/lib"
 cp "${install_prefix}/lib/ssa_consulta_rapida/bin/ssa_consulta_rapida" \
-  "${stage_standalone_root}/${repo_name}"
+  "${stage_standalone_root}/${artifact_name}"
 cp -R "${install_prefix}/lib/ssa_consulta_rapida/lib/." "${stage_standalone_root}/lib/"
 for runtime_dir in plugins qml; do
   if [[ -d "${install_prefix}/lib/ssa_consulta_rapida/${runtime_dir}" ]]; then
     cp -R "${install_prefix}/lib/ssa_consulta_rapida/${runtime_dir}" "${stage_standalone_root}/"
   fi
 done
-chmod 0755 "${stage_standalone_root}/${repo_name}"
+chmod 0755 "${stage_standalone_root}/${artifact_name}"
 cat > "${stage_standalone_root}/README.txt" <<EOF_STANDALONE
 Native Linux executable. Run:
-  ./${repo_name} --db <path-to-ssas.db>
+  ./${artifact_name} --db <path-to-ssas.db>
 
 The lib/, plugins/ and qml/ directories must remain beside the executable.
 EOF_STANDALONE
 
-commit_sha="$(git -C "${repo_root}" rev-parse --short=12 HEAD)"
 required_release_paths=(
-  "${repo_name}"
-  "${repo_name}.deb"
-  "${repo_name}.zip"
-  "${repo_name}-standalone/${repo_name}"
+  "${artifact_name}"
+  "${artifact_name}.deb"
+  "${artifact_name}.zip"
+  "${artifact_name}-standalone/${artifact_name}"
 )
+cmake_cache="${build_dir}/CMakeCache.txt"
+qt_kit="$(sed -n 's/^Qt6_DIR:[^=]*=//p' "${cmake_cache}" | head -n 1)"
+compiler="$(sed -n 's/^CMAKE_CXX_COMPILER:[^=]*=//p' "${cmake_cache}" | head -n 1)"
+linker="$(sed -n 's/^CMAKE_LINKER:[^=]*=//p' "${cmake_cache}" | head -n 1)"
+if [[ -z "${qt_kit}" || -z "${compiler}" || -z "${linker}" || ! -x "${compiler}" || ! -x "${linker}" ]]; then
+  echo "CMake cache is missing Qt6_DIR, an effective compiler, or an effective linker." >&2
+  exit 1
+fi
+compiler_version="$("${compiler}" --version | head -n 1)"
+linker_version="$("${linker}" --version | head -n 1)"
+tagged_release="false"
+if package_is_exact_release_tag "${repo_root}" "${version}"; then
+  tagged_release="true"
+fi
 package_publish_release_set "${release_stage}" "${dist_root}" "${version}" \
-  "${commit_sha}" "debian" "${arch}" "${preset}" \
+  "${commit_sha}" "debian" "${arch}" "${toolchain}" "${preset}" "${qt_kit}" "${repo_root}" \
+  "${compiler}" "${compiler_version}" "${linker}" "${linker_version}" "${tagged_release}" \
   "${required_release_paths[@]}"
 
 cleanup_package
 trap - EXIT HUP INT TERM
 
+release_report=""
+if [[ "${tagged_release}" == "true" ]]; then
+  release_report="  release: ${dist_root}/releases/${version}-${commit_sha}-debian-${arch}-${toolchain}"
+fi
 cat <<EOF_REPORT
 Debian release artifacts generated:
   project_root: ${repo_root}
   version: ${version}
   preset: ${preset}
   architecture: ${arch}
-  package: ${final_root}/${repo_name}.zip
-  executable: ${final_root}/${repo_name}
-  standalone: ${final_root}/${repo_name}-standalone/${repo_name}
-  deb: ${final_root}/${repo_name}.deb
+  toolchain: ${toolchain}
+  package: ${final_root}/${artifact_name}.zip
+  executable: ${final_root}/${artifact_name}
+  standalone: ${final_root}/${artifact_name}-standalone/${artifact_name}
+  deb: ${final_root}/${artifact_name}.deb
   final_root: ${final_root}
-  release: ${dist_root}/releases/${version}-${commit_sha}
+${release_report}
   current: ${dist_root}/current.json
   dependencies: ${runtime_depends}
   build_dir_removed: ${build_dir}

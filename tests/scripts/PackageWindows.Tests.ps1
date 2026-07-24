@@ -16,7 +16,7 @@ Describe "Windows package build failure" {
         $distDir = Join-Path $testRoot "dist"
         $artifactDir = Join-Path $distDir "amd64/repo-windows-amd64-1.2.3"
         $sentinel = Join-Path $artifactDir "previous-release.txt"
-        $buildDir = Join-Path $repoRoot "build/windows/amd64/mingw_64/release"
+        $buildDir = Join-Path $repoRoot "build/windows/amd64/msvc2022_64/release"
         $nsisDir = Join-Path $testRoot "nsis"
         $packageScript = Join-Path (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path "scripts/package-windows.ps1"
         $originalNsisHome = $env:NSIS_HOME
@@ -60,8 +60,8 @@ placeholder
         $testRoot = (Get-PSDrive -Name TestDrive).Root
         $repoRoot = Join-Path $testRoot "repo"
         $scriptsDir = Join-Path $repoRoot "scripts"
-        $buildDir = Join-Path $repoRoot "build/windows/amd64/mingw_64/release"
-        $qtPrefix = Join-Path $testRoot "Qt/6.11.1/mingw_64"
+        $buildDir = Join-Path $repoRoot "build/windows/amd64/msvc2022_64/release"
+        $qtPrefix = Join-Path $testRoot "Qt/6.11.1/msvc2022_64"
         $qtCmakeDir = Join-Path $qtPrefix "lib/cmake/Qt6"
         $qtBinDir = Join-Path $qtPrefix "bin"
         $nsisDir = Join-Path $testRoot "nsis"
@@ -89,11 +89,16 @@ param([string]$Arch)
 Set-Content -LiteralPath $env:SSA_TEST_BUILD_ARCH -Value $Arch
 $global:LASTEXITCODE = 0
 '@ | Set-Content -LiteralPath (Join-Path $scriptsDir "build-windows.ps1") -Encoding ASCII
-        @'
+@'
 @echo off
 echo %*>>"%SSA_TEST_CTEST_LOG%"
 exit /b 0
 '@ | Set-Content -LiteralPath (Join-Path $fakeBin "ctest.cmd") -Encoding ASCII
+@'
+@echo off
+echo abc123def456
+exit /b 0
+'@ | Set-Content -LiteralPath (Join-Path $fakeBin "git.cmd") -Encoding ASCII
         $env:SSA_TEST_BUILD_ARCH = $buildMarker
         $env:SSA_TEST_CTEST_LOG = $ctestLog
 
@@ -128,10 +133,17 @@ exit /b 0
 Describe "Windows release set publication" {
     BeforeEach {
         $script:testRoot = (Get-PSDrive -Name TestDrive).Root
-        $script:distRoot = Join-Path $script:testRoot "dist/windows/amd64"
+        $script:distRoot = Join-Path $script:testRoot "dist/windows/amd64/msvc"
         $script:stageDir = Join-Path $script:distRoot ".staging/run-123"
         $script:finalDir = Join-Path $script:distRoot "final"
         $script:currentPath = Join-Path $script:distRoot "current.json"
+        $script:releaseMetadata = @{
+            Preset = "release"
+            QtKit = "msvc2022_64"
+            Compiler = "C:\\tool\\cl.exe"
+            CompilerVersion = "test"
+            Linker = "C:\\tool\\link.exe"
+        }
         Remove-Item -LiteralPath $script:distRoot -Recurse -Force -ErrorAction SilentlyContinue
         . (Join-Path (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path "scripts/lib/package_common.ps1")
     }
@@ -143,7 +155,7 @@ Describe "Windows release set publication" {
         Set-Content -LiteralPath (Join-Path $script:stageDir "ssa_consulta_rapida.exe") -Value "incomplete" -Encoding ASCII
 
         {
-            Publish-WindowsReleaseSet -StageDir $script:stageDir -DistRoot $script:distRoot -Version "1.2.3" -CommitSha "abc123"
+            Publish-WindowsReleaseSet -StageDir $script:stageDir -DistRoot $script:distRoot -Version "1.2.3" -CommitSha "abc123" -RepoRoot $script:testRoot -Platform windows -Architecture amd64 -Toolchain msvc -TaggedRelease $false @script:releaseMetadata
         } | Should -Throw -ExpectedMessage "*incomplete*"
 
         (Get-Content -LiteralPath (Join-Path $script:finalDir "previous-release.txt")) | Should -Be "keep"
@@ -159,19 +171,20 @@ Describe "Windows release set publication" {
         Set-Content -LiteralPath (Join-Path $script:stageDir "ssa_consulta_rapida-standalone/ssa_consulta_rapida.exe") -Value "standalone" -Encoding ASCII
         Set-Content -LiteralPath (Join-Path $script:stageDir "ssa_consulta_rapida-standalone/vc_redist.x64.exe") -Value "runtime" -Encoding ASCII
 
-        Publish-WindowsReleaseSet -StageDir $script:stageDir -DistRoot $script:distRoot -Version "1.2.3" -CommitSha "abc123"
+        Publish-WindowsReleaseSet -StageDir $script:stageDir -DistRoot $script:distRoot -Version "1.2.3" -CommitSha "abc123" -RepoRoot $script:testRoot -Platform windows -Architecture amd64 -Toolchain msvc -TaggedRelease $false @script:releaseMetadata
 
-        $releaseDir = Join-Path $script:distRoot "releases/1.2.3-abc123"
+        $releaseDir = Join-Path $script:distRoot "releases/1.2.3-abc123-windows-amd64-msvc"
         (Test-Path -LiteralPath (Join-Path $script:finalDir "previous-release.txt")) | Should -BeFalse
         (Test-Path -LiteralPath (Join-Path $script:finalDir "ssa_consulta_rapida-standalone/ssa_consulta_rapida.exe")) | Should -BeTrue
-        (Test-Path -LiteralPath (Join-Path $releaseDir "ssa_consulta_rapida.zip")) | Should -BeTrue
-        (Get-Content -LiteralPath (Join-Path $releaseDir "SHA256SUMS") -Raw) | Should -Match (Get-FileHash -LiteralPath (Join-Path $releaseDir "ssa_consulta_rapida.zip") -Algorithm SHA256).Hash
+        (Test-Path -LiteralPath $releaseDir) | Should -BeFalse
         (Get-Content -LiteralPath $script:currentPath -Raw) | Should -Match "1.2.3"
         (Get-Content -LiteralPath $script:currentPath -Raw) | Should -Match "abc123"
+        (Get-Content -LiteralPath $script:currentPath -Raw) | Should -Match '"toolchain":  "msvc"'
+        ((Get-Content -LiteralPath $script:currentPath -Raw | ConvertFrom-Json).compiler) | Should -Be $script:releaseMetadata.Compiler
     }
 
     It "rejects a different immutable release manifest without replacing current" {
-        $releaseDir = Join-Path $script:distRoot "releases/1.2.3-abc123"
+        $releaseDir = Join-Path $script:distRoot "releases/1.2.3-abc123-windows-amd64-msvc"
         New-Item -ItemType Directory -Path $script:finalDir, (Join-Path $script:stageDir "ssa_consulta_rapida-standalone"), $releaseDir -Force | Out-Null
         Set-Content -LiteralPath (Join-Path $script:finalDir "previous-release.txt") -Value "keep" -Encoding ASCII
         Set-Content -LiteralPath $script:currentPath -Value '{"version":"1.0.0","commit":"old"}' -Encoding ASCII
@@ -182,7 +195,7 @@ Describe "Windows release set publication" {
         Set-Content -LiteralPath (Join-Path $script:stageDir "ssa_consulta_rapida-standalone/ssa_consulta_rapida.exe") -Value "standalone" -Encoding ASCII
 
         {
-            Publish-WindowsReleaseSet -StageDir $script:stageDir -DistRoot $script:distRoot -Version "1.2.3" -CommitSha "abc123"
+            Publish-WindowsReleaseSet -StageDir $script:stageDir -DistRoot $script:distRoot -Version "1.2.3" -CommitSha "abc123" -RepoRoot $script:testRoot -Platform windows -Architecture amd64 -Toolchain msvc -TaggedRelease $true @script:releaseMetadata
         } | Should -Throw -ExpectedMessage "*different hashes*"
 
         (Get-Content -LiteralPath (Join-Path $script:finalDir "previous-release.txt")) | Should -Be "keep"
@@ -202,7 +215,7 @@ Describe "Windows release set publication" {
 
         try {
             {
-                Publish-WindowsReleaseSet -StageDir $script:stageDir -DistRoot $script:distRoot -Version "1.2.3" -CommitSha "abc123"
+                Publish-WindowsReleaseSet -StageDir $script:stageDir -DistRoot $script:distRoot -Version "1.2.3" -CommitSha "abc123" -RepoRoot $script:testRoot -Platform windows -Architecture amd64 -Toolchain msvc -TaggedRelease $false @script:releaseMetadata
             } | Should -Throw -ExpectedMessage "*already running*"
         }
         finally {
@@ -211,5 +224,45 @@ Describe "Windows release set publication" {
 
         (Get-Content -LiteralPath (Join-Path $script:finalDir "previous-release.txt")) | Should -Be "keep"
         (Get-Content -LiteralPath $script:currentPath) | Should -Be '{"version":"1.0.0","commit":"old"}'
+    }
+
+    It "keeps identical version and commit releases isolated by toolchain" {
+        $llvmRoot = Join-Path $script:testRoot "dist/windows/amd64/llvm"
+        $llvmStage = Join-Path $llvmRoot ".staging/run-llvm"
+        New-Item -ItemType Directory -Path (Join-Path $script:stageDir "ssa_consulta_rapida-standalone"), (Join-Path $llvmStage "ssa_consulta_rapida-standalone") -Force | Out-Null
+        foreach ($root in @($script:stageDir, $llvmStage)) {
+            Set-Content -LiteralPath (Join-Path $root "ssa_consulta_rapida.exe") -Value "portable" -Encoding ASCII
+            Set-Content -LiteralPath (Join-Path $root "ssa_consulta_rapida-installer.exe") -Value "installer" -Encoding ASCII
+            Set-Content -LiteralPath (Join-Path $root "ssa_consulta_rapida.zip") -Value "zip" -Encoding ASCII
+            Set-Content -LiteralPath (Join-Path $root "ssa_consulta_rapida-standalone/ssa_consulta_rapida.exe") -Value "standalone" -Encoding ASCII
+        }
+
+        Publish-WindowsReleaseSet -StageDir $script:stageDir -DistRoot $script:distRoot -Version "1.2.3" -CommitSha "abc123" -RepoRoot $script:testRoot -Platform windows -Architecture amd64 -Toolchain msvc -TaggedRelease $false @script:releaseMetadata
+        Publish-WindowsReleaseSet -StageDir $llvmStage -DistRoot $llvmRoot -Version "1.2.3" -CommitSha "abc123" -RepoRoot $script:testRoot -Platform windows -Architecture amd64 -Toolchain llvm -TaggedRelease $false @script:releaseMetadata
+
+        (Test-Path -LiteralPath (Join-Path $script:distRoot "final/ssa_consulta_rapida.exe")) | Should -BeTrue
+        (Test-Path -LiteralPath (Join-Path $llvmRoot "final/ssa_consulta_rapida.exe")) | Should -BeTrue
+    }
+
+    It "retains the prior release and preserves invalid release identities during pruning" {
+        $secondStage = Join-Path $script:distRoot ".staging/run-456"
+        $invalidRelease = Join-Path $script:distRoot "releases/manual-copy"
+        foreach ($root in @($script:stageDir, $secondStage)) {
+            New-Item -ItemType Directory -Path (Join-Path $root "ssa_consulta_rapida-standalone") -Force | Out-Null
+            Set-Content -LiteralPath (Join-Path $root "ssa_consulta_rapida.exe") -Value $root -Encoding ASCII
+            Set-Content -LiteralPath (Join-Path $root "ssa_consulta_rapida-installer.exe") -Value "installer" -Encoding ASCII
+            Set-Content -LiteralPath (Join-Path $root "ssa_consulta_rapida.zip") -Value "zip" -Encoding ASCII
+            Set-Content -LiteralPath (Join-Path $root "ssa_consulta_rapida-standalone/ssa_consulta_rapida.exe") -Value "standalone" -Encoding ASCII
+        }
+        New-Item -ItemType Directory -Path $invalidRelease -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $invalidRelease "release.json") -Value '{"release":"manual-copy","platform":"windows"}' -Encoding ASCII
+
+        Publish-WindowsReleaseSet -StageDir $script:stageDir -DistRoot $script:distRoot -Version "1.2.3" -CommitSha "abc123" -RepoRoot $script:testRoot -Platform windows -Architecture amd64 -Toolchain msvc -TaggedRelease $false @script:releaseMetadata
+        Publish-WindowsReleaseSet -StageDir $secondStage -DistRoot $script:distRoot -Version "1.2.4" -CommitSha "def456" -RepoRoot $script:testRoot -Platform windows -Architecture amd64 -Toolchain msvc -TaggedRelease $false @script:releaseMetadata
+
+        (Get-Content -LiteralPath (Join-Path $script:distRoot "previous.json") -Raw) | Should -Match '"release":  "1.2.3-abc123-windows-amd64-msvc"'
+        (Get-Content -LiteralPath (Join-Path $script:distRoot "current.json") -Raw) | Should -Match '"release":  "1.2.4-def456-windows-amd64-msvc"'
+        (Test-Path -LiteralPath (Join-Path $script:distRoot "previous/ssa_consulta_rapida.exe")) | Should -BeTrue
+        (Test-Path -LiteralPath (Join-Path $invalidRelease "release.json")) | Should -BeTrue
     }
 }

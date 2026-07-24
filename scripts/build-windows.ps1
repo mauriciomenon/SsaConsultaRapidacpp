@@ -35,6 +35,7 @@ $layout = Resolve-WindowsBuildLayout -RepoRoot $repoRoot -Preset $preset -Arch $
     -QtDir $QtDir -QtSubdir $QtSubdir -Toolchain $Toolchain
 $arch = $layout.Arch
 $qtKit = $layout.QtKit
+$effectiveToolchain = $layout.EffectiveToolchain
 $buildDir = $layout.BuildDir
 $cacheFile = Join-Path $buildDir "CMakeCache.txt"
 $effectiveCmakeExtraArgs = @($CmakeExtraArgs | Where-Object { $_ })
@@ -200,7 +201,7 @@ if ($msvcKitSelected -and -not (Get-Command cl.exe -ErrorAction SilentlyContinue
     }
 }
 
-if ($Toolchain -eq 'llvm') {
+if ($effectiveToolchain -eq 'llvm') {
     $clangCl = Get-Command 'clang-cl.exe' -ErrorAction SilentlyContinue
     $lldLink = Get-Command 'lld-link.exe' -ErrorAction SilentlyContinue
     if (-not $clangCl -or -not $lldLink) {
@@ -219,13 +220,13 @@ if ($Toolchain -eq 'llvm') {
 }
 
 if ($msvcKitSelected -and $cacheIsReusable) {
-    $requestedCompilerCommand = if ($Toolchain -eq 'llvm') {
+    $requestedCompilerCommand = if ($effectiveToolchain -eq 'llvm') {
         $clangCl
     } else {
         Get-Command 'cl.exe' -ErrorAction SilentlyContinue
     }
     if (-not $requestedCompilerCommand) {
-        throw "Compiler for Windows toolchain '$Toolchain' was not found after MSVC environment initialization."
+        throw "Compiler for Windows toolchain '$effectiveToolchain' was not found after MSVC environment initialization."
     }
 
     $cachedCompilerLine = Select-String -LiteralPath $cacheFile -Pattern '^CMAKE_CXX_COMPILER:[^=]+=(.+)$' |

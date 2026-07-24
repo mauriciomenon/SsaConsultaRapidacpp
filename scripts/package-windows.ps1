@@ -28,19 +28,19 @@ Build and package Windows release artifacts.
 Defaults:
   Preset: release
   Architecture: amd64 (x64-windows) or arm64
-  Artifact dir: dist\windows\<arch>\
+  Artifact dir: dist\windows\<arch>\<toolchain>\
   Required build output: build\windows\<arch>\<qt-kit>\<preset>\SsaConsultaRapida must exist.
   Optional parameters: -Preset, -ProjectRoot, -Arch, -DistDir, -Version,
     -Toolchain, -QtDir, -QtRoot, -QtSubdir
   Optional switch: -SkipTests
 
   Generated files:
-  - final\<repo-name>.exe (single portable executable)
-  - final\<repo-name>-installer.exe
-  - final\<repo-name>.zip
-  - final\<repo-name>-standalone\<repo-name>.exe (native PE plus runtime)
-  - releases\<version>-<commit>\ contains immutable delivery sets
-  - current.json identifies the current complete release
+  - final\<repo>-<version>-<commit>-windows-<arch>-<toolchain>.exe
+  - final\<repo>-<version>-<commit>-windows-<arch>-<toolchain>-installer.exe
+  - final\<repo>-<version>-<commit>-windows-<arch>-<toolchain>.zip
+  - final\<repo>-<version>-<commit>-windows-<arch>-<toolchain>-standalone\<repo>-<version>-<commit>-windows-<arch>-<toolchain>.exe
+  - releases\ contains immutable tagged delivery sets
+  - current.json and previous.json identify complete releases
 "@
     Write-Output $helpText
 }
@@ -80,26 +80,24 @@ $commonHelpers = Join-Path $scriptDir "lib\package_common.ps1"
 $preset = if ($Preset) { $Preset } else { "release" }
 $buildScript = Join-Path $repoRoot "scripts\build-windows.ps1"
 $version = Resolve-PackageVersion -RepoRoot $repoRoot -ExplicitVersion $Version
+if ($version -notmatch '^[A-Za-z0-9._-]+$') {
+    throw "Windows release version contains unsupported characters: $version"
+}
 $arch = Resolve-WindowsArch -RequestedArch $Arch
 $layout = Resolve-WindowsBuildLayout -RepoRoot $repoRoot -Preset $preset -Arch $arch `
     -QtDir $QtDir -QtSubdir $QtSubdir -Toolchain $Toolchain
 $buildDir = $layout.BuildDir
+$effectiveToolchain = $layout.EffectiveToolchain
 $repoName = Split-Path $repoRoot -Leaf
 $distRoot = if ($DistDir) { $DistDir } else { Join-Path $repoRoot "dist\windows" }
-$artifactRoot = Join-Path $distRoot $arch
-$artifactName = "$repoName-windows-$arch-$version"
+$artifactRoot = Join-Path (Join-Path $distRoot $arch) $effectiveToolchain
 $stagingRoot = Join-Path $artifactRoot ".staging"
 $runStage = Join-Path $stagingRoot "$PID-$([guid]::NewGuid().ToString('N').Substring(0, 8))"
 $releaseStage = Join-Path $runStage "release"
 $artifactDir = Join-Path $runStage "app"
-$zipPath = Join-Path $releaseStage "$repoName.zip"
-$installerPath = Join-Path $releaseStage "$repoName-installer.exe"
 $finalRoot = Join-Path $artifactRoot "final"
-$portableStagePath = Join-Path $releaseStage "$repoName.exe"
 $portableNsiPath = Join-Path $runStage "$repoName-portable.nsi"
 $installerNsiPath = Join-Path $runStage "$repoName-installer.nsi"
-$standaloneStagePath = Join-Path $releaseStage "$repoName-standalone"
-$standaloneExecutableName = "$repoName.exe"
 $makeNsisPath = Resolve-MakeNsisPath
 if (-not $makeNsisPath) {
     throw "MakeNSIS not found. NSIS is required for the portable EXE and installer."
@@ -109,7 +107,7 @@ $buildParams = @{
     Preset = $preset
     ProjectRoot = $repoRoot
     Arch = $arch
-    Toolchain = $Toolchain
+    Toolchain = $effectiveToolchain
 }
 if ($QtDir) {
     $buildParams.QtDir = $QtDir
@@ -137,6 +135,18 @@ if (-not $SkipTests) {
         throw "Windows tests failed with exit code $LASTEXITCODE."
     }
 }
+
+$commitSha = @(& git -C $repoRoot rev-parse --short=12 HEAD) | Select-Object -First 1
+if ($LASTEXITCODE -ne 0 -or -not $commitSha) {
+    throw "Could not resolve Git commit for Windows release publication."
+}
+$commitSha = $commitSha.Trim()
+$artifactName = "$repoName-$version-$commitSha-windows-$arch-$effectiveToolchain"
+$zipPath = Join-Path $releaseStage "$artifactName.zip"
+$installerPath = Join-Path $releaseStage "$artifactName-installer.exe"
+$portableStagePath = Join-Path $releaseStage "$artifactName.exe"
+$standaloneStagePath = Join-Path $releaseStage "$artifactName-standalone"
+$standaloneExecutableName = "$artifactName.exe"
 
 $binary = Join-Path $buildDir "ssa_consulta_rapida.exe"
 if (-not (Test-Path $binary)) {
@@ -352,14 +362,27 @@ if (-not (Test-Path -LiteralPath $zipSourceDir -PathType Container)) {
     throw "Windows ZIP source directory was not staged: $zipSourceDir"
 }
 
-$commitSha = @(& git -C $repoRoot rev-parse --short=12 HEAD) | Select-Object -First 1
-if ($LASTEXITCODE -ne 0 -or -not $commitSha) {
-    throw "Could not resolve Git commit for Windows release publication."
+$compilerLine = Select-String -LiteralPath $cmakeCache -Pattern '^CMAKE_CXX_COMPILER:[^=]+=(.+)$' |
+    Select-Object -First 1
+$linkerLine = Select-String -LiteralPath $cmakeCache -Pattern '^CMAKE_LINKER:[^=]+=(.+)$' |
+    Select-Object -First 1
+if (-not $compilerLine -or -not $linkerLine) {
+    throw "CMake cache is missing the effective compiler or linker for the Windows package."
 }
-$commitSha = $commitSha.Trim()
+$compiler = $compilerLine.Matches[0].Groups[1].Value.Trim()
+$linker = $linkerLine.Matches[0].Groups[1].Value.Trim()
+$compilerVersionLine = Select-String -LiteralPath $cmakeCache -Pattern '^CMAKE_CXX_COMPILER_VERSION:[^=]+=(.+)$' |
+    Select-Object -First 1
+$compilerVersion = if ($compilerVersionLine) {
+    $compilerVersionLine.Matches[0].Groups[1].Value.Trim()
+} else {
+    ""
+}
 $taggedRelease = Test-ExactReleaseTag -RepoRoot $repoRoot -Version $version
 Publish-WindowsReleaseSet -StageDir $releaseStage -DistRoot $artifactRoot `
-    -Version $version -CommitSha $commitSha
+    -Version $version -CommitSha $commitSha -RepoRoot $repoRoot -Platform "windows" `
+    -Architecture $arch -Toolchain $effectiveToolchain -TaggedRelease $taggedRelease `
+    -Preset $preset -QtKit $layout.QtKit -Compiler $compiler -CompilerVersion $compilerVersion -Linker $linker
 }
 finally {
     Get-Item -LiteralPath $runStage -Force -ErrorAction SilentlyContinue |
@@ -377,11 +400,14 @@ Write-Output "  project_root: $repoRoot"
 Write-Output "  version: $version"
 Write-Output "  preset: $preset"
 Write-Output "  architecture: $arch"
-Write-Output "  package: $finalRoot\$repoName.zip"
-Write-Output "  portable: $finalRoot\$repoName.exe"
-Write-Output "  installer: $finalRoot\$repoName-installer.exe"
-Write-Output "  standalone: $finalRoot\$repoName-standalone\$standaloneExecutableName"
+Write-Output "  toolchain: $effectiveToolchain"
+Write-Output "  package: $finalRoot\$artifactName.zip"
+Write-Output "  portable: $finalRoot\$artifactName.exe"
+Write-Output "  installer: $finalRoot\$artifactName-installer.exe"
+Write-Output "  standalone: $finalRoot\$artifactName-standalone\$standaloneExecutableName"
 Write-Output "  final_root: $finalRoot"
-Write-Output "  release: $artifactRoot\releases\$version-$commitSha"
+if ($taggedRelease) {
+    Write-Output "  release: $artifactRoot\releases\$version-$commitSha-windows-$arch-$effectiveToolchain"
+}
 Write-Output "  current: $artifactRoot\current.json"
 Write-Output "  tagged_release: $taggedRelease"

@@ -38,7 +38,8 @@ function Resolve-WindowsBuildLayout {
     )
 
     $resolvedArch = Resolve-WindowsArch -RequestedArch $Arch
-    $toolchainKit = switch ($Toolchain) {
+    $effectiveToolchain = if ($Toolchain -eq "auto") { "msvc" } else { $Toolchain }
+    $toolchainKit = switch ($effectiveToolchain) {
         "msvc" {
             if ($resolvedArch -eq "arm64") { "msvc2022_arm64" } else { "msvc2022_64" }
         }
@@ -73,7 +74,7 @@ function Resolve-WindowsBuildLayout {
         ""
     }
     if ($Toolchain -ne "auto" -and $explicitQtKit -and $explicitQtKit -ne $toolchainKit) {
-        throw "Toolchain '$Toolchain' requires Qt kit '$toolchainKit', but '$explicitQtKit' was requested."
+        throw "Toolchain '$effectiveToolchain' requires Qt kit '$toolchainKit', but '$explicitQtKit' was requested."
     }
     $qtKit = if ($explicitQtKit) { $explicitQtKit } else { $toolchainKit }
 
@@ -92,7 +93,8 @@ function Resolve-WindowsBuildLayout {
     return [PSCustomObject]@{
         Arch = $resolvedArch
         QtKit = $qtKit
-        Toolchain = $Toolchain
+        RequestedToolchain = $Toolchain
+        EffectiveToolchain = $effectiveToolchain
         BuildDir = Join-Path $RepoRoot "build\windows\$resolvedArch\$qtKit\$Preset"
     }
 }
