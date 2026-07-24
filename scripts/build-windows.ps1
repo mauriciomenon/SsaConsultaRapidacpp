@@ -59,7 +59,7 @@ Defaults:
   Build mode: clean. Use scripts\lazy_scripts\build-windows.ps1 for incremental builds.
   Preset: dev
   Architecture: host architecture, or amd64 when Windows reports x64
-  Qt kit: msvc2022_64 for amd64; msvc2022_arm64 for arm64
+  Qt kit: mingw_64 for amd64; msvc2022_arm64 for arm64
   Repository root: directory that contains this script.
 
 Explicit options can be used through:
@@ -112,7 +112,7 @@ if (Test-Path -LiteralPath $cacheFile -PathType Leaf) {
         $cachedCompiler = $compilerLine.Matches[0].Groups[1].Value.Trim()
     }
 }
-$explicitMsvcKit = $qtKit -like 'msvc*'
+$msvcKitSelected = $qtKit -like 'msvc*'
 
 $cacheIsReusable = $false
 if (Test-Path -LiteralPath $cacheFile -PathType Leaf) {
@@ -165,9 +165,7 @@ if ($cacheIsReusable) {
     }
 }
 
-$defaultMsvcKit = -not $QtSubdir -and -not $QtDir -and
-    (-not $cacheIsReusable -or $cachedCompiler -match '(?i)[\\/]cl\.exe$')
-if (($explicitMsvcKit -or $defaultMsvcKit) -and -not (Get-Command cl.exe -ErrorAction SilentlyContinue)) {
+if ($msvcKitSelected -and -not (Get-Command cl.exe -ErrorAction SilentlyContinue)) {
     $devShellPattern = Join-Path $env:ProgramFiles 'Microsoft Visual Studio\*\*\Common7\Tools\Microsoft.VisualStudio.DevShell.dll'
     $devShellModule = Get-ChildItem -Path $devShellPattern -File -ErrorAction SilentlyContinue |
         Sort-Object LastWriteTime -Descending |

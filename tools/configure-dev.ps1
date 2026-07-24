@@ -320,10 +320,6 @@ function Test-MinGwCompilerTarget {
         Write-Verbose "Compiler target probe failed for ${Cxx}: $($_.Exception.Message)"
         return $false
     }
-    if ($LASTEXITCODE -ne 0) {
-        Write-Verbose "Compiler target probe returned exit code $LASTEXITCODE for $Cxx."
-        return $false
-    }
     return $target -match '(mingw|windows-gnu)'
 }
 

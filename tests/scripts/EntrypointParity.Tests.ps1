@@ -60,6 +60,13 @@ try {
         if (-not $explicitDbRejected) {
             throw "Windows smoke must reject an explicit missing database."
         }
+
+        . (Join-Path $repoRoot "scripts\lib\windows_build_layout.ps1")
+        $defaultLayout = Resolve-WindowsBuildLayout `
+            -RepoRoot $probeDir -Preset "dev" -Arch "amd64"
+        if ($defaultLayout.QtKit -ne "mingw_64") {
+            throw "Windows amd64 default Qt kit must be mingw_64."
+        }
     }
     finally {
         Pop-Location

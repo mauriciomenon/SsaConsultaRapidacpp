@@ -28,20 +28,20 @@ Describe "Windows Qt detection" {
         $env:CMAKE_PREFIX_PATH = ""
     }
 
-    It "selects the latest compatible patch for the default MSVC kit" {
-        Initialize-FakeQtPrefix -Root $script:qtRoot -Version "6.11.0" -Subdir "msvc2022_64"
-        Initialize-FakeQtPrefix -Root $script:qtRoot -Version "6.11.1" -Subdir "msvc2022_64"
-        Initialize-FakeQtPrefix -Root $script:qtRoot -Version "6.12.0" -Subdir "msvc2022_64"
+    It "selects the latest compatible patch for the default MinGW kit" {
+        Initialize-FakeQtPrefix -Root $script:qtRoot -Version "6.11.0" -Subdir "mingw_64"
+        Initialize-FakeQtPrefix -Root $script:qtRoot -Version "6.11.1" -Subdir "mingw_64"
+        Initialize-FakeQtPrefix -Root $script:qtRoot -Version "6.12.0" -Subdir "mingw_64"
 
         $output = & $script:configureScript -QtRoot $script:qtRoot -PrintQtSelection
 
         $output | Should -Contain "QtVersion=6.11.1"
-        $output | Should -Contain "QtSubdir=msvc2022_64"
+        $output | Should -Contain "QtSubdir=mingw_64"
     }
 
     It "falls back to a lower patch when the latest compatible prefix is invalid" {
-        Initialize-FakeQtPrefix -Root $script:qtRoot -Version "6.11.0" -Subdir "msvc2022_64"
-        New-Item -ItemType Directory -Path (Join-Path $script:qtRoot "6.11.1/msvc2022_64") -Force | Out-Null
+        Initialize-FakeQtPrefix -Root $script:qtRoot -Version "6.11.0" -Subdir "mingw_64"
+        New-Item -ItemType Directory -Path (Join-Path $script:qtRoot "6.11.1/mingw_64") -Force | Out-Null
 
         $output = & $script:configureScript -QtRoot $script:qtRoot -PrintQtSelection
 

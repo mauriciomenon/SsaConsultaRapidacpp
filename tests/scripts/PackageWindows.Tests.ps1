@@ -16,7 +16,7 @@ Describe "Windows package build failure" {
         $distDir = Join-Path $testRoot "dist"
         $artifactDir = Join-Path $distDir "amd64/repo-windows-amd64-1.2.3"
         $sentinel = Join-Path $artifactDir "previous-release.txt"
-        $buildDir = Join-Path $repoRoot "build/windows/amd64/msvc2022_64/release"
+        $buildDir = Join-Path $repoRoot "build/windows/amd64/mingw_64/release"
         $nsisDir = Join-Path $testRoot "nsis"
         $packageScript = Join-Path (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path "scripts/package-windows.ps1"
         $originalNsisHome = $env:NSIS_HOME
@@ -60,8 +60,8 @@ placeholder
         $testRoot = (Get-PSDrive -Name TestDrive).Root
         $repoRoot = Join-Path $testRoot "repo"
         $scriptsDir = Join-Path $repoRoot "scripts"
-        $buildDir = Join-Path $repoRoot "build/windows/amd64/msvc2022_64/release"
-        $qtPrefix = Join-Path $testRoot "Qt/6.11.1/msvc2022_64"
+        $buildDir = Join-Path $repoRoot "build/windows/amd64/mingw_64/release"
+        $qtPrefix = Join-Path $testRoot "Qt/6.11.1/mingw_64"
         $qtCmakeDir = Join-Path $qtPrefix "lib/cmake/Qt6"
         $qtBinDir = Join-Path $qtPrefix "bin"
         $nsisDir = Join-Path $testRoot "nsis"

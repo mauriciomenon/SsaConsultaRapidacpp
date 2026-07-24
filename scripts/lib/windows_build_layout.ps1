@@ -47,7 +47,7 @@ function Resolve-WindowsBuildLayout {
     } elseif ($resolvedArch -eq "arm64") {
         "msvc2022_arm64"
     } else {
-        "msvc2022_64"
+        "mingw_64"
     }
 
     if ($Preset -notmatch '^[A-Za-z0-9_.-]+$') {
