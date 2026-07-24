@@ -3,6 +3,7 @@
 #include "application/ActivityAnalyticsService.h"
 #include "application/SsaBrowseService.h"
 #include "application/SsaWorkflowService.h"
+#include "diagnostics/StartupTrace.h"
 #include "domain/ColumnCatalog.h"
 #include "infra/export/CsvExportPort.h"
 #include "infra/import/LegacySpreadsheetConverter.h"
@@ -120,11 +121,15 @@ namespace ssa::app::desktop {
         const auto applicationLauncher =
             std::make_shared<ssa::platform::DesktopApplicationLauncher>(options);
         std::shared_ptr<const ssa::application::ActivityAnalyticsService> analyticsService;
+        ssa::diagnostics::traceStartupEvent("analytics_start", "thread=gui");
         try {
             analyticsService = createAnalyticsService(options);
+            ssa::diagnostics::traceStartupEvent("analytics_end", "thread=gui outcome=success");
         } catch (const std::exception& exception) {
+            ssa::diagnostics::traceStartupEvent("analytics_end", "thread=gui outcome=unavailable");
             qWarning() << "Activity analytics unavailable:" << exception.what();
         } catch (...) {
+            ssa::diagnostics::traceStartupEvent("analytics_end", "thread=gui outcome=unavailable");
             qWarning() << "Activity analytics unavailable: unknown initialization error";
         }
 

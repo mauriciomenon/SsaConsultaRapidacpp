@@ -80,6 +80,7 @@ namespace ssa::presentation {
             bool explicitlyCanceled{false};
             bool completed{false};
             bool prefetch{false};
+            bool startupTrace{false};
         };
 
         struct CachedPage final {

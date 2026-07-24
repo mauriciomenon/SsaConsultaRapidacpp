@@ -1,5 +1,6 @@
 #include "presentation/PageQueryCoordinator.h"
 
+#include "diagnostics/StartupTrace.h"
 #include "ports/OperationError.h"
 #include "presentation/AsyncOperationErrorLog.h"
 #include "presentation/SsaTablePageFormatter.h"
@@ -9,9 +10,14 @@
 
 #include <algorithm>
 #include <stdexcept>
+#include <string>
 #include <utility>
 
 namespace ssa::presentation {
+
+    namespace {
+        std::atomic_bool startupQueryClaimed{false};
+    }
 
     PageQueryCoordinator::PageQueryCoordinator(std::shared_ptr<ports::ISsaBrowsePort> browsePort,
                                                QObject* parent)
@@ -56,6 +62,13 @@ namespace ssa::presentation {
             }
         }
         if (replacing) {
+            if (current->startupTrace) {
+                diagnostics::traceStartupEvent(
+                    "publish_terminal",
+                    "thread=gui request_id=" + std::to_string(current->id) + " outcome=replaced");
+                current->startupTrace = false;
+                startupQueryClaimed.store(false, std::memory_order_relaxed);
+            }
             emit replaced();
         }
         if (auto cached = takeCachedPage(request)) {
@@ -122,12 +135,15 @@ namespace ssa::presentation {
         operation->generation = cacheGeneration_;
         operation->request = request;
         operation->prefetch = prefetch;
+        operation->startupTrace = !prefetch && diagnostics::startupTraceEnabled() &&
+                                  !startupQueryClaimed.exchange(true, std::memory_order_relaxed);
         operation->resultState = std::make_shared<PageQueryResultState>();
         operation->cancelToken = std::make_shared<std::atomic_bool>(false);
         const auto operationId = operation->id;
         const auto stopToken = operation->stopSource.get_token();
         const auto cancelToken = operation->cancelToken;
         const auto resultState = operation->resultState;
+        const bool startupTrace = operation->startupTrace;
         connect(&operation->watcher, &QFutureWatcher<void>::finished, this,
                 [this, operationId] { finishOperation(operationId); });
         auto* watcher = &operation->watcher;
@@ -143,10 +159,15 @@ namespace ssa::presentation {
         auto displayColumns = columnCatalog_.resolveAll(request.visibleColumns);
         const bool needTotalRowsAll = !prefetch && !totalRowsAllKnown_;
         const auto cachedTotalRowsAll = totalRowsAll_;
+        if (startupTrace) {
+            diagnostics::traceStartupEvent("query_start",
+                                           "thread=gui request_id=" + std::to_string(operationId));
+        }
         watcher->setFuture(QtConcurrent::run([browsePort, request = std::move(request),
                                               displayColumns = std::move(displayColumns), stopToken,
                                               cancelToken, resultState, needTotalRowsAll,
-                                              cachedTotalRowsAll]() mutable {
+                                              cachedTotalRowsAll, startupTrace,
+                                              operationId]() mutable {
             try {
                 if (!browsePort) {
                     throw std::runtime_error("browse port no longer available");
@@ -156,6 +177,13 @@ namespace ssa::presentation {
                         auto totalRowsRequest = domain::SsaPageRequest{};
                         totalRowsRequest.excludeScaSesSte = domain::kDefaultExcludeScaSesSte;
                         auto page = browsePort->page(request, stopToken);
+                        if (startupTrace) {
+                            diagnostics::traceStartupEvent(
+                                "page_returned",
+                                "thread=worker request_id=" + std::to_string(operationId) +
+                                    " rows=" + std::to_string(page.rows.size()) +
+                                    " total=" + std::to_string(page.totalRows));
+                        }
                         if (cancelToken && cancelToken->load(std::memory_order_relaxed)) {
                             return {domain::SsaPageResult{}, 0,   false, {},
                                     SsaTableDisplayValues{}, true};
@@ -166,12 +194,28 @@ namespace ssa::presentation {
                             totalRowsAll = browsePort->count(totalRowsRequest, stopToken);
                             totalRowsAllComputed = true;
                         }
+                        if (startupTrace) {
+                            diagnostics::traceStartupEvent(
+                                needTotalRowsAll ? "count_returned" : "count_skipped",
+                                "thread=worker request_id=" + std::to_string(operationId) +
+                                    " total=" + std::to_string(totalRowsAll));
+                        }
                         if (cancelToken && cancelToken->load(std::memory_order_relaxed)) {
                             return {domain::SsaPageResult{}, totalRowsAll, totalRowsAllComputed, {},
                                     SsaTableDisplayValues{}, true};
                         }
+                        if (startupTrace) {
+                            diagnostics::traceStartupEvent("format_start",
+                                                           "thread=worker request_id=" +
+                                                               std::to_string(operationId));
+                        }
                         auto displayValues =
                             SsaTablePageFormatter::format(page, displayColumns, cancelToken);
+                        if (startupTrace) {
+                            diagnostics::traceStartupEvent("format_end",
+                                                           "thread=worker request_id=" +
+                                                               std::to_string(operationId));
+                        }
                         if (!displayValues) {
                             return {domain::SsaPageResult{}, totalRowsAll, totalRowsAllComputed, {},
                                     SsaTableDisplayValues{}, true};
@@ -207,6 +251,22 @@ namespace ssa::presentation {
             return;
         }
         auto& operation = **found;
+        const auto traceTerminal = [&operation](const std::string_view outcome,
+                                                const std::size_t rows = 0,
+                                                const std::size_t total = 0) {
+            if (!operation.startupTrace) {
+                return;
+            }
+            diagnostics::traceStartupEvent("publish_terminal",
+                                           "thread=gui request_id=" + std::to_string(operation.id) +
+                                               " outcome=" + std::string{outcome} +
+                                               " rows=" + std::to_string(rows) +
+                                               " total=" + std::to_string(total));
+            operation.startupTrace = false;
+            if (outcome != "success") {
+                startupQueryClaimed.store(false, std::memory_order_relaxed);
+            }
+        };
         operation.completed = true;
         emit activeOperationsChanged();
         if (operation.prefetch) {
@@ -243,6 +303,7 @@ namespace ssa::presentation {
                 if (operation.explicitlyCanceled || operation.stopSource.stop_requested()) {
                     logAsyncOperationError("Page query failed after cancellation:", error);
                     emit canceled();
+                    traceTerminal("canceled");
                 } else {
                     if (error) {
                         std::rethrow_exception(error);
@@ -252,10 +313,13 @@ namespace ssa::presentation {
                     }
                     if (result->canceled) {
                         emit canceled();
+                        traceTerminal("canceled");
                     } else {
                         cachePage(operation.request, *result);
                         const auto totalRows = result->page.totalRows;
+                        const auto rowCount = result->page.rows.size();
                         emit succeeded(std::move(*result), operation.request);
+                        traceTerminal("success", rowCount, totalRows);
                         const bool suppressPrefetch = prefetchCancellationRequested_;
                         prefetchCancellationRequested_ = false;
                         if (!suppressPrefetch) {
@@ -267,20 +331,25 @@ namespace ssa::presentation {
                 qWarning().noquote()
                     << "Page query failed:" << QString::fromStdString(exc.diagnostic());
                 emit failed(QString::fromUtf8(exc.what()));
+                traceTerminal("failed");
             } catch (const std::system_error& exc) {
                 if (operation.explicitlyCanceled &&
                     exc.code() == std::make_error_code(std::errc::operation_canceled)) {
                     emit canceled();
+                    traceTerminal("canceled");
                 } else {
                     qWarning().noquote() << "Page query failed:" << exc.what();
                     emit failed("Falha ao consultar dados");
+                    traceTerminal("failed");
                 }
             } catch (const std::exception& exc) {
                 qWarning().noquote() << "Page query failed:" << exc.what();
                 emit failed("Falha ao consultar dados");
+                traceTerminal("failed");
             } catch (...) {
                 qWarning() << "Page query failed: unknown exception";
                 emit failed("Falha ao consultar dados");
+                traceTerminal("failed");
             }
             finishing_ = false;
             setState(State::Idle);

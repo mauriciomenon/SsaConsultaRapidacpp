@@ -2,6 +2,7 @@
 
 #include "DesktopLogSink.h"
 #include "DesktopMainViewModelFactory.h"
+#include "diagnostics/StartupTrace.h"
 #include "platform/SupervisedProcess.h"
 
 #include <QCommandLineParser>
@@ -9,7 +10,9 @@
 #include <QDebug>
 #include <QElapsedTimer>
 #include <QQmlApplicationEngine>
+#include <QQuickWindow>
 #include <QTimer>
+#include <QUrl>
 #include <QVariant>
 
 #include <cstdlib>
@@ -19,6 +22,7 @@ namespace ssa::app::desktop {
     DesktopApplicationRuntime::DesktopApplicationRuntime(const QCommandLineParser& parser)
         : options_(ssa::platform::StartupOptions::fromParser(parser)),
           paths_(options_.projectRoot, options_.configDir) {
+        ssa::diagnostics::traceStartupEvent("runtime_start", "thread=gui");
         paths_.ensureConfigDirectory();
         mainViewModel_ = DesktopMainViewModelFactory::create(options_, paths_);
         logSink_ =
@@ -64,6 +68,24 @@ namespace ssa::app::desktop {
     void DesktopApplicationRuntime::loadMainWindow(QQmlApplicationEngine& engine) {
         engine.setInitialProperties({{"mainViewModel", QVariant::fromValue(mainViewModel_.get())},
                                      {"smokeController", QVariant::fromValue(&smokeController_)}});
+        QObject::connect(
+            &engine, &QQmlApplicationEngine::objectCreated, &engine,
+            [](QObject* object, const QUrl&) {
+                ssa::diagnostics::traceStartupEvent(
+                    "qml_object_created", object == nullptr ? "thread=gui outcome=failure"
+                                                            : "thread=gui outcome=success");
+                auto* window = qobject_cast<QQuickWindow*>(object);
+                if (window == nullptr) {
+                    return;
+                }
+                QObject::connect(
+                    window, &QQuickWindow::frameSwapped, window,
+                    [] {
+                        ssa::diagnostics::traceStartupEvent("first_frame_swapped", "thread=gui");
+                    },
+                    Qt::SingleShotConnection);
+            },
+            Qt::SingleShotConnection);
         engine.loadFromModule("SsaConsultaRapida", "Main");
     }
 

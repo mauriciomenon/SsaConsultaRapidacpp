@@ -1,5 +1,6 @@
 #include "infra/sqlite/SqliteActivityAnalyticsInitializer.h"
 
+#include "diagnostics/StartupTrace.h"
 #include "domain/ActivityAnalyticsTypes.h"
 #include "infra/sqlite/SqliteConnection.h"
 #include "infra/sqlite/SqliteDatabaseWriteLock.h"
@@ -246,8 +247,22 @@ namespace ssa::infra::sqlite {
         SqliteProgressHandler progress(connection.handle(), stopToken);
         SqliteWriteTransaction transaction(connection.handle(), busy.cancellationObserved());
         throwIfCanceled(stopToken);
+        diagnostics::traceStartupEvent("analytics_classify_start", "thread=gui");
         const auto baselineState =
             classifyBaseline(connection.handle(), observedIsoYearWeek, busy.cancellationObserved());
+        const std::string_view baselineName = [baselineState] {
+            switch (baselineState) {
+            case BaselineState::Fresh:
+                return std::string_view{"fresh"};
+            case BaselineState::Ready:
+                return std::string_view{"ready"};
+            case BaselineState::RepairCurrent:
+                return std::string_view{"repair_current"};
+            }
+            return std::string_view{"unknown"};
+        }();
+        diagnostics::traceStartupEvent("analytics_classified",
+                                       "thread=gui state=" + std::string{baselineName});
         if (baselineState == BaselineState::Ready) {
             transaction.commit();
             return {};
@@ -262,8 +277,10 @@ namespace ssa::infra::sqlite {
             .sourceRevision = "baseline-" + fingerprint,
             .sourceFingerprint = fingerprint,
         };
+        diagnostics::traceStartupEvent("analytics_capture_start", "thread=gui");
         const auto result = SqliteActivityAnalyticsProjection::capture(
             connection.handle(), "ssa_table", context, stopToken, busy.cancellationObserved());
+        diagnostics::traceStartupEvent("analytics_capture_end", "thread=gui");
         throwIfCanceled(stopToken);
         transaction.commit();
         return result;
