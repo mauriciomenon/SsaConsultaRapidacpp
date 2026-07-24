@@ -5,7 +5,7 @@ param(
     [string]$QtDir = "",
     [string]$QtRoot = "",
     [string]$QtSubdir = "",
-    [ValidateSet("auto", "msvc", "mingw", "llvm-mingw")]
+    [ValidateSet("auto", "msvc", "llvm", "mingw", "llvm-mingw")]
     [string]$Toolchain = "auto",
     [string]$SQLiteRoot = "",
     [string]$ProjectRoot = "",
@@ -21,7 +21,7 @@ $baseScript = (Resolve-Path (Join-Path $scriptDir "..\build-windows.ps1")).Path
 if ($Help) {
     Write-Output @"
 Usage:
-  .\scripts\lazy_scripts\build-windows.ps1 [-Toolchain <auto|msvc|mingw|llvm-mingw>] [-Preset <preset>] [-Arch <amd64|arm64>] [-QtDir <qt-dir>] [-QtRoot <root>] [-QtSubdir <kit>] [-SQLiteRoot <path>] [-ProjectRoot <dir>] [-CmakeExtraArgs <args>] [-Help]
+  .\scripts\lazy_scripts\build-windows.ps1 [-Toolchain <auto|msvc|llvm|mingw|llvm-mingw>] [-Preset <preset>] [-Arch <amd64|arm64>] [-QtDir <qt-dir>] [-QtRoot <root>] [-QtSubdir <kit>] [-SQLiteRoot <path>] [-ProjectRoot <dir>] [-CmakeExtraArgs <args>] [-Help]
 
 Incremental build entrypoint. Reuses only a compatible canonical build cache.
 

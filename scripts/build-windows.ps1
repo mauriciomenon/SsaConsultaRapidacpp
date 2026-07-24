@@ -5,7 +5,7 @@ param(
     [string]$QtDir = "",
     [string]$QtRoot = "",
     [string]$QtSubdir = "",
-    [ValidateSet("auto", "msvc", "mingw", "llvm-mingw")]
+    [ValidateSet("auto", "msvc", "llvm", "mingw", "llvm-mingw")]
     [string]$Toolchain = "auto",
     [string]$SQLiteRoot = "",
     [string]$ProjectRoot = "",
@@ -62,21 +62,22 @@ Defaults:
   Build mode: clean. Use scripts\lazy_scripts\build-windows.ps1 for incremental builds.
   Preset: dev
   Architecture: host architecture, or amd64 when Windows reports x64
-  Qt kit: mingw_64 for amd64; msvc2022_arm64 for arm64
+  Qt kit: msvc2022_64 for amd64; msvc2022_arm64 for arm64
   Repository root: directory that contains this script.
 
 Explicit options can be used through:
-  .\scripts\build-windows.ps1 -Toolchain <auto|msvc|mingw|llvm-mingw> [-Arch <amd64|arm64>] [-Preset <preset>] [-QtDir <qt-dir>] [-QtRoot <root>] [-QtSubdir <kit>] [-SQLiteRoot <path>] [-Target <target>] [-CmakeExtraArgs <args>]
+  .\scripts\build-windows.ps1 -Toolchain <auto|msvc|llvm|mingw|llvm-mingw> [-Arch <amd64|arm64>] [-Preset <preset>] [-QtDir <qt-dir>] [-QtRoot <root>] [-QtSubdir <kit>] [-SQLiteRoot <path>] [-Target <target>] [-CmakeExtraArgs <args>]
 
 Toolchain examples:
   .\build-windows.ps1 -Toolchain mingw
-  .\build-windows.ps1 -Toolchain llvm-mingw
+  .\build-windows.ps1 -Toolchain llvm
   .\build-windows.ps1 -Toolchain msvc
 
 Compiler and linker drivers:
   msvc: cl.exe + link.exe
+  llvm: clang-cl.exe + lld-link.exe with the MSVC runtime and Qt msvc2022_64
   mingw: g++.exe + GNU ld.exe
-  llvm-mingw: clang++.exe + ld.lld.exe
+  llvm-mingw: unsupported because the installed libc++17 lacks std::jthread
 "@
     return
 }
@@ -196,6 +197,47 @@ if ($msvcKitSelected -and -not (Get-Command cl.exe -ErrorAction SilentlyContinue
     if ($env:VSCMD_ARG_HOST_ARCH -ne 'x64' -or $env:VSCMD_ARG_TGT_ARCH -ne $expectedTargetArch -or
         -not (Get-Command cl.exe -ErrorAction SilentlyContinue)) {
         throw "MSVC Developer environment initialization failed: host=$env:VSCMD_ARG_HOST_ARCH target=$env:VSCMD_ARG_TGT_ARCH"
+    }
+}
+
+if ($Toolchain -eq 'llvm') {
+    $clangCl = Get-Command 'clang-cl.exe' -ErrorAction SilentlyContinue
+    $lldLink = Get-Command 'lld-link.exe' -ErrorAction SilentlyContinue
+    if (-not $clangCl -or -not $lldLink) {
+        throw "LLVM was selected, but clang-cl.exe and lld-link.exe were not found after MSVC environment initialization."
+    }
+
+    $llvmBin = Split-Path -Parent $clangCl.Source
+    $env:Path = "$llvmBin;$env:Path"
+    $effectiveCmakeExtraArgs += @(
+        "-DCMAKE_C_COMPILER=$($clangCl.Source)",
+        "-DCMAKE_CXX_COMPILER=$($clangCl.Source)",
+        "-DCMAKE_LINKER=$($lldLink.Source)",
+        '-DCMAKE_C_FLAGS_INIT=-fuse-ld=lld',
+        '-DCMAKE_CXX_FLAGS_INIT=-fuse-ld=lld'
+    )
+}
+
+if ($msvcKitSelected -and $cacheIsReusable) {
+    $requestedCompilerCommand = if ($Toolchain -eq 'llvm') {
+        $clangCl
+    } else {
+        Get-Command 'cl.exe' -ErrorAction SilentlyContinue
+    }
+    if (-not $requestedCompilerCommand) {
+        throw "Compiler for Windows toolchain '$Toolchain' was not found after MSVC environment initialization."
+    }
+
+    $cachedCompilerLine = Select-String -LiteralPath $cacheFile -Pattern '^CMAKE_CXX_COMPILER:[^=]+=(.+)$' |
+        Select-Object -First 1
+    $cachedCompiler = if ($cachedCompilerLine) {
+        $cachedCompilerLine.Matches[0].Groups[1].Value.Trim().Replace('\', '/')
+    } else {
+        ''
+    }
+    $requestedCompiler = $requestedCompilerCommand.Source.Replace('\', '/')
+    if (-not $cachedCompiler.Equals($requestedCompiler, [StringComparison]::OrdinalIgnoreCase)) {
+        $cacheIsReusable = $false
     }
 }
 

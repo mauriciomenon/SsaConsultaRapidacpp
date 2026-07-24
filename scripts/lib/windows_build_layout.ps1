@@ -33,7 +33,7 @@ function Resolve-WindowsBuildLayout {
         [string]$Arch = "",
         [string]$QtDir = "",
         [string]$QtSubdir = "",
-        [ValidateSet("auto", "msvc", "mingw", "llvm-mingw")]
+        [ValidateSet("auto", "msvc", "llvm", "mingw", "llvm-mingw")]
         [string]$Toolchain = "auto"
     )
 
@@ -42,6 +42,12 @@ function Resolve-WindowsBuildLayout {
         "msvc" {
             if ($resolvedArch -eq "arm64") { "msvc2022_arm64" } else { "msvc2022_64" }
         }
+        "llvm" {
+            if ($resolvedArch -eq "arm64") {
+                throw "Toolchain 'llvm' is not available for Windows arm64."
+            }
+            "msvc2022_64"
+        }
         "mingw" {
             if ($resolvedArch -eq "arm64") {
                 throw "Toolchain 'mingw' is not available for Windows arm64."
@@ -49,13 +55,10 @@ function Resolve-WindowsBuildLayout {
             "mingw_64"
         }
         "llvm-mingw" {
-            if ($resolvedArch -eq "arm64") {
-                throw "Toolchain 'llvm-mingw' is not available for Windows arm64."
-            }
-            "llvm-mingw_64"
+            throw "Toolchain 'llvm-mingw' is unsupported: its Qt libc++17 runtime lacks std::jthread. Use 'llvm' (clang-cl + lld-link) or 'msvc'."
         }
         default {
-            if ($resolvedArch -eq "arm64") { "msvc2022_arm64" } else { "mingw_64" }
+            if ($resolvedArch -eq "arm64") { "msvc2022_arm64" } else { "msvc2022_64" }
         }
     }
     $explicitQtKit = if ($QtSubdir) {

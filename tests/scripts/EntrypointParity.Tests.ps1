@@ -64,13 +64,13 @@ try {
         . (Join-Path $repoRoot "scripts\lib\windows_build_layout.ps1")
         $defaultLayout = Resolve-WindowsBuildLayout `
             -RepoRoot $probeDir -Preset "dev" -Arch "amd64"
-        if ($defaultLayout.QtKit -ne "mingw_64") {
-            throw "Windows amd64 default Qt kit must be mingw_64."
+        if ($defaultLayout.QtKit -ne "msvc2022_64") {
+            throw "Windows amd64 default Qt kit must be msvc2022_64."
         }
         $expectedKits = @{
             "msvc" = "msvc2022_64"
+            "llvm" = "msvc2022_64"
             "mingw" = "mingw_64"
-            "llvm-mingw" = "llvm-mingw_64"
         }
         foreach ($toolchain in $expectedKits.Keys) {
             $layout = Resolve-WindowsBuildLayout -RepoRoot $probeDir -Preset "dev" `
@@ -79,6 +79,10 @@ try {
                 throw "Toolchain '$toolchain' resolved unexpected Qt kit '$($layout.QtKit)'."
             }
         }
+
+        {
+            Resolve-WindowsBuildLayout -RepoRoot $probeDir -Preset "dev" -Arch "amd64" -Toolchain "llvm-mingw"
+        } | Should -Throw "*libc++17*std::jthread*"
     }
     finally {
         Pop-Location

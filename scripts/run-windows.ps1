@@ -8,7 +8,7 @@ param(
     [string]$Screenshot = "",
     [string]$QtDir = "",
     [string]$QtSubdir = "",
-    [ValidateSet("auto", "msvc", "mingw", "llvm-mingw")]
+    [ValidateSet("auto", "msvc", "llvm", "mingw", "llvm-mingw")]
     [string]$Toolchain = "auto",
     [switch]$AllowMissingDb,
     [switch]$Help
@@ -38,7 +38,7 @@ Defaults:
   Project root: directory that contains this script.
 
 Explicit options can be passed directly:
-  .\scripts\run-windows.ps1 -Toolchain <auto|msvc|mingw|llvm-mingw> [-DbPath <path>] [-Preset <preset>] [-Arch <amd64|arm64>] [-QtDir <qt-dir>] [-QtSubdir <kit>] [-ProjectRoot <dir>] [-ConfigDir <dir>] [-Screenshot <file>] [-AllowMissingDb]
+  .\scripts\run-windows.ps1 -Toolchain <auto|msvc|llvm|mingw|llvm-mingw> [-DbPath <path>] [-Preset <preset>] [-Arch <amd64|arm64>] [-QtDir <qt-dir>] [-QtSubdir <kit>] [-ProjectRoot <dir>] [-ConfigDir <dir>] [-Screenshot <file>] [-AllowMissingDb]
 "@
     return
 }

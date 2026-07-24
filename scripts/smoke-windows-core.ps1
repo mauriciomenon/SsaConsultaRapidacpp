@@ -11,7 +11,7 @@ function Invoke-WindowsSmoke {
         [string]$QtDir = "",
         [string]$QtRoot = "",
         [string]$QtSubdir = "",
-        [ValidateSet("auto", "msvc", "mingw", "llvm-mingw")]
+        [ValidateSet("auto", "msvc", "llvm", "mingw", "llvm-mingw")]
         [string]$Toolchain = "auto",
         [string]$SQLiteRoot = "",
         [switch]$Open

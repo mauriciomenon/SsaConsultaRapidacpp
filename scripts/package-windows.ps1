@@ -9,7 +9,7 @@ param(
     [string]$QtDir = "",
     [string]$QtRoot = "",
     [string]$QtSubdir = "",
-    [ValidateSet("auto", "msvc", "mingw", "llvm-mingw")]
+    [ValidateSet("auto", "msvc", "llvm", "mingw", "llvm-mingw")]
     [string]$Toolchain = "auto",
     [switch]$SkipTests,
     [string[]]$CmakeExtraArgs = @()

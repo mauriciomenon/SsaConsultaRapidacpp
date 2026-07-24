@@ -6,7 +6,7 @@ param(
     [string]$Arch = "",
     [string]$QtDir = "",
     [string]$QtSubdir = "",
-    [ValidateSet("auto", "msvc", "mingw", "llvm-mingw")]
+    [ValidateSet("auto", "msvc", "llvm", "mingw", "llvm-mingw")]
     [string]$Toolchain = "auto",
     [string]$ProjectRoot = "",
     [string]$ConfigDir = "",
@@ -22,7 +22,7 @@ $baseScript = Join-Path $repoRoot "scripts\run-windows.ps1"
 if ($Help) {
     Write-Output @"
 Usage:
-  .\scripts\lazy_scripts\run-windows.ps1 -DbPath <path-to-ssa-db> [-Toolchain <auto|msvc|mingw|llvm-mingw>] [-Preset <preset>] [-Arch <amd64|arm64>] [-QtDir <qt-dir>] [-QtSubdir <kit>] [-ProjectRoot <dir>] [-ConfigDir <dir>] [-Screenshot <file>] [-Help]
+  .\scripts\lazy_scripts\run-windows.ps1 -DbPath <path-to-ssa-db> [-Toolchain <auto|msvc|llvm|mingw|llvm-mingw>] [-Preset <preset>] [-Arch <amd64|arm64>] [-QtDir <qt-dir>] [-QtSubdir <kit>] [-ProjectRoot <dir>] [-ConfigDir <dir>] [-Screenshot <file>] [-Help]
 
 Options:
   -DbPath      Required. Full path to ssa database file.

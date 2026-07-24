@@ -6,7 +6,7 @@ param(
     [string]$QtDir = "",
     [string]$QtRoot = "",
     [string]$QtSubdir = "",
-    [ValidateSet("auto", "msvc", "mingw", "llvm-mingw")]
+    [ValidateSet("auto", "msvc", "llvm", "mingw", "llvm-mingw")]
     [string]$Toolchain = "auto",
     [string]$SQLiteRoot = "",
     [string]$ProjectRoot = "",
@@ -19,7 +19,7 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = if ($ProjectRoot) { (Resolve-Path $ProjectRoot).Path } else { (Resolve-Path (Join-Path $scriptDir "..")).Path }
 
 if ($Help) {
-    Write-Output "Usage: .\run-windows-smoke-no-clean.ps1 [-Toolchain <auto|msvc|mingw|llvm-mingw>] [-DbPath <path>] [-Preset <preset>] [-Arch <amd64|arm64>] [-Open]"
+    Write-Output "Usage: .\run-windows-smoke-no-clean.ps1 [-Toolchain <auto|msvc|llvm|mingw|llvm-mingw>] [-DbPath <path>] [-Preset <preset>] [-Arch <amd64|arm64>] [-Open]"
     return
 }
 
