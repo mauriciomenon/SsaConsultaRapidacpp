@@ -7,6 +7,8 @@ Usage:
   scripts/build-debian.sh
 
 Build Debian/Ubuntu target using default preset (dev).
+Removes build/dev before configuring. Use scripts/lazy_scripts/build-debian.sh
+for an explicit incremental build.
 
 EOF
 }
@@ -29,5 +31,6 @@ export TMPDIR=/tmp
 export TMP=/tmp
 export TEMP=/tmp
 
+rm -rf "${repo_root}/build/${preset}"
 "${repo_root}/tools/configure-dev.sh" "${preset}"
 (cd "${repo_root}" && cmake --build --preset "${preset}")

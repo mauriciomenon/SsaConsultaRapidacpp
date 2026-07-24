@@ -6,7 +6,7 @@ show_help() {
 Usage:
   scripts/lazy_scripts/build-debian.sh [--preset <preset>]
 
-Build Debian/Ubuntu target for an explicit preset.
+Incremental Debian/Ubuntu build. Reuses the selected preset build directory.
 
 Options:
   --preset <preset>    Optional CMake preset used by configure and build. Default: dev.

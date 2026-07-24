@@ -94,6 +94,135 @@ package_publish_final_artifact() {
   fi
 }
 
+package_publish_release_set() {
+  local stage_dir="$1"
+  local dist_root="$2"
+  local version="$3"
+  local commit_sha="$4"
+  local platform="$5"
+  local arch="$6"
+  local preset="$7"
+  shift 7
+  local -a required_paths=("$@")
+  local required_path
+
+  if [[ ! -d "${stage_dir}" || "${#required_paths[@]}" -eq 0 ]]; then
+    echo "Release set is incomplete: stage and required paths are mandatory." >&2
+    return 1
+  fi
+  for required_path in "${required_paths[@]}"; do
+    if [[ ! -e "${stage_dir}/${required_path}" ]]; then
+      echo "Release set is incomplete: missing ${required_path}." >&2
+      return 1
+    fi
+  done
+  for required_path in "${version}" "${commit_sha}" "${platform}" "${arch}" "${preset}"; do
+    if [[ ! "${required_path}" =~ ^[A-Za-z0-9._-]+$ ]]; then
+      echo "Release identity contains an unsupported value: ${required_path}" >&2
+      return 1
+    fi
+  done
+
+  local release_id="${version}-${commit_sha}"
+  cat > "${stage_dir}/release.json" <<EOF_RELEASE
+{
+  "version": "${version}",
+  "commit": "${commit_sha}",
+  "release": "${release_id}",
+  "platform": "${platform}",
+  "arch": "${arch}",
+  "preset": "${preset}"
+}
+EOF_RELEASE
+
+  (
+    cd "${stage_dir}"
+    find . -type f ! -name SHA256SUMS -print0 |
+      LC_ALL=C sort -z |
+      while IFS= read -r -d '' required_path; do
+        sha256sum "${required_path#./}"
+      done
+  ) > "${stage_dir}/SHA256SUMS"
+
+  mkdir -p "${dist_root}"
+  local lock_dir="${dist_root}/.publish.lock"
+  if ! mkdir "${lock_dir}" 2>/dev/null; then
+    echo "Another release publication is already running for: ${dist_root}" >&2
+    return 1
+  fi
+
+  (
+    local releases_root="${dist_root}/releases"
+    local release_dir="${releases_root}/${release_id}"
+    local candidate_dir="${dist_root}/.release-$$-staging"
+    local final_dir="${dist_root}/final"
+    local next_final_dir="${dist_root}/.final-$$-staging"
+    local previous_final_dir="${dist_root}/.final-$$-previous"
+    local current_path="${dist_root}/current.json"
+    local next_current_path="${dist_root}/.current-$$.json"
+    local final_promoted="false"
+    local previous_final_moved="false"
+
+    # Called indirectly by the EXIT trap below.
+    # shellcheck disable=SC2317
+    cleanup_release_publication() {
+      local status=$?
+      trap - EXIT
+      rm -rf "${candidate_dir}" "${next_final_dir}"
+      rm -f "${next_current_path}"
+      if [[ "${status}" -ne 0 ]]; then
+        if [[ "${final_promoted}" == "true" ]]; then
+          rm -rf "${final_dir}"
+        fi
+        if [[ "${previous_final_moved}" == "true" &&
+              -d "${previous_final_dir}" ]]; then
+          mv "${previous_final_dir}" "${final_dir}"
+        fi
+      else
+        rm -rf "${previous_final_dir}"
+      fi
+      if ! rmdir "${lock_dir}" 2>/dev/null; then
+        echo "Release publication left lock directory: ${lock_dir}" >&2
+      fi
+      exit "${status}"
+    }
+    trap cleanup_release_publication EXIT
+    trap 'exit 1' HUP INT TERM
+
+    mkdir -p "${releases_root}"
+    rm -rf "${candidate_dir}" "${next_final_dir}" "${previous_final_dir}"
+    cp -a "${stage_dir}/." "${candidate_dir}/"
+    if [[ -d "${release_dir}" ]]; then
+      if ! cmp -s "${candidate_dir}/SHA256SUMS" \
+        "${release_dir}/SHA256SUMS"; then
+        echo "Immutable release already exists with different hashes: ${release_id}" >&2
+        exit 1
+      fi
+      rm -rf "${candidate_dir}"
+    else
+      mv "${candidate_dir}" "${release_dir}"
+    fi
+    rm -rf "${stage_dir}"
+
+    cp -a "${release_dir}" "${next_final_dir}"
+    cat > "${next_current_path}" <<EOF_CURRENT
+{
+  "version": "${version}",
+  "commit": "${commit_sha}",
+  "release": "${release_id}"
+}
+EOF_CURRENT
+
+    if [[ -d "${final_dir}" ]]; then
+      mv "${final_dir}" "${previous_final_dir}"
+      previous_final_moved="true"
+    fi
+    mv "${next_final_dir}" "${final_dir}"
+    final_promoted="true"
+    mv -f "${next_current_path}" "${current_path}"
+  )
+}
+
 package_create_linux_direct_executable() {
   local bundle_root="$1"
   local output_path="$2"

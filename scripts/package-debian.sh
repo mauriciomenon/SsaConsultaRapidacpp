@@ -23,9 +23,11 @@ Parameters:
 
 Generated files:
   - final/<repo-name> (single self-extracting executable)
+  - final/<repo-name>-standalone/<repo-name> (native ELF plus runtime)
   - final/<repo-name>.deb
   - final/<repo-name>.zip
-  - versioned copies are created only from a clean matching Git tag
+  - releases/<version>-<commit>/ contains immutable delivery sets
+  - current.json identifies the current complete release
 
 Requirements (Debian/Ubuntu host):
   - dpkg-deb and dpkg-shlibdeps; fakeroot is optional
@@ -50,6 +52,7 @@ if [[ "${1-}" == "--help" || "${1-}" == "-h" ]]; then
 fi
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./scripts/lib/package_common.sh
 source "${script_dir}/lib/package_common.sh"
 repo_root="$(package_repo_root_from_script "${BASH_SOURCE[0]}")"
 preset="release"
@@ -116,15 +119,19 @@ fi
 build_dir="${repo_root}/build/${preset}"
 repo_name="$(package_repo_name "${repo_root}")"
 artifact_name="${repo_name}-debian-${arch}-${version}"
-artifact_root="${dist_root}/${artifact_name}"
-deb_path="${dist_root}/${artifact_name}.deb"
 final_root="${dist_root}/final"
 stage_root="$(mktemp -d "${TMPDIR:-/tmp}/${artifact_name}.XXXXXX")"
-trap 'rm -rf "${stage_root}"' EXIT
+cleanup_package() {
+  rm -rf "${stage_root}" "${build_dir}"
+}
+trap cleanup_package EXIT
+trap 'exit 1' HUP INT TERM
 stage_artifact_root="${stage_root}/${artifact_name}"
-stage_deb_path="${stage_root}/${artifact_name}.deb"
-stage_direct_path="${stage_root}/${repo_name}"
-stage_zip_path="${stage_root}/${repo_name}.zip"
+release_stage="${stage_root}/release"
+stage_deb_path="${release_stage}/${repo_name}.deb"
+stage_direct_path="${release_stage}/${repo_name}"
+stage_zip_path="${release_stage}/${repo_name}.zip"
+stage_standalone_root="${release_stage}/${repo_name}-standalone"
 
 # Map uname arch to Debian arch when running on non-dpkg hosts is not needed:
 # this script is meant to run on a Debian/Ubuntu host where dpkg exists.
@@ -132,13 +139,14 @@ if ! command -v dpkg-deb >/dev/null 2>&1; then
   echo "dpkg-deb not found. This script must run on a Debian/Ubuntu host." >&2
   exit 1
 fi
-for required_tool in dpkg-shlibdeps file objdump zip tar; do
+for required_tool in dpkg-shlibdeps file objdump zip tar sha256sum; do
   if ! command -v "${required_tool}" >/dev/null 2>&1; then
     echo "${required_tool} not found. Install the Debian packaging prerequisites." >&2
     exit 1
   fi
 done
 
+rm -rf "${build_dir}"
 "${repo_root}/tools/configure-dev.sh" "${preset}"
 if [[ "${run_tests}" == "true" ]]; then
   cmake --build --preset "${preset}"
@@ -322,14 +330,13 @@ exit 0
 EOF_POSTINST
 chmod 0755 "${pkgroot}/DEBIAN/postinst"
 
-mkdir -p "${stage_root}"
+mkdir -p "${release_stage}"
 if command -v fakeroot >/dev/null 2>&1; then
   fakeroot dpkg-deb --build --root-owner-group "${pkgroot}" "${stage_deb_path}"
 else
   dpkg-deb --build --root-owner-group "${pkgroot}" "${stage_deb_path}"
 fi
 
-# Keep an extracted copy under dist/linux/<arch>/ for convenience.
 mkdir -p "${stage_artifact_root}"
 cp -R "${install_prefix}" "${stage_artifact_root}/usr"
 cp "${pkgroot}/DEBIAN/control" "${stage_artifact_root}/control"
@@ -340,31 +347,36 @@ package_create_linux_direct_executable \
   zip -qr "${stage_zip_path}" "${artifact_name}"
 )
 
-rm -rf "${artifact_root}"
-mv "${stage_artifact_root}" "${artifact_root}"
-mv "${stage_deb_path}" "${deb_path}"
+mkdir -p "${stage_standalone_root}/lib"
+cp "${install_prefix}/lib/ssa_consulta_rapida/bin/ssa_consulta_rapida" \
+  "${stage_standalone_root}/${repo_name}"
+cp -R "${install_prefix}/lib/ssa_consulta_rapida/lib/." "${stage_standalone_root}/lib/"
+for runtime_dir in plugins qml; do
+  if [[ -d "${install_prefix}/lib/ssa_consulta_rapida/${runtime_dir}" ]]; then
+    cp -R "${install_prefix}/lib/ssa_consulta_rapida/${runtime_dir}" "${stage_standalone_root}/"
+  fi
+done
+chmod 0755 "${stage_standalone_root}/${repo_name}"
+cat > "${stage_standalone_root}/README.txt" <<EOF_STANDALONE
+Native Linux executable. Run:
+  ./${repo_name} --db <path-to-ssas.db>
 
-package_set_latest_link "${dist_root}" "${artifact_name}"
-package_set_latest_alias "${dist_root}" "latest.deb" "${artifact_name}.deb"
-package_set_latest_alias "${dist_root}" "latest-binary" \
-  "${artifact_name}/usr/bin/ssa_consulta_rapida"
+The lib/, plugins/ and qml/ directories must remain beside the executable.
+EOF_STANDALONE
 
-tagged_release="false"
-if package_is_exact_release_tag "${repo_root}" "${version}"; then
-  tagged_release="true"
-fi
-package_publish_final_artifact \
-  "${stage_direct_path}" "${final_root}" "${repo_name}" \
-  "${repo_name}-${version}" "${tagged_release}"
-package_publish_final_artifact \
-  "${deb_path}" "${final_root}" "${repo_name}.deb" \
-  "${repo_name}-${version}.deb" "${tagged_release}"
-package_publish_final_artifact \
-  "${stage_zip_path}" "${final_root}" "${repo_name}.zip" \
-  "${repo_name}-${version}.zip" "${tagged_release}"
+commit_sha="$(git -C "${repo_root}" rev-parse --short=12 HEAD)"
+required_release_paths=(
+  "${repo_name}"
+  "${repo_name}.deb"
+  "${repo_name}.zip"
+  "${repo_name}-standalone/${repo_name}"
+)
+package_publish_release_set "${release_stage}" "${dist_root}" "${version}" \
+  "${commit_sha}" "debian" "${arch}" "${preset}" \
+  "${required_release_paths[@]}"
 
-rm -rf "${stage_root}"
-trap - EXIT
+cleanup_package
+trap - EXIT HUP INT TERM
 
 cat <<EOF_REPORT
 Debian release artifacts generated:
@@ -372,12 +384,13 @@ Debian release artifacts generated:
   version: ${version}
   preset: ${preset}
   architecture: ${arch}
-  deb: ${deb_path}
-  artifact_root: ${artifact_root}
-  latest_deb: ${dist_root}/latest.deb
-  latest_binary: ${dist_root}/latest-binary
-  latest: ${dist_root}/latest
+  package: ${final_root}/${repo_name}.zip
+  executable: ${final_root}/${repo_name}
+  standalone: ${final_root}/${repo_name}-standalone/${repo_name}
+  deb: ${final_root}/${repo_name}.deb
   final_root: ${final_root}
+  release: ${dist_root}/releases/${version}-${commit_sha}
+  current: ${dist_root}/current.json
   dependencies: ${runtime_depends}
-  tagged_release: ${tagged_release}
+  build_dir_removed: ${build_dir}
 EOF_REPORT
