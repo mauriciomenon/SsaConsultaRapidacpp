@@ -143,6 +143,11 @@ O diretorio `final\` contem:
 - `ssa_consulta_rapida_cpp-standalone\`: PE nativo e runtime sem extracao por
   abertura.
 
+Para uso diario, prefira o instalador ou o executavel dentro de
+`ssa_consulta_rapida_cpp-standalone\`. O executavel portatil unico descompacta
+todo o runtime Qt em `%TEMP%` a cada abertura e deve ser usado somente quando a
+entrega em um arquivo unico for necessaria.
+
 Cada conjunto completo e preservado em `releases\<version>-<commit>\`.
 Uma nova publicacao do mesmo identificador so e aceita quando todos os hashes
 coincidem; `final\` e `current.json` sao atualizados juntos.
