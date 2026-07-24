@@ -2,6 +2,7 @@
 
 #include <QCommandLineOption>
 #include <QCommandLineParser>
+#include <QDir>
 #include <QFont>
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
@@ -68,6 +69,15 @@ int main(int argc, char* argv[]) {
         QCommandLineOption(QStringList{"open-details-window"},
                            "Open details graph window before screenshot smoke capture."));
     parser.process(app);
+
+    if (!parser.isSet("project-root")) {
+        const auto userDataRoot = ssa::platform::StartupOptions::defaultUserDataRoot();
+        if (!QDir(userDataRoot).exists() && !QDir{}.mkpath(userDataRoot)) {
+            std::cerr << "startup error: cannot create data directory: "
+                      << userDataRoot.toStdString() << '\n';
+            return 2;
+        }
+    }
 
     std::unique_ptr<ssa::app::desktop::DesktopApplicationRuntime> runtime;
     try {

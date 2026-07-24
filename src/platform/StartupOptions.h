@@ -9,6 +9,7 @@ namespace ssa::platform {
       public:
         [[nodiscard]] static StartupOptions fromParser(const QCommandLineParser& parser);
         [[nodiscard]] static QString defaultSamBaseUrl();
+        [[nodiscard]] static QString defaultUserDataRoot();
 
         QString projectRoot;
         QString databasePath;

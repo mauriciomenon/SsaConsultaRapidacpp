@@ -60,7 +60,7 @@ namespace ssa::platform {
             if (const auto discovered = findProjectRootWithDatabase()) {
                 return qt::toQString(std::filesystem::weakly_canonical(*discovered));
             }
-            return QDir::currentPath();
+            return StartupOptions::defaultUserDataRoot();
         }
 
         QString normalizedExistingDirectory(const QString& value, const char* label) {
@@ -119,6 +119,10 @@ namespace ssa::platform {
 
     QString StartupOptions::defaultSamBaseUrl() {
         return QStringLiteral("https://osprd.itaipu/SAM_SMA/");
+    }
+
+    QString StartupOptions::defaultUserDataRoot() {
+        return QDir::home().filePath(QStringLiteral(".ssaconsultarapida"));
     }
 
     StartupOptions StartupOptions::fromParser(const QCommandLineParser& parser) {
