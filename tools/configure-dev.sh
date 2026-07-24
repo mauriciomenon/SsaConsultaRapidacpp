@@ -473,11 +473,11 @@ if [[ -f "${cache_file}" ]]; then
     cmake_fresh_args+=(--fresh)
   fi
 fi
-cmake --preset "${preset}" \
+(cd "${repo_root}" && cmake --preset "${preset}" \
   "${cmake_fresh_args[@]}" \
   '-UQt6*_DIR' \
   '-U*DEPLOYQT_EXECUTABLE' \
   -DCMAKE_PREFIX_PATH="${qt_dir}" \
-  -DQt6_DIR="${qt_dir}/lib/cmake/Qt6"
+  -DQt6_DIR="${qt_dir}/lib/cmake/Qt6")
 
 warn_clang_format

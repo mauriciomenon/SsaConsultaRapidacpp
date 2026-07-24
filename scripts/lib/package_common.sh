@@ -298,6 +298,7 @@ package_linux_arch() {
 }
 
 package_resolve_macdeployqt() {
+  local repo_root="${1:-${PWD}}"
   local -a candidate_prefixes=()
   local candidate
 
@@ -316,9 +317,9 @@ package_resolve_macdeployqt() {
     done < <(printf '%s\n' "${CMAKE_PREFIX_PATH}" | tr ':;' '\n')
   fi
 
-  if [[ -f "${PWD}/tools/qt-detect.conf" ]]; then
+  if [[ -f "${repo_root}/tools/qt-detect.conf" ]]; then
     # shellcheck disable=SC1091
-    source "${PWD}/tools/qt-detect.conf"
+    source "${repo_root}/tools/qt-detect.conf"
     candidate_prefixes+=("${MACOS_QT_ONLINE_INSTALLER_DIR}")
   fi
   if [[ -n "${QT_VERSION:-}" ]]; then

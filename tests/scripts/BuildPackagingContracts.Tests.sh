@@ -21,18 +21,24 @@ mkdir -p "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/build/${1}"
 EOF_CONFIGURE
 cat > "${fake_bin}/cmake" <<'EOF_CMAKE'
 #!/usr/bin/env bash
+if [[ "${PWD}" != "${SSA_EXPECTED_CWD}" ]]; then
+  echo "cmake was invoked from ${PWD}, expected ${SSA_EXPECTED_CWD}" >&2
+  exit 87
+fi
 exit 0
 EOF_CMAKE
 chmod +x "${fixture_repo}/tools/configure-dev.sh" "${fake_bin}/cmake"
 
-PATH="${fake_bin}:${PATH}" "${fixture_repo}/scripts/build-debian.sh"
+SSA_EXPECTED_CWD="${fixture_repo}" PATH="${fake_bin}:${PATH}" \
+  "${fixture_repo}/scripts/build-debian.sh"
 if [[ -e "${fixture_repo}/build/dev/stale-output.txt" ]]; then
   echo "build-debian.sh reused stale output by default." >&2
   exit 1
 fi
 
 printf 'keep\n' > "${fixture_repo}/build/dev/incremental-output.txt"
-PATH="${fake_bin}:${PATH}" "${fixture_repo}/scripts/lazy_scripts/build-debian.sh"
+SSA_EXPECTED_CWD="${fixture_repo}" PATH="${fake_bin}:${PATH}" \
+  "${fixture_repo}/scripts/lazy_scripts/build-debian.sh"
 if [[ ! -e "${fixture_repo}/build/dev/incremental-output.txt" ]]; then
   echo "lazy Debian build did not preserve the explicit incremental cache." >&2
   exit 1

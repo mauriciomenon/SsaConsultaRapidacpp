@@ -41,7 +41,8 @@ Explicit options can be passed directly:
 
 $executable = Join-Path $buildDir "ssa_consulta_rapida.exe"
 if (-not (Test-Path $executable)) {
-    throw "Binary not found for preset '$Preset' at: $executable. Run .\scripts\build-windows.ps1 before running .\scripts\run-windows.ps1."
+    $buildHint = Join-Path $scriptDir "build-windows.ps1"
+    throw "Binary not found for preset '$Preset' at: $executable. Run: & '$buildHint' -Preset '$Preset'"
 }
 
 $usingDefaultDb = [string]::IsNullOrWhiteSpace($DbPath)

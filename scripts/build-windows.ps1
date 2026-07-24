@@ -198,6 +198,9 @@ $configurationRequested = $QtDir -or $QtRoot -or $QtSubdir -or $SQLiteRoot -or
     @($CmakeExtraArgs | Where-Object { $_ }).Count -gt 0
 if ($configurationRequested -or -not $cacheIsReusable) {
     & $configureScript @configureParams
+    if (-not (Test-Path -LiteralPath $cacheFile -PathType Leaf)) {
+        throw "CMake configuration did not produce expected cache: $cacheFile"
+    }
 }
 
 $qtDirectoryLine = Select-String -LiteralPath $cacheFile -Pattern '^Qt6_DIR:[^=]+=(.+)$' |

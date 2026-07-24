@@ -14,6 +14,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$repoRoot = (Resolve-Path (Join-Path $ScriptDir "..")).Path
 $QtDetectConfig = Join-Path $ScriptDir "qt-detect.conf"
 
 function Read-QtDetectConfig {
@@ -743,6 +744,7 @@ if ($compiler.BinDir) {
 }
 $cmakeArgs = @(
     "--preset", $Preset,
+    "-S", $repoRoot,
     "-UQt6*_DIR",
     "-U*DEPLOYQT_EXECUTABLE",
     "-DCMAKE_PREFIX_PATH=$($selection.Path)",
@@ -775,4 +777,7 @@ if ($CmakeExtraArgs -and $CmakeExtraArgs.Count -gt 0) {
 }
 
 cmake @cmakeArgs
+if ($LASTEXITCODE -ne 0) {
+    throw "CMake configuration failed with exit code $LASTEXITCODE."
+}
 Confirm-ClangFormat

@@ -132,12 +132,13 @@ cleanup_package_stage() {
 trap cleanup_package_stage EXIT
 
 "${repo_root}/tools/configure-dev.sh" "${preset}"
+(cd "${repo_root}"
 if [[ "${run_tests}" == "true" ]]; then
   cmake --build --preset "${preset}"
   ctest --preset "${preset}" --output-on-failure
 else
   cmake --build --preset "${preset}" --target ssa_consulta_rapida
-fi
+fi)
 
 executable="${build_dir}/ssa_consulta_rapida.app/Contents/MacOS/ssa_consulta_rapida"
 app_bundle="${build_dir}/ssa_consulta_rapida.app"
@@ -173,7 +174,7 @@ if [[ ! -d "${qml_module_dir}" ]]; then
   exit 1
 fi
 
-if macdeploy_tool="$(package_resolve_macdeployqt)"; then
+if macdeploy_tool="$(package_resolve_macdeployqt "${repo_root}")"; then
   if "${macdeploy_tool}" "${bundle_copy}" -qmldir="${qml_module_dir}"; then
     :
   else

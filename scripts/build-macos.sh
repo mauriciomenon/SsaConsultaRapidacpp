@@ -33,4 +33,4 @@ repo_root="${SSA_CPP_PROJECT_ROOT:-${repo_root}}"
 preset="${SSA_CPP_PRESET:-dev}"
 
 "${repo_root}/tools/configure-dev.sh" "${preset}"
-cmake --build --preset "${preset}"
+(cd "${repo_root}" && cmake --build --preset "${preset}")

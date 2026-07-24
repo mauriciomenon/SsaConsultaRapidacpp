@@ -32,8 +32,10 @@ param(
 )
 Set-Content -LiteralPath $env:SSA_TEST_CONFIGURE_MARKER -Value "$Preset|$($CmakeExtraArgs -join ',')|$QtSubdir"
 Set-Content -LiteralPath $env:SSA_TEST_CONFIGURE_BINARY_MARKER -Value $BinaryDir
-New-Item -ItemType Directory -Path $BinaryDir -Force | Out-Null
-Set-Content -LiteralPath (Join-Path $BinaryDir "CMakeCache.txt") -Value "" -Encoding ASCII
+if (-not $env:SSA_TEST_SKIP_CONFIGURE_CACHE) {
+    New-Item -ItemType Directory -Path $BinaryDir -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $BinaryDir "CMakeCache.txt") -Value "" -Encoding ASCII
+}
 '@ | Set-Content -LiteralPath (Join-Path $script:toolsDir "configure-dev.ps1") -Encoding ASCII
 
         @'
@@ -200,7 +202,7 @@ exit /b 23
 
     It "preserves an explicit compatible arm64 vcpkg triplet" {
         & $script:buildScript -ProjectRoot $script:repoRoot -Arch arm64 `
-            -CmakeExtraArgs "-DVCPKG_TARGET_TRIPLET=arm64-windows-static" -ReuseBuild
+            -CmakeExtraArgs "-DVCPKG_TARGET_TRIPLET=arm64-windows-static" -ReuseBuild # pragma: allowlist secret
 
         (Get-Content -LiteralPath $script:configureMarker) | Should -Be "dev|-DVCPKG_TARGET_TRIPLET=arm64-windows-static|msvc2022_arm64"
     }
@@ -215,6 +217,19 @@ exit /b 23
         {
             & $script:buildScript -ProjectRoot $script:repoRoot @parameters
         } | Should -Throw -ExpectedMessage "*incompatible*"
+    }
+
+    It "reports a missing CMake cache immediately after configuration" {
+        $env:SSA_TEST_SKIP_CONFIGURE_CACHE = "1"
+
+        try {
+            {
+                & $script:buildScript -ProjectRoot $script:repoRoot
+            } | Should -Throw -ExpectedMessage "*CMake configuration did not produce expected cache*"
+        }
+        finally {
+            Remove-Item Env:SSA_TEST_SKIP_CONFIGURE_CACHE -ErrorAction SilentlyContinue
+        }
     }
 
     It "removes the canonical build directory by default" {

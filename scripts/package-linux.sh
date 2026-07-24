@@ -44,6 +44,7 @@ if [[ "${1-}" == "--help" || "${1-}" == "-h" ]]; then
 fi
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib/package_common.sh
 source "${script_dir}/lib/package_common.sh"
 repo_root="$(package_repo_root_from_script "${BASH_SOURCE[0]}")"
 preset="release"
@@ -117,12 +118,13 @@ direct_stage="${dist_root}/.${repo_name}.$$.direct"
 zip_stage="${dist_root}/.${repo_name}.$$.zip"
 
 "${repo_root}/tools/configure-dev.sh" "${preset}"
+(cd "${repo_root}"
 if [[ "${run_tests}" == "true" ]]; then
   cmake --build --preset "${preset}"
   ctest --preset "${preset}" --output-on-failure
 else
   cmake --build --preset "${preset}" --target ssa_consulta_rapida
-fi
+fi)
 
 binary="${build_dir}/ssa_consulta_rapida"
 if [[ ! -x "${binary}" ]]; then

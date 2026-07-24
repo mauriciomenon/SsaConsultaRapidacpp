@@ -148,12 +148,13 @@ done
 
 rm -rf "${build_dir}"
 "${repo_root}/tools/configure-dev.sh" "${preset}"
+(cd "${repo_root}"
 if [[ "${run_tests}" == "true" ]]; then
   cmake --build --preset "${preset}"
   ctest --preset "${preset}" --output-on-failure
 else
   cmake --build --preset "${preset}" --target ssa_consulta_rapida
-fi
+fi)
 
 binary="${build_dir}/ssa_consulta_rapida"
 if [[ ! -x "${binary}" ]]; then

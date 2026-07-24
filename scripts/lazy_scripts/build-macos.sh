@@ -43,4 +43,4 @@ if [[ -z "${preset}" ]]; then
 fi
 
 "${repo_root}/tools/configure-dev.sh" "${preset}"
-cmake --build --preset "${preset}"
+(cd "${repo_root}" && cmake --build --preset "${preset}")
