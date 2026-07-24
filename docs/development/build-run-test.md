@@ -121,18 +121,21 @@ seleciona o patch 6.11.x mais alto valido e prioriza os kits:
 3. `mingw_64`.
 
 MSVC permanece o default. O script de build inicializa sozinho o Developer
-PowerShell com host x64 e target x64. O comando normal de package usa o mesmo
-bootstrap quando MSVC e selecionado. Se o kit ou compilador nao estiver
-disponivel e a escolha nao tiver sido explicita, o configurador tenta LLVM
-MinGW e depois MinGW. Uma escolha explicita nunca muda de ABI silenciosamente.
+PowerShell com host x64 e target coerente com `-Arch`. O comando normal de
+package usa o mesmo bootstrap. O build nunca muda de ABI silenciosamente;
+LLVM MinGW e MinGW exigem `-QtSubdir` explicito. O configurador isolado ainda
+pode listar e selecionar os fallbacks disponiveis.
 
 ```powershell
 # Preflight somente leitura.
 .\tools\configure-dev.ps1 -Check
 .\tools\configure-dev.ps1 -CheckPackage
 
-# Default: MSVC, com fallback automatico de kit desktop.
+# Default: MSVC para a arquitetura do host.
 .\scripts\build-windows.ps1
+
+# Build ARM64 em namespace e kit proprios.
+.\scripts\build-windows.ps1 -Arch arm64
 
 # Selecao explicita do kit LLVM MinGW.
 .\scripts\build-windows.ps1 -QtSubdir llvm-mingw_64
@@ -146,6 +149,10 @@ MinGW e depois MinGW. Uma escolha explicita nunca muda de ABI silenciosamente.
 # O empacotamento aceita os mesmos seletores.
 .\scripts\package-windows.ps1 -QtSubdir llvm-mingw_64
 ```
+
+Os builds Windows ficam somente em
+`build/windows/<arch>/<qt-kit>/<preset>`. Assim, nenhum cache Windows divide
+`build/dev` ou `build/release` com Linux e macOS.
 
 Os kits `wasm_singlethread` e `wasm_multithread` geram WebAssembly para
 navegadores. Eles sao listados no diagnostico, mas nunca sao fallback para o

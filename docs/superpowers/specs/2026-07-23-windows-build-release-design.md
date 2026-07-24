@@ -20,8 +20,9 @@ with mixed, stale or partially published artifacts.
 The first supported Windows layout is:
 
 ```text
-build/windows/amd64/msvc/release
-build/windows/amd64/msvc/dev
+build/windows/amd64/msvc2022_64/release
+build/windows/amd64/msvc2022_64/dev
+build/windows/arm64/msvc2022_arm64/release
 ```
 
 Arm64 must use its own Qt kit, compiler target and vcpkg triplet. An artifact

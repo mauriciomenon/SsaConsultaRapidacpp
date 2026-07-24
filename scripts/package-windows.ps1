@@ -27,7 +27,7 @@ Defaults:
   Preset: release
   Architecture: amd64 (x64-windows) or arm64
   Artifact dir: dist\windows\<arch>\
-  Required build output: build\<preset>\SsaConsultaRapida QML module must exist.
+  Required build output: build\windows\<arch>\<qt-kit>\<preset>\SsaConsultaRapida must exist.
   Optional parameters: -Preset, -ProjectRoot, -Arch, -DistDir, -Version,
     -QtDir, -QtRoot, -QtSubdir
   Optional switch: -SkipTests
@@ -75,11 +75,11 @@ $commonHelpers = Join-Path $scriptDir "lib\package_common.ps1"
 . $commonHelpers
 
 $preset = if ($Preset) { $Preset } else { "release" }
-$buildDir = Join-Path $repoRoot "build\$preset"
-
 $buildScript = Join-Path $repoRoot "scripts\build-windows.ps1"
 $version = Resolve-PackageVersion -RepoRoot $repoRoot -ExplicitVersion $Version
 $arch = Resolve-WindowsArch -RequestedArch $Arch
+$layout = Resolve-WindowsBuildLayout -RepoRoot $repoRoot -Preset $preset -Arch $arch -QtDir $QtDir -QtSubdir $QtSubdir
+$buildDir = $layout.BuildDir
 $repoName = Split-Path $repoRoot -Leaf
 $distRoot = if ($DistDir) { $DistDir } else { Join-Path $repoRoot "dist\windows" }
 $artifactRoot = Join-Path $distRoot $arch
@@ -96,7 +96,7 @@ if (-not $makeNsisPath) {
     throw "MakeNSIS not found. NSIS is required for the portable EXE and installer."
 }
 
-$buildParams = @{ Preset = $preset; ProjectRoot = $repoRoot }
+$buildParams = @{ Preset = $preset; ProjectRoot = $repoRoot; Arch = $arch }
 if ($QtDir) {
     $buildParams.QtDir = $QtDir
 }
@@ -117,7 +117,7 @@ if ($LASTEXITCODE -ne 0) {
     throw "Windows build failed with exit code $LASTEXITCODE."
 }
 if (-not $SkipTests) {
-    ctest --preset $preset --output-on-failure
+    ctest --test-dir $buildDir --output-on-failure
     if ($LASTEXITCODE -ne 0) {
         throw "Windows tests failed with exit code $LASTEXITCODE."
     }

@@ -80,7 +80,7 @@ Artefatos de distribuicao, quando gerados por `./scripts/package-macos.sh`, fica
 ./scripts/run-windows.ps1
 
 # Self executable path (Windows)
-# <repo>\build\dev\ssa_consulta_rapida.exe
+# <repo>\build\windows\amd64\msvc2022_64\dev\ssa_consulta_rapida.exe
 ```
 
 ### Smoke completo (build + test + execucao com screenshot) no macOS e Debian
@@ -140,8 +140,8 @@ QT_DIR=/meu/qt ./tools/configure-dev.sh
 ### Verificacao de toolchain
 
 - No Windows, `.\scripts\build-windows.ps1` localiza o modulo do Visual Studio
-  e inicializa host x64 e target x64 quando MSVC e selecionado. Nao e
-  necessario abrir Developer PowerShell manualmente.
+  e inicializa target x64 ou ARM64 conforme `-Arch`. Nao e necessario abrir
+  Developer PowerShell manualmente.
 - Em caso de erro de SQLite, valide `vcpkg install sqlite3:<triplet>` e rode:
 
 ```powershell

@@ -8,7 +8,7 @@ Describe "Windows package build failure" {
         $distDir = Join-Path $testRoot "dist"
         $artifactDir = Join-Path $distDir "amd64/repo-windows-amd64-1.2.3"
         $sentinel = Join-Path $artifactDir "previous-release.txt"
-        $buildDir = Join-Path $repoRoot "build/release"
+        $buildDir = Join-Path $repoRoot "build/windows/amd64/msvc2022_64/release"
         $nsisDir = Join-Path $testRoot "nsis"
         $packageScript = Join-Path (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path "scripts/package-windows.ps1"
         $originalNsisHome = $env:NSIS_HOME
@@ -51,7 +51,7 @@ placeholder
         $testRoot = (Get-PSDrive -Name TestDrive).Root
         $repoRoot = Join-Path $testRoot "repo"
         $scriptsDir = Join-Path $repoRoot "scripts"
-        $buildDir = Join-Path $repoRoot "build/release"
+        $buildDir = Join-Path $repoRoot "build/windows/amd64/msvc2022_64/release"
         $qtPrefix = Join-Path $testRoot "Qt/6.11.1/msvc2022_64"
         $qtCmakeDir = Join-Path $qtPrefix "lib/cmake/Qt6"
         $qtBinDir = Join-Path $qtPrefix "bin"
@@ -59,25 +59,47 @@ placeholder
         $packageScript = Join-Path (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path "scripts/package-windows.ps1"
         $originalNsisHome = $env:NSIS_HOME
         $originalPathExt = $env:PATHEXT
+        $originalPath = $env:Path
+        $fakeBin = Join-Path $testRoot "bin"
+        $buildMarker = Join-Path $testRoot "build-arch.txt"
+        $ctestLog = Join-Path $testRoot "ctest-called.txt"
 
-        New-Item -ItemType Directory -Path $scriptsDir, $buildDir, (Join-Path $buildDir "SsaConsultaRapida"), $qtBinDir, $nsisDir,
+        New-Item -ItemType Directory -Path $scriptsDir, $buildDir, (Join-Path $buildDir "SsaConsultaRapida"), $qtBinDir, $nsisDir, $fakeBin,
             (Join-Path $repoRoot "resources"), (Join-Path $repoRoot "third_party/tinted-themes") -Force | Out-Null
         Copy-Item -LiteralPath $env:ComSpec -Destination (Join-Path $nsisDir "makensis.exe")
         Copy-Item -LiteralPath $env:ComSpec -Destination (Join-Path $qtBinDir "windeployqt.exe")
         $env:NSIS_HOME = $nsisDir
         $env:PATHEXT = [Environment]::GetEnvironmentVariable("PATHEXT", "Machine")
+        $env:Path = "$fakeBin;$originalPath"
         New-Item -ItemType File -Path (Join-Path $buildDir "ssa_consulta_rapida.exe"), (Join-Path $buildDir "sqlite3.dll"),
             (Join-Path $repoRoot "resources/app_icon.ico"), (Join-Path $repoRoot "THIRD_PARTY_NOTICES.md"),
             (Join-Path $repoRoot "third_party/tinted-themes/LICENSE") -Force | Out-Null
         "Qt6_DIR:PATH=$($qtCmakeDir.Replace('\\', '/'))" | Set-Content -LiteralPath (Join-Path $buildDir "CMakeCache.txt") -Encoding ASCII
 @'
+param([string]$Arch)
+Set-Content -LiteralPath $env:SSA_TEST_BUILD_ARCH -Value $Arch
 $global:LASTEXITCODE = 0
 '@ | Set-Content -LiteralPath (Join-Path $scriptsDir "build-windows.ps1") -Encoding ASCII
+        @'
+@echo off
+echo %*>>"%SSA_TEST_CTEST_LOG%"
+exit /b 0
+'@ | Set-Content -LiteralPath (Join-Path $fakeBin "ctest.cmd") -Encoding ASCII
+        $env:SSA_TEST_BUILD_ARCH = $buildMarker
+        $env:SSA_TEST_CTEST_LOG = $ctestLog
 
         try {
-            {
-                & $packageScript -ProjectRoot $repoRoot -DistDir (Join-Path $testRoot "dist") -Version "1.2.3" -SkipTests
-            } | Should -Throw -ExpectedMessage "*did not copy Qt6Core*"
+            $failure = $null
+            try {
+                & $packageScript -ProjectRoot $repoRoot -Arch amd64 -DistDir (Join-Path $testRoot "dist") -Version "1.2.3"
+            }
+            catch {
+                $failure = $_
+            }
+
+            (Get-Content -LiteralPath $buildMarker) | Should -Be "amd64"
+            (Get-Content -LiteralPath $ctestLog) | Should -Match ([regex]::Escape("--test-dir $buildDir"))
+            $failure.Exception.Message | Should -Match "did not copy Qt6Core"
         }
         finally {
             if ($null -eq $originalNsisHome) {
@@ -87,6 +109,8 @@ $global:LASTEXITCODE = 0
                 $env:NSIS_HOME = $originalNsisHome
             }
             $env:PATHEXT = $originalPathExt
+            $env:Path = $originalPath
+            Remove-Item Env:SSA_TEST_BUILD_ARCH, Env:SSA_TEST_CTEST_LOG -ErrorAction SilentlyContinue
         }
     }
 }

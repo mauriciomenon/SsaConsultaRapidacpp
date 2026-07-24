@@ -1,3 +1,5 @@
+. (Join-Path $PSScriptRoot "windows_build_layout.ps1")
+
 function Resolve-PackageVersion {
     param(
         [Parameter(Mandatory)]
@@ -86,36 +88,6 @@ function Set-LatestArtifactAlias {
     else {
         Copy-Item -Path $TargetPath -Destination $aliasPath -Force
     }
-}
-
-function Resolve-WindowsArch {
-    param(
-        [string]$RequestedArch = ""
-    )
-
-    $arch = if ($RequestedArch) {
-        $RequestedArch.ToLowerInvariant()
-    } else {
-        $primary = [Environment]::GetEnvironmentVariable("PROCESSOR_ARCHITECTURE")
-        $wow = [Environment]::GetEnvironmentVariable("PROCESSOR_ARCHITEW6432")
-        if ($primary -eq "ARM64" -or $wow -eq "ARM64") {
-            "arm64"
-        } elseif ($primary -eq "AMD64" -or $primary -eq "X64" -or $wow -eq "AMD64" -or $wow -eq "X64") {
-            "amd64"
-        } else {
-            $primary
-        }
-    }
-
-    if ($arch -eq "x64" -or $arch -eq "x86_64") {
-        $arch = "amd64"
-    }
-
-    if ($arch -ne "amd64" -and $arch -ne "arm64") {
-        throw "Unsupported architecture: $arch. Use amd64 or arm64."
-    }
-
-    return $arch
 }
 
 function Test-ExactReleaseTag {

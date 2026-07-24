@@ -56,6 +56,14 @@ Describe "Windows Qt detection" {
         $output | Should -Contain "QtSubdir=llvm-mingw_64"
     }
 
+    It "accepts the explicit MSVC ARM64 desktop kit" {
+        Initialize-FakeQtPrefix -Root $script:qtRoot -Version "6.11.1" -Subdir "msvc2022_arm64"
+
+        $output = & $script:configureScript -QtRoot $script:qtRoot -QtSubdir "msvc2022_arm64" -PrintQtSelection
+
+        $output | Should -Contain "QtSubdir=msvc2022_arm64"
+    }
+
     It "uses LLVM MinGW as a desktop fallback when MSVC is absent" {
         Initialize-FakeQtPrefix -Root $script:qtRoot -Version "6.11.1" -Subdir "llvm-mingw_64"
         Initialize-FakeQtPrefix -Root $script:qtRoot -Version "6.11.1" -Subdir "wasm_multithread"

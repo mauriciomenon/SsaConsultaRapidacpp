@@ -5,16 +5,18 @@ Describe "Windows build cache ownership" {
         $testRoot = (Get-PSDrive -Name TestDrive).Root
         $script:repoRoot = Join-Path $testRoot "repo"
         $script:toolsDir = Join-Path $script:repoRoot "tools"
-        $script:buildDir = Join-Path $script:repoRoot "build/dev"
+        $script:buildDir = Join-Path $script:repoRoot "build/windows/amd64/msvc2022_64/dev"
         $script:fakeBin = Join-Path $testRoot "bin"
         $script:configureMarker = Join-Path $testRoot "configure-called.txt"
+        $script:configureBinaryMarker = Join-Path $testRoot "configure-binary-dir.txt"
         $script:cmakeLog = Join-Path $testRoot "cmake-called.txt"
         $script:pathLog = Join-Path $testRoot "path-used.txt"
         $script:originalPath = $env:Path
         $script:originalPathExt = $env:PATHEXT
         $script:buildScript = Join-Path (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path "scripts/build-windows.ps1"
 
-        Remove-Item -LiteralPath $script:configureMarker, $script:cmakeLog, $script:pathLog -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $script:repoRoot -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $script:configureMarker, $script:configureBinaryMarker, $script:cmakeLog, $script:pathLog -Force -ErrorAction SilentlyContinue
 
         New-Item -ItemType Directory -Path $script:toolsDir, $script:buildDir, $script:fakeBin -Force | Out-Null
 
@@ -25,9 +27,13 @@ param(
     [string]$QtRoot,
     [string]$QtSubdir,
     [string]$SQLiteRoot,
+    [string]$BinaryDir,
     [string[]]$CmakeExtraArgs
 )
 Set-Content -LiteralPath $env:SSA_TEST_CONFIGURE_MARKER -Value "$Preset|$($CmakeExtraArgs -join ',')|$QtSubdir"
+Set-Content -LiteralPath $env:SSA_TEST_CONFIGURE_BINARY_MARKER -Value $BinaryDir
+New-Item -ItemType Directory -Path $BinaryDir -Force | Out-Null
+Set-Content -LiteralPath (Join-Path $BinaryDir "CMakeCache.txt") -Value "" -Encoding ASCII
 '@ | Set-Content -LiteralPath (Join-Path $script:toolsDir "configure-dev.ps1") -Encoding ASCII
 
         @'
@@ -39,6 +45,7 @@ exit /b 0
         New-Item -ItemType File -Path (Join-Path $script:fakeBin "cl.exe") -Force | Out-Null
 
         $env:SSA_TEST_CONFIGURE_MARKER = $script:configureMarker
+        $env:SSA_TEST_CONFIGURE_BINARY_MARKER = $script:configureBinaryMarker
         $env:SSA_TEST_CMAKE_LOG = $script:cmakeLog
         $env:SSA_TEST_PATH_LOG = $script:pathLog
         $env:Path = "$script:fakeBin;$script:originalPath"
@@ -48,7 +55,7 @@ exit /b 0
     AfterEach {
         $env:Path = $script:originalPath
         $env:PATHEXT = $script:originalPathExt
-        Remove-Item Env:SSA_TEST_CONFIGURE_MARKER, Env:SSA_TEST_CMAKE_LOG, Env:SSA_TEST_PATH_LOG -ErrorAction SilentlyContinue
+        Remove-Item Env:SSA_TEST_CONFIGURE_MARKER, Env:SSA_TEST_CONFIGURE_BINARY_MARKER, Env:SSA_TEST_CMAKE_LOG, Env:SSA_TEST_PATH_LOG -ErrorAction SilentlyContinue
     }
 
     It "reconfigures when the existing cache belongs to WSL" {
@@ -61,8 +68,8 @@ exit /b 0
         & $script:buildScript -ProjectRoot $script:repoRoot
 
         (Test-Path -LiteralPath $script:configureMarker -PathType Leaf) | Should -BeTrue
-        (Get-Content -LiteralPath $script:configureMarker) | Should -Be "dev|--fresh|msvc2022_64"
-        (Get-Content -LiteralPath $script:cmakeLog) | Should -Match "--build --preset dev"
+        (Get-Content -LiteralPath $script:configureMarker) | Should -Be "dev|--fresh,-DVCPKG_TARGET_TRIPLET=x64-windows|msvc2022_64"
+        (Get-Content -LiteralPath $script:cmakeLog) | Should -Match ([regex]::Escape("--build $script:buildDir"))
     }
 
     It "reconfigures when a Windows cache has no generated Ninja files" {
@@ -76,7 +83,7 @@ exit /b 0
         & $script:buildScript -ProjectRoot $script:repoRoot
 
         (Test-Path -LiteralPath $script:configureMarker -PathType Leaf) | Should -BeTrue
-        (Get-Content -LiteralPath $script:configureMarker) | Should -Be "dev|--fresh|msvc2022_64"
+        (Get-Content -LiteralPath $script:configureMarker) | Should -Be "dev|--fresh,-DVCPKG_TARGET_TRIPLET=x64-windows|msvc2022_64"
     }
 
     It "adds the linked vcpkg SQLite runtime before invoking CMake" {
@@ -85,7 +92,7 @@ exit /b 0
         $sqliteBin = Join-Path $sqliteRoot "bin"
         $windowsBuildDir = $script:buildDir.Replace('\', '/')
         $windowsSqliteLibrary = $sqliteLibrary.Replace('\', '/')
-        $qtPrefix = Join-Path $testRoot "Qt/6.11.1/mingw_64"
+        $qtPrefix = Join-Path $testRoot "Qt/6.11.1/msvc2022_64"
         $qtCmakeDirectory = Join-Path $qtPrefix "lib/cmake/Qt6"
         $windowsQtDirectory = $qtCmakeDirectory.Replace('\', '/')
 
@@ -95,8 +102,9 @@ exit /b 0
             "CMAKE_CACHEFILE_DIR:INTERNAL=$windowsBuildDir"
             "CMAKE_GENERATOR:INTERNAL=Ninja"
             "CMAKE_MAKE_PROGRAM:FILEPATH=C:/Qt/Tools/Ninja/ninja.exe"
-            "CMAKE_CXX_COMPILER:FILEPATH=C:/Qt/Tools/mingw1310_64/bin/g++.exe"
+            "CMAKE_CXX_COMPILER:FILEPATH=C:/Program Files/Microsoft Visual Studio/VC/Tools/MSVC/bin/cl.exe"
             "Qt6_DIR:PATH=$windowsQtDirectory"
+            "VCPKG_TARGET_TRIPLET:STRING=x64-windows"
             "SQLite3_LIBRARY:FILEPATH=$windowsSqliteLibrary"
         ) | Set-Content -LiteralPath (Join-Path $script:buildDir "CMakeCache.txt") -Encoding ASCII
 
@@ -118,12 +126,12 @@ exit /b 0
 
         & $script:buildScript -ProjectRoot $script:repoRoot
 
-        (Get-Content -LiteralPath $script:configureMarker) | Should -Be "dev|--fresh|msvc2022_64"
-        (Get-Content -LiteralPath $script:cmakeLog) | Should -Match "--build --preset dev"
+        (Get-Content -LiteralPath $script:configureMarker) | Should -Be "dev|--fresh,-DVCPKG_TARGET_TRIPLET=x64-windows|msvc2022_64"
+        (Get-Content -LiteralPath $script:cmakeLog) | Should -Match ([regex]::Escape("--build $script:buildDir"))
         $env:PATHEXT | Should -Match "\.EXE"
     }
 
-    It "refreshes when an explicit Qt kit differs from the cached kit" {
+    It "refreshes the default amd64 kit when the canonical cache belongs to mingw" {
         $windowsBuildDir = $script:buildDir.Replace('\', '/')
         New-Item -ItemType Directory -Path (Join-Path $script:buildDir "CMakeFiles") -Force | Out-Null
         New-Item -ItemType File -Path (Join-Path $script:buildDir "build.ninja"), (Join-Path $script:buildDir "CMakeFiles/rules.ninja") -Force | Out-Null
@@ -135,9 +143,9 @@ exit /b 0
             "Qt6_DIR:PATH=C:/Qt/6.11.1/mingw_64/lib/cmake/Qt6"
         ) | Set-Content -LiteralPath (Join-Path $script:buildDir "CMakeCache.txt") -Encoding ASCII
 
-        & $script:buildScript -ProjectRoot $script:repoRoot -QtSubdir msvc2022_64
+        & $script:buildScript -ProjectRoot $script:repoRoot
 
-        (Get-Content -LiteralPath $script:configureMarker) | Should -Be "dev|--fresh|msvc2022_64"
+        (Get-Content -LiteralPath $script:configureMarker) | Should -Be "dev|--fresh,-DVCPKG_TARGET_TRIPLET=x64-windows|msvc2022_64"
     }
 
     It "throws when CMake returns a nonzero exit code" {
@@ -150,5 +158,62 @@ exit /b 23
         {
             & $script:buildScript -ProjectRoot $script:repoRoot
         } | Should -Throw -ExpectedMessage "*CMake*exit code 23*"
+    }
+
+    It "uses the canonical amd64 build directory" {
+        $expectedBuildDir = Join-Path $script:repoRoot "build/windows/amd64/msvc2022_64/dev"
+
+        & $script:buildScript -ProjectRoot $script:repoRoot
+
+        (Get-Content -LiteralPath $script:configureMarker) | Should -Be "dev|-DVCPKG_TARGET_TRIPLET=x64-windows|msvc2022_64"
+        (Get-Content -LiteralPath $script:configureBinaryMarker) | Should -Be $expectedBuildDir
+        (Get-Content -LiteralPath $script:cmakeLog) | Should -Match ([regex]::Escape("--build $expectedBuildDir"))
+    }
+
+    It "uses the arm64 Qt kit, triplet, and canonical build directory" {
+        $expectedBuildDir = Join-Path $script:repoRoot "build/windows/arm64/msvc2022_arm64/dev"
+
+        & $script:buildScript -ProjectRoot $script:repoRoot -Arch arm64
+
+        (Get-Content -LiteralPath $script:configureMarker) | Should -Be "dev|-DVCPKG_TARGET_TRIPLET=arm64-windows|msvc2022_arm64"
+        (Get-Content -LiteralPath $script:configureBinaryMarker) | Should -Be $expectedBuildDir
+        (Get-Content -LiteralPath $script:cmakeLog) | Should -Match ([regex]::Escape("--build $expectedBuildDir"))
+    }
+
+    It "refreshes an arm64 cache with an x64 vcpkg triplet" {
+        $armBuildDir = Join-Path $script:repoRoot "build/windows/arm64/msvc2022_arm64/dev"
+        $windowsBuildDir = $armBuildDir.Replace('\', '/')
+        New-Item -ItemType Directory -Path (Join-Path $armBuildDir "CMakeFiles") -Force | Out-Null
+        New-Item -ItemType File -Path (Join-Path $armBuildDir "build.ninja"), (Join-Path $armBuildDir "CMakeFiles/rules.ninja") | Out-Null
+        @(
+            "CMAKE_CACHEFILE_DIR:INTERNAL=$windowsBuildDir"
+            "CMAKE_GENERATOR:INTERNAL=Ninja"
+            "CMAKE_MAKE_PROGRAM:FILEPATH=C:/Qt/Tools/Ninja/ninja.exe"
+            "Qt6_DIR:PATH=C:/Qt/6.11.1/msvc2022_arm64/lib/cmake/Qt6"
+            "VCPKG_TARGET_TRIPLET:STRING=x64-windows"
+        ) | Set-Content -LiteralPath (Join-Path $armBuildDir "CMakeCache.txt") -Encoding ASCII
+
+        & $script:buildScript -ProjectRoot $script:repoRoot -Arch arm64
+
+        (Get-Content -LiteralPath $script:configureMarker) | Should -Match "arm64-windows"
+    }
+
+    It "preserves an explicit compatible arm64 vcpkg triplet" {
+        & $script:buildScript -ProjectRoot $script:repoRoot -Arch arm64 `
+            -CmakeExtraArgs "-DVCPKG_TARGET_TRIPLET=arm64-windows-static"
+
+        (Get-Content -LiteralPath $script:configureMarker) | Should -Be "dev|-DVCPKG_TARGET_TRIPLET=arm64-windows-static|msvc2022_arm64"
+    }
+
+    It "rejects incompatible architecture and Qt kit combinations" -TestCases @(
+        @{ Arch = "arm64"; QtSubdir = "msvc2022_64" }
+        @{ Arch = "amd64"; QtSubdir = "msvc2022_arm64" }
+    ) {
+        param($Arch, $QtSubdir)
+        $parameters = @{ Arch = $Arch; QtSubdir = $QtSubdir }
+
+        {
+            & $script:buildScript -ProjectRoot $script:repoRoot @parameters
+        } | Should -Throw -ExpectedMessage "*incompatible*"
     }
 }

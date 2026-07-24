@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
     [string]$Preset = "dev",
+    [string]$Arch = "",
     [string]$QtDir = "",
     [string]$QtRoot = "",
     [string]$QtSubdir = "",
@@ -14,10 +15,27 @@ param(
 $ErrorActionPreference = "Stop"
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = if ($ProjectRoot) { (Resolve-Path $ProjectRoot).Path } else { (Resolve-Path (Join-Path $scriptDir "..")).Path }
+. (Join-Path $scriptDir "lib\windows_build_layout.ps1")
 $configureScript = Join-Path $repoRoot "tools\configure-dev.ps1"
 $preset = if ($Preset) { $Preset } else { "dev" }
-$buildDir = Join-Path $repoRoot "build\$preset"
+$layout = Resolve-WindowsBuildLayout -RepoRoot $repoRoot -Preset $preset -Arch $Arch -QtDir $QtDir -QtSubdir $QtSubdir
+$arch = $layout.Arch
+$qtKit = $layout.QtKit
+$buildDir = $layout.BuildDir
 $cacheFile = Join-Path $buildDir "CMakeCache.txt"
+$effectiveCmakeExtraArgs = @($CmakeExtraArgs | Where-Object { $_ })
+$defaultTriplet = if ($arch -eq 'arm64') { 'arm64-windows' } else { 'x64-windows' }
+$tripletPattern = if ($arch -eq 'arm64') { '^arm64-windows(?:-|$)' } else { '^x64-windows(?:-|$)' }
+$tripletArguments = @($effectiveCmakeExtraArgs | Where-Object { $_ -match '^-DVCPKG_TARGET_TRIPLET=(.+)$' })
+if ($tripletArguments.Count -gt 0) {
+    $targetTriplet = $tripletArguments[-1].Substring($tripletArguments[-1].IndexOf('=') + 1)
+    if ($targetTriplet -notmatch $tripletPattern) {
+        throw "vcpkg triplet '$targetTriplet' is incompatible with Windows architecture '$arch'."
+    }
+} else {
+    $targetTriplet = $defaultTriplet
+    $effectiveCmakeExtraArgs += "-DVCPKG_TARGET_TRIPLET=$targetTriplet"
+}
 
 if ($Help) {
     Write-Output @"
@@ -28,11 +46,12 @@ Build the Windows target (default preset: dev).
 
 Defaults:
   Preset: dev
-  Qt kit: msvc2022_64 for a new or foreign cache
+  Architecture: host architecture, or amd64 when Windows reports x64
+  Qt kit: msvc2022_64 for amd64; msvc2022_arm64 for arm64
   Repository root: directory that contains this script.
 
 Explicit options can be used through:
-  .\scripts\build-windows.ps1 -Preset <preset> [-QtDir <qt-dir>] [-QtRoot <root>] [-QtSubdir <kit>] [-SQLiteRoot <path>] [-Target <target>] [-CmakeExtraArgs <args>]
+  .\scripts\build-windows.ps1 -Preset <preset> [-Arch <amd64|arm64>] [-QtDir <qt-dir>] [-QtRoot <root>] [-QtSubdir <kit>] [-SQLiteRoot <path>] [-Target <target>] [-CmakeExtraArgs <args>]
 
 Qt kit examples:
   .\scripts\build-windows.ps1
@@ -76,7 +95,7 @@ if (Test-Path -LiteralPath $cacheFile -PathType Leaf) {
         $cachedCompiler = $compilerLine.Matches[0].Groups[1].Value.Trim()
     }
 }
-$explicitMsvcKit = $QtSubdir -like 'msvc*' -or $QtDir -match '(?i)[\\/]msvc[^\\/]*$'
+$explicitMsvcKit = $qtKit -like 'msvc*'
 
 $cacheIsReusable = $false
 if (Test-Path -LiteralPath $cacheFile -PathType Leaf) {
@@ -98,7 +117,7 @@ if (Test-Path -LiteralPath $cacheFile -PathType Leaf) {
     }
 }
 
-if ($cacheIsReusable -and ($QtSubdir -or $QtDir)) {
+if ($cacheIsReusable) {
     $cachedQtDirectoryLine = Select-String -LiteralPath $cacheFile -Pattern '^Qt6_DIR:[^=]+=(.+)$' |
         Select-Object -First 1
     $cachedQtDirectory = if ($cachedQtDirectoryLine) {
@@ -110,9 +129,21 @@ if ($cacheIsReusable -and ($QtSubdir -or $QtDir)) {
         $requestedQtPrefix = $QtDir.Replace('\', '/').TrimEnd('/')
         -not $cachedQtDirectory.StartsWith("$requestedQtPrefix/", [StringComparison]::OrdinalIgnoreCase)
     } else {
-        $cachedQtDirectory -notmatch "(?i)/$([regex]::Escape($QtSubdir))/"
+        $cachedQtDirectory -notmatch "(?i)/$([regex]::Escape($qtKit))/"
     }
     if ($requestedQtMismatch) {
+        $cacheIsReusable = $false
+    }
+}
+if ($cacheIsReusable) {
+    $cachedTripletLine = Select-String -LiteralPath $cacheFile -Pattern '^VCPKG_TARGET_TRIPLET:[^=]+=(.+)$' |
+        Select-Object -First 1
+    $cachedTriplet = if ($cachedTripletLine) {
+        $cachedTripletLine.Matches[0].Groups[1].Value.Trim()
+    } else {
+        ''
+    }
+    if (-not $cachedTriplet.Equals($targetTriplet, [StringComparison]::OrdinalIgnoreCase)) {
         $cacheIsReusable = $false
     }
 }
@@ -129,23 +160,23 @@ if (($explicitMsvcKit -or $defaultMsvcKit) -and -not (Get-Command cl.exe -ErrorA
     }
     $vsInstallPath = $devShellModule.Directory.Parent.Parent.FullName
     Import-Module $devShellModule.FullName -ErrorAction Stop
-    Enter-VsDevShell -VsInstallPath $vsInstallPath -SkipAutomaticLocation -Arch amd64 -HostArch amd64
-    if ($env:VSCMD_ARG_HOST_ARCH -ne 'x64' -or $env:VSCMD_ARG_TGT_ARCH -ne 'x64' -or
+    $vsTargetArch = if ($arch -eq 'arm64') { 'arm64' } else { 'amd64' }
+    $expectedTargetArch = if ($arch -eq 'arm64') { 'arm64' } else { 'x64' }
+    Enter-VsDevShell -VsInstallPath $vsInstallPath -SkipAutomaticLocation -Arch $vsTargetArch -HostArch amd64
+    if ($env:VSCMD_ARG_HOST_ARCH -ne 'x64' -or $env:VSCMD_ARG_TGT_ARCH -ne $expectedTargetArch -or
         -not (Get-Command cl.exe -ErrorAction SilentlyContinue)) {
-        throw "MSVC x64 Developer environment initialization failed: host=$env:VSCMD_ARG_HOST_ARCH target=$env:VSCMD_ARG_TGT_ARCH"
+        throw "MSVC Developer environment initialization failed: host=$env:VSCMD_ARG_HOST_ARCH target=$env:VSCMD_ARG_TGT_ARCH"
     }
 }
 
-$configureParams = @{ Preset = $preset }
+$configureParams = @{
+    Preset = $preset
+    BinaryDir = $buildDir
+    QtSubdir = $qtKit
+}
 if ($QtDir) { $configureParams.QtDir = $QtDir }
 if ($QtRoot) { $configureParams.QtRoot = $QtRoot }
-if ($QtSubdir) {
-    $configureParams.QtSubdir = $QtSubdir
-} elseif (-not $QtDir -and -not $cacheIsReusable) {
-    $configureParams.QtSubdir = 'msvc2022_64'
-}
 if ($SQLiteRoot) { $configureParams.SQLiteRoot = $SQLiteRoot }
-$effectiveCmakeExtraArgs = @($CmakeExtraArgs | Where-Object { $_ })
 if ((Test-Path -LiteralPath $cacheFile -PathType Leaf) -and -not $cacheIsReusable) {
     Write-Output "Refreshing foreign or stale CMake cache: $cacheFile"
     if ($effectiveCmakeExtraArgs -notcontains '--fresh') {
@@ -156,7 +187,9 @@ if ($effectiveCmakeExtraArgs.Count -gt 0) {
     $configureParams.CmakeExtraArgs = $effectiveCmakeExtraArgs
 }
 
-if ($configureParams.Count -gt 1 -or -not $cacheIsReusable) {
+$configurationRequested = $QtDir -or $QtRoot -or $QtSubdir -or $SQLiteRoot -or
+    @($CmakeExtraArgs | Where-Object { $_ }).Count -gt 0
+if ($configurationRequested -or -not $cacheIsReusable) {
     & $configureScript @configureParams
 }
 
@@ -188,7 +221,7 @@ if ($sqliteLibraryLine) {
     }
 }
 
-$buildArgs = @("--build", "--preset", $preset)
+$buildArgs = @("--build", $buildDir)
 if ($Target) {
     $buildArgs += @("--target", $Target)
 }

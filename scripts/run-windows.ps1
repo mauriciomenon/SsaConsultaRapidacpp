@@ -2,17 +2,21 @@
 param(
     [string]$DbPath = "",
     [string]$Preset = "dev",
+    [string]$Arch = "",
     [string]$ProjectRoot = "",
     [string]$ConfigDir = "",
     [string]$Screenshot = "",
     [string]$QtDir = "",
+    [string]$QtSubdir = "",
     [switch]$Help
 )
 
 $ErrorActionPreference = "Stop"
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = if ($ProjectRoot) { (Resolve-Path $ProjectRoot).Path } else { (Resolve-Path (Join-Path $scriptDir "..")).Path }
-$buildDir = Join-Path $repoRoot "build\$Preset"
+. (Join-Path $scriptDir "lib\windows_build_layout.ps1")
+$layout = Resolve-WindowsBuildLayout -RepoRoot $repoRoot -Preset $Preset -Arch $Arch -QtDir $QtDir -QtSubdir $QtSubdir
+$buildDir = $layout.BuildDir
 . (Join-Path $scriptDir "project-paths.ps1")
 
 if ($Help) {
@@ -30,7 +34,7 @@ Defaults:
   Project root: directory that contains this script.
 
 Explicit options can be passed directly:
-  .\scripts\run-windows.ps1 -DbPath <path> -Preset <preset> -ProjectRoot <dir> -ConfigDir <dir> -Screenshot <file>
+  .\scripts\run-windows.ps1 -DbPath <path> -Preset <preset> -Arch <amd64|arm64> -QtSubdir <kit> -ProjectRoot <dir> -ConfigDir <dir> -Screenshot <file>
 "@
     return
 }

@@ -53,9 +53,9 @@ NSIS and GitHub Actions.
 ### Task 2: Canonical build namespace
 
 **Files:**
-- Modify: `CMakePresets.json`
+- Create: `scripts/lib/windows_build_layout.ps1`
 - Modify: `tools/configure-dev.ps1`
-- Modify: `tools/configure-dev.sh`
+- Modify: `tools/qt-detect.conf`
 - Modify: `scripts/build-windows.ps1`
 - Modify: Windows run/package scripts that consume the build directory.
 - Modify: focused script tests and build documentation.
@@ -65,11 +65,11 @@ NSIS and GitHub Actions.
 - Produces: one canonical path below
   `build/<platform>/<arch>/<toolchain>/<preset>`.
 
-- [ ] Back up `CMakePresets.json` with a timestamp.
+- [ ] Keep shared CMake presets unchanged so Linux and macOS retain their paths.
 - [ ] Add a failing path-ownership test.
 - [ ] Make configure, build, test and package consume the same resolved path.
 - [ ] Prove Windows and Linux paths cannot share a cache.
-- [ ] Run focused PowerShell and shell tests.
+- [ ] Run focused PowerShell tests.
 - [ ] Commit the slice.
 
 ### Task 3: Transactional release set

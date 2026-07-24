@@ -5,6 +5,7 @@ param(
     [string]$QtSubdir,
     [string]$SQLiteRoot,
     [string]$Preset = "dev",
+    [string]$BinaryDir = "",
     [string[]]$CmakeExtraArgs = @(),
     [switch]$PrintQtSelection,
     [switch]$Check,
@@ -34,7 +35,7 @@ function Read-QtDetectConfig {
 }
 
 $DetectConfig = Read-QtDetectConfig
-foreach ($requiredKey in @("QT_VERSION", "QT_VERSION_FAMILY", "WINDOWS_QT_SUBDIR", "WINDOWS_QT_FALLBACK_SUBDIRS")) {
+foreach ($requiredKey in @("QT_VERSION", "QT_VERSION_FAMILY", "WINDOWS_QT_SUBDIR", "WINDOWS_QT_ARM64_SUBDIR", "WINDOWS_QT_FALLBACK_SUBDIRS")) {
     if (-not $DetectConfig.ContainsKey($requiredKey) -or -not $DetectConfig[$requiredKey]) {
         throw "Missing required key in Qt detection config: $requiredKey"
     }
@@ -143,7 +144,8 @@ function Get-DesktopQtSubdir {
 
 function Test-DesktopQtSubdir {
     param([string]$Subdir)
-    return $Subdir -in (Get-DesktopQtSubdir)
+    return $Subdir -eq $DetectConfig.WINDOWS_QT_ARM64_SUBDIR -or
+        $Subdir -in (Get-DesktopQtSubdir)
 }
 
 function ConvertFrom-QtCmakeDir {
@@ -380,9 +382,12 @@ function Find-SqliteFromKnownPath {
 }
 
 function Get-DefaultVcpkgTriplet {
-    # Honrar triplet explicito (env ou -DVCPKG_TARGET_TRIPLET via CmakeExtraArgs)
-    # antes de derivar do PROCESSOR_ARCHITECTURE do host, que pode divergir em
-    # cross-compile (ex.: arm64 pedido em host x64).
+    for ($index = $CmakeExtraArgs.Count - 1; $index -ge 0; $index--) {
+        $argument = $CmakeExtraArgs[$index]
+        if ($argument -match '^-DVCPKG_TARGET_TRIPLET=(.+)$') {
+            return $matches[1]
+        }
+    }
     if ($env:VCPKG_TARGET_TRIPLET) {
         return $env:VCPKG_TARGET_TRIPLET
     }
@@ -743,6 +748,9 @@ $cmakeArgs = @(
     "-DCMAKE_PREFIX_PATH=$($selection.Path)",
     "-DQt6_DIR=$(Join-Path $selection.Path 'lib/cmake/Qt6')"
 )
+if ($BinaryDir) {
+    $cmakeArgs += @("-B", $BinaryDir)
+}
 if ($compiler.C) {
     $cmakeArgs += "-DCMAKE_C_COMPILER=$($compiler.C)"
     $cmakeArgs += "-DCMAKE_CXX_COMPILER=$($compiler.Cxx)"
