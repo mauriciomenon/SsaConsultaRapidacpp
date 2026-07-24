@@ -493,6 +493,8 @@ do mesmo preflight use `./run-macos-smoke-clean --open`.
 
 ## Packaging e artefatos finais por plataforma
 
+O procedimento completo esta em [Build, Run, Test](docs/development/build-run-test.md).
+
 Os scripts oficiais usam somente o preset `release` e preservam `dist/` durante
 `./scripts/make_clean`. Para uma entrega completa, nao use `--skip-tests` ou
 `-SkipTests`; esses switches existem apenas para iteracao de empacotamento.
@@ -515,14 +517,22 @@ Uma compilacao bem-sucedida atualiza as copias sem versao:
 
 | Plataforma | Diretorio | Arquivos |
 | --- | --- | --- |
-| Windows | `dist/windows/<arch>/final/` | `ssa_consulta_rapida_cpp.exe`, `ssa_consulta_rapida_cpp-installer.exe`, `ssa_consulta_rapida_cpp.zip` |
-| Debian | `dist/linux/<arch>/final/` | `ssa_consulta_rapida_cpp`, `ssa_consulta_rapida_cpp.deb`, `ssa_consulta_rapida_cpp.zip` |
+| Windows | `dist/windows/<arch>/final/` | wrapper `.exe`, instalador, ZIP e pasta `ssa_consulta_rapida_cpp-standalone/` |
+| Debian | `dist/linux/<arch>/final/` | wrapper, `.deb`, ZIP e pasta `ssa_consulta_rapida_cpp-standalone/` |
 | macOS | `dist/macos/<arch>/final/` | `ssa_consulta_rapida_cpp.app`, `ssa_consulta_rapida_cpp.dmg`, `ssa_consulta_rapida_cpp.zip` |
 
-O EXE Windows e um arquivo portatil unico que extrai o runtime em diretorio
-temporario. O instalador e separado. O executavel Debian tambem e unico e
-autoextraivel. Qt e SQLite fazem parte dos bundles; o usuario final nao instala
-essas bibliotecas separadamente.
+Os arquivos sem sufixo `-standalone` sao os wrappers portateis historicos: eles
+extraem o runtime para uma area temporaria antes de iniciar. O instalador e
+separado. Para executar sem wrapper, use o binario dentro da pasta
+`*-standalone`; ele e o PE/ELF real e mantem Qt, plugins, QML e SQLite ao lado
+do executavel. Nao ha instalacao separada de Qt ou SQLite.
+
+Os caminhos diretos sao:
+
+```text
+Windows: dist/windows/<arch>/final/ssa_consulta_rapida_cpp-standalone/ssa_consulta_rapida_cpp.exe
+Debian:  dist/linux/<arch>/final/ssa_consulta_rapida_cpp-standalone/ssa_consulta_rapida_cpp
+```
 
 Quando `HEAD` esta limpo e aponta exatamente para `v<version>`, os mesmos
 scripts criam uma copia imutavel com a versao no final do nome:
@@ -550,7 +560,21 @@ open ./dist/macos/<arch>/final/ssa_consulta_rapida_cpp.app
 ```powershell
 .\dist\windows\<arch>\final\ssa_consulta_rapida_cpp.exe --db <db>
 .\dist\windows\<arch>\final\ssa_consulta_rapida_cpp-installer.exe
+.\dist\windows\<arch>\final\ssa_consulta_rapida_cpp-standalone\ssa_consulta_rapida_cpp.exe --db <db>
 ```
+
+No Debian, execute o ELF diretamente:
+
+```bash
+./dist/linux/<arch>/final/ssa_consulta_rapida_cpp-standalone/ssa_consulta_rapida_cpp --db <db>
+```
+
+Na primeira abertura sem `--project-root`, a GUI cria sua raiz local em
+`~/.ssaconsultarapida` (Windows: `%USERPROFILE%\.ssaconsultarapida`). A falta
+de `data/ssas.db` e valida: a aplicacao abre para permitir a primeira carga. As
+preferencias e os logs ficam em `config/` abaixo da mesma raiz.
+`--project-root`, `--db` e `--config-dir` permitem escolher os caminhos
+explicitamente.
 
 ## Execucao
 

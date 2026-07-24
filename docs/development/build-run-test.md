@@ -60,10 +60,29 @@ esses mesmos diretorios e preservam `data/`, `dist/` e configuracoes locais.
 Os scripts de pacote mantem a ultima entrega bem-sucedida em:
 
 ```text
-dist/windows/<arch>/final/ssa_consulta_rapida_cpp{.exe,-installer.exe,.zip}
-dist/linux/<arch>/final/ssa_consulta_rapida_cpp{,.deb,.zip}
+dist/windows/<arch>/final/ssa_consulta_rapida_cpp.exe
+dist/windows/<arch>/final/ssa_consulta_rapida_cpp-installer.exe
+dist/windows/<arch>/final/ssa_consulta_rapida_cpp.zip
+dist/windows/<arch>/final/ssa_consulta_rapida_cpp-standalone/ssa_consulta_rapida_cpp.exe
+dist/linux/<arch>/final/ssa_consulta_rapida_cpp
+dist/linux/<arch>/final/ssa_consulta_rapida_cpp.deb
+dist/linux/<arch>/final/ssa_consulta_rapida_cpp.zip
+dist/linux/<arch>/final/ssa_consulta_rapida_cpp-standalone/ssa_consulta_rapida_cpp
 dist/macos/<arch>/final/ssa_consulta_rapida_cpp{.app,.dmg,.zip}
 ```
+
+Os arquivos Windows e Debian sem `-standalone` sao wrappers autoextraiveis para
+compatibilidade. O executavel de teste e entrega direta fica em
+`*-standalone/ssa_consulta_rapida_cpp[.exe]`, com o runtime Qt, plugins, QML e
+SQLite na mesma pasta. Ele pode ser chamado diretamente, sem `cmd`, shell
+wrapper, PATH de Qt ou extracao temporaria.
+
+Na primeira abertura normal, a aplicacao cria
+`~/.ssaconsultarapida` (Windows: `%USERPROFILE%\.ssaconsultarapida`). A falta
+de `data/ssas.db` e valida: a GUI abre para permitir a primeira carga.
+Preferencias e logs ficam em `config/` abaixo da mesma raiz. Os smoke tests e
+os scripts de pacote passam `--project-root` e `--config-dir` para usar um
+runtime controlado.
 
 Quando o working tree esta limpo e `HEAD` aponta exatamente para
 `v<version>`, uma copia com `-<version>` no final do nome e criada sem

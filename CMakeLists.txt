@@ -10,6 +10,13 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_AUTOMOC ON)
 
+if(UNIX AND NOT APPLE)
+  # Allow packaged binaries to resolve bundled libraries from a sibling lib/.
+  set(CMAKE_BUILD_RPATH_USE_ORIGIN ON)
+  set(CMAKE_BUILD_RPATH "$ORIGIN/../lib;$ORIGIN/lib")
+  set(CMAKE_INSTALL_RPATH "$ORIGIN/../lib;$ORIGIN/lib")
+endif()
+
 option(SSA_BUILD_TESTS "Build tests" ON)
 option(SSA_BUILD_ARROW_TOOL "Build the optional read-only Arrow inspector" OFF)
 option(SSA_ENABLE_WINDOWS_UNC_CONTRACT
