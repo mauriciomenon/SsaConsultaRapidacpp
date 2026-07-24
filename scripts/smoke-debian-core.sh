@@ -7,12 +7,16 @@ run_debian_smoke_core() {
   local clean_requested="${3}"
   local preset="${4}"
   local open_requested="${5}"
+  local db_path_explicit="${6:-true}"
 
   export TMPDIR=/tmp
   export TMP=/tmp
   export TEMP=/tmp
 
-  if [[ ! -f "${db_path}" ]]; then
+  local source_db_exists="false"
+  if [[ -f "${db_path}" ]]; then
+    source_db_exists="true"
+  elif [[ "${db_path_explicit}" == "true" ]]; then
     echo "Database file not found: ${db_path}" >&2
     return 1
   fi
@@ -41,7 +45,10 @@ run_debian_smoke_core() {
   fi
 
   mkdir -p "${runtime_dir}" "${config_dir}"
-  cp "${db_path}" "${runtime_db}"
+  rm -f "${runtime_db}"
+  if [[ "${source_db_exists}" == "true" ]]; then
+    cp "${db_path}" "${runtime_db}"
+  fi
   cp "${preferences_source}" "${config_dir}/ssa_cpp_preferences.json"
   rm -f "${screenshot}"
 

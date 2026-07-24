@@ -13,6 +13,7 @@ EOF
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/.." && pwd)"
 db_path="${repo_root}/data/ssas.db"
+db_path_explicit="false"
 preset="dev"
 open_requested="false"
 
@@ -24,6 +25,7 @@ while [[ $# -gt 0 ]]; do
         exit 1
       fi
       db_path="${2}"
+      db_path_explicit="true"
       shift 2
       ;;
     --preset)
@@ -53,4 +55,5 @@ done
 # shellcheck disable=SC1091
 # shellcheck source=smoke-debian-core.sh
 source "${script_dir}/smoke-debian-core.sh"
-run_debian_smoke_core "${repo_root}" "${db_path}" "false" "${preset}" "${open_requested}"
+run_debian_smoke_core \
+  "${repo_root}" "${db_path}" "false" "${preset}" "${open_requested}" "${db_path_explicit}"

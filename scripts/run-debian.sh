@@ -33,18 +33,13 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/.." && pwd)"
 preset="dev"
 # shellcheck disable=SC1091
-# shellcheck source=project-paths.sh
-source "${script_dir}/project-paths.sh"
-# shellcheck disable=SC1091
 # shellcheck source=debian-paths.sh
 source "${script_dir}/debian-paths.sh"
 
-if ! db_path="$(resolve_project_default_db_path "${repo_root}")"; then
-  echo "Database file not found in default location:" >&2
-  print_project_default_db_not_found \
-    "${repo_root}" \
-    "Use ./scripts/lazy_scripts/run-debian.sh <path-to-ssas.db> for an explicit external DB path."
-  exit 1
+db_path="${repo_root}/data/ssas.db"
+if [[ ! -f "${db_path}" ]]; then
+  mkdir -p "$(dirname "${db_path}")"
+  echo "Database file not found at '${db_path}'. The application will open so you can load data and create it." >&2
 fi
 
 executable="$(debian_app_executable "${repo_root}" "${preset}")"

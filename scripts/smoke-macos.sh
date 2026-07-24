@@ -49,10 +49,7 @@ repo_root="$(cd "${script_dir}/.." && pwd)"
 # shellcheck source=smoke-macos-core.sh
 source "${script_dir}/smoke-macos-core.sh"
 
-db_path=""
-if ! db_path="$(resolve_project_default_db_path "${repo_root}")"; then
-  db_path=""
-fi
+db_path="${repo_root}/data/ssas.db"
 preset="dev"
 runtime_dir="$(macos_default_runtime_dir "${repo_root}")"
 runtime_config_dir="$(macos_default_config_dir "${runtime_dir}")"
@@ -60,13 +57,6 @@ screenshot="$(macos_default_screenshot_path "${runtime_dir}")"
 project_root="${repo_root}"
 config_src="${repo_root}/config/ssa_cpp_preferences.json.example"
 clean_requested="true"
-
-if [[ ! -f "${db_path}" ]]; then
-  print_project_default_db_not_found \
-    "${repo_root}" \
-    "Or pass an explicit DB path through the parameterized script."
-  exit 1
-fi
 
 run_macos_smoke_core \
   "${project_root}" \
@@ -77,4 +67,5 @@ run_macos_smoke_core \
   "${screenshot}" \
   "${clean_requested}" \
   "${config_src}" \
-  "${launch_mode}"
+  "${launch_mode}" \
+  "true"

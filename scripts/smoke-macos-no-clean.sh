@@ -46,31 +46,22 @@ repo_root="$(cd "${repo_root}" && pwd)"
 # shellcheck source=smoke-macos-core.sh
 source "${script_dir}/smoke-macos-core.sh"
 
-db_path=""
-if ! db_path="$(resolve_project_default_db_path "${repo_root}")"; then
-  db_path=""
-fi
+db_path="${repo_root}/data/ssas.db"
 preset="dev"
 runtime_dir="$(macos_default_runtime_dir "${repo_root}")"
+runtime_config_dir="$(macos_default_config_dir "${runtime_dir}")"
 screenshot="$(macos_default_screenshot_path "${runtime_dir}")"
 config_src="${repo_root}/config/ssa_cpp_preferences.json.example"
 project_root="${repo_root}"
-launch_args=()
-if [[ "${launch_mode}" == "open" ]]; then
-  launch_args+=(--open)
-fi
 
-if [[ ! -f "${db_path}" ]]; then
-  print_project_default_db_not_found \
-    "${repo_root}" \
-    "Or pass an explicit DB path through the parameterized script."
-  exit 1
-fi
-
-"${script_dir}/lazy_scripts/macos-build-test-smoke-run.sh" \
+run_macos_smoke_core \
+  "${project_root}" \
+  "${preset}" \
   "${db_path}" \
-  --project-root "${project_root}" \
-  --preset "${preset}" \
-  --config-src "${config_src}" \
-  --screenshot "${screenshot}" \
-  "${launch_args[@]}"
+  "${runtime_dir}" \
+  "${runtime_config_dir}" \
+  "${screenshot}" \
+  "false" \
+  "${config_src}" \
+  "${launch_mode}" \
+  "true"

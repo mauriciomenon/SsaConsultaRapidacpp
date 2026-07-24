@@ -80,6 +80,15 @@ run_macos_smoke_core() {
   local clean_requested="${7}"
   local preferences_src="${8}"
   local launch_mode="${9:-screenshot}"
+  local allow_missing_db="${10:-false}"
+  local source_db_exists="false"
+
+  if [[ -f "${db_path}" ]]; then
+    source_db_exists="true"
+  elif [[ "${allow_missing_db}" != "true" ]]; then
+    echo "Database file not found: ${db_path}" >&2
+    return 1
+  fi
 
   if ! rm -f "${screenshot}"; then
     echo "Unable to remove stale smoke screenshot: ${screenshot}" >&2
@@ -103,17 +112,19 @@ run_macos_smoke_core() {
     return 1
   fi
 
-  if [[ ! -f "${db_path}" ]]; then
-    echo "Database file not found: ${db_path}" >&2
-    return 1
-  fi
   if ! mkdir -p "${runtime_dir}" "${config_dir}"; then
     echo "Unable to create smoke runtime directories: ${runtime_dir}" >&2
     return 1
   fi
-  if ! cp "${db_path}" "${runtime_dir}/ssas.db"; then
-    echo "Unable to copy smoke database: ${db_path}" >&2
+  if ! rm -f "${runtime_dir}/ssas.db"; then
+    echo "Unable to remove stale smoke database: ${runtime_dir}/ssas.db" >&2
     return 1
+  fi
+  if [[ "${source_db_exists}" == "true" ]]; then
+    if ! cp "${db_path}" "${runtime_dir}/ssas.db"; then
+      echo "Unable to copy smoke database: ${db_path}" >&2
+      return 1
+    fi
   fi
   if ! cp "${preferences_src}" "${config_dir}/$(macos_preferences_filename)"; then
     echo "Unable to copy smoke preferences: ${preferences_src}" >&2

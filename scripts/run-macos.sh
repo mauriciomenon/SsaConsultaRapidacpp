@@ -37,30 +37,20 @@ preset="${SSA_CPP_PRESET:-dev}"
 # shellcheck source=smoke-macos-core.sh
 source "${script_dir}/smoke-macos-core.sh"
 
-resolve_run_db_path() {
-  if [[ -n "${SSA_CPP_DB_PATH-}" ]]; then
-    printf '%s\n' "${SSA_CPP_DB_PATH}"
-    return 0
-  fi
-
-  resolve_project_default_db_path "${repo_root}"
-}
-
-if ! db_path="$(resolve_run_db_path)"; then
-  echo "Database file not found." >&2
-  echo "Set SSA_CPP_DB_PATH or place ssas.db in the default location:" >&2
-  print_project_default_db_not_found \
-    "${repo_root}" \
-    "Or pass an explicit DB path with SSA_CPP_DB_PATH."
-  exit 1
+db_path_explicit="false"
+db_path="${repo_root}/data/ssas.db"
+if [[ -n "${SSA_CPP_DB_PATH-}" ]]; then
+  db_path="${SSA_CPP_DB_PATH}"
+  db_path_explicit="true"
 fi
-
 if [[ ! -f "${db_path}" ]]; then
-  echo "Database file not found: ${db_path}" >&2
-  if [[ -n "${SSA_CPP_DB_PATH-}" ]]; then
+  if [[ "${db_path_explicit}" == "true" ]]; then
+    echo "Database file not found: ${db_path}" >&2
     echo "SSA_CPP_DB_PATH points to a missing file." >&2
+    exit 1
   fi
-  exit 1
+  mkdir -p "$(dirname "${db_path}")"
+  echo "Database file not found at '${db_path}'. The application will open so you can load data and create it." >&2
 fi
 
 launch_mode="open"
