@@ -251,8 +251,17 @@ target_include_directories(ssa_presentation INTERFACE src)
 target_link_libraries(ssa_presentation INTERFACE ssa_presentation_models
                                                  ssa_presentation_tables)
 
+set(SSA_DESKTOP_PLATFORM_SOURCES)
+if(WIN32)
+  configure_file(app/desktop/ssa_consulta_rapida.manifest.in
+                 ssa_consulta_rapida.manifest @ONLY)
+  list(APPEND SSA_DESKTOP_PLATFORM_SOURCES
+       "${CMAKE_CURRENT_BINARY_DIR}/ssa_consulta_rapida.manifest")
+endif()
+
 qt_add_executable(
   ssa_consulta_rapida
+  ${SSA_DESKTOP_PLATFORM_SOURCES}
   app/desktop/DesktopApplicationRuntime.cpp
   app/desktop/DesktopLogSink.cpp
   app/desktop/DesktopMainViewModelFactory.cpp
