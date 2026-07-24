@@ -8,6 +8,7 @@ param(
     [string]$Screenshot = "",
     [string]$QtDir = "",
     [string]$QtSubdir = "",
+    [switch]$AllowMissingDb,
     [switch]$Help
 )
 
@@ -34,7 +35,7 @@ Defaults:
   Project root: directory that contains this script.
 
 Explicit options can be passed directly:
-  .\scripts\run-windows.ps1 -DbPath <path> -Preset <preset> -Arch <amd64|arm64> -QtSubdir <kit> -ProjectRoot <dir> -ConfigDir <dir> -Screenshot <file>
+  .\scripts\run-windows.ps1 -DbPath <path> -Preset <preset> -Arch <amd64|arm64> -QtSubdir <kit> -ProjectRoot <dir> -ConfigDir <dir> -Screenshot <file> [-AllowMissingDb]
 "@
     return
 }
@@ -51,7 +52,7 @@ if ($usingDefaultDb) {
 }
 
 if (-not (Test-Path -LiteralPath $DbPath -PathType Leaf)) {
-    if (-not $usingDefaultDb) {
+    if (-not $usingDefaultDb -and -not $AllowMissingDb) {
         throw "Database path not found: $DbPath"
     }
 

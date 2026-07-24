@@ -21,11 +21,13 @@ if ($Help) {
     return
 }
 
-if (-not $DbPath) {
+$dbPathExplicit = -not [string]::IsNullOrWhiteSpace($DbPath)
+if (-not $dbPathExplicit) {
     $DbPath = Join-Path $repoRoot "data\ssas.db"
 }
 
 . (Join-Path $scriptDir "smoke-windows-core.ps1")
-Invoke-WindowsSmoke -RepoRoot $repoRoot -DbPath $DbPath -Clean $true -Preset $Preset `
+Invoke-WindowsSmoke -RepoRoot $repoRoot -DbPath $DbPath -DbPathExplicit $dbPathExplicit `
+    -Clean $true -Preset $Preset `
     -Arch $Arch -QtDir $QtDir -QtRoot $QtRoot -QtSubdir $QtSubdir `
     -SQLiteRoot $SQLiteRoot -Open:$Open

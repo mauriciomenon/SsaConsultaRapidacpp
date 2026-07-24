@@ -36,6 +36,30 @@ try {
         if (-not $reuseRejected) {
             throw "Clean Windows entrypoint must reject -ReuseBuild."
         }
+
+        $smokeScript = Join-Path $repoRoot "scripts\run-windows-smoke-clean.ps1"
+        $defaultDbAccepted = $false
+        try {
+            & $smokeScript -ProjectRoot $probeDir -Preset "invalid/preset"
+        }
+        catch {
+            $defaultDbAccepted = $_.Exception.Message -eq "Invalid CMake preset name: invalid/preset"
+        }
+        if (-not $defaultDbAccepted) {
+            throw "Windows smoke must allow the missing default database on first run."
+        }
+
+        $explicitDbRejected = $false
+        try {
+            & $smokeScript -ProjectRoot $probeDir `
+                -DbPath (Join-Path $probeDir "missing.db") -Preset "invalid/preset"
+        }
+        catch {
+            $explicitDbRejected = $_.Exception.Message -like "Database file not found:*"
+        }
+        if (-not $explicitDbRejected) {
+            throw "Windows smoke must reject an explicit missing database."
+        }
     }
     finally {
         Pop-Location

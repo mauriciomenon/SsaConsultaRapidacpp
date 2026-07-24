@@ -4,6 +4,7 @@ function Invoke-WindowsSmoke {
     param(
         [Parameter(Mandatory = $true)][string]$RepoRoot,
         [Parameter(Mandatory = $true)][string]$DbPath,
+        [Parameter(Mandatory = $true)][bool]$DbPathExplicit,
         [Parameter(Mandatory = $true)][bool]$Clean,
         [string]$Preset = "dev",
         [string]$Arch = "",
@@ -14,7 +15,8 @@ function Invoke-WindowsSmoke {
         [switch]$Open
     )
 
-    if (-not (Test-Path -LiteralPath $DbPath -PathType Leaf)) {
+    $sourceDbExists = Test-Path -LiteralPath $DbPath -PathType Leaf
+    if ($DbPathExplicit -and -not $sourceDbExists) {
         throw "Database file not found: $DbPath"
     }
 
@@ -53,7 +55,12 @@ function Invoke-WindowsSmoke {
     }
 
     New-Item -ItemType Directory -Path $runtimeDir, $configDir -Force | Out-Null
-    Copy-Item -LiteralPath $DbPath -Destination $runtimeDb -Force
+    if (Test-Path -LiteralPath $runtimeDb) {
+        Remove-Item -LiteralPath $runtimeDb -Force
+    }
+    if ($sourceDbExists) {
+        Copy-Item -LiteralPath $DbPath -Destination $runtimeDb -Force
+    }
     Copy-Item -LiteralPath $preferencesSource `
         -Destination (Join-Path $configDir "ssa_cpp_preferences.json") -Force
     if (Test-Path -LiteralPath $screenshot) {
@@ -68,6 +75,7 @@ function Invoke-WindowsSmoke {
         ConfigDir = $configDir
         Screenshot = $screenshot
     }
+    if (-not $sourceDbExists) { $runParams.AllowMissingDb = $true }
     if ($QtDir) { $runParams.QtDir = $QtDir }
     if ($QtSubdir) { $runParams.QtSubdir = $QtSubdir }
 
