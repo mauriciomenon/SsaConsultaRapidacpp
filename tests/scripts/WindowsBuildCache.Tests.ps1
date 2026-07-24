@@ -14,6 +14,7 @@ Describe "Windows build cache ownership" {
         $script:originalPath = $env:Path
         $script:originalPathExt = $env:PATHEXT
         $script:buildScript = Join-Path (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path "scripts/build-windows.ps1"
+        $script:lazyBuildScript = Join-Path (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path "scripts/lazy_scripts/build-windows.ps1"
 
         Remove-Item -LiteralPath $script:repoRoot -Recurse -Force -ErrorAction SilentlyContinue
         Remove-Item -LiteralPath $script:configureMarker, $script:configureBinaryMarker, $script:cmakeLog, $script:pathLog -Force -ErrorAction SilentlyContinue
@@ -67,7 +68,7 @@ exit /b 0
             "CMAKE_MAKE_PROGRAM:FILEPATH=/usr/bin/ninja"
         ) | Set-Content -LiteralPath (Join-Path $script:buildDir "CMakeCache.txt") -Encoding ASCII
 
-        & $script:buildScript -ProjectRoot $script:repoRoot -ReuseBuild
+        & $script:lazyBuildScript -ProjectRoot $script:repoRoot
 
         (Test-Path -LiteralPath $script:configureMarker -PathType Leaf) | Should -BeTrue
         (Get-Content -LiteralPath $script:configureMarker) | Should -Be "dev|--fresh,-DVCPKG_TARGET_TRIPLET=x64-windows|msvc2022_64"
@@ -82,7 +83,7 @@ exit /b 0
             "CMAKE_MAKE_PROGRAM:FILEPATH=C:/Qt/Tools/Ninja/ninja.exe"
         ) | Set-Content -LiteralPath (Join-Path $script:buildDir "CMakeCache.txt") -Encoding ASCII
 
-        & $script:buildScript -ProjectRoot $script:repoRoot -ReuseBuild
+        & $script:lazyBuildScript -ProjectRoot $script:repoRoot
 
         (Test-Path -LiteralPath $script:configureMarker -PathType Leaf) | Should -BeTrue
         (Get-Content -LiteralPath $script:configureMarker) | Should -Be "dev|--fresh,-DVCPKG_TARGET_TRIPLET=x64-windows|msvc2022_64"
@@ -110,7 +111,7 @@ exit /b 0
             "SQLite3_LIBRARY:FILEPATH=$windowsSqliteLibrary"
         ) | Set-Content -LiteralPath (Join-Path $script:buildDir "CMakeCache.txt") -Encoding ASCII
 
-        & $script:buildScript -ProjectRoot $script:repoRoot -ReuseBuild
+        & $script:lazyBuildScript -ProjectRoot $script:repoRoot
 
         (Test-Path -LiteralPath $script:configureMarker -PathType Leaf) | Should -BeFalse
         $buildPath = Get-Content -LiteralPath $script:pathLog
@@ -126,7 +127,7 @@ exit /b 0
             "CMAKE_MAKE_PROGRAM:FILEPATH=/usr/bin/ninja"
         ) | Set-Content -LiteralPath (Join-Path $script:buildDir "CMakeCache.txt") -Encoding ASCII
 
-        & $script:buildScript -ProjectRoot $script:repoRoot -ReuseBuild
+        & $script:lazyBuildScript -ProjectRoot $script:repoRoot
 
         (Get-Content -LiteralPath $script:configureMarker) | Should -Be "dev|--fresh,-DVCPKG_TARGET_TRIPLET=x64-windows|msvc2022_64"
         (Get-Content -LiteralPath $script:cmakeLog) | Should -Match ([regex]::Escape("--build $script:buildDir"))
@@ -145,7 +146,7 @@ exit /b 0
             "Qt6_DIR:PATH=C:/Qt/6.11.1/mingw_64/lib/cmake/Qt6"
         ) | Set-Content -LiteralPath (Join-Path $script:buildDir "CMakeCache.txt") -Encoding ASCII
 
-        & $script:buildScript -ProjectRoot $script:repoRoot -ReuseBuild
+        & $script:lazyBuildScript -ProjectRoot $script:repoRoot
 
         (Get-Content -LiteralPath $script:configureMarker) | Should -Be "dev|--fresh,-DVCPKG_TARGET_TRIPLET=x64-windows|msvc2022_64"
     }
@@ -175,7 +176,7 @@ exit /b 23
     It "uses the arm64 Qt kit, triplet, and canonical build directory" {
         $expectedBuildDir = Join-Path $script:repoRoot "build/windows/arm64/msvc2022_arm64/dev"
 
-        & $script:buildScript -ProjectRoot $script:repoRoot -Arch arm64 -ReuseBuild
+        & $script:lazyBuildScript -ProjectRoot $script:repoRoot -Arch arm64
 
         (Get-Content -LiteralPath $script:configureMarker) | Should -Be "dev|-DVCPKG_TARGET_TRIPLET=arm64-windows|msvc2022_arm64"
         (Get-Content -LiteralPath $script:configureBinaryMarker) | Should -Be $expectedBuildDir
@@ -201,8 +202,8 @@ exit /b 23
     }
 
     It "preserves an explicit compatible arm64 vcpkg triplet" {
-        & $script:buildScript -ProjectRoot $script:repoRoot -Arch arm64 `
-            -CmakeExtraArgs "-DVCPKG_TARGET_TRIPLET=arm64-windows-static" -ReuseBuild # pragma: allowlist secret
+        & $script:lazyBuildScript -ProjectRoot $script:repoRoot -Arch arm64 `
+            -CmakeExtraArgs "-DVCPKG_TARGET_TRIPLET=arm64-windows-static" # pragma: allowlist secret
 
         (Get-Content -LiteralPath $script:configureMarker) | Should -Be "dev|-DVCPKG_TARGET_TRIPLET=arm64-windows-static|msvc2022_arm64"
     }

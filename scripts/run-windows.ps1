@@ -78,15 +78,24 @@ $argsList = @(
 if ($ConfigDir) { $argsList += @("--config-dir", $ConfigDir) }
 if ($Screenshot) { $argsList += @("--screenshot", $Screenshot) }
 
+$previousPath = $null
 if ($qtBinPath -and (Test-Path $qtBinPath)) {
     $previousPath = $env:Path
-    try {
-        $env:Path = "$qtBinPath;$previousPath"
-        & $executable @argsList
+    $env:Path = "$qtBinPath;$previousPath"
+}
+
+try {
+    $quotedArgs = $argsList | ForEach-Object {
+        '"' + $_.Replace('"', '\"') + '"'
     }
-    finally {
+    $process = Start-Process -FilePath $executable -ArgumentList $quotedArgs `
+        -NoNewWindow -PassThru -Wait
+    if ($process.ExitCode -ne 0) {
+        throw "Windows application failed with exit code $($process.ExitCode)."
+    }
+}
+finally {
+    if ($null -ne $previousPath) {
         $env:Path = $previousPath
     }
-} else {
-    & $executable @argsList
 }

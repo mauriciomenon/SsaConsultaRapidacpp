@@ -32,5 +32,14 @@ repo_root="$(cd "${script_dir}/.." && pwd)"
 repo_root="${SSA_CPP_PROJECT_ROOT:-${repo_root}}"
 preset="${SSA_CPP_PRESET:-dev}"
 
+case "${preset}" in
+  dev|release) ;;
+  *)
+    echo "Unsupported preset: ${preset}. Expected dev or release." >&2
+    exit 1
+    ;;
+esac
+
+rm -rf "${repo_root}/build/${preset}"
 "${repo_root}/tools/configure-dev.sh" "${preset}"
 (cd "${repo_root}" && cmake --build --preset "${preset}")

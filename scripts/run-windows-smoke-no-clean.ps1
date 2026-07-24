@@ -1,0 +1,31 @@
+[CmdletBinding()]
+param(
+    [string]$DbPath = "",
+    [string]$Preset = "dev",
+    [string]$Arch = "",
+    [string]$QtDir = "",
+    [string]$QtRoot = "",
+    [string]$QtSubdir = "",
+    [string]$SQLiteRoot = "",
+    [string]$ProjectRoot = "",
+    [switch]$Open,
+    [switch]$Help
+)
+
+$ErrorActionPreference = "Stop"
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$repoRoot = if ($ProjectRoot) { (Resolve-Path $ProjectRoot).Path } else { (Resolve-Path (Join-Path $scriptDir "..")).Path }
+
+if ($Help) {
+    Write-Output "Usage: .\scripts\run-windows-smoke-no-clean.ps1 [-DbPath <path>] [-Preset <preset>] [-Arch <amd64|arm64>] [-Open]"
+    return
+}
+
+if (-not $DbPath) {
+    $DbPath = Join-Path $repoRoot "data\ssas.db"
+}
+
+. (Join-Path $scriptDir "smoke-windows-core.ps1")
+Invoke-WindowsSmoke -RepoRoot $repoRoot -DbPath $DbPath -Clean $false -Preset $Preset `
+    -Arch $Arch -QtDir $QtDir -QtRoot $QtRoot -QtSubdir $QtSubdir `
+    -SQLiteRoot $SQLiteRoot -Open:$Open

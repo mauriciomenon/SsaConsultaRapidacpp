@@ -2,4 +2,4 @@
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-exec "${script_dir}/scripts/package-macos.sh" "$@"
+exec "${script_dir}/scripts/build-macos.sh" "$@"

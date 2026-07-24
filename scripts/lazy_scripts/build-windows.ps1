@@ -7,18 +7,19 @@ param(
     [string]$QtSubdir = "",
     [string]$SQLiteRoot = "",
     [string]$ProjectRoot = "",
+    [string[]]$CmakeExtraArgs = @(),
     [switch]$Help
 )
 
 $ErrorActionPreference = "Stop"
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = if ($ProjectRoot) { (Resolve-Path $ProjectRoot).Path } else { (Resolve-Path (Join-Path $scriptDir "..\..")).Path }
-$baseScript = Join-Path $repoRoot "scripts\build-windows.ps1"
+$baseScript = (Resolve-Path (Join-Path $scriptDir "..\build-windows.ps1")).Path
 
 if ($Help) {
     Write-Output @"
 Usage:
-  .\scripts\lazy_scripts\build-windows.ps1 [-Preset <preset>] [-Arch <amd64|arm64>] [-QtDir <qt-dir>] [-QtRoot <root>] [-QtSubdir <kit>] [-SQLiteRoot <path>] [-ProjectRoot <dir>] [-Help]
+  .\scripts\lazy_scripts\build-windows.ps1 [-Preset <preset>] [-Arch <amd64|arm64>] [-QtDir <qt-dir>] [-QtRoot <root>] [-QtSubdir <kit>] [-SQLiteRoot <path>] [-ProjectRoot <dir>] [-CmakeExtraArgs <args>] [-Help]
 
 Incremental build entrypoint. Reuses only a compatible canonical build cache.
 
@@ -30,8 +31,11 @@ Options:
   -QtSubdir     Optional. Desktop kit such as msvc2022_64 or llvm-mingw_64.
   -SQLiteRoot   Optional. SQLite root to pass to configure.
   -ProjectRoot  Optional. Override repository root.
+  -CmakeExtraArgs Optional. Additional CMake configure arguments.
 "@
     return
 }
 
-& $baseScript -Preset $Preset -Arch $Arch -QtDir $QtDir -QtRoot $QtRoot -QtSubdir $QtSubdir -SQLiteRoot $SQLiteRoot -ProjectRoot $repoRoot -ReuseBuild
+& $baseScript -Preset $Preset -Arch $Arch -QtDir $QtDir -QtRoot $QtRoot `
+    -QtSubdir $QtSubdir -SQLiteRoot $SQLiteRoot -ProjectRoot $repoRoot `
+    -CmakeExtraArgs $CmakeExtraArgs -ReuseBuild

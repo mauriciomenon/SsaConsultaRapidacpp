@@ -98,6 +98,14 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+case "${preset}" in
+  dev|release) ;;
+  *)
+    echo "Unsupported preset: ${preset}. Expected dev or release." >&2
+    exit 1
+    ;;
+esac
+
 if [[ -z "${dist_root}" ]]; then
   dist_root="${repo_root}/dist/macos/${arch}"
 fi
@@ -128,9 +136,11 @@ cleanup_package_stage() {
   fi
   rm -rf "${staged_artifact_root}"
   rm -f "${staged_zip_path}" "${staged_dmg_path}"
+  rm -rf "${build_dir}"
 }
 trap cleanup_package_stage EXIT
 
+rm -rf "${build_dir}"
 "${repo_root}/tools/configure-dev.sh" "${preset}"
 (cd "${repo_root}"
 if [[ "${run_tests}" == "true" ]]; then

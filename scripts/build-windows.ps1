@@ -16,6 +16,16 @@ param(
 $ErrorActionPreference = "Stop"
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = if ($ProjectRoot) { (Resolve-Path $ProjectRoot).Path } else { (Resolve-Path (Join-Path $scriptDir "..")).Path }
+$lazyBuildScript = (Resolve-Path (Join-Path $scriptDir "lazy_scripts\build-windows.ps1")).Path
+$callerScript = if ($MyInvocation.ScriptName) {
+    [IO.Path]::GetFullPath($MyInvocation.ScriptName)
+} else {
+    ""
+}
+if ($ReuseBuild -and
+    -not $callerScript.Equals($lazyBuildScript, [StringComparison]::OrdinalIgnoreCase)) {
+    throw "ReuseBuild is internal. Use scripts\lazy_scripts\build-windows.ps1."
+}
 . (Join-Path $scriptDir "lib\windows_build_layout.ps1")
 $configureScript = Join-Path $repoRoot "tools\configure-dev.ps1"
 $preset = if ($Preset) { $Preset } else { "dev" }
