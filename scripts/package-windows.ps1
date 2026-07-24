@@ -67,6 +67,163 @@ function Resolve-MakeNsisPath {
     return $null
 }
 
+function Get-CMakeCacheValue {
+    param(
+        [Parameter(Mandatory)]
+        [string]$CachePath,
+        [Parameter(Mandatory)]
+        [string]$Name
+    )
+
+    $line = Select-String -LiteralPath $CachePath -Pattern "^$([regex]::Escape($Name)):[^=]+=(.+)$" |
+        Select-Object -First 1
+    if ($line) {
+        return $line.Matches[0].Groups[1].Value.Trim()
+    }
+    return ""
+}
+
+function Resolve-VisualCppRuntimeDirectory {
+    param(
+        [Parameter(Mandatory)]
+        [string]$CachePath,
+        [Parameter(Mandatory)]
+        [ValidateSet("amd64", "arm64")]
+        [string]$Architecture,
+        [Parameter(Mandatory)]
+        [ValidateSet("msvc", "llvm")]
+        [string]$EffectiveToolchain
+    )
+
+    $compiler = Get-CMakeCacheValue -CachePath $CachePath -Name "CMAKE_CXX_COMPILER"
+    $compilerLeaf = Split-Path $compiler.Replace('/', '\') -Leaf
+    if ($EffectiveToolchain -eq "msvc") {
+        if (-not $compilerLeaf.Equals("cl.exe", [StringComparison]::OrdinalIgnoreCase)) {
+            throw "MSVC package requires CMAKE_CXX_COMPILER=cl.exe, found: $compiler"
+        }
+        $compilerMatch = [regex]::Match($compiler.Replace('/', '\'),
+            '^(?<toolset>.+\\VC\\Tools\\MSVC\\[^\\]+)\\bin\\',
+            [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+        if (-not $compilerMatch.Success) {
+            throw "MSVC CMAKE_CXX_COMPILER is outside a Visual C++ toolset: $compiler"
+        }
+        $toolsetRoot = $compilerMatch.Groups['toolset'].Value
+    } else {
+        if (-not $compilerLeaf.Equals("clang-cl.exe", [StringComparison]::OrdinalIgnoreCase)) {
+            throw "LLVM package requires CMAKE_CXX_COMPILER=clang-cl.exe, found: $compiler"
+        }
+        if (-not $env:VCToolsInstallDir) {
+            throw "LLVM package requires VCToolsInstallDir from the active Developer Shell."
+        }
+        $toolsetRoot = $env:VCToolsInstallDir
+    }
+
+    $runtimeArchitecture = if ($Architecture -eq "amd64") { "x64" } else { "arm64" }
+    $normalizedToolset = $toolsetRoot.Replace('/', '\').TrimEnd('\')
+    $toolsetMatch = [regex]::Match($normalizedToolset,
+        '^(?<vcRoot>.+\\VC)\\Tools\\MSVC\\(?<version>[^\\]+)$',
+        [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+    if (-not $toolsetMatch.Success) {
+        throw "Visual C++ toolset has an unsupported path: $toolsetRoot"
+    }
+    if ($EffectiveToolchain -eq "llvm") {
+        if (-not $env:VCToolsVersion) {
+            throw "LLVM package requires VCToolsVersion from the active Developer Shell."
+        }
+        if (-not $env:VCToolsVersion.Equals($toolsetMatch.Groups['version'].Value, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Developer Shell VCToolsInstallDir and VCToolsVersion disagree."
+        }
+    }
+
+    $runtimeDirectory = Join-Path $toolsetMatch.Groups['vcRoot'].Value `
+        "Redist\MSVC\$($toolsetMatch.Groups['version'].Value)\$runtimeArchitecture"
+    $crtDirectory = Get-ChildItem -LiteralPath $runtimeDirectory -Directory -Filter "Microsoft.VC*.CRT" `
+        -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $crtDirectory) {
+        throw "Matching Visual C++ runtime for the configured toolset was not found: $runtimeDirectory"
+    }
+    $dumpbinPath = Join-Path $normalizedToolset "bin\Hostx64\$runtimeArchitecture\dumpbin.exe"
+    if (-not (Test-Path -LiteralPath $dumpbinPath -PathType Leaf)) {
+        throw "dumpbin.exe for the configured Visual C++ toolset was not found: $dumpbinPath"
+    }
+    return [PSCustomObject]@{
+        CrtDirectory = $crtDirectory.FullName
+        DumpbinPath = $dumpbinPath
+    }
+}
+
+function Copy-VisualCppRuntime {
+    param(
+        [Parameter(Mandatory)]
+        [PSCustomObject]$Runtime,
+        [Parameter(Mandatory)]
+        [string]$Destination
+    )
+
+    $runtimeFiles = @(Get-ChildItem -LiteralPath $Runtime.CrtDirectory -File -Filter "*.dll")
+    if ($runtimeFiles.Count -eq 0) {
+        throw "Matching Visual C++ runtime contains no DLLs: $($Runtime.CrtDirectory)"
+    }
+    $debugRuntimeFiles = @($runtimeFiles | Where-Object { $_.Name -match '(?i)d\.dll$' })
+    if ($debugRuntimeFiles.Count -gt 0) {
+        throw "Matching Visual C++ runtime contains Debug DLLs: $($debugRuntimeFiles.Name -join ', ')"
+    }
+    Copy-Item -LiteralPath $runtimeFiles.FullName -Destination $Destination
+
+    $requiredRuntimeFiles = @(
+        "MSVCP140.dll",
+        "MSVCP140_ATOMIC_WAIT.dll",
+        "VCRUNTIME140.dll",
+        "VCRUNTIME140_1.dll"
+    )
+    $missingRuntimeFiles = @($requiredRuntimeFiles | Where-Object {
+            -not (Test-Path -LiteralPath (Join-Path $Destination $_) -PathType Leaf)
+        })
+    if ($missingRuntimeFiles.Count -gt 0) {
+        throw "Matching Visual C++ runtime did not stage required DLLs: $($missingRuntimeFiles -join ', ')"
+    }
+    foreach ($runtimeFile in $runtimeFiles) {
+        $stagedRuntimeFile = Join-Path $Destination $runtimeFile.Name
+        $sourceHash = (Get-FileHash -LiteralPath $runtimeFile.FullName -Algorithm SHA256).Hash
+        $stagedHash = (Get-FileHash -LiteralPath $stagedRuntimeFile -Algorithm SHA256).Hash
+        if ($sourceHash -ne $stagedHash) {
+            throw "Staged Visual C++ runtime hash mismatch: $($runtimeFile.Name)"
+        }
+    }
+}
+
+function Test-VisualCppRuntimeImport {
+    param(
+        [Parameter(Mandatory)]
+        [PSCustomObject]$Runtime,
+        [Parameter(Mandatory)]
+        [string]$Executable
+    )
+
+    $imports = @(& $Runtime.DumpbinPath /imports $Executable 2>&1)
+    if ($LASTEXITCODE -ne 0) {
+        throw "dumpbin failed to inspect Windows runtime imports with exit code $LASTEXITCODE."
+    }
+    $importText = $imports -join "`n"
+    $requiredRuntimeFiles = @(
+        "MSVCP140.dll",
+        "MSVCP140_ATOMIC_WAIT.dll",
+        "VCRUNTIME140.dll",
+        "VCRUNTIME140_1.dll"
+    )
+    $missingImports = @($requiredRuntimeFiles | Where-Object {
+            $importText -notmatch "(?im)^\s*$([regex]::Escape($_))\s*$"
+        })
+    if ($missingImports.Count -gt 0) {
+        throw "Executable is missing required Visual C++ runtime imports: $($missingImports -join ', ')"
+    }
+    $debugImports = @([regex]::Matches($importText, '(?im)^\s*(?:MSVCP|VCRUNTIME)[^\s]*D\.dll\s*$') |
+            ForEach-Object { $_.Value.Trim() })
+    if ($debugImports.Count -gt 0) {
+        throw "Executable imports Debug Visual C++ runtime DLLs: $($debugImports -join ', ')"
+    }
+}
+
 if ($Help) {
     Show-Help
     return
@@ -165,11 +322,12 @@ Copy-Item (Join-Path $repoRoot "resources\app_icon.ico") (Join-Path $artifactDir
 Copy-Item (Join-Path $repoRoot "THIRD_PARTY_NOTICES.md") $artifactDir
 Copy-Item (Join-Path $repoRoot "third_party\tinted-themes\LICENSE") (Join-Path $artifactDir "TINTED_SCHEMES_LICENSE.txt")
 
+$cmakeCache = Join-Path $buildDir "CMakeCache.txt"
+
 # Resolver windeployqt da MESMA Qt usada no build (ler CMakeCache.txt Qt6_DIR),
 # para evitar mismatch de versao entre as DLLs copiadas pelo windeployqt e o
 # binario. Ordem: CMakeCache (verdade do build) -> Qt6_DIR -> QT_DIR -> PATH.
 $qtBinDir = $null
-$cmakeCache = Join-Path $buildDir "CMakeCache.txt"
 if (Test-Path $cmakeCache) {
     $cacheQtLine = Select-String -Path $cmakeCache -Pattern '^Qt6_DIR:PATH=(.+)$' -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($cacheQtLine) {
@@ -210,7 +368,7 @@ if ($qtBinDir -and (Test-Path (Join-Path $qtBinDir "windeployqt.exe"))) {
         if (-not (Test-Path $qmlDir)) {
             throw "Generated QML module not found: $qmlDir"
         }
-        $deployArgs = @("--qmldir", $qmlDir) + $deployArgs
+        $deployArgs = @("--no-compiler-runtime", "--qmldir", $qmlDir) + $deployArgs
         & windeployqt.exe @deployArgs | Out-Null
         if ($LASTEXITCODE -ne 0) {
             throw "windeployqt failed with exit code $LASTEXITCODE."
@@ -235,6 +393,13 @@ if ($qtBinDir -and (Test-Path (Join-Path $qtBinDir "windeployqt.exe"))) {
     }
 } else {
     throw "windeployqt.exe not found. Cannot generate a self contained Windows package."
+}
+
+if ($effectiveToolchain -eq "msvc" -or $effectiveToolchain -eq "llvm") {
+    $visualCppRuntime = Resolve-VisualCppRuntimeDirectory -CachePath $cmakeCache -Architecture $arch `
+        -EffectiveToolchain $effectiveToolchain
+    Copy-VisualCppRuntime -Runtime $visualCppRuntime -Destination $artifactDir
+    Test-VisualCppRuntimeImport -Runtime $visualCppRuntime -Executable (Join-Path $artifactDir "ssa_consulta_rapida.exe")
 }
 
 Set-Content -Path (Join-Path $artifactDir "run-ssa_consulta_rapida.bat") -Value '@echo off

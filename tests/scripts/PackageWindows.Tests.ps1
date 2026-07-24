@@ -56,7 +56,7 @@ placeholder
         }
     }
 
-    It "uses CMakeCache Qt6_DIR to find windeployqt" {
+    It "packages matching MSVC and LLVM runtimes from their authoritative toolsets" {
         $testRoot = (Get-PSDrive -Name TestDrive).Root
         $repoRoot = Join-Path $testRoot "repo"
         $scriptsDir = Join-Path $repoRoot "scripts"
@@ -69,21 +69,83 @@ placeholder
         $originalNsisHome = $env:NSIS_HOME
         $originalPathExt = $env:PATHEXT
         $originalPath = $env:Path
+        $originalVcToolsInstallDir = $env:VCToolsInstallDir
+        $originalVcToolsVersion = $env:VCToolsVersion
         $fakeBin = Join-Path $testRoot "bin"
         $buildMarker = Join-Path $testRoot "build-arch.txt"
         $ctestLog = Join-Path $testRoot "ctest-called.txt"
+        $toolsetVersion = "14.51.36231"
+        $toolsetRoot = Join-Path $testRoot "Visual Studio/VC/Tools/MSVC/$toolsetVersion"
+        $runtimeDir = Join-Path $testRoot "Visual Studio/VC/Redist/MSVC/$toolsetVersion/x64/Microsoft.VC145.CRT"
 
-        New-Item -ItemType Directory -Path $scriptsDir, $buildDir, (Join-Path $buildDir "SsaConsultaRapida"), $qtBinDir, $nsisDir, $fakeBin,
+        New-Item -ItemType Directory -Path $scriptsDir, $buildDir, (Join-Path $buildDir "SsaConsultaRapida"), $qtBinDir, $nsisDir, $fakeBin, $runtimeDir,
             (Join-Path $repoRoot "resources"), (Join-Path $repoRoot "third_party/tinted-themes") -Force | Out-Null
-        Copy-Item -LiteralPath $env:ComSpec -Destination (Join-Path $nsisDir "makensis.exe")
-        Copy-Item -LiteralPath $env:ComSpec -Destination (Join-Path $qtBinDir "windeployqt.exe")
+        $fakeTool = Join-Path $fakeBin "package-tool.exe"
+        Add-Type -TypeDefinition @'
+using System;
+using System.IO;
+
+public static class PackageTool
+{
+    public static int Main(string[] args)
+    {
+        var tool = Path.GetFileNameWithoutExtension(Environment.GetCommandLineArgs()[0]).ToLowerInvariant();
+        if (tool == "windeployqt") {
+            if (args.Length == 0 || args[0] != "--no-compiler-runtime") return 13;
+            var executable = args[args.Length - 1];
+            File.WriteAllText(Path.Combine(Path.GetDirectoryName(executable), "Qt6Core.dll"), "qt");
+            return 0;
+        }
+        if (args.Length > 0 && args[0] == "/imports") {
+            Console.WriteLine("    MSVCP140.dll");
+            Console.WriteLine("    MSVCP140_ATOMIC_WAIT.dll");
+            Console.WriteLine("    VCRUNTIME140.dll");
+            Console.WriteLine("    VCRUNTIME140_1.dll");
+            return 0;
+        }
+        if (tool == "makensis") {
+            foreach (var line in File.ReadAllLines(args[0])) {
+                if (!line.StartsWith("OutFile \"", StringComparison.Ordinal)) continue;
+                var output = line.Substring(9).TrimEnd('\"');
+                Directory.CreateDirectory(Path.GetDirectoryName(output));
+                File.WriteAllText(output, "nsis");
+                return 0;
+            }
+            return 1;
+        }
+        if (tool == "tar") {
+            for (var index = 0; index + 1 < args.Length; index++) {
+                if (args[index] != "-f") continue;
+                File.WriteAllText(args[index + 1], "zip");
+                return 0;
+            }
+            return 1;
+        }
+        return 0;
+    }
+}
+'@ -OutputAssembly $fakeTool -OutputType ConsoleApplication
+        Copy-Item -LiteralPath $fakeTool -Destination (Join-Path $nsisDir "makensis.exe")
+        Copy-Item -LiteralPath $fakeTool -Destination (Join-Path $qtBinDir "windeployqt.exe")
+        Copy-Item -LiteralPath $fakeTool -Destination (Join-Path $fakeBin "tar.exe")
+        Copy-Item -LiteralPath $fakeTool -Destination (Join-Path $fakeBin "robocopy.exe")
+        $dumpbinDir = Join-Path $toolsetRoot "bin/Hostx64/x64"
+        New-Item -ItemType Directory -Path $dumpbinDir -Force | Out-Null
+        Copy-Item -LiteralPath $fakeTool -Destination (Join-Path $dumpbinDir "dumpbin.exe")
         $env:NSIS_HOME = $nsisDir
         $env:PATHEXT = [Environment]::GetEnvironmentVariable("PATHEXT", "Machine")
         $env:Path = "$fakeBin;$originalPath"
         New-Item -ItemType File -Path (Join-Path $buildDir "ssa_consulta_rapida.exe"), (Join-Path $buildDir "sqlite3.dll"),
             (Join-Path $repoRoot "resources/app_icon.ico"), (Join-Path $repoRoot "THIRD_PARTY_NOTICES.md"),
             (Join-Path $repoRoot "third_party/tinted-themes/LICENSE") -Force | Out-Null
-        "Qt6_DIR:PATH=$($qtCmakeDir.Replace('\\', '/'))" | Set-Content -LiteralPath (Join-Path $buildDir "CMakeCache.txt") -Encoding ASCII
+        foreach ($runtimeFile in @("MSVCP140.dll", "MSVCP140_ATOMIC_WAIT.dll", "VCRUNTIME140.dll", "VCRUNTIME140_1.dll")) {
+            New-Item -ItemType File -Path (Join-Path $runtimeDir $runtimeFile) | Out-Null
+        }
+        @(
+            "Qt6_DIR:PATH=$($qtCmakeDir.Replace('\', '/'))"
+            "CMAKE_CXX_COMPILER:FILEPATH=$($toolsetRoot.Replace('\', '/'))/bin/Hostx64/x64/cl.exe"
+            "CMAKE_LINKER:FILEPATH=$($toolsetRoot.Replace('\', '/'))/bin/Hostx64/x64/link.exe"
+        ) | Set-Content -LiteralPath (Join-Path $buildDir "CMakeCache.txt") -Encoding ASCII
 @'
 param([string]$Arch)
 Set-Content -LiteralPath $env:SSA_TEST_BUILD_ARCH -Value $Arch
@@ -96,7 +158,8 @@ exit /b 0
 '@ | Set-Content -LiteralPath (Join-Path $fakeBin "ctest.cmd") -Encoding ASCII
 @'
 @echo off
-echo abc123def456
+echo %* | findstr /C:"rev-parse" >nul
+if not errorlevel 1 echo abc123def456
 exit /b 0
 '@ | Set-Content -LiteralPath (Join-Path $fakeBin "git.cmd") -Encoding ASCII
         $env:SSA_TEST_BUILD_ARCH = $buildMarker
@@ -113,8 +176,59 @@ exit /b 0
 
             (Get-Content -LiteralPath $buildMarker) | Should -Be "amd64"
             (Get-Content -LiteralPath $ctestLog) | Should -Match ([regex]::Escape("--test-dir $buildDir"))
-            $failure.Exception.Message | Should -Match "did not copy Qt6Core"
+            $failure | Should -BeNullOrEmpty
+            $finalDir = Join-Path $testRoot "dist/amd64/msvc/final"
+            foreach ($runtimeFile in @("MSVCP140.dll", "MSVCP140_ATOMIC_WAIT.dll", "VCRUNTIME140.dll", "VCRUNTIME140_1.dll")) {
+                (Get-ChildItem -LiteralPath $finalDir -Filter $runtimeFile -File -Recurse).Count | Should -BeGreaterThan 0
+            }
             (Test-Path -LiteralPath (Join-Path $testRoot "dist/amd64/.staging")) | Should -BeFalse
+
+            $env:VCToolsInstallDir = $toolsetRoot
+            Remove-Item Env:VCToolsVersion -ErrorAction SilentlyContinue
+            New-Item -ItemType Directory -Path $buildDir, (Join-Path $buildDir "SsaConsultaRapida") -Force | Out-Null
+            New-Item -ItemType File -Path (Join-Path $buildDir "ssa_consulta_rapida.exe"), (Join-Path $buildDir "sqlite3.dll") -Force | Out-Null
+            @(
+                "Qt6_DIR:PATH=$($qtCmakeDir.Replace('\', '/'))"
+                "VCToolsInstallDir:PATH=C:/stale/VC/Tools/MSVC/14.52.00000"
+                "CMAKE_CXX_COMPILER:FILEPATH=C:/LLVM/bin/clang-cl.exe"
+                "CMAKE_LINKER:FILEPATH=C:/LLVM/bin/lld-link.exe"
+            ) | Set-Content -LiteralPath (Join-Path $buildDir "CMakeCache.txt") -Encoding ASCII
+            {
+                & $packageScript -ProjectRoot $repoRoot -Arch amd64 -Toolchain llvm -DistDir (Join-Path $testRoot "llvm-missing-version") -Version "1.2.3" -SkipTests
+            } | Should -Throw -ExpectedMessage "*requires VCToolsVersion*"
+            (Test-Path -LiteralPath (Join-Path $testRoot "llvm-missing-version/amd64/llvm/final") -PathType Container) | Should -BeFalse
+
+            $env:VCToolsVersion = "14.52.00000"
+            New-Item -ItemType Directory -Path $buildDir, (Join-Path $buildDir "SsaConsultaRapida") -Force | Out-Null
+            New-Item -ItemType File -Path (Join-Path $buildDir "ssa_consulta_rapida.exe"), (Join-Path $buildDir "sqlite3.dll") -Force | Out-Null
+            @(
+                "Qt6_DIR:PATH=$($qtCmakeDir.Replace('\', '/'))"
+                "VCToolsInstallDir:PATH=C:/stale/VC/Tools/MSVC/14.52.00000"
+                "CMAKE_CXX_COMPILER:FILEPATH=C:/LLVM/bin/clang-cl.exe"
+                "CMAKE_LINKER:FILEPATH=C:/LLVM/bin/lld-link.exe"
+            ) | Set-Content -LiteralPath (Join-Path $buildDir "CMakeCache.txt") -Encoding ASCII
+            {
+                & $packageScript -ProjectRoot $repoRoot -Arch amd64 -Toolchain llvm -DistDir (Join-Path $testRoot "llvm-mismatch") -Version "1.2.3" -SkipTests
+            } | Should -Throw -ExpectedMessage "*VCToolsInstallDir and VCToolsVersion disagree*"
+
+            $env:VCToolsVersion = $toolsetVersion
+            New-Item -ItemType Directory -Path $buildDir, (Join-Path $buildDir "SsaConsultaRapida") -Force | Out-Null
+            New-Item -ItemType File -Path (Join-Path $buildDir "ssa_consulta_rapida.exe"), (Join-Path $buildDir "sqlite3.dll") -Force | Out-Null
+            @(
+                "Qt6_DIR:PATH=$($qtCmakeDir.Replace('\', '/'))"
+                "VCToolsInstallDir:PATH=C:/stale/VC/Tools/MSVC/14.52.00000"
+                "CMAKE_CXX_COMPILER:FILEPATH=C:/LLVM/bin/clang-cl.exe"
+                "CMAKE_LINKER:FILEPATH=C:/LLVM/bin/lld-link.exe"
+            ) | Set-Content -LiteralPath (Join-Path $buildDir "CMakeCache.txt") -Encoding ASCII
+            $llvmFailure = $null
+            try {
+                & $packageScript -ProjectRoot $repoRoot -Arch amd64 -Toolchain llvm -DistDir (Join-Path $testRoot "llvm") -Version "1.2.3" -SkipTests
+            }
+            catch {
+                $llvmFailure = $_
+            }
+            $llvmFailure | Should -BeNullOrEmpty
+            ((Get-Content -LiteralPath (Join-Path $testRoot "llvm/amd64/llvm/current.json") -Raw | ConvertFrom-Json).compiler) | Should -Match "clang-cl.exe$"
         }
         finally {
             if ($null -eq $originalNsisHome) {
@@ -125,7 +239,94 @@ exit /b 0
             }
             $env:PATHEXT = $originalPathExt
             $env:Path = $originalPath
+            if ($null -eq $originalVcToolsInstallDir) {
+                Remove-Item Env:VCToolsInstallDir -ErrorAction SilentlyContinue
+            }
+            else {
+                $env:VCToolsInstallDir = $originalVcToolsInstallDir
+            }
+            if ($null -eq $originalVcToolsVersion) {
+                Remove-Item Env:VCToolsVersion -ErrorAction SilentlyContinue
+            }
+            else {
+                $env:VCToolsVersion = $originalVcToolsVersion
+            }
             Remove-Item Env:SSA_TEST_BUILD_ARCH, Env:SSA_TEST_CTEST_LOG -ErrorAction SilentlyContinue
+        }
+    }
+
+    It "fails before package promotion when the matching Visual C++ runtime is absent" {
+        $testRoot = (Get-PSDrive -Name TestDrive).Root
+        $repoRoot = Join-Path $testRoot "repo"
+        $scriptsDir = Join-Path $repoRoot "scripts"
+        $buildDir = Join-Path $repoRoot "build/windows/amd64/msvc2022_64/release"
+        $qtPrefix = Join-Path $testRoot "Qt/6.11.1/msvc2022_64"
+        $qtCmakeDir = Join-Path $qtPrefix "lib/cmake/Qt6"
+        $qtBinDir = Join-Path $qtPrefix "bin"
+        $nsisDir = Join-Path $testRoot "nsis"
+        $fakeBin = Join-Path $testRoot "bin"
+        $packageScript = Join-Path (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path "scripts/package-windows.ps1"
+        $originalNsisHome = $env:NSIS_HOME
+        $originalPathExt = $env:PATHEXT
+        $toolsetRoot = Join-Path $testRoot "Visual Studio/VC/Tools/MSVC/14.52.00000"
+        $missingRuntimeDistDir = Join-Path $testRoot "missing-runtime-dist"
+
+        New-Item -ItemType Directory -Path $scriptsDir, $buildDir, (Join-Path $buildDir "SsaConsultaRapida"), $qtBinDir, $nsisDir, $fakeBin,
+            (Join-Path $repoRoot "resources"), (Join-Path $repoRoot "third_party/tinted-themes") -Force | Out-Null
+        Copy-Item -LiteralPath $env:ComSpec -Destination (Join-Path $nsisDir "makensis.exe")
+        $qtDeployMock = Join-Path $fakeBin "windeployqt.exe"
+        Add-Type -TypeDefinition @'
+using System;
+using System.IO;
+
+public static class QtDeployMock
+{
+    public static int Main(string[] args)
+    {
+        File.WriteAllText(Path.Combine(Path.GetDirectoryName(args[args.Length - 1]), "Qt6Core.dll"), "qt");
+        return 0;
+    }
+}
+'@ -OutputAssembly $qtDeployMock -OutputType ConsoleApplication
+        Copy-Item -LiteralPath $qtDeployMock -Destination (Join-Path $qtBinDir "windeployqt.exe")
+        $env:NSIS_HOME = $nsisDir
+        $originalPath = $env:Path
+        $env:PATHEXT = [Environment]::GetEnvironmentVariable("PATHEXT", "Machine")
+        $env:Path = "$fakeBin;$originalPath"
+        New-Item -ItemType File -Path (Join-Path $buildDir "ssa_consulta_rapida.exe"), (Join-Path $buildDir "sqlite3.dll"),
+            (Join-Path $repoRoot "resources/app_icon.ico"), (Join-Path $repoRoot "THIRD_PARTY_NOTICES.md"),
+            (Join-Path $repoRoot "third_party/tinted-themes/LICENSE") -Force | Out-Null
+        @(
+            "Qt6_DIR:PATH=$($qtCmakeDir.Replace('\', '/'))"
+            "CMAKE_CXX_COMPILER:FILEPATH=$($toolsetRoot.Replace('\', '/'))/bin/Hostx64/x64/cl.exe"
+            "CMAKE_LINKER:FILEPATH=$($toolsetRoot.Replace('\', '/'))/bin/Hostx64/x64/link.exe"
+        ) | Set-Content -LiteralPath (Join-Path $buildDir "CMakeCache.txt") -Encoding ASCII
+@'
+$global:LASTEXITCODE = 0
+'@ | Set-Content -LiteralPath (Join-Path $scriptsDir "build-windows.ps1") -Encoding ASCII
+@'
+@echo off
+echo %* | findstr /C:"rev-parse" >nul
+if not errorlevel 1 echo abc123def456
+exit /b 0
+'@ | Set-Content -LiteralPath (Join-Path $fakeBin "git.cmd") -Encoding ASCII
+
+        try {
+            {
+                & $packageScript -ProjectRoot $repoRoot -Arch amd64 -Toolchain msvc -DistDir $missingRuntimeDistDir -Version "1.2.3" -SkipTests
+            } | Should -Throw -ExpectedMessage "*Matching Visual C++ runtime*"
+
+            (Test-Path -LiteralPath (Join-Path $missingRuntimeDistDir "amd64/msvc/final") -PathType Container) | Should -BeFalse
+        }
+        finally {
+            if ($null -eq $originalNsisHome) {
+                Remove-Item Env:NSIS_HOME -ErrorAction SilentlyContinue
+            }
+            else {
+                $env:NSIS_HOME = $originalNsisHome
+            }
+            $env:PATHEXT = $originalPathExt
+            $env:Path = $originalPath
         }
     }
 }
