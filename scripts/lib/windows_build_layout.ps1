@@ -32,11 +32,33 @@ function Resolve-WindowsBuildLayout {
         [string]$Preset,
         [string]$Arch = "",
         [string]$QtDir = "",
-        [string]$QtSubdir = ""
+        [string]$QtSubdir = "",
+        [ValidateSet("auto", "msvc", "mingw", "llvm-mingw")]
+        [string]$Toolchain = "auto"
     )
 
     $resolvedArch = Resolve-WindowsArch -RequestedArch $Arch
-    $qtKit = if ($QtSubdir) {
+    $toolchainKit = switch ($Toolchain) {
+        "msvc" {
+            if ($resolvedArch -eq "arm64") { "msvc2022_arm64" } else { "msvc2022_64" }
+        }
+        "mingw" {
+            if ($resolvedArch -eq "arm64") {
+                throw "Toolchain 'mingw' is not available for Windows arm64."
+            }
+            "mingw_64"
+        }
+        "llvm-mingw" {
+            if ($resolvedArch -eq "arm64") {
+                throw "Toolchain 'llvm-mingw' is not available for Windows arm64."
+            }
+            "llvm-mingw_64"
+        }
+        default {
+            if ($resolvedArch -eq "arm64") { "msvc2022_arm64" } else { "mingw_64" }
+        }
+    }
+    $explicitQtKit = if ($QtSubdir) {
         $QtSubdir
     } elseif ($QtDir) {
         $normalizedQtDir = $QtDir.Trim().Trim('"').Trim("'").TrimEnd('\', '/')
@@ -44,11 +66,13 @@ function Resolve-WindowsBuildLayout {
             $normalizedQtDir = $matches[1]
         }
         Split-Path $normalizedQtDir -Leaf
-    } elseif ($resolvedArch -eq "arm64") {
-        "msvc2022_arm64"
     } else {
-        "mingw_64"
+        ""
     }
+    if ($Toolchain -ne "auto" -and $explicitQtKit -and $explicitQtKit -ne $toolchainKit) {
+        throw "Toolchain '$Toolchain' requires Qt kit '$toolchainKit', but '$explicitQtKit' was requested."
+    }
+    $qtKit = if ($explicitQtKit) { $explicitQtKit } else { $toolchainKit }
 
     if ($Preset -notmatch '^[A-Za-z0-9_.-]+$') {
         throw "Invalid CMake preset name: $Preset"
@@ -65,6 +89,7 @@ function Resolve-WindowsBuildLayout {
     return [PSCustomObject]@{
         Arch = $resolvedArch
         QtKit = $qtKit
+        Toolchain = $Toolchain
         BuildDir = Join-Path $RepoRoot "build\windows\$resolvedArch\$qtKit\$Preset"
     }
 }

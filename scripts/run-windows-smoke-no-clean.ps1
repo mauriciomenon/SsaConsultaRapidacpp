@@ -6,6 +6,8 @@ param(
     [string]$QtDir = "",
     [string]$QtRoot = "",
     [string]$QtSubdir = "",
+    [ValidateSet("auto", "msvc", "mingw", "llvm-mingw")]
+    [string]$Toolchain = "auto",
     [string]$SQLiteRoot = "",
     [string]$ProjectRoot = "",
     [switch]$Open,
@@ -17,7 +19,7 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = if ($ProjectRoot) { (Resolve-Path $ProjectRoot).Path } else { (Resolve-Path (Join-Path $scriptDir "..")).Path }
 
 if ($Help) {
-    Write-Output "Usage: .\scripts\run-windows-smoke-no-clean.ps1 [-DbPath <path>] [-Preset <preset>] [-Arch <amd64|arm64>] [-Open]"
+    Write-Output "Usage: .\run-windows-smoke-no-clean.ps1 [-Toolchain <auto|msvc|mingw|llvm-mingw>] [-DbPath <path>] [-Preset <preset>] [-Arch <amd64|arm64>] [-Open]"
     return
 }
 
@@ -29,5 +31,5 @@ if (-not $dbPathExplicit) {
 . (Join-Path $scriptDir "smoke-windows-core.ps1")
 Invoke-WindowsSmoke -RepoRoot $repoRoot -DbPath $DbPath -DbPathExplicit $dbPathExplicit `
     -Clean $false -Preset $Preset `
-    -Arch $Arch -QtDir $QtDir -QtRoot $QtRoot -QtSubdir $QtSubdir `
+    -Arch $Arch -QtDir $QtDir -QtRoot $QtRoot -QtSubdir $QtSubdir -Toolchain $Toolchain `
     -SQLiteRoot $SQLiteRoot -Open:$Open

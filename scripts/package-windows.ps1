@@ -9,6 +9,8 @@ param(
     [string]$QtDir = "",
     [string]$QtRoot = "",
     [string]$QtSubdir = "",
+    [ValidateSet("auto", "msvc", "mingw", "llvm-mingw")]
+    [string]$Toolchain = "auto",
     [switch]$SkipTests,
     [string[]]$CmakeExtraArgs = @()
 )
@@ -29,7 +31,7 @@ Defaults:
   Artifact dir: dist\windows\<arch>\
   Required build output: build\windows\<arch>\<qt-kit>\<preset>\SsaConsultaRapida must exist.
   Optional parameters: -Preset, -ProjectRoot, -Arch, -DistDir, -Version,
-    -QtDir, -QtRoot, -QtSubdir
+    -Toolchain, -QtDir, -QtRoot, -QtSubdir
   Optional switch: -SkipTests
 
   Generated files:
@@ -79,7 +81,8 @@ $preset = if ($Preset) { $Preset } else { "release" }
 $buildScript = Join-Path $repoRoot "scripts\build-windows.ps1"
 $version = Resolve-PackageVersion -RepoRoot $repoRoot -ExplicitVersion $Version
 $arch = Resolve-WindowsArch -RequestedArch $Arch
-$layout = Resolve-WindowsBuildLayout -RepoRoot $repoRoot -Preset $preset -Arch $arch -QtDir $QtDir -QtSubdir $QtSubdir
+$layout = Resolve-WindowsBuildLayout -RepoRoot $repoRoot -Preset $preset -Arch $arch `
+    -QtDir $QtDir -QtSubdir $QtSubdir -Toolchain $Toolchain
 $buildDir = $layout.BuildDir
 $repoName = Split-Path $repoRoot -Leaf
 $distRoot = if ($DistDir) { $DistDir } else { Join-Path $repoRoot "dist\windows" }
@@ -102,7 +105,12 @@ if (-not $makeNsisPath) {
     throw "MakeNSIS not found. NSIS is required for the portable EXE and installer."
 }
 
-$buildParams = @{ Preset = $preset; ProjectRoot = $repoRoot; Arch = $arch }
+$buildParams = @{
+    Preset = $preset
+    ProjectRoot = $repoRoot
+    Arch = $arch
+    Toolchain = $Toolchain
+}
 if ($QtDir) {
     $buildParams.QtDir = $QtDir
 }

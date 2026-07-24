@@ -113,41 +113,39 @@ familia 6.11.x.
 ## Windows
 
 Use o guia canonico de [Windows](../../packaging/windows/README.md) para links
-oficiais, vcpkg/SQLite e requisitos de package. A busca padrao usa `C:\Qt`,
-seleciona o patch 6.11.x mais alto valido e prioriza os kits:
-
-1. `msvc2022_64`;
-2. `llvm-mingw_64`;
-3. `mingw_64`.
-
-MSVC permanece o default. O script de build inicializa sozinho o Developer
-PowerShell com host x64 e target coerente com `-Arch`. O comando normal de
-package usa o mesmo bootstrap. O build nunca muda de ABI silenciosamente;
-LLVM MinGW e MinGW exigem `-QtSubdir` explicito. O configurador isolado ainda
-pode listar e selecionar os fallbacks disponiveis.
+oficiais, vcpkg/SQLite e requisitos de package. A busca padrao usa `C:\Qt` e
+seleciona o patch 6.11.x mais alto valido. Em amd64, o default e MinGW. Em
+arm64, o default e MSVC. Use `-Toolchain` para impedir ambiguidade.
 
 ```powershell
 # Preflight somente leitura.
 .\tools\configure-dev.ps1 -Check
 .\tools\configure-dev.ps1 -CheckPackage
 
-# Default: MSVC para a arquitetura do host.
+# Default amd64: MinGW.
 .\scripts\build-windows.ps1
 
 # Build ARM64 em namespace e kit proprios.
 .\scripts\build-windows.ps1 -Arch arm64
 
-# Selecao explicita do kit LLVM MinGW.
-.\scripts\build-windows.ps1 -QtSubdir llvm-mingw_64
+# Selecao explicita por compilador.
+.\build-windows.ps1 -Toolchain mingw
+.\build-windows.ps1 -Toolchain llvm-mingw
+.\build-windows.ps1 -Toolchain msvc
 
 # Raiz de instalacao alternativa.
-.\scripts\build-windows.ps1 -QtRoot "D:\Qt" -QtSubdir msvc2022_64
+.\scripts\build-windows.ps1 -Toolchain msvc -QtRoot "D:\Qt"
 
 # Somente inspecao, sem configurar ou compilar.
 .\tools\configure-dev.ps1 -QtRoot "C:\Qt" -PrintQtSelection
 
-# O empacotamento aceita os mesmos seletores.
-.\scripts\package-windows.ps1 -QtSubdir llvm-mingw_64
+# Run, smoke e pacote aceitam o mesmo seletor.
+.\run-windows.ps1 -Toolchain mingw
+.\run-windows-smoke-clean.ps1 -Toolchain mingw
+.\package-windows.ps1 -Toolchain mingw
+
+# CTest Windows usa o diretorio namespaced.
+ctest --test-dir .\build\windows\amd64\mingw_64\dev --output-on-failure
 ```
 
 Os builds Windows ficam somente em
@@ -166,9 +164,9 @@ binario e nao mistura patches diferentes da familia 6.11.x.
 
 | Plataforma | Compilador | Estado atual |
 | --- | --- | --- |
-| Windows amd64 | MSVC 19.51, VS 2026 18.8 | Build, testes e pacote validados |
-| Windows amd64 | LLVM-MinGW 17.0.6 | Toolchain/kit independente reconhecido, sem gate completo nesta rodada |
-| Windows amd64 | MinGW GCC 13.1 ou 11.2 | Toolchain/kit independente reconhecido; versao deve casar com o kit Qt; sem gate completo |
+| Windows amd64 | MinGW GCC 13.1 | Build real, 610 testes e smoke sem DB validados |
+| Windows amd64 | MSVC 19.51 | Build GUI validado com SDK 10.0.26100.0 |
+| Windows amd64 | LLVM-MinGW 17.0.6 | Falha: biblioteca C++ nao fornece `std::stop_token` |
 | Windows amd64 | clang-cl 22.1.3 | Instalado para diagnostico; combinacao com Qt MSVC nao suportada nesta versao |
 | Debian/WSL amd64 | GCC 14.2 | Build e 641 testes validados |
 | Debian/WSL amd64 | Clang 19.1.7 | Suportado pelo fonte, sem gate completo nesta rodada |
@@ -178,6 +176,22 @@ binario e nao mistura patches diferentes da familia 6.11.x.
 diferentes. Mistura entre eles e `UNSUPPORTED`. O fato de clang-cl usar ABI
 MSVC nao basta para declarar o kit Qt MSVC validado; esse par exige um gate
 completo proprio. Kits `wasm_*` tambem nao sao alvos deste aplicativo desktop.
+
+### Medicao Windows Debug
+
+Medicao de 2026-07-24, build limpo apenas do alvo GUI e segunda abertura
+offscreen sem banco:
+
+| Toolchain | Build GUI | EXE Debug | Primeiro frame | Analytics |
+| --- | ---: | ---: | ---: | ---: |
+| MinGW GCC 13.1 | 198,029 s | 195.277.539 bytes | 165,211 ms | 10,682 ms |
+| MSVC 19.51 | 141,620 s | 13.201.920 bytes | 2.237,971 ms | 13,510 ms |
+| LLVM-MinGW 17.0.6 | falhou em 56,757 s | - | - | - |
+
+MSVC venceu o tempo de compilacao, mas MinGW venceu claramente o startup Debug
+nesta maquina. O initializer de analytics nao explica a lentidao: o intervalo
+dominante do MSVC ocorreu depois dele e antes da primeira consulta/QML. Nao
+extrapolar esses numeros para pacote Release sem medir o binario Release.
 
 Testes isolados da deteccao:
 

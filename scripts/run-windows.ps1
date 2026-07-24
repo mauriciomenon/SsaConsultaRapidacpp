@@ -8,6 +8,8 @@ param(
     [string]$Screenshot = "",
     [string]$QtDir = "",
     [string]$QtSubdir = "",
+    [ValidateSet("auto", "msvc", "mingw", "llvm-mingw")]
+    [string]$Toolchain = "auto",
     [switch]$AllowMissingDb,
     [switch]$Help
 )
@@ -16,7 +18,8 @@ $ErrorActionPreference = "Stop"
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = if ($ProjectRoot) { (Resolve-Path $ProjectRoot).Path } else { (Resolve-Path (Join-Path $scriptDir "..")).Path }
 . (Join-Path $scriptDir "lib\windows_build_layout.ps1")
-$layout = Resolve-WindowsBuildLayout -RepoRoot $repoRoot -Preset $Preset -Arch $Arch -QtDir $QtDir -QtSubdir $QtSubdir
+$layout = Resolve-WindowsBuildLayout -RepoRoot $repoRoot -Preset $Preset -Arch $Arch `
+    -QtDir $QtDir -QtSubdir $QtSubdir -Toolchain $Toolchain
 $buildDir = $layout.BuildDir
 . (Join-Path $scriptDir "project-paths.ps1")
 
@@ -35,7 +38,7 @@ Defaults:
   Project root: directory that contains this script.
 
 Explicit options can be passed directly:
-  .\scripts\run-windows.ps1 -DbPath <path> -Preset <preset> -Arch <amd64|arm64> -QtSubdir <kit> -ProjectRoot <dir> -ConfigDir <dir> -Screenshot <file> [-AllowMissingDb]
+  .\scripts\run-windows.ps1 -Toolchain <auto|msvc|mingw|llvm-mingw> [-DbPath <path>] [-Preset <preset>] [-Arch <amd64|arm64>] [-QtDir <qt-dir>] [-QtSubdir <kit>] [-ProjectRoot <dir>] [-ConfigDir <dir>] [-Screenshot <file>] [-AllowMissingDb]
 "@
     return
 }
@@ -69,6 +72,19 @@ if ($QtDir) {
         $qtBinPath = Join-Path (Resolve-Path $QtDir).Path "bin"
     } else {
         Write-Warning "QtDir not found: $QtDir. Continuing without adding Qt bin to PATH."
+    }
+} else {
+    $cacheFile = Join-Path $buildDir "CMakeCache.txt"
+    $qtDirectoryLine = Select-String -LiteralPath $cacheFile `
+        -Pattern '^Qt6_DIR:[^=]+=(.+)$' -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    if ($qtDirectoryLine) {
+        $qtCmakeDirectory = $qtDirectoryLine.Matches[0].Groups[1].Value.Trim()
+        $qtPrefix = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $qtCmakeDirectory))
+        $candidateQtBin = Join-Path $qtPrefix "bin"
+        if (Test-Path -LiteralPath $candidateQtBin -PathType Container) {
+            $qtBinPath = $candidateQtBin
+        }
     }
 }
 

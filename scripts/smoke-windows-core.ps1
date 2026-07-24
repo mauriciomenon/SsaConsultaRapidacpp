@@ -11,6 +11,8 @@ function Invoke-WindowsSmoke {
         [string]$QtDir = "",
         [string]$QtRoot = "",
         [string]$QtSubdir = "",
+        [ValidateSet("auto", "msvc", "mingw", "llvm-mingw")]
+        [string]$Toolchain = "auto",
         [string]$SQLiteRoot = "",
         [switch]$Open
     )
@@ -22,11 +24,12 @@ function Invoke-WindowsSmoke {
 
     . (Join-Path $PSScriptRoot "lib\windows_build_layout.ps1")
     $layout = Resolve-WindowsBuildLayout -RepoRoot $RepoRoot -Preset $Preset -Arch $Arch `
-        -QtDir $QtDir -QtSubdir $QtSubdir
+        -QtDir $QtDir -QtSubdir $QtSubdir -Toolchain $Toolchain
     $buildParams = @{
         Preset = $Preset
         Arch = $layout.Arch
         ProjectRoot = $RepoRoot
+        Toolchain = $Toolchain
     }
     if ($QtDir) { $buildParams.QtDir = $QtDir }
     if ($QtRoot) { $buildParams.QtRoot = $QtRoot }
@@ -74,6 +77,7 @@ function Invoke-WindowsSmoke {
         ProjectRoot = $RepoRoot
         ConfigDir = $configDir
         Screenshot = $screenshot
+        Toolchain = $Toolchain
     }
     if (-not $sourceDbExists) { $runParams.AllowMissingDb = $true }
     if ($QtDir) { $runParams.QtDir = $QtDir }

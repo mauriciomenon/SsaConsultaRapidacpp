@@ -67,6 +67,18 @@ try {
         if ($defaultLayout.QtKit -ne "mingw_64") {
             throw "Windows amd64 default Qt kit must be mingw_64."
         }
+        $expectedKits = @{
+            "msvc" = "msvc2022_64"
+            "mingw" = "mingw_64"
+            "llvm-mingw" = "llvm-mingw_64"
+        }
+        foreach ($toolchain in $expectedKits.Keys) {
+            $layout = Resolve-WindowsBuildLayout -RepoRoot $probeDir -Preset "dev" `
+                -Arch "amd64" -Toolchain $toolchain
+            if ($layout.QtKit -ne $expectedKits[$toolchain]) {
+                throw "Toolchain '$toolchain' resolved unexpected Qt kit '$($layout.QtKit)'."
+            }
+        }
     }
     finally {
         Pop-Location

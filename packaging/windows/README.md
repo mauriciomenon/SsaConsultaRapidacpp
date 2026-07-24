@@ -1,15 +1,14 @@
 # Build And Packaging - Windows
 
-Alvo principal validado: Windows 11 amd64, MSVC x64 e Qt 6.11.x
-`msvc2022_64`. O nome do kit Qt identifica a ABI e continua correto com Visual
-Studio 2026.
+Alvo default validado: Windows 11 amd64, MinGW GCC e Qt 6.11.x `mingw_64`.
+MSVC e LLVM-MinGW continuam disponiveis por selecao explicita.
 
 ## Dependencias obrigatorias para desenvolvimento
 
 1. Visual Studio 2026 ou Build Tools com `Desktop development with C++`, MSVC
    x64 e Windows SDK:
    https://visualstudio.microsoft.com/downloads/
-2. Qt Online Installer com Qt 6.11.x `msvc2022_64`, Qt Base e Qt Declarative:
+2. Qt Online Installer com o kit Qt 6.11.x escolhido, Qt Base e Qt Declarative:
    https://doc.qt.io/qt-6/get-and-install-qt.html
 3. CMake 3.24+:
    https://cmake.org/download/
@@ -69,8 +68,8 @@ Configuracao explicita, quando necessaria:
 ## Build e teste
 
 ```powershell
-.\scripts\build-windows.ps1
-ctest --preset dev --output-on-failure
+.\build-windows.ps1 -Toolchain mingw
+ctest --test-dir .\build\windows\amd64\mingw_64\dev --output-on-failure
 ```
 
 Nao e necessario abrir Developer PowerShell manualmente. Quando MSVC e
@@ -89,11 +88,12 @@ Install-Module Pester -Scope CurrentUser -RequiredVersion 5.7.1
 O Pester inbox 3.4 do Windows PowerShell nao suporta a sintaxe usada pelos
 testes deste repositorio.
 
-Selecao explicita de kit independente:
+Selecao explicita:
 
 ```powershell
-.\scripts\build-windows.ps1 -QtSubdir llvm-mingw_64
-.\scripts\build-windows.ps1 -QtSubdir mingw_64
+.\build-windows.ps1 -Toolchain mingw
+.\build-windows.ps1 -Toolchain llvm-mingw
+.\build-windows.ps1 -Toolchain msvc
 ```
 
 Kits MSVC, LLVM-MinGW e MinGW usam ABIs diferentes. Nunca misture compilador,
@@ -103,9 +103,9 @@ bibliotecas ou DLLs entre kits.
 
 | Ordem | Compilador | Estado |
 | --- | --- | --- |
-| 1 | MSVC 19.51, Visual Studio 2026 18.8 | Validado com build, testes e pacote amd64 |
-| 2 | LLVM-MinGW 17.0.6 | Kit/toolchain independente disponivel; reconhecido sem gate completo nesta rodada |
-| 3 | MinGW GCC 13.1 ou 11.2 | Toolchains independentes; use somente a versao correspondente ao kit Qt; reconhecidos sem gate completo nesta rodada |
+| 1 | MinGW GCC 13.1 | Default; build, 610 testes e smoke sem DB validados |
+| 2 | MSVC 19.51 | Build GUI validado com SDK 10.0.26100.0 |
+| 3 | LLVM-MinGW 17.0.6 | Falha: biblioteca C++ nao fornece `std::stop_token` |
 | 4 | clang-cl 22.1.3 | Instalado para diagnostico; build com Qt MSVC nao possui gate e nao e suportado nesta versao |
 
 WebAssembly nao e alvo desktop e nao e fallback de build.

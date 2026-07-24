@@ -5,6 +5,8 @@ param(
     [string]$QtDir = "",
     [string]$QtRoot = "",
     [string]$QtSubdir = "",
+    [ValidateSet("auto", "msvc", "mingw", "llvm-mingw")]
+    [string]$Toolchain = "auto",
     [string]$SQLiteRoot = "",
     [string]$ProjectRoot = "",
     [string]$Target = "",
@@ -29,7 +31,8 @@ if ($ReuseBuild -and
 . (Join-Path $scriptDir "lib\windows_build_layout.ps1")
 $configureScript = Join-Path $repoRoot "tools\configure-dev.ps1"
 $preset = if ($Preset) { $Preset } else { "dev" }
-$layout = Resolve-WindowsBuildLayout -RepoRoot $repoRoot -Preset $preset -Arch $Arch -QtDir $QtDir -QtSubdir $QtSubdir
+$layout = Resolve-WindowsBuildLayout -RepoRoot $repoRoot -Preset $preset -Arch $Arch `
+    -QtDir $QtDir -QtSubdir $QtSubdir -Toolchain $Toolchain
 $arch = $layout.Arch
 $qtKit = $layout.QtKit
 $buildDir = $layout.BuildDir
@@ -63,12 +66,17 @@ Defaults:
   Repository root: directory that contains this script.
 
 Explicit options can be used through:
-  .\scripts\build-windows.ps1 -Preset <preset> [-Arch <amd64|arm64>] [-QtDir <qt-dir>] [-QtRoot <root>] [-QtSubdir <kit>] [-SQLiteRoot <path>] [-Target <target>] [-CmakeExtraArgs <args>]
+  .\scripts\build-windows.ps1 -Toolchain <auto|msvc|mingw|llvm-mingw> [-Arch <amd64|arm64>] [-Preset <preset>] [-QtDir <qt-dir>] [-QtRoot <root>] [-QtSubdir <kit>] [-SQLiteRoot <path>] [-Target <target>] [-CmakeExtraArgs <args>]
 
-Qt kit examples:
-  .\scripts\build-windows.ps1
-  .\scripts\build-windows.ps1 -QtSubdir llvm-mingw_64
-  .\scripts\build-windows.ps1 -QtSubdir mingw_64
+Toolchain examples:
+  .\build-windows.ps1 -Toolchain mingw
+  .\build-windows.ps1 -Toolchain llvm-mingw
+  .\build-windows.ps1 -Toolchain msvc
+
+Compiler and linker drivers:
+  msvc: cl.exe + link.exe
+  mingw: g++.exe + GNU ld.exe
+  llvm-mingw: clang++.exe + ld.lld.exe
 "@
     return
 }
@@ -104,14 +112,6 @@ if (-not $cmakeExecutable) {
     throw 'CMake was not found in PATH.'
 }
 
-$cachedCompiler = ''
-if (Test-Path -LiteralPath $cacheFile -PathType Leaf) {
-    $compilerLine = Select-String -LiteralPath $cacheFile -Pattern '^CMAKE_CXX_COMPILER:[^=]+=(.+)$' |
-        Select-Object -First 1
-    if ($compilerLine) {
-        $cachedCompiler = $compilerLine.Matches[0].Groups[1].Value.Trim()
-    }
-}
 $msvcKitSelected = $qtKit -like 'msvc*'
 
 $cacheIsReusable = $false
@@ -177,7 +177,22 @@ if ($msvcKitSelected -and -not (Get-Command cl.exe -ErrorAction SilentlyContinue
     Import-Module $devShellModule.FullName -ErrorAction Stop
     $vsTargetArch = if ($arch -eq 'arm64') { 'arm64' } else { 'amd64' }
     $expectedTargetArch = if ($arch -eq 'arm64') { 'arm64' } else { 'x64' }
-    Enter-VsDevShell -VsInstallPath $vsInstallPath -SkipAutomaticLocation -Arch $vsTargetArch -HostArch amd64
+    $sdkBinaryArch = if ($arch -eq 'arm64') { 'arm64' } else { 'x64' }
+    $windowsKitsBin = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\bin'
+    $completeSdk = Get-ChildItem -LiteralPath $windowsKitsBin -Directory -ErrorAction SilentlyContinue |
+        Where-Object {
+            $_.Name -match '^\d+\.\d+\.\d+\.\d+$' -and
+            (Test-Path -LiteralPath (Join-Path $_.FullName "$sdkBinaryArch\mt.exe") -PathType Leaf) -and
+            (Test-Path -LiteralPath (Join-Path $_.FullName "$sdkBinaryArch\midlrtmd.dll") -PathType Leaf)
+        } |
+        Sort-Object { [version]$_.Name } -Descending |
+        Select-Object -First 1
+    if (-not $completeSdk) {
+        throw "MSVC was selected, but no complete Windows SDK with mt.exe and midlrtmd.dll was found."
+    }
+    Write-Output "Using Windows SDK: $($completeSdk.Name)"
+    Enter-VsDevShell -VsInstallPath $vsInstallPath -SkipAutomaticLocation -Arch $vsTargetArch `
+        -HostArch amd64 -DevCmdArguments "-winsdk=$($completeSdk.Name)"
     if ($env:VSCMD_ARG_HOST_ARCH -ne 'x64' -or $env:VSCMD_ARG_TGT_ARCH -ne $expectedTargetArch -or
         -not (Get-Command cl.exe -ErrorAction SilentlyContinue)) {
         throw "MSVC Developer environment initialization failed: host=$env:VSCMD_ARG_HOST_ARCH target=$env:VSCMD_ARG_TGT_ARCH"
@@ -202,7 +217,7 @@ if ($effectiveCmakeExtraArgs.Count -gt 0) {
     $configureParams.CmakeExtraArgs = $effectiveCmakeExtraArgs
 }
 
-$configurationRequested = $QtDir -or $QtRoot -or $QtSubdir -or $SQLiteRoot -or
+$configurationRequested = $QtDir -or $QtRoot -or $QtSubdir -or $Toolchain -ne "auto" -or $SQLiteRoot -or
     @($CmakeExtraArgs | Where-Object { $_ }).Count -gt 0
 if ($configurationRequested -or -not $cacheIsReusable) {
     & $configureScript @configureParams

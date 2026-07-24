@@ -5,6 +5,8 @@ param(
     [string]$QtDir = "",
     [string]$QtRoot = "",
     [string]$QtSubdir = "",
+    [ValidateSet("auto", "msvc", "mingw", "llvm-mingw")]
+    [string]$Toolchain = "auto",
     [string]$SQLiteRoot = "",
     [string]$ProjectRoot = "",
     [string[]]$CmakeExtraArgs = @(),
@@ -19,7 +21,7 @@ $baseScript = (Resolve-Path (Join-Path $scriptDir "..\build-windows.ps1")).Path
 if ($Help) {
     Write-Output @"
 Usage:
-  .\scripts\lazy_scripts\build-windows.ps1 [-Preset <preset>] [-Arch <amd64|arm64>] [-QtDir <qt-dir>] [-QtRoot <root>] [-QtSubdir <kit>] [-SQLiteRoot <path>] [-ProjectRoot <dir>] [-CmakeExtraArgs <args>] [-Help]
+  .\scripts\lazy_scripts\build-windows.ps1 [-Toolchain <auto|msvc|mingw|llvm-mingw>] [-Preset <preset>] [-Arch <amd64|arm64>] [-QtDir <qt-dir>] [-QtRoot <root>] [-QtSubdir <kit>] [-SQLiteRoot <path>] [-ProjectRoot <dir>] [-CmakeExtraArgs <args>] [-Help]
 
 Incremental build entrypoint. Reuses only a compatible canonical build cache.
 
@@ -29,6 +31,7 @@ Options:
   -QtDir        Optional. Qt install root to pass to configure.
   -QtRoot       Optional. Root containing versioned Qt installs. Default: C:\Qt.
   -QtSubdir     Optional. Desktop kit such as msvc2022_64 or llvm-mingw_64.
+  -Toolchain    Optional. Explicit compiler family. Default: auto.
   -SQLiteRoot   Optional. SQLite root to pass to configure.
   -ProjectRoot  Optional. Override repository root.
   -CmakeExtraArgs Optional. Additional CMake configure arguments.
@@ -37,5 +40,5 @@ Options:
 }
 
 & $baseScript -Preset $Preset -Arch $Arch -QtDir $QtDir -QtRoot $QtRoot `
-    -QtSubdir $QtSubdir -SQLiteRoot $SQLiteRoot -ProjectRoot $repoRoot `
+    -QtSubdir $QtSubdir -Toolchain $Toolchain -SQLiteRoot $SQLiteRoot -ProjectRoot $repoRoot `
     -CmakeExtraArgs $CmakeExtraArgs -ReuseBuild

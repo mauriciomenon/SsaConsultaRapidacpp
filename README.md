@@ -191,8 +191,7 @@ O CI e a referencia de deteccao em `tools/qt-detect.conf` usam Qt 6.11.0. Os
 scripts aceitam qualquer patch da familia 6.11.x e selecionam o mais alto
 valido. Versoes validadas no desenvolvimento local atual:
 
-- Windows 11 amd64: Qt 6.11.1 `msvc2022_64`, Visual Studio 2026 18.8 e
-  MSVC 19.51.
+- Windows 11 amd64: Qt 6.11.1 `mingw_64` e MinGW GCC 13.1.
 - Debian/WSL amd64: Qt 6.11.1 `gcc_64` e GCC 14.2.
 - macOS arm64: Qt 6.11.x e Apple Clang, validados em rodadas anteriores.
 
@@ -200,9 +199,9 @@ Ordem dos toolchains Windows para este projeto:
 
 | Ordem | Toolchain | Estado |
 | --- | --- | --- |
-| 1 | MSVC 19.51 com Qt `msvc2022_64` | Validado; build principal |
-| 2 | LLVM-MinGW 17.0.6 com Qt `llvm-mingw_64` | Reconhecido; sem gate completo |
-| 3 | MinGW GCC 13.1/11.2 com Qt `mingw_64` | Reconhecido; sem gate completo |
+| 1 | MinGW GCC 13.1 com Qt `mingw_64` | Default; build e 610 testes validados |
+| 2 | MSVC 19.51 com Qt `msvc2022_64` | Build GUI validado com SDK 10.0.26100.0 |
+| 3 | LLVM-MinGW 17.0.6 com Qt `llvm-mingw_64` | Incompativel com `std::stop_token` |
 | 4 | clang-cl 22.1.3 com Qt MSVC | Nao suportado nesta versao; use somente para diagnostico |
 
 ## Configuracao rapida
