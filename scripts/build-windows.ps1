@@ -9,6 +9,7 @@ param(
     [string]$ProjectRoot = "",
     [string]$Target = "",
     [string[]]$CmakeExtraArgs = @(),
+    [switch]$ReuseBuild,
     [switch]$Help
 )
 
@@ -45,6 +46,7 @@ Usage:
 Build the Windows target (default preset: dev).
 
 Defaults:
+  Build mode: clean. Use scripts\lazy_scripts\build-windows.ps1 for incremental builds.
   Preset: dev
   Architecture: host architecture, or amd64 when Windows reports x64
   Qt kit: msvc2022_64 for amd64; msvc2022_arm64 for arm64
@@ -59,6 +61,11 @@ Qt kit examples:
   .\scripts\build-windows.ps1 -QtSubdir mingw_64
 "@
     return
+}
+
+if (-not $ReuseBuild -and (Test-Path -LiteralPath $buildDir -PathType Container)) {
+    Write-Output "Removing previous Windows build: $buildDir"
+    Remove-Item -LiteralPath $buildDir -Recurse -Force
 }
 
 $processPathExt = $env:PATHEXT -split ';'

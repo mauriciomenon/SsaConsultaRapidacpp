@@ -43,6 +43,7 @@ placeholder
             }
 
             (Test-Path -LiteralPath $sentinel -PathType Leaf) | Should -BeTrue
+            (Test-Path -LiteralPath $buildDir) | Should -BeFalse
             $failure.Exception.Message | Should -Match "build.*exit code 23"
         }
         finally {

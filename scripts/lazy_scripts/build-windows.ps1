@@ -20,6 +20,8 @@ if ($Help) {
 Usage:
   .\scripts\lazy_scripts\build-windows.ps1 [-Preset <preset>] [-Arch <amd64|arm64>] [-QtDir <qt-dir>] [-QtRoot <root>] [-QtSubdir <kit>] [-SQLiteRoot <path>] [-ProjectRoot <dir>] [-Help]
 
+Incremental build entrypoint. Reuses only a compatible canonical build cache.
+
 Options:
   -Preset       Optional. CMake preset to build. Default: dev.
   -Arch         Optional. Windows target architecture: amd64 or arm64.
@@ -32,4 +34,4 @@ Options:
     return
 }
 
-& $baseScript -Preset $Preset -Arch $Arch -QtDir $QtDir -QtRoot $QtRoot -QtSubdir $QtSubdir -SQLiteRoot $SQLiteRoot -ProjectRoot $repoRoot
+& $baseScript -Preset $Preset -Arch $Arch -QtDir $QtDir -QtRoot $QtRoot -QtSubdir $QtSubdir -SQLiteRoot $SQLiteRoot -ProjectRoot $repoRoot -ReuseBuild

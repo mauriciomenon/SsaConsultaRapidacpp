@@ -65,7 +65,7 @@ exit /b 0
             "CMAKE_MAKE_PROGRAM:FILEPATH=/usr/bin/ninja"
         ) | Set-Content -LiteralPath (Join-Path $script:buildDir "CMakeCache.txt") -Encoding ASCII
 
-        & $script:buildScript -ProjectRoot $script:repoRoot
+        & $script:buildScript -ProjectRoot $script:repoRoot -ReuseBuild
 
         (Test-Path -LiteralPath $script:configureMarker -PathType Leaf) | Should -BeTrue
         (Get-Content -LiteralPath $script:configureMarker) | Should -Be "dev|--fresh,-DVCPKG_TARGET_TRIPLET=x64-windows|msvc2022_64"
@@ -80,7 +80,7 @@ exit /b 0
             "CMAKE_MAKE_PROGRAM:FILEPATH=C:/Qt/Tools/Ninja/ninja.exe"
         ) | Set-Content -LiteralPath (Join-Path $script:buildDir "CMakeCache.txt") -Encoding ASCII
 
-        & $script:buildScript -ProjectRoot $script:repoRoot
+        & $script:buildScript -ProjectRoot $script:repoRoot -ReuseBuild
 
         (Test-Path -LiteralPath $script:configureMarker -PathType Leaf) | Should -BeTrue
         (Get-Content -LiteralPath $script:configureMarker) | Should -Be "dev|--fresh,-DVCPKG_TARGET_TRIPLET=x64-windows|msvc2022_64"
@@ -108,7 +108,7 @@ exit /b 0
             "SQLite3_LIBRARY:FILEPATH=$windowsSqliteLibrary"
         ) | Set-Content -LiteralPath (Join-Path $script:buildDir "CMakeCache.txt") -Encoding ASCII
 
-        & $script:buildScript -ProjectRoot $script:repoRoot
+        & $script:buildScript -ProjectRoot $script:repoRoot -ReuseBuild
 
         (Test-Path -LiteralPath $script:configureMarker -PathType Leaf) | Should -BeFalse
         $buildPath = Get-Content -LiteralPath $script:pathLog
@@ -124,7 +124,7 @@ exit /b 0
             "CMAKE_MAKE_PROGRAM:FILEPATH=/usr/bin/ninja"
         ) | Set-Content -LiteralPath (Join-Path $script:buildDir "CMakeCache.txt") -Encoding ASCII
 
-        & $script:buildScript -ProjectRoot $script:repoRoot
+        & $script:buildScript -ProjectRoot $script:repoRoot -ReuseBuild
 
         (Get-Content -LiteralPath $script:configureMarker) | Should -Be "dev|--fresh,-DVCPKG_TARGET_TRIPLET=x64-windows|msvc2022_64"
         (Get-Content -LiteralPath $script:cmakeLog) | Should -Match ([regex]::Escape("--build $script:buildDir"))
@@ -143,7 +143,7 @@ exit /b 0
             "Qt6_DIR:PATH=C:/Qt/6.11.1/mingw_64/lib/cmake/Qt6"
         ) | Set-Content -LiteralPath (Join-Path $script:buildDir "CMakeCache.txt") -Encoding ASCII
 
-        & $script:buildScript -ProjectRoot $script:repoRoot
+        & $script:buildScript -ProjectRoot $script:repoRoot -ReuseBuild
 
         (Get-Content -LiteralPath $script:configureMarker) | Should -Be "dev|--fresh,-DVCPKG_TARGET_TRIPLET=x64-windows|msvc2022_64"
     }
@@ -173,7 +173,7 @@ exit /b 23
     It "uses the arm64 Qt kit, triplet, and canonical build directory" {
         $expectedBuildDir = Join-Path $script:repoRoot "build/windows/arm64/msvc2022_arm64/dev"
 
-        & $script:buildScript -ProjectRoot $script:repoRoot -Arch arm64
+        & $script:buildScript -ProjectRoot $script:repoRoot -Arch arm64 -ReuseBuild
 
         (Get-Content -LiteralPath $script:configureMarker) | Should -Be "dev|-DVCPKG_TARGET_TRIPLET=arm64-windows|msvc2022_arm64"
         (Get-Content -LiteralPath $script:configureBinaryMarker) | Should -Be $expectedBuildDir
@@ -200,7 +200,7 @@ exit /b 23
 
     It "preserves an explicit compatible arm64 vcpkg triplet" {
         & $script:buildScript -ProjectRoot $script:repoRoot -Arch arm64 `
-            -CmakeExtraArgs "-DVCPKG_TARGET_TRIPLET=arm64-windows-static"
+            -CmakeExtraArgs "-DVCPKG_TARGET_TRIPLET=arm64-windows-static" -ReuseBuild
 
         (Get-Content -LiteralPath $script:configureMarker) | Should -Be "dev|-DVCPKG_TARGET_TRIPLET=arm64-windows-static|msvc2022_arm64"
     }
@@ -215,5 +215,16 @@ exit /b 23
         {
             & $script:buildScript -ProjectRoot $script:repoRoot @parameters
         } | Should -Throw -ExpectedMessage "*incompatible*"
+    }
+
+    It "removes the canonical build directory by default" {
+        $sentinel = Join-Path $script:buildDir "stale-output.txt"
+        Set-Content -LiteralPath $sentinel -Value "stale" -Encoding ASCII
+
+        & $script:buildScript -ProjectRoot $script:repoRoot
+
+        (Test-Path -LiteralPath $sentinel) | Should -BeFalse
+        (Get-Content -LiteralPath $script:configureMarker) |
+            Should -Be "dev|-DVCPKG_TARGET_TRIPLET=x64-windows|msvc2022_64"
     }
 }

@@ -118,6 +118,7 @@ if ($CmakeExtraArgs -and $CmakeExtraArgs.Count -gt 0) {
 if ($SkipTests) {
     $buildParams.Target = "ssa_consulta_rapida"
 }
+try {
 & $buildScript @buildParams
 if ($LASTEXITCODE -ne 0) {
     throw "Windows build failed with exit code $LASTEXITCODE."
@@ -136,7 +137,6 @@ if (-not (Test-Path $binary)) {
 
 New-Item -ItemType Directory -Path $artifactDir, $releaseStage -Force | Out-Null
 
-try {
 Copy-Item $binary (Join-Path $artifactDir "ssa_consulta_rapida.exe")
 $sqliteRuntime = Join-Path $buildDir "sqlite3.dll"
 if (-not (Test-Path -LiteralPath $sqliteRuntime -PathType Leaf)) {
@@ -360,6 +360,8 @@ finally {
         -not (Get-ChildItem -LiteralPath $stagingRoot -Force | Select-Object -First 1)) {
         Remove-Item -LiteralPath $stagingRoot -Force
     }
+    Get-Item -LiteralPath $buildDir -Force -ErrorAction SilentlyContinue |
+        Remove-Item -Recurse -Force
 }
 
 Write-Output "Windows release artifacts generated:"
