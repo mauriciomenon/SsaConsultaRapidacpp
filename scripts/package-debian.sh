@@ -160,7 +160,8 @@ if [[ "${run_tests}" == "true" ]]; then
   cmake --build --preset "${preset}"
   ctest --preset "${preset}" --output-on-failure
 else
-  cmake --build --preset "${preset}" --target ssa_consulta_rapida
+  cmake --build --preset "${preset}" --target ssa_consulta_rapida \
+    ssa_consulta_rapida_cli
 fi)
 
 build_binary="${build_dir}/ssa_consulta_rapida"
