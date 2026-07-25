@@ -1686,3 +1686,19 @@ Matriz completa de acertos, adicoes, erros e ordem de execucao:
   antes de criar/configurar o environment GitHub `release` com revisores
   obrigatorios. O YAML referencia esse environment, mas essa dependencia nao
   bloqueia publicacao ou CI no GitLab e Bitbucket. Ver `ROUND_STATUS.md`.
+
+## Build e desempenho v0.9.16
+
+- [PENDING] [STARTUP-FIRST-PAGE] Medir `first_page` com um banco real
+  controlado. Os packages v0.9.16 provaram primeira execucao sem banco, mas a
+  consulta terminou `failed` por contrato e nao produziu pagina com dados.
+- [PENDING] [STARTUP-PRE-QML] Perfilar o intervalo anterior a
+  `qml_object_created`. Analytics custa apenas 9-16 ms; nao retirar seu
+  initializer do caminho pre-QML sem evidencia nova. No host atual, MSVC abre
+  mais rapido que LLVM no Windows e deve continuar como default.
+- [PENDING] [WINDOWS-ARM64-PACKAGE] Repetir os packages MSVC/LLVM e a
+  validacao do Visual C++ runtime em host Windows arm64 real.
+- [EXTERNAL] [BITBUCKET-WORKSPACE-QUOTA] O push alerta que o workspace se
+  aproxima de 1 GiB. Este repositorio local ocupa cerca de 26 MiB e o maior
+  blob historico tem 572 KiB; tratar a quota no workspace Bitbucket sem
+  reescrever o historico deste repositorio.

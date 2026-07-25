@@ -1,5 +1,37 @@
 # Status Da Rodada
 
+## Build multiplataforma v0.9.16 - 2026-07-24
+
+- **ENTREGUE** no branch `master`; HEAD `0c5a1d2` confirmado em GitLab e
+  Bitbucket. O working tree esta limpo.
+- Windows amd64 possui entregas independentes em
+  `dist/windows/amd64/{msvc,llvm}`. MSVC usa `cl.exe + link.exe`; LLVM usa
+  `clang-cl 22.1.3 + lld-link` com Qt `msvc2022_64`. MinGW permanece apenas
+  explicito e LLVM-MinGW 17 falha cedo por nao oferecer `std::jthread`.
+- MSVC passou 610/610 antes do ajuste exclusivo de deploy; o repackage final
+  recompilou 296/296. LLVM passou 610/610. Ambos incluem o Visual C++ runtime
+  14.51 correspondente, hashes integrais, PE x64 e zero staging/build parcial.
+- Debian amd64/GCC 14.2 passou 641/641. O package final possui 1698/1698
+  hashes, ELF x86-64, zero dependencia ausente e RUNPATH somente por
+  `$ORIGIN`; nenhum caminho do Qt de desenvolvimento permaneceu no pacote.
+- `dist/` contem somente os namespaces finais `windows/amd64/{msvc,llvm}` e
+  `linux/amd64/gcc`, cada um com `current`, `final` e releases imutaveis
+  validas. Arvores e formatos legados foram removidos.
+- Primeiro frame warm: MSVC 980-1266 ms, LLVM 2305-2711 ms e Debian
+  498-608 ms. Cold: MSVC 5463 ms, LLVM 13965 ms e Debian 980 ms. Analytics
+  consumiu somente 9-16 ms; retirar o initializer do caminho pre-QML nao
+  oferece ganho relevante agora. O custo dominante esta antes de
+  `qml_object_created` e melhora fortemente com cache.
+- As medicoes usaram a primeira execucao sem banco e provaram que nenhum
+  `ssas.db` e exigido ou criado. Nao houve primeira pagina com dados; essa
+  medicao exige um banco real controlado em rodada propria.
+- O repositorio Git local tem cerca de 26 MiB e maior blob historico de
+  572 KiB. Nenhum binario grande entrou nestes commits. O alerta proximo de
+  1 GiB vem da quota do workspace Bitbucket e permanece externo.
+
+Proxima atividade unica: medir primeira pagina com banco real e perfilar o
+intervalo anterior a `qml_object_created`; manter MSVC como default Windows.
+
 ## Candidato v0.9.15 - 2026-07-20
 
 - Branch `master`; codigo funcional em `9415847`; smoke fail-closed e versao
