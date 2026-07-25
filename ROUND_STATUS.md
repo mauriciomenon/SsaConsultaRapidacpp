@@ -1,5 +1,54 @@
 # Status Da Rodada
 
+## Marco v0.9.16 + diagnostico wizard "Configurar Dados" - 2026-07-25
+
+- **ENTREGUE (documental)**: tag anotada `v0.9.16` criada em `65fda46` e
+  publicada em GitLab e Bitbucket. Nenhum commit de codigo nesta sessao; a tag
+  consolida a release `v0.9.16` preexistente como ponto de retorno.
+- Descoberta operacional: `remote.origin.pushurl` tem DOIS alvos (GitLab e
+  Bitbucket). Um unico `git push origin <ref>` publica nos dois. O nome
+  `bitbucket` NAO existe como remote separado; tentar `git push bitbucket`
+  falha com `fatal: 'bitbucket' does not appear to be a git repository`.
+  `AGENTS.md` ainda descreve `bitbucket` como separado - divergencia conhecida
+  a reconciliar em outra sessao.
+- Tag `v0.9.16` verificada nos dois refs: objeto anotado
+  `c2f604bef5550de9c4d3d00173ae7889e6232ea1` apontando para
+  `65fda4616f4bcec251f254e29c6b7bb44766dea1`.
+- Diagnostico de causa-raiz confirmado por tres agentes Explore + leitura
+  direta de codigo. Sintomas do usuario: `falha operacional` em TODOS os xlsx
+  importados, `cannot open sqlite database: unable to open database file` e
+  usuario preso no first-run sem opcao de criar banco.
+- Causa-raiz UNICA: commit `0802982 "fix(startup): allow empty first-run data
+  root"` (2026-07-24) criou `~/.ssaconsultarapida/` em
+  `app/desktop/main.cpp:73-80` mas NAO criou o subdir `data/`. Como
+  `StartupOptions.cpp:139-141` resolve o banco default para
+  `<root>/data/ssas.db` e SQLite `OPEN_CREATE` nao cria diretorios pai, toda
+  abertura retorna `SQLITE_CANTOPEN (14)`. O rollback atomico do lote de 64
+  em `SpreadsheetImportWorkflowPort.cpp:1450-1475` propaga a falha para TODOS
+  os arquivos do lote, mapeado para `operation_failed` -> "falha operacional"
+  em `WorkflowCommandViewModel.cpp:124-126`.
+- Plano de correcao aprovado pelo proprietario: Wizard Unificado "Configurar
+  Dados" com 4 opcoes (criar vazio / importar DB / importar XLSX / importar
+  DB+XLSX), modal no first-run e acessivel via menu
+  `Arquivo > Configurar dados...`. Saida por relancamento via
+  `IApplicationLauncher::launchWithDatabase` (reusa o padrao de
+  `DatabaseSwitchViewModel`). Nenhuma linha de codigo foi alterada nesta
+  sessao; o plano completo esta em
+  `docs/plans/2026-07-25-v0.9.16-glm-5.2-handoff.md`.
+- Por que o bug nao foi pego pelos testes: os testes sempre fazem
+  `create_directories(dbPath.parent_path())` antes de abrir (ex.:
+  `tests/integration/SpreadsheetImportWorkflowPortTests.cpp:5525`). O gap esta
+  apenas no caminho de producao.
+- Estado Git: branch `master`, HEAD `65fda46`, working tree limpo. `gh`
+  permanece suspenso (HTTP 403). Bitbucket alertou quota proxima de 1 GB
+  (item externo permanente).
+
+Proxima atividade unica: implementar o Wizard Unificado "Configurar Dados"
+conforme o handoff em
+`docs/plans/2026-07-25-v0.9.16-glm-5.2-handoff.md`, comecando pelo Slice 1
+(fix blocker do dir `data/` em `app/desktop/main.cpp`) que resolve 3 dos 4
+sintomas isoladamente.
+
 ## Build multiplataforma v0.9.16 - 2026-07-24
 
 - **ENTREGUE** no branch `master`; push confirmado em GitLab e Bitbucket. O

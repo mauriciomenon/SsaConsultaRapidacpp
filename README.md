@@ -10,6 +10,10 @@ Consulte [`ROUND_STATUS.md`](ROUND_STATUS.md) antes de avaliar sincronizacao,
 publicacao ou CI. Neste repositorio, `origin` aponta para GitLab, `bitbucket`
 aponta para Bitbucket e `gh` aponta para o mirror GitHub atualmente indisponivel.
 
+Para transferencia de contexto da v0.9.16 (diagnostico e plano do Wizard
+"Configurar Dados", causa-raiz do bug de first-run sem dir `data/`, erros
+conhecidos e pendencias canonicas), leia
+[`docs/plans/2026-07-25-v0.9.16-glm-5.2-handoff.md`](docs/plans/2026-07-25-v0.9.16-glm-5.2-handoff.md).
 Para transferencia de contexto da v0.9.15, inclusive erros conhecidos e
 pendencias canonicas, leia
 [`docs/plans/2026-07-20-v0.9.15-glm-5.2-handoff.md`](docs/plans/2026-07-20-v0.9.15-glm-5.2-handoff.md).
