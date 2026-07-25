@@ -1689,13 +1689,15 @@ Matriz completa de acertos, adicoes, erros e ordem de execucao:
 
 ## Build e desempenho v0.9.16
 
-- [PENDING] [STARTUP-FIRST-PAGE] Medir `first_page` com um banco real
-  controlado. Os packages v0.9.16 provaram primeira execucao sem banco, mas a
-  consulta terminou `failed` por contrato e nao produziu pagina com dados.
-- [PENDING] [STARTUP-PRE-QML] Perfilar o intervalo anterior a
-  `qml_object_created`. Analytics custa apenas 9-16 ms; nao retirar seu
-  initializer do caminho pre-QML sem evidencia nova. No host atual, MSVC abre
-  mais rapido que LLVM no Windows e deve continuar como default.
+- [RESOLVED] [STARTUP-FIRST-PAGE] Banco sintetico controlado com schema
+  canonico e 100.000 linhas publicou 50 linhas com sucesso. Release Windows:
+  MSVC 4208 ms cold e 1239-1343 ms warm; LLVM 3195 ms cold e 1214-1563 ms
+  warm. Debian/WSL com banco no NTFS: 14359 ms cold e 2775-2892 ms warm.
+- [PENDING] [STARTUP-PRE-QML] A medicao com dados mostrou analytics em cerca
+  de 1650 ms cold no Windows e 11373 ms cold no Debian/WSL sobre NTFS, contra
+  13-26 ms warm. Deferir a inicializacao cold para depois do primeiro frame,
+  preservando cancelamento, erros visiveis e o resultado final. Medir de novo
+  antes de aceitar o ganho.
 - [PENDING] [WINDOWS-ARM64-PACKAGE] Repetir os packages MSVC/LLVM e a
   validacao do Visual C++ runtime em host Windows arm64 real.
 - [EXTERNAL] [BITBUCKET-WORKSPACE-QUOTA] O push alerta que o workspace se

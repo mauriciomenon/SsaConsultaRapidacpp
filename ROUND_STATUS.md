@@ -2,8 +2,8 @@
 
 ## Build multiplataforma v0.9.16 - 2026-07-24
 
-- **ENTREGUE** no branch `master`; HEAD `0c5a1d2` confirmado em GitLab e
-  Bitbucket. O working tree esta limpo.
+- **ENTREGUE** no branch `master`; push confirmado em GitLab e Bitbucket. O
+  working tree esta limpo.
 - Windows amd64 possui entregas independentes em
   `dist/windows/amd64/{msvc,llvm}`. MSVC usa `cl.exe + link.exe`; LLVM usa
   `clang-cl 22.1.3 + lld-link` com Qt `msvc2022_64`. MinGW permanece apenas
@@ -17,20 +17,26 @@
 - `dist/` contem somente os namespaces finais `windows/amd64/{msvc,llvm}` e
   `linux/amd64/gcc`, cada um com `current`, `final` e releases imutaveis
   validas. Arvores e formatos legados foram removidos.
-- Primeiro frame warm: MSVC 980-1266 ms, LLVM 2305-2711 ms e Debian
-  498-608 ms. Cold: MSVC 5463 ms, LLVM 13965 ms e Debian 980 ms. Analytics
-  consumiu somente 9-16 ms; retirar o initializer do caminho pre-QML nao
-  oferece ganho relevante agora. O custo dominante esta antes de
-  `qml_object_created` e melhora fortemente com cache.
-- As medicoes usaram a primeira execucao sem banco e provaram que nenhum
-  `ssas.db` e exigido ou criado. Nao houve primeira pagina com dados; essa
-  medicao exige um banco real controlado em rodada propria.
+- A primeira execucao sem banco continua valida: nenhum `ssas.db` e exigido
+  ou criado. A medicao adicional usou banco sintetico controlado, schema
+  canonico, 100.000 linhas e publicou 50/50 linhas na primeira pagina.
+- Release Windows cold: MSVC publicou a primeira pagina em 4208 ms e LLVM em
+  3195 ms. Warm: MSVC 1239-1343 ms e LLVM 1214-1563 ms. MSVC permanece
+  default pela menor variacao warm e pelo build mais rapido.
+- Debian/WSL com banco no filesystem Windows publicou a primeira pagina em
+  14359 ms cold e 2775-2892 ms warm. O custo warm de query foi 2290-2367 ms,
+  evidenciando o custo da fronteira WSL/NTFS; nao extrapolar para Debian com
+  banco em filesystem Linux nativo.
+- O initializer de analytics custou cerca de 1650 ms cold no Windows e
+  11373 ms cold no Debian/WSL sobre NTFS, mas somente 13-26 ms warm. A
+  evidencia agora justifica tirar a inicializacao cold do caminho sincrono
+  pre-QML, sem remover analytics.
 - O repositorio Git local tem cerca de 26 MiB e maior blob historico de
   572 KiB. Nenhum binario grande entrou nestes commits. O alerta proximo de
   1 GiB vem da quota do workspace Bitbucket e permanece externo.
 
-Proxima atividade unica: medir primeira pagina com banco real e perfilar o
-intervalo anterior a `qml_object_created`; manter MSVC como default Windows.
+Proxima atividade unica: deferir a inicializacao cold de analytics para depois
+do primeiro frame e medir novamente; manter MSVC como default Windows.
 
 ## Candidato v0.9.15 - 2026-07-20
 

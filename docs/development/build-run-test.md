@@ -186,17 +186,17 @@ binario e nao mistura patches diferentes da familia 6.11.x.
 | Plataforma | Compilador | Estado atual |
 | --- | --- | --- |
 | Windows amd64 | MinGW GCC 13.1 | Build real, 610 testes e smoke sem DB validados |
-| Windows amd64 | MSVC 19.51 | Build release, 610 testes, pacote e startup sem DB validados |
+| Windows amd64 | MSVC 19.51 | Build release, 610 testes, pacote, startup sem DB e primeira pagina com 100.000 linhas validados |
 | Windows amd64 | LLVM-MinGW 17.0.6 | Falha: biblioteca C++ nao fornece `std::stop_token` |
-| Windows amd64 | clang-cl 22.1.3 + lld-link | Build release, 610 testes, pacote e startup sem DB validados |
-| Debian/WSL amd64 | GCC 14.2 | Build e 641 testes validados |
+| Windows amd64 | clang-cl 22.1.3 + lld-link | Build release, 610 testes, pacote, startup sem DB e primeira pagina com 100.000 linhas validados |
+| Debian/WSL amd64 | GCC 14.2 | Build, 641 testes e primeira pagina com 100.000 linhas validados |
 | Debian/WSL amd64 | Clang 19.1.7 | Suportado pelo fonte, sem gate completo nesta rodada |
 | macOS arm64 | Apple Clang | Historicamente validado; nao executado nesta rodada |
 
 `msvc2022_64`, `llvm-mingw_64` e `mingw_64` sao produtos Qt com ABIs
-diferentes. Mistura entre eles e `UNSUPPORTED`. O fato de clang-cl usar ABI
-MSVC nao basta para declarar o kit Qt MSVC validado; esse par exige um gate
-completo proprio. Kits `wasm_*` tambem nao sao alvos deste aplicativo desktop.
+diferentes. Mistura entre eles e `UNSUPPORTED`. Clang-cl/lld-link com o kit
+`msvc2022_64` passou gate completo proprio, mas continua em build e release
+separados do MSVC. Kits `wasm_*` nao sao alvos deste aplicativo desktop.
 
 ### Medicao Windows Debug
 
@@ -213,6 +213,25 @@ MSVC venceu o tempo de compilacao, mas MinGW venceu claramente o startup Debug
 nesta maquina. O initializer de analytics nao explica a lentidao: o intervalo
 dominante do MSVC ocorreu depois dele e antes da primeira consulta/QML. Nao
 extrapolar esses numeros para pacote Release sem medir o binario Release.
+
+### Medicao Release com primeira pagina
+
+Medicao de 2026-07-24 com banco sintetico controlado, schema canonico,
+100.000 linhas, pagina de 50 linhas e tres aberturas por binario:
+
+| Plataforma/toolchain | Frame cold | First page cold | Analytics cold | Frame warm | First page warm | Query warm |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Windows MSVC | 3941 ms | 4208 ms | 1645 ms | 1098-1192 ms | 1239-1343 ms | 273-274 ms |
+| Windows LLVM | 2888 ms | 3195 ms | 1661 ms | 1105-1220 ms | 1214-1563 ms | 230-465 ms |
+| Debian/WSL GCC, banco no NTFS | 12024 ms | 14359 ms | 11373 ms | 505-547 ms | 2775-2892 ms | 2290-2367 ms |
+
+Todas as amostras terminaram com `outcome=success`, `rows=50` e
+`total=100000`. O initializer de analytics e relevante na primeira abertura
+com dados e deve sair do caminho sincrono pre-QML. No Debian/WSL, a query warm
+e o maior custo porque o banco estava no filesystem Windows do workspace;
+nao usar esse numero como medida de Debian com banco em filesystem Linux
+nativo. MSVC permanece default Windows pelo build mais rapido e pela menor
+variacao warm.
 
 Testes isolados da deteccao:
 
