@@ -163,9 +163,24 @@ else
   cmake --build --preset "${preset}" --target ssa_consulta_rapida
 fi)
 
-binary="${build_dir}/ssa_consulta_rapida"
-if [[ ! -x "${binary}" ]]; then
-  echo "Binary not found: ${binary}" >&2
+build_binary="${build_dir}/ssa_consulta_rapida"
+if [[ ! -x "${build_binary}" ]]; then
+  echo "Binary not found: ${build_binary}" >&2
+  exit 1
+fi
+
+cmake_install_root="${stage_root}/cmake-install"
+cmake --install "${build_dir}" --prefix "${cmake_install_root}"
+packaged_binary="${cmake_install_root}/bin/ssa_consulta_rapida"
+if [[ ! -x "${packaged_binary}" ]]; then
+  echo "Installed binary not found: ${packaged_binary}" >&2
+  exit 1
+fi
+expected_runpath="\$ORIGIN/../lib:\$ORIGIN/lib"
+packaged_runpath="$(objdump -p "${packaged_binary}" |
+  awk '$1 == "RUNPATH" { print $2; exit }')"
+if [[ "${packaged_runpath}" != "${expected_runpath}" ]]; then
+  echo "Packaged binary has unsafe RUNPATH: ${packaged_runpath:-<empty>}" >&2
   exit 1
 fi
 
@@ -180,15 +195,17 @@ mkdir -p "${install_prefix}/lib/ssa_consulta_rapida/bin" \
          "${install_prefix}/share/icons/hicolor/scalable/apps" \
          "${install_prefix}/share/doc/ssa-consulta-rapida"
 
-cp "${binary}" "${install_prefix}/lib/ssa_consulta_rapida/bin/ssa_consulta_rapida"
+cp "${packaged_binary}" \
+  "${install_prefix}/lib/ssa_consulta_rapida/bin/ssa_consulta_rapida"
 chmod 0755 "${install_prefix}/lib/ssa_consulta_rapida/bin/ssa_consulta_rapida"
 cp "${repo_root}/THIRD_PARTY_NOTICES.md" \
   "${install_prefix}/share/doc/ssa-consulta-rapida/"
 cp "${repo_root}/third_party/tinted-themes/LICENSE" \
   "${install_prefix}/share/doc/ssa-consulta-rapida/TINTED_SCHEMES_LICENSE.txt"
-package_copy_runtime_libraries "${binary}" "${install_prefix}/lib/ssa_consulta_rapida/lib"
+package_copy_runtime_libraries "${build_binary}" \
+  "${install_prefix}/lib/ssa_consulta_rapida/lib"
 # Deploy de plugins Qt + imports QML para o bundle ser autocontido.
-package_copy_qt_resources "${binary}" "${install_prefix}/lib/ssa_consulta_rapida"
+package_copy_qt_resources "${build_binary}" "${install_prefix}/lib/ssa_consulta_rapida"
 cp "${repo_root}/resources/app_icon.png" \
    "${install_prefix}/share/icons/hicolor/512x512/apps/ssa-consulta-rapida.png"
 cp "${repo_root}/resources/app_icon.svg" \
