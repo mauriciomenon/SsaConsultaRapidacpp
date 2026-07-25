@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Do not inherit Windows temporary directories when invoked from WSL.
+export TMPDIR=/tmp
+export TMP=/tmp
+export TEMP=/tmp
+
 show_help() {
   cat <<'EOF'
 Usage:
