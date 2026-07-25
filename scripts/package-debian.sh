@@ -177,7 +177,7 @@ if [[ ! -x "${packaged_binary}" ]]; then
   echo "Installed binary not found: ${packaged_binary}" >&2
   exit 1
 fi
-expected_runpath="\$ORIGIN/../lib:\$ORIGIN/lib"
+expected_runpath="\$ORIGIN/../lib:\$ORIGIN/lib:\$ORIGIN"
 packaged_runpath="$(objdump -p "${packaged_binary}" |
   awk '$1 == "RUNPATH" { print $2; exit }')"
 if [[ "${packaged_runpath}" != "${expected_runpath}" ]]; then
