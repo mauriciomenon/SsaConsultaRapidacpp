@@ -109,6 +109,12 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+native_arch="$(package_linux_arch)"
+if [[ "${arch}" != "${native_arch}" ]]; then
+  echo "Requested Debian architecture '${arch}' does not match native architecture '${native_arch}'." >&2
+  exit 1
+fi
+
 if [[ -z "${dist_root}" ]]; then
   dist_root="${repo_root}/dist/linux/${arch}/gcc"
 fi
@@ -129,9 +135,25 @@ artifact_name="${repo_name}-${version}-${commit_sha}-debian-${arch}-${toolchain}
 final_root="${dist_root}/final"
 stage_root="$(mktemp -d "${TMPDIR:-/tmp}/${artifact_name}.XXXXXX")"
 cleanup_package() {
-  rm -rf "${stage_root}" "${build_dir}"
+  local cleanup_failed="false"
+  if ! rm -rf "${stage_root}"; then
+    cleanup_failed="true"
+  fi
+  if ! rm -rf "${build_dir}"; then
+    cleanup_failed="true"
+  fi
+  [[ "${cleanup_failed}" == "false" ]]
 }
-trap cleanup_package EXIT
+cleanup_package_on_exit() {
+  local status=$?
+  trap - EXIT
+  if ! cleanup_package; then
+    echo "Debian package cleanup failed." >&2
+    status=1
+  fi
+  exit "${status}"
+}
+trap cleanup_package_on_exit EXIT
 trap 'exit 1' HUP INT TERM
 stage_artifact_root="${stage_root}/${artifact_name}"
 release_stage="${stage_root}/release"
@@ -415,7 +437,10 @@ package_publish_release_set "${release_stage}" "${dist_root}" "${version}" \
   "${compiler}" "${compiler_version}" "${linker}" "${linker_version}" "${tagged_release}" \
   "${required_release_paths[@]}"
 
-cleanup_package
+if ! cleanup_package; then
+  echo "Debian package cleanup failed." >&2
+  exit 1
+fi
 trap - EXIT HUP INT TERM
 
 release_report=""

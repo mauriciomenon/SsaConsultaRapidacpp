@@ -79,6 +79,13 @@ try {
                 throw "Toolchain '$toolchain' resolved unexpected Qt kit '$($layout.QtKit)'."
             }
         }
+        $msvcLayout = Resolve-WindowsBuildLayout -RepoRoot $probeDir -Preset "dev" `
+            -Arch "amd64" -Toolchain "msvc"
+        $llvmLayout = Resolve-WindowsBuildLayout -RepoRoot $probeDir -Preset "dev" `
+            -Arch "amd64" -Toolchain "llvm"
+        if ($msvcLayout.BuildDir -eq $llvmLayout.BuildDir) {
+            throw "MSVC and LLVM must not share a Windows build directory."
+        }
 
         {
             Resolve-WindowsBuildLayout -RepoRoot $probeDir -Preset "dev" -Arch "amd64" -Toolchain "llvm-mingw"

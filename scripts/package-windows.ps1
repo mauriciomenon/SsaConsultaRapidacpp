@@ -29,7 +29,7 @@ Defaults:
   Preset: release
   Architecture: amd64 (x64-windows) or arm64
   Artifact dir: dist\windows\<arch>\<toolchain>\
-  Required build output: build\windows\<arch>\<qt-kit>\<preset>\SsaConsultaRapida must exist.
+  Required build output: build\windows\<arch>\<toolchain>\<qt-kit>\<preset>\SsaConsultaRapida must exist.
   Optional parameters: -Preset, -ProjectRoot, -Arch, -DistDir, -Version,
     -Toolchain, -QtDir, -QtRoot, -QtSubdir
   Optional switch: -SkipTests

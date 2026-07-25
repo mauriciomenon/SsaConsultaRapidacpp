@@ -95,6 +95,6 @@ function Resolve-WindowsBuildLayout {
         QtKit = $qtKit
         RequestedToolchain = $Toolchain
         EffectiveToolchain = $effectiveToolchain
-        BuildDir = Join-Path $RepoRoot "build\windows\$resolvedArch\$qtKit\$Preset"
+        BuildDir = Join-Path $RepoRoot "build\windows\$resolvedArch\$effectiveToolchain\$qtKit\$Preset"
     }
 }

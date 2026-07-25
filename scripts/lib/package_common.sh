@@ -214,40 +214,50 @@ EOF_RELEASE
     # shellcheck disable=SC2317
     cleanup_release_publication() {
       local status=$?
+      local cleanup_failed="false"
       trap - EXIT
-      rm -rf "${candidate_dir}" "${next_final_dir}" "${next_previous_dir}"
-      rm -f "${next_current_path}" "${next_previous_path}"
+      cleanup_step() {
+        if ! "$@"; then
+          cleanup_failed="true"
+        fi
+      }
+      cleanup_step rm -rf "${candidate_dir}" "${next_final_dir}" "${next_previous_dir}"
+      cleanup_step rm -f "${next_current_path}" "${next_previous_path}"
       if [[ "${status}" -ne 0 ]]; then
         if [[ "${final_promoted}" == "true" ]]; then
-          rm -rf "${final_dir}"
+          cleanup_step rm -rf "${final_dir}"
         fi
         if [[ "${current_promoted}" == "true" ]]; then
-          rm -f "${current_path}"
+          cleanup_step rm -f "${current_path}"
         fi
         if [[ "${final_moved}" == "true" && -d "${prior_final_dir}" ]]; then
-          mv "${prior_final_dir}" "${final_dir}"
+          cleanup_step mv "${prior_final_dir}" "${final_dir}"
         fi
         if [[ "${current_moved}" == "true" && -f "${prior_current_path}" ]]; then
-          mv "${prior_current_path}" "${current_path}"
+          cleanup_step mv "${prior_current_path}" "${current_path}"
         fi
         if [[ "${previous_promoted}" == "true" ]]; then
-          rm -rf "${previous_dir}"
+          cleanup_step rm -rf "${previous_dir}"
         fi
         if [[ "${previous_record_promoted}" == "true" ]]; then
-          rm -f "${previous_path}"
+          cleanup_step rm -f "${previous_path}"
         fi
         if [[ "${previous_moved}" == "true" && -d "${prior_previous_dir}" ]]; then
-          mv "${prior_previous_dir}" "${previous_dir}"
+          cleanup_step mv "${prior_previous_dir}" "${previous_dir}"
         fi
         if [[ "${previous_record_moved}" == "true" && -f "${prior_previous_path}" ]]; then
-          mv "${prior_previous_path}" "${previous_path}"
+          cleanup_step mv "${prior_previous_path}" "${previous_path}"
         fi
       else
-        rm -rf "${prior_final_dir}" "${prior_previous_dir}"
-        rm -f "${prior_current_path}" "${prior_previous_path}"
+        cleanup_step rm -rf "${prior_final_dir}" "${prior_previous_dir}"
+        cleanup_step rm -f "${prior_current_path}" "${prior_previous_path}"
       fi
       if ! rmdir "${lock_dir}" 2>/dev/null; then
         echo "Release publication left lock directory: ${lock_dir}" >&2
+        cleanup_failed="true"
+      fi
+      if [[ "${cleanup_failed}" == "true" ]]; then
+        status=1
       fi
       exit "${status}"
     }
@@ -263,6 +273,17 @@ EOF_RELEASE
       cp -a "${stage_dir}/." "${candidate_dir}/"
     fi
     if [[ "${tagged_release}" == "true" && -d "${release_dir}" ]]; then
+      if ! cmp -s <(
+        cd "${release_dir}"
+        find . -type f ! -name SHA256SUMS -print0 |
+          LC_ALL=C sort -z |
+          while IFS= read -r -d '' required_path; do
+            sha256sum "${required_path#./}"
+          done
+      ) "${release_dir}/SHA256SUMS"; then
+        echo "Immutable release failed payload verification: ${release_id}" >&2
+        exit 1
+      fi
       if ! cmp -s "${candidate_dir}/SHA256SUMS" \
         "${release_dir}/SHA256SUMS"; then
         echo "Immutable release already exists with different hashes: ${release_id}" >&2

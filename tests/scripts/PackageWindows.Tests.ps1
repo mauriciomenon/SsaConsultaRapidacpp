@@ -16,7 +16,7 @@ Describe "Windows package build failure" {
         $distDir = Join-Path $testRoot "dist"
         $artifactDir = Join-Path $distDir "amd64/repo-windows-amd64-1.2.3"
         $sentinel = Join-Path $artifactDir "previous-release.txt"
-        $buildDir = Join-Path $repoRoot "build/windows/amd64/msvc2022_64/release"
+        $buildDir = Join-Path $repoRoot "build/windows/amd64/msvc/msvc2022_64/release"
         $nsisDir = Join-Path $testRoot "nsis"
         $packageScript = Join-Path (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path "scripts/package-windows.ps1"
         $originalNsisHome = $env:NSIS_HOME
@@ -60,7 +60,8 @@ placeholder
         $testRoot = (Get-PSDrive -Name TestDrive).Root
         $repoRoot = Join-Path $testRoot "repo"
         $scriptsDir = Join-Path $repoRoot "scripts"
-        $buildDir = Join-Path $repoRoot "build/windows/amd64/msvc2022_64/release"
+        $buildDir = Join-Path $repoRoot "build/windows/amd64/msvc/msvc2022_64/release"
+        $llvmBuildDir = Join-Path $repoRoot "build/windows/amd64/llvm/msvc2022_64/release"
         $qtPrefix = Join-Path $testRoot "Qt/6.11.1/msvc2022_64"
         $qtCmakeDir = Join-Path $qtPrefix "lib/cmake/Qt6"
         $qtBinDir = Join-Path $qtPrefix "bin"
@@ -185,41 +186,41 @@ exit /b 0
 
             $env:VCToolsInstallDir = $toolsetRoot
             Remove-Item Env:VCToolsVersion -ErrorAction SilentlyContinue
-            New-Item -ItemType Directory -Path $buildDir, (Join-Path $buildDir "SsaConsultaRapida") -Force | Out-Null
-            New-Item -ItemType File -Path (Join-Path $buildDir "ssa_consulta_rapida.exe"), (Join-Path $buildDir "sqlite3.dll") -Force | Out-Null
+            New-Item -ItemType Directory -Path $llvmBuildDir, (Join-Path $llvmBuildDir "SsaConsultaRapida") -Force | Out-Null
+            New-Item -ItemType File -Path (Join-Path $llvmBuildDir "ssa_consulta_rapida.exe"), (Join-Path $llvmBuildDir "sqlite3.dll") -Force | Out-Null
             @(
                 "Qt6_DIR:PATH=$($qtCmakeDir.Replace('\', '/'))"
                 "VCToolsInstallDir:PATH=C:/stale/VC/Tools/MSVC/14.52.00000"
                 "CMAKE_CXX_COMPILER:FILEPATH=C:/LLVM/bin/clang-cl.exe"
                 "CMAKE_LINKER:FILEPATH=C:/LLVM/bin/lld-link.exe"
-            ) | Set-Content -LiteralPath (Join-Path $buildDir "CMakeCache.txt") -Encoding ASCII
+            ) | Set-Content -LiteralPath (Join-Path $llvmBuildDir "CMakeCache.txt") -Encoding ASCII
             {
                 & $packageScript -ProjectRoot $repoRoot -Arch amd64 -Toolchain llvm -DistDir (Join-Path $testRoot "llvm-missing-version") -Version "1.2.3" -SkipTests
             } | Should -Throw -ExpectedMessage "*requires VCToolsVersion*"
             (Test-Path -LiteralPath (Join-Path $testRoot "llvm-missing-version/amd64/llvm/final") -PathType Container) | Should -BeFalse
 
             $env:VCToolsVersion = "14.52.00000"
-            New-Item -ItemType Directory -Path $buildDir, (Join-Path $buildDir "SsaConsultaRapida") -Force | Out-Null
-            New-Item -ItemType File -Path (Join-Path $buildDir "ssa_consulta_rapida.exe"), (Join-Path $buildDir "sqlite3.dll") -Force | Out-Null
+            New-Item -ItemType Directory -Path $llvmBuildDir, (Join-Path $llvmBuildDir "SsaConsultaRapida") -Force | Out-Null
+            New-Item -ItemType File -Path (Join-Path $llvmBuildDir "ssa_consulta_rapida.exe"), (Join-Path $llvmBuildDir "sqlite3.dll") -Force | Out-Null
             @(
                 "Qt6_DIR:PATH=$($qtCmakeDir.Replace('\', '/'))"
                 "VCToolsInstallDir:PATH=C:/stale/VC/Tools/MSVC/14.52.00000"
                 "CMAKE_CXX_COMPILER:FILEPATH=C:/LLVM/bin/clang-cl.exe"
                 "CMAKE_LINKER:FILEPATH=C:/LLVM/bin/lld-link.exe"
-            ) | Set-Content -LiteralPath (Join-Path $buildDir "CMakeCache.txt") -Encoding ASCII
+            ) | Set-Content -LiteralPath (Join-Path $llvmBuildDir "CMakeCache.txt") -Encoding ASCII
             {
                 & $packageScript -ProjectRoot $repoRoot -Arch amd64 -Toolchain llvm -DistDir (Join-Path $testRoot "llvm-mismatch") -Version "1.2.3" -SkipTests
             } | Should -Throw -ExpectedMessage "*VCToolsInstallDir and VCToolsVersion disagree*"
 
             $env:VCToolsVersion = $toolsetVersion
-            New-Item -ItemType Directory -Path $buildDir, (Join-Path $buildDir "SsaConsultaRapida") -Force | Out-Null
-            New-Item -ItemType File -Path (Join-Path $buildDir "ssa_consulta_rapida.exe"), (Join-Path $buildDir "sqlite3.dll") -Force | Out-Null
+            New-Item -ItemType Directory -Path $llvmBuildDir, (Join-Path $llvmBuildDir "SsaConsultaRapida") -Force | Out-Null
+            New-Item -ItemType File -Path (Join-Path $llvmBuildDir "ssa_consulta_rapida.exe"), (Join-Path $llvmBuildDir "sqlite3.dll") -Force | Out-Null
             @(
                 "Qt6_DIR:PATH=$($qtCmakeDir.Replace('\', '/'))"
                 "VCToolsInstallDir:PATH=C:/stale/VC/Tools/MSVC/14.52.00000"
                 "CMAKE_CXX_COMPILER:FILEPATH=C:/LLVM/bin/clang-cl.exe"
                 "CMAKE_LINKER:FILEPATH=C:/LLVM/bin/lld-link.exe"
-            ) | Set-Content -LiteralPath (Join-Path $buildDir "CMakeCache.txt") -Encoding ASCII
+            ) | Set-Content -LiteralPath (Join-Path $llvmBuildDir "CMakeCache.txt") -Encoding ASCII
             $llvmFailure = $null
             try {
                 & $packageScript -ProjectRoot $repoRoot -Arch amd64 -Toolchain llvm -DistDir (Join-Path $testRoot "llvm") -Version "1.2.3" -SkipTests
@@ -259,7 +260,7 @@ exit /b 0
         $testRoot = (Get-PSDrive -Name TestDrive).Root
         $repoRoot = Join-Path $testRoot "repo"
         $scriptsDir = Join-Path $repoRoot "scripts"
-        $buildDir = Join-Path $repoRoot "build/windows/amd64/msvc2022_64/release"
+        $buildDir = Join-Path $repoRoot "build/windows/amd64/msvc/msvc2022_64/release"
         $qtPrefix = Join-Path $testRoot "Qt/6.11.1/msvc2022_64"
         $qtCmakeDir = Join-Path $qtPrefix "lib/cmake/Qt6"
         $qtBinDir = Join-Path $qtPrefix "bin"
@@ -380,8 +381,9 @@ Describe "Windows release set publication" {
         (Test-Path -LiteralPath $releaseDir) | Should -BeFalse
         (Get-Content -LiteralPath $script:currentPath -Raw) | Should -Match "1.2.3"
         (Get-Content -LiteralPath $script:currentPath -Raw) | Should -Match "abc123"
-        (Get-Content -LiteralPath $script:currentPath -Raw) | Should -Match '"toolchain":  "msvc"'
+        ((Get-Content -LiteralPath $script:currentPath -Raw | ConvertFrom-Json).toolchain) | Should -Be "msvc"
         ((Get-Content -LiteralPath $script:currentPath -Raw | ConvertFrom-Json).compiler) | Should -Be $script:releaseMetadata.Compiler
+        (Test-Path -LiteralPath (Join-Path $script:distRoot ".publish.lock")) | Should -BeFalse
     }
 
     It "rejects a different immutable release manifest without replacing current" {
@@ -397,10 +399,32 @@ Describe "Windows release set publication" {
 
         {
             Publish-WindowsReleaseSet -StageDir $script:stageDir -DistRoot $script:distRoot -Version "1.2.3" -CommitSha "abc123" -RepoRoot $script:testRoot -Platform windows -Architecture amd64 -Toolchain msvc -TaggedRelease $true @script:releaseMetadata
-        } | Should -Throw -ExpectedMessage "*different hashes*"
+        } | Should -Throw -ExpectedMessage "*integrity check failed*"
 
         (Get-Content -LiteralPath (Join-Path $script:finalDir "previous-release.txt")) | Should -Be "keep"
         (Get-Content -LiteralPath $script:currentPath) | Should -Be '{"version":"1.0.0","commit":"old"}'
+    }
+
+    It "rejects a corrupted immutable release even when its hash manifest is unchanged" {
+        foreach ($stageRoot in @($script:stageDir, (Join-Path $script:distRoot ".staging/run-retry"))) {
+            New-Item -ItemType Directory -Path (Join-Path $stageRoot "ssa_consulta_rapida-standalone") -Force | Out-Null
+            Set-Content -LiteralPath (Join-Path $stageRoot "ssa_consulta_rapida.exe") -Value "portable" -Encoding ASCII
+            Set-Content -LiteralPath (Join-Path $stageRoot "ssa_consulta_rapida-installer.exe") -Value "installer" -Encoding ASCII
+            Set-Content -LiteralPath (Join-Path $stageRoot "ssa_consulta_rapida.zip") -Value "zip" -Encoding ASCII
+            Set-Content -LiteralPath (Join-Path $stageRoot "ssa_consulta_rapida-standalone/ssa_consulta_rapida.exe") -Value "standalone" -Encoding ASCII
+        }
+
+        Publish-WindowsReleaseSet -StageDir $script:stageDir -DistRoot $script:distRoot -Version "1.2.5" -CommitSha "fed789" -RepoRoot $script:testRoot -Platform windows -Architecture amd64 -Toolchain msvc -TaggedRelease $true @script:releaseMetadata
+        $currentBefore = Get-Content -LiteralPath $script:currentPath -Raw
+        $releaseDir = Join-Path $script:distRoot "releases/1.2.5-fed789-windows-amd64-msvc"
+        Set-Content -LiteralPath (Join-Path $releaseDir "ssa_consulta_rapida.exe") -Value "tampered" -Encoding ASCII
+        $retryStage = Join-Path $script:distRoot ".staging/run-retry"
+
+        {
+            Publish-WindowsReleaseSet -StageDir $retryStage -DistRoot $script:distRoot -Version "1.2.5" -CommitSha "fed789" -RepoRoot $script:testRoot -Platform windows -Architecture amd64 -Toolchain msvc -TaggedRelease $true @script:releaseMetadata
+        } | Should -Throw -ExpectedMessage "*integrity*"
+
+        (Get-Content -LiteralPath $script:currentPath -Raw) | Should -Be $currentBefore
     }
 
     It "preserves current release when another publication holds the lock" {
@@ -461,8 +485,8 @@ Describe "Windows release set publication" {
         Publish-WindowsReleaseSet -StageDir $script:stageDir -DistRoot $script:distRoot -Version "1.2.3" -CommitSha "abc123" -RepoRoot $script:testRoot -Platform windows -Architecture amd64 -Toolchain msvc -TaggedRelease $false @script:releaseMetadata
         Publish-WindowsReleaseSet -StageDir $secondStage -DistRoot $script:distRoot -Version "1.2.4" -CommitSha "def456" -RepoRoot $script:testRoot -Platform windows -Architecture amd64 -Toolchain msvc -TaggedRelease $false @script:releaseMetadata
 
-        (Get-Content -LiteralPath (Join-Path $script:distRoot "previous.json") -Raw) | Should -Match '"release":  "1.2.3-abc123-windows-amd64-msvc"'
-        (Get-Content -LiteralPath (Join-Path $script:distRoot "current.json") -Raw) | Should -Match '"release":  "1.2.4-def456-windows-amd64-msvc"'
+        ((Get-Content -LiteralPath (Join-Path $script:distRoot "previous.json") -Raw | ConvertFrom-Json).release) | Should -Be "1.2.3-abc123-windows-amd64-msvc"
+        ((Get-Content -LiteralPath (Join-Path $script:distRoot "current.json") -Raw | ConvertFrom-Json).release) | Should -Be "1.2.4-def456-windows-amd64-msvc"
         (Test-Path -LiteralPath (Join-Path $script:distRoot "previous/ssa_consulta_rapida.exe")) | Should -BeTrue
         (Test-Path -LiteralPath (Join-Path $invalidRelease "release.json")) | Should -BeTrue
     }

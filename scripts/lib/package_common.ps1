@@ -50,6 +50,22 @@ function Test-ExactReleaseTag {
     return $LASTEXITCODE -eq 0 -and $tags -contains "v$Version"
 }
 
+function Get-ReleaseSha256Manifest {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Root
+    )
+
+    return @(Get-ChildItem -LiteralPath $Root -File -Recurse |
+        Where-Object { $_.Name -ne "SHA256SUMS" } |
+        Sort-Object FullName |
+        ForEach-Object {
+            $relativePath = $_.FullName.Substring($Root.Length).TrimStart('\', '/').Replace('\', '/')
+            $hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash
+            "$hash  $relativePath"
+        })
+}
+
 function Publish-WindowsReleaseSet {
     param(
         [Parameter(Mandatory)]
@@ -129,14 +145,7 @@ function Publish-WindowsReleaseSet {
     $releaseRecord | ConvertTo-Json |
         Set-Content -LiteralPath (Join-Path $StageDir "release.json") -Encoding UTF8
 
-    $hashLines = @(Get-ChildItem -LiteralPath $StageDir -File -Recurse |
-        Where-Object { $_.Name -ne "SHA256SUMS" } |
-        Sort-Object FullName |
-        ForEach-Object {
-            $relativePath = $_.FullName.Substring($StageDir.Length).TrimStart('\', '/').Replace('\', '/')
-            $hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash
-            "$hash  $relativePath"
-        })
+    $hashLines = @(Get-ReleaseSha256Manifest -Root $StageDir)
     $hashLines | Set-Content -LiteralPath (Join-Path $StageDir "SHA256SUMS") -Encoding ASCII
 
     $releasesRoot = Join-Path $DistRoot "releases"
@@ -161,6 +170,8 @@ function Publish-WindowsReleaseSet {
     $previousRecordMoved = $false
     $previousPromoted = $false
     $previousRecordPromoted = $false
+    $publicationError = $null
+    $cleanupErrors = @()
     try {
         try {
             $lockStream = [System.IO.File]::Open(
@@ -177,9 +188,12 @@ function Publish-WindowsReleaseSet {
         New-Item -ItemType Directory -Path $releasesRoot -Force | Out-Null
         $publicationSource = $StageDir
         if ($TaggedRelease -and (Test-Path -LiteralPath $releaseDir -PathType Container)) {
-            $existingHashes = Get-Content -LiteralPath (Join-Path $releaseDir "SHA256SUMS") -Raw
-            $stagedHashes = Get-Content -LiteralPath (Join-Path $StageDir "SHA256SUMS") -Raw
-            if ($existingHashes -ne $stagedHashes) {
+            $existingHashes = @(Get-Content -LiteralPath (Join-Path $releaseDir "SHA256SUMS"))
+            $actualHashes = @(Get-ReleaseSha256Manifest -Root $releaseDir)
+            if (($existingHashes -join "`n") -ne ($actualHashes -join "`n")) {
+                throw "Immutable Windows release integrity check failed: $releaseId"
+            }
+            if (($existingHashes -join "`n") -ne ($hashLines -join "`n")) {
                 throw "Immutable Windows release already exists with different hashes: $releaseId"
             }
             $publicationSource = $releaseDir
@@ -297,18 +311,47 @@ function Publish-WindowsReleaseSet {
             }
         }
     }
+    catch {
+        $publicationError = $_
+    }
     finally {
         if ($lockStream) {
-            $lockStream.Dispose()
+            try {
+                $lockStream.Dispose()
+                Remove-Item -LiteralPath $lockPath -Force -ErrorAction Stop
+            }
+            catch {
+                $cleanupErrors += "lock cleanup failed: $($_.Exception.Message)"
+            }
         }
-        try {
-            Get-Item -LiteralPath $nextFinalDir, $nextPreviousDir, $priorFinalDir, $priorPreviousDir -Force -ErrorAction SilentlyContinue |
-                Remove-Item -Recurse -Force
-            Get-Item -LiteralPath $nextCurrentPath, $nextPreviousPath, $priorCurrentPath, $priorPreviousPath -Force -ErrorAction SilentlyContinue |
-                Remove-Item -Force
+        foreach ($temporaryPath in @(
+                $nextFinalDir,
+                $nextPreviousDir,
+                $priorFinalDir,
+                $priorPreviousDir,
+                $nextCurrentPath,
+                $nextPreviousPath,
+                $priorCurrentPath,
+                $priorPreviousPath
+            )) {
+            try {
+                if (Test-Path -LiteralPath $temporaryPath -ErrorAction Stop) {
+                    Remove-Item -LiteralPath $temporaryPath -Recurse -Force -ErrorAction Stop
+                }
+            }
+            catch {
+                $cleanupErrors += "temporary cleanup failed for ${temporaryPath}: $($_.Exception.Message)"
+            }
         }
-        catch {
-            Write-Warning "Windows release publication left temporary promotion files: $($_.Exception.Message)"
+    }
+
+    if ($publicationError) {
+        if ($cleanupErrors.Count -ne 0) {
+            throw "$($publicationError.Exception.Message) Cleanup also failed: $($cleanupErrors -join '; ')"
         }
+        throw $publicationError
+    }
+    if ($cleanupErrors.Count -ne 0) {
+        throw "Windows release publication cleanup failed: $($cleanupErrors -join '; ')"
     }
 }

@@ -132,16 +132,16 @@ familia 6.11.x.
 ## Windows
 
 Use o guia canonico de [Windows](../../packaging/windows/README.md) para links
-oficiais, vcpkg/SQLite e requisitos de package. A busca padrao usa `C:\Qt` e
-seleciona o patch 6.11.x mais alto valido. Em amd64, o default e MinGW. Em
-arm64, o default e MSVC. Use `-Toolchain` para impedir ambiguidade.
+oficiais, vcpkg/SQLite e requisitos de package. A busca padrao usa `C:\Qt`,
+seleciona o patch 6.11.x mais alto valido e usa MSVC em amd64 e arm64.
+Use `-Toolchain` para selecionar clang-cl/LLVM ou MinGW explicitamente.
 
 ```powershell
 # Preflight somente leitura.
 .\tools\configure-dev.ps1 -Check
 .\tools\configure-dev.ps1 -CheckPackage
 
-# Default amd64: MinGW.
+# Default amd64: MSVC.
 .\scripts\build-windows.ps1
 
 # Build ARM64 em namespace e kit proprios.
@@ -151,6 +151,7 @@ arm64, o default e MSVC. Use `-Toolchain` para impedir ambiguidade.
 .\build-windows.ps1 -Toolchain mingw
 .\build-windows.ps1 -Toolchain llvm-mingw
 .\build-windows.ps1 -Toolchain msvc
+.\build-windows.ps1 -Toolchain llvm
 
 # Raiz de instalacao alternativa.
 .\scripts\build-windows.ps1 -Toolchain msvc -QtRoot "D:\Qt"
@@ -164,12 +165,13 @@ arm64, o default e MSVC. Use `-Toolchain` para impedir ambiguidade.
 .\package-windows.ps1 -Toolchain mingw
 
 # CTest Windows usa o diretorio namespaced.
-ctest --test-dir .\build\windows\amd64\mingw_64\dev --output-on-failure
+ctest --test-dir .\build\windows\amd64\mingw\mingw_64\dev --output-on-failure
 ```
 
 Os builds Windows ficam somente em
-`build/windows/<arch>/<qt-kit>/<preset>`. Assim, nenhum cache Windows divide
-`build/dev` ou `build/release` com Linux e macOS.
+`build/windows/<arch>/<toolchain>/<qt-kit>/<preset>`. Assim, compiladores
+distintos nao dividem cache entre si nem com `build/dev` ou `build/release`
+de Linux e macOS.
 
 Os kits `wasm_singlethread` e `wasm_multithread` geram WebAssembly para
 navegadores. Eles sao listados no diagnostico, mas nunca sao fallback para o
@@ -184,9 +186,9 @@ binario e nao mistura patches diferentes da familia 6.11.x.
 | Plataforma | Compilador | Estado atual |
 | --- | --- | --- |
 | Windows amd64 | MinGW GCC 13.1 | Build real, 610 testes e smoke sem DB validados |
-| Windows amd64 | MSVC 19.51 | Build GUI validado com SDK 10.0.26100.0 |
+| Windows amd64 | MSVC 19.51 | Build release, 610 testes, pacote e startup sem DB validados |
 | Windows amd64 | LLVM-MinGW 17.0.6 | Falha: biblioteca C++ nao fornece `std::stop_token` |
-| Windows amd64 | clang-cl 22.1.3 | Instalado para diagnostico; combinacao com Qt MSVC nao suportada nesta versao |
+| Windows amd64 | clang-cl 22.1.3 + lld-link | Build release, 610 testes, pacote e startup sem DB validados |
 | Debian/WSL amd64 | GCC 14.2 | Build e 641 testes validados |
 | Debian/WSL amd64 | Clang 19.1.7 | Suportado pelo fonte, sem gate completo nesta rodada |
 | macOS arm64 | Apple Clang | Historicamente validado; nao executado nesta rodada |

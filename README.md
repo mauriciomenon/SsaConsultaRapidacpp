@@ -79,8 +79,8 @@ Artefatos de distribuicao, quando gerados por `./scripts/package-macos.sh`, fica
 ./scripts/build-windows.ps1
 ./scripts/run-windows.ps1
 
-# Self executable path (Windows)
-# <repo>\build\windows\amd64\msvc2022_64\dev\ssa_consulta_rapida.exe
+# Self executable path (Windows/MSVC)
+# <repo>\build\windows\amd64\msvc\msvc2022_64\dev\ssa_consulta_rapida.exe
 ```
 
 ### Smoke completo (build + test + execucao com screenshot) no macOS e Debian
@@ -191,7 +191,9 @@ O CI e a referencia de deteccao em `tools/qt-detect.conf` usam Qt 6.11.0. Os
 scripts aceitam qualquer patch da familia 6.11.x e selecionam o mais alto
 valido. Versoes validadas no desenvolvimento local atual:
 
-- Windows 11 amd64: Qt 6.11.1 `mingw_64` e MinGW GCC 13.1.
+- Windows 11 amd64: Qt 6.11.1 `msvc2022_64` com MSVC 19.51 ou
+  clang-cl 22.1.3 + lld-link; Qt `mingw_64` com MinGW GCC 13.1 permanece
+  disponivel por selecao explicita.
 - Debian/WSL amd64: Qt 6.11.1 `gcc_64` e GCC 14.2.
 - macOS arm64: Qt 6.11.x e Apple Clang, validados em rodadas anteriores.
 
@@ -199,10 +201,10 @@ Ordem dos toolchains Windows para este projeto:
 
 | Ordem | Toolchain | Estado |
 | --- | --- | --- |
-| 1 | MinGW GCC 13.1 com Qt `mingw_64` | Default; build e 610 testes validados |
-| 2 | MSVC 19.51 com Qt `msvc2022_64` | Build GUI validado com SDK 10.0.26100.0 |
-| 3 | LLVM-MinGW 17.0.6 com Qt `llvm-mingw_64` | Incompativel com `std::stop_token` |
-| 4 | clang-cl 22.1.3 com Qt MSVC | Nao suportado nesta versao; use somente para diagnostico |
+| 1 | MSVC 19.51 com Qt `msvc2022_64` | Default; build release, 610 testes, pacote e startup sem DB validados |
+| 2 | clang-cl 22.1.3 + lld-link com Qt `msvc2022_64` | Build release, 610 testes, pacote e startup sem DB validados |
+| 3 | MinGW GCC 13.1 com Qt `mingw_64` | Disponivel por selecao explicita; build e 610 testes validados |
+| 4 | LLVM-MinGW 17.0.6 com Qt `llvm-mingw_64` | Falha cedo: biblioteca C++ nao fornece `std::stop_token` |
 
 ## Configuracao rapida
 

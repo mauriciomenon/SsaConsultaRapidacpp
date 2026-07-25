@@ -44,6 +44,23 @@ if [[ ! -e "${fixture_repo}/build/dev/incremental-output.txt" ]]; then
   exit 1
 fi
 
+native_arch="$(dpkg --print-architecture)"
+if [[ "${native_arch}" == "amd64" ]]; then
+  foreign_arch="arm64"
+else
+  foreign_arch="amd64"
+fi
+foreign_output="$(
+  PATH="${fake_bin}:${PATH}" "${repo_root}/scripts/package-debian.sh" \
+    --project-root "${fixture_repo}" --version 1.2.3 \
+    --dist-dir "${test_root}/foreign-dist" --arch "${foreign_arch}" \
+    --skip-tests 2>&1 || true
+)"
+if [[ "${foreign_output}" != *"does not match native architecture"* ]]; then
+  echo "Debian package accepted or misdiagnosed a foreign architecture." >&2
+  exit 1
+fi
+
 # shellcheck disable=SC1091
 source "${repo_root}/scripts/lib/package_common.sh"
 dist_root="${test_root}/dist/linux/amd64/gcc"
@@ -132,5 +149,28 @@ fi
 cmp -s "${test_root}/current-before.json" "${dist_root}/current.json"
 cmp -s "${test_root}/previous-before.json" "${dist_root}/previous.json"
 [[ -f "${dist_root}/previous/ssa_consulta_rapida" ]]
+
+integrity_dist="${test_root}/dist-integrity"
+integrity_stage="${test_root}/stage-integrity"
+integrity_stage_retry="${test_root}/stage-integrity-retry"
+for integrity_root in "${integrity_stage}" "${integrity_stage_retry}"; do
+  mkdir -p "${integrity_root}/ssa_consulta_rapida-standalone"
+  printf 'app\n' > "${integrity_root}/ssa_consulta_rapida"
+  printf 'deb\n' > "${integrity_root}/ssa_consulta_rapida.deb"
+  printf 'zip\n' > "${integrity_root}/ssa_consulta_rapida.zip"
+  printf 'standalone\n' \
+    > "${integrity_root}/ssa_consulta_rapida-standalone/ssa_consulta_rapida"
+done
+package_publish_release_set "${integrity_stage}" "${integrity_dist}" "1.2.5" \
+  "fed789" "debian" "amd64" "gcc" "release" "${qt_kit}" "${fixture_repo}" \
+  "gcc" "test" "ld" "test" "true" "${required[@]}"
+printf 'tampered\n' \
+  > "${integrity_dist}/releases/1.2.5-fed789-debian-amd64-gcc/ssa_consulta_rapida"
+if package_publish_release_set "${integrity_stage_retry}" "${integrity_dist}" \
+  "1.2.5" "fed789" "debian" "amd64" "gcc" "release" "${qt_kit}" \
+  "${fixture_repo}" "gcc" "test" "ld" "test" "true" "${required[@]}"; then
+  echo "Corrupted immutable Debian release was reused." >&2
+  exit 1
+fi
 
 echo "Build and packaging contract tests passed."

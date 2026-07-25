@@ -5,7 +5,8 @@ Describe "Windows build cache ownership" {
         $testRoot = (Get-PSDrive -Name TestDrive).Root
         $script:repoRoot = Join-Path $testRoot "repo"
         $script:toolsDir = Join-Path $script:repoRoot "tools"
-        $script:buildDir = Join-Path $script:repoRoot "build/windows/amd64/msvc2022_64/dev"
+        $script:buildDir = Join-Path $script:repoRoot "build/windows/amd64/msvc/msvc2022_64/dev"
+        $script:llvmBuildDir = Join-Path $script:repoRoot "build/windows/amd64/llvm/msvc2022_64/dev"
         $script:fakeBin = Join-Path $testRoot "bin"
         $script:configureMarker = Join-Path $testRoot "configure-called.txt"
         $script:configureBinaryMarker = Join-Path $testRoot "configure-binary-dir.txt"
@@ -19,7 +20,7 @@ Describe "Windows build cache ownership" {
         Remove-Item -LiteralPath $script:repoRoot -Recurse -Force -ErrorAction SilentlyContinue
         Remove-Item -LiteralPath $script:configureMarker, $script:configureBinaryMarker, $script:cmakeLog, $script:pathLog -Force -ErrorAction SilentlyContinue
 
-        New-Item -ItemType Directory -Path $script:toolsDir, $script:buildDir, $script:fakeBin -Force | Out-Null
+        New-Item -ItemType Directory -Path $script:toolsDir, $script:buildDir, $script:llvmBuildDir, $script:fakeBin -Force | Out-Null
 
         @'
 param(
@@ -152,7 +153,7 @@ exit /b 0
         (Test-Path -LiteralPath $script:configureMarker -PathType Leaf) | Should -BeFalse
     }
 
-    It "configures LLVM with clang-cl and lld-link after an MSVC cache" {
+    It "configures LLVM with clang-cl and lld-link outside the MSVC cache" {
         $windowsBuildDir = $script:buildDir.Replace('\', '/')
         New-Item -ItemType Directory -Path (Join-Path $script:buildDir "CMakeFiles") -Force | Out-Null
         New-Item -ItemType File -Path (Join-Path $script:buildDir "build.ninja"), (Join-Path $script:buildDir "CMakeFiles/rules.ninja") -Force | Out-Null
@@ -170,15 +171,16 @@ exit /b 0
         $configureArgs = Get-Content -LiteralPath $script:configureMarker
         $clangCl = (Get-Command "clang-cl.exe").Source
         $lldLink = (Get-Command "lld-link.exe").Source
-        $configureArgs | Should -Match ([regex]::Escape("dev|--fresh,-DVCPKG_TARGET_TRIPLET=x64-windows,-DCMAKE_C_COMPILER=$clangCl,-DCMAKE_CXX_COMPILER=$clangCl,-DCMAKE_LINKER=$lldLink"))
+        $configureArgs | Should -Match ([regex]::Escape("dev|-DVCPKG_TARGET_TRIPLET=x64-windows,-DCMAKE_C_COMPILER=$clangCl,-DCMAKE_CXX_COMPILER=$clangCl,-DCMAKE_LINKER=$lldLink"))
         $configureArgs | Should -Match ([regex]::Escape("-DCMAKE_C_FLAGS_INIT=-fuse-ld=lld,-DCMAKE_CXX_FLAGS_INIT=-fuse-ld=lld|msvc2022_64"))
+        (Get-Content -LiteralPath $script:configureBinaryMarker) | Should -Be $script:llvmBuildDir
     }
 
     It "reuses a normalized LLVM compiler cache without fresh configuration" {
-        $windowsBuildDir = $script:buildDir.Replace('\', '/')
+        $windowsBuildDir = $script:llvmBuildDir.Replace('\', '/')
         $clangCl = (Get-Command "clang-cl.exe").Source
-        New-Item -ItemType Directory -Path (Join-Path $script:buildDir "CMakeFiles") -Force | Out-Null
-        New-Item -ItemType File -Path (Join-Path $script:buildDir "build.ninja"), (Join-Path $script:buildDir "CMakeFiles/rules.ninja") -Force | Out-Null
+        New-Item -ItemType Directory -Path (Join-Path $script:llvmBuildDir "CMakeFiles") -Force | Out-Null
+        New-Item -ItemType File -Path (Join-Path $script:llvmBuildDir "build.ninja"), (Join-Path $script:llvmBuildDir "CMakeFiles/rules.ninja") -Force | Out-Null
         @(
             "CMAKE_CACHEFILE_DIR:INTERNAL=$windowsBuildDir"
             "CMAKE_GENERATOR:INTERNAL=Ninja"
@@ -186,18 +188,18 @@ exit /b 0
             "CMAKE_CXX_COMPILER:FILEPATH=$($clangCl.Replace('\', '/'))"
             "Qt6_DIR:PATH=C:/Qt/6.11.1/msvc2022_64/lib/cmake/Qt6"
             "VCPKG_TARGET_TRIPLET:STRING=x64-windows"
-        ) | Set-Content -LiteralPath (Join-Path $script:buildDir "CMakeCache.txt") -Encoding ASCII
+        ) | Set-Content -LiteralPath (Join-Path $script:llvmBuildDir "CMakeCache.txt") -Encoding ASCII
 
         & $script:lazyBuildScript -ProjectRoot $script:repoRoot -Toolchain llvm
 
         (Get-Content -LiteralPath $script:configureMarker) | Should -Not -Match "--fresh"
     }
 
-    It "refreshes an LLVM cache before the default MSVC build" {
-        $windowsBuildDir = $script:buildDir.Replace('\', '/')
+    It "ignores an LLVM cache during the default MSVC build" {
+        $windowsBuildDir = $script:llvmBuildDir.Replace('\', '/')
         $clangCl = (Get-Command "clang-cl.exe").Source
-        New-Item -ItemType Directory -Path (Join-Path $script:buildDir "CMakeFiles") -Force | Out-Null
-        New-Item -ItemType File -Path (Join-Path $script:buildDir "build.ninja"), (Join-Path $script:buildDir "CMakeFiles/rules.ninja") -Force | Out-Null
+        New-Item -ItemType Directory -Path (Join-Path $script:llvmBuildDir "CMakeFiles") -Force | Out-Null
+        New-Item -ItemType File -Path (Join-Path $script:llvmBuildDir "build.ninja"), (Join-Path $script:llvmBuildDir "CMakeFiles/rules.ninja") -Force | Out-Null
         @(
             "CMAKE_CACHEFILE_DIR:INTERNAL=$windowsBuildDir"
             "CMAKE_GENERATOR:INTERNAL=Ninja"
@@ -205,13 +207,14 @@ exit /b 0
             "CMAKE_CXX_COMPILER:FILEPATH=$($clangCl.Replace('\', '/'))"
             "Qt6_DIR:PATH=C:/Qt/6.11.1/msvc2022_64/lib/cmake/Qt6"
             "VCPKG_TARGET_TRIPLET:STRING=x64-windows"
-        ) | Set-Content -LiteralPath (Join-Path $script:buildDir "CMakeCache.txt") -Encoding ASCII
+        ) | Set-Content -LiteralPath (Join-Path $script:llvmBuildDir "CMakeCache.txt") -Encoding ASCII
 
         & $script:lazyBuildScript -ProjectRoot $script:repoRoot
 
         $configureArgs = Get-Content -LiteralPath $script:configureMarker
-        $configureArgs | Should -Be "dev|--fresh,-DVCPKG_TARGET_TRIPLET=x64-windows|msvc2022_64"
+        $configureArgs | Should -Be "dev|-DVCPKG_TARGET_TRIPLET=x64-windows|msvc2022_64"
         $configureArgs | Should -Not -Match "clang-cl|lld-link|fuse-ld"
+        (Get-Content -LiteralPath $script:configureBinaryMarker) | Should -Be $script:buildDir
     }
 
     It "throws when CMake returns a nonzero exit code" {
@@ -227,7 +230,7 @@ exit /b 23
     }
 
     It "uses the canonical amd64 build directory" {
-        $expectedBuildDir = Join-Path $script:repoRoot "build/windows/amd64/msvc2022_64/dev"
+        $expectedBuildDir = Join-Path $script:repoRoot "build/windows/amd64/msvc/msvc2022_64/dev"
 
         & $script:buildScript -ProjectRoot $script:repoRoot
 
@@ -237,7 +240,7 @@ exit /b 23
     }
 
     It "uses the arm64 Qt kit, triplet, and canonical build directory" {
-        $expectedBuildDir = Join-Path $script:repoRoot "build/windows/arm64/msvc2022_arm64/dev"
+        $expectedBuildDir = Join-Path $script:repoRoot "build/windows/arm64/msvc/msvc2022_arm64/dev"
 
         & $script:lazyBuildScript -ProjectRoot $script:repoRoot -Arch arm64
 
@@ -247,7 +250,7 @@ exit /b 23
     }
 
     It "refreshes an arm64 cache with an x64 vcpkg triplet" {
-        $armBuildDir = Join-Path $script:repoRoot "build/windows/arm64/msvc2022_arm64/dev"
+        $armBuildDir = Join-Path $script:repoRoot "build/windows/arm64/msvc/msvc2022_arm64/dev"
         $windowsBuildDir = $armBuildDir.Replace('\', '/')
         New-Item -ItemType Directory -Path (Join-Path $armBuildDir "CMakeFiles") -Force | Out-Null
         New-Item -ItemType File -Path (Join-Path $armBuildDir "build.ninja"), (Join-Path $armBuildDir "CMakeFiles/rules.ninja") | Out-Null
