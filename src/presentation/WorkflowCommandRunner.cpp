@@ -102,7 +102,9 @@ namespace ssa::presentation {
         }
         auto workflows = workflows_;
         start([workflows = std::move(workflows), request = std::move(request)](
-                  const std::stop_token& stopToken, const ports::WorkflowProgressCallback&) {
+                  const std::stop_token& stopToken,
+                  const ports::WorkflowProgressCallback& progress) mutable {
+            request.progress = progress;
             return workflows->importDerivations(request, stopToken);
         });
     }

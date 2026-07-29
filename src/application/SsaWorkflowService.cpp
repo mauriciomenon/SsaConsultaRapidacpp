@@ -1,6 +1,9 @@
 #include "application/SsaWorkflowService.h"
 
+#include "domain/SsaImportPolicy.h"
+
 #include <utility>
+#include <vector>
 
 namespace ssa::application {
 
@@ -36,10 +39,44 @@ namespace ssa::application {
     ports::WorkflowResult
     SsaWorkflowService::importExternalFiles(const ports::ImportExternalFilesRequest& request,
                                             std::stop_token stopToken) const {
-        if (!importPort_) {
-            return notImplemented("import external files");
+        std::vector<std::filesystem::path> regularFiles;
+        std::vector<std::filesystem::path> derivadasFiles;
+        regularFiles.reserve(request.files.size());
+        derivadasFiles.reserve(request.files.size());
+        for (const auto& file : request.files) {
+            if (domain::SsaImportPolicy::classifySourceProfile(file.filename().string()) ==
+                domain::SsaImportPolicy::SourceProfile::DerivadasRelacionadas) {
+                derivadasFiles.push_back(file);
+            } else {
+                regularFiles.push_back(file);
+            }
         }
-        return importPort_->importExternalFiles(request, std::move(stopToken));
+        if (!regularFiles.empty()) {
+            if (!importPort_) {
+                return notImplemented("import external files");
+            }
+            auto regularRequest = request;
+            regularRequest.files = std::move(regularFiles);
+            auto regularResult = importPort_->importExternalFiles(regularRequest, stopToken);
+            if (!regularResult.ok() || derivadasFiles.empty()) {
+                return regularResult;
+            }
+            if (!derivadasPort_) {
+                return notImplemented("derivadas import");
+            }
+            auto derivadasResult = derivadasPort_->importDerivations(
+                {std::move(derivadasFiles), request.execution, request.progress}, stopToken);
+            if (!derivadasResult.ok()) {
+                return derivadasResult;
+            }
+            regularResult.warning = regularResult.warning || derivadasResult.warning;
+            return regularResult;
+        }
+        if (!derivadasPort_) {
+            return notImplemented("derivadas import");
+        }
+        return derivadasPort_->importDerivations(
+            {std::move(derivadasFiles), request.execution, request.progress}, stopToken);
     }
 
     ports::WorkflowResult SsaWorkflowService::rescan(const ports::RescanRequest& request,

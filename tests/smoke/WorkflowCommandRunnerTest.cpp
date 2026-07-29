@@ -257,6 +257,37 @@ namespace {
         bool rescanProgressAttached_ = false;
     };
 
+    class ProgressDerivadasPort final : public ssa::ports::IDerivadasPort {
+      public:
+        [[nodiscard]] bool legacySpreadsheetConverterAvailable() const override {
+            return true;
+        }
+
+        ssa::ports::WorkflowResult
+        importDerivations(const ssa::ports::ImportDerivationsRequest& request,
+                          std::stop_token = {}) override {
+            progressAttached_ = static_cast<bool>(request.progress);
+            if (request.progress) {
+                request.progress({ssa::ports::WorkflowProgressStage::ProcessingFile,
+                                  ssa::ports::WorkflowProgressLevel::Information, 1, 1, 50,
+                                  "derivadas.xlsx", "Processando derivadas",
+                                  "1 relacao identificada"});
+            }
+            return {ssa::ports::WorkflowStatus::Succeeded, "derivadas import completed"};
+        }
+
+        ssa::ports::WorkflowResult cleanOrphanDerivations(std::stop_token = {}) override {
+            return {ssa::ports::WorkflowStatus::Succeeded, "orphan cleanup completed"};
+        }
+
+        [[nodiscard]] bool progressAttached() const noexcept {
+            return progressAttached_;
+        }
+
+      private:
+        bool progressAttached_ = false;
+    };
+
     class WorkflowCommandRunnerTest final : public QObject {
         Q_OBJECT
 
@@ -389,6 +420,26 @@ namespace {
             for (std::size_t index = 2; index < statuses.size(); ++index) {
                 QCOMPARE(statuses[index], ssa::ports::WorkflowStatus::NotImplemented);
             }
+        }
+
+        void derivadas_import_forwards_progress_to_the_main_thread() {
+            auto derivadasPort = std::make_shared<ProgressDerivadasPort>();
+            auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(
+                nullptr, nullptr, nullptr, derivadasPort);
+            ssa::presentation::WorkflowCommandRunner runner(workflows);
+            int progressCount = 0;
+            QThread* progressThread = nullptr;
+            connect(&runner, &ssa::presentation::WorkflowCommandRunner::progressReported, this,
+                    [&](const ssa::ports::WorkflowProgress&) {
+                        ++progressCount;
+                        progressThread = QThread::currentThread();
+                    });
+
+            runner.importDerivations({QStringLiteral("/tmp/derivadas.xlsx")});
+
+            QTRY_COMPARE_WITH_TIMEOUT(progressCount, 1, 1000);
+            QVERIFY(derivadasPort->progressAttached());
+            QCOMPARE(progressThread, runner.thread());
         }
 
         void view_model_publishes_one_progress_terminal_for_import_and_rescan() {

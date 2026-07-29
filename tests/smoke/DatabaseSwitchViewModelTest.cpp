@@ -97,6 +97,11 @@ namespace {
             return result;
         }
 
+        [[nodiscard]] ssa::ports::ApplicationLaunchResult
+        launchConfigured(const ssa::ports::ApplicationLaunchTargets&) override {
+            return result;
+        }
+
         std::filesystem::path lastPath;
         QThread* launchThread = nullptr;
         int calls = 0;

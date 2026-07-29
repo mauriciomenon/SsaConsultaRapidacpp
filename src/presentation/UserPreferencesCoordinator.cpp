@@ -37,6 +37,9 @@ namespace ssa::presentation {
         hasPendingSnapshot_ = false;
         finalSnapshot_.reset();
         cancel();
+        if (watcher_.isRunning()) {
+            watcher_.waitForFinished();
+        }
     }
 
     void UserPreferencesCoordinator::beginShutdown(

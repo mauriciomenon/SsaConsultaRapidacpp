@@ -28,10 +28,13 @@ Dialog {
     padding: 16
     title: (terminal ? terminalLabel : operationLabel) + (totalFiles > 0 ? " - " + currentFile + "/" + totalFiles : "")
 
-    function appendLine(existingText, line) {
+    function appendLine(area, scrollBar, line) {
         if (line.length === 0)
-            return existingText;
-        return existingText.length === 0 ? line : existingText + "\n" + line;
+            return;
+        area.append(line);
+        Qt.callLater(function () {
+            scrollBar.position = Math.max(0, 1 - scrollBar.size);
+        });
     }
 
     function beginSession(label) {
@@ -114,6 +117,11 @@ Dialog {
             Layout.minimumHeight: 120
             Layout.preferredHeight: 120
 
+            ScrollBar.vertical: ScrollBar {
+                id: outputScrollBar
+                objectName: "workflowProgressOutputScrollBar"
+            }
+
             TextArea {
                 id: outputArea
                 objectName: "workflowProgressOutput"
@@ -147,6 +155,10 @@ Dialog {
             Layout.minimumHeight: 100
             Layout.preferredHeight: 100
 
+            ScrollBar.vertical: ScrollBar {
+                id: errorScrollBar
+            }
+
             TextArea {
                 id: errorArea
                 objectName: "workflowProgressErrors"
@@ -158,7 +170,7 @@ Dialog {
                 font.pixelSize: Theme.fontSizeBody
                 background: Rectangle {
                     color: Theme.panel
-                    border.color: Theme.danger
+                    border.color: Theme.borderSoft
                     border.width: 1
                     radius: Theme.radius
                 }
@@ -166,35 +178,42 @@ Dialog {
         }
     }
 
-    footer: RowLayout {
-        spacing: Theme.gap
+    footer: Item {
+        implicitHeight: cancelButton.implicitHeight + 16
 
-        Item {
-            Layout.fillWidth: true
-        }
+        RowLayout {
+            anchors.fill: parent
+            anchors.leftMargin: 16
+            anchors.rightMargin: 16
+            spacing: Theme.gap
 
-        ActionButton {
-            id: cancelButton
-            objectName: "workflowProgressCancelButton"
-            text: root.cancelRequested ? "Cancelamento solicitado" : "Cancelar"
-            enabled: !root.terminal && !root.cancelRequested && root.workflowViewModel.canCancel
-            implicitWidth: 180
-            onClicked: {
-                if (root.terminal || root.cancelRequested)
-                    return;
-                root.cancelRequested = true;
-                root.statusText = "Cancelamento solicitado";
-                root.workflowViewModel.cancel();
+            ActionButton {
+                id: cancelButton
+                objectName: "workflowProgressCancelButton"
+                text: root.cancelRequested ? "Cancelamento solicitado" : "Cancelar"
+                enabled: !root.terminal && !root.cancelRequested && root.workflowViewModel.canCancel
+                implicitWidth: 180
+                onClicked: {
+                    if (root.terminal || root.cancelRequested)
+                        return;
+                    root.cancelRequested = true;
+                    root.statusText = "Cancelamento solicitado";
+                    root.workflowViewModel.cancel();
+                }
             }
-        }
 
-        ActionButton {
-            id: closeButton
-            objectName: "workflowProgressCloseButton"
-            text: "Fechar"
-            enabled: root.terminal
-            implicitWidth: 100
-            onClicked: root.close()
+            Item {
+                Layout.fillWidth: true
+            }
+
+            ActionButton {
+                id: closeButton
+                objectName: "workflowProgressCloseButton"
+                text: "Fechar"
+                enabled: root.terminal
+                implicitWidth: 100
+                onClicked: root.close()
+            }
         }
     }
 
@@ -215,11 +234,11 @@ Dialog {
         }
 
         function onProgressOutputLine(line) {
-            outputArea.text = root.appendLine(outputArea.text, line);
+            root.appendLine(outputArea, outputScrollBar, line);
         }
 
         function onProgressErrorLine(line) {
-            errorArea.text = root.appendLine(errorArea.text, line);
+            root.appendLine(errorArea, errorScrollBar, line);
         }
 
         function onProgressSessionFinished(succeeded, canceled, title, message) {

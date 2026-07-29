@@ -72,9 +72,15 @@ int main(int argc, char* argv[]) {
 
     if (!parser.isSet("project-root")) {
         const auto userDataRoot = ssa::platform::StartupOptions::defaultUserDataRoot();
-        if (!QDir(userDataRoot).exists() && !QDir{}.mkpath(userDataRoot)) {
-            std::cerr << "startup error: cannot create data directory: "
+        if (!QDir{}.mkpath(userDataRoot)) {
+            std::cerr << "startup error: cannot create user data directory: "
                       << userDataRoot.toStdString() << '\n';
+            return 2;
+        }
+        const auto dataDirectory = QDir(userDataRoot).filePath("data");
+        if (!QDir{}.mkpath(dataDirectory)) {
+            std::cerr << "startup error: cannot create data directory: "
+                      << dataDirectory.toStdString() << '\n';
             return 2;
         }
     }

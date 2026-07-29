@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <fstream>
 #include <limits>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -74,6 +75,44 @@ namespace {
         }
 
         mutable ssa::domain::SsaPageRequest lastRequest;
+    };
+
+    class CapturingImportPort final : public ssa::ports::IImportWorkflowPort {
+      public:
+        [[nodiscard]] ssa::ports::WorkflowResult
+        importExternalFiles(const ssa::ports::ImportExternalFilesRequest& request,
+                            std::stop_token = {}) override {
+            requests.push_back(request);
+            return {ssa::ports::WorkflowStatus::Succeeded, "regular import completed"};
+        }
+
+        [[nodiscard]] ssa::ports::WorkflowResult rescan(const ssa::ports::RescanRequest&,
+                                                        std::stop_token = {}) override {
+            return {ssa::ports::WorkflowStatus::Succeeded, "rescan completed"};
+        }
+
+        std::vector<ssa::ports::ImportExternalFilesRequest> requests;
+    };
+
+    class CapturingDerivadasPort final : public ssa::ports::IDerivadasPort {
+      public:
+        [[nodiscard]] bool legacySpreadsheetConverterAvailable() const override {
+            return true;
+        }
+
+        [[nodiscard]] ssa::ports::WorkflowResult
+        importDerivations(const ssa::ports::ImportDerivationsRequest& request,
+                          std::stop_token = {}) override {
+            requests.push_back(request);
+            return {ssa::ports::WorkflowStatus::Succeeded, "derivadas import completed"};
+        }
+
+        [[nodiscard]] ssa::ports::WorkflowResult
+        cleanOrphanDerivations(std::stop_token = {}) override {
+            return {ssa::ports::WorkflowStatus::Succeeded, "orphan cleanup completed"};
+        }
+
+        std::vector<ssa::ports::ImportDerivationsRequest> requests;
     };
 
 } // namespace
@@ -207,6 +246,25 @@ TEST_CASE("workflow service reports missing adapters explicitly") {
     REQUIRE(rescan.status == ssa::ports::WorkflowStatus::NotImplemented);
     REQUIRE(exportResult.status == ssa::ports::WorkflowStatus::NotImplemented);
     REQUIRE(derivadas.status == ssa::ports::WorkflowStatus::NotImplemented);
+}
+
+TEST_CASE("workflow service routes derivadas reports outside the regular XLSX import") {
+    const auto regular = std::make_shared<CapturingImportPort>();
+    const auto derivadas = std::make_shared<CapturingDerivadasPort>();
+    const ssa::application::SsaWorkflowService workflows(regular, nullptr, nullptr, derivadas);
+    const ssa::ports::ImportExternalFilesRequest request{
+        {"Consulta SSA - 24-07-2026_0829AM.xlsx",
+         "SSAs Derivadas e Relacionadas_24-07-2026_0829AM.xlsx"}};
+
+    const auto result = workflows.importExternalFiles(request);
+
+    REQUIRE(result.ok());
+    REQUIRE(regular->requests.size() == 1);
+    REQUIRE(regular->requests.front().files ==
+            std::vector<std::filesystem::path>{request.files.front()});
+    REQUIRE(derivadas->requests.size() == 1);
+    REQUIRE(derivadas->requests.front().files ==
+            std::vector<std::filesystem::path>{request.files.back()});
 }
 
 TEST_CASE("unavailable workflow adapter reports not implemented explicitly") {

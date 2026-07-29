@@ -18,6 +18,8 @@ namespace ssa::platform {
         [[nodiscard]] std::filesystem::path redundantFolderPath() const;
         [[nodiscard]] std::filesystem::path installationGuidePath() const;
         void ensureConfigDirectory() const;
+        void ensureDataDirectory() const;
+        void ensureInputFolders() const;
 
       private:
         QString projectRoot_;

@@ -92,6 +92,17 @@ namespace ssa::infra::sqlite {
                     std::move(message), missingParents > 0};
         }
 
+        void reportProgress(const ports::ImportDerivationsRequest& request,
+                            const ports::WorkflowProgressStage stage,
+                            const ports::WorkflowProgressLevel level, const std::size_t currentFile,
+                            const int percentage, std::string fileName, std::string status,
+                            std::string detail = {}) {
+            if (request.progress) {
+                request.progress({stage, level, currentFile, request.files.size(), percentage,
+                                  std::move(fileName), std::move(status), std::move(detail)});
+            }
+        }
+
         std::optional<ports::WorkflowResult>
         executeSyncSql(SqliteConnection& connection, const char* sql,
                        const std::atomic_bool* canceledByBusy) {
@@ -205,10 +216,17 @@ namespace ssa::infra::sqlite {
             }
 
             importing::DerivadasEdgeMerger merger;
-            for (const auto& source : request.files) {
+            for (std::size_t index = 0; index < request.files.size(); ++index) {
+                const auto& source = request.files[index];
                 if (stopToken.stop_requested()) {
                     return importCanceled();
                 }
+                const auto currentFile = index + 1;
+                const auto fileName = source.filename().string();
+                reportProgress(request, ports::WorkflowProgressStage::ProcessingFile,
+                               ports::WorkflowProgressLevel::Information, currentFile,
+                               static_cast<int>(currentFile * 50 / request.files.size()), fileName,
+                               "Lendo planilha de derivadas");
                 auto sourceResult = readSource(source, *legacyConverter_, stopToken,
                                                checkpoints.afterFirstParsingChunk);
                 if (!sourceResult.ok()) {
@@ -222,6 +240,12 @@ namespace ssa::infra::sqlite {
                 if (mergeResult.status == importing::DerivadasMergeStatus::Rejected) {
                     return importRejected(mergeResult.message);
                 }
+                reportProgress(request, ports::WorkflowProgressStage::ProcessingFile,
+                               ports::WorkflowProgressLevel::Information, currentFile,
+                               static_cast<int>(currentFile * 75 / request.files.size()), fileName,
+                               "Planilha de derivadas lida",
+                               std::to_string(sourceResult.edges.size()) +
+                                   " relacoes identificadas");
             }
 
             if (stopToken.stop_requested()) {
@@ -284,6 +308,9 @@ namespace ssa::infra::sqlite {
                                    "UPDATE ssa_table SET derivada_de = ? WHERE numero_ssa = ? "
                                    "AND COALESCE(TRIM(derivada_de), '') <> ?",
                                    busy.cancellationObserved());
+            reportProgress(request, ports::WorkflowProgressStage::Committing,
+                           ports::WorkflowProgressLevel::Information, request.files.size(), 90, {},
+                           "Atualizando derivadas");
             std::size_t applied = 0;
             for (const auto& [child, parent] : parentByChild) {
                 if (stopToken.stop_requested()) {
@@ -308,7 +335,14 @@ namespace ssa::infra::sqlite {
             } catch (const ports::OperationError& error) {
                 return rollback(importFailed(error.diagnostic()));
             }
-            return importSucceeded(applied, merger.duplicates(), missingParents.size());
+            auto result = importSucceeded(applied, merger.duplicates(), missingParents.size());
+            reportProgress(request, ports::WorkflowProgressStage::Completed,
+                           missingParents.empty() ? ports::WorkflowProgressLevel::Information
+                                                  : ports::WorkflowProgressLevel::Warning,
+                           request.files.size(), 100, {},
+                           applied == 0 ? "Sem alteracoes nas derivadas" : "Derivadas atualizadas",
+                           std::to_string(applied) + " derivacoes atualizadas");
+            return result;
         } catch (const std::system_error& error) {
             if (error.code() == std::make_error_code(std::errc::operation_canceled)) {
                 return importCanceled();

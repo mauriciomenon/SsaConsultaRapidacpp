@@ -144,6 +144,7 @@ namespace ssa::ports {
     struct ImportDerivationsRequest {
         std::vector<std::filesystem::path> files;
         ImportExecutionOptions execution;
+        WorkflowProgressCallback progress;
     };
 
     struct SamArtifact {

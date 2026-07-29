@@ -44,4 +44,12 @@ namespace ssa::platform {
         std::filesystem::create_directories(configDirectoryPath());
     }
 
+    void AppPaths::ensureDataDirectory() const {
+        std::filesystem::create_directories(projectRootPath() / "data");
+    }
+
+    void AppPaths::ensureInputFolders() const {
+        std::filesystem::create_directories(redundantFolderPath());
+    }
+
 } // namespace ssa::platform

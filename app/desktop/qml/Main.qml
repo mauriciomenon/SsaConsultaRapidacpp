@@ -50,6 +50,12 @@ ApplicationWindow {
                 onTriggered: root.vm.browse.load()
             }
             MenuItem {
+                objectName: "configureDataMenuItem"
+                text: "Configurar dados..."
+                enabled: !root.vm.dataSetup.running
+                onTriggered: dataSetupWizard.openOptional()
+            }
+            MenuItem {
                 objectName: "openDatabaseMenuItem"
                 text: "Carregar outro banco"
                 enabled: !root.vm.databaseSwitch.running
@@ -318,7 +324,10 @@ ApplicationWindow {
     }
 
     Component.onCompleted: {
-        root.vm.browse.load();
+        if (!root.vm.hasDatabase)
+            dataSetupWizard.openForced();
+        else
+            root.vm.browse.load();
     }
 
     ColumnLayout {
@@ -653,6 +662,11 @@ ApplicationWindow {
     FileWorkflowDialogs {
         id: fileDialogs
         viewModel: root.vm
+    }
+
+    DataSetupWizard {
+        id: dataSetupWizard
+        viewModel: root.vm.dataSetup
     }
 
     WorkflowProgressDialog {

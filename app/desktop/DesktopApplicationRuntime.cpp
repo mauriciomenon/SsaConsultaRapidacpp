@@ -31,6 +31,9 @@ namespace ssa::app::desktop {
                          &ssa::presentation::DatabaseSwitchViewModel::replacementStarted,
                          QCoreApplication::instance(), &QCoreApplication::quit,
                          Qt::QueuedConnection);
+        QObject::connect(
+            mainViewModel_->dataSetup(), &ssa::presentation::DataSetupViewModel::replacementStarted,
+            QCoreApplication::instance(), &QCoreApplication::quit, Qt::QueuedConnection);
         QObject::connect(mainViewModel_.get(),
                          &ssa::presentation::MainViewModel::forcedShutdownRequested,
                          QCoreApplication::instance(), &DesktopApplicationRuntime::forceShutdown);

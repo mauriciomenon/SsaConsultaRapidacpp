@@ -1,5 +1,51 @@
 # Status Da Rodada
 
+## Wizard unificado Configurar dados - 2026-07-26
+
+- **ENTREGUE NO WORKING TREE, GATE LOCAL VERDE**: o wizard oferece criar
+  banco vazio, importar banco SQLite, criar banco e importar XLSX, ou importar
+  banco e XLSX. O destino pode ser a pasta automatica do usuario ou uma raiz
+  escolhida. A arvore canonica cria `data/`, `config/` e
+  `docs_entrada/processadas/nosurvivor/`.
+- First-run sem `data/ssas.db` abre o wizard modal e nao dispara o browse.
+  `Arquivo > Configurar dados...` reabre o mesmo fluxo depois. A operacao usa
+  staging privado no mesmo filesystem, validacao, cancelamento e publicacao
+  exclusiva sem sobrescrever destino concorrente; ao concluir, relanca a
+  aplicacao com banco, root e config novos.
+- A publicacao exclusiva usa `MoveFileW` no Windows, `renamex_np` com
+  `RENAME_EXCL` no macOS e `renameat2` com `RENAME_NOREPLACE` no Linux. O
+  contrato foi invertido por `ports`; `infra` nao inclui nem liga `platform`.
+- Evidencia focada: 14/14 testes DataSetup/DatabaseSwitch passaram. Inclui
+  arvore, schema vazio, copia e validacao de DB, destino preexistente,
+  cancelamento/falha, cleanup, retry de relancamento e publisher exclusivo.
+- Build e package Linux release Qt 6.11.1 passaram, com 655/655 testes em
+  92.86 s. A corrida em
+  `PreferenceLifecycleTest::destruction_waits_for_active_save_without_callback`
+  foi eliminada: apos cancelamento, `UserPreferencesCoordinator` aguarda o
+  save ativo encerrar antes de destruir o watcher. O alvo passou 50/50
+  repeticoes em release. `all_qmllint`, clang-format e qmlformat passaram.
+  clang-tidy e cppcheck mostram apenas duas advertencias preexistentes:
+  parametro `std::stop_token` por valor em `SsaWorkflowService.cpp` e sombra
+  de `error` em `SqliteDatabaseWriteLock.h`. Semgrep amplo, gitleaks,
+  detect-secrets e TruffleHog nao encontraram segredos ou findings.
+- Evidencia visual final:
+  `/tmp/ssa-first-run-qt611.YFNKnw/first-run-qt611.png`, 1180x760, Qt 6.11.1
+  offscreen. O wizard aparece centralizado, com quatro acoes, sem erro visivel.
+  O runtime ainda registra tres `SQLITE_CANTOPEN` de analytics/preferencias
+  antes da escolha; nao bloqueiam o wizard, mas eliminar esses acessos exige
+  ampliar o escopo de startup.
+- Dependencias externas: CodeRabbit local esta signed out. `gitleaks` 8.30.1,
+  qmlformat 6.11.1, Checkov 3.3.8 e cmake-lint 0.6.13 foram instalados no
+  ambiente. Checkov passou nas pipelines GitLab e Bitbucket; cmake-lint aponta
+  12 convencoes preexistentes em `CMakeLists.txt`. Nao houve validacao runtime
+  em Windows ou macOS nesta rodada.
+- Estado Git antes do commit: branch `master`, HEAD e `origin/master` em
+  `a72709c`; 26 arquivos tracked modificados e 9 arquivos novos pertencem ao
+  wizard, importador e testes desta rodada.
+
+Proxima atividade unica: revisao final, commit atomico e push para GitLab e
+Bitbucket, conforme autorizacao do usuario.
+
 ## Marco v0.9.16 + diagnostico wizard "Configurar Dados" - 2026-07-25
 
 - **ENTREGUE (documental)**: tag anotada `v0.9.16` criada em `65fda46` e

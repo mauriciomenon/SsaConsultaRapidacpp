@@ -162,8 +162,21 @@ ApplicationWindow {
                               "arquivo 65 rejeitado"});
             ssa::ports::ImportSummary summary;
             summary.discovered = 65;
+            summary.accepted = 2;
             summary.rejected = 1;
             summary.failed = 1;
+            summary.inserts = 3;
+            summary.updates = 2;
+            ssa::ports::ImportFileResult inserted;
+            inserted.source = "novo.xlsx";
+            inserted.status = ssa::ports::ImportFileStatus::Applied;
+            inserted.inserts = 3;
+            summary.files.push_back(std::move(inserted));
+            ssa::ports::ImportFileResult updated;
+            updated.source = "atualizado.xlsx";
+            updated.status = ssa::ports::ImportFileStatus::Applied;
+            updated.updates = 2;
+            summary.files.push_back(std::move(updated));
             ssa::ports::ImportFileResult rejected;
             rejected.source = "rejeitado.xlsx";
             rejected.status = ssa::ports::ImportFileStatus::Rejected;
@@ -291,6 +304,8 @@ ApplicationWindow {
                 window->findChild<QQuickItem*>(QStringLiteral("workflowProgressOutputLabel"));
             auto* outputScroll =
                 window->findChild<QQuickItem*>(QStringLiteral("workflowProgressOutputScroll"));
+            auto* outputScrollBar =
+                window->findChild<QObject*>(QStringLiteral("workflowProgressOutputScrollBar"));
             auto* errorLabel =
                 window->findChild<QQuickItem*>(QStringLiteral("workflowProgressErrorLabel"));
             auto* errorScroll =
@@ -308,6 +323,7 @@ ApplicationWindow {
             QVERIFY(errors != nullptr);
             QVERIFY(outputLabel != nullptr);
             QVERIFY(outputScroll != nullptr);
+            QVERIFY(outputScrollBar != nullptr);
             QVERIFY(errorLabel != nullptr);
             QVERIFY(errorScroll != nullptr);
             QVERIFY(cancelButton != nullptr);
@@ -466,6 +482,10 @@ ApplicationWindow {
             }
             QTRY_VERIFY_WITH_TIMEOUT(
                 errors->property("contentHeight").toReal() > errorScroll->height() + 0.5, 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(outputScrollBar->property("position").toReal() +
+                                             outputScrollBar->property("size").toReal() >=
+                                         0.99,
+                                     1000);
             qInfo() << "workflow progress maximum error geometry delta" << maxErrorGeometryDelta;
 
             QTest::keyClick(window, Qt::Key_Escape);
@@ -511,8 +531,12 @@ ApplicationWindow {
 
             const auto cancelRect = sceneRect(qobject_cast<QQuickItem*>(cancelButton));
             const auto closeRect = sceneRect(qobject_cast<QQuickItem*>(closeButton));
-            QVERIFY(cancelRect.right() <= closeRect.left() + 0.5);
-            QVERIFY(closeRect.left() - cancelRect.right() <= 16.0);
+            const QRectF dialogRect{dialog->property("x").toReal(), dialog->property("y").toReal(),
+                                    dialog->property("width").toReal(),
+                                    dialog->property("height").toReal()};
+            QVERIFY(cancelRect.left() >= dialogRect.left() + 15.5);
+            QVERIFY(closeRect.right() <= dialogRect.right() - 15.5);
+            QVERIFY(closeRect.left() - cancelRect.right() >= 100.0);
         }
 
         void real_view_model_routes_import_and_rescan_progress() {
@@ -563,6 +587,10 @@ ApplicationWindow {
                      QStringLiteral("Falha ao importar arquivos - 65/65"));
             QVERIFY(output->property("text").toString().contains(QStringLiteral("Arquivo 64/65")));
             QVERIFY(output->property("text").toString().contains(QStringLiteral("Arquivo 65/65")));
+            QVERIFY(output->property("text").toString().contains(
+                QStringLiteral("novo.xlsx: 3 SSAs novas")));
+            QVERIFY(output->property("text").toString().contains(
+                QStringLiteral("atualizado.xlsx: 2 SSAs atualizadas")));
             QVERIFY(errors->property("text").toString().contains(
                 QStringLiteral("rejeitado.xlsx - colunas obrigatorias ausentes")));
             QVERIFY(errors->property("text").toString().contains(

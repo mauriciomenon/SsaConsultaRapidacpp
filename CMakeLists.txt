@@ -116,6 +116,7 @@ add_library(
   ssa_infra STATIC
   src/infra/export/CsvExportPort.cpp
   src/infra/import/CancelableFileCopy.cpp
+  src/infra/import/DataSetupPort.cpp
   src/infra/import/DerivadasSourceReader.cpp
   src/infra/import/ImportFileConsolidator.cpp
   src/infra/import/ImportFileStager.cpp
@@ -158,6 +159,7 @@ endif()
 add_library(
   ssa_platform STATIC
   src/platform/AppPaths.cpp
+  src/platform/ExclusiveFilePublisher.cpp
   src/platform/RotatingLogWriter.cpp
   src/platform/DesktopApplicationLauncher.cpp
   src/platform/DesktopExternalCommandPort.cpp
@@ -202,6 +204,7 @@ add_library(
   src/presentation/ColumnFilterViewModel.cpp
   src/presentation/ColumnSettingsModel.cpp
   src/presentation/CurrentWeekViewModel.cpp
+  src/presentation/DataSetupViewModel.cpp
   src/presentation/DatabaseSwitchViewModel.cpp
   src/presentation/DesktopActionsViewModel.cpp
   src/presentation/SearchViewModel.cpp
@@ -320,6 +323,7 @@ qt_add_qml_module(
   app/desktop/qml/components/ColumnFilterPanel.qml
   app/desktop/qml/components/ColumnFilterRow.qml
   app/desktop/qml/components/ColumnSelectorPopup.qml
+  app/desktop/qml/components/DataSetupWizard.qml
   app/desktop/qml/components/FilterCard.qml
   app/desktop/qml/components/FilterFieldLabel.qml
   app/desktop/qml/components/FileWorkflowDialogs.qml
@@ -571,6 +575,7 @@ if(SSA_BUILD_TESTS)
     tests/integration/DerivadasImportTests.cpp
     tests/integration/ActivityAnalyticsInitializerTests.cpp
     tests/integration/ActivityAnalyticsProjectionTests.cpp
+    tests/integration/DataSetupBootstrapTests.cpp
     tests/integration/JsonPreferencesStoreTests.cpp
     tests/integration/RotatingLogWriterTests.cpp
     tests/integration/SqliteReadTransactionTests.cpp
@@ -721,6 +726,13 @@ if(SSA_BUILD_TESTS)
   add_test(NAME ssa_qt_database_switch_tests
            COMMAND ssa_qt_database_switch_tests)
   set_tests_properties(ssa_qt_database_switch_tests PROPERTIES TIMEOUT 10)
+
+  add_executable(ssa_qt_data_setup_tests
+                 tests/smoke/DataSetupViewModelTest.cpp)
+  target_link_libraries(ssa_qt_data_setup_tests PRIVATE ssa_presentation
+                                                        ssa_platform Qt6::Test)
+  add_test(NAME ssa_qt_data_setup_tests COMMAND ssa_qt_data_setup_tests)
+  set_tests_properties(ssa_qt_data_setup_tests PROPERTIES TIMEOUT 10)
 
   add_executable(ssa_qt_current_week_tests
                  tests/smoke/CurrentWeekViewModelTest.cpp)

@@ -130,6 +130,27 @@ namespace ssa::presentation {
             return QStringLiteral("motivo disponivel no log tecnico");
         }
 
+        QString appliedFileMessage(const ports::ImportFileResult& file) {
+            QStringList facts;
+            if (file.inserts > 0) {
+                facts.push_back(counted(file.inserts, QStringLiteral("SSA nova"),
+                                        QStringLiteral("SSAs novas")));
+            }
+            if (file.updates > 0) {
+                facts.push_back(counted(file.updates, QStringLiteral("SSA atualizada"),
+                                        QStringLiteral("SSAs atualizadas")));
+            }
+            if (file.unchangedRows > 0) {
+                facts.push_back(counted(file.unchangedRows, QStringLiteral("SSA sem alteracao"),
+                                        QStringLiteral("SSAs sem alteracao")));
+            }
+            if (facts.empty()) {
+                facts.push_back(QStringLiteral("sem alteracoes"));
+            }
+            return QString::fromStdString(file.source) + QStringLiteral(": ") +
+                   facts.join(QStringLiteral("; "));
+        }
+
     } // namespace
 
     WorkflowCommandViewModel::WorkflowCommandViewModel(
@@ -333,6 +354,7 @@ namespace ssa::presentation {
                       false);
             return;
         }
+        startProgressSession(tr("Importacao de derivadas em andamento"));
         runner_.importDerivations(files, importExecutionOptions());
     }
 
@@ -553,16 +575,21 @@ namespace ssa::presentation {
         bool terminalDetailEmitted = false;
         if (result.importSummary.has_value()) {
             for (const auto& file : result.importSummary->files) {
-                if (file.status != ports::ImportFileStatus::Ignored &&
-                    file.status != ports::ImportFileStatus::Rejected &&
-                    file.status != ports::ImportFileStatus::Failed) {
+                if (file.status == ports::ImportFileStatus::Applied ||
+                    file.status == ports::ImportFileStatus::NoChanges) {
+                    emit progressOutputLine(appliedFileMessage(file));
                     continue;
                 }
-                const auto reason = fileReason(file.reason);
-                const auto line = QString::fromStdString(file.source) +
-                                  (reason.isEmpty() ? QString{} : QStringLiteral(" - ") + reason);
-                emit progressErrorLine(line);
-                terminalDetailEmitted = true;
+                if (file.status == ports::ImportFileStatus::Ignored ||
+                    file.status == ports::ImportFileStatus::Rejected ||
+                    file.status == ports::ImportFileStatus::Failed) {
+                    const auto reason = fileReason(file.reason);
+                    const auto line =
+                        QString::fromStdString(file.source) +
+                        (reason.isEmpty() ? QString{} : QStringLiteral(" - ") + reason);
+                    emit progressErrorLine(line);
+                    terminalDetailEmitted = true;
+                }
             }
         }
         const auto diagnostic = QString::fromStdString(result.diagnostic);

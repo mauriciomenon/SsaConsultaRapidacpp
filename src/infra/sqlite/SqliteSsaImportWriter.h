@@ -70,6 +70,12 @@ namespace ssa::infra::sqlite {
                                        std::string tableName = "ssa_table",
                                        SynchronizationSignals synchronization = {});
 
+        static void
+        createEmpty(const std::filesystem::path& databasePath,
+                    const std::vector<domain::ColumnDef>& columns,
+                    const std::string& tableName = "ssa_table",
+                    std::chrono::milliseconds sqliteBusyWait = std::chrono::milliseconds{3'000});
+
         // Convenience single-batch write. Multi-file imports should use WriteSession
         // to keep one transaction across batches.
         [[nodiscard]] importing::SsaImportWriteSummary

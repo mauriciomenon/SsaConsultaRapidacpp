@@ -239,7 +239,7 @@ namespace ssa::infra::sqlite {
         }
 
         bool hasExactIndexSql(sqlite3* db, const std::string& tableName,
-                              const std::string& indexName, const std::string& expectedSql,
+                              const std::string& indexName, const std::string_view expectedSql,
                               const std::atomic_bool* busyCancellationObserved) {
             SqliteStatement statement(
                 db, "SELECT sql FROM sqlite_master WHERE type='index' AND name=? AND tbl_name=?",
@@ -311,7 +311,11 @@ namespace ssa::infra::sqlite {
             std::vector<std::string> names;
             names.reserve(columns.size());
             for (const auto& column : columns) {
-                names.push_back("idx_" + tableName + "_import_dirty_" + column);
+                auto& name = names.emplace_back("idx_");
+                name.reserve(4 + tableName.size() + 14 + column.size());
+                name += tableName;
+                name += "_import_dirty_";
+                name += column;
             }
             return names;
         }
@@ -510,6 +514,52 @@ namespace ssa::infra::sqlite {
             }
         }
 
+        void validateWriterConfiguration(const std::string& tableName,
+                                         const std::vector<domain::ColumnDef>& columns) {
+            if (!isValidSqlIdentifier(tableName)) {
+                throw std::invalid_argument("invalid sqlite import table name");
+            }
+            if (columns.empty()) {
+                throw std::invalid_argument("sqlite import writer requires columns");
+            }
+            validateCanonicalColumns(columns);
+            validateIdentityColumns(columns);
+            if (!containsSsaNumberColumn(columns)) {
+                throw std::invalid_argument("sqlite import writer requires " +
+                                            std::string{domain::kSsaNumberColumnKey} + " column");
+            }
+        }
+
+        void ensureSchemaTables(sqlite3* db, const std::string& tableName,
+                                const std::vector<domain::ColumnDef>& columns,
+                                const std::atomic_bool* busyCancellationObserved) {
+            ensureConsolidationJournalSchema(db, busyCancellationObserved);
+            executeSql(db, createTableSql(tableName, columns), busyCancellationObserved);
+            ensureDerivedCountSummary(db, tableName, columns, busyCancellationObserved);
+        }
+
+        void bootstrapSchema(sqlite3* db, const std::string& tableName,
+                             const std::vector<domain::ColumnDef>& columns,
+                             const std::atomic_bool* busyCancellationObserved) {
+            const bool stampLegacySchemaVersion =
+                usesLegacySchemaVersion(db, busyCancellationObserved);
+            const auto uniqueIndexName =
+                "ux_" + tableName + "_" + std::string{domain::kSsaNumberColumnKey};
+            ensureExactIndex(db, tableName, uniqueIndexName,
+                             createUniqueSsaNumberIndexSql(tableName), busyCancellationObserved);
+            ensureDirtyCanonicalLedger(db, tableName, columns, busyCancellationObserved);
+            ensureStatusLastIndex(db, tableName, columns, busyCancellationObserved);
+            for (const auto& indexSql : createFilterIndexesSql(tableName, columns)) {
+                executeSql(db, indexSql, busyCancellationObserved);
+            }
+            if (stampLegacySchemaVersion) {
+                executeSql(db,
+                           "PRAGMA user_version = " +
+                               std::to_string(domain::ColumnCatalog::schemaVersion()),
+                           busyCancellationObserved);
+            }
+        }
+
         bool parseInteger(const std::string& value, long long& parsed) {
             const auto* begin = value.data();
             const auto* end = value.data() + value.size();
@@ -681,18 +731,28 @@ namespace ssa::infra::sqlite {
                                                  SynchronizationSignals synchronization)
         : databasePath_(std::move(databasePath)), columns_(std::move(columns)),
           tableName_(std::move(tableName)), synchronization_(std::move(synchronization)) {
-        if (!isValidSqlIdentifier(tableName_)) {
-            throw std::invalid_argument("invalid sqlite import table name");
+        validateWriterConfiguration(tableName_, columns_);
+    }
+
+    void SqliteSsaImportWriter::createEmpty(const std::filesystem::path& databasePath,
+                                            const std::vector<domain::ColumnDef>& columns,
+                                            const std::string& tableName,
+                                            const std::chrono::milliseconds sqliteBusyWait) {
+        validateWriterConfiguration(tableName, columns);
+        const auto parentDirectory = databasePath.parent_path();
+        if (!parentDirectory.empty()) {
+            std::error_code error;
+            std::filesystem::create_directories(parentDirectory, error);
+            if (error) {
+                throw std::runtime_error("cannot create sqlite database directory: " +
+                                         error.message());
+            }
         }
-        if (columns_.empty()) {
-            throw std::invalid_argument("sqlite import writer requires columns");
-        }
-        validateCanonicalColumns(columns_);
-        validateIdentityColumns(columns_);
-        if (!containsSsaNumberColumn(columns_)) {
-            throw std::invalid_argument("sqlite import writer requires " +
-                                        std::string{domain::kSsaNumberColumnKey} + " column");
-        }
+        SqliteConnection connection(databasePath, SqliteOpenMode::ReadWriteCreate, sqliteBusyWait);
+        SqliteWriteTransaction transaction(connection.handle());
+        ensureSchemaTables(connection.handle(), tableName, columns, nullptr);
+        bootstrapSchema(connection.handle(), tableName, columns, nullptr);
+        transaction.commit();
     }
 
     struct SqliteSsaImportWriter::WriteSession::Storage final {
@@ -715,13 +775,7 @@ namespace ssa::infra::sqlite {
             auto* db = connection.handle();
             transaction = std::make_unique<SqliteWriteTransaction>(db, busy.cancellationObserved());
             try {
-                const bool stampLegacySchemaVersion =
-                    usesLegacySchemaVersion(db, busy.cancellationObserved());
-                ensureConsolidationJournalSchema(db, busy.cancellationObserved());
-                executeSql(db, createTableSql(this->tableName, columns),
-                           busy.cancellationObserved());
-                ensureDerivedCountSummary(db, this->tableName, columns,
-                                          busy.cancellationObserved());
+                ensureSchemaTables(db, this->tableName, columns, busy.cancellationObserved());
                 bool normalizedExistingRows = false;
                 if (replaceAll) {
                     dropLegacySsaNumberIndex(db, this->tableName, busy.cancellationObserved());
@@ -738,18 +792,12 @@ namespace ssa::infra::sqlite {
                         normalizedExistingRows = true;
                     }
                 }
-                const auto uniqueIndexName =
-                    "ux_" + this->tableName + "_" + std::string{domain::kSsaNumberColumnKey};
-                ensureExactIndex(db, this->tableName, uniqueIndexName,
-                                 createUniqueSsaNumberIndexSql(this->tableName),
-                                 busy.cancellationObserved());
+                bootstrapSchema(db, this->tableName, columns, busy.cancellationObserved());
                 if (replaceAll || normalizedExistingRows) {
                     if (replaceAll) {
                         dropLegacyDirtyCanonicalIndexes(db, this->tableName,
                                                         busy.cancellationObserved());
                     }
-                    ensureDirtyCanonicalLedger(db, this->tableName, columns,
-                                               busy.cancellationObserved());
                 }
                 const auto dirtyPredicate = dirtyCanonicalPredicate(columns);
                 if (dirtyCanonicalLedgerHasRows(db, this->tableName, dirtyPredicate,
@@ -757,16 +805,6 @@ namespace ssa::infra::sqlite {
                     throw ports::OperationError(
                         "Falha ao validar identificadores SSA existentes",
                         "dirty canonical ledger still contains rows after normalization");
-                }
-                ensureStatusLastIndex(db, this->tableName, columns, busy.cancellationObserved());
-                for (const auto& indexSql : createFilterIndexesSql(this->tableName, columns)) {
-                    executeSql(db, indexSql, busy.cancellationObserved());
-                }
-                if (stampLegacySchemaVersion) {
-                    executeSql(db,
-                               "PRAGMA user_version = " +
-                                   std::to_string(domain::ColumnCatalog::schemaVersion()),
-                               busy.cancellationObserved());
                 }
                 insert = std::make_unique<SqliteStatement>(db, insertSql(this->tableName, columns),
                                                            busy.cancellationObserved());

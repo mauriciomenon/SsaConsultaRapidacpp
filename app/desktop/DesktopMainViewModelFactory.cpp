@@ -6,6 +6,7 @@
 #include "diagnostics/StartupTrace.h"
 #include "domain/ColumnCatalog.h"
 #include "infra/export/CsvExportPort.h"
+#include "infra/import/DataSetupPort.h"
 #include "infra/import/LegacySpreadsheetConverter.h"
 #include "infra/import/SpreadsheetImportWorkflowPort.h"
 #include "infra/preferences/JsonFilterPresetStore.h"
@@ -18,6 +19,7 @@
 #include "infra/sqlite/SqliteSsaRepository.h"
 #include "platform/DesktopApplicationLauncher.h"
 #include "platform/DesktopExternalCommandPort.h"
+#include "platform/ExclusiveFilePublisher.h"
 #include "platform/ScrapReportSamRefreshPort.h"
 #include "platform/SupervisedProcessRunner.h"
 #include "qt/FilesystemPath.h"
@@ -120,6 +122,9 @@ namespace ssa::app::desktop {
             std::make_shared<ssa::infra::sqlite::SqliteDatabaseValidator>();
         const auto applicationLauncher =
             std::make_shared<ssa::platform::DesktopApplicationLauncher>(options);
+        const auto dataSetupPort = std::make_shared<ssa::infra::importing::DataSetupPort>(
+            ssa::platform::publishFileExclusively);
+        const bool hasDatabase = std::filesystem::is_regular_file(databasePath(options));
         std::shared_ptr<const ssa::application::ActivityAnalyticsService> analyticsService;
         ssa::diagnostics::traceStartupEvent("analytics_start", "thread=gui");
         try {
@@ -135,7 +140,8 @@ namespace ssa::app::desktop {
 
         return std::make_unique<ssa::presentation::MainViewModel>(
             browseService, commands, preferences, filterPresets, workflows, databaseValidator,
-            applicationLauncher, queryService, nullptr, analyticsService);
+            applicationLauncher, queryService, nullptr, analyticsService, dataSetupPort,
+            ssa::platform::StartupOptions::defaultUserDataRoot(), hasDatabase);
     }
 
 } // namespace ssa::app::desktop
