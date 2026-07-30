@@ -11,6 +11,7 @@ Item {
     required property var filterViewModel
     required property var preferenceFlow
     property string density: "normal"
+    property real savedFiltersMaximumWidth: 0
     signal exportRequested
     signal saveFiltersRequested
     signal exportFiltersRequested
@@ -18,6 +19,31 @@ Item {
 
     implicitWidth: controls.implicitWidth
     implicitHeight: controls.implicitHeight
+
+    readonly property int savedFilterCount: preferenceFlow === null ? 0 : preferenceFlow.savedFilters.length
+
+    function savedFilterChipWidth(filterName) {
+        return Math.min(120, Math.max(64, Math.ceil(filterName.length * Theme.fontSizeMicro * 0.62) + 42));
+    }
+
+    function visibleSavedFilterCount() {
+        const availableWidth = savedFilterStrip.width;
+        const overflowWidth = 22;
+        let usedWidth = 0;
+        let visibleCount = 0;
+        for (let index = 0; index < savedFilterCount; ++index) {
+            const filter = preferenceFlow.savedFilters[index];
+            const filterName = filter.name !== undefined ? String(filter.name) : "";
+            const spacing = visibleCount > 0 ? 5 : 0;
+            const reserveOverflow = index < savedFilterCount - 1 ? overflowWidth + 5 : 0;
+            const nextWidth = usedWidth + spacing + savedFilterChipWidth(filterName) + reserveOverflow;
+            if (nextWidth > availableWidth)
+                break;
+            usedWidth += spacing + savedFilterChipWidth(filterName);
+            visibleCount += 1;
+        }
+        return visibleCount;
+    }
 
     function openSaveFilterDialog() {
         if (root.preferenceFlow === null)
@@ -37,114 +63,12 @@ Item {
         anchors.fill: parent
         spacing: Theme.gap
 
-        ScrollView {
-            visible: root.preferenceFlow.savedFilters.length > 0
-            Layout.preferredWidth: Math.min(300, savedFilterTags.implicitWidth + 4)
-            Layout.maximumWidth: 300
-            Layout.preferredHeight: Theme.densityValue(root.density, 26, Theme.controlHeight, 34)
-            clip: true
-            contentHeight: availableHeight
-            ScrollBar.vertical.policy: ScrollBar.AlwaysOff
-            ScrollBar.horizontal.policy: savedFilterTags.width > width ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
-
-            Row {
-                id: savedFilterTags
-                height: parent.availableHeight
-                spacing: 5
-
-                Repeater {
-                    model: root.preferenceFlow.savedFilters
-
-                    Control {
-                        id: savedFilterTag
-                        required property int index
-                        objectName: "savedFilterTag-" + index
-                        required property var modelData
-                        readonly property string filterName: modelData.name !== undefined ? modelData.name : ""
-                        implicitWidth: Math.min(120, tagLabel.implicitWidth + removeSavedFilter.implicitWidth + 26)
-                        implicitHeight: 26
-                        padding: 0
-                        hoverEnabled: true
-                        activeFocusOnTab: true
-                        Accessible.role: Accessible.Button
-                        Accessible.name: "Aplicar filtro salvo " + savedFilterTag.filterName
-                        Accessible.onPressAction: savedFilterTag.applyFilter()
-                        Keys.onReturnPressed: savedFilterTag.applyFilter()
-                        Keys.onEnterPressed: savedFilterTag.applyFilter()
-                        Keys.onSpacePressed: savedFilterTag.applyFilter()
-
-                        function applyFilter() {
-                            root.preferenceFlow.applySavedFilter(savedFilterTag.filterName);
-                        }
-
-                        ToolTip.visible: hovered && filterName.length > 0
-                        ToolTip.text: filterName
-                        ToolTip.delay: 0
-
-                        background: Rectangle {
-                            color: savedFilterMouse.containsMouse ? Theme.accentSoft : Theme.panelRaised
-                            border.color: Theme.border
-                            radius: Theme.radius
-                        }
-
-                        contentItem: RowLayout {
-                            spacing: 3
-
-                            Label {
-                                id: tagLabel
-                                Layout.fillWidth: true
-                                Layout.leftMargin: 6
-                                text: savedFilterTag.filterName
-                                textFormat: Text.PlainText
-                                color: Theme.text
-                                font.pixelSize: Theme.fontSizeMicro
-                                font.bold: false
-                                elide: Text.ElideRight
-                                verticalAlignment: Text.AlignVCenter
-                            }
-
-                            ToolButton {
-                                id: removeSavedFilter
-                                Layout.preferredWidth: 22
-                                Layout.preferredHeight: 22
-                                text: "x"
-                                padding: 0
-                                font.pixelSize: Theme.fontSizeMicro
-                                font.bold: false
-                                palette.buttonText: Theme.accentStrong
-                                ToolTip.visible: hovered
-                                ToolTip.text: "Remover filtro salvo"
-                                Accessible.name: "Remover filtro salvo " + savedFilterTag.filterName
-                                onClicked: root.preferenceFlow.removeSavedFilter(savedFilterTag.filterName)
-
-                                background: Rectangle {
-                                    color: removeSavedFilter.hovered ? Theme.accentSoft : "transparent"
-                                    radius: Theme.radius
-                                }
-                            }
-                        }
-
-                        MouseArea {
-                            id: savedFilterMouse
-                            anchors.fill: parent
-                            anchors.rightMargin: removeSavedFilter.width
-                            hoverEnabled: true
-                            onClicked: {
-                                savedFilterTag.forceActiveFocus();
-                                savedFilterTag.applyFilter();
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
         ActionButton {
             id: filterMenuButton
             objectName: "mainFiltersButton"
             text: "Filtros"
             implicitWidth: 96
-            implicitHeight: Theme.densityValue(root.density, 26, Theme.controlHeight, 34)
+            Layout.preferredHeight: Theme.densityValue(root.density, 26, Theme.controlHeight, 34)
             onClicked: filterMenu.open()
 
             Menu {
@@ -176,8 +100,160 @@ Item {
                 MenuSeparator {}
                 MenuItem {
                     text: "Limpar Filtros"
-                    onTriggered: {
-                        root.filterViewModel.resetFilters();
+                    onTriggered: root.filterViewModel.resetFilters()
+                }
+            }
+        }
+
+        Item {
+            id: savedFilterStrip
+            objectName: "savedFilterStrip"
+            visible: root.savedFilterCount > 0
+            Layout.preferredWidth: Math.max(0, root.savedFiltersMaximumWidth)
+            Layout.maximumWidth: Math.max(0, root.savedFiltersMaximumWidth)
+            Layout.preferredHeight: Theme.densityValue(root.density, 26, Theme.controlHeight, 34)
+            clip: true
+
+            Row {
+                id: savedFilterTags
+                height: parent.height
+                spacing: 5
+
+                Repeater {
+                    model: root.preferenceFlow.savedFilters
+
+                    Control {
+                        id: savedFilterTag
+                        required property int index
+                        objectName: "savedFilterTag-" + index
+                        required property var modelData
+                        readonly property string filterName: modelData.name !== undefined ? modelData.name : ""
+                        readonly property color effectiveBackground: savedFilterMouse.containsMouse ? Theme.accentSoft : Theme.panelRaised
+                        visible: index < root.visibleSavedFilterCount()
+                        implicitWidth: root.savedFilterChipWidth(filterName)
+                        implicitHeight: 26
+                        padding: 0
+                        hoverEnabled: true
+                        activeFocusOnTab: true
+                        Accessible.role: Accessible.Button
+                        Accessible.name: "Aplicar filtro salvo " + savedFilterTag.filterName
+                        Accessible.onPressAction: savedFilterTag.applyFilter()
+                        Keys.onReturnPressed: savedFilterTag.applyFilter()
+                        Keys.onEnterPressed: savedFilterTag.applyFilter()
+                        Keys.onSpacePressed: savedFilterTag.applyFilter()
+
+                        function applyFilter() {
+                            root.preferenceFlow.applySavedFilter(savedFilterTag.filterName);
+                        }
+
+                        ToolTip.visible: hovered && filterName.length > 0
+                        ToolTip.text: filterName
+                        ToolTip.delay: 0
+
+                        background: Rectangle {
+                            color: savedFilterTag.effectiveBackground
+                            border.color: Theme.border
+                            radius: Theme.radius
+                        }
+
+                        contentItem: RowLayout {
+                            spacing: 3
+
+                            Label {
+                                id: tagLabel
+                                Layout.fillWidth: true
+                                Layout.leftMargin: 6
+                                text: savedFilterTag.filterName
+                                textFormat: Text.PlainText
+                                color: Theme.readableText(savedFilterTag.effectiveBackground, Theme.text)
+                                font.pixelSize: Theme.fontSizeMicro
+                                font.bold: false
+                                elide: Text.ElideRight
+                                verticalAlignment: Text.AlignVCenter
+                            }
+
+                            ToolButton {
+                                id: removeSavedFilter
+                                Layout.preferredWidth: 22
+                                Layout.preferredHeight: 22
+                                text: "x"
+                                padding: 0
+                                font.pixelSize: Theme.fontSizeMicro
+                                font.bold: false
+                                palette.buttonText: Theme.readableText(removeSavedFilter.hovered ? Theme.accentSoft : savedFilterTag.effectiveBackground, Theme.text)
+                                ToolTip.visible: hovered
+                                ToolTip.text: "Remover filtro salvo"
+                                Accessible.name: "Remover filtro salvo " + savedFilterTag.filterName
+                                onClicked: root.preferenceFlow.removeSavedFilter(savedFilterTag.filterName)
+
+                                background: Rectangle {
+                                    color: removeSavedFilter.hovered ? Theme.accentSoft : "transparent"
+                                    radius: Theme.radius
+                                }
+                            }
+                        }
+
+                        MouseArea {
+                            id: savedFilterMouse
+                            anchors.fill: parent
+                            anchors.rightMargin: removeSavedFilter.width
+                            hoverEnabled: true
+                            onClicked: {
+                                savedFilterTag.forceActiveFocus();
+                                savedFilterTag.applyFilter();
+                            }
+                        }
+                    }
+                }
+
+                ToolButton {
+                    id: savedFilterOverflowButton
+                    objectName: "savedFilterOverflowButton"
+                    visible: root.visibleSavedFilterCount() < root.savedFilterCount
+                    width: 22
+                    height: 22
+                    text: "..."
+                    padding: 0
+                    font.pixelSize: Theme.fontSizeMicro
+                    font.bold: false
+                    ToolTip.visible: hovered
+                    ToolTip.text: "Mais filtros salvos"
+                    Accessible.name: "Mais filtros salvos"
+                    onClicked: savedFilterOverflowMenu.open()
+
+                    background: Rectangle {
+                        color: savedFilterOverflowButton.hovered ? Theme.accentSoft : Theme.panelRaised
+                        border.color: Theme.border
+                        radius: Theme.radius
+                    }
+
+                    Menu {
+                        id: savedFilterOverflowMenu
+                        y: savedFilterOverflowButton.height
+
+                        Repeater {
+                            model: root.preferenceFlow.savedFilters
+
+                            delegate: MenuItem {
+                                required property var modelData
+                                readonly property string filterName: modelData.name !== undefined ? modelData.name : ""
+                                text: filterName
+                                onTriggered: root.preferenceFlow.applySavedFilter(filterName)
+                            }
+                        }
+
+                        MenuSeparator {}
+
+                        Repeater {
+                            model: root.preferenceFlow.savedFilters
+
+                            delegate: MenuItem {
+                                required property var modelData
+                                readonly property string filterName: modelData.name !== undefined ? modelData.name : ""
+                                text: "Remover: " + filterName
+                                onTriggered: root.preferenceFlow.removeSavedFilter(filterName)
+                            }
+                        }
                     }
                 }
             }

@@ -949,9 +949,9 @@ QtObject {
     readonly property int detailsLabelWidth: 190
     readonly property int relationNodeMinWidth: 92
     readonly property int relationNodeHeight: 40
-    readonly property int bottomPaneMinHeight: 320
-    readonly property int bottomPaneMaxHeight: 430
-    readonly property real bottomPaneHeightRatio: 0.4
+    readonly property int bottomPaneMinHeight: 280
+    readonly property int bottomPaneMaxHeight: 380
+    readonly property real bottomPaneHeightRatio: 0.34
 
     // ---------------------------------------------------------------------------
     // TypeScale - modular scale (base 12px, ratio 8:9 = 1.125, data-dense UI).
@@ -1051,6 +1051,7 @@ QtObject {
     }
     readonly property int choiceColumnWidth: 52 // Incluir/Excluir checkbox column
     readonly property int commandWidth: 30 // "..." action button width
+    readonly property int filterCommandWidth: 22 // compact x and ... filter commands
     readonly property int operatorWidth: 32 // operator combo (=, !=)
     readonly property int operatorPopupWidth: 96 // operator combo popup width
     readonly property int valueMinWidth: 82 // value combo minimum width

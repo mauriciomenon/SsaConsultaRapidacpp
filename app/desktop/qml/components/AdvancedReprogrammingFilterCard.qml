@@ -152,10 +152,11 @@ FilterCard {
             ActionButton {
                 id: openValuesButton
                 text: "..."
-                implicitWidth: 28
+                implicitWidth: Theme.filterCommandWidth
                 implicitHeight: Theme.filterRowHeight
                 padding: 0
-                font.pixelSize: Theme.fontSizeBody
+                font.pixelSize: Theme.fontSizeMicro
+                font.bold: false
                 Accessible.name: "Selecionar valores de reprogramacao"
                 ToolTip.visible: hovered
                 ToolTip.text: "Selecionar valores de reprogramacao"
@@ -165,12 +166,12 @@ FilterCard {
                 }
             }
             ActionButton {
-                text: "X"
-                implicitWidth: 28
+                text: "x"
+                implicitWidth: Theme.filterCommandWidth
                 implicitHeight: Theme.filterRowHeight
                 padding: 0
                 font.bold: false
-                font.pixelSize: Theme.fontSizeBody
+                font.pixelSize: Theme.fontSizeMicro
                 Accessible.name: "Limpar filtro de reprogramacao"
                 ToolTip.visible: hovered
                 ToolTip.text: "Limpar filtro de reprogramacao"

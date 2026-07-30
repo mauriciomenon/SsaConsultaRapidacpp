@@ -129,10 +129,11 @@ FilterCard {
             ActionButton {
                 id: openMultiSelectButton
                 text: "..."
-                implicitWidth: Theme.commandWidth
+                implicitWidth: Theme.filterCommandWidth
                 implicitHeight: Theme.filterRowHeight
                 padding: 0
-                font.pixelSize: Theme.fontSizeBody
+                font.pixelSize: Theme.fontSizeMicro
+                font.bold: false
                 enabled: root.operatorIndex >= 0
                 ToolTip.visible: hovered
                 ToolTip.text: "Selecionar valores para incluir ou excluir"
@@ -141,12 +142,12 @@ FilterCard {
                 onClicked: valuePopup.openForCurrentFilter()
             }
             ActionButton {
-                text: "X"
-                implicitWidth: 28
+                text: "x"
+                implicitWidth: Theme.filterCommandWidth
                 implicitHeight: Theme.filterRowHeight
                 padding: 0
                 font.bold: false
-                font.pixelSize: Theme.fontSizeBody
+                font.pixelSize: Theme.fontSizeMicro
                 ToolTip.visible: hovered
                 ToolTip.text: "Limpar filtro"
                 Accessible.name: "Limpar filtro " + root.label

@@ -382,6 +382,8 @@ namespace {
             QVERIFY(
                 qmlRegisterType(QUrl::fromLocalFile(components.filePath("SavedFilterControls.qml")),
                                 "SsaConsultaRapida", 1, 0, "SavedFilterControls") >= 0);
+            QVERIFY(qmlRegisterType(QUrl::fromLocalFile(components.filePath("SearchAndPager.qml")),
+                                    "SsaConsultaRapida", 1, 0, "SearchAndPager") >= 0);
             QVERIFY(qmlRegisterType(QUrl::fromLocalFile(components.filePath("DerivadasGraph.qml")),
                                     "SsaConsultaRapida", 1, 0, "DerivadasGraph") >= 0);
             QVERIFY(qmlRegisterType(QUrl::fromLocalFile(components.filePath("SsaTable.qml")),
@@ -1007,7 +1009,11 @@ namespace {
                     }
                     QtObject {
                         id: preferenceFlow
-                        property var savedFilters: [{ name: "Filtro A" }]
+                        property var savedFilters: [
+                            { name: "Filtro salvo muito longo A" },
+                            { name: "Filtro salvo muito longo B" },
+                            { name: "Filtro salvo muito longo C" }
+                        ]
                         function applySavedFilter(name) {
                             harness.appliedName = name;
                             harness.applyCount += 1;
@@ -1016,7 +1022,9 @@ namespace {
                     }
 
                     SavedFilterControls {
+                        objectName: "savedFilterControls"
                         anchors.fill: parent
+                        savedFiltersMaximumWidth: parent.width * 0.25
                         viewModel: viewModel
                         filterViewModel: filterViewModel
                         preferenceFlow: preferenceFlow
@@ -1037,6 +1045,25 @@ namespace {
             window.show();
 
             QTRY_VERIFY_WITH_TIMEOUT(window.isExposed(), 1000);
+            auto* savedFilterControls =
+                harness->findChild<QQuickItem*>(QStringLiteral("savedFilterControls"));
+            QVERIFY(savedFilterControls != nullptr);
+            auto* filterButton =
+                harness->findChild<QQuickItem*>(QStringLiteral("mainFiltersButton"));
+            QVERIFY(filterButton != nullptr);
+            auto* savedFilterStrip =
+                harness->findChild<QQuickItem*>(QStringLiteral("savedFilterStrip"));
+            QTRY_VERIFY_WITH_TIMEOUT(savedFilterStrip != nullptr && savedFilterStrip->isVisible(),
+                                     1000);
+            QVERIFY2(filterButton->mapToScene({0, 0}).x() <
+                         savedFilterStrip->mapToScene({0, 0}).x(),
+                     "filters menu must precede saved filters");
+            QVERIFY2(savedFilterStrip->width() <= savedFilterControls->width() * 0.25 + 1.0,
+                     "saved filters must stay within one quarter of the row");
+            auto* overflowButton =
+                harness->findChild<QQuickItem*>(QStringLiteral("savedFilterOverflowButton"));
+            QTRY_VERIFY_WITH_TIMEOUT(overflowButton != nullptr && overflowButton->isVisible(),
+                                     1000);
             auto* savedFilter = findQuickItemByProperty(window.contentItem(), "objectName",
                                                         QStringLiteral("savedFilterTag-0"));
             QTRY_VERIFY_WITH_TIMEOUT(savedFilter != nullptr && savedFilter->isVisible(), 1000);
@@ -1045,7 +1072,346 @@ namespace {
             QTest::keyClick(&window, Qt::Key_Space);
 
             QTRY_COMPARE_WITH_TIMEOUT(harness->property("applyCount").toInt(), 1, 1000);
-            QCOMPARE(harness->property("appliedName").toString(), QString("Filtro A"));
+            QCOMPARE(harness->property("appliedName").toString(),
+                     QString("Filtro salvo muito longo A"));
+        }
+
+        void saved_filter_hover_keeps_wcag_aa_contrast_in_every_theme() {
+            QQmlEngine engine;
+            QQmlComponent component(&engine);
+            component.setData(R"QML(
+                import QtQuick
+                import SsaConsultaRapida
+
+                Item {
+                    id: harness
+                    width: 640
+                    height: 44
+                    property string selectedTheme: Theme.themeName
+                    readonly property var allPalettes: Theme.palettes
+                    readonly property var themeNames: Object.keys(Theme.palettes)
+
+                    onSelectedThemeChanged: Theme.themeName = selectedTheme
+
+                    QtObject {
+                        id: viewModel
+                    }
+                    QtObject {
+                        id: filterViewModel
+                        function resetFilters() {}
+                    }
+                    QtObject {
+                        id: preferenceFlow
+                        property var savedFilters: [
+                            { name: "Filtro de contraste A muito longo" },
+                            { name: "Filtro de contraste B muito longo" },
+                            { name: "Filtro de contraste C muito longo" }
+                        ]
+                        function applySavedFilter(name) {}
+                        function removeSavedFilter(name) {}
+                    }
+
+                    SavedFilterControls {
+                        anchors.fill: parent
+                        savedFiltersMaximumWidth: parent.width * 0.25
+                        viewModel: viewModel
+                        filterViewModel: filterViewModel
+                        preferenceFlow: preferenceFlow
+                    }
+                }
+            )QML",
+                              QUrl(QStringLiteral("inmemory:/SavedFilterContrastHarness.qml")));
+            QTRY_VERIFY_WITH_TIMEOUT(component.status() != QQmlComponent::Loading, 1000);
+            QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+
+            QQuickWindow window;
+            window.setGeometry(0, 0, 640, 44);
+            std::unique_ptr<QObject> harness(component.create());
+            QVERIFY2(harness != nullptr, qPrintable(component.errorString()));
+            auto* harnessItem = qobject_cast<QQuickItem*>(harness.get());
+            QVERIFY(harnessItem != nullptr);
+            harnessItem->setParentItem(window.contentItem());
+            window.show();
+
+            QTRY_VERIFY_WITH_TIMEOUT(window.isExposed(), 1000);
+            QQuickItem* savedFilter = nullptr;
+            QTRY_VERIFY_WITH_TIMEOUT((savedFilter = findQuickItemByProperty(
+                                          window.contentItem(), "objectName",
+                                          QStringLiteral("savedFilterTag-0"))) != nullptr,
+                                     1000);
+            auto* tagBackground = qobject_cast<QQuickItem*>(
+                qvariant_cast<QObject*>(savedFilter->property("background")));
+            QVERIFY(tagBackground != nullptr);
+            auto* tagLabel = findQuickItemByProperty(
+                window.contentItem(), "text", QStringLiteral("Filtro de contraste A muito longo"));
+            QVERIFY(tagLabel != nullptr);
+
+            const QString initialTheme = harness->property("selectedTheme").toString();
+            QVERIFY(!initialTheme.isEmpty());
+            const auto restoreTheme =
+                qScopeGuard([&] { harness->setProperty("selectedTheme", initialTheme); });
+            const QVariantMap palettes =
+                harness->property("allPalettes").value<QJSValue>().toVariant().toMap();
+            const QVariantList themeNames =
+                harness->property("themeNames").value<QJSValue>().toVariant().toList();
+            QCOMPARE(themeNames.size(), 39);
+
+            QTest::mouseMove(&window, clickPointInWindow(*savedFilter));
+            QStringList failures;
+            for (const QVariant& theme : themeNames) {
+                const QString themeName = theme.toString();
+                harness->setProperty("selectedTheme", themeName);
+                QTRY_COMPARE_WITH_TIMEOUT(harness->property("selectedTheme").toString(), themeName,
+                                          1000);
+                const QColor foreground = tagLabel->property("color").value<QColor>();
+                const QColor background = tagBackground->property("color").value<QColor>();
+                const QColor expectedBackground{palettes.value(themeName)
+                                                    .toMap()
+                                                    .value(QStringLiteral("accentSoft"))
+                                                    .toString()};
+                if (background != expectedBackground ||
+                    contrastRatio(foreground, background) < 4.5) {
+                    failures.append(QStringLiteral("%1: saved filter hover contrast=%2:1")
+                                        .arg(themeName)
+                                        .arg(contrastRatio(foreground, background), 0, 'f', 2));
+                }
+            }
+
+            if (!failures.isEmpty()) {
+                QFAIL(qPrintable(QStringLiteral("saved filter hover contrast below AA:\n%1")
+                                     .arg(failures.join('\n'))));
+            }
+        }
+
+        void summary_tag_remove_hover_keeps_wcag_aa_contrast_in_every_theme() {
+            QQmlEngine engine;
+            QQmlComponent component(&engine);
+            component.setData(R"QML(
+                import QtQuick
+                import SsaConsultaRapida
+
+                Item {
+                    id: harness
+                    width: 220
+                    height: 40
+                    property string selectedTheme: Theme.themeName
+                    readonly property var allPalettes: Theme.palettes
+                    readonly property var themeNames: Object.keys(Theme.palettes)
+
+                    onSelectedThemeChanged: Theme.themeName = selectedTheme
+
+                    SummaryTag {
+                        anchors.centerIn: parent
+                        text: "Filtro aplicado"
+                    }
+                }
+            )QML",
+                              QUrl(QStringLiteral("inmemory:/SummaryTagContrastHarness.qml")));
+            QTRY_VERIFY_WITH_TIMEOUT(component.status() != QQmlComponent::Loading, 1000);
+            QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+
+            QQuickWindow window;
+            window.setGeometry(0, 0, 220, 40);
+            std::unique_ptr<QObject> harness(component.create());
+            QVERIFY2(harness != nullptr, qPrintable(component.errorString()));
+            auto* harnessItem = qobject_cast<QQuickItem*>(harness.get());
+            QVERIFY(harnessItem != nullptr);
+            harnessItem->setParentItem(window.contentItem());
+            window.show();
+
+            QTRY_VERIFY_WITH_TIMEOUT(window.isExposed(), 1000);
+            QQuickItem* removeButton = nullptr;
+            QTRY_VERIFY_WITH_TIMEOUT((removeButton = findQuickItemByProperty(
+                                          window.contentItem(), "objectName",
+                                          QStringLiteral("summaryTagRemoveButton"))) != nullptr,
+                                     1000);
+            auto* background = qobject_cast<QQuickItem*>(
+                qvariant_cast<QObject*>(removeButton->property("background")));
+            QVERIFY(background != nullptr);
+
+            const QString initialTheme = harness->property("selectedTheme").toString();
+            QVERIFY(!initialTheme.isEmpty());
+            const auto restoreTheme =
+                qScopeGuard([&] { harness->setProperty("selectedTheme", initialTheme); });
+            const QVariantMap palettes =
+                harness->property("allPalettes").value<QJSValue>().toVariant().toMap();
+            const QVariantList themeNames =
+                harness->property("themeNames").value<QJSValue>().toVariant().toList();
+            QCOMPARE(themeNames.size(), 39);
+
+            QTest::mouseMove(&window, clickPointInWindow(*removeButton));
+            QStringList failures;
+            for (const QVariant& theme : themeNames) {
+                const QString themeName = theme.toString();
+                harness->setProperty("selectedTheme", themeName);
+                QTRY_COMPARE_WITH_TIMEOUT(harness->property("selectedTheme").toString(), themeName,
+                                          1000);
+                const QColor foreground =
+                    removeButton->property("effectiveForeground").value<QColor>();
+                const QColor effectiveBackground =
+                    removeButton->property("effectiveBackground").value<QColor>();
+                const QColor backgroundColor = background->property("color").value<QColor>();
+                const QColor expectedBackground{palettes.value(themeName)
+                                                    .toMap()
+                                                    .value(QStringLiteral("accentSoft"))
+                                                    .toString()};
+                if (backgroundColor != expectedBackground ||
+                    effectiveBackground != expectedBackground ||
+                    contrastRatio(foreground, effectiveBackground) < 4.5) {
+                    failures.append(
+                        QStringLiteral("%1: summary remove hover contrast=%2:1")
+                            .arg(themeName)
+                            .arg(contrastRatio(foreground, effectiveBackground), 0, 'f', 2));
+                }
+            }
+
+            if (!failures.isEmpty()) {
+                QFAIL(qPrintable(QStringLiteral("summary remove hover contrast below AA:\n%1")
+                                     .arg(failures.join('\n'))));
+            }
+        }
+
+        void search_and_pager_keeps_search_actions_before_summary_controls() {
+            QQmlEngine engine;
+            QQmlComponent component(&engine);
+            component.setData(R"QML(
+                import QtQuick
+                import SsaConsultaRapida
+
+                Item {
+                    width: 1500
+                    height: 160
+
+                    QtObject {
+                        id: search
+                        property string text: ""
+                        function clear() {}
+                        function apply() {}
+                    }
+                    QtObject {
+                        id: sector
+                        property var selectorValues: []
+                        property int selectorIndex: -1
+                        property string quickSector: ""
+                        property string optionsError: ""
+                    }
+                    QtObject {
+                        id: filters
+                        property var activeFilterEntries: []
+                        property bool excludeScaSesSte: false
+                        property bool hasExclusionFilter: false
+                        property var statusShortcutValues: []
+                        property string activeFilterSummary: ""
+                        property var sector: sector
+                        function removeActiveFilter(entry) {}
+                        function resetFilters() {}
+                    }
+                    QtObject {
+                        id: browse
+                        property var filters: filters
+                        property var search: search
+                        property bool canUndoFilters: true
+                        property int pageNumber: 1
+                        property int pageCount: 1
+                        property int pageSize: 50
+                        function undoFilters() {}
+                        function previousPage() {}
+                        function nextPage() {}
+                        function apply() {}
+                    }
+                    QtObject {
+                        id: preferences
+                        property var savedFilters: []
+                        function hasActiveFilter() { return false; }
+                        function notifyNoActiveFilter() {}
+                        function suggestedFilterName() { return ""; }
+                        function applySavedFilter(name) {}
+                        function removeSavedFilter(name) {}
+                        function saveCurrentFilter(name) {}
+                    }
+
+                    SearchAndPager {
+                        objectName: "searchAndPager"
+                        anchors.fill: parent
+                        viewModel: browse
+                        preferenceFlow: preferences
+                        currentWeekText: "Semana ISO 31"
+                        ssaCountText: "10 / 20 SSAs"
+                    }
+                }
+            )QML",
+                              QUrl(QStringLiteral("inmemory:/SearchAndPagerLayoutHarness.qml")));
+            QTRY_VERIFY_WITH_TIMEOUT(component.status() != QQmlComponent::Loading, 1000);
+            QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+
+            QQuickWindow window;
+            window.setGeometry(0, 0, 1500, 160);
+            std::unique_ptr<QObject> harness(component.create());
+            QVERIFY2(harness != nullptr, qPrintable(component.errorString()));
+            auto* harnessItem = qobject_cast<QQuickItem*>(harness.get());
+            QVERIFY(harnessItem != nullptr);
+            harnessItem->setParentItem(window.contentItem());
+            window.show();
+
+            QTRY_VERIFY_WITH_TIMEOUT(window.isExposed(), 1000);
+            auto* searchGroup = harness->findChild<QQuickItem*>(QStringLiteral("mainSearchGroup"));
+            auto* undo = harness->findChild<QQuickItem*>(QStringLiteral("mainUndoButton"));
+            auto* searchInput = harness->findChild<QQuickItem*>(QStringLiteral("mainSearchInput"));
+            auto* clear = harness->findChild<QQuickItem*>(QStringLiteral("mainClearButton"));
+            auto* apply = harness->findChild<QQuickItem*>(QStringLiteral("mainApplyButton"));
+            auto* week = harness->findChild<QQuickItem*>(QStringLiteral("mainWeekLabel"));
+            auto* count = harness->findChild<QQuickItem*>(QStringLiteral("mainSsaCountLabel"));
+            auto* import = harness->findChild<QQuickItem*>(QStringLiteral("mainImportXlsxButton"));
+            auto* preferences =
+                harness->findChild<QQuickItem*>(QStringLiteral("mainPreferencesButton"));
+            auto* theme = harness->findChild<QQuickItem*>(QStringLiteral("mainThemeButton"));
+            QVERIFY(searchGroup != nullptr);
+            QVERIFY(undo != nullptr);
+            QVERIFY(searchInput != nullptr);
+            QVERIFY(clear != nullptr);
+            QVERIFY(apply != nullptr);
+            QVERIFY(week != nullptr);
+            QVERIFY(count != nullptr);
+            QVERIFY(import != nullptr);
+            QVERIFY(preferences != nullptr);
+            QVERIFY(theme != nullptr);
+
+            const auto left = [](const QQuickItem* item) { return item->mapToScene({0, 0}).x(); };
+            QVERIFY(left(searchGroup) <= left(undo));
+            QVERIFY(left(undo) < left(searchInput));
+            QVERIFY(left(searchInput) < left(clear));
+            QVERIFY(left(clear) < left(apply));
+            QVERIFY(left(apply) < left(week));
+            QVERIFY(left(week) < left(count));
+            QVERIFY(left(count) < left(import));
+            QVERIFY(left(import) < left(preferences));
+            QVERIFY(left(preferences) < left(theme));
+            QVERIFY(theme->mapToScene({theme->width(), 0}).x() <=
+                    harnessItem->mapToScene({harnessItem->width(), 0}).x());
+        }
+
+        void advanced_filter_command_buttons_are_compact_and_regular_weight() {
+            const QStringList componentFiles{
+                QStringLiteral("AdvancedTextFilterCard.qml"),
+                QStringLiteral("AdvancedMacroFilterCard.qml"),
+                QStringLiteral("AdvancedReprogrammingFilterCard.qml"),
+                QStringLiteral("AdvancedWeekEmissionCard.qml"),
+                QStringLiteral("AdvancedWeekExecutionCard.qml"),
+            };
+            const QDir components(
+                repositoryRoot().filePath(QStringLiteral("app/desktop/qml/components")));
+            for (const QString& fileName : componentFiles) {
+                QFile source(components.filePath(fileName));
+                QVERIFY2(source.open(QIODevice::ReadOnly | QIODevice::Text),
+                         qPrintable(source.errorString()));
+                const QString text = QString::fromUtf8(source.readAll());
+                QVERIFY2(text.contains(QStringLiteral("Theme.filterCommandWidth")),
+                         qPrintable(fileName + " must use the compact command width"));
+                QVERIFY2(text.contains(QStringLiteral("font.pixelSize: Theme.fontSizeMicro")),
+                         qPrintable(fileName + " must use the compact command font"));
+                QVERIFY2(!text.contains(QStringLiteral("text: \"X\"")),
+                         qPrintable(fileName + " must not render an uppercase clear command"));
+            }
         }
 
         void derivation_graph_navigates_and_activates_from_keyboard() {
@@ -1232,7 +1598,7 @@ namespace {
             }
         }
 
-        void filter_summary_distributes_surplus_and_preserves_natural_widths() {
+        void filter_summary_preserves_natural_widths_without_surplus_distribution() {
             QQmlEngine engine;
             QQmlComponent component(&engine);
             component.setData(R"QML(
@@ -1301,19 +1667,13 @@ namespace {
 
             QTRY_COMPARE_WITH_TIMEOUT(visibleTags().size(), 3, 1000);
             const auto wideTags = visibleTags();
-            std::vector<qreal> widths;
-            widths.reserve(static_cast<std::size_t>(wideTags.size()));
             qreal totalNaturalWidth = 0;
             for (const auto* tag : wideTags) {
                 const qreal naturalWidth = tag->property("naturalWidth").toReal();
-                QVERIFY2(tag->width() > naturalWidth,
-                         "wide summary did not distribute available width");
-                widths.push_back(tag->width());
+                QVERIFY2(std::abs(tag->width() - naturalWidth) <= 1.0,
+                         "wide summary stretched a tag beyond its natural width");
                 totalNaturalWidth += naturalWidth;
             }
-            const auto [minimumWidth, maximumWidth] = std::ranges::minmax_element(widths);
-            QVERIFY2(*maximumWidth - *minimumWidth <= 1.0,
-                     "wide summary did not distribute final widths symmetrically");
 
             const auto narrowWidth =
                 (std::max)(1, static_cast<int>(std::floor(totalNaturalWidth)) - 1);

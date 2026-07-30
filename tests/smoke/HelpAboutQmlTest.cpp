@@ -244,6 +244,21 @@ namespace {
             QVERIFY(mainQml.contains(QStringLiteral("onTriggered: root.vm.requestCancelAll()")));
         }
 
+        void main_layout_uses_vertical_split_between_table_and_bottom_panel() {
+            const QString mainQml = readSource(QStringLiteral("app/desktop/qml/Main.qml"));
+            QVERIFY(!mainQml.isEmpty());
+            const auto contentSplit = mainQml.indexOf(QStringLiteral("id: mainContentSplitView"));
+            const auto mainTable = mainQml.indexOf(QStringLiteral("objectName: \"mainSsaTable\""));
+            const auto bottomPane = mainQml.indexOf(QStringLiteral("id: mainBottomPane"));
+            QVERIFY(contentSplit >= 0);
+            QVERIFY(mainQml.indexOf(QStringLiteral("orientation: Qt.Vertical"), contentSplit) >= 0);
+            QVERIFY(mainTable > contentSplit);
+            QVERIFY(bottomPane > mainTable);
+            QVERIFY(
+                mainQml.indexOf(QStringLiteral("SplitView.preferredHeight: root.bottomPaneHeight"),
+                                bottomPane) >= 0);
+        }
+
         void desktop_factory_composes_activity_analytics() {
             const QString factory =
                 readSource(QStringLiteral("app/desktop/DesktopMainViewModelFactory.cpp"));

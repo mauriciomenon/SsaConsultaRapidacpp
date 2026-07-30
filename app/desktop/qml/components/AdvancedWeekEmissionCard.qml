@@ -141,12 +141,12 @@ FilterCard {
             }
 
             ActionButton {
-                text: "X"
-                implicitWidth: 28
+                text: "x"
+                implicitWidth: Theme.filterCommandWidth
                 implicitHeight: Theme.filterRowHeight
                 padding: 0
                 font.bold: false
-                font.pixelSize: Theme.fontSizeBody
+                font.pixelSize: Theme.fontSizeMicro
                 Accessible.name: "Limpar filtro de semana de emissao"
                 ToolTip.visible: hovered
                 ToolTip.text: "Limpar Emissao"

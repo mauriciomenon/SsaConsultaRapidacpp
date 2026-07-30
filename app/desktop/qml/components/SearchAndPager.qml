@@ -55,6 +55,109 @@ Rectangle {
             Layout.fillWidth: true
             spacing: Theme.gap
 
+            Rectangle {
+                id: searchGroup
+                objectName: "mainSearchGroup"
+                Layout.fillWidth: true
+                Layout.minimumWidth: 260
+                Layout.preferredHeight: root.compactControlHeight
+                color: Theme.panelRaised
+                border.color: searchInput.activeFocus ? Theme.accent : Theme.border
+                radius: Theme.radius
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 1
+                    anchors.rightMargin: 1
+                    spacing: 2
+
+                    ActionButton {
+                        objectName: "mainUndoButton"
+                        text: "↶"
+                        enabled: root.viewModel.canUndoFilters
+                        implicitWidth: 32
+                        implicitHeight: root.compactControlHeight - 2
+                        Accessible.name: "Desfazer"
+                        ToolTip.visible: hovered
+                        ToolTip.text: "Desfazer"
+                        ToolTip.delay: 400
+                        onClicked: root.viewModel.undoFilters()
+                    }
+                    AppTextField {
+                        id: searchInput
+                        objectName: "mainSearchInput"
+                        Layout.fillWidth: true
+                        Layout.minimumWidth: 120
+                        implicitHeight: root.compactControlHeight - 2
+                        text: root.viewModel.search.text
+                        placeholderText: "Busca geral"
+                        placeholderTextColor: Theme.mutedText
+                        font.pixelSize: Theme.fontSizeBody
+                        background: Rectangle {
+                            color: "transparent"
+                            border.width: 0
+                        }
+                        onTextEdited: root.viewModel.search.text = text
+                        onAccepted: root.viewModel.search.apply()
+                    }
+                    ActionButton {
+                        objectName: "mainClearButton"
+                        text: "⌫"
+                        implicitWidth: 32
+                        implicitHeight: root.compactControlHeight - 2
+                        Accessible.name: "Limpar"
+                        ToolTip.visible: hovered
+                        ToolTip.text: "Limpar"
+                        ToolTip.delay: 400
+                        onClicked: root.viewModel.search.clear()
+                    }
+                    ActionButton {
+                        objectName: "mainApplyButton"
+                        text: "⏎"
+                        implicitWidth: 32
+                        implicitHeight: root.compactControlHeight - 2
+                        Accessible.name: "Aplicar"
+                        ToolTip.visible: hovered
+                        ToolTip.text: "Aplicar"
+                        ToolTip.delay: 400
+                        onClicked: root.viewModel.search.apply()
+                    }
+                }
+            }
+            Label {
+                objectName: "mainWeekLabel"
+                Layout.preferredHeight: root.compactControlHeight
+                leftPadding: 8
+                rightPadding: 8
+                text: root.currentWeekText
+                color: Theme.accent
+                font.pixelSize: Theme.fontSizeLabel
+                font.bold: true
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+                background: Rectangle {
+                    color: Theme.window
+                    border.color: Theme.border
+                    radius: Theme.radius
+                }
+            }
+            Label {
+                objectName: "mainSsaCountLabel"
+                Layout.preferredHeight: root.compactControlHeight
+                leftPadding: 8
+                rightPadding: 8
+                text: root.ssaCountText
+                color: Theme.accent
+                font.pixelSize: Theme.fontSizeMicro
+                font.bold: true
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+                background: Rectangle {
+                    color: Theme.window
+                    border.color: Theme.border
+                    radius: Theme.radius
+                }
+            }
             ActionButton {
                 objectName: "mainImportXlsxButton"
                 text: "Importar XLSX"
@@ -66,97 +169,6 @@ Rectangle {
                 onClicked: root.importRequested()
             }
             ActionButton {
-                objectName: "mainUndoButton"
-                text: "↶"
-                enabled: root.viewModel.canUndoFilters
-                implicitWidth: 32
-                implicitHeight: root.compactControlHeight
-                Accessible.name: "Desfazer"
-                ToolTip.visible: hovered
-                ToolTip.text: "Desfazer"
-                ToolTip.delay: 400
-                onClicked: root.viewModel.undoFilters()
-            }
-            ActionButton {
-                objectName: "mainClearButton"
-                text: "⌫"
-                implicitWidth: 32
-                implicitHeight: root.compactControlHeight
-                Accessible.name: "Limpar"
-                ToolTip.visible: hovered
-                ToolTip.text: "Limpar"
-                ToolTip.delay: 400
-                onClicked: root.viewModel.search.clear()
-            }
-            ActionButton {
-                objectName: "mainApplyButton"
-                text: "⏎"
-                implicitWidth: 32
-                implicitHeight: root.compactControlHeight
-                Accessible.name: "Aplicar"
-                ToolTip.visible: hovered
-                ToolTip.text: "Aplicar"
-                ToolTip.delay: 400
-                onClicked: root.viewModel.search.apply()
-            }
-            SavedFilterControls {
-                id: savedFilterControls
-                viewModel: root.viewModel
-                filterViewModel: root.filterViewModel
-                preferenceFlow: root.preferenceFlow
-                density: root.density
-                onExportRequested: root.exportRequested()
-                onSaveFiltersRequested: root.saveFiltersRequested()
-                onExportFiltersRequested: root.exportFiltersRequested()
-                onImportFiltersRequested: root.importFiltersRequested()
-            }
-            AppTextField {
-                id: searchInput
-                Layout.fillWidth: true
-                Layout.minimumWidth: 160
-                implicitHeight: root.compactControlHeight
-                text: root.viewModel.search.text
-                placeholderText: "Busca geral"
-                placeholderTextColor: Theme.mutedText
-                font.pixelSize: Theme.fontSizeBody
-                onTextEdited: root.viewModel.search.text = text
-                onAccepted: {
-                    root.viewModel.search.apply();
-                }
-            }
-            Label {
-                Layout.preferredHeight: root.compactControlHeight
-                leftPadding: 8
-                rightPadding: 8
-                text: root.currentWeekText
-                color: Theme.accent
-                font.pixelSize: Theme.fontSizeLabel
-                font.bold: false
-                horizontalAlignment: Text.AlignHCenter
-                verticalAlignment: Text.AlignVCenter
-                background: Rectangle {
-                    color: Theme.window
-                    border.color: Theme.border
-                    radius: Theme.radius
-                }
-            }
-            Label {
-                Layout.preferredHeight: root.compactControlHeight
-                leftPadding: 8
-                rightPadding: 8
-                text: root.ssaCountText
-                color: Theme.accent
-                font.pixelSize: Theme.fontSizeMicro
-                font.bold: false
-                horizontalAlignment: Text.AlignHCenter
-                verticalAlignment: Text.AlignVCenter
-                background: Rectangle {
-                    color: Theme.window
-                    border.color: Theme.border
-                    radius: Theme.radius
-                }
-            }
-            ActionButton {
                 objectName: "mainPreferencesButton"
                 text: "Preferencias"
                 padding: 8
@@ -165,27 +177,6 @@ Rectangle {
                 implicitHeight: root.compactControlHeight
                 onClicked: root.preferencesRequested()
             }
-        }
-
-        RowLayout {
-            Layout.fillWidth: true
-            Layout.preferredHeight: Theme.densityValue(root.density, 30, 34, 38)
-            spacing: Theme.gap
-
-            FilterSummaryBar {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                filterViewModel: root.filterViewModel
-                searchText: root.viewModel.search.text
-                onClearSearchRequested: {
-                    root.viewModel.search.clear();
-                }
-                onClearAllRequested: {
-                    root.viewModel.search.text = "";
-                    root.filterViewModel.resetFilters();
-                }
-            }
-
             Button {
                 objectName: "mainThemeButton"
                 Layout.preferredWidth: 28
@@ -209,6 +200,51 @@ Rectangle {
                     border.width: 1
                 }
                 onClicked: root.themeCycleRequested()
+            }
+        }
+
+        Rectangle {
+            id: appliedFilterBar
+            objectName: "mainAppliedFilterBar"
+            Layout.fillWidth: true
+            Layout.preferredHeight: Theme.densityValue(root.density, 30, 34, 38)
+            color: "transparent"
+            border.width: filterSummary.frameBorderWidth
+            border.color: filterSummary.frameBorderColor
+            radius: Theme.radius
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.margins: 3
+                spacing: Theme.gap
+
+                SavedFilterControls {
+                    id: savedFilterControls
+                    Layout.maximumWidth: Math.max(0, appliedFilterBar.width - Theme.summaryMinWidth)
+                    viewModel: root.viewModel
+                    filterViewModel: root.filterViewModel
+                    preferenceFlow: root.preferenceFlow
+                    density: root.density
+                    savedFiltersMaximumWidth: appliedFilterBar.width * 0.25
+                    onExportRequested: root.exportRequested()
+                    onSaveFiltersRequested: root.saveFiltersRequested()
+                    onExportFiltersRequested: root.exportFiltersRequested()
+                    onImportFiltersRequested: root.importFiltersRequested()
+                }
+
+                FilterSummaryBar {
+                    id: filterSummary
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    framed: false
+                    filterViewModel: root.filterViewModel
+                    searchText: root.viewModel.search.text
+                    onClearSearchRequested: root.viewModel.search.clear()
+                    onClearAllRequested: {
+                        root.viewModel.search.text = "";
+                        root.filterViewModel.resetFilters();
+                    }
+                }
             }
         }
 

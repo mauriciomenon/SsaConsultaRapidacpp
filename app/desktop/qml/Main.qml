@@ -11,7 +11,7 @@ ApplicationWindow {
     property var smokeController: null
     property var vm: mainViewModel
     property bool shutdownCloseAccepted: false
-    readonly property int bottomPaneHeight: height <= 820 ? 200 : Theme.bottomPaneHeight(height)
+    readonly property int bottomPaneHeight: Theme.bottomPaneHeight(height)
     readonly property int paneMinimumHeight: height <= 820 ? 200 : 280
 
     width: 1580
@@ -358,61 +358,76 @@ ApplicationWindow {
             onImportFiltersRequested: fileDialogs.openImportFilters()
         }
 
-        SsaTable {
-            id: mainTable
-            objectName: "mainSsaTable"
+        SplitView {
+            id: mainContentSplitView
+            objectName: "mainContentSplitView"
             Layout.fillWidth: true
             Layout.fillHeight: true
-            Layout.minimumHeight: root.paneMinimumHeight
-            viewModel: root.vm.browse
-            columnSettings: root.vm.columns
-            columnFlow: root.vm.columnFlow
-            density: root.vm.ui.density
-            onCopyDerivationSvgRequested: root.vm.copyTextToClipboard(root.vm.browse.details.graphModel.svg)
-            onCopyTextRequested: text => root.vm.copyTextToClipboard(text)
-            onOpenRequested: root.vm.selectionFlow.openSelectedSsa()
-            onConfigureColumnsRequested: trigger => columnSelectorPopup.openForTrigger(trigger)
-            onNavigateToRelationRequested: ssaNumber => root.vm.selectionFlow.openSsa(ssaNumber)
-            onDetailsWindowRequested: root.openDetailsWindow()
-        }
-
-        SplitView {
-            id: mainBottomPane
-            objectName: "mainBottomPane"
-            Layout.fillWidth: true
-            Layout.preferredHeight: root.bottomPaneHeight
-            Layout.minimumHeight: root.paneMinimumHeight
-            orientation: Qt.Horizontal
+            orientation: Qt.Vertical
             handle: Rectangle {
                 implicitWidth: 7
-                implicitHeight: 7
+                implicitHeight: 9
                 color: SplitHandle.pressed ? Theme.accent : SplitHandle.hovered ? Theme.accentSoft : Theme.borderSoft
                 border.color: SplitHandle.pressed || SplitHandle.hovered ? Theme.accentStrong : Theme.border
                 border.width: 1
             }
 
-            Loader {
-                SplitView.minimumWidth: root.vm.ui.detailsVisible ? root.vm.ui.detailsMinimumWidth : 0
-                SplitView.preferredWidth: root.vm.ui.detailsVisible ? root.vm.ui.detailsPreferredWidth : 0
-                SplitView.maximumWidth: root.vm.ui.detailsVisible ? root.vm.ui.detailsMaximumWidth : 0
-                active: root.vm.ui.detailsVisible
-                visible: root.vm.ui.detailsVisible
-                focus: false
-
-                sourceComponent: DetailsPanel {
-                    viewModel: root.vm.browse.details
-                    density: root.vm.ui.density
-                    onGraphWindowRequested: root.openDetailsWindow()
-                    onLoadRelationRequested: relationIndex => root.vm.browse.details.requestLoadRelationAt(relationIndex)
-                }
+            SsaTable {
+                id: mainTable
+                objectName: "mainSsaTable"
+                SplitView.fillWidth: true
+                SplitView.fillHeight: true
+                SplitView.minimumHeight: root.paneMinimumHeight
+                viewModel: root.vm.browse
+                columnSettings: root.vm.columns
+                columnFlow: root.vm.columnFlow
+                density: root.vm.ui.density
+                onCopyDerivationSvgRequested: root.vm.copyTextToClipboard(root.vm.browse.details.graphModel.svg)
+                onCopyTextRequested: text => root.vm.copyTextToClipboard(text)
+                onOpenRequested: root.vm.selectionFlow.openSelectedSsa()
+                onConfigureColumnsRequested: trigger => columnSelectorPopup.openForTrigger(trigger)
+                onNavigateToRelationRequested: ssaNumber => root.vm.selectionFlow.openSsa(ssaNumber)
+                onDetailsWindowRequested: root.openDetailsWindow()
             }
 
-            FilterPanel {
-                id: filterPanel
-                SplitView.minimumWidth: 520
+            SplitView {
+                id: mainBottomPane
+                objectName: "mainBottomPane"
                 SplitView.fillWidth: true
-                filterViewModel: root.vm.browse.filters
-                onApplyRequested: root.vm.browse.apply()
+                SplitView.preferredHeight: root.bottomPaneHeight
+                SplitView.minimumHeight: root.paneMinimumHeight
+                orientation: Qt.Horizontal
+                handle: Rectangle {
+                    implicitWidth: 7
+                    implicitHeight: 7
+                    color: SplitHandle.pressed ? Theme.accent : SplitHandle.hovered ? Theme.accentSoft : Theme.borderSoft
+                    border.color: SplitHandle.pressed || SplitHandle.hovered ? Theme.accentStrong : Theme.border
+                    border.width: 1
+                }
+
+                Loader {
+                    SplitView.minimumWidth: root.vm.ui.detailsVisible ? root.vm.ui.detailsMinimumWidth : 0
+                    SplitView.preferredWidth: root.vm.ui.detailsVisible ? root.vm.ui.detailsPreferredWidth : 0
+                    SplitView.maximumWidth: root.vm.ui.detailsVisible ? root.vm.ui.detailsMaximumWidth : 0
+                    active: root.vm.ui.detailsVisible
+                    visible: root.vm.ui.detailsVisible
+                    focus: false
+
+                    sourceComponent: DetailsPanel {
+                        viewModel: root.vm.browse.details
+                        density: root.vm.ui.density
+                        onGraphWindowRequested: root.openDetailsWindow()
+                        onLoadRelationRequested: relationIndex => root.vm.browse.details.requestLoadRelationAt(relationIndex)
+                    }
+                }
+
+                FilterPanel {
+                    id: filterPanel
+                    SplitView.minimumWidth: 520
+                    SplitView.fillWidth: true
+                    filterViewModel: root.vm.browse.filters
+                    onApplyRequested: root.vm.browse.apply()
+                }
             }
         }
 

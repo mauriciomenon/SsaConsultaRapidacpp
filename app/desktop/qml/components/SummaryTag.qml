@@ -45,7 +45,7 @@ Control {
             text: root.text
             textFormat: Text.PlainText
             color: Theme.text
-            font.pixelSize: root.tagTextSize
+            font.pixelSize: Theme.fontSizeMicro
             font.bold: false
             elide: Text.ElideRight
             verticalAlignment: Text.AlignVCenter
@@ -53,13 +53,16 @@ Control {
 
         ToolButton {
             id: removeButton
-            Layout.preferredWidth: root.compact ? Theme.chipRemoveButtonSizeCompact : Theme.chipRemoveButtonSize
-            Layout.preferredHeight: root.compact ? Theme.chipRemoveButtonSizeCompact : Theme.chipRemoveButtonSize
+            objectName: "summaryTagRemoveButton"
+            readonly property color effectiveBackground: removeButton.hovered ? Theme.accentSoft : Theme.surface
+            readonly property color effectiveForeground: Theme.readableText(effectiveBackground, Theme.accentStrong)
+            Layout.preferredWidth: Theme.chipRemoveButtonSizeCompact
+            Layout.preferredHeight: Theme.chipRemoveButtonSizeCompact
             text: "x"
             padding: 0
             font.pixelSize: root.tagTextSize
             font.bold: false
-            palette.buttonText: Theme.accentStrong
+            palette.buttonText: effectiveForeground
             ToolTip.visible: hovered
             ToolTip.text: "Remover filtro"
             Accessible.name: "Remover filtro " + root.text
