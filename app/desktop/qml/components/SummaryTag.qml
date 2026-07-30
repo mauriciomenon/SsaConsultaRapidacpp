@@ -46,7 +46,7 @@ Control {
             textFormat: Text.PlainText
             color: Theme.text
             font.pixelSize: root.tagTextSize
-            font.bold: true
+            font.bold: false
             elide: Text.ElideRight
             verticalAlignment: Text.AlignVCenter
         }
@@ -58,7 +58,7 @@ Control {
             text: "x"
             padding: 0
             font.pixelSize: root.tagTextSize
-            font.bold: true
+            font.bold: false
             palette.buttonText: Theme.accentStrong
             ToolTip.visible: hovered
             ToolTip.text: "Remover filtro"

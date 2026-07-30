@@ -100,8 +100,7 @@ RowLayout {
                             padding: 0
                             font.family: Theme.fontFamily
                             font.pixelSize: Theme.fontSizeMicro
-                            // Excluded (!) keeps normal weight; only included is bold.
-                            font.bold: included
+                            font.bold: false
                             onClicked: root.filterViewModel.toggleStatusShortcut(modelData)
                             ToolTip.visible: hovered
                             ToolTip.text: included ? qsTr("Incluindo %1 - clicar exclui").arg(modelData) : excluded ? qsTr("Excluindo %1 - clicar remove").arg(modelData) : qsTr("Filtrar situacao %1").arg(modelData)

@@ -50,7 +50,7 @@ Rectangle {
                         color: Theme.text
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.fontSizeCaption
-                        font.bold: true
+                        font.bold: false
                         verticalAlignment: Text.AlignVCenter
                         elide: Text.ElideRight
                     }
@@ -77,7 +77,7 @@ Rectangle {
                             color: Theme.text
                             font.family: Theme.fontFamily
                             font.pixelSize: Theme.fontSizeCaption
-                            font.bold: true
+                            font.bold: false
                             verticalAlignment: Text.AlignVCenter
                             horizontalAlignment: Text.AlignRight
                             elide: Text.ElideRight

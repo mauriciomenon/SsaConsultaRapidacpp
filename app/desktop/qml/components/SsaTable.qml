@@ -192,7 +192,7 @@ Rectangle {
                             anchors.bottomMargin: 4
                             text: headerCell.effectiveLabel + (headerCell.modelData.sorted ? (headerCell.modelData.sortAscending ? "  ^" : "  v") : "")
                             color: Theme.readableText(headerCell.color, Theme.accentStrong)
-                            font.bold: true
+                            font.bold: false
                             font.pixelSize: root.textSize
                             horizontalAlignment: headerCell.centerText ? Text.AlignHCenter : Text.AlignLeft
                             verticalAlignment: Text.AlignVCenter
@@ -206,7 +206,7 @@ Rectangle {
                             anchors.verticalCenter: parent.verticalCenter
                             text: "f"
                             color: Theme.readableText(headerCell.color, Theme.accentStrong)
-                            font.bold: true
+                            font.bold: false
                             font.pixelSize: Math.max(9, root.textSize - 3)
                         }
 
@@ -235,15 +235,7 @@ Rectangle {
                             anchors.bottom: parent.bottom
                             width: 14
                             visible: root.columnFlow !== null && headerCell.hasColumnKey
-                            color: reorderDragArea.containsMouse || reorderDragArea.pressed ? Theme.accentSoft : "transparent"
-
-                            Text {
-                                anchors.centerIn: parent
-                                text: "::"
-                                color: Theme.mutedText
-                                font.bold: true
-                                font.pixelSize: Math.max(9, root.textSize - 3)
-                            }
+                            color: "transparent"
 
                             MouseArea {
                                 id: reorderDragArea
@@ -477,7 +469,7 @@ Rectangle {
                     verticalAlignment: Text.AlignVCenter
                     elide: Text.ElideRight
                     font.pixelSize: table.cachedTextSize
-                    font.bold: cellDelegate.opensSam || cellDelegate.isDerivationLink || cellDelegate.opensDerivationGraph
+                    font.bold: false
                     font.underline: cellDelegate.opensSam || cellDelegate.isDerivationLink || cellDelegate.opensDerivationGraph
                 }
 

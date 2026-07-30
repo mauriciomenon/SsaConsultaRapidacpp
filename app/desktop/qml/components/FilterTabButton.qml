@@ -13,7 +13,7 @@ TabButton {
     contentItem: Text {
         text: root.text
         color: root.checked ? Theme.readableText(Theme.accent, Theme.accentText) : Theme.readableText(Theme.panelRaised, Theme.text)
-        font.bold: true
+        font.bold: false
         horizontalAlignment: Text.AlignHCenter
         verticalAlignment: Text.AlignVCenter
     }

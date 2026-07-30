@@ -17,6 +17,7 @@ SpinBox {
     editable: false
     font.family: Theme.fontFamily
     font.pixelSize: Theme.fontSizeBody
+    font.bold: false
 
     TextMetrics {
         id: reservedDigitMetrics
@@ -51,7 +52,7 @@ SpinBox {
             anchors.centerIn: parent
             text: "^"
             color: Theme.mutedText
-            font.bold: true
+            font.bold: false
         }
     }
 
@@ -67,7 +68,7 @@ SpinBox {
             anchors.centerIn: parent
             text: "v"
             color: Theme.mutedText
-            font.bold: true
+            font.bold: false
         }
     }
 

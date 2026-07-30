@@ -335,113 +335,23 @@ ApplicationWindow {
         anchors.margins: 8
         spacing: Theme.gap
 
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.preferredHeight: Theme.densityValue(root.vm.ui.density, 42, 48, 54)
-            color: Theme.header
-            border.color: Theme.borderSoft
-            radius: Theme.radius
-
-            RowLayout {
-                anchors.fill: parent
-                anchors.margins: Theme.densityValue(root.vm.ui.density, 6, 8, 10)
-                spacing: Theme.gap
-
-                ActionButton {
-                    objectName: "mainImportXlsxButton"
-                    text: "Importar XLSX"
-                    font.pixelSize: Theme.fontSizeLabel
-                    enabled: !root.vm.actions.workflows.running
-                    implicitWidth: Math.max(112, implicitContentWidth + leftPadding + rightPadding)
-                    onClicked: fileDialogs.openImportData()
-                }
-                Item {
-                    Layout.fillWidth: true
-                }
-                Label {
-                    Layout.preferredHeight: Theme.controlHeight
-                    Layout.leftMargin: 18
-                    Layout.rightMargin: 18
-                    leftPadding: 26
-                    rightPadding: 26
-                    text: root.vm.actions.currentWeek.value
-                    color: Theme.accent
-                    font.pixelSize: Theme.fontSizeHeader
-                    font.bold: true
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                    background: Rectangle {
-                        color: Theme.window
-                        border.color: Theme.border
-                        radius: Theme.radius
-                    }
-                }
-                Item {
-                    Layout.fillWidth: true
-                }
-                Label {
-                    Layout.preferredHeight: Theme.controlHeight
-                    Layout.rightMargin: 4
-                    leftPadding: 16
-                    rightPadding: 16
-                    text: root.vm.browse.totalRows + " / " + root.vm.browse.totalRowsAll + " SSAs"
-                    color: Theme.accent
-                    font.pixelSize: Theme.fontSizeBody
-                    font.bold: false
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                    background: Rectangle {
-                        color: Theme.window
-                        border.color: Theme.border
-                        radius: Theme.radius
-                    }
-                }
-                ActionButton {
-                    objectName: "mainPreferencesButton"
-                    text: "Preferencias"
-                    font.pixelSize: Theme.fontSizeLabel
-                    onClicked: preferencesDialog.open()
-                }
-
-                // Theme cycle button: small circle filled with the current
-                // theme's accent color. Click cycles to the next theme.
-                Button {
-                    Layout.preferredWidth: 28
-                    Layout.preferredHeight: 28
-                    implicitWidth: 28
-                    implicitHeight: 28
-                    padding: 0
-                    topInset: 0
-                    bottomInset: 0
-                    leftInset: 0
-                    rightInset: 0
-                    text: ""
-                    Accessible.name: "Alternar tema"
-                    ToolTip.text: qsTr("Tema")
-                    ToolTip.visible: hovered
-                    ToolTip.delay: 400
-                    background: Rectangle {
-                        radius: 14
-                        color: Theme.accent
-                        border.color: Theme.border
-                        border.width: 1
-                    }
-                    onClicked: {
-                        var order = Theme.themeOptions;
-                        var current = Theme.themeName;
-                        var idx = order.indexOf(current);
-                        var nextIdx = idx < 0 ? 0 : (idx + 1) % order.length;
-                        root.vm.ui.theme = order[nextIdx];
-                    }
-                }
-            }
-        }
-
         SearchAndPager {
             Layout.fillWidth: true
             viewModel: root.vm.browse
             preferenceFlow: root.vm.preferenceFlow
             density: root.vm.ui.density
+            currentWeekText: root.vm.actions.currentWeek.value
+            ssaCountText: root.vm.browse.totalRows + " / " + root.vm.browse.totalRowsAll + " SSAs"
+            importEnabled: !root.vm.actions.workflows.running
+            onImportRequested: fileDialogs.openImportData()
+            onPreferencesRequested: preferencesDialog.open()
+            onThemeCycleRequested: {
+                var order = Theme.themeOptions;
+                var current = Theme.themeName;
+                var idx = order.indexOf(current);
+                var nextIdx = idx < 0 ? 0 : (idx + 1) % order.length;
+                root.vm.ui.theme = order[nextIdx];
+            }
             onExportRequested: fileDialogs.openExportResults()
             onSaveFiltersRequested: root.vm.preferenceFlow.savePreferences()
             onExportFiltersRequested: fileDialogs.openExportFilters()

@@ -70,7 +70,7 @@ Rectangle {
                         Layout.preferredWidth: root.detailsLabelWidth
                         Layout.alignment: Qt.AlignTop
                         font.pixelSize: root.labelTextSize
-                        font.bold: true
+                        font.bold: false
                         text: fieldDelegate.label + ":"
                         color: Theme.text
                         elide: Text.ElideRight
@@ -89,7 +89,7 @@ Rectangle {
                         selectionColor: Theme.accent
                         wrapMode: TextEdit.Wrap
                         font.pixelSize: root.valueTextSize
-                        font.bold: true
+                        font.bold: false
                         clip: true
                     }
                 }

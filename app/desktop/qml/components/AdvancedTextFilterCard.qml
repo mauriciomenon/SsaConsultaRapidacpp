@@ -145,7 +145,7 @@ FilterCard {
                 implicitWidth: 28
                 implicitHeight: Theme.filterRowHeight
                 padding: 0
-                font.bold: true
+                font.bold: false
                 font.pixelSize: Theme.fontSizeBody
                 ToolTip.visible: hovered
                 ToolTip.text: "Limpar filtro"
