@@ -20,10 +20,46 @@ Rectangle {
     // Mirrors Python filtersSummaryFrame active_state: any search, chip, or SCA/SES/STE exclusion.
     readonly property bool hasAnyActive: hasSearch || hasFilterEntries || hasActiveExclusion
     readonly property bool hasExclusionFilter: filterViewModel.hasExclusionFilter
-    readonly property int tagTextSize: Theme.fontSizeBody
+    readonly property int activeTagCount: filterViewModel.activeFilterEntries.length + (hasSearch ? 1 : 0) + (hasActiveExclusion ? 1 : 0)
+    readonly property bool compact: activeTagCount >= 2
+    readonly property int tagTextSize: compact ? 11 : 12
     readonly property color filterAccent: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.26)
     readonly property int frameBorderWidth: hasAnyActive && hasExclusionFilter ? Theme.summaryBorderWidthExcluded : Theme.summaryBorderWidth
     readonly property color frameBorderColor: hasAnyActive ? Theme.accent : Theme.borderSoft
+    // Mirror the previous bar behavior: share surplus width while natural minima fit.
+    readonly property var tagMetrics: {
+        const naturalWidths = [];
+        for (let index = 0; index < summaryTags.children.length; ++index) {
+            const child = summaryTags.children[index];
+            if (child.visible && child.naturalWidth !== undefined)
+                naturalWidths.push(Number(child.naturalWidth));
+        }
+        const count = naturalWidths.length;
+        const spacingWidth = Math.max(0, count - 1) * Theme.summaryTagSpacing;
+        const availableWidth = Math.max(0, summaryScroller.availableWidth - spacingWidth);
+        let totalNaturalWidth = 0;
+        let maximumNaturalWidth = 0;
+        for (let index = 0; index < count; ++index) {
+            totalNaturalWidth += naturalWidths[index];
+            maximumNaturalWidth = Math.max(maximumNaturalWidth, naturalWidths[index]);
+        }
+        const equalWidth = count > 0 ? availableWidth / count : 0;
+        const fits = count > 0 && totalNaturalWidth <= availableWidth;
+        return {
+            equalWidth: equalWidth,
+            fits: fits,
+            useEqualWidths: fits && maximumNaturalWidth <= equalWidth,
+            surplusPerTag: fits ? (availableWidth - totalNaturalWidth) / count : 0
+        };
+    }
+
+    function preferredWidthForTag(naturalWidth) {
+        if (!tagMetrics.fits)
+            return naturalWidth;
+        if (tagMetrics.useEqualWidths)
+            return tagMetrics.equalWidth;
+        return naturalWidth + tagMetrics.surplusPerTag;
+    }
 
     // Python _apply_frame_style: idle = input/panel border, active = accent.
     // Exclusion (!) uses double border width; drawn inside bounds (no layout shift).
@@ -44,10 +80,8 @@ Rectangle {
         ActionButton {
             id: clearSummaryButton
             text: "x"
-            implicitWidth: Theme.chipRemoveButtonSize
-            implicitHeight: Theme.chipHeight
-            font.pixelSize: Theme.fontSizeMicro
-            font.bold: false
+            implicitWidth: Theme.summaryClearButtonWidth
+            implicitHeight: root.compact ? Theme.chipHeightCompact : Theme.chipHeight
             enabled: root.hasAnyActive
             ToolTip.visible: hovered
             ToolTip.text: "Limpar filtros"
@@ -88,9 +122,9 @@ Rectangle {
                     visible: root.hasSearch
                     text: "Busca: '" + root.trimmedSearchText + "'"
                     tooltipText: root.trimmedSearchText
-                    compact: false
+                    compact: root.compact
                     tagTextSize: root.tagTextSize
-                    preferredTagWidth: naturalWidth
+                    preferredTagWidth: root.preferredWidthForTag(naturalWidth)
                     tagAccent: root.filterAccent
                     onRemoveRequested: root.clearSearchRequested()
                 }
@@ -99,9 +133,9 @@ Rectangle {
                     visible: root.hasActiveExclusion
                     text: "Exc: " + root.filterViewModel.excludedStatusCodesText
                     tooltipText: "Excluindo " + root.filterViewModel.excludedStatusCodesText
-                    compact: false
+                    compact: root.compact
                     tagTextSize: root.tagTextSize
-                    preferredTagWidth: naturalWidth
+                    preferredTagWidth: root.preferredWidthForTag(naturalWidth)
                     tagAccent: root.filterAccent
                     onRemoveRequested: {
                         root.filterViewModel.excludeScaSesSte = false;
@@ -115,9 +149,9 @@ Rectangle {
                         required property var modelData
                         text: modelData.text
                         tooltipText: modelData.text
-                        compact: false
+                        compact: root.compact
                         tagTextSize: root.tagTextSize
-                        preferredTagWidth: naturalWidth
+                        preferredTagWidth: root.preferredWidthForTag(naturalWidth)
                         tagAccent: root.filterAccent
                         onRemoveRequested: root.filterViewModel.removeActiveFilter(modelData)
                     }

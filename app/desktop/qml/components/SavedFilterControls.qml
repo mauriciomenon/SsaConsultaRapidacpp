@@ -13,7 +13,6 @@ Item {
     property string density: "normal"
     property real savedFiltersMaximumWidth: 0
     property bool inlineSavedFilters: true
-    property bool compactMenu: false
     signal exportRequested
     signal saveFiltersRequested
     signal exportFiltersRequested
@@ -68,8 +67,8 @@ Item {
         ActionButton {
             id: filterMenuButton
             objectName: "mainFiltersButton"
-            text: root.compactMenu ? "..." : "Filtros"
-            implicitWidth: root.compactMenu ? 30 : 96
+            text: "Filtros"
+            implicitWidth: 96
             Layout.preferredHeight: Theme.densityValue(root.density, 26, Theme.controlHeight, 34)
             ToolTip.visible: hovered
             ToolTip.text: "Filtros"

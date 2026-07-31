@@ -45,7 +45,7 @@ Control {
             text: root.text
             textFormat: Text.PlainText
             color: Theme.text
-            font.pixelSize: Theme.fontSizeMicro
+            font.pixelSize: root.tagTextSize
             font.bold: false
             elide: Text.ElideRight
             verticalAlignment: Text.AlignVCenter
@@ -56,8 +56,8 @@ Control {
             objectName: "summaryTagRemoveButton"
             readonly property color effectiveBackground: removeButton.hovered ? Theme.accentSoft : Theme.surface
             readonly property color effectiveForeground: Theme.readableText(effectiveBackground, Theme.accentStrong)
-            Layout.preferredWidth: Theme.chipRemoveButtonSizeCompact
-            Layout.preferredHeight: Theme.chipRemoveButtonSizeCompact
+            Layout.preferredWidth: root.compact ? Theme.chipRemoveButtonSizeCompact : Theme.chipRemoveButtonSize
+            Layout.preferredHeight: root.compact ? Theme.chipRemoveButtonSizeCompact : Theme.chipRemoveButtonSize
             text: "x"
             padding: 0
             font.pixelSize: root.tagTextSize

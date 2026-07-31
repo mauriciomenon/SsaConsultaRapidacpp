@@ -1390,7 +1390,7 @@ namespace {
                     harnessItem->mapToScene({harnessItem->width(), 0}).x());
         }
 
-        void search_and_pager_keeps_filter_menu_compact_at_applied_bar_right_edge() {
+        void search_and_pager_keeps_named_filter_menu_at_applied_bar_right_edge() {
             QQmlEngine engine;
             QQmlComponent component(&engine);
             component.setData(
@@ -1482,7 +1482,8 @@ namespace {
             QVERIFY(filterMenu != nullptr);
             QVERIFY(savedStrip != nullptr);
 
-            QCOMPARE(qRound(filterMenu->width()), 30);
+            QCOMPARE(filterMenu->property("text").toString(), QStringLiteral("Filtros"));
+            QCOMPARE(qRound(filterMenu->width()), 96);
             QVERIFY2(filterMenu->mapToScene({filterMenu->width(), 0}).x() >=
                          appliedBar->mapToScene({appliedBar->width() - 4, 0}).x(),
                      "filter menu must occupy the applied-bar right edge");
@@ -1707,7 +1708,7 @@ namespace {
             }
         }
 
-        void filter_summary_preserves_natural_widths_without_surplus_distribution() {
+        void filter_summary_restores_previous_surplus_distribution() {
             QQmlEngine engine;
             QQmlComponent component(&engine);
             component.setData(R"QML(
@@ -1777,12 +1778,20 @@ namespace {
             QTRY_COMPARE_WITH_TIMEOUT(visibleTags().size(), 3, 1000);
             const auto wideTags = visibleTags();
             qreal totalNaturalWidth = 0;
+            qreal minimumTagWidth = wideTags.front()->width();
+            qreal maximumTagWidth = minimumTagWidth;
             for (const auto* tag : wideTags) {
                 const qreal naturalWidth = tag->property("naturalWidth").toReal();
-                QVERIFY2(std::abs(tag->width() - naturalWidth) <= 1.0,
-                         "wide summary stretched a tag beyond its natural width");
+                QVERIFY2(tag->property("compact").toBool(),
+                         "multiple applied filters must retain compact presentation");
+                QVERIFY2(tag->width() > naturalWidth + 1.0,
+                         "wide summary must distribute available width across applied filters");
+                minimumTagWidth = (std::min)(minimumTagWidth, tag->width());
+                maximumTagWidth = (std::max)(maximumTagWidth, tag->width());
                 totalNaturalWidth += naturalWidth;
             }
+            QVERIFY2(maximumTagWidth - minimumTagWidth <= 1.0,
+                     "wide summary must retain equal applied-filter widths when they fit");
 
             const auto narrowWidth =
                 (std::max)(1, static_cast<int>(std::floor(totalNaturalWidth)) - 1);

@@ -234,14 +234,13 @@ Rectangle {
 
                 SavedFilterControls {
                     id: savedFilterControls
-                    Layout.preferredWidth: 30
-                    Layout.maximumWidth: 30
+                    Layout.preferredWidth: 96
+                    Layout.maximumWidth: 96
                     viewModel: root.viewModel
                     filterViewModel: root.filterViewModel
                     preferenceFlow: root.preferenceFlow
                     density: root.density
                     inlineSavedFilters: false
-                    compactMenu: true
                     onExportRequested: root.exportRequested()
                     onSaveFiltersRequested: root.saveFiltersRequested()
                     onExportFiltersRequested: root.exportFiltersRequested()
