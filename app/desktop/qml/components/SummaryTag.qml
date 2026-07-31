@@ -56,6 +56,7 @@ Control {
             objectName: "summaryTagRemoveButton"
             readonly property color effectiveBackground: removeButton.hovered ? Theme.accentSoft : Theme.surface
             readonly property color effectiveForeground: Theme.readableText(effectiveBackground, Theme.accentStrong)
+            Layout.alignment: Qt.AlignVCenter
             Layout.preferredWidth: root.compact ? Theme.chipRemoveButtonSizeCompact : Theme.chipRemoveButtonSize
             Layout.preferredHeight: root.compact ? Theme.chipRemoveButtonSizeCompact : Theme.chipRemoveButtonSize
             text: "x"

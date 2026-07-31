@@ -117,6 +117,7 @@ Rectangle {
 
                 Row {
                     id: relationsRow
+                    y: Math.round((relationsFlick.height - height) / 2)
                     spacing: 5
 
                     Repeater {

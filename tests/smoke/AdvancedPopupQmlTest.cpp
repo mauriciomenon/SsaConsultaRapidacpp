@@ -977,6 +977,21 @@ namespace {
                                                    QStringLiteral("relationStatus"));
             QTRY_VERIFY_WITH_TIMEOUT(status != nullptr && status->isVisible(), 1000);
             QCOMPARE(status->property("text").toString(), QString("Falha de navegacao"));
+
+            QQuickItem* relationViewport = relation->parentItem();
+            while (relationViewport != nullptr &&
+                   !relationViewport->property("contentWidth").isValid()) {
+                relationViewport = relationViewport->parentItem();
+            }
+            QVERIFY(relationViewport != nullptr);
+            const qreal relationCenterY =
+                relation->mapToScene(relation->boundingRect().center()).y();
+            const qreal viewportCenterY =
+                relationViewport->mapToScene(relationViewport->boundingRect().center()).y();
+            QVERIFY2(std::abs(relationCenterY - viewportCenterY) <= 0.5,
+                     qPrintable(QStringLiteral("relation node vertical offset: %1 px")
+                                    .arg(relationCenterY - viewportCenterY)));
+
             relation->forceActiveFocus();
             QTRY_VERIFY_WITH_TIMEOUT(relation->hasActiveFocus(), 1000);
             QTest::keyClick(&window, Qt::Key_Return);
@@ -1490,6 +1505,14 @@ namespace {
             QVERIFY2(savedStrip->width() <= 30,
                      "saved filters must not reserve a quarter of the applied-filter bar");
 
+            const qreal appliedBarCenterY =
+                appliedBar->mapToScene(appliedBar->boundingRect().center()).y();
+            const qreal filterMenuCenterY =
+                filterMenu->mapToScene(filterMenu->boundingRect().center()).y();
+            QVERIFY2(std::abs(filterMenuCenterY - appliedBarCenterY) <= 0.5,
+                     qPrintable(QStringLiteral("filter menu vertical offset: %1 px")
+                                    .arg(filterMenuCenterY - appliedBarCenterY)));
+
             QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier,
                               clickPointInWindow(*filterMenu));
             QQuickItem* removeSavedFilter = nullptr;
@@ -1777,6 +1800,26 @@ namespace {
 
             QTRY_COMPARE_WITH_TIMEOUT(visibleTags().size(), 3, 1000);
             const auto wideTags = visibleTags();
+            QList<QQuickItem*> removeButtons;
+            QList<QQuickItem*> pending{summary};
+            while (!pending.isEmpty()) {
+                auto* item = pending.takeLast();
+                pending.append(item->childItems());
+                if (item != summary && item->isVisible() &&
+                    item->property("text").toString() == QStringLiteral("x") &&
+                    item->property("hovered").isValid()) {
+                    removeButtons.append(item);
+                }
+            }
+            QTRY_COMPARE_WITH_TIMEOUT(removeButtons.size(), 4, 1000);
+            const qreal summaryCenterY = summary->mapToScene(summary->boundingRect().center()).y();
+            for (const auto* button : removeButtons) {
+                const qreal buttonCenterY = button->mapToScene(button->boundingRect().center()).y();
+                QVERIFY2(std::abs(buttonCenterY - summaryCenterY) <= 0.5,
+                         qPrintable(QStringLiteral("filter remove control vertical offset: %1 px")
+                                        .arg(buttonCenterY - summaryCenterY)));
+            }
+
             qreal totalNaturalWidth = 0;
             qreal minimumTagWidth = wideTags.front()->width();
             qreal maximumTagWidth = minimumTagWidth;

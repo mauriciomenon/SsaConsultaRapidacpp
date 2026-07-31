@@ -69,6 +69,7 @@ Item {
             objectName: "mainFiltersButton"
             text: "Filtros"
             implicitWidth: 96
+            Layout.fillHeight: true
             Layout.preferredHeight: Theme.densityValue(root.density, 26, Theme.controlHeight, 34)
             ToolTip.visible: hovered
             ToolTip.text: "Filtros"

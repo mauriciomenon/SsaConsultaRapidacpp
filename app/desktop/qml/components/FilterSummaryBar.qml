@@ -79,6 +79,7 @@ Rectangle {
 
         ActionButton {
             id: clearSummaryButton
+            y: Math.round((parent.height - height) / 2)
             text: "x"
             implicitWidth: Theme.summaryClearButtonWidth
             implicitHeight: root.compact ? Theme.chipHeightCompact : Theme.chipHeight

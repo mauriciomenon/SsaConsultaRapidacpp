@@ -234,6 +234,7 @@ Rectangle {
 
                 SavedFilterControls {
                     id: savedFilterControls
+                    Layout.fillHeight: true
                     Layout.preferredWidth: 96
                     Layout.maximumWidth: 96
                     viewModel: root.viewModel
