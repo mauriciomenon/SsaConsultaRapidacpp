@@ -1854,6 +1854,80 @@ namespace {
                      "narrow summary did not preserve overflowing natural widths");
         }
 
+        void filter_summary_keeps_chip_frames_inside_compact_bar() {
+            QQmlEngine engine;
+            QQmlComponent component(&engine);
+            component.setData(R"QML(
+                import QtQuick
+                import SsaConsultaRapida
+
+                Item {
+                    width: 900
+                    height: 24
+
+                    QtObject {
+                        id: filters
+                        property bool excludeScaSesSte: false
+                        property bool hasExclusionFilter: false
+                        property var activeFilterEntries: [
+                            { text: "Exec: IEE3", kind: "column" },
+                            { text: "Sit: AAT", kind: "column" }
+                        ]
+
+                        function removeActiveFilter(entry) {}
+                    }
+
+                    FilterSummaryBar {
+                        id: summary
+                        objectName: "compactFilterSummaryBar"
+                        anchors.fill: parent
+                        framed: false
+                        filterViewModel: filters
+                        searchText: ""
+                    }
+                }
+            )QML",
+                              QUrl(QStringLiteral("inmemory:/CompactFilterSummaryHarness.qml")));
+            QTRY_VERIFY_WITH_TIMEOUT(component.status() != QQmlComponent::Loading, 1000);
+            QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+
+            QQuickWindow window;
+            window.setGeometry(0, 0, 900, 24);
+            std::unique_ptr<QObject> harness(component.create());
+            QVERIFY2(harness != nullptr, qPrintable(component.errorString()));
+            auto* harnessItem = qobject_cast<QQuickItem*>(harness.get());
+            QVERIFY(harnessItem != nullptr);
+            harnessItem->setParentItem(window.contentItem());
+            window.show();
+
+            QTRY_VERIFY_WITH_TIMEOUT(window.isExposed(), 1000);
+            auto* summary =
+                harness->findChild<QQuickItem*>(QStringLiteral("compactFilterSummaryBar"));
+            QVERIFY(summary != nullptr);
+
+            QList<QQuickItem*> tags;
+            QList<QQuickItem*> pending{summary};
+            while (!pending.isEmpty()) {
+                auto* item = pending.takeLast();
+                pending.append(item->childItems());
+                if (item != summary && item->isVisible() &&
+                    item->property("naturalWidth").isValid()) {
+                    tags.append(item);
+                }
+            }
+            QTRY_COMPARE_WITH_TIMEOUT(tags.size(), 2, 1000);
+
+            const QRectF summaryBounds = summary->mapRectToScene(summary->boundingRect());
+            for (const auto* tag : tags) {
+                const QRectF tagBounds = tag->mapRectToScene(tag->boundingRect());
+                QVERIFY2(std::abs(tagBounds.center().y() - summaryBounds.center().y()) <= 0.5,
+                         qPrintable(QStringLiteral("compact chip vertical offset: %1 px")
+                                        .arg(tagBounds.center().y() - summaryBounds.center().y())));
+                QVERIFY2(summaryBounds.contains(tagBounds),
+                         "compact chip frame extends outside the applied-filter bar");
+            }
+        }
+
         void pager_quick_filters_sector_label_meets_wcag_aa_at_runtime() {
             QFile searchAndPagerFile(
                 repositoryRoot().filePath("app/desktop/qml/components/SearchAndPager.qml"));

@@ -74,7 +74,7 @@ Rectangle {
         anchors.left: parent.left
         anchors.leftMargin: Theme.summaryLeftMargin
         anchors.verticalCenter: parent.verticalCenter
-        height: parent.height - Theme.spacingMd
+        height: parent.height
         spacing: Theme.summaryTagSpacing
 
         ActionButton {
