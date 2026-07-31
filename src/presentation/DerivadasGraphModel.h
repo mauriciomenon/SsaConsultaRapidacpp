@@ -49,6 +49,7 @@ namespace ssa::presentation {
 
         // Edge list for the QML Canvas to draw: each entry is {from, to, dashed}.
         Q_INVOKABLE [[nodiscard]] QVariantList edges() const;
+        Q_INVOKABLE [[nodiscard]] QVariantList junctions() const;
         Q_INVOKABLE [[nodiscard]] QPointF nodeCenter(int index) const;
         Q_INVOKABLE [[nodiscard]] QString nodeSsa(int index) const;
         Q_INVOKABLE [[nodiscard]] QString nodeStatus(int index) const;

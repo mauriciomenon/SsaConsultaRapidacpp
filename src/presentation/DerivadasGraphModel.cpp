@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <map>
 #include <unordered_set>
 #include <utility>
 
@@ -380,6 +381,14 @@ namespace ssa::presentation {
                           .arg(arrow, dash);
         }
 
+        for (const auto& junctionValue : junctions()) {
+            const auto junction = junctionValue.toMap();
+            result += QStringLiteral("  <circle class=\"junction\" cx=\"%1\" cy=\"%2\" r=\"3\" "
+                                     "fill=\"#8a8179\"/>\n")
+                          .arg(junction.value(QStringLiteral("x")).toReal())
+                          .arg(junction.value(QStringLiteral("y")).toReal());
+        }
+
         for (const auto& node : nodes_) {
             const QString fill =
                 node.isTarget ? QStringLiteral("#ffbf00") : QStringLiteral("#151a1a");
@@ -482,6 +491,29 @@ namespace ssa::presentation {
             }
             entry.insert(QStringLiteral("dashed"), edge.dashed);
             result.push_back(entry);
+        }
+        return result;
+    }
+
+    QVariantList DerivadasGraphModel::junctions() const {
+        std::map<std::pair<qreal, qreal>, int> branchCounts;
+        for (const auto& edgeValue : edges()) {
+            const auto edge = edgeValue.toMap();
+            const qreal x = verticalLayout_ ? edge.value(QStringLiteral("fromX")).toReal()
+                                            : edge.value(QStringLiteral("routeX")).toReal();
+            const qreal y = verticalLayout_ ? edge.value(QStringLiteral("routeY")).toReal()
+                                            : edge.value(QStringLiteral("fromY")).toReal();
+            ++branchCounts[{x, y}];
+        }
+
+        QVariantList result;
+        for (const auto& [point, branchCount] : branchCounts) {
+            if (branchCount < 2) {
+                continue;
+            }
+            result.push_back(QVariantMap{{QStringLiteral("x"), point.first},
+                                         {QStringLiteral("y"), point.second},
+                                         {QStringLiteral("branchCount"), branchCount}});
         }
         return result;
     }

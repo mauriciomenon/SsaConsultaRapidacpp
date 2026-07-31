@@ -345,16 +345,16 @@ QtObject {
                 borderSoft: "#c8cbcf",
                 text: "#5c6166",
                 mutedText: "#60656b",
-                accent: "#5499cb",
-                accentText: "#000000",
-                accentSoft: "#e1e8ef",
-                accentStrong: "#5295c5",
-                link: "#3d6f94",
+                accent: "#7fb3d5",
+                accentText: "#17232b",
+                accentSoft: "#e6eef4",
+                accentStrong: "#5d92b8",
+                link: "#406f91",
                 danger: "#de8383",
                 dangerSoft: "#f1e7e8",
                 dangerStrong: "#ca7777",
                 rowAlt: "#f4f5f6",
-                rowSelected: "#e5ebf1"
+                rowSelected: "#dceaf3"
             },
             "ayu-mirage": {
                 isDark: true,

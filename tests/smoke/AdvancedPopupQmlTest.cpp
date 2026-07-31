@@ -919,6 +919,12 @@ namespace {
             const QString text = QString::fromUtf8(source.readAll());
             QVERIFY(text.contains(QStringLiteral("font.weight: Font.Normal")));
             QVERIFY(text.contains(QStringLiteral("font.underline: false")));
+            QVERIFY(text.contains(
+                QStringLiteral("color: Theme.readableText(cellDelegate.color, Theme.text)")));
+            QVERIFY(!text.contains(
+                QStringLiteral("cellDelegate.opensSam || cellDelegate.isDerivationLink || "
+                               "cellDelegate.opensDerivationGraph ? "
+                               "Theme.readableText(cellDelegate.color, Theme.accentStrong)")));
             QVERIFY(!text.contains(QStringLiteral(
                 "font.underline: cellDelegate.opensSam || cellDelegate.isDerivationLink || "
                 "cellDelegate.opensDerivationGraph")));
@@ -1127,10 +1133,13 @@ namespace {
             auto* panel = harness->findChild<QQuickItem*>(QStringLiteral("detailsPanelHarness"));
             auto* navigator =
                 harness->findChild<QQuickItem*>(QStringLiteral("detailsRelationNavigator"));
+            auto* scrollBar =
+                harness->findChild<QQuickItem*>(QStringLiteral("detailsVerticalScrollBar"));
             QQuickItem* graph = nullptr;
             QQuickItem* pager = nullptr;
             QVERIFY(panel != nullptr);
             QVERIFY(navigator != nullptr);
+            QVERIFY(scrollBar != nullptr);
             QTRY_VERIFY_WITH_TIMEOUT(
                 ([&] {
                     graph = findQuickItemByProperty(window.contentItem(), "objectName",
@@ -1151,7 +1160,7 @@ namespace {
             };
             QVERIFY(top(graph) >= bottom(navigator));
             QVERIFY(left(graph) < left(pager));
-            QVERIFY(right(pager) <= right(panel) - 4.0);
+            QVERIFY(right(pager) <= left(scrollBar) - 4.0);
             QVERIFY(std::abs(graph->mapToScene(graph->boundingRect().center()).y() -
                              pager->mapToScene(pager->boundingRect().center()).y()) <= 0.5);
         }

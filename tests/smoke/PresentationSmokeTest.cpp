@@ -1332,6 +1332,30 @@ namespace {
             }
         }
 
+        void derivadas_graph_model_exposes_shared_route_junctions() {
+            ssa::presentation::DerivadasGraphModel model;
+            QVariantList relations;
+            relations.push_back(QVariantMap{{"role", "current"}, {"ssa", "202500100"}});
+            for (int index = 0; index < 8; ++index) {
+                relations.push_back(QVariantMap{
+                    {"role", "child"},
+                    {"ssa", QStringLiteral("2025001%1").arg(index + 1, 2, 10, QChar('0'))}});
+            }
+
+            model.setViewportSize(640, 480);
+            model.buildFromRelations(QStringLiteral("202500100"), relations);
+
+            const auto junctions = model.junctions();
+            QCOMPARE(junctions.size(), 2);
+            for (const auto& junctionValue : junctions) {
+                const auto junction = junctionValue.toMap();
+                QCOMPARE(junction.value("branchCount").toInt(), 4);
+                QVERIFY(junction.value("x").toReal() >= 0.0);
+                QVERIFY(junction.value("y").toReal() >= 0.0);
+            }
+            QCOMPARE(model.svg().count(QStringLiteral("class=\"junction\"")), 2);
+        }
+
         void derivadas_graph_model_is_deterministic_bounded_and_non_overlapping() {
             ssa::presentation::DerivadasGraphModel model;
             QVariantList relations;

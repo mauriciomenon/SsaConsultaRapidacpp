@@ -245,6 +245,13 @@ Flickable {
                 ctx.stroke();
                 ctx.setLineDash([]);
             }
+
+            ctx.fillStyle = Theme.border;
+            for (const junction of model.junctions()) {
+                ctx.beginPath();
+                ctx.arc(junction.x, junction.y, 3, 0, Math.PI * 2);
+                ctx.fill();
+            }
             ctx.restore();
 
             // Nodes.

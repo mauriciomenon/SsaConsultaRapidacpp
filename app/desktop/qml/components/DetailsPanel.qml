@@ -49,7 +49,10 @@ Rectangle {
             model: root.viewModel.fields
             spacing: 0
             boundsBehavior: Flickable.StopAtBounds
-            ScrollBar.vertical: ScrollBar {}
+            ScrollBar.vertical: ScrollBar {
+                id: detailsVerticalScrollBar
+                objectName: "detailsVerticalScrollBar"
+            }
 
             delegate: Column {
                 id: fieldDelegate
@@ -59,7 +62,7 @@ Rectangle {
                 property string rowValue: value === undefined || value === null ? "" : String(value)
                 property bool longField: root.isLongField(key)
 
-                width: detailsList.width
+                width: Math.max(0, detailsList.width - detailsVerticalScrollBar.width - Theme.gap)
                 spacing: 0
 
                 RowLayout {

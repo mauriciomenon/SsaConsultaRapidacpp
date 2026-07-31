@@ -464,7 +464,7 @@ Rectangle {
                     anchors.rightMargin: 8
                     text: cellDelegate.cellText
                     textFormat: Text.PlainText
-                    color: cellDelegate.opensSam || cellDelegate.isDerivationLink || cellDelegate.opensDerivationGraph ? Theme.readableText(cellDelegate.color, Theme.accentStrong) : Theme.readableText(cellDelegate.color, Theme.text)
+                    color: Theme.readableText(cellDelegate.color, Theme.text)
                     horizontalAlignment: cellDelegate.centerText ? Text.AlignHCenter : Text.AlignLeft
                     verticalAlignment: Text.AlignVCenter
                     elide: Text.ElideRight
