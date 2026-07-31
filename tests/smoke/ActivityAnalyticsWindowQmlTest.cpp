@@ -6,6 +6,7 @@
 #include <QObject>
 #include <QQmlComponent>
 #include <QQmlEngine>
+#include <QQuickItem>
 #include <QQuickWindow>
 #include <QRegularExpression>
 #include <QSignalSpy>
@@ -69,6 +70,18 @@ namespace {
             qFatal("test repository root could not be resolved");
         }
         return root;
+    }
+
+    [[nodiscard]] QQuickItem* findVisualChild(QQuickItem& root, const QString& objectName) {
+        if (root.objectName() == objectName) {
+            return &root;
+        }
+        for (auto* child : root.childItems()) {
+            if (auto* found = findVisualChild(*child, objectName)) {
+                return found;
+            }
+        }
+        return nullptr;
     }
 
     [[nodiscard]] QVariantMap chartModel(const QString& seriesName = QStringLiteral("total")) {
@@ -221,6 +234,15 @@ namespace {
             emit succeeded(4);
             emit warningWindowLoadFinished(true);
             terminalSignalActive_ = false;
+        }
+
+        void makeDashboardChartUnavailable(const QString& key) {
+            auto model = dashboard_.value(key).toMap();
+            model.insert(QStringLiteral("available"), false);
+            model.insert(QStringLiteral("unavailableReason"),
+                         QStringLiteral("snapshot history is unavailable"));
+            dashboard_.insert(key, model);
+            emit dashboardChanged();
         }
 
         void failWarningLoad(const QString& message) {
@@ -690,6 +712,27 @@ namespace {
                 chart->property("emptyMessage").toString(),
                 QStringLiteral("Indisponivel: fonte completa de atencao parcial nao disponivel"),
                 1000);
+        }
+
+        void dashboard_compacts_unavailable_chart_cards() {
+            QQmlEngine engine;
+            FakeAnalyticsViewModel viewModel;
+            QString error;
+            auto object = loadWindow(engine, viewModel, error);
+            QVERIFY2(object != nullptr, qPrintable(error));
+            auto* window = qobject_cast<QQuickWindow*>(object.get());
+            QVERIFY(window != nullptr);
+            window->show();
+            QTRY_VERIFY_WITH_TIMEOUT(
+                findVisualChild(*window->contentItem(), QStringLiteral("analyticsChartCard-0")) !=
+                    nullptr,
+                1000);
+            auto* chart =
+                findVisualChild(*window->contentItem(), QStringLiteral("analyticsChartCard-0"));
+
+            QCOMPARE(chart->property("preferredCardHeight").toReal(), 380.0);
+            viewModel.makeDashboardChartUnavailable(QStringLiteral("registeredBySector"));
+            QTRY_COMPARE_WITH_TIMEOUT(chart->property("preferredCardHeight").toReal(), 140.0, 1000);
         }
 
         void qml_layer_contains_no_sql_or_canonical_table_access() {

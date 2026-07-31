@@ -22,6 +22,7 @@ Rectangle {
     property bool showValueLabels: true
     property bool showTableToggle: true
     property bool tableVisible: false
+    property bool compact: false
     property int axisTickCount: 5
 
     readonly property bool hasData: chartCanvas.hasData
@@ -57,7 +58,7 @@ Rectangle {
     }
 
     implicitWidth: 520
-    implicitHeight: tableVisible ? 560 : 380
+    implicitHeight: compact ? 140 : (tableVisible ? 560 : 380)
     color: Theme.panel
     border.color: Theme.border
     radius: Theme.radiusSoft
@@ -115,13 +116,15 @@ Rectangle {
             id: plotArea
 
             Layout.fillWidth: true
-            Layout.fillHeight: true
-            Layout.minimumHeight: 220
+            Layout.fillHeight: !root.compact
+            Layout.minimumHeight: root.compact ? 42 : 220
+            Layout.preferredHeight: root.compact ? 42 : -1
 
             AnalyticsChartCanvas {
                 id: chartCanvas
 
                 anchors.fill: parent
+                visible: !root.compact
                 chartType: root.chartType
                 categories: root.categories
                 series: root.series
@@ -142,7 +145,7 @@ Rectangle {
             Text {
                 anchors.centerIn: parent
                 width: Math.max(0, parent.width - Theme.cardGap * 2)
-                visible: !root.hasData
+                visible: root.compact || !root.hasData
                 text: root.emptyMessage
                 textFormat: Text.PlainText
                 color: Theme.mutedText
@@ -163,6 +166,7 @@ Rectangle {
         AnalyticsChartLegend {
             Layout.fillWidth: true
             Layout.preferredHeight: implicitHeight
+            visible: !root.compact
             entries: root.legendEntries
         }
 
@@ -170,7 +174,7 @@ Rectangle {
             id: tableButton
 
             Layout.alignment: Qt.AlignRight
-            visible: root.showTableToggle && root.tableRows.length > 0
+            visible: !root.compact && root.showTableToggle && root.tableRows.length > 0
             text: root.tableVisible ? qsTr("Ocultar tabela") : qsTr("Mostrar tabela")
             flat: true
             font.family: Theme.fontFamily
@@ -197,7 +201,7 @@ Rectangle {
         AnalyticsChartTable {
             Layout.fillWidth: true
             Layout.preferredHeight: implicitHeight
-            visible: root.tableVisible
+            visible: !root.compact && root.tableVisible
             headers: root.tableHeaders
             rows: root.tableRows
             categoryHeader: root.xAxisTitle.length > 0 ? root.xAxisTitle : qsTr("Categoria")

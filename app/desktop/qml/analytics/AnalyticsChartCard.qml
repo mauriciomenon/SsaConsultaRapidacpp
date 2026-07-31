@@ -7,6 +7,8 @@ AnalyticsChart {
     property var chartModel: ({})
 
     readonly property var presentedSeries: presentSeries()
+    readonly property bool unavailable: chartModel && chartModel.available === false
+    readonly property real preferredCardHeight: unavailable ? 140 : 380
 
     function seriesLabel(name) {
         const labels = {
@@ -89,6 +91,7 @@ AnalyticsChart {
     }
 
     categories: chartModel && chartModel.categories ? chartModel.categories : []
+    compact: unavailable
     series: presentedSeries
     trendValues: chartModel && chartModel.trendValues ? chartModel.trendValues : []
     subtitle: chartModel && chartModel.subtitle ? String(chartModel.subtitle) : ""

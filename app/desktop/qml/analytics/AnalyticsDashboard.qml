@@ -354,7 +354,7 @@ Item {
                         required property var modelData
 
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 380
+                        Layout.preferredHeight: preferredCardHeight
                         objectName: "analyticsChartCard-" + index
                         title: modelData.title
                         chartType: modelData.chartType
