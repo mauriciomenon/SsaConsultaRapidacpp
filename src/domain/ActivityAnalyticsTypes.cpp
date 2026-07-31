@@ -67,6 +67,12 @@ namespace ssa::domain {
             return {isoYear, static_cast<int>(elapsedDays / 7) + 1};
         }
 
+        IsoWeek isoWeekForDay(const std::chrono::sys_days value) {
+            using namespace std::chrono;
+            return isoWeekForThursday(value +
+                                      days{4 - static_cast<int>(weekday{value}.iso_encoding())});
+        }
+
     } // namespace
 
     bool isValidIsoWeek(const IsoWeek value) noexcept {
@@ -100,9 +106,7 @@ namespace ssa::domain {
         if (!date.ok()) {
             return std::nullopt;
         }
-        const sys_days day{date};
-        const auto thursday = day + days{4 - static_cast<int>(weekday{day}.iso_encoding())};
-        const auto result = isoWeekForThursday(thursday);
+        const auto result = isoWeekForDay(sys_days{date});
         return isValidIsoWeek(result) ? std::optional<IsoWeek>{result} : std::nullopt;
     }
 
@@ -143,6 +147,22 @@ namespace ssa::domain {
             return false;
         }
         return period.first <= period.last;
+    }
+
+    AnalyticsPeriod calendarMonthPeriod(const int yearValue, const int monthValue) {
+        using namespace std::chrono;
+        if (yearValue < 1900 || yearValue > 2999 || monthValue < 1 || monthValue > 12) {
+            throw std::invalid_argument("calendar month is outside analytics range");
+        }
+        const year_month month{year{yearValue},
+                               std::chrono::month{static_cast<unsigned>(monthValue)}};
+        const year_month_day firstDay{month / day{1}};
+        const year_month_day lastDay{month / last};
+        if (!firstDay.ok() || !lastDay.ok()) {
+            throw std::invalid_argument("calendar month is invalid");
+        }
+        return {.first = isoWeekForDay(sys_days{firstDay}),
+                .last = isoWeekForDay(sys_days{lastDay})};
     }
 
     AnalyticsPeriod referenceMonthHistoryPeriod(const IsoWeek last, const int monthCount) {

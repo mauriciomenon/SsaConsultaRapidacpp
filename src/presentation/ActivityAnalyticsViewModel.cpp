@@ -2,6 +2,7 @@
 
 #include "application/ActivityAnalyticsChartModelBuilder.h"
 
+#include <QDate>
 #include <QDebug>
 #include <QMetaObject>
 #include <QMetaType>
@@ -441,8 +442,11 @@ namespace ssa::presentation {
               [service,
                request = std::move(request)](const std::stop_token& stopToken) -> TaskResult {
                   auto result = service->series(request, stopToken);
-                  const auto chart = application::ActivityAnalyticsChartModelBuilder::build(
-                      request, result, application::AnalyticsChartMode::Custom);
+                  const auto mode = request.metric == domain::AnalyticsMetric::PendingDeadline
+                                        ? application::AnalyticsChartMode::DeadlineStacked
+                                        : application::AnalyticsChartMode::Custom;
+                  const auto chart =
+                      application::ActivityAnalyticsChartModelBuilder::build(request, result, mode);
                   return CustomSeriesPayload{
                       .model = chartReadySeriesMap(result, request.metric, chart),
                       .metric = request.metric,
@@ -487,6 +491,15 @@ namespace ssa::presentation {
                   return WarningWindowPayload{.days = days};
               });
         return true;
+    }
+
+    QVariantMap ActivityAnalyticsViewModel::currentMonthSelection() const {
+        const QDate currentDate = QDate::currentDate();
+        const auto period = domain::calendarMonthPeriod(currentDate.year(), currentDate.month());
+        return {{QStringLiteral("firstYear"), period.first.year},
+                {QStringLiteral("firstWeek"), period.first.week},
+                {QStringLiteral("lastYear"), period.last.year},
+                {QStringLiteral("lastWeek"), period.last.week}};
     }
 
     bool ActivityAnalyticsViewModel::requestDashboard(const QVariantMap& selection) {

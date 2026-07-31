@@ -61,6 +61,12 @@ TEST_CASE("activity analytics derives exactly thirteen ISO reference months") {
     CHECK_THROWS_AS(ssa::domain::referenceMonthHistoryPeriod({2026, 10}, 0), std::invalid_argument);
 }
 
+TEST_CASE("activity analytics maps a calendar month to its complete ISO week range") {
+    CHECK(ssa::domain::calendarMonthPeriod(2026, 7) == AnalyticsPeriod{{2026, 27}, {2026, 31}});
+    CHECK(ssa::domain::calendarMonthPeriod(2021, 1) == AnalyticsPeriod{{2020, 53}, {2021, 4}});
+    CHECK_THROWS_AS(ssa::domain::calendarMonthPeriod(2026, 13), std::invalid_argument);
+}
+
 TEST_CASE("activity analytics calculates an ordinary least squares trend") {
     const std::array values{1.0, 3.0, 5.0, 7.0};
     const auto trend = ssa::domain::linearTrend(values);

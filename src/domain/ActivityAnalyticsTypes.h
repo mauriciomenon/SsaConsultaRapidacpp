@@ -129,6 +129,7 @@ namespace ssa::domain {
     [[nodiscard]] std::string isoReferenceMonth(IsoWeek value);
     [[nodiscard]] std::string analyticsBucketKey(IsoWeek value, TimeGrain grain);
     [[nodiscard]] bool isValidPeriod(const AnalyticsPeriod& period) noexcept;
+    [[nodiscard]] AnalyticsPeriod calendarMonthPeriod(int yearValue, int monthValue);
     [[nodiscard]] AnalyticsPeriod referenceMonthHistoryPeriod(IsoWeek last, int monthCount);
     [[nodiscard]] std::vector<double> linearTrend(std::span<const double> values);
     [[nodiscard]] std::optional<std::string>

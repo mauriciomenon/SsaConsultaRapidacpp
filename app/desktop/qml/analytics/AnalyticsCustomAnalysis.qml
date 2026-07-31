@@ -11,10 +11,11 @@ Item {
 
     required property var analyticsViewModel
 
-    property int firstYear: new Date().getFullYear()
-    property int firstWeek: 1
-    property int lastYear: new Date().getFullYear()
-    property int lastWeek: 1
+    readonly property var initialPeriod: analyticsViewModel.currentMonthSelection()
+    property int firstYear: initialPeriod.firstYear
+    property int firstWeek: initialPeriod.firstWeek
+    property int lastYear: initialPeriod.lastYear
+    property int lastWeek: initialPeriod.lastWeek
     property bool active: false
     property var selectedDivisions: []
     property var selectedSectors: []
@@ -125,6 +126,24 @@ Item {
         return root.changePersonRole(index);
     }
 
+    function useCurrentMonth() {
+        const period = root.analyticsViewModel.currentMonthSelection();
+        root.firstYear = period.firstYear;
+        root.firstWeek = period.firstWeek;
+        root.lastYear = period.lastYear;
+        root.lastWeek = period.lastWeek;
+    }
+
+    function configureOverdueByArea() {
+        metricCombo.currentIndex = 8;
+        grainCombo.currentIndex = 0;
+        breakdownCombo.currentIndex = 1;
+        root.selectedDivisions = [];
+        root.selectedSectors = [];
+        root.selectedPeople = [];
+        return root.refreshDimensions();
+    }
+
     function isSelected(values, value) {
         return values.indexOf(value) >= 0;
     }
@@ -148,6 +167,11 @@ Item {
             const value = root.analyticsViewModel.warningWindowDays;
             customWarningField.text = value === undefined || value === null ? "" : String(value);
         }
+    }
+
+    Component.onCompleted: {
+        const value = root.analyticsViewModel.warningWindowDays;
+        customWarningField.text = value === undefined || value === null ? "" : String(value);
     }
 
     Flickable {
@@ -206,9 +230,11 @@ Item {
                             color: Theme.text
                         }
                         AppSpinBox {
+                            objectName: "analyticsCustomFirstWeek"
                             from: 1
                             to: 53
                             value: root.firstWeek
+                            editable: true
                             onValueModified: root.firstWeek = value
                         }
                         Label {
@@ -229,10 +255,21 @@ Item {
                             color: Theme.text
                         }
                         AppSpinBox {
+                            objectName: "analyticsCustomLastWeek"
                             from: 1
                             to: 53
                             value: root.lastWeek
+                            editable: true
                             onValueModified: root.lastWeek = value
+                        }
+
+                        Label {
+                            text: qsTr("Periodo")
+                            color: Theme.text
+                        }
+                        ActionButton {
+                            text: qsTr("Mes atual")
+                            onClicked: root.useCurrentMonth()
                         }
 
                         Label {
@@ -254,7 +291,7 @@ Item {
                             id: grainCombo
 
                             Layout.fillWidth: true
-                            model: [qsTr("Periodo inteiro"), qsTr("Semana ISO"), qsTr("Mes de referencia ISO")]
+                            model: [qsTr("Acumulado no periodo"), qsTr("Separado por semana ISO"), qsTr("Separado por mes ISO")]
                             onActivated: root.refreshDimensions()
                         }
                         Label {
@@ -317,6 +354,11 @@ Item {
                             text: qsTr("Atualizar opcoes")
                             enabled: !root.analyticsViewModel.loading
                             onClicked: root.refreshDimensions()
+                        }
+                        ActionButton {
+                            text: qsTr("Atrasadas por area")
+                            enabled: !root.analyticsViewModel.loading
+                            onClicked: root.configureOverdueByArea()
                         }
                         ActionButton {
                             text: qsTr("Gerar grafico")
@@ -494,7 +536,7 @@ Item {
                 Layout.preferredHeight: 440
                 objectName: "customAnalysisChart"
                 title: qsTr("Resultado da analise customizada")
-                chartType: root.grainIndex === 0 ? "bar" : "trendLine"
+                chartType: root.metricIndex === 8 ? "stackedBar" : "bar"
                 chartModel: root.analyticsViewModel.customSeries
             }
         }

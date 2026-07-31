@@ -556,6 +556,42 @@ namespace {
             QVERIFY(!result.contains(QStringLiteral("observations")));
         }
 
+        void customDeadlineResultKeepsDeadlineClassesByArea() {
+            auto port = std::make_shared<FunctionalAnalyticsPort>();
+            port->seriesFunction = [](const AnalyticsRequest&, const std::stop_token&) {
+                auto onTime = AnalyticsPoint{.division = "DIV", .sector = "AREA-A", .count = 5};
+                onTime.deadlineClass = ssa::domain::DeadlineClass::OnTime;
+                auto warning = AnalyticsPoint{.division = "DIV", .sector = "AREA-A", .count = 2};
+                warning.deadlineClass = ssa::domain::DeadlineClass::Warning;
+                auto overdue = AnalyticsPoint{.division = "DIV", .sector = "AREA-B", .count = 3};
+                overdue.deadlineClass = ssa::domain::DeadlineClass::Overdue;
+                return AnalyticsSeriesResult{.points = {onTime, warning, overdue}};
+            };
+            ssa::presentation::ActivityAnalyticsViewModel model(serviceFor(port));
+            auto request = testRequest();
+            request.metric = ssa::domain::AnalyticsMetric::PendingDeadline;
+            request.grain = ssa::domain::TimeGrain::WholePeriod;
+            request.breakdown = ssa::domain::Breakdown::DivisionSector;
+            request.warningWindowDays = 7;
+
+            model.loadCustomSeries(request);
+
+            QTRY_VERIFY_WITH_TIMEOUT(!model.loading(), 1000);
+            const auto result = model.customSeries();
+            QCOMPARE(result.value(QStringLiteral("categories")).toStringList(),
+                     QStringList({QStringLiteral("DIV / AREA-A"), QStringLiteral("DIV / AREA-B")}));
+            const auto series = result.value(QStringLiteral("series")).toList();
+            QCOMPARE(series.size(), 3);
+            QCOMPARE(series.at(0).toMap().value(QStringLiteral("name")).toString(),
+                     QStringLiteral("on_time"));
+            QCOMPARE(series.at(1).toMap().value(QStringLiteral("name")).toString(),
+                     QStringLiteral("warning"));
+            QCOMPARE(series.at(2).toMap().value(QStringLiteral("name")).toString(),
+                     QStringLiteral("overdue"));
+            QCOMPARE(series.at(2).toMap().value(QStringLiteral("values")).toList().at(1).toDouble(),
+                     3.0);
+        }
+
         void warningWindowSettingsAreAsyncValidatedAndQmlVisible() {
             struct Gate final {
                 std::atomic_bool started{false};

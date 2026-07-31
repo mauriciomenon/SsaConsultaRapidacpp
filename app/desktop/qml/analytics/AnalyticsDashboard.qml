@@ -11,10 +11,11 @@ Item {
 
     required property var analyticsViewModel
 
-    property int reportFirstYear: new Date().getFullYear()
-    property int reportFirstWeek: 1
-    property int reportLastYear: new Date().getFullYear()
-    property int reportLastWeek: 1
+    readonly property var initialPeriod: analyticsViewModel.currentMonthSelection()
+    property int reportFirstYear: initialPeriod.firstYear
+    property int reportFirstWeek: initialPeriod.firstWeek
+    property int reportLastYear: initialPeriod.lastYear
+    property int reportLastWeek: initialPeriod.lastWeek
     property alias warningText: warningField.text
 
     readonly property var chartDefinitions: [
@@ -26,7 +27,7 @@ Item {
         {
             "key": "registeredMonthly",
             "title": qsTr("Historico de cadastradas"),
-            "chartType": "trendLine"
+            "chartType": "bar"
         },
         {
             "key": "executedBySector",
@@ -36,7 +37,7 @@ Item {
         {
             "key": "executedMonthly",
             "title": qsTr("Historico de executadas"),
-            "chartType": "trendLine"
+            "chartType": "bar"
         },
         {
             "key": "partialAttentionBySector",
@@ -66,7 +67,7 @@ Item {
         {
             "key": "pendingMonthly",
             "title": qsTr("Historico pendente"),
-            "chartType": "trendLine"
+            "chartType": "bar"
         },
         {
             "key": "issuedByDivision",
@@ -76,7 +77,7 @@ Item {
         {
             "key": "issuedMonthly",
             "title": qsTr("Historico de emitidas"),
-            "chartType": "trendLine"
+            "chartType": "bar"
         },
         {
             "key": "pendingDeadlinePercentage",
@@ -118,6 +119,14 @@ Item {
 
     function refreshDashboard() {
         return root.analyticsViewModel.requestDashboard(root.dashboardSelection());
+    }
+
+    function useCurrentMonth() {
+        const period = root.analyticsViewModel.currentMonthSelection();
+        root.reportFirstYear = period.firstYear;
+        root.reportFirstWeek = period.firstWeek;
+        root.reportLastYear = period.lastYear;
+        root.reportLastWeek = period.lastWeek;
     }
 
     function queueDashboardRefresh() {
@@ -234,9 +243,11 @@ Item {
                         color: Theme.text
                     }
                     AppSpinBox {
+                        objectName: "analyticsDashboardFirstWeek"
                         from: 1
                         to: 53
                         value: root.reportFirstWeek
+                        editable: true
                         onValueModified: root.reportFirstWeek = value
                     }
                     Label {
@@ -257,10 +268,20 @@ Item {
                         color: Theme.text
                     }
                     AppSpinBox {
+                        objectName: "analyticsDashboardLastWeek"
                         from: 1
                         to: 53
                         value: root.reportLastWeek
+                        editable: true
                         onValueModified: root.reportLastWeek = value
+                    }
+                    Label {
+                        text: qsTr("Periodo")
+                        color: Theme.text
+                    }
+                    ActionButton {
+                        text: qsTr("Mes atual")
+                        onClicked: root.useCurrentMonth()
                     }
                     Label {
                         text: qsTr("Janela de alerta em dias")

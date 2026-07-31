@@ -169,6 +169,13 @@ namespace {
             return true;
         }
 
+        Q_INVOKABLE QVariantMap currentMonthSelection() const {
+            return {{QStringLiteral("firstYear"), 2026},
+                    {QStringLiteral("firstWeek"), 27},
+                    {QStringLiteral("lastYear"), 2026},
+                    {QStringLiteral("lastWeek"), 31}};
+        }
+
         Q_INVOKABLE bool requestCustomSeries(const QVariantMap& selection) {
             ++customRequestCount_;
             lastCustomSelection_ = selection;
@@ -447,6 +454,39 @@ namespace {
             QCOMPARE(viewModel.dimensionRequestCount(), 1);
         }
 
+        void period_controls_default_to_current_month_and_allow_direct_week_entry() {
+            QQmlEngine engine;
+            FakeAnalyticsViewModel viewModel;
+            QString error;
+            auto object = loadWindow(engine, viewModel, error);
+            QVERIFY2(object != nullptr, qPrintable(error));
+            auto* dashboard = object->findChild<QObject*>(QStringLiteral("analyticsDashboard"));
+            auto* custom = object->findChild<QObject*>(QStringLiteral("analyticsCustomAnalysis"));
+            auto* dashboardFirstWeek =
+                object->findChild<QObject*>(QStringLiteral("analyticsDashboardFirstWeek"));
+            auto* dashboardLastWeek =
+                object->findChild<QObject*>(QStringLiteral("analyticsDashboardLastWeek"));
+            auto* customFirstWeek =
+                object->findChild<QObject*>(QStringLiteral("analyticsCustomFirstWeek"));
+            auto* customLastWeek =
+                object->findChild<QObject*>(QStringLiteral("analyticsCustomLastWeek"));
+
+            QVERIFY(dashboard != nullptr);
+            QVERIFY(custom != nullptr);
+            QVERIFY(dashboardFirstWeek != nullptr);
+            QVERIFY(dashboardLastWeek != nullptr);
+            QVERIFY(customFirstWeek != nullptr);
+            QVERIFY(customLastWeek != nullptr);
+            QCOMPARE(dashboard->property("reportFirstWeek").toInt(), 27);
+            QCOMPARE(dashboard->property("reportLastWeek").toInt(), 31);
+            QCOMPARE(custom->property("firstWeek").toInt(), 27);
+            QCOMPARE(custom->property("lastWeek").toInt(), 31);
+            QVERIFY(dashboardFirstWeek->property("editable").toBool());
+            QVERIFY(dashboardLastWeek->property("editable").toBool());
+            QVERIFY(customFirstWeek->property("editable").toBool());
+            QVERIFY(customLastWeek->property("editable").toBool());
+        }
+
         void dashboard_renders_both_reference_sizes_and_switches_to_one_column_when_narrow() {
             QQmlEngine engine;
             FakeAnalyticsViewModel viewModel;
@@ -598,7 +638,7 @@ namespace {
             QVERIFY(custom->property("selectedPeople").toStringList().isEmpty());
         }
 
-        void custom_chart_switches_between_whole_period_bars_and_temporal_lines() {
+        void custom_chart_uses_bars_for_periods_and_stacks_deadline_classes() {
             QQmlEngine engine;
             FakeAnalyticsViewModel viewModel;
             QString error;
@@ -612,10 +652,13 @@ namespace {
             QCOMPARE(chart->property("chartType").toString(), QStringLiteral("bar"));
             QVERIFY(invoke(*custom, "setGrainIndex", 1));
             QTRY_COMPARE_WITH_TIMEOUT(chart->property("chartType").toString(),
-                                      QStringLiteral("trendLine"), 1000);
+                                      QStringLiteral("bar"), 1000);
             QVERIFY(invoke(*custom, "setGrainIndex", 2));
             QTRY_COMPARE_WITH_TIMEOUT(chart->property("chartType").toString(),
-                                      QStringLiteral("trendLine"), 1000);
+                                      QStringLiteral("bar"), 1000);
+            QVERIFY(invoke(*custom, "setMetricIndex", 8));
+            QTRY_COMPARE_WITH_TIMEOUT(chart->property("chartType").toString(),
+                                      QStringLiteral("stackedBar"), 1000);
         }
 
         void chart_card_localizes_composite_quality_and_known_unavailability_reasons() {
