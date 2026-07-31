@@ -305,3 +305,29 @@ if ($Target) {
 if ($LASTEXITCODE -ne 0) {
     throw "CMake build failed with exit code $LASTEXITCODE."
 }
+
+$binary = Join-Path $buildDir "ssa_consulta_rapida.exe"
+if ((-not $Target -or $Target -eq "ssa_consulta_rapida") -and
+    (Test-Path -LiteralPath $binary -PathType Leaf)) {
+    $commit = (& git.exe -C $repoRoot rev-parse HEAD).Trim()
+    if ($LASTEXITCODE -ne 0 -or -not $commit) {
+        throw "Git did not return the commit used by the Windows build."
+    }
+    $binaryInfo = Get-Item -LiteralPath $binary
+    $binaryHash = (Get-FileHash -LiteralPath $binary -Algorithm SHA256).Hash.ToLowerInvariant()
+    $buildInfo = @(
+        "BuildTimestamp=$([DateTimeOffset]::Now.ToString('yyyy-MM-ddTHH:mm:ss.fffzzz'))"
+        "Commit=$commit"
+        "Executable=$($binaryInfo.Name)"
+        "ExecutableLastWriteTime=$($binaryInfo.LastWriteTime.ToString('yyyy-MM-ddTHH:mm:ss.fffzzz'))"
+        "SHA256=$binaryHash"
+        "Toolchain=$effectiveToolchain"
+        "Architecture=$arch"
+        "QtKit=$qtKit"
+        "Preset=$preset"
+    )
+    $buildInfoPath = Join-Path $buildDir "BUILD_INFO.txt"
+    $buildInfo | Set-Content -LiteralPath $buildInfoPath -Encoding utf8
+    Write-Output "Windows build evidence: $buildInfoPath"
+    $buildInfo | ForEach-Object { Write-Output "  $_" }
+}
