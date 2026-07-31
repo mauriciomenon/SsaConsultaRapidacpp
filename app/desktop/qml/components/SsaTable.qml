@@ -470,7 +470,8 @@ Rectangle {
                     elide: Text.ElideRight
                     font.pixelSize: table.cachedTextSize
                     font.bold: false
-                    font.underline: cellDelegate.opensSam || cellDelegate.isDerivationLink || cellDelegate.opensDerivationGraph
+                    font.weight: Font.Normal
+                    font.underline: false
                 }
 
                 MouseArea {

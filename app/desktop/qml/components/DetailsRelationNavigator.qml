@@ -7,6 +7,7 @@ import SsaConsultaRapida
 
 Rectangle {
     id: root
+    objectName: "detailsRelationNavigator"
     required property var viewModel
     property string density: "normal"
     readonly property int valueTextSize: Theme.densityValue(root.density, 12, 13, 15)
@@ -236,64 +237,6 @@ Rectangle {
                                 }
                             }
                         }
-                    }
-                }
-            }
-
-            Column {
-                Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
-                Layout.minimumWidth: 54
-                Layout.preferredWidth: 54
-                spacing: 1
-
-                ActionButton {
-                    text: "Grafo"
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    implicitWidth: 42
-                    implicitHeight: 19
-                    padding: 0
-                    font.pixelSize: Theme.fontSizeCaption
-                    enabled: root.viewModel.selectedSsaNumber.length > 0
-                    ToolTip.visible: hovered
-                    ToolTip.text: "Abrir grafo"
-                    ToolTip.delay: 0
-                    onClicked: root.graphWindowRequested()
-                }
-
-                Row {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    spacing: 2
-
-                    ActionButton {
-                        text: "<"
-                        Accessible.name: "Relacao anterior"
-                        implicitWidth: 20
-                        implicitHeight: 19
-                        padding: 0
-                        font.pixelSize: Theme.fontSizeCaption
-                        enabled: root.viewModel.canSelectPreviousRelation
-                        onClicked: root.viewModel.selectPreviousRelation()
-                    }
-
-                    Label {
-                        text: root.viewModel.relationCount > 0 ? (root.viewModel.currentRelationIndex + 1) + "/" + root.viewModel.relationCount : ""
-                        color: Theme.mutedText
-                        font.pixelSize: Theme.fontSizeMicro
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                        width: 24
-                        height: 19
-                    }
-
-                    ActionButton {
-                        text: ">"
-                        Accessible.name: "Proxima relacao"
-                        implicitWidth: 20
-                        implicitHeight: 19
-                        padding: 0
-                        font.pixelSize: Theme.fontSizeCaption
-                        enabled: root.viewModel.canSelectNextRelation
-                        onClicked: root.viewModel.selectNextRelation()
                     }
                 }
             }

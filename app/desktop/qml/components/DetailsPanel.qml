@@ -92,6 +92,62 @@ Rectangle {
                         font.bold: false
                         clip: true
                     }
+
+                    ActionButton {
+                        objectName: visible ? "detailsGraphButton" : ""
+                        Layout.alignment: Qt.AlignVCenter
+                        visible: fieldDelegate.key === "numero_ssa" && root.viewModel.relationCount > 0
+                        text: "Grafo"
+                        implicitWidth: 42
+                        implicitHeight: 19
+                        padding: 0
+                        font.pixelSize: Theme.fontSizeCaption
+                        enabled: root.viewModel.selectedSsaNumber.length > 0
+                        ToolTip.visible: hovered
+                        ToolTip.text: "Abrir grafo"
+                        ToolTip.delay: 0
+                        onClicked: root.graphWindowRequested()
+                    }
+
+                    Row {
+                        objectName: visible ? "detailsRelationPager" : ""
+                        Layout.alignment: Qt.AlignVCenter
+                        visible: fieldDelegate.key === "numero_ssa" && root.viewModel.relationCount > 0
+                        spacing: 2
+
+                        ActionButton {
+                            text: "<"
+                            Accessible.name: "Relacao anterior"
+                            implicitWidth: 20
+                            implicitHeight: 19
+                            padding: 0
+                            font.pixelSize: Theme.fontSizeCaption
+                            enabled: root.viewModel.canSelectPreviousRelation
+                            onClicked: root.viewModel.selectPreviousRelation()
+                        }
+
+                        Label {
+                            text: (root.viewModel.currentRelationIndex + 1) + "/" + root.viewModel.relationCount
+                            color: Theme.mutedText
+                            font.pixelSize: Theme.fontSizeMicro
+                            font.weight: Font.Normal
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                            width: 24
+                            height: 19
+                        }
+
+                        ActionButton {
+                            text: ">"
+                            Accessible.name: "Proxima relacao"
+                            implicitWidth: 20
+                            implicitHeight: 19
+                            padding: 0
+                            font.pixelSize: Theme.fontSizeCaption
+                            enabled: root.viewModel.canSelectNextRelation
+                            onClicked: root.viewModel.selectNextRelation()
+                        }
+                    }
                 }
 
                 Rectangle {

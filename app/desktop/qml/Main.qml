@@ -342,7 +342,7 @@ ApplicationWindow {
             preferenceFlow: root.vm.preferenceFlow
             density: root.vm.ui.density
             currentWeekText: root.vm.actions.currentWeek.value
-            ssaCountText: root.vm.browse.totalRows + " / " + root.vm.browse.totalRowsAll + " SSAs"
+            ssaCountText: root.vm.browse.totalRows + "/" + root.vm.browse.totalRowsAll
             importEnabled: !root.vm.actions.workflows.running
             onImportRequested: fileDialogs.openImportData()
             onPreferencesRequested: preferencesDialog.open()

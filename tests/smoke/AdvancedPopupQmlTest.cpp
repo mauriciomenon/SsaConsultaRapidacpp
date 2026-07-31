@@ -380,6 +380,8 @@ namespace {
             QVERIFY(qmlRegisterType(
                         QUrl::fromLocalFile(components.filePath("DetailsRelationNavigator.qml")),
                         "SsaConsultaRapida", 1, 0, "DetailsRelationNavigator") >= 0);
+            QVERIFY(qmlRegisterType(QUrl::fromLocalFile(components.filePath("DetailsPanel.qml")),
+                                    "SsaConsultaRapida", 1, 0, "DetailsPanel") >= 0);
             QVERIFY(
                 qmlRegisterType(QUrl::fromLocalFile(components.filePath("SavedFilterControls.qml")),
                                 "SsaConsultaRapida", 1, 0, "SavedFilterControls") >= 0);
@@ -910,6 +912,18 @@ namespace {
             QCOMPARE(harness->property("detailsCount").toInt(), 2);
         }
 
+        void ssa_table_cell_text_forces_normal_weight() {
+            QFile source(repositoryRoot().filePath("app/desktop/qml/components/SsaTable.qml"));
+            QVERIFY2(source.open(QIODevice::ReadOnly | QIODevice::Text),
+                     qPrintable(source.errorString()));
+            const QString text = QString::fromUtf8(source.readAll());
+            QVERIFY(text.contains(QStringLiteral("font.weight: Font.Normal")));
+            QVERIFY(text.contains(QStringLiteral("font.underline: false")));
+            QVERIFY(!text.contains(QStringLiteral(
+                "font.underline: cellDelegate.opensSam || cellDelegate.isDerivationLink || "
+                "cellDelegate.opensDerivationGraph")));
+        }
+
         void relation_navigator_activates_relation_index_from_keyboard() {
             QQmlEngine engine;
             QQmlComponent component(&engine);
@@ -1053,6 +1067,93 @@ namespace {
 
             QTRY_COMPARE_WITH_TIMEOUT(harness->property("loadCount").toInt(), 1, 1000);
             QCOMPARE(harness->property("loadedIndex").toInt(), 2);
+        }
+
+        void details_panel_places_graph_navigation_on_ssa_row() {
+            QQmlEngine engine;
+            QQmlComponent component(&engine);
+            component.setData(R"QML(
+                import QtQuick
+                import SsaConsultaRapida
+
+                Item {
+                    id: harness
+                    width: 760
+                    height: 260
+
+                    QtObject {
+                        id: detailsModel
+                        property var fields: [
+                            { key: "numero_ssa", label: "No SSA", value: "202600001" },
+                            { key: "situacao", label: "Situacao", value: "APV" }
+                        ]
+                        property int fieldCount: fields.length
+                        property var relations: [
+                            { ssa: "202600001", role: "current", status: "APV", kind: "Atual" },
+                            { ssa: "202600002", role: "child", status: "STE", kind: "Derivada" }
+                        ]
+                        property int relationCount: relations.length
+                        property bool relationLoading: false
+                        property string relationError: ""
+                        property string selectedSsaNumber: "202600001"
+                        property int currentRelationIndex: 0
+                        property bool canSelectPreviousRelation: false
+                        property bool canSelectNextRelation: true
+                        function selectPreviousRelation() {}
+                        function selectNextRelation() { currentRelationIndex += 1; }
+                    }
+
+                    DetailsPanel {
+                        objectName: "detailsPanelHarness"
+                        anchors.fill: parent
+                        viewModel: detailsModel
+                    }
+                }
+            )QML",
+                              QUrl(QStringLiteral("inmemory:/DetailsPanelLayoutHarness.qml")));
+            QTRY_VERIFY_WITH_TIMEOUT(component.status() != QQmlComponent::Loading, 1000);
+            QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+
+            QQuickWindow window;
+            window.setGeometry(0, 0, 760, 260);
+            std::unique_ptr<QObject> harness(component.create());
+            QVERIFY2(harness != nullptr, qPrintable(component.errorString()));
+            auto* harnessItem = qobject_cast<QQuickItem*>(harness.get());
+            QVERIFY(harnessItem != nullptr);
+            harnessItem->setParentItem(window.contentItem());
+            window.show();
+            QTRY_VERIFY_WITH_TIMEOUT(window.isExposed(), 1000);
+
+            auto* panel = harness->findChild<QQuickItem*>(QStringLiteral("detailsPanelHarness"));
+            auto* navigator =
+                harness->findChild<QQuickItem*>(QStringLiteral("detailsRelationNavigator"));
+            QQuickItem* graph = nullptr;
+            QQuickItem* pager = nullptr;
+            QVERIFY(panel != nullptr);
+            QVERIFY(navigator != nullptr);
+            QTRY_VERIFY_WITH_TIMEOUT(
+                ([&] {
+                    graph = findQuickItemByProperty(window.contentItem(), "objectName",
+                                                    QStringLiteral("detailsGraphButton"));
+                    pager = findQuickItemByProperty(window.contentItem(), "objectName",
+                                                    QStringLiteral("detailsRelationPager"));
+                    return graph != nullptr && pager != nullptr;
+                })(),
+                1000);
+
+            const auto left = [](const QQuickItem* item) { return item->mapToScene({0, 0}).x(); };
+            const auto right = [](const QQuickItem* item) {
+                return item->mapToScene({item->width(), 0}).x();
+            };
+            const auto top = [](const QQuickItem* item) { return item->mapToScene({0, 0}).y(); };
+            const auto bottom = [](const QQuickItem* item) {
+                return item->mapToScene({0, item->height()}).y();
+            };
+            QVERIFY(top(graph) >= bottom(navigator));
+            QVERIFY(left(graph) < left(pager));
+            QVERIFY(right(pager) <= right(panel) - 4.0);
+            QVERIFY(std::abs(graph->mapToScene(graph->boundingRect().center()).y() -
+                             pager->mapToScene(pager->boundingRect().center()).y()) <= 0.5);
         }
 
         void saved_filter_activates_from_keyboard() {
@@ -1406,7 +1507,7 @@ namespace {
                         viewModel: browse
                         preferenceFlow: preferences
                         currentWeekText: "Semana ISO 31"
-                        ssaCountText: "10 / 20 SSAs"
+                        ssaCountText: "10/20"
                     }
                 }
             )QML",
@@ -1431,6 +1532,8 @@ namespace {
             auto* apply = harness->findChild<QQuickItem*>(QStringLiteral("mainApplyButton"));
             auto* week = harness->findChild<QQuickItem*>(QStringLiteral("mainWeekLabel"));
             auto* count = harness->findChild<QQuickItem*>(QStringLiteral("mainSsaCountLabel"));
+            auto* countSuffix =
+                harness->findChild<QQuickItem*>(QStringLiteral("mainSsaCountSuffixLabel"));
             auto* import = harness->findChild<QQuickItem*>(QStringLiteral("mainImportXlsxButton"));
             auto* preferences =
                 harness->findChild<QQuickItem*>(QStringLiteral("mainPreferencesButton"));
@@ -1442,6 +1545,7 @@ namespace {
             QVERIFY(apply != nullptr);
             QVERIFY(week != nullptr);
             QVERIFY(count != nullptr);
+            QVERIFY(countSuffix != nullptr);
             QVERIFY(import != nullptr);
             QVERIFY(preferences != nullptr);
             QVERIFY(theme != nullptr);
@@ -1459,11 +1563,16 @@ namespace {
             QVERIFY(left(count) < left(import));
             QVERIFY(left(import) < left(preferences));
             QVERIFY(left(preferences) < left(theme));
-            QCOMPARE(qRound(left(week) - right(searchGroup)), 20);
-            QCOMPARE(qRound(left(count) - right(week)), 10);
-            QCOMPARE(qRound(left(import) - right(count)), 20);
-            QCOMPARE(week->property("font").value<QFont>().pixelSize(), 14);
+            QCOMPARE(qRound(left(week) - right(searchGroup)), 40);
+            QCOMPARE(qRound(left(count) - right(week)), 40);
+            QCOMPARE(qRound(left(import) - right(countSuffix)), 40);
+            QCOMPARE(week->property("font").value<QFont>().pixelSize(), 16);
             QCOMPARE(count->property("font").value<QFont>().pixelSize(), 14);
+            QCOMPARE(count->property("font").value<QFont>().weight(), QFont::DemiBold);
+            QCOMPARE(countSuffix->property("font").value<QFont>().pixelSize(), 14);
+            QCOMPARE(countSuffix->property("font").value<QFont>().weight(), QFont::Normal);
+            QCOMPARE(count->property("text").toString(), QString("10/20"));
+            QCOMPARE(countSuffix->property("text").toString(), QString("SSAs"));
             QVERIFY(qvariant_cast<QQuickItem*>(week->property("background")) == nullptr);
             QVERIFY(qvariant_cast<QQuickItem*>(count->property("background")) == nullptr);
             QVERIFY(theme->mapToScene({theme->width(), 0}).x() <=
@@ -1668,6 +1777,12 @@ namespace {
             QVERIFY(graph != nullptr);
             auto* canvas = harness->findChild<QQuickItem*>(QStringLiteral("derivadasGraphCanvas"));
             QVERIFY(canvas != nullptr);
+            QCOMPARE(graph->property("roleFontSize").toInt(), 11);
+            QCOMPARE(graph->property("ssaFontSize").toInt(), 16);
+            QCOMPARE(graph->property("statusFontSize").toInt(), 13);
+            QCOMPARE(graph->property("edgeLineWidth").toReal(), 1.0);
+            QCOMPARE(graph->property("nodeLineWidth").toReal(), 1.0);
+            QCOMPARE(graph->property("targetNodeLineWidth").toReal(), 2.0);
             QTRY_VERIFY_WITH_TIMEOUT(canvas->width() > 0.0 && canvas->height() > 0.0, 1000);
             QCOMPARE(canvas->x(), (graph->width() - canvas->width()) / 2.0);
             QCOMPARE(canvas->y(), (graph->height() - canvas->height()) / 2.0);
@@ -2459,6 +2574,14 @@ namespace {
                 }
             }
             QCOMPARE(pythonThemeCount, 13);
+
+            const QVariantMap ssaDark = palettes.value(QStringLiteral("ssa-dark")).toMap();
+            const QColor ssaDarkAccent{ssaDark.value(QStringLiteral("accent")).toString()};
+            QVERIFY(ssaDarkAccent.isValid());
+            QVERIFY2(ssaDarkAccent.hslHueF() >= 0.55 && ssaDarkAccent.hslHueF() <= 0.62,
+                     "ssa-dark accent must use a clear blue hue");
+            QVERIFY2(ssaDarkAccent.lightnessF() >= 0.68,
+                     "ssa-dark accent must remain light on the dark surface");
 
             for (const QString& themeName : nativeThemes) {
                 QVERIFY2(options.contains(themeName),

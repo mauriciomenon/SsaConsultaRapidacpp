@@ -10,6 +10,13 @@ Flickable {
     id: root
     required property var graphModel
     property int currentNodeIndex: graphModel && graphModel.nodeCount > 0 ? 0 : -1
+    readonly property int roleFontSize: 11
+    readonly property int ssaFontSize: 16
+    readonly property int statusFontSize: 13
+    readonly property real edgeLineWidth: 1
+    readonly property real nodeLineWidth: 1
+    readonly property real targetNodeLineWidth: 2
+    readonly property real focusLineWidth: 2
     signal nodeClicked(string ssaNumber)
     signal exportFinished(bool succeeded)
 
@@ -96,6 +103,10 @@ Flickable {
         return "SSA";
     }
 
+    function canvasFont(weight, pixelSize) {
+        return weight + " " + pixelSize + "px \"" + Theme.fontFamily + "\"";
+    }
+
     function nodeFillColor(role, isTarget) {
         if (isTarget)
             return Theme.accent;
@@ -150,6 +161,7 @@ Flickable {
         y: Math.max(0, (root.height - height) / 2)
         width: root.graphModel ? root.graphModel.graphWidth : 0
         height: root.graphModel ? root.graphModel.graphHeight : 0
+        renderTarget: Canvas.Image
 
         readonly property real nodeWidth: root.graphModel ? root.graphModel.nodeWidth : 0
         readonly property real nodeHeight: root.graphModel ? root.graphModel.nodeHeight : 0
@@ -184,7 +196,9 @@ Flickable {
 
             // Edges first (so nodes draw on top). One bend per edge.
             // Dashed = related, solid = derived.
-            ctx.lineWidth = 0.9;
+            ctx.save();
+            ctx.translate(0.5, 0.5);
+            ctx.lineWidth = root.edgeLineWidth;
             ctx.strokeStyle = Theme.border;
             const edgeList = model.edges();
             const vertical = model.orientation === "vertical";
@@ -231,6 +245,7 @@ Flickable {
                 ctx.stroke();
                 ctx.setLineDash([]);
             }
+            ctx.restore();
 
             // Nodes.
             const count = model.rowCount();
@@ -249,11 +264,18 @@ Flickable {
                 ctx.roundedRect(x0, y0, canvas.nodeWidth, canvas.nodeHeight, 5, 5);
                 ctx.fillStyle = root.nodeFillColor(role, isTarget);
                 ctx.fill();
-                ctx.lineWidth = isTarget ? 1.2 : 0.9;
+                const nodeStrokeWidth = isTarget ? root.targetNodeLineWidth : root.nodeLineWidth;
+                const nodeStrokeInset = nodeStrokeWidth / 2;
+                ctx.beginPath();
+                ctx.roundedRect(x0 + nodeStrokeInset, y0 + nodeStrokeInset, canvas.nodeWidth - nodeStrokeWidth, canvas.nodeHeight - nodeStrokeWidth, 5, 5);
+                ctx.lineWidth = nodeStrokeWidth;
                 ctx.strokeStyle = root.nodeStrokeColor(role, isTarget);
                 ctx.stroke();
                 if (root.activeFocus && i === root.currentNodeIndex) {
-                    ctx.lineWidth = 2.4;
+                    const focusInset = root.focusLineWidth / 2;
+                    ctx.beginPath();
+                    ctx.roundedRect(x0 + focusInset, y0 + focusInset, canvas.nodeWidth - root.focusLineWidth, canvas.nodeHeight - root.focusLineWidth, 5, 5);
+                    ctx.lineWidth = root.focusLineWidth;
                     ctx.strokeStyle = Theme.accentStrong;
                     ctx.stroke();
                 }
@@ -266,15 +288,15 @@ Flickable {
                 ctx.textBaseline = "middle";
                 const visibleRole = root.roleLabel(role);
                 if (visibleRole.length > 0) {
-                    ctx.font = "bold 9px " + Theme.fontFamily;
+                    ctx.font = root.canvasFont(600, root.roleFontSize);
                     ctx.fillStyle = isTarget ? Theme.accentText : root.nodeStrokeColor(role, false);
                     ctx.fillText(visibleRole, cx, cy - 16);
                 }
-                ctx.font = "bold 14px " + Theme.fontFamily;
+                ctx.font = root.canvasFont(600, root.ssaFontSize);
                 ctx.fillStyle = isTarget ? Theme.accentText : Theme.text;
                 ctx.fillText(ssa, cx, status.length > 0 ? cy - 2 : cy + 3);
                 if (status.length > 0) {
-                    ctx.font = "bold 11px " + Theme.fontFamily;
+                    ctx.font = root.canvasFont(600, root.statusFontSize);
                     ctx.fillText(status, cx + 1, cy + 13);
                 }
             }

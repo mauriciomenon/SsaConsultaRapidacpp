@@ -126,29 +126,42 @@ Rectangle {
             }
             Label {
                 objectName: "mainWeekLabel"
-                Layout.leftMargin: 20
+                Layout.leftMargin: 40
                 Layout.preferredHeight: root.compactControlHeight
                 text: root.currentWeekText
                 color: Theme.accent
-                font.pixelSize: Theme.fontSizeTitle
-                font.bold: true
+                font.pixelSize: 16
+                font.weight: Font.DemiBold
                 horizontalAlignment: Text.AlignHCenter
                 verticalAlignment: Text.AlignVCenter
             }
-            Label {
-                objectName: "mainSsaCountLabel"
-                Layout.leftMargin: 10
+            Row {
+                Layout.leftMargin: 40
                 Layout.preferredHeight: root.compactControlHeight
-                text: root.ssaCountText
-                color: Theme.accent
-                font.pixelSize: Theme.fontSizeTitle
-                font.bold: true
-                horizontalAlignment: Text.AlignHCenter
-                verticalAlignment: Text.AlignVCenter
+                spacing: 4
+
+                Label {
+                    objectName: "mainSsaCountLabel"
+                    height: parent.height
+                    text: root.ssaCountText
+                    color: Theme.accent
+                    font.pixelSize: Theme.fontSizeTitle
+                    font.weight: Font.DemiBold
+                    verticalAlignment: Text.AlignVCenter
+                }
+                Label {
+                    objectName: "mainSsaCountSuffixLabel"
+                    height: parent.height
+                    text: "SSAs"
+                    color: Theme.accent
+                    font.pixelSize: Theme.fontSizeTitle
+                    font.weight: Font.Normal
+                    verticalAlignment: Text.AlignVCenter
+                }
             }
             ActionButton {
                 objectName: "mainImportXlsxButton"
-                Layout.leftMargin: 20
+                Layout.leftMargin: 40
                 text: "Importar XLSX"
                 enabled: root.importEnabled
                 padding: 8
