@@ -11,11 +11,36 @@
 #include <QElapsedTimer>
 #include <QQmlApplicationEngine>
 #include <QQuickWindow>
+#include <QString>
 #include <QTimer>
 #include <QUrl>
 #include <QVariant>
 
 #include <cstdlib>
+
+namespace {
+
+    QString buildCompilerDescription() {
+#if defined(__clang__)
+        return QStringLiteral("LLVM Clang %1.%2.%3")
+            .arg(__clang_major__)
+            .arg(__clang_minor__)
+            .arg(__clang_patchlevel__);
+#elif defined(_MSC_VER)
+        return QStringLiteral("MSVC %1.%2")
+            .arg(_MSC_VER / 100)
+            .arg(_MSC_VER % 100, 2, 10, QChar{'0'});
+#elif defined(__GNUC__)
+        return QStringLiteral("GCC %1.%2.%3")
+            .arg(__GNUC__)
+            .arg(__GNUC_MINOR__)
+            .arg(__GNUC_PATCHLEVEL__);
+#else
+        return QStringLiteral("Compilador desconhecido");
+#endif
+    }
+
+} // namespace
 
 namespace ssa::app::desktop {
 
@@ -70,7 +95,8 @@ namespace ssa::app::desktop {
 
     void DesktopApplicationRuntime::loadMainWindow(QQmlApplicationEngine& engine) {
         engine.setInitialProperties({{"mainViewModel", QVariant::fromValue(mainViewModel_.get())},
-                                     {"smokeController", QVariant::fromValue(&smokeController_)}});
+                                     {"smokeController", QVariant::fromValue(&smokeController_)},
+                                     {"buildCompiler", buildCompilerDescription()}});
         QObject::connect(
             &engine, &QQmlApplicationEngine::objectCreated, &engine,
             [](QObject* object, const QUrl&) {

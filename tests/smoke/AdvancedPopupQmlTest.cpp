@@ -12,6 +12,7 @@
 #include <QColor>
 #include <QDir>
 #include <QFileInfo>
+#include <QFont>
 #include <QImage>
 #include <QJSValue>
 #include <QObject>
@@ -923,19 +924,25 @@ namespace {
                     height: 100
                     property int loadCount: 0
                     property int loadedIndex: -1
+                    property string selectedTheme: Theme.themeName
+                    readonly property string renderedTheme: Theme.themeName
+                    readonly property var themeNames: Object.keys(Theme.palettes)
+
+                    onSelectedThemeChanged: Theme.themeName = selectedTheme
 
                     QtObject {
                         id: relationModel
                         property var relations: [
                             { ssa: "202600001", role: "parent", status: "APV", kind: "Origem" },
                             { ssa: "202600002", role: "current", status: "APV", kind: "Atual" },
-                            { ssa: "202600001", role: "related", status: "", kind: "Relacionada" }
+                            { ssa: "202600003", role: "child", status: "STE", kind: "Derivada" },
+                            { ssa: "202600004", role: "related", status: "SCA", kind: "Relacionada" }
                         ]
                         property int relationCount: relations.length
                         property bool relationLoading: true
                         property string relationError: "Falha de navegacao"
                         property string selectedSsaNumber: "202600001"
-                        property int currentRelationIndex: 2
+                        property int currentRelationIndex: 1
                         property bool canSelectPreviousRelation: currentRelationIndex > 0
                         property bool canSelectNextRelation: currentRelationIndex + 1 < relationCount
                         function selectPreviousRelation() {
@@ -991,6 +998,54 @@ namespace {
             QVERIFY2(std::abs(relationCenterY - viewportCenterY) <= 0.5,
                      qPrintable(QStringLiteral("relation node vertical offset: %1 px")
                                     .arg(relationCenterY - viewportCenterY)));
+
+            const QVariantList themeNames =
+                harness->property("themeNames").value<QJSValue>().toVariant().toList();
+            QCOMPARE(themeNames.size(), 39);
+            QStringList contrastFailures;
+            for (const QVariant& theme : themeNames) {
+                const QString themeName = theme.toString();
+                harness->setProperty("selectedTheme", themeName);
+                QTRY_COMPARE_WITH_TIMEOUT(harness->property("renderedTheme").toString(), themeName,
+                                          1000);
+                for (int index = 0; index < 4; ++index) {
+                    auto* node =
+                        findQuickItemByProperty(window.contentItem(), "objectName",
+                                                QStringLiteral("relationNode-%1").arg(index));
+                    auto* number =
+                        findQuickItemByProperty(window.contentItem(), "objectName",
+                                                QStringLiteral("relationNodeNumber-%1").arg(index));
+                    auto* badge =
+                        findQuickItemByProperty(window.contentItem(), "objectName",
+                                                QStringLiteral("relationNodeBadge-%1").arg(index));
+                    auto* statusText =
+                        findQuickItemByProperty(window.contentItem(), "objectName",
+                                                QStringLiteral("relationNodeStatus-%1").arg(index));
+                    QVERIFY(node != nullptr);
+                    QVERIFY(number != nullptr);
+                    QVERIFY(badge != nullptr);
+                    QVERIFY(statusText != nullptr);
+                    const QColor background = node->property("color").value<QColor>();
+                    const auto checkContrast = [&](const QString& role, QQuickItem& textItem) {
+                        const QColor foreground = textItem.property("color").value<QColor>();
+                        const qreal ratio = contrastRatio(foreground, background);
+                        if (ratio < 4.5) {
+                            contrastFailures.append(QStringLiteral("%1 node %2 %3 contrast=%4:1")
+                                                        .arg(themeName)
+                                                        .arg(index)
+                                                        .arg(role)
+                                                        .arg(ratio, 0, 'f', 2));
+                        }
+                    };
+                    checkContrast(QStringLiteral("badge"), *badge);
+                    checkContrast(QStringLiteral("number"), *number);
+                    checkContrast(QStringLiteral("status"), *statusText);
+                }
+            }
+            if (!contrastFailures.isEmpty()) {
+                QFAIL(qPrintable(QStringLiteral("relation node contrast below AA:\n%1")
+                                     .arg(contrastFailures.join('\n'))));
+            }
 
             relation->forceActiveFocus();
             QTRY_VERIFY_WITH_TIMEOUT(relation->hasActiveFocus(), 1000);
@@ -1392,6 +1447,9 @@ namespace {
             QVERIFY(theme != nullptr);
 
             const auto left = [](const QQuickItem* item) { return item->mapToScene({0, 0}).x(); };
+            const auto right = [](const QQuickItem* item) {
+                return item->mapToScene({item->width(), 0}).x();
+            };
             QVERIFY(left(searchGroup) <= left(undo));
             QVERIFY(left(undo) < left(searchInput));
             QVERIFY(left(searchInput) < left(clear));
@@ -1401,6 +1459,13 @@ namespace {
             QVERIFY(left(count) < left(import));
             QVERIFY(left(import) < left(preferences));
             QVERIFY(left(preferences) < left(theme));
+            QCOMPARE(qRound(left(week) - right(searchGroup)), 20);
+            QCOMPARE(qRound(left(count) - right(week)), 10);
+            QCOMPARE(qRound(left(import) - right(count)), 20);
+            QCOMPARE(week->property("font").value<QFont>().pixelSize(), 14);
+            QCOMPARE(count->property("font").value<QFont>().pixelSize(), 14);
+            QVERIFY(qvariant_cast<QQuickItem*>(week->property("background")) == nullptr);
+            QVERIFY(qvariant_cast<QQuickItem*>(count->property("background")) == nullptr);
             QVERIFY(theme->mapToScene({theme->width(), 0}).x() <=
                     harnessItem->mapToScene({harnessItem->width(), 0}).x());
         }

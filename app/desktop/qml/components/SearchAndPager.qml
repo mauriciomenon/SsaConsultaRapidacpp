@@ -53,7 +53,7 @@ Rectangle {
 
         RowLayout {
             Layout.fillWidth: true
-            spacing: Theme.gap
+            spacing: 0
 
             Rectangle {
                 id: searchGroup
@@ -126,40 +126,29 @@ Rectangle {
             }
             Label {
                 objectName: "mainWeekLabel"
+                Layout.leftMargin: 20
                 Layout.preferredHeight: root.compactControlHeight
-                leftPadding: 8
-                rightPadding: 8
                 text: root.currentWeekText
                 color: Theme.accent
-                font.pixelSize: Theme.fontSizeLabel
+                font.pixelSize: Theme.fontSizeTitle
                 font.bold: true
                 horizontalAlignment: Text.AlignHCenter
                 verticalAlignment: Text.AlignVCenter
-                background: Rectangle {
-                    color: Theme.window
-                    border.color: Theme.border
-                    radius: Theme.radius
-                }
             }
             Label {
                 objectName: "mainSsaCountLabel"
+                Layout.leftMargin: 10
                 Layout.preferredHeight: root.compactControlHeight
-                leftPadding: 8
-                rightPadding: 8
                 text: root.ssaCountText
                 color: Theme.accent
-                font.pixelSize: Theme.fontSizeMicro
+                font.pixelSize: Theme.fontSizeTitle
                 font.bold: true
                 horizontalAlignment: Text.AlignHCenter
                 verticalAlignment: Text.AlignVCenter
-                background: Rectangle {
-                    color: Theme.window
-                    border.color: Theme.border
-                    radius: Theme.radius
-                }
             }
             ActionButton {
                 objectName: "mainImportXlsxButton"
+                Layout.leftMargin: 20
                 text: "Importar XLSX"
                 enabled: root.importEnabled
                 padding: 8
@@ -170,6 +159,7 @@ Rectangle {
             }
             ActionButton {
                 objectName: "mainPreferencesButton"
+                Layout.leftMargin: Theme.gap
                 text: "Preferencias"
                 padding: 8
                 font.pixelSize: Theme.fontSizeLabel
@@ -179,6 +169,7 @@ Rectangle {
             }
             Button {
                 objectName: "mainThemeButton"
+                Layout.leftMargin: Theme.gap
                 Layout.preferredWidth: 28
                 Layout.preferredHeight: 28
                 implicitWidth: 28

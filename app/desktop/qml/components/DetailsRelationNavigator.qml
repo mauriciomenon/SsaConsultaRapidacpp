@@ -177,9 +177,10 @@ Rectangle {
                                     spacing: 0
 
                                     Text {
+                                        objectName: "relationNodeBadge-" + relationRow.index
                                         text: root.relationBadge(relationRow.modelData.role)
                                         visible: text.length > 0
-                                        color: relationRow.index === root.viewModel.currentRelationIndex ? Theme.accentStrong : root.relationBorderColor(relationRow.modelData.role, false)
+                                        color: Theme.readableText(relationBox.color, relationRow.index === root.viewModel.currentRelationIndex ? Theme.accentStrong : root.relationBorderColor(relationRow.modelData.role, false))
                                         font.pixelSize: Theme.fontSizeCaption
                                         font.bold: false
                                         horizontalAlignment: Text.AlignHCenter
@@ -189,11 +190,10 @@ Rectangle {
 
                                     Text {
                                         id: relationText
+                                        objectName: "relationNodeNumber-" + relationRow.index
                                         text: relationRow.modelData.ssa
                                         textFormat: Text.PlainText
-                                        // The Current node sits on accentSoft. Pick the foreground that
-                                        // contrasts with that specific tint across all themes.
-                                        color: relationRow.index === root.viewModel.currentRelationIndex ? (Theme.isDarkTint(Theme.accentSoft) ? Theme.text : (Theme.dark ? Theme.accentText : Theme.text)) : Theme.text
+                                        color: Theme.readableText(relationBox.color, Theme.text)
                                         font.bold: false
                                         font.pixelSize: root.valueTextSize + 1
                                         horizontalAlignment: Text.AlignHCenter
@@ -201,12 +201,13 @@ Rectangle {
                                     }
 
                                     Text {
+                                        objectName: "relationNodeStatus-" + relationRow.index
                                         text: {
                                             const status = relationRow.modelData.status !== undefined ? relationRow.modelData.status : "";
                                             return status.length > 0 ? status : "";
                                         }
                                         visible: text.length > 0
-                                        color: relationRow.index === root.viewModel.currentRelationIndex ? (Theme.isDarkTint(Theme.accentSoft) ? Theme.mutedText : (Theme.dark ? Theme.accentText : Theme.text)) : Theme.mutedText
+                                        color: Theme.readableText(relationBox.color, Theme.mutedText)
                                         font.pixelSize: Math.max(9, root.valueTextSize - 3)
                                         font.bold: false
                                         textFormat: Text.PlainText

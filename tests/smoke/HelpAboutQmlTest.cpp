@@ -203,15 +203,14 @@ namespace {
 
             QCOMPARE(dialog->property("productName").toString(),
                      QStringLiteral("SSA Consulta Rapida"));
-            QCOMPARE(dialog->property("authorName").toString(), QStringLiteral("Mauricio Menon"));
             QCOMPARE(dialog->property("productVersion").toString(), QStringLiteral("9.8.7-test"));
-            const QString toolchainSupport = dialog->property("toolchainSupportText").toString();
-            QCOMPARE(toolchainSupport,
-                     QStringLiteral("Validado: Windows 11 amd64 - MSVC 19.51 | Debian/WSL "
-                                    "amd64 - GCC 14.2\nHistorico: macOS arm64 - Apple Clang 21\n"
-                                    "Reconhecidos sem gate: LLVM-MinGW 17.0.6 | MinGW GCC "
-                                    "13.1.0/11.2.0\nNao suportado nesta versao: clang-cl 22.1.3 "
-                                    "com Qt MSVC"));
+            QVERIFY(dialog->property("compilerText").isValid());
+            QVERIFY(dialog->setProperty("compilerText", QStringLiteral("MSVC 19.51")));
+            auto* compiler = dialog->findChild<QQuickItem*>(QStringLiteral("aboutCompilerText"));
+            QVERIFY(compiler != nullptr);
+            QCOMPARE(compiler->property("text").toString(), QStringLiteral("MSVC 19.51"));
+            QVERIFY(!dialog->property("authorName").isValid());
+            QVERIFY(!dialog->property("toolchainSupportText").isValid());
             const auto screenshotError =
                 captureDialogScreenshot(*dialog, QStringLiteral("about-dialog.png"));
             QVERIFY2(screenshotError.isEmpty(), qPrintable(screenshotError));
@@ -704,6 +703,7 @@ namespace {
         }
 
         void main_window_opens_closes_and_reopens_help_and_about() {
+            QGuiApplication::setApplicationVersion(QStringLiteral("9.8.7-test"));
             auto repository = std::make_shared<ssa::tests::presentation_smoke::FakeRepository>();
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
             auto commands = std::make_shared<ssa::tests::presentation_smoke::FakeCommands>();
@@ -733,6 +733,9 @@ namespace {
             QVERIFY2(mainWindow != nullptr, qPrintable(component.errorString()));
             auto* quickWindow = qobject_cast<QQuickWindow*>(mainWindow.get());
             QVERIFY(quickWindow != nullptr);
+            const auto expectedTitle = QStringLiteral("Consulta Rapida de SSAs v9.8.7-test - ") +
+                                       viewModel.actions()->currentWeek()->value();
+            QTRY_COMPARE_WITH_TIMEOUT(quickWindow->title(), expectedTitle, 1000);
             quickWindow->show();
             QTRY_VERIFY_WITH_TIMEOUT(quickWindow->isExposed(), 1000);
             const auto menuBarItemFor = [&](const QString& text) {

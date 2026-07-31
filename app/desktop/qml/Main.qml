@@ -9,6 +9,7 @@ ApplicationWindow {
     id: root
     required property var mainViewModel
     property var smokeController: null
+    property string buildCompiler: "Compilador desconhecido"
     property var vm: mainViewModel
     property bool shutdownCloseAccepted: false
     readonly property int bottomPaneHeight: Theme.bottomPaneHeight(height)
@@ -19,7 +20,7 @@ ApplicationWindow {
     minimumWidth: 1180
     minimumHeight: 760
     visible: true
-    title: "Consulta Rapida de SSAs"
+    title: "Consulta Rapida de SSAs v" + (Qt.application.version.length > 0 ? Qt.application.version : "0.0.0") + " - " + root.vm.actions.currentWeek.value
     color: Theme.window
     font.family: Theme.fontFamily
 
@@ -528,6 +529,7 @@ ApplicationWindow {
         active: false
         sourceComponent: AboutDialog {
             visible: true
+            compilerText: root.buildCompiler
             onClosing: aboutDialogLoader.active = false
         }
     }
