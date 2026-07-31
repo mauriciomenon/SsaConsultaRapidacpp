@@ -220,11 +220,20 @@ namespace {
 
             QtObject {
                 id: macroModel
+                objectName: "macroReportModel"
                 property var options: []
                 property string selectedMacro: ""
                 property string reportTitle: "SSA Executadas Setor"
                 property string reportText: "5000 linhas"
                 property var reportRows: []
+                property var reportChart: ({
+                    categories: ["2026-W31"],
+                    series: [{ name: "ANA", values: [3] }],
+                    available: true,
+                    subtitle: "Mes atual",
+                    qualityText: ""
+                })
+                property bool reportGraphOnly: false
                 property bool reportLoading: false
                 property string reportError: ""
             }
@@ -377,6 +386,18 @@ namespace {
             QVERIFY(qmlRegisterType(
                         QUrl::fromLocalFile(components.filePath("AdvancedMacroFilterCard.qml")),
                         "SsaConsultaRapida", 1, 0, "AdvancedMacroFilterCard") >= 0);
+            const QDir analytics(root.filePath("app/desktop/qml/analytics"));
+            for (const auto& [fileName, typeName] :
+                 std::array<std::pair<const char*, const char*>, 6>{
+                     {{"AnalyticsChart.qml", "AnalyticsChart"},
+                      {"AnalyticsChartCanvas.qml", "AnalyticsChartCanvas"},
+                      {"AnalyticsChartLegend.qml", "AnalyticsChartLegend"},
+                      {"AnalyticsChartTable.qml", "AnalyticsChartTable"},
+                      {"AnalyticsChartTooltip.qml", "AnalyticsChartTooltip"},
+                      {"AnalyticsChartCard.qml", "AnalyticsChartCard"}}}) {
+                QVERIFY(qmlRegisterType(QUrl::fromLocalFile(analytics.filePath(fileName)),
+                                        "SsaConsultaRapida", 1, 0, typeName) >= 0);
+            }
             QVERIFY(qmlRegisterType(
                         QUrl::fromLocalFile(components.filePath("DetailsRelationNavigator.qml")),
                         "SsaConsultaRapida", 1, 0, "DetailsRelationNavigator") >= 0);
@@ -779,6 +800,34 @@ namespace {
                                      })(),
                                      1000);
             QVERIFY(delegateCount < 100);
+        }
+
+        void macro_graph_only_opens_a_real_chart_window() {
+            QQmlEngine engine;
+            QQmlComponent component(&engine);
+            component.setData(kMacroReportHarness,
+                              QUrl(QStringLiteral("inmemory:/MacroGraphHarness.qml")));
+            QTRY_VERIFY_WITH_TIMEOUT(component.status() != QQmlComponent::Loading, 3000);
+            QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+
+            std::unique_ptr<QObject> harness(component.create());
+            QVERIFY2(harness != nullptr, qPrintable(component.errorString()));
+            auto* macroModel = harness->findChild<QObject*>(QStringLiteral("macroReportModel"));
+            QVERIFY(macroModel != nullptr);
+            QVERIFY(macroModel->setProperty("reportGraphOnly", true));
+
+            QQuickWindow* graphWindow = nullptr;
+            QObject* graphChart = nullptr;
+            QTRY_VERIFY_WITH_TIMEOUT(([&] {
+                                         graphWindow = harness->findChild<QQuickWindow*>(
+                                             QStringLiteral("executadasReportWindow"));
+                                         graphChart = harness->findChild<QObject*>(
+                                             QStringLiteral("executadasReportChart"));
+                                         return graphWindow != nullptr && graphChart != nullptr &&
+                                                graphWindow->isVisible();
+                                     })(),
+                                     1000);
+            QCOMPARE(graphChart->property("chartType").toString(), QStringLiteral("stackedBar"));
         }
 
         void table_double_click_selects_row_and_opens_details_once() {

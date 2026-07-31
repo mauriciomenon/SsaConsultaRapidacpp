@@ -804,6 +804,38 @@ namespace {
             QCOMPARE(filterStateSpy.count(), 0);
         }
 
+        void macro_graph_option_builds_a_weekly_chart_model() {
+            struct StaticReportPort final : ssa::ports::IExecutadasReportPort {
+                std::vector<ssa::domain::SsaExecutadasReportRow>
+                executadasReport(const ssa::domain::SsaPageRequest&, bool,
+                                 std::stop_token) const override {
+                    return {{"MAM2", "202631", "BRUNO", 2}, {"MEG2", "202631", "ANA", 3}};
+                }
+            };
+            auto reportPort = std::make_shared<StaticReportPort>();
+            ssa::presentation::filterpanel::FilterPanelState state;
+            ssa::presentation::AdvancedMacroFilterViewModel macro(
+                state.advanced(), state, reportPort, nullptr, [] { return QDate(2026, 7, 31); });
+            QSignalSpy filterStateSpy(
+                &macro, &ssa::presentation::AdvancedMacroFilterViewModel::filterStateChanged);
+
+            macro.setSelectedMacro(QStringLiteral("ssas_executadas_grafico"));
+
+            QTRY_VERIFY_WITH_TIMEOUT(!macro.reportLoading(), 1000);
+            QVERIFY(macro.reportGraphOnly());
+            QVERIFY(!macro.reportRows().isEmpty());
+            const auto chart = macro.reportChart();
+            QCOMPARE(chart.value(QStringLiteral("categories")).toStringList(),
+                     QStringList{QStringLiteral("2026-W31")});
+            const auto series = chart.value(QStringLiteral("series")).toList();
+            QCOMPARE(series.size(), 2);
+            QCOMPARE(series.at(0).toMap().value(QStringLiteral("name")).toString(),
+                     QStringLiteral("MAM2 / BRUNO"));
+            QCOMPARE(series.at(1).toMap().value(QStringLiteral("name")).toString(),
+                     QStringLiteral("MEG2 / ANA"));
+            QCOMPARE(filterStateSpy.count(), 0);
+        }
+
         void macro_report_destructor_is_non_blocking_and_keeps_worker_dependencies_alive() {
             auto repository = std::make_shared<BlockingMacroReportRepository>();
             auto releaseFirstTerminal =

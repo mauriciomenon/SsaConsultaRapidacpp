@@ -3,6 +3,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Window
 import SsaConsultaRapida
 
 // Same skeleton as AdvancedTextFilterCard (ColumnLayout with two RowLayouts)
@@ -15,6 +16,8 @@ FilterCard {
     required property real cardWidth
     required property real cardHeight
     signal applyRequested
+    readonly property bool graphOnly: root.macro.reportGraphOnly
+    readonly property int reportRowCount: root.macro.reportRows.length
 
     width: cardWidth
     height: cardHeight
@@ -28,6 +31,20 @@ FilterCard {
                 return index;
         }
         return 0;
+    }
+
+    function openGraph() {
+        if (root.reportRowCount > 0)
+            executadasReportWindow.show();
+    }
+
+    onGraphOnlyChanged: {
+        if (graphOnly)
+            root.openGraph();
+    }
+    onReportRowCountChanged: {
+        if (graphOnly)
+            root.openGraph();
     }
 
     ColumnLayout {
@@ -45,6 +62,15 @@ FilterCard {
                 color: Theme.text
                 font.pixelSize: Theme.fontSizeBody
                 elide: Text.ElideRight
+            }
+
+            ActionButton {
+                visible: root.reportRowCount > 0 && !root.graphOnly
+                text: "Grafico"
+                implicitHeight: 18
+                padding: 2
+                font.pixelSize: Theme.fontSizeMicro
+                onClicked: root.openGraph()
             }
 
             Label {
@@ -106,7 +132,7 @@ FilterCard {
             Layout.fillWidth: true
             Layout.fillHeight: true
             spacing: 2
-            visible: root.macro.reportRows.length > 0 || root.macro.reportLoading || root.macro.reportError.length > 0
+            visible: !root.graphOnly && (root.macro.reportRows.length > 0 || root.macro.reportLoading || root.macro.reportError.length > 0)
 
             RowLayout {
                 Layout.fillWidth: true
@@ -206,6 +232,40 @@ FilterCard {
                         font.pixelSize: Theme.fontSizeMicro
                     }
                 }
+            }
+        }
+    }
+
+    Window {
+        id: executadasReportWindow
+        objectName: "executadasReportWindow"
+        transientParent: root.Window.window
+        width: Math.min(1100, Screen.desktopAvailableWidth)
+        height: Math.min(720, Screen.desktopAvailableHeight)
+        minimumWidth: Math.min(760, Screen.desktopAvailableWidth)
+        minimumHeight: Math.min(520, Screen.desktopAvailableHeight)
+        title: root.macro.reportTitle
+        color: Theme.window
+
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: Theme.gap
+            spacing: Theme.gap
+
+            AnalyticsChartCard {
+                objectName: "executadasReportChart"
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                title: root.macro.reportTitle
+                chartType: "stackedBar"
+                chartModel: root.macro.reportChart
+                tableVisible: true
+            }
+
+            ActionButton {
+                Layout.alignment: Qt.AlignRight
+                text: "Fechar"
+                onClicked: executadasReportWindow.close()
             }
         }
     }

@@ -11,6 +11,7 @@
 #include <QObject>
 #include <QString>
 #include <QVariantList>
+#include <QVariantMap>
 
 #include <cstdint>
 #include <exception>
@@ -30,6 +31,8 @@ namespace ssa::presentation {
         Q_PROPERTY(QString reportTitle READ reportTitle NOTIFY reportChanged)
         Q_PROPERTY(QString reportText READ reportText NOTIFY reportChanged)
         Q_PROPERTY(QVariantList reportRows READ reportRows NOTIFY reportChanged)
+        Q_PROPERTY(QVariantMap reportChart READ reportChart NOTIFY reportChanged)
+        Q_PROPERTY(bool reportGraphOnly READ reportGraphOnly NOTIFY reportChanged)
         Q_PROPERTY(bool reportLoading READ reportLoading NOTIFY reportChanged)
         Q_PROPERTY(QString reportError READ reportError NOTIFY reportChanged)
 
@@ -49,6 +52,8 @@ namespace ssa::presentation {
         [[nodiscard]] QString reportTitle() const;
         [[nodiscard]] QString reportText() const;
         [[nodiscard]] const QVariantList& reportRows() const;
+        [[nodiscard]] const QVariantMap& reportChart() const;
+        [[nodiscard]] bool reportGraphOnly() const;
         [[nodiscard]] bool reportLoading() const;
         [[nodiscard]] QString reportError() const;
         [[nodiscard]] bool hasActiveOperations() const;
@@ -79,7 +84,7 @@ namespace ssa::presentation {
         };
 
         void applyBaixarPreset();
-        void buildExecutadasReport(const QString& value);
+        void buildExecutadasReport(const QString& value, bool graphOnly = false);
         void finishExecutadasReport(std::uint64_t operationId);
         void stopReportOperations();
         void pruneCompletedReports();
@@ -94,10 +99,12 @@ namespace ssa::presentation {
         QString reportTitle_;
         QString reportText_;
         QVariantList reportRows_;
+        QVariantMap reportChart_;
         std::vector<std::unique_ptr<ReportOperation>> reportOperations_;
         std::uint64_t latestReportOperationId_{0};
         std::uint64_t nextReportOperationId_{0};
         bool reportLoading_{false};
+        bool reportGraphOnly_{false};
         bool shuttingDown_{false};
         QString reportError_;
     };

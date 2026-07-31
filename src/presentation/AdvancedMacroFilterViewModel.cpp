@@ -9,6 +9,8 @@
 #include <QtConcurrentRun>
 
 #include <algorithm>
+#include <map>
+#include <set>
 #include <system_error>
 #include <utility>
 
@@ -16,6 +18,7 @@ namespace ssa::presentation {
 
     namespace {
         constexpr auto kNone = "";
+        constexpr auto kGraph = "ssas_executadas_grafico";
         constexpr auto kBaixar = "ssas_para_baixar";
         constexpr auto kExecutadasSetor = "ssas_executadas_setor";
         constexpr auto kExecutadasDivisao = "ssas_executadas_divisao";
@@ -48,6 +51,54 @@ namespace ssa::presentation {
                                {"count", row.count}};
         }
 
+        QString chartWeek(const std::string& value) {
+            const QString week = QString::fromStdString(value);
+            return week.size() == 6 ? week.left(4) + QStringLiteral("-W") + week.mid(4) : week;
+        }
+
+        QVariantMap reportChartMap(const std::vector<application::ExecutadasReportRow>& rows) {
+            std::set<QString> categories;
+            std::set<QString> groups;
+            for (const auto& row : rows) {
+                categories.insert(chartWeek(row.week));
+                groups.insert(QString::fromStdString(row.group));
+            }
+
+            const bool includeGroup = groups.size() > 1;
+            std::map<QString, std::map<QString, int>> counts;
+            for (const auto& row : rows) {
+                const QString group = QString::fromStdString(row.group);
+                const QString person = QString::fromStdString(row.person);
+                const QString name = includeGroup ? group + QStringLiteral(" / ") + person : person;
+                counts[name][chartWeek(row.week)] += row.count;
+            }
+
+            QStringList categoryList;
+            for (const auto& category : categories) {
+                categoryList.push_back(category);
+            }
+            QVariantList series;
+            for (const auto& [name, valuesByCategory] : counts) {
+                QVariantList values;
+                int total = 0;
+                for (const auto& category : categoryList) {
+                    const auto found = valuesByCategory.find(category);
+                    const int value = found == valuesByCategory.end() ? 0 : found->second;
+                    values.push_back(value);
+                    total += value;
+                }
+                series.push_back(QVariantMap{{QStringLiteral("name"), name},
+                                             {QStringLiteral("values"), values},
+                                             {QStringLiteral("trendValues"), QVariantList{}},
+                                             {QStringLiteral("total"), total}});
+            }
+            return {{QStringLiteral("categories"), categoryList},
+                    {QStringLiteral("series"), series},
+                    {QStringLiteral("subtitle"), QObject::tr("Mes atual")},
+                    {QStringLiteral("qualityText"), QString{}},
+                    {QStringLiteral("available"), true}};
+        }
+
         domain::SsaPageRequest reportRequestFromState(const filterpanel::FilterPanelState& state,
                                                       const QDate& currentDate) {
             domain::SsaPageRequest request;
@@ -77,7 +128,7 @@ namespace ssa::presentation {
           currentDate_(std::move(currentDate)),
           options_{
               QVariantMap{{"label", tr("Exibir o grafico e somente o grafico")},
-                          {"value", QString::fromLatin1(kNone)}},
+                          {"value", QString::fromLatin1(kGraph)}},
               QVariantMap{{"label", tr("Baixar")}, {"value", QString::fromLatin1(kBaixar)}},
               QVariantMap{{"label", tr("SSA Executadas Setor")},
                           {"value", QString::fromLatin1(kExecutadasSetor)}},
@@ -114,6 +165,10 @@ namespace ssa::presentation {
             clearReport();
             emit filterStateChanged();
             emit reportChanged();
+        } else if (selectedMacro_ == QString::fromLatin1(kGraph)) {
+            buildExecutadasReport(QString::fromLatin1(kExecutadasSetor), true);
+            selectedMacro_.clear();
+            emit changed();
         } else if (selectedMacro_ == QString::fromLatin1(kExecutadasSetor) ||
                    selectedMacro_ == QString::fromLatin1(kExecutadasDivisao)) {
             buildExecutadasReport(selectedMacro_);
@@ -137,6 +192,14 @@ namespace ssa::presentation {
 
     const QVariantList& AdvancedMacroFilterViewModel::reportRows() const {
         return reportRows_;
+    }
+
+    const QVariantMap& AdvancedMacroFilterViewModel::reportChart() const {
+        return reportChart_;
+    }
+
+    bool AdvancedMacroFilterViewModel::reportGraphOnly() const {
+        return reportGraphOnly_;
     }
 
     bool AdvancedMacroFilterViewModel::reportLoading() const {
@@ -165,14 +228,19 @@ namespace ssa::presentation {
                 std::string{domain::ColumnCatalog::downloadableStatusFilterExpression()}));
     }
 
-    void AdvancedMacroFilterViewModel::buildExecutadasReport(const QString& value) {
+    void AdvancedMacroFilterViewModel::buildExecutadasReport(const QString& value,
+                                                             const bool graphOnly) {
         const bool byDivision = value == QString::fromLatin1(kExecutadasDivisao);
         stopReportOperations();
-        reportTitle_ = byDivision ? tr("SSA Executadas Divisao") : tr("SSA Executadas Setor");
+        reportTitle_ = graphOnly    ? tr("SSA Executadas por Setor")
+                       : byDivision ? tr("SSA Executadas Divisao")
+                                    : tr("SSA Executadas Setor");
         reportText_.clear();
         reportRows_.clear();
+        reportChart_.clear();
         reportError_.clear();
         reportLoading_ = true;
+        reportGraphOnly_ = graphOnly;
 
         const auto currentDate = currentDate_();
         auto request = reportRequestFromState(filterState_, currentDate);
@@ -250,6 +318,7 @@ namespace ssa::presentation {
                 if (!result->ok) {
                     reportError_ = QString::fromStdString(result->error);
                 } else {
+                    reportChart_ = reportChartMap(result->rows);
                     reportRows_.reserve(static_cast<int>(result->rows.size()));
                     for (const auto& row : result->rows) {
                         reportRows_.push_back(reportRowMap(row));
@@ -289,8 +358,10 @@ namespace ssa::presentation {
         reportTitle_.clear();
         reportText_.clear();
         reportRows_.clear();
+        reportChart_.clear();
         reportError_.clear();
         reportLoading_ = false;
+        reportGraphOnly_ = false;
     }
 
 } // namespace ssa::presentation
