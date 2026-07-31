@@ -1390,6 +1390,115 @@ namespace {
                     harnessItem->mapToScene({harnessItem->width(), 0}).x());
         }
 
+        void search_and_pager_keeps_filter_menu_compact_at_applied_bar_right_edge() {
+            QQmlEngine engine;
+            QQmlComponent component(&engine);
+            component.setData(
+                R"QML(
+                import QtQuick
+                import SsaConsultaRapida
+
+                Item {
+                    width: 1500
+                    height: 160
+
+                    QtObject {
+                        id: search
+                        property string text: ""
+                        function clear() {}
+                        function apply() {}
+                    }
+                    QtObject {
+                        id: sector
+                        property var selectorValues: []
+                        property int selectorIndex: -1
+                        property string quickSector: ""
+                        property string optionsError: ""
+                    }
+                    QtObject {
+                        id: filters
+                        property var activeFilterEntries: [
+                            { text: "Resp. Plan: CARLOS RONEI ORTIZ", kind: "column" },
+                            { text: "Exec: IEE3", kind: "column" }
+                        ]
+                        property bool excludeScaSesSte: false
+                        property bool hasExclusionFilter: false
+                        property var statusShortcutValues: []
+                        property string activeFilterSummary: ""
+                        property var sector: sector
+                        function removeActiveFilter(entry) {}
+                        function resetFilters() {}
+                    }
+                    QtObject {
+                        id: browse
+                        property var filters: filters
+                        property var search: search
+                        property bool canUndoFilters: true
+                        property int pageNumber: 1
+                        property int pageCount: 1
+                        property int pageSize: 50
+                        function undoFilters() {}
+                        function previousPage() {}
+                        function nextPage() {}
+                        function apply() {}
+                    }
+                    QtObject {
+                        id: preferences
+                        property var savedFilters: [{ name: "Filtro combinado 1" }]
+                        function hasActiveFilter() { return false; }
+                        function notifyNoActiveFilter() {}
+                        function suggestedFilterName() { return ""; }
+                        function applySavedFilter(name) {}
+                        function removeSavedFilter(name) {}
+                        function saveCurrentFilter(name) {}
+                    }
+
+                    SearchAndPager {
+                        anchors.fill: parent
+                        viewModel: browse
+                        preferenceFlow: preferences
+                    }
+                }
+                )QML",
+                QUrl(QStringLiteral("inmemory:/SearchAndPagerFilterMenuHarness.qml")));
+            QTRY_VERIFY_WITH_TIMEOUT(component.status() != QQmlComponent::Loading, 1000);
+            QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+
+            QQuickWindow window;
+            window.setGeometry(0, 0, 1500, 160);
+            std::unique_ptr<QObject> harness(component.create());
+            QVERIFY2(harness != nullptr, qPrintable(component.errorString()));
+            auto* harnessItem = qobject_cast<QQuickItem*>(harness.get());
+            QVERIFY(harnessItem != nullptr);
+            harnessItem->setParentItem(window.contentItem());
+            window.show();
+
+            QTRY_VERIFY_WITH_TIMEOUT(window.isExposed(), 1000);
+            auto* appliedBar =
+                harness->findChild<QQuickItem*>(QStringLiteral("mainAppliedFilterBar"));
+            auto* filterMenu = harness->findChild<QQuickItem*>(QStringLiteral("mainFiltersButton"));
+            auto* savedStrip = harness->findChild<QQuickItem*>(QStringLiteral("savedFilterStrip"));
+            QVERIFY(appliedBar != nullptr);
+            QVERIFY(filterMenu != nullptr);
+            QVERIFY(savedStrip != nullptr);
+
+            QCOMPARE(qRound(filterMenu->width()), 30);
+            QVERIFY2(filterMenu->mapToScene({filterMenu->width(), 0}).x() >=
+                         appliedBar->mapToScene({appliedBar->width() - 4, 0}).x(),
+                     "filter menu must occupy the applied-bar right edge");
+            QVERIFY2(savedStrip->width() <= 30,
+                     "saved filters must not reserve a quarter of the applied-filter bar");
+
+            QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier,
+                              clickPointInWindow(*filterMenu));
+            QQuickItem* removeSavedFilter = nullptr;
+            QTRY_VERIFY_WITH_TIMEOUT((removeSavedFilter = findQuickItemByProperty(
+                                          window.contentItem(), "text",
+                                          QStringLiteral("Remover: Filtro combinado 1"))) !=
+                                         nullptr,
+                                     1000);
+        }
+
         void advanced_filter_command_buttons_are_compact_and_regular_weight() {
             const QStringList componentFiles{
                 QStringLiteral("AdvancedTextFilterCard.qml"),

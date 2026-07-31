@@ -218,20 +218,6 @@ Rectangle {
                 anchors.margins: 3
                 spacing: Theme.gap
 
-                SavedFilterControls {
-                    id: savedFilterControls
-                    Layout.maximumWidth: Math.max(0, appliedFilterBar.width - Theme.summaryMinWidth)
-                    viewModel: root.viewModel
-                    filterViewModel: root.filterViewModel
-                    preferenceFlow: root.preferenceFlow
-                    density: root.density
-                    savedFiltersMaximumWidth: appliedFilterBar.width * 0.25
-                    onExportRequested: root.exportRequested()
-                    onSaveFiltersRequested: root.saveFiltersRequested()
-                    onExportFiltersRequested: root.exportFiltersRequested()
-                    onImportFiltersRequested: root.importFiltersRequested()
-                }
-
                 FilterSummaryBar {
                     id: filterSummary
                     Layout.fillWidth: true
@@ -244,6 +230,22 @@ Rectangle {
                         root.viewModel.search.text = "";
                         root.filterViewModel.resetFilters();
                     }
+                }
+
+                SavedFilterControls {
+                    id: savedFilterControls
+                    Layout.preferredWidth: 30
+                    Layout.maximumWidth: 30
+                    viewModel: root.viewModel
+                    filterViewModel: root.filterViewModel
+                    preferenceFlow: root.preferenceFlow
+                    density: root.density
+                    inlineSavedFilters: false
+                    compactMenu: true
+                    onExportRequested: root.exportRequested()
+                    onSaveFiltersRequested: root.saveFiltersRequested()
+                    onExportFiltersRequested: root.exportFiltersRequested()
+                    onImportFiltersRequested: root.importFiltersRequested()
                 }
             }
         }

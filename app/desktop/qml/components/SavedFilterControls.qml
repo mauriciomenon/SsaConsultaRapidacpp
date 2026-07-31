@@ -12,6 +12,8 @@ Item {
     required property var preferenceFlow
     property string density: "normal"
     property real savedFiltersMaximumWidth: 0
+    property bool inlineSavedFilters: true
+    property bool compactMenu: false
     signal exportRequested
     signal saveFiltersRequested
     signal exportFiltersRequested
@@ -66,9 +68,12 @@ Item {
         ActionButton {
             id: filterMenuButton
             objectName: "mainFiltersButton"
-            text: "Filtros"
-            implicitWidth: 96
+            text: root.compactMenu ? "..." : "Filtros"
+            implicitWidth: root.compactMenu ? 30 : 96
             Layout.preferredHeight: Theme.densityValue(root.density, 26, Theme.controlHeight, 34)
+            ToolTip.visible: hovered
+            ToolTip.text: "Filtros"
+            Accessible.name: "Filtros"
             onClicked: filterMenu.open()
 
             Menu {
@@ -78,6 +83,32 @@ Item {
                 MenuItem {
                     text: "Salvar Filtro"
                     onTriggered: root.openSaveFilterDialog()
+                }
+                MenuSeparator {
+                    visible: root.savedFilterCount > 0
+                }
+                Repeater {
+                    model: root.savedFilterCount > 0 ? root.preferenceFlow.savedFilters : []
+
+                    delegate: MenuItem {
+                        required property var modelData
+                        readonly property string filterName: modelData.name !== undefined ? modelData.name : ""
+                        text: "Aplicar: " + filterName
+                        onTriggered: root.preferenceFlow.applySavedFilter(filterName)
+                    }
+                }
+                MenuSeparator {
+                    visible: root.savedFilterCount > 0
+                }
+                Repeater {
+                    model: root.savedFilterCount > 0 ? root.preferenceFlow.savedFilters : []
+
+                    delegate: MenuItem {
+                        required property var modelData
+                        readonly property string filterName: modelData.name !== undefined ? modelData.name : ""
+                        text: "Remover: " + filterName
+                        onTriggered: root.preferenceFlow.removeSavedFilter(filterName)
+                    }
                 }
                 MenuSeparator {}
                 MenuItem {
@@ -108,9 +139,9 @@ Item {
         Item {
             id: savedFilterStrip
             objectName: "savedFilterStrip"
-            visible: root.savedFilterCount > 0
-            Layout.preferredWidth: Math.max(0, root.savedFiltersMaximumWidth)
-            Layout.maximumWidth: Math.max(0, root.savedFiltersMaximumWidth)
+            visible: root.inlineSavedFilters && root.savedFilterCount > 0
+            Layout.preferredWidth: root.inlineSavedFilters ? Math.max(0, root.savedFiltersMaximumWidth) : 0
+            Layout.maximumWidth: root.inlineSavedFilters ? Math.max(0, root.savedFiltersMaximumWidth) : 0
             Layout.preferredHeight: Theme.densityValue(root.density, 26, Theme.controlHeight, 34)
             clip: true
 
