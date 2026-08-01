@@ -370,6 +370,15 @@ namespace {
             QVERIFY(labelIndices.size() < 6);
             QCOMPARE(labelIndices.front().toInt(), 1);
             QCOMPARE(labelIndices.back().toInt(), 4);
+
+            QVariant lines;
+            QVERIFY(QMetaObject::invokeMethod(chart.get(), "categoryLabelLines",
+                                              Q_RETURN_ARG(QVariant, lines),
+                                              Q_ARG(QVariant, QVariant{"IEE\nIEE2"})));
+            const auto labelLines = variantList(lines);
+            QCOMPARE(labelLines.size(), 2);
+            QCOMPARE(labelLines[0].toString(), QStringLiteral("IEE"));
+            QCOMPARE(labelLines[1].toString(), QStringLiteral("IEE2"));
         }
 
         void resize_and_refresh_update_derived_models() {

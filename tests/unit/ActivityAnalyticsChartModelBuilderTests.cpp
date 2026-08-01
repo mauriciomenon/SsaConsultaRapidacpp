@@ -259,7 +259,7 @@ TEST_CASE("custom whole-period labels follow all four breakdown contracts") {
     const auto analyticsPoint = point("", "SMI", "SMIN", "Ana", 2);
     const std::array breakdowns{Breakdown::Division, Breakdown::DivisionSector,
                                 Breakdown::DivisionPerson, Breakdown::DivisionSectorPerson};
-    const std::array expected{"SMI", "SMI / SMIN", "SMI / Ana", "SMI / SMIN / Ana"};
+    const std::array expected{"SMI", "SMI / SMIN", "SMI / Ana", "SMI\nSMIN"};
 
     for (std::size_t index = 0; index < breakdowns.size(); ++index) {
         const auto model = ActivityAnalyticsChartModelBuilder::build(
@@ -267,6 +267,29 @@ TEST_CASE("custom whole-period labels follow all four breakdown contracts") {
             {.points = {analyticsPoint}}, AnalyticsChartMode::Custom);
         CHECK(model.categories == std::vector<std::string>{expected[index]});
     }
+}
+
+TEST_CASE("custom whole-period sector-person breakdown groups people as series") {
+    auto analyticsRequest = request(AnalyticsMetric::Registered, TimeGrain::WholePeriod,
+                                    Breakdown::DivisionSectorPerson);
+    analyticsRequest.sectors = {"IEE2", "IEE3"};
+    analyticsRequest.people = {"Ana", "Bia"};
+    const AnalyticsSeriesResult result{
+        .points = {point("", "IEE", "IEE2", "Ana", 2), point("", "IEE", "IEE2", "Ana", 1),
+                   point("", "IEE", "IEE3", "Ana", 4), point("", "IEE", "IEE3", "Bia", 5)}};
+
+    const auto model = ActivityAnalyticsChartModelBuilder::build(analyticsRequest, result,
+                                                                 AnalyticsChartMode::Custom);
+
+    CHECK(model.categories == std::vector<std::string>{"IEE\nIEE2", "IEE\nIEE3"});
+    REQUIRE(model.series.size() == 2);
+    CHECK(model.series[0].name == "Ana");
+    CHECK(model.series[0].values == std::vector<std::optional<double>>{3.0, 4.0});
+    CHECK(model.series[0].total == std::optional<double>{7.0});
+    CHECK(model.series[1].name == "Bia");
+    CHECK(model.series[1].values == std::vector<std::optional<double>>{0.0, 5.0});
+    CHECK(model.series[1].total == std::optional<double>{5.0});
+    CHECK(model.total == std::optional<double>{12.0});
 }
 
 TEST_CASE("person role selection does not change dimension labels") {
@@ -514,8 +537,8 @@ TEST_CASE("selected unassigned sector keeps the full sentinel division") {
     const auto model = ActivityAnalyticsChartModelBuilder::build(
         analyticsRequest, AnalyticsSeriesResult{}, AnalyticsChartMode::Custom);
 
-    CHECK(model.categories ==
-          std::vector<std::string>{"Nao atribuido / Nao atribuido / Nao atribuido"});
+    CHECK(model.categories == std::vector<std::string>{"Nao atribuido\nNao atribuido"});
+    CHECK(model.series.front().name == "Nao atribuido");
     CHECK(model.series.front().values == std::vector<std::optional<double>>{0.0});
 }
 

@@ -539,6 +539,58 @@ namespace ssa::application {
         AnalyticsChartModel buildCustom(const domain::AnalyticsRequest& request,
                                         const domain::AnalyticsSeriesResult& result) {
             if (request.grain == domain::TimeGrain::WholePeriod) {
+                if (request.breakdown == domain::Breakdown::DivisionSectorPerson) {
+                    AnalyticsChartModel model;
+                    std::set<std::string> categorySet;
+                    std::map<std::string, CountByCategory> counts;
+                    std::map<std::string, std::int64_t> totals;
+                    const auto category = [](const std::string& division,
+                                             const std::string& sector) {
+                        return dimensionValue(division) + "\n" + dimensionValue(sector);
+                    };
+                    for (const auto& sector : request.sectors) {
+                        categorySet.insert(category(selectedSectorDivision(sector), sector));
+                    }
+                    for (const auto& person : request.people) {
+                        const auto name = dimensionValue(person);
+                        counts.try_emplace(name);
+                        totals.try_emplace(name, 0);
+                    }
+                    for (const auto& point : result.points) {
+                        categorySet.insert(category(point.division, point.sector));
+                    }
+                    model.categories.assign(categorySet.begin(), categorySet.end());
+
+                    const std::set<std::string> knownCategories(model.categories.begin(),
+                                                                model.categories.end());
+                    std::set<std::string> observedCategories;
+                    addObservedBuckets(request, result, knownCategories, observedCategories);
+                    std::int64_t total = 0;
+                    for (const auto& point : result.points) {
+                        if (!includedInChart(request, point)) {
+                            continue;
+                        }
+                        const auto categoryKey = category(point.division, point.sector);
+                        requireKnownCategory(knownCategories, categoryKey);
+                        const auto person = dimensionValue(point.person);
+                        observedCategories.insert(categoryKey);
+                        checkedAdd(counts[person][categoryKey], point.count);
+                        checkedAdd(totals[person], point.count);
+                        checkedAdd(total, point.count);
+                    }
+
+                    const bool known = totalIsKnown(request, result);
+                    for (const auto& [person, personCounts] : counts) {
+                        model.series.push_back({
+                            .name = person,
+                            .values = valuesFor(request, model.categories, personCounts,
+                                                observedCategories),
+                            .total = optionalTotal(known, totals.at(person)),
+                        });
+                    }
+                    model.total = optionalTotal(known, total);
+                    return model;
+                }
                 return buildSingleSeries(request, result, false);
             }
 

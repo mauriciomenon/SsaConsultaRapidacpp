@@ -85,6 +85,10 @@ Item {
         return shortened + "...";
     }
 
+    function categoryLabelLines(label) {
+        return String(label).split("\n");
+    }
+
     function numericValue(value) {
         return typeof value === "number" && Number.isFinite(value) ? value : null;
     }
@@ -314,7 +318,9 @@ Item {
         let maxLabelWidth = 0;
         for (let categoryIndex = 0; categoryIndex < root.categoryCount; ++categoryIndex) {
             const label = displayCategory(categoryIndex, qsTr("Nao atribuido"));
-            maxLabelWidth = Math.max(maxLabelWidth, context.measureText(label).width);
+            const lines = categoryLabelLines(label);
+            for (let lineIndex = 0; lineIndex < lines.length; ++lineIndex)
+                maxLabelWidth = Math.max(maxLabelWidth, context.measureText(lines[lineIndex]).width);
         }
         const labelStride = categoryLabelStride(maxLabelWidth);
         const labelWidth = Math.min(260, Math.max(30, root.plotWidth / Math.max(1, root.categoryCount) * labelStride - 12));
@@ -328,7 +334,9 @@ Item {
             const lastLabel = categoryIndex === root.categoryCount - 1;
             context.textAlign = firstLabel ? "left" : lastLabel ? "right" : "center";
             const labelX = firstLabel ? root.leftMargin : lastLabel ? root.leftMargin + root.plotWidth : xCenter(categoryIndex);
-            context.fillText(elidedCategoryLabel(context, label, labelWidth), labelX, root.topMargin + root.plotHeight + 8);
+            const lines = categoryLabelLines(label);
+            for (let lineIndex = 0; lineIndex < lines.length; ++lineIndex)
+                context.fillText(elidedCategoryLabel(context, lines[lineIndex], labelWidth), labelX, root.topMargin + root.plotHeight + 8 + lineIndex * (Theme.fontSizeCaption + 2));
         }
 
         if (root.xAxisTitle.length > 0) {
