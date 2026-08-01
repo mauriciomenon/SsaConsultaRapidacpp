@@ -267,13 +267,32 @@ TEST_CASE("activity analytics dimension queries apply only upstream selections")
     const auto queries = builder.buildDimensionValues(request);
 
     checkContains(queries.divisions.sql, "SELECT DISTINCT \"division\" AS \"value\"");
-    CHECK(queries.divisions.bindings == std::vector<std::string>{"202601", "202605"});
+    checkContains(queries.divisions.sql, "\"setor_executor\"");
+    checkNotContains(queries.divisions.sql, "\"semana_executada\" BETWEEN");
+    CHECK(queries.divisions.bindings.empty());
     checkContains(queries.sectors.sql, "\"division\" IN (?)");
-    CHECK(queries.sectors.bindings == std::vector<std::string>{"202601", "202605", "SMM"});
+    checkContains(queries.sectors.sql, "\"setor_executor\"");
+    checkNotContains(queries.sectors.sql, "\"semana_executada\" BETWEEN");
+    CHECK(queries.sectors.bindings == std::vector<std::string>{"SMM"});
     checkContains(queries.people.sql, "\"responsavel_programacao\"");
+    checkContains(queries.people.sql, "\"semana_executada\" BETWEEN ? AND ?");
     checkContains(queries.people.sql, "\"division\" IN (?)");
     checkContains(queries.people.sql, "\"sector\" IN (?)");
     CHECK(queries.people.bindings == std::vector<std::string>{"202601", "202605", "SMM", "SMM1"});
+}
+
+TEST_CASE("stock analytics exposes sectors from the organizational source") {
+    const ssa::query::ActivityAnalyticsSqlBuilder builder;
+    auto request = requestFor(AnalyticsMetric::Pending);
+    request.divisions = {"IEE"};
+
+    const auto queries = builder.buildDimensionValues(request);
+
+    checkContains(queries.divisions.sql, "FROM \"ssa_table\"");
+    checkContains(queries.sectors.sql, "\"setor_executor\"");
+    CHECK(queries.divisions.bindings.empty());
+    CHECK(queries.sectors.bindings == std::vector<std::string>{"IEE"});
+    checkContains(queries.people.sql, "activity_analytics_snapshot");
 }
 
 TEST_CASE("activity analytics availability uses fixed event and snapshot metrics") {

@@ -16,6 +16,8 @@ Item {
     property int firstWeek: initialPeriod.firstWeek
     property int lastYear: initialPeriod.lastYear
     property int lastWeek: initialPeriod.lastWeek
+    property int periodYear: initialPeriod.year
+    property int periodMonth: initialPeriod.month
     property bool active: false
     property var selectedDivisions: []
     property var selectedSectors: []
@@ -30,6 +32,79 @@ Item {
     readonly property bool requiresWarning: metricIndex === 8
     readonly property bool hasWarning: warningValue() !== undefined
     readonly property bool canAnalyze: !analyticsViewModel.loading && (!requiresExplicitPeople || selectedPeople.length > 0) && (!requiresWarning || hasWarning)
+    readonly property var lastCompletePeriod: analyticsViewModel.currentMonthSelection()
+    readonly property bool canNavigateNextMonth: periodYear * 12 + periodMonth < lastCompletePeriod.year * 12 + lastCompletePeriod.month
+
+    component SelectionOption: Rectangle {
+        id: selectionOption
+
+        required property string value
+        required property string optionObjectName
+        property bool checked: false
+        signal toggled(bool selected)
+
+        readonly property color optionBackground: checked ? Theme.accentSoft : Theme.panelRaised
+        readonly property color optionForeground: Theme.readableText(optionBackground, checked ? Theme.accentStrong : Theme.text)
+        readonly property real textContrast: Theme.contrastRatio(optionForeground, optionBackground)
+        readonly property bool focusHighlighted: activeFocus
+
+        objectName: optionObjectName
+        width: ListView.view ? ListView.view.width : implicitWidth
+        implicitHeight: Math.max(32, optionLabel.implicitHeight + 10)
+        color: optionBackground
+        border.color: focusHighlighted ? Theme.accentStrong : checked ? Theme.accent : Theme.border
+        border.width: focusHighlighted ? 2 : 1
+        radius: Theme.radius
+        activeFocusOnTab: true
+        Accessible.role: Accessible.CheckBox
+        Accessible.name: value
+        Accessible.checked: checked
+
+        Rectangle {
+            id: optionIndicator
+
+            anchors.left: parent.left
+            anchors.leftMargin: 7
+            anchors.verticalCenter: parent.verticalCenter
+            width: 16
+            height: 16
+            radius: 4
+            color: selectionOption.checked ? Theme.accent : Theme.panel
+            border.color: selectionOption.checked ? Theme.accentStrong : Theme.border
+
+            Rectangle {
+                visible: selectionOption.checked
+                anchors.centerIn: parent
+                width: 8
+                height: 8
+                radius: 2
+                color: Theme.readableText(optionIndicator.color, Theme.accentText)
+            }
+        }
+
+        Text {
+            id: optionLabel
+
+            anchors.left: optionIndicator.right
+            anchors.right: parent.right
+            anchors.leftMargin: 8
+            anchors.rightMargin: 7
+            anchors.verticalCenter: parent.verticalCenter
+            text: selectionOption.value
+            textFormat: Text.PlainText
+            color: selectionOption.optionForeground
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.fontSizeBody
+            font.weight: Font.Normal
+            wrapMode: Text.Wrap
+        }
+
+        TapHandler {
+            onTapped: selectionOption.toggled(!selectionOption.checked)
+        }
+        Keys.onSpacePressed: selectionOption.toggled(!selectionOption.checked)
+        Keys.onReturnPressed: selectionOption.toggled(!selectionOption.checked)
+    }
 
     function warningValue() {
         if (customWarningField.text.trim().length === 0)
@@ -126,18 +201,54 @@ Item {
         return root.changePersonRole(index);
     }
 
-    function useCurrentMonth() {
-        const period = root.analyticsViewModel.currentMonthSelection();
+    function applyPeriod(period) {
+        root.periodYear = period.year;
+        root.periodMonth = period.month;
         root.firstYear = period.firstYear;
         root.firstWeek = period.firstWeek;
         root.lastYear = period.lastYear;
         root.lastWeek = period.lastWeek;
     }
 
+    function applyCalendarMonth(year, month) {
+        if (year * 12 + month > root.lastCompletePeriod.year * 12 + root.lastCompletePeriod.month) {
+            root.applyPeriod(root.lastCompletePeriod);
+            return;
+        }
+        root.applyPeriod(root.analyticsViewModel.calendarMonthSelection(year, month));
+    }
+
+    function previousMonth() {
+        const previous = new Date(root.periodYear, root.periodMonth - 2, 1);
+        root.applyCalendarMonth(previous.getFullYear(), previous.getMonth() + 1);
+    }
+
+    function nextMonth() {
+        if (!root.canNavigateNextMonth)
+            return;
+        const next = new Date(root.periodYear, root.periodMonth, 1);
+        root.applyCalendarMonth(next.getFullYear(), next.getMonth() + 1);
+    }
+
+    function useCurrentMonth() {
+        root.applyPeriod(root.analyticsViewModel.currentMonthSelection());
+    }
+
     function configureOverdueByArea() {
         metricCombo.currentIndex = 8;
         grainCombo.currentIndex = 0;
         breakdownCombo.currentIndex = 1;
+        root.selectedDivisions = [];
+        root.selectedSectors = [];
+        root.selectedPeople = [];
+        return root.refreshDimensions();
+    }
+
+    function configureExecutedByPerson() {
+        metricCombo.currentIndex = 1;
+        grainCombo.currentIndex = 0;
+        breakdownCombo.currentIndex = 3;
+        roleCombo.currentIndex = 2;
         root.selectedDivisions = [];
         root.selectedSectors = [];
         root.selectedPeople = [];
@@ -206,6 +317,53 @@ Item {
                     anchors.margins: Theme.cardGap
                     spacing: Theme.gap
 
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Theme.gap
+
+                        Label {
+                            text: qsTr("Periodo mensal")
+                            color: Theme.text
+                        }
+                        ActionButton {
+                            objectName: "analyticsCustomPreviousMonth"
+                            Layout.preferredWidth: Theme.controlHeight
+                            text: "<"
+                            onClicked: root.previousMonth()
+                        }
+                        AppComboBox {
+                            id: monthCombo
+
+                            Layout.preferredWidth: 150
+                            model: [qsTr("Janeiro"), qsTr("Fevereiro"), qsTr("Marco"), qsTr("Abril"), qsTr("Maio"), qsTr("Junho"), qsTr("Julho"), qsTr("Agosto"), qsTr("Setembro"), qsTr("Outubro"), qsTr("Novembro"), qsTr("Dezembro")]
+                            currentIndex: root.periodMonth - 1
+                            onActivated: root.applyCalendarMonth(root.periodYear, currentIndex + 1)
+                        }
+                        AppSpinBox {
+                            Layout.preferredWidth: 88
+                            from: 2000
+                            to: 2200
+                            value: root.periodYear
+                            editable: true
+                            onValueModified: root.applyCalendarMonth(value, root.periodMonth)
+                        }
+                        ActionButton {
+                            objectName: "analyticsCustomNextMonth"
+                            Layout.preferredWidth: Theme.controlHeight
+                            text: ">"
+                            enabled: root.canNavigateNextMonth
+                            onClicked: root.nextMonth()
+                        }
+                        ActionButton {
+                            Layout.preferredWidth: 160
+                            text: qsTr("Ultimo mes completo")
+                            onClicked: root.useCurrentMonth()
+                        }
+                        Item {
+                            Layout.fillWidth: true
+                        }
+                    }
+
                     GridLayout {
                         Layout.fillWidth: true
                         columns: width >= 1040 ? 8 : 4
@@ -264,15 +422,6 @@ Item {
                         }
 
                         Label {
-                            text: qsTr("Periodo")
-                            color: Theme.text
-                        }
-                        ActionButton {
-                            text: qsTr("Mes atual")
-                            onClicked: root.useCurrentMonth()
-                        }
-
-                        Label {
                             text: qsTr("Metrica")
                             color: Theme.text
                         }
@@ -327,8 +476,10 @@ Item {
                             text: qsTr("Janela de alerta em dias")
                             color: Theme.text
                         }
-                        TextField {
+                        AppTextField {
                             id: customWarningField
+
+                            objectName: "analyticsCustomWarningField"
 
                             Layout.preferredWidth: 100
                             placeholderText: qsTr("Sem valor")
@@ -337,28 +488,31 @@ Item {
                                 top: 365
                             }
                             inputMethodHints: Qt.ImhDigitsOnly
-                            color: Theme.text
-                            font.family: Theme.fontFamily
                             Accessible.name: qsTr("Janela de alerta em dias da analise customizada")
-
-                            background: Rectangle {
-                                color: Theme.panelRaised
-                                border.color: customWarningField.activeFocus ? Theme.accent : Theme.border
-                                radius: Theme.radius
-                            }
                         }
                         Item {
                             Layout.fillWidth: true
                         }
                         ActionButton {
+                            objectName: "analyticsRefreshOptions"
+                            Layout.preferredWidth: 160
                             text: qsTr("Atualizar opcoes")
                             enabled: !root.analyticsViewModel.loading
                             onClicked: root.refreshDimensions()
                         }
                         ActionButton {
+                            objectName: "analyticsOverdueByArea"
+                            Layout.preferredWidth: 175
                             text: qsTr("Atrasadas por area")
                             enabled: !root.analyticsViewModel.loading
                             onClicked: root.configureOverdueByArea()
+                        }
+                        ActionButton {
+                            objectName: "analyticsExecutedByPerson"
+                            Layout.preferredWidth: 205
+                            text: qsTr("Executadas por pessoa")
+                            enabled: !root.analyticsViewModel.loading
+                            onClicked: root.configureExecutedByPerson()
                         }
                         ActionButton {
                             text: qsTr("Gerar grafico")
@@ -421,16 +575,13 @@ Item {
                             model: root.dimensionList("divisions")
                             ScrollBar.vertical: ScrollBar {}
 
-                            delegate: AppCheckBox {
-                                id: divisionOption
-
+                            delegate: SelectionOption {
                                 required property var modelData
-
-                                width: ListView.view.width
-                                text: String(modelData)
+                                value: String(modelData)
+                                optionObjectName: "analyticsDivisionOption-" + value
                                 checked: root.isSelected(root.selectedDivisions, String(modelData))
-                                onToggled: {
-                                    root.selectedDivisions = root.toggleValue(root.selectedDivisions, String(modelData), checked);
+                                onToggled: selected => {
+                                    root.selectedDivisions = root.toggleValue(root.selectedDivisions, String(modelData), selected);
                                     root.selectedSectors = [];
                                     root.selectedPeople = [];
                                     root.refreshDimensions();
@@ -463,16 +614,13 @@ Item {
                             model: root.dimensionList("sectors")
                             ScrollBar.vertical: ScrollBar {}
 
-                            delegate: AppCheckBox {
-                                id: sectorOption
-
+                            delegate: SelectionOption {
                                 required property var modelData
-
-                                width: ListView.view.width
-                                text: String(modelData)
+                                value: String(modelData)
+                                optionObjectName: "analyticsSectorOption-" + value
                                 checked: root.isSelected(root.selectedSectors, String(modelData))
-                                onToggled: {
-                                    root.selectedSectors = root.toggleValue(root.selectedSectors, String(modelData), checked);
+                                onToggled: selected => {
+                                    root.selectedSectors = root.toggleValue(root.selectedSectors, String(modelData), selected);
                                     root.selectedPeople = [];
                                     root.refreshDimensions();
                                 }
@@ -511,15 +659,12 @@ Item {
                             model: root.dimensionList("people")
                             ScrollBar.vertical: ScrollBar {}
 
-                            delegate: AppCheckBox {
-                                id: personOption
-
+                            delegate: SelectionOption {
                                 required property var modelData
-
-                                width: ListView.view.width
-                                text: String(modelData)
+                                value: String(modelData)
+                                optionObjectName: "analyticsPersonOption-" + value
                                 checked: root.isSelected(root.selectedPeople, String(modelData))
-                                onToggled: root.selectedPeople = root.toggleValue(root.selectedPeople, String(modelData), checked)
+                                onToggled: selected => root.selectedPeople = root.toggleValue(root.selectedPeople, String(modelData), selected)
                             }
                         }
                     }

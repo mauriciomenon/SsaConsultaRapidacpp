@@ -170,7 +170,7 @@ namespace {
 
 } // namespace
 
-TEST_CASE("analytics event queries use raw week indexes before ISO validation") {
+TEST_CASE("analytics series use week indexes while organization dimensions remain global") {
     AnalyticsFixture fixture;
     fixture.executeSql("CREATE INDEX idx_analytics_registration_week ON ssa_table(semana_cadastro);"
                        "CREATE INDEX idx_analytics_execution_week ON ssa_table(semana_executada)");
@@ -195,8 +195,8 @@ TEST_CASE("analytics event queries use raw week indexes before ISO validation") 
     const auto dimensionPlan =
         explainQueryPlan(fixture.dbPath(), builder.buildDimensionValues(executedRequest).divisions);
     INFO(dimensionPlan);
-    CHECK(dimensionPlan.find("SEARCH ssa_table USING INDEX idx_analytics_execution_week") !=
-          std::string::npos);
+    CHECK(dimensionPlan.find("SCAN ssa_table") != std::string::npos);
+    CHECK(dimensionPlan.find("idx_analytics_execution_week") == std::string::npos);
 }
 
 TEST_CASE("analytics sqlite port executes events by executor person and cohort") {

@@ -403,6 +403,17 @@ namespace ssa::query {
                      std::to_string(domain::toIsoYearWeek(request.period.last))}};
         }
 
+        DimensionBase buildOrganizationalDimensionBase(const domain::AnalyticsRequest& request,
+                                                       const std::string& sourceTable) {
+            const auto sector = sectorColumn(request.metric);
+            std::ostringstream sql;
+            sql << "WITH dimension_rows AS (SELECT " << divisionExpression(sector)
+                << " AS \"division\", " << normalizedDimension(sector)
+                << " AS \"sector\", '' AS \"person\" FROM " << sourceTable << " WHERE "
+                << numberExpression() << " <> '') ";
+            return {sql.str(), {}};
+        }
+
         DimensionBase buildStockDimensionBase(const domain::AnalyticsRequest& request,
                                               const std::string& dataset) {
             std::vector<std::string> bindings;
@@ -535,13 +546,14 @@ namespace ssa::query {
         }
         static_cast<void>(metricKey(request.metric));
         const auto sourceTable = quoteTableIdentifier(sourceTable_);
-        const auto base = isEventMetric(request.metric)
-                              ? buildEventDimensionBase(request, sourceTable)
-                              : buildStockDimensionBase(request, dataset_);
+        const auto organization = buildOrganizationalDimensionBase(request, sourceTable);
+        const auto metric = isEventMetric(request.metric)
+                                ? buildEventDimensionBase(request, sourceTable)
+                                : buildStockDimensionBase(request, dataset_);
         return {
-            dimensionQuery(base, "division", request, false, false),
-            dimensionQuery(base, "sector", request, true, false),
-            dimensionQuery(base, "person", request, true, true),
+            dimensionQuery(organization, "division", request, false, false),
+            dimensionQuery(organization, "sector", request, true, false),
+            dimensionQuery(metric, "person", request, true, true),
         };
     }
 

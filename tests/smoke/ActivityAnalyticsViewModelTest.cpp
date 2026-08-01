@@ -3,6 +3,7 @@
 #include "ports/IActivityAnalyticsPort.h"
 #include "ports/IActivityAnalyticsSettingsPort.h"
 
+#include <QDate>
 #include <QElapsedTimer>
 #include <QSignalSpy>
 #include <QTest>
@@ -148,6 +149,39 @@ namespace {
         Q_OBJECT
 
       private slots:
+        void currentMonthSelectionUsesLastCompleteCalendarMonth() {
+            const auto port = std::make_shared<FunctionalAnalyticsPort>();
+            const ssa::presentation::ActivityAnalyticsViewModel model(serviceFor(port));
+            const QDate expectedMonth = QDate::currentDate().addMonths(-1);
+            const auto expectedPeriod =
+                ssa::domain::calendarMonthPeriod(expectedMonth.year(), expectedMonth.month());
+
+            const QVariantMap selection = model.currentMonthSelection();
+
+            QCOMPARE(selection.value(QStringLiteral("year")).toInt(), expectedMonth.year());
+            QCOMPARE(selection.value(QStringLiteral("month")).toInt(), expectedMonth.month());
+            QCOMPARE(selection.value(QStringLiteral("firstYear")).toInt(),
+                     expectedPeriod.first.year);
+            QCOMPARE(selection.value(QStringLiteral("firstWeek")).toInt(),
+                     expectedPeriod.first.week);
+            QCOMPARE(selection.value(QStringLiteral("lastYear")).toInt(), expectedPeriod.last.year);
+            QCOMPARE(selection.value(QStringLiteral("lastWeek")).toInt(), expectedPeriod.last.week);
+        }
+
+        void calendarMonthSelectionMapsRequestedMonthToIsoWeeks() {
+            const auto port = std::make_shared<FunctionalAnalyticsPort>();
+            const ssa::presentation::ActivityAnalyticsViewModel model(serviceFor(port));
+
+            const QVariantMap selection = model.calendarMonthSelection(2026, 7);
+
+            QCOMPARE(selection.value(QStringLiteral("year")).toInt(), 2026);
+            QCOMPARE(selection.value(QStringLiteral("month")).toInt(), 7);
+            QCOMPARE(selection.value(QStringLiteral("firstYear")).toInt(), 2026);
+            QCOMPARE(selection.value(QStringLiteral("firstWeek")).toInt(), 27);
+            QCOMPARE(selection.value(QStringLiteral("lastYear")).toInt(), 2026);
+            QCOMPARE(selection.value(QStringLiteral("lastWeek")).toInt(), 31);
+        }
+
         void rejectsMissingService() {
             QVERIFY_THROWS_EXCEPTION(std::invalid_argument,
                                      ssa::presentation::ActivityAnalyticsViewModel(nullptr));

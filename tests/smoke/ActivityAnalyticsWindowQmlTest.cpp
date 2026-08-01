@@ -2,6 +2,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QGuiApplication>
 #include <QImage>
 #include <QObject>
 #include <QQmlComponent>
@@ -41,11 +42,12 @@ namespace {
         {"AnalyticsCustomAnalysis.qml", "AnalyticsCustomAnalysis"},
     }};
 
-    constexpr std::array<QmlTypeRegistration, 4> kControlTypes{{
+    constexpr std::array<QmlTypeRegistration, 5> kControlTypes{{
         {"ActionButton.qml", "ActionButton"},
         {"AppCheckBox.qml", "AppCheckBox"},
         {"AppComboBox.qml", "AppComboBox"},
         {"AppSpinBox.qml", "AppSpinBox"},
+        {"AppTextField.qml", "AppTextField"},
     }};
 
     constexpr std::array<const char*, 14> kDashboardKeys{{
@@ -143,9 +145,11 @@ namespace {
             : QObject(parent), dashboard_(dashboardModel()), customSeries_(chartModel()),
               dimensionValues_({
                   {QStringLiteral("divisions"),
-                   QStringList{QStringLiteral("SMI"), QStringLiteral("SMM")}},
+                   QStringList{QStringLiteral("SMI"), QStringLiteral("SMM"),
+                               QStringLiteral("IEE")}},
                   {QStringLiteral("sectors"),
-                   QStringList{QStringLiteral("SMIN"), QStringLiteral("SMIT")}},
+                   QStringList{QStringLiteral("SMIN"), QStringLiteral("SMIT"),
+                               QStringLiteral("IEE1")}},
                   {QStringLiteral("people"),
                    QStringList{QStringLiteral("Ana"), QStringLiteral("Bruno")}},
               }) {}
@@ -184,10 +188,23 @@ namespace {
         }
 
         Q_INVOKABLE QVariantMap currentMonthSelection() const {
-            return {{QStringLiteral("firstYear"), 2026},
-                    {QStringLiteral("firstWeek"), 27},
-                    {QStringLiteral("lastYear"), 2026},
-                    {QStringLiteral("lastWeek"), 31}};
+            return {{QStringLiteral("year"), 2026},      {QStringLiteral("month"), 7},
+                    {QStringLiteral("firstYear"), 2026}, {QStringLiteral("firstWeek"), 27},
+                    {QStringLiteral("lastYear"), 2026},  {QStringLiteral("lastWeek"), 31}};
+        }
+
+        Q_INVOKABLE QVariantMap calendarMonthSelection(const int year, const int month) const {
+            if (year == 2026 && month == 6) {
+                return {{QStringLiteral("year"), 2026},      {QStringLiteral("month"), 6},
+                        {QStringLiteral("firstYear"), 2026}, {QStringLiteral("firstWeek"), 23},
+                        {QStringLiteral("lastYear"), 2026},  {QStringLiteral("lastWeek"), 27}};
+            }
+            if (year == 2027 && month == 1) {
+                return {{QStringLiteral("year"), 2027},      {QStringLiteral("month"), 1},
+                        {QStringLiteral("firstYear"), 2027}, {QStringLiteral("firstWeek"), 1},
+                        {QStringLiteral("lastYear"), 2027},  {QStringLiteral("lastWeek"), 5}};
+            }
+            return currentMonthSelection();
         }
 
         Q_INVOKABLE bool requestCustomSeries(const QVariantMap& selection) {
@@ -361,6 +378,12 @@ namespace {
                                          Q_ARG(QVariant, argument));
     }
 
+    [[nodiscard]] bool invoke(QObject& object, const char* method, const QVariant& first,
+                              const QVariant& second) {
+        return QMetaObject::invokeMethod(&object, method, Qt::DirectConnection,
+                                         Q_ARG(QVariant, first), Q_ARG(QVariant, second));
+    }
+
     [[nodiscard]] bool waitForRenderedFrames(QQuickWindow& window) {
         QSignalSpy frameSpy(&window, &QQuickWindow::frameSwapped);
         for (int frame = 0; frame < 2; ++frame) {
@@ -508,6 +531,44 @@ namespace {
             QVERIFY(dashboardLastWeek->property("editable").toBool());
             QVERIFY(customFirstWeek->property("editable").toBool());
             QVERIFY(customLastWeek->property("editable").toBool());
+        }
+
+        void monthly_navigation_moves_to_previous_month_and_keeps_direct_iso_editing() {
+            QQmlEngine engine;
+            FakeAnalyticsViewModel viewModel;
+            QString error;
+            auto object = loadWindow(engine, viewModel, error);
+            QVERIFY2(object != nullptr, qPrintable(error));
+            auto* dashboard = object->findChild<QObject*>(QStringLiteral("analyticsDashboard"));
+            auto* custom = object->findChild<QObject*>(QStringLiteral("analyticsCustomAnalysis"));
+            QVERIFY(dashboard != nullptr);
+            QVERIFY(custom != nullptr);
+
+            QVERIFY(invoke(*dashboard, "previousMonth"));
+            QCOMPARE(dashboard->property("reportFirstWeek").toInt(), 23);
+            QCOMPARE(dashboard->property("reportLastWeek").toInt(), 27);
+            QVERIFY(invoke(*custom, "previousMonth"));
+            QCOMPARE(custom->property("firstWeek").toInt(), 23);
+            QCOMPARE(custom->property("lastWeek").toInt(), 27);
+        }
+
+        void monthly_navigation_rejects_months_after_last_complete_month() {
+            QQmlEngine engine;
+            FakeAnalyticsViewModel viewModel;
+            QString error;
+            auto object = loadWindow(engine, viewModel, error);
+            QVERIFY2(object != nullptr, qPrintable(error));
+            auto* dashboard = object->findChild<QObject*>(QStringLiteral("analyticsDashboard"));
+            auto* custom = object->findChild<QObject*>(QStringLiteral("analyticsCustomAnalysis"));
+            QVERIFY(dashboard != nullptr);
+            QVERIFY(custom != nullptr);
+
+            QVERIFY(invoke(*dashboard, "applyCalendarMonth", 2027, 1));
+            QCOMPARE(dashboard->property("periodYear").toInt(), 2026);
+            QCOMPARE(dashboard->property("periodMonth").toInt(), 7);
+            QVERIFY(invoke(*custom, "applyCalendarMonth", 2027, 1));
+            QCOMPARE(custom->property("periodYear").toInt(), 2026);
+            QCOMPARE(custom->property("periodMonth").toInt(), 7);
         }
 
         void dashboard_renders_both_reference_sizes_and_switches_to_one_column_when_narrow() {
@@ -661,6 +722,97 @@ namespace {
             QVERIFY(custom->property("selectedPeople").toStringList().isEmpty());
         }
 
+        void custom_dimension_option_toggles_on_real_mouse_click() {
+            QQmlEngine engine;
+            FakeAnalyticsViewModel viewModel;
+            QString error;
+            auto object = loadWindow(engine, viewModel, error);
+            QVERIFY2(object != nullptr, qPrintable(error));
+            auto* window = qobject_cast<QQuickWindow*>(object.get());
+            QVERIFY(window != nullptr);
+            QVERIFY(invoke(*object, "selectTab", 1));
+            window->show();
+            QVERIFY(waitForRenderedFrames(*window));
+            auto* option = findVisualChild(*window->contentItem(),
+                                           QStringLiteral("analyticsDivisionOption-IEE"));
+            QVERIFY(option != nullptr);
+            QVERIFY(findVisualChild(*window->contentItem(),
+                                    QStringLiteral("analyticsSectorOption-IEE1")) != nullptr);
+            const QPoint clickPoint =
+                option->mapToScene(QPointF(option->width() / 2, option->height() / 2)).toPoint();
+
+            QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, clickPoint);
+
+            QTRY_VERIFY_WITH_TIMEOUT(option->property("checked").toBool(), 1000);
+            auto* custom = object->findChild<QObject*>(QStringLiteral("analyticsCustomAnalysis"));
+            QVERIFY(custom != nullptr);
+            QCOMPARE(custom->property("selectedDivisions").toStringList(),
+                     QStringList{QStringLiteral("IEE")});
+            QVERIFY(option->property("textContrast").toReal() >= 4.5);
+            option->forceActiveFocus();
+            QTRY_VERIFY_WITH_TIMEOUT(option->property("focusHighlighted").toBool(), 1000);
+            if (QGuiApplication::platformName() != QStringLiteral("offscreen")) {
+                QVERIFY(waitForRenderedFrames(*window));
+                const QImage customImage = window->grabWindow();
+                QVERIFY(!customImage.isNull());
+                QVERIFY(customImage.save(
+                    QDir(QCoreApplication::applicationDirPath())
+                        .filePath(QStringLiteral("activity-analytics-custom-iee-1180x760.png"))));
+            }
+        }
+
+        void custom_action_buttons_fit_their_labels_at_reference_width() {
+            QQmlEngine engine;
+            FakeAnalyticsViewModel viewModel;
+            QString error;
+            auto object = loadWindow(engine, viewModel, error);
+            QVERIFY2(object != nullptr, qPrintable(error));
+            auto* window = qobject_cast<QQuickWindow*>(object.get());
+            QVERIFY(window != nullptr);
+            window->setGeometry(0, 0, 1180, 760);
+            QVERIFY(invoke(*object, "selectTab", 1));
+            window->show();
+            QVERIFY(waitForRenderedFrames(*window));
+
+            const QStringList names{QStringLiteral("analyticsRefreshOptions"),
+                                    QStringLiteral("analyticsOverdueByArea"),
+                                    QStringLiteral("analyticsExecutedByPerson")};
+            const QVariantMap minimumWidths{{QStringLiteral("analyticsRefreshOptions"), 160.0},
+                                            {QStringLiteral("analyticsOverdueByArea"), 175.0},
+                                            {QStringLiteral("analyticsExecutedByPerson"), 205.0}};
+            for (const auto& name : names) {
+                auto* button = findVisualChild(*window->contentItem(), name);
+                QVERIFY2(button != nullptr, qPrintable(name));
+                if (QGuiApplication::platformName() == QStringLiteral("offscreen")) {
+                    QVERIFY2(button->width() >= minimumWidths.value(name).toReal(),
+                             qPrintable(name));
+                    continue;
+                }
+                const qreal requiredWidth = button->property("implicitContentWidth").toReal() +
+                                            button->property("leftPadding").toReal() +
+                                            button->property("rightPadding").toReal();
+                QVERIFY2(button->width() >= requiredWidth, qPrintable(name));
+            }
+        }
+
+        void executed_by_person_preset_configures_whole_period_sector_chart() {
+            QQmlEngine engine;
+            FakeAnalyticsViewModel viewModel;
+            QString error;
+            auto object = loadWindow(engine, viewModel, error);
+            QVERIFY2(object != nullptr, qPrintable(error));
+            auto* custom = object->findChild<QObject*>(QStringLiteral("analyticsCustomAnalysis"));
+            QVERIFY(custom != nullptr);
+
+            QVERIFY(invoke(*custom, "configureExecutedByPerson"));
+
+            QCOMPARE(custom->property("metricIndex").toInt(), 1);
+            QCOMPARE(custom->property("grainIndex").toInt(), 0);
+            QCOMPARE(custom->property("breakdownIndex").toInt(), 3);
+            QCOMPARE(custom->property("personRoleIndex").toInt(), 2);
+            QVERIFY(viewModel.dimensionRequestCount() >= 1);
+        }
+
         void custom_chart_uses_bars_for_periods_and_stacks_deadline_classes() {
             QQmlEngine engine;
             FakeAnalyticsViewModel viewModel;
@@ -754,13 +906,6 @@ namespace {
                 QVERIFY2(!source.contains(QStringLiteral("ssa_table"), Qt::CaseInsensitive),
                          qPrintable(file));
             }
-        }
-
-        void custom_dimension_lists_use_themed_checkboxes() {
-            const QString source = readSource(QStringLiteral("AnalyticsCustomAnalysis.qml"));
-            QVERIFY(!source.isEmpty());
-            QCOMPARE(source.count(QStringLiteral("delegate: AppCheckBox")), 3);
-            QVERIFY(!source.contains(QStringLiteral("delegate: CheckBox")));
         }
     };
 

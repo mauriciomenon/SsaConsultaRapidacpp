@@ -31,6 +31,16 @@ namespace ssa::presentation {
             return value ? QVariant{*value} : QVariant{};
         }
 
+        QVariantMap calendarMonthMap(const int year, const int month) {
+            const auto period = domain::calendarMonthPeriod(year, month);
+            return {{QStringLiteral("year"), year},
+                    {QStringLiteral("month"), month},
+                    {QStringLiteral("firstYear"), period.first.year},
+                    {QStringLiteral("firstWeek"), period.first.week},
+                    {QStringLiteral("lastYear"), period.last.year},
+                    {QStringLiteral("lastWeek"), period.last.week}};
+        }
+
         QVariantMap seriesMetadataMap(const domain::AnalyticsSeriesResult& series,
                                       const domain::AnalyticsMetric metric) {
             return {
@@ -494,12 +504,13 @@ namespace ssa::presentation {
     }
 
     QVariantMap ActivityAnalyticsViewModel::currentMonthSelection() const {
-        const QDate currentDate = QDate::currentDate();
-        const auto period = domain::calendarMonthPeriod(currentDate.year(), currentDate.month());
-        return {{QStringLiteral("firstYear"), period.first.year},
-                {QStringLiteral("firstWeek"), period.first.week},
-                {QStringLiteral("lastYear"), period.last.year},
-                {QStringLiteral("lastWeek"), period.last.week}};
+        const QDate month = QDate::currentDate().addMonths(-1);
+        return calendarMonthMap(month.year(), month.month());
+    }
+
+    QVariantMap ActivityAnalyticsViewModel::calendarMonthSelection(const int year,
+                                                                   const int month) const {
+        return calendarMonthMap(year, month);
     }
 
     bool ActivityAnalyticsViewModel::requestDashboard(const QVariantMap& selection) {

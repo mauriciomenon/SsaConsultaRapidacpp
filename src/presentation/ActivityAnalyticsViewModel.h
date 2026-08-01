@@ -68,6 +68,7 @@ namespace ssa::presentation {
         void loadCustomSeries(domain::AnalyticsRequest request);
         void loadDimensionValues(domain::AnalyticsRequest request);
         Q_INVOKABLE [[nodiscard]] QVariantMap currentMonthSelection() const;
+        Q_INVOKABLE [[nodiscard]] QVariantMap calendarMonthSelection(int year, int month) const;
         Q_INVOKABLE bool requestDashboard(const QVariantMap& selection);
         Q_INVOKABLE bool requestCustomSeries(const QVariantMap& selection);
         Q_INVOKABLE bool requestDimensionValues(const QVariantMap& selection);

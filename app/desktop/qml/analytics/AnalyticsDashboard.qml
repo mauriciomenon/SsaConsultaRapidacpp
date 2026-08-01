@@ -16,7 +16,11 @@ Item {
     property int reportFirstWeek: initialPeriod.firstWeek
     property int reportLastYear: initialPeriod.lastYear
     property int reportLastWeek: initialPeriod.lastWeek
+    property int periodYear: initialPeriod.year
+    property int periodMonth: initialPeriod.month
     property alias warningText: warningField.text
+    readonly property var lastCompletePeriod: analyticsViewModel.currentMonthSelection()
+    readonly property bool canNavigateNextMonth: periodYear * 12 + periodMonth < lastCompletePeriod.year * 12 + lastCompletePeriod.month
 
     readonly property var chartDefinitions: [
         {
@@ -92,7 +96,7 @@ Item {
     ]
     readonly property int chartCount: chartDefinitions.length
     readonly property int columnCount: dashboardFlick.width >= 1080 ? 2 : 1
-    readonly property int controlColumnCount: dashboardControls.columns
+    readonly property int controlColumnCount: dashboardIsoControls.columns
     readonly property real scrollPosition: dashboardFlick.contentY
     property bool waitingForWarningLoad: false
     property bool dashboardRefreshQueued: false
@@ -121,12 +125,37 @@ Item {
         return root.analyticsViewModel.requestDashboard(root.dashboardSelection());
     }
 
-    function useCurrentMonth() {
-        const period = root.analyticsViewModel.currentMonthSelection();
+    function applyPeriod(period) {
+        root.periodYear = period.year;
+        root.periodMonth = period.month;
         root.reportFirstYear = period.firstYear;
         root.reportFirstWeek = period.firstWeek;
         root.reportLastYear = period.lastYear;
         root.reportLastWeek = period.lastWeek;
+    }
+
+    function applyCalendarMonth(year, month) {
+        if (year * 12 + month > root.lastCompletePeriod.year * 12 + root.lastCompletePeriod.month) {
+            root.applyPeriod(root.lastCompletePeriod);
+            return;
+        }
+        root.applyPeriod(root.analyticsViewModel.calendarMonthSelection(year, month));
+    }
+
+    function previousMonth() {
+        const previous = new Date(root.periodYear, root.periodMonth - 2, 1);
+        root.applyCalendarMonth(previous.getFullYear(), previous.getMonth() + 1);
+    }
+
+    function nextMonth() {
+        if (!root.canNavigateNextMonth)
+            return;
+        const next = new Date(root.periodYear, root.periodMonth, 1);
+        root.applyCalendarMonth(next.getFullYear(), next.getMonth() + 1);
+    }
+
+    function useCurrentMonth() {
+        root.applyPeriod(root.analyticsViewModel.currentMonthSelection());
     }
 
     function queueDashboardRefresh() {
@@ -215,110 +244,147 @@ Item {
                 border.color: Theme.border
                 radius: Theme.radius
 
-                GridLayout {
+                ColumnLayout {
                     id: dashboardControls
 
                     anchors.fill: parent
                     anchors.margins: Theme.cardGap
-                    columns: width >= 1200 ? 12 : 6
-                    columnSpacing: Theme.gap
-                    rowSpacing: Theme.gap
+                    spacing: Theme.gap
 
-                    Label {
-                        text: qsTr("Ano inicial")
-                        color: Theme.text
-                    }
-                    AppSpinBox {
-                        objectName: "analyticsDashboardFirstYear"
-                        Layout.preferredWidth: 88
-                        from: 2000
-                        to: 2200
-                        locale: Qt.locale("C")
-                        value: root.reportFirstYear
-                        editable: true
-                        onValueModified: root.reportFirstYear = value
-                    }
-                    Label {
-                        text: qsTr("Semana inicial")
-                        color: Theme.text
-                    }
-                    AppSpinBox {
-                        objectName: "analyticsDashboardFirstWeek"
-                        from: 1
-                        to: 53
-                        value: root.reportFirstWeek
-                        editable: true
-                        onValueModified: root.reportFirstWeek = value
-                    }
-                    Label {
-                        text: qsTr("Ano final")
-                        color: Theme.text
-                    }
-                    AppSpinBox {
-                        Layout.preferredWidth: 88
-                        from: 2000
-                        to: 2200
-                        locale: Qt.locale("C")
-                        value: root.reportLastYear
-                        editable: true
-                        onValueModified: root.reportLastYear = value
-                    }
-                    Label {
-                        text: qsTr("Semana final")
-                        color: Theme.text
-                    }
-                    AppSpinBox {
-                        objectName: "analyticsDashboardLastWeek"
-                        from: 1
-                        to: 53
-                        value: root.reportLastWeek
-                        editable: true
-                        onValueModified: root.reportLastWeek = value
-                    }
-                    Label {
-                        text: qsTr("Periodo")
-                        color: Theme.text
-                    }
-                    ActionButton {
-                        text: qsTr("Mes atual")
-                        onClicked: root.useCurrentMonth()
-                    }
-                    Label {
-                        text: qsTr("Janela de alerta em dias")
-                        color: Theme.text
-                    }
-                    TextField {
-                        id: warningField
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Theme.gap
 
-                        Layout.preferredWidth: 100
-                        placeholderText: qsTr("Sem valor")
-                        validator: IntValidator {
-                            bottom: 0
-                            top: 365
+                        Label {
+                            text: qsTr("Periodo mensal")
+                            color: Theme.text
                         }
-                        inputMethodHints: Qt.ImhDigitsOnly
-                        color: Theme.text
-                        font.family: Theme.fontFamily
-                        Accessible.name: qsTr("Janela de alerta em dias")
-
-                        background: Rectangle {
-                            color: Theme.panelRaised
-                            border.color: warningField.activeFocus ? Theme.accent : Theme.border
-                            radius: Theme.radius
+                        ActionButton {
+                            objectName: "analyticsDashboardPreviousMonth"
+                            Layout.preferredWidth: Theme.controlHeight
+                            text: "<"
+                            onClicked: root.previousMonth()
+                        }
+                        AppComboBox {
+                            Layout.preferredWidth: 150
+                            model: [qsTr("Janeiro"), qsTr("Fevereiro"), qsTr("Marco"), qsTr("Abril"), qsTr("Maio"), qsTr("Junho"), qsTr("Julho"), qsTr("Agosto"), qsTr("Setembro"), qsTr("Outubro"), qsTr("Novembro"), qsTr("Dezembro")]
+                            currentIndex: root.periodMonth - 1
+                            onActivated: root.applyCalendarMonth(root.periodYear, currentIndex + 1)
+                        }
+                        AppSpinBox {
+                            Layout.preferredWidth: 88
+                            from: 2000
+                            to: 2200
+                            value: root.periodYear
+                            editable: true
+                            onValueModified: root.applyCalendarMonth(value, root.periodMonth)
+                        }
+                        ActionButton {
+                            objectName: "analyticsDashboardNextMonth"
+                            Layout.preferredWidth: Theme.controlHeight
+                            text: ">"
+                            enabled: root.canNavigateNextMonth
+                            onClicked: root.nextMonth()
+                        }
+                        ActionButton {
+                            Layout.preferredWidth: 160
+                            text: qsTr("Ultimo mes completo")
+                            onClicked: root.useCurrentMonth()
+                        }
+                        Item {
+                            Layout.fillWidth: true
                         }
                     }
-                    ActionButton {
-                        text: qsTr("Salvar alerta")
-                        Layout.preferredWidth: 120
-                        enabled: root.warningValue() !== undefined && !root.analyticsViewModel.loading
-                        onClicked: root.saveWarning()
-                    }
-                    ActionButton {
-                        objectName: "analyticsDashboardRefresh"
-                        Layout.preferredWidth: 126
-                        text: qsTr("Atualizar painel")
-                        enabled: !root.analyticsViewModel.loading
-                        onClicked: root.refreshDashboard()
+
+                    GridLayout {
+                        id: dashboardIsoControls
+
+                        Layout.fillWidth: true
+                        columns: root.width >= 1200 ? 12 : 6
+                        columnSpacing: Theme.gap
+                        rowSpacing: Theme.gap
+
+                        Label {
+                            text: qsTr("Ano inicial")
+                            color: Theme.text
+                        }
+                        AppSpinBox {
+                            objectName: "analyticsDashboardFirstYear"
+                            Layout.preferredWidth: 88
+                            from: 2000
+                            to: 2200
+                            locale: Qt.locale("C")
+                            value: root.reportFirstYear
+                            editable: true
+                            onValueModified: root.reportFirstYear = value
+                        }
+                        Label {
+                            text: qsTr("Semana inicial")
+                            color: Theme.text
+                        }
+                        AppSpinBox {
+                            objectName: "analyticsDashboardFirstWeek"
+                            from: 1
+                            to: 53
+                            value: root.reportFirstWeek
+                            editable: true
+                            onValueModified: root.reportFirstWeek = value
+                        }
+                        Label {
+                            text: qsTr("Ano final")
+                            color: Theme.text
+                        }
+                        AppSpinBox {
+                            Layout.preferredWidth: 88
+                            from: 2000
+                            to: 2200
+                            locale: Qt.locale("C")
+                            value: root.reportLastYear
+                            editable: true
+                            onValueModified: root.reportLastYear = value
+                        }
+                        Label {
+                            text: qsTr("Semana final")
+                            color: Theme.text
+                        }
+                        AppSpinBox {
+                            objectName: "analyticsDashboardLastWeek"
+                            from: 1
+                            to: 53
+                            value: root.reportLastWeek
+                            editable: true
+                            onValueModified: root.reportLastWeek = value
+                        }
+                        Label {
+                            text: qsTr("Janela de alerta em dias")
+                            color: Theme.text
+                        }
+                        AppTextField {
+                            id: warningField
+
+                            objectName: "analyticsDashboardWarningField"
+                            Layout.preferredWidth: 100
+                            placeholderText: qsTr("Sem valor")
+                            validator: IntValidator {
+                                bottom: 0
+                                top: 365
+                            }
+                            inputMethodHints: Qt.ImhDigitsOnly
+                            Accessible.name: qsTr("Janela de alerta em dias")
+                        }
+                        ActionButton {
+                            text: qsTr("Salvar alerta")
+                            Layout.preferredWidth: 120
+                            enabled: root.warningValue() !== undefined && !root.analyticsViewModel.loading
+                            onClicked: root.saveWarning()
+                        }
+                        ActionButton {
+                            objectName: "analyticsDashboardRefresh"
+                            Layout.preferredWidth: 126
+                            text: qsTr("Atualizar painel")
+                            enabled: !root.analyticsViewModel.loading
+                            onClicked: root.refreshDashboard()
+                        }
                     }
                 }
             }
