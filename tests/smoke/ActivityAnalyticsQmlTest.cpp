@@ -117,6 +117,26 @@ namespace {
         }
     )QML";
 
+    constexpr auto kLongCategoryHarness = R"QML(
+        import QtQuick
+        import SsaConsultaRapida
+
+        AnalyticsChartCanvas {
+            width: 640
+            height: 420
+            chartType: "bar"
+            categories: [
+                "IEE / IEE2 / ACOSTA FERNANDEZ RAMON ARIEL",
+                "IEE / IEE2 / LUCAS COSTA CICARELLI",
+                "IEE / IEE2 / MARCOS ALOE YAMAMOTO",
+                "IEE / IEE3 / MAURICIO MENON",
+                "IEE / IEE3 / SANCHEZ ALVARENGA BLAS CIRILO",
+                "IEE / IEE4 / COSTA FERNANDEZ RAMON ARIEL"
+            ]
+            series: [{name: "Total", values: [1, 2, 3, 4, 5, 6]}]
+        }
+    )QML";
+
     [[nodiscard]] QDir repositoryRoot() {
         QDir root = QFileInfo(QString::fromUtf8(__FILE__)).dir();
         if (!root.cdUp() || !root.cdUp()) {
@@ -328,6 +348,28 @@ namespace {
             QVERIFY(isNullValue(gap));
             QCOMPARE(lastValue.toDouble(), 30.0);
             QCOMPARE(trend.toDouble(), 20.0);
+        }
+
+        void long_category_labels_use_measured_spacing() {
+            QQmlEngine engine;
+            QString error;
+            auto chart = loadQml(engine, kLongCategoryHarness, error);
+            QVERIFY2(chart != nullptr, qPrintable(error));
+
+            QVariant stride;
+            QVERIFY(QMetaObject::invokeMethod(chart.get(), "categoryLabelStride",
+                                              Q_RETURN_ARG(QVariant, stride),
+                                              Q_ARG(QVariant, QVariant{300.0})));
+            QVERIFY(stride.toInt() > 1);
+
+            QVariant indices;
+            QVERIFY(QMetaObject::invokeMethod(chart.get(), "categoryLabelIndices",
+                                              Q_RETURN_ARG(QVariant, indices),
+                                              Q_ARG(QVariant, stride)));
+            const auto labelIndices = variantList(indices);
+            QVERIFY(labelIndices.size() < 6);
+            QCOMPARE(labelIndices.front().toInt(), 1);
+            QCOMPARE(labelIndices.back().toInt(), 4);
         }
 
         void resize_and_refresh_update_derived_models() {

@@ -62,6 +62,29 @@ Item {
         return String(value);
     }
 
+    function categoryLabelStride(maxLabelWidth) {
+        const targetWidth = Math.min(260, Math.max(70, maxLabelWidth + 12));
+        const visibleLabels = Math.max(1, Math.floor(root.plotWidth / targetWidth));
+        return Math.max(1, Math.ceil(root.categoryCount / visibleLabels));
+    }
+
+    function categoryLabelIndices(stride) {
+        const indices = [];
+        const firstIndex = stride > 1 ? Math.floor(stride / 2) : 0;
+        for (let index = firstIndex; index < root.categoryCount; index += stride)
+            indices.push(index);
+        return indices;
+    }
+
+    function elidedCategoryLabel(context, label, maxWidth) {
+        if (context.measureText(label).width <= maxWidth)
+            return label;
+        let shortened = label;
+        while (shortened.length > 1 && context.measureText(shortened + "...").width > maxWidth)
+            shortened = shortened.slice(0, -1);
+        return shortened + "...";
+    }
+
     function numericValue(value) {
         return typeof value === "number" && Number.isFinite(value) ? value : null;
     }
@@ -273,7 +296,7 @@ Item {
         context.strokeStyle = Theme.border;
         context.fillStyle = Theme.mutedText;
         context.lineWidth = 1;
-        context.font = Theme.fontSizeCaption + "px " + Theme.fontFamily;
+        context.font = Theme.fontSizeCaption + "px \"" + Theme.fontFamily + "\"";
         context.textBaseline = "middle";
         const ticks = Math.max(2, root.tickCount);
         for (let tick = 0; tick <= ticks; ++tick) {
@@ -288,16 +311,24 @@ Item {
             context.fillText(formatNumber(value) + root.valueSuffix, root.leftMargin - 7, y);
         }
 
-        const labelStride = Math.max(1, Math.ceil(root.categoryCount / Math.max(1, Math.floor(root.plotWidth / 70))));
+        let maxLabelWidth = 0;
+        for (let categoryIndex = 0; categoryIndex < root.categoryCount; ++categoryIndex) {
+            const label = displayCategory(categoryIndex, qsTr("Nao atribuido"));
+            maxLabelWidth = Math.max(maxLabelWidth, context.measureText(label).width);
+        }
+        const labelStride = categoryLabelStride(maxLabelWidth);
+        const labelWidth = Math.min(260, Math.max(30, root.plotWidth / Math.max(1, root.categoryCount) * labelStride - 12));
         context.textAlign = "center";
         context.textBaseline = "top";
-        for (let categoryIndex = 0; categoryIndex < root.categoryCount; categoryIndex += labelStride) {
+        const labelIndices = categoryLabelIndices(labelStride);
+        for (let index = 0; index < labelIndices.length; ++index) {
+            const categoryIndex = labelIndices[index];
             const label = displayCategory(categoryIndex, qsTr("Nao atribuido"));
-            context.fillText(label, xCenter(categoryIndex), root.topMargin + root.plotHeight + 8, Math.max(30, root.plotWidth / Math.max(1, root.categoryCount) * labelStride - 4));
-        }
-        if ((root.categoryCount - 1) % labelStride !== 0 && root.categoryCount > 1) {
-            const lastIndex = root.categoryCount - 1;
-            context.fillText(displayCategory(lastIndex, qsTr("Nao atribuido")), xCenter(lastIndex), root.topMargin + root.plotHeight + 8, Math.max(30, root.plotWidth / Math.max(1, root.categoryCount) * labelStride - 4));
+            const firstLabel = categoryIndex === 0;
+            const lastLabel = categoryIndex === root.categoryCount - 1;
+            context.textAlign = firstLabel ? "left" : lastLabel ? "right" : "center";
+            const labelX = firstLabel ? root.leftMargin : lastLabel ? root.leftMargin + root.plotWidth : xCenter(categoryIndex);
+            context.fillText(elidedCategoryLabel(context, label, labelWidth), labelX, root.topMargin + root.plotHeight + 8);
         }
 
         if (root.xAxisTitle.length > 0) {

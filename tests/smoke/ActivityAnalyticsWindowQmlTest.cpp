@@ -41,8 +41,9 @@ namespace {
         {"AnalyticsCustomAnalysis.qml", "AnalyticsCustomAnalysis"},
     }};
 
-    constexpr std::array<QmlTypeRegistration, 3> kControlTypes{{
+    constexpr std::array<QmlTypeRegistration, 4> kControlTypes{{
         {"ActionButton.qml", "ActionButton"},
+        {"AppCheckBox.qml", "AppCheckBox"},
         {"AppComboBox.qml", "AppComboBox"},
         {"AppSpinBox.qml", "AppSpinBox"},
     }};
@@ -753,6 +754,13 @@ namespace {
                 QVERIFY2(!source.contains(QStringLiteral("ssa_table"), Qt::CaseInsensitive),
                          qPrintable(file));
             }
+        }
+
+        void custom_dimension_lists_use_themed_checkboxes() {
+            const QString source = readSource(QStringLiteral("AnalyticsCustomAnalysis.qml"));
+            QVERIFY(!source.isEmpty());
+            QCOMPARE(source.count(QStringLiteral("delegate: AppCheckBox")), 3);
+            QVERIFY(!source.contains(QStringLiteral("delegate: CheckBox")));
         }
     };
 

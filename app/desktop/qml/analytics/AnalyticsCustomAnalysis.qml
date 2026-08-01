@@ -421,7 +421,7 @@ Item {
                             model: root.dimensionList("divisions")
                             ScrollBar.vertical: ScrollBar {}
 
-                            delegate: CheckBox {
+                            delegate: AppCheckBox {
                                 id: divisionOption
 
                                 required property var modelData
@@ -463,7 +463,7 @@ Item {
                             model: root.dimensionList("sectors")
                             ScrollBar.vertical: ScrollBar {}
 
-                            delegate: CheckBox {
+                            delegate: AppCheckBox {
                                 id: sectorOption
 
                                 required property var modelData
@@ -511,7 +511,7 @@ Item {
                             model: root.dimensionList("people")
                             ScrollBar.vertical: ScrollBar {}
 
-                            delegate: CheckBox {
+                            delegate: AppCheckBox {
                                 id: personOption
 
                                 required property var modelData
