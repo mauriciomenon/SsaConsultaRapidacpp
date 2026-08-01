@@ -260,6 +260,9 @@ namespace ssa::infra::importing {
                             normalizedHeader(relationValue).empty()) {
                             continue;
                         }
+                        if (normalizedHeader(relationValue) != "derivadada") {
+                            continue;
+                        }
                         if (auto error = appendEdge(result, parentValue, childValue)) {
                             return *error;
                         }
