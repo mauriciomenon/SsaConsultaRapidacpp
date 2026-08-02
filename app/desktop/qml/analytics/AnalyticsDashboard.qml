@@ -18,21 +18,15 @@ Item {
     property int reportLastWeek: initialPeriod.lastWeek
     property int periodYear: initialPeriod.year
     property int periodMonth: initialPeriod.month
+    property int periodScope: 0
     property alias warningText: warningField.text
+    readonly property var monthNames: [qsTr("Janeiro"), qsTr("Fevereiro"), qsTr("Marco"), qsTr("Abril"), qsTr("Maio"), qsTr("Junho"), qsTr("Julho"), qsTr("Agosto"), qsTr("Setembro"), qsTr("Outubro"), qsTr("Novembro"), qsTr("Dezembro")]
+    readonly property var monthModel: root.periodScope === 1 ? [qsTr("Todos")] : root.monthNames
+    readonly property int monthComboIndex: root.periodScope === 1 ? 0 : root.periodMonth - 1
     readonly property var lastCompletePeriod: analyticsViewModel.currentMonthSelection()
-    readonly property bool canNavigateNextMonth: periodYear * 12 + periodMonth < lastCompletePeriod.year * 12 + lastCompletePeriod.month
+    readonly property bool canNavigateNextMonth: root.periodScope === 0 && periodYear * 12 + periodMonth < lastCompletePeriod.year * 12 + lastCompletePeriod.month
 
     readonly property var chartDefinitions: [
-        {
-            "key": "registeredBySector",
-            "title": qsTr("SSAs cadastradas no periodo"),
-            "chartType": "bar"
-        },
-        {
-            "key": "registeredMonthly",
-            "title": qsTr("Historico de cadastradas"),
-            "chartType": "bar"
-        },
         {
             "key": "executedBySector",
             "title": qsTr("SSAs executadas no periodo"),
@@ -41,6 +35,16 @@ Item {
         {
             "key": "executedMonthly",
             "title": qsTr("Historico de executadas"),
+            "chartType": "bar"
+        },
+        {
+            "key": "registeredBySector",
+            "title": qsTr("SSAs cadastradas no periodo"),
+            "chartType": "bar"
+        },
+        {
+            "key": "registeredMonthly",
+            "title": qsTr("Historico de cadastradas"),
             "chartType": "bar"
         },
         {
@@ -74,16 +78,6 @@ Item {
             "chartType": "bar"
         },
         {
-            "key": "issuedByDivision",
-            "title": qsTr("SSAs emitidas"),
-            "chartType": "bar"
-        },
-        {
-            "key": "issuedMonthly",
-            "title": qsTr("Historico de emitidas"),
-            "chartType": "bar"
-        },
-        {
             "key": "pendingDeadlinePercentage",
             "title": qsTr("Prazo das pendentes em percentual"),
             "chartType": "percentStackedBar"
@@ -92,6 +86,16 @@ Item {
             "key": "pendingDeadlineQuantity",
             "title": qsTr("Prazo das pendentes em quantidade"),
             "chartType": "stackedBar"
+        },
+        {
+            "key": "issuedByDivision",
+            "title": qsTr("SSAs emitidas"),
+            "chartType": "bar"
+        },
+        {
+            "key": "issuedMonthly",
+            "title": qsTr("Historico de emitidas"),
+            "chartType": "bar"
         }
     ]
     readonly property int chartCount: chartDefinitions.length
@@ -125,21 +129,23 @@ Item {
         return root.analyticsViewModel.requestDashboard(root.dashboardSelection());
     }
 
-    function applyPeriod(period) {
+    function applyPeriod(period, scope) {
+        root.periodScope = scope === undefined ? 0 : scope;
         root.periodYear = period.year;
         root.periodMonth = period.month;
         root.reportFirstYear = period.firstYear;
         root.reportFirstWeek = period.firstWeek;
         root.reportLastYear = period.lastYear;
         root.reportLastWeek = period.lastWeek;
+        root.queueDashboardRefresh();
     }
 
     function applyCalendarMonth(year, month) {
         if (year * 12 + month > root.lastCompletePeriod.year * 12 + root.lastCompletePeriod.month) {
-            root.applyPeriod(root.lastCompletePeriod);
+            root.applyPeriod(root.lastCompletePeriod, 0);
             return;
         }
-        root.applyPeriod(root.analyticsViewModel.calendarMonthSelection(year, month));
+        root.applyPeriod(root.analyticsViewModel.calendarMonthSelection(year, month), 0);
     }
 
     function previousMonth() {
@@ -155,7 +161,15 @@ Item {
     }
 
     function useCurrentMonth() {
-        root.applyPeriod(root.analyticsViewModel.currentMonthSelection());
+        root.applyPeriod(root.analyticsViewModel.currentMonthSelection(), 0);
+    }
+
+    function applyYearToDate() {
+        root.applyPeriod(root.analyticsViewModel.yearToDateSelection(), 1);
+    }
+
+    function applyIsoMonth() {
+        root.applyPeriod(root.analyticsViewModel.currentIsoMonthSelection(), 2);
     }
 
     function queueDashboardRefresh() {
@@ -267,8 +281,9 @@ Item {
                         }
                         AppComboBox {
                             Layout.preferredWidth: 150
-                            model: [qsTr("Janeiro"), qsTr("Fevereiro"), qsTr("Marco"), qsTr("Abril"), qsTr("Maio"), qsTr("Junho"), qsTr("Julho"), qsTr("Agosto"), qsTr("Setembro"), qsTr("Outubro"), qsTr("Novembro"), qsTr("Dezembro")]
-                            currentIndex: root.periodMonth - 1
+                            model: root.monthModel
+                            currentIndex: root.monthComboIndex
+                            enabled: root.periodScope !== 1
                             onActivated: root.applyCalendarMonth(root.periodYear, currentIndex + 1)
                         }
                         AppSpinBox {
@@ -290,6 +305,18 @@ Item {
                             Layout.preferredWidth: 160
                             text: qsTr("Ultimo mes completo")
                             onClicked: root.useCurrentMonth()
+                        }
+                        ActionButton {
+                            objectName: "analyticsDashboardYearToDate"
+                            Layout.preferredWidth: 140
+                            text: qsTr("Ano ate agora")
+                            onClicked: root.applyYearToDate()
+                        }
+                        ActionButton {
+                            objectName: "analyticsDashboardIsoMonth"
+                            Layout.preferredWidth: 160
+                            text: qsTr("Mes ISO completo")
+                            onClicked: root.applyIsoMonth()
                         }
                         Item {
                             Layout.fillWidth: true
@@ -316,7 +343,11 @@ Item {
                             locale: Qt.locale("C")
                             value: root.reportFirstYear
                             editable: true
-                            onValueModified: root.reportFirstYear = value
+                            onValueModified: {
+                                root.reportFirstYear = value;
+                                root.periodScope = 0;
+                                root.queueDashboardRefresh();
+                            }
                         }
                         Label {
                             text: qsTr("Semana inicial")
@@ -328,7 +359,11 @@ Item {
                             to: 53
                             value: root.reportFirstWeek
                             editable: true
-                            onValueModified: root.reportFirstWeek = value
+                            onValueModified: {
+                                root.reportFirstWeek = value;
+                                root.periodScope = 0;
+                                root.queueDashboardRefresh();
+                            }
                         }
                         Label {
                             text: qsTr("Ano final")
@@ -341,7 +376,11 @@ Item {
                             locale: Qt.locale("C")
                             value: root.reportLastYear
                             editable: true
-                            onValueModified: root.reportLastYear = value
+                            onValueModified: {
+                                root.reportLastYear = value;
+                                root.periodScope = 0;
+                                root.queueDashboardRefresh();
+                            }
                         }
                         Label {
                             text: qsTr("Semana final")
@@ -353,7 +392,11 @@ Item {
                             to: 53
                             value: root.reportLastWeek
                             editable: true
-                            onValueModified: root.reportLastWeek = value
+                            onValueModified: {
+                                root.reportLastWeek = value;
+                                root.periodScope = 0;
+                                root.queueDashboardRefresh();
+                            }
                         }
                         Label {
                             text: qsTr("Janela de alerta em dias")

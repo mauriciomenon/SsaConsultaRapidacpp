@@ -1,4 +1,5 @@
 #include <QCoreApplication>
+#include <QDate>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -94,7 +95,7 @@ namespace {
              QVariantList{QVariantMap{{QStringLiteral("name"), seriesName},
                                       {QStringLiteral("values"), QVariantList{3.0}},
                                       {QStringLiteral("trendValues"), QVariantList{}}}}},
-            {QStringLiteral("subtitle"), QStringLiteral("Semana observada: 2026-W26")},
+            {QStringLiteral("subtitle"), QStringLiteral("Semana observada: 202626")},
             {QStringLiteral("qualityText"), QString{}},
             {QStringLiteral("available"), true},
         };
@@ -102,7 +103,7 @@ namespace {
 
     [[nodiscard]] QVariantMap deadlineModel() {
         return {
-            {QStringLiteral("categories"), QStringList{QStringLiteral("2026-W26")}},
+            {QStringLiteral("categories"), QStringList{QStringLiteral("202626")}},
             {QStringLiteral("series"),
              QVariantList{
                  QVariantMap{{QStringLiteral("name"), QStringLiteral("on_time")},
@@ -112,7 +113,7 @@ namespace {
                  QVariantMap{{QStringLiteral("name"), QStringLiteral("overdue")},
                              {QStringLiteral("values"), QVariantList{1.0}}},
              }},
-            {QStringLiteral("subtitle"), QStringLiteral("Semana observada: 2026-W26")},
+            {QStringLiteral("subtitle"), QStringLiteral("Semana observada: 202626")},
             {QStringLiteral("qualityText"), QStringLiteral("3 itens fora do denominador")},
             {QStringLiteral("available"), true},
         };
@@ -205,6 +206,87 @@ namespace {
                         {QStringLiteral("lastYear"), 2027},  {QStringLiteral("lastWeek"), 5}};
             }
             return currentMonthSelection();
+        }
+
+        Q_INVOKABLE QVariantMap yearToDateSelection() const {
+            const QDate today = QDate::currentDate();
+            int isoYear = 0;
+            const int isoWeek = today.weekNumber(&isoYear);
+            return {
+                {QStringLiteral("year"), isoYear}, {QStringLiteral("month"), 0},
+                {QStringLiteral("firstYear"), isoYear}, {QStringLiteral("firstWeek"), 1},
+                {QStringLiteral("lastYear"), isoYear},  {QStringLiteral("lastWeek"), isoWeek}};
+        }
+
+        Q_INVOKABLE QVariantMap currentIsoWeekSelection() const {
+            const QDate today = QDate::currentDate();
+            int isoYear = 0;
+            const int isoWeek = today.weekNumber(&isoYear);
+            return {{QStringLiteral("year"), today.year()},
+                    {QStringLiteral("month"), today.month()},
+                    {QStringLiteral("firstYear"), isoYear},
+                    {QStringLiteral("firstWeek"), isoWeek},
+                    {QStringLiteral("lastYear"), isoYear},
+                    {QStringLiteral("lastWeek"), isoWeek}};
+        }
+
+        Q_INVOKABLE QVariantMap currentIsoMonthSelection() const {
+            const QDate month = QDate::currentDate().addMonths(-1);
+            return {{QStringLiteral("year"), month.year()},
+                    {QStringLiteral("month"), month.month()},
+                    {QStringLiteral("firstYear"), month.year()},
+                    {QStringLiteral("firstWeek"), 1},
+                    {QStringLiteral("lastYear"), month.year()},
+                    {QStringLiteral("lastWeek"), 4}};
+        }
+
+        Q_INVOKABLE void clearCustomSeries() {
+            if (customSeries_.isEmpty()) {
+                return;
+            }
+            customSeries_.clear();
+            emit customSeriesChanged();
+        }
+
+        Q_INVOKABLE QString customChartTitle(const QVariantMap& selection) const {
+            const int metric = selection.value(QStringLiteral("metric"), 0).toInt();
+            const int breakdown = selection.value(QStringLiteral("breakdown"), 0).toInt();
+            const int personRole = selection.value(QStringLiteral("personRole"), 2).toInt();
+            static const QStringList metrics{QStringLiteral("SSAs cadastradas"),
+                                             QStringLiteral("SSAs executadas")};
+            static const QStringList breakdowns{
+                QStringLiteral("Divisao"), QStringLiteral("Divisao e setor"),
+                QStringLiteral("Divisao e pessoa"), QStringLiteral("Setor e pessoa")};
+            static const QStringList roles{QStringLiteral("Solicitante"),
+                                           QStringLiteral("Planejamento/programacao"),
+                                           QStringLiteral("Execucao")};
+            const QString firstWeek = QStringLiteral("%1-W%2")
+                                          .arg(selection.value(QStringLiteral("firstYear")).toInt())
+                                          .arg(selection.value(QStringLiteral("firstWeek")).toInt(),
+                                               2, 10, QChar('0'));
+            const QString lastWeek = QStringLiteral("%1-W%2")
+                                         .arg(selection.value(QStringLiteral("lastYear")).toInt())
+                                         .arg(selection.value(QStringLiteral("lastWeek")).toInt(),
+                                              2, 10, QChar('0'));
+            const QString period = firstWeek == lastWeek
+                                       ? firstWeek
+                                       : QStringLiteral("de %1 a %2").arg(firstWeek, lastWeek);
+            return QStringLiteral("%1 %2 em %3 (%4)")
+                .arg(metrics.value(metric), period, breakdowns.value(breakdown),
+                     roles.value(personRole));
+        }
+
+        Q_INVOKABLE bool writeExportFile(const QString& path, const QString& content) const {
+            QFile file(path);
+            if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
+                return false;
+            }
+            return file.write(content.toUtf8()) >= 0;
+        }
+
+        void publishDimensionValues(const QVariantMap& values) {
+            dimensionValues_ = values;
+            emit dimensionValuesChanged();
         }
 
         Q_INVOKABLE bool requestCustomSeries(const QVariantMap& selection) {
@@ -544,12 +626,162 @@ namespace {
             QVERIFY(dashboard != nullptr);
             QVERIFY(custom != nullptr);
 
+            viewModel.completeWarningLoad(14);
+            QTRY_COMPARE_WITH_TIMEOUT(viewModel.dashboardRequestCount(), 1, 1000);
+
             QVERIFY(invoke(*dashboard, "previousMonth"));
             QCOMPARE(dashboard->property("reportFirstWeek").toInt(), 23);
             QCOMPARE(dashboard->property("reportLastWeek").toInt(), 27);
+            QTRY_COMPARE_WITH_TIMEOUT(viewModel.dashboardRequestCount(), 2, 1000);
+
+            QVERIFY(invoke(*object, "selectTab", 1));
+            QTRY_COMPARE_WITH_TIMEOUT(viewModel.dimensionRequestCount(), 1, 1000);
+            const int dimensionBaseline = viewModel.dimensionRequestCount();
+
             QVERIFY(invoke(*custom, "previousMonth"));
             QCOMPARE(custom->property("firstWeek").toInt(), 23);
             QCOMPARE(custom->property("lastWeek").toInt(), 27);
+            QTRY_COMPARE_WITH_TIMEOUT(viewModel.dimensionRequestCount(), dimensionBaseline + 1,
+                                      1000);
+            QVERIFY(viewModel.customSeries().isEmpty());
+        }
+
+        void h1_dashboard_previous_month_queues_dashboard_refresh() {
+            QQmlEngine engine;
+            FakeAnalyticsViewModel viewModel;
+            QString error;
+            auto object = loadWindow(engine, viewModel, error);
+            QVERIFY2(object != nullptr, qPrintable(error));
+            auto* dashboard = object->findChild<QObject*>(QStringLiteral("analyticsDashboard"));
+            QVERIFY(dashboard != nullptr);
+
+            viewModel.completeWarningLoad(14);
+            QTRY_COMPARE_WITH_TIMEOUT(viewModel.dashboardRequestCount(), 1, 1000);
+            const int baseline = viewModel.dashboardRequestCount();
+
+            QVERIFY(invoke(*dashboard, "previousMonth"));
+            QTRY_COMPARE_WITH_TIMEOUT(viewModel.dashboardRequestCount(), baseline + 1, 1000);
+        }
+
+        void h2_custom_first_week_edit_refreshes_dimensions() {
+            QQmlEngine engine;
+            FakeAnalyticsViewModel viewModel;
+            QString error;
+            auto object = loadWindow(engine, viewModel, error);
+            QVERIFY2(object != nullptr, qPrintable(error));
+            auto* custom = object->findChild<QObject*>(QStringLiteral("analyticsCustomAnalysis"));
+            QVERIFY(custom != nullptr);
+
+            QVERIFY(invoke(*object, "selectTab", 1));
+            QTRY_COMPARE_WITH_TIMEOUT(viewModel.dimensionRequestCount(), 1, 1000);
+            const int baseline = viewModel.dimensionRequestCount();
+
+            QVERIFY(invoke(*custom, "notifyFirstWeekEdited", QVariant(20)));
+            QTRY_COMPARE_WITH_TIMEOUT(viewModel.dimensionRequestCount(), baseline + 1, 1000);
+        }
+
+        void h3_custom_period_change_clears_stale_chart_series() {
+            QQmlEngine engine;
+            FakeAnalyticsViewModel viewModel;
+            QString error;
+            auto object = loadWindow(engine, viewModel, error);
+            QVERIFY2(object != nullptr, qPrintable(error));
+            auto* custom = object->findChild<QObject*>(QStringLiteral("analyticsCustomAnalysis"));
+            QVERIFY(custom != nullptr);
+
+            QVERIFY(invoke(*object, "selectTab", 1));
+            QVERIFY(!viewModel.customSeries().isEmpty());
+
+            QVERIFY(invoke(*custom, "notifyFirstWeekEdited", QVariant(20)));
+            QTRY_VERIFY_WITH_TIMEOUT(viewModel.customSeries().isEmpty(), 1000);
+        }
+
+        void h4_select_all_divisions_selects_every_option() {
+            QQmlEngine engine;
+            FakeAnalyticsViewModel viewModel;
+            QString error;
+            auto object = loadWindow(engine, viewModel, error);
+            QVERIFY2(object != nullptr, qPrintable(error));
+            auto* custom = object->findChild<QObject*>(QStringLiteral("analyticsCustomAnalysis"));
+            QVERIFY(custom != nullptr);
+
+            QVERIFY(invoke(*object, "selectTab", 1));
+            QTRY_COMPARE_WITH_TIMEOUT(viewModel.dimensionRequestCount(), 1, 1000);
+
+            QVERIFY(invoke(*custom, "selectAllDivisions"));
+            const auto divisions =
+                viewModel.dimensionValues().value(QStringLiteral("divisions")).toStringList();
+            QCOMPARE(custom->property("selectedDivisions").toStringList(), divisions);
+            QCOMPARE(custom->property("selectedDivisions").toStringList().size(), divisions.size());
+        }
+
+        void h5_year_to_date_preset_arms_period_and_analysis_request() {
+            QQmlEngine engine;
+            FakeAnalyticsViewModel viewModel;
+            QString error;
+            auto object = loadWindow(engine, viewModel, error);
+            QVERIFY2(object != nullptr, qPrintable(error));
+            auto* custom = object->findChild<QObject*>(QStringLiteral("analyticsCustomAnalysis"));
+            QVERIFY(custom != nullptr);
+
+            const QVariantMap ytd = viewModel.yearToDateSelection();
+            QVERIFY(invoke(*object, "selectTab", 1));
+            QTRY_COMPARE_WITH_TIMEOUT(viewModel.dimensionRequestCount(), 1, 1000);
+
+            QVERIFY(invoke(*custom, "applyYearToDate"));
+            QCOMPARE(custom->property("firstWeek").toInt(), 1);
+            QCOMPARE(custom->property("lastWeek").toInt(),
+                     ytd.value(QStringLiteral("lastWeek")).toInt());
+
+            QVERIFY(invoke(*custom, "runAnalysis"));
+            QCOMPARE(viewModel.customRequestCount(), 1);
+            QCOMPARE(viewModel.lastCustomSelection().value(QStringLiteral("firstWeek")).toInt(), 1);
+            QCOMPARE(viewModel.lastCustomSelection().value(QStringLiteral("lastWeek")).toInt(),
+                     ytd.value(QStringLiteral("lastWeek")).toInt());
+        }
+
+        void h6_dimension_refresh_prunes_removed_division_selections() {
+            QQmlEngine engine;
+            FakeAnalyticsViewModel viewModel;
+            QString error;
+            auto object = loadWindow(engine, viewModel, error);
+            QVERIFY2(object != nullptr, qPrintable(error));
+            auto* custom = object->findChild<QObject*>(QStringLiteral("analyticsCustomAnalysis"));
+            QVERIFY(custom != nullptr);
+
+            QVERIFY(invoke(*object, "selectTab", 1));
+            QTRY_COMPARE_WITH_TIMEOUT(viewModel.dimensionRequestCount(), 1, 1000);
+            QVERIFY(invoke(*custom, "selectDivision", QStringLiteral("SMI")));
+            QCOMPARE(custom->property("selectedDivisions").toStringList(),
+                     QStringList{QStringLiteral("SMI")});
+
+            viewModel.publishDimensionValues(
+                {{QStringLiteral("divisions"),
+                  QStringList{QStringLiteral("SMM"), QStringLiteral("IEE")}},
+                 {QStringLiteral("sectors"),
+                  QStringList{QStringLiteral("SMIN"), QStringLiteral("SMIT"),
+                              QStringLiteral("IEE1")}},
+                 {QStringLiteral("people"),
+                  QStringList{QStringLiteral("Ana"), QStringLiteral("Bruno")}}});
+            QTRY_VERIFY_WITH_TIMEOUT(custom->property("selectedDivisions").toStringList().isEmpty(),
+                                     1000);
+        }
+
+        void h7_custom_grain_change_clears_stale_chart_series() {
+            QQmlEngine engine;
+            FakeAnalyticsViewModel viewModel;
+            QString error;
+            auto object = loadWindow(engine, viewModel, error);
+            QVERIFY2(object != nullptr, qPrintable(error));
+            auto* custom = object->findChild<QObject*>(QStringLiteral("analyticsCustomAnalysis"));
+            QVERIFY(custom != nullptr);
+
+            QVERIFY(invoke(*object, "selectTab", 1));
+            QVERIFY(!viewModel.customSeries().isEmpty());
+
+            QVERIFY(invoke(*custom, "runAnalysis"));
+            QVERIFY(invoke(*custom, "setGrainIndex", QVariant(1)));
+            QTRY_VERIFY_WITH_TIMEOUT(viewModel.customSeries().isEmpty(), 1000);
         }
 
         void monthly_navigation_rejects_months_after_last_complete_month() {
@@ -813,6 +1045,114 @@ namespace {
             QVERIFY(viewModel.dimensionRequestCount() >= 1);
         }
 
+        void executed_by_person_preset_auto_runs_custom_analysis() {
+            QQmlEngine engine;
+            FakeAnalyticsViewModel viewModel;
+            QString error;
+            auto object = loadWindow(engine, viewModel, error);
+            QVERIFY2(object != nullptr, qPrintable(error));
+            auto* window = qobject_cast<QQuickWindow*>(object.get());
+            QVERIFY(window != nullptr);
+            auto* button = findVisualChild(*window->contentItem(),
+                                           QStringLiteral("analyticsOverdueByArea"));
+            QVERIFY(button != nullptr);
+            QVERIFY(invoke(*object, "selectTab", 1));
+            viewModel.completeWarningLoad(14);
+
+            const int requestsBefore = viewModel.customRequestCount();
+            const QPoint clickPoint =
+                button->mapToScene(QPointF(button->width() / 2, button->height() / 2)).toPoint();
+            QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, clickPoint);
+
+            QTRY_VERIFY_WITH_TIMEOUT(viewModel.customRequestCount() > requestsBefore, 1000);
+        }
+
+        void custom_tab_defaults_to_executed_metric() {
+            QQmlEngine engine;
+            FakeAnalyticsViewModel viewModel;
+            QString error;
+            auto object = loadWindow(engine, viewModel, error);
+            QVERIFY2(object != nullptr, qPrintable(error));
+            auto* custom = object->findChild<QObject*>(QStringLiteral("analyticsCustomAnalysis"));
+            QVERIFY(custom != nullptr);
+            QVERIFY(invoke(*object, "selectTab", 1));
+
+            QCOMPARE(custom->property("metricIndex").toInt(), 1);
+        }
+
+        void executed_by_sector_week_preset_auto_runs_with_current_iso_week() {
+            QQmlEngine engine;
+            FakeAnalyticsViewModel viewModel;
+            QString error;
+            auto object = loadWindow(engine, viewModel, error);
+            QVERIFY2(object != nullptr, qPrintable(error));
+            auto* window = qobject_cast<QQuickWindow*>(object.get());
+            QVERIFY(window != nullptr);
+            window->setGeometry(0, 0, 1280, 760);
+            auto* button = findVisualChild(*window->contentItem(),
+                                           QStringLiteral("analyticsExecutedBySectorWeek"));
+            QVERIFY(button != nullptr);
+            QVERIFY(invoke(*object, "selectTab", 1));
+            window->show();
+            QVERIFY(waitForRenderedFrames(*window));
+
+            const int requestsBefore = viewModel.customRequestCount();
+            const QPoint clickPoint =
+                button->mapToScene(QPointF(button->width() / 2, button->height() / 2)).toPoint();
+            QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, clickPoint);
+
+            QTRY_VERIFY_WITH_TIMEOUT(viewModel.customRequestCount() > requestsBefore, 1000);
+            const QVariantMap selection = viewModel.lastCustomSelection();
+            QCOMPARE(selection.value(QStringLiteral("metric")).toInt(), 1);
+            QCOMPARE(selection.value(QStringLiteral("breakdown")).toInt(), 1);
+            const QVariantMap isoWeek = viewModel.currentIsoWeekSelection();
+            QCOMPARE(selection.value(QStringLiteral("firstYear")).toInt(),
+                     isoWeek.value(QStringLiteral("firstYear")).toInt());
+            QCOMPARE(selection.value(QStringLiteral("firstWeek")).toInt(),
+                     isoWeek.value(QStringLiteral("firstWeek")).toInt());
+            QCOMPARE(selection.value(QStringLiteral("lastYear")).toInt(),
+                     isoWeek.value(QStringLiteral("lastYear")).toInt());
+            QCOMPARE(selection.value(QStringLiteral("lastWeek")).toInt(),
+                     isoWeek.value(QStringLiteral("lastWeek")).toInt());
+        }
+
+        void executed_by_sector_month_preset_auto_runs_with_current_iso_month() {
+            QQmlEngine engine;
+            FakeAnalyticsViewModel viewModel;
+            QString error;
+            auto object = loadWindow(engine, viewModel, error);
+            QVERIFY2(object != nullptr, qPrintable(error));
+            auto* window = qobject_cast<QQuickWindow*>(object.get());
+            QVERIFY(window != nullptr);
+            // Month preset sits right of week preset; 1280px clips the click target.
+            window->setGeometry(0, 0, 1580, 760);
+            auto* button = findVisualChild(*window->contentItem(),
+                                           QStringLiteral("analyticsExecutedBySectorMonth"));
+            QVERIFY(button != nullptr);
+            QVERIFY(invoke(*object, "selectTab", 1));
+            window->show();
+            QVERIFY(waitForRenderedFrames(*window));
+
+            const int requestsBefore = viewModel.customRequestCount();
+            const QPoint clickPoint =
+                button->mapToScene(QPointF(button->width() / 2, button->height() / 2)).toPoint();
+            QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, clickPoint);
+
+            QTRY_VERIFY_WITH_TIMEOUT(viewModel.customRequestCount() > requestsBefore, 1000);
+            const QVariantMap selection = viewModel.lastCustomSelection();
+            QCOMPARE(selection.value(QStringLiteral("metric")).toInt(), 1);
+            QCOMPARE(selection.value(QStringLiteral("breakdown")).toInt(), 1);
+            const QVariantMap isoMonth = viewModel.currentIsoMonthSelection();
+            QCOMPARE(selection.value(QStringLiteral("firstYear")).toInt(),
+                     isoMonth.value(QStringLiteral("firstYear")).toInt());
+            QCOMPARE(selection.value(QStringLiteral("firstWeek")).toInt(),
+                     isoMonth.value(QStringLiteral("firstWeek")).toInt());
+            QCOMPARE(selection.value(QStringLiteral("lastYear")).toInt(),
+                     isoMonth.value(QStringLiteral("lastYear")).toInt());
+            QCOMPARE(selection.value(QStringLiteral("lastWeek")).toInt(),
+                     isoMonth.value(QStringLiteral("lastWeek")).toInt());
+        }
+
         void custom_chart_uses_bars_for_periods_and_stacks_deadline_classes() {
             QQmlEngine engine;
             FakeAnalyticsViewModel viewModel;
@@ -834,6 +1174,76 @@ namespace {
             QVERIFY(invoke(*custom, "setMetricIndex", 8));
             QTRY_COMPARE_WITH_TIMEOUT(chart->property("chartType").toString(),
                                       QStringLiteral("stackedBar"), 1000);
+        }
+
+        void custom_chart_title_adapts_to_selection() {
+            QQmlEngine engine;
+            FakeAnalyticsViewModel viewModel;
+            QString error;
+            auto object = loadWindow(engine, viewModel, error);
+            QVERIFY2(object != nullptr, qPrintable(error));
+            auto* custom = object->findChild<QObject*>(QStringLiteral("analyticsCustomAnalysis"));
+            auto* chart = object->findChild<QObject*>(QStringLiteral("customAnalysisChart"));
+            QVERIFY(custom != nullptr);
+            QVERIFY(chart != nullptr);
+            QVERIFY(invoke(*object, "selectTab", 1));
+
+            const QString title = chart->property("title").toString();
+            QVERIFY2(!title.contains(QStringLiteral("Resultado da analise customizada")),
+                     qPrintable(title));
+            QVERIFY(title.contains(QStringLiteral("SSAs executadas")));
+            QVERIFY(title.contains(QStringLiteral("Execucao")));
+        }
+
+        void executed_by_sector_person_preset_configures_and_auto_runs() {
+            QQmlEngine engine;
+            FakeAnalyticsViewModel viewModel;
+            QString error;
+            auto object = loadWindow(engine, viewModel, error);
+            QVERIFY2(object != nullptr, qPrintable(error));
+            auto* custom = object->findChild<QObject*>(QStringLiteral("analyticsCustomAnalysis"));
+            QVERIFY(custom != nullptr);
+            QVERIFY(invoke(*object, "selectTab", 1));
+
+            QVERIFY(invoke(*custom, "configureExecutedBySectorPerson"));
+            QCOMPARE(custom->property("metricIndex").toInt(), 1);
+            QCOMPARE(custom->property("breakdownIndex").toInt(), 3);
+            QCOMPARE(custom->property("personRoleIndex").toInt(), 2);
+            const QVariantMap isoWeek = viewModel.currentIsoWeekSelection();
+            QCOMPARE(custom->property("firstWeek").toInt(),
+                     isoWeek.value(QStringLiteral("firstWeek")).toInt());
+            QCOMPARE(custom->property("lastWeek").toInt(),
+                     isoWeek.value(QStringLiteral("lastWeek")).toInt());
+
+            const int requestsBefore = viewModel.customRequestCount();
+            QVERIFY(invoke(*custom, "selectAllSectors"));
+            QVERIFY(invoke(*custom, "selectAllPeople"));
+            QVERIFY(invoke(*custom, "runAnalysis"));
+            QCOMPARE(viewModel.customRequestCount(), requestsBefore + 1);
+            const QVariantMap selection = viewModel.lastCustomSelection();
+            QCOMPARE(selection.value(QStringLiteral("breakdown")).toInt(), 3);
+            QCOMPARE(selection.value(QStringLiteral("personRole")).toInt(), 2);
+        }
+
+        void custom_chart_exposes_export_actions_when_data_present() {
+            QQmlEngine engine;
+            FakeAnalyticsViewModel viewModel;
+            QString error;
+            auto object = loadWindow(engine, viewModel, error);
+            QVERIFY2(object != nullptr, qPrintable(error));
+            auto* window = qobject_cast<QQuickWindow*>(object.get());
+            QVERIFY(window != nullptr);
+            window->setGeometry(0, 0, 1280, 760);
+            window->show();
+            QVERIFY(waitForRenderedFrames(*window));
+
+            auto* chart = object->findChild<QObject*>(QStringLiteral("customAnalysisChart"));
+            QVERIFY(chart != nullptr);
+            QVERIFY(chart->property("showExportActions").toBool());
+            QVERIFY(findVisualChild(*window->contentItem(),
+                                    QStringLiteral("analyticsChartExportPng")) != nullptr);
+            QVERIFY(findVisualChild(*window->contentItem(),
+                                    QStringLiteral("analyticsChartExportSvg")) != nullptr);
         }
 
         void chart_card_localizes_composite_quality_and_known_unavailability_reasons() {
@@ -884,7 +1294,7 @@ namespace {
                 findVisualChild(*window->contentItem(), QStringLiteral("analyticsChartCard-0"));
 
             QCOMPARE(chart->property("preferredCardHeight").toReal(), 380.0);
-            viewModel.makeDashboardChartUnavailable(QStringLiteral("registeredBySector"));
+            viewModel.makeDashboardChartUnavailable(QStringLiteral("executedBySector"));
             QTRY_COMPARE_WITH_TIMEOUT(chart->property("preferredCardHeight").toReal(), 140.0, 1000);
         }
 

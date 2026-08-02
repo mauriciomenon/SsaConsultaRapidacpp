@@ -26,6 +26,7 @@ namespace ssa::application {
 
     struct AnalyticsChartSeries final {
         std::string name;
+        std::string tag;
         std::vector<std::optional<double>> values;
         std::vector<std::optional<double>> trendValues;
         std::optional<double> total;

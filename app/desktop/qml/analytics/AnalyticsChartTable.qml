@@ -133,7 +133,7 @@ Rectangle {
                             Text {
                                 anchors.fill: parent
                                 anchors.margins: Theme.spacingSm
-                                text: dataRow.modelData.values[valueCell.index]
+                                text: String(dataRow.modelData.values[valueCell.index] ?? "")
                                 textFormat: Text.PlainText
                                 color: Theme.text
                                 font.family: Theme.fontFamily

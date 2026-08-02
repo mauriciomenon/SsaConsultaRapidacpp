@@ -5,6 +5,7 @@
 
 #include <array>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -45,6 +46,14 @@ TEST_CASE("activity analytics builds stable time bucket keys") {
     CHECK(ssa::domain::analyticsBucketKey({2020, 53}, TimeGrain::IsoReferenceMonth) == "2020-12");
 }
 
+TEST_CASE("activity analytics formats compact ISO week labels for UI") {
+    CHECK(ssa::domain::formatIsoYearWeekDisplay(2026, 1) == "202601");
+    CHECK(ssa::domain::formatIsoYearWeekDisplay(2026, 31) == "202631");
+    CHECK(ssa::domain::formatAnalyticsBucketLabel("2026-W01") == "202601");
+    CHECK(ssa::domain::formatAnalyticsBucketLabel("2026-W31") == "202631");
+    CHECK(ssa::domain::formatAnalyticsBucketLabel("2026-07") == "2026-07");
+}
+
 TEST_CASE("activity analytics validates inclusive periods") {
     CHECK(ssa::domain::isValidPeriod({{2020, 53}, {2021, 1}}));
     CHECK_FALSE(ssa::domain::isValidPeriod({{2026, 5}, {2026, 4}}));
@@ -65,6 +74,52 @@ TEST_CASE("activity analytics maps a calendar month to its complete ISO week ran
     CHECK(ssa::domain::calendarMonthPeriod(2026, 7) == AnalyticsPeriod{{2026, 27}, {2026, 31}});
     CHECK(ssa::domain::calendarMonthPeriod(2021, 1) == AnalyticsPeriod{{2020, 53}, {2021, 4}});
     CHECK_THROWS_AS(ssa::domain::calendarMonthPeriod(2026, 13), std::invalid_argument);
+}
+
+TEST_CASE("activity analytics builds person initials tags") {
+    CHECK(ssa::domain::personInitialsTag("Joao Silva Santos") == "JSS");
+    CHECK(ssa::domain::personInitialsTag("Maria") == "M");
+}
+
+TEST_CASE("activity analytics ignores aggregate total tags case-insensitively") {
+    CHECK(ssa::domain::chartSeriesTag("total").empty());
+    CHECK(ssa::domain::chartSeriesTag("Total").empty());
+    CHECK(ssa::domain::chartSeriesTag("TOTAL").empty());
+}
+
+TEST_CASE("activity analytics ISO reference month period differs from calendar month at boundary") {
+    const auto calendar = ssa::domain::calendarMonthPeriod(2021, 1);
+    const auto isoMonth = ssa::domain::isoReferenceMonthPeriod(2021, 1);
+    CHECK(isoMonth != calendar);
+    CHECK(isoMonth.first == IsoWeek{2021, 1});
+    CHECK(isoMonth.last == IsoWeek{2021, 4});
+}
+
+TEST_CASE("activity analytics ISO reference month period terminates at the supported range end") {
+    const auto isoMonth = ssa::domain::isoReferenceMonthPeriod(2999, 12);
+    CHECK(isoMonth.first.year == 2999);
+    CHECK(isoMonth.last.year == 2999);
+    CHECK(isoMonth.first <= isoMonth.last);
+    CHECK_THROWS_AS(ssa::domain::isoReferenceMonthPeriod(3000, 1), std::invalid_argument);
+}
+
+TEST_CASE("activity analytics exposes ISO reference month parts without string parsing") {
+    const auto parts = ssa::domain::isoReferenceMonthParts(IsoWeek{2025, 1});
+    REQUIRE(parts.has_value());
+    CHECK(parts->year == 2025);
+    CHECK(parts->month == 1);
+    CHECK(ssa::domain::isoReferenceMonth(IsoWeek{2025, 1}) == "2025-01");
+    CHECK_FALSE(ssa::domain::isoReferenceMonthParts(IsoWeek{2025, 54}).has_value());
+    CHECK_FALSE(ssa::domain::isoReferenceMonthParts(IsoWeek{3000, 1}).has_value());
+}
+
+TEST_CASE("activity analytics year-to-date uses ISO reference month at year boundary") {
+    const auto selection = ssa::domain::yearToDateCalendarSelection("2024-12-31");
+    REQUIRE(selection.has_value());
+    CHECK(selection->year == 2025);
+    CHECK(selection->month == 1);
+    CHECK(selection->first == IsoWeek{2025, 1});
+    CHECK(selection->last == IsoWeek{2025, 1});
 }
 
 TEST_CASE("activity analytics calculates an ordinary least squares trend") {

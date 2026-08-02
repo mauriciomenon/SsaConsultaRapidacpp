@@ -59,6 +59,36 @@ TestCase {
     }
 
     Component {
+        id: taggedStackedBarComponent
+
+        StackedBarChart {
+            categories: ["SEE"]
+            series: [
+                {
+                    "name": "Joao Silva Santos",
+                    "tag": "JSS",
+                    "values": [1]
+                },
+                {
+                    "name": "Maria",
+                    "tag": "M",
+                    "values": [0]
+                },
+                {
+                    "name": "IEE2",
+                    "tag": "IEE2",
+                    "values": [0]
+                },
+                {
+                    "name": "Ana Costa",
+                    "tag": "AC",
+                    "values": [0]
+                }
+            ]
+        }
+    }
+
+    Component {
         id: percentBarComponent
 
         PercentStackedBarChart {
@@ -71,6 +101,22 @@ TestCase {
                 {
                     "name": "Alerta",
                     "values": [75]
+                }
+            ]
+        }
+    }
+
+    Component {
+        id: totalOnlyBarComponent
+
+        SimpleBarChart {
+            categories: ["Ana", "Bruno"]
+            series: [
+                {
+                    "key": "total",
+                    "name": "Total",
+                    "tag": "",
+                    "values": [1, 2]
                 }
             ]
         }
@@ -115,6 +161,15 @@ TestCase {
         compare(item.categoryTotal(1), 3);
     }
 
+    function test_stacked_bars_expose_series_tags_for_harness() {
+        const item = createChart(taggedStackedBarComponent);
+
+        compare(item.tagTextFor(0), "JSS");
+        compare(item.tagTextFor(1), "M");
+        compare(item.tagTextFor(2), "IEE2");
+        compare(item.tagTextFor(3), "AC");
+    }
+
     function test_percent_bars_use_fixed_scale_and_normalized_values() {
         const item = createChart(percentBarComponent);
 
@@ -123,6 +178,29 @@ TestCase {
         compare(item.axisMaximum, 100);
         compare(item.normalizedValue(0, 0), 25);
         compare(item.normalizedValue(0, 1), 75);
+    }
+
+    function test_single_total_series_hides_tags() {
+        const item = createChart(totalOnlyBarComponent);
+
+        compare(item.tagTextFor(0), "");
+    }
+
+    function test_chart_exposes_png_and_svg_export_invokables() {
+        const item = createChart(simpleBarComponent);
+
+        compare(typeof item.savePng, "function");
+        compare(typeof item.saveSvg, "function");
+    }
+
+    function test_export_path_decodes_dialog_urls() {
+        const item = createChart(simpleBarComponent);
+
+        compare(item.localExportPath("file:///C:/Users/ana/Meus%20Graficos/ssa.png"),
+                "C:/Users/ana/Meus Graficos/ssa.png");
+        compare(item.localExportPath("file:///home/ana/ssa%20chart.png"),
+                "/home/ana/ssa chart.png");
+        compare(item.localExportPath(""), "");
     }
 
     function test_line_chart_uses_automatic_scale_and_keeps_gap() {

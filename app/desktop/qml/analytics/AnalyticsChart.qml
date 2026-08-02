@@ -20,10 +20,17 @@ Rectangle {
     property string missingValueText: qsTr("Sem dado")
     property string emptyMessage: qsTr("Sem dados disponiveis para o periodo selecionado")
     property bool showValueLabels: true
+    property bool showSeriesTags: true
     property bool showTableToggle: true
+    property bool showExportActions: false
     property bool tableVisible: false
     property bool compact: false
     property int axisTickCount: 5
+    property var fileWriter: null
+
+    signal exportFinished(bool success)
+    signal exportPngRequested()
+    signal exportSvgRequested()
 
     readonly property bool hasData: chartCanvas.hasData
     readonly property real axisMinimum: chartCanvas.axisMinimum
@@ -55,6 +62,72 @@ Rectangle {
 
     function refresh() {
         chartCanvas.refresh();
+    }
+
+    function tagTextFor(seriesIndex) {
+        return chartCanvas.tagTextFor(seriesIndex);
+    }
+
+    function localExportPath(fileUrl) {
+        if (fileUrl === null || fileUrl === undefined)
+            return "";
+        const text = String(fileUrl);
+        if (!text.startsWith("file:"))
+            return text;
+        // QML exposes url values as strings, so the local path has to be rebuilt here:
+        // file:///C:/dir keeps the drive letter, file://host/share keeps the UNC prefix
+        // and percent escapes must be decoded before reaching saveToFile.
+        const path = text.startsWith("file:///") ? text.slice(7) : text.slice(5);
+        const decoded = decodeURIComponent(path);
+        return /^\/[A-Za-z]:/.test(decoded) ? decoded.slice(1) : decoded;
+    }
+
+    function savePng(fileUrl) {
+        if (root.compact || !root.hasData) {
+            root.exportFinished(false);
+            return;
+        }
+        const localPath = root.localExportPath(fileUrl);
+        if (localPath.length === 0) {
+            root.exportFinished(false);
+            return;
+        }
+        const grabbed = root.grabToImage(result => {
+            root.exportFinished(!result.image.isNull() && result.saveToFile(localPath));
+        });
+        if (!grabbed)
+            root.exportFinished(false);
+    }
+
+    function saveSvg(fileUrl) {
+        if (root.compact || !root.hasData) {
+            root.exportFinished(false);
+            return;
+        }
+        const localPath = root.localExportPath(fileUrl);
+        if (localPath.length === 0) {
+            root.exportFinished(false);
+            return;
+        }
+        const grabbed = root.grabToImage(result => {
+            if (result.image.isNull()) {
+                root.exportFinished(false);
+                return;
+            }
+            const buffer = result.image.toDataURL("image/png");
+            const comma = buffer.indexOf(",");
+            const payload = comma >= 0 ? buffer.slice(comma + 1) : buffer;
+            const svg = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" +
+                        "<svg xmlns=\"http://www.w3.org/2000/svg\" " +
+                        "xmlns:xlink=\"http://www.w3.org/1999/xlink\" " +
+                        "width=\"" + result.image.width + "\" height=\"" + result.image.height + "\">" +
+                        "<image width=\"" + result.image.width + "\" height=\"" + result.image.height + "\" " +
+                        "xlink:href=\"data:image/png;base64," + payload + "\"/></svg>";
+            const wrote = typeof root.fileWriter === "function" ? root.fileWriter(localPath, svg) : false;
+            root.exportFinished(wrote);
+        });
+        if (!grabbed)
+            root.exportFinished(false);
     }
 
     implicitWidth: 520
@@ -133,6 +206,7 @@ Rectangle {
                 yAxisTitle: root.yAxisTitle
                 valueSuffix: root.valueSuffix
                 showValueLabels: root.showValueLabels
+                showSeriesTags: root.showSeriesTags
                 tickCount: root.axisTickCount
 
                 onHovered: (categoryIndex, seriesIndex, pointerX, pointerY) => {
@@ -170,31 +244,100 @@ Rectangle {
             entries: root.legendEntries
         }
 
-        Button {
-            id: tableButton
+        RowLayout {
+            Layout.fillWidth: true
+            visible: !root.compact && ((root.showExportActions && root.hasData) ||
+                                       (root.showTableToggle && root.tableRows.length > 0))
+            spacing: Theme.gap
 
-            Layout.alignment: Qt.AlignRight
-            visible: !root.compact && root.showTableToggle && root.tableRows.length > 0
-            text: root.tableVisible ? qsTr("Ocultar tabela") : qsTr("Mostrar tabela")
-            flat: true
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSizeCaption
-            Accessible.name: text
-            onClicked: root.tableVisible = !root.tableVisible
-
-            contentItem: Text {
-                text: tableButton.text
-                textFormat: Text.PlainText
-                color: Theme.readableText(tableButton.hovered ? Theme.surface : Theme.panel, Theme.link)
-                font: tableButton.font
-                horizontalAlignment: Text.AlignHCenter
-                verticalAlignment: Text.AlignVCenter
+            Item {
+                Layout.fillWidth: true
             }
 
-            background: Rectangle {
-                color: tableButton.hovered ? Theme.surface : "transparent"
-                border.color: tableButton.activeFocus ? Theme.accent : "transparent"
-                radius: Theme.radius
+            Button {
+                id: exportPngButton
+
+                objectName: "analyticsChartExportPng"
+                visible: root.showExportActions && root.hasData
+                text: qsTr("Exportar PNG")
+                flat: true
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontSizeCaption
+                Accessible.name: text
+                onClicked: root.exportPngRequested()
+
+                contentItem: Text {
+                    text: exportPngButton.text
+                    textFormat: Text.PlainText
+                    color: Theme.readableText(exportPngButton.hovered ? Theme.surface : Theme.panel, Theme.link)
+                    font: exportPngButton.font
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                }
+
+                background: Rectangle {
+                    color: exportPngButton.hovered ? Theme.surface : "transparent"
+                    border.color: exportPngButton.activeFocus ? Theme.accent : "transparent"
+                    radius: Theme.radius
+                }
+            }
+
+            Button {
+                id: exportSvgButton
+
+                objectName: "analyticsChartExportSvg"
+                visible: root.showExportActions && root.hasData
+                text: qsTr("Exportar SVG")
+                flat: true
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontSizeCaption
+                Accessible.name: text
+                Accessible.description: ToolTip.text
+                ToolTip.visible: hovered
+                ToolTip.text: qsTr("SVG com a imagem do grafico embutida (raster, nao vetorial)")
+                onClicked: root.exportSvgRequested()
+
+                contentItem: Text {
+                    text: exportSvgButton.text
+                    textFormat: Text.PlainText
+                    color: Theme.readableText(exportSvgButton.hovered ? Theme.surface : Theme.panel, Theme.link)
+                    font: exportSvgButton.font
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                }
+
+                background: Rectangle {
+                    color: exportSvgButton.hovered ? Theme.surface : "transparent"
+                    border.color: exportSvgButton.activeFocus ? Theme.accent : "transparent"
+                    radius: Theme.radius
+                }
+            }
+
+            Button {
+                id: tableButton
+
+                visible: root.showTableToggle && root.tableRows.length > 0
+                text: root.tableVisible ? qsTr("Ocultar tabela") : qsTr("Mostrar tabela")
+                flat: true
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontSizeCaption
+                Accessible.name: text
+                onClicked: root.tableVisible = !root.tableVisible
+
+                contentItem: Text {
+                    text: tableButton.text
+                    textFormat: Text.PlainText
+                    color: Theme.readableText(tableButton.hovered ? Theme.surface : Theme.panel, Theme.link)
+                    font: tableButton.font
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                }
+
+                background: Rectangle {
+                    color: tableButton.hovered ? Theme.surface : "transparent"
+                    border.color: tableButton.activeFocus ? Theme.accent : "transparent"
+                    radius: Theme.radius
+                }
             }
         }
 

@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Dialogs
 import QtQuick.Layouts
 import SsaConsultaRapida
 
@@ -18,22 +19,29 @@ Item {
     property int lastWeek: initialPeriod.lastWeek
     property int periodYear: initialPeriod.year
     property int periodMonth: initialPeriod.month
+    property int periodScope: 0
     property bool active: false
     property var selectedDivisions: []
     property var selectedSectors: []
     property var selectedPeople: []
     property bool initialDimensionsRequested: false
+    property bool metricInitialized: false
 
     readonly property int metricIndex: metricCombo.currentIndex
     readonly property int grainIndex: grainCombo.currentIndex
     readonly property int breakdownIndex: breakdownCombo.currentIndex
     readonly property int personRoleIndex: roleCombo.currentIndex
+    readonly property int categorySortIndex: sortCombo.currentIndex
+    readonly property string chartTitle: root.analyticsViewModel.customChartTitle(root.requestSelection())
     readonly property bool requiresExplicitPeople: breakdownIndex === 2 || breakdownIndex === 3
     readonly property bool requiresWarning: metricIndex === 8
     readonly property bool hasWarning: warningValue() !== undefined
     readonly property bool canAnalyze: !analyticsViewModel.loading && (!requiresExplicitPeople || selectedPeople.length > 0) && (!requiresWarning || hasWarning)
+    readonly property var monthNames: [qsTr("Janeiro"), qsTr("Fevereiro"), qsTr("Marco"), qsTr("Abril"), qsTr("Maio"), qsTr("Junho"), qsTr("Julho"), qsTr("Agosto"), qsTr("Setembro"), qsTr("Outubro"), qsTr("Novembro"), qsTr("Dezembro")]
+    readonly property var monthModel: root.periodScope === 1 ? [qsTr("Todos")] : root.monthNames
+    readonly property int monthComboIndex: root.periodScope === 1 ? 0 : root.periodMonth - 1
     readonly property var lastCompletePeriod: analyticsViewModel.currentMonthSelection()
-    readonly property bool canNavigateNextMonth: periodYear * 12 + periodMonth < lastCompletePeriod.year * 12 + lastCompletePeriod.month
+    readonly property bool canNavigateNextMonth: root.periodScope === 0 && periodYear * 12 + periodMonth < lastCompletePeriod.year * 12 + lastCompletePeriod.month
 
     component SelectionOption: Rectangle {
         id: selectionOption
@@ -125,7 +133,8 @@ Item {
             "personRole": root.personRoleIndex,
             "divisions": root.selectedDivisions,
             "sectors": root.selectedSectors,
-            "people": root.requiresExplicitPeople ? root.selectedPeople : []
+            "people": root.requiresExplicitPeople ? root.selectedPeople : [],
+            "categorySort": root.categorySortIndex
         };
         const warning = root.warningValue();
         if (warning !== undefined)
@@ -135,6 +144,22 @@ Item {
 
     function refreshDimensions() {
         return root.analyticsViewModel.requestDimensionValues(root.requestSelection());
+    }
+
+    function invalidateCustomChart() {
+        root.analyticsViewModel.clearCustomSeries();
+    }
+
+    function invalidateCustomAnalysisIfActive() {
+        root.invalidateCustomChart();
+        if (root.active || root.initialDimensionsRequested)
+            return root.refreshDimensions();
+        return true;
+    }
+
+    function invalidateCustomAnalysis() {
+        root.invalidateCustomChart();
+        return root.refreshDimensions();
     }
 
     function runAnalysis() {
@@ -157,26 +182,29 @@ Item {
         root.selectedDivisions = root.toggleValue(root.selectedDivisions, value, true);
         root.selectedSectors = [];
         root.selectedPeople = [];
-        return root.refreshDimensions();
+        return root.invalidateCustomAnalysis();
     }
 
     function selectSector(value) {
         root.selectedSectors = root.toggleValue(root.selectedSectors, value, true);
         root.selectedPeople = [];
-        return root.refreshDimensions();
+        return root.invalidateCustomAnalysis();
     }
 
     function selectPerson(value) {
         root.selectedPeople = root.toggleValue(root.selectedPeople, value, true);
+        root.invalidateCustomChart();
         return true;
     }
 
     function setBreakdownIndex(index) {
         breakdownCombo.currentIndex = index;
+        root.invalidateCustomAnalysis();
     }
 
     function setGrainIndex(index) {
         grainCombo.currentIndex = index;
+        root.invalidateCustomAnalysis();
     }
 
     function changeMetric(index) {
@@ -184,13 +212,13 @@ Item {
         root.selectedDivisions = [];
         root.selectedSectors = [];
         root.selectedPeople = [];
-        return root.refreshDimensions();
+        return root.invalidateCustomAnalysis();
     }
 
     function changePersonRole(index) {
         roleCombo.currentIndex = index;
         root.selectedPeople = [];
-        return root.refreshDimensions();
+        return root.invalidateCustomAnalysis();
     }
 
     function setMetricIndex(index) {
@@ -201,21 +229,27 @@ Item {
         return root.changePersonRole(index);
     }
 
-    function applyPeriod(period) {
+    function applyPeriod(period, scope) {
+        root.periodScope = scope === undefined ? 0 : scope;
         root.periodYear = period.year;
         root.periodMonth = period.month;
         root.firstYear = period.firstYear;
         root.firstWeek = period.firstWeek;
         root.lastYear = period.lastYear;
         root.lastWeek = period.lastWeek;
+        root.onPeriodEdited();
+    }
+
+    function onPeriodEdited() {
+        root.invalidateCustomAnalysisIfActive();
     }
 
     function applyCalendarMonth(year, month) {
         if (year * 12 + month > root.lastCompletePeriod.year * 12 + root.lastCompletePeriod.month) {
-            root.applyPeriod(root.lastCompletePeriod);
+            root.applyPeriod(root.lastCompletePeriod, 0);
             return;
         }
-        root.applyPeriod(root.analyticsViewModel.calendarMonthSelection(year, month));
+        root.applyPeriod(root.analyticsViewModel.calendarMonthSelection(year, month), 0);
     }
 
     function previousMonth() {
@@ -231,7 +265,61 @@ Item {
     }
 
     function useCurrentMonth() {
-        root.applyPeriod(root.analyticsViewModel.currentMonthSelection());
+        root.applyPeriod(root.analyticsViewModel.currentMonthSelection(), 0);
+    }
+
+    function applyYearToDate() {
+        root.applyPeriod(root.analyticsViewModel.yearToDateSelection(), 1);
+    }
+
+    function notifyFirstWeekEdited(week) {
+        root.firstWeek = week;
+        root.onPeriodEdited();
+    }
+
+    function selectAllDivisions() {
+        root.selectedDivisions = root.dimensionList("divisions").slice();
+        root.selectedSectors = [];
+        root.selectedPeople = [];
+        root.invalidateCustomAnalysis();
+    }
+
+    function clearDivisions() {
+        root.selectedDivisions = [];
+        root.selectedSectors = [];
+        root.selectedPeople = [];
+        root.invalidateCustomAnalysis();
+    }
+
+    function selectAllSectors() {
+        root.selectedSectors = root.dimensionList("sectors").slice();
+        root.selectedPeople = [];
+        root.invalidateCustomAnalysis();
+    }
+
+    function clearSectors() {
+        root.selectedSectors = [];
+        root.selectedPeople = [];
+        root.invalidateCustomAnalysis();
+    }
+
+    function selectAllPeople() {
+        root.selectedPeople = root.dimensionList("people").slice();
+        root.invalidateCustomChart();
+    }
+
+    function clearPeople() {
+        root.selectedPeople = [];
+        root.invalidateCustomChart();
+    }
+
+    function pruneOrphanSelections() {
+        const divisions = root.dimensionList("divisions");
+        root.selectedDivisions = root.selectedDivisions.filter(value => divisions.indexOf(value) >= 0);
+        const sectors = root.dimensionList("sectors");
+        root.selectedSectors = root.selectedSectors.filter(value => sectors.indexOf(value) >= 0);
+        const people = root.dimensionList("people");
+        root.selectedPeople = root.selectedPeople.filter(value => people.indexOf(value) >= 0);
     }
 
     function configureOverdueByArea() {
@@ -241,7 +329,7 @@ Item {
         root.selectedDivisions = [];
         root.selectedSectors = [];
         root.selectedPeople = [];
-        return root.refreshDimensions();
+        return root.invalidateCustomAnalysis();
     }
 
     function configureExecutedByPerson() {
@@ -252,7 +340,54 @@ Item {
         root.selectedDivisions = [];
         root.selectedSectors = [];
         root.selectedPeople = [];
-        return root.refreshDimensions();
+        return root.invalidateCustomAnalysis();
+    }
+
+    function configureExecutedBySectorWeek() {
+        metricCombo.currentIndex = 1;
+        grainCombo.currentIndex = 0;
+        breakdownCombo.currentIndex = 1;
+        roleCombo.currentIndex = 2;
+        root.selectedDivisions = [];
+        root.selectedSectors = [];
+        root.selectedPeople = [];
+        root.applyPeriod(root.analyticsViewModel.currentIsoWeekSelection());
+    }
+
+    function configureExecutedBySectorMonth() {
+        metricCombo.currentIndex = 1;
+        grainCombo.currentIndex = 0;
+        breakdownCombo.currentIndex = 1;
+        roleCombo.currentIndex = 2;
+        root.selectedDivisions = [];
+        root.selectedSectors = [];
+        root.selectedPeople = [];
+        root.applyPeriod(root.analyticsViewModel.currentIsoMonthSelection(), 2);
+    }
+
+    function configureExecutedBySectorPerson() {
+        metricCombo.currentIndex = 1;
+        grainCombo.currentIndex = 0;
+        breakdownCombo.currentIndex = 3;
+        roleCombo.currentIndex = 2;
+        root.selectedDivisions = [];
+        root.selectedSectors = [];
+        root.selectedPeople = [];
+        root.applyPeriod(root.analyticsViewModel.currentIsoWeekSelection());
+    }
+
+    function applyIsoMonth() {
+        root.applyPeriod(root.analyticsViewModel.currentIsoMonthSelection(), 2);
+    }
+
+    function runQuickPreset(configureFn) {
+        configureFn();
+        root.invalidateCustomAnalysis();
+        if (root.breakdownIndex === 3) {
+            root.selectedSectors = root.dimensionList("sectors").slice();
+            root.selectedPeople = root.dimensionList("people").slice();
+        }
+        return root.runAnalysis();
     }
 
     function isSelected(values, value) {
@@ -278,11 +413,19 @@ Item {
             const value = root.analyticsViewModel.warningWindowDays;
             customWarningField.text = value === undefined || value === null ? "" : String(value);
         }
+
+        function onDimensionValuesChanged() {
+            root.pruneOrphanSelections();
+        }
     }
 
     Component.onCompleted: {
         const value = root.analyticsViewModel.warningWindowDays;
         customWarningField.text = value === undefined || value === null ? "" : String(value);
+        if (!root.metricInitialized) {
+            root.metricInitialized = true;
+            metricCombo.currentIndex = 1;
+        }
     }
 
     Flickable {
@@ -335,8 +478,9 @@ Item {
                             id: monthCombo
 
                             Layout.preferredWidth: 150
-                            model: [qsTr("Janeiro"), qsTr("Fevereiro"), qsTr("Marco"), qsTr("Abril"), qsTr("Maio"), qsTr("Junho"), qsTr("Julho"), qsTr("Agosto"), qsTr("Setembro"), qsTr("Outubro"), qsTr("Novembro"), qsTr("Dezembro")]
-                            currentIndex: root.periodMonth - 1
+                            model: root.monthModel
+                            currentIndex: root.monthComboIndex
+                            enabled: root.periodScope !== 1
                             onActivated: root.applyCalendarMonth(root.periodYear, currentIndex + 1)
                         }
                         AppSpinBox {
@@ -358,6 +502,18 @@ Item {
                             Layout.preferredWidth: 160
                             text: qsTr("Ultimo mes completo")
                             onClicked: root.useCurrentMonth()
+                        }
+                        ActionButton {
+                            objectName: "analyticsCustomYearToDate"
+                            Layout.preferredWidth: 140
+                            text: qsTr("Ano ate agora")
+                            onClicked: root.applyYearToDate()
+                        }
+                        ActionButton {
+                            objectName: "analyticsCustomIsoMonth"
+                            Layout.preferredWidth: 160
+                            text: qsTr("Mes ISO completo")
+                            onClicked: root.applyIsoMonth()
                         }
                         Item {
                             Layout.fillWidth: true
@@ -381,7 +537,10 @@ Item {
                             locale: Qt.locale("C")
                             value: root.firstYear
                             editable: true
-                            onValueModified: root.firstYear = value
+                            onValueModified: {
+                                root.firstYear = value;
+                                root.onPeriodEdited();
+                            }
                         }
                         Label {
                             text: qsTr("Semana inicial")
@@ -393,7 +552,10 @@ Item {
                             to: 53
                             value: root.firstWeek
                             editable: true
-                            onValueModified: root.firstWeek = value
+                            onValueModified: {
+                                root.firstWeek = value;
+                                root.onPeriodEdited();
+                            }
                         }
                         Label {
                             text: qsTr("Ano final")
@@ -406,7 +568,10 @@ Item {
                             locale: Qt.locale("C")
                             value: root.lastYear
                             editable: true
-                            onValueModified: root.lastYear = value
+                            onValueModified: {
+                                root.lastYear = value;
+                                root.onPeriodEdited();
+                            }
                         }
                         Label {
                             text: qsTr("Semana final")
@@ -418,7 +583,10 @@ Item {
                             to: 53
                             value: root.lastWeek
                             editable: true
-                            onValueModified: root.lastWeek = value
+                            onValueModified: {
+                                root.lastWeek = value;
+                                root.onPeriodEdited();
+                            }
                         }
 
                         Label {
@@ -441,7 +609,7 @@ Item {
 
                             Layout.fillWidth: true
                             model: [qsTr("Acumulado no periodo"), qsTr("Separado por semana ISO"), qsTr("Separado por mes ISO")]
-                            onActivated: root.refreshDimensions()
+                            onActivated: root.invalidateCustomAnalysis()
                         }
                         Label {
                             text: qsTr("Quebra")
@@ -452,7 +620,7 @@ Item {
 
                             Layout.fillWidth: true
                             model: [qsTr("Divisao"), qsTr("Divisao e setor"), qsTr("Divisao e pessoa"), qsTr("Divisao, setor e pessoa")]
-                            onActivated: root.refreshDimensions()
+                            onActivated: root.invalidateCustomAnalysis()
                         }
                         Label {
                             text: qsTr("Papel da pessoa")
@@ -465,6 +633,18 @@ Item {
                             model: [qsTr("Solicitante"), qsTr("Planejamento/programacao"), qsTr("Execucao")]
                             currentIndex: 2
                             onActivated: root.changePersonRole(currentIndex)
+                        }
+                        Label {
+                            text: qsTr("Ordenacao")
+                            color: Theme.text
+                        }
+                        AppComboBox {
+                            id: sortCombo
+
+                            objectName: "analyticsCategorySort"
+                            Layout.fillWidth: true
+                            model: [qsTr("Ordem padrao"), qsTr("Setor alfabetico")]
+                            onActivated: root.invalidateCustomChart()
                         }
                     }
 
@@ -505,16 +685,38 @@ Item {
                             Layout.preferredWidth: 175
                             text: qsTr("Atrasadas por area")
                             enabled: !root.analyticsViewModel.loading
-                            onClicked: root.configureOverdueByArea()
+                            onClicked: root.runQuickPreset(root.configureOverdueByArea)
                         }
                         ActionButton {
                             objectName: "analyticsExecutedByPerson"
                             Layout.preferredWidth: 205
                             text: qsTr("Executadas por pessoa")
                             enabled: !root.analyticsViewModel.loading
-                            onClicked: root.configureExecutedByPerson()
+                            onClicked: root.runQuickPreset(root.configureExecutedByPerson)
                         }
                         ActionButton {
+                            objectName: "analyticsExecutedBySectorWeek"
+                            Layout.preferredWidth: 210
+                            text: qsTr("Executadas/setor semana")
+                            enabled: !root.analyticsViewModel.loading
+                            onClicked: root.runQuickPreset(root.configureExecutedBySectorWeek)
+                        }
+                        ActionButton {
+                            objectName: "analyticsExecutedBySectorMonth"
+                            Layout.preferredWidth: 210
+                            text: qsTr("Executadas/setor mes ISO")
+                            enabled: !root.analyticsViewModel.loading
+                            onClicked: root.runQuickPreset(root.configureExecutedBySectorMonth)
+                        }
+                        ActionButton {
+                            objectName: "analyticsExecutedBySectorPerson"
+                            Layout.preferredWidth: 220
+                            text: qsTr("Executadas setor/pessoa")
+                            enabled: !root.analyticsViewModel.loading
+                            onClicked: root.runQuickPreset(root.configureExecutedBySectorPerson)
+                        }
+                        ActionButton {
+                            objectName: "analyticsGenerateChart"
                             text: qsTr("Gerar grafico")
                             enabled: root.canAnalyze
                             onClicked: root.runAnalysis()
@@ -568,6 +770,26 @@ Item {
                             color: Theme.text
                             font.bold: true
                         }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: Theme.gap
+
+                            ActionButton {
+                                objectName: "analyticsSelectAllDivisions"
+                                Layout.preferredWidth: 130
+                                text: qsTr("Selecionar todas")
+                                onClicked: root.selectAllDivisions()
+                            }
+                            ActionButton {
+                                objectName: "analyticsClearDivisions"
+                                Layout.preferredWidth: 80
+                                text: qsTr("Limpar")
+                                onClicked: root.clearDivisions()
+                            }
+                            Item {
+                                Layout.fillWidth: true
+                            }
+                        }
                         ListView {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
@@ -584,7 +806,7 @@ Item {
                                     root.selectedDivisions = root.toggleValue(root.selectedDivisions, String(modelData), selected);
                                     root.selectedSectors = [];
                                     root.selectedPeople = [];
-                                    root.refreshDimensions();
+                                    root.invalidateCustomAnalysis();
                                 }
                             }
                         }
@@ -607,6 +829,26 @@ Item {
                             color: Theme.text
                             font.bold: true
                         }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: Theme.gap
+
+                            ActionButton {
+                                objectName: "analyticsSelectAllSectors"
+                                Layout.preferredWidth: 130
+                                text: qsTr("Selecionar todas")
+                                onClicked: root.selectAllSectors()
+                            }
+                            ActionButton {
+                                objectName: "analyticsClearSectors"
+                                Layout.preferredWidth: 80
+                                text: qsTr("Limpar")
+                                onClicked: root.clearSectors()
+                            }
+                            Item {
+                                Layout.fillWidth: true
+                            }
+                        }
                         ListView {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
@@ -622,7 +864,7 @@ Item {
                                 onToggled: selected => {
                                     root.selectedSectors = root.toggleValue(root.selectedSectors, String(modelData), selected);
                                     root.selectedPeople = [];
-                                    root.refreshDimensions();
+                                    root.invalidateCustomAnalysis();
                                 }
                             }
                         }
@@ -645,6 +887,26 @@ Item {
                             color: Theme.text
                             font.bold: true
                         }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: Theme.gap
+
+                            ActionButton {
+                                objectName: "analyticsSelectAllPeople"
+                                Layout.preferredWidth: 130
+                                text: qsTr("Selecionar todas")
+                                onClicked: root.selectAllPeople()
+                            }
+                            ActionButton {
+                                objectName: "analyticsClearPeople"
+                                Layout.preferredWidth: 80
+                                text: qsTr("Limpar")
+                                onClicked: root.clearPeople()
+                            }
+                            Item {
+                                Layout.fillWidth: true
+                            }
+                        }
                         Label {
                             Layout.fillWidth: true
                             visible: root.dimensionList("people").length === 0
@@ -664,7 +926,10 @@ Item {
                                 value: String(modelData)
                                 optionObjectName: "analyticsPersonOption-" + value
                                 checked: root.isSelected(root.selectedPeople, String(modelData))
-                                onToggled: selected => root.selectedPeople = root.toggleValue(root.selectedPeople, String(modelData), selected)
+                                onToggled: selected => {
+                                    root.selectedPeople = root.toggleValue(root.selectedPeople, String(modelData), selected);
+                                    root.invalidateCustomChart();
+                                }
                             }
                         }
                     }
@@ -680,10 +945,35 @@ Item {
                 Layout.bottomMargin: Theme.gap
                 Layout.preferredHeight: 440
                 objectName: "customAnalysisChart"
-                title: qsTr("Resultado da analise customizada")
+                title: root.chartTitle
                 chartType: root.metricIndex === 8 ? "stackedBar" : "bar"
                 chartModel: root.analyticsViewModel.customSeries
+                showExportActions: customChart.hasData
+                fileWriter: (path, content) => root.analyticsViewModel.writeExportFile(path, content)
+
+                onExportPngRequested: chartPngExportDialog.open()
+                onExportSvgRequested: chartSvgExportDialog.open()
             }
         }
+    }
+
+    FileDialog {
+        id: chartPngExportDialog
+
+        objectName: "analyticsChartPngExportDialog"
+        title: qsTr("Exportar grafico como PNG")
+        fileMode: FileDialog.SaveFile
+        nameFilters: [qsTr("PNG (*.png)")]
+        onAccepted: customChart.savePng(selectedFile)
+    }
+
+    FileDialog {
+        id: chartSvgExportDialog
+
+        objectName: "analyticsChartSvgExportDialog"
+        title: qsTr("Exportar grafico como SVG (imagem embutida)")
+        fileMode: FileDialog.SaveFile
+        nameFilters: [qsTr("SVG (*.svg)")]
+        onAccepted: customChart.saveSvg(selectedFile)
     }
 }

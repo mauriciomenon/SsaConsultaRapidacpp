@@ -42,7 +42,9 @@ AnalyticsChart {
             const item = input[index];
             const name = item && item.name !== undefined ? String(item.name) : "";
             const presented = {
+                "key": name,
                 "name": root.seriesLabel(name),
+                "tag": item && item.tag !== undefined ? String(item.tag) : "",
                 "values": item && item.values ? item.values : [],
                 "trendValues": item && item.trendValues ? item.trendValues : []
             };

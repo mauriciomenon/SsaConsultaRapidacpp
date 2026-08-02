@@ -1,5 +1,7 @@
 #include "domain/ActivityAnalyticsTypes.h"
 
+#include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cmath>
 #include <numeric>
@@ -73,6 +75,93 @@ namespace ssa::domain {
                                       days{4 - static_cast<int>(weekday{value}.iso_encoding())});
         }
 
+        IsoWeek nextIsoWeek(const IsoWeek value) {
+            const IsoWeek sameYear{value.year, value.week + 1};
+            if (isValidIsoWeek(sameYear)) {
+                return sameYear;
+            }
+            return {value.year + 1, 1};
+        }
+
+        std::string trimAscii(std::string_view value) {
+            while (!value.empty() && std::isspace(static_cast<unsigned char>(value.front())) != 0) {
+                value.remove_prefix(1);
+            }
+            while (!value.empty() && std::isspace(static_cast<unsigned char>(value.back())) != 0) {
+                value.remove_suffix(1);
+            }
+            return std::string{value};
+        }
+
+        std::vector<std::string_view> splitWhitespace(std::string_view value) {
+            std::vector<std::string_view> tokens;
+            std::size_t index = 0;
+            while (index < value.size()) {
+                while (index < value.size() &&
+                       std::isspace(static_cast<unsigned char>(value[index])) != 0) {
+                    ++index;
+                }
+                if (index >= value.size()) {
+                    break;
+                }
+                const std::size_t start = index;
+                while (index < value.size() &&
+                       std::isspace(static_cast<unsigned char>(value[index])) == 0) {
+                    ++index;
+                }
+                tokens.push_back(value.substr(start, index - start));
+            }
+            return tokens;
+        }
+
+        char firstAlphaUpper(std::string_view token) {
+            for (const char character : token) {
+                if ((character >= 'A' && character <= 'Z') ||
+                    (character >= 'a' && character <= 'z')) {
+                    return character >= 'a' && character <= 'z'
+                               ? static_cast<char>(character - ('a' - 'A'))
+                               : character;
+                }
+            }
+            return '\0';
+        }
+
+        bool equalsIgnoreAsciiCase(std::string_view left, std::string_view right) noexcept {
+            if (left.size() != right.size()) {
+                return false;
+            }
+            for (std::size_t index = 0; index < left.size(); ++index) {
+                const unsigned char a = static_cast<unsigned char>(left[index]);
+                const unsigned char b = static_cast<unsigned char>(right[index]);
+                if (std::tolower(a) != std::tolower(b)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        bool isKnownChartIdentity(std::string_view name) noexcept {
+            static constexpr std::string_view known[] = {
+                "total",
+                "registered_in_period",
+                "registered_before_period",
+                "registration_unknown",
+                "on_time",
+                "warning",
+                "overdue",
+            };
+            return std::ranges::any_of(known, [&](const std::string_view candidate) {
+                return candidate == name || equalsIgnoreAsciiCase(candidate, name);
+            });
+        }
+
+        constexpr int kMaxIsoWeeksPerCalendarMonth = 6;
+
+        std::string formatIsoReferenceMonth(const int yearValue, const int monthValue) {
+            return std::to_string(yearValue) + (monthValue < 10 ? "-0" : "-") +
+                   std::to_string(monthValue);
+        }
+
     } // namespace
 
     bool isValidIsoWeek(const IsoWeek value) noexcept {
@@ -117,15 +206,22 @@ namespace ssa::domain {
         return value.year * 100 + value.week;
     }
 
-    std::string isoReferenceMonth(const IsoWeek value) {
+    std::optional<IsoReferenceMonth> isoReferenceMonthParts(const IsoWeek value) noexcept {
         const auto thursday = isoThursday(value);
         if (!thursday.has_value()) {
-            throw std::invalid_argument("invalid ISO week");
+            return std::nullopt;
         }
         const std::chrono::year_month_day date{*thursday};
-        const auto month = static_cast<unsigned>(date.month());
-        return std::to_string(static_cast<int>(date.year())) + (month < 10 ? "-0" : "-") +
-               std::to_string(month);
+        return IsoReferenceMonth{static_cast<int>(date.year()),
+                                 static_cast<int>(static_cast<unsigned>(date.month()))};
+    }
+
+    std::string isoReferenceMonth(const IsoWeek value) {
+        const auto parts = isoReferenceMonthParts(value);
+        if (!parts.has_value()) {
+            throw std::invalid_argument("invalid ISO week");
+        }
+        return formatIsoReferenceMonth(parts->year, parts->month);
     }
 
     std::string analyticsBucketKey(const IsoWeek value, const TimeGrain grain) {
@@ -142,11 +238,64 @@ namespace ssa::domain {
                std::to_string(value.week);
     }
 
+    std::string formatIsoYearWeekDisplay(const int yearValue, const int weekValue) {
+        if (yearValue < 1900 || yearValue > 2999 || weekValue < 1 || weekValue > 53) {
+            throw std::invalid_argument("ISO week display is outside analytics range");
+        }
+        return std::to_string(yearValue * 100 + weekValue);
+    }
+
+    std::string formatAnalyticsBucketLabel(const std::string_view bucketKey) {
+        if (bucketKey.empty()) {
+            return {};
+        }
+        const auto separator = bucketKey.find("-W");
+        if (separator == std::string_view::npos || separator < 4) {
+            return std::string{bucketKey};
+        }
+        const auto yearText = bucketKey.substr(0, separator);
+        const auto weekText = bucketKey.substr(separator + 2);
+        if (yearText.size() != 4 || weekText.empty()) {
+            return std::string{bucketKey};
+        }
+        for (const char character : yearText) {
+            if (character < '0' || character > '9') {
+                return std::string{bucketKey};
+            }
+        }
+        for (const char character : weekText) {
+            if (character < '0' || character > '9') {
+                return std::string{bucketKey};
+            }
+        }
+        const int yearValue = std::stoi(std::string{yearText});
+        const int weekValue = std::stoi(std::string{weekText});
+        return formatIsoYearWeekDisplay(yearValue, weekValue);
+    }
+
     bool isValidPeriod(const AnalyticsPeriod& period) noexcept {
         if (!isValidIsoWeek(period.first) || !isValidIsoWeek(period.last)) {
             return false;
         }
         return period.first <= period.last;
+    }
+
+    std::optional<YearToDateCalendarSelection>
+    yearToDateCalendarSelection(const std::string_view isoDate) noexcept {
+        const auto currentWeek = isoWeekForDate(isoDate);
+        if (!currentWeek.has_value()) {
+            return std::nullopt;
+        }
+        const auto parts = isoReferenceMonthParts(*currentWeek);
+        if (!parts.has_value() || parts->year < 1900 || parts->year > 2999) {
+            return std::nullopt;
+        }
+        return YearToDateCalendarSelection{
+            .year = parts->year,
+            .month = parts->month,
+            .first = {currentWeek->year, 1},
+            .last = *currentWeek,
+        };
     }
 
     AnalyticsPeriod calendarMonthPeriod(const int yearValue, const int monthValue) {
@@ -163,6 +312,102 @@ namespace ssa::domain {
         }
         return {.first = isoWeekForDay(sys_days{firstDay}),
                 .last = isoWeekForDay(sys_days{lastDay})};
+    }
+
+    AnalyticsPeriod isoReferenceMonthPeriod(const int yearValue, const int monthValue) {
+        if (yearValue < 1900 || yearValue > 2999 || monthValue < 1 || monthValue > 12) {
+            throw std::invalid_argument("ISO reference month is outside analytics range");
+        }
+        const auto searchWindow = calendarMonthPeriod(yearValue, monthValue);
+        const IsoReferenceMonth target{yearValue, monthValue};
+        std::optional<IsoWeek> first;
+        std::optional<IsoWeek> last;
+        auto week = searchWindow.first;
+        // A calendar month spans at most six ISO weeks. The bound also stops the walk
+        // when the window ends outside the supported ISO range (December of year 2999).
+        for (int step = 0; step < kMaxIsoWeeksPerCalendarMonth; ++step) {
+            const auto parts = isoReferenceMonthParts(week);
+            if (!parts.has_value()) {
+                break;
+            }
+            if (*parts == target) {
+                if (!first.has_value()) {
+                    first = week;
+                }
+                last = week;
+            }
+            if (week == searchWindow.last) {
+                break;
+            }
+            week = nextIsoWeek(week);
+        }
+        if (!first.has_value() || !last.has_value()) {
+            throw std::invalid_argument("ISO reference month has no ISO weeks");
+        }
+        return {.first = *first, .last = *last};
+    }
+
+    std::string personInitialsTag(const std::string_view fullName) {
+        const std::string trimmed = trimAscii(fullName);
+        const auto tokens = splitWhitespace(trimmed);
+        if (tokens.empty()) {
+            return {};
+        }
+        if (tokens.size() == 1) {
+            const char initial = firstAlphaUpper(tokens.front());
+            return initial != '\0' ? std::string(1, initial) : std::string{};
+        }
+        std::string tag;
+        tag.reserve(4);
+        const char firstInitial = firstAlphaUpper(tokens.front());
+        if (firstInitial != '\0') {
+            tag.push_back(firstInitial);
+        }
+        for (std::size_t index = 1; index < tokens.size() && tag.size() < 4; ++index) {
+            const char initial = firstAlphaUpper(tokens[index]);
+            if (initial != '\0') {
+                tag.push_back(initial);
+            }
+        }
+        return tag;
+    }
+
+    std::string sectorCodeTag(const std::string_view sectorCode) {
+        const std::string trimmed = trimAscii(sectorCode);
+        if (trimmed.empty()) {
+            return {};
+        }
+        std::string tag;
+        tag.reserve(4);
+        for (const char character : trimmed) {
+            if (tag.size() >= 4) {
+                break;
+            }
+            if (character >= 'a' && character <= 'z') {
+                tag.push_back(static_cast<char>(character - ('a' - 'A')));
+            } else {
+                tag.push_back(character);
+            }
+        }
+        return tag;
+    }
+
+    std::string chartSeriesTag(const std::string_view seriesName) {
+        if (isKnownChartIdentity(seriesName)) {
+            return {};
+        }
+        std::string_view target = seriesName;
+        if (const auto separator = seriesName.rfind(" / "); separator != std::string_view::npos) {
+            target = seriesName.substr(separator + 3);
+        }
+        const bool looksLikePerson =
+            target.find(' ') != std::string_view::npos ||
+            (target == seriesName && seriesName.find(' ') != std::string_view::npos);
+        if (looksLikePerson) {
+            const auto name = target.find(' ') != std::string_view::npos ? target : seriesName;
+            return personInitialsTag(name);
+        }
+        return sectorCodeTag(target);
     }
 
     AnalyticsPeriod referenceMonthHistoryPeriod(const IsoWeek last, const int monthCount) {

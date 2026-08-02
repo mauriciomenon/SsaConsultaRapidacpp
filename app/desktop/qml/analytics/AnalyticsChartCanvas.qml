@@ -12,6 +12,7 @@ Item {
     property string yAxisTitle: ""
     property string valueSuffix: ""
     property bool showValueLabels: true
+    property bool showSeriesTags: true
     property int tickCount: 5
     property int modelRevision: 0
 
@@ -219,6 +220,84 @@ Item {
         return root.defaultColors[seriesIndex % root.defaultColors.length];
     }
 
+    function seriesTag(seriesIndex) {
+        // domain::chartSeriesTag is the single source of truth for tags and the card
+        // normalizes every series entry, so an absent tag means "no tag to draw".
+        const entry = seriesAt(seriesIndex);
+        if (!entry || entry.tag === undefined)
+            return "";
+        return String(entry.tag);
+    }
+
+    function tagTextFor(seriesIndex) {
+        return seriesTag(seriesIndex);
+    }
+
+    function shouldDrawSeriesTag(segmentHeight, value, seriesIndex) {
+        if (!root.showSeriesTags || root.seriesCount < 2)
+            return false;
+        const tag = seriesTag(seriesIndex);
+        if (tag.length === 0)
+            return false;
+        return segmentHeight >= 14 || (value > 0 && root.seriesCount >= 2);
+    }
+
+    // Canvas font shorthand needs the family quoted, otherwise Qt collapses
+    // "Segoe UI" into the unknown family "SegoeUI" and warns on every repaint.
+    function canvasFont(weight, pixelSize) {
+        const prefix = weight.length === 0 ? "" : weight + " ";
+        return prefix + pixelSize + "px \"" + Theme.fontFamily + "\"";
+    }
+
+    function drawValueBadge(context, centerX, topY, text) {
+        context.font = canvasFont("600", Theme.fontSizeCaption + 1);
+        context.textAlign = "center";
+        context.textBaseline = "top";
+        const metrics = context.measureText(text);
+        const padX = 4;
+        const padY = 2;
+        const boxWidth = metrics.width + padX * 2;
+        const boxHeight = Theme.fontSizeCaption + 1 + padY * 2;
+        const boxX = centerX - boxWidth / 2;
+        const boxY = Math.max(root.topMargin, topY);
+        context.save();
+        context.globalAlpha = 0.94;
+        context.fillStyle = Theme.panelRaised;
+        context.fillRect(boxX, boxY, boxWidth, boxHeight);
+        context.globalAlpha = 1;
+        context.fillStyle = Theme.readableText(Theme.panelRaised, Theme.text);
+        context.fillText(text, centerX, boxY + padY);
+        context.restore();
+    }
+
+    function drawBarSegmentLabels(context, centerX, y, bottom, seriesIndex, value, valueLimit) {
+        const segmentHeight = Math.max(0, bottom - y);
+        const tag = seriesTag(seriesIndex);
+        const showValue = root.showValueLabels && valueLimit && segmentHeight >= 12;
+        const valueText = formattedValue(value);
+        const tagFontSize = Theme.fontSizeCaption - 1;
+        const valueFontSize = Theme.fontSizeCaption + 1;
+        const valueBoxHeight = valueFontSize + 6;
+        const tagHeight = tagFontSize + 4;
+        const showTag = shouldDrawSeriesTag(segmentHeight, value, seriesIndex) &&
+                        (!showValue || segmentHeight >= valueBoxHeight + tagHeight + 6);
+        if (!showTag && !showValue)
+            return;
+        if (showValue) {
+            if (segmentHeight >= valueBoxHeight + 4)
+                drawValueBadge(context, centerX, y + 2, valueText);
+            else
+                drawValueBadge(context, centerX, Math.max(root.topMargin, y - valueBoxHeight - 4), valueText);
+        }
+        if (!showTag)
+            return;
+        context.fillStyle = Theme.readableText(seriesColor(seriesIndex), Theme.text);
+        context.textAlign = "center";
+        context.textBaseline = "bottom";
+        context.font = canvasFont("", tagFontSize);
+        context.fillText(tag, centerX, bottom - 2);
+    }
+
     function legendEntries() {
         const entries = [];
         for (let seriesIndex = 0; seriesIndex < root.seriesCount; ++seriesIndex) {
@@ -300,7 +379,7 @@ Item {
         context.strokeStyle = Theme.border;
         context.fillStyle = Theme.mutedText;
         context.lineWidth = 1;
-        context.font = Theme.fontSizeCaption + "px \"" + Theme.fontFamily + "\"";
+        context.font = canvasFont("", Theme.fontSizeCaption);
         context.textBaseline = "middle";
         const ticks = Math.max(2, root.tickCount);
         for (let tick = 0; tick <= ticks; ++tick) {
@@ -382,12 +461,8 @@ Item {
                     "categoryIndex": categoryIndex,
                     "seriesIndex": seriesIndex
                 });
-                if (root.showValueLabels && root.categoryCount <= 24) {
-                    context.fillStyle = Theme.text;
-                    context.textAlign = "center";
-                    context.textBaseline = "bottom";
-                    context.fillText(formattedValue(value), x + barWidth / 2, Math.max(root.topMargin, y - 3));
-                }
+                if (root.categoryCount <= 24)
+                    drawBarSegmentLabels(context, x + barWidth / 2, y, bottom, seriesIndex, value, root.showValueLabels);
             }
         }
     }
@@ -416,12 +491,8 @@ Item {
                     "categoryIndex": categoryIndex,
                     "seriesIndex": seriesIndex
                 });
-                if (root.showValueLabels && root.categoryCount <= 18 && bottom - y >= 16) {
-                    context.fillStyle = Theme.readableText(seriesColor(seriesIndex));
-                    context.textAlign = "center";
-                    context.textBaseline = "middle";
-                    context.fillText(formattedValue(value), x + barWidth / 2, y + (bottom - y) / 2);
-                }
+                if (root.categoryCount <= 18)
+                    drawBarSegmentLabels(context, x + barWidth / 2, y, bottom, seriesIndex, value, root.showValueLabels);
                 runningValue += value;
             }
         }
@@ -533,6 +604,7 @@ Item {
     onChartTypeChanged: chartCanvas.requestPaint()
     onTickCountChanged: chartCanvas.requestPaint()
     onShowValueLabelsChanged: chartCanvas.requestPaint()
+    onShowSeriesTagsChanged: chartCanvas.requestPaint()
     onValueSuffixChanged: chartCanvas.requestPaint()
     onXAxisTitleChanged: chartCanvas.requestPaint()
     onYAxisTitleChanged: chartCanvas.requestPaint()

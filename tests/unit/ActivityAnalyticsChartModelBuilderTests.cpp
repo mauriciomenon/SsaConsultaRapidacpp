@@ -241,7 +241,7 @@ TEST_CASE("monthly stock line keeps a real gap and fits OLS on observed position
     CHECK(model.series.front().trendValues[0] == Catch::Approx(10.0));
     CHECK(model.series.front().trendValues[1] == Catch::Approx(20.0));
     CHECK(model.series.front().trendValues[2] == Catch::Approx(30.0));
-    CHECK(model.subtitle == "Semana observada: 2026-W13");
+    CHECK(model.subtitle == "Semana observada: 202613");
 }
 
 TEST_CASE("event lines use zero for a bucket without a row") {
@@ -526,6 +526,23 @@ TEST_CASE("custom charts preserve explicitly selected zero-value combinations") 
     CHECK(whole.categories == std::vector<std::string>{"SMI / Ana", "SMI / Bia"});
     REQUIRE(whole.series.size() == 1);
     CHECK(whole.series.front().values == std::vector<std::optional<double>>{0.0, 0.0});
+}
+
+TEST_CASE("custom charts populate series tags for person breakdowns") {
+    auto analyticsRequest = request(AnalyticsMetric::Executed, TimeGrain::WholePeriod,
+                                    Breakdown::DivisionSectorPerson);
+    analyticsRequest.divisions = {"SMI"};
+    analyticsRequest.sectors = {"SMIN"};
+    analyticsRequest.people = {"Joao Silva Santos"};
+    const AnalyticsSeriesResult result{
+        .points = {point("", "SMI", "SMIN", "Joao Silva Santos", 2)},
+        .observations = {{.bucketKey = "", .observedIsoYearWeek = 202613}}};
+
+    const auto model = ActivityAnalyticsChartModelBuilder::build(analyticsRequest, result,
+                                                                 AnalyticsChartMode::Custom);
+
+    REQUIRE(model.series.size() == 1);
+    CHECK(model.series.front().tag == "JSS");
 }
 
 TEST_CASE("selected unassigned sector keeps the full sentinel division") {

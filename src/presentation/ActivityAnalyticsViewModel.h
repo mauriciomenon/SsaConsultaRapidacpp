@@ -65,10 +65,16 @@ namespace ssa::presentation {
         void loadDashboard(const domain::AnalyticsPeriod& reportPeriod,
                            const domain::AnalyticsPeriod& historyPeriod,
                            std::optional<int> warningWindowDays);
-        void loadCustomSeries(domain::AnalyticsRequest request);
+        void loadCustomSeries(domain::AnalyticsRequest request, int categorySort = 0);
         void loadDimensionValues(domain::AnalyticsRequest request);
         Q_INVOKABLE [[nodiscard]] QVariantMap currentMonthSelection() const;
         Q_INVOKABLE [[nodiscard]] QVariantMap calendarMonthSelection(int year, int month) const;
+        Q_INVOKABLE [[nodiscard]] QVariantMap yearToDateSelection() const;
+        Q_INVOKABLE [[nodiscard]] QVariantMap currentIsoWeekSelection() const;
+        Q_INVOKABLE [[nodiscard]] QVariantMap currentIsoMonthSelection() const;
+        Q_INVOKABLE void clearCustomSeries();
+        Q_INVOKABLE [[nodiscard]] QString customChartTitle(const QVariantMap& selection) const;
+        Q_INVOKABLE bool writeExportFile(const QString& path, const QString& content) const;
         Q_INVOKABLE bool requestDashboard(const QVariantMap& selection);
         Q_INVOKABLE bool requestCustomSeries(const QVariantMap& selection);
         Q_INVOKABLE bool requestDimensionValues(const QVariantMap& selection);

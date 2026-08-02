@@ -4,6 +4,7 @@
 
 #include <QDate>
 #include <QDebug>
+#include <QFile>
 #include <QMetaObject>
 #include <QMetaType>
 #include <QStringList>
@@ -14,6 +15,7 @@
 #include <cmath>
 #include <iterator>
 #include <limits>
+#include <numeric>
 #include <ranges>
 #include <stdexcept>
 #include <system_error>
@@ -41,6 +43,23 @@ namespace ssa::presentation {
                     {QStringLiteral("lastWeek"), period.last.week}};
         }
 
+        QVariantMap isoReferenceMonthMap(const int year, const int month) {
+            const auto period = domain::isoReferenceMonthPeriod(year, month);
+            return {{QStringLiteral("year"), year},
+                    {QStringLiteral("month"), month},
+                    {QStringLiteral("firstYear"), period.first.year},
+                    {QStringLiteral("firstWeek"), period.first.week},
+                    {QStringLiteral("lastYear"), period.last.year},
+                    {QStringLiteral("lastWeek"), period.last.week}};
+        }
+
+        std::pair<int, int> previousMonth(const int year, const int month) {
+            if (month == 1) {
+                return {year - 1, 12};
+            }
+            return {year, month - 1};
+        }
+
         QVariantMap seriesMetadataMap(const domain::AnalyticsSeriesResult& series,
                                       const domain::AnalyticsMetric metric) {
             return {
@@ -63,6 +82,16 @@ namespace ssa::presentation {
             return result;
         }
 
+        QStringList displayCategories(const std::vector<std::string>& categories) {
+            QStringList result;
+            result.reserve(static_cast<qsizetype>(categories.size()));
+            std::ranges::transform(
+                categories, std::back_inserter(result), [](const std::string& category) {
+                    return QString::fromStdString(domain::formatAnalyticsBucketLabel(category));
+                });
+            return result;
+        }
+
         QVariantList optionalValues(const std::vector<std::optional<double>>& values) {
             QVariantList result;
             result.reserve(static_cast<qsizetype>(values.size()));
@@ -74,7 +103,7 @@ namespace ssa::presentation {
                                         const domain::AnalyticsMetric metric,
                                         const application::AnalyticsChartModel& chart) {
             auto model = seriesMetadataMap(result, metric);
-            model.insert(QStringLiteral("categories"), stringList(chart.categories));
+            model.insert(QStringLiteral("categories"), displayCategories(chart.categories));
             QVariantList series;
             series.reserve(static_cast<qsizetype>(chart.series.size()));
             QVariantList allTrends;
@@ -83,6 +112,7 @@ namespace ssa::presentation {
                 const auto trends = optionalValues(chartSeries.trendValues);
                 series.push_back(QVariantMap{
                     {QStringLiteral("name"), QString::fromStdString(chartSeries.name)},
+                    {QStringLiteral("tag"), QString::fromStdString(chartSeries.tag)},
                     {QStringLiteral("values"), optionalValues(chartSeries.values)},
                     {QStringLiteral("trendValues"), trends},
                     {QStringLiteral("total"), optionalDouble(chartSeries.total)},
@@ -343,6 +373,141 @@ namespace ssa::presentation {
             }
         }
 
+        QString formatIsoWeekLabel(const int year, const int week) {
+            return QString::fromStdString(domain::formatIsoYearWeekDisplay(year, week));
+        }
+
+        QString metricTitleLabel(const domain::AnalyticsMetric metric) {
+            switch (metric) {
+            case domain::AnalyticsMetric::Registered:
+                return QStringLiteral("SSAs cadastradas");
+            case domain::AnalyticsMetric::Executed:
+                return QStringLiteral("SSAs executadas");
+            case domain::AnalyticsMetric::PartialAttention:
+                return QStringLiteral("SSAs com atencao parcial");
+            case domain::AnalyticsMetric::Spg:
+                return QStringLiteral("SSAs SPG");
+            case domain::AnalyticsMetric::Apg:
+                return QStringLiteral("SSAs APG");
+            case domain::AnalyticsMetric::Apl:
+                return QStringLiteral("SSAs APL");
+            case domain::AnalyticsMetric::Pending:
+                return QStringLiteral("SSAs pendentes");
+            case domain::AnalyticsMetric::Issued:
+                return QStringLiteral("SSAs emitidas");
+            case domain::AnalyticsMetric::PendingDeadline:
+                return QStringLiteral("Prazo das SSAs pendentes");
+            }
+            return QStringLiteral("SSAs");
+        }
+
+        QString breakdownTitleLabel(const domain::Breakdown breakdown) {
+            switch (breakdown) {
+            case domain::Breakdown::Division:
+                return QStringLiteral("Divisao");
+            case domain::Breakdown::DivisionSector:
+                return QStringLiteral("Divisao e setor");
+            case domain::Breakdown::DivisionPerson:
+                return QStringLiteral("Divisao e pessoa");
+            case domain::Breakdown::DivisionSectorPerson:
+                return QStringLiteral("Setor e pessoa");
+            }
+            return QStringLiteral("Categoria");
+        }
+
+        QString personRoleTitleLabel(const domain::PersonRole role) {
+            switch (role) {
+            case domain::PersonRole::Requester:
+                return QStringLiteral("Solicitante");
+            case domain::PersonRole::Planner:
+                return QStringLiteral("Planejamento/programacao");
+            case domain::PersonRole::Executor:
+                return QStringLiteral("Execucao");
+            }
+            return QStringLiteral("Pessoa");
+        }
+
+        QString customChartTitleFromSelection(const QVariantMap& selection) {
+            const auto request = analyticsRequest(selection);
+            const auto firstWeek =
+                formatIsoWeekLabel(request.period.first.year, request.period.first.week);
+            const auto lastWeek =
+                formatIsoWeekLabel(request.period.last.year, request.period.last.week);
+            const auto periodText = firstWeek == lastWeek
+                                        ? firstWeek
+                                        : QStringLiteral("de %1 a %2").arg(firstWeek, lastWeek);
+            return QStringLiteral("%1 %2 em %3 (%4)")
+                .arg(metricTitleLabel(request.metric), periodText,
+                     breakdownTitleLabel(request.breakdown),
+                     personRoleTitleLabel(request.personRole));
+        }
+
+        std::string sectorSortKey(const std::string& category, const domain::Breakdown breakdown) {
+            if (breakdown == domain::Breakdown::DivisionSector ||
+                breakdown == domain::Breakdown::DivisionPerson) {
+                if (const auto separator = category.rfind(" / "); separator != std::string::npos) {
+                    return category.substr(separator + 3);
+                }
+            }
+            if (breakdown == domain::Breakdown::DivisionSectorPerson) {
+                if (const auto separator = category.find('\n'); separator != std::string::npos) {
+                    return category.substr(separator + 1);
+                }
+            }
+            return category;
+        }
+
+        void sortChartModelCategories(application::AnalyticsChartModel& chart,
+                                      const domain::Breakdown breakdown, const int categorySort) {
+            if (categorySort != 1 || chart.categories.size() < 2) {
+                return;
+            }
+            std::vector<std::size_t> order(chart.categories.size());
+            std::iota(order.begin(), order.end(), 0);
+            std::ranges::sort(order, [&](const std::size_t left, const std::size_t right) {
+                const auto leftKey = sectorSortKey(chart.categories[left], breakdown);
+                const auto rightKey = sectorSortKey(chart.categories[right], breakdown);
+                if (leftKey != rightKey) {
+                    return leftKey < rightKey;
+                }
+                return chart.categories[left] < chart.categories[right];
+            });
+            const auto reorderValues = [&order](std::vector<std::optional<double>>& values) {
+                if (values.size() != order.size()) {
+                    return;
+                }
+                std::vector<std::optional<double>> sorted;
+                sorted.reserve(values.size());
+                for (const auto index : order) {
+                    sorted.push_back(values[index]);
+                }
+                values = std::move(sorted);
+            };
+            std::vector<std::string> sortedCategories;
+            sortedCategories.reserve(chart.categories.size());
+            for (const auto index : order) {
+                sortedCategories.push_back(chart.categories[index]);
+            }
+            chart.categories = std::move(sortedCategories);
+            for (auto& series : chart.series) {
+                reorderValues(series.values);
+                reorderValues(series.trendValues);
+            }
+        }
+
+        int selectionCategorySort(const QVariantMap& selection) {
+            const auto found = selection.constFind(QStringLiteral("categorySort"));
+            if (found == selection.cend() || found->isNull()) {
+                return 0;
+            }
+            bool numeric = false;
+            const int value = found->toInt(&numeric);
+            if (!numeric || value < 0 || value > 1) {
+                throw std::invalid_argument("category sort is invalid");
+            }
+            return value;
+        }
+
     } // namespace
 
     ActivityAnalyticsViewModel::ActivityAnalyticsViewModel(
@@ -446,17 +611,20 @@ namespace ssa::presentation {
             });
     }
 
-    void ActivityAnalyticsViewModel::loadCustomSeries(domain::AnalyticsRequest request) {
+    void ActivityAnalyticsViewModel::loadCustomSeries(domain::AnalyticsRequest request,
+                                                      const int categorySort) {
         const auto service = service_;
+        const auto breakdown = request.breakdown;
         start(RequestKind::CustomSeries,
-              [service,
-               request = std::move(request)](const std::stop_token& stopToken) -> TaskResult {
+              [service, request = std::move(request), categorySort,
+               breakdown](const std::stop_token& stopToken) -> TaskResult {
                   auto result = service->series(request, stopToken);
                   const auto mode = request.metric == domain::AnalyticsMetric::PendingDeadline
                                         ? application::AnalyticsChartMode::DeadlineStacked
                                         : application::AnalyticsChartMode::Custom;
-                  const auto chart =
+                  auto chart =
                       application::ActivityAnalyticsChartModelBuilder::build(request, result, mode);
+                  sortChartModelCategories(chart, breakdown, categorySort);
                   return CustomSeriesPayload{
                       .model = chartReadySeriesMap(result, request.metric, chart),
                       .metric = request.metric,
@@ -513,6 +681,80 @@ namespace ssa::presentation {
         return calendarMonthMap(year, month);
     }
 
+    QVariantMap ActivityAnalyticsViewModel::yearToDateSelection() const {
+        const auto selection = domain::yearToDateCalendarSelection(
+            QDate::currentDate().toString(Qt::ISODate).toStdString());
+        if (!selection.has_value()) {
+            return currentMonthSelection();
+        }
+        return {{QStringLiteral("year"), selection->first.year},
+                {QStringLiteral("month"), 0},
+                {QStringLiteral("firstYear"), selection->first.year},
+                {QStringLiteral("firstWeek"), selection->first.week},
+                {QStringLiteral("lastYear"), selection->last.year},
+                {QStringLiteral("lastWeek"), selection->last.week}};
+    }
+
+    QVariantMap ActivityAnalyticsViewModel::currentIsoWeekSelection() const {
+        const auto currentWeek =
+            domain::isoWeekForDate(QDate::currentDate().toString(Qt::ISODate).toStdString());
+        if (!currentWeek.has_value()) {
+            return currentMonthSelection();
+        }
+        const auto monthParts = domain::isoReferenceMonthParts(*currentWeek);
+        if (!monthParts.has_value()) {
+            return currentMonthSelection();
+        }
+        return {{QStringLiteral("year"), monthParts->year},
+                {QStringLiteral("month"), monthParts->month},
+                {QStringLiteral("firstYear"), currentWeek->year},
+                {QStringLiteral("firstWeek"), currentWeek->week},
+                {QStringLiteral("lastYear"), currentWeek->year},
+                {QStringLiteral("lastWeek"), currentWeek->week}};
+    }
+
+    QVariantMap ActivityAnalyticsViewModel::currentIsoMonthSelection() const {
+        const auto currentWeek =
+            domain::isoWeekForDate(QDate::currentDate().toString(Qt::ISODate).toStdString());
+        if (!currentWeek.has_value()) {
+            return currentMonthSelection();
+        }
+        const auto monthParts = domain::isoReferenceMonthParts(*currentWeek);
+        if (!monthParts.has_value()) {
+            return currentMonthSelection();
+        }
+        const auto previous = previousMonth(monthParts->year, monthParts->month);
+        return isoReferenceMonthMap(previous.first, previous.second);
+    }
+
+    void ActivityAnalyticsViewModel::clearCustomSeries() {
+        if (customSeries_.isEmpty()) {
+            return;
+        }
+        customSeries_.clear();
+        emit customSeriesChanged();
+    }
+
+    QString ActivityAnalyticsViewModel::customChartTitle(const QVariantMap& selection) const {
+        try {
+            return customChartTitleFromSelection(selection);
+        } catch (const std::exception&) {
+            return QStringLiteral("Resultado da analise customizada");
+        }
+    }
+
+    bool ActivityAnalyticsViewModel::writeExportFile(const QString& path,
+                                                     const QString& content) const {
+        if (path.trimmed().isEmpty()) {
+            return false;
+        }
+        QFile file(path);
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
+            return false;
+        }
+        return file.write(content.toUtf8()) >= 0;
+    }
+
     bool ActivityAnalyticsViewModel::requestDashboard(const QVariantMap& selection) {
         try {
             const auto reportPeriod = selectionPeriod(selection, QStringLiteral("report"));
@@ -527,7 +769,7 @@ namespace ssa::presentation {
 
     bool ActivityAnalyticsViewModel::requestCustomSeries(const QVariantMap& selection) {
         try {
-            loadCustomSeries(analyticsRequest(selection));
+            loadCustomSeries(analyticsRequest(selection), selectionCategorySort(selection));
             return true;
         } catch (const std::exception& error) {
             rejectSelection(error);

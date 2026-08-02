@@ -127,9 +127,35 @@ namespace ssa::domain {
     [[nodiscard]] std::optional<IsoWeek> isoWeekForDate(std::string_view isoDate) noexcept;
     [[nodiscard]] int toIsoYearWeek(IsoWeek value);
     [[nodiscard]] std::string isoReferenceMonth(IsoWeek value);
+
+    struct IsoReferenceMonth final {
+        int year{0};
+        int month{0};
+
+        [[nodiscard]] bool operator==(const IsoReferenceMonth&) const noexcept = default;
+    };
+
+    // Calendar year/month owning the ISO week, derived from the ISO Thursday. Callers
+    // that need the numeric parts must use this instead of parsing isoReferenceMonth.
+    [[nodiscard]] std::optional<IsoReferenceMonth> isoReferenceMonthParts(IsoWeek value) noexcept;
     [[nodiscard]] std::string analyticsBucketKey(IsoWeek value, TimeGrain grain);
+    [[nodiscard]] std::string formatIsoYearWeekDisplay(int yearValue, int weekValue);
+    [[nodiscard]] std::string formatAnalyticsBucketLabel(std::string_view bucketKey);
     [[nodiscard]] bool isValidPeriod(const AnalyticsPeriod& period) noexcept;
+    struct YearToDateCalendarSelection final {
+        int year{0};
+        int month{0};
+        IsoWeek first{};
+        IsoWeek last{};
+    };
+
     [[nodiscard]] AnalyticsPeriod calendarMonthPeriod(int yearValue, int monthValue);
+    [[nodiscard]] AnalyticsPeriod isoReferenceMonthPeriod(int yearValue, int monthValue);
+    [[nodiscard]] std::string personInitialsTag(std::string_view fullName);
+    [[nodiscard]] std::string sectorCodeTag(std::string_view sectorCode);
+    [[nodiscard]] std::string chartSeriesTag(std::string_view seriesName);
+    [[nodiscard]] std::optional<YearToDateCalendarSelection>
+    yearToDateCalendarSelection(std::string_view isoDate) noexcept;
     [[nodiscard]] AnalyticsPeriod referenceMonthHistoryPeriod(IsoWeek last, int monthCount);
     [[nodiscard]] std::vector<double> linearTrend(std::span<const double> values);
     [[nodiscard]] std::optional<std::string>

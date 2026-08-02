@@ -1,11 +1,14 @@
 #include "presentation/ActivityAnalyticsViewModel.h"
 #include "application/ActivityAnalyticsService.h"
+#include "domain/ActivityAnalyticsTypes.h"
 #include "ports/IActivityAnalyticsPort.h"
 #include "ports/IActivityAnalyticsSettingsPort.h"
 
 #include <QDate>
 #include <QElapsedTimer>
+#include <QFile>
 #include <QSignalSpy>
+#include <QTemporaryFile>
 #include <QTest>
 #include <QThread>
 #include <QVariantList>
@@ -180,6 +183,108 @@ namespace {
             QCOMPARE(selection.value(QStringLiteral("firstWeek")).toInt(), 27);
             QCOMPARE(selection.value(QStringLiteral("lastYear")).toInt(), 2026);
             QCOMPARE(selection.value(QStringLiteral("lastWeek")).toInt(), 31);
+        }
+
+        void yearToDateSelectionUsesFirstIsoWeekThroughCurrentWeek() {
+            const auto port = std::make_shared<FunctionalAnalyticsPort>();
+            const ssa::presentation::ActivityAnalyticsViewModel model(serviceFor(port));
+            const QDate today = QDate::currentDate();
+            const auto expected =
+                ssa::domain::yearToDateCalendarSelection(
+                    today.toString(Qt::ISODate).toStdString());
+            QVERIFY(expected.has_value());
+
+            const QVariantMap selection = model.yearToDateSelection();
+
+            QCOMPARE(selection.value(QStringLiteral("year")).toInt(), expected->first.year);
+            QCOMPARE(selection.value(QStringLiteral("month")).toInt(), 0);
+            QCOMPARE(selection.value(QStringLiteral("firstYear")).toInt(), expected->first.year);
+            QCOMPARE(selection.value(QStringLiteral("firstWeek")).toInt(), expected->first.week);
+            QCOMPARE(selection.value(QStringLiteral("lastYear")).toInt(), expected->last.year);
+            QCOMPARE(selection.value(QStringLiteral("lastWeek")).toInt(), expected->last.week);
+        }
+
+        void yearToDateSelectionUsesIsoReferenceMonthAtYearBoundary() {
+            const auto selection =
+                ssa::domain::yearToDateCalendarSelection("2024-12-31");
+            QVERIFY(selection.has_value());
+            QCOMPARE(selection->year, 2025);
+            QCOMPARE(selection->month, 1);
+            QCOMPARE(selection->first.year, 2025);
+            QCOMPARE(selection->first.week, 1);
+            QCOMPARE(selection->last.year, 2025);
+            QCOMPARE(selection->last.week, 1);
+        }
+
+        void clearCustomSeriesEmitsChangeAndClearsModel() {
+            const auto port = std::make_shared<FunctionalAnalyticsPort>();
+            ssa::presentation::ActivityAnalyticsViewModel model(serviceFor(port));
+            QSignalSpy customSpy(
+                &model, &ssa::presentation::ActivityAnalyticsViewModel::customSeriesChanged);
+
+            QVERIFY(model.requestCustomSeries({{QStringLiteral("metric"), 0},
+                                               {QStringLiteral("firstYear"), 2026},
+                                               {QStringLiteral("firstWeek"), 1},
+                                               {QStringLiteral("lastYear"), 2026},
+                                               {QStringLiteral("lastWeek"), 13},
+                                               {QStringLiteral("grain"), 0},
+                                               {QStringLiteral("breakdown"), 0},
+                                               {QStringLiteral("personRole"), 2}}));
+            QTRY_COMPARE_WITH_TIMEOUT(customSpy.count(), 1, 5000);
+            QVERIFY(!model.customSeries().isEmpty());
+
+            model.clearCustomSeries();
+            QCOMPARE(customSpy.count(), 2);
+            QVERIFY(model.customSeries().isEmpty());
+        }
+
+        void currentIsoWeekSelectionUsesCurrentIsoWeek() {
+            const auto port = std::make_shared<FunctionalAnalyticsPort>();
+            const ssa::presentation::ActivityAnalyticsViewModel model(serviceFor(port));
+            const QDate today = QDate::currentDate();
+            int isoYear = 0;
+            const int isoWeek = today.weekNumber(&isoYear);
+
+            const QVariantMap selection = model.currentIsoWeekSelection();
+
+            QCOMPARE(selection.value(QStringLiteral("firstYear")).toInt(), isoYear);
+            QCOMPARE(selection.value(QStringLiteral("firstWeek")).toInt(), isoWeek);
+            QCOMPARE(selection.value(QStringLiteral("lastYear")).toInt(), isoYear);
+            QCOMPARE(selection.value(QStringLiteral("lastWeek")).toInt(), isoWeek);
+        }
+
+        void customChartTitleBuildsAdaptiveLabel() {
+            const auto port = std::make_shared<FunctionalAnalyticsPort>();
+            const ssa::presentation::ActivityAnalyticsViewModel model(serviceFor(port));
+            const QVariantMap selection{
+                {QStringLiteral("metric"), 1},
+                {QStringLiteral("firstYear"), 2026},
+                {QStringLiteral("firstWeek"), 27},
+                {QStringLiteral("lastYear"), 2026},
+                {QStringLiteral("lastWeek"), 31},
+                {QStringLiteral("grain"), 0},
+                {QStringLiteral("breakdown"), 2},
+                {QStringLiteral("personRole"), 2},
+            };
+
+            const QString title = model.customChartTitle(selection);
+
+            QCOMPARE(title, QStringLiteral("SSAs executadas de 202627 a 202631 em Divisao e "
+                                           "pessoa (Execucao)"));
+        }
+
+        void writeExportFilePersistsContent() {
+            const auto port = std::make_shared<FunctionalAnalyticsPort>();
+            const ssa::presentation::ActivityAnalyticsViewModel model(serviceFor(port));
+            QTemporaryFile file;
+            QVERIFY(file.open());
+            const QString path = file.fileName();
+            file.close();
+
+            QVERIFY(model.writeExportFile(path, QStringLiteral("<svg></svg>")));
+            QFile reader(path);
+            QVERIFY(reader.open(QIODevice::ReadOnly));
+            QCOMPARE(QString::fromUtf8(reader.readAll()), QStringLiteral("<svg></svg>"));
         }
 
         void rejectsMissingService() {

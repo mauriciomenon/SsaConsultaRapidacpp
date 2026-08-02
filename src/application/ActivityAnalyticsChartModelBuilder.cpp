@@ -32,6 +32,21 @@ namespace ssa::application {
             "overdue",
         };
 
+        std::string taggedSeriesName(const std::string_view name) {
+            return domain::chartSeriesTag(name);
+        }
+
+        AnalyticsChartSeries makeSeries(const std::string_view name,
+                                        std::vector<std::optional<double>> values,
+                                        std::optional<double> total) {
+            return {
+                .name = std::string{name},
+                .tag = taggedSeriesName(name),
+                .values = std::move(values),
+                .total = total,
+            };
+        }
+
         void checkedAdd(std::int64_t& destination, const std::int64_t value) {
             if (value < 0) {
                 throw std::invalid_argument("analytics chart count cannot be negative");
@@ -338,9 +353,8 @@ namespace ssa::application {
             std::string subtitle;
             if (result.observedIsoYearWeek.has_value()) {
                 const int value = *result.observedIsoYearWeek;
-                const int week = value % 100;
-                subtitle = "Semana observada: " + std::to_string(value / 100) +
-                           (week < 10 ? "-W0" : "-W") + std::to_string(week);
+                subtitle = "Semana observada: " +
+                           domain::formatIsoYearWeekDisplay(value / 100, value % 100);
             }
             if (!result.sourceRevision.empty()) {
                 if (!subtitle.empty()) {
@@ -423,6 +437,7 @@ namespace ssa::application {
 
             AnalyticsChartSeries series{
                 .name = "total",
+                .tag = taggedSeriesName("total"),
                 .values = valuesFor(request, model.categories, counts, observedCategories),
                 .total = optionalTotal(totalIsKnown(request, result), total),
             };
@@ -457,12 +472,10 @@ namespace ssa::application {
 
             const bool known = totalIsKnown(request, result);
             for (std::size_t index = 0; index < counts.size(); ++index) {
-                model.series.push_back({
-                    .name = std::string{kCohortNames[index]},
-                    .values =
-                        valuesFor(request, model.categories, counts[index], observedCategories),
-                    .total = optionalTotal(known, totals[index]),
-                });
+                model.series.push_back(makeSeries(
+                    kCohortNames[index],
+                    valuesFor(request, model.categories, counts[index], observedCategories),
+                    optionalTotal(known, totals[index])));
             }
             model.total = optionalTotal(known, total);
             return model;
@@ -494,12 +507,10 @@ namespace ssa::application {
 
             const bool known = totalIsKnown(request, result);
             for (std::size_t index = 0; index < counts.size(); ++index) {
-                model.series.push_back({
-                    .name = std::string{kDeadlineNames[index]},
-                    .values =
-                        valuesFor(request, model.categories, counts[index], observedCategories),
-                    .total = optionalTotal(known, totals[index]),
-                });
+                model.series.push_back(makeSeries(
+                    kDeadlineNames[index],
+                    valuesFor(request, model.categories, counts[index], observedCategories),
+                    optionalTotal(known, totals[index])));
             }
             model.total = optionalTotal(known, total);
             return model;
@@ -581,12 +592,10 @@ namespace ssa::application {
 
                     const bool known = totalIsKnown(request, result);
                     for (const auto& [person, personCounts] : counts) {
-                        model.series.push_back({
-                            .name = person,
-                            .values = valuesFor(request, model.categories, personCounts,
-                                                observedCategories),
-                            .total = optionalTotal(known, totals.at(person)),
-                        });
+                        model.series.push_back(makeSeries(
+                            person,
+                            valuesFor(request, model.categories, personCounts, observedCategories),
+                            optionalTotal(known, totals.at(person))));
                     }
                     model.total = optionalTotal(known, total);
                     return model;
@@ -621,12 +630,10 @@ namespace ssa::application {
 
             const bool known = totalIsKnown(request, result);
             for (const auto& [seriesName, seriesCounts] : counts) {
-                AnalyticsChartSeries series{
-                    .name = seriesName,
-                    .values =
-                        valuesFor(request, model.categories, seriesCounts, observedCategories),
-                    .total = optionalTotal(known, totals.at(seriesName)),
-                };
+                AnalyticsChartSeries series = makeSeries(
+                    seriesName,
+                    valuesFor(request, model.categories, seriesCounts, observedCategories),
+                    optionalTotal(known, totals.at(seriesName)));
                 if (request.grain == domain::TimeGrain::IsoReferenceMonth) {
                     series.trendValues = trendFor(series.values);
                 }
