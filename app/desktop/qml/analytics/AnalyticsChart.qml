@@ -27,6 +27,8 @@ Rectangle {
     property bool compact: false
     property int axisTickCount: 5
     property var fileWriter: null
+    property var itemGrabber: null
+    property var svgGrabber: null
 
     signal exportFinished(bool success)
     signal exportPngRequested()
@@ -71,6 +73,11 @@ Rectangle {
     function localExportPath(fileUrl) {
         if (fileUrl === null || fileUrl === undefined)
             return "";
+        if (typeof fileUrl === "object" && typeof fileUrl.toLocalFile === "function") {
+            const local = fileUrl.toLocalFile();
+            if (local.length > 0)
+                return local;
+        }
         const text = String(fileUrl);
         if (!text.startsWith("file:"))
             return text;
@@ -82,21 +89,29 @@ Rectangle {
         return /^\/[A-Za-z]:/.test(decoded) ? decoded.slice(1) : decoded;
     }
 
+    function ensureExportExtension(localPath, extension) {
+        if (localPath.length === 0)
+            return localPath;
+        const suffix = "." + extension;
+        return localPath.toLowerCase().endsWith(suffix) ? localPath : localPath + suffix;
+    }
+
     function savePng(fileUrl) {
         if (root.compact || !root.hasData) {
             root.exportFinished(false);
             return;
         }
-        const localPath = root.localExportPath(fileUrl);
+        const localPath = root.ensureExportExtension(root.localExportPath(fileUrl), "png");
         if (localPath.length === 0) {
             root.exportFinished(false);
             return;
         }
-        const grabbed = root.grabToImage(result => {
-            root.exportFinished(!result.image.isNull() && result.saveToFile(localPath));
-        });
-        if (!grabbed)
-            root.exportFinished(false);
+        chartCanvas.refresh();
+        if (typeof root.itemGrabber === "function") {
+            root.exportFinished(root.itemGrabber(chartCanvas, localPath));
+            return;
+        }
+        chartCanvas.savePlotPng(localPath);
     }
 
     function saveSvg(fileUrl) {
@@ -104,30 +119,17 @@ Rectangle {
             root.exportFinished(false);
             return;
         }
-        const localPath = root.localExportPath(fileUrl);
+        const localPath = root.ensureExportExtension(root.localExportPath(fileUrl), "svg");
         if (localPath.length === 0) {
             root.exportFinished(false);
             return;
         }
-        const grabbed = root.grabToImage(result => {
-            if (result.image.isNull()) {
-                root.exportFinished(false);
-                return;
-            }
-            const buffer = result.image.toDataURL("image/png");
-            const comma = buffer.indexOf(",");
-            const payload = comma >= 0 ? buffer.slice(comma + 1) : buffer;
-            const svg = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" +
-                        "<svg xmlns=\"http://www.w3.org/2000/svg\" " +
-                        "xmlns:xlink=\"http://www.w3.org/1999/xlink\" " +
-                        "width=\"" + result.image.width + "\" height=\"" + result.image.height + "\">" +
-                        "<image width=\"" + result.image.width + "\" height=\"" + result.image.height + "\" " +
-                        "xlink:href=\"data:image/png;base64," + payload + "\"/></svg>";
-            const wrote = typeof root.fileWriter === "function" ? root.fileWriter(localPath, svg) : false;
-            root.exportFinished(wrote);
-        });
-        if (!grabbed)
-            root.exportFinished(false);
+        chartCanvas.refresh();
+        if (typeof root.svgGrabber === "function") {
+            root.exportFinished(root.svgGrabber(chartCanvas, localPath));
+            return;
+        }
+        chartCanvas.savePlotSvg(localPath, root.fileWriter);
     }
 
     implicitWidth: 520
@@ -143,6 +145,16 @@ Rectangle {
         anchors.fill: parent
         anchors.margins: Theme.cardGap
         spacing: Theme.gap
+
+        Item {
+            id: chartSnapshot
+
+            Layout.fillWidth: true
+            Layout.fillHeight: !root.compact
+
+            ColumnLayout {
+                anchors.fill: parent
+                spacing: Theme.gap
 
         ColumnLayout {
             Layout.fillWidth: true
@@ -209,6 +221,8 @@ Rectangle {
                 showSeriesTags: root.showSeriesTags
                 tickCount: root.axisTickCount
 
+                onPlotExportFinished: success => root.exportFinished(success)
+
                 onHovered: (categoryIndex, seriesIndex, pointerX, pointerY) => {
                     root.tooltipText = chartCanvas.tooltipText(categoryIndex, seriesIndex, root.emptyCategoryText, root.missingValueText);
                     root.tooltipX = pointerX;
@@ -242,6 +256,10 @@ Rectangle {
             Layout.preferredHeight: implicitHeight
             visible: !root.compact
             entries: root.legendEntries
+        }
+
+            }
+
         }
 
         RowLayout {

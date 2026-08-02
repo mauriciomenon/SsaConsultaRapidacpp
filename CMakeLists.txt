@@ -344,7 +344,9 @@ qt_add_qml_module(
   app/desktop/qml/components/SsaTable.qml
   app/desktop/qml/components/StatusPill.qml
   app/desktop/qml/components/SsaDetailsWindow.qml
-  app/desktop/qml/components/ThemeDialog.qml)
+  app/desktop/qml/components/ThemeDialog.qml
+  SOURCES
+  app/desktop/ChartImageExport.cpp)
 
 target_link_libraries(
   ssa_consulta_rapida PRIVATE ssa_presentation ssa_infra ssa_platform

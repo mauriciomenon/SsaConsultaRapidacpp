@@ -4,9 +4,14 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QGuiApplication>
+#include <QBuffer>
+#include <QEventLoop>
 #include <QImage>
+#include <QQuickItemGrabResult>
+#include <QTimer>
 #include <QObject>
 #include <QQmlComponent>
+#include <QQmlContext>
 #include <QQmlEngine>
 #include <QQuickItem>
 #include <QQuickWindow>
@@ -486,6 +491,86 @@ namespace {
         }
         return QString::fromUtf8(source.readAll());
     }
+
+    class ExportFileWriter final : public QObject {
+        Q_OBJECT
+
+      public:
+        Q_INVOKABLE bool write(const QString& path, const QString& content) const {
+            QFile file(path);
+            if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
+                return false;
+            }
+            return file.write(content.toUtf8()) >= 0;
+        }
+
+        Q_INVOKABLE bool grabItemToFile(QObject* itemObject, const QString& path) const {
+            auto* item = qobject_cast<QQuickItem*>(itemObject);
+            if (item == nullptr || path.trimmed().isEmpty()) {
+                return false;
+            }
+            const QSharedPointer<QQuickItemGrabResult> result = item->grabToImage();
+            if (result.isNull()) {
+                return false;
+            }
+            if (result->image().isNull()) {
+                QEventLoop loop;
+                QTimer timeout;
+                timeout.setSingleShot(true);
+                timeout.setInterval(5000);
+                QObject::connect(result.data(), &QQuickItemGrabResult::ready, &loop,
+                                 &QEventLoop::quit);
+                QObject::connect(&timeout, &QTimer::timeout, &loop, &QEventLoop::quit);
+                timeout.start();
+                loop.exec();
+            }
+            if (result->image().isNull()) {
+                return false;
+            }
+            return result->saveToFile(path);
+        }
+
+        Q_INVOKABLE bool grabItemToSvgFile(QObject* itemObject, const QString& path) const {
+            auto* item = qobject_cast<QQuickItem*>(itemObject);
+            if (item == nullptr || path.trimmed().isEmpty()) {
+                return false;
+            }
+            const QSharedPointer<QQuickItemGrabResult> result = item->grabToImage();
+            if (result.isNull()) {
+                return false;
+            }
+            if (result->image().isNull()) {
+                QEventLoop loop;
+                QTimer timeout;
+                timeout.setSingleShot(true);
+                timeout.setInterval(5000);
+                QObject::connect(result.data(), &QQuickItemGrabResult::ready, &loop,
+                                 &QEventLoop::quit);
+                QObject::connect(&timeout, &QTimer::timeout, &loop, &QEventLoop::quit);
+                timeout.start();
+                loop.exec();
+            }
+            const QImage image = result->image();
+            if (image.isNull()) {
+                return false;
+            }
+            QByteArray pngBytes;
+            QBuffer buffer(&pngBytes);
+            if (!buffer.open(QIODevice::WriteOnly) || !image.save(&buffer, "PNG")) {
+                return false;
+            }
+            const QString svg =
+                QStringLiteral("<?xml version=\"1.0\" encoding=\"UTF-8\"?>")
+                + QStringLiteral("<svg xmlns=\"http://www.w3.org/2000/svg\" ")
+                + QStringLiteral("xmlns:xlink=\"http://www.w3.org/1999/xlink\" ")
+                + QStringLiteral("width=\"%1\" height=\"%2\">").arg(image.width()).arg(image.height())
+                + QStringLiteral("<image width=\"%1\" height=\"%2\" xlink:href=\"data:image/png;base64,")
+                      .arg(image.width())
+                      .arg(image.height())
+                + QString::fromLatin1(pngBytes.toBase64()) + QStringLiteral("\"/></svg>");
+            return write(path, svg);
+        }
+    };
 
     class ActivityAnalyticsWindowQmlTest final : public QObject {
         Q_OBJECT
@@ -1244,6 +1329,97 @@ namespace {
                                     QStringLiteral("analyticsChartExportPng")) != nullptr);
             QVERIFY(findVisualChild(*window->contentItem(),
                                     QStringLiteral("analyticsChartExportSvg")) != nullptr);
+        }
+
+        void analytics_chart_harness_writes_png_and_svg_files() {
+            QQmlEngine engine;
+            ExportFileWriter writer;
+            engine.rootContext()->setContextProperty(QStringLiteral("exportFileWriter"), &writer);
+
+            QQmlComponent component(&engine);
+            component.setData(R"QML(
+                import QtQuick
+                import SsaConsultaRapida
+
+                Item {
+                    id: harnessRoot
+                    width: 640
+                    height: 360
+
+                    SimpleBarChart {
+                        id: chart
+                        objectName: "chart"
+                        anchors.fill: parent
+                        title: "Export harness"
+                        categories: ["SMIN", "SMIT"]
+                        series: [
+                            {
+                                "name": "Joao Silva",
+                                "tag": "JS",
+                                "values": [2, 5]
+                            },
+                            {
+                                "name": "Maria Costa",
+                                "tag": "MC",
+                                "values": [3, 1]
+                            }
+                        ]
+                        fileWriter: (path, content) => exportFileWriter.write(path, content)
+                        itemGrabber: (item, path) => exportFileWriter.grabItemToFile(item, path)
+                        svgGrabber: (item, path) => exportFileWriter.grabItemToSvgFile(item, path)
+                    }
+                }
+            )QML",
+                              QUrl(QStringLiteral("inmemory:/AnalyticsChartExportHarness.qml")));
+            QTRY_VERIFY_WITH_TIMEOUT(component.status() != QQmlComponent::Loading, 1000);
+            QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+
+            std::unique_ptr<QObject> harness(component.create());
+            QVERIFY2(harness != nullptr, qPrintable(component.errorString()));
+
+            QQuickWindow window;
+            window.setGeometry(0, 0, 640, 360);
+            auto* harnessItem = qobject_cast<QQuickItem*>(harness.get());
+            QVERIFY(harnessItem != nullptr);
+            harnessItem->setParentItem(window.contentItem());
+            window.show();
+            QTRY_VERIFY_WITH_TIMEOUT(window.isExposed(), 1000);
+            QVERIFY(waitForRenderedFrames(window));
+
+            auto* chart = harness->findChild<QQuickItem*>(QStringLiteral("chart"));
+            QVERIFY(chart != nullptr);
+            QVERIFY(chart->property("plotWidth").toReal() > 0);
+            QVERIFY(chart->property("hasData").toBool());
+
+            QTemporaryDir outputDirectory;
+            QVERIFY(outputDirectory.isValid());
+            const QString pngPath = outputDirectory.filePath(QStringLiteral("analytics-chart.png"));
+            const QString svgPath = outputDirectory.filePath(QStringLiteral("analytics-chart.svg"));
+            const QUrl pngUrl = QUrl::fromLocalFile(pngPath);
+            const QUrl svgUrl = QUrl::fromLocalFile(svgPath);
+
+            QSignalSpy exportSpy(chart, SIGNAL(exportFinished(bool)));
+
+            QVERIFY(QMetaObject::invokeMethod(chart, "savePng", Q_ARG(QVariant, QVariant::fromValue(pngUrl))));
+            QCOMPARE(exportSpy.count(), 1);
+            QCOMPARE(exportSpy.at(0).at(0).toBool(), true);
+            const QImage pngImage(pngPath);
+            QVERIFY(!pngImage.isNull());
+            QVERIFY(pngImage.width() > 0);
+            QVERIFY(pngImage.height() > 0);
+
+            QVERIFY(QMetaObject::invokeMethod(chart, "saveSvg", Q_ARG(QVariant, QVariant::fromValue(svgUrl))));
+            QCOMPARE(exportSpy.count(), 2);
+            QCOMPARE(exportSpy.at(1).at(0).toBool(), true);
+            QFile svgFile(svgPath);
+            QVERIFY(svgFile.open(QIODevice::ReadOnly));
+            const QByteArray svgPayload = svgFile.readAll();
+            QVERIFY(svgPayload.contains("<svg"));
+            QVERIFY(svgPayload.contains("data:image/png;base64,"));
+        }
+
+        void custom_chart_export_writes_png_and_svg_files() {
+            analytics_chart_harness_writes_png_and_svg_files();
         }
 
         void chart_card_localizes_composite_quality_and_known_unavailability_reasons() {

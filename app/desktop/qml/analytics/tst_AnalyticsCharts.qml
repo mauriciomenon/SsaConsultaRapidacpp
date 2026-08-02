@@ -201,6 +201,34 @@ TestCase {
         compare(item.localExportPath("file:///home/ana/ssa%20chart.png"),
                 "/home/ana/ssa chart.png");
         compare(item.localExportPath(""), "");
+        compare(item.ensureExportExtension("C:/tmp/chart", "png"), "C:/tmp/chart.png");
+        compare(item.ensureExportExtension("C:/tmp/chart.PNG", "png"), "C:/tmp/chart.PNG");
+    }
+
+    Component {
+        id: manyCategoryBarComponent
+
+        SimpleBarChart {
+            categories: ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J",
+                         "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T",
+                         "U", "V", "W", "X", "Y", "Z", "AA"]
+            series: [
+                {
+                    "name": "SSAs",
+                    "values": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+                               11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+                               21, 22, 23, 24, 25, 26, 27]
+                }
+            ]
+        }
+    }
+
+    function test_many_categories_keep_value_labels_enabled() {
+        const item = createChart(manyCategoryBarComponent);
+
+        compare(item.categories.length, 27);
+        compare(item.axisMaximum, 27);
+        compare(item.showValueLabels, true);
     }
 
     function test_line_chart_uses_automatic_scale_and_keeps_gap() {

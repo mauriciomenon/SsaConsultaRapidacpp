@@ -239,7 +239,28 @@ Item {
         const tag = seriesTag(seriesIndex);
         if (tag.length === 0)
             return false;
-        return segmentHeight >= 14 || (value > 0 && root.seriesCount >= 2);
+        return segmentHeight >= 10 || value > 0;
+    }
+
+    function drawTagBadge(context, centerX, baselineY, text, seriesIndex, insideSegment) {
+        context.font = canvasFont("", Theme.fontSizeCaption - 1);
+        context.textAlign = "center";
+        context.textBaseline = insideSegment ? "bottom" : "top";
+        const metrics = context.measureText(text);
+        const padX = 3;
+        const padY = 1;
+        const boxWidth = metrics.width + padX * 2;
+        const boxHeight = Theme.fontSizeCaption + 1 + padY * 2;
+        const boxX = centerX - boxWidth / 2;
+        const boxY = insideSegment ? baselineY - boxHeight : baselineY;
+        context.save();
+        context.globalAlpha = 0.92;
+        context.fillStyle = Theme.panelRaised;
+        context.fillRect(boxX, boxY, boxWidth, boxHeight);
+        context.globalAlpha = 1;
+        context.fillStyle = Theme.readableText(Theme.panelRaised, seriesColor(seriesIndex));
+        context.fillText(text, centerX, insideSegment ? baselineY - padY : baselineY + padY);
+        context.restore();
     }
 
     // Canvas font shorthand needs the family quoted, otherwise Qt collapses
@@ -272,30 +293,27 @@ Item {
 
     function drawBarSegmentLabels(context, centerX, y, bottom, seriesIndex, value, valueLimit) {
         const segmentHeight = Math.max(0, bottom - y);
-        const tag = seriesTag(seriesIndex);
-        const showValue = root.showValueLabels && valueLimit && segmentHeight >= 12;
         const valueText = formattedValue(value);
         const tagFontSize = Theme.fontSizeCaption - 1;
         const valueFontSize = Theme.fontSizeCaption + 1;
         const valueBoxHeight = valueFontSize + 6;
         const tagHeight = tagFontSize + 4;
-        const showTag = shouldDrawSeriesTag(segmentHeight, value, seriesIndex) &&
-                        (!showValue || segmentHeight >= valueBoxHeight + tagHeight + 6);
-        if (!showTag && !showValue)
+        const wantsValue = root.showValueLabels && valueLimit;
+        const wantsTag = shouldDrawSeriesTag(segmentHeight, value, seriesIndex);
+        if (!wantsValue && !wantsTag)
             return;
-        if (showValue) {
+        if (wantsValue) {
             if (segmentHeight >= valueBoxHeight + 4)
                 drawValueBadge(context, centerX, y + 2, valueText);
             else
                 drawValueBadge(context, centerX, Math.max(root.topMargin, y - valueBoxHeight - 4), valueText);
         }
-        if (!showTag)
+        if (!wantsTag)
             return;
-        context.fillStyle = Theme.readableText(seriesColor(seriesIndex), Theme.text);
-        context.textAlign = "center";
-        context.textBaseline = "bottom";
-        context.font = canvasFont("", tagFontSize);
-        context.fillText(tag, centerX, bottom - 2);
+        const valueAbove = wantsValue && segmentHeight < valueBoxHeight + 4;
+        const insideSegment = segmentHeight >= tagHeight + 4 && !valueAbove;
+        const tagBaselineY = insideSegment ? bottom - 2 : bottom + 2;
+        drawTagBadge(context, centerX, tagBaselineY, seriesTag(seriesIndex), seriesIndex, insideSegment);
     }
 
     function legendEntries() {
@@ -349,6 +367,51 @@ Item {
         }
         return lines.join("\n");
     }
+
+    function grabImage(callback) {
+        chartCanvas.requestPaint();
+        return chartCanvas.grabToImage(callback);
+    }
+
+    function savePlotPng(localPath) {
+        if (localPath.length === 0 || !root.hasData) {
+            root.plotExportFinished(false);
+            return;
+        }
+        const grabbed = root.grabImage(function(result) {
+            root.plotExportFinished(!result.image.isNull() && result.saveToFile(localPath));
+        });
+        if (!grabbed)
+            root.plotExportFinished(false);
+    }
+
+    function savePlotSvg(localPath, fileWriter) {
+        if (localPath.length === 0 || !root.hasData) {
+            root.plotExportFinished(false);
+            return;
+        }
+        const grabbed = root.grabImage(function(result) {
+            if (result.image.isNull()) {
+                root.plotExportFinished(false);
+                return;
+            }
+            const buffer = result.image.toDataURL("image/png");
+            const comma = buffer.indexOf(",");
+            const payload = comma >= 0 ? buffer.slice(comma + 1) : buffer;
+            const svg = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" +
+                        "<svg xmlns=\"http://www.w3.org/2000/svg\" " +
+                        "xmlns:xlink=\"http://www.w3.org/1999/xlink\" " +
+                        "width=\"" + result.image.width + "\" height=\"" + result.image.height + "\">" +
+                        "<image width=\"" + result.image.width + "\" height=\"" + result.image.height + "\" " +
+                        "xlink:href=\"data:image/png;base64," + payload + "\"/></svg>";
+            const wrote = typeof fileWriter === "function" ? fileWriter(localPath, svg) : false;
+            root.plotExportFinished(wrote);
+        });
+        if (!grabbed)
+            root.plotExportFinished(false);
+    }
+
+    signal plotExportFinished(bool success)
 
     function refresh() {
         ++root.modelRevision;
@@ -461,8 +524,7 @@ Item {
                     "categoryIndex": categoryIndex,
                     "seriesIndex": seriesIndex
                 });
-                if (root.categoryCount <= 24)
-                    drawBarSegmentLabels(context, x + barWidth / 2, y, bottom, seriesIndex, value, root.showValueLabels);
+                drawBarSegmentLabels(context, x + barWidth / 2, y, bottom, seriesIndex, value, root.showValueLabels);
             }
         }
     }
@@ -491,8 +553,7 @@ Item {
                     "categoryIndex": categoryIndex,
                     "seriesIndex": seriesIndex
                 });
-                if (root.categoryCount <= 18)
-                    drawBarSegmentLabels(context, x + barWidth / 2, y, bottom, seriesIndex, value, root.showValueLabels);
+                drawBarSegmentLabels(context, x + barWidth / 2, y, bottom, seriesIndex, value, root.showValueLabels);
                 runningValue += value;
             }
         }
@@ -622,7 +683,8 @@ Item {
     Canvas {
         id: chartCanvas
 
-        anchors.fill: parent
+        width: Math.max(1, root.width)
+        height: Math.max(1, root.height)
         renderTarget: Canvas.Image
 
         onPaint: root.paintChart(getContext("2d"))

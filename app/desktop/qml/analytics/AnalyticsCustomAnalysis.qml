@@ -950,6 +950,8 @@ Item {
                 chartModel: root.analyticsViewModel.customSeries
                 showExportActions: customChart.hasData
                 fileWriter: (path, content) => root.analyticsViewModel.writeExportFile(path, content)
+                itemGrabber: (item, path) => ChartImageExport.grabItemToFile(item, path)
+                svgGrabber: (item, path) => ChartImageExport.grabItemToSvgFile(item, path)
 
                 onExportPngRequested: chartPngExportDialog.open()
                 onExportSvgRequested: chartSvgExportDialog.open()
@@ -963,6 +965,7 @@ Item {
         objectName: "analyticsChartPngExportDialog"
         title: qsTr("Exportar grafico como PNG")
         fileMode: FileDialog.SaveFile
+        defaultSuffix: "png"
         nameFilters: [qsTr("PNG (*.png)")]
         onAccepted: customChart.savePng(selectedFile)
     }
@@ -973,6 +976,7 @@ Item {
         objectName: "analyticsChartSvgExportDialog"
         title: qsTr("Exportar grafico como SVG (imagem embutida)")
         fileMode: FileDialog.SaveFile
+        defaultSuffix: "svg"
         nameFilters: [qsTr("SVG (*.svg)")]
         onAccepted: customChart.saveSvg(selectedFile)
     }
