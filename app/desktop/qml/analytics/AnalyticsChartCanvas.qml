@@ -291,29 +291,61 @@ Item {
         context.restore();
     }
 
+    function barLabelMetrics() {
+        const tagFontSize = Theme.fontSizeCaption - 1;
+        const valueFontSize = Theme.fontSizeCaption + 1;
+        return {
+            "valueBoxHeight": valueFontSize + 6,
+            "tagBoxHeight": tagFontSize + 4,
+            "labelGap": 2,
+            "edgePad": 2
+        };
+    }
+
+    function resolveBarSegmentLabelLayout(segmentHeight, wantsValue, wantsTag) {
+        const metrics = barLabelMetrics();
+        const minInsideBoth = metrics.valueBoxHeight + metrics.tagBoxHeight + metrics.labelGap + metrics.edgePad * 2;
+        const minTagInside = metrics.tagBoxHeight + metrics.edgePad * 2;
+        const minValueInside = metrics.valueBoxHeight + metrics.edgePad * 2;
+        let valuePlacement = "none";
+        let tagPlacement = "none";
+        if (wantsValue && wantsTag) {
+            if (segmentHeight >= minInsideBoth) {
+                valuePlacement = "inside";
+                tagPlacement = "inside";
+            } else {
+                valuePlacement = "above";
+                tagPlacement = segmentHeight >= minTagInside ? "inside" : "below";
+            }
+        } else if (wantsValue) {
+            valuePlacement = segmentHeight >= minValueInside ? "inside" : "above";
+        } else if (wantsTag) {
+            tagPlacement = segmentHeight >= minTagInside ? "inside" : "below";
+        }
+        return {
+            "valuePlacement": valuePlacement,
+            "tagPlacement": tagPlacement,
+            "valueBoxHeight": metrics.valueBoxHeight,
+            "tagBoxHeight": metrics.tagBoxHeight
+        };
+    }
+
     function drawBarSegmentLabels(context, centerX, y, bottom, seriesIndex, value, valueLimit) {
         const segmentHeight = Math.max(0, bottom - y);
         const valueText = formattedValue(value);
-        const tagFontSize = Theme.fontSizeCaption - 1;
-        const valueFontSize = Theme.fontSizeCaption + 1;
-        const valueBoxHeight = valueFontSize + 6;
-        const tagHeight = tagFontSize + 4;
         const wantsValue = root.showValueLabels && valueLimit;
         const wantsTag = shouldDrawSeriesTag(segmentHeight, value, seriesIndex);
         if (!wantsValue && !wantsTag)
             return;
-        if (wantsValue) {
-            if (segmentHeight >= valueBoxHeight + 4)
-                drawValueBadge(context, centerX, y + 2, valueText);
-            else
-                drawValueBadge(context, centerX, Math.max(root.topMargin, y - valueBoxHeight - 4), valueText);
-        }
-        if (!wantsTag)
-            return;
-        const valueAbove = wantsValue && segmentHeight < valueBoxHeight + 4;
-        const insideSegment = segmentHeight >= tagHeight + 4 && !valueAbove;
-        const tagBaselineY = insideSegment ? bottom - 2 : bottom + 2;
-        drawTagBadge(context, centerX, tagBaselineY, seriesTag(seriesIndex), seriesIndex, insideSegment);
+        const layout = resolveBarSegmentLabelLayout(segmentHeight, wantsValue, wantsTag);
+        if (layout.valuePlacement === "inside")
+            drawValueBadge(context, centerX, y + 2, valueText);
+        else if (layout.valuePlacement === "above")
+            drawValueBadge(context, centerX, Math.max(root.topMargin, y - layout.valueBoxHeight - 4), valueText);
+        if (layout.tagPlacement === "inside")
+            drawTagBadge(context, centerX, bottom - 2, seriesTag(seriesIndex), seriesIndex, true);
+        else if (layout.tagPlacement === "below")
+            drawTagBadge(context, centerX, bottom + 2, seriesTag(seriesIndex), seriesIndex, false);
     }
 
     function legendEntries() {

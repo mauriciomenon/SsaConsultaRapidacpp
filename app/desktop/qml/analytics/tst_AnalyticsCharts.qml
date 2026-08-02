@@ -89,6 +89,50 @@ TestCase {
     }
 
     Component {
+        id: shortTaggedStackedBarComponent
+
+        StackedBarChart {
+            width: 640
+            height: 360
+            categories: ["Short", "Tall"]
+            series: [
+                {
+                    "name": "Afra Person",
+                    "tag": "AFRA",
+                    "values": [1, 40]
+                },
+                {
+                    "name": "LCC Person",
+                    "tag": "LCC",
+                    "values": [1, 60]
+                }
+            ]
+        }
+    }
+
+    Component {
+        id: shortTaggedGroupedBarComponent
+
+        SimpleBarChart {
+            width: 640
+            height: 360
+            categories: ["Short", "Tall"]
+            series: [
+                {
+                    "name": "Afra Person",
+                    "tag": "AFRA",
+                    "values": [1, 100]
+                },
+                {
+                    "name": "LCC Person",
+                    "tag": "LCC",
+                    "values": [1, 80]
+                }
+            ]
+        }
+    }
+
+    Component {
         id: percentBarComponent
 
         PercentStackedBarChart {
@@ -168,6 +212,55 @@ TestCase {
         compare(item.tagTextFor(1), "M");
         compare(item.tagTextFor(2), "IEE2");
         compare(item.tagTextFor(3), "AC");
+    }
+
+    function test_short_bar_label_layout_keeps_value_above_tag() {
+        const layout = createChart(simpleBarComponent).barSegmentLabelLayout(22, true, true);
+
+        compare(layout.valuePlacement, "above");
+        compare(layout.tagPlacement, "inside");
+    }
+
+    function test_tall_bar_label_layout_allows_both_inside() {
+        const layout = createChart(simpleBarComponent).barSegmentLabelLayout(40, true, true);
+
+        compare(layout.valuePlacement, "inside");
+        compare(layout.tagPlacement, "inside");
+    }
+
+    function test_very_short_bar_label_layout_puts_tag_below() {
+        const layout = createChart(simpleBarComponent).barSegmentLabelLayout(8, true, true);
+
+        compare(layout.valuePlacement, "above");
+        compare(layout.tagPlacement, "below");
+    }
+
+    function test_short_tagged_stacked_bars_render_with_values_and_tags() {
+        const item = createChart(shortTaggedStackedBarComponent);
+
+        compare(item.tagTextFor(0), "AFRA");
+        compare(item.tagTextFor(1), "LCC");
+        compare(item.showValueLabels, true);
+        compare(item.showSeriesTags, true);
+        compare(item.axisMaximum, 100);
+
+        const segmentHeight = Math.max(1, Math.round(item.plotHeight / item.axisMaximum));
+        const layout = item.barSegmentLabelLayout(segmentHeight, true, true);
+        compare(layout.valuePlacement, "above");
+        verify(layout.tagPlacement === "inside" || layout.tagPlacement === "below");
+    }
+
+    function test_short_tagged_grouped_bars_render_with_values_and_tags() {
+        const item = createChart(shortTaggedGroupedBarComponent);
+
+        compare(item.tagTextFor(0), "AFRA");
+        compare(item.tagTextFor(1), "LCC");
+        compare(item.axisMaximum, 100);
+
+        const segmentHeight = Math.max(1, Math.round(item.plotHeight / item.axisMaximum));
+        const layout = item.barSegmentLabelLayout(segmentHeight, true, true);
+        compare(layout.valuePlacement, "above");
+        verify(layout.tagPlacement === "inside" || layout.tagPlacement === "below");
     }
 
     function test_percent_bars_use_fixed_scale_and_normalized_values() {

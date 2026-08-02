@@ -70,6 +70,14 @@ Rectangle {
         return chartCanvas.tagTextFor(seriesIndex);
     }
 
+    function barSegmentLabelLayout(segmentHeight, wantsValue, wantsTag) {
+        return chartCanvas.resolveBarSegmentLabelLayout(segmentHeight, wantsValue, wantsTag);
+    }
+
+    function grabChartImage(callback) {
+        return chartCanvas.grabImage(callback);
+    }
+
     function localExportPath(fileUrl) {
         if (fileUrl === null || fileUrl === undefined)
             return "";
