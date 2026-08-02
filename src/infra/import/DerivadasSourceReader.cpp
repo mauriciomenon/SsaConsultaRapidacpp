@@ -260,7 +260,8 @@ namespace ssa::infra::importing {
                             normalizedHeader(relationValue).empty()) {
                             continue;
                         }
-                        if (normalizedHeader(relationValue) != "derivadada") {
+                        const auto relation = normalizedHeader(relationValue);
+                        if (relation != "derivadada" && relation != "derivadade") {
                             continue;
                         }
                         if (auto error = appendEdge(result, parentValue, childValue)) {
@@ -271,9 +272,6 @@ namespace ssa::infra::importing {
             }
             if (!recognized) {
                 return rejected("derivadas source schema was not recognized");
-            }
-            if (result.edges.empty()) {
-                return rejected("derivadas source contains no valid edges", result.inputRows);
             }
             return result;
         }

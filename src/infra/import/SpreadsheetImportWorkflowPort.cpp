@@ -1358,6 +1358,31 @@ namespace ssa::infra::importing {
         std::size_t failedFiles = 0;
         std::vector<PendingImportOutcome> pendingOutcomes;
         pendingOutcomes.reserve(files.files.size());
+        // Incremental imports isolate a rejected workbook inside its own savepoint so
+        // the siblings keep the rows they contributed. Full rescans stay all-or-nothing
+        // because they replace the whole dataset in one shot.
+        ImportStagingResult rejectedStaging;
+        std::string perFileDiagnostic;
+        std::string batchRejectionError;
+        const auto isolateRejectedFile = [&](const StagedImportFile& file,
+                                             const std::string_view reason) {
+            writeSession->rollbackFile();
+            auto& fileResult = importSummary.files[file.summaryIndex];
+            fileResult.status = ports::ImportFileStatus::Rejected;
+            fileResult.reason = std::string{reason};
+            importSummary.validRows -= fileResult.validRows;
+            fileResult.validRows = 0;
+            fileResult.inserts = 0;
+            fileResult.updates = 0;
+            fileResult.unchangedRows = 0;
+            ++importSummary.rejected;
+            if (batchRejectionError.empty()) {
+                batchRejectionError = std::string{reason} + " file=" + file.originalFilename;
+            }
+            appendWorkflowDiagnostic(perFileDiagnostic, "file=" + file.originalFilename +
+                                                            " rejected=" + std::string{reason});
+            rejectedStaging.files.push_back(file);
+        };
         for (std::size_t fileIndex = 0; fileIndex < files.files.size(); ++fileIndex) {
             const auto& file = files.files[fileIndex];
             auto& fileResult = importSummary.files[file.summaryIndex];
@@ -1407,6 +1432,7 @@ namespace ssa::infra::importing {
                 appliedChunkedWorkbookResult = true;
             };
             try {
+                writeSession->beginFile();
                 if (samArtifacts != nullptr) {
                     auto adapted = readAndAdaptSamWorkbook(
                         file, samArtifacts->at(file.summaryIndex), stopToken);
@@ -1499,6 +1525,10 @@ namespace ssa::infra::importing {
             totalSummary.invalidDescriptionRows += batch.invalidDescriptionRows;
             totalSummary.invalidDateRows += batch.invalidDateRows;
             if (duplicateConflict) {
+                if (!replaceAll) {
+                    isolateRejectedFile(file, "duplicate_conflict");
+                    continue;
+                }
                 fileResult.reason = "duplicate_conflict";
                 return discardBeforeCommit(rollbackSession(
                     *writeSession,
@@ -1506,6 +1536,7 @@ namespace ssa::infra::importing {
                      workflowMessage(operation, files, totalSummary, {0, "duplicate_conflict"})}));
             }
             if (batch.mappingStatus == SpreadsheetMappingStatus::HeaderNotRecognized) {
+                writeSession->commitFile();
                 fileResult.status = ports::ImportFileStatus::Ignored;
                 fileResult.reason = "header_not_recognized";
                 ++importSummary.ignored;
@@ -1514,6 +1545,10 @@ namespace ssa::infra::importing {
                 continue;
             }
             if (batch.mappingStatus == SpreadsheetMappingStatus::RequiredColumnsMissing) {
+                if (!replaceAll) {
+                    isolateRejectedFile(file, "required_columns_missing");
+                    continue;
+                }
                 fileResult.reason = "required_columns_missing";
                 return discardBeforeCommit(rollbackSession(
                     *writeSession, {ports::WorkflowStatus::Rejected,
@@ -1521,6 +1556,10 @@ namespace ssa::infra::importing {
                                         file.originalFilename}));
             }
             if (batch.mappingStatus == SpreadsheetMappingStatus::AmbiguousHeaders) {
+                if (!replaceAll) {
+                    isolateRejectedFile(file, "ambiguous_headers");
+                    continue;
+                }
                 fileResult.reason = "ambiguous_headers";
                 return discardBeforeCommit(rollbackSession(
                     *writeSession,
@@ -1528,6 +1567,10 @@ namespace ssa::infra::importing {
                      std::string{operation} + " ambiguous_headers file=" + file.originalFilename}));
             }
             if (invalidFullBatch) {
+                if (!replaceAll) {
+                    isolateRejectedFile(file, "invalid_rows");
+                    continue;
+                }
                 fileResult.reason = "invalid_rows";
                 std::ostringstream invalidDiagnostic;
                 invalidDiagnostic << "invalid_rows file=" << file.originalFilename
@@ -1539,15 +1582,17 @@ namespace ssa::infra::importing {
                                     workflowMessage(operation, files, totalSummary,
                                                     {0, invalidDiagnostic.str()})}));
             }
+            if (validRows == 0 && replaceAll) {
+                fileResult.status = ports::ImportFileStatus::NoValidRows;
+                fileResult.reason = "no_valid_rows";
+                return discardBeforeCommit(rollbackSession(
+                    *writeSession,
+                    {ports::WorkflowStatus::Rejected, std::string{operation} + " no_valid_rows"}));
+            }
+            writeSession->commitFile();
             pendingOutcomes.push_back({&file, validRows > 0, file.summaryIndex});
             if (validRows == 0) {
                 fileResult.status = ports::ImportFileStatus::NoValidRows;
-                if (replaceAll) {
-                    fileResult.reason = "no_valid_rows";
-                    return discardBeforeCommit(rollbackSession(
-                        *writeSession, {ports::WorkflowStatus::Rejected,
-                                        std::string{operation} + " no_valid_rows"}));
-                }
                 continue;
             }
             fileResult.status = fileResult.inserts + fileResult.updates > 0
@@ -1558,10 +1603,12 @@ namespace ssa::infra::importing {
             std::ranges::none_of(pendingOutcomes, [](const PendingImportOutcome& outcome) {
                 return outcome.hasValidRows;
             })) {
+            const std::string emptyBatchError =
+                batchRejectionError.empty() ? "no_valid_rows" : batchRejectionError;
             return discardBeforeCommit(rollbackSession(
-                *writeSession,
-                {ports::WorkflowStatus::Rejected,
-                 workflowMessage(operation, files, totalSummary, {0, "no_valid_rows"})}));
+                *writeSession, {ports::WorkflowStatus::Rejected,
+                                workflowMessage(operation, files, totalSummary, {0, emptyBatchError}),
+                                false, perFileDiagnostic}));
         }
         std::vector<ImportManifestEntry> manifest;
         manifest.reserve(pendingOutcomes.size());
@@ -1630,16 +1677,25 @@ namespace ssa::infra::importing {
         }
 
         importSummary.accepted = pendingOutcomes.size();
+        auto diagnostic = files.diagnostic;
+        appendWorkflowDiagnostic(diagnostic, perFileDiagnostic);
+        // Rejected workbooks are never consolidated, so their staged copies would
+        // otherwise stay behind in the corpus after a partially applied batch.
+        if (!rejectedStaging.files.empty()) {
+            appendWorkflowDiagnostic(diagnostic, stager_.discardOwnedArtifacts(rejectedStaging));
+        }
+        const bool partialBatch = importSummary.rejected > 0;
         if (!consolidateSources_) {
             importSummary.preserved = importSummary.files.size();
             const auto status = totalSummary.rowsWritten > 0 ? ports::WorkflowStatus::Succeeded
                                                              : ports::WorkflowStatus::NoChanges;
             ports::WorkflowResult result{
-                status, workflowMessage(operation, files, totalSummary),
+                status,
+                workflowMessage(operation, files, totalSummary, {0, batchRejectionError}),
                 files.warning || files.failedCopies > 0 || files.failedLegacyXls > 0 ||
                     totalSummary.invalidRows > 0 || totalSummary.duplicateRows > 0 ||
-                    ignoredUnrecognizedWorkbook,
-                files.diagnostic};
+                    ignoredUnrecognizedWorkbook || partialBatch,
+                std::move(diagnostic)};
             return withSummary(std::move(result), importSummary);
         }
         if (progress != nullptr) {
@@ -1649,7 +1705,6 @@ namespace ssa::infra::importing {
                            progress->rescan ? 95 : -1, "Consolidando arquivos processados");
         }
         const auto consolidation = consolidator_.consolidate(consolidationPlan, stopToken);
-        auto diagnostic = files.diagnostic;
         appendWorkflowDiagnostic(diagnostic, consolidation.error);
         std::vector<ImportConsolidationMove> completedMoves;
         std::size_t journalFailures = 0;
@@ -1682,7 +1737,7 @@ namespace ssa::infra::importing {
                                             ? std::string_view{"consolidation_failed"}
                                         : consolidation.canceled
                                             ? std::string_view{"consolidation_canceled"}
-                                            : std::string_view{};
+                                            : std::string_view{batchRejectionError};
         std::size_t completedFiles = 0;
         for (std::size_t index = 0; index < pendingOutcomes.size(); ++index) {
             const auto& outcome = pendingOutcomes[index];
@@ -1715,7 +1770,7 @@ namespace ssa::infra::importing {
             files.warning || files.failedCopies > 0 || files.failedLegacyXls > 0 ||
                 consolidation.failed > 0 || consolidation.canceled || journalFailures > 0 ||
                 totalSummary.invalidRows > 0 || totalSummary.duplicateRows > 0 ||
-                ignoredUnrecognizedWorkbook,
+                ignoredUnrecognizedWorkbook || partialBatch,
             std::move(diagnostic)};
         return withSummary(std::move(result), importSummary);
     }

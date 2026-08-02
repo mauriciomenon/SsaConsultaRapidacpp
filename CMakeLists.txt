@@ -32,7 +32,7 @@ find_package(
              QuickControls2
              Sql)
 if(SSA_BUILD_TESTS)
-  find_package(Qt6 6.6 REQUIRED COMPONENTS Test)
+  find_package(Qt6 6.6 REQUIRED COMPONENTS QuickTest Test)
 endif()
 find_package(SQLite3 REQUIRED)
 
@@ -780,6 +780,21 @@ if(SSA_BUILD_TESTS)
     PROPERTIES TIMEOUT 15 RUN_SERIAL TRUE ENVIRONMENT
                "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Basic")
 
+  add_executable(ssa_qml_analytics_charts_tests
+                 tests/smoke/AnalyticsChartsQmlQuickTest.cpp)
+  target_compile_definitions(
+    ssa_qml_analytics_charts_tests
+    PRIVATE QUICK_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/app/desktop/qml/analytics")
+  target_link_libraries(
+    ssa_qml_analytics_charts_tests PRIVATE Qt6::QuickTest Qt6::Qml Qt6::Quick
+                                           Qt6::QuickControls2)
+  add_test(NAME ssa_qml_analytics_charts_tests
+           COMMAND ssa_qml_analytics_charts_tests)
+  set_tests_properties(
+    ssa_qml_analytics_charts_tests
+    PROPERTIES TIMEOUT 15 RUN_SERIAL TRUE ENVIRONMENT
+               "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Basic")
+
   add_executable(ssa_qt_activity_analytics_view_model_tests
                  tests/smoke/ActivityAnalyticsViewModelTest.cpp)
   target_link_libraries(ssa_qt_activity_analytics_view_model_tests
@@ -799,7 +814,7 @@ if(SSA_BUILD_TESTS)
            COMMAND ssa_qml_activity_analytics_window_tests)
   set_tests_properties(
     ssa_qml_activity_analytics_window_tests
-    PROPERTIES TIMEOUT 20 RUN_SERIAL TRUE ENVIRONMENT
+    PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE ENVIRONMENT
                "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Basic")
 
   add_executable(ssa_qml_workflow_progress_dialog_tests

@@ -48,6 +48,12 @@ namespace ssa::infra::sqlite {
             [[nodiscard]] importing::SsaImportBatchWriteSummary
             write(const importing::ResolvedSsaImportRows& rows, std::size_t fileCount,
                   std::size_t skippedRows);
+            // Per-file undo unit. Rolling one file back keeps the surrounding batch
+            // transaction usable, so a rejected workbook does not discard the rows
+            // already accepted from its siblings. Exactly one file scope may be open.
+            void beginFile();
+            void commitFile();
+            void rollbackFile();
             void recordConsolidation(const std::vector<importing::ImportConsolidationMove>& moves);
             [[nodiscard]] importing::SsaImportWriteSummary
             finishWithAnalytics(int observedIsoYearWeek, std::string observedDate);

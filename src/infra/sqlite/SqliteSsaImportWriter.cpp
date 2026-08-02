@@ -18,6 +18,7 @@
 #include <array>
 #include <charconv>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string_view>
@@ -31,6 +32,7 @@ namespace ssa::infra::sqlite {
     namespace {
 
         constexpr std::string_view kConsolidationJournalTable = "ssa_import_consolidation_journal";
+        constexpr std::string_view kFileSavepoint = "ssa_import_file";
 
         void executeSql(sqlite3* db, const std::string& sql,
                         const std::atomic_bool* busyCancellationObserved = nullptr) {
@@ -762,6 +764,13 @@ namespace ssa::infra::sqlite {
             RolledBack,
         };
 
+        // Session counters and cross-file duplicate ledger observed when the current
+        // file savepoint opened. Restored verbatim when that file is rolled back.
+        struct FileScopeState {
+            importing::SsaImportWriteSummary summary;
+            std::vector<std::string> importedNumbers;
+        };
+
         Storage(const std::filesystem::path& databasePath,
                 const std::vector<domain::ColumnDef>& configuredColumns, std::string tableName,
                 std::shared_ptr<SqliteSynchronizationSemaphore> busyEnteredSignal,
@@ -834,6 +843,50 @@ namespace ssa::infra::sqlite {
             }
         }
 
+        void beginFileScope() {
+            if (state != State::Active) {
+                throw std::logic_error("sqlite import session is closed");
+            }
+            if (fileScope) {
+                throw std::logic_error("sqlite import file scope is already open");
+            }
+            throwIfCanceled(stopToken);
+            executeSql(connection.handle(), "SAVEPOINT " + std::string{kFileSavepoint},
+                       busy.cancellationObserved());
+            fileScope = FileScopeState{summary, {}};
+        }
+
+        void commitFileScope() {
+            if (!fileScope) {
+                return;
+            }
+            fileScope.reset();
+            if (state != State::Active) {
+                return;
+            }
+            executeSql(connection.handle(), "RELEASE " + std::string{kFileSavepoint},
+                       busy.cancellationObserved());
+        }
+
+        void rollbackFileScope() {
+            if (!fileScope) {
+                return;
+            }
+            const auto scope = std::move(*fileScope);
+            fileScope.reset();
+            for (const auto& number : scope.importedNumbers) {
+                seenImportedNumbers.erase(number);
+            }
+            summary = scope.summary;
+            if (state != State::Active) {
+                return;
+            }
+            executeSql(connection.handle(), "ROLLBACK TO " + std::string{kFileSavepoint},
+                       busy.cancellationObserved());
+            executeSql(connection.handle(), "RELEASE " + std::string{kFileSavepoint},
+                       busy.cancellationObserved());
+        }
+
         [[nodiscard]] importing::SsaImportBatchWriteSummary
         write(const importing::ResolvedSsaImportRows& rows,
               const importing::SsaImportWriteSummary& batchSummary) {
@@ -862,6 +915,8 @@ namespace ssa::infra::sqlite {
                 if (!seenImportedNumbers.insert(number).second) {
                     ++summary.duplicateRows;
                     ++result.duplicateRows;
+                } else if (fileScope) {
+                    fileScope->importedNumbers.push_back(number);
                 }
                 normalizedRow[ssaNumberKey] = number;
                 const auto deviation = normalizedRow.find("numero_desvios");
@@ -943,6 +998,9 @@ namespace ssa::infra::sqlite {
             if (state == State::RolledBack) {
                 throw std::logic_error("sqlite import session was rolled back");
             }
+            if (fileScope) {
+                throw std::logic_error("sqlite import file scope is still open");
+            }
             throwIfCanceled(stopToken);
             if (state == State::Active) {
                 transaction->commit();
@@ -1012,6 +1070,7 @@ namespace ssa::infra::sqlite {
                 return;
             }
             state = State::RolledBack;
+            fileScope.reset();
             if (transaction == nullptr || !transaction->active()) {
                 return;
             }
@@ -1033,6 +1092,7 @@ namespace ssa::infra::sqlite {
         std::unique_ptr<SqliteStatement> update;
         std::unordered_set<std::string> seenImportedNumbers;
         importing::SsaImportWriteSummary summary;
+        std::optional<FileScopeState> fileScope;
         State state = State::Active;
     };
 
@@ -1053,6 +1113,18 @@ namespace ssa::infra::sqlite {
         const importing::SsaImportWriteSummary batchSummary{.files = fileCount,
                                                             .skippedRows = skippedRows};
         return storage_->write(rows, batchSummary);
+    }
+
+    void SqliteSsaImportWriter::WriteSession::beginFile() {
+        storage_->beginFileScope();
+    }
+
+    void SqliteSsaImportWriter::WriteSession::commitFile() {
+        storage_->commitFileScope();
+    }
+
+    void SqliteSsaImportWriter::WriteSession::rollbackFile() {
+        storage_->rollbackFileScope();
     }
 
     void SqliteSsaImportWriter::WriteSession::recordConsolidation(

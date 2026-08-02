@@ -77,7 +77,8 @@ namespace ssa::infra::sqlite {
 
         ports::WorkflowResult importSucceeded(const std::size_t applied,
                                               const std::size_t duplicates,
-                                              const std::size_t missingParents) {
+                                              const std::size_t missingParents,
+                                              const std::size_t sourcesWithoutEdges) {
             std::string message = "derivadas import completed; " + std::to_string(applied) +
                                   " applied; " + std::to_string(duplicates) + " duplicate";
             if (duplicates != 1) {
@@ -87,9 +88,18 @@ namespace ssa::infra::sqlite {
             if (missingParents != 1) {
                 message += 's';
             }
+            // A workbook without any "derivada de" row is accepted, but the operator must
+            // still learn that it contributed nothing instead of reading a plain success.
+            if (sourcesWithoutEdges > 0) {
+                message += "; " + std::to_string(sourcesWithoutEdges) + " source";
+                if (sourcesWithoutEdges != 1) {
+                    message += 's';
+                }
+                message += " without derivation relations";
+            }
             return {applied == 0 ? ports::WorkflowStatus::NoChanges
                                  : ports::WorkflowStatus::Succeeded,
-                    std::move(message), missingParents > 0};
+                    std::move(message), missingParents > 0 || sourcesWithoutEdges > 0};
         }
 
         void reportProgress(const ports::ImportDerivationsRequest& request,
@@ -216,6 +226,7 @@ namespace ssa::infra::sqlite {
             }
 
             importing::DerivadasEdgeMerger merger;
+            std::size_t sourcesWithoutEdges = 0;
             for (std::size_t index = 0; index < request.files.size(); ++index) {
                 const auto& source = request.files[index];
                 if (stopToken.stop_requested()) {
@@ -240,10 +251,17 @@ namespace ssa::infra::sqlite {
                 if (mergeResult.status == importing::DerivadasMergeStatus::Rejected) {
                     return importRejected(mergeResult.message);
                 }
+                const bool sourceWithoutEdges = sourceResult.edges.empty();
+                if (sourceWithoutEdges) {
+                    ++sourcesWithoutEdges;
+                }
                 reportProgress(request, ports::WorkflowProgressStage::ProcessingFile,
-                               ports::WorkflowProgressLevel::Information, currentFile,
+                               sourceWithoutEdges ? ports::WorkflowProgressLevel::Warning
+                                                  : ports::WorkflowProgressLevel::Information,
+                               currentFile,
                                static_cast<int>(currentFile * 75 / request.files.size()), fileName,
-                               "Planilha de derivadas lida",
+                               sourceWithoutEdges ? "Planilha sem relacoes de derivada"
+                                                  : "Planilha de derivadas lida",
                                std::to_string(sourceResult.edges.size()) +
                                    " relacoes identificadas");
             }
@@ -335,10 +353,11 @@ namespace ssa::infra::sqlite {
             } catch (const ports::OperationError& error) {
                 return rollback(importFailed(error.diagnostic()));
             }
-            auto result = importSucceeded(applied, merger.duplicates(), missingParents.size());
+            auto result = importSucceeded(applied, merger.duplicates(), missingParents.size(),
+                                          sourcesWithoutEdges);
             reportProgress(request, ports::WorkflowProgressStage::Completed,
-                           missingParents.empty() ? ports::WorkflowProgressLevel::Information
-                                                  : ports::WorkflowProgressLevel::Warning,
+                           result.warning ? ports::WorkflowProgressLevel::Warning
+                                          : ports::WorkflowProgressLevel::Information,
                            request.files.size(), 100, {},
                            applied == 0 ? "Sem alteracoes nas derivadas" : "Derivadas atualizadas",
                            std::to_string(applied) + " derivacoes atualizadas");

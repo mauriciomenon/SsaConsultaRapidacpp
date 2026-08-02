@@ -3317,7 +3317,123 @@ TEST_CASE("external import rejects duplicate conflicts and preserves the source"
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
-TEST_CASE("external import rejects equal snapshot conflicts across files") {
+TEST_CASE("external import isolates a duplicate conflict and keeps the sibling workbooks") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto sourceDirectory = root / "external";
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(sourceDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    const auto header = row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                                inlineCell("C1", "Descricao da SSA"),
+                                inlineCell("D1", "Data de emissao")});
+    const auto conflicting = sourceDirectory / "A_SSA_06-07-2026_0922AM.xlsx";
+    const auto firstSibling = sourceDirectory / "B_SSA_06-07-2026_0923AM.xlsx";
+    const auto secondSibling = sourceDirectory / "C_SSA_06-07-2026_0924AM.xlsx";
+    writeWorkbook(conflicting,
+                  header +
+                      row(2, {inlineCell("A2", "202600801"), inlineCell("B2", "APV"),
+                              inlineCell("C2", "First"), inlineCell("D2", "2026-07-01")}) +
+                      row(3, {inlineCell("A3", "202600801"), inlineCell("B3", "APV"),
+                              inlineCell("C3", "Second"), inlineCell("D3", "2026-07-01")}));
+    writeWorkbook(firstSibling,
+                  header + row(2, {inlineCell("A2", "202600802"), inlineCell("B2", "APV"),
+                                   inlineCell("C2", "Sibling one"),
+                                   inlineCell("D2", "2026-07-01")}));
+    writeWorkbook(secondSibling,
+                  header + row(2, {inlineCell("A2", "202600803"), inlineCell("B2", "APV"),
+                                   inlineCell("C2", "Sibling two"),
+                                   inlineCell("D2", "2026-07-01")}));
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+
+    const auto result =
+        port.importExternalFiles({.files = {conflicting, firstSibling, secondSibling}});
+
+    INFO(result.message);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE(result.warning);
+    REQUIRE(result.message.find("duplicate_conflict") != std::string::npos);
+    REQUIRE(result.message.find(conflicting.filename().string()) != std::string::npos);
+    requireClassificationMessage(result);
+    REQUIRE(result.importSummary.has_value());
+    const auto& summary = *result.importSummary;
+    REQUIRE(summary.files.size() == 3);
+    REQUIRE(summary.accepted == 2);
+    REQUIRE(summary.rejected == 1);
+    REQUIRE(summary.failed == 0);
+    REQUIRE(summary.inserts == 2);
+    REQUIRE(summary.files[0].status == ssa::ports::ImportFileStatus::Rejected);
+    REQUIRE(summary.files[0].reason == "duplicate_conflict");
+    REQUIRE(summary.files[0].inserts == 0);
+    REQUIRE(summary.files[0].validRows == 0);
+    REQUIRE(summary.files[1].status == ssa::ports::ImportFileStatus::Applied);
+    REQUIRE(summary.files[2].status == ssa::ports::ImportFileStatus::Applied);
+    REQUIRE(std::filesystem::exists(conflicting));
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 2);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa = '202600801'") == 0);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa = '202600802'") == 1);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa = '202600803'") == 1);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("incremental rescan isolates a rejected workbook and applies the remaining files") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    const auto header = row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Descricao"),
+                                inlineCell("C1", "Data Cadastro")});
+    const auto conflicting = inputDirectory / "A_conflict.xlsx";
+    writeWorkbook(conflicting,
+                  header +
+                      row(2, {inlineCell("A2", "202600811"), inlineCell("B2", "First"),
+                              inlineCell("C2", "2026-07-14")}) +
+                      row(3, {inlineCell("A3", "202600811"), inlineCell("B3", "Second"),
+                              inlineCell("C3", "2026-07-14")}));
+    writeWorkbook(inputDirectory / "B_ok.xlsx",
+                  header + row(2, {inlineCell("A2", "202600812"), inlineCell("B2", "Sibling one"),
+                                   inlineCell("C2", "2026-07-14")}));
+    writeWorkbook(inputDirectory / "C_ok.xlsx",
+                  header + row(2, {inlineCell("A2", "202600813"), inlineCell("B2", "Sibling two"),
+                                   inlineCell("C2", "2026-07-14")}));
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+
+    const auto result = port.rescan({ssa::ports::RescanMode::Incremental});
+
+    INFO(result.message);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE(result.warning);
+    REQUIRE(result.message.find("duplicate_conflict") != std::string::npos);
+    REQUIRE(result.importSummary.has_value());
+    const auto& summary = *result.importSummary;
+    REQUIRE(summary.files.size() == 3);
+    REQUIRE(summary.rejected == 1);
+    REQUIRE(summary.inserts == 2);
+    REQUIRE(summary.files[0].status == ssa::ports::ImportFileStatus::Rejected);
+    REQUIRE(summary.files[0].reason == "duplicate_conflict");
+    REQUIRE(summary.files[1].status == ssa::ports::ImportFileStatus::Applied);
+    REQUIRE(summary.files[2].status == ssa::ports::ImportFileStatus::Applied);
+    // The rejected workbook is never consolidated, so the operator can fix and retry it.
+    REQUIRE(std::filesystem::exists(conflicting));
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 2);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa = '202600811'") == 0);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("external import rejects only the sibling that repeats an equal snapshot") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
 
@@ -3344,14 +3460,25 @@ TEST_CASE("external import rejects equal snapshot conflicts across files") {
 
     const auto result = port.importExternalFiles({.files = {first, second}});
 
-    REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
+    // Two workbooks claiming the same snapshot instant for the same SSA are ambiguous.
+    // The first one processed wins deterministically and only the ambiguous sibling is
+    // rejected, so unrelated workbooks of the same batch are never discarded.
+    INFO(result.message);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE(result.warning);
     REQUIRE(result.message.find("duplicate_conflict") != std::string::npos);
+    REQUIRE(result.message.find(second.filename().string()) != std::string::npos);
+    REQUIRE(result.importSummary.has_value());
+    REQUIRE(result.importSummary->accepted == 1);
+    REQUIRE(result.importSummary->rejected == 1);
+    REQUIRE(result.importSummary->files[1].reason == "duplicate_conflict");
     REQUIRE(std::filesystem::exists(first));
     REQUIRE(std::filesystem::exists(second));
     sqlite3* db = nullptr;
     REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
-    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND "
-                          "name='ssa_table'") == 0);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 1);
+    REQUIRE(scalarText(db, "SELECT descricao_ssa FROM ssa_table WHERE numero_ssa = '202600510'") ==
+            "FIRST_FILE");
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 

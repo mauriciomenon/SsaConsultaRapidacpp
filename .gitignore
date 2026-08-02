@@ -39,5 +39,8 @@ testResults.xml
 
 .deps-cache/
 .deepsec/
-CMakeLists.txt.bak.*
-cmake/*.bak.*
+CMakeLists.txt.bak*
+cmake/*.bak*
+CMakePresets.json.bak*
+.clang-format.bak*
+.clang-tidy.bak*

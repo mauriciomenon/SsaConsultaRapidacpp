@@ -260,6 +260,46 @@ TEST_CASE("derivadas visual import ignores related rows outside derivada de") {
     REQUIRE(fixture.parentOf("202600004").empty());
 }
 
+TEST_CASE("derivadas visual import accepts derivada de and ignores an empty derivation sheet") {
+    const Fixture fixture;
+    const auto source = fixture.path("SSAs Derivadas e Relacionadas.xlsx");
+    writeWorkbook(source, {{{"SSAs Derivadas e Relacionadas", "", ""},
+                            {"N\xC3\xBAmero da SSA",
+                             "Rela\xC3\xA7"
+                             "ao",
+                             "N\xC3\xBAmero da SSA"},
+                            {"202600002", "Derivada de", "202600001"},
+                            {"202600003", "Complementa a", "202600001"}}});
+    ssa::infra::sqlite::SqliteDerivadasPort port(fixture.databasePath,
+                                                 unavailableLegacyConverter());
+
+    const auto result = port.importDerivations(requestFor(source));
+
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE(fixture.parentOf("202600002") == "202600001");
+    REQUIRE(fixture.parentOf("202600003").empty());
+}
+
+TEST_CASE("derivadas visual import does not reject a sheet without derivation relations") {
+    const Fixture fixture;
+    const auto source = fixture.path("SSAs Derivadas e Relacionadas.xlsx");
+    writeWorkbook(source, {{{"SSAs Derivadas e Relacionadas", "", ""},
+                            {"N\xC3\xBAmero da SSA",
+                             "Rela\xC3\xA7"
+                             "ao",
+                             "N\xC3\xBAmero da SSA"},
+                            {"202600002", "Complementa a", "202600001"}}});
+    ssa::infra::sqlite::SqliteDerivadasPort port(fixture.databasePath,
+                                                 unavailableLegacyConverter());
+
+    const auto result = port.importDerivations(requestFor(source));
+
+    REQUIRE(result.ok());
+    REQUIRE(result.warning);
+    REQUIRE(result.message.find("1 source without derivation relations") != std::string::npos);
+    REQUIRE(fixture.parentOf("202600002").empty());
+}
+
 TEST_CASE("derivadas import normalizes the documented SSA number forms") {
     const Fixture fixture;
     const auto source = fixture.path("normalized.csv");
