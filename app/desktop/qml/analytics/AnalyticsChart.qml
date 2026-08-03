@@ -75,7 +75,8 @@ Rectangle {
     }
 
     function grabChartImage(callback) {
-        return chartCanvas.grabImage(callback);
+        chartCanvas.refresh();
+        return chartSnapshot.grabToImage(callback);
     }
 
     function localExportPath(fileUrl) {
@@ -116,10 +117,10 @@ Rectangle {
         }
         chartCanvas.refresh();
         if (typeof root.itemGrabber === "function") {
-            root.exportFinished(root.itemGrabber(chartCanvas, localPath));
+            root.exportFinished(root.itemGrabber(chartSnapshot, localPath));
             return;
         }
-        chartCanvas.savePlotPng(localPath);
+        root.saveSnapshotPng(localPath);
     }
 
     function saveSvg(fileUrl) {
@@ -134,10 +135,48 @@ Rectangle {
         }
         chartCanvas.refresh();
         if (typeof root.svgGrabber === "function") {
-            root.exportFinished(root.svgGrabber(chartCanvas, localPath));
+            root.exportFinished(root.svgGrabber(chartSnapshot, localPath));
             return;
         }
-        chartCanvas.savePlotSvg(localPath, root.fileWriter);
+        root.saveSnapshotSvg(localPath);
+    }
+
+    function saveSnapshotPng(localPath) {
+        if (localPath.length === 0 || !root.hasData) {
+            root.exportFinished(false);
+            return;
+        }
+        const grabbed = chartSnapshot.grabToImage(function(result) {
+            root.exportFinished(!result.image.isNull() && result.saveToFile(localPath));
+        });
+        if (!grabbed)
+            root.exportFinished(false);
+    }
+
+    function saveSnapshotSvg(localPath) {
+        if (localPath.length === 0 || !root.hasData) {
+            root.exportFinished(false);
+            return;
+        }
+        const grabbed = chartSnapshot.grabToImage(function(result) {
+            if (result.image.isNull()) {
+                root.exportFinished(false);
+                return;
+            }
+            const buffer = result.image.toDataURL("image/png");
+            const comma = buffer.indexOf(",");
+            const payload = comma >= 0 ? buffer.slice(comma + 1) : buffer;
+            const svg = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" +
+                        "<svg xmlns=\"http://www.w3.org/2000/svg\" " +
+                        "xmlns:xlink=\"http://www.w3.org/1999/xlink\" " +
+                        "width=\"" + result.image.width + "\" height=\"" + result.image.height + "\">" +
+                        "<image width=\"" + result.image.width + "\" height=\"" + result.image.height + "\" " +
+                        "xlink:href=\"data:image/png;base64," + payload + "\"/></svg>";
+            const wrote = typeof root.fileWriter === "function" ? root.fileWriter(localPath, svg) : false;
+            root.exportFinished(wrote);
+        });
+        if (!grabbed)
+            root.exportFinished(false);
     }
 
     implicitWidth: 520
@@ -157,6 +196,7 @@ Rectangle {
         Item {
             id: chartSnapshot
 
+            objectName: "analyticsChartSnapshot"
             Layout.fillWidth: true
             Layout.fillHeight: !root.compact
 
@@ -216,6 +256,7 @@ Rectangle {
             AnalyticsChartCanvas {
                 id: chartCanvas
 
+                objectName: "analyticsChartCanvas"
                 anchors.fill: parent
                 visible: !root.compact
                 chartType: root.chartType

@@ -496,6 +496,9 @@ namespace {
         Q_OBJECT
 
       public:
+        void setLastGrabbedItem(QQuickItem* item) { lastGrabbedItem_ = item; }
+        [[nodiscard]] QQuickItem* lastGrabbedItem() const { return lastGrabbedItem_; }
+
         Q_INVOKABLE bool write(const QString& path, const QString& content) const {
             QFile file(path);
             if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
@@ -509,6 +512,7 @@ namespace {
             if (item == nullptr || path.trimmed().isEmpty()) {
                 return false;
             }
+            const_cast<ExportFileWriter*>(this)->setLastGrabbedItem(item);
             const QSharedPointer<QQuickItemGrabResult> result = item->grabToImage();
             if (result.isNull()) {
                 return false;
@@ -535,6 +539,7 @@ namespace {
             if (item == nullptr || path.trimmed().isEmpty()) {
                 return false;
             }
+            const_cast<ExportFileWriter*>(this)->setLastGrabbedItem(item);
             const QSharedPointer<QQuickItemGrabResult> result = item->grabToImage();
             if (result.isNull()) {
                 return false;
@@ -570,6 +575,9 @@ namespace {
                 + QString::fromLatin1(pngBytes.toBase64()) + QStringLiteral("\"/></svg>");
             return write(path, svg);
         }
+
+      private:
+        QQuickItem* lastGrabbedItem_ = nullptr;
     };
 
     class ActivityAnalyticsWindowQmlTest final : public QObject {
@@ -1400,17 +1408,28 @@ namespace {
 
             QSignalSpy exportSpy(chart, SIGNAL(exportFinished(bool)));
 
+            auto* snapshot = chart->findChild<QQuickItem*>(QStringLiteral("analyticsChartSnapshot"));
+            auto* canvas = chart->findChild<QQuickItem*>(QStringLiteral("analyticsChartCanvas"));
+            QVERIFY(snapshot != nullptr);
+            QVERIFY(canvas != nullptr);
+            QVERIFY(snapshot->height() > canvas->height());
+
+            writer.setLastGrabbedItem(nullptr);
             QVERIFY(QMetaObject::invokeMethod(chart, "savePng", Q_ARG(QVariant, QVariant::fromValue(pngUrl))));
             QCOMPARE(exportSpy.count(), 1);
             QCOMPARE(exportSpy.at(0).at(0).toBool(), true);
+            QCOMPARE(writer.lastGrabbedItem(), snapshot);
             const QImage pngImage(pngPath);
             QVERIFY(!pngImage.isNull());
             QVERIFY(pngImage.width() > 0);
             QVERIFY(pngImage.height() > 0);
+            QVERIFY(pngImage.height() > static_cast<int>(canvas->height()));
 
+            writer.setLastGrabbedItem(nullptr);
             QVERIFY(QMetaObject::invokeMethod(chart, "saveSvg", Q_ARG(QVariant, QVariant::fromValue(svgUrl))));
             QCOMPARE(exportSpy.count(), 2);
             QCOMPARE(exportSpy.at(1).at(0).toBool(), true);
+            QCOMPARE(writer.lastGrabbedItem(), snapshot);
             QFile svgFile(svgPath);
             QVERIFY(svgFile.open(QIODevice::ReadOnly));
             const QByteArray svgPayload = svgFile.readAll();

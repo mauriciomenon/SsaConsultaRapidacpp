@@ -298,6 +298,64 @@ TestCase {
         compare(item.ensureExportExtension("C:/tmp/chart.PNG", "png"), "C:/tmp/chart.PNG");
     }
 
+    function findChildByObjectName(parentItem, objectName) {
+        if (parentItem === null || parentItem === undefined)
+            return null;
+        if (parentItem.objectName === objectName)
+            return parentItem;
+        const children = parentItem.children;
+        for (let index = 0; index < children.length; ++index) {
+            const found = findChildByObjectName(children[index], objectName);
+            if (found !== null)
+                return found;
+        }
+        return null;
+    }
+
+    function test_export_grabs_full_card_snapshot() {
+        const item = createChart(shortTaggedStackedBarComponent);
+        item.title = "AFRA/LCC Export";
+
+        const snapshot = findChildByObjectName(item, "analyticsChartSnapshot");
+        const canvas = findChildByObjectName(item, "analyticsChartCanvas");
+        verify(snapshot !== null);
+        verify(canvas !== null);
+
+        let grabbedItem = null;
+        item.itemGrabber = function(target, path) {
+            grabbedItem = target;
+            return path.length > 0;
+        };
+        item.savePng("C:/tmp/analytics-export-test.png");
+        compare(grabbedItem, snapshot);
+        verify(grabbedItem !== canvas);
+    }
+
+    function test_export_snapshot_taller_than_plot_canvas() {
+        const item = createChart(shortTaggedStackedBarComponent);
+        item.title = "AFRA/LCC Export";
+
+        const snapshot = findChildByObjectName(item, "analyticsChartSnapshot");
+        const canvas = findChildByObjectName(item, "analyticsChartCanvas");
+        verify(snapshot !== null);
+        verify(canvas !== null);
+        verify(snapshot.height > canvas.height);
+
+        let snapshotGrab = null;
+        let canvasGrab = null;
+        snapshot.grabToImage(function(result) {
+            snapshotGrab = result;
+        });
+        canvas.grabToImage(function(result) {
+            canvasGrab = result;
+        });
+        tryVerify(function() {
+            return snapshotGrab !== null && canvasGrab !== null
+                   && !snapshotGrab.image.isNull() && !canvasGrab.image.isNull();
+        });
+        verify(snapshotGrab.image.height > canvasGrab.image.height);
+    }
+
     Component {
         id: manyCategoryBarComponent
 
