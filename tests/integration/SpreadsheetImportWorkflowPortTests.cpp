@@ -922,7 +922,7 @@ TEST_CASE("external import reports one applied and one failed staging source") {
     REQUIRE(firstChunkWritten);
     REQUIRE(removed);
     REQUIRE_FALSE(removeError);
-    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
     REQUIRE(result.warning);
     REQUIRE(result.importSummary.has_value());
     const auto& summary = *result.importSummary;
@@ -5666,12 +5666,13 @@ TEST_CASE("spreadsheet import workflow reports xlsx read failure cause") {
 
     const auto result = port.importExternalFiles(request);
 
-    REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
     REQUIRE(result.warning);
-    REQUIRE(result.message.find("failed=0") != std::string::npos);
-    REQUIRE(result.message.find("rejected=1") != std::string::npos);
+    REQUIRE(result.message.find("failed=1") != std::string::npos);
+    REQUIRE(result.message.find("rejected=0") != std::string::npos);
     REQUIRE(result.importSummary.has_value());
-    REQUIRE(result.importSummary->rejected == 1);
+    REQUIRE(result.importSummary->failed == 1);
+    REQUIRE(result.importSummary->files.front().status == ssa::ports::ImportFileStatus::Failed);
     REQUIRE(result.importSummary->files.front().reason == "operation_failed");
     REQUIRE(result.message.find("file=broken.xlsx") != std::string::npos);
     REQUIRE(result.diagnostic.find("file=broken.xlsx") != std::string::npos);
@@ -5688,14 +5689,15 @@ TEST_CASE("external import isolates a broken workbook and keeps sibling rows") {
     const auto dbPath = root / "data" / "ssas.db";
     std::filesystem::create_directories(sourceDirectory);
     std::filesystem::create_directories(dbPath.parent_path());
-    const auto header = row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
-                                inlineCell("C1", "Descricao da SSA"),
-                                inlineCell("D1", "Data de emissao")});
+    const auto header =
+        row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao")});
     const auto goodWorkbook = sourceDirectory / "Em Execucao_ok.xlsx";
     const auto brokenWorkbook = sourceDirectory / "Em Execucao_broken.xlsx";
     writeWorkbook(goodWorkbook,
-                  header + row(2, {inlineCell("A2", "202600901"), inlineCell("B2", "APV"),
-                                   inlineCell("C2", "Sibling ok"), inlineCell("D2", "2026-07-01")}));
+                  header +
+                      row(2, {inlineCell("A2", "202600901"), inlineCell("B2", "APV"),
+                              inlineCell("C2", "Sibling ok"), inlineCell("D2", "2026-07-01")}));
     std::ofstream brokenOutput(brokenWorkbook, std::ios::binary | std::ios::trunc);
     brokenOutput << "not a zip package";
     brokenOutput.close();
@@ -5705,18 +5707,18 @@ TEST_CASE("external import isolates a broken workbook and keeps sibling rows") {
     const auto result = port.importExternalFiles({.files = {goodWorkbook, brokenWorkbook}});
 
     INFO(result.message);
-    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
     REQUIRE(result.warning);
     REQUIRE(result.importSummary.has_value());
     REQUIRE(result.importSummary->accepted == 1);
-    REQUIRE(result.importSummary->rejected == 1);
+    REQUIRE(result.importSummary->rejected == 0);
+    REQUIRE(result.importSummary->failed == 1);
     REQUIRE(result.importSummary->files[0].status == ssa::ports::ImportFileStatus::Applied);
-    REQUIRE(result.importSummary->files[1].status == ssa::ports::ImportFileStatus::Rejected);
+    REQUIRE(result.importSummary->files[1].status == ssa::ports::ImportFileStatus::Failed);
     REQUIRE(result.importSummary->files[1].reason == "operation_failed");
-    REQUIRE(std::ranges::none_of(result.importSummary->files,
-                                 [](const ssa::ports::ImportFileResult& file) {
-                                     return file.reason == "batch_rejected";
-                                 }));
+    REQUIRE(std::ranges::none_of(
+        result.importSummary->files,
+        [](const ssa::ports::ImportFileResult& file) { return file.reason == "batch_rejected"; }));
     sqlite3* db = nullptr;
     REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
     REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 1);
