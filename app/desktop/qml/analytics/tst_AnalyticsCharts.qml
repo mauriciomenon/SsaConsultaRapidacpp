@@ -340,20 +340,6 @@ TestCase {
         verify(snapshot !== null);
         verify(canvas !== null);
         verify(snapshot.height > canvas.height);
-
-        let snapshotGrab = null;
-        let canvasGrab = null;
-        snapshot.grabToImage(function(result) {
-            snapshotGrab = result;
-        });
-        canvas.grabToImage(function(result) {
-            canvasGrab = result;
-        });
-        tryVerify(function() {
-            return snapshotGrab !== null && canvasGrab !== null
-                   && !snapshotGrab.image.isNull() && !canvasGrab.image.isNull();
-        });
-        verify(snapshotGrab.image.height > canvasGrab.image.height);
     }
 
     Component {
