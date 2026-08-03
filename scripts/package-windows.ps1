@@ -321,6 +321,18 @@ Copy-Item $sqliteRuntime (Join-Path $artifactDir "sqlite3.dll")
 Copy-Item (Join-Path $repoRoot "resources\app_icon.ico") (Join-Path $artifactDir "app_icon.ico")
 Copy-Item (Join-Path $repoRoot "THIRD_PARTY_NOTICES.md") $artifactDir
 Copy-Item (Join-Path $repoRoot "third_party\tinted-themes\LICENSE") (Join-Path $artifactDir "TINTED_SCHEMES_LICENSE.txt")
+$databasePath = Join-Path $repoRoot "data\ssas.db"
+if (-not (Test-Path -LiteralPath $databasePath -PathType Leaf)) {
+    throw "Database file not found for the Windows package: $databasePath"
+}
+$artifactDataDir = Join-Path $artifactDir "data"
+New-Item -ItemType Directory -Path $artifactDataDir -Force | Out-Null
+$artifactDatabasePath = Join-Path $artifactDataDir "ssas.db"
+Copy-Item -LiteralPath $databasePath -Destination $artifactDatabasePath
+if ((Get-FileHash -LiteralPath $databasePath -Algorithm SHA256).Hash -ne
+    (Get-FileHash -LiteralPath $artifactDatabasePath -Algorithm SHA256).Hash) {
+    throw "Staged database hash mismatch."
+}
 
 $cmakeCache = Join-Path $buildDir "CMakeCache.txt"
 
@@ -404,7 +416,11 @@ if ($effectiveToolchain -eq "msvc" -or $effectiveToolchain -eq "llvm") {
 
 Set-Content -Path (Join-Path $artifactDir "run-ssa_consulta_rapida.bat") -Value '@echo off
 setlocal
-"%~dp0ssa_consulta_rapida.exe" %*' -Encoding UTF8
+pushd "%~dp0"
+ssa_consulta_rapida.exe %*
+set "exitCode=%ERRORLEVEL%"
+popd
+exit /b %exitCode%' -Encoding UTF8
 
 $portableNsisScript = @"
 !include "FileFunc.nsh"

@@ -76,6 +76,7 @@ Rectangle {
                         text: "↶"
                         enabled: root.viewModel.canUndoFilters
                         implicitWidth: 32
+                        Layout.minimumWidth: implicitWidth
                         implicitHeight: root.compactControlHeight - 2
                         Accessible.name: "Desfazer"
                         ToolTip.visible: hovered
@@ -104,6 +105,9 @@ Rectangle {
                         objectName: "mainClearButton"
                         text: "⌫"
                         implicitWidth: 32
+                        Layout.minimumWidth: implicitWidth
+                        leftPadding: 8
+                        rightPadding: 8
                         implicitHeight: root.compactControlHeight - 2
                         Accessible.name: "Limpar"
                         ToolTip.visible: hovered
@@ -115,6 +119,7 @@ Rectangle {
                         objectName: "mainApplyButton"
                         text: "⏎"
                         implicitWidth: 32
+                        Layout.minimumWidth: implicitWidth
                         implicitHeight: root.compactControlHeight - 2
                         Accessible.name: "Aplicar"
                         ToolTip.visible: hovered

@@ -146,4 +146,5 @@ Cada conjunto completo tagueado e preservado em
 Uma nova publicacao do mesmo identificador so e aceita quando todos os hashes
 coincidem; `final\` e `current.json` sao atualizados juntos.
 
-Nao inclua bancos reais, configuracoes locais, logs, screenshots ou segredos.
+O pacote oficial inclui `data\ssas.db` do workspace para iniciar com os dados
+entregues. Nao inclua configuracoes locais, logs, screenshots ou segredos.

@@ -1369,14 +1369,21 @@ namespace ssa::infra::importing {
                                             const std::string_view detail = {}) {
             writeSession->rollbackFile();
             auto& fileResult = importSummary.files[stagedFile.summaryIndex];
-            fileResult.status = ports::ImportFileStatus::Rejected;
+            const bool operationalFailure = reason == "operation_failed";
+            fileResult.status = operationalFailure ? ports::ImportFileStatus::Failed
+                                                   : ports::ImportFileStatus::Rejected;
             fileResult.reason = std::string{reason};
             importSummary.validRows -= fileResult.validRows;
             fileResult.validRows = 0;
             fileResult.inserts = 0;
             fileResult.updates = 0;
             fileResult.unchangedRows = 0;
-            ++importSummary.rejected;
+            if (operationalFailure) {
+                ++importSummary.failed;
+                ++failedFiles;
+            } else {
+                ++importSummary.rejected;
+            }
             if (batchRejectionError.empty()) {
                 batchRejectionError = std::string{reason} + " file=" + stagedFile.originalFilename;
             }
@@ -1625,13 +1632,13 @@ namespace ssa::infra::importing {
             })) {
             const std::string emptyBatchError =
                 batchRejectionError.empty() ? "no_valid_rows" : batchRejectionError;
-            if (!replaceAll && importSummary.rejected > 0) {
+            if (!replaceAll && (importSummary.rejected > 0 || importSummary.failed > 0)) {
                 try {
                     writeSession->rollback();
                 } catch (const ports::OperationError& error) {
-                    return discardBeforeCommit(rollbackSession(
-                        *writeSession,
-                        failed(operation, files, totalSummary, 1, error.diagnostic())));
+                    return discardBeforeCommit(
+                        rollbackSession(*writeSession, failed(operation, files, totalSummary, 1,
+                                                              error.diagnostic())));
                 } catch (const std::exception& error) {
                     return discardBeforeCommit(rollbackSession(
                         *writeSession, failed(operation, files, totalSummary, 1, error.what())));
@@ -1644,16 +1651,18 @@ namespace ssa::infra::importing {
                 }
                 importSummary.preserved = importSummary.files.size();
                 importSummary.accepted = 0;
-                return withSummary(
-                    {ports::WorkflowStatus::Rejected,
-                     workflowMessage(operation, files, totalSummary, {0, emptyBatchError}),
-                     true, std::move(diagnostic)},
-                    importSummary);
+                return withSummary({importSummary.failed > 0 ? ports::WorkflowStatus::Failed
+                                                             : ports::WorkflowStatus::Rejected,
+                                    workflowMessage(operation, files, totalSummary,
+                                                    {failedFiles, emptyBatchError}),
+                                    true, std::move(diagnostic)},
+                                   importSummary);
             }
             return discardBeforeCommit(rollbackSession(
-                *writeSession, {ports::WorkflowStatus::Rejected,
-                                workflowMessage(operation, files, totalSummary, {0, emptyBatchError}),
-                                false, perFileDiagnostic}));
+                *writeSession,
+                {ports::WorkflowStatus::Rejected,
+                 workflowMessage(operation, files, totalSummary, {0, emptyBatchError}), false,
+                 perFileDiagnostic}));
         }
         std::vector<ImportManifestEntry> manifest;
         manifest.reserve(pendingOutcomes.size());
@@ -1732,11 +1741,11 @@ namespace ssa::infra::importing {
         const bool partialBatch = importSummary.rejected > 0;
         if (!consolidateSources_) {
             importSummary.preserved = importSummary.files.size();
-            const auto status = totalSummary.rowsWritten > 0 ? ports::WorkflowStatus::Succeeded
-                                                             : ports::WorkflowStatus::NoChanges;
+            const auto status = importSummary.failed > 0       ? ports::WorkflowStatus::Failed
+                                : totalSummary.rowsWritten > 0 ? ports::WorkflowStatus::Succeeded
+                                                               : ports::WorkflowStatus::NoChanges;
             ports::WorkflowResult result{
-                status,
-                workflowMessage(operation, files, totalSummary, {0, batchRejectionError}),
+                status, workflowMessage(operation, files, totalSummary, {0, batchRejectionError}),
                 files.warning || files.failedCopies > 0 || files.failedLegacyXls > 0 ||
                     totalSummary.invalidRows > 0 || totalSummary.duplicateRows > 0 ||
                     ignoredUnrecognizedWorkbook || partialBatch,
@@ -1806,7 +1815,8 @@ namespace ssa::infra::importing {
                                       : 0;
         const bool postCommitInterrupted =
             consolidation.failed > 0 || consolidation.canceled || journalFailures > 0;
-        const auto status = postCommitInterrupted || totalSummary.rowsWritten > 0
+        const auto status = importSummary.failed > 0 ? ports::WorkflowStatus::Failed
+                            : postCommitInterrupted || totalSummary.rowsWritten > 0
                                 ? ports::WorkflowStatus::Succeeded
                                 : ports::WorkflowStatus::NoChanges;
         ports::WorkflowResult result{

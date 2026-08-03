@@ -1671,6 +1671,9 @@ TEST_CASE("spreadsheet workflow keeps chunk counters when a later worksheet fail
     REQUIRE(result.message.find("conflicts=1") != std::string::npos);
     REQUIRE(result.importSummary.has_value());
     REQUIRE(result.importSummary->conflicts == 1);
+    REQUIRE(result.importSummary->failed == 1);
+    REQUIRE(result.importSummary->files.size() == 1);
+    REQUIRE(result.importSummary->files.front().status == ssa::ports::ImportFileStatus::Failed);
     sqlite3* db = nullptr;
     REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
     REQUIRE(scalarInt(
@@ -6159,10 +6162,10 @@ TEST_CASE("external import continues after a failed middle block") {
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
     REQUIRE(result.importSummary.has_value());
     REQUIRE(result.importSummary->discovered == 129);
-    REQUIRE(result.importSummary->inserts == 65);
+    REQUIRE(result.importSummary->inserts == 128);
     REQUIRE(result.message.find("batches=3") != std::string::npos);
     REQUIRE(result.diagnostic.find("batch=2 file=invalid_middle_block.xlsx") != std::string::npos);
-    REQUIRE(directWorkbookCount(inputDirectory / "processadas") == 65);
+    REQUIRE(directWorkbookCount(inputDirectory / "processadas") == 128);
     REQUIRE(std::filesystem::exists(invalid));
     const auto processingCount = [&](const std::size_t currentFile) {
         return std::ranges::count_if(progress, [&](const auto& update) {
@@ -6185,8 +6188,8 @@ TEST_CASE("external import continues after a failed middle block") {
 
     sqlite3* db = nullptr;
     REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
-    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 65);
-    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa LIKE '2026021%'") == 1);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 128);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa LIKE '2026021%'") == 64);
     REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202602163'") == 1);
     REQUIRE(scalarText(db, "PRAGMA integrity_check") == "ok");
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
