@@ -113,7 +113,6 @@ namespace ssa::presentation {
         MainSelectionFlowCoordinator selectionFlow_;
         MainRequestFlowCoordinator requestFlow_;
         QString pendingWorkflowRefreshMessage_;
-        QString pendingWorkflowRefreshWarning_;
         QTimer shutdownPoll_;
         QTimer forceCloseTimer_;
         bool shutdownInProgress_{false};

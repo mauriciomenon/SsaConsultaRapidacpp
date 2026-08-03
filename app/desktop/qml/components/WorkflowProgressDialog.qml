@@ -17,6 +17,8 @@ Dialog {
     property int percentage: 0
     property bool cancelRequested: false
     property bool terminal: false
+    property bool terminalSucceeded: false
+    property bool terminalCanceled: false
     property string terminalLabel: ""
 
     parent: Overlay.overlay
@@ -46,6 +48,8 @@ Dialog {
         percentage = 0;
         cancelRequested = false;
         terminal = false;
+        terminalSucceeded = false;
+        terminalCanceled = false;
         terminalLabel = "";
         outputArea.text = "";
         errorArea.text = "";
@@ -142,7 +146,7 @@ Dialog {
 
         Label {
             objectName: "workflowProgressErrorLabel"
-            text: "Erros e avisos"
+            text: root.terminal && !root.terminalSucceeded && !root.terminalCanceled ? "Erros" : "Avisos"
             color: Theme.text
             font.bold: true
             font.pixelSize: Theme.fontSizeLabel
@@ -165,7 +169,7 @@ Dialog {
                 readOnly: true
                 selectByMouse: true
                 wrapMode: TextEdit.Wrap
-                color: Theme.danger
+                color: root.terminal && !root.terminalSucceeded && !root.terminalCanceled ? Theme.danger : Theme.mutedText
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSizeBody
                 background: Rectangle {
@@ -243,6 +247,8 @@ Dialog {
 
         function onProgressSessionFinished(succeeded, canceled, title, message) {
             root.terminal = true;
+            root.terminalSucceeded = succeeded;
+            root.terminalCanceled = canceled;
             root.terminalLabel = title;
             root.percentage = succeeded ? 100 : root.percentage;
             root.statusText = message;

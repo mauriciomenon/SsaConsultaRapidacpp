@@ -31,8 +31,8 @@ namespace ssa::presentation {
         void reportResult(StatusViewModel& status, const bool succeeded, const QString& detail,
                           const ActionStatusMessages& messages, const bool warning = false) {
             if (succeeded) {
-                status.setError(warning ? detail : QString{});
-                status.setMessage(messages.success);
+                status.setError({});
+                status.setMessage(warning ? detail : messages.success);
             } else {
                 status.setError(detail);
                 status.setMessage(messages.failure);

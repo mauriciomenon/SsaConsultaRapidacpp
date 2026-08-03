@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <memory>
 #include <mutex>
+#include <string>
 #include <vector>
 
 namespace {
@@ -118,6 +119,34 @@ ApplicationWindow {
             {
                 const std::scoped_lock lock(mutex_);
                 externalFileCount_ = request.files.size();
+            }
+            if (request.files.size() == 66) {
+                ssa::ports::ImportSummary summary;
+                summary.discovered = 66;
+                summary.accepted = 2;
+                summary.rejected = 10;
+                summary.updates = 573;
+                summary.unchangedRows = 573;
+                for (int file = 1; file <= 10; ++file) {
+                    ssa::ports::ImportFileResult rejected;
+                    rejected.source = "rejeitado_" + std::to_string(file) + ".xlsx";
+                    rejected.status = ssa::ports::ImportFileStatus::Rejected;
+                    rejected.reason = "duplicate_conflict";
+                    summary.files.push_back(std::move(rejected));
+                }
+                request.progress({ssa::ports::WorkflowProgressStage::Completed,
+                                  ssa::ports::WorkflowProgressLevel::Warning,
+                                  66,
+                                  66,
+                                  100,
+                                  {},
+                                  "Importacao parcial concluida",
+                                  {}});
+                return {ssa::ports::WorkflowStatus::Succeeded,
+                        "importacao parcial",
+                        true,
+                        {},
+                        std::move(summary)};
             }
             if (request.files.size() != 65) {
                 ssa::ports::ImportSummary summary;
@@ -300,14 +329,14 @@ ApplicationWindow {
                 window->findChild<QQuickItem*>(QStringLiteral("workflowProgressBar"));
             auto* output = window->findChild<QQuickItem*>(QStringLiteral("workflowProgressOutput"));
             auto* errors = window->findChild<QObject*>(QStringLiteral("workflowProgressErrors"));
+            auto* errorLabel =
+                window->findChild<QQuickItem*>(QStringLiteral("workflowProgressErrorLabel"));
             auto* outputLabel =
                 window->findChild<QQuickItem*>(QStringLiteral("workflowProgressOutputLabel"));
             auto* outputScroll =
                 window->findChild<QQuickItem*>(QStringLiteral("workflowProgressOutputScroll"));
             auto* outputScrollBar =
                 window->findChild<QObject*>(QStringLiteral("workflowProgressOutputScrollBar"));
-            auto* errorLabel =
-                window->findChild<QQuickItem*>(QStringLiteral("workflowProgressErrorLabel"));
             auto* errorScroll =
                 window->findChild<QQuickItem*>(QStringLiteral("workflowProgressErrorScroll"));
             auto* cancelButton =
@@ -321,6 +350,7 @@ ApplicationWindow {
             QVERIFY(progressBar != nullptr);
             QVERIFY(output != nullptr);
             QVERIFY(errors != nullptr);
+            QVERIFY(errorLabel != nullptr);
             QVERIFY(outputLabel != nullptr);
             QVERIFY(outputScroll != nullptr);
             QVERIFY(outputScrollBar != nullptr);
@@ -565,11 +595,14 @@ ApplicationWindow {
             auto* dialog = window->findChild<QObject*>(QStringLiteral("workflowProgressDialog"));
             auto* output = window->findChild<QObject*>(QStringLiteral("workflowProgressOutput"));
             auto* errors = window->findChild<QObject*>(QStringLiteral("workflowProgressErrors"));
+            auto* errorLabel =
+                window->findChild<QQuickItem*>(QStringLiteral("workflowProgressErrorLabel"));
             auto* closeButton =
                 window->findChild<QObject*>(QStringLiteral("workflowProgressCloseButton"));
             QVERIFY(dialog != nullptr);
             QVERIFY(output != nullptr);
             QVERIFY(errors != nullptr);
+            QVERIFY(errorLabel != nullptr);
             QVERIFY(closeButton != nullptr);
 
             QVariantList selectedFiles;
@@ -597,8 +630,34 @@ ApplicationWindow {
                 QStringLiteral("falhou.xlsx - falha operacional")));
             QVERIFY(errors->property("text").toString().contains(
                 QStringLiteral("arquivo 65 rejeitado")));
+            QVERIFY(errors->property("text").toString().contains(
+                QStringLiteral("rejeitado.xlsx - colunas obrigatorias ausentes")));
             QVERIFY(!workflowModel.lastSucceeded());
             QVERIFY(dialog->property("terminal").toBool());
+            QVERIFY(QMetaObject::invokeMethod(closeButton, "clicked"));
+            QTRY_VERIFY_WITH_TIMEOUT(!dialog->property("visible").toBool(), 1000);
+
+            QVariantList partialFiles;
+            partialFiles.reserve(66);
+            for (int file = 1; file <= 66; ++file) {
+                partialFiles.push_back(
+                    QUrl::fromLocalFile(QStringLiteral("/tmp/ssa_partial_%1.xlsx").arg(file)));
+            }
+            workflowModel.importExternalFiles(partialFiles);
+            QTRY_VERIFY_WITH_TIMEOUT(dialog->property("visible").toBool(), 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(closeButton->property("enabled").toBool(), 2000);
+            QTRY_VERIFY_WITH_TIMEOUT(!workflowModel.running(), 2000);
+            QCOMPARE(dialog->property("title").toString(),
+                     QStringLiteral("Importacao parcial concluida - 66/66"));
+            QCOMPARE(errorLabel->property("text").toString(), QStringLiteral("Avisos"));
+            QVERIFY(errors->property("text").toString().contains(
+                QStringLiteral("rejeitado_10.xlsx - conflito entre linhas duplicadas")));
+            QCOMPARE(workflowModel.lastMessage(),
+                     QStringLiteral("Importacao parcial concluida: 66 arquivos examinados; "
+                                    "2 aplicados; 10 rejeitados; 573 SSAs atualizadas; "
+                                    "573 SSAs sem alteracao"));
+            QVERIFY(workflowModel.lastSucceeded());
+            QVERIFY(workflowModel.lastWarning());
             QVERIFY(QMetaObject::invokeMethod(closeButton, "clicked"));
             QTRY_VERIFY_WITH_TIMEOUT(!dialog->property("visible").toBool(), 1000);
 
@@ -610,8 +669,9 @@ ApplicationWindow {
             QCOMPARE(importPort->externalFileCount(), std::size_t{1});
             QCOMPARE(dialog->property("title").toString(),
                      QStringLiteral("Importacao concluida com avisos - 1/1"));
-            QVERIFY(errors->property("text").toString().contains(
-                QStringLiteral("ignorado.xlsx - cabecalho SSA nao reconhecido; planilha ignorada")));
+            QCOMPARE(errorLabel->property("text").toString(), QStringLiteral("Avisos"));
+            QVERIFY(errors->property("text").toString().contains(QStringLiteral(
+                "ignorado.xlsx - cabecalho SSA nao reconhecido; planilha ignorada")));
             QVERIFY(!errors->property("text").toString().contains(
                 QStringLiteral("importacao com avisos")));
             QCOMPARE(workflowModel.lastMessage(),

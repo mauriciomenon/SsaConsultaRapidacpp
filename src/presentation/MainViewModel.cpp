@@ -118,29 +118,27 @@ namespace ssa::presentation {
     }
 
     void MainViewModel::connectWorkflowRefresh() {
-        connect(actions_.workflows(), &WorkflowCommandViewModel::lastResultChanged, &browse_,
-                [this] {
-                    if (actions_.workflows()->lastSucceeded()) {
-                        if (analytics_) {
-                            analytics_->invalidateAfterImport();
-                        }
-                        pendingWorkflowRefreshMessage_ = actions_.workflows()->successMessage();
-                        pendingWorkflowRefreshWarning_ = actions_.workflows()->lastWarning()
-                                                             ? actions_.workflows()->lastMessage()
-                                                             : QString{};
-                        browse_.invalidateTotalRowsAll();
-                        browse_.filters()->invalidateDataSourceOptions();
-                        browse_.apply();
+        connect(
+            actions_.workflows(), &WorkflowCommandViewModel::lastResultChanged, &browse_, [this] {
+                if (actions_.workflows()->lastSucceeded()) {
+                    if (analytics_) {
+                        analytics_->invalidateAfterImport();
                     }
-                });
+                    pendingWorkflowRefreshMessage_ = actions_.workflows()->lastWarning()
+                                                         ? actions_.workflows()->lastMessage()
+                                                         : actions_.workflows()->successMessage();
+                    browse_.invalidateTotalRowsAll();
+                    browse_.filters()->invalidateDataSourceOptions();
+                    browse_.apply();
+                }
+            });
         connect(&browse_, &BrowseViewModel::pageChanged, this, [this] {
             if (pendingWorkflowRefreshMessage_.isEmpty()) {
                 return;
             }
             browse_.status()->setMessage(pendingWorkflowRefreshMessage_);
-            browse_.status()->setError(pendingWorkflowRefreshWarning_);
+            browse_.status()->setError({});
             pendingWorkflowRefreshMessage_.clear();
-            pendingWorkflowRefreshWarning_.clear();
         });
     }
 

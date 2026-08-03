@@ -2584,11 +2584,10 @@ namespace {
             QTRY_VERIFY_WITH_TIMEOUT(pageSpy.size() >= 1, 1000);
             QCOMPARE(model.actions()->workflows()->lastSucceeded(), true);
             QTRY_COMPARE_WITH_TIMEOUT(model.browse()->status()->message(),
-                                      QString("Importacao concluida"), 1000);
-            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->status()->error(),
                                       QString("Importacao concluida com avisos: consolidacao "
                                               "cancelada"),
                                       1000);
+            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->status()->error(), QString{}, 1000);
         }
 
         void import_external_files_rejects_non_local_url() {

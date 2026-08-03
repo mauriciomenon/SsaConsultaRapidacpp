@@ -16,8 +16,6 @@ namespace ssa::presentation {
 
         enum class FileSelectionError { None, EmptySelection, NonLocalFile };
 
-        constexpr int kMaxProgressErrorLines = 8;
-
         FileSelectionError localFilePathsFromUrls(const QVariantList& selectedFiles,
                                                   std::vector<QString>& files) {
             if (selectedFiles.empty()) {
@@ -63,10 +61,17 @@ namespace ssa::presentation {
                 }
                 return QString::fromStdString(result.message);
             }
-            if (result.ok() && result.warning) {
-                prefix += QStringLiteral(" com avisos");
-            }
             const auto& summary = *result.importSummary;
+            if (result.ok() && result.warning) {
+                if (summary.rejected > 0 || summary.failed > 0) {
+                    prefix.replace(QStringLiteral(" concluida"),
+                                   QStringLiteral(" parcial concluida"));
+                    prefix.replace(QStringLiteral(" concluido"),
+                                   QStringLiteral(" parcial concluido"));
+                } else {
+                    prefix += QStringLiteral(" com avisos");
+                }
+            }
             QStringList facts{
                 counted(summary.discovered, QStringLiteral("arquivo examinado"),
                         QStringLiteral("arquivos examinados")),
@@ -90,6 +95,10 @@ namespace ssa::presentation {
             if (summary.updates > 0) {
                 facts.push_back(counted(summary.updates, QStringLiteral("SSA atualizada"),
                                         QStringLiteral("SSAs atualizadas")));
+            }
+            if (summary.unchangedRows > 0) {
+                facts.push_back(counted(summary.unchangedRows, QStringLiteral("SSA sem alteracao"),
+                                        QStringLiteral("SSAs sem alteracao")));
             }
             if (summary.failed == 0 && summary.rejected == 0 && summary.invalidRows == 0 &&
                 summary.conflicts == 0) {
@@ -576,10 +585,6 @@ namespace ssa::presentation {
                              static_cast<int>(progressTotalFiles_), progressFileName_);
         bool terminalDetailEmitted = false;
         QStringList deferredErrorLines;
-        std::size_t ignoredCount = 0;
-        std::size_t rejectedCount = 0;
-        std::size_t failedCount = 0;
-        QString primaryCause;
         if (result.importSummary.has_value()) {
             for (const auto& file : result.importSummary->files) {
                 if (file.status == ports::ImportFileStatus::Applied ||
@@ -594,52 +599,13 @@ namespace ssa::presentation {
                     const auto line =
                         QString::fromStdString(file.source) +
                         (reason.isEmpty() ? QString{} : QStringLiteral(" - ") + reason);
-                    if (file.status == ports::ImportFileStatus::Ignored) {
-                        ++ignoredCount;
-                    } else if (file.status == ports::ImportFileStatus::Rejected) {
-                        ++rejectedCount;
-                    } else {
-                        ++failedCount;
-                    }
-                    if (primaryCause.isEmpty() && file.status != ports::ImportFileStatus::Ignored) {
-                        primaryCause = line;
-                    }
                     deferredErrorLines.push_back(line);
                     terminalDetailEmitted = true;
                 }
             }
         }
-        if (deferredErrorLines.size() > static_cast<std::size_t>(kMaxProgressErrorLines)) {
-            QStringList summaryParts;
-            if (rejectedCount > 0) {
-                summaryParts.push_back(counted(rejectedCount, QStringLiteral("rejeitado"),
-                                               QStringLiteral("rejeitados")));
-            }
-            if (failedCount > 0) {
-                summaryParts.push_back(
-                    counted(failedCount, QStringLiteral("falhou"), QStringLiteral("falharam")));
-            }
-            if (ignoredCount > 0) {
-                summaryParts.push_back(counted(ignoredCount, QStringLiteral("ignorado"),
-                                               QStringLiteral("ignorados")));
-            }
-            const auto hiddenCount =
-                static_cast<int>(deferredErrorLines.size()) - kMaxProgressErrorLines;
-            emit progressErrorLine(QStringLiteral("Resumo: ") + summaryParts.join(QStringLiteral("; ")));
-            if (!primaryCause.isEmpty()) {
-                emit progressErrorLine(QStringLiteral("Causa principal: ") + primaryCause);
-            }
-            for (int index = 0; index < kMaxProgressErrorLines; ++index) {
-                emit progressErrorLine(deferredErrorLines.at(index));
-            }
-            emit progressErrorLine(
-                counted(static_cast<std::size_t>(hiddenCount), QStringLiteral("arquivo oculto"),
-                        QStringLiteral("arquivos ocultos")) +
-                QStringLiteral("; detalhes completos no log tecnico"));
-        } else {
-            for (const auto& line : deferredErrorLines) {
-                emit progressErrorLine(line);
-            }
+        for (const auto& line : deferredErrorLines) {
+            emit progressErrorLine(line);
         }
         const auto diagnostic = QString::fromStdString(result.diagnostic);
         if (!diagnostic.isEmpty()) {
@@ -650,11 +616,20 @@ namespace ssa::presentation {
             emit progressErrorLine(message);
         }
         const auto messages = messagesForCurrentOperation();
-        const auto title =
-            canceled ? messages.canceled
-            : result.ok()
-                ? messages.success + (result.warning ? QStringLiteral(" com avisos") : QString{})
-                : messages.failure;
+        QString title = canceled      ? messages.canceled
+                        : result.ok() ? messages.success
+                                      : messages.failure;
+        if (result.ok() && result.warning) {
+            const bool partial =
+                result.importSummary.has_value() &&
+                (result.importSummary->rejected > 0 || result.importSummary->failed > 0);
+            if (partial) {
+                title.replace(QStringLiteral(" concluida"), QStringLiteral(" parcial concluida"));
+                title.replace(QStringLiteral(" concluido"), QStringLiteral(" parcial concluido"));
+            } else {
+                title += QStringLiteral(" com avisos");
+            }
+        }
         emit progressSessionFinished(result.ok(), canceled, title, message);
     }
 
