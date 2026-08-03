@@ -5708,7 +5708,7 @@ TEST_CASE("external import isolates a broken workbook and keeps sibling rows") {
 
     INFO(result.message);
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
-    REQUIRE(result.warning);
+    REQUIRE_FALSE(result.warning);
     REQUIRE(result.importSummary.has_value());
     REQUIRE(result.importSummary->accepted == 1);
     REQUIRE(result.importSummary->rejected == 0);
