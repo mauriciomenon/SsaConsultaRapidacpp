@@ -100,7 +100,7 @@ namespace ssa::presentation {
 
         QString fileReason(const std::string& reason) {
             if (reason == "header_not_recognized") {
-                return QStringLiteral("cabecalho SSA nao reconhecido");
+                return QStringLiteral("cabecalho SSA nao reconhecido; planilha ignorada");
             }
             if (reason == "required_columns_missing") {
                 return QStringLiteral("colunas obrigatorias ausentes");

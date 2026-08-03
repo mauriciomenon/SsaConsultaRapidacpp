@@ -611,7 +611,7 @@ ApplicationWindow {
             QCOMPARE(dialog->property("title").toString(),
                      QStringLiteral("Importacao concluida com avisos - 1/1"));
             QVERIFY(errors->property("text").toString().contains(
-                QStringLiteral("ignorado.xlsx - cabecalho SSA nao reconhecido")));
+                QStringLiteral("ignorado.xlsx - cabecalho SSA nao reconhecido; planilha ignorada")));
             QVERIFY(!errors->property("text").toString().contains(
                 QStringLiteral("importacao com avisos")));
             QCOMPARE(workflowModel.lastMessage(),

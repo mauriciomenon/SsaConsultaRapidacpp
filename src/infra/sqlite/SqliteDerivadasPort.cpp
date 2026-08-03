@@ -78,7 +78,9 @@ namespace ssa::infra::sqlite {
         ports::WorkflowResult importSucceeded(const std::size_t applied,
                                               const std::size_t duplicates,
                                               const std::size_t missingParents,
-                                              const std::size_t sourcesWithoutEdges) {
+                                              const std::size_t missingChildren,
+                                              const std::size_t sourcesWithoutEdges,
+                                              std::string missingChildrenDiagnostic = {}) {
             std::string message = "derivadas import completed; " + std::to_string(applied) +
                                   " applied; " + std::to_string(duplicates) + " duplicate";
             if (duplicates != 1) {
@@ -86,6 +88,10 @@ namespace ssa::infra::sqlite {
             }
             message += "; " + std::to_string(missingParents) + " missing parent";
             if (missingParents != 1) {
+                message += 's';
+            }
+            message += "; " + std::to_string(missingChildren) + " missing child";
+            if (missingChildren != 1) {
                 message += 's';
             }
             // A workbook without any "derivada de" row is accepted, but the operator must
@@ -99,7 +105,25 @@ namespace ssa::infra::sqlite {
             }
             return {applied == 0 ? ports::WorkflowStatus::NoChanges
                                  : ports::WorkflowStatus::Succeeded,
-                    std::move(message), missingParents > 0 || sourcesWithoutEdges > 0};
+                    std::move(message),
+                    missingParents > 0 || missingChildren > 0 || sourcesWithoutEdges > 0,
+                    std::move(missingChildrenDiagnostic)};
+        }
+
+        std::string missingChildrenDiagnostic(const std::set<std::string>& missingChildren) {
+            if (missingChildren.empty()) {
+                return {};
+            }
+            std::string diagnostic = "missing_child_ssa=";
+            bool first = true;
+            for (const auto& child : missingChildren) {
+                if (!first) {
+                    diagnostic += ',';
+                }
+                diagnostic += child;
+                first = false;
+            }
+            return diagnostic;
         }
 
         void reportProgress(const ports::ImportDerivationsRequest& request,
@@ -310,12 +334,14 @@ namespace ssa::infra::sqlite {
 
             const auto& parentByChild = merger.parentByChild();
             std::set<std::string> missingParents;
+            std::set<std::string> missingChildren;
             for (const auto& [child, parent] : parentByChild) {
                 if (stopToken.stop_requested()) {
                     return rollback(importCanceled());
                 }
                 if (!recordExists(child)) {
-                    return rollback(importRejected("derivadas source references a missing child"));
+                    missingChildren.insert(child);
+                    continue;
                 }
                 if (!recordExists(parent)) {
                     missingParents.insert(parent);
@@ -333,6 +359,9 @@ namespace ssa::infra::sqlite {
             for (const auto& [child, parent] : parentByChild) {
                 if (stopToken.stop_requested()) {
                     return rollback(importCanceled());
+                }
+                if (missingChildren.contains(child)) {
+                    continue;
                 }
                 update.bindTextOneBased(1, parent);
                 update.bindTextOneBased(2, child);
@@ -354,7 +383,8 @@ namespace ssa::infra::sqlite {
                 return rollback(importFailed(error.diagnostic()));
             }
             auto result = importSucceeded(applied, merger.duplicates(), missingParents.size(),
-                                          sourcesWithoutEdges);
+                                          missingChildren.size(), sourcesWithoutEdges,
+                                          missingChildrenDiagnostic(missingChildren));
             reportProgress(request, ports::WorkflowProgressStage::Completed,
                            result.warning ? ports::WorkflowProgressLevel::Warning
                                           : ports::WorkflowProgressLevel::Information,

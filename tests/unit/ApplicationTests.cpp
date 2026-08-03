@@ -104,7 +104,7 @@ namespace {
         importDerivations(const ssa::ports::ImportDerivationsRequest& request,
                           std::stop_token = {}) override {
             requests.push_back(request);
-            return {ssa::ports::WorkflowStatus::Succeeded, "derivadas import completed"};
+            return nextResult;
         }
 
         [[nodiscard]] ssa::ports::WorkflowResult
@@ -112,6 +112,8 @@ namespace {
             return {ssa::ports::WorkflowStatus::Succeeded, "orphan cleanup completed"};
         }
 
+        ssa::ports::WorkflowResult nextResult{ssa::ports::WorkflowStatus::Succeeded,
+                                              "derivadas import completed"};
         std::vector<ssa::ports::ImportDerivationsRequest> requests;
     };
 
@@ -265,6 +267,43 @@ TEST_CASE("workflow service routes derivadas reports outside the regular XLSX im
     REQUIRE(derivadas->requests.size() == 1);
     REQUIRE(derivadas->requests.front().files ==
             std::vector<std::filesystem::path>{request.files.back()});
+}
+
+TEST_CASE("workflow service preserves a successful SSA import when derivadas import warns") {
+    const auto regular = std::make_shared<CapturingImportPort>();
+    const auto derivadas = std::make_shared<CapturingDerivadasPort>();
+    derivadas->nextResult = {ssa::ports::WorkflowStatus::Succeeded,
+                             "derivadas import completed; 0 applied; 0 duplicates; 0 missing "
+                             "parents; 1 missing child",
+                             true, "missing_child_ssa=202699999"};
+    const ssa::application::SsaWorkflowService workflows(regular, nullptr, nullptr, derivadas);
+    const ssa::ports::ImportExternalFilesRequest request{
+        {"Consulta SSA - 24-07-2026_0829AM.xlsx",
+         "SSAs Derivadas e Relacionadas_24-07-2026_0829AM.xlsx"}};
+
+    const auto result = workflows.importExternalFiles(request);
+
+    REQUIRE(result.ok());
+    REQUIRE(result.warning);
+    REQUIRE(result.diagnostic.find("missing_child_ssa=202699999") != std::string::npos);
+}
+
+TEST_CASE("workflow service preserves a successful SSA import when derivadas import rejects") {
+    const auto regular = std::make_shared<CapturingImportPort>();
+    const auto derivadas = std::make_shared<CapturingDerivadasPort>();
+    derivadas->nextResult = {ssa::ports::WorkflowStatus::Rejected,
+                             "derivadas source contains a self-loop"};
+    const ssa::application::SsaWorkflowService workflows(regular, nullptr, nullptr, derivadas);
+    const ssa::ports::ImportExternalFilesRequest request{
+        {"Consulta SSA - 24-07-2026_0829AM.xlsx",
+         "SSAs Derivadas e Relacionadas_24-07-2026_0829AM.xlsx"}};
+
+    const auto result = workflows.importExternalFiles(request);
+
+    REQUIRE(result.ok());
+    REQUIRE(result.warning);
+    REQUIRE(result.message.find("regular import completed") != std::string::npos);
+    REQUIRE(result.diagnostic.find("self-loop") != std::string::npos);
 }
 
 TEST_CASE("unavailable workflow adapter reports not implemented explicitly") {

@@ -23,6 +23,33 @@ namespace ssa::application {
             return result;
         }
 
+        ports::WorkflowResult mergeDerivadasOutcome(ports::WorkflowResult regularResult,
+                                                    const ports::WorkflowResult& derivadasResult) {
+            if (derivadasResult.ok()) {
+                regularResult.warning = regularResult.warning || derivadasResult.warning;
+                if (derivadasResult.warning) {
+                    if (!regularResult.diagnostic.empty()) {
+                        regularResult.diagnostic += "; ";
+                    }
+                    regularResult.diagnostic += derivadasResult.message;
+                    if (!derivadasResult.diagnostic.empty()) {
+                        regularResult.diagnostic += "; " + derivadasResult.diagnostic;
+                    }
+                }
+                return regularResult;
+            }
+            regularResult.warning = true;
+            if (!regularResult.diagnostic.empty()) {
+                regularResult.diagnostic += "; ";
+            }
+            regularResult.diagnostic += derivadasResult.message;
+            if (!derivadasResult.diagnostic.empty()) {
+                regularResult.diagnostic += "; " + derivadasResult.diagnostic;
+            }
+            regularResult.message += "; derivadas: " + derivadasResult.message;
+            return regularResult;
+        }
+
     } // namespace
 
     SsaWorkflowService::SsaWorkflowService(
@@ -66,11 +93,7 @@ namespace ssa::application {
             }
             auto derivadasResult = derivadasPort_->importDerivations(
                 {std::move(derivadasFiles), request.execution, request.progress}, stopToken);
-            if (!derivadasResult.ok()) {
-                return derivadasResult;
-            }
-            regularResult.warning = regularResult.warning || derivadasResult.warning;
-            return regularResult;
+            return mergeDerivadasOutcome(std::move(regularResult), derivadasResult);
         }
         if (!derivadasPort_) {
             return notImplemented("derivadas import");

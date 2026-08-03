@@ -105,6 +105,6 @@ may fill or improve them.
   XLSM are supported directly. Legacy XLS is accepted only by explicit user
   selection after a visible LibreOffice availability preflight; it never
   participates in SSA discovery or rescan.
-- Derivadas edges reject self-loops, conflicting parents, and missing children,
-  deduplicate repeated edges, and preserve existing parents absent from a
-  partial batch.
+- Derivadas edges reject self-loops and conflicting parents, skip edges whose
+  child SSA is absent from the database, deduplicate repeated edges, and
+  preserve existing parents absent from a partial batch.

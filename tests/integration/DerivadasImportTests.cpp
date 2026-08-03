@@ -50,6 +50,14 @@ namespace {
             return std::filesystem::path{directory.path().toStdString()} / name;
         }
 
+        [[nodiscard]] bool recordExists(const std::string& number) const {
+            ssa::infra::sqlite::SqliteConnection connection(databasePath);
+            ssa::infra::sqlite::SqliteStatement statement(
+                connection.handle(), "SELECT 1 FROM ssa_table WHERE numero_ssa = ? LIMIT 1");
+            statement.bindTextOneBased(1, number);
+            return statement.step();
+        }
+
         [[nodiscard]] std::string parentOf(const std::string& child) const {
             ssa::infra::sqlite::SqliteConnection connection(databasePath);
             ssa::infra::sqlite::SqliteStatement statement(
@@ -362,7 +370,7 @@ TEST_CASE("derivadas import rejects multiple parents for one child atomically") 
     REQUIRE(fixture.parentOf("202600003").empty());
 }
 
-TEST_CASE("derivadas import rejects a missing child without clearing existing data") {
+TEST_CASE("derivadas import skips a missing child with warning without clearing existing data") {
     const Fixture fixture;
     const auto initial = fixture.path("initial.csv");
     const auto invalid = fixture.path("missing-child.csv");
@@ -374,9 +382,30 @@ TEST_CASE("derivadas import rejects a missing child without clearing existing da
 
     const auto result = port.importDerivations(requestFor(invalid));
 
-    REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
-    REQUIRE(result.message.find("missing child") != std::string::npos);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::NoChanges);
+    REQUIRE(result.warning);
+    REQUIRE(result.message.find("1 missing child") != std::string::npos);
+    REQUIRE(result.diagnostic.find("missing_child_ssa=202699999") != std::string::npos);
     REQUIRE(fixture.parentOf("202600002") == "202600001");
+    REQUIRE_FALSE(fixture.recordExists("202699999"));
+}
+
+TEST_CASE("derivadas import applies valid edges and skips missing children in the same batch") {
+    const Fixture fixture;
+    const auto source = fixture.path("mixed.csv");
+    writeText(source, "parent_ssa,child_ssa\n202600001,202600002\n202600003,202699999\n");
+    ssa::infra::sqlite::SqliteDerivadasPort port(fixture.databasePath,
+                                                 unavailableLegacyConverter());
+
+    const auto result = port.importDerivations(requestFor(source));
+
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE(result.warning);
+    REQUIRE(result.message.find("1 applied") != std::string::npos);
+    REQUIRE(result.message.find("1 missing child") != std::string::npos);
+    REQUIRE(result.diagnostic.find("missing_child_ssa=202699999") != std::string::npos);
+    REQUIRE(fixture.parentOf("202600002") == "202600001");
+    REQUIRE_FALSE(fixture.recordExists("202699999"));
 }
 
 TEST_CASE("derivadas import keeps an earlier valid source atomic when a later source is invalid") {
