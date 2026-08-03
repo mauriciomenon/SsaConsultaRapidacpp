@@ -16,6 +16,8 @@ namespace ssa::presentation {
 
         enum class FileSelectionError { None, EmptySelection, NonLocalFile };
 
+        constexpr int kMaxProgressErrorLines = 8;
+
         FileSelectionError localFilePathsFromUrls(const QVariantList& selectedFiles,
                                                   std::vector<QString>& files) {
             if (selectedFiles.empty()) {
@@ -573,6 +575,11 @@ namespace ssa::presentation {
         emit progressChanged(progressPercentage_, message, static_cast<int>(progressCurrentFile_),
                              static_cast<int>(progressTotalFiles_), progressFileName_);
         bool terminalDetailEmitted = false;
+        QStringList deferredErrorLines;
+        std::size_t ignoredCount = 0;
+        std::size_t rejectedCount = 0;
+        std::size_t failedCount = 0;
+        QString primaryCause;
         if (result.importSummary.has_value()) {
             for (const auto& file : result.importSummary->files) {
                 if (file.status == ports::ImportFileStatus::Applied ||
@@ -587,9 +594,51 @@ namespace ssa::presentation {
                     const auto line =
                         QString::fromStdString(file.source) +
                         (reason.isEmpty() ? QString{} : QStringLiteral(" - ") + reason);
-                    emit progressErrorLine(line);
+                    if (file.status == ports::ImportFileStatus::Ignored) {
+                        ++ignoredCount;
+                    } else if (file.status == ports::ImportFileStatus::Rejected) {
+                        ++rejectedCount;
+                    } else {
+                        ++failedCount;
+                    }
+                    if (primaryCause.isEmpty() && file.status != ports::ImportFileStatus::Ignored) {
+                        primaryCause = line;
+                    }
+                    deferredErrorLines.push_back(line);
                     terminalDetailEmitted = true;
                 }
+            }
+        }
+        if (deferredErrorLines.size() > static_cast<std::size_t>(kMaxProgressErrorLines)) {
+            QStringList summaryParts;
+            if (rejectedCount > 0) {
+                summaryParts.push_back(counted(rejectedCount, QStringLiteral("rejeitado"),
+                                               QStringLiteral("rejeitados")));
+            }
+            if (failedCount > 0) {
+                summaryParts.push_back(
+                    counted(failedCount, QStringLiteral("falhou"), QStringLiteral("falharam")));
+            }
+            if (ignoredCount > 0) {
+                summaryParts.push_back(counted(ignoredCount, QStringLiteral("ignorado"),
+                                               QStringLiteral("ignorados")));
+            }
+            const auto hiddenCount =
+                static_cast<int>(deferredErrorLines.size()) - kMaxProgressErrorLines;
+            emit progressErrorLine(QStringLiteral("Resumo: ") + summaryParts.join(QStringLiteral("; ")));
+            if (!primaryCause.isEmpty()) {
+                emit progressErrorLine(QStringLiteral("Causa principal: ") + primaryCause);
+            }
+            for (int index = 0; index < kMaxProgressErrorLines; ++index) {
+                emit progressErrorLine(deferredErrorLines.at(index));
+            }
+            emit progressErrorLine(
+                counted(static_cast<std::size_t>(hiddenCount), QStringLiteral("arquivo oculto"),
+                        QStringLiteral("arquivos ocultos")) +
+                QStringLiteral("; detalhes completos no log tecnico"));
+        } else {
+            for (const auto& line : deferredErrorLines) {
+                emit progressErrorLine(line);
             }
         }
         const auto diagnostic = QString::fromStdString(result.diagnostic);

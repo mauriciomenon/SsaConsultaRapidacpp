@@ -1364,10 +1364,11 @@ namespace ssa::infra::importing {
         ImportStagingResult rejectedStaging;
         std::string perFileDiagnostic;
         std::string batchRejectionError;
-        const auto isolateRejectedFile = [&](const StagedImportFile& file,
-                                             const std::string_view reason) {
+        const auto isolateFileFailure = [&](const StagedImportFile& stagedFile,
+                                            const std::string_view reason,
+                                            const std::string_view detail = {}) {
             writeSession->rollbackFile();
-            auto& fileResult = importSummary.files[file.summaryIndex];
+            auto& fileResult = importSummary.files[stagedFile.summaryIndex];
             fileResult.status = ports::ImportFileStatus::Rejected;
             fileResult.reason = std::string{reason};
             importSummary.validRows -= fileResult.validRows;
@@ -1377,11 +1378,15 @@ namespace ssa::infra::importing {
             fileResult.unchangedRows = 0;
             ++importSummary.rejected;
             if (batchRejectionError.empty()) {
-                batchRejectionError = std::string{reason} + " file=" + file.originalFilename;
+                batchRejectionError = std::string{reason} + " file=" + stagedFile.originalFilename;
             }
-            appendWorkflowDiagnostic(perFileDiagnostic, "file=" + file.originalFilename +
-                                                            " rejected=" + std::string{reason});
-            rejectedStaging.files.push_back(file);
+            std::string diagnosticLine =
+                "file=" + stagedFile.originalFilename + " rejected=" + std::string{reason};
+            if (!detail.empty()) {
+                diagnosticLine += " detail=" + std::string{detail};
+            }
+            appendWorkflowDiagnostic(perFileDiagnostic, diagnosticLine);
+            rejectedStaging.files.push_back(stagedFile);
         };
         for (std::size_t fileIndex = 0; fileIndex < files.files.size(); ++fileIndex) {
             const auto& file = files.files[fileIndex];
@@ -1478,6 +1483,10 @@ namespace ssa::infra::importing {
                 if (error.code() == std::make_error_code(std::errc::operation_canceled)) {
                     return discardBeforeCommit(rollbackSession(*writeSession, canceled(operation)));
                 }
+                if (!replaceAll) {
+                    isolateFileFailure(file, "operation_failed", error.what());
+                    continue;
+                }
                 fileResult.reason = "operation_failed";
                 ++failedFiles;
                 return discardBeforeCommit(rollbackSession(
@@ -1485,6 +1494,13 @@ namespace ssa::infra::importing {
                                           "file=" + file.originalFilename + "; " + error.what())));
             } catch (const ports::OperationError& error) {
                 applyChunkedWorkbookResult();
+                if (!replaceAll) {
+                    const auto reason = error.diagnostic() == "duplicate_conflict"
+                                            ? std::string_view{"duplicate_conflict"}
+                                            : std::string_view{"operation_failed"};
+                    isolateFileFailure(file, reason, error.diagnostic());
+                    continue;
+                }
                 fileResult.reason = "operation_failed";
                 ++failedFiles;
                 return discardBeforeCommit(rollbackSession(
@@ -1493,6 +1509,10 @@ namespace ssa::infra::importing {
                            "file=" + file.originalFilename + "; " + error.diagnostic())));
             } catch (const std::exception& exc) {
                 applyChunkedWorkbookResult();
+                if (!replaceAll) {
+                    isolateFileFailure(file, "operation_failed", exc.what());
+                    continue;
+                }
                 fileResult.reason = "operation_failed";
                 ++failedFiles;
                 return discardBeforeCommit(rollbackSession(
@@ -1526,7 +1546,7 @@ namespace ssa::infra::importing {
             totalSummary.invalidDateRows += batch.invalidDateRows;
             if (duplicateConflict) {
                 if (!replaceAll) {
-                    isolateRejectedFile(file, "duplicate_conflict");
+                    isolateFileFailure(file, "duplicate_conflict");
                     continue;
                 }
                 fileResult.reason = "duplicate_conflict";
@@ -1546,7 +1566,7 @@ namespace ssa::infra::importing {
             }
             if (batch.mappingStatus == SpreadsheetMappingStatus::RequiredColumnsMissing) {
                 if (!replaceAll) {
-                    isolateRejectedFile(file, "required_columns_missing");
+                    isolateFileFailure(file, "required_columns_missing");
                     continue;
                 }
                 fileResult.reason = "required_columns_missing";
@@ -1557,7 +1577,7 @@ namespace ssa::infra::importing {
             }
             if (batch.mappingStatus == SpreadsheetMappingStatus::AmbiguousHeaders) {
                 if (!replaceAll) {
-                    isolateRejectedFile(file, "ambiguous_headers");
+                    isolateFileFailure(file, "ambiguous_headers");
                     continue;
                 }
                 fileResult.reason = "ambiguous_headers";
@@ -1568,7 +1588,7 @@ namespace ssa::infra::importing {
             }
             if (invalidFullBatch) {
                 if (!replaceAll) {
-                    isolateRejectedFile(file, "invalid_rows");
+                    isolateFileFailure(file, "invalid_rows");
                     continue;
                 }
                 fileResult.reason = "invalid_rows";
@@ -1605,6 +1625,31 @@ namespace ssa::infra::importing {
             })) {
             const std::string emptyBatchError =
                 batchRejectionError.empty() ? "no_valid_rows" : batchRejectionError;
+            if (!replaceAll && importSummary.rejected > 0) {
+                try {
+                    writeSession->rollback();
+                } catch (const ports::OperationError& error) {
+                    return discardBeforeCommit(rollbackSession(
+                        *writeSession,
+                        failed(operation, files, totalSummary, 1, error.diagnostic())));
+                } catch (const std::exception& error) {
+                    return discardBeforeCommit(rollbackSession(
+                        *writeSession, failed(operation, files, totalSummary, 1, error.what())));
+                }
+                auto diagnostic = files.diagnostic;
+                appendWorkflowDiagnostic(diagnostic, perFileDiagnostic);
+                if (!rejectedStaging.files.empty()) {
+                    appendWorkflowDiagnostic(diagnostic,
+                                             stager_.discardOwnedArtifacts(rejectedStaging));
+                }
+                importSummary.preserved = importSummary.files.size();
+                importSummary.accepted = 0;
+                return withSummary(
+                    {ports::WorkflowStatus::Rejected,
+                     workflowMessage(operation, files, totalSummary, {0, emptyBatchError}),
+                     true, std::move(diagnostic)},
+                    importSummary);
+            }
             return discardBeforeCommit(rollbackSession(
                 *writeSession, {ports::WorkflowStatus::Rejected,
                                 workflowMessage(operation, files, totalSummary, {0, emptyBatchError}),
