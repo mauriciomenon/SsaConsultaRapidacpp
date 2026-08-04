@@ -28,6 +28,24 @@ Sem acentos/cedilha/emojis/emdash em codigo, chat e mensagens tecnicas.
 - Correcoes devem otimizar o codigo (mais rapido, menor) quando possivel.
 - Sempre ler este AGENTS.md de tempos em tempos e garantir que cumpre as regras.
 
+## Isolamento Obrigatorio De Host
+
+- No WSL, este repositorio so pode ser operado em `$HOME/gitlab_repo/ssa_consulta_rapida_cpp`, em filesystem Linux ext4.
+- `$HOME/gitlab` e symlink para o Windows e e proibido para Git, CMake, build, teste, package ou scanner POSIX.
+- Qualquer caminho em `/mnt/*`, ferramenta `*.exe`, binario PE/MZ ou symlink resolvido para o Windows deve bloquear o harness antes do primeiro efeito colateral.
+- O preflight de host e ferramentas deve ocorrer antes de `git status`, limpeza, configuracao, build, teste, smoke ou empacotamento.
+- Operacoes Linux sao publicadas pelo clone Linux. Depois do push, o clone Windows e atualizado com `git.exe pull --ff-only origin master` executado no Windows nativo.
+- Build e validacao Windows so podem ocorrer em `$env:USERPROFILE\gitlab\ssa_consulta_rapida_cpp`, por ferramentas Windows nativas e fora de sessao WSL.
+- O mesmo isolamento se aplica ao repositorio Python canonico `$HOME/gitlab_repo/ssa_consulta_rapida_pyqt6`.
+
+## Dados Operacionais Fora Do Git
+
+- O banco operacional Linux canonico fica em `$HOME/.ssaconsultarapida/data/ssas.db`; nunca versionar bancos ou copiar `.ssaconsultarapida` para dentro do Git.
+- Os clones Linux mantem apenas a estrutura local necessaria de `data`, `docs_entrada` e `docs_saida`; arquivos grandes permanecem fora do controle de versao.
+- Executar o C++ Linux com `--db $HOME/.ssaconsultarapida/data/ssas.db` quando o banco operacional for necessario.
+- Antes de transportar o banco, fechar Python e C++, confirmar ausencia de WAL/SHM, gerar snapshot pela API de backup do SQLite, validar `quick_check` e comparar SHA-256.
+- Nao executar Python e C++ como escritores simultaneos no mesmo banco sem teste explicito de concorrencia.
+
 ## Regras Prioritarias
 
 - Nao fazer design excessivo (overengineer), keep it simple.

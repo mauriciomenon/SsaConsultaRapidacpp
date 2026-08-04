@@ -2,16 +2,21 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-test_root="$(mktemp -d "${TMPDIR:-/tmp}/ssa-build-contracts.XXXXXX")"
+mkdir -p "${repo_root}/build"
+test_root="$(mktemp -d "${repo_root}/build/ssa-build-contracts.XXXXXX")"
 trap 'rm -rf "${test_root}"' EXIT
 
-fixture_repo="${test_root}/repo"
+fixture_repo="${test_root}/gitlab_repo/ssa_consulta_rapida_cpp"
 fake_bin="${test_root}/bin"
-mkdir -p "${fixture_repo}/scripts/lazy_scripts" "${fixture_repo}/tools" \
+mkdir -p "${fixture_repo}/scripts/lazy_scripts" "${fixture_repo}/scripts/lib" "${fixture_repo}/tools" \
   "${fixture_repo}/build/dev" "${fake_bin}"
 cp "${repo_root}/scripts/build-debian.sh" "${fixture_repo}/scripts/"
 cp "${repo_root}/scripts/lazy_scripts/build-debian.sh" \
   "${fixture_repo}/scripts/lazy_scripts/"
+cp "${repo_root}/scripts/lib/native_host_guard.sh" "${fixture_repo}/scripts/lib/"
+sed -i "s|/home/menon/gitlab_repo/ssa_consulta_rapida_cpp|${fixture_repo}|g" \
+  "${fixture_repo}/scripts/build-debian.sh" \
+  "${fixture_repo}/scripts/lazy_scripts/build-debian.sh"
 
 printf 'stale\n' > "${fixture_repo}/build/dev/stale-output.txt"
 cat > "${fixture_repo}/tools/configure-dev.sh" <<'EOF_CONFIGURE'
@@ -27,9 +32,10 @@ if [[ "${PWD}" != "${SSA_EXPECTED_CWD}" ]]; then
 fi
 exit 0
 EOF_CMAKE
-chmod +x "${fixture_repo}/tools/configure-dev.sh" "${fake_bin}/cmake"
+chmod +x "${fixture_repo}/tools/configure-dev.sh" "${fake_bin}/cmake" \
+  "${fixture_repo}/scripts/lib/native_host_guard.sh"
 
-SSA_EXPECTED_CWD="${fixture_repo}" PATH="${fake_bin}:${PATH}" \
+HOME="${test_root}" SSA_EXPECTED_CWD="${fixture_repo}" PATH="${fake_bin}:${PATH}" \
   "${fixture_repo}/scripts/build-debian.sh"
 if [[ -e "${fixture_repo}/build/dev/stale-output.txt" ]]; then
   echo "build-debian.sh reused stale output by default." >&2
@@ -37,7 +43,7 @@ if [[ -e "${fixture_repo}/build/dev/stale-output.txt" ]]; then
 fi
 
 printf 'keep\n' > "${fixture_repo}/build/dev/incremental-output.txt"
-SSA_EXPECTED_CWD="${fixture_repo}" PATH="${fake_bin}:${PATH}" \
+HOME="${test_root}" SSA_EXPECTED_CWD="${fixture_repo}" PATH="${fake_bin}:${PATH}" \
   "${fixture_repo}/scripts/lazy_scripts/build-debian.sh"
 if [[ ! -e "${fixture_repo}/build/dev/incremental-output.txt" ]]; then
   echo "lazy Debian build did not preserve the explicit incremental cache." >&2

@@ -57,6 +57,15 @@ if [[ "${1-}" == "--help" || "${1-}" == "-h" ]]; then
 fi
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib/native_host_guard.sh
+source "${script_dir}/lib/native_host_guard.sh"
+entry_repo_root="$(cd "${script_dir}/.." && pwd -P)"
+ssa_native_guard_repo "$entry_repo_root" || exit 1
+if command -v dpkg >/dev/null 2>&1; then
+  ssa_native_guard_tool dpkg || exit 1
+else
+  ssa_native_guard_tool uname || exit 1
+fi
 # shellcheck source=./scripts/lib/package_common.sh
 source "${script_dir}/lib/package_common.sh"
 repo_root="$(package_repo_root_from_script "${BASH_SOURCE[0]}")"
@@ -114,10 +123,13 @@ if [[ "${arch}" != "${native_arch}" ]]; then
   echo "Requested Debian architecture '${arch}' does not match native architecture '${native_arch}'." >&2
   exit 1
 fi
+ssa_native_guard_repo "$repo_root" || exit 1
+ssa_native_guard_tools git mktemp rm cmake ctest || exit 1
 
 if [[ -z "${dist_root}" ]]; then
   dist_root="${repo_root}/dist/linux/${arch}/gcc"
 fi
+ssa_native_guard_path "$dist_root" "$repo_root" || exit 1
 
 if [[ -z "${version}" ]]; then
   version="$(package_project_version "${repo_root}")"
@@ -168,11 +180,13 @@ if ! command -v dpkg-deb >/dev/null 2>&1; then
   echo "dpkg-deb not found. This script must run on a Debian/Ubuntu host." >&2
   exit 1
 fi
+ssa_native_guard_tool dpkg-deb || exit 1
 for required_tool in dpkg-shlibdeps file objdump zip tar sha256sum; do
   if ! command -v "${required_tool}" >/dev/null 2>&1; then
     echo "${required_tool} not found. Install the Debian packaging prerequisites." >&2
     exit 1
   fi
+  ssa_native_guard_tool "${required_tool}" || exit 1
 done
 
 rm -rf "${build_dir}"

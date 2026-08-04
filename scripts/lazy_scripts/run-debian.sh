@@ -73,6 +73,12 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# shellcheck disable=SC1091
+source "${repo_root}/scripts/lib/native_host_guard.sh"
+ssa_native_guard_repo "$repo_root" || exit 1
+ssa_native_guard_repo "$project_root" || exit 1
+ssa_native_guard_path "$db_path" "$repo_root" || exit 1
+
 if [[ ! -f "${db_path}" ]]; then
   echo "Database file not found: ${db_path}" >&2
   exit 1
@@ -83,6 +89,7 @@ if [[ ! -x "${executable}" ]]; then
   echo "Binary not found: ${executable}" >&2
   exit 1
 fi
+ssa_native_guard_tool "${executable}" || exit 1
 
 args=(--project-root "${project_root}" --db "${db_path}")
 if [[ -n "${config_dir}" ]]; then

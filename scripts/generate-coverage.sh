@@ -12,6 +12,10 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck disable=SC1091
+source "$ROOT_DIR/scripts/lib/native_host_guard.sh"
+ssa_native_guard_repo "$ROOT_DIR" || exit 1
+ssa_native_guard_tools rm ctest llvm-profdata llvm-cov lcov genhtml || exit 1
 BUILD_DIR="${ROOT_DIR}/build/dev-cov"
 COV_DIR="${BUILD_DIR}/coverage_html"
 PROFRAW_GLOB="/tmp/ssa_cov_*.profraw"

@@ -8,4 +8,8 @@ set -euo pipefail
 preset="${SSA_CPP_PRESET:-dev}"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/.." && pwd)"
+# shellcheck disable=SC1091
+source "${script_dir}/lib/native_host_guard.sh"
+ssa_native_guard_repo "$repo_root" || exit 1
+ssa_native_guard_tools cmake || exit 1
 (cd "${repo_root}" && cmake --build --preset "${preset}")

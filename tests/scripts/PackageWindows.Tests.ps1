@@ -1,6 +1,15 @@
 $ErrorActionPreference = "Stop"
 
 Describe "Windows package build failure" {
+    BeforeEach {
+        $script:originalGuardTestRoot = $env:SSA_NATIVE_GUARD_TEST_ROOT
+        $env:SSA_NATIVE_GUARD_TEST_ROOT = (Get-PSDrive -Name TestDrive).Root
+    }
+
+    AfterEach {
+        $env:SSA_NATIVE_GUARD_TEST_ROOT = $script:originalGuardTestRoot
+    }
+
     It "keeps the NSIS source path short inside each transactional run" {
         $packageScript = Join-Path (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path "scripts/package-windows.ps1"
         $scriptText = Get-Content -LiteralPath $packageScript -Raw

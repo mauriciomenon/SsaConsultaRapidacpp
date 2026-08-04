@@ -26,6 +26,9 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/.." && pwd)"
 build_dir="${repo_root}/build/${preset}"
 cache_file="${build_dir}/CMakeCache.txt"
+# shellcheck disable=SC1091
+source "${repo_root}/scripts/lib/native_host_guard.sh"
+ssa_native_guard_repo "$repo_root" || exit 1
 
 # shellcheck disable=SC1091
 source "${script_dir}/qt-detect.conf"
@@ -37,10 +40,12 @@ require_command() {
     printf 'Missing command: %s\n%s\n' "$name" "$install_hint" >&2
     exit 1
   fi
+  ssa_native_guard_tool "$name" || exit 1
 }
 
 warn_clang_format() {
   if command -v clang-format >/dev/null 2>&1; then
+    ssa_native_guard_tool clang-format || return 1
     return 0
   fi
 
@@ -234,6 +239,7 @@ print_compiler_choices() {
   local -a compilers=()
   for compiler in clang++ g++ c++; do
     if command -v "${compiler}" >/dev/null 2>&1; then
+      ssa_native_guard_tool "${compiler}" || return 1
       compilers+=("$(command -v "${compiler}")")
     fi
   done
@@ -316,6 +322,9 @@ check_command_dependency() {
   local command_name="$2"
   local command_path
   if command_path="$(command -v "${command_name}" 2>/dev/null)"; then
+    if ! ssa_native_guard_tool "${command_path}"; then
+      return 1
+    fi
     print_check_record OK "${dependency}" "${command_path}" "$(command_version "${command_path}")"
     return 0
   fi
@@ -384,7 +393,11 @@ run_dependency_check() {
   done
   if [[ -n "${compiler}" ]]; then
     compiler="$(command -v "${compiler}")"
-    print_check_record OK compiler "${compiler}" "$(command_version "${compiler}")"
+    if ssa_native_guard_tool "${compiler}"; then
+      print_check_record OK compiler "${compiler}" "$(command_version "${compiler}")"
+    else
+      failed=1
+    fi
   else
     print_check_record MISSING compiler - -
     print_check_hint compiler
@@ -459,13 +472,19 @@ if ! command -v c++ >/dev/null 2>&1 && ! command -v clang++ >/dev/null 2>&1 && !
   exit 1
 fi
 
-print_compiler_choices
+print_compiler_choices || exit 1
 cmake_fresh_args=()
 if [[ -f "${cache_file}" ]]; then
   cached_build_dir="$(sed -n 's/^CMAKE_CACHEFILE_DIR:INTERNAL=//p' "${cache_file}" | head -n 1)"
   cached_generator="$(sed -n 's/^CMAKE_GENERATOR:INTERNAL=//p' "${cache_file}" | head -n 1)"
   cached_make_program="$(sed -n 's/^CMAKE_MAKE_PROGRAM:FILEPATH=//p' "${cache_file}" | head -n 1)"
   cached_compiler="$(sed -n 's/^CMAKE_CXX_COMPILER:FILEPATH=//p' "${cache_file}" | head -n 1)"
+  if [[ -n "${cached_make_program}" && -x "${cached_make_program}" ]]; then
+    ssa_native_guard_tool "${cached_make_program}" || exit 1
+  fi
+  if [[ -n "${cached_compiler}" && -x "${cached_compiler}" ]]; then
+    ssa_native_guard_tool "${cached_compiler}" || exit 1
+  fi
   if [[ "${cached_build_dir}" != "${build_dir}" || "${cached_generator}" != "Ninja" ||
     ! -x "${cached_make_program}" ||
     (-n "${cached_compiler}" && ! -x "${cached_compiler}") ]]; then
@@ -480,4 +499,4 @@ fi
   -DCMAKE_PREFIX_PATH="${qt_dir}" \
   -DQt6_DIR="${qt_dir}/lib/cmake/Qt6")
 
-warn_clang_format
+warn_clang_format || exit 1

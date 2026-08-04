@@ -42,5 +42,10 @@ if [[ -z "${preset}" ]]; then
   exit 1
 fi
 
+# shellcheck disable=SC1091
+source "${repo_root}/scripts/lib/native_host_guard.sh"
+ssa_native_guard_repo "$repo_root" || exit 1
+ssa_native_guard_tools cmake || exit 1
+
 "${repo_root}/tools/configure-dev.sh" "${preset}"
 (cd "${repo_root}" && cmake --build --preset "${preset}")

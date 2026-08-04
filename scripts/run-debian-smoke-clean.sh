@@ -6,13 +6,13 @@ usage() {
 Usage: scripts/run-debian-smoke-clean.sh [--db <path>] [--open]
 
 Run a clean Debian build, CTest, and offscreen screenshot smoke.
-The default database is <repo>/data/ssas.db.
+The default database is SSA_DB_PATH or ~/.ssaconsultarapida/data/ssas.db.
 EOF
 }
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/.." && pwd)"
-db_path="${repo_root}/data/ssas.db"
+db_path="${SSA_DB_PATH:-${HOME}/.ssaconsultarapida/data/ssas.db}"
 db_path_explicit="false"
 open_requested="false"
 
@@ -42,6 +42,12 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+# shellcheck disable=SC1091
+source "${script_dir}/lib/native_host_guard.sh"
+ssa_native_guard_repo "$repo_root" || exit 1
+ssa_native_guard_tools cmake ctest rm mkdir cp || exit 1
+ssa_native_guard_path "$db_path" "$repo_root" || exit 1
 
 # shellcheck disable=SC1091
 # shellcheck source=smoke-debian-core.sh

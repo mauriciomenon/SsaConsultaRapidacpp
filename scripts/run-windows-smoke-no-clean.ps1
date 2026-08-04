@@ -17,6 +17,8 @@ param(
 $ErrorActionPreference = "Stop"
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = if ($ProjectRoot) { (Resolve-Path $ProjectRoot).Path } else { (Resolve-Path (Join-Path $scriptDir "..")).Path }
+. (Join-Path $scriptDir 'lib\native_host_guard.ps1')
+Assert-SsaWindowsHost -RepoRoot $repoRoot -ExpectedRoot (Get-SsaWindowsRepoRoot)
 
 if ($Help) {
     Write-Output "Usage: .\run-windows-smoke-no-clean.ps1 [-Toolchain <auto|msvc|llvm|mingw|llvm-mingw>] [-DbPath <path>] [-Preset <preset>] [-Arch <amd64|arm64>] [-Open]"

@@ -704,6 +704,8 @@ if ($PrintQtSelection) {
     return
 }
 
+. (Join-Path $repoRoot 'scripts\lib\native_host_guard.ps1')
+Assert-SsaWindowsHost -RepoRoot $repoRoot -ExpectedRoot (Get-SsaWindowsRepoRoot)
 Test-RequiredCommand "cmake" "Install CMake 3.24 or newer and add it to PATH."
 Test-RequiredCommand "ninja" "Install Ninja and add it to PATH."
 

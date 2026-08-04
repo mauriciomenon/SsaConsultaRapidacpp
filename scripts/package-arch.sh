@@ -38,6 +38,11 @@ if [[ "${1-}" == "--help" || "${1-}" == "-h" ]]; then
 fi
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib/native_host_guard.sh
+source "${script_dir}/lib/native_host_guard.sh"
+entry_repo_root="$(cd "${script_dir}/.." && pwd -P)"
+ssa_native_guard_repo "$entry_repo_root" || exit 1
+ssa_native_guard_tool uname || exit 1
 # shellcheck source=scripts/lib/package_common.sh
 source "${script_dir}/lib/package_common.sh"
 repo_root="$(package_repo_root_from_script "${BASH_SOURCE[0]}")"
@@ -88,9 +93,13 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+ssa_native_guard_repo "$repo_root" || exit 1
+ssa_native_guard_tools cmake ctest rm mkdir cp chown || exit 1
+
 if [[ -z "${dist_root}" ]]; then
   dist_root="${repo_root}/dist/linux/${arch}"
 fi
+ssa_native_guard_path "$dist_root" "$repo_root" || exit 1
 
 if [[ -z "${version}" ]]; then
   version="$(package_project_version "${repo_root}")"
@@ -104,10 +113,12 @@ if ! command -v makepkg >/dev/null 2>&1; then
   echo "makepkg not found. This script must run on an Arch/Artix host." >&2
   exit 1
 fi
+ssa_native_guard_tool makepkg || exit 1
 if ! command -v zstd >/dev/null 2>&1; then
   echo "zstd not found. Install it (pacman -S zstd)." >&2
   exit 1
 fi
+ssa_native_guard_tool zstd || exit 1
 
 # makepkg se recusa a rodar como root. Se somos root, re-executa este script
 # como usuario builder nao-root, preservando o diretorio, os argumentos e as

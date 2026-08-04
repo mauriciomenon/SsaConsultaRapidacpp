@@ -12,6 +12,8 @@ $repoRoot = if ($ProjectRoot) {
 } else {
     (Resolve-Path (Join-Path $scriptDir "..")).Path
 }
+. (Join-Path $scriptDir 'lib\native_host_guard.ps1')
+Assert-SsaWindowsHost -RepoRoot $repoRoot -ExpectedRoot (Get-SsaWindowsRepoRoot)
 $buildRoot = Join-Path $repoRoot "build"
 
 if ($Help) {

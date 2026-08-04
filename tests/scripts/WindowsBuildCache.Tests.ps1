@@ -14,6 +14,7 @@ Describe "Windows build cache ownership" {
         $script:pathLog = Join-Path $testRoot "path-used.txt"
         $script:originalPath = $env:Path
         $script:originalPathExt = $env:PATHEXT
+        $script:originalGuardTestRoot = $env:SSA_NATIVE_GUARD_TEST_ROOT
         $script:buildScript = Join-Path (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path "scripts/build-windows.ps1"
         $script:lazyBuildScript = Join-Path (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path "scripts/lazy_scripts/build-windows.ps1"
 
@@ -54,11 +55,13 @@ exit /b 0
         $env:SSA_TEST_PATH_LOG = $script:pathLog
         $env:Path = "$script:fakeBin;$script:originalPath"
         $env:PATHEXT = ".COM;.EXE;.BAT;.CMD"
+        $env:SSA_NATIVE_GUARD_TEST_ROOT = $testRoot
     }
 
     AfterEach {
         $env:Path = $script:originalPath
         $env:PATHEXT = $script:originalPathExt
+        $env:SSA_NATIVE_GUARD_TEST_ROOT = $script:originalGuardTestRoot
         Remove-Item Env:SSA_TEST_CONFIGURE_MARKER, Env:SSA_TEST_CONFIGURE_BINARY_MARKER, Env:SSA_TEST_CMAKE_LOG, Env:SSA_TEST_PATH_LOG -ErrorAction SilentlyContinue
     }
 

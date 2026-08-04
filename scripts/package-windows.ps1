@@ -231,6 +231,8 @@ if ($Help) {
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = if ($ProjectRoot) { (Resolve-Path $ProjectRoot).Path } else { (Resolve-Path (Join-Path $scriptDir "..")).Path }
+. (Join-Path $scriptDir 'lib\native_host_guard.ps1')
+Assert-SsaWindowsHost -RepoRoot $repoRoot -ExpectedRoot (Get-SsaWindowsRepoRoot)
 $commonHelpers = Join-Path $scriptDir "lib\package_common.ps1"
 . $commonHelpers
 

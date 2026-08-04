@@ -25,6 +25,10 @@ fi
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/.." && pwd)"
 preset="dev"
+# shellcheck disable=SC1091
+source "${script_dir}/lib/native_host_guard.sh"
+ssa_native_guard_repo "$repo_root" || exit 1
+ssa_native_guard_tools rm cmake || exit 1
 
 # Do not inherit Windows temporary directories when invoked from WSL.
 export TMPDIR=/tmp

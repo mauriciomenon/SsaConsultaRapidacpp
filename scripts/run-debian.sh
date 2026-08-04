@@ -9,7 +9,8 @@ Usage:
 Run built Debian app using default project DB resolution.
 
 The database path is resolved in this order:
-  1) <repo>/data/ssas.db
+  1) SSA_DB_PATH
+  2) ~/.ssaconsultarapida/data/ssas.db
 
 Defaults:
   Preset: dev
@@ -33,10 +34,15 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/.." && pwd)"
 preset="dev"
 # shellcheck disable=SC1091
+source "${script_dir}/lib/native_host_guard.sh"
+ssa_native_guard_repo "$repo_root" || exit 1
+ssa_native_guard_tools mkdir || exit 1
+# shellcheck disable=SC1091
 # shellcheck source=debian-paths.sh
 source "${script_dir}/debian-paths.sh"
 
-db_path="${repo_root}/data/ssas.db"
+db_path="${SSA_DB_PATH:-${HOME}/.ssaconsultarapida/data/ssas.db}"
+ssa_native_guard_path "$db_path" "$repo_root" || exit 1
 if [[ ! -f "${db_path}" ]]; then
   mkdir -p "$(dirname "${db_path}")"
   echo "Database file not found at '${db_path}'. The application will open so you can load data and create it." >&2
@@ -47,5 +53,6 @@ if [[ ! -x "${executable}" ]]; then
   echo "Binary not found: ${executable}" >&2
   exit 1
 fi
+ssa_native_guard_tool "${executable}" || exit 1
 
 "${executable}" --project-root "${repo_root}" --db "${db_path}"
