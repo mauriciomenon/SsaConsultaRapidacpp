@@ -328,7 +328,8 @@ namespace ssa::query {
         const auto analytics =
             ActivityAnalyticsSqlBuilder{tableName_}.buildSeries(analyticsRequest, where);
         const std::string group = byDivision ? "\"division\"" : "\"sector\"";
-        const std::string week = "SUBSTR(\"bucket_key\", 1, 4) || SUBSTR(\"bucket_key\", 7, 2)";
+        // bucket_key is already compact YYYYWW (e.g. 202503) for IsoWeek grain.
+        const std::string week = "\"bucket_key\"";
         const std::string person =
             "CASE WHEN \"person\" = 'Nao atribuido' THEN '-' ELSE \"person\" END";
 
