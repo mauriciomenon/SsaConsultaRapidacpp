@@ -67,7 +67,7 @@ exit /b 0
 
     It "reconfigures when the existing cache belongs to WSL" {
         @(
-            "CMAKE_CACHEFILE_DIR:INTERNAL=/mnt/c/Users/mauri/project/build/dev"
+            "CMAKE_CACHEFILE_DIR:INTERNAL=/mnt/c/Users/example/project/build/dev"
             "CMAKE_GENERATOR:INTERNAL=Ninja"
             "CMAKE_MAKE_PROGRAM:FILEPATH=/usr/bin/ninja"
         ) | Set-Content -LiteralPath (Join-Path $script:buildDir "CMakeCache.txt") -Encoding ASCII
@@ -126,7 +126,7 @@ exit /b 0
     It "restores the machine PATHEXT before invoking native tools" {
         $env:PATHEXT = ".CPL"
         @(
-            "CMAKE_CACHEFILE_DIR:INTERNAL=/mnt/c/Users/mauri/project/build/dev"
+            "CMAKE_CACHEFILE_DIR:INTERNAL=/mnt/c/Users/example/project/build/dev"
             "CMAKE_GENERATOR:INTERNAL=Ninja"
             "CMAKE_MAKE_PROGRAM:FILEPATH=/usr/bin/ninja"
         ) | Set-Content -LiteralPath (Join-Path $script:buildDir "CMakeCache.txt") -Encoding ASCII

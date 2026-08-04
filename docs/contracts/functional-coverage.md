@@ -1,7 +1,6 @@
 # Functional Coverage Contract
 
-This document tracks parity against the Python project at
-`/Users/menon/git/SSA_Consulta_Rapida`. The goal is functional coverage, not architectural copying.
+This document tracks parity against the legacy Python project. The goal is functional coverage, not architectural copying.
 
 ## GUI Coverage
 

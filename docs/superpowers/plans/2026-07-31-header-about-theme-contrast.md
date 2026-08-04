@@ -90,8 +90,8 @@
 
 ## Execution Evidence
 
-- Native Windows captures: `C:/Users/mauri/AppData/Local/Temp/ssa-theme-audit-20260731.7C41gk/screens/`.
-- Contact sheets: `C:/Users/mauri/AppData/Local/Temp/ssa-theme-audit-20260731.7C41gk/{full,relation}-themes-01..04.png`.
+- Native Windows captures: temporary Windows audit directory, outside Git.
+- Contact sheets: temporary Windows audit directory, outside Git.
 - Runtime title: `Consulta Rapida de SSAs v0.9.16 - 202631`.
 - Runtime About: `Versao 0.9.16` and `MSVC 19.51` only.
 - Implementation commit: `3c16e3c5dbbec63d3f1a95e4a2aabfc9c57e33a4`, verified on GitLab and Bitbucket.

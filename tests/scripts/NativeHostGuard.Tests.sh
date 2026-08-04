@@ -31,7 +31,7 @@ expect_blocked ssa_native_guard_tool cmake
 
 ln -s /mnt/c/Windows/System32/cmd.exe "$fixture_root/fake-bin/glab"
 expect_blocked ssa_native_guard_tool glab
-expect_blocked ssa_native_guard_path /mnt/c/Users/mauri/output "$repo_root"
+expect_blocked ssa_native_guard_path /mnt/c/Users/example/output "$repo_root"
 
 printf '#!/mnt/c/Windows/System32/cmd.exe\n' > "$fixture_root/fake-bin/ctest"
 chmod +x "$fixture_root/fake-bin/ctest"
