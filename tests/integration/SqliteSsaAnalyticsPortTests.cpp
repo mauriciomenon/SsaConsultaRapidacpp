@@ -170,7 +170,7 @@ namespace {
 
 } // namespace
 
-TEST_CASE("analytics series use week indexes while organization dimensions remain global") {
+TEST_CASE("analytics series and dimensions use selected week indexes") {
     AnalyticsFixture fixture;
     fixture.executeSql("CREATE INDEX idx_analytics_registration_week ON ssa_table(semana_cadastro);"
                        "CREATE INDEX idx_analytics_execution_week ON ssa_table(semana_executada)");
@@ -195,8 +195,8 @@ TEST_CASE("analytics series use week indexes while organization dimensions remai
     const auto dimensionPlan =
         explainQueryPlan(fixture.dbPath(), builder.buildDimensionValues(executedRequest).divisions);
     INFO(dimensionPlan);
-    CHECK(dimensionPlan.find("SCAN ssa_table") != std::string::npos);
-    CHECK(dimensionPlan.find("idx_analytics_execution_week") == std::string::npos);
+    CHECK(dimensionPlan.find("SEARCH ssa_table USING INDEX idx_analytics_execution_week") !=
+          std::string::npos);
 }
 
 TEST_CASE("analytics sqlite port executes events by executor person and cohort") {
@@ -344,16 +344,15 @@ TEST_CASE("analytics sqlite port cascades dimension values") {
     const AnalyticsFixture fixture;
     const ssa::infra::sqlite::SqliteSsaAnalyticsPort port(fixture.dbPath());
     auto request = requestFor(AnalyticsMetric::Executed);
+    request.period = {{2026, 1}, {2026, 1}};
     request.breakdown = Breakdown::DivisionSectorPerson;
     request.personRole = PersonRole::Executor;
-    request.divisions = {"AAA"};
-    request.sectors = {"AAA-MECH"};
 
     const auto values = port.dimensionValues(request);
 
-    CHECK(std::ranges::find(values.divisions, "AAA") != values.divisions.end());
+    CHECK(values.divisions == std::vector<std::string>{"AAA"});
     CHECK(values.sectors == std::vector<std::string>{"AAA-MECH"});
-    CHECK(values.people == std::vector<std::string>{"Exec A", "Exec B"});
+    CHECK(values.people == std::vector<std::string>{"Exec A"});
 }
 
 TEST_CASE("analytics sqlite port rejects stock dimensions without projection schema") {

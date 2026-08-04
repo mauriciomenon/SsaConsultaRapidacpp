@@ -23,6 +23,7 @@
 #include <QVariantMap>
 #include <QtQml/qqml.h>
 
+#include <algorithm>
 #include <array>
 #include <memory>
 
@@ -1164,6 +1165,46 @@ namespace {
             QVERIFY(viewModel.dimensionRequestCount() >= 1);
         }
 
+        void executed_by_person_preset_waits_for_current_dimension_values() {
+            QQmlEngine engine;
+            FakeAnalyticsViewModel viewModel;
+            QString error;
+            auto object = loadWindow(engine, viewModel, error);
+            QVERIFY2(object != nullptr, qPrintable(error));
+            auto* window = qobject_cast<QQuickWindow*>(object.get());
+            QVERIFY(window != nullptr);
+            window->setGeometry(0, 0, 1180, 760);
+            QVERIFY(invoke(*object, "selectTab", 1));
+            window->show();
+            auto* button = findVisualChild(*window->contentItem(),
+                                           QStringLiteral("analyticsExecutedByPerson"));
+            QVERIFY(button != nullptr);
+            QTRY_VERIFY_WITH_TIMEOUT(button->width() > 0 && button->height() > 0, 1000);
+
+            const int requestsBefore = viewModel.customRequestCount();
+            const int dimensionsBefore = viewModel.dimensionRequestCount();
+            const QPoint clickPoint =
+                button->mapToScene(QPointF(button->width() / 2, button->height() / 2)).toPoint();
+            QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, clickPoint);
+
+            QTRY_COMPARE_WITH_TIMEOUT(viewModel.dimensionRequestCount(), dimensionsBefore + 1,
+                                      1000);
+            QCOMPARE(viewModel.customRequestCount(), requestsBefore);
+            viewModel.publishDimensionValues(
+                {{QStringLiteral("divisions"), QStringList{QStringLiteral("SMM")}},
+                 {QStringLiteral("sectors"), QStringList{QStringLiteral("SMM1")}},
+                 {QStringLiteral("people"),
+                  QStringList{QStringLiteral("Ana Atual"), QStringLiteral("Bruno Atual")}}});
+
+            QTRY_COMPARE_WITH_TIMEOUT(viewModel.customRequestCount(), requestsBefore + 1, 1000);
+            const QVariantMap selection = viewModel.lastCustomSelection();
+            const QStringList expectedPeople{QStringLiteral("Ana Atual"),
+                                             QStringLiteral("Bruno Atual")};
+            QCOMPARE(selection.value(QStringLiteral("sectors")).toStringList(),
+                     QStringList{QStringLiteral("SMM1")});
+            QCOMPARE(selection.value(QStringLiteral("people")).toStringList(), expectedPeople);
+        }
+
         void executed_by_person_preset_auto_runs_custom_analysis() {
             QQmlEngine engine;
             FakeAnalyticsViewModel viewModel;
@@ -1172,10 +1213,13 @@ namespace {
             QVERIFY2(object != nullptr, qPrintable(error));
             auto* window = qobject_cast<QQuickWindow*>(object.get());
             QVERIFY(window != nullptr);
-            auto* button = findVisualChild(*window->contentItem(),
-                                           QStringLiteral("analyticsOverdueByArea"));
+            window->setGeometry(0, 0, 1180, 760);
+            auto* button =
+                findVisualChild(*window->contentItem(), QStringLiteral("analyticsOverdueByArea"));
             QVERIFY(button != nullptr);
             QVERIFY(invoke(*object, "selectTab", 1));
+            window->show();
+            QTRY_VERIFY_WITH_TIMEOUT(button->width() > 0 && button->height() > 0, 1000);
             viewModel.completeWarningLoad(14);
 
             const int requestsBefore = viewModel.customRequestCount();
@@ -1243,14 +1287,24 @@ namespace {
             QVERIFY2(object != nullptr, qPrintable(error));
             auto* window = qobject_cast<QQuickWindow*>(object.get());
             QVERIFY(window != nullptr);
-            // Month preset sits right of week preset; 1280px clips the click target.
-            window->setGeometry(0, 0, 1580, 760);
+            window->setGeometry(0, 0, 1280, 760);
             auto* button = findVisualChild(*window->contentItem(),
                                            QStringLiteral("analyticsExecutedBySectorMonth"));
             QVERIFY(button != nullptr);
             QVERIFY(invoke(*object, "selectTab", 1));
             window->show();
             QVERIFY(waitForRenderedFrames(*window));
+            auto* controls = findVisualChild(*window->contentItem(),
+                                             QStringLiteral("analyticsCustomActionControls"));
+            QVERIFY(controls != nullptr);
+            const qreal buttonX = button->mapToItem(controls, QPointF{}).x();
+            controls->setProperty(
+                "contentX", std::max<qreal>(0, buttonX + button->width() - controls->width()));
+            QTRY_VERIFY_WITH_TIMEOUT(button->mapToItem(controls, QPointF{}).x() >= 0 &&
+                                         button->mapToItem(controls, QPointF{}).x() +
+                                                 button->width() <=
+                                             controls->width(),
+                                     1000);
 
             const int requestsBefore = viewModel.customRequestCount();
             const QPoint clickPoint =
@@ -1270,6 +1324,37 @@ namespace {
                      isoMonth.value(QStringLiteral("lastYear")).toInt());
             QCOMPARE(selection.value(QStringLiteral("lastWeek")).toInt(),
                      isoMonth.value(QStringLiteral("lastWeek")).toInt());
+        }
+
+        void custom_action_controls_keep_all_buttons_reachable_at_minimum_width() {
+            QQmlEngine engine;
+            FakeAnalyticsViewModel viewModel;
+            QString error;
+            auto object = loadWindow(engine, viewModel, error);
+            QVERIFY2(object != nullptr, qPrintable(error));
+            auto* window = qobject_cast<QQuickWindow*>(object.get());
+            QVERIFY(window != nullptr);
+            window->setGeometry(0, 0, 760, 760);
+            QVERIFY(invoke(*object, "selectTab", 1));
+            window->show();
+            QVERIFY(waitForRenderedFrames(*window));
+            auto* controls = findVisualChild(*window->contentItem(),
+                                             QStringLiteral("analyticsCustomActionControls"));
+            auto* button = findVisualChild(*window->contentItem(),
+                                           QStringLiteral("analyticsExecutedBySectorPerson"));
+            QVERIFY(controls != nullptr);
+            QVERIFY(button != nullptr);
+            QTRY_VERIFY_WITH_TIMEOUT(
+                controls->property("contentWidth").toReal() > controls->width(), 1000);
+
+            const qreal buttonX = button->mapToItem(controls, QPointF{}).x();
+            controls->setProperty(
+                "contentX", std::max<qreal>(0, buttonX + button->width() - controls->width()));
+            QTRY_VERIFY_WITH_TIMEOUT(button->mapToItem(controls, QPointF{}).x() >= 0 &&
+                                         button->mapToItem(controls, QPointF{}).x() +
+                                                 button->width() <=
+                                             controls->width(),
+                                     1000);
         }
 
         void custom_chart_uses_bars_for_periods_and_stacks_deadline_classes() {

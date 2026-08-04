@@ -256,7 +256,7 @@ TEST_CASE("activity analytics emits stable bucket keys for every grain") {
     checkContains(monthly.sql, "-01-04");
 }
 
-TEST_CASE("activity analytics dimension queries apply only upstream selections") {
+TEST_CASE("activity analytics dimension queries use the selected metric period") {
     const ssa::query::ActivityAnalyticsSqlBuilder builder;
     auto request = requestFor(AnalyticsMetric::Executed);
     request.breakdown = Breakdown::DivisionSectorPerson;
@@ -268,12 +268,12 @@ TEST_CASE("activity analytics dimension queries apply only upstream selections")
 
     checkContains(queries.divisions.sql, "SELECT DISTINCT \"division\" AS \"value\"");
     checkContains(queries.divisions.sql, "\"setor_executor\"");
-    checkNotContains(queries.divisions.sql, "\"semana_executada\" BETWEEN");
-    CHECK(queries.divisions.bindings.empty());
+    checkContains(queries.divisions.sql, "\"semana_executada\" BETWEEN ? AND ?");
+    CHECK(queries.divisions.bindings == std::vector<std::string>{"202601", "202605"});
     checkContains(queries.sectors.sql, "\"division\" IN (?)");
     checkContains(queries.sectors.sql, "\"setor_executor\"");
-    checkNotContains(queries.sectors.sql, "\"semana_executada\" BETWEEN");
-    CHECK(queries.sectors.bindings == std::vector<std::string>{"SMM"});
+    checkContains(queries.sectors.sql, "\"semana_executada\" BETWEEN ? AND ?");
+    CHECK(queries.sectors.bindings == std::vector<std::string>{"202601", "202605", "SMM"});
     checkContains(queries.people.sql, "\"responsavel_programacao\"");
     checkContains(queries.people.sql, "\"semana_executada\" BETWEEN ? AND ?");
     checkContains(queries.people.sql, "\"division\" IN (?)");
@@ -281,17 +281,19 @@ TEST_CASE("activity analytics dimension queries apply only upstream selections")
     CHECK(queries.people.bindings == std::vector<std::string>{"202601", "202605", "SMM", "SMM1"});
 }
 
-TEST_CASE("stock analytics exposes sectors from the organizational source") {
+TEST_CASE("stock analytics exposes dimensions from the selected snapshots") {
     const ssa::query::ActivityAnalyticsSqlBuilder builder;
     auto request = requestFor(AnalyticsMetric::Pending);
     request.divisions = {"IEE"};
 
     const auto queries = builder.buildDimensionValues(request);
 
-    checkContains(queries.divisions.sql, "FROM \"ssa_table\"");
-    checkContains(queries.sectors.sql, "\"setor_executor\"");
-    CHECK(queries.divisions.bindings.empty());
-    CHECK(queries.sectors.bindings == std::vector<std::string>{"IEE"});
+    checkContains(queries.divisions.sql, "activity_analytics_snapshot");
+    checkContains(queries.sectors.sql, "activity_analytics_point");
+    CHECK(queries.divisions.bindings ==
+          std::vector<std::string>{"SSA", "pending", "202605", "executor"});
+    CHECK(queries.sectors.bindings ==
+          std::vector<std::string>{"SSA", "pending", "202605", "executor", "IEE"});
     checkContains(queries.people.sql, "activity_analytics_snapshot");
 }
 

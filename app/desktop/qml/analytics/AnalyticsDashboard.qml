@@ -101,6 +101,8 @@ Item {
     readonly property int chartCount: chartDefinitions.length
     readonly property int columnCount: dashboardFlick.width >= 1080 ? 2 : 1
     readonly property int controlColumnCount: dashboardIsoControls.columns
+    readonly property real compactControlScale: root.width < 900 ? 0.92 : 1.0
+    readonly property int compactControlSpacing: root.width < 900 ? Math.max(4, Theme.gap - 2) : Theme.gap
     readonly property real scrollPosition: dashboardFlick.contentY
     property bool waitingForWarningLoad: false
     property bool dashboardRefreshQueued: false
@@ -265,61 +267,76 @@ Item {
                     anchors.margins: Theme.cardGap
                     spacing: Theme.gap
 
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: Theme.gap
+                    Flickable {
+                        id: dashboardPeriodControls
 
-                        Label {
-                            text: qsTr("Periodo mensal")
-                            color: Theme.text
+                        objectName: "analyticsDashboardPeriodControls"
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: dashboardPeriodRow.implicitHeight
+                        contentWidth: Math.max(width, dashboardPeriodRow.implicitWidth)
+                        contentHeight: dashboardPeriodRow.implicitHeight
+                        boundsBehavior: Flickable.StopAtBounds
+                        clip: true
+                        ScrollBar.horizontal: ScrollBar {
+                            policy: dashboardPeriodControls.contentWidth > dashboardPeriodControls.width ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
                         }
-                        ActionButton {
-                            objectName: "analyticsDashboardPreviousMonth"
-                            Layout.preferredWidth: Theme.controlHeight
-                            text: "<"
-                            onClicked: root.previousMonth()
-                        }
-                        AppComboBox {
-                            Layout.preferredWidth: 150
-                            model: root.monthModel
-                            currentIndex: root.monthComboIndex
-                            enabled: root.periodScope !== 1
-                            onActivated: root.applyCalendarMonth(root.periodYear, currentIndex + 1)
-                        }
-                        AppSpinBox {
-                            Layout.preferredWidth: 88
-                            from: 2000
-                            to: 2200
-                            value: root.periodYear
-                            editable: true
-                            onValueModified: root.applyCalendarMonth(value, root.periodMonth)
-                        }
-                        ActionButton {
-                            objectName: "analyticsDashboardNextMonth"
-                            Layout.preferredWidth: Theme.controlHeight
-                            text: ">"
-                            enabled: root.canNavigateNextMonth
-                            onClicked: root.nextMonth()
-                        }
-                        ActionButton {
-                            Layout.preferredWidth: 160
-                            text: qsTr("Ultimo mes completo")
-                            onClicked: root.useCurrentMonth()
-                        }
-                        ActionButton {
-                            objectName: "analyticsDashboardYearToDate"
-                            Layout.preferredWidth: 140
-                            text: qsTr("Ano ate agora")
-                            onClicked: root.applyYearToDate()
-                        }
-                        ActionButton {
-                            objectName: "analyticsDashboardIsoMonth"
-                            Layout.preferredWidth: 160
-                            text: qsTr("Mes ISO completo")
-                            onClicked: root.applyIsoMonth()
-                        }
-                        Item {
-                            Layout.fillWidth: true
+
+                        RowLayout {
+                            id: dashboardPeriodRow
+
+                            width: implicitWidth
+                            height: implicitHeight
+                            spacing: root.compactControlSpacing
+
+                            Label {
+                                text: qsTr("Periodo mensal")
+                                color: Theme.text
+                            }
+                            ActionButton {
+                                objectName: "analyticsDashboardPreviousMonth"
+                                Layout.preferredWidth: Theme.controlHeight * root.compactControlScale
+                                text: "<"
+                                onClicked: root.previousMonth()
+                            }
+                            AppComboBox {
+                                Layout.preferredWidth: 150 * root.compactControlScale
+                                model: root.monthModel
+                                currentIndex: root.monthComboIndex
+                                enabled: root.periodScope !== 1
+                                onActivated: root.applyCalendarMonth(root.periodYear, currentIndex + 1)
+                            }
+                            AppSpinBox {
+                                Layout.preferredWidth: 88 * root.compactControlScale
+                                from: 2000
+                                to: 2200
+                                value: root.periodYear
+                                editable: true
+                                onValueModified: root.applyCalendarMonth(value, root.periodMonth)
+                            }
+                            ActionButton {
+                                objectName: "analyticsDashboardNextMonth"
+                                Layout.preferredWidth: Theme.controlHeight * root.compactControlScale
+                                text: ">"
+                                enabled: root.canNavigateNextMonth
+                                onClicked: root.nextMonth()
+                            }
+                            ActionButton {
+                                Layout.preferredWidth: 160 * root.compactControlScale
+                                text: qsTr("Ultimo mes completo")
+                                onClicked: root.useCurrentMonth()
+                            }
+                            ActionButton {
+                                objectName: "analyticsDashboardYearToDate"
+                                Layout.preferredWidth: 140 * root.compactControlScale
+                                text: qsTr("Ano ate agora")
+                                onClicked: root.applyYearToDate()
+                            }
+                            ActionButton {
+                                objectName: "analyticsDashboardIsoMonth"
+                                Layout.preferredWidth: 160 * root.compactControlScale
+                                text: qsTr("Mes ISO completo")
+                                onClicked: root.applyIsoMonth()
+                            }
                         }
                     }
 

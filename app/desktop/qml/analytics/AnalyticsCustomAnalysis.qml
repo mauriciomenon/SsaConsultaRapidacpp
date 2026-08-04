@@ -26,6 +26,7 @@ Item {
     property var selectedPeople: []
     property bool initialDimensionsRequested: false
     property bool metricInitialized: false
+    property bool quickPresetWaitingForDimensions: false
 
     readonly property int metricIndex: metricCombo.currentIndex
     readonly property int grainIndex: grainCombo.currentIndex
@@ -37,6 +38,8 @@ Item {
     readonly property bool requiresWarning: metricIndex === 8
     readonly property bool hasWarning: warningValue() !== undefined
     readonly property bool canAnalyze: !analyticsViewModel.loading && (!requiresExplicitPeople || selectedPeople.length > 0) && (!requiresWarning || hasWarning)
+    readonly property real compactControlScale: root.width < 900 ? 0.92 : 1.0
+    readonly property int compactControlSpacing: root.width < 900 ? Math.max(4, Theme.gap - 2) : Theme.gap
     readonly property var monthNames: [qsTr("Janeiro"), qsTr("Fevereiro"), qsTr("Marco"), qsTr("Abril"), qsTr("Maio"), qsTr("Junho"), qsTr("Julho"), qsTr("Agosto"), qsTr("Setembro"), qsTr("Outubro"), qsTr("Novembro"), qsTr("Dezembro")]
     readonly property var monthModel: root.periodScope === 1 ? [qsTr("Todos")] : root.monthNames
     readonly property int monthComboIndex: root.periodScope === 1 ? 0 : root.periodMonth - 1
@@ -381,12 +384,11 @@ Item {
     }
 
     function runQuickPreset(configureFn) {
+        root.quickPresetWaitingForDimensions = true;
         configureFn();
-        root.invalidateCustomAnalysis();
-        if (root.breakdownIndex === 3) {
-            root.selectedSectors = root.dimensionList("sectors").slice();
-            root.selectedPeople = root.dimensionList("people").slice();
-        }
+        if (root.requiresExplicitPeople)
+            return true;
+        root.quickPresetWaitingForDimensions = false;
         return root.runAnalysis();
     }
 
@@ -416,6 +418,12 @@ Item {
 
         function onDimensionValuesChanged() {
             root.pruneOrphanSelections();
+            if (!root.quickPresetWaitingForDimensions)
+                return;
+            root.quickPresetWaitingForDimensions = false;
+            root.selectedSectors = root.dimensionList("sectors").slice();
+            root.selectedPeople = root.dimensionList("people").slice();
+            root.runAnalysis();
         }
     }
 
@@ -460,63 +468,78 @@ Item {
                     anchors.margins: Theme.cardGap
                     spacing: Theme.gap
 
-                    RowLayout {
+                    Flickable {
+                        id: customPeriodControls
+
+                        objectName: "analyticsCustomPeriodControls"
                         Layout.fillWidth: true
-                        spacing: Theme.gap
+                        Layout.preferredHeight: customPeriodRow.implicitHeight
+                        contentWidth: Math.max(width, customPeriodRow.implicitWidth)
+                        contentHeight: customPeriodRow.implicitHeight
+                        boundsBehavior: Flickable.StopAtBounds
+                        clip: true
+                        ScrollBar.horizontal: ScrollBar {
+                            policy: customPeriodControls.contentWidth > customPeriodControls.width ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
+                        }
 
-                        Label {
-                            text: qsTr("Periodo mensal")
-                            color: Theme.text
-                        }
-                        ActionButton {
-                            objectName: "analyticsCustomPreviousMonth"
-                            Layout.preferredWidth: Theme.controlHeight
-                            text: "<"
-                            onClicked: root.previousMonth()
-                        }
-                        AppComboBox {
-                            id: monthCombo
+                        RowLayout {
+                            id: customPeriodRow
 
-                            Layout.preferredWidth: 150
-                            model: root.monthModel
-                            currentIndex: root.monthComboIndex
-                            enabled: root.periodScope !== 1
-                            onActivated: root.applyCalendarMonth(root.periodYear, currentIndex + 1)
-                        }
-                        AppSpinBox {
-                            Layout.preferredWidth: 88
-                            from: 2000
-                            to: 2200
-                            value: root.periodYear
-                            editable: true
-                            onValueModified: root.applyCalendarMonth(value, root.periodMonth)
-                        }
-                        ActionButton {
-                            objectName: "analyticsCustomNextMonth"
-                            Layout.preferredWidth: Theme.controlHeight
-                            text: ">"
-                            enabled: root.canNavigateNextMonth
-                            onClicked: root.nextMonth()
-                        }
-                        ActionButton {
-                            Layout.preferredWidth: 160
-                            text: qsTr("Ultimo mes completo")
-                            onClicked: root.useCurrentMonth()
-                        }
-                        ActionButton {
-                            objectName: "analyticsCustomYearToDate"
-                            Layout.preferredWidth: 140
-                            text: qsTr("Ano ate agora")
-                            onClicked: root.applyYearToDate()
-                        }
-                        ActionButton {
-                            objectName: "analyticsCustomIsoMonth"
-                            Layout.preferredWidth: 160
-                            text: qsTr("Mes ISO completo")
-                            onClicked: root.applyIsoMonth()
-                        }
-                        Item {
-                            Layout.fillWidth: true
+                            width: implicitWidth
+                            height: implicitHeight
+                            spacing: root.compactControlSpacing
+
+                            Label {
+                                text: qsTr("Periodo mensal")
+                                color: Theme.text
+                            }
+                            ActionButton {
+                                objectName: "analyticsCustomPreviousMonth"
+                                Layout.preferredWidth: Theme.controlHeight * root.compactControlScale
+                                text: "<"
+                                onClicked: root.previousMonth()
+                            }
+                            AppComboBox {
+                                id: monthCombo
+
+                                Layout.preferredWidth: 150 * root.compactControlScale
+                                model: root.monthModel
+                                currentIndex: root.monthComboIndex
+                                enabled: root.periodScope !== 1
+                                onActivated: root.applyCalendarMonth(root.periodYear, currentIndex + 1)
+                            }
+                            AppSpinBox {
+                                Layout.preferredWidth: 88 * root.compactControlScale
+                                from: 2000
+                                to: 2200
+                                value: root.periodYear
+                                editable: true
+                                onValueModified: root.applyCalendarMonth(value, root.periodMonth)
+                            }
+                            ActionButton {
+                                objectName: "analyticsCustomNextMonth"
+                                Layout.preferredWidth: Theme.controlHeight * root.compactControlScale
+                                text: ">"
+                                enabled: root.canNavigateNextMonth
+                                onClicked: root.nextMonth()
+                            }
+                            ActionButton {
+                                Layout.preferredWidth: 160 * root.compactControlScale
+                                text: qsTr("Ultimo mes completo")
+                                onClicked: root.useCurrentMonth()
+                            }
+                            ActionButton {
+                                objectName: "analyticsCustomYearToDate"
+                                Layout.preferredWidth: 140 * root.compactControlScale
+                                text: qsTr("Ano ate agora")
+                                onClicked: root.applyYearToDate()
+                            }
+                            ActionButton {
+                                objectName: "analyticsCustomIsoMonth"
+                                Layout.preferredWidth: 160 * root.compactControlScale
+                                text: qsTr("Mes ISO completo")
+                                onClicked: root.applyIsoMonth()
+                            }
                         }
                     }
 
@@ -648,84 +671,99 @@ Item {
                         }
                     }
 
-                    RowLayout {
+                    Flickable {
+                        id: customActionControls
+
+                        objectName: "analyticsCustomActionControls"
                         Layout.fillWidth: true
-                        spacing: Theme.gap
-
-                        Label {
-                            text: qsTr("Janela de alerta em dias")
-                            color: Theme.text
+                        Layout.preferredHeight: customActionRow.implicitHeight
+                        contentWidth: Math.max(width, customActionRow.implicitWidth)
+                        contentHeight: customActionRow.implicitHeight
+                        boundsBehavior: Flickable.StopAtBounds
+                        clip: true
+                        ScrollBar.horizontal: ScrollBar {
+                            policy: customActionControls.contentWidth > customActionControls.width ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
                         }
-                        AppTextField {
-                            id: customWarningField
 
-                            objectName: "analyticsCustomWarningField"
+                        RowLayout {
+                            id: customActionRow
 
-                            Layout.preferredWidth: 100
-                            placeholderText: qsTr("Sem valor")
-                            validator: IntValidator {
-                                bottom: 0
-                                top: 365
+                            width: implicitWidth
+                            height: implicitHeight
+                            spacing: root.compactControlSpacing
+
+                            Label {
+                                text: qsTr("Janela de alerta em dias")
+                                color: Theme.text
                             }
-                            inputMethodHints: Qt.ImhDigitsOnly
-                            Accessible.name: qsTr("Janela de alerta em dias da analise customizada")
-                        }
-                        Item {
-                            Layout.fillWidth: true
-                        }
-                        ActionButton {
-                            objectName: "analyticsRefreshOptions"
-                            Layout.preferredWidth: 160
-                            text: qsTr("Atualizar opcoes")
-                            enabled: !root.analyticsViewModel.loading
-                            onClicked: root.refreshDimensions()
-                        }
-                        ActionButton {
-                            objectName: "analyticsOverdueByArea"
-                            Layout.preferredWidth: 175
-                            text: qsTr("Atrasadas por area")
-                            enabled: !root.analyticsViewModel.loading
-                            onClicked: root.runQuickPreset(root.configureOverdueByArea)
-                        }
-                        ActionButton {
-                            objectName: "analyticsExecutedByPerson"
-                            Layout.preferredWidth: 205
-                            text: qsTr("Executadas por pessoa")
-                            enabled: !root.analyticsViewModel.loading
-                            onClicked: root.runQuickPreset(root.configureExecutedByPerson)
-                        }
-                        ActionButton {
-                            objectName: "analyticsExecutedBySectorWeek"
-                            Layout.preferredWidth: 210
-                            text: qsTr("Executadas/setor semana")
-                            enabled: !root.analyticsViewModel.loading
-                            onClicked: root.runQuickPreset(root.configureExecutedBySectorWeek)
-                        }
-                        ActionButton {
-                            objectName: "analyticsExecutedBySectorMonth"
-                            Layout.preferredWidth: 210
-                            text: qsTr("Executadas/setor mes ISO")
-                            enabled: !root.analyticsViewModel.loading
-                            onClicked: root.runQuickPreset(root.configureExecutedBySectorMonth)
-                        }
-                        ActionButton {
-                            objectName: "analyticsExecutedBySectorPerson"
-                            Layout.preferredWidth: 220
-                            text: qsTr("Executadas setor/pessoa")
-                            enabled: !root.analyticsViewModel.loading
-                            onClicked: root.runQuickPreset(root.configureExecutedBySectorPerson)
-                        }
-                        ActionButton {
-                            objectName: "analyticsGenerateChart"
-                            text: qsTr("Gerar grafico")
-                            enabled: root.canAnalyze
-                            onClicked: root.runAnalysis()
-                        }
-                        ActionButton {
-                            text: qsTr("Cancelar")
-                            enabled: root.analyticsViewModel.loading
-                            danger: true
-                            onClicked: root.analyticsViewModel.cancel()
+                            AppTextField {
+                                id: customWarningField
+
+                                objectName: "analyticsCustomWarningField"
+
+                                Layout.preferredWidth: 100 * root.compactControlScale
+                                placeholderText: qsTr("Sem valor")
+                                validator: IntValidator {
+                                    bottom: 0
+                                    top: 365
+                                }
+                                inputMethodHints: Qt.ImhDigitsOnly
+                                Accessible.name: qsTr("Janela de alerta em dias da analise customizada")
+                            }
+                            ActionButton {
+                                objectName: "analyticsRefreshOptions"
+                                Layout.preferredWidth: 160 * root.compactControlScale
+                                text: qsTr("Atualizar opcoes")
+                                enabled: !root.analyticsViewModel.loading
+                                onClicked: root.refreshDimensions()
+                            }
+                            ActionButton {
+                                objectName: "analyticsOverdueByArea"
+                                Layout.preferredWidth: 175 * root.compactControlScale
+                                text: qsTr("Atrasadas por area")
+                                enabled: !root.analyticsViewModel.loading
+                                onClicked: root.runQuickPreset(root.configureOverdueByArea)
+                            }
+                            ActionButton {
+                                objectName: "analyticsExecutedByPerson"
+                                Layout.preferredWidth: 205 * root.compactControlScale
+                                text: qsTr("Executadas por pessoa")
+                                enabled: !root.analyticsViewModel.loading
+                                onClicked: root.runQuickPreset(root.configureExecutedByPerson)
+                            }
+                            ActionButton {
+                                objectName: "analyticsExecutedBySectorWeek"
+                                Layout.preferredWidth: 210 * root.compactControlScale
+                                text: qsTr("Executadas/setor semana")
+                                enabled: !root.analyticsViewModel.loading
+                                onClicked: root.runQuickPreset(root.configureExecutedBySectorWeek)
+                            }
+                            ActionButton {
+                                objectName: "analyticsExecutedBySectorMonth"
+                                Layout.preferredWidth: 210 * root.compactControlScale
+                                text: qsTr("Executadas/setor mes ISO")
+                                enabled: !root.analyticsViewModel.loading
+                                onClicked: root.runQuickPreset(root.configureExecutedBySectorMonth)
+                            }
+                            ActionButton {
+                                objectName: "analyticsExecutedBySectorPerson"
+                                Layout.preferredWidth: 220 * root.compactControlScale
+                                text: qsTr("Executadas setor/pessoa")
+                                enabled: !root.analyticsViewModel.loading
+                                onClicked: root.runQuickPreset(root.configureExecutedBySectorPerson)
+                            }
+                            ActionButton {
+                                objectName: "analyticsGenerateChart"
+                                text: qsTr("Gerar grafico")
+                                enabled: root.canAnalyze
+                                onClicked: root.runAnalysis()
+                            }
+                            ActionButton {
+                                text: qsTr("Cancelar")
+                                enabled: root.analyticsViewModel.loading
+                                danger: true
+                                onClicked: root.analyticsViewModel.cancel()
+                            }
                         }
                     }
 
