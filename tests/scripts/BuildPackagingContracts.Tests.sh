@@ -9,17 +9,18 @@ trap 'rm -rf "${test_root}"' EXIT
 fixture_repo="${test_root}/gitlab_repo/ssa_consulta_rapida_cpp"
 fake_bin="${test_root}/bin"
 mkdir -p "${fixture_repo}/scripts/lazy_scripts" "${fixture_repo}/scripts/lib" "${fixture_repo}/tools" \
-  "${fixture_repo}/build/dev" "${fake_bin}"
+  "${fixture_repo}/build/debian/amd64/dev" "${fake_bin}"
 cp "${repo_root}/scripts/build-debian.sh" "${fixture_repo}/scripts/"
 cp "${repo_root}/scripts/lazy_scripts/build-debian.sh" \
   "${fixture_repo}/scripts/lazy_scripts/"
+cp "${repo_root}/scripts/debian-paths.sh" "${fixture_repo}/scripts/"
 cp "${repo_root}/scripts/lib/native_host_guard.sh" "${fixture_repo}/scripts/lib/"
 
-printf 'stale\n' > "${fixture_repo}/build/dev/stale-output.txt"
+printf 'stale\n' > "${fixture_repo}/build/debian/amd64/dev/stale-output.txt"
 cat > "${fixture_repo}/tools/configure-dev.sh" <<'EOF_CONFIGURE'
 #!/usr/bin/env bash
 set -euo pipefail
-mkdir -p "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/build/${1}"
+mkdir -p "${SSA_BUILD_DIR:?SSA_BUILD_DIR is required}"
 EOF_CONFIGURE
 cat > "${fake_bin}/cmake" <<'EOF_CMAKE'
 #!/usr/bin/env bash
@@ -34,15 +35,15 @@ chmod +x "${fixture_repo}/tools/configure-dev.sh" "${fake_bin}/cmake" \
 
 HOME="${test_root}" SSA_EXPECTED_CWD="${fixture_repo}" PATH="${fake_bin}:${PATH}" \
   "${fixture_repo}/scripts/build-debian.sh"
-if [[ -e "${fixture_repo}/build/dev/stale-output.txt" ]]; then
+if [[ -e "${fixture_repo}/build/debian/amd64/dev/stale-output.txt" ]]; then
   echo "build-debian.sh reused stale output by default." >&2
   exit 1
 fi
 
-printf 'keep\n' > "${fixture_repo}/build/dev/incremental-output.txt"
+printf 'keep\n' > "${fixture_repo}/build/debian/amd64/dev/incremental-output.txt"
 HOME="${test_root}" SSA_EXPECTED_CWD="${fixture_repo}" PATH="${fake_bin}:${PATH}" \
   "${fixture_repo}/scripts/lazy_scripts/build-debian.sh"
-if [[ ! -e "${fixture_repo}/build/dev/incremental-output.txt" ]]; then
+if [[ ! -e "${fixture_repo}/build/debian/amd64/dev/incremental-output.txt" ]]; then
   echo "lazy Debian build did not preserve the explicit incremental cache." >&2
   exit 1
 fi

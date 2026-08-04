@@ -24,7 +24,7 @@ fi
 preset="${1:-dev}"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/.." && pwd)"
-build_dir="${repo_root}/build/${preset}"
+build_dir="${SSA_BUILD_DIR:-${repo_root}/build/${preset}}"
 cache_file="${build_dir}/CMakeCache.txt"
 # shellcheck disable=SC1091
 source "${repo_root}/scripts/lib/native_host_guard.sh"
@@ -492,7 +492,7 @@ if [[ -f "${cache_file}" ]]; then
     cmake_fresh_args+=(--fresh)
   fi
 fi
-(cd "${repo_root}" && cmake --preset "${preset}" \
+(cd "${repo_root}" && cmake --preset "${preset}" -B "${build_dir}" \
   "${cmake_fresh_args[@]}" \
   '-UQt6*_DIR' \
   '-U*DEPLOYQT_EXECUTABLE' \

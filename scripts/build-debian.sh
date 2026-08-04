@@ -7,7 +7,7 @@ Usage:
   scripts/build-debian.sh
 
 Build Debian/Ubuntu target using default preset (dev).
-Removes build/dev before configuring. Use scripts/lazy_scripts/build-debian.sh
+Removes build/debian/<arch>/dev before configuring. Use scripts/lazy_scripts/build-debian.sh
 for an explicit incremental build.
 
 EOF
@@ -29,12 +29,15 @@ preset="dev"
 source "${script_dir}/lib/native_host_guard.sh"
 ssa_native_guard_repo "$repo_root" || exit 1
 ssa_native_guard_tools rm cmake || exit 1
+# shellcheck disable=SC1091
+source "${script_dir}/debian-paths.sh"
+build_dir="$(debian_build_dir "${repo_root}" "${preset}")"
 
 # Do not inherit Windows temporary directories when invoked from WSL.
 export TMPDIR=/tmp
 export TMP=/tmp
 export TEMP=/tmp
 
-rm -rf "${repo_root}/build/${preset}"
-"${repo_root}/tools/configure-dev.sh" "${preset}"
-(cd "${repo_root}" && cmake --build --preset "${preset}")
+rm -rf "${build_dir}"
+SSA_BUILD_DIR="${build_dir}" "${repo_root}/tools/configure-dev.sh" "${preset}"
+cmake --build "${build_dir}"

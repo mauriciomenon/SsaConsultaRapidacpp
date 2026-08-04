@@ -55,6 +55,8 @@ else
 fi
 # shellcheck source=scripts/lib/package_common.sh
 source "${script_dir}/lib/package_common.sh"
+# shellcheck source=./scripts/debian-paths.sh
+source "${script_dir}/debian-paths.sh"
 repo_root="$(package_repo_root_from_script "${BASH_SOURCE[0]}")"
 preset="release"
 version=""
@@ -121,7 +123,7 @@ if [[ -z "${version}" ]]; then
   exit 1
 fi
 
-build_dir="${repo_root}/build/${preset}"
+build_dir="$(debian_build_dir "${repo_root}" "${preset}")"
 repo_name="$(package_repo_name "${repo_root}")"
 artifact_name="${repo_name}-linux-${arch}-${version}"
 artifact_root="${dist_root}/${artifact_name}"
@@ -130,14 +132,15 @@ final_root="${dist_root}/final"
 direct_stage="${dist_root}/.${repo_name}.$$.direct"
 zip_stage="${dist_root}/.${repo_name}.$$.zip"
 
-"${repo_root}/tools/configure-dev.sh" "${preset}"
-(cd "${repo_root}"
+SSA_BUILD_DIR="${build_dir}" "${repo_root}/tools/configure-dev.sh" "${preset}"
+(
 if [[ "${run_tests}" == "true" ]]; then
-  cmake --build --preset "${preset}"
-  ctest --preset "${preset}" --output-on-failure
+  cmake --build "${build_dir}"
+  ctest --test-dir "${build_dir}" --output-on-failure
 else
-  cmake --build --preset "${preset}" --target ssa_consulta_rapida
-fi)
+  cmake --build "${build_dir}" --target ssa_consulta_rapida
+fi
+)
 
 binary="${build_dir}/ssa_consulta_rapida"
 if [[ ! -x "${binary}" ]]; then

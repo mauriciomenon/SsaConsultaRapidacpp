@@ -68,6 +68,8 @@ else
 fi
 # shellcheck source=./scripts/lib/package_common.sh
 source "${script_dir}/lib/package_common.sh"
+# shellcheck source=./scripts/debian-paths.sh
+source "${script_dir}/debian-paths.sh"
 repo_root="$(package_repo_root_from_script "${BASH_SOURCE[0]}")"
 preset="release"
 version=""
@@ -139,7 +141,7 @@ if [[ -z "${version}" ]]; then
   exit 1
 fi
 
-build_dir="${repo_root}/build/${preset}"
+build_dir="$(debian_build_dir "${repo_root}" "${preset}")"
 repo_name="$(package_repo_name "${repo_root}")"
 toolchain="gcc"
 commit_sha="$(git -C "${repo_root}" rev-parse --short=12 HEAD)"
@@ -190,15 +192,16 @@ for required_tool in dpkg-shlibdeps file objdump zip tar sha256sum; do
 done
 
 rm -rf "${build_dir}"
-"${repo_root}/tools/configure-dev.sh" "${preset}"
-(cd "${repo_root}"
+SSA_BUILD_DIR="${build_dir}" "${repo_root}/tools/configure-dev.sh" "${preset}"
+(
 if [[ "${run_tests}" == "true" ]]; then
-  cmake --build --preset "${preset}"
-  ctest --preset "${preset}" --output-on-failure
+  cmake --build "${build_dir}"
+  ctest --test-dir "${build_dir}" --output-on-failure
 else
-  cmake --build --preset "${preset}" --target ssa_consulta_rapida \
+  cmake --build "${build_dir}" --target ssa_consulta_rapida \
     ssa_consulta_rapida_cli
-fi)
+fi
+)
 
 build_binary="${build_dir}/ssa_consulta_rapida"
 if [[ ! -x "${build_binary}" ]]; then

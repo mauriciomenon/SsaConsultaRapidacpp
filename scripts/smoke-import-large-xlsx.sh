@@ -6,8 +6,10 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT_DIR/scripts/lib/native_host_guard.sh"
 ssa_native_guard_repo "$ROOT_DIR" || exit 1
 ssa_native_guard_tools rm mkdir python3 cmake || exit 1
+# shellcheck disable=SC1091
+source "${ROOT_DIR}/scripts/debian-paths.sh"
 ROWS="${SSA_IMPORT_SMOKE_ROWS:-80000}"
-BUILD_DIR="${SSA_BUILD_DIR:-"$ROOT_DIR/build/dev"}"
+BUILD_DIR="${SSA_BUILD_DIR:-"$(debian_build_dir "$ROOT_DIR" dev)"}"
 RUNTIME_DIR="${SSA_IMPORT_SMOKE_RUNTIME:-"$ROOT_DIR/build/runtime/import-smoke"}"
 ssa_native_guard_path "$RUNTIME_DIR" "$ROOT_DIR" || exit 1
 INPUT_DIR="$RUNTIME_DIR/docs_entrada"
@@ -72,7 +74,7 @@ xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
         sheet.write(b"</sheetData></worksheet>")
 PY
 
-cmake --build --preset dev --target ssa_consulta_rapida_cli
+cmake --build "$BUILD_DIR" --target ssa_consulta_rapida_cli
 
 TIME_BIN="/usr/bin/time"
 if "$TIME_BIN" -l true >/dev/null 2>&1; then

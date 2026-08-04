@@ -78,13 +78,15 @@ source "${repo_root}/scripts/lib/native_host_guard.sh"
 ssa_native_guard_repo "$repo_root" || exit 1
 ssa_native_guard_repo "$project_root" || exit 1
 ssa_native_guard_path "$db_path" "$repo_root" || exit 1
+# shellcheck disable=SC1091
+source "${repo_root}/scripts/debian-paths.sh"
 
 if [[ ! -f "${db_path}" ]]; then
   echo "Database file not found: ${db_path}" >&2
   exit 1
 fi
 
-executable="${project_root}/build/dev/ssa_consulta_rapida"
+executable="$(debian_app_executable "${project_root}" dev)"
 if [[ ! -x "${executable}" ]]; then
   echo "Binary not found: ${executable}" >&2
   exit 1

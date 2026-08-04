@@ -24,6 +24,7 @@ docs/local/
 
 # Local tool dirs (never version)
 .vscode/
+.cursor/
 .codex/
 .claude/
 .opencode/
@@ -36,6 +37,10 @@ testResults.xml
 # Local env files
 .env
 .envrc
+
+# Root command captures
+/run*.txt
+/test_*.txt
 
 .deps-cache/
 .deepsec/

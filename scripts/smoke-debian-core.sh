@@ -9,6 +9,11 @@ run_debian_smoke_core() {
   local open_requested="${5}"
   local db_path_explicit="${6:-true}"
 
+  # shellcheck disable=SC1091
+  source "${repo_root}/scripts/debian-paths.sh"
+  local build_dir
+  build_dir="$(debian_build_dir "${repo_root}" "${preset}")"
+
   export TMPDIR=/tmp
   export TMP=/tmp
   export TEMP=/tmp
@@ -26,14 +31,15 @@ run_debian_smoke_core() {
   else
     "${repo_root}/scripts/lazy_scripts/build-debian.sh" --preset "${preset}"
   fi
-  (cd "${repo_root}" && ctest --preset "${preset}" --output-on-failure)
+  ctest --test-dir "${build_dir}" --output-on-failure
 
   local runtime_dir="${repo_root}/build/runtime/debian"
   local config_dir="${runtime_dir}/config"
   local runtime_db="${runtime_dir}/ssas.db"
   local screenshot="${runtime_dir}/main.png"
   local preferences_source="${repo_root}/config/ssa_cpp_preferences.json.example"
-  local executable="${repo_root}/build/${preset}/ssa_consulta_rapida"
+  local executable
+  executable="$(debian_app_executable "${repo_root}" "${preset}")"
 
   if [[ ! -x "${executable}" ]]; then
     echo "Binary not found after build: ${executable}" >&2

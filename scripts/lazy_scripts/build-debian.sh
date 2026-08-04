@@ -46,6 +46,9 @@ fi
 source "${repo_root}/scripts/lib/native_host_guard.sh"
 ssa_native_guard_repo "$repo_root" || exit 1
 ssa_native_guard_tools cmake || exit 1
+# shellcheck disable=SC1091
+source "${repo_root}/scripts/debian-paths.sh"
+build_dir="$(debian_build_dir "${repo_root}" "${preset}")"
 
-"${repo_root}/tools/configure-dev.sh" "${preset}"
-(cd "${repo_root}" && cmake --build --preset "${preset}")
+SSA_BUILD_DIR="${build_dir}" "${repo_root}/tools/configure-dev.sh" "${preset}"
+cmake --build "${build_dir}"
