@@ -106,8 +106,8 @@ Rectangle {
                         text: "⌫"
                         implicitWidth: 32
                         Layout.minimumWidth: implicitWidth
-                        leftPadding: 8
-                        rightPadding: 8
+                        leftPadding: 7
+                        rightPadding: 7
                         implicitHeight: root.compactControlHeight - 2
                         Accessible.name: "Limpar"
                         ToolTip.visible: hovered
