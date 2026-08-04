@@ -140,31 +140,25 @@ Aplicar a TODO popup/dropdown do projeto:
 
 ## Procedimento de build, limpeza e distribuicao (canonico)
 
-Procedimento oficial do projeto. Seguir estes scripts/presets; NAO inventar
-diretorios de build ad hoc (ex: build-test) nem chamar executaveis na mao.
-Qt6 fica em `~/Qt/6.11.0/macos`; exportar antes dos comandos se precisar.
+Procedimento oficial do projeto. Seguir os scripts do host atual; NAO inventar
+diretorios de build ad hoc nem executar ferramenta de outro host.
 
-1. Limpar (presets `dev` e `release`; nao toca em `dist/`, `data/`, config):
-   `./scripts/make_clean`
-2. Build + testes (preset `dev`, Debug - fluxo padrao de desenvolvimento):
-   `export SSA_CPP_PRESET=dev && ./scripts/build-macos.sh`
-   `ctest --preset dev --output-on-failure`
-3. Executaveis ficam em `build/dev/`:
-   `build/dev/ssa_consulta_rapida.app/Contents/MacOS/ssa_consulta_rapida`
-   `build/dev/ssa_consulta_rapida_cli`
-4. Distribuicao (preset `release` do zero + ctest + macdeployqt + zip/dmg):
-   `./scripts/package-macos.sh`
-   Gera `dist/macos/<arch>/ssa_consulta_rapida-<version>-<arch>-macos.{zip,dmg}`
-   e symlinks `latest*`. Versao vem de `CMakeLists.txt` (project VERSION).
-5. Presets CMake oficiais (CMakePresets.json): `dev` (`build/dev`) e
-   `release` (`build/release`). NAO existe outro preset.
+1. WSL/Debian: somente no clone ext4. Usar `./scripts/build-debian.sh` para
+   build limpo, `./scripts/lazy_scripts/build-debian.sh` para incremental e
+   `./scripts/package-debian.sh` para distribuicao.
+2. Windows: somente em PowerShell nativo no clone de `$env:USERPROFILE`.
+   Usar `./scripts/build-windows.ps1` e `./scripts/package-windows.ps1`.
+   Nao chamar `.ps1`, `.exe` ou o clone Windows a partir do WSL.
+3. macOS: somente no clone macOS. Usar `./scripts/build-macos.sh` e
+   `./scripts/package-macos.sh` com o Qt macOS configurado para o host.
+4. Presets CMake oficiais ficam em `build/${hostSystemName}/native/<preset>`.
+   O preset `dev` e o fluxo padrao; `release` e exclusivo para pacote.
+5. Dados operacionais, `dist/`, logs e artefatos nunca entram no Git. Cada
+   host gera seus artefatos somente nas pastas do proprio host.
 
 Notas:
 - Para screenshots offscreen, `QT_QPA_PLATFORM=offscreen` no ambiente.
-- make_clean remove todo `build/`, incluindo presets e builds Windows antigos,
-  mas preserva `.deps-cache/`, `dist/`, `data/`, `packaging/` e config.
-- build/release nao e reconstruido por `build-macos.sh` (so dev). Para
-  release+dist, usar `package-macos.sh`.
+- Nunca limpar, configurar ou empacotar uma pasta de outro host.
 
 ## Regras de conduta (criticas)
 
