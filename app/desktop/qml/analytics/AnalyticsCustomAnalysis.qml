@@ -35,6 +35,8 @@ Item {
     readonly property int categorySortIndex: sortCombo.currentIndex
     readonly property string chartTitle: root.analyticsViewModel.customChartTitle(root.requestSelection())
     readonly property bool requiresExplicitPeople: breakdownIndex === 2 || breakdownIndex === 3
+    readonly property bool usesSectorSelection: breakdownIndex === 1 || breakdownIndex === 3
+    readonly property bool usesPeopleSelection: requiresExplicitPeople
     readonly property bool requiresWarning: metricIndex === 8
     readonly property bool hasWarning: warningValue() !== undefined
     readonly property bool canAnalyze: !analyticsViewModel.loading && (!requiresExplicitPeople || selectedPeople.length > 0) && (!requiresWarning || hasWarning)
@@ -135,8 +137,9 @@ Item {
             "breakdown": root.breakdownIndex,
             "personRole": root.personRoleIndex,
             "divisions": root.selectedDivisions,
-            "sectors": root.selectedSectors,
-            "people": root.requiresExplicitPeople ? root.selectedPeople : [],
+            // Division-only charts must not AND sector/person UI checks into the series.
+            "sectors": root.usesSectorSelection ? root.selectedSectors : [],
+            "people": root.usesPeopleSelection ? root.selectedPeople : [],
             "categorySort": root.categorySortIndex
         };
         const warning = root.warningValue();
@@ -272,7 +275,13 @@ Item {
     }
 
     function applyYearToDate() {
+        root.selectedDivisions = [];
+        root.selectedSectors = [];
+        root.selectedPeople = [];
+        root.quickPresetWaitingForDimensions = root.usesSectorSelection || root.usesPeopleSelection;
         root.applyPeriod(root.analyticsViewModel.yearToDateSelection(), 1);
+        if (!root.quickPresetWaitingForDimensions)
+            return;
     }
 
     function notifyFirstWeekEdited(week) {
@@ -421,8 +430,10 @@ Item {
             if (!root.quickPresetWaitingForDimensions)
                 return;
             root.quickPresetWaitingForDimensions = false;
-            root.selectedSectors = root.dimensionList("sectors").slice();
-            root.selectedPeople = root.dimensionList("people").slice();
+            if (root.usesSectorSelection)
+                root.selectedSectors = root.dimensionList("sectors").slice();
+            if (root.usesPeopleSelection)
+                root.selectedPeople = root.dimensionList("people").slice();
             root.runAnalysis();
         }
     }
@@ -673,27 +684,15 @@ Item {
                         }
                     }
 
-                    Flickable {
+                    ColumnLayout {
                         id: customActionControls
 
                         objectName: "analyticsCustomActionControls"
                         Layout.fillWidth: true
-                        Layout.preferredHeight: customActionRow.implicitHeight + (contentWidth > width ? customActionScrollbar.implicitHeight : 0)
-                        contentWidth: Math.max(width, customActionRow.implicitWidth)
-                        contentHeight: customActionRow.implicitHeight
-                        boundsBehavior: Flickable.StopAtBounds
-                        clip: true
-                        ScrollBar.horizontal: ScrollBar {
-                            id: customActionScrollbar
-
-                            policy: customActionControls.contentWidth > customActionControls.width ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
-                        }
+                        spacing: root.compactControlSpacing
 
                         RowLayout {
-                            id: customActionRow
-
-                            width: implicitWidth
-                            height: implicitHeight
+                            Layout.fillWidth: true
                             spacing: root.compactControlSpacing
 
                             Label {
@@ -716,45 +715,77 @@ Item {
                             }
                             ActionButton {
                                 objectName: "analyticsRefreshOptions"
-                                Layout.preferredWidth: 160 * root.compactControlScale
+                                Layout.preferredWidth: Math.max(implicitWidth, 160 * root.compactControlScale)
                                 text: qsTr("Atualizar opcoes")
                                 enabled: !root.analyticsViewModel.loading
                                 onClicked: root.refreshDimensions()
                             }
+                            Item {
+                                Layout.fillWidth: true
+                            }
+                        }
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: qsTr("Relatorios rapidos")
+                            color: Theme.mutedText
+                        }
+
+                        Flow {
+                            id: customQuickPresetFlow
+
+                            objectName: "analyticsCustomQuickPresetFlow"
+                            Layout.fillWidth: true
+                            spacing: root.compactControlSpacing
+
                             ActionButton {
                                 objectName: "analyticsOverdueByArea"
-                                Layout.preferredWidth: 175 * root.compactControlScale
+                                width: Math.max(implicitWidth, 160 * root.compactControlScale)
                                 text: qsTr("Atrasadas por area")
+                                secondary: true
                                 enabled: !root.analyticsViewModel.loading
                                 onClicked: root.runQuickPreset(root.configureOverdueByArea)
                             }
                             ActionButton {
                                 objectName: "analyticsExecutedByPerson"
-                                Layout.preferredWidth: 205 * root.compactControlScale
+                                width: Math.max(implicitWidth, 180 * root.compactControlScale)
                                 text: qsTr("Executadas por pessoa")
+                                secondary: true
                                 enabled: !root.analyticsViewModel.loading
                                 onClicked: root.runQuickPreset(root.configureExecutedByPerson)
                             }
                             ActionButton {
                                 objectName: "analyticsExecutedBySectorWeek"
-                                Layout.preferredWidth: 210 * root.compactControlScale
+                                width: Math.max(implicitWidth, 190 * root.compactControlScale)
                                 text: qsTr("Executadas/setor semana")
+                                secondary: true
                                 enabled: !root.analyticsViewModel.loading
                                 onClicked: root.runQuickPreset(root.configureExecutedBySectorWeek)
                             }
                             ActionButton {
                                 objectName: "analyticsExecutedBySectorMonth"
-                                Layout.preferredWidth: 210 * root.compactControlScale
+                                width: Math.max(implicitWidth, 190 * root.compactControlScale)
                                 text: qsTr("Executadas/setor mes ISO")
+                                secondary: true
                                 enabled: !root.analyticsViewModel.loading
                                 onClicked: root.runQuickPreset(root.configureExecutedBySectorMonth)
                             }
                             ActionButton {
                                 objectName: "analyticsExecutedBySectorPerson"
-                                Layout.preferredWidth: 220 * root.compactControlScale
+                                width: Math.max(implicitWidth, 190 * root.compactControlScale)
                                 text: qsTr("Executadas setor/pessoa")
+                                secondary: true
                                 enabled: !root.analyticsViewModel.loading
                                 onClicked: root.runQuickPreset(root.configureExecutedBySectorPerson)
+                            }
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: root.compactControlSpacing
+
+                            Item {
+                                Layout.fillWidth: true
                             }
                             ActionButton {
                                 objectName: "analyticsGenerateChart"
@@ -763,6 +794,7 @@ Item {
                                 onClicked: root.runAnalysis()
                             }
                             ActionButton {
+                                objectName: "analyticsCancelCustomAnalysis"
                                 text: qsTr("Cancelar")
                                 enabled: root.analyticsViewModel.loading
                                 danger: true
@@ -861,6 +893,8 @@ Item {
                     color: Theme.panel
                     border.color: Theme.border
                     radius: Theme.radius
+                    opacity: root.usesSectorSelection ? 1.0 : 0.55
+                    enabled: root.usesSectorSelection
 
                     ColumnLayout {
                         anchors.fill: parent
@@ -871,9 +905,17 @@ Item {
                             color: Theme.text
                             font.bold: true
                         }
+                        Label {
+                            Layout.fillWidth: true
+                            visible: !root.usesSectorSelection
+                            text: qsTr("Ignorado nesta quebra (nao filtra a serie).")
+                            color: Theme.mutedText
+                            wrapMode: Text.Wrap
+                        }
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: Theme.gap
+                            visible: root.usesSectorSelection
 
                             ActionButton {
                                 objectName: "analyticsSelectAllSectors"
@@ -895,6 +937,7 @@ Item {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             clip: true
+                            enabled: root.usesSectorSelection
                             model: root.dimensionList("sectors")
                             ScrollBar.vertical: ScrollBar {}
 
@@ -919,6 +962,8 @@ Item {
                     color: Theme.panel
                     border.color: Theme.border
                     radius: Theme.radius
+                    opacity: root.usesPeopleSelection ? 1.0 : 0.55
+                    enabled: root.usesPeopleSelection
 
                     ColumnLayout {
                         anchors.fill: parent
@@ -929,9 +974,17 @@ Item {
                             color: Theme.text
                             font.bold: true
                         }
+                        Label {
+                            Layout.fillWidth: true
+                            visible: !root.usesPeopleSelection
+                            text: qsTr("Ignorado nesta quebra (nao filtra a serie).")
+                            color: Theme.mutedText
+                            wrapMode: Text.Wrap
+                        }
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: Theme.gap
+                            visible: root.usesPeopleSelection
 
                             ActionButton {
                                 objectName: "analyticsSelectAllPeople"
@@ -951,7 +1004,7 @@ Item {
                         }
                         Label {
                             Layout.fillWidth: true
-                            visible: root.dimensionList("people").length === 0
+                            visible: root.usesPeopleSelection && root.dimensionList("people").length === 0
                             text: qsTr("Nenhuma pessoa disponivel para a selecao atual")
                             color: Theme.mutedText
                             wrapMode: Text.Wrap
@@ -960,6 +1013,7 @@ Item {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             clip: true
+                            enabled: root.usesPeopleSelection
                             model: root.dimensionList("people")
                             ScrollBar.vertical: ScrollBar {}
 

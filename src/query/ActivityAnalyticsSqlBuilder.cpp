@@ -257,7 +257,7 @@ namespace ssa::query {
                 << " AS \"person\", " << registrationWeekExpression()
                 << " AS \"registration_iso_week\", " << numberExpression()
                 << " AS \"ssa_number\" FROM " << sourceTable << " WHERE " << numberExpression()
-                << " <> '' AND " << weekColumn << " BETWEEN ? AND ?";
+                << " <> '' AND " << week << " BETWEEN ? AND ?";
             if (!sourceFilter.sql.empty()) {
                 sql << " AND (" << sourceFilter.sql << ')';
                 bindings.insert(bindings.end(), sourceFilter.bindings.begin(),
@@ -396,7 +396,7 @@ namespace ssa::query {
             sql << "WITH dimension_rows AS (SELECT " << divisionExpression(sector)
                 << " AS \"division\", " << normalizedDimension(sector) << " AS \"sector\", "
                 << normalizedPerson(personColumn(request.personRole)) << " AS \"person\" FROM "
-                << sourceTable << " WHERE " << numberExpression() << " <> '' AND " << weekColumn
+                << sourceTable << " WHERE " << numberExpression() << " <> '' AND " << week
                 << " BETWEEN ? AND ? AND " << week << " IS NOT NULL) ";
             return {sql.str(),
                     {std::to_string(domain::toIsoYearWeek(request.period.first)),

@@ -67,6 +67,9 @@ TEST_CASE("activity analytics event metrics use their fixed source dimensions an
     const auto executed = builder.buildSeries(requestFor(AnalyticsMetric::Executed));
     checkContains(executed.sql, "\"setor_executor\"");
     checkContains(executed.sql, "\"semana_executada\"");
+    checkContains(executed.sql, "CAST(\"semana_executada\" AS INTEGER)");
+    checkContains(executed.sql, "BETWEEN ? AND ?");
+    checkNotContains(executed.sql, "\"semana_executada\" BETWEEN ? AND ?");
     CHECK(executed.bindings == std::vector<std::string>{"202601", "202605", "202601", "202605"});
 }
 
@@ -96,6 +99,38 @@ TEST_CASE("activity analytics preserves the source revision of each stock snapsh
                   "MAX(\"observed_iso_week\") AS \"observed_iso_week\", "
                   "\"source_revision\" AS \"source_revision\", SUM(\"count\") AS \"count\"");
     checkContains(groupByClause(query.sql), "\"source_revision\"");
+}
+
+TEST_CASE("activity analytics division breakdown omits sector filter when sectors empty") {
+    const ssa::query::ActivityAnalyticsSqlBuilder builder;
+    auto request = requestFor(AnalyticsMetric::Executed);
+    request.grain = TimeGrain::WholePeriod;
+    request.breakdown = Breakdown::Division;
+    request.divisions = {"IEE"};
+    request.sectors = {};
+    request.people = {};
+
+    const auto query = builder.buildSeries(request);
+    checkContains(query.sql, "\"division\" IN (?)");
+    checkNotContains(query.sql, "\"sector\" IN (");
+    checkNotContains(query.sql, "\"person\" IN (");
+    CHECK(query.bindings ==
+          std::vector<std::string>{"202601", "202605", "202601", "202605", "IEE"});
+}
+
+TEST_CASE("activity analytics division-sector breakdown still binds sector filters") {
+    const ssa::query::ActivityAnalyticsSqlBuilder builder;
+    auto request = requestFor(AnalyticsMetric::Executed);
+    request.grain = TimeGrain::WholePeriod;
+    request.breakdown = Breakdown::DivisionSector;
+    request.divisions = {"IEE"};
+    request.sectors = {"IEE3"};
+
+    const auto query = builder.buildSeries(request);
+    checkContains(query.sql, "\"division\" IN (?)");
+    checkContains(query.sql, "\"sector\" IN (?)");
+    CHECK(query.bindings ==
+          std::vector<std::string>{"202601", "202605", "202601", "202605", "IEE", "IEE3"});
 }
 
 TEST_CASE("activity analytics supports all fixed breakdown projections") {
@@ -268,14 +303,17 @@ TEST_CASE("activity analytics dimension queries use the selected metric period")
 
     checkContains(queries.divisions.sql, "SELECT DISTINCT \"division\" AS \"value\"");
     checkContains(queries.divisions.sql, "\"setor_executor\"");
-    checkContains(queries.divisions.sql, "\"semana_executada\" BETWEEN ? AND ?");
+    checkContains(queries.divisions.sql, "CAST(\"semana_executada\" AS INTEGER)");
+    checkContains(queries.divisions.sql, "BETWEEN ? AND ?");
     CHECK(queries.divisions.bindings == std::vector<std::string>{"202601", "202605"});
     checkContains(queries.sectors.sql, "\"division\" IN (?)");
     checkContains(queries.sectors.sql, "\"setor_executor\"");
-    checkContains(queries.sectors.sql, "\"semana_executada\" BETWEEN ? AND ?");
+    checkContains(queries.sectors.sql, "CAST(\"semana_executada\" AS INTEGER)");
+    checkContains(queries.sectors.sql, "BETWEEN ? AND ?");
     CHECK(queries.sectors.bindings == std::vector<std::string>{"202601", "202605", "SMM"});
     checkContains(queries.people.sql, "\"responsavel_programacao\"");
-    checkContains(queries.people.sql, "\"semana_executada\" BETWEEN ? AND ?");
+    checkContains(queries.people.sql, "CAST(\"semana_executada\" AS INTEGER)");
+    checkContains(queries.people.sql, "BETWEEN ? AND ?");
     checkContains(queries.people.sql, "\"division\" IN (?)");
     checkContains(queries.people.sql, "\"sector\" IN (?)");
     CHECK(queries.people.bindings == std::vector<std::string>{"202601", "202605", "SMM", "SMM1"});

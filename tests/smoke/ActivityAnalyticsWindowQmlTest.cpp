@@ -1,24 +1,24 @@
+#include <QBuffer>
 #include <QCoreApplication>
 #include <QDate>
 #include <QDir>
+#include <QEventLoop>
 #include <QFile>
 #include <QFileInfo>
 #include <QGuiApplication>
-#include <QBuffer>
-#include <QEventLoop>
 #include <QImage>
-#include <QQuickItemGrabResult>
-#include <QTimer>
 #include <QObject>
 #include <QQmlComponent>
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QQuickItem>
+#include <QQuickItemGrabResult>
 #include <QQuickWindow>
 #include <QRegularExpression>
 #include <QSignalSpy>
 #include <QStringList>
 #include <QTest>
+#include <QTimer>
 #include <QVariantList>
 #include <QVariantMap>
 #include <QtQml/qqml.h>
@@ -218,22 +218,19 @@ namespace {
             const QDate today = QDate::currentDate();
             int isoYear = 0;
             const int isoWeek = today.weekNumber(&isoYear);
-            return {
-                {QStringLiteral("year"), isoYear}, {QStringLiteral("month"), 0},
-                {QStringLiteral("firstYear"), isoYear}, {QStringLiteral("firstWeek"), 1},
-                {QStringLiteral("lastYear"), isoYear},  {QStringLiteral("lastWeek"), isoWeek}};
+            return {{QStringLiteral("year"), isoYear},      {QStringLiteral("month"), 0},
+                    {QStringLiteral("firstYear"), isoYear}, {QStringLiteral("firstWeek"), 1},
+                    {QStringLiteral("lastYear"), isoYear},  {QStringLiteral("lastWeek"), isoWeek}};
         }
 
         Q_INVOKABLE QVariantMap currentIsoWeekSelection() const {
             const QDate today = QDate::currentDate();
             int isoYear = 0;
             const int isoWeek = today.weekNumber(&isoYear);
-            return {{QStringLiteral("year"), today.year()},
-                    {QStringLiteral("month"), today.month()},
-                    {QStringLiteral("firstYear"), isoYear},
-                    {QStringLiteral("firstWeek"), isoWeek},
-                    {QStringLiteral("lastYear"), isoYear},
-                    {QStringLiteral("lastWeek"), isoWeek}};
+            return {
+                {QStringLiteral("year"), today.year()}, {QStringLiteral("month"), today.month()},
+                {QStringLiteral("firstYear"), isoYear}, {QStringLiteral("firstWeek"), isoWeek},
+                {QStringLiteral("lastYear"), isoYear},  {QStringLiteral("lastWeek"), isoWeek}};
         }
 
         Q_INVOKABLE QVariantMap currentIsoMonthSelection() const {
@@ -266,14 +263,14 @@ namespace {
             static const QStringList roles{QStringLiteral("Solicitante"),
                                            QStringLiteral("Planejamento/programacao"),
                                            QStringLiteral("Execucao")};
-            const QString firstWeek = QStringLiteral("%1%2")
-                                          .arg(selection.value(QStringLiteral("firstYear")).toInt())
-                                          .arg(selection.value(QStringLiteral("firstWeek")).toInt(),
-                                               2, 10, QChar('0'));
-            const QString lastWeek = QStringLiteral("%1%2")
-                                         .arg(selection.value(QStringLiteral("lastYear")).toInt())
-                                         .arg(selection.value(QStringLiteral("lastWeek")).toInt(),
-                                              2, 10, QChar('0'));
+            const QString firstWeek =
+                QStringLiteral("%1%2")
+                    .arg(selection.value(QStringLiteral("firstYear")).toInt())
+                    .arg(selection.value(QStringLiteral("firstWeek")).toInt(), 2, 10, QChar('0'));
+            const QString lastWeek =
+                QStringLiteral("%1%2")
+                    .arg(selection.value(QStringLiteral("lastYear")).toInt())
+                    .arg(selection.value(QStringLiteral("lastWeek")).toInt(), 2, 10, QChar('0'));
             const QString period = firstWeek == lastWeek
                                        ? firstWeek
                                        : QStringLiteral("de %1 a %2").arg(firstWeek, lastWeek);
@@ -497,8 +494,12 @@ namespace {
         Q_OBJECT
 
       public:
-        void setLastGrabbedItem(QQuickItem* item) { lastGrabbedItem_ = item; }
-        [[nodiscard]] QQuickItem* lastGrabbedItem() const { return lastGrabbedItem_; }
+        void setLastGrabbedItem(QQuickItem* item) {
+            lastGrabbedItem_ = item;
+        }
+        [[nodiscard]] QQuickItem* lastGrabbedItem() const {
+            return lastGrabbedItem_;
+        }
 
         Q_INVOKABLE bool write(const QString& path, const QString& content) const {
             QFile file(path);
@@ -566,14 +567,17 @@ namespace {
                 return false;
             }
             const QString svg =
-                QStringLiteral("<?xml version=\"1.0\" encoding=\"UTF-8\"?>")
-                + QStringLiteral("<svg xmlns=\"http://www.w3.org/2000/svg\" ")
-                + QStringLiteral("xmlns:xlink=\"http://www.w3.org/1999/xlink\" ")
-                + QStringLiteral("width=\"%1\" height=\"%2\">").arg(image.width()).arg(image.height())
-                + QStringLiteral("<image width=\"%1\" height=\"%2\" xlink:href=\"data:image/png;base64,")
-                      .arg(image.width())
-                      .arg(image.height())
-                + QString::fromLatin1(pngBytes.toBase64()) + QStringLiteral("\"/></svg>");
+                QStringLiteral("<?xml version=\"1.0\" encoding=\"UTF-8\"?>") +
+                QStringLiteral("<svg xmlns=\"http://www.w3.org/2000/svg\" ") +
+                QStringLiteral("xmlns:xlink=\"http://www.w3.org/1999/xlink\" ") +
+                QStringLiteral("width=\"%1\" height=\"%2\">")
+                    .arg(image.width())
+                    .arg(image.height()) +
+                QStringLiteral(
+                    "<image width=\"%1\" height=\"%2\" xlink:href=\"data:image/png;base64,")
+                    .arg(image.width())
+                    .arg(image.height()) +
+                QString::fromLatin1(pngBytes.toBase64()) + QStringLiteral("\"/></svg>");
             return write(path, svg);
         }
 
@@ -1048,6 +1052,32 @@ namespace {
                      QStringList{QStringLiteral("SMI")});
         }
 
+        void custom_analysis_division_request_omits_sector_and_people() {
+            QQmlEngine engine;
+            FakeAnalyticsViewModel viewModel;
+            QString error;
+            auto object = loadWindow(engine, viewModel, error);
+            QVERIFY2(object != nullptr, qPrintable(error));
+            auto* custom = object->findChild<QObject*>(QStringLiteral("analyticsCustomAnalysis"));
+            QVERIFY(custom != nullptr);
+
+            QVERIFY(invoke(*custom, "setBreakdownIndex", 0));
+            QCOMPARE(custom->property("usesSectorSelection").toBool(), false);
+            QCOMPARE(custom->property("usesPeopleSelection").toBool(), false);
+            QVERIFY(invoke(*custom, "selectDivision", QStringLiteral("IEE")));
+            custom->setProperty("selectedSectors", QStringList{QStringLiteral("IEE3")});
+            custom->setProperty("selectedPeople", QStringList{QStringLiteral("Ana")});
+
+            QVariant selection;
+            QVERIFY(QMetaObject::invokeMethod(custom, "requestSelection",
+                                              Q_RETURN_ARG(QVariant, selection)));
+            const auto map = selection.toMap();
+            QCOMPARE(map.value(QStringLiteral("divisions")).toStringList(),
+                     QStringList{QStringLiteral("IEE")});
+            QVERIFY(map.value(QStringLiteral("sectors")).toStringList().isEmpty());
+            QVERIFY(map.value(QStringLiteral("people")).toStringList().isEmpty());
+        }
+
         void custom_analysis_drops_selections_invalidated_by_metric_and_person_role() {
             QQmlEngine engine;
             FakeAnalyticsViewModel viewModel;
@@ -1129,21 +1159,17 @@ namespace {
             const QStringList names{QStringLiteral("analyticsRefreshOptions"),
                                     QStringLiteral("analyticsOverdueByArea"),
                                     QStringLiteral("analyticsExecutedByPerson")};
-            const QVariantMap minimumWidths{{QStringLiteral("analyticsRefreshOptions"), 160.0},
-                                            {QStringLiteral("analyticsOverdueByArea"), 175.0},
-                                            {QStringLiteral("analyticsExecutedByPerson"), 205.0}};
             for (const auto& name : names) {
                 auto* button = findVisualChild(*window->contentItem(), name);
                 QVERIFY2(button != nullptr, qPrintable(name));
-                if (QGuiApplication::platformName() == QStringLiteral("offscreen")) {
-                    QVERIFY2(button->width() >= minimumWidths.value(name).toReal(),
-                             qPrintable(name));
-                    continue;
-                }
                 const qreal requiredWidth = button->property("implicitContentWidth").toReal() +
                                             button->property("leftPadding").toReal() +
                                             button->property("rightPadding").toReal();
-                QVERIFY2(button->width() >= requiredWidth, qPrintable(name));
+                QVERIFY2(button->width() + 0.5 >= requiredWidth,
+                         qPrintable(QStringLiteral("%1 width=%2 required=%3")
+                                        .arg(name)
+                                        .arg(button->width())
+                                        .arg(requiredWidth)));
             }
         }
 
@@ -1360,22 +1386,27 @@ namespace {
             QVERIFY(waitForRenderedFrames(*window));
             auto* controls = findVisualChild(*window->contentItem(),
                                              QStringLiteral("analyticsCustomActionControls"));
-            auto* button = findVisualChild(*window->contentItem(),
+            auto* presetFlow = findVisualChild(*window->contentItem(),
+                                               QStringLiteral("analyticsCustomQuickPresetFlow"));
+            auto* preset = findVisualChild(*window->contentItem(),
                                            QStringLiteral("analyticsExecutedBySectorPerson"));
+            auto* generate =
+                findVisualChild(*window->contentItem(), QStringLiteral("analyticsGenerateChart"));
             QVERIFY(controls != nullptr);
-            QVERIFY(button != nullptr);
-            QTRY_VERIFY_WITH_TIMEOUT(
-                controls->property("contentWidth").toReal() > controls->width(), 1000);
-            QTRY_VERIFY_WITH_TIMEOUT(controls->height() > button->height(), 1000);
+            QVERIFY(presetFlow != nullptr);
+            QVERIFY(preset != nullptr);
+            QVERIFY(generate != nullptr);
+            QTRY_VERIFY_WITH_TIMEOUT(controls->height() > preset->height() * 1.5, 1000);
 
-            const qreal buttonX = button->mapToItem(controls, QPointF{}).x();
-            controls->setProperty(
-                "contentX", std::max<qreal>(0, buttonX + button->width() - controls->width()));
-            QTRY_VERIFY_WITH_TIMEOUT(button->mapToItem(controls, QPointF{}).x() >= 0 &&
-                                         button->mapToItem(controls, QPointF{}).x() +
-                                                 button->width() <=
-                                             controls->width(),
-                                     1000);
+            const auto fullyVisible = [](QQuickItem* item, QQuickItem* viewport) {
+                const QRectF bounds = item->mapRectToItem(viewport, item->boundingRect());
+                return bounds.left() >= -0.5 && bounds.top() >= -0.5 &&
+                       bounds.right() <= viewport->width() + 0.5 &&
+                       bounds.bottom() <= viewport->height() + 0.5;
+            };
+            QTRY_VERIFY_WITH_TIMEOUT(fullyVisible(preset, controls), 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(fullyVisible(generate, controls), 1000);
+            QVERIFY(!controls->property("contentX").isValid());
         }
 
         void custom_chart_uses_bars_for_periods_and_stacks_deadline_classes() {
@@ -1540,14 +1571,16 @@ namespace {
 
             QSignalSpy exportSpy(chart, SIGNAL(exportFinished(bool)));
 
-            auto* snapshot = chart->findChild<QQuickItem*>(QStringLiteral("analyticsChartSnapshot"));
+            auto* snapshot =
+                chart->findChild<QQuickItem*>(QStringLiteral("analyticsChartSnapshot"));
             auto* canvas = chart->findChild<QQuickItem*>(QStringLiteral("analyticsChartCanvas"));
             QVERIFY(snapshot != nullptr);
             QVERIFY(canvas != nullptr);
             QVERIFY(snapshot->height() > canvas->height());
 
             writer.setLastGrabbedItem(nullptr);
-            QVERIFY(QMetaObject::invokeMethod(chart, "savePng", Q_ARG(QVariant, QVariant::fromValue(pngUrl))));
+            QVERIFY(QMetaObject::invokeMethod(chart, "savePng",
+                                              Q_ARG(QVariant, QVariant::fromValue(pngUrl))));
             QCOMPARE(exportSpy.count(), 1);
             QCOMPARE(exportSpy.at(0).at(0).toBool(), true);
             QCOMPARE(writer.lastGrabbedItem(), snapshot);
@@ -1558,7 +1591,8 @@ namespace {
             QVERIFY(pngImage.height() > static_cast<int>(canvas->height()));
 
             writer.setLastGrabbedItem(nullptr);
-            QVERIFY(QMetaObject::invokeMethod(chart, "saveSvg", Q_ARG(QVariant, QVariant::fromValue(svgUrl))));
+            QVERIFY(QMetaObject::invokeMethod(chart, "saveSvg",
+                                              Q_ARG(QVariant, QVariant::fromValue(svgUrl))));
             QCOMPARE(exportSpy.count(), 2);
             QCOMPARE(exportSpy.at(1).at(0).toBool(), true);
             QCOMPARE(writer.lastGrabbedItem(), snapshot);
