@@ -89,7 +89,7 @@ placeholder
         $runtimeDir = Join-Path $testRoot "Visual Studio/VC/Redist/MSVC/$toolsetVersion/x64/Microsoft.VC145.CRT"
 
         New-Item -ItemType Directory -Path $scriptsDir, $buildDir, (Join-Path $buildDir "SsaConsultaRapida"), $qtBinDir, $nsisDir, $fakeBin, $runtimeDir,
-            (Join-Path $repoRoot "resources"), (Join-Path $repoRoot "third_party/tinted-themes") -Force | Out-Null
+            (Join-Path $repoRoot "data"), (Join-Path $repoRoot "resources"), (Join-Path $repoRoot "third_party/tinted-themes") -Force | Out-Null
         $fakeTool = Join-Path $fakeBin "package-tool.exe"
         Add-Type -TypeDefinition @'
 using System;
@@ -145,7 +145,7 @@ public static class PackageTool
         $env:NSIS_HOME = $nsisDir
         $env:PATHEXT = [Environment]::GetEnvironmentVariable("PATHEXT", "Machine")
         $env:Path = "$fakeBin;$originalPath"
-        New-Item -ItemType File -Path (Join-Path $buildDir "ssa_consulta_rapida.exe"), (Join-Path $buildDir "sqlite3.dll"),
+        New-Item -ItemType File -Path (Join-Path $buildDir "ssa_consulta_rapida.exe"), (Join-Path $buildDir "sqlite3.dll"), (Join-Path $repoRoot "data/ssas.db"),
             (Join-Path $repoRoot "resources/app_icon.ico"), (Join-Path $repoRoot "THIRD_PARTY_NOTICES.md"),
             (Join-Path $repoRoot "third_party/tinted-themes/LICENSE") -Force | Out-Null
         foreach ($runtimeFile in @("MSVCP140.dll", "MSVCP140_ATOMIC_WAIT.dll", "VCRUNTIME140.dll", "VCRUNTIME140_1.dll")) {
@@ -282,7 +282,7 @@ exit /b 0
         $missingRuntimeDistDir = Join-Path $testRoot "missing-runtime-dist"
 
         New-Item -ItemType Directory -Path $scriptsDir, $buildDir, (Join-Path $buildDir "SsaConsultaRapida"), $qtBinDir, $nsisDir, $fakeBin,
-            (Join-Path $repoRoot "resources"), (Join-Path $repoRoot "third_party/tinted-themes") -Force | Out-Null
+            (Join-Path $repoRoot "data"), (Join-Path $repoRoot "resources"), (Join-Path $repoRoot "third_party/tinted-themes") -Force | Out-Null
         Copy-Item -LiteralPath $env:ComSpec -Destination (Join-Path $nsisDir "makensis.exe")
         $qtDeployMock = Join-Path $fakeBin "windeployqt.exe"
         Add-Type -TypeDefinition @'
@@ -303,7 +303,7 @@ public static class QtDeployMock
         $originalPath = $env:Path
         $env:PATHEXT = [Environment]::GetEnvironmentVariable("PATHEXT", "Machine")
         $env:Path = "$fakeBin;$originalPath"
-        New-Item -ItemType File -Path (Join-Path $buildDir "ssa_consulta_rapida.exe"), (Join-Path $buildDir "sqlite3.dll"),
+        New-Item -ItemType File -Path (Join-Path $buildDir "ssa_consulta_rapida.exe"), (Join-Path $buildDir "sqlite3.dll"), (Join-Path $repoRoot "data/ssas.db"),
             (Join-Path $repoRoot "resources/app_icon.ico"), (Join-Path $repoRoot "THIRD_PARTY_NOTICES.md"),
             (Join-Path $repoRoot "third_party/tinted-themes/LICENSE") -Force | Out-Null
         @(
