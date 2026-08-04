@@ -272,12 +272,14 @@ Item {
 
                         objectName: "analyticsDashboardPeriodControls"
                         Layout.fillWidth: true
-                        Layout.preferredHeight: dashboardPeriodRow.implicitHeight
+                        Layout.preferredHeight: dashboardPeriodRow.implicitHeight + (contentWidth > width ? dashboardPeriodScrollbar.implicitHeight : 0)
                         contentWidth: Math.max(width, dashboardPeriodRow.implicitWidth)
                         contentHeight: dashboardPeriodRow.implicitHeight
                         boundsBehavior: Flickable.StopAtBounds
                         clip: true
                         ScrollBar.horizontal: ScrollBar {
+                            id: dashboardPeriodScrollbar
+
                             policy: dashboardPeriodControls.contentWidth > dashboardPeriodControls.width ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
                         }
 

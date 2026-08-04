@@ -52,8 +52,7 @@ namespace ssa::presentation {
         }
 
         QString chartWeek(const std::string& value) {
-            const QString week = QString::fromStdString(value);
-            return week.size() == 6 ? week.left(4) + QStringLiteral("-W") + week.mid(4) : week;
+            return QString::fromStdString(value);
         }
 
         QVariantMap reportChartMap(const std::vector<application::ExecutadasReportRow>& rows) {

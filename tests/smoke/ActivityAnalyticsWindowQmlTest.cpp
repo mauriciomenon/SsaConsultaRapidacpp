@@ -266,11 +266,11 @@ namespace {
             static const QStringList roles{QStringLiteral("Solicitante"),
                                            QStringLiteral("Planejamento/programacao"),
                                            QStringLiteral("Execucao")};
-            const QString firstWeek = QStringLiteral("%1-W%2")
+            const QString firstWeek = QStringLiteral("%1%2")
                                           .arg(selection.value(QStringLiteral("firstYear")).toInt())
                                           .arg(selection.value(QStringLiteral("firstWeek")).toInt(),
                                                2, 10, QChar('0'));
-            const QString lastWeek = QStringLiteral("%1-W%2")
+            const QString lastWeek = QStringLiteral("%1%2")
                                          .arg(selection.value(QStringLiteral("lastYear")).toInt())
                                          .arg(selection.value(QStringLiteral("lastWeek")).toInt(),
                                               2, 10, QChar('0'));
@@ -1176,16 +1176,26 @@ namespace {
             window->setGeometry(0, 0, 1180, 760);
             QVERIFY(invoke(*object, "selectTab", 1));
             window->show();
+            QVERIFY(waitForRenderedFrames(*window));
             auto* button = findVisualChild(*window->contentItem(),
                                            QStringLiteral("analyticsExecutedByPerson"));
             QVERIFY(button != nullptr);
             QTRY_VERIFY_WITH_TIMEOUT(button->width() > 0 && button->height() > 0, 1000);
+            auto* controls = findVisualChild(*window->contentItem(),
+                                             QStringLiteral("analyticsCustomActionControls"));
+            QVERIFY(controls != nullptr);
+            const qreal buttonX = button->mapToItem(controls, QPointF{}).x();
+            controls->setProperty(
+                "contentX", std::max<qreal>(0, buttonX + button->width() - controls->width()));
+            QTRY_VERIFY_WITH_TIMEOUT(button->mapToItem(controls, QPointF{}).x() >= 0 &&
+                                         button->mapToItem(controls, QPointF{}).x() +
+                                                 button->width() <=
+                                             controls->width(),
+                                     1000);
 
             const int requestsBefore = viewModel.customRequestCount();
             const int dimensionsBefore = viewModel.dimensionRequestCount();
-            const QPoint clickPoint =
-                button->mapToScene(QPointF(button->width() / 2, button->height() / 2)).toPoint();
-            QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, clickPoint);
+            QVERIFY(QMetaObject::invokeMethod(button, "click", Qt::DirectConnection));
 
             QTRY_COMPARE_WITH_TIMEOUT(viewModel.dimensionRequestCount(), dimensionsBefore + 1,
                                       1000);
@@ -1214,18 +1224,28 @@ namespace {
             auto* window = qobject_cast<QQuickWindow*>(object.get());
             QVERIFY(window != nullptr);
             window->setGeometry(0, 0, 1180, 760);
+            QVERIFY(invoke(*object, "selectTab", 1));
+            window->show();
+            QVERIFY(waitForRenderedFrames(*window));
             auto* button =
                 findVisualChild(*window->contentItem(), QStringLiteral("analyticsOverdueByArea"));
             QVERIFY(button != nullptr);
-            QVERIFY(invoke(*object, "selectTab", 1));
-            window->show();
             QTRY_VERIFY_WITH_TIMEOUT(button->width() > 0 && button->height() > 0, 1000);
+            auto* controls = findVisualChild(*window->contentItem(),
+                                             QStringLiteral("analyticsCustomActionControls"));
+            QVERIFY(controls != nullptr);
+            const qreal buttonX = button->mapToItem(controls, QPointF{}).x();
+            controls->setProperty(
+                "contentX", std::max<qreal>(0, buttonX + button->width() - controls->width()));
+            QTRY_VERIFY_WITH_TIMEOUT(button->mapToItem(controls, QPointF{}).x() >= 0 &&
+                                         button->mapToItem(controls, QPointF{}).x() +
+                                                 button->width() <=
+                                             controls->width(),
+                                     1000);
             viewModel.completeWarningLoad(14);
 
             const int requestsBefore = viewModel.customRequestCount();
-            const QPoint clickPoint =
-                button->mapToScene(QPointF(button->width() / 2, button->height() / 2)).toPoint();
-            QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, clickPoint);
+            QVERIFY(QMetaObject::invokeMethod(button, "click", Qt::DirectConnection));
 
             QTRY_VERIFY_WITH_TIMEOUT(viewModel.customRequestCount() > requestsBefore, 1000);
         }
@@ -1346,6 +1366,7 @@ namespace {
             QVERIFY(button != nullptr);
             QTRY_VERIFY_WITH_TIMEOUT(
                 controls->property("contentWidth").toReal() > controls->width(), 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(controls->height() > button->height(), 1000);
 
             const qreal buttonX = button->mapToItem(controls, QPointF{}).x();
             controls->setProperty(

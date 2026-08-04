@@ -136,7 +136,7 @@ TestCase {
         id: percentBarComponent
 
         PercentStackedBarChart {
-            categories: ["2026-W01"]
+            categories: ["202601"]
             series: [
                 {
                     "name": "No prazo",

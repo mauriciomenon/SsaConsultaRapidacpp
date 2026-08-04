@@ -108,7 +108,7 @@ TEST_CASE("analytics chart modes cover the fourteen dashboard graph contracts") 
     for (const auto& spec : specs) {
         auto analyticsRequest = request(spec.metric, spec.grain);
         AnalyticsPoint analyticsPoint =
-            point(spec.grain == TimeGrain::WholePeriod ? "" : "2026-W01", "SMI", "SMIN", "Ana", 2);
+            point(spec.grain == TimeGrain::WholePeriod ? "" : "202601", "SMI", "SMIN", "Ana", 2);
         if (spec.grain == TimeGrain::IsoReferenceMonth) {
             analyticsPoint.bucketKey = "2026-01";
         }
@@ -171,13 +171,13 @@ TEST_CASE("cohort stacks use stable keys and reconcile every component") {
 
 TEST_CASE("deadline percentage is normalized in the worker and quantity remains raw") {
     auto analyticsRequest = request(AnalyticsMetric::PendingDeadline, TimeGrain::IsoWeek);
-    auto onTime = point("2026-W01", "SMI", "SMIN", "Ana", 4);
+    auto onTime = point("202601", "SMI", "SMIN", "Ana", 4);
     onTime.deadlineClass = DeadlineClass::OnTime;
-    auto warning = point("2026-W01", "SMI", "SMIN", "Ana", 1);
+    auto warning = point("202601", "SMI", "SMIN", "Ana", 1);
     warning.deadlineClass = DeadlineClass::Warning;
-    auto overdue = point("2026-W01", "SMI", "SMIN", "Ana", 2);
+    auto overdue = point("202601", "SMI", "SMIN", "Ana", 2);
     overdue.deadlineClass = DeadlineClass::Overdue;
-    auto excluded = point("2026-W01", "SMI", "SMIN", "Ana", 3);
+    auto excluded = point("202601", "SMI", "SMIN", "Ana", 3);
     excluded.deadlineClass = DeadlineClass::NotApplicableOrUnknown;
     const AnalyticsSeriesResult result{.points = {excluded, overdue, onTime, warning},
                                        .excludedForDataQuality = 3};
@@ -189,10 +189,10 @@ TEST_CASE("deadline percentage is normalized in the worker and quantity remains 
         analyticsRequest, result, AnalyticsChartMode::DeadlineStacked,
         AnalyticsChartScale::Percentage);
 
-    CHECK(quantity.categories ==
-          std::vector<std::string>{"2026-W01", "2026-W02", "2026-W03", "2026-W04", "2026-W05",
-                                   "2026-W06", "2026-W07", "2026-W08", "2026-W09", "2026-W10",
-                                   "2026-W11", "2026-W12", "2026-W13"});
+    CHECK(quantity.categories == std::vector<std::string>{"202601", "202602", "202603", "202604",
+                                                          "202605", "202606", "202607", "202608",
+                                                          "202609", "202610", "202611", "202612",
+                                                          "202613"});
     CHECK(valuesOf(quantity, "on_time").front() == std::optional<double>{4.0});
     CHECK(valuesOf(quantity, "warning").front() == std::optional<double>{1.0});
     CHECK(valuesOf(quantity, "overdue").front() == std::optional<double>{2.0});
@@ -212,7 +212,7 @@ TEST_CASE("deadline percentage is normalized in the worker and quantity remains 
 
 TEST_CASE("deadline quality counter must reconcile with excluded points") {
     auto analyticsRequest = request(AnalyticsMetric::PendingDeadline, TimeGrain::IsoWeek);
-    auto excluded = point("2026-W01", "SMI", "SMIN", "Ana", 2);
+    auto excluded = point("202601", "SMI", "SMIN", "Ana", 2);
     excluded.deadlineClass = DeadlineClass::NotApplicableOrUnknown;
 
     CHECK_THROWS_AS(ActivityAnalyticsChartModelBuilder::build(
@@ -314,10 +314,9 @@ TEST_CASE("custom temporal charts sort combinations and distinguish event zeros 
         request(AnalyticsMetric::Registered, TimeGrain::IsoWeek, Breakdown::DivisionSector);
     eventRequest.period = {{2020, 53}, {2021, 2}};
     const AnalyticsSeriesResult result{
-        .points = {point("2020-W53", "SMI", "B", "Ana", 2),
-                   point("2021-W01", "SMI", "A", "Ana", 3)},
-        .observations = {{.bucketKey = "2020-W53", .observedIsoYearWeek = 202053},
-                         {.bucketKey = "2021-W01", .observedIsoYearWeek = 202101}}};
+        .points = {point("202053", "SMI", "B", "Ana", 2), point("202101", "SMI", "A", "Ana", 3)},
+        .observations = {{.bucketKey = "202053", .observedIsoYearWeek = 202053},
+                         {.bucketKey = "202101", .observedIsoYearWeek = 202101}}};
 
     const auto events =
         ActivityAnalyticsChartModelBuilder::build(eventRequest, result, AnalyticsChartMode::Custom);
@@ -326,7 +325,7 @@ TEST_CASE("custom temporal charts sort combinations and distinguish event zeros 
     const auto stocks =
         ActivityAnalyticsChartModelBuilder::build(stockRequest, result, AnalyticsChartMode::Custom);
 
-    CHECK(events.categories == std::vector<std::string>{"2020-W53", "2021-W01", "2021-W02"});
+    CHECK(events.categories == std::vector<std::string>{"202053", "202101", "202102"});
     REQUIRE(events.series.size() == 2);
     CHECK(events.series[0].name == "SMI / A");
     CHECK(events.series[0].values == std::vector<std::optional<double>>{0.0, 3.0, 0.0});
@@ -431,12 +430,12 @@ TEST_CASE("dashboard builder owns the fourteen request and mode mappings") {
         .issuedByDivision = wholeResult(11),
         .issuedMonthly = monthlyResult(12),
         .pendingDeadlineWeekly = {.points = {[] {
-                                      auto value = point("2026-W01", "DIV", "SEC", "Ana", 13);
+                                      auto value = point("202601", "DIV", "SEC", "Ana", 13);
                                       value.deadlineClass = DeadlineClass::OnTime;
                                       return value;
                                   }()},
                                   .observedIsoYearWeek = 202604,
-                                  .observations = {{.bucketKey = "2026-W01",
+                                  .observations = {{.bucketKey = "202601",
                                                     .observedIsoYearWeek = 202601}}},
     };
 
@@ -462,7 +461,7 @@ TEST_CASE("dashboard builder owns the fourteen request and mode mappings") {
     CHECK(charts.issuedByDivision.categories == std::vector<std::string>{"DIV"});
     CHECK(charts.registeredMonthly.categories == std::vector<std::string>{"2025-12", "2026-01"});
     CHECK(charts.pendingDeadlineQuantity.categories ==
-          std::vector<std::string>{"2026-W01", "2026-W02", "2026-W03", "2026-W04"});
+          std::vector<std::string>{"202601", "202602", "202603", "202604"});
     CHECK(charts.executedBySector.series.size() == 3);
     CHECK(charts.partialAttentionBySector.series.size() == 3);
     CHECK(charts.spgBySector.series.size() == 3);
@@ -504,8 +503,8 @@ TEST_CASE("custom charts preserve explicitly selected zero-value combinations") 
     eventRequest.divisions = {"SMI"};
     eventRequest.people = {"Ana", "Bia"};
     const AnalyticsSeriesResult result{
-        .points = {point("2026-W01", "SMI", "", "Ana", 3)},
-        .observations = {{.bucketKey = "2026-W01", .observedIsoYearWeek = 202601}}};
+        .points = {point("202601", "SMI", "", "Ana", 3)},
+        .observations = {{.bucketKey = "202601", .observedIsoYearWeek = 202601}}};
 
     const auto events =
         ActivityAnalyticsChartModelBuilder::build(eventRequest, result, AnalyticsChartMode::Custom);
@@ -592,15 +591,15 @@ TEST_CASE("stock charts warn only when the latest capture is more than one week 
 TEST_CASE("deadline chart-only build composes stale and exclusion quality without warning input") {
     auto analyticsRequest = request(AnalyticsMetric::PendingDeadline, TimeGrain::IsoWeek);
     analyticsRequest.warningWindowDays.reset();
-    auto included = point("2026-W10", "SMI", "SMIN", "", 1);
+    auto included = point("202610", "SMI", "SMIN", "", 1);
     included.deadlineClass = DeadlineClass::OnTime;
-    auto excluded = point("2026-W10", "SMI", "SMIN", "", 2);
+    auto excluded = point("202610", "SMI", "SMIN", "", 2);
     excluded.deadlineClass = DeadlineClass::NotApplicableOrUnknown;
     const AnalyticsSeriesResult result{
         .points = {included, excluded},
         .observedIsoYearWeek = 202610,
         .excludedForDataQuality = 2,
-        .observations = {{.bucketKey = "2026-W10", .observedIsoYearWeek = 202610}}};
+        .observations = {{.bucketKey = "202610", .observedIsoYearWeek = 202610}}};
 
     const auto model = ActivityAnalyticsChartModelBuilder::build(
         analyticsRequest, result, AnalyticsChartMode::DeadlineStacked);

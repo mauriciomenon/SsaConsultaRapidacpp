@@ -139,7 +139,7 @@ namespace ssa::query {
             case domain::TimeGrain::WholePeriod:
                 return "''";
             case domain::TimeGrain::IsoWeek:
-                return "printf('%04d-W%02d', (" + isoYearWeek + ") / 100, (" + isoYearWeek +
+                return "printf('%04d%02d', (" + isoYearWeek + ") / 100, (" + isoYearWeek +
                        ") % 100)";
             case domain::TimeGrain::IsoReferenceMonth: {
                 return "strftime('%Y-%m', " + isoThursdayExpression(isoYearWeek) + ')';

@@ -248,7 +248,7 @@ TEST_CASE("activity analytics emits stable bucket keys for every grain") {
     checkContains(builder.buildSeries(request).sql, "'' AS \"bucket_key\"");
 
     request.grain = TimeGrain::IsoWeek;
-    checkContains(builder.buildSeries(request).sql, "printf('%04d-W%02d'");
+    checkContains(builder.buildSeries(request).sql, "printf('%04d%02d'");
 
     request.grain = TimeGrain::IsoReferenceMonth;
     const auto monthly = builder.buildSeries(request);

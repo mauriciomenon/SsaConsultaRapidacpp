@@ -42,15 +42,15 @@ TEST_CASE("activity analytics builds stable time bucket keys") {
     using ssa::domain::TimeGrain;
 
     CHECK(ssa::domain::analyticsBucketKey({2026, 5}, TimeGrain::WholePeriod).empty());
-    CHECK(ssa::domain::analyticsBucketKey({2026, 5}, TimeGrain::IsoWeek) == "2026-W05");
+    CHECK(ssa::domain::analyticsBucketKey({2026, 5}, TimeGrain::IsoWeek) == "202605");
     CHECK(ssa::domain::analyticsBucketKey({2020, 53}, TimeGrain::IsoReferenceMonth) == "2020-12");
 }
 
 TEST_CASE("activity analytics formats compact ISO week labels for UI") {
     CHECK(ssa::domain::formatIsoYearWeekDisplay(2026, 1) == "202601");
     CHECK(ssa::domain::formatIsoYearWeekDisplay(2026, 31) == "202631");
-    CHECK(ssa::domain::formatAnalyticsBucketLabel("2026-W01") == "202601");
-    CHECK(ssa::domain::formatAnalyticsBucketLabel("2026-W31") == "202631");
+    CHECK(ssa::domain::formatAnalyticsBucketLabel("202601") == "202601");
+    CHECK(ssa::domain::formatAnalyticsBucketLabel("202631") == "202631");
     CHECK(ssa::domain::formatAnalyticsBucketLabel("2026-07") == "2026-07");
 }
 

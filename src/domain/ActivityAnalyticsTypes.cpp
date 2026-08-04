@@ -234,8 +234,7 @@ namespace ssa::domain {
         if (!isValidIsoWeek(value)) {
             throw std::invalid_argument("invalid ISO week");
         }
-        return std::to_string(value.year) + (value.week < 10 ? "-W0" : "-W") +
-               std::to_string(value.week);
+        return formatIsoYearWeekDisplay(value.year, value.week);
     }
 
     std::string formatIsoYearWeekDisplay(const int yearValue, const int weekValue) {
@@ -246,31 +245,7 @@ namespace ssa::domain {
     }
 
     std::string formatAnalyticsBucketLabel(const std::string_view bucketKey) {
-        if (bucketKey.empty()) {
-            return {};
-        }
-        const auto separator = bucketKey.find("-W");
-        if (separator == std::string_view::npos || separator < 4) {
-            return std::string{bucketKey};
-        }
-        const auto yearText = bucketKey.substr(0, separator);
-        const auto weekText = bucketKey.substr(separator + 2);
-        if (yearText.size() != 4 || weekText.empty()) {
-            return std::string{bucketKey};
-        }
-        for (const char character : yearText) {
-            if (character < '0' || character > '9') {
-                return std::string{bucketKey};
-            }
-        }
-        for (const char character : weekText) {
-            if (character < '0' || character > '9') {
-                return std::string{bucketKey};
-            }
-        }
-        const int yearValue = std::stoi(std::string{yearText});
-        const int weekValue = std::stoi(std::string{weekText});
-        return formatIsoYearWeekDisplay(yearValue, weekValue);
+        return std::string{bucketKey};
     }
 
     bool isValidPeriod(const AnalyticsPeriod& period) noexcept {

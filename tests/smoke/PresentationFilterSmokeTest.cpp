@@ -826,7 +826,7 @@ namespace {
             QVERIFY(!macro.reportRows().isEmpty());
             const auto chart = macro.reportChart();
             QCOMPARE(chart.value(QStringLiteral("categories")).toStringList(),
-                     QStringList{QStringLiteral("2026-W31")});
+                     QStringList{QStringLiteral("202631")});
             const auto series = chart.value(QStringLiteral("series")).toList();
             QCOMPARE(series.size(), 2);
             QCOMPARE(series.at(0).toMap().value(QStringLiteral("name")).toString(),

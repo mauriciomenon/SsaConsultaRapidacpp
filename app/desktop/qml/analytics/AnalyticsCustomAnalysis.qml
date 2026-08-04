@@ -473,12 +473,14 @@ Item {
 
                         objectName: "analyticsCustomPeriodControls"
                         Layout.fillWidth: true
-                        Layout.preferredHeight: customPeriodRow.implicitHeight
+                        Layout.preferredHeight: customPeriodRow.implicitHeight + (contentWidth > width ? customPeriodScrollbar.implicitHeight : 0)
                         contentWidth: Math.max(width, customPeriodRow.implicitWidth)
                         contentHeight: customPeriodRow.implicitHeight
                         boundsBehavior: Flickable.StopAtBounds
                         clip: true
                         ScrollBar.horizontal: ScrollBar {
+                            id: customPeriodScrollbar
+
                             policy: customPeriodControls.contentWidth > customPeriodControls.width ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
                         }
 
@@ -676,12 +678,14 @@ Item {
 
                         objectName: "analyticsCustomActionControls"
                         Layout.fillWidth: true
-                        Layout.preferredHeight: customActionRow.implicitHeight
+                        Layout.preferredHeight: customActionRow.implicitHeight + (contentWidth > width ? customActionScrollbar.implicitHeight : 0)
                         contentWidth: Math.max(width, customActionRow.implicitWidth)
                         contentHeight: customActionRow.implicitHeight
                         boundsBehavior: Flickable.StopAtBounds
                         clip: true
                         ScrollBar.horizontal: ScrollBar {
+                            id: customActionScrollbar
+
                             policy: customActionControls.contentWidth > customActionControls.width ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
                         }
 

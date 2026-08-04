@@ -227,7 +227,7 @@ namespace {
                 property string reportText: "5000 linhas"
                 property var reportRows: []
                 property var reportChart: ({
-                    categories: ["2026-W31"],
+                    categories: ["202631"],
                     series: [{ name: "ANA", values: [3] }],
                     available: true,
                     subtitle: "Mes atual",

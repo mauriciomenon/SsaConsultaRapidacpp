@@ -69,7 +69,7 @@ namespace {
         case ssa::domain::TimeGrain::WholePeriod:
             break;
         case ssa::domain::TimeGrain::IsoWeek:
-            point.bucketKey = "2026-W13";
+            point.bucketKey = "202613";
             break;
         case ssa::domain::TimeGrain::IsoReferenceMonth:
             point.bucketKey = "2026-03";
@@ -466,7 +466,7 @@ namespace {
             auto port = std::make_shared<FunctionalAnalyticsPort>();
             port->seriesFunction = [](const AnalyticsRequest&, const std::stop_token&) {
                 auto result = seriesResult(7);
-                result.points.front().bucketKey = "2026-W13";
+                result.points.front().bucketKey = "202613";
                 result.points.front().sector = "DIV-01";
                 result.points.front().person = "Person";
                 result.points.front().cohort =
@@ -555,7 +555,7 @@ namespace {
                 capture->request = request;
                 ++capture->calls;
                 auto result = seriesResult(4);
-                result.points.front().bucketKey = "2026-W02";
+                result.points.front().bucketKey = "202602";
                 result.points.front().sector = "DIV-01";
                 result.points.front().person = "Person";
                 result.points.front().deadlineClass = ssa::domain::DeadlineClass::OnTime;

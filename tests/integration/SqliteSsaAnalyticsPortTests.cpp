@@ -213,7 +213,7 @@ TEST_CASE("analytics sqlite port executes events by executor person and cohort")
 
     REQUIRE(result.points.size() == 1);
     const auto& point = result.points.front();
-    CHECK(point.bucketKey == "2026-W01");
+    CHECK(point.bucketKey == "202601");
     CHECK(point.division == "AAA");
     CHECK(point.sector == "AAA-MECH");
     CHECK(point.person == "Exec A");
