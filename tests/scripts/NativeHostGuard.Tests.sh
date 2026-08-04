@@ -46,6 +46,7 @@ for data_entrypoint in \
       "$data_entrypoint" >&2
     exit 1
   fi
+  # shellcheck disable=SC2016 # Match the literal legacy expression.
   if grep -Fq '${repo_root}/data/ssas.db' "$repo_root/$data_entrypoint"; then
     printf 'entrypoint still defaults to a repository database: %s\n' \
       "$data_entrypoint" >&2

@@ -5729,9 +5729,11 @@ TEST_CASE("external import isolates a broken workbook and keeps sibling rows") {
 
 TEST_CASE("external import preserves partial batch for telegram desktop folder paths",
           "[telegram][.]") {
-    const auto folder = ssa::qt::toFileSystemPath(
-        QString::fromUtf8(u8"C:\\Users\\mauri\\Downloads\\Telegram Desktop\\Em Execução_"
-                          u8"30-07-2026_1126AM"));
+    const auto fixtureDirectory = qEnvironmentVariable("SSA_TELEGRAM_FIXTURE_DIR");
+    if (fixtureDirectory.isEmpty()) {
+        SKIP("SSA_TELEGRAM_FIXTURE_DIR is not configured");
+    }
+    const auto folder = ssa::qt::toFileSystemPath(fixtureDirectory);
     std::error_code error;
     if (!std::filesystem::is_directory(folder, error) || error) {
         SKIP("telegram fixture folder is unavailable on this machine");
