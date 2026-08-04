@@ -654,10 +654,12 @@ namespace {
                 requests = capture->requests;
             }
             QCOMPARE(requests.size(), std::size_t{13});
-            QCOMPARE(requests.at(0).period,
-                     (AnalyticsPeriod{.first = {2026, 9}, .last = {2026, 13}}));
-            QCOMPARE(requests.at(1).period,
-                     ssa::domain::referenceMonthHistoryPeriod(IsoWeek{2026, 13}, 13));
+            const AnalyticsPeriod expectedPeriod{.first = {2026, 9}, .last = {2026, 13}};
+            QCOMPARE(requests.at(0).period, expectedPeriod);
+            QCOMPARE(requests.at(1).period, expectedPeriod);
+            QCOMPARE(requests.at(3).period, expectedPeriod);
+            QCOMPARE(requests.at(9).period, expectedPeriod);
+            QCOMPARE(requests.at(11).period, expectedPeriod);
         }
 
         void customResultIsChartReadyWithoutQmlAggregation() {

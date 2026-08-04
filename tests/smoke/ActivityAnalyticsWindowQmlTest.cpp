@@ -756,6 +756,32 @@ namespace {
             QTRY_COMPARE_WITH_TIMEOUT(viewModel.dashboardRequestCount(), baseline + 1, 1000);
         }
 
+        void h1_dashboard_year_to_date_queues_full_selected_period() {
+            QQmlEngine engine;
+            FakeAnalyticsViewModel viewModel;
+            QString error;
+            auto object = loadWindow(engine, viewModel, error);
+            QVERIFY2(object != nullptr, qPrintable(error));
+            auto* dashboard = object->findChild<QObject*>(QStringLiteral("analyticsDashboard"));
+            QVERIFY(dashboard != nullptr);
+
+            viewModel.completeWarningLoad(14);
+            QTRY_COMPARE_WITH_TIMEOUT(viewModel.dashboardRequestCount(), 1, 1000);
+            const QVariantMap ytd = viewModel.yearToDateSelection();
+
+            QVERIFY(invoke(*dashboard, "applyYearToDate"));
+            QTRY_COMPARE_WITH_TIMEOUT(viewModel.dashboardRequestCount(), 2, 1000);
+            const QVariantMap selection = viewModel.lastDashboardSelection();
+            QCOMPARE(selection.value(QStringLiteral("reportFirstYear")),
+                     ytd.value(QStringLiteral("firstYear")));
+            QCOMPARE(selection.value(QStringLiteral("reportFirstWeek")),
+                     ytd.value(QStringLiteral("firstWeek")));
+            QCOMPARE(selection.value(QStringLiteral("reportLastYear")),
+                     ytd.value(QStringLiteral("lastYear")));
+            QCOMPARE(selection.value(QStringLiteral("reportLastWeek")),
+                     ytd.value(QStringLiteral("lastWeek")));
+        }
+
         void h2_custom_first_week_edit_refreshes_dimensions() {
             QQmlEngine engine;
             FakeAnalyticsViewModel viewModel;

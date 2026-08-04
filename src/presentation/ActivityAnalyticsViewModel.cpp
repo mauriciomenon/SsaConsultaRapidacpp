@@ -758,8 +758,7 @@ namespace ssa::presentation {
     bool ActivityAnalyticsViewModel::requestDashboard(const QVariantMap& selection) {
         try {
             const auto reportPeriod = selectionPeriod(selection, QStringLiteral("report"));
-            loadDashboard(reportPeriod, domain::referenceMonthHistoryPeriod(reportPeriod.last, 13),
-                          warningWindow(selection));
+            loadDashboard(reportPeriod, reportPeriod, warningWindow(selection));
             return true;
         } catch (const std::exception& error) {
             rejectSelection(error);
