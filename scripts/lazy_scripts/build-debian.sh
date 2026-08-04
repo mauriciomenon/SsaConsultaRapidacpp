@@ -51,4 +51,4 @@ source "${repo_root}/scripts/debian-paths.sh"
 build_dir="$(debian_build_dir "${repo_root}" "${preset}")"
 
 SSA_BUILD_DIR="${build_dir}" "${repo_root}/tools/configure-dev.sh" "${preset}"
-cmake --build "${build_dir}"
+(cd "${repo_root}" && cmake --build "${build_dir}")

@@ -40,4 +40,4 @@ export TEMP=/tmp
 
 rm -rf "${build_dir}"
 SSA_BUILD_DIR="${build_dir}" "${repo_root}/tools/configure-dev.sh" "${preset}"
-cmake --build "${build_dir}"
+(cd "${repo_root}" && cmake --build "${build_dir}")
