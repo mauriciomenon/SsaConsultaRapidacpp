@@ -14,9 +14,6 @@ cp "${repo_root}/scripts/build-debian.sh" "${fixture_repo}/scripts/"
 cp "${repo_root}/scripts/lazy_scripts/build-debian.sh" \
   "${fixture_repo}/scripts/lazy_scripts/"
 cp "${repo_root}/scripts/lib/native_host_guard.sh" "${fixture_repo}/scripts/lib/"
-sed -i "s|/home/menon/gitlab_repo/ssa_consulta_rapida_cpp|${fixture_repo}|g" \
-  "${fixture_repo}/scripts/build-debian.sh" \
-  "${fixture_repo}/scripts/lazy_scripts/build-debian.sh"
 
 printf 'stale\n' > "${fixture_repo}/build/dev/stale-output.txt"
 cat > "${fixture_repo}/tools/configure-dev.sh" <<'EOF_CONFIGURE'
