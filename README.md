@@ -10,6 +10,9 @@ Consulte [`ROUND_STATUS.md`](ROUND_STATUS.md) antes de avaliar sincronizacao,
 publicacao ou CI. Neste repositorio, `origin` aponta para GitLab, `bitbucket`
 aponta para Bitbucket e `gh` aponta para o mirror GitHub atualmente indisponivel.
 
+Versao corrente do projeto: **0.9.17** (`PROJECT_VERSION` em
+`CMakeLists.txt`).
+
 Para transferencia de contexto da v0.9.16 (diagnostico e plano do Wizard
 "Configurar Dados", causa-raiz do bug de first-run sem dir `data/`, erros
 conhecidos e pendencias canonicas), leia

@@ -2,6 +2,34 @@
 
 Mudancas relevantes deste projeto sao registradas neste arquivo.
 
+## 0.9.17 - 2026-08-04
+
+### Corrigido
+
+- O report de executadas volta a publicar a semana em formato compacto
+  `YYYYWW` apos a mudanca de `bucket_key` analitico (ex.: `202503`), sem
+  truncar para o ano.
+- Import incremental isola workbook rejeitado sem descartar irmaos ja
+  aceitos no mesmo lote; falhas operacionais e avisos de derivadas ficam
+  classificados no resumo do operador.
+- Analytics: chaves ISO compactas, controles de periodo alcancaveis,
+  exportacao de grafico com titulo/legenda e rotulos sem sobreposicao.
+- Harness nativo Windows/WSL/Debian isolado por host; package Windows amd64
+  MSVC gera zip, portable, installer e standalone.
+
+### Validacao
+
+- Windows release amd64/msvc: `645/645` testes, package em
+  `dist/windows/amd64/msvc/final/`.
+- Tag anotada `v0.9.17` publicada em GitLab (`origin`) e Bitbucket.
+
+## 0.9.16 - 2026-07-25
+
+### Operacao
+
+- Tag anotada `v0.9.16` como marco antes do wizard unificado
+  "Configurar Dados" e do hardening de first-run/import.
+
 ## 0.9.15 - 2026-07-20
 
 ### Corrigido

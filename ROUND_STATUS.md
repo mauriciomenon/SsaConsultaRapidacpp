@@ -1,5 +1,21 @@
 # Status Da Rodada
 
+## Release v0.9.17 - 2026-08-04
+
+- **ENTREGUE**: bump `PROJECT_VERSION` para `0.9.17`, CHANGELOG/README
+  atualizados e tag anotada `v0.9.17` para GitLab e Bitbucket.
+- Fix incluso: `buildExecutadasReport` usa `bucket_key` compacto como
+  semana (`YYYYWW`), alinhado a `FIX_ANALYTICS` de chaves ISO compactas.
+- Validacao Windows nesta host: package release amd64/msvc com
+  `645/645` testes; artefatos em `dist/windows/amd64/msvc/final/`.
+- Sync pre-release: `origin/master` alinhado; `bitbucket/master` estava
+  2 commits atras e foi atualizado no push da release.
+- Remotes: `origin` = GitLab, `bitbucket` = Bitbucket (remote separado
+  presente neste clone Windows).
+
+Proxima atividade: validar pipelines GitLab/Bitbucket da tag `v0.9.17`
+e, se necessario, re-package Windows com a versao ja embutida no binario.
+
 ## Wizard unificado Configurar dados - 2026-07-26
 
 - **ENTREGUE NO WORKING TREE, GATE LOCAL VERDE**: o wizard oferece criar
