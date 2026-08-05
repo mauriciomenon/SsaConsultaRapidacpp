@@ -82,7 +82,7 @@ TEST_CASE("sql query builder compiles the executadas report in SQLite") {
 
     const auto query = ssa::query::SqlQueryBuilder{}.buildExecutadasReport(request, true);
 
-    REQUIRE(query.sql.find("WITH sourced_rows AS") != std::string::npos);
+    REQUIRE(query.sql.find("WITH event_rows AS") != std::string::npos);
     REQUIRE(query.sql.find("COUNT(DISTINCT \"ssa_number\")") != std::string::npos);
     REQUIRE(query.sql.find("AS \"group\"") != std::string::npos);
     REQUIRE(query.sql.find("AS \"week\"") != std::string::npos);
@@ -106,7 +106,7 @@ TEST_CASE("executadas report forwards the complete compiled SSA filter to analyt
 
     const auto query = ssa::query::SqlQueryBuilder{}.buildExecutadasReport(request, false);
 
-    REQUIRE(query.sql.find("WITH sourced_rows AS") != std::string::npos);
+    REQUIRE(query.sql.find("WITH event_rows AS") != std::string::npos);
     REQUIRE(query.sql.find("setor_executor") != std::string::npos);
     REQUIRE(query.sql.find("responsavel_execucao") != std::string::npos);
     REQUIRE(query.sql.find("descricao_ssa") != std::string::npos);

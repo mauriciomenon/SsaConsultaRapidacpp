@@ -270,9 +270,10 @@ namespace ssa::query {
             const auto periodFirst = std::to_string(domain::toIsoYearWeek(request.period.first));
             const auto periodLast = std::to_string(domain::toIsoYearWeek(request.period.last));
 
-            std::vector<std::string> bindings{periodFirst, periodLast};
+            std::vector<std::string> bindings;
             std::ostringstream sql;
             // Period bounds apply on the source table so SQLite can use week indexes.
+            // Bindings follow placeholder order: sourceFilter first, then period.
             sql << "WITH event_rows AS (SELECT " << week << " AS \"event_iso_week\", "
                 << divisionExpression(sector) << " AS \"division\", " << normalizedDimension(sector)
                 << " AS \"sector\", " << normalizedPerson(personColumn(request.personRole))
@@ -296,6 +297,8 @@ namespace ssa::query {
                 sql << " AND " << week << " BETWEEN CAST(? AS INTEGER) AND CAST(? AS INTEGER)"
                     << " AND " << week << " IS NOT NULL";
             }
+            bindings.push_back(periodFirst);
+            bindings.push_back(periodLast);
             sql << "), classified_rows AS (SELECT \"event_iso_week\", \"division\", \"sector\", "
                    "\"person\", \"registration_iso_week\", \"ssa_number\", ";
             if (collapseRegistrationCohorts) {

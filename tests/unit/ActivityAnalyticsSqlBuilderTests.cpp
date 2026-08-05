@@ -89,7 +89,8 @@ TEST_CASE("activity analytics event series preserves a compiled source predicate
 
     const auto query = builder.buildSeries(request, sourceFilter);
 
-    checkContains(query.sql, "sourced_rows AS");
+    checkContains(query.sql, "event_rows AS");
+    checkNotContains(query.sql, "sourced_rows AS");
     checkContains(query.sql, R"(("situacao" = ? AND "descricao_ssa" LIKE ? ESCAPE '\'))");
     checkContains(query.sql, "BETWEEN CAST(? AS INTEGER) AND CAST(? AS INTEGER)");
     checkContains(query.sql, "'unknown' AS \"registration_cohort\"");
