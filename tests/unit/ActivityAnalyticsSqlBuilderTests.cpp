@@ -72,7 +72,8 @@ TEST_CASE("activity analytics event metrics use their fixed source dimensions an
     checkContains(executed.sql, "IN ('STE', 'SES')");
     checkContains(executed.sql, "CAST(\"semana_executada\" AS INTEGER)");
     checkContains(executed.sql, "BETWEEN CAST(? AS INTEGER) AND CAST(? AS INTEGER)");
-    checkContains(executed.sql, "sourced_rows AS");
+    checkContains(executed.sql, "event_rows AS");
+    checkNotContains(executed.sql, "sourced_rows AS");
     checkNotContains(executed.sql, "\"semana_executada\" BETWEEN ? AND ?");
     CHECK(executed.bindings == std::vector<std::string>{"202601", "202605", "202601", "202605"});
 }

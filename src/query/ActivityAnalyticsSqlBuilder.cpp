@@ -270,16 +270,16 @@ namespace ssa::query {
             const auto periodFirst = std::to_string(domain::toIsoYearWeek(request.period.first));
             const auto periodLast = std::to_string(domain::toIsoYearWeek(request.period.last));
 
+            std::vector<std::string> bindings{periodFirst, periodLast};
             std::ostringstream sql;
-            // Compute the event week once so period bounds reuse one canonical value.
-            sql << "WITH sourced_rows AS (SELECT " << week << " AS \"event_iso_week\", "
+            // Period bounds apply on the source table so SQLite can use week indexes.
+            sql << "WITH event_rows AS (SELECT " << week << " AS \"event_iso_week\", "
                 << divisionExpression(sector) << " AS \"division\", " << normalizedDimension(sector)
                 << " AS \"sector\", " << normalizedPerson(personColumn(request.personRole))
                 << " AS \"person\", " << registrationWeekExpression()
                 << " AS \"registration_iso_week\", " << numberExpression()
                 << " AS \"ssa_number\" FROM " << sourceTable << " WHERE " << numberExpression()
                 << " <> ''";
-            std::vector<std::string> bindings;
             if (!membership.empty()) {
                 sql << " AND " << membership;
             }
@@ -288,14 +288,15 @@ namespace ssa::query {
                 bindings.insert(bindings.end(), sourceFilter.bindings.begin(),
                                 sourceFilter.bindings.end());
             }
-            sql << "), event_rows AS (SELECT \"event_iso_week\", \"division\", \"sector\", "
-                   "\"person\", \"registration_iso_week\", \"ssa_number\" FROM sourced_rows WHERE "
-                   "\"event_iso_week\" BETWEEN CAST(? AS INTEGER) AND CAST(? AS INTEGER) AND "
-                   "\"event_iso_week\" IS NOT NULL)";
-            bindings.push_back(periodFirst);
-            bindings.push_back(periodLast);
-
-            sql << ", classified_rows AS (SELECT \"event_iso_week\", \"division\", \"sector\", "
+            if (request.metric == domain::AnalyticsMetric::Registered ||
+                request.metric == domain::AnalyticsMetric::Issued) {
+                sql << " AND " << quoteColumnIdentifier("semana_cadastro") << " BETWEEN ? AND ?"
+                    << " AND " << week << " IS NOT NULL";
+            } else {
+                sql << " AND " << week << " BETWEEN CAST(? AS INTEGER) AND CAST(? AS INTEGER)"
+                    << " AND " << week << " IS NOT NULL";
+            }
+            sql << "), classified_rows AS (SELECT \"event_iso_week\", \"division\", \"sector\", "
                    "\"person\", \"registration_iso_week\", \"ssa_number\", ";
             if (collapseRegistrationCohorts) {
                 sql << "'unknown'";
@@ -424,17 +425,21 @@ namespace ssa::query {
             const auto membership = eventMembershipSql(request.metric);
             const auto sector = sectorColumn(request.metric);
             std::ostringstream sql;
-            sql << "WITH sourced_rows AS (SELECT " << week << " AS \"event_iso_week\", "
-                << divisionExpression(sector) << " AS \"division\", " << normalizedDimension(sector)
-                << " AS \"sector\", " << normalizedPerson(personColumn(request.personRole))
-                << " AS \"person\" FROM " << sourceTable << " WHERE " << numberExpression()
-                << " <> ''";
+            sql << "WITH dimension_rows AS (SELECT " << divisionExpression(sector)
+                << " AS \"division\", " << normalizedDimension(sector) << " AS \"sector\", "
+                << normalizedPerson(personColumn(request.personRole)) << " AS \"person\" FROM "
+                << sourceTable << " WHERE " << numberExpression() << " <> ''";
             if (!membership.empty()) {
                 sql << " AND " << membership;
             }
-            sql << "), dimension_rows AS (SELECT \"division\", \"sector\", \"person\" FROM "
-                   "sourced_rows WHERE \"event_iso_week\" BETWEEN CAST(? AS INTEGER) AND "
-                   "CAST(? AS INTEGER) AND \"event_iso_week\" IS NOT NULL) ";
+            if (request.metric == domain::AnalyticsMetric::Registered ||
+                request.metric == domain::AnalyticsMetric::Issued) {
+                sql << " AND " << quoteColumnIdentifier("semana_cadastro") << " BETWEEN ? AND ?"
+                    << " AND " << week << " IS NOT NULL) ";
+            } else {
+                sql << " AND " << week << " BETWEEN CAST(? AS INTEGER) AND CAST(? AS INTEGER)"
+                    << " AND " << week << " IS NOT NULL) ";
+            }
             return {sql.str(),
                     {std::to_string(domain::toIsoYearWeek(request.period.first)),
                      std::to_string(domain::toIsoYearWeek(request.period.last))}};
