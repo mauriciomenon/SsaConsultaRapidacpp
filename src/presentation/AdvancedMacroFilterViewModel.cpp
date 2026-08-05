@@ -24,8 +24,9 @@ namespace ssa::presentation {
         constexpr auto kExecutadasDivisao = "ssas_executadas_divisao";
 
         // Range of ISO year-weeks (YYYYWW) overlapping the month of currentDate.
-        // The database restricts the set via semana_executada BETWEEN, so the
-        // macro report never loads the full table just to filter it in memory.
+        // Analytics restricts Executed rows by STE/SES membership and a period week
+        // (semana_executada with programada/cadastro fallback), so the macro report
+        // never loads the full table just to filter it in memory.
         struct YearWeekRange {
             int start{0};
             int end{0};

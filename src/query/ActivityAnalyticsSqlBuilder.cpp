@@ -69,18 +69,6 @@ namespace ssa::query {
             throw std::invalid_argument("unknown analytics person role");
         }
 
-        std::string eventWeekColumn(const domain::AnalyticsMetric metric) {
-            switch (metric) {
-            case domain::AnalyticsMetric::Registered:
-            case domain::AnalyticsMetric::Issued:
-                return quoteColumnIdentifier("semana_cadastro");
-            case domain::AnalyticsMetric::Executed:
-                return quoteColumnIdentifier("semana_executada");
-            default:
-                throw std::invalid_argument("stock analytics has no event week column");
-            }
-        }
-
         std::string sectorColumn(const domain::AnalyticsMetric metric) {
             return metric == domain::AnalyticsMetric::Issued
                        ? quoteColumnIdentifier("setor_emissor")
@@ -104,6 +92,40 @@ namespace ssa::query {
 
         std::string weekExpression(const std::string& column) {
             return canonicalIsoWeekSqlExpression(column);
+        }
+
+        // Executed membership follows closed executed statuses already used by pending
+        // stock (NOT IN SCA/SES/STE), minus SCA which is cancellation rather than execution.
+        std::string executedMembershipSql() {
+            return "UPPER(TRIM(COALESCE(" + quoteColumnIdentifier("situacao") +
+                   ", ''))) IN ('STE', 'SES')";
+        }
+
+        // Prefer semana_executada; fall back to programada then cadastro so STE/SES rows
+        // without a canonical execution week still enter the period count.
+        std::string executedEventWeekExpression() {
+            return "COALESCE(" + weekExpression(quoteColumnIdentifier("semana_executada")) + ", " +
+                   weekExpression(quoteColumnIdentifier("semana_programada")) + ", " +
+                   weekExpression(quoteColumnIdentifier("semana_cadastro")) + ')';
+        }
+
+        std::string eventWeekExpression(const domain::AnalyticsMetric metric) {
+            switch (metric) {
+            case domain::AnalyticsMetric::Registered:
+            case domain::AnalyticsMetric::Issued:
+                return weekExpression(quoteColumnIdentifier("semana_cadastro"));
+            case domain::AnalyticsMetric::Executed:
+                return executedEventWeekExpression();
+            default:
+                throw std::invalid_argument("stock analytics has no event week column");
+            }
+        }
+
+        std::string eventMembershipSql(const domain::AnalyticsMetric metric) {
+            if (metric == domain::AnalyticsMetric::Executed) {
+                return executedMembershipSql();
+            }
+            return {};
         }
 
         std::string isoThursdayExpression(const std::string& isoYearWeek) {
@@ -241,30 +263,39 @@ namespace ssa::query {
                                   const std::string& sourceTable,
                                   const SqlWhereClause& sourceFilter = {},
                                   const bool collapseRegistrationCohorts = false) {
-            const auto weekColumn = eventWeekColumn(request.metric);
-            const auto week = weekExpression(weekColumn);
+            const auto week = eventWeekExpression(request.metric);
+            const auto membership = eventMembershipSql(request.metric);
             const auto sector = sectorColumn(request.metric);
             const auto bucket = bucketExpression("\"event_iso_week\"", request.grain);
-            std::vector<std::string> bindings{
-                std::to_string(domain::toIsoYearWeek(request.period.first)),
-                std::to_string(domain::toIsoYearWeek(request.period.last)),
-            };
+            const auto periodFirst = std::to_string(domain::toIsoYearWeek(request.period.first));
+            const auto periodLast = std::to_string(domain::toIsoYearWeek(request.period.last));
 
             std::ostringstream sql;
-            sql << "WITH event_rows AS (SELECT " << week << " AS \"event_iso_week\", "
+            // Compute the event week once so period bounds reuse one canonical value.
+            sql << "WITH sourced_rows AS (SELECT " << week << " AS \"event_iso_week\", "
                 << divisionExpression(sector) << " AS \"division\", " << normalizedDimension(sector)
                 << " AS \"sector\", " << normalizedPerson(personColumn(request.personRole))
                 << " AS \"person\", " << registrationWeekExpression()
                 << " AS \"registration_iso_week\", " << numberExpression()
                 << " AS \"ssa_number\" FROM " << sourceTable << " WHERE " << numberExpression()
-                << " <> '' AND " << week << " BETWEEN ? AND ?";
+                << " <> ''";
+            std::vector<std::string> bindings;
+            if (!membership.empty()) {
+                sql << " AND " << membership;
+            }
             if (!sourceFilter.sql.empty()) {
                 sql << " AND (" << sourceFilter.sql << ')';
                 bindings.insert(bindings.end(), sourceFilter.bindings.begin(),
                                 sourceFilter.bindings.end());
             }
-            sql << " AND " << week << " IS NOT NULL";
-            sql << "), classified_rows AS (SELECT \"event_iso_week\", \"division\", \"sector\", "
+            sql << "), event_rows AS (SELECT \"event_iso_week\", \"division\", \"sector\", "
+                   "\"person\", \"registration_iso_week\", \"ssa_number\" FROM sourced_rows WHERE "
+                   "\"event_iso_week\" BETWEEN CAST(? AS INTEGER) AND CAST(? AS INTEGER) AND "
+                   "\"event_iso_week\" IS NOT NULL)";
+            bindings.push_back(periodFirst);
+            bindings.push_back(periodLast);
+
+            sql << ", classified_rows AS (SELECT \"event_iso_week\", \"division\", \"sector\", "
                    "\"person\", \"registration_iso_week\", \"ssa_number\", ";
             if (collapseRegistrationCohorts) {
                 sql << "'unknown'";
@@ -389,15 +420,21 @@ namespace ssa::query {
 
         DimensionBase buildEventDimensionBase(const domain::AnalyticsRequest& request,
                                               const std::string& sourceTable) {
-            const auto weekColumn = eventWeekColumn(request.metric);
-            const auto week = weekExpression(weekColumn);
+            const auto week = eventWeekExpression(request.metric);
+            const auto membership = eventMembershipSql(request.metric);
             const auto sector = sectorColumn(request.metric);
             std::ostringstream sql;
-            sql << "WITH dimension_rows AS (SELECT " << divisionExpression(sector)
-                << " AS \"division\", " << normalizedDimension(sector) << " AS \"sector\", "
-                << normalizedPerson(personColumn(request.personRole)) << " AS \"person\" FROM "
-                << sourceTable << " WHERE " << numberExpression() << " <> '' AND " << week
-                << " BETWEEN ? AND ? AND " << week << " IS NOT NULL) ";
+            sql << "WITH sourced_rows AS (SELECT " << week << " AS \"event_iso_week\", "
+                << divisionExpression(sector) << " AS \"division\", " << normalizedDimension(sector)
+                << " AS \"sector\", " << normalizedPerson(personColumn(request.personRole))
+                << " AS \"person\" FROM " << sourceTable << " WHERE " << numberExpression()
+                << " <> ''";
+            if (!membership.empty()) {
+                sql << " AND " << membership;
+            }
+            sql << "), dimension_rows AS (SELECT \"division\", \"sector\", \"person\" FROM "
+                   "sourced_rows WHERE \"event_iso_week\" BETWEEN CAST(? AS INTEGER) AND "
+                   "CAST(? AS INTEGER) AND \"event_iso_week\" IS NOT NULL) ";
             return {sql.str(),
                     {std::to_string(domain::toIsoYearWeek(request.period.first)),
                      std::to_string(domain::toIsoYearWeek(request.period.last))}};
@@ -432,11 +469,13 @@ namespace ssa::query {
             return {sql.str(), std::move(bindings)};
         }
 
-        std::string eventAvailabilitySql(const std::string_view metric,
-                                         const std::string& weekColumn,
-                                         const std::string_view sourceTable) {
-            const auto week = weekExpression(weekColumn);
-            const auto valid = week + " IS NOT NULL AND " + numberExpression() + " <> ''";
+        std::string eventAvailabilitySql(const std::string_view metric, const std::string& week,
+                                         const std::string_view sourceTable,
+                                         const std::string& membership = {}) {
+            auto valid = week + " IS NOT NULL AND " + numberExpression() + " <> ''";
+            if (!membership.empty()) {
+                valid += " AND " + membership;
+            }
             return "SELECT '" + std::string{metric} + "' AS \"metric\", MIN(CASE WHEN " + valid +
                    " THEN " + week + " END) AS \"first_iso_week\", MAX(CASE WHEN " + valid +
                    " THEN " + week + " END) AS \"last_iso_week\", CASE WHEN SUM(CASE WHEN " +
@@ -450,14 +489,14 @@ namespace ssa::query {
         }
 
         std::string eventAvailabilityUnion(const std::string& sourceTable) {
-            return eventAvailabilitySql("registered", quoteColumnIdentifier("semana_cadastro"),
-                                        sourceTable) +
+            const auto registrationWeek =
+                weekExpression(quoteColumnIdentifier("semana_cadastro"));
+            return eventAvailabilitySql("registered", registrationWeek, sourceTable) +
                    " UNION ALL " +
-                   eventAvailabilitySql("executed", quoteColumnIdentifier("semana_executada"),
-                                        sourceTable) +
+                   eventAvailabilitySql("executed", executedEventWeekExpression(), sourceTable,
+                                        executedMembershipSql()) +
                    " UNION ALL " +
-                   eventAvailabilitySql("issued", quoteColumnIdentifier("semana_cadastro"),
-                                        sourceTable);
+                   eventAvailabilitySql("issued", registrationWeek, sourceTable);
         }
 
         std::string stockMetricsCte() {

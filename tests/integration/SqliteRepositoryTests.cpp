@@ -851,10 +851,10 @@ TEST_CASE_METHOD(SqliteRepositoryFixture,
                  "sqlite repository executes the grouped executadas report") {
     executeSql(path, R"SQL(
         INSERT INTO ssa_table VALUES
-            ('202500003','APV','','LOC-6','Casa de forca','EQ-F',202501,'2025-01-06','A','A','SEM','SMM','Ana','Bruno','Caio','SAM','SYS','f.xlsx','2025-01-06','A','B',202502,202503,0,0),
-            ('202500005','APV','','LOC-7','Casa de forca','EQ-G',202501,'2025-01-07','A','A','SEM','SMM2','Ana','Bruno','Caio','SAM','SYS','g.xlsx','2025-01-07','A','B',202502,202503,0,0),
-            ('202500005','APV','','LOC-7','Casa de forca','EQ-G',202503,'2025-01-07','A','A','SEM','SMM2','Ana','Bruno','Caio','SAM','SYS','g-copy.xlsx','2025-01-07','A','B',202502,202503,0,0),
-            ('202500006','APV','','LOC-8','Casa de forca','EQ-H',202501,'2025-01-08','A','A','SEM','SMM2','Ana','Bruno','','SAM','SYS','h.xlsx','2025-01-08','A','B',202502,202503,0,0);
+            ('202500003','STE','','LOC-6','Casa de forca','EQ-F',202501,'2025-01-06','A','A','SEM','SMM','Ana','Bruno','Caio','SAM','SYS','f.xlsx','2025-01-06','A','B',202502,202503,0,0),
+            ('202500005','STE','','LOC-7','Casa de forca','EQ-G',202501,'2025-01-07','A','A','SEM','SMM2','Ana','Bruno','Caio','SAM','SYS','g.xlsx','2025-01-07','A','B',202502,202503,0,0),
+            ('202500005','STE','','LOC-7','Casa de forca','EQ-G',202503,'2025-01-07','A','A','SEM','SMM2','Ana','Bruno','Caio','SAM','SYS','g-copy.xlsx','2025-01-07','A','B',202502,202503,0,0),
+            ('202500006','STE','','LOC-8','Casa de forca','EQ-H',202501,'2025-01-08','A','A','SEM','SMM2','Ana','Bruno','','SAM','SYS','h.xlsx','2025-01-08','A','B',202502,202503,0,0);
     )SQL");
 
     ssa::domain::SsaPageRequest request;

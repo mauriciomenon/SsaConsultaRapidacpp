@@ -67,8 +67,12 @@ TEST_CASE("activity analytics event metrics use their fixed source dimensions an
     const auto executed = builder.buildSeries(requestFor(AnalyticsMetric::Executed));
     checkContains(executed.sql, "\"setor_executor\"");
     checkContains(executed.sql, "\"semana_executada\"");
+    checkContains(executed.sql, "\"semana_programada\"");
+    checkContains(executed.sql, "COALESCE(");
+    checkContains(executed.sql, "IN ('STE', 'SES')");
     checkContains(executed.sql, "CAST(\"semana_executada\" AS INTEGER)");
-    checkContains(executed.sql, "BETWEEN ? AND ?");
+    checkContains(executed.sql, "BETWEEN CAST(? AS INTEGER) AND CAST(? AS INTEGER)");
+    checkContains(executed.sql, "sourced_rows AS");
     checkNotContains(executed.sql, "\"semana_executada\" BETWEEN ? AND ?");
     CHECK(executed.bindings == std::vector<std::string>{"202601", "202605", "202601", "202605"});
 }
@@ -84,10 +88,13 @@ TEST_CASE("activity analytics event series preserves a compiled source predicate
 
     const auto query = builder.buildSeries(request, sourceFilter);
 
-    checkContains(query.sql,
-                  R"(BETWEEN ? AND ? AND ("situacao" = ? AND "descricao_ssa" LIKE ? ESCAPE '\'))");
+    checkContains(query.sql, "sourced_rows AS");
+    checkContains(query.sql, R"(("situacao" = ? AND "descricao_ssa" LIKE ? ESCAPE '\'))");
+    checkContains(query.sql, "BETWEEN CAST(? AS INTEGER) AND CAST(? AS INTEGER)");
     checkContains(query.sql, "'unknown' AS \"registration_cohort\"");
-    CHECK(query.bindings == std::vector<std::string>{"202601", "202605", "APV", "%motor%", "Caio"});
+    checkContains(query.sql, "IN ('STE', 'SES')");
+    CHECK(query.bindings ==
+          std::vector<std::string>{"APV", "%motor%", "202601", "202605", "Caio"});
 }
 
 TEST_CASE("activity analytics preserves the source revision of each stock snapshot") {
@@ -304,16 +311,18 @@ TEST_CASE("activity analytics dimension queries use the selected metric period")
     checkContains(queries.divisions.sql, "SELECT DISTINCT \"division\" AS \"value\"");
     checkContains(queries.divisions.sql, "\"setor_executor\"");
     checkContains(queries.divisions.sql, "CAST(\"semana_executada\" AS INTEGER)");
-    checkContains(queries.divisions.sql, "BETWEEN ? AND ?");
+    checkContains(queries.divisions.sql, "\"semana_programada\"");
+    checkContains(queries.divisions.sql, "IN ('STE', 'SES')");
+    checkContains(queries.divisions.sql, "BETWEEN CAST(? AS INTEGER) AND CAST(? AS INTEGER)");
     CHECK(queries.divisions.bindings == std::vector<std::string>{"202601", "202605"});
     checkContains(queries.sectors.sql, "\"division\" IN (?)");
     checkContains(queries.sectors.sql, "\"setor_executor\"");
     checkContains(queries.sectors.sql, "CAST(\"semana_executada\" AS INTEGER)");
-    checkContains(queries.sectors.sql, "BETWEEN ? AND ?");
+    checkContains(queries.sectors.sql, "BETWEEN CAST(? AS INTEGER) AND CAST(? AS INTEGER)");
     CHECK(queries.sectors.bindings == std::vector<std::string>{"202601", "202605", "SMM"});
     checkContains(queries.people.sql, "\"responsavel_programacao\"");
     checkContains(queries.people.sql, "CAST(\"semana_executada\" AS INTEGER)");
-    checkContains(queries.people.sql, "BETWEEN ? AND ?");
+    checkContains(queries.people.sql, "BETWEEN CAST(? AS INTEGER) AND CAST(? AS INTEGER)");
     checkContains(queries.people.sql, "\"division\" IN (?)");
     checkContains(queries.people.sql, "\"sector\" IN (?)");
     CHECK(queries.people.bindings == std::vector<std::string>{"202601", "202605", "SMM", "SMM1"});
@@ -392,6 +401,19 @@ TEST_CASE("activity analytics snapshot metadata preserves incomplete partial att
     const auto pending = builder.buildSnapshotMetadata(request);
     checkContains(pending.sql, "AND \"complete\" = 1");
     CHECK(pending.bindings == std::vector<std::string>{"SSA", "pending", "202605"});
+}
+
+TEST_CASE("activity analytics executed metric requires STE/SES and falls back weeks") {
+    const ssa::query::ActivityAnalyticsSqlBuilder builder;
+    const auto executed = builder.buildSeries(requestFor(AnalyticsMetric::Executed));
+
+    checkContains(executed.sql, "IN ('STE', 'SES')");
+    checkContains(executed.sql, "COALESCE(");
+    checkContains(executed.sql, "\"semana_executada\"");
+    checkContains(executed.sql, "\"semana_programada\"");
+    checkContains(executed.sql, "\"semana_cadastro\"");
+    checkContains(executed.sql, "BETWEEN CAST(? AS INTEGER) AND CAST(? AS INTEGER)");
+    checkNotContains(executed.sql, "IN ('SCA'");
 }
 
 TEST_CASE("activity analytics snapshot metadata rejects event metrics") {

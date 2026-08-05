@@ -313,9 +313,15 @@ namespace ssa::query {
 
     SqlQuery SqlQueryBuilder::buildExecutadasReport(const domain::SsaPageRequest& request,
                                                     const bool byDivision) const {
-        const auto where = whereClauseFromRequest(request, parser_, predicateBuilder_);
-        const int first = request.advancedFilters.executionWeekStart.value_or(190001);
-        const int last = request.advancedFilters.executionWeekEnd.value_or(299952);
+        // Period bounds are applied by ActivityAnalytics Executed membership + week fallback.
+        // Do not also constrain the raw semana_executada column in the source predicate, or
+        // STE/SES rows without that column would be dropped before the fallback can run.
+        auto filteredRequest = request;
+        const int first = filteredRequest.advancedFilters.executionWeekStart.value_or(190001);
+        const int last = filteredRequest.advancedFilters.executionWeekEnd.value_or(299952);
+        filteredRequest.advancedFilters.executionWeekStart = std::nullopt;
+        filteredRequest.advancedFilters.executionWeekEnd = std::nullopt;
+        const auto where = whereClauseFromRequest(filteredRequest, parser_, predicateBuilder_);
         const domain::AnalyticsRequest analyticsRequest{
             .metric = domain::AnalyticsMetric::Executed,
             .period = {{first / domain::kYearWeekMultiplier, first % domain::kYearWeekMultiplier},
