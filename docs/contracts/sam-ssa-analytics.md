@@ -5,11 +5,11 @@
 | Item | Value |
 | --- | --- |
 | Purpose | Reusable factual knowledge for SAM, SSA import, filters, and analytics |
-| Status | VERIFIED BASELINE PLUS UNCOMMITTED WORKING-TREE FIXES; PARTIAL OWNER DECISIONS; OPEN CONFLICTS |
+| Status | VERIFIED BASELINE PLUS COMMITTED FIXES; PARTIAL OWNER DECISIONS; OPEN CONFLICTS |
 | Last verified date | 2026-08-09 |
 | Repository branch | master |
-| Repository HEAD | 2c93f51c9e6033da943f16738cce54c043ac896b |
-| Working-tree rule | Section 13.1 separates local changes from HEAD and external proof |
+| Implementation delivery baseline | 152f2da2e70372b9b9a8e4ddf1a2ef9293c19493 on master |
+| Evidence rule | Section 13.1 separates committed behavior, local validation, and external proof |
 | Companion plan | [SAM and SSA analytics alignment plan](../plans/2026-08-06-sam-ssa-analytics-alignment.md) |
 | Decision policy | A timeout, silence, or unanswered question is not a user decision |
 
@@ -50,7 +50,7 @@ meanings:
 - Treating the July 2026 SMIN report as a complete SAM formula specification.
 - Treating the generator outage calendar as an SSA deadline authority.
 - Implementing unresolved report formulas, schema migrations, or unrelated GUI layout changes.
-- Treating the narrow import-integrity and wording fixes recorded in section 13.1 as committed.
+- Treating any remaining OPEN business gate as decided by the committed technical fixes.
 - Deleting optional tools based only on static reachability.
 - Claiming Windows-only evidence proves Debian, macOS, or other architectures.
 
@@ -844,10 +844,10 @@ the conflicting row would violate current file atomicity unless the product cont
 | num_reprogramacoes | Known labels normalize; unsupported text can reach integer binding and fail visibly | GLM silent-filter consequence is FALSE for normal import |
 | Empty dates | Empty maps to absent/NULL | Intentional |
 | Invalid dates | Any nonempty invalid date rejects the row | Strict and intentional |
-| semana_cadastro with data_cadastro | Generic validation skips the week when a valid date exists | CONFIRMED at HEAD; FIXED IN WORKING TREE, uncommitted |
-| SAM year_week | Only six digits and week 1-53 are checked | CONFIRMED at HEAD; FIXED IN WORKING TREE with real ISO validation, uncommitted |
-| Advanced exact year/week | Year and 1-53 are composed without verifying whether week 53 exists | CONFIRMED at HEAD; FIXED IN WORKING TREE, uncommitted |
-| Related SSA | Mapper normalizes malformed value to empty and omits the key before writer validation | CONFIRMED at HEAD; FIXED IN WORKING TREE by preserving malformed nonempty text for existing rejection, uncommitted |
+| semana_cadastro with data_cadastro | Generic validation skips the week when a valid date exists | CONFIRMED at planning HEAD `2c93f51`; fixed in `ffdb594` |
+| SAM year_week | Only six digits and week 1-53 are checked | CONFIRMED at planning HEAD `2c93f51`; fixed with real ISO validation in `ffdb594` |
+| Advanced exact year/week | Year and 1-53 are composed without verifying whether week 53 exists | CONFIRMED at planning HEAD `2c93f51`; fixed in `ffdb594` |
+| Related SSA | Mapper normalizes malformed value to empty and omits the key before writer validation | CONFIRMED at planning HEAD `2c93f51`; fixed in `ffdb594` by preserving malformed nonempty text for existing rejection |
 | Todas as SSAs carve-out | Filename substring grants SCC/ADI/ASE incomplete-summary exemption | CONFIRMED broad source-name policy |
 | Unknown numeric comparison mode | Normalizes to equals | CONFIRMED fail-closed/fail-open policy question |
 
@@ -1008,8 +1008,8 @@ closely resembles the July SMIN dashboard, not the twelve desired SAM report set
 | Severity | Finding | State and evidence |
 | --- | --- | --- |
 | HIGH | Dashboard request passes reportPeriod as both report and history period | CONFIRMED at HEAD and working tree: [ActivityAnalyticsViewModel.cpp](../../src/presentation/ActivityAnalyticsViewModel.cpp#L760) |
-| HIGH | Atrasadas por area selects PendingDeadline but does not filter only overdue class | Label defect CONFIRMED at HEAD; renamed to Prazo das pendentes por area in the uncommitted working tree, with formula unchanged: [AnalyticsCustomAnalysis.qml](../../app/desktop/qml/analytics/AnalyticsCustomAnalysis.qml#L744) |
-| HIGH | Prazo das pendentes em percentual is count composition, not remaining-time percentage | Label defect CONFIRMED at HEAD; renamed to Distribuicao percentual do prazo das pendentes in the uncommitted working tree, with denominator unchanged: [AnalyticsDashboard.qml](../../app/desktop/qml/analytics/AnalyticsDashboard.qml#L82) |
+| HIGH | Atrasadas por area selects PendingDeadline but does not filter only overdue class | Label defect CONFIRMED at planning HEAD `2c93f51`; renamed to Prazo das pendentes por area in `3ff8ab1`, with formula unchanged: [AnalyticsCustomAnalysis.qml](../../app/desktop/qml/analytics/AnalyticsCustomAnalysis.qml#L744) |
+| HIGH | Prazo das pendentes em percentual is count composition, not remaining-time percentage | Label defect CONFIRMED at planning HEAD `2c93f51`; renamed to Distribuicao percentual do prazo das pendentes in `3ff8ab1`, with denominator unchanged: [AnalyticsDashboard.qml](../../app/desktop/qml/analytics/AnalyticsDashboard.qml#L82) |
 | HIGH | Availability exists in the ViewModel but QML does not load it before offering Partial attention | CONFIRMED at HEAD and working tree: the invokable exists, but no QML loadAvailability call was found: [ActivityAnalyticsViewModel.cpp](../../src/presentation/ActivityAnalyticsViewModel.cpp#L644) |
 | HIGH | NotApplicableOrUnknown combines a valid functional result with data-quality failure | OPEN: [ActivityAnalyticsTypes.h](../../src/domain/ActivityAnalyticsTypes.h#L67) |
 | MEDIUM | Colors resemble SAM but use fixed day classes | OPEN in current SQL/chart behavior |
@@ -1102,11 +1102,11 @@ CSV actions fit at 1580x940. It remains runtime evidence, not a golden-pixel con
 | A | numero_desvios | PARTIAL | Prefix and zero labels are supported; suffix form 2 desvios is omitted |
 | B | num_reprogramacoes | PARTIAL/FALSE consequence | Unsupported text can fail integer binding visibly; normal import does not silently hide it only at filter time |
 | C | dates empty versus invalid | CONFIRMED behavior | This is a deliberate NULL versus invalid-row distinction, not automatically inconsistent |
-| D | semana_cadastro validation | CONFIRMED at HEAD | Week can escape validation when data_cadastro exists; the generic, SAM, and advanced real-ISO gaps are fixed in the uncommitted working tree |
+| D | semana_cadastro validation | CONFIRMED at planning HEAD `2c93f51` | Week could escape validation when data_cadastro existed; the generic, SAM, and advanced real-ISO gaps are fixed in `ffdb594` |
 | E | !STE general versus column | FALSE as two current canonical semantics | Both canonical paths can be not-contains; only legacy raw persisted UI drift remains PARTIAL |
 | F | quick sector equals versus contains | STALE/PARTIAL | Normal saved UI is migrated to equals; direct request still contains |
 | G | Executed status membership | FALSE/STABLE | Executed is intentionally STE/SES and pending excludes terminal/canceled states |
-| H | malformed related SSA | CONFIRMED at HEAD | Mapper erases invalid text before writer validation; the uncommitted working tree preserves it for explicit rejection |
+| H | malformed related SSA | CONFIRMED at planning HEAD `2c93f51` | Mapper erased invalid text before writer validation; `ffdb594` preserves it for explicit rejection |
 | I | Todas as SSAs carve-out | CONFIRMED | Filename substring grants special incomplete-row handling |
 | J | unknown numeric mode | CONFIRMED | Falls back to equals |
 | K | exclusion auto-off | CONFIRMED intentional | Resolves explicit-status contradiction |
@@ -1141,14 +1141,14 @@ Historical claims must not be copied into a new plan without rechecking the curr
 
 | Severity | Finding at HEAD | Current disposition |
 | --- | --- | --- |
-| HIGH | Malformed related SSA is normalized to empty and omitted before writer validation | FIXED IN WORKING TREE, uncommitted: preserve malformed nonempty source text so existing writer validation rejects it visibly |
-| LOW/P3 | Malformed primary SSA plus empty description can be mistaken for a continuation row before validation | FIXED IN WORKING TREE, uncommitted: preserve malformed nonempty primary text until the existing row validator counts and rejects it |
-| HIGH | SAM multi-sector refresh can commit valid siblings after a sibling operational error or duplicate conflict | FIXED IN WORKING TREE, uncommitted: SAM batches use outer rollback; generic incremental file isolation is preserved |
+| HIGH | Malformed related SSA is normalized to empty and omitted before writer validation | FIXED IN `ffdb594`: preserve malformed nonempty source text so existing writer validation rejects it visibly |
+| LOW/P3 | Malformed primary SSA plus empty description can be mistaken for a continuation row before validation | FIXED IN `ffdb594`: preserve malformed nonempty primary text until the existing row validator counts and rejects it |
+| HIGH | SAM multi-sector refresh can commit valid siblings after a sibling operational error or duplicate conflict | FIXED IN `ffdb594`: SAM batches use outer rollback; generic incremental file isolation is preserved |
 | HIGH | SAM status vocabulary conflicts with the domain: AIP/ASI versus ALE/ASL, plus SCC omission | OPEN under D-08 and D-09; no alias or status was invented |
 | HIGH | Equal-snapshot different indicator values depend on import order | OPEN under D-04; no winner was selected |
 | MEDIUM | SAM manifest proof does not bind its decision to the exact artifact bytes later parsed | OPEN for controlled reproduction; metadata checks do not prove a manifest-to-byte binding |
-| MEDIUM | SAM and generic import accept a syntactic week 53 in a year without ISO week 53 | FIXED IN WORKING TREE, uncommitted; 2020-W53 passes and 2021-W53 rejects |
-| MEDIUM | Advanced exact and year-only filters can compose an impossible week 53 | FIXED IN WORKING TREE, uncommitted; year-only upper bound now uses the real final ISO week |
+| MEDIUM | SAM and generic import accept a syntactic week 53 in a year without ISO week 53 | FIXED IN `ffdb594`; 2020-W53 passes and 2021-W53 rejects |
+| MEDIUM | Advanced exact and year-only filters can compose an impossible week 53 | FIXED IN `ffdb594`; year-only upper bound now uses the real final ISO week |
 | LOW | Original-path identity can change after staging and before later consolidation actions | OPEN as a narrow lifecycle risk; no database parse reads the later original bytes |
 | LOW | Canonical lock path can diverge from a later original path if a symlink parent is retargeted | OPEN theoretical path-lifecycle risk; no reproduced exploit or data error |
 
@@ -1225,11 +1225,14 @@ observed values decide whether a category has no occurrences; trend values remai
 | Full activity-analytics window suite | 41 of 41 passed; 0 failed | Native Windows amd64 offscreen runtime |
 | Custom-report visual artifact | 1580x940 PNG generated and inspected | Windows fonts plus Qt Basic style; not a golden baseline |
 | Exact writer regression | Passed in ActivityAnalyticsViewModelTest | Proves atomic replacement and byte-exact CRLF output |
-| Final clean Windows dev build | 575 of 575 build steps passed | Native Windows 11 amd64, MSVC, Qt 6.11.1; built from the uncommitted working tree |
+| Final clean Windows dev build | 575 of 575 build steps passed | Native Windows 11 amd64, MSVC, Qt 6.11.1; identical source later committed in `ffdb594` and `3ff8ab1` |
 | Malformed primary SSA focused regressions | 2 of 2 passed | Mapper counts the row invalid and full rescan preserves the previous database |
 | Final full Windows CTest | 657 of 657 passed; 0 failed; 5 symlink contracts skipped; 125.26 s | Native Windows amd64; skips are explicit platform-dependent contracts |
 | Final zero/trend QML window suite | 41 of 41 passed; 0 failed; 49.90 s | Observed zero hides even with nonzero trend; null stays visible; zero list remains complete |
 | Final custom-report visual artifact | 1580x940 PNG regenerated and inspected | Chart, main table, four-zero table, and CSV actions are visible without clipping |
+| Clean Windows release build | 575 of 575 build steps passed | Native Windows 11 amd64, MSVC, Qt 6.11.1; manifest commit `152f2da2e703` |
+| Full Windows release CTest | 657 of 657 passed; 0 failed; 5 symlink contracts skipped; 110.30 s | Same explicit platform-dependent skips as the dev gate |
+| Windows release package | ZIP, portable, installer, and standalone generated | Version 0.9.17; portable `--version` passed; ZIP contains 1,660 entries; SHA256SUMS matches every top-level artifact |
 
 The focused tests prove the narrow working-tree fixes. They do not prove the desired SAM formulas,
 every SAM end-to-end branch, reverse-order database equivalence, other native platforms, or visual
@@ -1240,11 +1243,12 @@ glyph correctness.
 | Tool | Result | Qualification |
 | --- | --- | --- |
 | Semgrep | Final changed-production scan: 62 rules, 6 files, zero findings | Complete for changed production files; an earlier broad scan timed out on large files and is not repo-wide proof |
-| Gitleaks | Zero leaks across approximately 2.74 GB scanned | Completed for the repository working tree |
-| TruffleHog | Git history plus all 16 changed or new files: zero verified or unverified secrets | Completed |
-| detect-secrets | All 16 changed or new files passed; baseline hash stayed identical to HEAD | Nonmutating invocation; `.secrets.baseline` was not edited |
-| Codex Security diff gate | Scan `57dc551a-2b4e-4255-b399-e4c53d9edf84`: complete 14-file runtime-diff coverage; 2 LOW/P3 findings | Primary-SSA omission fixed after snapshot; report-cardinality limit remains OPEN pending measured product threshold |
-| CodeRabbit CLI | Not run | Official installer rejected MSYS_NT; no CLI was available |
+| Gitleaks | Zero leaks across 2,550,886,647 bytes | Completed for the repository working tree |
+| TruffleHog | Git history and all 24 deliverable files: zero verified or unknown secrets | Completed without timeout |
+| detect-secrets | All 24 deliverable files passed; baseline blob stayed `1a733dfdeddb2724754ce038f5e56ec1606082fa` | Nonmutating invocation; `.secrets.baseline` was not edited |
+| Codex Security final diff gate | Scan `a0e610eb-96d0-4741-9fcd-559089775dd3`: complete 14-file runtime-diff coverage; 1 LOW/P3 finding | Malformed-primary omission is closed; report cardinality remains OPEN pending a measured product threshold |
+| CodeRabbit CLI | Unavailable | `coderabbit` was not installed on the native Windows host; no CodeRabbit finding count is claimed |
+| C++ and QML static gate | diff-check, clang-format, qmlformat, all_qmllint, clang-tidy, and native cppcheck completed | Zero new diagnostic in changed lines; 12 P3 clang-tidy diagnostics are pre-existing and outside the patch; the WSL-bound cppcheck hook itself remains a harness issue |
 
 Zero findings from an incomplete scanner must not be described as proof of absence.
 
@@ -1369,3 +1373,4 @@ Before a future agent claims a SAM report is implemented:
 | 2026-08-06 | 2c93f51c9e6033da943f16738cce54c043ac896b | Initial verified knowledge base from PDFs, user specification, GLM audit, direct source inspection, tests, scanners, and independent agents |
 | 2026-08-07 | 2c93f51c9e6033da943f16738cce54c043ac896b | Added primary calendar research, operational/corpus evidence, corrected GLM classifications, narrow uncommitted integrity/ISO/label fixes, and explicit working-tree validation |
 | 2026-08-09 | 2c93f51c9e6033da943f16738cce54c043ac896b | Added custom-report zero/table/CSV/ISO-month behavior, malformed-primary validation, final Windows build/test evidence, and sealed Codex Security findings while preserving open business gates |
+| 2026-08-09 | 152f2da2e70372b9b9a8e4ddf1a2ef9293c19493 | Committed the import/ISO, analytics, and separate documentation slices; generated and verified the full Windows release package; preserved every undecided business gate |

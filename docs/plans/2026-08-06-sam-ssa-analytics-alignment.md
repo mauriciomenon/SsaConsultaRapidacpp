@@ -4,11 +4,12 @@
 
 | Item | Value |
 | --- | --- |
-| Status | ACTIVE WORKING TREE, SOME DECISIONS CLOSED, NOT COMMITTED |
-| Date | 2026-08-07 |
+| Status | ACTIVE REUSABLE PLAN; NONCONTROVERSIAL SLICES COMMITTED; OPEN GATES PRESERVED |
+| Date | 2026-08-09 |
 | Last decision update | 2026-08-09 |
 | Branch at planning time | master |
-| HEAD at planning time | 2c93f51c9e6033da943f16738cce54c043ac896b |
+| Initial planning HEAD | 2c93f51c9e6033da943f16738cce54c043ac896b |
+| Implementation delivery baseline | 152f2da2e70372b9b9a8e4ddf1a2ef9293c19493 |
 | Knowledge contract | [SAM and SSA Analytics Knowledge Base](../contracts/sam-ssa-analytics.md) |
 | Production edits authorized by this document | None |
 | Narrow edits authorized by the user | Primary/related-SSA visibility, SAM batch atomicity, real ISO-week validation, truthful labels, import-result accounting, and custom-report zero/table/CSV/ISO-month behavior |
@@ -81,18 +82,18 @@ Critical current strengths:
 - analytics availability can represent an incomplete source;
 - current focused tests are green at the planning HEAD.
 
-Critical HEAD gaps and their current working-tree disposition:
+Critical gaps at the initial planning HEAD and their delivery disposition:
 
-- malformed primary or related SSA can disappear at HEAD; fixed and tested in the uncommitted working tree;
+- malformed primary or related SSA could disappear at `2c93f51`; fixed, tested, and committed in `ffdb594`;
 - equal-snapshot indicator conflicts are order-dependent;
-- SAM sector artifacts are not batch-atomic at HEAD; fixed and tested in the uncommitted working
-  tree;
+- SAM sector artifacts were not batch-atomic at `2c93f51`; fixed, tested, and committed in
+  `ffdb594`;
 - SAM status vocabulary conflicts with the domain/manual;
-- real ISO-week validation is inconsistent at HEAD; fixed and tested in the uncommitted working
-  tree;
+- real ISO-week validation was inconsistent at `2c93f51`; fixed, tested, and committed in
+  `ffdb594`;
 - historical reports lack event evidence;
-- two dashboard labels imply SAM formulas at HEAD; renamed without formula/layout change in the
-  uncommitted working tree;
+- two dashboard labels implied SAM formulas at `2c93f51`; renamed without formula/layout change
+  and committed in `3ff8ab1`;
 - dashboard history-period reuse, availability loading, and generic executed-history fallback
   remain open.
 
@@ -128,10 +129,10 @@ further if its predicted diff grows beyond one coherent behavior.
 
 Status:
 
-- Knowledge and plan documents updated in the working tree through 2026-08-07.
-- Every business conflict and decision gate remains OPEN.
+- Knowledge and plan documents updated through the 2026-08-09 delivery gate.
+- D-01, D-03, and D-14 are decided; every other business conflict and decision gate remains OPEN.
 - Source behavior changed only in the later approved narrow slices recorded below.
-- Neither document is committed at HEAD.
+- Both documents are committed in `152f2da`.
 
 Files:
 
@@ -158,9 +159,9 @@ Goal:
 
 Status on 2026-08-07:
 
-- malformed related-SSA reproduction and regression coverage: COMPLETE IN WORKING TREE;
-- SAM valid-sibling plus later operational failure rollback test: COMPLETE IN WORKING TREE;
-- 2020-W53/2021-W53 domain, import, SAM, and advanced-filter coverage: COMPLETE IN WORKING TREE;
+- malformed related-SSA reproduction and regression coverage: COMPLETE IN `ffdb594`;
+- SAM valid-sibling plus later operational failure rollback test: COMPLETE IN `ffdb594`;
+- 2020-W53/2021-W53 domain, import, SAM, and advanced-filter coverage: COMPLETE IN `ffdb594`;
 - equal-snapshot reverse-order permanent test: DEFERRED until D-04 defines the expected winner;
 - ALE/ASL/AIP/ASI/SCC behavior: source-characterized, but no desired assertion while D-08/D-09
   remain open;
@@ -213,7 +214,7 @@ Goal:
 
 Status on 2026-08-07:
 
-- IMPLEMENTED AND VALIDATED IN WORKING TREE; NOT COMMITTED.
+- IMPLEMENTED, VALIDATED, AND COMMITTED IN `ffdb594`.
 - The mapper keeps trimmed malformed nonempty text so the existing writer validation rejects it.
 - Empty optional and valid canonical references keep their previous behavior.
 - Read-only corpus inventory found zero malformed recognized edges in 174 unique specialized
@@ -320,8 +321,8 @@ Gates:
 
 Status on 2026-08-07:
 
-- batch atomicity: IMPLEMENTED AND VALIDATED IN WORKING TREE; NOT COMMITTED;
-- real ISO-week validation: IMPLEMENTED AND VALIDATED IN WORKING TREE; NOT COMMITTED;
+- batch atomicity: IMPLEMENTED, VALIDATED, AND COMMITTED IN `ffdb594`;
+- real ISO-week validation: IMPLEMENTED, VALIDATED, AND COMMITTED IN `ffdb594`;
 - SAM status vocabulary and SCC: NOT CHANGED; D-08/D-09 remain OPEN;
 - the portable Windows test covers a later operational-error rollback, while the older
   POSIX-guarded end-to-end block remains a cross-platform coverage gap.
@@ -440,7 +441,7 @@ Gate:
 
 Status on 2026-08-07:
 
-- Two misleading labels: FIXED AND VALIDATED IN WORKING TREE; NOT COMMITTED.
+- Two misleading labels: FIXED, VALIDATED, AND COMMITTED IN `3ff8ab1`.
 - Formula, denominator, layout, and selection behavior: unchanged.
 - reportPeriod reused as historyPeriod: still CONFIRMED and OPEN.
 - QML does not load availability before offering Partial attention: still CONFIRMED and OPEN.
@@ -888,27 +889,28 @@ Current-round evidence:
 
 | Requirement | Working tree | HEAD | Validated locally this round | External proof |
 | --- | --- | --- | --- | --- |
-| Knowledge and separate reusable plan | Present | Not committed | ASCII, whitespace, structure, link, and content review | Primary manuals, supplied reports, official calendar/law sources |
-| Malformed related SSA remains visible | Implemented | Absent at HEAD | Mapper/writer/workflow focused tests pass | Not applicable |
-| Malformed primary SSA remains visible with empty description | Implemented | Absent at HEAD | Mapper invalid-row and full-rescan rollback regressions pass | Codex Security LOW/P3 finding remediated after sealed snapshot |
-| SAM multi-sector operational failure is atomic | Implemented | Absent at HEAD | Portable rollback test passes; generic isolation regression passes | Not applicable |
-| Real ISO week validation in domain, generic import, SAM, and filters | Implemented | Absent at HEAD | 2020-W53 accepted; 2021-W53 rejected; portable SAM regression passes | Qt QDate ISO rule |
-| Two generic analytics labels match their actual count formulas | Implemented | Old labels at HEAD | all_qmllint, incremental build, and 3 QML offscreen tests pass | Not applicable |
-| Import result matches rollback state | Implemented | Inflated/under-described result at HEAD | Focused SAM invalid-row and later-workbook rollback regressions pass | Not applicable |
-| Custom report zero/table/CSV behavior | Implemented | Options and CSV absent at HEAD | Configured qmllint; focused 6/6; window suite 41/41; visual PNG inspected | Qt QSaveFile behavior |
-| Dynamic ISO reference-month navigation | Implemented | ViewModel helper absent and fake used fixed W01-W04 at HEAD | December 2020 W49-W53 and January 2021 W01-W04 pass | Qt QDate ISO Thursday rule |
-| D-01 through D-16 business choices | D-01, D-03, and D-14 decided; remaining gates preserved OPEN | No choice embedded | Decisions trace to the owner's 2026-08-09 response; timeout selected nothing | Additional sources do not decide D-02/D-10/D-16 |
-| Current Windows development executable | Built from the uncommitted working tree | Not represented by HEAD alone | Clean MSVC amd64 build 575/575; full CTest 657/657 with 5 explicit skips; QML window 41/41 | No package or external service proof yet |
-| Analytics report cardinality | Unbounded mechanism documented; no arbitrary cap added | Same unbounded contract at HEAD | Codex Security LOW/P3 source trace; no threshold benchmark exists | OPEN product decision based on measured legitimate cardinality |
-| .secrets.baseline protection | Unchanged | Same bytes | Hash and git diff verification required at final gate | Not applicable |
+| Knowledge and separate reusable plan | Clean | Committed in `152f2da` | ASCII, whitespace, structure, link, and content review | Primary manuals, supplied reports, official calendar/law sources |
+| Malformed related SSA remains visible | Clean | Committed in `ffdb594` | Mapper/writer/workflow focused tests pass | Not applicable |
+| Malformed primary SSA remains visible with empty description | Clean | Committed in `ffdb594` | Mapper invalid-row and full-rescan rollback regressions pass | Final Codex Security scan closes the prior LOW/P3 path |
+| SAM multi-sector operational failure is atomic | Clean | Committed in `ffdb594` | Portable rollback test passes; generic isolation regression passes | Not applicable |
+| Real ISO week validation in domain, generic import, SAM, and filters | Clean | Committed in `ffdb594` | 2020-W53 accepted; 2021-W53 rejected; portable SAM regression passes | Qt QDate ISO rule |
+| Two generic analytics labels match their actual count formulas | Clean | Committed in `3ff8ab1` | all_qmllint, clean release build, and QML offscreen tests pass | Not applicable |
+| Import result matches rollback state | Clean | Committed in `ffdb594` | Focused SAM invalid-row and later-workbook rollback regressions pass | Not applicable |
+| Custom report zero/table/CSV behavior | Clean | Committed in `3ff8ab1` | Configured qmllint; window suite 41/41; release CTest; visual PNG inspected | Qt QSaveFile behavior |
+| Dynamic ISO reference-month navigation | Clean | Committed in `3ff8ab1` | December 2020 W49-W53 and January 2021 W01-W04 pass | Qt QDate ISO Thursday rule |
+| D-01 through D-16 business choices | Clean | D-01, D-03, and D-14 recorded in `152f2da`; remaining gates OPEN | Decisions trace to the owner's 2026-08-09 response; timeout selected nothing | Additional sources do not decide D-02/D-10/D-16 |
+| Windows development executable | Clean | Source represented by `ffdb594` and `3ff8ab1` | Clean MSVC amd64 build 575/575; full CTest 657/657 with 5 explicit skips; QML window 41/41 | Not applicable |
+| Windows release package | Clean | Manifest commit `152f2da2e703` | Clean release 575/575; CTest 657/657; ZIP/portable/installer/standalone hashes match SHA256SUMS | Portable reports version 0.9.17; Authenticode remains absent |
+| Analytics report cardinality | Clean | Unbounded contract remains explicit in `3ff8ab1` | Final Codex Security LOW/P3 source trace; no threshold benchmark exists | OPEN product decision based on measured legitimate cardinality |
+| .secrets.baseline protection | Clean | Blob `1a733dfdeddb2724754ce038f5e56ec1606082fa` unchanged | Gitleaks, detect-secrets, and TruffleHog clean | Not applicable |
 
 ## 14. Current to-do
 
 | Order | Item | State | Blocker |
 | --- | --- | --- | --- |
-| 1 | Finish full diff review, scanners, and final status evidence | IN PROGRESS | Codex Security sealed 2 LOW/P3 findings; one fixed, cardinality OPEN; final scanners and CodeRabbit remain |
+| 1 | Finish full diff review, scanners, and final status evidence | COMPLETE | CodeRabbit is explicitly unavailable; no false clean result is claimed |
 | 2 | Review and accept the two S0 documents | READY FOR USER REVIEW | User review |
-| 3 | Complete only noncontroversial S1/S2/S4/S6 work authorized for this round | COMPLETE IN WORKING TREE | Commit remains separate |
+| 3 | Complete only noncontroversial S1/S2/S4/S6 work authorized for this round | COMPLETE AND COMMITTED | `ffdb594` and `3ff8ab1` |
 | 4 | Resolve D-08/D-09 before SAM vocabulary edit | OPEN | Versioned business/API evidence |
 | 5 | Resolve D-04 before deterministic winner edit | OPEN | Explicit decision |
 | 6 | Implement elapsed-time/color core; resolve D-02 before business-calendar adapter | PARTIALLY UNBLOCKED | D-01/D-03/D-14 decided; D-02 remains OPEN |
@@ -916,7 +918,7 @@ Current-round evidence:
 | 8 | Resolve D-12 before historical schema | OPEN | Event source authority |
 | 9 | Resolve D-15/D-16 before approval/simple-execution formulas | OPEN | Business decisions |
 | 10 | Keep Ponytail cleanup separate | RECORDED | Separate request |
-| 11 | Commit and push validated slices on current master | PENDING FINAL GATE | Full clean build, package, scanners, and diff audit |
+| 11 | Commit and push validated slices on current master | COMPLETE | `origin/master` and `bitbucket/master` verified at `152f2da` before this documentation-only closeout |
 
 ## 15. Residual risks
 
