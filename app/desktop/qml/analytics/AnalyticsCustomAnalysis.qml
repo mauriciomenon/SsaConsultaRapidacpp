@@ -1214,7 +1214,6 @@ Item {
                 chartModel: root.analyticsViewModel.customSeries
                 hideZeroCategories: root.hideZeroCategories
                 showExportActions: customChart.hasData
-                tableVisible: true
                 fileWriter: (path, content) => root.analyticsViewModel.writeExportFile(path, content)
                 itemGrabber: (item, path) => ChartImageExport.grabItemToFile(item, path)
                 svgGrabber: (item, path) => ChartImageExport.grabItemToSvgFile(item, path)

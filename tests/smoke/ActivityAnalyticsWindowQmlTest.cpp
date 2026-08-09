@@ -1557,6 +1557,7 @@ namespace {
             QVERIFY(chart != nullptr);
 
             QCOMPARE(chart->property("chartType").toString(), QStringLiteral("bar"));
+            QCOMPARE(chart->property("tableVisible").toBool(), false);
             QVERIFY(invoke(*custom, "setGrainIndex", 1));
             QTRY_COMPARE_WITH_TIMEOUT(chart->property("chartType").toString(),
                                       QStringLiteral("bar"), 1000);
