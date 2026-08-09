@@ -236,6 +236,25 @@ namespace {
                      QStringLiteral("202631"));
         }
 
+        void organizationalUnitLabelsDifferentiateMaintenanceDepartments() {
+            const auto port = std::make_shared<FunctionalAnalyticsPort>();
+            const ssa::presentation::ActivityAnalyticsViewModel model(serviceFor(port));
+
+            const auto engineering = model.organizationalUnitLabel(QStringLiteral("iee3"));
+            const auto maintenance = model.organizationalUnitLabel(QStringLiteral("MEL4"));
+            const auto division = model.organizationalUnitLabel(QStringLiteral("IEE"));
+
+            QCOMPARE(engineering,
+                     QStringLiteral("IEE3 - Engenharia de Manutencao Eletronica - Comunicacao\n"
+                                    "Departamento de Engenharia de Manutencao (SMI.DT)"));
+            QCOMPARE(maintenance,
+                     QStringLiteral("MEL4 - Manutencao Eletronica - Sistemas Digitais\n"
+                                    "Departamento de Manutencao (SMM.DT)"));
+            QVERIFY(
+                division.startsWith(QStringLiteral("IEE - Engenharia de Manutencao Eletronica")));
+            QCOMPARE(model.organizationalUnitLabel(QStringLiteral("XYZ9")), QStringLiteral("XYZ9"));
+        }
+
         void yearToDateSelectionUsesFirstIsoWeekThroughCurrentWeek() {
             const auto port = std::make_shared<FunctionalAnalyticsPort>();
             const ssa::presentation::ActivityAnalyticsViewModel model(serviceFor(port));
@@ -768,7 +787,7 @@ namespace {
             QTRY_VERIFY_WITH_TIMEOUT(!model.loading(), 1000);
             const auto result = model.customSeries();
             QCOMPARE(result.value(QStringLiteral("categories")).toStringList(),
-                     QStringList({QStringLiteral("DIV / AREA-A"), QStringLiteral("DIV / AREA-B")}));
+                     QStringList({QStringLiteral("AREA-A"), QStringLiteral("AREA-B")}));
             const auto series = result.value(QStringLiteral("series")).toList();
             QCOMPARE(series.size(), 3);
             QCOMPARE(series.at(0).toMap().value(QStringLiteral("name")).toString(),

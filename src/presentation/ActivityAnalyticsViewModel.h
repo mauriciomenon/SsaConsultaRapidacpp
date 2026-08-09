@@ -75,6 +75,7 @@ namespace ssa::presentation {
         Q_INVOKABLE [[nodiscard]] QVariantMap currentIsoMonthSelection() const;
         Q_INVOKABLE [[nodiscard]] QVariantMap lastTwelveIsoMonthsSelection() const;
         Q_INVOKABLE [[nodiscard]] QVariantList isoYearCalendar(int year) const;
+        Q_INVOKABLE [[nodiscard]] QString organizationalUnitLabel(const QString& code) const;
         Q_INVOKABLE void clearCustomSeries();
         Q_INVOKABLE [[nodiscard]] QString customChartTitle(const QVariantMap& selection) const;
         Q_INVOKABLE bool writeExportFile(const QString& path, const QString& content) const;

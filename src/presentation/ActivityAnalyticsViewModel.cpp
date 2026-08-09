@@ -1,6 +1,7 @@
 #include "presentation/ActivityAnalyticsViewModel.h"
 
 #include "application/ActivityAnalyticsChartModelBuilder.h"
+#include "domain/SamOrganizationalUnits.h"
 
 #include <QDate>
 #include <QDebug>
@@ -133,6 +134,10 @@ namespace ssa::presentation {
             return {{QStringLiteral("divisions"), stringList(values.divisions)},
                     {QStringLiteral("sectors"), stringList(values.sectors)},
                     {QStringLiteral("people"), stringList(values.people)}};
+        }
+
+        QString stringViewText(const std::string_view value) {
+            return QString::fromLatin1(value.data(), static_cast<qsizetype>(value.size()));
         }
 
         QVariantList
@@ -766,6 +771,37 @@ namespace ssa::presentation {
         return months;
     }
 
+    QString ActivityAnalyticsViewModel::organizationalUnitLabel(const QString& rawCode) const {
+        auto code = rawCode.trimmed().toUpper();
+        if (code.isEmpty()) {
+            return {};
+        }
+        if (code == QStringLiteral("SMI")) {
+            return QStringLiteral("SMI - Departamento de Engenharia de Manutencao\n"
+                                  "Superintendencia de Manutencao (SM.DT)");
+        }
+        if (code == QStringLiteral("SMM")) {
+            return QStringLiteral("SMM - Departamento de Manutencao\n"
+                                  "Superintendencia de Manutencao (SM.DT)");
+        }
+
+        const auto bytes = code.toLatin1();
+        const auto view =
+            std::string_view{bytes.constData(), static_cast<std::size_t>(bytes.size())};
+        const auto* unit = domain::samOrganizationalUnit(view);
+        QByteArray divisionCode;
+        if (unit == nullptr && code.size() == 3) {
+            divisionCode = bytes + '0';
+            unit = domain::samOrganizationalUnit(std::string_view{
+                divisionCode.constData(), static_cast<std::size_t>(divisionCode.size())});
+        }
+        if (unit == nullptr) {
+            return code;
+        }
+        return code + QStringLiteral(" - ") + stringViewText(unit->name) + QStringLiteral("\n") +
+               stringViewText(domain::samOrganizationGroupName(unit->group));
+    }
+
     void ActivityAnalyticsViewModel::clearCustomSeries() {
         if (customSeries_.isEmpty()) {
             return;
@@ -968,8 +1004,7 @@ namespace ssa::presentation {
         if (warningWindowLoadSucceeded.has_value()) {
             emit warningWindowLoadFinished(*warningWindowLoadSucceeded);
         }
-        QMetaObject::invokeMethod(
-            this, [this] { pruneCompleted(); }, Qt::QueuedConnection);
+        QMetaObject::invokeMethod(this, [this] { pruneCompleted(); }, Qt::QueuedConnection);
     }
 
     void ActivityAnalyticsViewModel::stop(Operation& operation) {

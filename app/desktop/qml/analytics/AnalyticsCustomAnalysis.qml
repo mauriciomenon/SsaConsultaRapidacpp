@@ -27,6 +27,8 @@ Item {
     property var selectedDivisions: []
     property var selectedSectors: []
     property var selectedPeople: []
+    property string divisionSearchText: ""
+    property string sectorSearchText: ""
     property bool initialDimensionsRequested: false
     property bool metricInitialized: false
     property bool quickPresetWaitingForDimensions: false
@@ -57,6 +59,7 @@ Item {
 
         required property string value
         required property string optionObjectName
+        property string displayText: value
         property bool checked: false
         signal toggled(bool selected)
 
@@ -74,7 +77,7 @@ Item {
         radius: Theme.radius
         activeFocusOnTab: true
         Accessible.role: Accessible.CheckBox
-        Accessible.name: value
+        Accessible.name: displayText
         Accessible.checked: checked
 
         Rectangle {
@@ -107,7 +110,7 @@ Item {
             anchors.leftMargin: 8
             anchors.rightMargin: 7
             anchors.verticalCenter: parent.verticalCenter
-            text: selectionOption.value
+            text: selectionOption.displayText
             textFormat: Text.PlainText
             color: selectionOption.optionForeground
             font.family: Theme.fontFamily
@@ -424,6 +427,18 @@ Item {
     function dimensionList(key) {
         const values = root.analyticsViewModel.dimensionValues;
         return values && values[key] ? values[key] : [];
+    }
+
+    function organizationalUnitLabel(value) {
+        return root.analyticsViewModel.organizationalUnitLabel(String(value));
+    }
+
+    function filteredDimensionList(key, query) {
+        const values = root.dimensionList(key);
+        const normalized = query.trim().toLocaleLowerCase();
+        if (normalized.length === 0)
+            return values;
+        return values.filter(value => root.organizationalUnitLabel(value).toLocaleLowerCase().includes(normalized));
     }
 
     onActiveChanged: {
@@ -998,7 +1013,7 @@ Item {
 
                 Rectangle {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 176
+                    Layout.preferredHeight: 216
                     color: Theme.panel
                     border.color: Theme.border
                     radius: Theme.radius
@@ -1011,6 +1026,13 @@ Item {
                             text: qsTr("Divisoes")
                             color: Theme.text
                             font.bold: true
+                        }
+                        AppTextField {
+                            objectName: "analyticsDivisionSearch"
+                            Layout.fillWidth: true
+                            placeholderText: qsTr("Pesquisar codigo, nome ou departamento")
+                            text: root.divisionSearchText
+                            onTextEdited: root.divisionSearchText = text
                         }
                         RowLayout {
                             Layout.fillWidth: true
@@ -1033,15 +1055,17 @@ Item {
                             }
                         }
                         ListView {
+                            objectName: "analyticsDivisionList"
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             clip: true
-                            model: root.dimensionList("divisions")
+                            model: root.filteredDimensionList("divisions", root.divisionSearchText)
                             ScrollBar.vertical: ScrollBar {}
 
                             delegate: SelectionOption {
                                 required property var modelData
                                 value: String(modelData)
+                                displayText: root.organizationalUnitLabel(value)
                                 optionObjectName: "analyticsDivisionOption-" + value
                                 checked: root.isSelected(root.selectedDivisions, String(modelData))
                                 onToggled: selected => {
@@ -1057,7 +1081,7 @@ Item {
 
                 Rectangle {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 176
+                    Layout.preferredHeight: 216
                     color: Theme.panel
                     border.color: Theme.border
                     radius: Theme.radius
@@ -1072,6 +1096,13 @@ Item {
                             text: qsTr("Setores")
                             color: Theme.text
                             font.bold: true
+                        }
+                        AppTextField {
+                            objectName: "analyticsSectorSearch"
+                            Layout.fillWidth: true
+                            placeholderText: qsTr("Pesquisar codigo, nome ou departamento")
+                            text: root.sectorSearchText
+                            onTextEdited: root.sectorSearchText = text
                         }
                         Label {
                             Layout.fillWidth: true
@@ -1102,16 +1133,18 @@ Item {
                             }
                         }
                         ListView {
+                            objectName: "analyticsSectorList"
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             clip: true
                             enabled: root.usesSectorSelection
-                            model: root.dimensionList("sectors")
+                            model: root.filteredDimensionList("sectors", root.sectorSearchText)
                             ScrollBar.vertical: ScrollBar {}
 
                             delegate: SelectionOption {
                                 required property var modelData
                                 value: String(modelData)
+                                displayText: root.organizationalUnitLabel(value)
                                 optionObjectName: "analyticsSectorOption-" + value
                                 checked: root.isSelected(root.selectedSectors, String(modelData))
                                 onToggled: selected => {
@@ -1126,7 +1159,7 @@ Item {
 
                 Rectangle {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 176
+                    Layout.preferredHeight: 216
                     color: Theme.panel
                     border.color: Theme.border
                     radius: Theme.radius

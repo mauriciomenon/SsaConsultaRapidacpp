@@ -284,6 +284,23 @@ namespace {
             return months;
         }
 
+        Q_INVOKABLE QString organizationalUnitLabel(const QString& rawCode) const {
+            const auto code = rawCode.trimmed().toUpper();
+            if (code == QStringLiteral("IEE")) {
+                return QStringLiteral("IEE - Engenharia de Manutencao Eletronica\n"
+                                      "Departamento de Engenharia de Manutencao (SMI.DT)");
+            }
+            if (code == QStringLiteral("IEE1")) {
+                return QStringLiteral("IEE1 - Engenharia de Manutencao Eletronica - Protecao\n"
+                                      "Departamento de Engenharia de Manutencao (SMI.DT)");
+            }
+            if (code == QStringLiteral("SMM")) {
+                return QStringLiteral("SMM - Departamento de Manutencao\n"
+                                      "Superintendencia de Manutencao (SM.DT)");
+            }
+            return code;
+        }
+
         Q_INVOKABLE void clearCustomSeries() {
             if (customSeries_.isEmpty()) {
                 return;
@@ -975,6 +992,43 @@ namespace {
             QCOMPARE(custom->property("selectedDivisions").toStringList().size(), divisions.size());
         }
 
+        void custom_dimension_search_shows_names_and_keeps_raw_codes() {
+            QQmlEngine engine;
+            FakeAnalyticsViewModel viewModel;
+            QString error;
+            auto object = loadWindow(engine, viewModel, error);
+            QVERIFY2(object != nullptr, qPrintable(error));
+            auto* custom = object->findChild<QObject*>(QStringLiteral("analyticsCustomAnalysis"));
+            auto* window = qobject_cast<QQuickWindow*>(object.get());
+            QVERIFY(custom != nullptr);
+            QVERIFY(window != nullptr);
+            QVERIFY(invoke(*object, "selectTab", 1));
+
+            auto* divisionList =
+                findVisualChild(*window->contentItem(), QStringLiteral("analyticsDivisionList"));
+            auto* sectorList =
+                findVisualChild(*window->contentItem(), QStringLiteral("analyticsSectorList"));
+            QVERIFY(divisionList != nullptr);
+            QVERIFY(sectorList != nullptr);
+            custom->setProperty("divisionSearchText", QStringLiteral("eletronica"));
+            QTRY_COMPARE_WITH_TIMEOUT(divisionList->property("count").toInt(), 1, 1000);
+            auto* division = findVisualChild(*window->contentItem(),
+                                             QStringLiteral("analyticsDivisionOption-IEE"));
+            QVERIFY(division != nullptr);
+            QVERIFY(
+                division->property("displayText")
+                    .toString()
+                    .contains(QStringLiteral("Departamento de Engenharia de Manutencao (SMI.DT)")));
+            QCOMPARE(division->property("value").toString(), QStringLiteral("IEE"));
+
+            custom->setProperty("sectorSearchText", QStringLiteral("protecao"));
+            QTRY_COMPARE_WITH_TIMEOUT(sectorList->property("count").toInt(), 1, 1000);
+            auto* sector = findVisualChild(*window->contentItem(),
+                                           QStringLiteral("analyticsSectorOption-IEE1"));
+            QVERIFY(sector != nullptr);
+            QCOMPARE(sector->property("value").toString(), QStringLiteral("IEE1"));
+        }
+
         void h5_year_to_date_preset_arms_period_and_analysis_request() {
             QQmlEngine engine;
             FakeAnalyticsViewModel viewModel;
@@ -1249,11 +1303,17 @@ namespace {
             auto* window = qobject_cast<QQuickWindow*>(object.get());
             QVERIFY(window != nullptr);
             QVERIFY(invoke(*object, "selectTab", 1));
+            auto* custom = object->findChild<QObject*>(QStringLiteral("analyticsCustomAnalysis"));
+            QVERIFY(custom != nullptr);
+            custom->setProperty("divisionSearchText", QStringLiteral("eletronica"));
             window->show();
             QVERIFY(waitForRenderedFrames(*window));
-            auto* option = findVisualChild(*window->contentItem(),
-                                           QStringLiteral("analyticsDivisionOption-IEE"));
-            QVERIFY(option != nullptr);
+            QQuickItem* option = nullptr;
+            QTRY_VERIFY_WITH_TIMEOUT(
+                (option = findVisualChild(*window->contentItem(),
+                                          QStringLiteral("analyticsDivisionOption-IEE"))) !=
+                    nullptr,
+                1000);
             QVERIFY(findVisualChild(*window->contentItem(),
                                     QStringLiteral("analyticsSectorOption-IEE1")) != nullptr);
             const QPoint clickPoint =
@@ -1262,8 +1322,6 @@ namespace {
             QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, clickPoint);
 
             QTRY_VERIFY_WITH_TIMEOUT(option->property("checked").toBool(), 1000);
-            auto* custom = object->findChild<QObject*>(QStringLiteral("analyticsCustomAnalysis"));
-            QVERIFY(custom != nullptr);
             QCOMPARE(custom->property("selectedDivisions").toStringList(),
                      QStringList{QStringLiteral("IEE")});
             QVERIFY(option->property("textContrast").toReal() >= 4.5);
