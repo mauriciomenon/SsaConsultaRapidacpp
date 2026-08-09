@@ -3,6 +3,7 @@
 #include "domain/WhitespaceTrim.h"
 
 #include "domain/SsaImportPolicy.h"
+#include "domain/SsaTypes.h"
 
 #include <QDateTime>
 #include <QString>
@@ -10,7 +11,6 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
-#include <charconv>
 #include <ranges>
 #include <string_view>
 #include <system_error>
@@ -115,14 +115,7 @@ namespace ssa::infra::importing {
         }
 
         bool validYearWeek(const std::string& value) {
-            if (value.size() != 6 || !std::ranges::all_of(value, [](const unsigned char ch) {
-                    return std::isdigit(ch) != 0;
-                })) {
-                return false;
-            }
-            int week = 0;
-            const auto [end, error] = std::from_chars(value.data() + 4, value.data() + 6, week);
-            return error == std::errc{} && end == value.data() + 6 && week >= 1 && week <= 53;
+            return domain::parseIsoYearWeek(value).has_value();
         }
 
         std::optional<bool> detailPresent(const std::string& value) {

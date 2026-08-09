@@ -195,13 +195,17 @@ TEST_CASE("page count rejects zero page size") {
 
 TEST_CASE("advanced filter year week arithmetic validates bounds before composing") {
     ssa::domain::AdvancedFilterSpec filters;
-    filters.year = 2999;
+    filters.year = 2020;
     filters.week = 53;
 
     REQUIRE(filters.exactYearWeek().has_value());
-    CHECK(*filters.exactYearWeek() == std::int64_t{299953});
-    CHECK(*filters.yearStartWeek() == std::int64_t{299901});
-    CHECK(*filters.yearEndWeek() == std::int64_t{299953});
+    CHECK(*filters.exactYearWeek() == std::int64_t{202053});
+    CHECK(*filters.yearStartWeek() == std::int64_t{202001});
+    CHECK(*filters.yearEndWeek() == std::int64_t{202053});
+
+    filters.year = 2021;
+    CHECK_FALSE(filters.exactYearWeek().has_value());
+    CHECK(*filters.yearEndWeek() == std::int64_t{202152});
 
     filters.year = 1899;
     CHECK_FALSE(filters.exactYearWeek().has_value());
@@ -218,4 +222,9 @@ TEST_CASE("advanced filter year week arithmetic validates bounds before composin
     filters.year = 2026;
     filters.week = 54;
     CHECK_FALSE(filters.exactYearWeek().has_value());
+
+    filters.year = 2999;
+    filters.week = 52;
+    CHECK(*filters.exactYearWeek() == std::int64_t{299952});
+    CHECK(*filters.yearEndWeek() == std::int64_t{299952});
 }

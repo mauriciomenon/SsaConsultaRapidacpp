@@ -42,6 +42,12 @@ TEST_CASE("SSA import rejects invalid calendar dates even for exempt states") {
                                                             {"descricao_ssa", "Valid ISO week 53"},
                                                             {"situacao", "ASE"},
                                                             {"semana_cadastro", "202053"}}));
+    REQUIRE_FALSE(ssa::domain::SsaImportPolicy::isValidRow(
+        Values{{"numero_ssa", "202600007"},
+               {"descricao_ssa", "Dated row with invalid ISO week 53"},
+               {"data_cadastro", "2021-01-01"},
+               {"situacao", "APL"},
+               {"semana_cadastro", "202153"}}));
 }
 
 TEST_CASE("SSA import normalization trims spaces and whitespace-only values") {

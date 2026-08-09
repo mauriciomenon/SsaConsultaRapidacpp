@@ -106,6 +106,33 @@ TEST_CASE("SSA spreadsheet mapper resolves repeated semantic header families by 
     REQUIRE(imported.at("ate_2") == "A2");
 }
 
+TEST_CASE("SSA spreadsheet mapper preserves a malformed related number for validation") {
+    ssa::infra::importing::SpreadsheetTable table;
+    table.sourcePath = "malformed-related-number.xlsx";
+    table.rows = {{"Numero SSA", "Numero SSA", "Descricao", "Data Cadastro"},
+                  {"202600001", "INVALID-REF", "Malformed relation", "2026-07-14"}};
+
+    const auto batch = ssa::infra::importing::SsaSpreadsheetMapper::map(table);
+
+    REQUIRE(batch.mappingStatus == ssa::infra::importing::SpreadsheetMappingStatus::Mapped);
+    REQUIRE(batch.rows.size() == 1);
+    REQUIRE(batch.rows.front().at("numero_ssa_relacionada_1") == "INVALID-REF");
+}
+
+TEST_CASE("SSA spreadsheet mapper rejects a malformed primary number with empty description") {
+    ssa::infra::importing::SpreadsheetTable table;
+    table.sourcePath = "malformed-primary-number.xlsx";
+    table.rows = {{"Numero SSA", "Descricao", "Data Cadastro"},
+                  {"INVALID-PRIMARY", "", "2026-07-14"}};
+
+    const auto batch = ssa::infra::importing::SsaSpreadsheetMapper::map(table);
+
+    REQUIRE(batch.mappingStatus == ssa::infra::importing::SpreadsheetMappingStatus::Mapped);
+    REQUIRE(batch.rows.empty());
+    REQUIRE(batch.invalidRows == 1);
+    REQUIRE(batch.invalidNumberRows == 1);
+}
+
 TEST_CASE("SSA spreadsheet mapper identifies a derivation relation report as auxiliary") {
     ssa::infra::importing::SpreadsheetTable table;
     table.sourcePath = "SSAs Derivadas e Relacionadas.xlsx";

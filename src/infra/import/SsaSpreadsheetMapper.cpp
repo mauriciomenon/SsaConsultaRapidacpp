@@ -387,8 +387,16 @@ namespace ssa::infra::importing {
                     continue;
                 }
                 auto value = domain::trimWhitespace(table.rows[rowIndex][columnIndex]);
-                if (columnKey == "numero_ssa" || columnKey.starts_with("numero_ssa_relacionada")) {
-                    value = domain::SsaImportPolicy::normalizeNumber(value);
+                if (columnKey == "numero_ssa") {
+                    const auto normalized = domain::SsaImportPolicy::normalizeNumber(value);
+                    if (!normalized.empty() || value.empty()) {
+                        value = normalized;
+                    }
+                } else if (columnKey.starts_with("numero_ssa_relacionada")) {
+                    const auto normalized = domain::SsaImportPolicy::normalizeNumber(value);
+                    if (!normalized.empty() || value.empty()) {
+                        value = normalized;
+                    }
                 } else if (columnKey == "numero_desvios") {
                     value = domain::SsaImportPolicy::normalizeDeviationCount(value);
                 } else if (columnKey == "num_reprogramacoes") {

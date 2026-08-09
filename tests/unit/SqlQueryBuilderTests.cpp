@@ -289,6 +289,12 @@ TEST_CASE("sql query builder rejects invalid advanced date filters") {
         REQUIRE_THROWS_AS(ssa::query::SqlQueryBuilder{}.build(request), std::invalid_argument);
     }
 
+    SECTION("generic impossible ISO week") {
+        request.advancedFilters.year = 2021;
+        request.advancedFilters.week = 53;
+        REQUIRE_THROWS_AS(ssa::query::SqlQueryBuilder{}.build(request), std::invalid_argument);
+    }
+
     SECTION("issue year") {
         request.advancedFilters.issueYear = 1899;
         REQUIRE_THROWS_AS(ssa::query::SqlQueryBuilder{}.build(request), std::invalid_argument);

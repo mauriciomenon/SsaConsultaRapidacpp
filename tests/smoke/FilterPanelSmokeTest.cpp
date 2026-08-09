@@ -751,6 +751,7 @@ namespace {
             QCOMPARE(week->isWeekValid("54"), false);
             QCOMPARE(week->isYearWeekValid("202601"), true);
             QCOMPARE(week->isYearWeekValid("202653"), true);
+            QCOMPARE(week->isYearWeekValid("202153"), false);
             QCOMPARE(week->isYearWeekValid("202600"), false);
             QCOMPARE(week->isYearWeekValid("202654"), false);
         }
@@ -1081,13 +1082,13 @@ namespace {
             week.setIssueWeekStartFilter("190001");
             week.setIssueWeekEndFilter("202653");
             week.setExecutionWeekStartFilter("202601");
-            week.setExecutionWeekEndFilter("299953");
+            week.setExecutionWeekEndFilter("299952");
 
             const auto filters = state.filters();
             QCOMPARE(filters.issueWeekStart, std::optional<int>{190001});
             QCOMPARE(filters.issueWeekEnd, std::optional<int>{202653});
             QCOMPARE(filters.executionWeekStart, std::optional<int>{202601});
-            QCOMPARE(filters.executionWeekEnd, std::optional<int>{299953});
+            QCOMPARE(filters.executionWeekEnd, std::optional<int>{299952});
             QCOMPARE(changedSpy.count(), 4);
         }
 

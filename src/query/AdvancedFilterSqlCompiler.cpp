@@ -55,6 +55,10 @@ namespace ssa::query {
             if (advanced.week.has_value() && !domain::isValidIsoWeek(*advanced.week)) {
                 throw std::invalid_argument("invalid advanced week filter");
             }
+            if (advanced.year.has_value() && advanced.week.has_value() &&
+                !domain::isValidIsoYearWeek(*advanced.year, *advanced.week)) {
+                throw std::invalid_argument("invalid advanced week filter");
+            }
             if (!domain::ColumnCatalog::contains(advanced.weekColumnKey)) {
                 throw std::invalid_argument("unknown week column: " + advanced.weekColumnKey);
             }
@@ -88,7 +92,9 @@ namespace ssa::query {
                 return;
             }
             const auto startWeek = domain::composeIsoYearWeek(*year, domain::kFirstIsoWeek);
-            const auto endWeek = domain::composeIsoYearWeek(*year, domain::kLastIsoWeek);
+            const auto lastWeek = domain::lastIsoWeekOfYear(*year);
+            const auto endWeek =
+                lastWeek.has_value() ? domain::composeIsoYearWeek(*year, *lastWeek) : std::nullopt;
             if (!startWeek.has_value() || !endWeek.has_value()) {
                 throw std::invalid_argument("invalid year filter");
             }

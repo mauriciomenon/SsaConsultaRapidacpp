@@ -216,7 +216,8 @@ xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><s
     }
 
     std::string samWorkbookRows(const std::string& number, const std::string& executor,
-                                const std::string& description) {
+                                const std::string& description,
+                                const std::string& yearWeek = "202629") {
         return row(1, {inlineCell("A1", "ssa_number"), inlineCell("B1", "localization"),
                        inlineCell("C1", "description"), inlineCell("D1", "issue_datetime"),
                        inlineCell("E1", "emission_datetime"), inlineCell("F1", "emitter_sector"),
@@ -226,7 +227,7 @@ xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><s
                row(2, {inlineCell("A2", number), inlineCell("B2", "LOC-SAM"),
                        inlineCell("C2", description), inlineCell("D2", "2026-07-15T08:00:00Z"),
                        inlineCell("E2", "2026-07-15T09:00:00Z"), inlineCell("F2", "IEE2"),
-                       inlineCell("G2", executor), inlineCell("H2", "202629"),
+                       inlineCell("G2", executor), inlineCell("H2", yearWeek),
                        inlineCell("I2", "STE - SERVICO TERMINADO"),
                        inlineCell("J2", "SSA Terminada"), inlineCell("K2", "true")});
     }
@@ -668,6 +669,194 @@ TEST_CASE("external import classifies unavailable source status as operational f
     requireClassificationMessage(result);
 }
 #endif
+
+TEST_CASE("SAM import rolls back every sector when a later workbook cannot be read") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto sourceDirectory = root / "sam";
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(sourceDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    const auto validWorkbook = sourceDirectory / "valid.xlsx";
+    const auto corruptWorkbook = sourceDirectory / "corrupt.xlsx";
+    writeWorkbook(validWorkbook, samWorkbookRows("202600713", "IEE3", "First sector"));
+    {
+        std::ofstream output{corruptWorkbook, std::ios::binary};
+        REQUIRE(output.is_open());
+        output << "not an xlsx package";
+    }
+    ssa::infra::importing::ResolvedSsaImportRows seedRows;
+    seedRows.rows.push_back({{"numero_ssa", "202600700"},
+                             {"descricao_ssa", "Existing row"},
+                             {"data_cadastro", "2026-07-14"}});
+    const ssa::infra::sqlite::SqliteSsaImportWriter seedWriter(sqliteWriterAccess(), dbPath,
+                                                               importColumns());
+    REQUIRE(seedWriter.write(seedRows, 1, 0, false).rowsWritten == 1);
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+
+    const auto result = port.importSamArtifacts(
+        {{{validWorkbook, "IEE3", 1, 1, 0}, {corruptWorkbook, "MEL4", 1, 1, 0}}});
+
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 1);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600713'") == 0);
+    REQUIRE(scalarText(db, "PRAGMA integrity_check") == "ok");
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+    REQUIRE(std::filesystem::exists(validWorkbook));
+    REQUIRE(std::filesystem::exists(corruptWorkbook));
+    REQUIRE_FALSE(std::filesystem::exists(inputDirectory / "processadas"));
+}
+
+TEST_CASE("SAM import rejects an impossible ISO week") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto sourceDirectory = root / "sam";
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(sourceDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    const auto workbook = sourceDirectory / "invalid-week.xlsx";
+    writeWorkbook(workbook, samWorkbookRows("202600714", "IEE3", "Impossible ISO week", "202153"));
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+
+    const auto result = port.importSamArtifacts({{{workbook, "IEE3", 1, 1, 0}}});
+
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
+    REQUIRE(result.message.find("sam_row_contract_invalid") != std::string::npos);
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND "
+                          "name='ssa_table'") == 0);
+    REQUIRE(scalarText(db, "PRAGMA integrity_check") == "ok");
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+    REQUIRE(std::filesystem::exists(workbook));
+}
+
+TEST_CASE("SAM import accepts a valid ISO week 53") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto sourceDirectory = root / "sam";
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(sourceDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    const auto workbook = sourceDirectory / "valid-week-53.xlsx";
+    writeWorkbook(workbook, samWorkbookRows("202000714", "IEE3", "Valid ISO week", "202053"));
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+
+    const auto result = port.importSamArtifacts({{{workbook, "IEE3", 1, 1, 0}}});
+
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarText(db, "SELECT semana_cadastro FROM ssa_table WHERE "
+                           "numero_ssa='202000714'") == "202053");
+    REQUIRE(scalarText(db, "PRAGMA integrity_check") == "ok");
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("SAM import rejects the batch when mapping rejects one row") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto sourceDirectory = root / "sam";
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(sourceDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    const auto workbook = sourceDirectory / "mixed-policy-week.xlsx";
+    writeWorkbook(workbook,
+                  samWorkbookRows("202600715", "IEE3", "Valid row") +
+                      row(3, {inlineCell("A3", "202600716"), inlineCell("B3", "LOC-SAM"),
+                              inlineCell("C3", "Out of policy week"),
+                              inlineCell("D3", "2026-07-15T08:00:00Z"),
+                              inlineCell("E3", "2026-07-15T09:00:00Z"), inlineCell("F3", "IEE2"),
+                              inlineCell("G3", "IEE3"), inlineCell("H3", "210001"),
+                              inlineCell("I3", "STE - SERVICO TERMINADO"),
+                              inlineCell("J3", "SSA Terminada"), inlineCell("K3", "true")}));
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+
+    const auto result = port.importSamArtifacts({{{workbook, "IEE3", 2, 2, 0}}});
+
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
+    REQUIRE(result.message.find("sam_row_contract_invalid") != std::string::npos);
+    REQUIRE(result.message.find("file=mixed-policy-week.xlsx") != std::string::npos);
+    REQUIRE(result.message.find("invalid_rows=1") != std::string::npos);
+    REQUIRE(result.message.find("invalid_date=1") != std::string::npos);
+    REQUIRE(result.importSummary.has_value());
+    REQUIRE(result.importSummary->validRows == 1);
+    REQUIRE(result.importSummary->invalidRows == 1);
+    REQUIRE(result.importSummary->invalidDateRows == 1);
+    REQUIRE(result.importSummary->inserts == 0);
+    REQUIRE(result.importSummary->files.size() == 1);
+    REQUIRE(result.importSummary->files.front().validRows == 1);
+    REQUIRE(result.importSummary->files.front().invalidRows == 1);
+    REQUIRE(result.importSummary->files.front().invalidDateRows == 1);
+    REQUIRE(result.importSummary->files.front().inserts == 0);
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND "
+                          "name='ssa_table'") == 0);
+    REQUIRE(scalarText(db, "PRAGMA integrity_check") == "ok");
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+    REQUIRE(std::filesystem::exists(workbook));
+    REQUIRE_FALSE(std::filesystem::exists(inputDirectory / "processadas"));
+}
+
+TEST_CASE("SAM import rolls back prior sectors when a later sector conflicts") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto sourceDirectory = root / "sam";
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(sourceDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    const auto firstWorkbook = sourceDirectory / "first-sector.xlsx";
+    const auto conflictingWorkbook = sourceDirectory / "conflicting-sector.xlsx";
+    writeWorkbook(firstWorkbook, samWorkbookRows("202600717", "IEE3", "First sector"));
+    writeWorkbook(
+        conflictingWorkbook,
+        samWorkbookRows("202600718", "MEL4", "Conflict first") +
+            row(3, {inlineCell("A3", "202600718"), inlineCell("B3", "LOC-SAM"),
+                    inlineCell("C3", "Conflict second"), inlineCell("D3", "2026-07-15T08:00:00Z"),
+                    inlineCell("E3", "2026-07-15T09:00:00Z"), inlineCell("F3", "IEE2"),
+                    inlineCell("G3", "MEL4"), inlineCell("H3", "202629"),
+                    inlineCell("I3", "STE - SERVICO TERMINADO"), inlineCell("J3", "SSA Terminada"),
+                    inlineCell("K3", "true")}));
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+
+    const auto result = port.importSamArtifacts(
+        {{{firstWorkbook, "IEE3", 1, 1, 0}, {conflictingWorkbook, "MEL4", 2, 2, 0}}});
+
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
+    REQUIRE(result.message.find("duplicate_conflict") != std::string::npos);
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND "
+                          "name='ssa_table'") == 0);
+    REQUIRE(scalarText(db, "PRAGMA integrity_check") == "ok");
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+    REQUIRE(std::filesystem::exists(firstWorkbook));
+    REQUIRE(std::filesystem::exists(conflictingWorkbook));
+    REQUIRE_FALSE(std::filesystem::exists(inputDirectory / "processadas"));
+}
 
 TEST_CASE("import file stager rejects a stopped token before copying") {
     QTemporaryDir tempDir;
@@ -1672,8 +1861,14 @@ TEST_CASE("spreadsheet workflow keeps chunk counters when a later worksheet fail
     REQUIRE(result.importSummary.has_value());
     REQUIRE(result.importSummary->conflicts == 1);
     REQUIRE(result.importSummary->failed == 1);
+    REQUIRE(result.importSummary->inserts == 0);
+    REQUIRE(result.importSummary->updates == 0);
+    REQUIRE(result.importSummary->unchangedRows == 0);
     REQUIRE(result.importSummary->files.size() == 1);
     REQUIRE(result.importSummary->files.front().status == ssa::ports::ImportFileStatus::Failed);
+    REQUIRE(result.importSummary->files.front().inserts == 0);
+    REQUIRE(result.importSummary->files.front().updates == 0);
+    REQUIRE(result.importSummary->files.front().unchangedRows == 0);
     sqlite3* db = nullptr;
     REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
     REQUIRE(scalarInt(
@@ -3320,6 +3515,44 @@ TEST_CASE("external import rejects duplicate conflicts and preserves the source"
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
+TEST_CASE("external import rejects a malformed related SSA through the full workflow") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto sourceDirectory = root / "external";
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(sourceDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    const auto source = sourceDirectory / "malformed-related-number.xlsx";
+    writeWorkbook(
+        source,
+        row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Numero SSA"),
+                inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao")}) +
+            row(2, {inlineCell("A2", "202600719"), inlineCell("B2", "INVALID-REF"),
+                    inlineCell("C2", "Malformed relation"), inlineCell("D2", "2026-07-15")}));
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+
+    const auto result = port.importExternalFiles({.files = {source}});
+
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
+    REQUIRE(result.message.find("failed=1") != std::string::npos);
+    REQUIRE(result.diagnostic.find("invalid SSA reference in import batch") != std::string::npos);
+    REQUIRE(result.importSummary.has_value());
+    REQUIRE(result.importSummary->failed == 1);
+    REQUIRE(result.importSummary->files.front().reason == "operation_failed");
+    REQUIRE(std::filesystem::exists(source));
+    REQUIRE_FALSE(std::filesystem::exists(inputDirectory / "processadas"));
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND "
+                          "name='ssa_table'") == 0);
+    REQUIRE(scalarText(db, "PRAGMA integrity_check") == "ok");
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
 TEST_CASE("external import isolates a duplicate conflict and keeps the sibling workbooks") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
@@ -3330,9 +3563,9 @@ TEST_CASE("external import isolates a duplicate conflict and keeps the sibling w
     const auto dbPath = root / "data" / "ssas.db";
     std::filesystem::create_directories(sourceDirectory);
     std::filesystem::create_directories(dbPath.parent_path());
-    const auto header = row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
-                                inlineCell("C1", "Descricao da SSA"),
-                                inlineCell("D1", "Data de emissao")});
+    const auto header =
+        row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao")});
     const auto conflicting = sourceDirectory / "A_SSA_06-07-2026_0922AM.xlsx";
     const auto firstSibling = sourceDirectory / "B_SSA_06-07-2026_0923AM.xlsx";
     const auto secondSibling = sourceDirectory / "C_SSA_06-07-2026_0924AM.xlsx";
@@ -3343,13 +3576,13 @@ TEST_CASE("external import isolates a duplicate conflict and keeps the sibling w
                       row(3, {inlineCell("A3", "202600801"), inlineCell("B3", "APV"),
                               inlineCell("C3", "Second"), inlineCell("D3", "2026-07-01")}));
     writeWorkbook(firstSibling,
-                  header + row(2, {inlineCell("A2", "202600802"), inlineCell("B2", "APV"),
-                                   inlineCell("C2", "Sibling one"),
-                                   inlineCell("D2", "2026-07-01")}));
+                  header +
+                      row(2, {inlineCell("A2", "202600802"), inlineCell("B2", "APV"),
+                              inlineCell("C2", "Sibling one"), inlineCell("D2", "2026-07-01")}));
     writeWorkbook(secondSibling,
-                  header + row(2, {inlineCell("A2", "202600803"), inlineCell("B2", "APV"),
-                                   inlineCell("C2", "Sibling two"),
-                                   inlineCell("D2", "2026-07-01")}));
+                  header +
+                      row(2, {inlineCell("A2", "202600803"), inlineCell("B2", "APV"),
+                              inlineCell("C2", "Sibling two"), inlineCell("D2", "2026-07-01")}));
     ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
                                                               importColumns());
 
@@ -7669,8 +7902,8 @@ TEST_CASE("full rescan rejects mixed valid and invalid rows without clearing the
                 inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao")}) +
             row(2, {inlineCell("A2", "202600520"), inlineCell("B2", "ASE"),
                     inlineCell("C2", "Valid"), inlineCell("D2", "2026-07-01")}) +
-            row(3, {inlineCell("A3", "invalid"), inlineCell("B3", "APV"),
-                    inlineCell("C3", "Invalid"), inlineCell("D3", "2026-07-01")}));
+            row(3, {inlineCell("A3", "invalid"), inlineCell("B3", "APV"), inlineCell("C3", ""),
+                    inlineCell("D3", "2026-07-01")}));
 
     ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
                                                               importColumns());

@@ -1,4 +1,5 @@
 #include "domain/SsaImportPolicy.h"
+#include "domain/SsaTypes.h"
 #include "domain/WhitespaceTrim.h"
 
 #include <algorithm>
@@ -61,24 +62,8 @@ namespace ssa::domain {
 
         bool isValidWeek(const std::string& value) {
             const auto normalized = trimWhitespace(value);
-            if (normalized.size() != 6 ||
-                !std::ranges::all_of(
-                    normalized, [](const unsigned char ch) { return std::isdigit(ch) != 0; })) {
-                return false;
-            }
-            const auto year = parsePart(std::string_view{normalized}.substr(0, 4));
-            const auto week = parsePart(std::string_view{normalized}.substr(4, 2));
-            if (!year || *year < 1980 || *year > 2050 || !week || *week < 1 || *week > 53) {
-                return false;
-            }
-            if (*week < 53) {
-                return true;
-            }
-            const auto calendarYear = std::chrono::year{*year};
-            const auto firstWeekday = std::chrono::weekday{
-                std::chrono::sys_days{calendarYear / std::chrono::January / 1}};
-            return firstWeekday.iso_encoding() == 4 ||
-                   (calendarYear.is_leap() && firstWeekday.iso_encoding() == 3);
+            const auto yearWeek = parseIsoYearWeek(normalized);
+            return yearWeek.has_value() && *yearWeek >= 198001 && *yearWeek <= 205053;
         }
 
         std::size_t completenessScore(const SsaImportPolicy::Values& values) {
@@ -597,11 +582,15 @@ namespace ssa::domain {
             return RowValidationIssue::MissingDescription;
         }
         const auto date = valueFor(row, "data_cadastro");
+        const auto issueWeek = valueFor(row, "semana_cadastro");
+        if (!issueWeek.empty() && !isValidWeek(issueWeek)) {
+            return RowValidationIssue::MissingWeek;
+        }
         if (date.empty()) {
             if (!isDateExemptStatus(valueFor(row, "situacao"))) {
                 return RowValidationIssue::MissingDate;
             }
-            if (!isValidWeek(valueFor(row, "semana_cadastro"))) {
+            if (issueWeek.empty()) {
                 return RowValidationIssue::MissingWeek;
             }
         } else if (!parseExactTimestamp(date)) {

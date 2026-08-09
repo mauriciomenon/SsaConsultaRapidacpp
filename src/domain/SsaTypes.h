@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <charconv>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
@@ -60,6 +61,23 @@ namespace ssa::domain {
         return week >= kFirstIsoWeek && week <= kLastIsoWeek;
     }
 
+    [[nodiscard]] inline std::optional<int> lastIsoWeekOfYear(const int year) {
+        if (!isValidFilterYear(year)) {
+            return std::nullopt;
+        }
+        const auto calendarYear = std::chrono::year{year};
+        const auto firstWeekday =
+            std::chrono::weekday{std::chrono::sys_days{calendarYear / std::chrono::January / 1}};
+        const auto hasWeek53 = firstWeekday.iso_encoding() == 4 ||
+                               (calendarYear.is_leap() && firstWeekday.iso_encoding() == 3);
+        return hasWeek53 ? kLastIsoWeek : kLastIsoWeek - 1;
+    }
+
+    [[nodiscard]] inline bool isValidIsoYearWeek(const int year, const int week) {
+        const auto lastWeek = lastIsoWeekOfYear(year);
+        return lastWeek.has_value() && week >= kFirstIsoWeek && week <= *lastWeek;
+    }
+
     [[nodiscard]] inline std::optional<int> parseDecimalDigits(const std::string_view value) {
         if (value.empty() || !std::ranges::all_of(value, [](const char character) {
                 return character >= '0' && character <= '9';
@@ -93,7 +111,7 @@ namespace ssa::domain {
 
     [[nodiscard]] inline std::optional<std::int64_t> composeIsoYearWeek(const int year,
                                                                         const int week) {
-        if (!isValidFilterYear(year) || !isValidIsoWeek(week)) {
+        if (!isValidIsoYearWeek(year, week)) {
             return std::nullopt;
         }
         return (static_cast<std::int64_t>(year) * kYearWeekMultiplier) + week;
@@ -240,7 +258,8 @@ namespace ssa::domain {
             if (!year.has_value()) {
                 return std::nullopt;
             }
-            return composeIsoYearWeek(*year, kLastIsoWeek);
+            const auto lastWeek = lastIsoWeekOfYear(*year);
+            return lastWeek.has_value() ? composeIsoYearWeek(*year, *lastWeek) : std::nullopt;
         }
     };
 
