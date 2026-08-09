@@ -110,12 +110,11 @@ namespace ssa::application {
             case domain::Breakdown::Division:
                 return division;
             case domain::Breakdown::DivisionSector:
-                return division + " / " + dimensionValue(point.sector);
+                return dimensionValue(point.sector);
             case domain::Breakdown::DivisionPerson:
                 return division + " / " + dimensionValue(point.person);
             case domain::Breakdown::DivisionSectorPerson:
-                return division + " / " + dimensionValue(point.sector) + " / " +
-                       dimensionValue(point.person);
+                return dimensionValue(point.sector) + " / " + dimensionValue(point.person);
             }
             throw std::invalid_argument("unknown analytics breakdown");
         }
@@ -555,12 +554,11 @@ namespace ssa::application {
                     std::set<std::string> categorySet;
                     std::map<std::string, CountByCategory> counts;
                     std::map<std::string, std::int64_t> totals;
-                    const auto category = [](const std::string& division,
-                                             const std::string& sector) {
-                        return dimensionValue(division) + "\n" + dimensionValue(sector);
+                    const auto category = [](const std::string& sector) {
+                        return dimensionValue(sector);
                     };
                     for (const auto& sector : request.sectors) {
-                        categorySet.insert(category(selectedSectorDivision(sector), sector));
+                        categorySet.insert(category(sector));
                     }
                     for (const auto& person : request.people) {
                         const auto name = dimensionValue(person);
@@ -568,7 +566,7 @@ namespace ssa::application {
                         totals.try_emplace(name, 0);
                     }
                     for (const auto& point : result.points) {
-                        categorySet.insert(category(point.division, point.sector));
+                        categorySet.insert(category(point.sector));
                     }
                     model.categories.assign(categorySet.begin(), categorySet.end());
 
@@ -581,7 +579,7 @@ namespace ssa::application {
                         if (!includedInChart(request, point)) {
                             continue;
                         }
-                        const auto categoryKey = category(point.division, point.sector);
+                        const auto categoryKey = category(point.sector);
                         requireKnownCategory(knownCategories, categoryKey);
                         const auto person = dimensionValue(point.person);
                         observedCategories.insert(categoryKey);

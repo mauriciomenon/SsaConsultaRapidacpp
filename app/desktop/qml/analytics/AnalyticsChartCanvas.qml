@@ -410,7 +410,7 @@ Item {
             root.plotExportFinished(false);
             return;
         }
-        const grabbed = root.grabImage(function(result) {
+        const grabbed = root.grabImage(function (result) {
             root.plotExportFinished(!result.image.isNull() && result.saveToFile(localPath));
         });
         if (!grabbed)
@@ -422,7 +422,7 @@ Item {
             root.plotExportFinished(false);
             return;
         }
-        const grabbed = root.grabImage(function(result) {
+        const grabbed = root.grabImage(function (result) {
             if (result.image.isNull()) {
                 root.plotExportFinished(false);
                 return;
@@ -430,12 +430,7 @@ Item {
             const buffer = result.image.toDataURL("image/png");
             const comma = buffer.indexOf(",");
             const payload = comma >= 0 ? buffer.slice(comma + 1) : buffer;
-            const svg = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" +
-                        "<svg xmlns=\"http://www.w3.org/2000/svg\" " +
-                        "xmlns:xlink=\"http://www.w3.org/1999/xlink\" " +
-                        "width=\"" + result.image.width + "\" height=\"" + result.image.height + "\">" +
-                        "<image width=\"" + result.image.width + "\" height=\"" + result.image.height + "\" " +
-                        "xlink:href=\"data:image/png;base64," + payload + "\"/></svg>";
+            const svg = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" + "<svg xmlns=\"http://www.w3.org/2000/svg\" " + "xmlns:xlink=\"http://www.w3.org/1999/xlink\" " + "width=\"" + result.image.width + "\" height=\"" + result.image.height + "\">" + "<image width=\"" + result.image.width + "\" height=\"" + result.image.height + "\" " + "xlink:href=\"data:image/png;base64," + payload + "\"/></svg>";
             const wrote = typeof fileWriter === "function" ? fileWriter(localPath, svg) : false;
             root.plotExportFinished(wrote);
         });
@@ -504,13 +499,9 @@ Item {
         for (let index = 0; index < labelIndices.length; ++index) {
             const categoryIndex = labelIndices[index];
             const label = displayCategory(categoryIndex, qsTr("Nao atribuido"));
-            const firstLabel = categoryIndex === 0;
-            const lastLabel = categoryIndex === root.categoryCount - 1;
-            context.textAlign = firstLabel ? "left" : lastLabel ? "right" : "center";
-            const labelX = firstLabel ? root.leftMargin : lastLabel ? root.leftMargin + root.plotWidth : xCenter(categoryIndex);
             const lines = categoryLabelLines(label);
             for (let lineIndex = 0; lineIndex < lines.length; ++lineIndex)
-                context.fillText(elidedCategoryLabel(context, lines[lineIndex], labelWidth), labelX, root.topMargin + root.plotHeight + 8 + lineIndex * (Theme.fontSizeCaption + 2));
+                context.fillText(elidedCategoryLabel(context, lines[lineIndex], labelWidth), xCenter(categoryIndex), root.topMargin + root.plotHeight + 8 + lineIndex * (Theme.fontSizeCaption + 2));
         }
 
         if (root.xAxisTitle.length > 0) {

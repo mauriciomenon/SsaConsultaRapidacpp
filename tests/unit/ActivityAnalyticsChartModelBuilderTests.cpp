@@ -134,7 +134,7 @@ TEST_CASE("simple bars sort dimension categories and reconcile duplicate values"
     const auto model = ActivityAnalyticsChartModelBuilder::build(analyticsRequest, result,
                                                                  AnalyticsChartMode::SimpleBar);
 
-    CHECK(model.categories == std::vector<std::string>{"SMI / A / Ana", "SMI / B / Nao atribuido"});
+    CHECK(model.categories == std::vector<std::string>{"A / Ana", "B / Nao atribuido"});
     REQUIRE(model.series.size() == 1);
     CHECK(model.series.front().name == "total");
     CHECK(model.series.front().values == std::vector<std::optional<double>>{6.0, 3.0});
@@ -259,7 +259,7 @@ TEST_CASE("custom whole-period labels follow all four breakdown contracts") {
     const auto analyticsPoint = point("", "SMI", "SMIN", "Ana", 2);
     const std::array breakdowns{Breakdown::Division, Breakdown::DivisionSector,
                                 Breakdown::DivisionPerson, Breakdown::DivisionSectorPerson};
-    const std::array expected{"SMI", "SMI / SMIN", "SMI / Ana", "SMI\nSMIN"};
+    const std::array expected{"SMI", "SMIN", "SMI / Ana", "SMIN"};
 
     for (std::size_t index = 0; index < breakdowns.size(); ++index) {
         const auto model = ActivityAnalyticsChartModelBuilder::build(
@@ -281,7 +281,7 @@ TEST_CASE("custom whole-period sector-person breakdown groups people as series")
     const auto model = ActivityAnalyticsChartModelBuilder::build(analyticsRequest, result,
                                                                  AnalyticsChartMode::Custom);
 
-    CHECK(model.categories == std::vector<std::string>{"IEE\nIEE2", "IEE\nIEE3"});
+    CHECK(model.categories == std::vector<std::string>{"IEE2", "IEE3"});
     REQUIRE(model.series.size() == 2);
     CHECK(model.series[0].name == "Ana");
     CHECK(model.series[0].values == std::vector<std::optional<double>>{3.0, 4.0});
@@ -327,9 +327,9 @@ TEST_CASE("custom temporal charts sort combinations and distinguish event zeros 
 
     CHECK(events.categories == std::vector<std::string>{"202053", "202101", "202102"});
     REQUIRE(events.series.size() == 2);
-    CHECK(events.series[0].name == "SMI / A");
+    CHECK(events.series[0].name == "A");
     CHECK(events.series[0].values == std::vector<std::optional<double>>{0.0, 3.0, 0.0});
-    CHECK(events.series[1].name == "SMI / B");
+    CHECK(events.series[1].name == "B");
     CHECK(events.series[1].values == std::vector<std::optional<double>>{2.0, 0.0, 0.0});
     CHECK(stocks.series[0].values == std::vector<std::optional<double>>{0.0, 3.0, std::nullopt});
     CHECK(stocks.series[1].values == std::vector<std::optional<double>>{2.0, 0.0, std::nullopt});
@@ -457,7 +457,7 @@ TEST_CASE("dashboard builder owns the fourteen request and mode mappings") {
     CHECK(charts.pendingDeadlinePercentage.total == std::optional<double>{13.0});
     CHECK(charts.pendingDeadlineQuantity.total == std::optional<double>{13.0});
 
-    CHECK(charts.registeredBySector.categories == std::vector<std::string>{"DIV / SEC"});
+    CHECK(charts.registeredBySector.categories == std::vector<std::string>{"SEC"});
     CHECK(charts.issuedByDivision.categories == std::vector<std::string>{"DIV"});
     CHECK(charts.registeredMonthly.categories == std::vector<std::string>{"2025-12", "2026-01"});
     CHECK(charts.pendingDeadlineQuantity.categories ==
@@ -553,7 +553,7 @@ TEST_CASE("selected unassigned sector keeps the full sentinel division") {
     const auto model = ActivityAnalyticsChartModelBuilder::build(
         analyticsRequest, AnalyticsSeriesResult{}, AnalyticsChartMode::Custom);
 
-    CHECK(model.categories == std::vector<std::string>{"Nao atribuido\nNao atribuido"});
+    CHECK(model.categories == std::vector<std::string>{"Nao atribuido"});
     CHECK(model.series.front().name == "Nao atribuido");
     CHECK(model.series.front().values == std::vector<std::optional<double>>{0.0});
 }
