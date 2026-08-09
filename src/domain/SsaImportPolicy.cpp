@@ -66,17 +66,6 @@ namespace ssa::domain {
             return yearWeek.has_value() && *yearWeek >= 198001 && *yearWeek <= 205053;
         }
 
-        std::size_t completenessScore(const SsaImportPolicy::Values& values) {
-            std::size_t score = 0;
-            for (const auto& [key, value] : values) {
-                if (!trimWhitespace(value).empty() && key != "numero_ssa" &&
-                    !isMetadataField(key)) {
-                    ++score;
-                }
-            }
-            return score;
-        }
-
         std::string lowercase(std::string value) {
             std::ranges::transform(value, value.begin(), [](const unsigned char ch) {
                 return static_cast<char>(std::tolower(ch));
@@ -424,26 +413,6 @@ namespace ssa::domain {
             return false;
         }
 
-        bool isConflictField(const std::string_view key) {
-            return key != "numero_ssa" && key != "arquivo_origem" && key != "data_planilha" &&
-                   key != "data_criacao_arquivo" && key != "data_arquivo_origem" &&
-                   !isIndicatorField(key);
-        }
-
-        int sourceProfilePriority(const SsaImportPolicy::Values& values) {
-            switch (SsaImportPolicy::classifySourceProfile(valueFor(values, "arquivo_origem"))) {
-            case SsaImportPolicy::SourceProfile::Executadas:
-                return 3;
-            case SsaImportPolicy::SourceProfile::DerivadasRelacionadas:
-                return 2;
-            case SsaImportPolicy::SourceProfile::Desvios:
-                return 1;
-            case SsaImportPolicy::SourceProfile::Geral:
-                return 0;
-            }
-            return 0;
-        }
-
     } // namespace
 
     std::string SsaImportPolicy::normalizeNumber(const std::string& value) {
@@ -630,9 +599,6 @@ namespace ssa::domain {
         auto merged = existing;
         const bool terminal = existingTerminal;
         const bool equalSnapshot = *incomingSnapshot == *existingSnapshot;
-        const bool incomingRicher = completenessScore(incoming) > completenessScore(existing);
-        const bool incomingPreferredSource =
-            sourceProfilePriority(incoming) > sourceProfilePriority(existing);
         bool conflict = false;
         for (const auto& [key, value] : incoming) {
             const auto normalized = trimWhitespace(value);
@@ -647,20 +613,25 @@ namespace ssa::domain {
                 }
                 continue;
             }
-            if (equalSnapshot && isConflictField(key) && !normalized.empty() && !current.empty() &&
-                normalized != current && !incomingRicher && !incomingPreferredSource &&
-                !(key == "situacao" && incomingTerminal && !terminal)) {
-                conflict = true;
-            }
-            if (normalized.empty() || (terminal && !isIndicatorField(key)) ||
-                (equalSnapshot && key == "situacao" && !(incomingTerminal && !terminal))) {
+            const bool terminalStatePromotion =
+                equalSnapshot && key == "situacao" && incomingTerminal && !terminal;
+            if (normalized.empty()) {
                 continue;
             }
-            if (equalSnapshot && !current.empty() && !isIndicatorField(key) && !incomingRicher &&
-                !incomingPreferredSource && !(key == "situacao" && incomingTerminal && !terminal)) {
+            if (equalSnapshot && !current.empty() && normalized != current &&
+                !terminalStatePromotion) {
+                conflict = true;
+                continue;
+            }
+            if ((terminal && !isIndicatorField(key)) ||
+                (equalSnapshot && key == "situacao" && !terminalStatePromotion) ||
+                (equalSnapshot && normalized == current)) {
                 continue;
             }
             merged[key] = normalized;
+        }
+        if (conflict) {
+            return {existing, false, true};
         }
         return {merged, differsInPersistedValues(merged, existing), conflict};
     }

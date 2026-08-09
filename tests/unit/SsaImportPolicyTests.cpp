@@ -88,21 +88,25 @@ TEST_CASE("SSA import equal snapshot preserves state and completes empty fields"
                           {"descricao_ssa", "Existing"},
                           {"situacao", "APV"},
                           {"setor_executor", ""},
+                          {"responsavel_execucao", "Equipe A"},
                           {"data_planilha", "2026-05-01"}};
     const Values incoming{{"numero_ssa", "202600011"},
-                          {"descricao_ssa", "Replacement"},
-                          {"situacao", "AAD"},
+                          {"descricao_ssa", "Existing"},
+                          {"situacao", "APV"},
                           {"setor_executor", "MEL1"},
+                          {"responsavel_execucao", ""},
                           {"prazo_limite", "2026-05-30"},
                           {"data_planilha", "2026-05-01"}};
 
     const auto result = ssa::domain::SsaImportPolicy::merge(existing, incoming);
 
     REQUIRE(result.values.at("situacao") == "APV");
-    REQUIRE(result.values.at("descricao_ssa") == "Replacement");
+    REQUIRE(result.values.at("descricao_ssa") == "Existing");
     REQUIRE(result.values.at("setor_executor") == "MEL1");
+    REQUIRE(result.values.at("responsavel_execucao") == "Equipe A");
     REQUIRE(result.values.at("prazo_limite") == "2026-05-30");
     REQUIRE(result.changed);
+    REQUIRE_FALSE(result.conflict);
 }
 
 TEST_CASE("SSA import uses source file date only as the last snapshot fallback") {
@@ -198,7 +202,7 @@ TEST_CASE("SSA import uses filename timestamp before filesystem timestamps") {
     REQUIRE(result.values == existing);
 }
 
-TEST_CASE("SSA import gives executed sources precedence on equal snapshots") {
+TEST_CASE("SSA import source profile cannot override a conflicting equal snapshot field") {
     using Values = ssa::domain::SsaImportPolicy::Values;
     const Values existing{{"numero_ssa", "202600021"},
                           {"descricao_ssa", "General snapshot"},
@@ -207,15 +211,15 @@ TEST_CASE("SSA import gives executed sources precedence on equal snapshots") {
                           {"data_planilha", "2026-07-14"}};
     const Values incoming{{"numero_ssa", "202600021"},
                           {"descricao_ssa", "Executed snapshot"},
-                          {"situacao", "STE"},
+                          {"situacao", "APV"},
                           {"arquivo_origem", "SSAs executadas_14-07-2026_0100PM.xlsx"},
                           {"data_planilha", "2026-07-14"}};
 
     const auto result = ssa::domain::SsaImportPolicy::merge(existing, incoming);
 
-    REQUIRE(result.changed);
-    REQUIRE(result.values.at("descricao_ssa") == "Executed snapshot");
-    REQUIRE(result.values.at("situacao") == "STE");
+    REQUIRE_FALSE(result.changed);
+    REQUIRE(result.conflict);
+    REQUIRE(result.values == existing);
 }
 
 TEST_CASE("SSA import parses date-only source filenames") {
@@ -326,9 +330,11 @@ TEST_CASE("SSA import metadata does not make an equal snapshot richer") {
 
     REQUIRE(result.values.at("descricao_ssa") == "Current description");
     REQUIRE(result.conflict);
+    REQUIRE_FALSE(result.changed);
+    REQUIRE(result.values == existing);
 }
 
-TEST_CASE("SSA import chooses the richer row on an equal snapshot") {
+TEST_CASE("SSA import rejects a richer row with a conflicting equal snapshot field") {
     using Values = ssa::domain::SsaImportPolicy::Values;
     const Values sparse{{"numero_ssa", "202600021"},
                         {"descricao_ssa", "Sparse"},
@@ -342,12 +348,15 @@ TEST_CASE("SSA import chooses the richer row on an equal snapshot") {
                       {"tempo_excedido", "02:00"},
                       {"data_planilha", "2026-07-14"}};
 
-    const auto result = ssa::domain::SsaImportPolicy::merge(sparse, rich);
+    const auto sparseThenRich = ssa::domain::SsaImportPolicy::merge(sparse, rich);
+    const auto richThenSparse = ssa::domain::SsaImportPolicy::merge(rich, sparse);
 
-    REQUIRE(result.changed);
-    REQUIRE_FALSE(result.conflict);
-    REQUIRE(result.values.at("descricao_ssa") == "Rich");
-    REQUIRE(result.values.at("setor_executor") == "MEL1");
+    REQUIRE(sparseThenRich.conflict);
+    REQUIRE(richThenSparse.conflict);
+    REQUIRE_FALSE(sparseThenRich.changed);
+    REQUIRE_FALSE(richThenSparse.changed);
+    REQUIRE(sparseThenRich.values == sparse);
+    REQUIRE(richThenSparse.values == rich);
 }
 
 TEST_CASE("SSA import preserves a rich field when a newer snapshot is sparse") {
@@ -546,7 +555,7 @@ TEST_CASE("terminal SSA never changes to another terminal state") {
     REQUIRE(result.values == existing);
 }
 
-TEST_CASE("equal SSA snapshot enriches allowed indicators without reporting conflict") {
+TEST_CASE("equal SSA snapshot rejects conflicting indicator values in either order") {
     using Values = ssa::domain::SsaImportPolicy::Values;
     const Values existing{{"numero_ssa", "202600018"},
                           {"descricao_ssa", "Same business snapshot"},
@@ -559,9 +568,13 @@ TEST_CASE("equal SSA snapshot enriches allowed indicators without reporting conf
                           {"prazo_limite", "2026-07-30"},
                           {"data_planilha", "2026-07-03"}};
 
-    const auto result = ssa::domain::SsaImportPolicy::merge(existing, incoming);
+    const auto existingThenIncoming = ssa::domain::SsaImportPolicy::merge(existing, incoming);
+    const auto incomingThenExisting = ssa::domain::SsaImportPolicy::merge(incoming, existing);
 
-    REQUIRE(result.changed);
-    REQUIRE_FALSE(result.conflict);
-    REQUIRE(result.values.at("prazo_limite") == "2026-07-30");
+    REQUIRE(existingThenIncoming.conflict);
+    REQUIRE(incomingThenExisting.conflict);
+    REQUIRE_FALSE(existingThenIncoming.changed);
+    REQUIRE_FALSE(incomingThenExisting.changed);
+    REQUIRE(existingThenIncoming.values == existing);
+    REQUIRE(incomingThenExisting.values == incoming);
 }

@@ -3459,21 +3459,29 @@ TEST_CASE("SSA duplicate resolution is temporal and independent of input order")
 }
 
 TEST_CASE("SSA duplicate resolution rejects conflicting values at the same snapshot") {
-    ssa::infra::importing::SsaImportBatch batch;
-    batch.rows = {{{"numero_ssa", "202600508"},
-                   {"descricao_ssa", "First"},
-                   {"situacao", "APV"},
-                   {"data_planilha", "2026-07-14T13:45:00"}},
-                  {{"numero_ssa", "202600508"},
-                   {"descricao_ssa", "Second"},
-                   {"situacao", "APV"},
-                   {"data_planilha", "2026-07-14T13:45:00"}}};
+    const ssa::infra::importing::SsaImportRow first{{"numero_ssa", "202600508"},
+                                                    {"descricao_ssa", "First"},
+                                                    {"situacao", "APV"},
+                                                    {"data_planilha", "2026-07-14T13:45:00"}};
+    const ssa::infra::importing::SsaImportRow second{{"numero_ssa", "202600508"},
+                                                     {"descricao_ssa", "Second"},
+                                                     {"situacao", "APV"},
+                                                     {"data_planilha", "2026-07-14T13:45:00"}};
+    const auto resolve = [](const ssa::infra::importing::SsaImportRow& left,
+                            const ssa::infra::importing::SsaImportRow& right) {
+        ssa::infra::importing::SsaImportBatch batch;
+        batch.rows = {left, right};
+        return ssa::infra::importing::SsaImportConflictResolver{}
+            .resolveBySsaNumberKeepingUnkeyedRows({batch});
+    };
 
-    const auto result =
-        ssa::infra::importing::SsaImportConflictResolver{}.resolveBySsaNumberKeepingUnkeyedRows(
-            {batch});
+    const auto firstThenSecond = resolve(first, second);
+    const auto secondThenFirst = resolve(second, first);
 
-    REQUIRE(result.rows.empty());
+    REQUIRE(firstThenSecond.rows.empty());
+    REQUIRE(secondThenFirst.rows.empty());
+    REQUIRE(firstThenSecond.conflictRows == 1);
+    REQUIRE(secondThenFirst.conflictRows == 1);
 }
 
 TEST_CASE("external import rejects duplicate conflicts and preserves the source") {
