@@ -60,7 +60,9 @@ TEST_CASE("activity analytics validates inclusive periods") {
     CHECK_FALSE(ssa::domain::isValidPeriod({{2021, 53}, {2022, 1}}));
 }
 
-TEST_CASE("activity analytics derives exactly thirteen ISO reference months") {
+TEST_CASE("activity analytics derives the requested ISO reference month history") {
+    CHECK(ssa::domain::referenceMonthHistoryPeriod({2026, 31}, 12) ==
+          AnalyticsPeriod{{2025, 32}, {2026, 31}});
     CHECK(ssa::domain::referenceMonthHistoryPeriod({2026, 10}, 13) ==
           AnalyticsPeriod{{2025, 10}, {2026, 10}});
     CHECK(ssa::domain::referenceMonthHistoryPeriod({2021, 1}, 13) ==

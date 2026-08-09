@@ -12,14 +12,15 @@ Item {
 
     required property var analyticsViewModel
 
-    readonly property var initialPeriod: analyticsViewModel.currentMonthSelection()
+    readonly property var initialPeriod: analyticsViewModel.currentIsoMonthSelection()
     property int firstYear: initialPeriod.firstYear
     property int firstWeek: initialPeriod.firstWeek
     property int lastYear: initialPeriod.lastYear
     property int lastWeek: initialPeriod.lastWeek
     property int periodYear: initialPeriod.year
     property int periodMonth: initialPeriod.month
-    property int periodScope: 0
+    property int periodScope: 2
+    property bool isoCalendarVisible: false
     property bool active: false
     property bool hideZeroCategories: false
     property bool listZeroValues: false
@@ -47,9 +48,8 @@ Item {
     readonly property var monthNames: [qsTr("Janeiro"), qsTr("Fevereiro"), qsTr("Marco"), qsTr("Abril"), qsTr("Maio"), qsTr("Junho"), qsTr("Julho"), qsTr("Agosto"), qsTr("Setembro"), qsTr("Outubro"), qsTr("Novembro"), qsTr("Dezembro")]
     readonly property var monthModel: root.periodScope === 1 ? [qsTr("Todos")] : root.monthNames
     readonly property int monthComboIndex: root.periodScope === 1 ? 0 : root.periodMonth - 1
-    readonly property var lastCompleteCalendarPeriod: analyticsViewModel.currentMonthSelection()
     readonly property var lastCompleteIsoPeriod: analyticsViewModel.currentIsoMonthSelection()
-    readonly property var lastCompletePeriod: root.periodScope === 2 ? root.lastCompleteIsoPeriod : root.lastCompleteCalendarPeriod
+    readonly property var lastCompletePeriod: root.lastCompleteIsoPeriod
     readonly property bool canNavigateNextMonth: root.periodScope !== 1 && periodYear * 12 + periodMonth < lastCompletePeriod.year * 12 + lastCompletePeriod.month
 
     component SelectionOption: Rectangle {
@@ -254,14 +254,6 @@ Item {
         root.invalidateCustomAnalysisIfActive();
     }
 
-    function applyCalendarMonth(year, month) {
-        if (year * 12 + month > root.lastCompleteCalendarPeriod.year * 12 + root.lastCompleteCalendarPeriod.month) {
-            root.applyPeriod(root.lastCompleteCalendarPeriod, 0);
-            return;
-        }
-        root.applyPeriod(root.analyticsViewModel.calendarMonthSelection(year, month), 0);
-    }
-
     function applyIsoReferenceMonth(year, month) {
         if (year * 12 + month > root.lastCompleteIsoPeriod.year * 12 + root.lastCompleteIsoPeriod.month) {
             root.applyPeriod(root.lastCompleteIsoPeriod, 2);
@@ -271,10 +263,7 @@ Item {
     }
 
     function applySelectedMonth(year, month) {
-        if (root.periodScope === 2)
-            root.applyIsoReferenceMonth(year, month);
-        else
-            root.applyCalendarMonth(year, month);
+        root.applyIsoReferenceMonth(year, month);
     }
 
     function previousMonth() {
@@ -289,8 +278,16 @@ Item {
         root.applySelectedMonth(next.getFullYear(), next.getMonth() + 1);
     }
 
-    function useCurrentMonth() {
-        root.applyPeriod(root.analyticsViewModel.currentMonthSelection(), 0);
+    function applyLastMonth() {
+        root.applyPeriod(root.analyticsViewModel.currentIsoMonthSelection(), 2);
+    }
+
+    function applyLastTwelveMonths() {
+        root.applyPeriod(root.analyticsViewModel.lastTwelveIsoMonthsSelection(), 3);
+    }
+
+    function toggleIsoCalendar() {
+        root.isoCalendarVisible = !root.isoCalendarVisible;
     }
 
     function applyYearToDate() {
@@ -407,12 +404,8 @@ Item {
         root.applyPeriod(root.analyticsViewModel.currentIsoWeekSelection());
     }
 
-    function applyIsoMonth() {
-        root.applyPeriod(root.analyticsViewModel.currentIsoMonthSelection(), 2);
-    }
-
     function isoWeekLabel(year, week) {
-        return String(year) + "-W" + String(week).padStart(2, "0");
+        return String(year) + String(week).padStart(2, "0");
     }
 
     function runQuickPreset(configureFn) {
@@ -561,9 +554,10 @@ Item {
                                 onClicked: root.nextMonth()
                             }
                             ActionButton {
+                                objectName: "analyticsCustomLastMonth"
                                 Layout.preferredWidth: 160 * root.compactControlScale
-                                text: qsTr("Ultimo mes completo")
-                                onClicked: root.useCurrentMonth()
+                                text: qsTr("Ultimo mes")
+                                onClicked: root.applyLastMonth()
                             }
                             ActionButton {
                                 objectName: "analyticsCustomYearToDate"
@@ -572,10 +566,16 @@ Item {
                                 onClicked: root.applyYearToDate()
                             }
                             ActionButton {
-                                objectName: "analyticsCustomIsoMonth"
+                                objectName: "analyticsCustomLastTwelveMonths"
                                 Layout.preferredWidth: 160 * root.compactControlScale
-                                text: qsTr("Ultimo mes ISO completo")
-                                onClicked: root.applyIsoMonth()
+                                text: qsTr("Ultimos 12 meses")
+                                onClicked: root.applyLastTwelveMonths()
+                            }
+                            ActionButton {
+                                objectName: "analyticsCustomCalendarToggle"
+                                Layout.preferredWidth: 170 * root.compactControlScale
+                                text: root.isoCalendarVisible ? qsTr("Ocultar calendario") : qsTr("Mostrar calendario")
+                                onClicked: root.toggleIsoCalendar()
                             }
                         }
                     }
@@ -583,10 +583,116 @@ Item {
                     Label {
                         objectName: "analyticsCustomIsoRangeSummary"
                         Layout.fillWidth: true
-                        visible: root.periodScope === 2
+                        visible: root.periodScope === 2 || root.periodScope === 3
                         text: qsTr("Mes ISO de referencia: inicio %1; fim %2. Cada semana pertence ao mes de sua quinta-feira.").arg(root.isoWeekLabel(root.firstYear, root.firstWeek)).arg(root.isoWeekLabel(root.lastYear, root.lastWeek))
                         color: Theme.mutedText
                         wrapMode: Text.Wrap
+                    }
+
+                    Rectangle {
+                        id: isoMonthCalendar
+
+                        objectName: "analyticsIsoMonthCalendar"
+                        property var months: root.analyticsViewModel.isoYearCalendar(root.periodYear)
+
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: isoCalendarColumn.implicitHeight + Theme.cardGap * 2
+                        visible: root.isoCalendarVisible
+                        color: Theme.panelRaised
+                        border.color: Theme.border
+                        radius: Theme.radiusSoft
+
+                        ColumnLayout {
+                            id: isoCalendarColumn
+
+                            anchors.fill: parent
+                            anchors.margins: Theme.cardGap
+                            spacing: Theme.gap
+
+                            Label {
+                                Layout.fillWidth: true
+                                text: qsTr("Calendario SOM/ISO %1").arg(root.periodYear)
+                                color: Theme.text
+                                font.bold: true
+                            }
+                            GridLayout {
+                                Layout.fillWidth: true
+                                columns: 3
+                                columnSpacing: Theme.cardGap
+
+                                Label {
+                                    Layout.row: 0
+                                    Layout.column: 0
+                                    Layout.fillWidth: true
+                                    text: qsTr("Mes ISO")
+                                    color: Theme.mutedText
+                                    font.bold: true
+                                }
+                                Label {
+                                    Layout.row: 0
+                                    Layout.column: 1
+                                    text: qsTr("Primeira semana")
+                                    color: Theme.mutedText
+                                    font.bold: true
+                                }
+                                Label {
+                                    Layout.row: 0
+                                    Layout.column: 2
+                                    text: qsTr("Ultima semana")
+                                    color: Theme.mutedText
+                                    font.bold: true
+                                }
+                                Repeater {
+                                    model: isoMonthCalendar.months
+
+                                    delegate: Label {
+                                        required property int index
+                                        required property var modelData
+
+                                        objectName: "analyticsIsoMonthCalendarRow-" + String(modelData.month)
+                                        Layout.row: index + 1
+                                        Layout.column: 0
+                                        Layout.fillWidth: true
+                                        text: root.monthNames[modelData.month - 1] + "/" + String(modelData.year)
+                                        color: Theme.text
+                                    }
+                                }
+                                Repeater {
+                                    model: isoMonthCalendar.months
+
+                                    delegate: Label {
+                                        required property int index
+                                        required property var modelData
+
+                                        objectName: "analyticsIsoMonthCalendarFirstWeek-" + String(modelData.month)
+                                        Layout.row: index + 1
+                                        Layout.column: 1
+                                        text: modelData.firstWeekLabel
+                                        color: Theme.text
+                                    }
+                                }
+                                Repeater {
+                                    model: isoMonthCalendar.months
+
+                                    delegate: Label {
+                                        required property int index
+                                        required property var modelData
+
+                                        objectName: "analyticsIsoMonthCalendarLastWeek-" + String(modelData.month)
+                                        Layout.row: index + 1
+                                        Layout.column: 2
+                                        text: modelData.lastWeekLabel
+                                        color: Theme.text
+                                    }
+                                }
+                            }
+                            Label {
+                                Layout.fillWidth: true
+                                text: qsTr("Semanas SOM: segunda a domingo; o mes ISO e definido pela quinta-feira. Feriados e dias-ponte SOM nao carregados.")
+                                color: Theme.mutedText
+                                wrapMode: Text.Wrap
+                            }
+                        }
                     }
 
                     GridLayout {

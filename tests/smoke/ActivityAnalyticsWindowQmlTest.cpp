@@ -256,11 +256,32 @@ namespace {
         }
 
         Q_INVOKABLE QVariantMap currentIsoMonthSelection() const {
-            const QDate today = QDate::currentDate();
-            const QDate referenceThursday = today.addDays(Qt::Thursday - today.dayOfWeek());
-            const QDate month =
-                QDate(referenceThursday.year(), referenceThursday.month(), 1).addMonths(-1);
-            return isoMonthSelection(month.year(), month.month());
+            return isoMonthSelection(2026, 7);
+        }
+
+        Q_INVOKABLE QVariantMap lastTwelveIsoMonthsSelection() const {
+            return {{QStringLiteral("year"), 2026},      {QStringLiteral("month"), 7},
+                    {QStringLiteral("firstYear"), 2025}, {QStringLiteral("firstWeek"), 32},
+                    {QStringLiteral("lastYear"), 2026},  {QStringLiteral("lastWeek"), 31}};
+        }
+
+        Q_INVOKABLE QVariantList isoYearCalendar(const int year) const {
+            QVariantList months;
+            for (int month = 1; month <= 12; ++month) {
+                const auto period = isoMonthSelection(year, month);
+                const int firstYear = period.value(QStringLiteral("firstYear")).toInt();
+                const int firstWeek = period.value(QStringLiteral("firstWeek")).toInt();
+                const int lastYear = period.value(QStringLiteral("lastYear")).toInt();
+                const int lastWeek = period.value(QStringLiteral("lastWeek")).toInt();
+                months.push_back(QVariantMap{
+                    {QStringLiteral("year"), year},
+                    {QStringLiteral("month"), month},
+                    {QStringLiteral("firstWeekLabel"),
+                     QString::number(firstYear * 100 + firstWeek)},
+                    {QStringLiteral("lastWeekLabel"), QString::number(lastYear * 100 + lastWeek)},
+                });
+            }
+            return months;
         }
 
         Q_INVOKABLE void clearCustomSeries() {
@@ -763,7 +784,7 @@ namespace {
 
             QVERIFY(invoke(*custom, "previousMonth"));
             QCOMPARE(custom->property("firstWeek").toInt(), 23);
-            QCOMPARE(custom->property("lastWeek").toInt(), 27);
+            QCOMPARE(custom->property("lastWeek").toInt(), 26);
             QTRY_COMPARE_WITH_TIMEOUT(viewModel.dimensionRequestCount(), dimensionBaseline + 1,
                                       1000);
             QVERIFY(viewModel.customSeries().isEmpty());
@@ -787,8 +808,9 @@ namespace {
             QCOMPARE(custom->property("firstWeek").toInt(), 49);
             QCOMPARE(custom->property("lastYear").toInt(), 2020);
             QCOMPARE(custom->property("lastWeek").toInt(), 53);
-            QVERIFY(summary->property("text").toString().contains(QStringLiteral("2020-W49")));
-            QVERIFY(summary->property("text").toString().contains(QStringLiteral("2020-W53")));
+            QVERIFY(summary->property("text").toString().contains(QStringLiteral("202049")));
+            QVERIFY(summary->property("text").toString().contains(QStringLiteral("202053")));
+            QVERIFY(!summary->property("text").toString().contains(QLatin1Char('W')));
 
             QVERIFY(invoke(*custom, "nextMonth"));
             QCOMPARE(custom->property("periodScope").toInt(), 2);
@@ -798,6 +820,64 @@ namespace {
             QCOMPARE(custom->property("firstWeek").toInt(), 1);
             QCOMPARE(custom->property("lastYear").toInt(), 2021);
             QCOMPARE(custom->property("lastWeek").toInt(), 4);
+        }
+
+        void custom_analysis_exposes_last_twelve_months_and_iso_calendar() {
+            QQmlEngine engine;
+            FakeAnalyticsViewModel viewModel;
+            QString error;
+            auto object = loadWindow(engine, viewModel, error);
+            QVERIFY2(object != nullptr, qPrintable(error));
+            auto* custom = object->findChild<QObject*>(QStringLiteral("analyticsCustomAnalysis"));
+            auto* calendar =
+                object->findChild<QObject*>(QStringLiteral("analyticsIsoMonthCalendar"));
+            auto* lastMonthButton =
+                object->findChild<QObject*>(QStringLiteral("analyticsCustomLastMonth"));
+            auto* lastTwelveButton =
+                object->findChild<QObject*>(QStringLiteral("analyticsCustomLastTwelveMonths"));
+            auto* calendarButton =
+                object->findChild<QObject*>(QStringLiteral("analyticsCustomCalendarToggle"));
+            QVERIFY(custom != nullptr);
+            QVERIFY(calendar != nullptr);
+            QVERIFY(lastMonthButton != nullptr);
+            QVERIFY(lastTwelveButton != nullptr);
+            QVERIFY(calendarButton != nullptr);
+            QCOMPARE(lastMonthButton->property("text").toString(), QStringLiteral("Ultimo mes"));
+            QCOMPARE(lastTwelveButton->property("text").toString(),
+                     QStringLiteral("Ultimos 12 meses"));
+            QVERIFY(object->findChild<QObject*>(QStringLiteral("analyticsCustomIsoMonth")) ==
+                    nullptr);
+            QVERIFY(invoke(*object, "selectTab", 1));
+
+            QVERIFY(invoke(*custom, "applyLastTwelveMonths"));
+            QCOMPARE(custom->property("firstYear").toInt(), 2025);
+            QCOMPARE(custom->property("firstWeek").toInt(), 32);
+            QCOMPARE(custom->property("lastYear").toInt(), 2026);
+            QCOMPARE(custom->property("lastWeek").toInt(), 31);
+
+            QVERIFY(!calendar->property("visible").toBool());
+            QVERIFY(invoke(*custom, "toggleIsoCalendar"));
+            QVERIFY(calendar->property("visible").toBool());
+            const QVariantList months = calendar->property("months").toList();
+            QCOMPARE(months.size(), 12);
+            QCOMPARE(months.at(6).toMap().value(QStringLiteral("firstWeekLabel")).toString(),
+                     QStringLiteral("202627"));
+            QCOMPARE(months.at(6).toMap().value(QStringLiteral("lastWeekLabel")).toString(),
+                     QStringLiteral("202631"));
+            auto* window = qobject_cast<QQuickWindow*>(object.get());
+            QVERIFY(window != nullptr);
+            auto* julyRow = findVisualChild(*window->contentItem(),
+                                            QStringLiteral("analyticsIsoMonthCalendarRow-7"));
+            auto* julyFirstWeek = findVisualChild(
+                *window->contentItem(), QStringLiteral("analyticsIsoMonthCalendarFirstWeek-7"));
+            auto* julyLastWeek = findVisualChild(
+                *window->contentItem(), QStringLiteral("analyticsIsoMonthCalendarLastWeek-7"));
+            QVERIFY(julyRow != nullptr);
+            QVERIFY(julyFirstWeek != nullptr);
+            QVERIFY(julyLastWeek != nullptr);
+            QCOMPARE(julyRow->property("text").toString(), QStringLiteral("Julho/2026"));
+            QCOMPARE(julyFirstWeek->property("text").toString(), QStringLiteral("202627"));
+            QCOMPARE(julyLastWeek->property("text").toString(), QStringLiteral("202631"));
         }
 
         void h1_dashboard_previous_month_queues_dashboard_refresh() {
@@ -978,7 +1058,7 @@ namespace {
             QVERIFY(invoke(*dashboard, "applyCalendarMonth", 2027, 1));
             QCOMPARE(dashboard->property("periodYear").toInt(), 2026);
             QCOMPARE(dashboard->property("periodMonth").toInt(), 7);
-            QVERIFY(invoke(*custom, "applyCalendarMonth", 2027, 1));
+            QVERIFY(invoke(*custom, "applyIsoReferenceMonth", 2027, 1));
             QCOMPARE(custom->property("periodYear").toInt(), 2026);
             QCOMPARE(custom->property("periodMonth").toInt(), 7);
         }

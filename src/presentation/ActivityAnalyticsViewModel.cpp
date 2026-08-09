@@ -732,6 +732,40 @@ namespace ssa::presentation {
         return isoReferenceMonthMap(previous.first, previous.second);
     }
 
+    QVariantMap ActivityAnalyticsViewModel::lastTwelveIsoMonthsSelection() const {
+        const auto lastComplete = currentIsoMonthSelection();
+        const domain::IsoWeek last{lastComplete.value(QStringLiteral("lastYear")).toInt(),
+                                   lastComplete.value(QStringLiteral("lastWeek")).toInt()};
+        const auto period = domain::referenceMonthHistoryPeriod(last, 12);
+        return {{QStringLiteral("year"), lastComplete.value(QStringLiteral("year"))},
+                {QStringLiteral("month"), lastComplete.value(QStringLiteral("month"))},
+                {QStringLiteral("firstYear"), period.first.year},
+                {QStringLiteral("firstWeek"), period.first.week},
+                {QStringLiteral("lastYear"), period.last.year},
+                {QStringLiteral("lastWeek"), period.last.week}};
+    }
+
+    QVariantList ActivityAnalyticsViewModel::isoYearCalendar(const int year) const {
+        QVariantList months;
+        months.reserve(12);
+        for (int month = 1; month <= 12; ++month) {
+            const auto period = domain::isoReferenceMonthPeriod(year, month);
+            months.push_back(QVariantMap{{QStringLiteral("year"), year},
+                                         {QStringLiteral("month"), month},
+                                         {QStringLiteral("firstYear"), period.first.year},
+                                         {QStringLiteral("firstWeek"), period.first.week},
+                                         {QStringLiteral("lastYear"), period.last.year},
+                                         {QStringLiteral("lastWeek"), period.last.week},
+                                         {QStringLiteral("firstWeekLabel"),
+                                          QString::fromStdString(domain::formatIsoYearWeekDisplay(
+                                              period.first.year, period.first.week))},
+                                         {QStringLiteral("lastWeekLabel"),
+                                          QString::fromStdString(domain::formatIsoYearWeekDisplay(
+                                              period.last.year, period.last.week))}});
+        }
+        return months;
+    }
+
     void ActivityAnalyticsViewModel::clearCustomSeries() {
         if (customSeries_.isEmpty()) {
             return;
@@ -934,7 +968,8 @@ namespace ssa::presentation {
         if (warningWindowLoadSucceeded.has_value()) {
             emit warningWindowLoadFinished(*warningWindowLoadSucceeded);
         }
-        QMetaObject::invokeMethod(this, [this] { pruneCompleted(); }, Qt::QueuedConnection);
+        QMetaObject::invokeMethod(
+            this, [this] { pruneCompleted(); }, Qt::QueuedConnection);
     }
 
     void ActivityAnalyticsViewModel::stop(Operation& operation) {

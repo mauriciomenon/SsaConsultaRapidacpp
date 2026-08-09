@@ -204,6 +204,38 @@ namespace {
             QCOMPARE(december.value(QStringLiteral("lastWeek")).toInt(), 53);
         }
 
+        void lastTwelveIsoMonthsSelectionUsesCompleteReferenceMonths() {
+            const auto port = std::make_shared<FunctionalAnalyticsPort>();
+            const ssa::presentation::ActivityAnalyticsViewModel model(serviceFor(port));
+            const auto lastComplete = model.currentIsoMonthSelection();
+            const ssa::domain::IsoWeek last{lastComplete.value(QStringLiteral("lastYear")).toInt(),
+                                            lastComplete.value(QStringLiteral("lastWeek")).toInt()};
+            const auto expected = ssa::domain::referenceMonthHistoryPeriod(last, 12);
+
+            const QVariantMap selection = model.lastTwelveIsoMonthsSelection();
+
+            QCOMPARE(selection.value(QStringLiteral("firstYear")).toInt(), expected.first.year);
+            QCOMPARE(selection.value(QStringLiteral("firstWeek")).toInt(), expected.first.week);
+            QCOMPARE(selection.value(QStringLiteral("lastYear")).toInt(), expected.last.year);
+            QCOMPARE(selection.value(QStringLiteral("lastWeek")).toInt(), expected.last.week);
+        }
+
+        void isoYearCalendarExposesCompactWeekRangesForEveryMonth() {
+            const auto port = std::make_shared<FunctionalAnalyticsPort>();
+            const ssa::presentation::ActivityAnalyticsViewModel model(serviceFor(port));
+
+            const QVariantList months = model.isoYearCalendar(2026);
+
+            QCOMPARE(months.size(), 12);
+            const QVariantMap july = months.at(6).toMap();
+            QCOMPARE(july.value(QStringLiteral("year")).toInt(), 2026);
+            QCOMPARE(july.value(QStringLiteral("month")).toInt(), 7);
+            QCOMPARE(july.value(QStringLiteral("firstWeekLabel")).toString(),
+                     QStringLiteral("202627"));
+            QCOMPARE(july.value(QStringLiteral("lastWeekLabel")).toString(),
+                     QStringLiteral("202631"));
+        }
+
         void yearToDateSelectionUsesFirstIsoWeekThroughCurrentWeek() {
             const auto port = std::make_shared<FunctionalAnalyticsPort>();
             const ssa::presentation::ActivityAnalyticsViewModel model(serviceFor(port));
