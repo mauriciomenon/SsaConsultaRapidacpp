@@ -9,10 +9,10 @@
 | Last decision update | 2026-08-09 |
 | Branch at planning time | master |
 | Initial planning HEAD | 2c93f51c9e6033da943f16738cce54c043ac896b |
-| Implementation delivery baseline | 152f2da2e70372b9b9a8e4ddf1a2ef9293c19493 |
+| Implementation delivery baseline | 7d579f0626b9283be3523dfe0cb7cced9b6fd61d |
 | Knowledge contract | [SAM and SSA Analytics Knowledge Base](../contracts/sam-ssa-analytics.md) |
-| Production edits authorized by this document | None |
-| Narrow edits authorized by the user | Primary/related-SSA visibility, SAM batch atomicity, real ISO-week validation, truthful labels, import-result accounting, and custom-report zero/table/CSV/ISO-month behavior |
+| Production edits authorized by this document | Only the explicitly approved, completed slices recorded below |
+| Narrow edits authorized by the user | Import visibility/atomicity/real ISO validation, per-field equal-snapshot conflict handling, custom-report ISO month/zero/export/table behavior, compact graph labels, quick multi-selection marker, and organization-name search |
 | Commit/push policy in this round | Commit the validated slices on current master and publish to origin plus bitbucket; no branch, worktree, PR, or merge |
 | Protected scanner baseline | .secrets.baseline must remain byte-for-byte unchanged |
 | Timeout policy | Silence and timeout never select an option |
@@ -85,7 +85,8 @@ Critical current strengths:
 Critical gaps at the initial planning HEAD and their delivery disposition:
 
 - malformed primary or related SSA could disappear at `2c93f51`; fixed, tested, and committed in `ffdb594`;
-- equal-snapshot indicator conflicts are order-dependent;
+- equal-snapshot indicator conflicts were order-dependent; fixed per field and committed in
+  `ef851ee1`;
 - SAM sector artifacts were not batch-atomic at `2c93f51`; fixed, tested, and committed in
   `ffdb594`;
 - SAM status vocabulary conflicts with the domain/manual;
@@ -106,7 +107,7 @@ No slice may cross a gate with an empty Decision column.
 | D-01 | Urgent planning clock | 24 elapsed hours; 24 business hours; source-specific display | R05 temporal implementation | DECIDED 2026-08-09: 24 elapsed hours |
 | D-02 | Business-time authority | Calendario do SOM/SAM named by G05; explicitly imported versioned calendar; another documented source | Business-time branches of R05, R06, R12 | OPEN; public location calendar was Codex research, not a user decision |
 | D-03 | Plant business-clock offset | Fixed offset; named regional zone with daylight policy | All business clocks | DECIDED 2026-08-09: fixed UTC-03:00, no regional-zone or daylight adjustment |
-| D-04 | Two files disagree about one SSA at the same update time: which value wins? | File processed later; named source priority; more complete row by explicit fields; reject as visible conflict | Import determinism behavior | OPEN |
+| D-04 | Two files disagree about one nonempty field of the same SSA at the same update time: which value wins? | File processed later; named source priority; row completeness; reject as visible conflict | Import determinism behavior | DECIDED 2026-08-09: reject the row as visible conflict; no value wins |
 | D-05 | R01 operation discriminator | Existing canonical field; derived organization rule; new source field | R01 | OPEN |
 | D-06 | R08 population | SEE only; active execution set; another documented set | R08 | OPEN |
 | D-07 | R10 terminal membership | STE only; STE plus SES | R10 | OPEN |
@@ -116,7 +117,8 @@ No slice may cross a gate with an empty Decision column.
 | D-11 | N/A versus unknown presentation | Separate series; exclude unknown only; explicit quality panel | R09 and shared UI | OPEN |
 | D-12 | Historical event authority | SAM event API; versioned snapshots; dedicated import | R02, R03, R06, R07, R08 latest partial, R10 counts, R12 | OPEN |
 | D-13 | Analytics product naming | Generic operational dashboard plus SAM reports; replace dashboard; clearly separate both | UI exposure | OPEN |
-| D-14 | Exact 50 percent and zero boundaries | Select the adjacent color for each boundary | Shared color boundary | DECIDED 2026-08-09: 50 percent green; zero yellow |
+| D-14a | Exact 50 percent boundary | Green or yellow | Shared color boundary | DECIDED 2026-08-09: green, the least restrictive adjacent class |
+| D-14b | Exact zero boundary | Yellow or red | Shared color boundary | DECIDED 2026-08-09: yellow, the least restrictive adjacent class |
 | D-15 | Emission approval sequence | G05 sector-then-division; another explicitly documented level sequence | R06 | OPEN |
 | D-16 | Simple-execution deadline | Reconcile G05 Event 32 at 48 hours with the requested programmed-week deadline; define discriminator, start, and clock | R08 and R09 | OPEN |
 
@@ -130,7 +132,8 @@ further if its predicted diff grows beyond one coherent behavior.
 Status:
 
 - Knowledge and plan documents updated through the 2026-08-09 delivery gate.
-- D-01, D-03, and D-14 are decided; every other business conflict and decision gate remains OPEN.
+- D-01, D-03, D-04, D-14a, and D-14b are decided; every other business conflict and decision gate
+  remains OPEN.
 - Source behavior changed only in the later approved narrow slices recorded below.
 - Both documents are committed in `152f2da`.
 
@@ -142,7 +145,7 @@ Files:
 Acceptance:
 
 - report count is R01-R12 plus one transverse time/color rule;
-- every conflict is OPEN;
+- every unresolved business conflict remains OPEN; D-04 is explicitly recorded as decided;
 - GLM claims have corrected classifications;
 - Ponytail is isolated as annotations only;
 - no local absolute attachment paths or secrets are committed.
@@ -161,8 +164,9 @@ Status on 2026-08-07:
 
 - malformed related-SSA reproduction and regression coverage: COMPLETE IN `ffdb594`;
 - SAM valid-sibling plus later operational failure rollback test: COMPLETE IN `ffdb594`;
-- 2020-W53/2021-W53 domain, import, SAM, and advanced-filter coverage: COMPLETE IN `ffdb594`;
-- equal-snapshot reverse-order permanent test: DEFERRED until D-04 defines the expected winner;
+- 202053/202153 domain, import, SAM, and advanced-filter coverage: COMPLETE IN `ffdb594`;
+- equal-snapshot reverse-order permanent tests: COMPLETE IN `ef851ee1`; both orders reject a
+  differing nonempty value instead of selecting a winner;
 - ALE/ASL/AIP/ASI/SCC behavior: source-characterized, but no desired assertion while D-08/D-09
   remain open;
 - canonical and legacy !STE behavior: reverified without selecting a new semantic rule.
@@ -178,7 +182,7 @@ Predicted files:
 Required tests:
 
 1. Import the same equal-snapshot rows in A,B and B,A order with different indicator values and
-   compare final persisted rows.
+   assert that neither order selects a conflicting value.
 2. Import malformed numero_ssa_relacionada and assert an explicit invalid-row or rejected-file
    result, never silent omission.
 3. Submit one valid SAM sector followed by a sector that reaches the incremental
@@ -260,26 +264,25 @@ Rollback:
 
 ### Slice S3 - Make equal-snapshot handling deterministic
 
-Gate:
+Status:
 
-- D-04 must be decided.
+- IMPLEMENTED, VALIDATED, COMMITTED, AND PUBLISHED IN `ef851ee1`.
+- D-04 is closed by the owner's approved fail-closed implementation.
 
 Goal:
 
 - The same corpus produces the same database regardless of explicit file-selection order.
 
-Preferred minimal shape after D-04:
+Implemented shape:
 
-- Canonicalize the complete explicit selection before its 64-file partition, then preserve that
-  order inside every staged batch.
-- Make the merge winner explicit for different equal-snapshot indicator values.
-- Preserve the existing no-change comparison for identical values.
-- Do not add a public CLI import-order switch unless a real user workflow requires it.
-
-Why no CLI switch by default:
-
-- Exposing stable versus caller order preserves two behaviors and increases the test matrix.
-- The product needs one deterministic contract, not a permanent debugging option.
+- Compare each populated incoming field with the stored value.
+- Preserve an existing value when the incoming cell is empty.
+- Fill an empty stored field from a nonempty incoming value.
+- Accept equal nonempty values as unchanged.
+- Reject different nonempty equal-snapshot values as one visible row conflict.
+- Preserve explicit terminal promotion and deterministic metadata handling.
+- Remove row-completeness and filename-profile authority from conflicting business fields.
+- Do not add source ownership tables, a rules engine, or a CLI order switch.
 
 Predicted files:
 
@@ -291,8 +294,8 @@ Predicted files:
 
 Acceptance:
 
-- A,B and B,A fixtures produce byte-equivalent selected row values;
-- equivalent selections larger than 64 files preserve the same global batch order;
+- A,B and B,A fixtures both expose the conflict instead of choosing the second file;
+- file order cannot choose a conflicting equal-snapshot value;
 - older/newer snapshot behavior is unchanged;
 - terminal promotion is unchanged;
 - equal same-value import reports unchanged;
@@ -301,8 +304,7 @@ Acceptance:
 
 Performance:
 
-- Sorting remains O(n log n) over files.
-- Merge stays one pass over incoming fields.
+- Merge stays one pass over incoming fields with no additional database query.
 
 Commit:
 
@@ -503,7 +505,7 @@ Rollback:
 
 Gates:
 
-- D-01, D-03, and D-14 are decided.
+- D-01, D-03, D-14a, and D-14b are decided.
 - D-02 remains OPEN only for business-time calendar loading; it does not block the elapsed-time
   calculator or the approved color boundaries.
 
@@ -653,7 +655,7 @@ Rollback:
 
 Gates:
 
-- D-01/D-02/D-03/D-12/D-14.
+- D-01/D-02/D-03/D-12/D-14a/D-14b.
 - D-15 before R06.
 
 Order:
@@ -678,7 +680,7 @@ Commit:
 
 Gates:
 
-- D-06, D-07, D-11, D-14, and D-16.
+- D-06, D-07, D-11, D-14a, D-14b, and D-16.
 - D-12 for event-derived R08 latest-partial and R10 count measures.
 
 Order:
@@ -755,7 +757,7 @@ Goal:
 
 Status on 2026-08-09:
 
-- IMPLEMENTED AND VALIDATED IN WORKING TREE; NOT YET COMMITTED.
+- IMPLEMENTED, VALIDATED, COMMITTED, AND PUBLISHED across `719f8c8` and `933aad8`.
 
 Behavior:
 
@@ -763,11 +765,13 @@ Behavior:
 - optionally hide only categories whose every known series value is exactly zero and that contain
   no unknown or meaningful trend value;
 - optionally list every known zero as Category, Series, Value even when its category is hidden;
-- show a measured, scrollable table below the custom chart by default;
+- keep the measured, scrollable table hidden by default and expose it through `Mostrar tabela`;
 - export the main table and zero list as formula-safe UTF-8 CSV;
 - write exports atomically and preserve exact CRLF bytes on Windows;
-- derive ISO reference-month start/end from the weeks whose Thursdays belong to that month;
-- keep calendar-month and ISO-reference-month navigation distinct.
+- use ISO reference month as the single month meaning;
+- derive its start/end from the weeks whose Thursdays belong to that month;
+- display compact `YYYYWW` labels without `W`;
+- show an inline ISO-month calendar and offer `Ultimo mes` plus `Ultimos 12 meses`.
 
 Files:
 
@@ -787,14 +791,44 @@ Acceptance:
 2. `[0, null]` remains visible and `null` remains `Sem dado`.
 3. Zero rows are collected before hiding and can be exported independently.
 4. A nonzero trend does not keep an observed all-zero category visible.
-5. December 2020 maps to 2020-W49 through W53; January 2021 maps to W01 through W04.
+5. July 2026 maps to 202627 through 202631; December 2020 maps to 202049 through 202053.
 6. CSV escapes fields and neutralizes spreadsheet formula leaders.
 7. The writer atomically replaces an existing file and writes caller-provided CRLF unchanged.
-8. The visual artifact shows chart, main table, zero table, and export actions at 1580x940.
+8. The graph opens without the main table; the toggle and both CSV exports remain available.
 
 Rollback:
 
 - Revert this presentation/ViewModel/test slice without touching import or SAM business gates.
+
+### Slice S15 - Compact filtering and organization context
+
+Goal:
+
+- Improve visual integrity and findability without changing report formulas or database codes.
+
+Status on 2026-08-09:
+
+- IMPLEMENTED, VALIDATED, COMMITTED, AND PUBLISHED across `3c683e0`, `edaa45f`, and `7d579f0`.
+
+Behavior:
+
+- show `...` in the quick sector selector when more than one sector is selected;
+- keep graph categories compact and centered under their value, without repeating the division;
+- catalog all 71 Manual G05 Table 1 organization codes and names;
+- distinguish Departamento de Engenharia de Manutencao `(SMI.DT)` from Departamento de
+  Manutencao `(SMM.DT)`;
+- search divisions/sectors by raw code, name, or department while sending only raw codes to the
+  existing query contract;
+- keep department names out of graph labels.
+
+Acceptance:
+
+1. One sector shows its code; multiple sectors show `...`; none preserves the existing empty state.
+2. IEE3 appears under engineering maintenance and MEL4 under maintenance.
+3. Searching `eletronica`, `protecao`, or a department name finds the expected raw-code option.
+4. Selecting a descriptive option sends `IEE`/`IEE1`, never the display label.
+5. Unknown codes remain visible as raw codes.
+6. The chart does not repeat `IEE / IEE3` when `IEE3` is sufficient.
 
 ## 8. Validation matrix
 
@@ -808,7 +842,8 @@ Rollback:
 | Application | Availability and provenance propagated without fallback |
 | ViewModel | Latest-wins, history period, localized reason, stable title |
 | QML | Selector availability, preset truth, accessible labels, readable screenshot |
-| Custom report | Exact-zero/null distinction, dynamic ISO boundaries, main/zero CSV, measured table, visual artifact |
+| Custom report | Exact-zero/null distinction, dynamic ISO boundaries, main/zero CSV, optional measured table, visual artifact |
+| Organization search | 71-code catalog coverage, department distinction, raw-code request integrity, list-only descriptive labels |
 | Performance | Representative corpus latency, RSS, write-lock duration, query plan |
 | Security | Semgrep with timeout remediation, Gitleaks, detect-secrets nonmutating scan, TruffleHog |
 | Windows | Native MSVC build, CTest, Qt/QML, package smoke |
@@ -893,12 +928,16 @@ Current-round evidence:
 | Malformed related SSA remains visible | Clean | Committed in `ffdb594` | Mapper/writer/workflow focused tests pass | Not applicable |
 | Malformed primary SSA remains visible with empty description | Clean | Committed in `ffdb594` | Mapper invalid-row and full-rescan rollback regressions pass | Final Codex Security scan closes the prior LOW/P3 path |
 | SAM multi-sector operational failure is atomic | Clean | Committed in `ffdb594` | Portable rollback test passes; generic isolation regression passes | Not applicable |
-| Real ISO week validation in domain, generic import, SAM, and filters | Clean | Committed in `ffdb594` | 2020-W53 accepted; 2021-W53 rejected; portable SAM regression passes | Qt QDate ISO rule |
+| Real ISO week validation in domain, generic import, SAM, and filters | Clean | Committed in `ffdb594` | 202053 accepted; 202153 rejected; portable SAM regression passes | Qt QDate ISO rule |
 | Two generic analytics labels match their actual count formulas | Clean | Committed in `3ff8ab1` | all_qmllint, clean release build, and QML offscreen tests pass | Not applicable |
 | Import result matches rollback state | Clean | Committed in `ffdb594` | Focused SAM invalid-row and later-workbook rollback regressions pass | Not applicable |
 | Custom report zero/table/CSV behavior | Clean | Committed in `3ff8ab1` | Configured qmllint; window suite 41/41; release CTest; visual PNG inspected | Qt QSaveFile behavior |
-| Dynamic ISO reference-month navigation | Clean | Committed in `3ff8ab1` | December 2020 W49-W53 and January 2021 W01-W04 pass | Qt QDate ISO Thursday rule |
-| D-01 through D-16 business choices | Clean | D-01, D-03, and D-14 recorded in `152f2da`; remaining gates OPEN | Decisions trace to the owner's 2026-08-09 response; timeout selected nothing | Additional sources do not decide D-02/D-10/D-16 |
+| Dynamic ISO reference-month navigation | Clean | Committed in `719f8c8` | July 2026 is 202627-202631; compact notation, calendar, and last-12-month regressions pass | Qt QDate ISO Thursday rule |
+| Equal-snapshot field conflicts | Clean | Committed in `ef851ee1` | Reverse order cannot choose a conflicting value; blank/same/newer/older/terminal invariants pass | Not applicable |
+| Custom chart table default and graph labels | Clean | Committed in `933aad8` and `edaa45f` | Table toggle/export and centered compact-category QML regressions pass | Not applicable |
+| Quick sector multi-selection marker | Clean | Committed in `3c683e0` | Single/multiple/empty presentation tests pass | Not applicable |
+| Organization names and departments | Clean | Committed in `7d579f0` | ViewModel 31/31; QML window 43/43; 71/71 G05 codes cataloged; screenshots inspected | Manual G05 Table 1 |
+| D-01 through D-16 business choices | Clean | D-01, D-03, D-04, D-14a, and D-14b recorded; remaining gates OPEN | Decisions trace to the owner's 2026-08-09 response; timeout selected nothing | Additional sources do not decide D-02/D-10/D-16 |
 | Windows development executable | Clean | Source represented by `ffdb594` and `3ff8ab1` | Clean MSVC amd64 build 575/575; full CTest 657/657 with 5 explicit skips; QML window 41/41 | Not applicable |
 | Windows release package | Clean | Manifest commit `d02870d7ab77` | Clean release 575/575; CTest 657/657; ZIP/portable/installer/standalone and all 1,573 SHA256SUMS entries verified | Version 0.9.17 metadata verified; Authenticode remains absent |
 | Analytics report cardinality | Clean | Unbounded contract remains explicit in `3ff8ab1` | Final Codex Security LOW/P3 source trace; no threshold benchmark exists | OPEN product decision based on measured legitimate cardinality |
@@ -912,13 +951,13 @@ Current-round evidence:
 | 2 | Review and accept the two S0 documents | READY FOR USER REVIEW | User review |
 | 3 | Complete only noncontroversial S1/S2/S4/S6 work authorized for this round | COMPLETE AND COMMITTED | `ffdb594` and `3ff8ab1` |
 | 4 | Resolve D-08/D-09 before SAM vocabulary edit | OPEN | Versioned business/API evidence |
-| 5 | Resolve D-04 before deterministic winner edit | OPEN | Explicit decision |
-| 6 | Implement elapsed-time/color core; resolve D-02 before business-calendar adapter | PARTIALLY UNBLOCKED | D-01/D-03/D-14 decided; D-02 remains OPEN |
+| 5 | Preserve and monitor per-field fail-closed equal-snapshot behavior | COMPLETE | `ef851ee1` |
+| 6 | Implement elapsed-time/color core; resolve D-02 before business-calendar adapter | PARTIALLY UNBLOCKED | D-01/D-03/D-14a/D-14b decided; D-02 remains OPEN |
 | 7 | Resolve D-05/D-06/D-10 before R01/R08/R11 implementation | OPEN | Population/traversal contracts |
 | 8 | Resolve D-12 before historical schema | OPEN | Event source authority |
 | 9 | Resolve D-15/D-16 before approval/simple-execution formulas | OPEN | Business decisions |
 | 10 | Keep Ponytail cleanup separate | RECORDED | Separate request |
-| 11 | Commit and push validated slices on current master | COMPLETE | `origin/master` and `bitbucket/master` verified at `152f2da` before this documentation-only closeout |
+| 11 | Commit and push validated slices on current master | COMPLETE THROUGH S15 | `origin/master` and `bitbucket/master` verified at `7d579f0` before this documentation closeout |
 
 ## 15. Residual risks
 

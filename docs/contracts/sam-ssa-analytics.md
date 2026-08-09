@@ -8,7 +8,7 @@
 | Status | VERIFIED BASELINE PLUS COMMITTED FIXES; PARTIAL OWNER DECISIONS; OPEN CONFLICTS |
 | Last verified date | 2026-08-09 |
 | Repository branch | master |
-| Implementation delivery baseline | 152f2da2e70372b9b9a8e4ddf1a2ef9293c19493 on master |
+| Implementation delivery baseline | 7d579f0626b9283be3523dfe0cb7cced9b6fd61d on master |
 | Evidence rule | Section 13.1 separates committed behavior, local validation, and external proof |
 | Companion plan | [SAM and SSA analytics alignment plan](../plans/2026-08-06-sam-ssa-analytics-alignment.md) |
 | Decision policy | A timeout, silence, or unanswered question is not a user decision |
@@ -39,7 +39,8 @@ meanings:
 - SAM REST artifact import and its current validation boundaries.
 - General, column, quick, advanced, and analytics filter behavior.
 - Current activity analytics projection, SQL, application, ViewModel, and QML behavior.
-- Custom-report zero handling, ISO-reference-month selection, textual table, and CSV export.
+- Custom-report zero handling, ISO-reference-month selection, optional textual table, and CSV export.
+- SAM organization codes, names, and maintenance-department grouping used by custom-report search.
 - Every material GLM 5.2 assertion in the supplied response.
 - New findings discovered by direct inspection, tests, scanners, and independent agents.
 - A dedicated Ponytail complexity audit record.
@@ -771,26 +772,26 @@ Evidence:
 [SsaImportPolicy.cpp](../../src/domain/SsaImportPolicy.cpp#L343).
 
 When either existing or incoming has no valid snapshot, the existing row wins and a difference is
-reported as conflict. An older snapshot is ignored except for terminal promotion. An equal snapshot
-uses three different rules:
+reported as conflict. An older snapshot is ignored except for terminal promotion. Commit
+`ef851ee1` replaced the order-dependent equal-snapshot rule with a per-field fail-closed rule:
 
-- metadata may choose a lexicographically smaller value;
-- conflict fields may set conflict unless richer/preferred source rules apply;
-- indicator fields can overwrite with the incoming value.
+- the same nonempty value is unchanged;
+- an empty incoming value never clears an existing value;
+- a nonempty incoming value may fill an empty existing field;
+- different nonempty values for the same field reject the row as a visible conflict;
+- row completeness, source filename profile, and file order cannot override that conflict;
+- terminal-state promotion and deterministic metadata handling remain explicit exceptions.
 
-Because explicit external selection preserves caller order while discovery sorts workbookPath,
-equal-snapshot indicator values can produce different final data under different file order.
 Evidence:
 
 - [ImportFileStager.cpp](../../src/infra/import/ImportFileStager.cpp#L201)
 - [ImportFileStager.cpp](../../src/infra/import/ImportFileStager.cpp#L601)
-- [SsaImportPolicy.cpp](../../src/domain/SsaImportPolicy.cpp#L643)
+- [SsaImportPolicy.cpp](../../src/domain/SsaImportPolicy.cpp#L582)
 
-Plain-language version: two files can describe the same SSA at the same update time but contain
-different indicator values. Current code keeps the value from whichever file is processed later.
-Changing file order can therefore change the database. D-04 asks whether to keep that rule, always
-trust one named source, choose the more complete row by an explicit field list, or reject the pair
-as a visible conflict. No choice has been made.
+Plain-language version: if two files say different things about the same field of the same SSA at
+the same update time, the import stops that row and shows a conflict. It does not guess which file
+is better. Empty cells still do not erase known data. This closes D-04 without a rules engine or a
+source-specific ownership matrix.
 
 Important qualification: assigning an indicator to the same stored value does not set changed,
 because differsInPersistedValues compares the final map with existing values. The GLM proposal to
@@ -852,7 +853,7 @@ the conflicting row would violate current file atomicity unless the product cont
 | Unknown numeric comparison mode | Normalizes to equals | CONFIRMED fail-closed/fail-open policy question |
 
 The week fix uses one Qt-free C++20 domain primitive based on ISO Thursday/week-year rules. It
-accepts 2020-W53 and rejects 2021-W53. It also makes a year-only advanced interval end at that
+accepts 202053 and rejects 202153. It also makes a year-only advanced interval end at that
 year's real last ISO week. No calendar-business rule was inferred from this technical validation.
 
 ### 8.7 SAM refresh path
@@ -877,7 +878,7 @@ samRejectionReason already rolls back the whole session. The mismatch occurs whe
 an operational-error or duplicate-conflict branch handled by incremental isolateFileFailure:
 successful siblings can still commit and the result can be Succeeded with a warning.
 
-The working tree fixes only that policy mismatch: a batch with samArtifacts is atomic even though
+Commit `ffdb594` fixes only that policy mismatch: a batch with samArtifacts is atomic even though
 replaceAll remains false, so unrelated SSA rows are not cleared. One portable Windows test imports
 a valid SAM artifact followed by a corrupt workbook and proves the existing database is unchanged.
 Generic incremental imports retain their per-file isolation behavior.
@@ -889,8 +890,7 @@ portable regression test covers the atomic operational-error path, not every end
 
 ### 8.8 Import result accounting after rollback
 
-Two reporting defects were fixed in the working tree without changing row-selection or merge
-policy:
+Two reporting defects were fixed in `ffdb594` without changing row-selection or merge policy:
 
 - when an incremental file is isolated and rolled back, its inserts, updates, and unchanged rows
   are removed from the aggregate result before the per-file write counters are cleared;
@@ -1021,7 +1021,7 @@ closely resembles the July SMIN dashboard, not the twelve desired SAM report set
 
 ### 10.4 Custom report zero, table, export, and ISO-month behavior
 
-The working tree adds two independent presentation options to the custom report:
+The committed custom report has two independent presentation options:
 
 | Option | Default | Exact behavior |
 | --- | --- | --- |
@@ -1034,21 +1034,24 @@ cleaned. `null` remains `Sem dado`; it is never coerced to zero. The list can re
 category/series combinations present in the returned model and does not invent absent people,
 sectors, or source rows.
 
-The custom chart now opens with its textual table below the plot. Column widths are measured from
-the actual header and cell text, headers are bold, multiline categories use a readable separator,
-and horizontal/vertical scrollbars preserve access to wide or long results. The table and the zero
-list are independently exportable as CSV. CSV output is UTF-8 with BOM and CRLF, quotes embedded
-commas/quotes/newlines, and prefixes spreadsheet-formula leaders before writing. `QSaveFile`
-provides atomic replacement; binary-mode output preserves the already-normalized CRLF bytes.
+The custom chart keeps its textual table hidden by default to preserve graph space. `Mostrar
+tabela` exposes it on demand; no persistent always-visible table occupies the plot area. Column
+widths are measured from the actual header and cell text, headers are bold, multiline categories
+use a readable separator, and horizontal/vertical scrollbars preserve access to wide or long
+results. The main table and the zero list are independently exportable as CSV. CSV output is UTF-8
+with BOM and CRLF, quotes embedded commas/quotes/newlines, and prefixes spreadsheet-formula leaders
+before writing. `QSaveFile` provides atomic replacement; binary-mode output preserves the
+already-normalized CRLF bytes.
 
-The custom selector distinguishes calendar months from ISO reference months. In ISO mode, the
-first boundary is the first ISO week whose Thursday is inside the selected month and the last
-boundary is the last ISO week whose Thursday is inside that month. The ViewModel computes both
-boundaries; QML does not use fixed week numbers. The UI displays the exact `YYYY-Www` start and end
-and explains the Thursday rule. Verified boundaries include:
+The custom selector has one month meaning: ISO reference month. The first boundary is the first ISO
+week whose Thursday is inside the selected month and the last boundary is the last ISO week whose
+Thursday is inside that month. The ViewModel computes both boundaries; QML does not use fixed week
+numbers. The UI displays compact `YYYYWW` values without `W`, explains the Thursday rule, offers an
+inline year calendar, and provides `Ultimo mes` and `Ultimos 12 meses`. Verified boundaries include:
 
-- December 2020: 2020-W49 through 2020-W53;
-- January 2021: 2021-W01 through 2021-W04.
+- July 2026: 202627 through 202631;
+- December 2020: 202049 through 202053;
+- January 2021: 202101 through 202104.
 
 This is a technical period-definition improvement. It does not choose the OPEN D-02 business
 calendar and does not alter the fixed UTC-03 decision for plant clocks.
@@ -1080,13 +1083,33 @@ The 2026-08-09 custom-report capture used the offscreen backend with the Windows
 Qt Basic controls style. It visibly proves that the filtered chart, main table, zero list, and both
 CSV actions fit at 1580x940. It remains runtime evidence, not a golden-pixel contract.
 
+### 10.6 Organization names in custom-report search
+
+Manual G05 Table 1 defines 71 organization codes. The committed catalog maps every listed code to
+its name and organization group. In particular:
+
+- IEE, IEQ, ILA, IMA, IME, ISI, and IDE belong to Departamento de Engenharia de Manutencao
+  `(SMI.DT)`;
+- MAS, MAM, MCI, MEG, MEL, MET, and MMU belong to Departamento de Manutencao `(SMM.DT)`.
+
+Division and sector search matches code, unit name, or department name. The list displays the
+descriptive label, but requests and database filters continue to use the original raw code. Unknown
+codes remain visible as their raw value. The graph keeps compact sector categories only; department
+names are intentionally limited to search/list context.
+
+Evidence:
+
+- [SamOrganizationalUnits.h](../../src/domain/SamOrganizationalUnits.h)
+- [ActivityAnalyticsViewModel.cpp](../../src/presentation/ActivityAnalyticsViewModel.cpp)
+- [AnalyticsCustomAnalysis.qml](../../app/desktop/qml/analytics/AnalyticsCustomAnalysis.qml)
+
 ## 11. GLM 5.2 verification
 
 ### 11.1 Main conclusions
 
 | GLM claim | Classification | Verified conclusion |
 | --- | --- | --- |
-| File order can change DB result | CONFIRMED | Equal-snapshot conflicting indicator values are last-writer-wins; external and rescan order differ |
+| File order can change DB result | STALE after `ef851ee1` | The original behavior was confirmed; equal-snapshot conflicting nonempty fields now fail closed instead of selecting a file-order winner |
 | Identical indicator writes explain updates | FALSE | Final persisted comparison already avoids changed for the same value |
 | Normalization explains 362,385 updates | UNSUPPORTED | Corpus arithmetic is consistent with later snapshots; dirty ledger limits normalization |
 | Conflict return silently persists partial file | PARTIAL | Later rows are not evaluated, but file/full savepoints prevent the asserted partial persistence |
@@ -1145,9 +1168,9 @@ Historical claims must not be copied into a new plan without rechecking the curr
 | LOW/P3 | Malformed primary SSA plus empty description can be mistaken for a continuation row before validation | FIXED IN `ffdb594`: preserve malformed nonempty primary text until the existing row validator counts and rejects it |
 | HIGH | SAM multi-sector refresh can commit valid siblings after a sibling operational error or duplicate conflict | FIXED IN `ffdb594`: SAM batches use outer rollback; generic incremental file isolation is preserved |
 | HIGH | SAM status vocabulary conflicts with the domain: AIP/ASI versus ALE/ASL, plus SCC omission | OPEN under D-08 and D-09; no alias or status was invented |
-| HIGH | Equal-snapshot different indicator values depend on import order | OPEN under D-04; no winner was selected |
+| HIGH | Equal-snapshot different indicator values depended on import order | FIXED IN `ef851ee1`: different nonempty values fail closed per field; no source or file-order winner is selected |
 | MEDIUM | SAM manifest proof does not bind its decision to the exact artifact bytes later parsed | OPEN for controlled reproduction; metadata checks do not prove a manifest-to-byte binding |
-| MEDIUM | SAM and generic import accept a syntactic week 53 in a year without ISO week 53 | FIXED IN `ffdb594`; 2020-W53 passes and 2021-W53 rejects |
+| MEDIUM | SAM and generic import accept a syntactic week 53 in a year without ISO week 53 | FIXED IN `ffdb594`; 202053 passes and 202153 rejects |
 | MEDIUM | Advanced exact and year-only filters can compose an impossible week 53 | FIXED IN `ffdb594`; year-only upper bound now uses the real final ISO week |
 | LOW | Original-path identity can change after staging and before later consolidation actions | OPEN as a narrow lifecycle risk; no database parse reads the later original bytes |
 | LOW | Canonical lock path can diverge from a later original path if a symlink parent is retargeted | OPEN theoretical path-lifecycle risk; no reproduced exploit or data error |
@@ -1208,12 +1231,12 @@ observed values decide whether a category has no occurrences; trend values remai
 | Baseline focused CTest selection | 177 selected; 176 passed; 1 symlink test skipped; 0 failed; 8.09 s | Pre-fix characterization, not full cross-platform suite |
 | Baseline Qt/QML offscreen selection | 5 of 5 passed; 63.17 s | Pre-fix; screenshot text was not human-readable |
 | Canonical Windows dev build after ISO slice | 160 of 160 build steps passed | Native Windows amd64 only |
-| Focused ISO CTest selection | 6 of 6 passed | Proves 2020-W53 valid, 2021-W53 invalid, import-policy use, analytics validation, and advanced-filter bounds |
+| Focused ISO CTest selection | 6 of 6 passed | Proves 202053 valid, 202153 invalid, import-policy use, analytics validation, and advanced-filter bounds |
 | Canonical Windows incremental build after integrity slice | 14 of 14 build steps passed | Native Windows amd64 only |
 | Focused import-integrity CTest selection | 4 of 4 passed | Proves malformed-reference visibility, SAM rollback path, writer rejection, and preserved generic file isolation |
-| Portable SAM impossible-week regression | Final run passed 1 of 1 | Proves a 2021-W53 artifact is rejected, no SSA table persists, database integrity holds, and the source artifact remains |
+| Portable SAM impossible-week regression | Final run passed 1 of 1 | Proves a 202153 artifact is rejected, no SSA table persists, database integrity holds, and the source artifact remains |
 | Final incremental Windows test build | 4 of 4 build steps passed | Rebuilt the portable SAM regression on native Windows amd64 |
-| Final canonical Windows incremental build | 22 of 22 build steps passed | Includes the invalid-pair query fix and positive SAM 2020-W53 coverage |
+| Final canonical Windows incremental build | 22 of 22 build steps passed | Includes the invalid-pair query fix and positive SAM 202053 coverage |
 | Final focused regression selection | 12 of 12 passed; 0 failed; 2.78 s | Covers ISO validation, query fallback rejection, SAM rollback, positive week 53, malformed references, generic isolation, and QML smoke |
 | all_qmllint | Passed | Static QML target only |
 | Canonical Windows incremental build after wording slice | 8 of 8 build steps passed | Native Windows amd64 only |
@@ -1339,8 +1362,9 @@ Paths named by the audit:
 | A-05 | Are ALE/ASL or AIP/ASI authoritative for the SAM API? | CONFLICT C-06 | OPEN |
 | A-06 | Can SCC appear in SAM artifacts? | UNKNOWN | OPEN |
 | A-07 | Which versioned source supplies weekends and BR/PY holidays to the application? | G05 names Calendario do SOM; no application access contract is defined | Calendar source OPEN; fixed UTC-03:00 decided 2026-08-09 |
-| A-08 | Which adjacent color owns each exact boundary? | Owner selected the least restrictive adjacent color | DECIDED 2026-08-09: 50 percent green; zero yellow |
-| A-09 | Two files disagree about one SSA at the same update time. Which one wins, or should the import reject the conflict? | Current indicator behavior keeps whichever file is processed later | OPEN |
+| A-08a | Which adjacent color owns exactly 50 percent? | Owner selected the least restrictive adjacent color | DECIDED 2026-08-09: green |
+| A-08b | Which adjacent color owns exactly zero? | Owner selected the least restrictive adjacent color | DECIDED 2026-08-09: yellow; overdue starts below zero |
+| A-09 | Two files disagree about one nonempty SSA field at the same update time. Which value wins? | Per-field behavior committed in `ef851ee1` | DECIDED 2026-08-09: reject as visible conflict; do not select a winner |
 | A-10 | What traversal direction per relation category, depth, cycle rule, missing-node behavior, and result/paging limit define expanded R11? | UNKNOWN | OPEN |
 | A-11 | How are not-applicable and unknown displayed and counted? | Current model conflates them | OPEN |
 | A-12 | Which event source can prove deviation, partial, approval, and cancellation history? | Current snapshots insufficient | OPEN |
@@ -1375,3 +1399,4 @@ Before a future agent claims a SAM report is implemented:
 | 2026-08-07 | 2c93f51c9e6033da943f16738cce54c043ac896b | Added primary calendar research, operational/corpus evidence, corrected GLM classifications, narrow uncommitted integrity/ISO/label fixes, and explicit working-tree validation |
 | 2026-08-09 | 2c93f51c9e6033da943f16738cce54c043ac896b | Added custom-report zero/table/CSV/ISO-month behavior, malformed-primary validation, final Windows build/test evidence, and sealed Codex Security findings while preserving open business gates |
 | 2026-08-09 | 152f2da2e70372b9b9a8e4ddf1a2ef9293c19493 | Committed the import/ISO, analytics, and separate documentation slices; generated and verified the full Windows release package; preserved every undecided business gate |
+| 2026-08-09 | 7d579f0626b9283be3523dfe0cb7cced9b6fd61d | Recorded ISO-month-only UI, compact week labels, equal-snapshot fail-closed merge, hidden-by-default chart table, compact graph labels, quick multi-selection marker, and the complete G05 organization catalog |
