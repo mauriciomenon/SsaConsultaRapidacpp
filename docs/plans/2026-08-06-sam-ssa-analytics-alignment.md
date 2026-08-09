@@ -900,7 +900,7 @@ Current-round evidence:
 | Dynamic ISO reference-month navigation | Clean | Committed in `3ff8ab1` | December 2020 W49-W53 and January 2021 W01-W04 pass | Qt QDate ISO Thursday rule |
 | D-01 through D-16 business choices | Clean | D-01, D-03, and D-14 recorded in `152f2da`; remaining gates OPEN | Decisions trace to the owner's 2026-08-09 response; timeout selected nothing | Additional sources do not decide D-02/D-10/D-16 |
 | Windows development executable | Clean | Source represented by `ffdb594` and `3ff8ab1` | Clean MSVC amd64 build 575/575; full CTest 657/657 with 5 explicit skips; QML window 41/41 | Not applicable |
-| Windows release package | Clean | Manifest commit `152f2da2e703` | Clean release 575/575; CTest 657/657; ZIP/portable/installer/standalone hashes match SHA256SUMS | Portable reports version 0.9.17; Authenticode remains absent |
+| Windows release package | Clean | Manifest commit `d02870d7ab77` | Clean release 575/575; CTest 657/657; ZIP/portable/installer/standalone and all 1,573 SHA256SUMS entries verified | Version 0.9.17 metadata verified; Authenticode remains absent |
 | Analytics report cardinality | Clean | Unbounded contract remains explicit in `3ff8ab1` | Final Codex Security LOW/P3 source trace; no threshold benchmark exists | OPEN product decision based on measured legitimate cardinality |
 | .secrets.baseline protection | Clean | Blob `1a733dfdeddb2724754ce038f5e56ec1606082fa` unchanged | Gitleaks, detect-secrets, and TruffleHog clean | Not applicable |
 

@@ -1070,9 +1070,9 @@ The offscreen tests generated:
 - build/windows/amd64/msvc/msvc2022_64/dev/activity-analytics-window-1580x940.png
 - build/windows/amd64/msvc/msvc2022_64/dev/activity-analytics-custom-report-1580x940.png
 
-The inspected 1580x940 image rendered text glyphs as squares. An older runtime screenshot reportedly
-rendered them correctly. This does not prove a source-code regression because the offscreen font
-environment can differ, but it invalidates the current image as human visual evidence.
+The first inspected 1580x940 image rendered text glyphs as squares. This did not prove a source-code
+regression because the offscreen font environment can differ, but it invalidated that first capture
+as human visual evidence.
 
 Current smoke tests assert non-null image and geometry, not golden pixels or readable glyphs.
 
@@ -1230,9 +1230,10 @@ observed values decide whether a category has no occurrences; trend values remai
 | Final full Windows CTest | 657 of 657 passed; 0 failed; 5 symlink contracts skipped; 125.26 s | Native Windows amd64; skips are explicit platform-dependent contracts |
 | Final zero/trend QML window suite | 41 of 41 passed; 0 failed; 49.90 s | Observed zero hides even with nonzero trend; null stays visible; zero list remains complete |
 | Final custom-report visual artifact | 1580x940 PNG regenerated and inspected | Chart, main table, four-zero table, and CSV actions are visible without clipping |
-| Clean Windows release build | 575 of 575 build steps passed | Native Windows 11 amd64, MSVC, Qt 6.11.1; manifest commit `152f2da2e703` |
-| Full Windows release CTest | 657 of 657 passed; 0 failed; 5 symlink contracts skipped; 110.30 s | Same explicit platform-dependent skips as the dev gate |
-| Windows release package | ZIP, portable, installer, and standalone generated | Version 0.9.17; portable `--version` passed; ZIP contains 1,660 entries; SHA256SUMS matches every top-level artifact |
+| Clean Windows release build | 575 of 575 build steps passed | Native Windows 11 amd64, MSVC, Qt 6.11.1; manifest commit `d02870d7ab77` |
+| Full Windows release CTest | 657 of 657 passed; 0 failed; 5 symlink contracts skipped; 77.21 s | Same explicit platform-dependent skips as the dev gate |
+| Windows release package | ZIP, portable, installer, and standalone generated | Version 0.9.17; ZIP contains 1,660 entries; all 1,573 SHA256SUMS file entries were recomputed successfully |
+| Final GitLab pipeline | Pipeline 2745352263 passed | `linux-verify` and `secret-scan` passed on exact commit `d02870d7ab77` |
 
 The focused tests prove the narrow working-tree fixes. They do not prove the desired SAM formulas,
 every SAM end-to-end branch, reverse-order database equivalence, other native platforms, or visual
