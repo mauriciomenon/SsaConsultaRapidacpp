@@ -51,6 +51,18 @@ namespace ssa::presentation {
         return effectiveQuickSector(state_);
     }
 
+    bool FilterPanelSectorViewModel::hasMultipleSectorSelections() const {
+        const auto tokens = domain::parseTextFilterTokens(
+            state_.advanced().textFilter(executorColumnKey()).toStdString());
+        int selectedCount = 0;
+        for (const auto& token : tokens.ordered) {
+            if (token.filterOperator == domain::TextFilterOperator::Equals && ++selectedCount > 1) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     void FilterPanelSectorViewModel::setQuickSector(const QString& value) {
         const auto normalizedValue = value.trimmed();
         if (!filterpanel::setExecutorShortcut(state_, normalizedValue)) {

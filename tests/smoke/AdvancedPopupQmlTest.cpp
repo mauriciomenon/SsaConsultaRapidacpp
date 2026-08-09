@@ -1,6 +1,7 @@
 #include "domain/SsaTypes.h"
 #include "ports/ISsaRepository.h"
 #include "presentation/AdvancedDerivationFilterViewModel.h"
+#include "presentation/AdvancedTextFilterViewModel.h"
 #include "presentation/DerivadasGraphModel.h"
 #include "presentation/FilterPanelAdvancedViewModel.h"
 #include "presentation/FilterPanelDistinctValueRequestBuilder.h"
@@ -1522,6 +1523,7 @@ namespace {
                         property var selectorValues: []
                         property int selectorIndex: -1
                         property string quickSector: ""
+                        property bool hasMultipleSectorSelections: false
                         property string optionsError: ""
                     }
                     QtObject {
@@ -1660,6 +1662,7 @@ namespace {
                         property var selectorValues: []
                         property int selectorIndex: -1
                         property string quickSector: ""
+                        property bool hasMultipleSectorSelections: false
                         property string optionsError: ""
                     }
                     QtObject {
@@ -2164,6 +2167,39 @@ namespace {
                 QVERIFY2(summaryBounds.contains(tagBounds),
                          "compact chip frame extends outside the applied-filter bar");
             }
+        }
+
+        void pager_quick_filters_shows_ellipsis_for_multiple_sectors() {
+            auto repository = std::make_shared<CountingRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::FilterPanelViewModel filters(service);
+            auto* advanced =
+                qobject_cast<ssa::presentation::FilterPanelAdvancedViewModel*>(filters.advanced());
+            QVERIFY(advanced != nullptr);
+            auto* text =
+                qobject_cast<ssa::presentation::AdvancedTextFilterViewModel*>(advanced->text());
+            QVERIFY(text != nullptr);
+            text->setTextFilter(QStringLiteral("setor_executor"), QStringLiteral("=IEE3,=IEE1"));
+
+            QQmlEngine engine;
+            engine.rootContext()->setContextProperty(QStringLiteral("testFilterViewModel"),
+                                                     &filters);
+            QQmlComponent pagerComponent(&engine);
+            pagerComponent.setData(kQuickSectorHarness,
+                                   QUrl(QStringLiteral("inmemory:/QuickSectorHarness.qml")));
+            QTRY_VERIFY_WITH_TIMEOUT(pagerComponent.status() != QQmlComponent::Loading, 1000);
+            QVERIFY2(pagerComponent.isReady(), qPrintable(pagerComponent.errorString()));
+            std::unique_ptr<QObject> pagerHarness(pagerComponent.create());
+            QVERIFY2(pagerHarness != nullptr, qPrintable(pagerComponent.errorString()));
+            auto* sectorFilter = findOwnedQuickItemByProperty(pagerHarness.get(), "objectName",
+                                                              QStringLiteral("quickSectorFilter"));
+            QTRY_VERIFY_WITH_TIMEOUT(sectorFilter != nullptr, 1000);
+            QCOMPARE(sectorFilter->property("displayText").toString(), QStringLiteral("..."));
+
+            text->setTextFilter(QStringLiteral("setor_executor"), QStringLiteral("=IEE3"));
+
+            QTRY_COMPARE_WITH_TIMEOUT(sectorFilter->property("displayText").toString(),
+                                      QStringLiteral("IEE3"), 1000);
         }
 
         void pager_quick_filters_sector_label_meets_wcag_aa_at_runtime() {

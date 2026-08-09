@@ -1136,6 +1136,31 @@ namespace {
             QCOMPARE(filters.quickSector(), QString(""));
         }
 
+        void sector_selector_marks_multiple_executor_selections() {
+            auto repository = std::make_shared<FilterPanelRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::FilterPanelViewModel filters(service);
+            auto* advanced =
+                qobject_cast<ssa::presentation::FilterPanelAdvancedViewModel*>(filters.advanced());
+            auto* sector =
+                qobject_cast<ssa::presentation::FilterPanelSectorViewModel*>(filters.sector());
+            QVERIFY(advanced != nullptr);
+            auto* text =
+                qobject_cast<ssa::presentation::AdvancedTextFilterViewModel*>(advanced->text());
+            QVERIFY(text != nullptr);
+            QVERIFY(sector != nullptr);
+
+            text->setTextFilter("setor_executor", "=IEE3,=IEE1");
+
+            QVERIFY(sector->hasMultipleSectorSelections());
+            QCOMPARE(sector->quickSector(), QString());
+
+            text->setTextFilter("setor_executor", "=IEE3");
+
+            QVERIFY(!sector->hasMultipleSectorSelections());
+            QCOMPARE(sector->quickSector(), QString("IEE3"));
+        }
+
         void filter_summary_entries_are_structured_and_removable() {
             auto repository = std::make_shared<FilterPanelRepository>();
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);

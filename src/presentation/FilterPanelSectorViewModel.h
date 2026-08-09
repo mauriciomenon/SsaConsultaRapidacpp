@@ -16,6 +16,7 @@ namespace ssa::presentation {
     class FilterPanelSectorViewModel final : public QObject {
         Q_OBJECT
         Q_PROPERTY(QString quickSector READ quickSector WRITE setQuickSector NOTIFY changed)
+        Q_PROPERTY(bool hasMultipleSectorSelections READ hasMultipleSectorSelections NOTIFY changed)
         Q_PROPERTY(
             bool excludeScaSesSte READ excludeScaSesSte WRITE setExcludeScaSesSte NOTIFY changed)
         Q_PROPERTY(QStringList options READ options NOTIFY optionsChanged)
@@ -28,6 +29,7 @@ namespace ssa::presentation {
                                             QObject* parent = nullptr);
 
         [[nodiscard]] QString quickSector() const;
+        [[nodiscard]] bool hasMultipleSectorSelections() const;
         void setQuickSector(const QString& value);
         [[nodiscard]] bool excludeScaSesSte() const;
         void setExcludeScaSesSte(bool value);
