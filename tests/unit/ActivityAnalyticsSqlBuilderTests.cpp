@@ -95,8 +95,7 @@ TEST_CASE("activity analytics event series preserves a compiled source predicate
     checkContains(query.sql, "BETWEEN CAST(? AS INTEGER) AND CAST(? AS INTEGER)");
     checkContains(query.sql, "'unknown' AS \"registration_cohort\"");
     checkContains(query.sql, "IN ('STE', 'SES')");
-    CHECK(query.bindings ==
-          std::vector<std::string>{"APV", "%motor%", "202601", "202605", "Caio"});
+    CHECK(query.bindings == std::vector<std::string>{"APV", "%motor%", "202601", "202605", "Caio"});
 }
 
 TEST_CASE("activity analytics preserves the source revision of each stock snapshot") {

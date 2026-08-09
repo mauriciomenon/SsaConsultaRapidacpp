@@ -528,8 +528,8 @@ TEST_CASE("custom charts preserve explicitly selected zero-value combinations") 
 }
 
 TEST_CASE("custom charts populate series tags for person breakdowns") {
-    auto analyticsRequest = request(AnalyticsMetric::Executed, TimeGrain::WholePeriod,
-                                    Breakdown::DivisionSectorPerson);
+    auto analyticsRequest =
+        request(AnalyticsMetric::Executed, TimeGrain::WholePeriod, Breakdown::DivisionSectorPerson);
     analyticsRequest.divisions = {"SMI"};
     analyticsRequest.sectors = {"SMIN"};
     analyticsRequest.people = {"Joao Silva Santos"};

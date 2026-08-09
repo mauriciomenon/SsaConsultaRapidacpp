@@ -78,14 +78,14 @@ namespace ssa::app::desktop {
             return false;
         }
         const QString svg =
-            QStringLiteral("<?xml version=\"1.0\" encoding=\"UTF-8\"?>")
-            + QStringLiteral("<svg xmlns=\"http://www.w3.org/2000/svg\" ")
-            + QStringLiteral("xmlns:xlink=\"http://www.w3.org/1999/xlink\" ")
-            + QStringLiteral("width=\"%1\" height=\"%2\">").arg(image.width()).arg(image.height())
-            + QStringLiteral("<image width=\"%1\" height=\"%2\" xlink:href=\"data:image/png;base64,")
-                  .arg(image.width())
-                  .arg(image.height())
-            + QString::fromLatin1(pngBytes.toBase64()) + QStringLiteral("\"/></svg>");
+            QStringLiteral("<?xml version=\"1.0\" encoding=\"UTF-8\"?>") +
+            QStringLiteral("<svg xmlns=\"http://www.w3.org/2000/svg\" ") +
+            QStringLiteral("xmlns:xlink=\"http://www.w3.org/1999/xlink\" ") +
+            QStringLiteral("width=\"%1\" height=\"%2\">").arg(image.width()).arg(image.height()) +
+            QStringLiteral("<image width=\"%1\" height=\"%2\" xlink:href=\"data:image/png;base64,")
+                .arg(image.width())
+                .arg(image.height()) +
+            QString::fromLatin1(pngBytes.toBase64()) + QStringLiteral("\"/></svg>");
         return writeTextFile(path, svg);
     }
 

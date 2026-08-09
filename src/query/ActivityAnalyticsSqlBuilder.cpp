@@ -497,14 +497,12 @@ namespace ssa::query {
         }
 
         std::string eventAvailabilityUnion(const std::string& sourceTable) {
-            const auto registrationWeek =
-                weekExpression(quoteColumnIdentifier("semana_cadastro"));
+            const auto registrationWeek = weekExpression(quoteColumnIdentifier("semana_cadastro"));
             return eventAvailabilitySql("registered", registrationWeek, sourceTable) +
                    " UNION ALL " +
                    eventAvailabilitySql("executed", executedEventWeekExpression(), sourceTable,
                                         executedMembershipSql()) +
-                   " UNION ALL " +
-                   eventAvailabilitySql("issued", registrationWeek, sourceTable);
+                   " UNION ALL " + eventAvailabilitySql("issued", registrationWeek, sourceTable);
         }
 
         std::string stockMetricsCte() {
