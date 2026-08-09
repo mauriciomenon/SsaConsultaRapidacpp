@@ -79,7 +79,7 @@ Item {
         },
         {
             "key": "pendingDeadlinePercentage",
-            "title": qsTr("Prazo das pendentes em percentual"),
+            "title": qsTr("Distribuicao percentual do prazo das pendentes"),
             "chartType": "percentStackedBar"
         },
         {

@@ -214,6 +214,28 @@ namespace {
             return currentMonthSelection();
         }
 
+        Q_INVOKABLE QVariantMap isoMonthSelection(const int year, const int month) const {
+            const QDate firstDay(year, month, 1);
+            if (!firstDay.isValid()) {
+                return currentMonthSelection();
+            }
+            const QDate lastDay(year, month, firstDay.daysInMonth());
+            const QDate firstThursday =
+                firstDay.addDays((Qt::Thursday - firstDay.dayOfWeek() + 7) % 7);
+            const QDate lastThursday =
+                lastDay.addDays(-((lastDay.dayOfWeek() - Qt::Thursday + 7) % 7));
+            int firstIsoYear = 0;
+            int lastIsoYear = 0;
+            const int firstIsoWeek = firstThursday.weekNumber(&firstIsoYear);
+            const int lastIsoWeek = lastThursday.weekNumber(&lastIsoYear);
+            return {{QStringLiteral("year"), year},
+                    {QStringLiteral("month"), month},
+                    {QStringLiteral("firstYear"), firstIsoYear},
+                    {QStringLiteral("firstWeek"), firstIsoWeek},
+                    {QStringLiteral("lastYear"), lastIsoYear},
+                    {QStringLiteral("lastWeek"), lastIsoWeek}};
+        }
+
         Q_INVOKABLE QVariantMap yearToDateSelection() const {
             const QDate today = QDate::currentDate();
             int isoYear = 0;
@@ -234,13 +256,11 @@ namespace {
         }
 
         Q_INVOKABLE QVariantMap currentIsoMonthSelection() const {
-            const QDate month = QDate::currentDate().addMonths(-1);
-            return {{QStringLiteral("year"), month.year()},
-                    {QStringLiteral("month"), month.month()},
-                    {QStringLiteral("firstYear"), month.year()},
-                    {QStringLiteral("firstWeek"), 1},
-                    {QStringLiteral("lastYear"), month.year()},
-                    {QStringLiteral("lastWeek"), 4}};
+            const QDate today = QDate::currentDate();
+            const QDate referenceThursday = today.addDays(Qt::Thursday - today.dayOfWeek());
+            const QDate month =
+                QDate(referenceThursday.year(), referenceThursday.month(), 1).addMonths(-1);
+            return isoMonthSelection(month.year(), month.month());
         }
 
         Q_INVOKABLE void clearCustomSeries() {
@@ -281,7 +301,7 @@ namespace {
 
         Q_INVOKABLE bool writeExportFile(const QString& path, const QString& content) const {
             QFile file(path);
-            if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
+            if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
                 return false;
             }
             return file.write(content.toUtf8()) >= 0;
@@ -290,6 +310,11 @@ namespace {
         void publishDimensionValues(const QVariantMap& values) {
             dimensionValues_ = values;
             emit dimensionValuesChanged();
+        }
+
+        void publishCustomSeries(const QVariantMap& values) {
+            customSeries_ = values;
+            emit customSeriesChanged();
         }
 
         Q_INVOKABLE bool requestCustomSeries(const QVariantMap& selection) {
@@ -503,7 +528,7 @@ namespace {
 
         Q_INVOKABLE bool write(const QString& path, const QString& content) const {
             QFile file(path);
-            if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
+            if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
                 return false;
             }
             return file.write(content.toUtf8()) >= 0;
@@ -742,6 +767,37 @@ namespace {
             QTRY_COMPARE_WITH_TIMEOUT(viewModel.dimensionRequestCount(), dimensionBaseline + 1,
                                       1000);
             QVERIFY(viewModel.customSeries().isEmpty());
+        }
+
+        void iso_reference_month_navigation_uses_dynamic_start_and_end_weeks() {
+            QQmlEngine engine;
+            FakeAnalyticsViewModel viewModel;
+            QString error;
+            auto object = loadWindow(engine, viewModel, error);
+            QVERIFY2(object != nullptr, qPrintable(error));
+            auto* custom = object->findChild<QObject*>(QStringLiteral("analyticsCustomAnalysis"));
+            auto* summary =
+                object->findChild<QObject*>(QStringLiteral("analyticsCustomIsoRangeSummary"));
+            QVERIFY(custom != nullptr);
+            QVERIFY(summary != nullptr);
+
+            QVERIFY(invoke(*custom, "applyIsoReferenceMonth", 2020, 12));
+            QCOMPARE(custom->property("periodScope").toInt(), 2);
+            QCOMPARE(custom->property("firstYear").toInt(), 2020);
+            QCOMPARE(custom->property("firstWeek").toInt(), 49);
+            QCOMPARE(custom->property("lastYear").toInt(), 2020);
+            QCOMPARE(custom->property("lastWeek").toInt(), 53);
+            QVERIFY(summary->property("text").toString().contains(QStringLiteral("2020-W49")));
+            QVERIFY(summary->property("text").toString().contains(QStringLiteral("2020-W53")));
+
+            QVERIFY(invoke(*custom, "nextMonth"));
+            QCOMPARE(custom->property("periodScope").toInt(), 2);
+            QCOMPARE(custom->property("periodYear").toInt(), 2021);
+            QCOMPARE(custom->property("periodMonth").toInt(), 1);
+            QCOMPARE(custom->property("firstYear").toInt(), 2021);
+            QCOMPARE(custom->property("firstWeek").toInt(), 1);
+            QCOMPARE(custom->property("lastYear").toInt(), 2021);
+            QCOMPARE(custom->property("lastWeek").toInt(), 4);
         }
 
         void h1_dashboard_previous_month_queues_dashboard_refresh() {
@@ -1500,9 +1556,79 @@ namespace {
                                     QStringLiteral("analyticsChartExportPng")) != nullptr);
             QVERIFY(findVisualChild(*window->contentItem(),
                                     QStringLiteral("analyticsChartExportSvg")) != nullptr);
+            QVERIFY(findVisualChild(*window->contentItem(),
+                                    QStringLiteral("analyticsChartExportCsv")) != nullptr);
         }
 
-        void analytics_chart_harness_writes_png_and_svg_files() {
+        void custom_chart_hides_only_all_zero_categories_and_lists_known_zeros() {
+            QQmlEngine engine;
+            FakeAnalyticsViewModel viewModel;
+            QString error;
+            auto object = loadWindow(engine, viewModel, error);
+            QVERIFY2(object != nullptr, qPrintable(error));
+            QVERIFY(invoke(*object, "selectTab", 1));
+
+            viewModel.publishCustomSeries({
+                {QStringLiteral("categories"),
+                 QStringList{QStringLiteral("Zero"), QStringLiteral("Unknown"),
+                             QStringLiteral("Mixed")}},
+                {QStringLiteral("series"),
+                 QVariantList{
+                     QVariantMap{{QStringLiteral("name"), QStringLiteral("first")},
+                                 {QStringLiteral("values"), QVariantList{0.0, 0.0, 0.0}},
+                                 {QStringLiteral("trendValues"), QVariantList{5.0, 5.0, 5.0}}},
+                     QVariantMap{{QStringLiteral("name"), QStringLiteral("second")},
+                                 {QStringLiteral("values"), QVariantList{0.0, QVariant{}, 2.0}},
+                                 {QStringLiteral("trendValues"), QVariantList{}}},
+                 }},
+                {QStringLiteral("subtitle"), QString{}},
+                {QStringLiteral("qualityText"), QString{}},
+                {QStringLiteral("available"), true},
+            });
+
+            auto* custom = object->findChild<QObject*>(QStringLiteral("analyticsCustomAnalysis"));
+            auto* chart = object->findChild<QObject*>(QStringLiteral("customAnalysisChart"));
+            auto* customFlick = object->findChild<QObject*>(QStringLiteral("analyticsCustomFlick"));
+            auto* zeroTable =
+                object->findChild<QObject*>(QStringLiteral("analyticsZeroValuesTable"));
+            auto* zeroExport =
+                object->findChild<QObject*>(QStringLiteral("analyticsExportZeroCsv"));
+            QVERIFY(custom != nullptr);
+            QVERIFY(chart != nullptr);
+            QVERIFY(customFlick != nullptr);
+            QVERIFY(zeroTable != nullptr);
+            QVERIFY(zeroExport != nullptr);
+
+            custom->setProperty("hideZeroCategories", true);
+            custom->setProperty("listZeroValues", true);
+            QTRY_COMPARE_WITH_TIMEOUT(chart->property("hiddenZeroCategoryCount").toInt(), 1, 1000);
+            const QVariantList categories = chart->property("categories").toList();
+            QCOMPARE(categories.size(), 2);
+            QCOMPARE(categories.at(0).toString(), QStringLiteral("Unknown"));
+            QCOMPARE(categories.at(1).toString(), QStringLiteral("Mixed"));
+            const QVariantList zeroRows = chart->property("zeroRows").toList();
+            QCOMPARE(zeroRows.size(), 4);
+            QCOMPARE(zeroTable->property("rows").toList().size(), 4);
+            QVERIFY(zeroTable->property("visible").toBool());
+            QVERIFY(zeroExport->property("enabled").toBool());
+
+            auto* window = qobject_cast<QQuickWindow*>(object.get());
+            QVERIFY(window != nullptr);
+            window->setGeometry(0, 0, 1580, 940);
+            window->show();
+            QVERIFY(waitForRenderedFrames(*window));
+            const qreal maximumContentY =
+                std::max<qreal>(0, customFlick->property("contentHeight").toReal() -
+                                       customFlick->property("height").toReal());
+            customFlick->setProperty("contentY", maximumContentY);
+            QTRY_VERIFY_WITH_TIMEOUT(!window->grabWindow().isNull(), 1000);
+            const QImage image = window->grabWindow();
+            QVERIFY(image.save(
+                QDir(QCoreApplication::applicationDirPath())
+                    .filePath(QStringLiteral("activity-analytics-custom-report-1580x940.png"))));
+        }
+
+        void analytics_chart_harness_writes_png_svg_and_csv_files() {
             QQmlEngine engine;
             ExportFileWriter writer;
             engine.rootContext()->setContextProperty(QStringLiteral("exportFileWriter"), &writer);
@@ -1566,8 +1692,10 @@ namespace {
             QVERIFY(outputDirectory.isValid());
             const QString pngPath = outputDirectory.filePath(QStringLiteral("analytics-chart.png"));
             const QString svgPath = outputDirectory.filePath(QStringLiteral("analytics-chart.svg"));
+            const QString csvPath = outputDirectory.filePath(QStringLiteral("analytics-chart.csv"));
             const QUrl pngUrl = QUrl::fromLocalFile(pngPath);
             const QUrl svgUrl = QUrl::fromLocalFile(svgPath);
+            const QUrl csvUrl = QUrl::fromLocalFile(csvPath);
 
             QSignalSpy exportSpy(chart, SIGNAL(exportFinished(bool)));
 
@@ -1601,10 +1729,23 @@ namespace {
             const QByteArray svgPayload = svgFile.readAll();
             QVERIFY(svgPayload.contains("<svg"));
             QVERIFY(svgPayload.contains("data:image/png;base64,"));
+
+            QVERIFY(QMetaObject::invokeMethod(chart, "saveCsv",
+                                              Q_ARG(QVariant, QVariant::fromValue(csvUrl))));
+            QCOMPARE(exportSpy.count(), 3);
+            QCOMPARE(exportSpy.at(2).at(0).toBool(), true);
+            QFile csvFile(csvPath);
+            QVERIFY(csvFile.open(QIODevice::ReadOnly));
+            const QByteArray csvPayload = csvFile.readAll();
+            QVERIFY(csvPayload.startsWith("\xEF\xBB\xBF"));
+            QVERIFY2(csvPayload.contains("Categoria,Joao Silva,Maria Costa\r\n"),
+                     csvPayload.toHex(' ').constData());
+            QVERIFY(csvPayload.contains("SMIN,2,3\r\n"));
+            QVERIFY(csvPayload.contains("SMIT,5,1\r\n"));
         }
 
-        void custom_chart_export_writes_png_and_svg_files() {
-            analytics_chart_harness_writes_png_and_svg_files();
+        void custom_chart_export_writes_png_svg_and_csv_files() {
+            analytics_chart_harness_writes_png_svg_and_csv_files();
         }
 
         void chart_card_localizes_composite_quality_and_known_unavailability_reasons() {

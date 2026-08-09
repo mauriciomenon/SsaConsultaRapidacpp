@@ -279,23 +279,59 @@ TestCase {
         compare(item.tagTextFor(0), "");
     }
 
-    function test_chart_exposes_png_and_svg_export_invokables() {
+    function test_chart_exposes_png_svg_and_csv_export_invokables() {
         const item = createChart(simpleBarComponent);
 
         compare(typeof item.savePng, "function");
         compare(typeof item.saveSvg, "function");
+        compare(typeof item.saveCsv, "function");
     }
 
     function test_export_path_decodes_dialog_urls() {
         const item = createChart(simpleBarComponent);
 
-        compare(item.localExportPath("file:///C:/Users/ana/Meus%20Graficos/ssa.png"),
-                "C:/Users/ana/Meus Graficos/ssa.png");
-        compare(item.localExportPath("file:///home/ana/ssa%20chart.png"),
-                "/home/ana/ssa chart.png");
+        compare(item.localExportPath("file:///C:/Users/ana/Meus%20Graficos/ssa.png"), "C:/Users/ana/Meus Graficos/ssa.png");
+        compare(item.localExportPath("file:///home/ana/ssa%20chart.png"), "/home/ana/ssa chart.png");
         compare(item.localExportPath(""), "");
+        compare(item.localExportPath("https://example.invalid/report.csv"), "");
         compare(item.ensureExportExtension("C:/tmp/chart", "png"), "C:/tmp/chart.png");
         compare(item.ensureExportExtension("C:/tmp/chart.PNG", "png"), "C:/tmp/chart.PNG");
+    }
+
+    function test_csv_export_matches_visible_table_and_neutralizes_formulas() {
+        const item = createChart(simpleBarComponent);
+        item.categories = ["SEE, Norte", "=SUM(A1:A2)"];
+        item.series = [
+            {
+                "name": "Serie \"A\"",
+                "values": [0, null]
+            }
+        ];
+        item.refresh();
+
+        let exportedPath = "";
+        let exportedContent = "";
+        item.fileWriter = function (path, content) {
+            exportedPath = path;
+            exportedContent = content;
+            return true;
+        };
+        item.saveCsv("C:/tmp/relatorio");
+
+        compare(exportedPath, "C:/tmp/relatorio.csv");
+        compare(exportedContent, "\uFEFFCategoria,\"Serie \"\"A\"\"\"\r\n\"SEE, Norte\",0\r\n\"'=SUM(A1:A2)\",Sem dado\r\n");
+    }
+
+    function test_table_formats_multiline_categories_and_uses_measured_widths() {
+        const item = createChart(simpleBarComponent);
+        item.tableVisible = true;
+        waitForRendering(item);
+        const table = findChildByObjectName(item, "analyticsChartTable");
+
+        verify(table !== null);
+        compare(table.displayCategory("IEE\nIEE2"), "IEE / IEE2");
+        verify(table.categoryColumnWidth >= table.minimumCategoryColumnWidth);
+        verify(table.tableWidth >= table.width);
     }
 
     function findChildByObjectName(parentItem, objectName) {
@@ -322,7 +358,7 @@ TestCase {
         verify(canvas !== null);
 
         let grabbedItem = null;
-        item.itemGrabber = function(target, path) {
+        item.itemGrabber = function (target, path) {
             grabbedItem = target;
             return path.length > 0;
         };
@@ -346,15 +382,11 @@ TestCase {
         id: manyCategoryBarComponent
 
         SimpleBarChart {
-            categories: ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J",
-                         "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T",
-                         "U", "V", "W", "X", "Y", "Z", "AA"]
+            categories: ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "AA"]
             series: [
                 {
                     "name": "SSAs",
-                    "values": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
-                               11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
-                               21, 22, 23, 24, 25, 26, 27]
+                    "values": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27]
                 }
             ]
         }

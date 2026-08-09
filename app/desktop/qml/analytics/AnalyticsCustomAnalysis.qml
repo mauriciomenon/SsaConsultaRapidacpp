@@ -21,6 +21,8 @@ Item {
     property int periodMonth: initialPeriod.month
     property int periodScope: 0
     property bool active: false
+    property bool hideZeroCategories: false
+    property bool listZeroValues: false
     property var selectedDivisions: []
     property var selectedSectors: []
     property var selectedPeople: []
@@ -45,8 +47,10 @@ Item {
     readonly property var monthNames: [qsTr("Janeiro"), qsTr("Fevereiro"), qsTr("Marco"), qsTr("Abril"), qsTr("Maio"), qsTr("Junho"), qsTr("Julho"), qsTr("Agosto"), qsTr("Setembro"), qsTr("Outubro"), qsTr("Novembro"), qsTr("Dezembro")]
     readonly property var monthModel: root.periodScope === 1 ? [qsTr("Todos")] : root.monthNames
     readonly property int monthComboIndex: root.periodScope === 1 ? 0 : root.periodMonth - 1
-    readonly property var lastCompletePeriod: analyticsViewModel.currentMonthSelection()
-    readonly property bool canNavigateNextMonth: root.periodScope === 0 && periodYear * 12 + periodMonth < lastCompletePeriod.year * 12 + lastCompletePeriod.month
+    readonly property var lastCompleteCalendarPeriod: analyticsViewModel.currentMonthSelection()
+    readonly property var lastCompleteIsoPeriod: analyticsViewModel.currentIsoMonthSelection()
+    readonly property var lastCompletePeriod: root.periodScope === 2 ? root.lastCompleteIsoPeriod : root.lastCompleteCalendarPeriod
+    readonly property bool canNavigateNextMonth: root.periodScope !== 1 && periodYear * 12 + periodMonth < lastCompletePeriod.year * 12 + lastCompletePeriod.month
 
     component SelectionOption: Rectangle {
         id: selectionOption
@@ -251,23 +255,38 @@ Item {
     }
 
     function applyCalendarMonth(year, month) {
-        if (year * 12 + month > root.lastCompletePeriod.year * 12 + root.lastCompletePeriod.month) {
-            root.applyPeriod(root.lastCompletePeriod, 0);
+        if (year * 12 + month > root.lastCompleteCalendarPeriod.year * 12 + root.lastCompleteCalendarPeriod.month) {
+            root.applyPeriod(root.lastCompleteCalendarPeriod, 0);
             return;
         }
         root.applyPeriod(root.analyticsViewModel.calendarMonthSelection(year, month), 0);
     }
 
+    function applyIsoReferenceMonth(year, month) {
+        if (year * 12 + month > root.lastCompleteIsoPeriod.year * 12 + root.lastCompleteIsoPeriod.month) {
+            root.applyPeriod(root.lastCompleteIsoPeriod, 2);
+            return;
+        }
+        root.applyPeriod(root.analyticsViewModel.isoMonthSelection(year, month), 2);
+    }
+
+    function applySelectedMonth(year, month) {
+        if (root.periodScope === 2)
+            root.applyIsoReferenceMonth(year, month);
+        else
+            root.applyCalendarMonth(year, month);
+    }
+
     function previousMonth() {
         const previous = new Date(root.periodYear, root.periodMonth - 2, 1);
-        root.applyCalendarMonth(previous.getFullYear(), previous.getMonth() + 1);
+        root.applySelectedMonth(previous.getFullYear(), previous.getMonth() + 1);
     }
 
     function nextMonth() {
         if (!root.canNavigateNextMonth)
             return;
         const next = new Date(root.periodYear, root.periodMonth, 1);
-        root.applyCalendarMonth(next.getFullYear(), next.getMonth() + 1);
+        root.applySelectedMonth(next.getFullYear(), next.getMonth() + 1);
     }
 
     function useCurrentMonth() {
@@ -392,6 +411,10 @@ Item {
         root.applyPeriod(root.analyticsViewModel.currentIsoMonthSelection(), 2);
     }
 
+    function isoWeekLabel(year, week) {
+        return String(year) + "-W" + String(week).padStart(2, "0");
+    }
+
     function runQuickPreset(configureFn) {
         root.quickPresetWaitingForDimensions = true;
         configureFn();
@@ -450,6 +473,7 @@ Item {
     Flickable {
         id: customFlick
 
+        objectName: "analyticsCustomFlick"
         anchors.fill: parent
         contentWidth: width
         contentHeight: contentColumn.implicitHeight
@@ -519,7 +543,7 @@ Item {
                                 model: root.monthModel
                                 currentIndex: root.monthComboIndex
                                 enabled: root.periodScope !== 1
-                                onActivated: root.applyCalendarMonth(root.periodYear, currentIndex + 1)
+                                onActivated: root.applySelectedMonth(root.periodYear, currentIndex + 1)
                             }
                             AppSpinBox {
                                 Layout.preferredWidth: 88 * root.compactControlScale
@@ -527,7 +551,7 @@ Item {
                                 to: 2200
                                 value: root.periodYear
                                 editable: true
-                                onValueModified: root.applyCalendarMonth(value, root.periodMonth)
+                                onValueModified: root.applySelectedMonth(value, root.periodMonth)
                             }
                             ActionButton {
                                 objectName: "analyticsCustomNextMonth"
@@ -550,10 +574,19 @@ Item {
                             ActionButton {
                                 objectName: "analyticsCustomIsoMonth"
                                 Layout.preferredWidth: 160 * root.compactControlScale
-                                text: qsTr("Mes ISO completo")
+                                text: qsTr("Ultimo mes ISO completo")
                                 onClicked: root.applyIsoMonth()
                             }
                         }
+                    }
+
+                    Label {
+                        objectName: "analyticsCustomIsoRangeSummary"
+                        Layout.fillWidth: true
+                        visible: root.periodScope === 2
+                        text: qsTr("Mes ISO de referencia: inicio %1; fim %2. Cada semana pertence ao mes de sua quinta-feira.").arg(root.isoWeekLabel(root.firstYear, root.firstWeek)).arg(root.isoWeekLabel(root.lastYear, root.lastWeek))
+                        color: Theme.mutedText
+                        wrapMode: Text.Wrap
                     }
 
                     GridLayout {
@@ -741,7 +774,7 @@ Item {
                             ActionButton {
                                 objectName: "analyticsOverdueByArea"
                                 width: Math.max(implicitWidth, 160 * root.compactControlScale)
-                                text: qsTr("Atrasadas por area")
+                                text: qsTr("Prazo das pendentes por area")
                                 secondary: true
                                 enabled: !root.analyticsViewModel.loading
                                 onClicked: root.runQuickPreset(root.configureOverdueByArea)
@@ -777,6 +810,35 @@ Item {
                                 secondary: true
                                 enabled: !root.analyticsViewModel.loading
                                 onClicked: root.runQuickPreset(root.configureExecutedBySectorPerson)
+                            }
+                        }
+
+                        Flow {
+                            Layout.fillWidth: true
+                            spacing: root.compactControlSpacing
+
+                            AppCheckBox {
+                                id: hideZeroCheck
+
+                                objectName: "analyticsHideZeroCategories"
+                                width: Math.max(hideZeroCheck.implicitWidth, 230 * root.compactControlScale)
+                                text: qsTr("Ocultar categorias sem ocorrencias")
+                                checked: root.hideZeroCategories
+                                onToggled: root.hideZeroCategories = hideZeroCheck.checked
+                            }
+                            AppCheckBox {
+                                id: listZeroCheck
+
+                                objectName: "analyticsListZeroValues"
+                                width: Math.max(listZeroCheck.implicitWidth, 180 * root.compactControlScale)
+                                text: qsTr("Listar valores zero")
+                                checked: root.listZeroValues
+                                onToggled: root.listZeroValues = listZeroCheck.checked
+                            }
+                            Label {
+                                visible: root.hideZeroCategories && customChart.hiddenZeroCategoryCount > 0
+                                text: qsTr("%1 categoria(s) zero ocultada(s)").arg(customChart.hiddenZeroCategoryCount)
+                                color: Theme.mutedText
                             }
                         }
 
@@ -1039,20 +1101,84 @@ Item {
                 Layout.leftMargin: Theme.gap
                 Layout.rightMargin: Theme.gap
                 Layout.bottomMargin: Theme.gap
-                Layout.preferredHeight: 440
+                Layout.preferredHeight: customChart.implicitHeight
                 objectName: "customAnalysisChart"
                 title: root.chartTitle
                 chartType: root.metricIndex === 8 ? "stackedBar" : "bar"
                 chartModel: root.analyticsViewModel.customSeries
+                hideZeroCategories: root.hideZeroCategories
                 showExportActions: customChart.hasData
+                tableVisible: true
                 fileWriter: (path, content) => root.analyticsViewModel.writeExportFile(path, content)
                 itemGrabber: (item, path) => ChartImageExport.grabItemToFile(item, path)
                 svgGrabber: (item, path) => ChartImageExport.grabItemToSvgFile(item, path)
 
+                onExportCsvRequested: chartCsvExportDialog.open()
                 onExportPngRequested: chartPngExportDialog.open()
                 onExportSvgRequested: chartSvgExportDialog.open()
             }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.leftMargin: Theme.gap
+                Layout.rightMargin: Theme.gap
+                Layout.bottomMargin: Theme.gap
+                Layout.preferredHeight: zeroValuesColumn.implicitHeight + Theme.cardGap * 2
+                visible: root.listZeroValues
+                color: Theme.panel
+                border.color: Theme.border
+                radius: Theme.radiusSoft
+
+                ColumnLayout {
+                    id: zeroValuesColumn
+
+                    anchors.fill: parent
+                    anchors.margins: Theme.cardGap
+                    spacing: Theme.gap
+
+                    RowLayout {
+                        Layout.fillWidth: true
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: customChart.zeroRows.length > 0 ? qsTr("Valores zero encontrados: %1").arg(customChart.zeroRows.length) : qsTr("Nenhum valor zero encontrado nos dados exibidos")
+                            color: Theme.text
+                            font.bold: true
+                            wrapMode: Text.Wrap
+                        }
+                        ActionButton {
+                            objectName: "analyticsExportZeroCsv"
+                            text: qsTr("Exportar zeros em CSV")
+                            enabled: customChart.zeroRows.length > 0
+                            onClicked: zeroValuesCsvExportDialog.open()
+                        }
+                    }
+
+                    AnalyticsChartTable {
+                        id: zeroValuesTable
+
+                        objectName: "analyticsZeroValuesTable"
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: zeroValuesTable.implicitHeight
+                        visible: customChart.zeroRows.length > 0
+                        categoryHeader: qsTr("Categoria")
+                        headers: [qsTr("Serie"), qsTr("Valor")]
+                        rows: customChart.zeroRows
+                    }
+                }
+            }
         }
+    }
+
+    FileDialog {
+        id: chartCsvExportDialog
+
+        objectName: "analyticsChartCsvExportDialog"
+        title: qsTr("Exportar tabela como CSV")
+        fileMode: FileDialog.SaveFile
+        defaultSuffix: "csv"
+        nameFilters: [qsTr("CSV (*.csv)")]
+        onAccepted: customChart.saveCsv(selectedFile)
     }
 
     FileDialog {
@@ -1075,5 +1201,16 @@ Item {
         defaultSuffix: "svg"
         nameFilters: [qsTr("SVG (*.svg)")]
         onAccepted: customChart.saveSvg(selectedFile)
+    }
+
+    FileDialog {
+        id: zeroValuesCsvExportDialog
+
+        objectName: "analyticsZeroValuesCsvExportDialog"
+        title: qsTr("Exportar lista de zeros como CSV")
+        fileMode: FileDialog.SaveFile
+        defaultSuffix: "csv"
+        nameFilters: [qsTr("CSV (*.csv)")]
+        onAccepted: customChart.saveCsvRows(selectedFile, qsTr("Categoria"), [qsTr("Serie"), qsTr("Valor")], customChart.zeroRows)
     }
 }

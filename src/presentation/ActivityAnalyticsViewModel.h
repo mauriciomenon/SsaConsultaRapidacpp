@@ -69,6 +69,7 @@ namespace ssa::presentation {
         void loadDimensionValues(domain::AnalyticsRequest request);
         Q_INVOKABLE [[nodiscard]] QVariantMap currentMonthSelection() const;
         Q_INVOKABLE [[nodiscard]] QVariantMap calendarMonthSelection(int year, int month) const;
+        Q_INVOKABLE [[nodiscard]] QVariantMap isoMonthSelection(int year, int month) const;
         Q_INVOKABLE [[nodiscard]] QVariantMap yearToDateSelection() const;
         Q_INVOKABLE [[nodiscard]] QVariantMap currentIsoWeekSelection() const;
         Q_INVOKABLE [[nodiscard]] QVariantMap currentIsoMonthSelection() const;

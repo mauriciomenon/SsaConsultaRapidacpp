@@ -5,8 +5,14 @@ AnalyticsChart {
     id: root
 
     property var chartModel: ({})
+    property bool hideZeroCategories: false
 
+    readonly property var categoryIndexes: visibleCategoryIndexes()
+    readonly property var presentedCategories: presentCategories()
     readonly property var presentedSeries: presentSeries()
+    readonly property var presentedTrendValues: presentTrendValues()
+    readonly property var zeroRows: collectZeroRows()
+    readonly property int hiddenZeroCategoryCount: Math.max(0, sourceCategories().length - presentedCategories.length)
     readonly property bool unavailable: chartModel && chartModel.available === false
     readonly property real preferredCardHeight: unavailable ? 140 : 380
 
@@ -35,8 +41,79 @@ AnalyticsChart {
         return colors[name];
     }
 
+    function sourceCategories() {
+        return root.chartModel && root.chartModel.categories ? root.chartModel.categories : [];
+    }
+
+    function sourceSeries() {
+        return root.chartModel && root.chartModel.series ? root.chartModel.series : [];
+    }
+
+    function visibleCategoryIndexes() {
+        const categories = root.sourceCategories();
+        const series = root.sourceSeries();
+        const indexes = [];
+        for (let categoryIndex = 0; categoryIndex < categories.length; ++categoryIndex) {
+            let allZero = root.hideZeroCategories && series.length > 0;
+            for (let seriesIndex = 0; allZero && seriesIndex < series.length; ++seriesIndex) {
+                const entry = series[seriesIndex];
+                const values = entry && entry.values ? entry.values : [];
+                const value = values[categoryIndex];
+                allZero = typeof value === "number" && Number.isFinite(value) && value === 0;
+            }
+            if (!allZero)
+                indexes.push(categoryIndex);
+        }
+        return indexes;
+    }
+
+    function filteredValues(values) {
+        const output = [];
+        for (let index = 0; index < root.categoryIndexes.length; ++index)
+            output.push(values[root.categoryIndexes[index]]);
+        return output;
+    }
+
+    function presentCategories() {
+        return root.filteredValues(root.sourceCategories());
+    }
+
+    function presentTrendValues() {
+        const input = root.chartModel && root.chartModel.trendValues ? root.chartModel.trendValues : [];
+        if (input.length === 0)
+            return [];
+        if (Array.isArray(input[0])) {
+            const output = [];
+            for (let index = 0; index < input.length; ++index)
+                output.push(root.filteredValues(input[index]));
+            return output;
+        }
+        return root.filteredValues(input);
+    }
+
+    function collectZeroRows() {
+        const categories = root.sourceCategories();
+        const series = root.sourceSeries();
+        const rows = [];
+        for (let categoryIndex = 0; categoryIndex < categories.length; ++categoryIndex) {
+            for (let seriesIndex = 0; seriesIndex < series.length; ++seriesIndex) {
+                const entry = series[seriesIndex];
+                const values = entry && entry.values ? entry.values : [];
+                const value = values[categoryIndex];
+                if (typeof value !== "number" || !Number.isFinite(value) || value !== 0)
+                    continue;
+                const name = entry && entry.name !== undefined ? String(entry.name) : "";
+                rows.push({
+                    "category": categories[categoryIndex],
+                    "values": [root.seriesLabel(name), "0"]
+                });
+            }
+        }
+        return rows;
+    }
+
     function presentSeries() {
-        const input = root.chartModel && root.chartModel.series ? root.chartModel.series : [];
+        const input = root.sourceSeries();
         const output = [];
         for (let index = 0; index < input.length; ++index) {
             const item = input[index];
@@ -45,8 +122,8 @@ AnalyticsChart {
                 "key": name,
                 "name": root.seriesLabel(name),
                 "tag": item && item.tag !== undefined ? String(item.tag) : "",
-                "values": item && item.values ? item.values : [],
-                "trendValues": item && item.trendValues ? item.trendValues : []
+                "values": root.filteredValues(item && item.values ? item.values : []),
+                "trendValues": root.filteredValues(item && item.trendValues ? item.trendValues : [])
             };
             const color = root.seriesColor(name);
             if (color !== undefined)
@@ -92,10 +169,10 @@ AnalyticsChart {
         return qsTr("Indisponivel: %1").arg(reason);
     }
 
-    categories: chartModel && chartModel.categories ? chartModel.categories : []
+    categories: presentedCategories
     compact: unavailable
     series: presentedSeries
-    trendValues: chartModel && chartModel.trendValues ? chartModel.trendValues : []
+    trendValues: presentedTrendValues
     subtitle: chartModel && chartModel.subtitle ? String(chartModel.subtitle) : ""
     qualityText: presentedQualityText()
     emptyMessage: unavailableMessage()

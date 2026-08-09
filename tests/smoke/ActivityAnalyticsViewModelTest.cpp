@@ -8,7 +8,7 @@
 #include <QElapsedTimer>
 #include <QFile>
 #include <QSignalSpy>
-#include <QTemporaryFile>
+#include <QTemporaryDir>
 #include <QTest>
 #include <QThread>
 #include <QVariantList>
@@ -185,13 +185,31 @@ namespace {
             QCOMPARE(selection.value(QStringLiteral("lastWeek")).toInt(), 31);
         }
 
+        void isoMonthSelectionUsesDynamicReferenceMonthBoundaries() {
+            const auto port = std::make_shared<FunctionalAnalyticsPort>();
+            const ssa::presentation::ActivityAnalyticsViewModel model(serviceFor(port));
+
+            const QVariantMap january = model.isoMonthSelection(2021, 1);
+            const QVariantMap december = model.isoMonthSelection(2020, 12);
+
+            QCOMPARE(january.value(QStringLiteral("year")).toInt(), 2021);
+            QCOMPARE(january.value(QStringLiteral("month")).toInt(), 1);
+            QCOMPARE(january.value(QStringLiteral("firstYear")).toInt(), 2021);
+            QCOMPARE(january.value(QStringLiteral("firstWeek")).toInt(), 1);
+            QCOMPARE(january.value(QStringLiteral("lastYear")).toInt(), 2021);
+            QCOMPARE(january.value(QStringLiteral("lastWeek")).toInt(), 4);
+            QCOMPARE(december.value(QStringLiteral("firstYear")).toInt(), 2020);
+            QCOMPARE(december.value(QStringLiteral("firstWeek")).toInt(), 49);
+            QCOMPARE(december.value(QStringLiteral("lastYear")).toInt(), 2020);
+            QCOMPARE(december.value(QStringLiteral("lastWeek")).toInt(), 53);
+        }
+
         void yearToDateSelectionUsesFirstIsoWeekThroughCurrentWeek() {
             const auto port = std::make_shared<FunctionalAnalyticsPort>();
             const ssa::presentation::ActivityAnalyticsViewModel model(serviceFor(port));
             const QDate today = QDate::currentDate();
             const auto expected =
-                ssa::domain::yearToDateCalendarSelection(
-                    today.toString(Qt::ISODate).toStdString());
+                ssa::domain::yearToDateCalendarSelection(today.toString(Qt::ISODate).toStdString());
             QVERIFY(expected.has_value());
 
             const QVariantMap selection = model.yearToDateSelection();
@@ -205,8 +223,7 @@ namespace {
         }
 
         void yearToDateSelectionUsesIsoReferenceMonthAtYearBoundary() {
-            const auto selection =
-                ssa::domain::yearToDateCalendarSelection("2024-12-31");
+            const auto selection = ssa::domain::yearToDateCalendarSelection("2024-12-31");
             QVERIFY(selection.has_value());
             QCOMPARE(selection->year, 2025);
             QCOMPARE(selection->month, 1);
@@ -257,14 +274,10 @@ namespace {
             const auto port = std::make_shared<FunctionalAnalyticsPort>();
             const ssa::presentation::ActivityAnalyticsViewModel model(serviceFor(port));
             const QVariantMap selection{
-                {QStringLiteral("metric"), 1},
-                {QStringLiteral("firstYear"), 2026},
-                {QStringLiteral("firstWeek"), 27},
-                {QStringLiteral("lastYear"), 2026},
-                {QStringLiteral("lastWeek"), 31},
-                {QStringLiteral("grain"), 0},
-                {QStringLiteral("breakdown"), 2},
-                {QStringLiteral("personRole"), 2},
+                {QStringLiteral("metric"), 1},     {QStringLiteral("firstYear"), 2026},
+                {QStringLiteral("firstWeek"), 27}, {QStringLiteral("lastYear"), 2026},
+                {QStringLiteral("lastWeek"), 31},  {QStringLiteral("grain"), 0},
+                {QStringLiteral("breakdown"), 2},  {QStringLiteral("personRole"), 2},
             };
 
             const QString title = model.customChartTitle(selection);
@@ -276,15 +289,18 @@ namespace {
         void writeExportFilePersistsContent() {
             const auto port = std::make_shared<FunctionalAnalyticsPort>();
             const ssa::presentation::ActivityAnalyticsViewModel model(serviceFor(port));
-            QTemporaryFile file;
-            QVERIFY(file.open());
-            const QString path = file.fileName();
-            file.close();
+            QTemporaryDir directory;
+            QVERIFY(directory.isValid());
+            const QString path = directory.filePath(QStringLiteral("analytics-export.svg"));
+            QFile existing(path);
+            QVERIFY(existing.open(QIODevice::WriteOnly));
+            QCOMPARE(existing.write("old"), 3);
+            existing.close();
 
-            QVERIFY(model.writeExportFile(path, QStringLiteral("<svg></svg>")));
+            QVERIFY(model.writeExportFile(path, QStringLiteral("header\r\nvalue\r\n")));
             QFile reader(path);
             QVERIFY(reader.open(QIODevice::ReadOnly));
-            QCOMPARE(QString::fromUtf8(reader.readAll()), QStringLiteral("<svg></svg>"));
+            QCOMPARE(reader.readAll(), QByteArray("header\r\nvalue\r\n"));
         }
 
         void rejectsMissingService() {

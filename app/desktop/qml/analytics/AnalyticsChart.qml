@@ -31,8 +31,9 @@ Rectangle {
     property var svgGrabber: null
 
     signal exportFinished(bool success)
-    signal exportPngRequested()
-    signal exportSvgRequested()
+    signal exportCsvRequested
+    signal exportPngRequested
+    signal exportSvgRequested
 
     readonly property bool hasData: chartCanvas.hasData
     readonly property real axisMinimum: chartCanvas.axisMinimum
@@ -84,10 +85,11 @@ Rectangle {
             return "";
         if (typeof fileUrl === "object" && typeof fileUrl.toLocalFile === "function") {
             const local = fileUrl.toLocalFile();
-            if (local.length > 0)
-                return local;
+            return local.length > 0 ? local : "";
         }
         const text = String(fileUrl);
+        if (/^[A-Za-z][A-Za-z0-9+.-]*:/.test(text) && !/^[A-Za-z]:[\\/]/.test(text) && !text.startsWith("file:"))
+            return "";
         if (!text.startsWith("file:"))
             return text;
         // QML exposes url values as strings, so the local path has to be rebuilt here:
@@ -141,12 +143,50 @@ Rectangle {
         root.saveSnapshotSvg(localPath);
     }
 
+    function csvCell(value) {
+        let text = value === null || value === undefined ? "" : String(value);
+        const firstCode = text.length > 0 ? text.charCodeAt(0) : -1;
+        const formula = firstCode >= 0 && (firstCode <= 31 || firstCode === 127 || /^[=+\-@\uFF1D\uFF0B\uFF0D\uFF20]/.test(text));
+        if (formula)
+            text = "'" + text;
+        return formula || /[\",\r\n]/.test(text) ? "\"" + text.replace(/\"/g, "\"\"") + "\"" : text;
+    }
+
+    function csvContent(categoryHeader, headers, rows) {
+        const lines = [];
+        const header = [root.csvCell(categoryHeader)];
+        for (let column = 0; column < headers.length; ++column)
+            header.push(root.csvCell(headers[column]));
+        lines.push(header.join(","));
+        for (let rowIndex = 0; rowIndex < rows.length; ++rowIndex) {
+            const row = rows[rowIndex];
+            const cells = [root.csvCell(row.category)];
+            for (let column = 0; column < headers.length; ++column)
+                cells.push(root.csvCell(row.values[column]));
+            lines.push(cells.join(","));
+        }
+        return "\uFEFF" + lines.join("\r\n") + "\r\n";
+    }
+
+    function saveCsvRows(fileUrl, categoryHeader, headers, rows) {
+        const localPath = root.ensureExportExtension(root.localExportPath(fileUrl), "csv");
+        if (localPath.length === 0 || rows.length === 0 || typeof root.fileWriter !== "function") {
+            root.exportFinished(false);
+            return;
+        }
+        root.exportFinished(root.fileWriter(localPath, root.csvContent(categoryHeader, headers, rows)));
+    }
+
+    function saveCsv(fileUrl) {
+        root.saveCsvRows(fileUrl, root.xAxisTitle.length > 0 ? root.xAxisTitle : qsTr("Categoria"), root.tableHeaders, root.tableRows);
+    }
+
     function saveSnapshotPng(localPath) {
         if (localPath.length === 0 || !root.hasData) {
             root.exportFinished(false);
             return;
         }
-        const grabbed = chartSnapshot.grabToImage(function(result) {
+        const grabbed = chartSnapshot.grabToImage(function (result) {
             root.exportFinished(!result.image.isNull() && result.saveToFile(localPath));
         });
         if (!grabbed)
@@ -158,7 +198,7 @@ Rectangle {
             root.exportFinished(false);
             return;
         }
-        const grabbed = chartSnapshot.grabToImage(function(result) {
+        const grabbed = chartSnapshot.grabToImage(function (result) {
             if (result.image.isNull()) {
                 root.exportFinished(false);
                 return;
@@ -166,12 +206,7 @@ Rectangle {
             const buffer = result.image.toDataURL("image/png");
             const comma = buffer.indexOf(",");
             const payload = comma >= 0 ? buffer.slice(comma + 1) : buffer;
-            const svg = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" +
-                        "<svg xmlns=\"http://www.w3.org/2000/svg\" " +
-                        "xmlns:xlink=\"http://www.w3.org/1999/xlink\" " +
-                        "width=\"" + result.image.width + "\" height=\"" + result.image.height + "\">" +
-                        "<image width=\"" + result.image.width + "\" height=\"" + result.image.height + "\" " +
-                        "xlink:href=\"data:image/png;base64," + payload + "\"/></svg>";
+            const svg = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" + "<svg xmlns=\"http://www.w3.org/2000/svg\" " + "xmlns:xlink=\"http://www.w3.org/1999/xlink\" " + "width=\"" + result.image.width + "\" height=\"" + result.image.height + "\">" + "<image width=\"" + result.image.width + "\" height=\"" + result.image.height + "\" " + "xlink:href=\"data:image/png;base64," + payload + "\"/></svg>";
             const wrote = typeof root.fileWriter === "function" ? root.fileWriter(localPath, svg) : false;
             root.exportFinished(wrote);
         });
@@ -204,121 +239,146 @@ Rectangle {
                 anchors.fill: parent
                 spacing: Theme.gap
 
-        ColumnLayout {
-            Layout.fillWidth: true
-            spacing: Theme.spacingSm
-            visible: root.title.length > 0 || root.subtitle.length > 0 || root.qualityText.length > 0
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: Theme.spacingSm
+                    visible: root.title.length > 0 || root.subtitle.length > 0 || root.qualityText.length > 0
 
-            Text {
-                Layout.fillWidth: true
-                visible: root.title.length > 0
-                text: root.title
-                textFormat: Text.PlainText
-                color: Theme.text
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSizeTitle
-                font.bold: true
-                wrapMode: Text.Wrap
-            }
+                    Text {
+                        Layout.fillWidth: true
+                        visible: root.title.length > 0
+                        text: root.title
+                        textFormat: Text.PlainText
+                        color: Theme.text
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontSizeTitle
+                        font.bold: true
+                        wrapMode: Text.Wrap
+                    }
 
-            Text {
-                Layout.fillWidth: true
-                visible: root.subtitle.length > 0
-                text: root.subtitle
-                textFormat: Text.PlainText
-                color: Theme.mutedText
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSizeCaption
-                wrapMode: Text.Wrap
-            }
+                    Text {
+                        Layout.fillWidth: true
+                        visible: root.subtitle.length > 0
+                        text: root.subtitle
+                        textFormat: Text.PlainText
+                        color: Theme.mutedText
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontSizeCaption
+                        wrapMode: Text.Wrap
+                    }
 
-            Text {
-                Layout.fillWidth: true
-                visible: root.qualityText.length > 0
-                text: root.qualityText
-                textFormat: Text.PlainText
-                color: Theme.readableText(Theme.panel, Theme.dangerStrong)
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSizeCaption
-                wrapMode: Text.Wrap
-                Accessible.name: qsTr("Qualidade dos dados: ") + text
-            }
-        }
+                    Text {
+                        Layout.fillWidth: true
+                        visible: root.qualityText.length > 0
+                        text: root.qualityText
+                        textFormat: Text.PlainText
+                        color: Theme.readableText(Theme.panel, Theme.dangerStrong)
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontSizeCaption
+                        wrapMode: Text.Wrap
+                        Accessible.name: qsTr("Qualidade dos dados: ") + text
+                    }
+                }
 
-        Item {
-            id: plotArea
+                Item {
+                    id: plotArea
 
-            Layout.fillWidth: true
-            Layout.fillHeight: !root.compact
-            Layout.minimumHeight: root.compact ? 42 : 220
-            Layout.preferredHeight: root.compact ? 42 : -1
+                    Layout.fillWidth: true
+                    Layout.fillHeight: !root.compact
+                    Layout.minimumHeight: root.compact ? 42 : 220
+                    Layout.preferredHeight: root.compact ? 42 : -1
 
-            AnalyticsChartCanvas {
-                id: chartCanvas
+                    AnalyticsChartCanvas {
+                        id: chartCanvas
 
-                objectName: "analyticsChartCanvas"
-                anchors.fill: parent
-                visible: !root.compact
-                chartType: root.chartType
-                categories: root.categories
-                series: root.series
-                trendValues: root.trendValues
-                xAxisTitle: root.xAxisTitle
-                yAxisTitle: root.yAxisTitle
-                valueSuffix: root.valueSuffix
-                showValueLabels: root.showValueLabels
-                showSeriesTags: root.showSeriesTags
-                tickCount: root.axisTickCount
+                        objectName: "analyticsChartCanvas"
+                        anchors.fill: parent
+                        visible: !root.compact
+                        chartType: root.chartType
+                        categories: root.categories
+                        series: root.series
+                        trendValues: root.trendValues
+                        xAxisTitle: root.xAxisTitle
+                        yAxisTitle: root.yAxisTitle
+                        valueSuffix: root.valueSuffix
+                        showValueLabels: root.showValueLabels
+                        showSeriesTags: root.showSeriesTags
+                        tickCount: root.axisTickCount
 
-                onPlotExportFinished: success => root.exportFinished(success)
+                        onPlotExportFinished: success => root.exportFinished(success)
 
-                onHovered: (categoryIndex, seriesIndex, pointerX, pointerY) => {
-                    root.tooltipText = chartCanvas.tooltipText(categoryIndex, seriesIndex, root.emptyCategoryText, root.missingValueText);
-                    root.tooltipX = pointerX;
-                    root.tooltipY = pointerY;
+                        onHovered: (categoryIndex, seriesIndex, pointerX, pointerY) => {
+                            root.tooltipText = chartCanvas.tooltipText(categoryIndex, seriesIndex, root.emptyCategoryText, root.missingValueText);
+                            root.tooltipX = pointerX;
+                            root.tooltipY = pointerY;
+                        }
+                    }
+
+                    Text {
+                        anchors.centerIn: parent
+                        width: Math.max(0, parent.width - Theme.cardGap * 2)
+                        visible: root.compact || !root.hasData
+                        text: root.emptyMessage
+                        textFormat: Text.PlainText
+                        color: Theme.mutedText
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontSizeBody
+                        horizontalAlignment: Text.AlignHCenter
+                        wrapMode: Text.Wrap
+                        Accessible.name: text
+                    }
+
+                    AnalyticsChartTooltip {
+                        text: root.tooltipText
+                        pointerX: root.tooltipX
+                        pointerY: root.tooltipY
+                    }
+                }
+
+                AnalyticsChartLegend {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: implicitHeight
+                    visible: !root.compact
+                    entries: root.legendEntries
                 }
             }
-
-            Text {
-                anchors.centerIn: parent
-                width: Math.max(0, parent.width - Theme.cardGap * 2)
-                visible: root.compact || !root.hasData
-                text: root.emptyMessage
-                textFormat: Text.PlainText
-                color: Theme.mutedText
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSizeBody
-                horizontalAlignment: Text.AlignHCenter
-                wrapMode: Text.Wrap
-                Accessible.name: text
-            }
-
-            AnalyticsChartTooltip {
-                text: root.tooltipText
-                pointerX: root.tooltipX
-                pointerY: root.tooltipY
-            }
-        }
-
-        AnalyticsChartLegend {
-            Layout.fillWidth: true
-            Layout.preferredHeight: implicitHeight
-            visible: !root.compact
-            entries: root.legendEntries
-        }
-
-            }
-
         }
 
         RowLayout {
             Layout.fillWidth: true
-            visible: !root.compact && ((root.showExportActions && root.hasData) ||
-                                       (root.showTableToggle && root.tableRows.length > 0))
+            visible: !root.compact && ((root.showExportActions && (root.hasData || root.tableRows.length > 0)) || (root.showTableToggle && root.tableRows.length > 0))
             spacing: Theme.gap
 
             Item {
                 Layout.fillWidth: true
+            }
+
+            Button {
+                id: exportCsvButton
+
+                objectName: "analyticsChartExportCsv"
+                visible: root.showExportActions && root.tableRows.length > 0
+                text: qsTr("Exportar CSV")
+                flat: true
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontSizeCaption
+                Accessible.name: text
+                onClicked: root.exportCsvRequested()
+
+                contentItem: Text {
+                    text: exportCsvButton.text
+                    textFormat: Text.PlainText
+                    color: Theme.readableText(exportCsvButton.hovered ? Theme.surface : Theme.panel, Theme.link)
+                    font: exportCsvButton.font
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                }
+
+                background: Rectangle {
+                    color: exportCsvButton.hovered ? Theme.surface : "transparent"
+                    border.color: exportCsvButton.activeFocus ? Theme.accent : "transparent"
+                    radius: Theme.radius
+                }
             }
 
             Button {
@@ -383,6 +443,7 @@ Rectangle {
             Button {
                 id: tableButton
 
+                objectName: "analyticsChartTableToggle"
                 visible: root.showTableToggle && root.tableRows.length > 0
                 text: root.tableVisible ? qsTr("Ocultar tabela") : qsTr("Mostrar tabela")
                 flat: true
@@ -409,6 +470,7 @@ Rectangle {
         }
 
         AnalyticsChartTable {
+            objectName: "analyticsChartTable"
             Layout.fillWidth: true
             Layout.preferredHeight: implicitHeight
             visible: !root.compact && root.tableVisible

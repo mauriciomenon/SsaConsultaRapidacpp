@@ -4,9 +4,9 @@
 
 #include <QDate>
 #include <QDebug>
-#include <QFile>
 #include <QMetaObject>
 #include <QMetaType>
+#include <QSaveFile>
 #include <QStringList>
 #include <QThreadPool>
 #include <QtConcurrentRun>
@@ -681,6 +681,11 @@ namespace ssa::presentation {
         return calendarMonthMap(year, month);
     }
 
+    QVariantMap ActivityAnalyticsViewModel::isoMonthSelection(const int year,
+                                                              const int month) const {
+        return isoReferenceMonthMap(year, month);
+    }
+
     QVariantMap ActivityAnalyticsViewModel::yearToDateSelection() const {
         const auto selection = domain::yearToDateCalendarSelection(
             QDate::currentDate().toString(Qt::ISODate).toStdString());
@@ -748,11 +753,17 @@ namespace ssa::presentation {
         if (path.trimmed().isEmpty()) {
             return false;
         }
-        QFile file(path);
-        if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
+        QSaveFile file(path);
+        file.setDirectWriteFallback(false);
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
             return false;
         }
-        return file.write(content.toUtf8()) >= 0;
+        const QByteArray payload = content.toUtf8();
+        if (file.write(payload) != payload.size()) {
+            file.cancelWriting();
+            return false;
+        }
+        return file.commit();
     }
 
     bool ActivityAnalyticsViewModel::requestDashboard(const QVariantMap& selection) {
