@@ -6,17 +6,15 @@ Sem acentos/cedilha/emojis/emdash em codigo, chat e mensagens tecnicas.
 ## Estado operacional e remotes
 
 - Ler `ROUND_STATUS.md` antes de interpretar sincronizacao, CI ou falha de push.
-- `origin` e GitLab, `bitbucket` e Bitbucket e `gh` e GitHub.
+- `origin` busca no GitLab e publica no GitLab, GitHub e Bitbucket por tres
+  `pushurl`; `bitbucket` busca no Bitbucket e `gh` busca no GitHub.
 - O branch principal e `master`.
-- `git rev-list origin/master...HEAD` mede GitLab, nao GitHub.
-- Todo `git fetch` ou `git pull` operacional deve usar o GitLab por `origin`.
-  Quando um pull for necessario, usar `git pull --ff-only origin master`.
-- Nunca executar `git pull bitbucket master` nem `git pull gh master`.
-  `bitbucket` e somente o mirror obrigatorio de publicacao.
-- Um pedido de `commit` inclui push do branch e de novas tags para `origin` e
-  `bitbucket`, seguido de verificacao remota nos dois.
-- Nao publicar em `gh` enquanto o GitHub responder HTTP 403 por conta suspensa,
-  salvo autorizacao explicita posterior do usuario.
+- `master` acompanha `gh/master`; `git pull` sem parametros usa GitHub.
+- `branch.master.pushRemote=origin`; `git push` sem parametros publica o branch
+  no GitLab, GitHub e Bitbucket.
+- Quando uma comparacao especifica for necessaria, usar o remote do provedor:
+  `origin/master`, `gh/master` ou `bitbucket/master`.
+- Um pedido de `commit` inclui `git push` e verificacao dos tres provedores.
 
 ## Objetivo
 

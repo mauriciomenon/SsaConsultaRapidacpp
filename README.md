@@ -7,8 +7,41 @@ Esta base nao e um port linha-a-linha da GUI Python. Ela preserva contratos de u
 ## Estado operacional
 
 Consulte [`ROUND_STATUS.md`](ROUND_STATUS.md) antes de avaliar sincronizacao,
-publicacao ou CI. Neste repositorio, `origin` aponta para GitLab, `bitbucket`
-aponta para Bitbucket e `gh` aponta para o mirror GitHub atualmente indisponivel.
+publicacao ou CI. `git pull` sem parametros usa GitHub. `git push` sem
+parametros publica no GitHub, GitLab e Bitbucket.
+
+Configuracao Windows 11, em PowerShell nativo:
+
+```powershell
+git remote remove gh 2>$null
+git remote add gh git@github.com:schottge-menon/ssa_consulta_rapida_cpp.git
+git config --unset-all remote.origin.pushurl 2>$null
+git config --add remote.origin.pushurl https://gitlab.com/mauricio.menon/ssa_consulta_rapida_cpp.git
+git config --add remote.origin.pushurl git@github.com:schottge-menon/ssa_consulta_rapida_cpp.git
+git config --add remote.origin.pushurl https://bitbucket.org/mauriciomenon81/ssa_consulta_rapida_cpp.git
+git config branch.master.remote gh
+git config branch.master.merge refs/heads/master
+git config branch.master.pushRemote origin
+git config push.default simple
+git fetch gh master --tags
+```
+
+Configuracao Debian/WSL, no clone ext4
+`$HOME/gitlab_repo/ssa_consulta_rapida_cpp`:
+
+```bash
+git remote remove gh 2>/dev/null || true
+git remote add gh git@github.com:schottge-menon/ssa_consulta_rapida_cpp.git
+git config --unset-all remote.origin.pushurl || true
+git config --add remote.origin.pushurl https://gitlab.com/mauricio.menon/ssa_consulta_rapida_cpp.git
+git config --add remote.origin.pushurl git@github.com:schottge-menon/ssa_consulta_rapida_cpp.git
+git config --add remote.origin.pushurl https://bitbucket.org/mauriciomenon81/ssa_consulta_rapida_cpp.git
+git config branch.master.remote gh
+git config branch.master.merge refs/heads/master
+git config branch.master.pushRemote origin
+git config push.default simple
+git fetch gh master --tags
+```
 
 Versao corrente do projeto: **0.9.17** (`PROJECT_VERSION` em
 `CMakeLists.txt`).

@@ -1,5 +1,16 @@
 # Status Da Rodada
 
+## GitHub e publicacao tripla - 2026-08-15
+
+- **ENTREGUE**: repositorio privado
+  `schottge-menon/ssa_consulta_rapida_cpp` criado no GitHub com `master`,
+  historico completo e 23 tags.
+- `git pull` sem parametros usa `gh/master` no GitHub.
+- `git push` sem parametros usa os tres `pushurl` de `origin` e publica no
+  GitLab, GitHub e Bitbucket.
+- Configuracao reproduzivel para Windows 11 e Debian/WSL documentada no
+  `README.md`.
+
 ## Release v0.9.17 - 2026-08-04
 
 - **ENTREGUE**: bump `PROJECT_VERSION` para `0.9.17`, CHANGELOG/README
