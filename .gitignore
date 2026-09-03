@@ -21,6 +21,7 @@ config/ssa_cpp_preferences.json
 docs_entrada/
 reports/
 docs/local/
+backups/
 
 # Local tool dirs (never version)
 .vscode/
