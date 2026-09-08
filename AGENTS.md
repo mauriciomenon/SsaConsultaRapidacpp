@@ -160,6 +160,12 @@ Notas:
 
 ## Regras de conduta (criticas)
 
+- Autoria e responsabilidade pertencem exclusivamente ao usuario. Software,
+  assistentes, modelos e agentes nunca podem receber autoria, coautoria ou
+  credito em commits, tags, mensagens, trailers, assinaturas ou notas Git.
+- Nunca adicionar `Co-authored-by`, `Signed-off-by`, `Generated-by` ou notas
+  de atribuicao de ferramentas. Preservar a identidade humana configurada no
+  Git e a autoria humana existente; nao inventar identidades ou creditos.
 - Sempre apresentar plano, sem excecoes.
 - Sempre apresentar resumo tecnico apos uma rodada e sempre mostrar proxima atividade.
 - NUNCA criar branch novo nem PR sem autorizacao explicita E EXCLUSIVA para essa acao (nao inferir por palavras genericas e nem por aprovacao de plano/pedido maior). A pergunta e a aprovacao devem ser dedicadas so a criacao da branch/worktree. Trabalhar direto no branch atual por default.
