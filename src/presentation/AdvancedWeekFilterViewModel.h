@@ -2,6 +2,7 @@
 
 #include "presentation/FilterPanelAdvancedState.h"
 
+#include <QDate>
 #include <QObject>
 #include <QString>
 #include <QStringList>
@@ -53,6 +54,8 @@ namespace ssa::presentation {
         Q_INVOKABLE [[nodiscard]] bool isYearValid(const QString& value) const;
         Q_INVOKABLE [[nodiscard]] bool isWeekValid(const QString& value) const;
         Q_INVOKABLE [[nodiscard]] bool isYearWeekValid(const QString& value) const;
+        Q_INVOKABLE [[nodiscard]] int currentYearWeek() const;
+        [[nodiscard]] static int isoYearWeek(const QDate& date);
         void refreshFromState();
 
       signals:

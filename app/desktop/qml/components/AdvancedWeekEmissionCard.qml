@@ -31,30 +31,15 @@ FilterCard {
         return control.activeFocus ? Theme.accent : Theme.border;
     }
 
-    // ISO-8601 week of year as YYYYWW. Matches QDate::weekNumber semantics.
-    function currentYearWeek() {
-        const d = new Date();
-        const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-        const day = t.getUTCDay() || 7;
-        t.setUTCDate(t.getUTCDate() + 4 - day);
-        const yearStart = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
-        const isoWeek = 1 + Math.round(((t - yearStart) / 86400000 - 1 + (yearStart.getUTCDay() || 7)) / 7);
-        const isoYear = (isoWeek < 1) ? t.getUTCFullYear() - 1 : (isoWeek > 52 && day > 4) ? (t.getUTCMonth() === 11 && d.getDate() >= 29 ? t.getUTCFullYear() + 1 : t.getUTCFullYear()) : t.getUTCFullYear();
-        // Build YYYYWW using the ISO year (the year of the Thursday of this week).
-        const thursday = new Date(t);
-        const finalYear = thursday.getUTCFullYear();
-        return finalYear * 100 + Math.min(53, Math.max(1, isoWeek));
-    }
-
     function submit() {
-        if (!root.week.isYearWeekValid(root.rangeStartDraft) || !root.week.isYearWeekValid(root.rangeEndDraft))
+        // Capture both drafts first: each setter emits changed() synchronously and
+        // the Connections handler below rewrites the unfocused drafts.
+        const start = root.rangeStartDraft;
+        const end = root.rangeEndDraft;
+        if (!root.week.isYearWeekValid(start) || !root.week.isYearWeekValid(end))
             return;
-        if (root.rangeStartDraft.length > 0 && root.rangeEndDraft.length === 0) {
-            root.week.issueWeekEndFilter = String(root.currentYearWeek());
-        } else {
-            root.week.issueWeekEndFilter = root.rangeEndDraft;
-        }
-        root.week.issueWeekStartFilter = root.rangeStartDraft;
+        root.week.issueWeekEndFilter = start.length > 0 && end.length === 0 ? String(root.week.currentYearWeek()) : end;
+        root.week.issueWeekStartFilter = start;
         root.applyRequested();
     }
 

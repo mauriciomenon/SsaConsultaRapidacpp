@@ -37,11 +37,11 @@ namespace ssa::presentation::filterpanel {
             return value.isEmpty() || parser(value.toStdString()).has_value() ? value : QString{};
         }
 
-        std::vector<int> parsePositiveIntList(const QString& value) {
+        std::vector<int> parseNonNegativeIntList(const QString& value) {
             std::vector<int> result;
             const auto parts = value.split(QStringLiteral(","), Qt::SkipEmptyParts);
             for (const auto& part : parts) {
-                const auto parsed = parsePositiveInt(part);
+                const auto parsed = parseNonNegativeInt(part);
                 if (parsed.has_value() && std::ranges::find(result, *parsed) == result.end()) {
                     result.push_back(*parsed);
                 }
@@ -313,7 +313,7 @@ namespace ssa::presentation::filterpanel {
         filters.week = domain::parseIsoWeek(input_.genericWeek.week.toStdString());
         filters.issueYear = domain::parseFilterYear(input_.years.issue.toStdString());
         filters.executionYear = domain::parseFilterYear(input_.years.execution.toStdString());
-        filters.reprogrammingValues = parsePositiveIntList(input_.reprogramming.values);
+        filters.reprogrammingValues = parseNonNegativeIntList(input_.reprogramming.values);
         filters.reprogrammingComparison =
             domain::numericComparisonModeFromString(input_.reprogramming.mode.toStdString());
         filters.issueWeekStart =
@@ -358,7 +358,7 @@ namespace ssa::presentation::filterpanel {
         }
         return domain::ColumnCatalog::isReprogrammingColumn(normalizedKey) &&
                (input_.reprogramming.only ||
-                !parsePositiveIntList(input_.reprogramming.values).empty());
+                !parseNonNegativeIntList(input_.reprogramming.values).empty());
     }
 
     void FilterPanelAdvancedState::clear() {

@@ -387,6 +387,12 @@ namespace {
             QVERIFY(qmlRegisterType(
                         QUrl::fromLocalFile(components.filePath("AdvancedMacroFilterCard.qml")),
                         "SsaConsultaRapida", 1, 0, "AdvancedMacroFilterCard") >= 0);
+            QVERIFY(qmlRegisterType(
+                        QUrl::fromLocalFile(components.filePath("AdvancedWeekEmissionCard.qml")),
+                        "SsaConsultaRapida", 1, 0, "AdvancedWeekEmissionCard") >= 0);
+            QVERIFY(qmlRegisterType(
+                        QUrl::fromLocalFile(components.filePath("AdvancedWeekExecutionCard.qml")),
+                        "SsaConsultaRapida", 1, 0, "AdvancedWeekExecutionCard") >= 0);
             const QDir analytics(root.filePath("app/desktop/qml/analytics"));
             for (const auto& [fileName, typeName] :
                  std::array<std::pair<const char*, const char*>, 6>{
@@ -676,6 +682,105 @@ namespace {
             QTRY_VERIFY_WITH_TIMEOUT(popup->property("visible").toBool(), 1000);
             QTRY_VERIFY_WITH_TIMEOUT(!popup->property("valuesLoading").toBool(), 1000);
             QCOMPARE(repository->advancedRequests(), 1);
+        }
+
+        void value_popup_reads_different_tokens_written_by_the_serializer() {
+            auto repository = std::make_shared<CountingRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::FilterPanelViewModel filters(service);
+            QQmlEngine engine;
+            engine.rootContext()->setContextProperty(QStringLiteral("filterViewModel"), &filters);
+            QQmlComponent component(&engine);
+            component.setData(kAdvancedTextHarness,
+                              QUrl(QStringLiteral("inmemory:/AdvancedPopupTokenHarness.qml")));
+            QTRY_VERIFY_WITH_TIMEOUT(component.status() != QQmlComponent::Loading, 1000);
+            QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+            std::unique_ptr<QObject> harness(component.create());
+            QVERIFY2(harness != nullptr, qPrintable(component.errorString()));
+            auto* popup =
+                harness->findChild<QObject*>(QStringLiteral("advancedTextValuePopup_situacao"));
+            QVERIFY(popup != nullptr);
+            QVERIFY(popup->setProperty("textFilter", QStringLiteral("!=APV,=ADM,!STE")));
+
+            QVERIFY(QMetaObject::invokeMethod(popup, "resetSelections"));
+
+            QCOMPARE(popup->property("excludeValues").toStringList(),
+                     QStringList({QStringLiteral("APV"), QStringLiteral("STE")}));
+            QCOMPARE(popup->property("includeValues").toStringList(),
+                     QStringList({QStringLiteral("ADM")}));
+        }
+
+        void week_cards_apply_both_typed_bounds() {
+            auto repository = std::make_shared<CountingRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::FilterPanelViewModel filters(service);
+            auto* advanced =
+                qobject_cast<ssa::presentation::FilterPanelAdvancedViewModel*>(filters.advanced());
+            QVERIFY(advanced != nullptr);
+            auto* week = advanced->week();
+            QQmlEngine engine;
+            engine.rootContext()->setContextProperty(QStringLiteral("weekViewModel"), week);
+            QQmlComponent component(&engine);
+            component.setData(R"QML(
+                import QtQuick
+                import SsaConsultaRapida
+                Item {
+                    AdvancedWeekEmissionCard {
+                        objectName: "emission"; week: weekViewModel; cardWidth: 360; cardHeight: 52
+                    }
+                    AdvancedWeekExecutionCard {
+                        objectName: "execution"; week: weekViewModel; cardWidth: 360; cardHeight: 52
+                    }
+                }
+            )QML",
+                              QUrl(QStringLiteral("inmemory:/WeekCardsHarness.qml")));
+            QTRY_VERIFY_WITH_TIMEOUT(component.status() != QQmlComponent::Loading, 1000);
+            QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+            std::unique_ptr<QObject> harness(component.create());
+            QVERIFY2(harness != nullptr, qPrintable(component.errorString()));
+            const QString current = QString::number(
+                ssa::presentation::AdvancedWeekFilterViewModel::isoYearWeek(QDate::currentDate()));
+
+            for (const auto& [name, startKey, endKey] : std::array<std::array<const char*, 3>, 2>{
+                     {{"emission", "issueWeekStartFilter", "issueWeekEndFilter"},
+                      {"execution", "executionWeekStartFilter", "executionWeekEndFilter"}}}) {
+                auto* card = harness->findChild<QObject*>(QString::fromLatin1(name));
+                QVERIFY(card != nullptr);
+                QVERIFY(card->setProperty("rangeStartDraft", QStringLiteral("202601")));
+                QVERIFY(card->setProperty("rangeEndDraft", QStringLiteral("202610")));
+                QVERIFY(QMetaObject::invokeMethod(card, "submit"));
+                QCOMPARE(week->property(startKey).toString(), QStringLiteral("202601"));
+                QCOMPARE(week->property(endKey).toString(), QStringLiteral("202610"));
+
+                QVERIFY(card->setProperty("rangeStartDraft", QStringLiteral("202602")));
+                QVERIFY(card->setProperty("rangeEndDraft", QString()));
+                QVERIFY(QMetaObject::invokeMethod(card, "submit"));
+                QCOMPARE(week->property(startKey).toString(), QStringLiteral("202602"));
+                QCOMPARE(week->property(endKey).toString(), current);
+            }
+        }
+
+        void multiselect_stays_available_for_mixed_filters() {
+            auto repository = std::make_shared<CountingRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::FilterPanelViewModel filters(service);
+            QQmlEngine engine;
+            engine.rootContext()->setContextProperty(QStringLiteral("filterViewModel"), &filters);
+            QQmlComponent component(&engine);
+            component.setData(kAdvancedTextHarness,
+                              QUrl(QStringLiteral("inmemory:/AdvancedPopupMixedHarness.qml")));
+            QTRY_VERIFY_WITH_TIMEOUT(component.status() != QQmlComponent::Loading, 1000);
+            QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+            std::unique_ptr<QObject> harness(component.create());
+            QVERIFY2(harness != nullptr, qPrintable(component.errorString()));
+            auto* card = harness->findChild<QObject*>();
+            auto* button =
+                findOwnedQuickItemByProperty(harness.get(), "text", QStringLiteral("..."));
+            QVERIFY(card != nullptr && button != nullptr);
+
+            QVERIFY(card->setProperty("operatorIndex", -1));
+
+            QVERIFY(button->isEnabled());
         }
 
         void distinct_value_error_is_visible_and_retryable_in_qml() {

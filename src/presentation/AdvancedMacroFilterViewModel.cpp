@@ -154,7 +154,8 @@ namespace ssa::presentation {
 
     void AdvancedMacroFilterViewModel::setSelectedMacro(const QString& value) {
         const auto normalized = value.trimmed();
-        if (selectedMacro_ == normalized) {
+        // Baixar stays selected after it applies, so a repeated pick must reapply it.
+        if (selectedMacro_ == normalized && normalized != QString::fromLatin1(kBaixar)) {
             return;
         }
         selectedMacro_ = normalized;

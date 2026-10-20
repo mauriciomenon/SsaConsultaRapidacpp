@@ -134,7 +134,6 @@ FilterCard {
                 padding: 0
                 font.pixelSize: Theme.fontSizeMicro
                 font.bold: false
-                enabled: root.operatorIndex >= 0
                 ToolTip.visible: hovered
                 ToolTip.text: "Selecionar valores para incluir ou excluir"
                 Accessible.name: "Selecionar valores de " + root.label

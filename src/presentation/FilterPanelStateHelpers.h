@@ -21,7 +21,7 @@ namespace ssa::presentation::filterpanel {
         bool operator==(const FilterSummaryEntry&) const = default;
     };
 
-    [[nodiscard]] std::optional<int> parsePositiveInt(const QString& value);
+    [[nodiscard]] std::optional<int> parseNonNegativeInt(const QString& value);
 
     [[nodiscard]] domain::DerivationFilterMode derivationModeFromString(const QString& value);
 

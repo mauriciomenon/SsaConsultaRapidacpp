@@ -137,6 +137,16 @@ namespace ssa::presentation {
         return domain::parseIsoYearWeek(trimmed.toStdString()).has_value();
     }
 
+    int AdvancedWeekFilterViewModel::currentYearWeek() const {
+        return isoYearWeek(QDate::currentDate());
+    }
+
+    int AdvancedWeekFilterViewModel::isoYearWeek(const QDate& date) {
+        int isoYear = 0;
+        const int isoWeek = date.weekNumber(&isoYear);
+        return isoYear * 100 + isoWeek;
+    }
+
     void AdvancedWeekFilterViewModel::refreshFromState() {
         emit changed();
     }

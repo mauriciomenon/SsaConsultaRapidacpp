@@ -44,7 +44,11 @@ Popup {
             var token = parts[index].trim();
             if (token.length < 2 || token.charAt(0) !== prefix)
                 continue;
-            result.push(token.substring(1).trim());
+            // The C++ serializer writes exclusions as "!=value".
+            var value = token.substring(1);
+            if (prefix === "!" && value.charAt(0) === "=")
+                value = value.substring(1);
+            result.push(value.trim());
         }
         return result;
     }

@@ -729,6 +729,15 @@ namespace {
             }
         }
 
+        void advanced_week_computes_iso_year_week_at_year_boundaries() {
+            using ssa::presentation::AdvancedWeekFilterViewModel;
+            QCOMPARE(AdvancedWeekFilterViewModel::isoYearWeek(QDate(2027, 1, 4)), 202701);
+            QCOMPARE(AdvancedWeekFilterViewModel::isoYearWeek(QDate(2026, 12, 31)), 202653);
+            QCOMPARE(AdvancedWeekFilterViewModel::isoYearWeek(QDate(2024, 12, 30)), 202501);
+            QCOMPARE(AdvancedWeekFilterViewModel::isoYearWeek(QDate(2021, 1, 3)), 202053);
+            QCOMPARE(AdvancedWeekFilterViewModel::isoYearWeek(QDate(2026, 10, 20)), 202643);
+        }
+
         void advanced_week_validation_accepts_empty_and_rejects_out_of_range_values() {
             auto repository = std::make_shared<FilterPanelRepository>();
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
@@ -770,6 +779,12 @@ namespace {
             QVERIFY(macro != nullptr);
             QVERIFY(text != nullptr);
 
+            macro->setSelectedMacro("ssas_para_baixar");
+
+            QCOMPARE(text->textFilter("situacao"), QString("!SAD,!SCA,!SES,!STE"));
+
+            advanced->clear();
+            QCOMPARE(text->textFilter("situacao"), QString());
             macro->setSelectedMacro("ssas_para_baixar");
 
             QCOMPARE(text->textFilter("situacao"), QString("!SAD,!SCA,!SES,!STE"));
@@ -997,6 +1012,15 @@ namespace {
             QCOMPARE(
                 QString::fromStdString(request->filter.advanced.textFilters.at("setor_executor")),
                 QString("=IEE3"));
+        }
+
+        void reprogramming_filter_accepts_zero() {
+            ssa::presentation::filterpanel::FilterPanelState state;
+
+            state.advanced().setReprogrammingValues("0,2,-1");
+
+            QCOMPARE(state.advanced().filters().reprogrammingValues, std::vector<int>({0, 2}));
+            QVERIFY(state.advanced().hasFilterForColumn("num_reprogramacoes"));
         }
 
         void column_value_request_ignores_non_text_advanced_filters_for_requested_column() {

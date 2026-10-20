@@ -115,14 +115,14 @@ namespace ssa::presentation::filterpanel {
 
     } // namespace
 
-    std::optional<int> parsePositiveInt(const QString& value) {
+    std::optional<int> parseNonNegativeInt(const QString& value) {
         const auto text = value.trimmed();
         if (text.isEmpty()) {
             return std::nullopt;
         }
         bool conversionOk = false;
         const int parsed = text.toInt(&conversionOk);
-        if (!conversionOk || parsed <= 0) {
+        if (!conversionOk || parsed < 0) {
             return std::nullopt;
         }
         return parsed;

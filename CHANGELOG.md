@@ -20,6 +20,13 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
   `--asc`/`--desc` sem `--sort` e `--page-size` menor que 1 tambem sao
   recusados. A exportacao CSV segue a mesma ordem da listagem, e valores com
   tabulacao ou quebra de linha nao quebram mais a saida tabular.
+- Filtros avancados: reabrir valores com exclusao (`!=APV`) e aplicar nao
+  corrompe mais o filtro; confirmar "Ate" nas semanas de emissao e execucao
+  nao apaga mais o "De"; a semana atual usada como "Ate" automatico segue a
+  semana ISO correta (a formula antiga errava a partir de 2027-01-04);
+  reprogramacao "0" passa a filtrar; o botao "..." continua disponivel com
+  inclusao e exclusao juntas; o atalho "SSAs para baixar" pode ser reaplicado
+  depois de limpar os filtros.
 
 ## 0.9.17 - 2026-08-04
 
