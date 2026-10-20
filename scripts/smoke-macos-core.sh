@@ -103,11 +103,11 @@ run_macos_smoke_core() {
     echo "Smoke build preparation failed for preset: ${preset}" >&2
     return 1
   fi
-  if ! (cd "${project_root}" && cmake --build --preset "${preset}"); then
+  if ! (cd "${project_root}" && cmake --build "${project_root}/build/${preset}"); then
     echo "Build failed for preset: ${preset}" >&2
     return 1
   fi
-  if ! (cd "${project_root}" && ctest --preset "${preset}" --output-on-failure); then
+  if ! (cd "${project_root}" && ctest --test-dir "${project_root}/build/${preset}" --output-on-failure); then
     echo "Tests failed for preset: ${preset}" >&2
     return 1
   fi

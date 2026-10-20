@@ -40,6 +40,7 @@ case "${preset}" in
     ;;
 esac
 
-rm -rf "${repo_root}/build/${preset}"
+build_dir="${repo_root}/build/${preset}"
+rm -rf "${build_dir}"
 "${repo_root}/tools/configure-dev.sh" "${preset}"
-(cd "${repo_root}" && cmake --build --preset "${preset}")
+(cd "${repo_root}" && cmake --build "${build_dir}")

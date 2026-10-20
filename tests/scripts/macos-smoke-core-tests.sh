@@ -13,11 +13,14 @@ prepare_macos_build_dir() { return "${prepare_exit_code}"; }
 cmake_calls=0
 ctest_calls=0
 app_calls=0
+calls_log="${fixture_root}/calls.log"
 cmake() {
   cmake_calls=$((cmake_calls + 1))
+  printf 'cmake %s\n' "$*" >>"${calls_log}"
 }
 ctest() {
   ctest_calls=$((ctest_calls + 1))
+  printf 'ctest %s\n' "$*" >>"${calls_log}"
 }
 
 fail() {
@@ -77,10 +80,15 @@ fi
 
 produce_screenshot=true
 launches=()
+: >"${calls_log}"
 run_macos_smoke_core "${project_root}" dev "${db_path}" "${runtime_dir}" \
   "${config_dir}" "${screenshot}" false "${preferences_src}" screenshot
 [[ "${launches[*]}" == "screenshot" ]] || fail "offscreen smoke must launch once"
 [[ -s "${screenshot}" ]] || fail "offscreen smoke must produce a screenshot"
+expected_calls="cmake --build ${project_root}/build/dev
+ctest --test-dir ${project_root}/build/dev --output-on-failure"
+[[ "$(cat "${calls_log}")" == "${expected_calls}" ]] ||
+  fail "smoke must build and test the configured directory, got: $(cat "${calls_log}")"
 
 launches=()
 run_macos_smoke_core "${project_root}" dev "${db_path}" "${runtime_dir}" \
@@ -100,5 +108,23 @@ if run_macos_smoke_core "${project_root}" dev "${db_path}" "${runtime_dir}" \
   "${config_dir}" "${screenshot}" false "${preferences_src}" open; then
   fail "visible application failure must propagate after a valid preflight"
 fi
+
+build_root="${fixture_root}/build-macos"
+fake_bin="${fixture_root}/bin"
+mkdir -p "${build_root}/tools" "${build_root}/scripts/lazy_scripts" "${fake_bin}"
+cp "${repo_root}/scripts/build-macos.sh" "${build_root}/scripts/"
+cp "${repo_root}/scripts/lazy_scripts/build-macos.sh" "${build_root}/scripts/lazy_scripts/"
+# shellcheck disable=SC2016 # $1 belongs to the generated fake configure script.
+printf '#!/usr/bin/env bash\nmkdir -p "%s/build/$1"\n' "${build_root}" \
+  >"${build_root}/tools/configure-dev.sh"
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >>"%s/cmake.log"\n' "${fixture_root}" \
+  >"${fake_bin}/cmake"
+chmod +x "${build_root}/tools/configure-dev.sh" "${fake_bin}/cmake"
+for script in scripts/build-macos.sh scripts/lazy_scripts/build-macos.sh; do
+  : >"${fixture_root}/cmake.log"
+  PATH="${fake_bin}:${PATH}" bash "${build_root}/${script}" >/dev/null
+  [[ "$(cat "${fixture_root}/cmake.log")" == "--build ${build_root}/build/dev" ]] ||
+    fail "${script} must build the configured directory, got: $(cat "${fixture_root}/cmake.log")"
+done
 
 printf 'PASS: macOS smoke core contract\n'

@@ -148,9 +148,9 @@ pkg_path="${dist_root}/${artifact_name}.pkg.tar.zst"
 
 "${repo_root}/tools/configure-dev.sh" "${preset}"
 (cd "${repo_root}"
-cmake --build --preset "${preset}"
+cmake --build "${build_dir}"
 if [[ "${run_tests}" == "true" ]]; then
-  ctest --preset "${preset}" --output-on-failure
+  ctest --test-dir "${build_dir}" --output-on-failure
 fi)
 
 binary="${build_dir}/ssa_consulta_rapida"

@@ -144,10 +144,10 @@ rm -rf "${build_dir}"
 "${repo_root}/tools/configure-dev.sh" "${preset}"
 (cd "${repo_root}"
 if [[ "${run_tests}" == "true" ]]; then
-  cmake --build --preset "${preset}"
-  ctest --preset "${preset}" --output-on-failure
+  cmake --build "${build_dir}"
+  ctest --test-dir "${build_dir}" --output-on-failure
 else
-  cmake --build --preset "${preset}" --target ssa_consulta_rapida
+  cmake --build "${build_dir}" --target ssa_consulta_rapida
 fi)
 
 executable="${build_dir}/ssa_consulta_rapida.app/Contents/MacOS/ssa_consulta_rapida"
