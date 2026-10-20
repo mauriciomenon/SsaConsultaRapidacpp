@@ -145,6 +145,10 @@ namespace {
         if (selection.selectedCommands > 1) {
             return rejectMultipleWorkflowCommands();
         }
+        if (selection.selectedCommand && (parser.isSet("export") || parser.isSet("details"))) {
+            return {ssa::ports::WorkflowStatus::Rejected,
+                    "workflow commands cannot be combined with --export or --details"};
+        }
         if (!selection.selectedCommand) {
             return {ssa::ports::WorkflowStatus::Rejected, "no workflow command selected"};
         }

@@ -1,4 +1,6 @@
 #include "SsaCliController.h"
+#include "SsaCliPrinter.h"
+#include "SsaCliRequestMapper.h"
 #include "ports/ISsaBrowsePort.h"
 #include "ports/IWorkflowPorts.h"
 #include "qt/FilesystemPath.h"
@@ -422,6 +424,65 @@ TEST_CASE("cli rejects acao with another workflow command") {
 
     REQUIRE(exitCode == 1);
     REQUIRE_FALSE(derivadasPort->called);
+}
+
+namespace {
+    ssa::domain::SsaPageRequest mappedRequest(const QStringList& arguments) {
+        QCommandLineParser parser;
+        parser.addOptions({{"sort", "sort", "key"},
+                           {"asc", "asc"},
+                           {"desc", "desc"},
+                           {"page", "page", "number"},
+                           {"page-size", "page size", "number"},
+                           {"search", "search", "text"},
+                           {"include-sca-ses-ste", "include"}});
+        parser.process(QStringList{"ssa"} + arguments);
+        return ssa::app::cli::SsaCliRequestMapper::pageRequest(parser, {"numero_ssa"});
+    }
+} // namespace
+
+TEST_CASE("cli request mapper normalizes status ordering for any sort column") {
+    CHECK_FALSE(mappedRequest({"--sort", "situacao"}).sort.statusLast);
+    CHECK(mappedRequest({"--sort", "numero_ssa"}).sort.statusLast);
+}
+
+TEST_CASE("cli request mapper rejects ignored direction and negative page size") {
+    CHECK_THROWS_AS(mappedRequest({"--asc"}), std::invalid_argument);
+    CHECK_THROWS_AS(mappedRequest({"--page-size", "-1"}), std::invalid_argument);
+    CHECK(mappedRequest({"--page-size", "5"}).pageSize == 5);
+}
+
+TEST_CASE("cli printer keeps one line and fixed columns per record") {
+    std::ostringstream output;
+    const ssa::app::cli::SsaCliPrinter printer(output);
+    ssa::domain::SsaPageResult page;
+    page.rows.push_back(ssa::domain::SsaRecord{
+        {{"numero_ssa", "202600001"}, {"descricao_ssa", "a\tb\nc\x1b[31m"}}});
+
+    printer.printPage(page, {"numero_ssa", "descricao_ssa"});
+
+    CHECK(output.str() == "numero_ssa\tdescricao_ssa\n202600001\ta b c [31m\n");
+}
+
+TEST_CASE("cli rejects workflow commands combined with export or details") {
+    auto importPort = std::make_shared<CapturingImportPort>();
+    auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(importPort);
+    const auto controller = controllerWithWorkflow(workflows);
+    const auto databasePath = existingDatabaseArgument();
+    QTemporaryDir outputDir;
+    REQUIRE(outputDir.isValid());
+    const auto csvPath = outputDir.filePath(QStringLiteral("out.csv")).toStdString();
+
+    REQUIRE(controller.run({"ssa", "--rescan", "--export", csvPath.c_str(), "--db",
+                            databasePath.c_str(), "--docs-dir", "."}) == 1);
+    REQUIRE(controller.run({"ssa", "--incremental-rescan", "--details", "202600001", "--db",
+                            databasePath.c_str(), "--docs-dir", "."}) == 1);
+
+    REQUIRE(controller.run({"ssa", "--export", csvPath.c_str(), "--details", "202600001", "--db",
+                            databasePath.c_str()}) == 1);
+
+    REQUIRE_FALSE(importPort->called);
+    REQUIRE_FALSE(QFile::exists(QString::fromStdString(csvPath)));
 }
 
 TEST_CASE("cli rejects multiple workflow commands") {

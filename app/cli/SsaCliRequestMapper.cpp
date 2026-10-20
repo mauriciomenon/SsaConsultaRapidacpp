@@ -45,17 +45,25 @@ namespace ssa::app::cli {
         domain::SsaPageRequest request;
         const int pageNumber = optionInt(parser, "page", 1);
         request.pageIndex = pageNumber <= 1 ? 0 : static_cast<std::size_t>(pageNumber - 1);
-        request.pageSize =
-            static_cast<std::size_t>(optionInt(parser, "page-size", domain::kDefaultPageSize));
+        const int pageSize = optionInt(parser, "page-size", domain::kDefaultPageSize);
+        if (pageSize < 1) {
+            throw std::invalid_argument("--page-size must be at least 1");
+        }
+        request.pageSize = static_cast<std::size_t>(pageSize);
         request.searchText = parser.value("search").toStdString();
         request.visibleColumns = outputColumns;
         request.excludeScaSesSte = !parser.isSet("include-sca-ses-ste");
         if (parser.isSet("asc") && parser.isSet("desc")) {
             throw std::invalid_argument("--asc and --desc cannot be used together");
         }
+        if (!parser.isSet("sort") && (parser.isSet("asc") || parser.isSet("desc"))) {
+            throw std::invalid_argument("--asc and --desc require --sort");
+        }
         if (parser.isSet("sort")) {
             request.sort.columnKey = parser.value("sort").toStdString();
             request.sort.ascending = !parser.isSet("desc");
+            request.sort.statusLast =
+                domain::shouldApplyStatusLastTieBreaker(request.sort.columnKey);
         }
         return request;
     }

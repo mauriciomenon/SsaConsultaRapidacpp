@@ -14,6 +14,12 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
   tem campo vazio; filtro de semana sem ano volta a encontrar resultados.
 - Analytics: SSAs cadastradas dentro do periodo deixam de aparecer como
   cadastradas antes do periodo nas series de eventos.
+- CLI: comandos de manutencao (`--reset-db`, `--rescan` e outros) combinados
+  com `--export` ou `--details` sao recusados antes de qualquer efeito; antes o
+  reset rodava e a exportacao era ignorada. `--export` com `--details`,
+  `--asc`/`--desc` sem `--sort` e `--page-size` menor que 1 tambem sao
+  recusados. A exportacao CSV segue a mesma ordem da listagem, e valores com
+  tabulacao ou quebra de linha nao quebram mais a saida tabular.
 
 ## 0.9.17 - 2026-08-04
 

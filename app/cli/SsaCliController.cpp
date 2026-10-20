@@ -249,6 +249,10 @@ namespace ssa::app::cli {
                 printMissingDatabaseMessage();
                 return 2;
             }
+            if (parser.isSet("export") && parser.isSet("details")) {
+                std::cerr << "--export cannot be combined with --details\n";
+                return 1;
+            }
             if (parser.isSet("export")) {
                 return runExport(parser, SsaCliDatabasePath::required(parser));
             }

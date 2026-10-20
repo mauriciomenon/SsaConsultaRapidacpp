@@ -38,7 +38,11 @@ namespace ssa::app::cli {
             if (index > 0) {
                 output_ << '\t';
             }
-            output_ << record.valueOf(columns[index]);
+            // Control bytes would forge columns or lines in the tabular output.
+            for (const char value : record.valueOf(columns[index])) {
+                const auto byte = static_cast<unsigned char>(value);
+                output_ << (byte < 0x20 || byte == 0x7f ? ' ' : value);
+            }
         }
         output_ << '\n';
     }
