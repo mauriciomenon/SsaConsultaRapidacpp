@@ -2,6 +2,15 @@
 
 Mudancas relevantes deste projeto sao registradas neste arquivo.
 
+## Nao publicado
+
+### Corrigido
+
+- Importacao: planilha com aba valida seguida de aba nao reconhecida e
+  rejeitada inteira; antes suas linhas entravam no banco quando outro arquivo
+  valido estava no mesmo lote. Conflito de duplicata no rescan completo agora
+  informa o nome do arquivo.
+
 ## 0.9.17 - 2026-08-04
 
 ### Corrigido

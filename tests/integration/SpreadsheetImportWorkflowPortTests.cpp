@@ -7820,6 +7820,71 @@ TEST_CASE("spreadsheet workflow rejects an unknown sheet after valid data") {
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
+TEST_CASE("spreadsheet workflow keeps rows of an unknown trailing sheet out of a mixed batch") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    const auto header = row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Descricao"),
+                                inlineCell("C1", "Data Cadastro")});
+    const auto good = inputDirectory / "good.xlsx";
+    writeWorkbook(good, header + row(2, {inlineCell("A2", "202600324"), inlineCell("B2", "Kept"),
+                                         inlineCell("C2", "2026-07-14")}));
+    const auto tail = inputDirectory / "tail.xlsx";
+    writeWorkbookSheets(
+        tail, {header + row(2, {inlineCell("A2", "202600323"), inlineCell("B2", "Must roll back"),
+                                inlineCell("C2", "2026-07-14")}),
+               row(1, {inlineCell("A1", "Unexpected trailing report")})});
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+
+    const auto result = port.rescan({ssa::ports::RescanMode::Incremental});
+
+    INFO(result.message);
+    REQUIRE(result.importSummary.has_value());
+    const auto tailResult = std::ranges::find(result.importSummary->files, std::string{"tail.xlsx"},
+                                              &ssa::ports::ImportFileResult::source);
+    REQUIRE(tailResult != result.importSummary->files.end());
+    CHECK(tailResult->status == ssa::ports::ImportFileStatus::Rejected);
+    CHECK(tailResult->reason == "header_not_recognized");
+    CHECK(std::filesystem::exists(tail));
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    CHECK(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600323'") == 0);
+    CHECK(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600324'") == 1);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("full rescan names the workbook that holds a duplicate conflict") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    const auto header = row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Descricao"),
+                                inlineCell("C1", "Data Cadastro")});
+    writeWorkbookSheets(inputDirectory / "conflict.xlsx",
+                        {header + row(2, {inlineCell("A2", "202600325"), inlineCell("B2", "First"),
+                                          inlineCell("C2", "2026-07-14")}),
+                         header + row(2, {inlineCell("A2", "202600325"), inlineCell("B2", "Second"),
+                                          inlineCell("C2", "2026-07-14")})});
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+
+    const auto result = port.rescan({ssa::ports::RescanMode::Full});
+
+    INFO(result.message);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
+    REQUIRE(result.message.find("duplicate_conflict file=conflict.xlsx") != std::string::npos);
+}
+
 TEST_CASE("spreadsheet workflow rolls back conflicting SSA rows across worksheets") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());

@@ -1566,7 +1566,22 @@ namespace ssa::infra::importing {
                 return discardBeforeCommit(rollbackSession(
                     *writeSession,
                     {ports::WorkflowStatus::Rejected,
-                     workflowMessage(operation, files, totalSummary, {0, "duplicate_conflict"})}));
+                     workflowMessage(operation, files, totalSummary,
+                                     {0, "duplicate_conflict file=" + file.originalFilename})}));
+            }
+            if (batch.mappingStatus == SpreadsheetMappingStatus::HeaderNotRecognized &&
+                validRows > 0) {
+                // A mapped sheet was already written before the unknown sheet: the
+                // workbook is rejected as a whole, never committed as "ignored".
+                if (!atomicBatch) {
+                    isolateFileFailure(file, "header_not_recognized");
+                    continue;
+                }
+                fileResult.reason = "header_not_recognized";
+                return discardBeforeCommit(rollbackSession(
+                    *writeSession, {ports::WorkflowStatus::Rejected,
+                                    std::string{operation} +
+                                        " header_not_recognized file=" + file.originalFilename}));
             }
             if (batch.mappingStatus == SpreadsheetMappingStatus::HeaderNotRecognized) {
                 writeSession->commitFile();
