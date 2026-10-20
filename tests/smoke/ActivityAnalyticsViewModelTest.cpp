@@ -891,6 +891,23 @@ namespace {
             QCOMPARE(availability.value(QStringLiteral("available")).toBool(), true);
         }
 
+        void resultSignalsSeeLoadingFinished() {
+            auto port = std::make_shared<FunctionalAnalyticsPort>();
+            port->dimensionFunction = [](const AnalyticsRequest&, const std::stop_token&) {
+                return AnalyticsDimensionValues{.divisions = {"DIV"}};
+            };
+            ssa::presentation::ActivityAnalyticsViewModel model(serviceFor(port));
+            std::optional<bool> loadingAtEmit;
+            QObject::connect(&model,
+                             &ssa::presentation::ActivityAnalyticsViewModel::dimensionValuesChanged,
+                             &model, [&] { loadingAtEmit = model.loading(); });
+
+            model.loadDimensionValues(testRequest());
+            QTRY_VERIFY_WITH_TIMEOUT(loadingAtEmit.has_value(), 1000);
+
+            QCOMPARE(*loadingAtEmit, false);
+        }
+
         void replacingServiceInvalidatesOldDatabaseResults() {
             struct Gate final {
                 std::atomic_bool started{false};

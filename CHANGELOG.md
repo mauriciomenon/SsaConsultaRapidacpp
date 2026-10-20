@@ -27,6 +27,8 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
   reprogramacao "0" passa a filtrar; o botao "..." continua disponivel com
   inclusao e exclusao juntas; o atalho "SSAs para baixar" pode ser reaplicado
   depois de limpar os filtros.
+- Analytics: os relatorios rapidos voltam a iniciar a analise depois de
+  carregar as dimensoes.
 
 ## 0.9.17 - 2026-08-04
 

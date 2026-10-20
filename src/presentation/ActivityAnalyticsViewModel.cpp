@@ -993,8 +993,10 @@ namespace ssa::presentation {
                     warningWindowLoadSucceeded = false;
                 }
             } else {
-                publish(operation, std::move(*result));
+                // Result signals must see loading == false: QML quick reports start
+                // the follow-up analysis from dimensionValuesChanged.
                 setState(false, false);
+                publish(operation, std::move(*result));
                 emit succeeded(operation.kind);
                 if (operation.kind == RequestKind::WarningWindowLoad) {
                     warningWindowLoadSucceeded = true;
