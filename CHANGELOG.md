@@ -10,6 +10,8 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
   rejeitada inteira; antes suas linhas entravam no banco quando outro arquivo
   valido estava no mesmo lote. Conflito de duplicata no rescan completo agora
   informa o nome do arquivo.
+- Busca: negacao (`!MOTOR` e exclusao por coluna) nao some mais com SSAs que
+  tem campo vazio; filtro de semana sem ano volta a encontrar resultados.
 
 ## 0.9.17 - 2026-08-04
 

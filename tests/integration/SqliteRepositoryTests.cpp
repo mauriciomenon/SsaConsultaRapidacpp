@@ -339,6 +339,28 @@ TEST_CASE_METHOD(SqliteRepositoryFixture,
     }
 }
 
+TEST_CASE_METHOD(SqliteRepositoryFixture,
+                 "sqlite repository keeps rows with null fields in negated searches") {
+    executeSql(path,
+               "UPDATE ssa_table SET responsavel_execucao = NULL WHERE numero_ssa = '202500002'");
+    ssa::domain::SsaPageRequest request;
+    request.pageSize = 10;
+    request.excludeScaSesSte = false;
+
+    request.searchText = "!filtro";
+    const auto general = repository.page(request);
+    REQUIRE(general.totalRows == 3);
+    REQUIRE(std::ranges::any_of(
+        general.rows, [](const auto& row) { return row.valueOf("numero_ssa") == "202500002"; }));
+
+    request.searchText.clear();
+    request.advancedFilters.textFilters = {{"responsavel_execucao", "!Mia"}};
+    const auto column = repository.page(request);
+    REQUIRE(column.totalRows == 3);
+    REQUIRE(std::ranges::any_of(
+        column.rows, [](const auto& row) { return row.valueOf("numero_ssa") == "202500002"; }));
+}
+
 TEST_CASE_METHOD(SqliteRepositoryFixture, "sqlite repository excludes SCA SES STE when requested") {
     ssa::domain::SsaPageRequest request;
     request.pageSize = 10;
@@ -1014,6 +1036,19 @@ TEST_CASE_METHOD(SqliteRepositoryFixture, "sqlite repository applies advanced fi
 
     REQUIRE(page.totalRows == 1);
     REQUIRE(page.rows[0].valueOf("numero_ssa") == "202500003");
+}
+
+TEST_CASE_METHOD(SqliteRepositoryFixture, "sqlite repository filters week without year") {
+    ssa::domain::SsaPageRequest request;
+    request.pageSize = 10;
+    request.excludeScaSesSte = false;
+    request.advancedFilters.weekColumnKey = "semana_programada";
+    request.advancedFilters.week = 2;
+
+    REQUIRE(repository.page(request).totalRows == 4);
+
+    request.advancedFilters.week = 3;
+    REQUIRE(repository.page(request).totalRows == 0);
 }
 
 TEST_CASE_METHOD(SqliteRepositoryFixture,

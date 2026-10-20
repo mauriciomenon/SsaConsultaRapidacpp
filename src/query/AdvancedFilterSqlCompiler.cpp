@@ -77,7 +77,7 @@ namespace ssa::query {
                 bindings.push_back(std::to_string(startWeek.value()));
                 bindings.push_back(std::to_string(endWeek.value()));
             } else if (advanced.week.has_value()) {
-                where << "(" << numericColumn << " % 100) = ?";
+                where << "(" << numericColumn << " % 100) = CAST(? AS INTEGER)";
                 bindings.push_back(std::to_string(*advanced.week));
             } else {
                 throw std::invalid_argument("invalid advanced week filter");

@@ -139,8 +139,9 @@ namespace ssa::query {
                 return;
             }
             appendSqlAndSeparator(where, hasCondition);
+            // NULL columns make the OR chain NULL; COALESCE keeps those rows in a negation.
             if (term.negated) {
-                where << "NOT ";
+                where << "NOT COALESCE(";
             }
             where << "(";
             for (std::size_t i = 0; i < columns.size(); ++i) {
@@ -150,6 +151,9 @@ namespace ssa::query {
                 appendCompiledTermForColumn(where, bindings, columns[i], compiled);
             }
             where << ")";
+            if (term.negated) {
+                where << ", 0)";
+            }
             hasCondition = true;
         }
 
@@ -200,7 +204,7 @@ namespace ssa::query {
                 return;
             }
             appendSqlAndSeparator(where, hasCondition);
-            where << "NOT (" << group.str() << ")";
+            where << "NOT COALESCE((" << group.str() << "), 0)";
             bindings.insert(bindings.end(), groupBindings.begin(), groupBindings.end());
             hasCondition = true;
         }

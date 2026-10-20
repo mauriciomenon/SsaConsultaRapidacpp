@@ -357,7 +357,7 @@ TEST_CASE("sql query builder parses raw distinct column filters in the query lay
 
     const auto query = ssa::query::SqlQueryBuilder{}.buildDistinctValues(request);
 
-    REQUIRE(query.sql.find("NOT (\"setor_executor\" LIKE ?") != std::string::npos);
+    REQUIRE(query.sql.find("NOT COALESCE((\"setor_executor\" LIKE ?") != std::string::npos);
     REQUIRE(std::ranges::find(query.bindings, "IEE%") != query.bindings.end());
 }
 
