@@ -222,6 +222,24 @@ TEST_CASE("analytics sqlite port executes events by executor person and cohort")
     CHECK(point.count == 1);
 }
 
+TEST_CASE("analytics sqlite port classifies event registered inside the period") {
+    AnalyticsFixture fixture;
+    fixture.executeSql(
+        "UPDATE ssa_table SET situacao='STE', semana_cadastro=202602 WHERE numero_ssa='001'");
+    const ssa::infra::sqlite::SqliteSsaAnalyticsPort port(fixture.dbPath());
+    auto request = requestFor(AnalyticsMetric::Executed);
+    request.period = {{2026, 1}, {2026, 3}};
+    request.grain = TimeGrain::IsoWeek;
+    request.breakdown = Breakdown::DivisionSectorPerson;
+    request.personRole = PersonRole::Executor;
+    request.people = {"Exec A"};
+
+    const auto result = port.series(request);
+
+    REQUIRE(result.points.size() == 1);
+    CHECK(result.points.front().cohort == RegistrationCohort::RegisteredInPeriod);
+}
+
 TEST_CASE("analytics sqlite port counts STE without semana_executada via week fallback") {
     AnalyticsFixture fixture;
     fixture.executeSql(

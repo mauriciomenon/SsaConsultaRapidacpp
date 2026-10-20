@@ -12,6 +12,8 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
   informa o nome do arquivo.
 - Busca: negacao (`!MOTOR` e exclusao por coluna) nao some mais com SSAs que
   tem campo vazio; filtro de semana sem ano volta a encontrar resultados.
+- Analytics: SSAs cadastradas dentro do periodo deixam de aparecer como
+  cadastradas antes do periodo nas series de eventos.
 
 ## 0.9.17 - 2026-08-04
 

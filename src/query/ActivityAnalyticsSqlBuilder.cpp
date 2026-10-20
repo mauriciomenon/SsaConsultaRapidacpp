@@ -236,8 +236,9 @@ namespace ssa::query {
 
         std::string registrationCohortExpression() {
             return "CASE WHEN \"registration_iso_week\" IS NULL THEN 'unknown' "
-                   "WHEN \"registration_iso_week\" < ? THEN 'before' "
-                   "WHEN \"registration_iso_week\" <= ? THEN 'in_period' ELSE 'unknown' END";
+                   "WHEN \"registration_iso_week\" < CAST(? AS INTEGER) THEN 'before' "
+                   "WHEN \"registration_iso_week\" <= CAST(? AS INTEGER) THEN 'in_period' "
+                   "ELSE 'unknown' END";
         }
 
         std::string deadlineClassExpression(const domain::AnalyticsMetric metric) {
