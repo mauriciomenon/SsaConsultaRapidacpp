@@ -368,6 +368,7 @@ TEST_CASE("SSA import treats accent-only differences as the same value") {
     accented["descricao_localizacao"] = "UNIDADE DE AQUISIÇÃO DE DADOS - DAUC 03";
     auto different = plain;
     different["descricao_localizacao"] = "UNIDADE DE AQUISICAO DE DADOS - DAUC 04";
+    different["arquivo_origem"] = "Consulta SSA - 20-02-2026_1129AM (1).xlsx";
 
     const auto upgrade = ssa::domain::SsaImportPolicy::merge(plain, accented);
     const auto keep = ssa::domain::SsaImportPolicy::merge(accented, plain);
@@ -391,15 +392,48 @@ TEST_CASE("SSA import reports the first conflicting field") {
                           {"arquivo_origem", "Consulta SSA - 28-05-2026_0306PM.xlsx"}};
     auto incoming = existing;
     incoming["responsavel_execucao"] = "PAULO";
+    incoming["arquivo_origem"] = "Consulta SSA - 28-05-2026_0306PM (1).xlsx";
 
     const auto result = ssa::domain::SsaImportPolicy::merge(existing, incoming);
 
     REQUIRE(result.conflict);
     REQUIRE(result.conflictField == "responsavel_execucao");
     REQUIRE(ssa::domain::SsaImportPolicy::describeConflict(existing, incoming, result) ==
-            "ssa=202600032 field=responsavel_execucao existing=\"FELIPE\" incoming=\"PAULO\" "
+            "Import conflict: ssa=202600032 field=responsavel_execucao existing=\"FELIPE\" "
+            "incoming=\"PAULO\" "
             "existing_file=\"Consulta SSA - 28-05-2026_0306PM.xlsx\" "
-            "incoming_file=\"Consulta SSA - 28-05-2026_0306PM.xlsx\"");
+            "incoming_file=\"Consulta SSA - 28-05-2026_0306PM (1).xlsx\"");
+}
+
+TEST_CASE("SSA import keeps the first row of an SSA repeated in the same workbook") {
+    using Values = ssa::domain::SsaImportPolicy::Values;
+    // SAM exports one row per execution: only the execution fields differ.
+    const Values first{{"numero_ssa", "202207778"},
+                       {"descricao_ssa", "Same"},
+                       {"situacao", "APV"},
+                       {"responsavel_execucao", "FELIPE"},
+                       {"descricao_execucao", "First execution"},
+                       {"arquivo_origem", "SSAscomReprogramacoes_20-10-2026_1131AM.xlsx"},
+                       {"data_arquivo_origem", "2026-10-20T11:31:40"}};
+    auto second = first;
+    second["responsavel_execucao"] = "PAULO";
+    second["descricao_execucao"] = "Second execution";
+    second["semana_executada"] = "202642";
+
+    const auto result = ssa::domain::SsaImportPolicy::merge(first, second);
+
+    REQUIRE_FALSE(result.conflict);
+    REQUIRE(result.repeatDiscarded);
+    REQUIRE_FALSE(result.changed);
+    REQUIRE(result.values == first);
+    REQUIRE(result.conflictField == "descricao_execucao");
+
+    // Another workbook of the same instant stays an ambiguous conflict.
+    auto siblingFile = second;
+    siblingFile["arquivo_origem"] = "SSAscomReprogramacoes_20-10-2026_1131AM (1).xlsx";
+    const auto sibling = ssa::domain::SsaImportPolicy::merge(first, siblingFile);
+    REQUIRE(sibling.conflict);
+    REQUIRE_FALSE(sibling.repeatDiscarded);
 }
 
 TEST_CASE("SSA import rejects a richer row with a conflicting equal snapshot field") {

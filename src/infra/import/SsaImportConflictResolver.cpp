@@ -37,11 +37,12 @@ namespace ssa::infra::importing {
                 const auto merged =
                     domain::SsaImportPolicy::merge(resolved.rows[existing->second], row);
                 ++resolved.duplicateRows;
-                if (merged.conflict) {
+                if (merged.conflict || merged.repeatDiscarded) {
                     qWarning().noquote()
-                        << "Import conflict:"
                         << QString::fromStdString(domain::SsaImportPolicy::describeConflict(
                                resolved.rows[existing->second], row, merged));
+                }
+                if (merged.conflict) {
                     conflictingNumbers.insert(number);
                     ++resolved.conflictRows;
                     continue;

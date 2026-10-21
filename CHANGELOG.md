@@ -44,6 +44,11 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
   registrado no log com SSA, campo, os dois valores e os dois arquivos.
   Textos que diferem apenas por acento (ex.: `AQUISICAO` e `AQUISIÇÃO`) deixam
   de ser conflito e a grafia acentuada e mantida (30 -> 26 no acervo real).
+- Importacao: SSA repetida dentro da mesma planilha (o SAM exporta uma linha
+  por execucao) mantem a primeira linha e registra a descartada no log; antes
+  a planilha inteira era rejeitada, e "SSAs com Reprogramacoes" nunca
+  atualizava o banco. Conflito entre planilhas diferentes do mesmo instante
+  continua rejeitado.
 - Importacao que falha ou e cancelada depois de gravar linhas agora atualiza a
   tabela e o analytics, mantendo a mensagem de falha; se a recarga apos uma
   importacao bem-sucedida falhar, o erro da recarga continua visivel em vez de

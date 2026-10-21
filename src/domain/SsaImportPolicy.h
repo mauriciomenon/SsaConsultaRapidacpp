@@ -30,6 +30,9 @@ namespace ssa::domain {
             bool changed = false;
             bool conflict = false;
             std::string conflictField; // first field that conflicted, for diagnostics
+            // A row repeated inside the same workbook disagreed with its first row and was
+            // dropped: SAM exports one row per execution, and the first row wins.
+            bool repeatDiscarded = false;
         };
 
         [[nodiscard]] static std::string normalizeNumber(const std::string& value);
@@ -42,7 +45,8 @@ namespace ssa::domain {
         [[nodiscard]] static RowValidationIssue validateRow(const Values& row);
         [[nodiscard]] static bool isValidRow(const Values& row);
         [[nodiscard]] static MergeResult merge(const Values& existing, const Values& incoming);
-        // One-line log text for a conflicting merge; values are clipped to keep logs bounded.
+        // One-line log text for a conflicting or discarded-repeat merge; values are clipped to
+        // keep logs bounded.
         [[nodiscard]] static std::string
         describeConflict(const Values& existing, const Values& incoming, const MergeResult& result);
     };

@@ -683,7 +683,12 @@ namespace ssa::domain {
             merged[key] = normalized;
         }
         if (conflict) {
-            return {existing, false, true, std::move(conflictField)};
+            const auto source = valueFor(existing, "arquivo_origem");
+            const bool sameWorkbook = !source.empty() &&
+                                      source == valueFor(incoming, "arquivo_origem") &&
+                                      valueFor(existing, "data_arquivo_origem") ==
+                                          valueFor(incoming, "data_arquivo_origem");
+            return {existing, false, !sameWorkbook, std::move(conflictField), sameWorkbook};
         }
         return {merged, differsInPersistedValues(merged, existing), conflict};
     }
@@ -701,7 +706,9 @@ namespace ssa::domain {
             return "\"" + value + "\"";
         };
         const auto& field = result.conflictField;
-        return "ssa=" + std::string{valueFor(incoming, "numero_ssa")} + " field=" + field +
+        return std::string{result.conflict ? "Import conflict: "
+                                           : "Import repeated SSA, first row kept: "} +
+               "ssa=" + valueFor(incoming, "numero_ssa") + " field=" + field +
                " existing=" + quoted(existing, field) + " incoming=" + quoted(incoming, field) +
                " existing_file=" + quoted(existing, "arquivo_origem", false) +
                " incoming_file=" + quoted(incoming, "arquivo_origem", false);

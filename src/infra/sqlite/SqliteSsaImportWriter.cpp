@@ -962,11 +962,11 @@ namespace ssa::infra::sqlite {
                 const bool normalizedExistingDeviation = normalizeExistingDeviationCount(existing);
 
                 const auto merged = domain::SsaImportPolicy::merge(existing, normalizedRow);
+                if (merged.conflict || merged.repeatDiscarded) {
+                    qWarning().noquote() << QString::fromStdString(
+                        domain::SsaImportPolicy::describeConflict(existing, normalizedRow, merged));
+                }
                 if (merged.conflict) {
-                    qWarning().noquote()
-                        << "Import conflict:"
-                        << QString::fromStdString(domain::SsaImportPolicy::describeConflict(
-                               existing, normalizedRow, merged));
                     ++summary.conflictRows;
                     ++result.conflictRows;
                     return result;
