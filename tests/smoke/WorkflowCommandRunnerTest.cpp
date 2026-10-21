@@ -288,10 +288,91 @@ namespace {
         bool progressAttached_ = false;
     };
 
+    class SummaryImportPort final : public ssa::ports::IImportWorkflowPort {
+      public:
+        ssa::ports::WorkflowResult
+        importExternalFiles(const ssa::ports::ImportExternalFilesRequest& request,
+                            std::stop_token = {}) override {
+            ssa::ports::ImportSummary summary;
+            summary.discovered = request.files.size();
+            summary.accepted = request.files.size();
+            summary.inserts = 3;
+            for (const auto& file : request.files) {
+                ssa::ports::ImportFileResult applied;
+                applied.source = file.filename().string();
+                applied.status = ssa::ports::ImportFileStatus::Applied;
+                applied.inserts = 3;
+                summary.files.push_back(std::move(applied));
+            }
+            return {ssa::ports::WorkflowStatus::Succeeded,
+                    "regular import completed",
+                    false,
+                    {},
+                    std::move(summary)};
+        }
+
+        ssa::ports::WorkflowResult rescan(const ssa::ports::RescanRequest&,
+                                          std::stop_token = {}) override {
+            return {ssa::ports::WorkflowStatus::Succeeded, "rescan completed"};
+        }
+    };
+
+    class FailingDerivadasPort final : public ssa::ports::IDerivadasPort {
+      public:
+        [[nodiscard]] bool legacySpreadsheetConverterAvailable() const override {
+            return false;
+        }
+
+        ssa::ports::WorkflowResult importDerivations(const ssa::ports::ImportDerivationsRequest&,
+                                                     std::stop_token = {}) override {
+            return {ssa::ports::WorkflowStatus::Failed, "derivadas import failed", false,
+                    "sqlite step failed: disk I/O error"};
+        }
+
+        ssa::ports::WorkflowResult cleanOrphanDerivations(std::stop_token = {}) override {
+            return {ssa::ports::WorkflowStatus::Succeeded, "orphan cleanup completed"};
+        }
+    };
+
     class WorkflowCommandRunnerTest final : public QObject {
         Q_OBJECT
 
       private slots:
+        void view_model_reports_derivadas_failure_in_mixed_import_summary() {
+            auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(
+                std::make_shared<SummaryImportPort>(), nullptr, nullptr,
+                std::make_shared<FailingDerivadasPort>());
+            ssa::presentation::WorkflowCommandViewModel model(workflows);
+            QSignalSpy finished(
+                &model, &ssa::presentation::WorkflowCommandViewModel::progressSessionFinished);
+            QSignalSpy errors(&model,
+                              &ssa::presentation::WorkflowCommandViewModel::progressErrorLine);
+
+            model.importExternalFiles(
+                {QUrl::fromLocalFile("/tmp/Consulta SSA - 24-07-2026_0829AM.xlsx"),
+                 QUrl::fromLocalFile("/tmp/SSAs Derivadas e Relacionadas_24-07-2026_0829AM.xlsx")});
+            QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 1, 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(!model.running(), 1000);
+
+            QVERIFY(model.lastSucceeded());
+            QVERIFY(model.lastWarning());
+            QVERIFY2(!model.lastMessage().contains(QStringLiteral("nenhuma falha")),
+                     qPrintable(model.lastMessage()));
+            QCOMPARE(model.lastMessage(),
+                     QStringLiteral("Importacao parcial concluida: 2 arquivos examinados; "
+                                    "1 aplicado; 1 falhou; 3 SSAs inseridas"));
+            QCOMPARE(finished.at(0).at(2).toString(),
+                     QStringLiteral("Importacao parcial concluida"));
+            QStringList errorLines;
+            for (const auto& call : errors) {
+                errorLines.push_back(call.at(0).toString());
+            }
+            QVERIFY2(
+                errorLines.contains(QStringLiteral(
+                    "SSAs Derivadas e Relacionadas_24-07-2026_0829AM.xlsx - falha operacional")),
+                qPrintable(errorLines.join(QStringLiteral(" | "))));
+        }
+
         void destructor_requests_stop_without_callback() {
             auto importPort = std::make_shared<BlockingImportPort>();
             const auto releaseTerminal = qScopeGuard([&] { importPort->releaseTerminal(); });

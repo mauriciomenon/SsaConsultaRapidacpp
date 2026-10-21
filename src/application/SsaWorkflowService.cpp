@@ -23,8 +23,10 @@ namespace ssa::application {
             return result;
         }
 
-        ports::WorkflowResult mergeDerivadasOutcome(ports::WorkflowResult regularResult,
-                                                    const ports::WorkflowResult& derivadasResult) {
+        ports::WorkflowResult
+        mergeDerivadasOutcome(ports::WorkflowResult regularResult,
+                              const ports::WorkflowResult& derivadasResult,
+                              const std::vector<std::filesystem::path>& derivadasFiles) {
             if (derivadasResult.ok()) {
                 regularResult.warning = regularResult.warning || derivadasResult.warning;
                 if (derivadasResult.warning) {
@@ -47,6 +49,20 @@ namespace ssa::application {
                 regularResult.diagnostic += "; " + derivadasResult.diagnostic;
             }
             regularResult.message += "; derivadas: " + derivadasResult.message;
+            // The summary drives the user-facing text; without these entries a failed
+            // derivadas run would be reported as "no failure".
+            if (regularResult.importSummary.has_value()) {
+                const bool rejected = derivadasResult.status == ports::WorkflowStatus::Rejected;
+                auto& summary = *regularResult.importSummary;
+                summary.discovered += derivadasFiles.size();
+                (rejected ? summary.rejected : summary.failed) += derivadasFiles.size();
+                for (const auto& file : derivadasFiles) {
+                    summary.files.push_back({.source = file.filename().string(),
+                                             .status = rejected ? ports::ImportFileStatus::Rejected
+                                                                : ports::ImportFileStatus::Failed,
+                                             .reason = rejected ? "" : "operation_failed"});
+                }
+            }
             return regularResult;
         }
 
@@ -91,9 +107,12 @@ namespace ssa::application {
             if (!derivadasPort_) {
                 return notImplemented("derivadas import");
             }
-            auto derivadasResult = derivadasPort_->importDerivations(
-                {std::move(derivadasFiles), request.execution, request.progress}, stopToken);
-            return mergeDerivadasOutcome(std::move(regularResult), derivadasResult);
+            const ports::ImportDerivationsRequest derivadasRequest{
+                std::move(derivadasFiles), request.execution, request.progress};
+            const auto derivadasResult =
+                derivadasPort_->importDerivations(derivadasRequest, stopToken);
+            return mergeDerivadasOutcome(std::move(regularResult), derivadasResult,
+                                         derivadasRequest.files);
         }
         if (!derivadasPort_) {
             return notImplemented("derivadas import");
