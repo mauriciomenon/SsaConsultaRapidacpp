@@ -42,6 +42,12 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
   horario do arquivo (segundos), em vez de rejeitadas como conflito; no acervo
   real as planilhas rejeitadas cairam de 133 para 30. Cada conflito restante e
   registrado no log com SSA, campo, os dois valores e os dois arquivos.
+- Importacao que falha ou e cancelada depois de gravar linhas agora atualiza a
+  tabela e o analytics, mantendo a mensagem de falha; se a recarga apos uma
+  importacao bem-sucedida falhar, o erro da recarga continua visivel em vez de
+  ser coberto pela mensagem de sucesso.
+- Exportacao de grafico (PNG e SVG) so substitui o arquivo quando a gravacao
+  termina por completo.
 - Log rotativo: mensagens com quebra de linha ficam em uma unica linha (quebras
   escapadas como `\n`), e falha de gravacao no disco passa a ser detectada.
 - Colunas: `numero_ssa` nao pode mais ser ocultada (ocultar quebrava detalhes,

@@ -2,10 +2,11 @@
 
 #include <QBuffer>
 #include <QEventLoop>
-#include <QFile>
+#include <QFileInfo>
 #include <QImage>
 #include <QQuickItem>
 #include <QQuickItemGrabResult>
+#include <QSaveFile>
 #include <QTimer>
 
 namespace ssa::app::desktop {
@@ -30,15 +31,26 @@ namespace ssa::app::desktop {
             return result->image();
         }
 
+        // QSaveFile keeps the previous file until the whole new content is written and
+        // committed, so a full disk cannot leave a truncated export reported as success.
         [[nodiscard]] bool writeTextFile(const QString& path, const QString& content) {
             if (path.trimmed().isEmpty()) {
                 return false;
             }
-            QFile file(path);
-            if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
+            QSaveFile file(path);
+            if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
                 return false;
             }
-            return file.write(content.toUtf8()) >= 0;
+            const QByteArray bytes = content.toUtf8();
+            return file.write(bytes) == bytes.size() && file.commit();
+        }
+
+        [[nodiscard]] bool writeImageFile(const QString& path, const QImage& image) {
+            QSaveFile file(path);
+            const QByteArray format = QFileInfo(path).suffix().toLatin1();
+            return file.open(QIODevice::WriteOnly) &&
+                   image.save(&file, format.isEmpty() ? nullptr : format.constData()) &&
+                   file.commit();
         }
 
     } // namespace
@@ -60,7 +72,7 @@ namespace ssa::app::desktop {
         if (image.isNull()) {
             return false;
         }
-        return image.save(path);
+        return writeImageFile(path, image);
     }
 
     bool ChartImageExport::grabItemToSvgFile(QObject* itemObject, const QString& path) const {
