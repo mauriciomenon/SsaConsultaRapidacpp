@@ -3,6 +3,8 @@
 #include "domain/SsaImportPolicy.h"
 #include "domain/SsaTypes.h"
 
+#include <QDebug>
+#include <QString>
 #include <algorithm>
 #include <unordered_map>
 #include <unordered_set>
@@ -36,6 +38,10 @@ namespace ssa::infra::importing {
                     domain::SsaImportPolicy::merge(resolved.rows[existing->second], row);
                 ++resolved.duplicateRows;
                 if (merged.conflict) {
+                    qWarning().noquote()
+                        << "Import conflict:"
+                        << QString::fromStdString(domain::SsaImportPolicy::describeConflict(
+                               resolved.rows[existing->second], row, merged));
                     conflictingNumbers.insert(number);
                     ++resolved.conflictRows;
                     continue;

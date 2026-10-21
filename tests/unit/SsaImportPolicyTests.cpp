@@ -334,6 +334,49 @@ TEST_CASE("SSA import metadata does not make an equal snapshot richer") {
     REQUIRE(result.values == existing);
 }
 
+TEST_CASE("SSA import breaks a same-minute filename tie with the file modification time") {
+    using Values = ssa::domain::SsaImportPolicy::Values;
+    const Values earlier{{"numero_ssa", "202600031"},
+                         {"descricao_ssa", "Earlier export"},
+                         {"situacao", "APV"},
+                         {"arquivo_origem", "Consulta SSA - 28-05-2026_0306PM (1).xlsx"},
+                         {"data_arquivo_origem", "2026-05-28 15:06:25"}};
+    const Values later{{"numero_ssa", "202600031"},
+                       {"descricao_ssa", "Later export"},
+                       {"situacao", "APV"},
+                       {"arquivo_origem", "Consulta SSA - 28-05-2026_0306PM (4).xlsx"},
+                       {"data_arquivo_origem", "2026-05-28 15:06:57"}};
+
+    const auto newerIncoming = ssa::domain::SsaImportPolicy::merge(earlier, later);
+    const auto olderIncoming = ssa::domain::SsaImportPolicy::merge(later, earlier);
+
+    REQUIRE_FALSE(newerIncoming.conflict);
+    REQUIRE(newerIncoming.values.at("descricao_ssa") == "Later export");
+    REQUIRE_FALSE(olderIncoming.conflict);
+    REQUIRE_FALSE(olderIncoming.changed);
+    REQUIRE(olderIncoming.values == later);
+}
+
+TEST_CASE("SSA import reports the first conflicting field") {
+    using Values = ssa::domain::SsaImportPolicy::Values;
+    const Values existing{{"numero_ssa", "202600032"},
+                          {"descricao_ssa", "Same"},
+                          {"responsavel_execucao", "FELIPE"},
+                          {"situacao", "APV"},
+                          {"arquivo_origem", "Consulta SSA - 28-05-2026_0306PM.xlsx"}};
+    auto incoming = existing;
+    incoming["responsavel_execucao"] = "PAULO";
+
+    const auto result = ssa::domain::SsaImportPolicy::merge(existing, incoming);
+
+    REQUIRE(result.conflict);
+    REQUIRE(result.conflictField == "responsavel_execucao");
+    REQUIRE(ssa::domain::SsaImportPolicy::describeConflict(existing, incoming, result) ==
+            "ssa=202600032 field=responsavel_execucao existing=\"FELIPE\" incoming=\"PAULO\" "
+            "existing_file=\"Consulta SSA - 28-05-2026_0306PM.xlsx\" "
+            "incoming_file=\"Consulta SSA - 28-05-2026_0306PM.xlsx\"");
+}
+
 TEST_CASE("SSA import rejects a richer row with a conflicting equal snapshot field") {
     using Values = ssa::domain::SsaImportPolicy::Values;
     const Values sparse{{"numero_ssa", "202600021"},

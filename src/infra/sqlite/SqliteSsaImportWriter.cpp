@@ -12,6 +12,8 @@
 #include "qt/FilesystemPath.h"
 #include "query/SqlQueryText.h"
 
+#include <QDebug>
+#include <QString>
 #include <sqlite3.h>
 
 #include <algorithm>
@@ -961,6 +963,10 @@ namespace ssa::infra::sqlite {
 
                 const auto merged = domain::SsaImportPolicy::merge(existing, normalizedRow);
                 if (merged.conflict) {
+                    qWarning().noquote()
+                        << "Import conflict:"
+                        << QString::fromStdString(domain::SsaImportPolicy::describeConflict(
+                               existing, normalizedRow, merged));
                     ++summary.conflictRows;
                     ++result.conflictRows;
                     return result;

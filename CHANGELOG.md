@@ -38,6 +38,10 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
   `grau_prioridade_*` escolhidas pelo usuario nao somem mais ao reiniciar; a
   atualizacao de preferencias salvas nas versoes 12 e 13 nao reaplica mais
   migracoes antigas sobre colunas e larguras personalizadas.
+- Importacao: exportacoes do SAM no mesmo minuto passam a ser ordenadas pelo
+  horario do arquivo (segundos), em vez de rejeitadas como conflito; no acervo
+  real as planilhas rejeitadas cairam de 133 para 30. Cada conflito restante e
+  registrado no log com SSA, campo, os dois valores e os dois arquivos.
 - Colunas: `numero_ssa` nao pode mais ser ocultada (ocultar quebrava detalhes,
   SAM e copia); preferencias antigas sem ela a recebem de volta na primeira
   posicao. Alteracoes de colunas nao aplicadas no seletor nao sao mais salvas

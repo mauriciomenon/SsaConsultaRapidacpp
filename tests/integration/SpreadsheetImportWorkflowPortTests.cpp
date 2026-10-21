@@ -7912,6 +7912,46 @@ TEST_CASE("spreadsheet workflow keeps rows of an unknown trailing sheet out of a
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
+TEST_CASE("import logs a conflict between rows of the same sheet") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    writeWorkbook(
+        inputDirectory / "executors.xlsx",
+        row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Descricao"),
+                inlineCell("C1", "Data Cadastro"), inlineCell("D1", "Responsavel na Execucao")}) +
+            row(2, {inlineCell("A2", "202600326"), inlineCell("B2", "Same"),
+                    inlineCell("C2", "2026-07-14"), inlineCell("D2", "FELIPE")}) +
+            row(3, {inlineCell("A3", "202600326"), inlineCell("B3", "Same"),
+                    inlineCell("C3", "2026-07-14"), inlineCell("D3", "PAULO")}));
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+    struct WarningCapture final {
+        static QStringList& lines() {
+            static QStringList captured;
+            return captured;
+        }
+        QtMessageHandler previous = qInstallMessageHandler(
+            [](QtMsgType, const QMessageLogContext&, const QString& text) { lines() << text; });
+        ~WarningCapture() {
+            qInstallMessageHandler(previous);
+            lines().clear();
+        }
+    } capture;
+
+    const auto result = port.rescan({ssa::ports::RescanMode::Incremental});
+
+    INFO(result.message);
+    INFO(WarningCapture::lines().join('\n').toStdString());
+    REQUIRE(WarningCapture::lines().contains(QStringLiteral(
+        "Import conflict: ssa=202600326 field=responsavel_execucao existing=\"FELIPE\" "
+        "incoming=\"PAULO\" existing_file=\"executors.xlsx\" incoming_file=\"executors.xlsx\"")));
+}
+
 TEST_CASE("full rescan names the workbook that holds a duplicate conflict") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
@@ -7930,12 +7970,29 @@ TEST_CASE("full rescan names the workbook that holds a duplicate conflict") {
                                           inlineCell("C2", "2026-07-14")})});
     ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
                                                               importColumns());
+    struct WarningCapture final {
+        static QStringList& lines() {
+            static QStringList captured;
+            return captured;
+        }
+        QtMessageHandler previous = qInstallMessageHandler(
+            [](QtMsgType, const QMessageLogContext&, const QString& text) { lines() << text; });
+        ~WarningCapture() {
+            qInstallMessageHandler(previous);
+            lines().clear();
+        }
+    } capture;
 
     const auto result = port.rescan({ssa::ports::RescanMode::Full});
 
     INFO(result.message);
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
     REQUIRE(result.message.find("duplicate_conflict file=conflict.xlsx") != std::string::npos);
+    INFO(WarningCapture::lines().join('\n').toStdString());
+    REQUIRE(WarningCapture::lines().contains(
+        QStringLiteral("Import conflict: ssa=202600325 field=descricao_ssa existing=\"First\" "
+                       "incoming=\"Second\" existing_file=\"conflict.xlsx\" "
+                       "incoming_file=\"conflict.xlsx\"")));
 }
 
 TEST_CASE("spreadsheet workflow rolls back conflicting SSA rows across worksheets") {

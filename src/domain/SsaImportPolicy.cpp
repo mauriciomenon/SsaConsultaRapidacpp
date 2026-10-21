@@ -582,10 +582,23 @@ namespace ssa::domain {
         if (existing.empty()) {
             return {incoming, !incoming.empty()};
         }
-        const auto existingSnapshot = snapshotKey(existing);
-        const auto incomingSnapshot = snapshotKey(incoming);
+        auto existingSnapshot = snapshotKey(existing);
+        auto incomingSnapshot = snapshotKey(incoming);
+        if (existingSnapshot && incomingSnapshot && *existingSnapshot == *incomingSnapshot) {
+            // Filename timestamps have minute resolution; same-minute exports are ordered
+            // by file modification time (seconds) when both rows carry a distinct one.
+            const auto existingFileTime =
+                snapshotKeyForField(valueFor(existing, "data_arquivo_origem"));
+            const auto incomingFileTime =
+                snapshotKeyForField(valueFor(incoming, "data_arquivo_origem"));
+            if (existingFileTime && incomingFileTime && *existingFileTime != *incomingFileTime) {
+                *existingSnapshot += *existingFileTime;
+                *incomingSnapshot += *incomingFileTime;
+            }
+        }
         if (!existingSnapshot || !incomingSnapshot) {
-            return {existing, false, existing != incoming};
+            const bool differs = existing != incoming;
+            return {existing, false, differs, differs ? "snapshot_missing" : ""};
         }
         const bool existingTerminal = isTerminalStatus(valueFor(existing, "situacao"));
         const bool incomingTerminal = isTerminalStatus(valueFor(incoming, "situacao"));
@@ -600,6 +613,7 @@ namespace ssa::domain {
         const bool terminal = existingTerminal;
         const bool equalSnapshot = *incomingSnapshot == *existingSnapshot;
         bool conflict = false;
+        std::string conflictField;
         for (const auto& [key, value] : incoming) {
             const auto normalized = trimWhitespace(value);
             const auto current = valueFor(existing, key);
@@ -620,6 +634,9 @@ namespace ssa::domain {
             }
             if (equalSnapshot && !current.empty() && normalized != current &&
                 !terminalStatePromotion) {
+                if (!conflict || key < conflictField) {
+                    conflictField = key; // smallest key: stable across hash-map order
+                }
                 conflict = true;
                 continue;
             }
@@ -631,9 +648,28 @@ namespace ssa::domain {
             merged[key] = normalized;
         }
         if (conflict) {
-            return {existing, false, true};
+            return {existing, false, true, std::move(conflictField)};
         }
         return {merged, differsInPersistedValues(merged, existing), conflict};
+    }
+
+    std::string SsaImportPolicy::describeConflict(const Values& existing, const Values& incoming,
+                                                  const MergeResult& result) {
+        constexpr std::size_t kMaxValueLength = 60;
+        const auto quoted = [](const Values& values, const std::string_view key,
+                               const bool clip = true) {
+            auto value = valueFor(values, key);
+            if (clip && value.size() > kMaxValueLength) {
+                value.resize(kMaxValueLength);
+                value += "...";
+            }
+            return "\"" + value + "\"";
+        };
+        const auto& field = result.conflictField;
+        return "ssa=" + std::string{valueFor(incoming, "numero_ssa")} + " field=" + field +
+               " existing=" + quoted(existing, field) + " incoming=" + quoted(incoming, field) +
+               " existing_file=" + quoted(existing, "arquivo_origem", false) +
+               " incoming_file=" + quoted(incoming, "arquivo_origem", false);
     }
 
 } // namespace ssa::domain

@@ -29,6 +29,7 @@ namespace ssa::domain {
             Values values;
             bool changed = false;
             bool conflict = false;
+            std::string conflictField; // first field that conflicted, for diagnostics
         };
 
         [[nodiscard]] static std::string normalizeNumber(const std::string& value);
@@ -41,6 +42,9 @@ namespace ssa::domain {
         [[nodiscard]] static RowValidationIssue validateRow(const Values& row);
         [[nodiscard]] static bool isValidRow(const Values& row);
         [[nodiscard]] static MergeResult merge(const Values& existing, const Values& incoming);
+        // One-line log text for a conflicting merge; values are clipped to keep logs bounded.
+        [[nodiscard]] static std::string
+        describeConflict(const Values& existing, const Values& incoming, const MergeResult& result);
     };
 
 } // namespace ssa::domain
