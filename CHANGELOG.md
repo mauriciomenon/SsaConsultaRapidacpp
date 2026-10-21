@@ -58,6 +58,9 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
   de reprogramacoes; antes a contagem real vinda de outras planilhas era
   trocada por 1 (641 SSAs no acervo real). A contagem continua em "N° de
   Reprogramacoes" e o total em "Total de Reprogramacoes", como no Python.
+- Importacao: um rescan incremental que falha (por exemplo, com uma planilha
+  corrompida no lote) nao lista mais as outras planilhas como aplicadas; nada
+  e gravado nesse caso, e o resumo agora mostra todas como nao aplicadas.
 - Importacao que falha ou e cancelada depois de gravar linhas agora atualiza a
   tabela e o analytics, mantendo a mensagem de falha; se a recarga apos uma
   importacao bem-sucedida falhar, o erro da recarga continua visivel em vez de

@@ -3692,6 +3692,51 @@ TEST_CASE("external import isolates a duplicate conflict and keeps the sibling w
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
+TEST_CASE("failed incremental rescan reports no workbook as applied") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    const auto good = inputDirectory / "A_ok.xlsx";
+    writeWorkbook(good, row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Descricao"),
+                                inlineCell("C1", "Data Cadastro")}) +
+                            row(2, {inlineCell("A2", "202600821"), inlineCell("B2", "Good"),
+                                    inlineCell("C2", "2026-07-14")}));
+    {
+        std::ofstream broken(inputDirectory / "B_broken.xlsx", std::ios::binary | std::ios::trunc);
+        broken << "not a zip package";
+    }
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+
+    const auto result = port.rescan({ssa::ports::RescanMode::Incremental});
+
+    // The rescan works on a copy and publishes nothing when a file fails, so the report
+    // must not claim that the readable workbook was applied.
+    INFO(result.message);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
+    REQUIRE(result.importSummary.has_value());
+    const auto& summary = *result.importSummary;
+    REQUIRE(summary.files.size() == 2);
+    REQUIRE(summary.accepted == 0);
+    REQUIRE(summary.inserts == 0);
+    REQUIRE(summary.failed == 2);
+    REQUIRE(summary.files[0].status == ssa::ports::ImportFileStatus::Failed);
+    REQUIRE(summary.files[0].inserts == 0);
+    REQUIRE(summary.files[1].status == ssa::ports::ImportFileStatus::Failed);
+    REQUIRE(summary.files[1].reason == "operation_failed");
+    REQUIRE(std::filesystem::exists(good));
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND "
+                          "name='ssa_table'") == 0);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
 TEST_CASE("incremental rescan isolates a rejected workbook and applies the remaining files") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());

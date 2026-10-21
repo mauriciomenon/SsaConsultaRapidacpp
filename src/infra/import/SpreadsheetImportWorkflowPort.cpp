@@ -1084,6 +1084,12 @@ namespace ssa::infra::importing {
                                                       false, synchronization_);
             auto result = workingPort.importDiscoveredFiles(staging, replaceAll, stopToken,
                                                             request.execution, nullptr, &progress);
+            if (result.status == ports::WorkflowStatus::Failed && result.importSummary) {
+                // The working copy is discarded, so no file of this run reached the database.
+                const auto summary = *result.importSummary;
+                return uncommittedResult(std::move(result), ports::ImportFileStatus::Failed,
+                                         &summary);
+            }
             if (!result.ok()) {
                 return result;
             }
