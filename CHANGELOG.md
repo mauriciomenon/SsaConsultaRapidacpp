@@ -29,6 +29,11 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
   depois de limpar os filtros.
 - Analytics: os relatorios rapidos voltam a iniciar a analise depois de
   carregar as dimensoes.
+- Importacao: conversao de `.xls` com ponto no nome (ex.: `relatorio.v1.xls`)
+  passa a encontrar o arquivo convertido; planilha com referencia de texto
+  compartilhado invalida e rejeitada em vez de importar a celula vazia.
+- Encerramento de processos externos aguarda 5 s apos o kill forcado; antes
+  aguardava 5 ms e podia acusar falha de parada sem motivo.
 
 ## 0.9.17 - 2026-08-04
 

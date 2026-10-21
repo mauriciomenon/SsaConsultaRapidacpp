@@ -29,7 +29,8 @@ namespace ssa::platform {
         constexpr qsizetype kDiagnosticLimit = 4'096;
         constexpr auto kPollInterval = 25ms;
         constexpr auto kGracePeriod = 500ms;
-        constexpr auto kForcedStopTimeout = 5s;
+        // Milliseconds: the value is passed to QProcess::waitForFinished(int msecs) via count().
+        constexpr std::chrono::milliseconds kForcedStopTimeout = 5s;
 
         std::mutex processRegistryMutex;
         std::atomic_bool forceStopRequested{false};
