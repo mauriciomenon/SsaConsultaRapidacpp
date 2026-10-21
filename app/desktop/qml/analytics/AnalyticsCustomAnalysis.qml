@@ -1251,6 +1251,10 @@ Item {
                 itemGrabber: (item, path) => ChartImageExport.grabItemToFile(item, path)
                 svgGrabber: (item, path) => ChartImageExport.grabItemToSvgFile(item, path)
 
+                onExportFinished: success => {
+                    if (!success)
+                        root.analyticsViewModel.reportExportFailure();
+                }
                 onExportCsvRequested: chartCsvExportDialog.open()
                 onExportPngRequested: chartPngExportDialog.open()
                 onExportSvgRequested: chartSvgExportDialog.open()

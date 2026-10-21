@@ -836,6 +836,10 @@ namespace ssa::presentation {
         return file.commit();
     }
 
+    void ActivityAnalyticsViewModel::reportExportFailure() {
+        setErrorMessage(QStringLiteral("Falha ao exportar: o arquivo nao foi gravado."));
+    }
+
     bool ActivityAnalyticsViewModel::requestDashboard(const QVariantMap& selection) {
         try {
             const auto reportPeriod = selectionPeriod(selection, QStringLiteral("report"));

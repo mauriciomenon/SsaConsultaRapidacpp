@@ -17,8 +17,10 @@
 #include <QRegularExpression>
 #include <QSignalSpy>
 #include <QStringList>
+#include <QTemporaryDir>
 #include <QTest>
 #include <QTimer>
+#include <QUrl>
 #include <QVariantList>
 #include <QVariantMap>
 #include <QtQml/qqml.h>
@@ -335,6 +337,11 @@ namespace {
             return QStringLiteral("%1 %2 em %3 (%4)")
                 .arg(metrics.value(metric), period, breakdowns.value(breakdown),
                      roles.value(personRole));
+        }
+
+        Q_INVOKABLE void reportExportFailure() {
+            errorMessage_ = QStringLiteral("Falha ao exportar: o arquivo nao foi gravado.");
+            emit errorMessageChanged();
         }
 
         Q_INVOKABLE bool writeExportFile(const QString& path, const QString& content) const {
@@ -1625,6 +1632,28 @@ namespace {
             QVERIFY(invoke(*custom, "setMetricIndex", 8));
             QTRY_COMPARE_WITH_TIMEOUT(chart->property("chartType").toString(),
                                       QStringLiteral("stackedBar"), 1000);
+        }
+
+        void custom_chart_export_failure_is_visible() {
+            QQmlEngine engine;
+            FakeAnalyticsViewModel viewModel;
+            QString error;
+            auto object = loadWindow(engine, viewModel, error);
+            QVERIFY2(object != nullptr, qPrintable(error));
+            auto* chart = object->findChild<QObject*>(QStringLiteral("customAnalysisChart"));
+            auto* errorLabel = object->findChild<QObject*>(QStringLiteral("analyticsErrorMessage"));
+            QVERIFY(chart != nullptr);
+            QVERIFY(errorLabel != nullptr);
+            QVERIFY(!errorLabel->property("visible").toBool());
+
+            QTemporaryDir tempDir;
+            QVERIFY(tempDir.isValid());
+            const QString missingFolder = tempDir.filePath(QStringLiteral("missing/table.csv"));
+            QVERIFY(invoke(*chart, "saveCsv", QUrl::fromLocalFile(missingFolder).toString()));
+
+            QTRY_VERIFY_WITH_TIMEOUT(errorLabel->property("visible").toBool(), 1000);
+            QCOMPARE(errorLabel->property("text").toString(),
+                     QStringLiteral("Falha ao exportar: o arquivo nao foi gravado."));
         }
 
         void custom_chart_title_adapts_to_selection() {

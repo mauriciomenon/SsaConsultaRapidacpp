@@ -75,6 +75,8 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
   grande tinha conversao indefinida.
 - Tabela: navegar com as setas mantem a linha selecionada visivel; antes a
   selecao descia para fora da area visivel.
+- Analytics: falha ao exportar grafico ou CSV (PNG, SVG, CSV, zeros em CSV)
+  aparece no aviso de erro da janela; antes nada era mostrado.
 - Importacao que falha ou e cancelada depois de gravar linhas agora atualiza a
   tabela e o analytics, mantendo a mensagem de falha; se a recarga apos uma
   importacao bem-sucedida falhar, o erro da recarga continua visivel em vez de

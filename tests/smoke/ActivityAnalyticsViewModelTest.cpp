@@ -152,6 +152,19 @@ namespace {
         Q_OBJECT
 
       private slots:
+        void exportFailureIsReportedThroughTheErrorMessage() {
+            const auto port = std::make_shared<FunctionalAnalyticsPort>();
+            ssa::presentation::ActivityAnalyticsViewModel model(serviceFor(port));
+            QSignalSpy errorSpy(
+                &model, &ssa::presentation::ActivityAnalyticsViewModel::errorMessageChanged);
+
+            model.reportExportFailure();
+
+            QCOMPARE(model.errorMessage(),
+                     QStringLiteral("Falha ao exportar: o arquivo nao foi gravado."));
+            QCOMPARE(errorSpy.count(), 1);
+        }
+
         void currentMonthSelectionUsesLastCompleteCalendarMonth() {
             const auto port = std::make_shared<FunctionalAnalyticsPort>();
             const ssa::presentation::ActivityAnalyticsViewModel model(serviceFor(port));

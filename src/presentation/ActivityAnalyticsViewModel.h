@@ -79,6 +79,8 @@ namespace ssa::presentation {
         Q_INVOKABLE void clearCustomSeries();
         Q_INVOKABLE [[nodiscard]] QString customChartTitle(const QVariantMap& selection) const;
         Q_INVOKABLE bool writeExportFile(const QString& path, const QString& content) const;
+        // Chart and CSV exports run in QML; a failed one is shown in the window error message.
+        Q_INVOKABLE void reportExportFailure();
         Q_INVOKABLE bool requestDashboard(const QVariantMap& selection);
         Q_INVOKABLE bool requestCustomSeries(const QVariantMap& selection);
         Q_INVOKABLE bool requestDimensionValues(const QVariantMap& selection);
