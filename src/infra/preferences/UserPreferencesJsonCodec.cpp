@@ -120,7 +120,11 @@ namespace ssa::infra::preferences {
         }
 
         std::vector<std::string> readVisibleColumns(const QJsonObject& root,
-                                                    std::vector<std::string> defaults) {
+                                                    std::vector<std::string> defaults,
+                                                    const int schemaVersion) {
+            // Fixed bound, not the current version: documents up to schema 12 get the
+            // legacy pruning; newer documents hold columns the user picked on purpose.
+            const bool dropLegacyColumns = schemaVersion <= 12;
             const QJsonArray visibleColumns = root.value("visible_columns").toArray();
             if (visibleColumns.isEmpty()) {
                 return defaults;
@@ -130,10 +134,11 @@ namespace ssa::infra::preferences {
                 if (value.isString()) {
                     const auto key = value.toString().toStdString();
                     if (domain::ColumnCatalog::contains(key) &&
-                        std::ranges::find(kLegacyHiddenVisibleColumns, key) ==
-                            kLegacyHiddenVisibleColumns.end() &&
-                        std::ranges::find(kLegacyVisibleColumnsToDrop, key) ==
-                            kLegacyVisibleColumnsToDrop.end()) {
+                        (!dropLegacyColumns ||
+                         (std::ranges::find(kLegacyHiddenVisibleColumns, key) ==
+                              kLegacyHiddenVisibleColumns.end() &&
+                          std::ranges::find(kLegacyVisibleColumnsToDrop, key) ==
+                              kLegacyVisibleColumnsToDrop.end()))) {
                         if (std::ranges::find(parsedColumns, key) != parsedColumns.end()) {
                             throw std::runtime_error("duplicate visible column: " + key);
                         }
@@ -145,7 +150,7 @@ namespace ssa::infra::preferences {
         }
 
         void migrateDerivedCountColumn(ports::UserPreferencesSnapshot& snapshot) {
-            if (snapshot.schemaVersion >= ports::kCurrentUserPreferencesSchemaVersion) {
+            if (snapshot.schemaVersion >= 2) {
                 return;
             }
             auto& columns = snapshot.visibleColumns;
@@ -218,7 +223,7 @@ namespace ssa::infra::preferences {
         }
 
         void migrateSchema8DerivationWidth(ports::UserPreferencesSnapshot& snapshot) {
-            if (snapshot.schemaVersion >= ports::kCurrentUserPreferencesSchemaVersion) {
+            if (snapshot.schemaVersion >= 8) {
                 return;
             }
             const auto width = snapshot.columnWidths.find(std::string{kDerivationColumnKey});
@@ -258,7 +263,7 @@ namespace ssa::infra::preferences {
         }
 
         void migrateSchema11DerivationWidth(ports::UserPreferencesSnapshot& snapshot) {
-            if (snapshot.schemaVersion >= ports::kCurrentUserPreferencesSchemaVersion) {
+            if (snapshot.schemaVersion >= 11) {
                 return;
             }
             for (const auto& migration : kSchema11WidthMigrations) {
@@ -289,7 +294,7 @@ namespace ssa::infra::preferences {
         }
 
         void migrateSchema12VisibleColumns(ports::UserPreferencesSnapshot& snapshot) {
-            if (snapshot.schemaVersion >= ports::kCurrentUserPreferencesSchemaVersion) {
+            if (snapshot.schemaVersion >= 12) {
                 return;
             }
             removeVisibleColumn(snapshot.visibleColumns, "data_cadastro");
@@ -511,8 +516,8 @@ namespace ssa::infra::preferences {
             root.value("details_panel_width").toInt(snapshot.detailsPanelWidth));
         populateSortPreferences(root, snapshot);
         snapshot.filters = FilterPreferencesJsonCodec{}.filtersFromObject(root, snapshot.filters);
-        snapshot.visibleColumns =
-            readVisibleColumns(root, domain::ColumnCatalog::defaultVisibleKeys());
+        snapshot.visibleColumns = readVisibleColumns(
+            root, domain::ColumnCatalog::defaultVisibleKeys(), snapshot.schemaVersion);
         migrateDerivedCountColumn(snapshot);
         migrateDefaultQuickSector(snapshot);
         snapshot.columnWidths = readColumnWidths(root);

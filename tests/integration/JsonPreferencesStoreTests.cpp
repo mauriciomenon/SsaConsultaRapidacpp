@@ -286,6 +286,38 @@ TEST_CASE("user preference snapshots and saved documents use schema 14") {
     REQUIRE(store.load().schemaVersion == ssa::ports::kCurrentUserPreferencesSchemaVersion);
 }
 
+TEST_CASE("current preferences keep user selected legacy columns") {
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+    const auto path = std::filesystem::path{directory.path().toStdString()} / "prefs.json";
+    writeObject(path, QJsonObject{{"schema_version", 14},
+                                  {"visible_columns", QJsonArray{"numero_ssa", "equipamento",
+                                                                 "descricao_localizacao"}}});
+    const ssa::infra::preferences::JsonUserPreferencesStore store(path);
+
+    const auto loaded = store.load();
+
+    REQUIRE(loaded.visibleColumns ==
+            std::vector<std::string>{"numero_ssa", "equipamento", "descricao_localizacao"});
+}
+
+TEST_CASE("schema 13 preferences skip migrations of older schemas") {
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+    const auto path = std::filesystem::path{directory.path().toStdString()} / "prefs.json";
+    writeObject(path, QJsonObject{{"schema_version", 13},
+                                  {"visible_columns",
+                                   QJsonArray{"numero_ssa", "data_cadastro", "setor_executor"}},
+                                  {"column_widths", QJsonObject{{"derivada_de", 150}}}});
+    const ssa::infra::preferences::JsonUserPreferencesStore store(path);
+
+    const auto loaded = store.load();
+
+    REQUIRE(loaded.visibleColumns ==
+            std::vector<std::string>{"numero_ssa", "data_cadastro", "setor_executor"});
+    REQUIRE(loaded.columnWidths.at("derivada_de") == 150);
+}
+
 TEST_CASE("schema 12 preferences migrate to disabled SAM refresh defaults") {
     QTemporaryDir directory;
     REQUIRE(directory.isValid());
