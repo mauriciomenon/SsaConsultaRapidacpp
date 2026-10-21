@@ -29,6 +29,7 @@
 #else
 #include <cerrno>
 #include <csignal>
+#include <sys/resource.h>
 #include <unistd.h>
 #endif
 
@@ -188,6 +189,9 @@ namespace {
     int runSentinelChild(const QString& path) {
 #ifndef Q_OS_WIN
         ::signal(SIGHUP, SIG_IGN);
+        if (qEnvironmentVariableIsSet("SSA_TEST_IGNORE_SIGTERM")) {
+            ::signal(SIGTERM, SIG_IGN);
+        }
 #endif
         QFile sentinel{path};
         if (!sentinel.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
@@ -501,6 +505,61 @@ namespace {
             QVERIFY2(!processExists(descendantPid),
                      "descendant survived the cancellation terminal");
         }
+
+#ifndef Q_OS_WIN
+        void cancellation_waits_for_surviving_descendants_without_spinning() {
+            QTemporaryDir root;
+            QVERIFY(root.isValid());
+            auto request = validRequest(root);
+            request.executorSectors = {"TREE"};
+            request.processTimeout = std::chrono::seconds{10};
+            const auto sentinelPath = root.filePath(QStringLiteral("descendant.pid"));
+            QVERIFY(qputenv("SSA_TEST_SENTINEL_PATH", sentinelPath.toUtf8()));
+            // The leader dies on SIGTERM; the descendant survives the grace period until SIGKILL.
+            QVERIFY(qputenv("SSA_TEST_IGNORE_SIGTERM", "1"));
+            const auto cleanup = qScopeGuard([] {
+                qunsetenv("SSA_TEST_SENTINEL_PATH");
+                qunsetenv("SSA_TEST_IGNORE_SIGTERM");
+            });
+            ssa::platform::ScrapReportSamRefreshPort port(
+                QCoreApplication::applicationFilePath().toStdString());
+            std::stop_source stopSource;
+            auto future =
+                QtConcurrent::run([&] { return port.fetch(request, stopSource.get_token()); });
+            // An early QVERIFY return must not leave the worker using this stack frame.
+            const auto joinWorker = qScopeGuard([&] {
+                stopSource.request_stop();
+                future.waitForFinished();
+            });
+            QElapsedTimer startupDeadline;
+            startupDeadline.start();
+            while (!QFileInfo::exists(sentinelPath) && startupDeadline.elapsed() < 3'000) {
+                QTest::qWait(10);
+            }
+            QVERIFY2(QFileInfo::exists(sentinelPath), "descendant did not start");
+            const auto cpuMilliseconds = [] {
+                rusage usage{};
+                getrusage(RUSAGE_SELF, &usage);
+                return (usage.ru_utime.tv_sec + usage.ru_stime.tv_sec) * 1000LL +
+                       (usage.ru_utime.tv_usec + usage.ru_stime.tv_usec) / 1000LL;
+            };
+            QElapsedTimer wall;
+            const auto cpuBefore = cpuMilliseconds();
+            wall.start();
+
+            stopSource.request_stop();
+            future.waitForFinished();
+
+            const auto cpuUsed = cpuMilliseconds() - cpuBefore;
+            QCOMPARE(future.result().status, ssa::ports::WorkflowStatus::Canceled);
+            // The grace period (500 ms) is spent waiting on a tree whose leader already
+            // exited; polling must sleep, not spin on kill(0).
+            QVERIFY2(wall.elapsed() >= 400, qPrintable(QString::number(wall.elapsed())));
+            QVERIFY2(cpuUsed < 200,
+                     qPrintable(
+                         QStringLiteral("cpu ms=%1 wall ms=%2").arg(cpuUsed).arg(wall.elapsed())));
+        }
+#endif
 
         void forced_shutdown_terminates_every_registered_process_tree() {
             QTemporaryDir root;

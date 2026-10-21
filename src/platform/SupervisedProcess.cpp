@@ -232,6 +232,16 @@ namespace ssa::platform {
             return process.errorString().trimmed();
         }
 
+        // One poll step while a process tree drains. waitForFinished returns at once when the
+        // leader has already exited, so the step sleeps instead of spinning on the tree probe.
+        void waitOnePollInterval(QProcess& process) {
+            if (process.state() == QProcess::NotRunning) {
+                QThread::msleep(static_cast<unsigned long>(kPollInterval.count()));
+                return;
+            }
+            process.waitForFinished(static_cast<int>(kPollInterval.count()));
+        }
+
 #ifdef Q_OS_WIN
         std::optional<bool> jobActive(const HANDLE job) {
             if (job == nullptr) {
@@ -335,7 +345,7 @@ namespace ssa::platform {
             process.terminate();
             const auto gracefulDeadline = std::chrono::steady_clock::now() + kGracePeriod;
             while (job.active() && std::chrono::steady_clock::now() < gracefulDeadline) {
-                process.waitForFinished(static_cast<int>(kPollInterval.count()));
+                waitOnePollInterval(process);
             }
             if (job.active() && !job.terminate()) {
                 return false;
@@ -345,7 +355,7 @@ namespace ssa::platform {
             }
             const auto forcedDeadline = std::chrono::steady_clock::now() + kForcedStopTimeout;
             while (job.active() && std::chrono::steady_clock::now() < forcedDeadline) {
-                process.waitForFinished(static_cast<int>(kPollInterval.count()));
+                waitOnePollInterval(process);
             }
             process.waitForFinished(static_cast<int>(kPollInterval.count()));
             return !job.active() && process.state() == QProcess::NotRunning;
@@ -381,7 +391,7 @@ namespace ssa::platform {
             const auto gracefulDeadline = std::chrono::steady_clock::now() + kGracePeriod;
             while (treeActive(processGroup) &&
                    std::chrono::steady_clock::now() < gracefulDeadline) {
-                process.waitForFinished(static_cast<int>(kPollInterval.count()));
+                waitOnePollInterval(process);
             }
             if (treeActive(processGroup)) {
                 ::kill(-static_cast<pid_t>(processGroup), SIGKILL);
@@ -391,7 +401,7 @@ namespace ssa::platform {
             }
             const auto forcedDeadline = std::chrono::steady_clock::now() + kForcedStopTimeout;
             while (treeActive(processGroup) && std::chrono::steady_clock::now() < forcedDeadline) {
-                process.waitForFinished(static_cast<int>(kPollInterval.count()));
+                waitOnePollInterval(process);
             }
             process.waitForFinished(static_cast<int>(kPollInterval.count()));
             return !treeActive(processGroup) && process.state() == QProcess::NotRunning;
