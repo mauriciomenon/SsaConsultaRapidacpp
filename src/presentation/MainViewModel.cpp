@@ -118,27 +118,36 @@ namespace ssa::presentation {
     }
 
     void MainViewModel::connectWorkflowRefresh() {
-        connect(
-            actions_.workflows(), &WorkflowCommandViewModel::lastResultChanged, &browse_, [this] {
-                if (actions_.workflows()->lastSucceeded()) {
-                    if (analytics_) {
-                        analytics_->invalidateAfterImport();
+        connect(actions_.workflows(), &WorkflowCommandViewModel::lastResultChanged, &browse_,
+                [this] {
+                    const auto* workflows = actions_.workflows();
+                    if (workflows->lastSucceeded() || workflows->lastDataChanged()) {
+                        if (analytics_) {
+                            analytics_->invalidateAfterImport();
+                        }
+                        // A failed/canceled import that committed rows reloads without touching
+                        // the failure status already published by ActionStatusCoordinator.
+                        if (workflows->lastSucceeded()) {
+                            pendingWorkflowRefreshMessage_ = workflows->lastWarning()
+                                                                 ? workflows->lastMessage()
+                                                                 : workflows->successMessage();
+                        }
+                        browse_.invalidateTotalRowsAll();
+                        browse_.filters()->invalidateDataSourceOptions();
+                        browse_.apply();
                     }
-                    pendingWorkflowRefreshMessage_ = actions_.workflows()->lastWarning()
-                                                         ? actions_.workflows()->lastMessage()
-                                                         : actions_.workflows()->successMessage();
-                    browse_.invalidateTotalRowsAll();
-                    browse_.filters()->invalidateDataSourceOptions();
-                    browse_.apply();
-                }
-            });
+                });
         connect(&browse_, &BrowseViewModel::pageChanged, this, [this] {
             if (pendingWorkflowRefreshMessage_.isEmpty()) {
                 return;
             }
-            browse_.status()->setMessage(pendingWorkflowRefreshMessage_);
-            browse_.status()->setError({});
-            pendingWorkflowRefreshMessage_.clear();
+            const auto message = std::exchange(pendingWorkflowRefreshMessage_, QString{});
+            // The workflow success cleared the error before the reload, so an error now
+            // means the reload itself failed (or was canceled): keep it visible.
+            if (!browse_.status()->error().isEmpty()) {
+                return;
+            }
+            browse_.status()->setMessage(message);
         });
     }
 

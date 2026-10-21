@@ -193,6 +193,10 @@ namespace ssa::presentation {
         return lastCanceled_;
     }
 
+    bool WorkflowCommandViewModel::lastDataChanged() const {
+        return lastDataChanged_;
+    }
+
     bool WorkflowCommandViewModel::running() const {
         return running_;
     }
@@ -634,12 +638,15 @@ namespace ssa::presentation {
     }
 
     void WorkflowCommandViewModel::applyResult(const ports::WorkflowResult& result) {
+        // A failed or canceled import may have committed earlier blocks.
+        const bool dataChanged = result.importSummary.has_value() &&
+                                 result.importSummary->inserts + result.importSummary->updates > 0;
         if (result.status == ports::WorkflowStatus::Canceled) {
             const auto message = messagesForCurrentOperation().canceled;
             finishProgressSession(result, message, true);
             emit logEntryRequested(QStringLiteral("Warning"), QStringLiteral("Workflow"), message,
                                    QString::fromStdString(result.diagnostic));
-            setResult(message, false, false, true);
+            setResult(message, false, false, true, dataChanged);
             return;
         }
         if (result.ok()) {
@@ -650,7 +657,7 @@ namespace ssa::presentation {
                 result.warning ? QStringLiteral("Warning") : QStringLiteral("Info"),
                 QStringLiteral("Workflow"), QString::fromStdString(result.message),
                 QString::fromStdString(result.diagnostic));
-            setResult(message, true, result.warning);
+            setResult(message, true, result.warning, false, dataChanged);
             return;
         }
         const auto message = importResultMessage(result, failureMessage(), progressSessionActive_);
@@ -658,7 +665,7 @@ namespace ssa::presentation {
         emit logEntryRequested(QStringLiteral("Error"), QStringLiteral("Workflow"),
                                QString::fromStdString(result.message),
                                QString::fromStdString(result.diagnostic));
-        setResult(message, false);
+        setResult(message, false, false, false, dataChanged);
     }
 
     void
@@ -674,11 +681,13 @@ namespace ssa::presentation {
     }
 
     void WorkflowCommandViewModel::setResult(QString message, const bool succeeded,
-                                             const bool warning, const bool canceled) {
+                                             const bool warning, const bool canceled,
+                                             const bool dataChanged) {
         lastMessage_ = std::move(message);
         lastSucceeded_ = succeeded;
         lastWarning_ = warning;
         lastCanceled_ = canceled;
+        lastDataChanged_ = dataChanged;
         emit lastResultChanged();
     }
 

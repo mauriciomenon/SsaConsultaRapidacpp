@@ -51,6 +51,8 @@ namespace ssa::presentation {
         [[nodiscard]] bool lastSucceeded() const;
         [[nodiscard]] bool lastWarning() const;
         [[nodiscard]] bool lastCanceled() const;
+        // True when the last result committed rows, even if it ended failed or canceled.
+        [[nodiscard]] bool lastDataChanged() const;
         [[nodiscard]] bool running() const;
         [[nodiscard]] bool canceling() const;
         [[nodiscard]] bool canCancel() const;
@@ -123,8 +125,8 @@ namespace ssa::presentation {
                                    bool canceled);
         void applyResult(const ports::WorkflowResult& result);
         void handleRunnerStateChanged(WorkflowCommandRunner::State state);
-        void setResult(QString message, bool succeeded, bool warning = false,
-                       bool canceled = false);
+        void setResult(QString message, bool succeeded, bool warning = false, bool canceled = false,
+                       bool dataChanged = false);
         void syncSamRefreshTimer();
         void setSamTextSetting(QString& target, const QString& value);
         [[nodiscard]] ports::SamRefreshRequest samRefreshRequest() const;
@@ -145,6 +147,7 @@ namespace ssa::presentation {
         Operation operation_{Operation::Rescan};
         bool lastSucceeded_{false};
         bool lastWarning_{false};
+        bool lastDataChanged_{false};
         bool lastCanceled_{false};
         bool running_{false};
         bool canceling_{false};

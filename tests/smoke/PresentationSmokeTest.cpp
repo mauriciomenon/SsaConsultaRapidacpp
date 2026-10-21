@@ -2638,6 +2638,56 @@ namespace {
             QTRY_COMPARE_WITH_TIMEOUT(model.browse()->status()->error(), QString{}, 1000);
         }
 
+        void workflow_success_keeps_reload_error_visible() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            auto importPort = std::make_shared<CapturingImportPort>(
+                ssa::ports::WorkflowResult{ssa::ports::WorkflowStatus::Succeeded, "imported"});
+            auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(importPort);
+            ssa::presentation::MainViewModel model(service, commands, nullptr, nullptr, workflows);
+            QSignalSpy pageSpy(model.browse(), &ssa::presentation::BrowseViewModel::pageChanged);
+            repository->failNextPage();
+            QVariantList selectedFiles;
+            selectedFiles.push_back(QUrl::fromLocalFile("/tmp/entrada.xlsx"));
+
+            model.actions()->workflows()->importExternalFiles(selectedFiles);
+
+            QTRY_VERIFY_WITH_TIMEOUT(pageSpy.size() >= 1, 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(!model.browse()->status()->error().isEmpty(), 1000);
+            QVERIFY(model.browse()->status()->message() !=
+                    model.actions()->workflows()->successMessage());
+        }
+
+        void failed_import_with_committed_rows_reloads_and_keeps_failure() {
+            for (const std::size_t inserts : {std::size_t{3}, std::size_t{0}}) {
+                auto repository = std::make_shared<FakeRepository>();
+                auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+                auto commands = std::make_shared<FakeCommands>();
+                ssa::ports::WorkflowResult failed{ssa::ports::WorkflowStatus::Failed,
+                                                  "import failed after the first block"};
+                ssa::ports::ImportSummary summary;
+                summary.inserts = inserts;
+                failed.importSummary = summary;
+                auto importPort = std::make_shared<CapturingImportPort>(failed);
+                auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(importPort);
+                ssa::presentation::MainViewModel model(service, commands, nullptr, nullptr,
+                                                       workflows);
+                QVariantList selectedFiles;
+                selectedFiles.push_back(QUrl::fromLocalFile("/tmp/entrada.xlsx"));
+
+                model.actions()->workflows()->importExternalFiles(selectedFiles);
+
+                QTRY_COMPARE_WITH_TIMEOUT(importPort->importRequests().size(), std::size_t{1},
+                                          1000);
+                QTRY_VERIFY_WITH_TIMEOUT(!model.actions()->workflows()->running(), 1000);
+                QTest::qWait(50);
+                QCOMPARE(model.actions()->workflows()->lastSucceeded(), false);
+                QCOMPARE(repository->countCalls(), inserts > 0 ? std::size_t{1} : std::size_t{0});
+                QVERIFY(!model.browse()->status()->message().startsWith("Importacao concluida"));
+            }
+        }
+
         void import_external_files_rejects_non_local_url() {
             auto repository = std::make_shared<FakeRepository>();
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);

@@ -47,6 +47,9 @@ namespace ssa::tests::presentation_smoke {
             {
                 const std::scoped_lock lock(mutex_);
                 requests_.push_back(request);
+                if (std::exchange(failPages_, false)) {
+                    throw std::runtime_error("page query failed");
+                }
             }
             std::vector<ssa::domain::SsaRecord> rows;
             rows.reserve(rowCount_);
@@ -111,6 +114,11 @@ namespace ssa::tests::presentation_smoke {
             return startedRequests_;
         }
 
+        void failNextPage() {
+            const std::scoped_lock lock(mutex_);
+            failPages_ = true;
+        }
+
         [[nodiscard]] std::size_t countCalls() const {
             const std::scoped_lock lock(mutex_);
             return countCalls_;
@@ -124,6 +132,7 @@ namespace ssa::tests::presentation_smoke {
         mutable std::vector<ssa::domain::SsaPageRequest> startedRequests_;
         mutable std::vector<ssa::domain::SsaPageRequest> requests_;
         mutable std::size_t countCalls_{0};
+        mutable bool failPages_{false};
     };
 
     class FakeCommands final : public ssa::ports::IExternalCommandPort {
