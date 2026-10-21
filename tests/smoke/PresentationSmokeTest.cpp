@@ -322,7 +322,9 @@ namespace {
 
         std::optional<ssa::domain::SsaRecord>
         recordBySsaNumber(const ssa::domain::SsaNumber& number,
-                          std::stop_token = {}) const override {
+                          const std::stop_token stopToken = {}) const override {
+            waitWhileHeld(heldRecordNumber_, number.value(), stopToken, recordStarted_,
+                          recordCanceled_);
             const auto found = records_.find(number.value());
             if (found == records_.end()) {
                 return std::nullopt;
@@ -333,22 +335,8 @@ namespace {
         std::vector<ssa::domain::SsaDerivadaEntry>
         derivadasDiretas(const ssa::domain::SsaNumber& number,
                          const std::stop_token stopToken = {}) const override {
-            {
-                std::unique_lock lock(childrenMutex_);
-                if (heldChildrenNumber_ == number.value()) {
-                    childrenStarted_.store(true, std::memory_order_release);
-                    std::stop_callback stopCallback(stopToken,
-                                                    [this] { childrenCondition_.notify_all(); });
-                    childrenCondition_.wait(lock, [this, &stopToken] {
-                        return childrenReleased_ || stopToken.stop_requested();
-                    });
-                    if (stopToken.stop_requested()) {
-                        childrenCanceled_.store(true, std::memory_order_release);
-                        throw std::system_error(
-                            std::make_error_code(std::errc::operation_canceled));
-                    }
-                }
-            }
+            waitWhileHeld(heldChildrenNumber_, number.value(), stopToken, childrenStarted_,
+                          childrenCanceled_);
             if (failedChildrenNumber_ == number.value()) {
                 throw std::runtime_error("root children failed");
             }
@@ -409,14 +397,50 @@ namespace {
             return childrenCanceled_.load(std::memory_order_acquire);
         }
 
+        void holdRecordFor(std::string number) {
+            const std::scoped_lock lock(childrenMutex_);
+            heldRecordNumber_ = std::move(number);
+            childrenReleased_ = false;
+        }
+
+        [[nodiscard]] bool recordStarted() const {
+            return recordStarted_.load(std::memory_order_acquire);
+        }
+
+        [[nodiscard]] bool recordCanceled() const {
+            return recordCanceled_.load(std::memory_order_acquire);
+        }
+
       private:
+        // Blocks a lookup of the held number until releaseChildren() or cancellation.
+        void waitWhileHeld(const std::string& held, const std::string& number,
+                           const std::stop_token& stopToken, std::atomic_bool& started,
+                           std::atomic_bool& canceled) const {
+            std::unique_lock lock(childrenMutex_);
+            if (held != number) {
+                return;
+            }
+            started.store(true, std::memory_order_release);
+            std::stop_callback stopCallback(stopToken, [this] { childrenCondition_.notify_all(); });
+            childrenCondition_.wait(lock, [this, &stopToken] {
+                return childrenReleased_ || stopToken.stop_requested();
+            });
+            if (stopToken.stop_requested()) {
+                canceled.store(true, std::memory_order_release);
+                throw std::system_error(std::make_error_code(std::errc::operation_canceled));
+            }
+        }
+
         std::map<std::string, ssa::domain::SsaRecord> records_;
         std::map<std::string, std::vector<ssa::domain::SsaDerivadaEntry>> children_;
         mutable std::mutex childrenMutex_;
         mutable std::condition_variable childrenCondition_;
         mutable std::atomic_bool childrenStarted_{false};
         mutable std::atomic_bool childrenCanceled_{false};
+        mutable std::atomic_bool recordStarted_{false};
+        mutable std::atomic_bool recordCanceled_{false};
         std::string heldChildrenNumber_;
+        std::string heldRecordNumber_;
         std::string failedChildrenNumber_;
         bool childrenReleased_{false};
     };
@@ -896,6 +920,31 @@ namespace {
             QTRY_COMPARE_WITH_TIMEOUT(details.selectedSsa(), QString("202500001"), 1000);
             QTRY_VERIFY_WITH_TIMEOUT(!details.relationLoading(), 1000);
             QCOMPARE(details.relationError(), QString("root children failed"));
+        }
+
+        void details_returning_to_the_shown_ssa_discards_a_pending_relation_load() {
+            auto repository = std::make_shared<DetailsRelationRepository>();
+            repository->setRecord("202500001", ssa::domain::SsaRecord{{{"numero_ssa", "202500001"},
+                                                                       {"situacao", "APV"}}});
+            repository->holdRecordFor("202500001");
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::DetailsViewModel details(service);
+            details.setRecord(ssa::domain::SsaRecord{
+                {{"numero_ssa", "202500003"}, {"situacao", "APV"}, {"derivada_de", "202500001"}}});
+            QTRY_VERIFY_WITH_TIMEOUT(!details.relationLoading(), 1000);
+            const int shownIndex = details.currentRelationIndex();
+
+            details.selectPreviousRelation();
+            QTRY_VERIFY_WITH_TIMEOUT(repository->recordStarted(), 1000);
+            details.selectNextRelation();
+            repository->releaseChildren();
+
+            // The parent load started before the user came back must not replace the shown SSA.
+            QTRY_VERIFY_WITH_TIMEOUT(!details.relationLoading(), 1000);
+            QTest::qWait(50);
+            QCOMPARE(details.selectedSsa(), QString("202500003"));
+            QCOMPARE(details.currentRelationIndex(), shownIndex);
+            QCOMPARE(details.relationError(), QString());
         }
 
         void details_relation_navigation_keeps_duplicate_relation_index() {

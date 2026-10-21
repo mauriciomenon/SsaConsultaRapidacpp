@@ -439,7 +439,15 @@ namespace ssa::presentation {
         setCurrentRelationIndex(index);
         if (!ssa.isEmpty() && ssa != selectedSsa_) {
             startRelationQuery(ssa, RelationQueryKind::Record, true);
+            return;
         }
+        // Back on the SSA already shown: a pending load of another relation must not publish
+        // over it.
+        stopRelationRecordQueries();
+        latestRecordQueryId_ = 0;
+        recordRelationError_.clear();
+        relationLoading_ = currentRelationQueryPending();
+        emit relationStatusChanged();
     }
 
     bool DetailsViewModel::isCurrentRelationQuery(const RelationQueryOperation& operation) const {

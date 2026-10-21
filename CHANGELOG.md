@@ -81,6 +81,8 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
   o final era cortado.
 - Atualizacao SAM: cancelar ou encerrar um processo cujos filhos ainda estao
   ativos nao ocupa mais um nucleo inteiro da CPU durante a espera (ate 5 s).
+- Detalhes: navegar para outra SSA relacionada e voltar antes de ela carregar
+  nao troca mais a SSA exibida pela que estava carregando.
 - Importacao que falha ou e cancelada depois de gravar linhas agora atualiza a
   tabela e o analytics, mantendo a mensagem de falha; se a recarga apos uma
   importacao bem-sucedida falhar, o erro da recarga continua visivel em vez de
