@@ -328,6 +328,33 @@ namespace ssa::domain {
             return std::nullopt;
         }
 
+        // Folds UTF-8 Latin-1 letters (U+00C0..U+00FF, two bytes 0xC3 xx) to their ASCII
+        // base: SAM exports the same text with and without Portuguese accents.
+        std::string withoutAccents(const std::string_view text) {
+            static constexpr std::string_view kBase =
+                "AAAAAAACEEEEIIIIDNOOOOOxOUUUUYTsaaaaaaaceeeeiiiidnooooo/ouuuuyty";
+            std::string folded;
+            folded.reserve(text.size());
+            for (std::size_t index = 0; index < text.size(); ++index) {
+                const auto lead = static_cast<unsigned char>(text[index]);
+                const auto next =
+                    index + 1 < text.size() ? static_cast<unsigned char>(text[index + 1]) : 0U;
+                if (lead == 0xC3U && next >= 0x80U && next <= 0xBFU) {
+                    folded += kBase[next - 0x80U];
+                    ++index;
+                } else {
+                    folded += static_cast<char>(lead);
+                }
+            }
+            return folded;
+        }
+
+        bool hasNonAscii(const std::string_view text) {
+            return std::ranges::any_of(text, [](const char character) {
+                return static_cast<unsigned char>(character) > 0x7FU;
+            });
+        }
+
         std::optional<std::string> snapshotKey(const SsaImportPolicy::Values& values) {
             if (const auto filename = valueFor(values, "arquivo_origem"); !filename.empty()) {
                 if (auto key = snapshotKeyForFilename(filename)) {
@@ -630,6 +657,14 @@ namespace ssa::domain {
             const bool terminalStatePromotion =
                 equalSnapshot && key == "situacao" && incomingTerminal && !terminal;
             if (normalized.empty()) {
+                continue;
+            }
+            if (equalSnapshot && !current.empty() && normalized != current &&
+                !terminalStatePromotion && withoutAccents(normalized) == withoutAccents(current)) {
+                // Same text, different accents: not a conflict; keep the accented spelling.
+                if (!terminal && hasNonAscii(normalized) && !hasNonAscii(current)) {
+                    merged[key] = normalized;
+                }
                 continue;
             }
             if (equalSnapshot && !current.empty() && normalized != current &&

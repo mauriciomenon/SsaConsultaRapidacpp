@@ -42,6 +42,8 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
   horario do arquivo (segundos), em vez de rejeitadas como conflito; no acervo
   real as planilhas rejeitadas cairam de 133 para 30. Cada conflito restante e
   registrado no log com SSA, campo, os dois valores e os dois arquivos.
+  Textos que diferem apenas por acento (ex.: `AQUISICAO` e `AQUISIÇÃO`) deixam
+  de ser conflito e a grafia acentuada e mantida (30 -> 26 no acervo real).
 - Importacao que falha ou e cancelada depois de gravar linhas agora atualiza a
   tabela e o analytics, mantendo a mensagem de falha; se a recarga apos uma
   importacao bem-sucedida falhar, o erro da recarga continua visivel em vez de

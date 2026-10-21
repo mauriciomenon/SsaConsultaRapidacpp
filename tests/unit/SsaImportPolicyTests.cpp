@@ -357,6 +357,31 @@ TEST_CASE("SSA import breaks a same-minute filename tie with the file modificati
     REQUIRE(olderIncoming.values == later);
 }
 
+TEST_CASE("SSA import treats accent-only differences as the same value") {
+    using Values = ssa::domain::SsaImportPolicy::Values;
+    const Values plain{{"numero_ssa", "202600033"},
+                       {"descricao_ssa", "Same"},
+                       {"descricao_localizacao", "UNIDADE DE AQUISICAO DE DADOS - DAUC 03"},
+                       {"situacao", "APV"},
+                       {"arquivo_origem", "Consulta SSA - 20-02-2026_1129AM.xlsx"}};
+    auto accented = plain;
+    accented["descricao_localizacao"] = "UNIDADE DE AQUISIÇÃO DE DADOS - DAUC 03";
+    auto different = plain;
+    different["descricao_localizacao"] = "UNIDADE DE AQUISICAO DE DADOS - DAUC 04";
+
+    const auto upgrade = ssa::domain::SsaImportPolicy::merge(plain, accented);
+    const auto keep = ssa::domain::SsaImportPolicy::merge(accented, plain);
+    const auto conflict = ssa::domain::SsaImportPolicy::merge(plain, different);
+
+    REQUIRE_FALSE(upgrade.conflict);
+    REQUIRE(upgrade.changed);
+    REQUIRE(upgrade.values.at("descricao_localizacao") == accented.at("descricao_localizacao"));
+    REQUIRE_FALSE(keep.conflict);
+    REQUIRE_FALSE(keep.changed);
+    REQUIRE(keep.values == accented);
+    REQUIRE(conflict.conflict);
+}
+
 TEST_CASE("SSA import reports the first conflicting field") {
     using Values = ssa::domain::SsaImportPolicy::Values;
     const Values existing{{"numero_ssa", "202600032"},
