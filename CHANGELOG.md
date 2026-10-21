@@ -90,6 +90,9 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
   SSA e reimportada.
 - CLI: falha ao escrever a listagem ou os detalhes na saida (disco cheio, erro
   de escrita) sai com codigo 1 e "error: cannot write output"; antes saia com 0.
+- Analytics: trocar pessoas ou a ordenacao com uma analise customizada em
+  andamento descarta o resultado antigo; antes o grafico da selecao anterior
+  aparecia como se fosse o novo e o botao Analisar ficava bloqueado ate ele chegar.
 - Importacao que falha ou e cancelada depois de gravar linhas agora atualiza a
   tabela e o analytics, mantendo a mensagem de falha; se a recarga apos uma
   importacao bem-sucedida falhar, o erro da recarga continua visivel em vez de

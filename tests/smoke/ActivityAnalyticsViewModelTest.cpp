@@ -431,6 +431,51 @@ namespace {
             QCOMPARE(succeededSpy.count(), 1);
         }
 
+        void clearingCustomSeriesDropsThePendingCustomResult() {
+            struct Gate final {
+                std::atomic_int calls{0};
+                std::atomic_bool firstStarted{false};
+                std::atomic_bool firstFinished{false};
+                std::atomic_bool releaseFirst{false};
+            };
+            const auto gate = std::make_shared<Gate>();
+            auto port = std::make_shared<FunctionalAnalyticsPort>();
+            port->seriesFunction = [gate](const AnalyticsRequest&, const std::stop_token&) {
+                if (++gate->calls == 1) {
+                    gate->firstStarted = true;
+                    while (!gate->releaseFirst.load()) {
+                        QThread::msleep(1);
+                    }
+                    gate->firstFinished = true;
+                    return seriesResult(1, "OLD");
+                }
+                return seriesResult(2, "NEW");
+            };
+            ssa::presentation::ActivityAnalyticsViewModel model(serviceFor(port));
+            QSignalSpy succeededSpy(&model,
+                                    &ssa::presentation::ActivityAnalyticsViewModel::succeeded);
+
+            model.loadCustomSeries(testRequest("OLD"));
+            QTRY_VERIFY_WITH_TIMEOUT(gate->firstStarted.load(), 1000);
+
+            // QML person/sort changes clear the chart while the query is still running.
+            model.clearCustomSeries();
+            const bool loadingAfterClear = model.loading();
+
+            // Release before asserting so a failure never leaves the worker blocked.
+            gate->releaseFirst = true;
+            QTRY_VERIFY_WITH_TIMEOUT(gate->firstFinished.load(), 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(!model.hasActiveOperations(), 1000);
+            QVERIFY(model.customSeries().isEmpty());
+            QCOMPARE(succeededSpy.count(), 0);
+            QVERIFY(!loadingAfterClear);
+
+            model.loadCustomSeries(testRequest("NEW"));
+            QTRY_VERIFY_WITH_TIMEOUT(!model.loading(), 1000);
+            QCOMPARE(firstChartValue(model.customSeries()), 2.0);
+            QCOMPARE(succeededSpy.count(), 1);
+        }
+
         void cancelIsImmediateAndTerminalOnlyAfterWorkerStops() {
             struct Gate final {
                 std::atomic_bool started{false};

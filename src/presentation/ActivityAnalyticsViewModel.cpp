@@ -803,6 +803,17 @@ namespace ssa::presentation {
     }
 
     void ActivityAnalyticsViewModel::clearCustomSeries() {
+        // The selection changed: a custom query still running belongs to the previous
+        // selection and must not publish over the cleared chart.
+        const auto pending = std::ranges::find_if(operations_, [this](const auto& operation) {
+            return operation->id == latestOperationId_ && !operation->completed &&
+                   operation->kind == RequestKind::CustomSeries;
+        });
+        if (pending != operations_.end()) {
+            stop(**pending);
+            latestOperationId_ = 0;
+            setState(false, false);
+        }
         if (customSeries_.isEmpty()) {
             return;
         }
