@@ -126,6 +126,7 @@ ApplicationWindow {
                 summary.accepted = 2;
                 summary.rejected = 10;
                 summary.updates = 573;
+                summary.verified = 20;
                 summary.unchangedRows = 573;
                 for (int file = 1; file <= 10; ++file) {
                     ssa::ports::ImportFileResult rejected;
@@ -205,6 +206,7 @@ ApplicationWindow {
             updated.source = "atualizado.xlsx";
             updated.status = ssa::ports::ImportFileStatus::Applied;
             updated.updates = 2;
+            updated.verified = 1;
             summary.files.push_back(std::move(updated));
             ssa::ports::ImportFileResult rejected;
             rejected.source = "rejeitado.xlsx";
@@ -623,7 +625,7 @@ ApplicationWindow {
             QVERIFY(output->property("text").toString().contains(
                 QStringLiteral("novo.xlsx: 3 SSAs novas")));
             QVERIFY(output->property("text").toString().contains(
-                QStringLiteral("atualizado.xlsx: 2 SSAs atualizadas")));
+                QStringLiteral("atualizado.xlsx: 2 SSAs atualizadas; 1 SSA verificada")));
             QVERIFY(errors->property("text").toString().contains(
                 QStringLiteral("rejeitado.xlsx - colunas obrigatorias ausentes")));
             QVERIFY(errors->property("text").toString().contains(
@@ -655,7 +657,7 @@ ApplicationWindow {
             QCOMPARE(workflowModel.lastMessage(),
                      QStringLiteral("Importacao parcial concluida: 66 arquivos examinados; "
                                     "2 aplicados; 10 rejeitados; 573 SSAs atualizadas; "
-                                    "573 SSAs sem alteracao"));
+                                    "20 SSAs verificadas; 573 SSAs sem alteracao"));
             QVERIFY(workflowModel.lastSucceeded());
             QVERIFY(workflowModel.lastWarning());
             QVERIFY(QMetaObject::invokeMethod(closeButton, "clicked"));

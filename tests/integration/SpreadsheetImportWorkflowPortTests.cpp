@@ -3298,6 +3298,108 @@ TEST_CASE("external import falls back to the original source modification time")
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
+namespace {
+    // Day D and day D+1 exports of the same SSAs; `changedDescription` rewrites the second
+    // row of the newer workbook so one business value differs.
+    struct DailyWorkbookPair {
+        std::filesystem::path root;
+        std::filesystem::path older;
+        std::filesystem::path newer;
+    };
+
+    DailyWorkbookPair writeDailyWorkbooks(const QTemporaryDir& tempDir,
+                                          const std::string& changedDescription = {}) {
+        DailyWorkbookPair pair;
+        pair.root = std::filesystem::path{tempDir.path().toStdString()};
+        const auto sourceDirectory = pair.root / "external";
+        std::filesystem::create_directories(sourceDirectory);
+        std::filesystem::create_directories(pair.root / "data");
+        pair.older = sourceDirectory / "SSA_19-10-2026_0841AM.xlsx";
+        pair.newer = sourceDirectory / "SSA_20-10-2026_1131AM.xlsx";
+        const auto rows = [](const std::string& secondDescription) {
+            return row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                           inlineCell("C1", "Descricao da SSA"),
+                           inlineCell("D1", "Data de emissao")}) +
+                   row(2, {inlineCell("A2", "202600601"), inlineCell("B2", "APV"),
+                           inlineCell("C2", "First"), inlineCell("D2", "2026-10-01")}) +
+                   row(3, {inlineCell("A3", "202600602"), inlineCell("B3", "APV"),
+                           inlineCell("C3", secondDescription), inlineCell("D3", "2026-10-01")}) +
+                   row(4, {inlineCell("A4", "202600603"), inlineCell("B4", "APV"),
+                           inlineCell("C4", "Third"), inlineCell("D4", "2026-10-01")});
+        };
+        writeWorkbook(pair.older, rows("Second"));
+        writeWorkbook(pair.newer, rows(changedDescription.empty() ? "Second" : changedDescription));
+        setLocalModificationTime(pair.older, 2026, 10, 19, 8, 41);
+        setLocalModificationTime(pair.newer, 2026, 10, 20, 11, 31);
+        return pair;
+    }
+} // namespace
+
+TEST_CASE("external import counts metadata-only changes as verified rows") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+    const auto pair = writeDailyWorkbooks(tempDir);
+    const auto dbPath = pair.root / "data" / "ssas.db";
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(pair.root / "docs_entrada", dbPath,
+                                                              importColumns());
+
+    const auto first = port.importExternalFiles({.files = {pair.older}});
+    REQUIRE(first.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE(first.importSummary->inserts == 3);
+    REQUIRE(first.importSummary->verified == 0);
+
+    const auto second = port.importExternalFiles({.files = {pair.newer}});
+    INFO(second.message);
+    REQUIRE(second.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE(second.importSummary->inserts == 0);
+    REQUIRE(second.importSummary->updates == 0);
+    REQUIRE(second.importSummary->verified == 3);
+    REQUIRE(second.importSummary->unchangedRows == 0);
+    REQUIRE(second.importSummary->files.size() == 1);
+    REQUIRE(second.importSummary->files.front().status == ssa::ports::ImportFileStatus::Applied);
+    REQUIRE(second.importSummary->files.front().updates == 0);
+    REQUIRE(second.importSummary->files.front().verified == 3);
+    REQUIRE(second.message.find(" updated=0 verified=3 ") != std::string::npos);
+
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarInt(db, ("SELECT COUNT(*) FROM ssa_table WHERE arquivo_origem='" +
+                           pair.newer.filename().string() + "'")
+                              .c_str()) == 3);
+    REQUIRE(scalarText(db, "SELECT data_arquivo_origem FROM ssa_table "
+                           "WHERE numero_ssa='202600601'") == "2026-10-20 11:31:00");
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("external import keeps a business change counted as updated beside verified rows") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+    const auto pair = writeDailyWorkbooks(tempDir, "Second revised");
+    const auto dbPath = pair.root / "data" / "ssas.db";
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(pair.root / "docs_entrada", dbPath,
+                                                              importColumns());
+
+    REQUIRE(port.importExternalFiles({.files = {pair.older}}).status ==
+            ssa::ports::WorkflowStatus::Succeeded);
+    const auto second = port.importExternalFiles({.files = {pair.newer}});
+    INFO(second.message);
+    REQUIRE(second.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE(second.importSummary->updates == 1);
+    REQUIRE(second.importSummary->verified == 2);
+    REQUIRE(second.importSummary->files.front().updates == 1);
+    REQUIRE(second.importSummary->files.front().verified == 2);
+    REQUIRE(second.message.find(" updated=1 verified=2 ") != std::string::npos);
+
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarText(db, "SELECT descricao_ssa FROM ssa_table WHERE numero_ssa='202600602'") ==
+            "Second revised");
+    REQUIRE(scalarInt(db, ("SELECT COUNT(*) FROM ssa_table WHERE arquivo_origem='" +
+                           pair.newer.filename().string() + "'")
+                              .c_str()) == 3);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
 TEST_CASE("spreadsheet mapper keeps file modification time below spreadsheet time") {
     ssa::infra::importing::SpreadsheetTable table;
     table.sourcePath = "metadata.xlsx";

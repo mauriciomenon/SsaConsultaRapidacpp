@@ -35,6 +35,9 @@ namespace ssa::domain {
             // A row repeated inside the same workbook disagreed with its first row and was
             // dropped: SAM exports one row per execution, and the first row wins.
             bool repeatDiscarded = false;
+            // Only source metadata (arquivo_origem, data_arquivo_origem, data_criacao_arquivo,
+            // data_planilha) differs: the row is rewritten but counted as verified, not updated.
+            bool metadataOnly = false;
         };
 
         [[nodiscard]] static std::string normalizeNumber(const std::string& value);

@@ -41,6 +41,7 @@ namespace ssa::ports {
         std::size_t invalidDateRows = 0;
         std::size_t inserts = 0;
         std::size_t updates = 0;
+        std::size_t verified = 0;
         std::size_t unchangedRows = 0;
         std::size_t conflicts = 0;
         bool consolidated = false;
@@ -65,6 +66,7 @@ namespace ssa::ports {
         std::size_t duplicateRows = 0;
         std::size_t inserts = 0;
         std::size_t updates = 0;
+        std::size_t verified = 0;
         std::size_t unchangedRows = 0;
         std::size_t conflicts = 0;
         std::size_t consolidated = 0;

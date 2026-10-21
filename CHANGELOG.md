@@ -93,6 +93,14 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 - Analytics: trocar pessoas ou a ordenacao com uma analise customizada em
   andamento descarta o resultado antigo; antes o grafico da selecao anterior
   aparecia como se fosse o novo e o botao Analisar ficava bloqueado ate ele chegar.
+
+### Alterado
+
+- Resumo da importacao: SSAs que a planilha nova trouxe com os mesmos dados
+  (so o arquivo de origem muda) aparecem como "verificadas", separadas das
+  "atualizadas", que agora contam apenas mudanca real de valor. Ex. real:
+  "SSAs com Reprogramacoes" do dia seguinte passa de 3.035 atualizadas para 16
+  atualizadas e 3.019 verificadas. A linha de resumo da CLI ganha `verified=N`.
 - Importacao que falha ou e cancelada depois de gravar linhas agora atualiza a
   tabela e o analytics, mantendo a mensagem de falha; se a recarga apos uma
   importacao bem-sucedida falhar, o erro da recarga continua visivel em vez de

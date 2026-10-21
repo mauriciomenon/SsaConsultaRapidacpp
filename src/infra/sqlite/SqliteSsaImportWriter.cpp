@@ -993,6 +993,10 @@ namespace ssa::infra::sqlite {
                 if (existing.empty()) {
                     ++summary.rowsInserted;
                     ++result.rowsInserted;
+                } else if (merged.metadataOnly && !normalizedExistingDates &&
+                           !normalizedExistingDeviation) {
+                    ++summary.rowsVerified;
+                    ++result.rowsVerified;
                 } else {
                     ++summary.rowsUpdated;
                     ++result.rowsUpdated;

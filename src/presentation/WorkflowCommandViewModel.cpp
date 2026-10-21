@@ -96,6 +96,10 @@ namespace ssa::presentation {
                 facts.push_back(counted(summary.updates, QStringLiteral("SSA atualizada"),
                                         QStringLiteral("SSAs atualizadas")));
             }
+            if (summary.verified > 0) {
+                facts.push_back(counted(summary.verified, QStringLiteral("SSA verificada"),
+                                        QStringLiteral("SSAs verificadas")));
+            }
             if (summary.unchangedRows > 0) {
                 facts.push_back(counted(summary.unchangedRows, QStringLiteral("SSA sem alteracao"),
                                         QStringLiteral("SSAs sem alteracao")));
@@ -150,6 +154,10 @@ namespace ssa::presentation {
             if (file.updates > 0) {
                 facts.push_back(counted(file.updates, QStringLiteral("SSA atualizada"),
                                         QStringLiteral("SSAs atualizadas")));
+            }
+            if (file.verified > 0) {
+                facts.push_back(counted(file.verified, QStringLiteral("SSA verificada"),
+                                        QStringLiteral("SSAs verificadas")));
             }
             if (file.unchangedRows > 0) {
                 facts.push_back(counted(file.unchangedRows, QStringLiteral("SSA sem alteracao"),
@@ -640,7 +648,9 @@ namespace ssa::presentation {
     void WorkflowCommandViewModel::applyResult(const ports::WorkflowResult& result) {
         // A failed or canceled import may have committed earlier blocks.
         const bool dataChanged = result.importSummary.has_value() &&
-                                 result.importSummary->inserts + result.importSummary->updates > 0;
+                                 result.importSummary->inserts + result.importSummary->updates +
+                                         result.importSummary->verified >
+                                     0;
         if (result.status == ports::WorkflowStatus::Canceled) {
             const auto message = messagesForCurrentOperation().canceled;
             finishProgressSession(result, message, true);

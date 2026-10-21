@@ -273,6 +273,7 @@ namespace ssa::infra::importing {
                     result.writeSummary.rowsWritten += batchWrite.rowsWritten;
                     result.writeSummary.rowsInserted += batchWrite.rowsInserted;
                     result.writeSummary.rowsUpdated += batchWrite.rowsUpdated;
+                    result.writeSummary.rowsVerified += batchWrite.rowsVerified;
                     result.writeSummary.rowsUnchanged += batchWrite.rowsUnchanged;
                     result.writeSummary.duplicateRows += batchWrite.duplicateRows;
                     result.writeSummary.conflictRows += batchWrite.conflictRows;
@@ -439,6 +440,7 @@ namespace ssa::infra::importing {
             summary.preserved = summary.files.size();
             summary.inserts = 0;
             summary.updates = 0;
+            summary.verified = 0;
             summary.unchangedRows = 0;
             for (auto& file : summary.files) {
                 if (file.status != ports::ImportFileStatus::Ignored &&
@@ -475,6 +477,7 @@ namespace ssa::infra::importing {
                 }
                 file.inserts = 0;
                 file.updates = 0;
+                file.verified = 0;
                 file.unchangedRows = 0;
                 file.consolidated = false;
                 file.noSurvivor = false;
@@ -540,6 +543,7 @@ namespace ssa::infra::importing {
             total.duplicateRows += batch.duplicateRows;
             total.inserts += batch.inserts;
             total.updates += batch.updates;
+            total.verified += batch.verified;
             total.unchangedRows += batch.unchangedRows;
             total.conflicts += batch.conflicts;
             total.consolidated += batch.consolidated;
@@ -553,9 +557,9 @@ namespace ssa::infra::importing {
             output << "import_xlsx_to_sqlite batches=" << batches
                    << " files=" << summary.files.size() << " rows=" << summary.validRows
                    << " inserted=" << summary.inserts << " updated=" << summary.updates
-                   << " unchanged=" << summary.unchangedRows << " skipped=" << summary.skippedRows
-                   << " duplicates=" << summary.duplicateRows << " conflicts=" << summary.conflicts
-                   << " invalid_rows=" << summary.invalidRows
+                   << " verified=" << summary.verified << " unchanged=" << summary.unchangedRows
+                   << " skipped=" << summary.skippedRows << " duplicates=" << summary.duplicateRows
+                   << " conflicts=" << summary.conflicts << " invalid_rows=" << summary.invalidRows
                    << " invalid_number=" << summary.invalidNumberRows
                    << " invalid_description=" << summary.invalidDescriptionRows
                    << " invalid_date=" << summary.invalidDateRows;
@@ -572,6 +576,7 @@ namespace ssa::infra::importing {
                    << " rows=" << writeSummary.rowsWritten
                    << " inserted=" << writeSummary.rowsInserted
                    << " updated=" << writeSummary.rowsUpdated
+                   << " verified=" << writeSummary.rowsVerified
                    << " unchanged=" << writeSummary.rowsUnchanged
                    << " skipped=" << writeSummary.skippedRows
                    << " duplicates=" << writeSummary.duplicateRows
@@ -1324,10 +1329,12 @@ namespace ssa::infra::importing {
             importSummary.validRows -= fileResult.validRows;
             importSummary.inserts -= fileResult.inserts;
             importSummary.updates -= fileResult.updates;
+            importSummary.verified -= fileResult.verified;
             importSummary.unchangedRows -= fileResult.unchangedRows;
             fileResult.validRows = 0;
             fileResult.inserts = 0;
             fileResult.updates = 0;
+            fileResult.verified = 0;
             fileResult.unchangedRows = 0;
             if (operationalFailure) {
                 ++importSummary.failed;
@@ -1384,11 +1391,13 @@ namespace ssa::infra::importing {
                                         chunkedWorkbookResult.writeSummary.conflictRows;
                 fileResult.inserts += chunkedWorkbookResult.writeSummary.rowsInserted;
                 fileResult.updates += chunkedWorkbookResult.writeSummary.rowsUpdated;
+                fileResult.verified += chunkedWorkbookResult.writeSummary.rowsVerified;
                 fileResult.unchangedRows += chunkedWorkbookResult.writeSummary.rowsUnchanged;
                 importSummary.conflicts += chunkedWorkbookResult.conflictRows +
                                            chunkedWorkbookResult.writeSummary.conflictRows;
                 importSummary.inserts += chunkedWorkbookResult.writeSummary.rowsInserted;
                 importSummary.updates += chunkedWorkbookResult.writeSummary.rowsUpdated;
+                importSummary.verified += chunkedWorkbookResult.writeSummary.rowsVerified;
                 importSummary.unchangedRows += chunkedWorkbookResult.writeSummary.rowsUnchanged;
                 totalSummary.conflictRows += chunkedWorkbookResult.conflictRows +
                                              chunkedWorkbookResult.writeSummary.conflictRows;
@@ -1420,10 +1429,12 @@ namespace ssa::infra::importing {
                                 const auto batchWrite = writeSession->write(resolved, 1, 0);
                                 fileResult.inserts += batchWrite.rowsInserted;
                                 fileResult.updates += batchWrite.rowsUpdated;
+                                fileResult.verified += batchWrite.rowsVerified;
                                 fileResult.unchangedRows += batchWrite.rowsUnchanged;
                                 fileResult.conflicts += batchWrite.conflictRows;
                                 importSummary.inserts += batchWrite.rowsInserted;
                                 importSummary.updates += batchWrite.rowsUpdated;
+                                importSummary.verified += batchWrite.rowsVerified;
                                 importSummary.unchangedRows += batchWrite.rowsUnchanged;
                                 importSummary.conflicts += batchWrite.conflictRows;
                                 totalSummary.conflictRows += batchWrite.conflictRows;
@@ -1591,7 +1602,7 @@ namespace ssa::infra::importing {
                 fileResult.status = ports::ImportFileStatus::NoValidRows;
                 continue;
             }
-            fileResult.status = fileResult.inserts + fileResult.updates > 0
+            fileResult.status = fileResult.inserts + fileResult.updates + fileResult.verified > 0
                                     ? ports::ImportFileStatus::Applied
                                     : ports::ImportFileStatus::NoChanges;
         }
@@ -1668,11 +1679,13 @@ namespace ssa::infra::importing {
             totalSummary.rowsWritten = writeSummary.rowsWritten;
             totalSummary.rowsInserted = writeSummary.rowsInserted;
             totalSummary.rowsUpdated = writeSummary.rowsUpdated;
+            totalSummary.rowsVerified = writeSummary.rowsVerified;
             totalSummary.rowsUnchanged = writeSummary.rowsUnchanged;
             totalSummary.skippedRows += writeSummary.skippedRows;
             totalSummary.duplicateRows = writeSummary.duplicateRows;
             importSummary.inserts = writeSummary.rowsInserted;
             importSummary.updates = writeSummary.rowsUpdated;
+            importSummary.verified = writeSummary.rowsVerified;
             importSummary.unchangedRows = writeSummary.rowsUnchanged;
             importSummary.skippedRows = totalSummary.skippedRows;
             importSummary.duplicateRows = totalSummary.duplicateRows;

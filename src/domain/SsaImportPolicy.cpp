@@ -432,14 +432,18 @@ namespace ssa::domain {
         }
 
         bool differsInPersistedValues(const SsaImportPolicy::Values& left,
-                                      const SsaImportPolicy::Values& right) {
+                                      const SsaImportPolicy::Values& right,
+                                      const bool ignoreMetadata = false) {
+            const auto ignored = [ignoreMetadata](const std::string_view key) {
+                return isTransientField(key) || (ignoreMetadata && isMetadataField(key));
+            };
             for (const auto& [key, value] : left) {
-                if (!isTransientField(key) && valueFor(right, key) != trimWhitespace(value)) {
+                if (!ignored(key) && valueFor(right, key) != trimWhitespace(value)) {
                     return true;
                 }
             }
             for (const auto& [key, value] : right) {
-                if (!isTransientField(key) && valueFor(left, key) != trimWhitespace(value)) {
+                if (!ignored(key) && valueFor(left, key) != trimWhitespace(value)) {
                     return true;
                 }
             }
@@ -706,7 +710,9 @@ namespace ssa::domain {
                                           valueFor(incoming, "data_arquivo_origem");
             return {existing, false, !sameWorkbook, std::move(conflictField), sameWorkbook};
         }
-        return {merged, differsInPersistedValues(merged, existing), conflict};
+        const bool changed = differsInPersistedValues(merged, existing);
+        return {merged, changed, conflict,
+                {},     false,   changed && !differsInPersistedValues(merged, existing, true)};
     }
 
     std::string SsaImportPolicy::describeConflict(const Values& existing, const Values& incoming,
