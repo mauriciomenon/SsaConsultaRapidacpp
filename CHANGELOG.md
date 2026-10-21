@@ -42,6 +42,8 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
   horario do arquivo (segundos), em vez de rejeitadas como conflito; no acervo
   real as planilhas rejeitadas cairam de 133 para 30. Cada conflito restante e
   registrado no log com SSA, campo, os dois valores e os dois arquivos.
+- Log rotativo: mensagens com quebra de linha ficam em uma unica linha (quebras
+  escapadas como `\n`), e falha de gravacao no disco passa a ser detectada.
 - Colunas: `numero_ssa` nao pode mais ser ocultada (ocultar quebrava detalhes,
   SAM e copia); preferencias antigas sem ela a recebem de volta na primeira
   posicao. Alteracoes de colunas nao aplicadas no seletor nao sao mais salvas

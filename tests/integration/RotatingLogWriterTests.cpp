@@ -52,6 +52,28 @@ TEST_CASE("rotating log writer serializes concurrent append and rotation") {
     REQUIRE(std::filesystem::file_size(path.string() + ".2") <= 256);
 }
 
+TEST_CASE("rotating log writer keeps one record per line") {
+    QTemporaryDir temporaryDirectory;
+    REQUIRE(temporaryDirectory.isValid());
+    const auto path = std::filesystem::path{temporaryDirectory.path().toStdString()} / "ssa.log";
+    ssa::platform::RotatingLogWriter writer(path, 1024, 1);
+
+    writer.append("first\nsecond\r\nthird");
+
+    QFile file(QString::fromStdString(path.string()));
+    REQUIRE(file.open(QIODevice::ReadOnly));
+    REQUIRE(file.readAll() == QByteArray("first\\nsecond\\r\\nthird\n"));
+}
+
+TEST_CASE("rotating log writer reports a failed flush") {
+    if (!std::filesystem::exists("/dev/full")) {
+        SKIP("/dev/full is not available on this platform");
+    }
+    ssa::platform::RotatingLogWriter writer("/dev/full", 1024, 1);
+
+    REQUIRE_THROWS(writer.append("lost line"));
+}
+
 TEST_CASE("rotating log writer truncates only at a valid UTF-8 boundary") {
     QTemporaryDir temporaryDirectory;
     REQUIRE(temporaryDirectory.isValid());

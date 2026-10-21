@@ -35,7 +35,18 @@ namespace ssa::platform {
 
     void RotatingLogWriter::append(const std::string_view line) {
         const std::scoped_lock lock(mutex_);
-        std::string payload{line};
+        // One record per line: escape embedded line breaks instead of splitting the record.
+        std::string payload;
+        payload.reserve(line.size());
+        for (const char character : line) {
+            if (character == '\n') {
+                payload += "\\n";
+            } else if (character == '\r') {
+                payload += "\\r";
+            } else {
+                payload += character;
+            }
+        }
         const auto maximumContentBytes = static_cast<std::size_t>(maximumFileBytes_ - 1);
         if (payload.size() > maximumContentBytes) {
             payload.resize(
@@ -55,6 +66,7 @@ namespace ssa::platform {
         }
         output.write(payload.data(), static_cast<std::streamsize>(payload.size()));
         output.put('\n');
+        output.flush(); // a full disk fails here, not at write(); the destructor would hide it
         if (!output) {
             throw std::runtime_error("cannot write rotating log file");
         }
