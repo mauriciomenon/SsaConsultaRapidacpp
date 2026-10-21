@@ -1,5 +1,27 @@
 # Status Da Rodada
 
+## Estabilizacao da importacao e GUI (branch `rev`) - 2026-10-20/21
+
+- **ENTREGUE** no branch `rev` (macOS, Qt 6.11.2, `build/dev`): correcoes de
+  importacao com dado real (D2, D3, D5, D6, D10-D13, D16, D17b, D18, D19, D20,
+  SAM-L), CLI (K1-K6), filtros (F1-F9), GUI (G1-G7, G10-G14, G16, G17),
+  plataforma (P1, P2, P4) e testes (S1, S2). Detalhe por item no `CHANGELOG.md`
+  e no contrato `docs/contracts/ssa-import.md`.
+- Validacao por commit: teste vermelho antes do fix; suite inteira em
+  `build/dev` com apenas as 4 falhas de layout macOS conhecidas
+  (`ssa_qml_advanced_popup_tests`, `ssa_qml_popup_smoke_1580`,
+  `ssa_qml_popup_smoke_1180`, `ssa_qml_layout_smoke_1180x760`); clang-format,
+  clang-tidy (so avisos antigos), cppcheck, semgrep, gitleaks, trufflehog.
+- Dado real: replay do acervo (1.588 planilhas) e de 183 exportacoes SAM em
+  copias descartaveis: 0 SSAs perdidas; rejeicoes por conflito 133 -> 2.
+- Supera: "`Desvio #N` vira N" (2026-07-19) e "`Reschedule #N` vira N"
+  (`24fbbe3`): os dois rotulos agora nao geram valor (D18, D19).
+- Externo: GitHub `schottge-menon` recusa push ("account is suspended");
+  publicado em GitHub `mauriciomenon` e GitLab. Pipelines nao verificados.
+- Pendentes de decisao: D25, D4/Q4, P3/Q3, D17a, D22, D21. Plano e repasse ao
+  Python ficam fora do repo (`~/ssa_review/plano/05_EXECUCAO.md`,
+  `06_PARA_PYTHON.md`).
+
 ## GitHub e publicacao tripla - 2026-08-15
 
 - **ENTREGUE**: repositorio privado

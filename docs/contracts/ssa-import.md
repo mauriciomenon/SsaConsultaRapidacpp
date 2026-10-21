@@ -25,7 +25,16 @@
   exactly nine digits. Letters, ambiguity, and out-of-contract values reject
   the row.
 - Excel 1900 and 1904 date systems are supported. A formula without cached
-  value is rejected instead of being evaluated or accepted as empty.
+  value is rejected instead of being evaluated or accepted as empty. Date
+  serials past 9999-12-31 reject the workbook.
+- Row labels of per-event SAM reports are not counts: `Reprogramacao #N`
+  (`num_reprogramacoes`) and `Desvio #N` (`numero_desvios`) yield no value, so
+  the count from the reprogramming / `Numero de Desvios` count headers is kept. Legacy
+  `Desvio #N` text becomes NULL when the SSA is updated.
+- `desde`, `desde_1`, `desde_2`, `ate`, `ate_1`, `ate_2` are stored as
+  `YYYY-MM-DD HH:MM:SS` (column type `DateTimeText`) and shown as stored.
+- The SAM "SSAs Legadas" report (`SAAs_*.xlsx`, alphanumeric numbers) is a
+  known family that is ignored, like the derivation report.
 
 ## Snapshot And Merge Policy
 
@@ -64,6 +73,20 @@ they exist; adding those columns is deferred until schema stabilization. Sparse
 workbooks preserve previously stored rich fields, while a richer equal snapshot
 may fill or improve them.
 
+Equal snapshots and repeated rows:
+
+- Filename timestamps have minute resolution; ISO names with a time
+  (`2026-07-15T10.00`) use it. Same-minute exports are ordered by the file
+  modification time in seconds when both rows carry a distinct one.
+- Values that differ only by Portuguese accents are not a conflict; the accented
+  spelling is kept.
+- An SSA repeated inside one workbook (SAM exports one row per execution) keeps
+  the first row; a later row that disagrees is discarded and logged as
+  `Import repeated SSA, first row kept`.
+- Two different workbooks of the same instant that disagree on a business value
+  are a conflict: the later workbook is rejected (`duplicate_conflict`) and the
+  conflict is logged with SSA, field, both values and both files.
+
 ## Atomicity And Results
 
 - Incremental import commits each accepted file atomically through selective
@@ -72,8 +95,13 @@ may fill or improve them.
 - Public workflow status includes `NoChanges`. Per-file status is `Applied`,
   `NoChanges`, `NoValidRows`, `Rejected`, `Failed`, or `Canceled`.
 - `ImportSummary` reconciles discovered, accepted, rejected, pending,
-  preserved, valid/invalid rows, inserts, updates, unchanged rows, conflicts,
-  consolidation, and no-survivor counts with the committed SQLite result.
+  preserved, valid/invalid rows, inserts, updates, verified rows, unchanged
+  rows, conflicts, consolidation, and no-survivor counts with the committed
+  SQLite result. `verified` counts rows rewritten only to record a newer source
+  (`arquivo_origem`, `data_arquivo_origem`, `data_criacao_arquivo`,
+  `data_planilha`); `updates` counts business value changes.
+- A failed incremental rescan publishes nothing and reports every file as not
+  applied.
 - Only committed `Applied`, `NoChanges`, and validated `NoValidRows` entries can
   enter the consolidation journal.
 

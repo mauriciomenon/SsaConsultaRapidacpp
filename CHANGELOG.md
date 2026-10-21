@@ -56,7 +56,7 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 - Importacao: o rotulo "Reprogramacao #N" do relatorio "SSAs com
   Reprogramacoes" (uma linha por reprogramacao) nao e mais gravado como numero
   de reprogramacoes; antes a contagem real vinda de outras planilhas era
-  trocada por 1 (641 SSAs no acervo real). A contagem continua em "N° de
+  trocada por 1 (641 SSAs no acervo real). A contagem continua em "No de
   Reprogramacoes" e o total em "Total de Reprogramacoes", como no Python.
 - Importacao: um rescan incremental que falha (por exemplo, com uma planilha
   corrompida no lote) nao lista mais as outras planilhas como aplicadas; nada
