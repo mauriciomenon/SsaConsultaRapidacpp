@@ -243,6 +243,35 @@ TEST_CASE("DataSetupPort copies and validates a populated database") {
     REQUIRE(scalarText(database.handle(), "SELECT numero_ssa FROM ssa_table") == "202600001");
 }
 
+TEST_CASE("DataSetupPort copies committed rows still in the source WAL") {
+    const TemporaryDirectory temporary;
+    const auto source = temporary.path() / "source.db";
+    const auto projectRoot = temporary.path() / "selected-root";
+    const auto destination = projectRoot / "data" / "ssas.db";
+    ssa::infra::sqlite::SqliteSsaImportWriter::createEmpty(
+        source, ssa::domain::ColumnCatalog::schemaColumns());
+    // Keep a writer open in WAL mode without checkpoint, like a running Python or C++ app.
+    ssa::infra::sqlite::SqliteConnection writer(source,
+                                                ssa::infra::sqlite::SqliteOpenMode::ReadWrite);
+    REQUIRE(sqlite3_exec(writer.handle(),
+                         "PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0; "
+                         "INSERT INTO ssa_table (numero_ssa) VALUES ('202600002');",
+                         nullptr, nullptr, nullptr) == SQLITE_OK);
+    REQUIRE(std::filesystem::exists(source.string() + "-wal"));
+    ssa::infra::importing::DataSetupPort port(ssa::platform::publishFileExclusively);
+
+    const auto result = port.execute({.action = ssa::ports::DataSetupAction::ImportDatabase,
+                                      .projectRoot = projectRoot,
+                                      .sourceDatabase = source});
+
+    INFO(result.message << " " << result.diagnostic);
+    REQUIRE(result.ok);
+    ssa::infra::sqlite::SqliteConnection database(destination,
+                                                  ssa::infra::sqlite::SqliteOpenMode::ReadOnly);
+    REQUIRE(scalarText(database.handle(), "SELECT COUNT(*) FROM ssa_table") == "1");
+    REQUIRE(scalarText(database.handle(), "SELECT numero_ssa FROM ssa_table") == "202600002");
+}
+
 TEST_CASE("DataSetupPort reports missing required inputs without leaving a database") {
     const TemporaryDirectory temporary;
     ssa::infra::importing::DataSetupPort port(ssa::platform::publishFileExclusively);

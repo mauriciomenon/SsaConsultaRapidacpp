@@ -4,6 +4,7 @@
 #include "infra/import/SsaSpreadsheetMapper.h"
 #include "infra/import/XlsxWorkbookReader.h"
 #include "infra/sqlite/SqliteConnection.h"
+#include "infra/sqlite/SqliteDatabaseBackup.h"
 #include "infra/sqlite/SqliteDatabaseWriteLock.h"
 #include "infra/sqlite/SqliteProgressHandler.h"
 #include "ports/OperationError.h"
@@ -45,7 +46,6 @@ namespace ssa::infra::importing {
 
         constexpr std::size_t kMaxWorkflowDiagnosticBytes = 4'096;
         constexpr std::size_t kMaxImportFilesPerBatch = 64;
-        constexpr int kDatabaseBackupPagesPerStep = 256;
         constexpr std::size_t kFileComparisonBlockBytes = std::size_t{64} * 1024;
 
         enum class FileContentsComparison {
@@ -299,11 +299,6 @@ namespace ssa::infra::importing {
                 0, (std::min)(detail.size(), kMaxWorkflowDiagnosticBytes - destination.size())));
         }
 
-        std::string sqliteBackupError(sqlite3* database, const char* operation, const int rc) {
-            return std::string{operation} + " failed: rc=" + std::to_string(rc) +
-                   " message=" + sqlite3_errmsg(database);
-        }
-
         // Both call sites name source and destination explicitly.
         // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
         void backupDatabaseSnapshot(const std::filesystem::path& source,
@@ -324,64 +319,11 @@ namespace ssa::infra::importing {
                 throw ports::OperationError(safeMessage, std::string{operation} +
                                                              " failed: source database missing");
             }
-            sqlite::SqliteConnection sourceConnection(source, sqlite::SqliteOpenMode::ReadOnly,
-                                                      std::chrono::milliseconds{0});
-            sqlite::SqliteConnection destinationConnection(
-                destination, sqlite::SqliteOpenMode::ReadWriteCreate, std::chrono::milliseconds{0});
-            std::atomic_flag snapshotLockReported = ATOMIC_FLAG_INIT;
-            sqlite::SqliteBusyHandler busyHandler(destinationConnection.handle(), stopToken,
-                                                  busyWait, publication ? snapshotLocked : nullptr,
-                                                  publication ? &snapshotLockReported : nullptr);
-            auto* backup = sqlite3_backup_init(destinationConnection.handle(), "main",
-                                               sourceConnection.handle(), "main");
-            if (backup == nullptr) {
-                throw ports::OperationError(
-                    safeMessage,
-                    sqliteBackupError(destinationConnection.handle(),
-                                      publication ? "sqlite backup publication init"
-                                                  : "sqlite backup copy init",
-                                      sqlite3_errcode(destinationConnection.handle())));
-            }
-            int stepResult = SQLITE_OK;
-            auto lockedRetryDeadline = std::chrono::steady_clock::time_point{};
-            while (stepResult == SQLITE_OK || stepResult == SQLITE_LOCKED) {
-                if (stopToken.stop_requested()) {
-                    stepResult = SQLITE_INTERRUPT;
-                    break;
-                }
-                stepResult = sqlite3_backup_step(backup, kDatabaseBackupPagesPerStep);
-                if (stepResult == SQLITE_LOCKED) {
-                    if (publication && snapshotLocked != nullptr &&
-                        !snapshotLockReported.test_and_set(std::memory_order_relaxed)) {
-                        snapshotLocked->release();
-                    }
-                    const auto now = std::chrono::steady_clock::now();
-                    if (lockedRetryDeadline == std::chrono::steady_clock::time_point{}) {
-                        lockedRetryDeadline = now + busyWait;
-                    }
-                    if (now >= lockedRetryDeadline) {
-                        break;
-                    }
-                    std::this_thread::sleep_until(
-                        (std::min)(lockedRetryDeadline,
-                                   now +
-                                       ports::ImportExecutionOptions::kSqliteBusyRetryGranularity));
-                } else {
-                    lockedRetryDeadline = {};
-                }
-            }
-            const int finishResult = sqlite3_backup_finish(backup);
-            if (stepResult != SQLITE_DONE &&
-                (stopToken.stop_requested() || stepResult == SQLITE_INTERRUPT)) {
-                throw std::system_error(std::make_error_code(std::errc::operation_canceled),
-                                        "database snapshot canceled");
-            }
-            if (stepResult != SQLITE_DONE || finishResult != SQLITE_OK) {
-                const int errorCode = stepResult != SQLITE_DONE ? stepResult : finishResult;
-                throw ports::OperationError(
-                    safeMessage,
-                    sqliteBackupError(destinationConnection.handle(), operation, errorCode));
-            }
+            sqlite::backupSqliteDatabase(
+                source, destination, stopToken, busyWait,
+                {safeMessage, operation,
+                 publication ? "sqlite backup publication init" : "sqlite backup copy init"},
+                publication ? snapshotLocked : nullptr);
         }
 
         std::unique_ptr<QLockFile> acquireImportLock(const std::filesystem::path& path,

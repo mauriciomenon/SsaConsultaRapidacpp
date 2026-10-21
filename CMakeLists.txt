@@ -133,6 +133,7 @@ add_library(
   src/infra/sqlite/SqliteConnection.cpp
   src/infra/sqlite/SqliteActivityAnalyticsProjection.cpp
   src/infra/sqlite/SqliteSsaAnalyticsPort.cpp
+  src/infra/sqlite/SqliteDatabaseBackup.cpp
   src/infra/sqlite/SqliteDatabaseValidator.cpp
   src/infra/sqlite/SqliteDerivadasPort.cpp
   src/infra/sqlite/SqliteDerivedCountSummary.cpp

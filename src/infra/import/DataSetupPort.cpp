@@ -1,10 +1,12 @@
 #include "infra/import/DataSetupPort.h"
 
 #include "domain/ColumnCatalog.h"
-#include "infra/import/CancelableFileCopy.h"
 #include "infra/import/SpreadsheetImportWorkflowPort.h"
+#include "infra/sqlite/SqliteConnection.h"
+#include "infra/sqlite/SqliteDatabaseBackup.h"
 #include "infra/sqlite/SqliteDatabaseValidator.h"
 #include "infra/sqlite/SqliteSsaImportWriter.h"
+#include "ports/OperationError.h"
 #include "qt/FilesystemPath.h"
 
 #include <QTemporaryDir>
@@ -97,15 +99,30 @@ namespace ssa::infra::importing {
             try {
                 const auto columns = domain::ColumnCatalog::schemaColumns();
                 if (importsDatabase) {
-                    const auto copy =
-                        copyFileAtomically({request.sourceDatabase, stagedDatabasePath}, stopToken);
-                    if (!copy.ok()) {
-                        const auto canceled =
-                            copy.status == FileCopyStatus::Canceled || stopToken.stop_requested();
+                    // SQLite backup, not a byte copy: committed pages may still be in the
+                    // source -wal file while another app keeps the database open.
+                    try {
+                        sqlite::backupSqliteDatabase(request.sourceDatabase, stagedDatabasePath,
+                                                     stopToken, std::chrono::milliseconds{3000},
+                                                     {"Falha ao copiar o banco de dados",
+                                                      "sqlite backup data setup",
+                                                      "sqlite backup data setup init"});
+                        // The backup copies a WAL header; the private copy is used alone, so
+                        // return it to a rollback journal before validation and publication.
+                        const sqlite::SqliteConnection staged(stagedDatabasePath,
+                                                              sqlite::SqliteOpenMode::ReadWrite);
+                        sqlite::SqliteStatement journalMode(staged.handle(),
+                                                            "PRAGMA journal_mode=DELETE");
+                        static_cast<void>(journalMode.step());
+                    } catch (const std::system_error& error) {
+                        const bool canceled =
+                            error.code() == std::make_error_code(std::errc::operation_canceled);
                         return complete({false,
                                          canceled ? "Configuracao de dados cancelada"
                                                   : "Falha ao copiar o banco de dados",
-                                         copy.diagnostic, databasePath});
+                                         error.what(), databasePath});
+                    } catch (const ports::OperationError& error) {
+                        return complete({false, error.what(), error.diagnostic(), databasePath});
                     }
 
                     const sqlite::SqliteDatabaseValidator validator;

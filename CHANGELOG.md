@@ -48,6 +48,10 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
   tabela e o analytics, mantendo a mensagem de falha; se a recarga apos uma
   importacao bem-sucedida falhar, o erro da recarga continua visivel em vez de
   ser coberto pela mensagem de sucesso.
+- Configuracao inicial com "Importar banco" usa a API de backup do SQLite: um
+  banco aberto por outro aplicativo em modo WAL (como o SSA Python) e copiado
+  com as transacoes ainda no arquivo `-wal`; antes a copia era recusada como
+  banco invalido.
 - Exportacao de grafico (PNG e SVG) so substitui o arquivo quando a gravacao
   termina por completo.
 - Log rotativo: mensagens com quebra de linha ficam em uma unica linha (quebras
