@@ -210,17 +210,19 @@ TEST_CASE("SSA spreadsheet mapper preserves raw SAM API reports for the dedicate
     REQUIRE(batch.rows.empty());
 }
 
-TEST_CASE("SSA spreadsheet mapper extracts the integer from a real deviation label") {
+TEST_CASE("SSA spreadsheet mapper omits a deviation row label") {
     ssa::infra::importing::SpreadsheetTable table;
     table.sourcePath = "SSAs com Desvio.xlsx";
     table.rows = {{"Numero SSA", "Descricao", "Data Cadastro", "Desvio"},
-                  {"202600001", "Deviation", "2026-07-14", "Desvio #2"}};
+                  {"202600001", "Deviation", "2026-07-14", "Desvio #2"},
+                  {"202600002", "Count", "2026-07-14", "3"}};
 
     const auto batch = ssa::infra::importing::SsaSpreadsheetMapper::map(table);
 
     REQUIRE(batch.mappingStatus == ssa::infra::importing::SpreadsheetMappingStatus::Mapped);
-    REQUIRE(batch.rows.size() == 1);
-    REQUIRE(batch.rows.front().at("numero_desvios") == "2");
+    REQUIRE(batch.rows.size() == 2);
+    REQUIRE_FALSE(batch.rows[0].contains("numero_desvios"));
+    REQUIRE(batch.rows[1].at("numero_desvios") == "3");
 }
 
 TEST_CASE("SSA spreadsheet mapper omits a reschedule row label") {

@@ -3153,8 +3153,9 @@ TEST_CASE("spreadsheet import normalizes real deviation formats into SQLite inte
             2);
     REQUIRE(scalarInt(db, "SELECT numero_desvios FROM ssa_table WHERE numero_ssa='202600138'") ==
             2);
-    REQUIRE(scalarInt(db, "SELECT numero_desvios FROM ssa_table WHERE numero_ssa='202600139'") ==
-            4);
+    // "Desvio #4" is the row label of the deviation report, not a count.
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600139' "
+                          "AND numero_desvios IS NULL") == 1);
     REQUIRE(scalarInt(db, "SELECT numero_desvios FROM ssa_table WHERE numero_ssa='202600140'") ==
             5);
     REQUIRE(scalarInt(db, "SELECT numero_desvios FROM ssa_table WHERE numero_ssa='202600141'") ==
@@ -3213,10 +3214,14 @@ TEST_CASE("external import updates legacy deviation text and continues with the 
                                                               importColumns());
     const auto result = port.importExternalFiles({.files = {update, addition}});
 
+    // Legacy "Desvio #1" text and the incoming "Desvio #2" label are row labels, not counts:
+    // the update succeeds and leaves no count.
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
     REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
-    REQUIRE(scalarInt(db, "SELECT numero_desvios FROM ssa_table WHERE numero_ssa='202600146'") ==
-            2);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600146' "
+                          "AND numero_desvios IS NULL") == 1);
+    REQUIRE(scalarText(db, "SELECT descricao_ssa FROM ssa_table WHERE numero_ssa='202600146'") ==
+            "Updated");
     REQUIRE(scalarInt(db, "SELECT numero_desvios FROM ssa_table WHERE numero_ssa='202600147'") ==
             0);
     REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 2);
@@ -4426,8 +4431,9 @@ TEST_CASE("sqlite import repairs invalid legacy optional integers while updating
 
     REQUIRE(result.rowsUpdated == 1);
     REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
-    REQUIRE(scalarInt(db, "SELECT numero_desvios FROM ssa_table WHERE numero_ssa='202600146'") ==
-            1);
+    // The legacy row label is not a count: the repair stores NULL instead of the label text.
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600146' "
+                          "AND numero_desvios IS NULL") == 1);
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
@@ -8140,6 +8146,45 @@ TEST_CASE("reprogramming report row label does not overwrite the reprogramming c
                            "WHERE numero_ssa='202208352'") == "3");
     REQUIRE(scalarText(db, "SELECT total_de_reprogramacoes FROM ssa_table "
                            "WHERE numero_ssa='202208352'") == "3");
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("deviation report row label does not overwrite the deviation count") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    // An older "SSAs em Desvio" export stored the count ("Numero de Desvios").
+    ssa::infra::importing::ResolvedSsaImportRows seedRows;
+    seedRows.rows.push_back(
+        {{"numero_ssa", "202208334"},
+         {"descricao_ssa", "Deviated"},
+         {"data_cadastro", "2026-07-14"},
+         {"numero_desvios", "3"},
+         {"arquivo_origem", "SSAs em Desvio na Programacao_19-10-2026_0900AM.xlsx"}});
+    const ssa::infra::sqlite::SqliteSsaImportWriter seedWriter(sqliteWriterAccess(), dbPath,
+                                                               importColumns());
+    REQUIRE(seedWriter.write(seedRows, 1, 0, false).rowsWritten == 1);
+    // "SSAs com Desvio" lists one row per deviation; "Desvio #1" is the row label.
+    writeWorkbook(inputDirectory / "SSAs com Desvio na Programacao_20-10-2026_1153AM.xlsx",
+                  row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Descricao"),
+                          inlineCell("C1", "Data Cadastro"), inlineCell("D1", "Desvio")}) +
+                      row(2, {inlineCell("A2", "202208334"), inlineCell("B2", "Deviated"),
+                              inlineCell("C2", "2026-07-14"), inlineCell("D2", "Desvio #1")}));
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+
+    const auto result = port.rescan({ssa::ports::RescanMode::Incremental});
+
+    INFO(result.message);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarText(db, "SELECT numero_desvios FROM ssa_table WHERE numero_ssa='202208334'") ==
+            "3");
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 

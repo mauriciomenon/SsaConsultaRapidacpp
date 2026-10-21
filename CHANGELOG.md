@@ -83,6 +83,11 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
   ativos nao ocupa mais um nucleo inteiro da CPU durante a espera (ate 5 s).
 - Detalhes: navegar para outra SSA relacionada e voltar antes de ela carregar
   nao troca mais a SSA exibida pela que estava carregando.
+- Importacao: o rotulo "Desvio #N" do relatorio "SSAs com Desvio na
+  Programacao" (uma linha por desvio) nao e mais gravado como numero de
+  desvios; antes a contagem real ("Numero de Desvios") era trocada por 1 (180
+  SSAs no acervo real). Texto legado "Desvio #N" no banco vira vazio quando a
+  SSA e reimportada.
 - Importacao que falha ou e cancelada depois de gravar linhas agora atualiza a
   tabela e o analytics, mantendo a mensagem de falha; se a recarga apos uma
   importacao bem-sucedida falhar, o erro da recarga continua visivel em vez de

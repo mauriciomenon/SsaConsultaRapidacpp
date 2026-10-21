@@ -57,7 +57,9 @@ TEST_CASE("SSA import normalization trims spaces and whitespace-only values") {
 }
 
 TEST_CASE("SSA import normalization preserves deviation labels as counts") {
-    REQUIRE(ssa::domain::SsaImportPolicy::normalizeDeviationCount("Desvio #1") == "1");
+    // "Desvio #N" labels one row of the deviation report, it is not the count.
+    REQUIRE(ssa::domain::SsaImportPolicy::normalizeDeviationCount("Desvio #1").empty());
+    REQUIRE(ssa::domain::SsaImportPolicy::normalizeDeviationCount("desvio # 2").empty());
     REQUIRE(ssa::domain::SsaImportPolicy::normalizeDeviationCount("sem desvio") == "0");
     REQUIRE(ssa::domain::SsaImportPolicy::normalizeDeviationCount("N/A").empty());
 }

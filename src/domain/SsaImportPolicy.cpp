@@ -500,8 +500,12 @@ namespace ssa::domain {
             while (!suffix.empty() && std::isspace(static_cast<unsigned char>(suffix.front()))) {
                 suffix.remove_prefix(1);
             }
-            if (!suffix.empty() &&
-                (suffix.front() == '#' || suffix.front() == ':' || suffix.front() == '-')) {
+            // "Desvio #N" labels one row of the deviation report (one row per deviation), it is
+            // not the count; storing it as a count overwrote real counts with 1.
+            if (!suffix.empty() && suffix.front() == '#') {
+                return {};
+            }
+            if (!suffix.empty() && (suffix.front() == ':' || suffix.front() == '-')) {
                 suffix.remove_prefix(1);
                 while (!suffix.empty() &&
                        std::isspace(static_cast<unsigned char>(suffix.front()))) {
