@@ -1067,6 +1067,158 @@ namespace {
             QCOMPARE(harness->property("detailsCount").toInt(), 2);
         }
 
+        void table_keyboard_navigation_keeps_current_row_visible() {
+            constexpr int rowCount = 60;
+            ssa::presentation::SsaTableModel tableModel("numero_ssa");
+            ssa::domain::SsaPageResult page;
+            ssa::presentation::SsaTableDisplayValues displayValues;
+            for (int row = 0; row < rowCount; ++row) {
+                page.rows.push_back(ssa::domain::SsaRecord{
+                    {{"numero_ssa", std::to_string(202600001 + row)}, {"situacao", "APV"}}});
+                displayValues.values.emplace_back(QStringLiteral("APV"));
+            }
+            page.totalRows = rowCount;
+            page.pageSize = rowCount;
+            displayValues.rowCount = rowCount;
+            displayValues.columnCount = 1;
+            std::vector<std::string> keys{"situacao"};
+            auto columns = ssa::presentation::SsaColumnDisplayCatalog{}.resolveAll(keys);
+            tableModel.setPage(std::move(page), std::move(keys), std::move(columns),
+                               std::move(displayValues));
+            // A short last page, to return from it to a full page.
+            ssa::presentation::SsaTableModel shortTableModel("numero_ssa");
+            ssa::domain::SsaPageResult shortPage;
+            ssa::presentation::SsaTableDisplayValues shortValues;
+            for (int row = 0; row < 10; ++row) {
+                shortPage.rows.push_back(ssa::domain::SsaRecord{
+                    {{"numero_ssa", std::to_string(202609001 + row)}, {"situacao", "APV"}}});
+                shortValues.values.emplace_back(QStringLiteral("APV"));
+            }
+            shortPage.totalRows = rowCount + 10;
+            shortPage.pageSize = rowCount;
+            shortValues.rowCount = 10;
+            shortValues.columnCount = 1;
+            std::vector<std::string> shortKeys{"situacao"};
+            auto shortColumns = ssa::presentation::SsaColumnDisplayCatalog{}.resolveAll(shortKeys);
+            shortTableModel.setPage(std::move(shortPage), std::move(shortKeys),
+                                    std::move(shortColumns), std::move(shortValues));
+            QQmlEngine engine;
+            engine.rootContext()->setContextProperty(QStringLiteral("testTableModel"), &tableModel);
+            engine.rootContext()->setContextProperty(QStringLiteral("shortTableModel"),
+                                                     &shortTableModel);
+            QQmlComponent component(&engine);
+            component.setData(R"QML(
+                import QtQuick
+                import QtQuick.Controls
+                import SsaConsultaRapida
+
+                Item {
+                    id: harness
+                    width: 400
+                    height: 240
+                    property alias currentRow: viewModel.currentRow
+
+                    // Page changes reset the model and select a row in the same step.
+                    function showShortPage() {
+                        viewModel.tableModel = shortTableModel;
+                        viewModel.currentRow = 0;
+                    }
+                    function showPreviousFullPageAtEnd() {
+                        viewModel.tableModel = testTableModel;
+                        viewModel.currentRow = 59;
+                    }
+
+                    QtObject {
+                        id: viewModel
+                        property var tableHeaders: [{
+                            key: "situacao",
+                            label: "Situacao",
+                            labelFull: "Situacao",
+                            width: 160,
+                            sorted: false,
+                            filtered: false,
+                            opensSam: false
+                        }]
+                        property var tableModel: testTableModel
+                        property int currentRow: -1
+                        property int totalRows: 60
+                        property bool canSelectNextRow: currentRow >= 0 && currentRow < 59
+                        property bool canSelectPreviousRow: currentRow > 0
+                        property var details: QtObject {
+                            property var graphModel: QtObject {
+                                property int nodeCount: 0
+                            }
+                        }
+
+                        function selectRow(row) { currentRow = row; }
+                        function sortByColumn(column) {}
+                        function setFilterPanelFocusColumn(key) {}
+                        function selectNextRow() { selectRow(currentRow + 1); }
+                        function selectPreviousRow() { selectRow(currentRow - 1); }
+                    }
+
+                    SsaTable {
+                        objectName: "keyboardScrollTable"
+                        anchors.fill: parent
+                        viewModel: viewModel
+                        density: "compact"
+                    }
+                }
+            )QML",
+                              QUrl(QStringLiteral("inmemory:/SsaTableKeyboardScrollHarness.qml")));
+            QTRY_VERIFY_WITH_TIMEOUT(component.status() != QQmlComponent::Loading, 1000);
+            QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+
+            QQuickWindow window;
+            window.setGeometry(0, 0, 400, 240);
+            std::unique_ptr<QObject> harness(component.create());
+            QVERIFY2(harness != nullptr, qPrintable(component.errorString()));
+            auto* harnessItem = qobject_cast<QQuickItem*>(harness.get());
+            QVERIFY(harnessItem != nullptr);
+            harnessItem->setParentItem(window.contentItem());
+            window.show();
+            QTRY_VERIFY_WITH_TIMEOUT(window.isExposed(), 1000);
+
+            auto* table = harness->findChild<QQuickItem*>(QStringLiteral("keyboardScrollTable"));
+            QVERIFY(table != nullptr);
+            QQuickItem* tableView = nullptr;
+            for (auto* item : table->findChildren<QQuickItem*>()) {
+                if (QString::fromLatin1(item->metaObject()->className())
+                        .startsWith(QStringLiteral("QQuickTableView"))) {
+                    tableView = item;
+                    break;
+                }
+            }
+            QVERIFY(tableView != nullptr);
+            QTRY_VERIFY_WITH_TIMEOUT(tableView->property("bottomRow").toInt() > 0, 1000);
+            const int firstBottomRow = tableView->property("bottomRow").toInt();
+            QVERIFY(firstBottomRow < 30);
+
+            table->forceActiveFocus();
+            QTRY_VERIFY_WITH_TIMEOUT(table->hasActiveFocus(), 1000);
+            for (int press = 0; press <= 30; ++press) {
+                QTest::keyClick(&window, Qt::Key_Down);
+            }
+            QCOMPARE(harness->property("currentRow").toInt(), 30);
+            QTRY_VERIFY_WITH_TIMEOUT(tableView->property("topRow").toInt() <= 30 &&
+                                         tableView->property("bottomRow").toInt() >= 30,
+                                     1000);
+
+            for (int press = 0; press < 30; ++press) {
+                QTest::keyClick(&window, Qt::Key_Up);
+            }
+            QCOMPARE(harness->property("currentRow").toInt(), 0);
+            QTRY_COMPARE_WITH_TIMEOUT(tableView->property("topRow").toInt(), 0, 1000);
+
+            QVERIFY(QMetaObject::invokeMethod(harness.get(), "showShortPage"));
+            QTRY_COMPARE_WITH_TIMEOUT(tableView->property("rows").toInt(), 10, 1000);
+            QVERIFY(QMetaObject::invokeMethod(harness.get(), "showPreviousFullPageAtEnd"));
+            QCOMPARE(harness->property("currentRow").toInt(), 59);
+            QTRY_VERIFY_WITH_TIMEOUT(tableView->property("topRow").toInt() <= 59 &&
+                                         tableView->property("bottomRow").toInt() >= 59,
+                                     1000);
+        }
+
         void ssa_table_cell_text_forces_normal_weight() {
             QFile source(repositoryRoot().filePath("app/desktop/qml/components/SsaTable.qml"));
             QVERIFY2(source.open(QIODevice::ReadOnly | QIODevice::Text),

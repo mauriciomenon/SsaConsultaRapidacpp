@@ -399,6 +399,23 @@ Rectangle {
                 }
             }
 
+            // Keyboard selection must keep the current row on screen. A page change selects the
+            // row before the table learns the new row count, so the row count retries it.
+            function positionCurrentRow() {
+                const row = root.viewModel.currentRow;
+                if (row >= 0 && row < table.rows)
+                    table.positionViewAtRow(row, TableView.Contain);
+            }
+            onRowsChanged: positionCurrentRow()
+
+            Connections {
+                target: root.viewModel
+
+                function onCurrentRowChanged() {
+                    table.positionCurrentRow();
+                }
+            }
+
             Connections {
                 target: root
 
