@@ -271,6 +271,10 @@ namespace ssa::infra::importing {
             if (!parsed || !std::isfinite(serial) || serial < 0.0) {
                 throw std::runtime_error("invalid xlsx date serial");
             }
+            // 2958465 is 9999-12-31, the last Excel day; larger values must not reach the cast.
+            if (serial >= 2'958'466.0) {
+                throw std::runtime_error("xlsx date serial out of supported range");
+            }
             auto wholeDays = static_cast<qint64>(std::floor(serial));
             auto seconds = static_cast<qint64>(
                 std::llround((serial - static_cast<double>(wholeDays)) * 86'400.0));
@@ -283,7 +287,7 @@ namespace ssa::infra::importing {
                 --wholeDays;
             }
             const auto date = baseDate.addDays(wholeDays);
-            if (!date.isValid()) {
+            if (!date.isValid() || date.year() > 9999) {
                 throw std::runtime_error("xlsx date serial out of supported range");
             }
             const auto hours = seconds / 3'600;

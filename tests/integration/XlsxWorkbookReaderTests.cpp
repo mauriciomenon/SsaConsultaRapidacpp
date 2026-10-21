@@ -3,6 +3,7 @@
 #include <QTemporaryDir>
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 #include <miniz.h>
 
 #include <filesystem>
@@ -109,6 +110,26 @@ TEST_CASE("xlsx reader converts Excel 1900 date cells and corrects the leap-day 
 
     REQUIRE(table.rows.at(0).at(0) == "1900-02-28T00:00:00");
     REQUIRE(table.rows.at(0).at(1) == "1900-03-01T12:00:00");
+}
+
+TEST_CASE("xlsx reader bounds date serials to the Excel calendar") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto lastDay = root / "last-day.xlsx";
+    writeWorkbook(lastDay, {}, builtInDateStyles, R"xml(<c r="A1" s="1"><v>2958465</v></c>)xml");
+    REQUIRE(ssa::infra::importing::XlsxWorkbookReader::readFirstSheet(lastDay).rows.at(0).at(0) ==
+            "9999-12-31T00:00:00");
+
+    // Past 9999-12-31, and far past it (formerly an out-of-range cast to qint64).
+    for (const auto* serial : {"2958466", "1e20"}) {
+        INFO(serial);
+        const auto path = root / (std::string{"serial-"} + serial + ".xlsx");
+        writeWorkbook(path, {}, builtInDateStyles,
+                      std::string{R"xml(<c r="A1" s="1"><v>)xml"} + serial + "</v></c>");
+        REQUIRE_THROWS_WITH(ssa::infra::importing::XlsxWorkbookReader::readFirstSheet(path),
+                            Catch::Matchers::ContainsSubstring("out of supported range"));
+    }
 }
 
 TEST_CASE("xlsx reader honors date1904 for custom date formats") {

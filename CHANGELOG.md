@@ -70,6 +70,9 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 - Importacao: nomes de arquivo com data ISO e hora (ex.: `SSA_2026-07-15T10.00`)
   passam a considerar a hora; antes duas exportacoes do mesmo dia valiam como
   o mesmo instante e podiam gerar conflito falso.
+- Importacao: celula de data com numero serial alem de 31/12/9999 rejeita a
+  planilha com "xlsx date serial out of supported range"; antes um valor muito
+  grande tinha conversao indefinida.
 - Importacao que falha ou e cancelada depois de gravar linhas agora atualiza a
   tabela e o analytics, mantendo a mensagem de falha; se a recarga apos uma
   importacao bem-sucedida falhar, o erro da recarga continua visivel em vez de
