@@ -526,6 +526,12 @@ namespace ssa::domain {
         return hasIsoDatePrefix && (isIsoDate || isIsoDateTime) ? text : normalized;
     }
 
+    std::string SsaImportPolicy::normalizeDateValue(const ColumnType type,
+                                                    const std::string& value) {
+        return type == ColumnType::DateTimeText ? normalizeSnapshotTimestamp(value)
+                                                : normalizeDateText(value);
+    }
+
     std::string SsaImportPolicy::normalizeSnapshotTimestamp(const std::string& value) {
         const auto timestamp = parseExactTimestamp(trimWhitespace(value));
         if (!timestamp) {

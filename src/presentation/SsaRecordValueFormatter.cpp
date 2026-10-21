@@ -36,6 +36,7 @@ namespace ssa::presentation {
         }
         case domain::ColumnType::DateText:
             return formattedDateText(text);
+        case domain::ColumnType::DateTimeText:
         case domain::ColumnType::Text:
             return text;
         }

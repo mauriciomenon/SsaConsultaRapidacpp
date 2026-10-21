@@ -597,14 +597,15 @@ namespace ssa::infra::sqlite {
                                  const std::vector<domain::ColumnDef>& columns) {
             bool changed = false;
             for (const auto& column : columns) {
-                if (column.type != domain::ColumnType::DateText) {
+                if (!domain::storesIsoDate(column.type)) {
                     continue;
                 }
                 const auto value = row.find(column.key);
                 if (value == row.end() || value->second.empty()) {
                     continue;
                 }
-                const auto normalized = domain::SsaImportPolicy::normalizeDateText(value->second);
+                const auto normalized =
+                    domain::SsaImportPolicy::normalizeDateValue(column.type, value->second);
                 if (!normalized.empty() && normalized != value->second) {
                     value->second = normalized;
                     changed = true;

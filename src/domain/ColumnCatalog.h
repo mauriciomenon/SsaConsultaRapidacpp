@@ -13,8 +13,13 @@ namespace ssa::domain {
     enum class ColumnType : std::uint8_t {
         Text,
         Integer,
-        DateText,
+        DateText,     // stored as ISO, shown as dd/MM/yyyy
+        DateTimeText, // stored as ISO, shown as stored (keeps the time, as the Python app)
     };
+
+    [[nodiscard]] constexpr bool storesIsoDate(const ColumnType type) noexcept {
+        return type == ColumnType::DateText || type == ColumnType::DateTimeText;
+    }
 
     struct ColumnDef {
         std::string key;

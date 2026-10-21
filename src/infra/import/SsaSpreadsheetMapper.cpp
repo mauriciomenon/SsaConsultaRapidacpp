@@ -396,8 +396,9 @@ namespace ssa::infra::importing {
                 } else if (columnKey == "num_reprogramacoes") {
                     value = normalizeReprogrammingNumber(value);
                 } else if (const auto* column = domain::ColumnCatalog::find(columnKey);
-                           column != nullptr && column->type == domain::ColumnType::DateText) {
-                    const auto normalized = domain::SsaImportPolicy::normalizeDateText(value);
+                           column != nullptr && domain::storesIsoDate(column->type)) {
+                    const auto normalized =
+                        domain::SsaImportPolicy::normalizeDateValue(column->type, value);
                     if (!normalized.empty() || value.empty()) {
                         value = normalized;
                     }

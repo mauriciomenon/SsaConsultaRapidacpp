@@ -3692,6 +3692,44 @@ TEST_CASE("external import isolates a duplicate conflict and keeps the sibling w
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
+TEST_CASE("equal window timestamps in different formats are not a conflict") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    // Real case: two SAM families of the same minute wrote the same instant as ISO text and
+    // as dd/mm/yyyy, which rejected the second workbook.
+    const auto workbookWithSince = [](const std::string& since) {
+        return row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Descricao"),
+                       inlineCell("C1", "Data Cadastro"), inlineCell("D1", "Desde")}) +
+               row(2, {inlineCell("A2", "202208810"), inlineCell("B2", "Window"),
+                       inlineCell("C2", "2026-07-14"), inlineCell("D2", since)});
+    };
+    const auto first = inputDirectory / "A_SSA_14-07-2026_0917AM.xlsx";
+    const auto second = inputDirectory / "B_SSA_14-07-2026_0917AM.xlsx";
+    writeWorkbook(first, workbookWithSince("2026-02-06 14:55:07"));
+    writeWorkbook(second, workbookWithSince("06/02/2026 14:55:07"));
+    setLocalModificationTime(first, 2026, 7, 14, 9, 17);
+    setLocalModificationTime(second, 2026, 7, 14, 9, 17);
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+
+    const auto result = port.rescan({ssa::ports::RescanMode::Incremental});
+
+    INFO(result.message);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE(result.message.find("conflicts=0") != std::string::npos);
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarText(db, "SELECT desde FROM ssa_table WHERE numero_ssa='202208810'") ==
+            "2026-02-06 14:55:07");
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
 TEST_CASE("failed incremental rescan reports no workbook as applied") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());

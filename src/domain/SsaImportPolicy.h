@@ -1,5 +1,7 @@
 #pragma once
 
+#include "domain/ColumnCatalog.h"
+
 #include <string>
 #include <unordered_map>
 
@@ -38,6 +40,10 @@ namespace ssa::domain {
         [[nodiscard]] static std::string normalizeNumber(const std::string& value);
         [[nodiscard]] static std::string normalizeDeviationCount(const std::string& value);
         [[nodiscard]] static std::string normalizeDateText(const std::string& value);
+        // Stored form of a date column value: DateTimeText is always "YYYY-MM-DD HH:MM:SS"
+        // (Python parity), DateText keeps ISO as typed. Empty when the value is not a date.
+        [[nodiscard]] static std::string normalizeDateValue(ColumnType type,
+                                                            const std::string& value);
         [[nodiscard]] static std::string normalizeSnapshotTimestamp(const std::string& value);
         [[nodiscard]] static std::string normalizeFilenameTimestamp(const std::string& filename);
         [[nodiscard]] static bool isTerminalStatus(const std::string& status);

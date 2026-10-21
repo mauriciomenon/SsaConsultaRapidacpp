@@ -40,6 +40,35 @@ TEST_CASE("SSA spreadsheet header catalog preserves the Python import contract")
     REQUIRE(deadlineDate->type == ssa::domain::ColumnType::DateText);
 }
 
+TEST_CASE("SSA spreadsheet mapper stores time window bounds as ISO timestamps") {
+    // Python stores desde/ate as "YYYY-MM-DD HH:MM:SS"; raw dd/mm/yyyy text mixed both
+    // formats in one column and made equal instants conflict.
+    ssa::infra::importing::SpreadsheetTable table;
+    table.sourcePath = "SSAs Pendentes com Execucao Parcial_20-10-2026_1127AM.xlsx";
+    table.rows = {{"Numero SSA", "Descricao", "Data Cadastro", "Tempo Disponivel", "Desde", "Ate",
+                   "Tempo Excedido", "Desde", "Ate", "Tempo Total", "Desde", "Ate"},
+                  {"202600001", "Window", "2026-07-14", "1d", "06/02/2026 14:55:07",
+                   "07/02/2026 08:00:00", "2d", "2026-02-08T09:10:11", "sem data", "3d",
+                   "09/02/2026 10:00:00", "2026-02-10"}};
+
+    const auto batch = ssa::infra::importing::SsaSpreadsheetMapper::map(table);
+
+    REQUIRE(batch.mappingStatus == ssa::infra::importing::SpreadsheetMappingStatus::Mapped);
+    REQUIRE(batch.rows.size() == 1);
+    const auto& row = batch.rows.front();
+    REQUIRE(row.at("desde") == "2026-02-06 14:55:07");
+    REQUIRE(row.at("ate") == "2026-02-07 08:00:00");
+    REQUIRE(row.at("desde_1") == "2026-02-08 09:10:11");
+    REQUIRE(row.at("ate_1") == "sem data");
+    REQUIRE(row.at("desde_2") == "2026-02-09 10:00:00");
+    REQUIRE(row.at("ate_2") == "2026-02-10 00:00:00");
+    for (const auto* key : {"desde", "desde_1", "desde_2", "ate", "ate_1", "ate_2"}) {
+        INFO(key);
+        REQUIRE(ssa::domain::ColumnCatalog::find(key)->type ==
+                ssa::domain::ColumnType::DateTimeText);
+    }
+}
+
 TEST_CASE("SSA spreadsheet aliases converge to stable ASCII schema keys") {
     using Catalog = ssa::infra::importing::SsaSpreadsheetHeaderCatalog;
 

@@ -61,6 +61,12 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 - Importacao: um rescan incremental que falha (por exemplo, com uma planilha
   corrompida no lote) nao lista mais as outras planilhas como aplicadas; nada
   e gravado nesse caso, e o resumo agora mostra todas como nao aplicadas.
+- Importacao: as colunas "Desde" e "Ate" (`desde`, `desde_1`, `desde_2`, `ate`,
+  `ate_1`, `ate_2`) passam a ser gravadas como data e hora ISO
+  (`2026-02-06 14:55:07`), como no Python, e sao exibidas com a hora. Antes o
+  texto `dd/mm/aaaa` era gravado como veio, misturando formatos na mesma coluna
+  (ordenacao e filtro errados) e gerando conflito falso entre planilhas do
+  mesmo instante. Valores antigos sao normalizados quando a SSA e reimportada.
 - Importacao que falha ou e cancelada depois de gravar linhas agora atualiza a
   tabela e o analytics, mantendo a mensagem de falha; se a recarga apos uma
   importacao bem-sucedida falhar, o erro da recarga continua visivel em vez de

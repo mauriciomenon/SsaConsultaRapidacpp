@@ -591,6 +591,13 @@ namespace {
                      QString("sem data"));
         }
 
+        void date_time_text_formatter_keeps_the_stored_timestamp() {
+            QCOMPARE(ssa::presentation::SsaRecordValueFormatter::valueFor(
+                         "2026-02-06 14:55:07", ssa::domain::ColumnType::DateTimeText)
+                         .toString(),
+                     QString("2026-02-06 14:55:07"));
+        }
+
         void status_view_model_query_complete_messages_avoid_count_duplication() {
             ssa::presentation::StatusViewModel status;
             // Single page result: generic completion message, no count in the
