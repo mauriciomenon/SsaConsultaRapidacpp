@@ -388,10 +388,30 @@ xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><s
             return std::nullopt;
         }
         const auto source = std::filesystem::path{request.arguments.back()};
-        auto output = outputDirectory / source.stem();
-        output.replace_extension(".xlsx");
-        return FakeConversionPaths{source, std::move(output)};
+        // Like soffice: only the last extension is replaced (a.v1.xls -> a.v1.xlsx).
+        auto name = source.stem();
+        name += ".xlsx";
+        return FakeConversionPaths{source, outputDirectory / name};
     }
+
+    class CopyingConversionRunner final : public ssa::ports::IExternalProcessRunner {
+      public:
+        ssa::ports::ExternalProcessResult run(const ssa::ports::ExternalProcessRequest& request,
+                                              const std::stop_token& = {}) const override {
+            const auto paths = fakeConversionPaths(request);
+            std::error_code error;
+            if (paths) {
+                std::filesystem::copy_file(paths->source, paths->output, error);
+            }
+            return paths && !error
+                       ? ssa::ports::
+                             ExternalProcessResult{ssa::ports::ExternalProcessStatus::Succeeded,
+                                                   0,
+                                                   {}}
+                       : ssa::ports::ExternalProcessResult{
+                             ssa::ports::ExternalProcessStatus::Failed, -1, "copy failed"};
+        }
+    };
 
     class SuccessfulConversionThenCancelRunner final : public ssa::ports::IExternalProcessRunner {
       public:
@@ -1582,6 +1602,39 @@ TEST_CASE("legacy converter treats a configured directory as unavailable") {
 #endif
 
 #ifndef _WIN32
+TEST_CASE("legacy converter keeps dotted source names") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto source = root / "relatorio.v1.xls";
+    const auto destination = root / "output.xlsx";
+    {
+        std::ofstream input(source);
+        input << "source";
+    }
+    const ssa::infra::importing::LegacySpreadsheetConverter converter(
+        writeFakeSoffice(root), std::make_shared<CopyingConversionRunner>());
+
+    const auto result = converter.convertToXlsx({source, destination});
+
+    CAPTURE(result.message, result.diagnostic);
+    REQUIRE(result.status == ssa::infra::importing::LegacySpreadsheetConversionStatus::Succeeded);
+    REQUIRE(readFile(destination) == "source");
+}
+
+TEST_CASE("xlsx reader rejects an invalid shared string reference") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+    const auto workbook = std::filesystem::path{tempDir.path().toStdString()} / "bad-shared.xlsx";
+    writeWorkbook(workbook, row(1, {"<c r=\"A1\" t=\"s\"><v>99</v></c>"}), 0,
+                  R"(<?xml version="1.0" encoding="UTF-8"?>
+<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" uniqueCount="1">
+<si><t>Numero SSA</t></si></sst>)");
+
+    REQUIRE_THROWS_WITH(ssa::infra::importing::XlsxWorkbookReader::readFirstSheet(workbook),
+                        "invalid xlsx shared string index");
+}
+
 TEST_CASE("legacy converter cancellation preserves destination and removes temporary output") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());

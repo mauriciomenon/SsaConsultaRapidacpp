@@ -47,9 +47,10 @@ namespace ssa::infra::importing {
 
         std::filesystem::path generatedXlsxPath(const std::filesystem::path& source,
                                                 const std::filesystem::path& directory) {
-            auto generated = directory / source.stem();
-            generated.replace_extension(".xlsx");
-            return generated;
+            // soffice replaces only the last extension: a.v1.xls -> a.v1.xlsx.
+            auto name = source.stem();
+            name += ".xlsx";
+            return directory / name;
         }
 
     } // namespace

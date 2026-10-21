@@ -310,7 +310,7 @@ namespace ssa::infra::importing {
                     static_cast<std::size_t>(index) < sharedStrings.size()) {
                     return sharedStrings[static_cast<std::size_t>(index)];
                 }
-                return {};
+                throw std::runtime_error("invalid xlsx shared string index");
             }
             if (dateStyle && (type.empty() || type == "n")) {
                 return excelDateValue(rawValue, date1904);
