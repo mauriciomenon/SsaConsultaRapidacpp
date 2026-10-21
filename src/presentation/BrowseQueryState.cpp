@@ -117,8 +117,20 @@ namespace ssa::presentation {
         resetPage();
     }
 
+    namespace {
+        // The SSA number is the row identity used by details, SAM and copy actions.
+        std::vector<std::string> withSsaNumber(std::vector<std::string> columns) {
+            const std::string key{domain::kSsaNumberColumnKey};
+            if (std::ranges::find(columns, key) == columns.end()) {
+                columns.insert(columns.begin(), key);
+            }
+            return columns;
+        }
+    } // namespace
+
     void BrowseQueryState::applyColumnSettings(std::vector<std::string> visibleColumnsValue,
                                                std::map<std::string, int> columnWidthsValue) {
+        visibleColumnsValue = withSsaNumber(std::move(visibleColumnsValue));
         if (visibleColumns_ != visibleColumnsValue) {
             resetPage();
         }
@@ -128,9 +140,9 @@ namespace ssa::presentation {
 
     void BrowseQueryState::applyPreferences(const ports::UserPreferencesSnapshot& snapshot) {
         pageSize_ = static_cast<std::size_t>(domain::clampPageSize(snapshot.pageSize));
-        visibleColumns_ = snapshot.visibleColumns.empty()
-                              ? domain::ColumnCatalog::defaultVisibleKeys()
-                              : snapshot.visibleColumns;
+        visibleColumns_ = withSsaNumber(snapshot.visibleColumns.empty()
+                                            ? domain::ColumnCatalog::defaultVisibleKeys()
+                                            : snapshot.visibleColumns);
         if (domain::ColumnCatalog::contains(snapshot.sortColumnKey)) {
             sort_.columnKey = snapshot.sortColumnKey;
             sort_.ascending = snapshot.sortAscending;

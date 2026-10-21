@@ -445,12 +445,13 @@ namespace {
                 QPointer<QQuickItem> cell;
                 QPointer<QObject> menu;
             };
-            const auto locateHeaderMenu = [&] {
+            const auto locateHeaderMenu = [&](const QString& columnKey =
+                                                  QStringLiteral("numero_ssa")) {
                 QVariant headerCellValue;
                 HeaderMenuHandles handles;
                 if (!QMetaObject::invokeMethod(mainTable, "headerCellForSmoke",
                                                Q_RETURN_ARG(QVariant, headerCellValue),
-                                               Q_ARG(QVariant, QStringLiteral("numero_ssa")))) {
+                                               Q_ARG(QVariant, columnKey))) {
                     return handles;
                 }
                 handles.cell = qobject_cast<QQuickItem*>(qvariant_cast<QObject*>(headerCellValue));
@@ -625,9 +626,11 @@ namespace {
             QVERIFY(QMetaObject::invokeMethod(popup, "close"));
 
             const auto visibleColumnsBeforeHide = viewModel.browse()->visibleColumns().size();
-            QTRY_VERIFY_WITH_TIMEOUT((!(headerHandles = locateHeaderMenu()).cell.isNull() &&
-                                      !headerHandles.menu.isNull()),
-                                     1000);
+            // numero_ssa is the row identity and cannot be hidden; hide another column.
+            QTRY_VERIFY_WITH_TIMEOUT(
+                (!(headerHandles = locateHeaderMenu(QStringLiteral("situacao"))).cell.isNull() &&
+                 !headerHandles.menu.isNull()),
+                1000);
             hideColumnAction =
                 headerHandles.menu->findChild<QQuickItem*>(QStringLiteral("hideColumnAction"));
             QVERIFY(!hideColumnAction.isNull());

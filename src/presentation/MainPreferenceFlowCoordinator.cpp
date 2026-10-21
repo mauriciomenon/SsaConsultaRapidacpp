@@ -156,9 +156,8 @@ namespace ssa::presentation {
     ports::UserPreferencesSnapshot MainPreferenceFlowCoordinator::buildPreferencesSnapshot() const {
         ports::UserPreferencesSnapshot snapshot;
         ui_.writePreferences(snapshot);
+        // Applied columns only: browse_ already wrote them; the column popup draft is not state.
         browse_.writePreferences(snapshot);
-        snapshot.visibleColumns = columns_.visibleKeys();
-        snapshot.columnWidths = columns_.columnWidths();
         snapshot.savedFilters = savedFilters_;
         workflows_.writePreferences(snapshot);
         normalizeFilterPreferences(snapshot.filters);

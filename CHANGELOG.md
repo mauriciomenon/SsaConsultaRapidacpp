@@ -34,6 +34,14 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
   compartilhado invalida e rejeitada em vez de importar a celula vazia.
 - Encerramento de processos externos aguarda 5 s apos o kill forcado; antes
   aguardava 5 ms e podia acusar falha de parada sem motivo.
+- Preferencias: colunas `equipamento`, `descricao_localizacao` e
+  `grau_prioridade_*` escolhidas pelo usuario nao somem mais ao reiniciar; a
+  atualizacao de preferencias salvas nas versoes 12 e 13 nao reaplica mais
+  migracoes antigas sobre colunas e larguras personalizadas.
+- Colunas: `numero_ssa` nao pode mais ser ocultada (ocultar quebrava detalhes,
+  SAM e copia); preferencias antigas sem ela a recebem de volta na primeira
+  posicao. Alteracoes de colunas nao aplicadas no seletor nao sao mais salvas
+  ao trocar o tema ou fechar o aplicativo.
 
 ## 0.9.17 - 2026-08-04
 

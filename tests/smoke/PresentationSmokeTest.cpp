@@ -2260,6 +2260,54 @@ namespace {
             QCOMPARE(preferences->saveCount(), 0);
         }
 
+        void ssa_number_column_cannot_be_hidden() {
+            ssa::ports::UserPreferencesSnapshot initial;
+            initial.visibleColumns = {"situacao", "setor_executor"};
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            auto preferences = std::make_shared<FakePreferences>(initial);
+            ssa::presentation::MainViewModel model(service, commands, preferences);
+
+            model.browse()->load();
+            QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{1}, 1000);
+            QCOMPARE(QString::fromStdString(repository->requests().back().visibleColumns.front()),
+                     QString("numero_ssa"));
+
+            QVERIFY(!model.columns()->setColumnVisibleByKey("numero_ssa", false));
+            bool canHide = true;
+            QMetaObject::invokeMethod(model.columnFlow(), "canHideColumn", qReturnArg(canHide),
+                                      Q_ARG(QString, "numero_ssa"));
+            QVERIFY(!canHide);
+            bool changed = true;
+            QMetaObject::invokeMethod(model.columnFlow(), "setColumnVisibleAndApply",
+                                      qReturnArg(changed), Q_ARG(QString, "numero_ssa"),
+                                      Q_ARG(bool, false));
+            QVERIFY(!changed);
+        }
+
+        void unrelated_preference_save_keeps_applied_columns() {
+            ssa::ports::UserPreferencesSnapshot initial;
+            initial.visibleColumns = {"numero_ssa", "situacao", "setor_executor"};
+            initial.columnWidths = {
+                {"numero_ssa", 140}, {"situacao", 160}, {"setor_executor", 180}};
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            auto preferences = std::make_shared<FakePreferences>(initial);
+            ssa::presentation::MainViewModel model(service, commands, preferences);
+            model.browse()->load();
+            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->tableModel()->rowCount(), 1, 1000);
+
+            QVERIFY(model.columns()->setColumnVisibleByKey("situacao", false));
+            QVERIFY(model.columns()->setColumnWidth("numero_ssa", 230));
+            model.ui()->setTheme("tokyo-night");
+
+            QTRY_COMPARE_WITH_TIMEOUT(preferences->saveCount(), 1, 1000);
+            QCOMPARE(preferences->snapshot().visibleColumns, initial.visibleColumns);
+            QCOMPARE(preferences->snapshot().columnWidths.at("numero_ssa"), 140);
+        }
+
         void theme_preference_is_saved() {
             auto repository = std::make_shared<FakeRepository>();
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);

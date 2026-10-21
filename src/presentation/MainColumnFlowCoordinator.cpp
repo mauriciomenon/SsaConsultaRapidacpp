@@ -68,7 +68,7 @@ namespace ssa::presentation {
         if (currentlyVisible == visible) {
             return false;
         }
-        if (!visible && appliedVisibleKeys.size() <= 1) {
+        if (!visible && !canHideColumn(columnKey)) {
             return false;
         }
 
@@ -109,7 +109,8 @@ namespace ssa::presentation {
     bool MainColumnFlowCoordinator::canHideColumn(const QString& columnKey) const {
         const auto visibleKeys = browse_.visibleColumns();
         const auto key = columnKey.toStdString();
-        return visibleKeys.size() > 1 && std::ranges::find(visibleKeys, key) != visibleKeys.end();
+        return key != domain::kSsaNumberColumnKey && visibleKeys.size() > 1 &&
+               std::ranges::find(visibleKeys, key) != visibleKeys.end();
     }
 
 } // namespace ssa::presentation

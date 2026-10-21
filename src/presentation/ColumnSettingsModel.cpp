@@ -59,7 +59,8 @@ namespace ssa::presentation {
         case WidthRole:
             return column.width;
         case VisibilityChangeEnabledRole:
-            return !column.visible || visibleCount() > 1;
+            return column.key != domain::kSsaNumberColumnKey &&
+                   (!column.visible || visibleCount() > 1);
         default:
             return {};
         }
@@ -102,7 +103,7 @@ namespace ssa::presentation {
             return true;
         }
         const int previousVisibleCount = visibleCount();
-        if (!visible && previousVisibleCount == 1) {
+        if (!visible && (previousVisibleCount == 1 || column.key == domain::kSsaNumberColumnKey)) {
             const auto modelRow = modelRowFromSourceRow(sourceRow);
             if (modelRow >= 0) {
                 emit dataChanged(this->index(modelRow), this->index(modelRow), {VisibleRole});
@@ -249,6 +250,7 @@ namespace ssa::presentation {
                 }
             }
         }
+        visible.insert(std::string{domain::kSsaNumberColumnKey});
 
         std::vector<ColumnItem> reordered;
         reordered.reserve(columns_.size());
