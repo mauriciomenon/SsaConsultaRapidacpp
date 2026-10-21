@@ -64,23 +64,27 @@ Window {
                     }
                 }
 
-                TextArea {
-                    id: eventDetail
-                    objectName: "logHistoryDetail"
+                // Long diagnostics must scroll instead of being cut at the bottom.
+                ScrollView {
                     SplitView.fillWidth: true
-                    text: eventList.currentIndex >= 0 ? root.viewModel.logs.entryText(eventList.currentIndex) : ""
-                    readOnly: true
-                    selectByMouse: true
-                    wrapMode: TextEdit.Wrap
-                    color: Theme.text
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontSizeBody
-                    padding: 10
-                    background: Rectangle {
-                        color: Theme.panelRaised
-                        border.color: Theme.border
-                        border.width: 1
-                        radius: Theme.radius
+
+                    TextArea {
+                        id: eventDetail
+                        objectName: "logHistoryDetail"
+                        text: eventList.currentIndex >= 0 ? root.viewModel.logs.entryText(eventList.currentIndex) : ""
+                        readOnly: true
+                        selectByMouse: true
+                        wrapMode: TextEdit.Wrap
+                        color: Theme.text
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontSizeBody
+                        padding: 10
+                        background: Rectangle {
+                            color: Theme.panelRaised
+                            border.color: Theme.border
+                            border.width: 1
+                            radius: Theme.radius
+                        }
                     }
                 }
             }

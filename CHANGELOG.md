@@ -77,6 +77,8 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
   selecao descia para fora da area visivel.
 - Analytics: falha ao exportar grafico ou CSV (PNG, SVG, CSV, zeros em CSV)
   aparece no aviso de erro da janela; antes nada era mostrado.
+- Historico de logs: mensagens longas no painel de detalhe passam a rolar; antes
+  o final era cortado.
 - Importacao que falha ou e cancelada depois de gravar linhas agora atualiza a
   tabela e o analytics, mantendo a mensagem de falha; se a recarga apos uma
   importacao bem-sucedida falhar, o erro da recarga continua visivel em vez de

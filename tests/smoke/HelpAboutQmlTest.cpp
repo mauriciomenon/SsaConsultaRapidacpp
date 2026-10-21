@@ -5,6 +5,7 @@
 #include "application/ActivityAnalyticsService.h"
 #include "ports/IActivityAnalyticsPort.h"
 #include "presentation/MainViewModel.h"
+#include "presentation/RecentLogModel.h"
 #include "query/SsaQueryService.h"
 
 #include <QClipboard>
@@ -17,6 +18,7 @@
 #include <QPointer>
 #include <QQmlAbstractUrlInterceptor>
 #include <QQmlComponent>
+#include <QQmlContext>
 #include <QQmlEngine>
 #include <QQuickItem>
 #include <QQuickWindow>
@@ -175,6 +177,68 @@ namespace {
             const QUrl themeUrl = QUrl::fromLocalFile(
                 repositoryRoot().filePath(QStringLiteral("app/desktop/qml/Theme.qml")));
             QVERIFY(qmlRegisterSingletonType(themeUrl, "SsaConsultaRapida", 1, 0, "Theme") >= 0);
+        }
+
+        void log_history_detail_scrolls_long_messages() {
+            ssa::presentation::RecentLogModel logs;
+            QStringList longDetail;
+            for (int line = 0; line < 300; ++line) {
+                longDetail << QStringLiteral("linha %1").arg(line);
+            }
+            logs.append(QStringLiteral("Error"), QStringLiteral("Workflow"),
+                        QStringLiteral("Falha longa"), longDetail.join('\n'));
+            SourceQmlUrlInterceptor sourceInterceptor;
+            QQmlEngine engine;
+            engine.addUrlInterceptor(&sourceInterceptor);
+            engine.addImportPath(QStringLiteral(SSA_BUILD_DIR));
+            engine.rootContext()->setContextProperty(QStringLiteral("testLogs"), &logs);
+            QQmlComponent fakeComponent(&engine);
+            fakeComponent.setData(R"QML(
+                import QtQuick
+
+                QtObject {
+                    property var logs: testLogs
+                    function copyTextToClipboard(text) {}
+                }
+            )QML",
+                                  QUrl(QStringLiteral("inmemory:/FakeLogViewModel.qml")));
+            QTRY_VERIFY_WITH_TIMEOUT(fakeComponent.status() != QQmlComponent::Loading, 1000);
+            QVERIFY2(fakeComponent.isReady(), qPrintable(fakeComponent.errorString()));
+            std::unique_ptr<QObject> fake(fakeComponent.create());
+            QVERIFY2(fake != nullptr, qPrintable(fakeComponent.errorString()));
+            const QDir components(
+                repositoryRoot().filePath(QStringLiteral("app/desktop/qml/components")));
+            QQmlComponent component(&engine, QUrl::fromLocalFile(components.filePath(
+                                                 QStringLiteral("LogHistoryDialog.qml"))));
+            QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+            std::unique_ptr<QObject> dialog(component.createWithInitialProperties(
+                {{QStringLiteral("viewModel"), QVariant::fromValue(fake.get())}}));
+            QVERIFY2(dialog != nullptr, qPrintable(component.errorString()));
+            auto* window = qobject_cast<QQuickWindow*>(dialog.get());
+            QVERIFY(window != nullptr);
+            window->show();
+            QTRY_VERIFY_WITH_TIMEOUT(window->isExposed(), 1000);
+
+            auto* detail = dialog->findChild<QQuickItem*>(QStringLiteral("logHistoryDetail"));
+            QVERIFY(detail != nullptr);
+            QTRY_VERIFY_WITH_TIMEOUT(
+                detail->property("text").toString().contains(QStringLiteral("linha 299")), 1000);
+            QQuickItem* flickable = nullptr;
+            for (auto* parent = detail->parentItem(); parent != nullptr;
+                 parent = parent->parentItem()) {
+                if (QString::fromLatin1(parent->metaObject()->className())
+                        .startsWith(QStringLiteral("QQuickFlickable"))) {
+                    flickable = parent;
+                    break;
+                }
+            }
+            QVERIFY2(flickable != nullptr, "the log detail must sit in a scrollable view");
+            QTRY_VERIFY_WITH_TIMEOUT(
+                flickable->property("contentHeight").toReal() > flickable->height(), 1000);
+            const qreal bottom =
+                flickable->property("contentHeight").toReal() - flickable->height();
+            QVERIFY(flickable->setProperty("contentY", bottom));
+            QVERIFY(flickable->property("contentY").toReal() > 0);
         }
 
         void help_dialog_exposes_cpp_query_contract() {
