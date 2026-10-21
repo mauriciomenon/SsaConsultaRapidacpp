@@ -67,6 +67,9 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
   texto `dd/mm/aaaa` era gravado como veio, misturando formatos na mesma coluna
   (ordenacao e filtro errados) e gerando conflito falso entre planilhas do
   mesmo instante. Valores antigos sao normalizados quando a SSA e reimportada.
+- Importacao: nomes de arquivo com data ISO e hora (ex.: `SSA_2026-07-15T10.00`)
+  passam a considerar a hora; antes duas exportacoes do mesmo dia valiam como
+  o mesmo instante e podiam gerar conflito falso.
 - Importacao que falha ou e cancelada depois de gravar linhas agora atualiza a
   tabela e o analytics, mantendo a mensagem de falha; se a recarga apos uma
   importacao bem-sucedida falhar, o erro da recarga continua visivel em vez de

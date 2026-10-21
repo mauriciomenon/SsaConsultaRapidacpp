@@ -270,6 +270,22 @@ namespace ssa::domain {
                     }
                 }
             }
+            // ISO date with hour before the date-only form, which would otherwise hide it.
+            if (text.size() >= 16 && dateSeparator(text[4]) && dateSeparator(text[7]) &&
+                (text[10] == ' ' || text[10] == 'T')) {
+                const std::size_t hourLength = (text[12] == ':' || text[12] == '.') ? 1 : 2;
+                const auto separator = 11 + hourLength;
+                const auto minute = separator + 1;
+                const bool minuteEnds =
+                    text.size() <= minute + 2 ||
+                    std::isdigit(static_cast<unsigned char>(text[minute + 2])) == 0;
+                if (text.size() >= minute + 2 &&
+                    (text[separator] == ':' || text[separator] == '.') && minuteEnds) {
+                    if (auto timestamp = parseTimestamp({0, 5, 8, 11, hourLength, minute})) {
+                        return timestamp;
+                    }
+                }
+            }
             if (text.size() >= 10 && dateSeparator(text[4]) && dateSeparator(text[7])) {
                 const auto year = parsePart(text.substr(0, 4));
                 const auto month = parsePart(text.substr(5, 2));
@@ -279,16 +295,6 @@ namespace ssa::domain {
                     if (validTimestamp(timestamp)) {
                         return timestamp;
                     }
-                }
-            }
-            if (text.size() >= 16 && dateSeparator(text[4]) && dateSeparator(text[7]) &&
-                (text[10] == ' ' || text[10] == 'T')) {
-                const std::size_t hourLength = (text[12] == ':' || text[12] == '.') ? 1 : 2;
-                const auto separator = 11 + hourLength;
-                const auto minute = separator + 1;
-                if (text.size() >= minute + 2 &&
-                    (text[separator] == ':' || text[separator] == '.')) {
-                    return parseTimestamp({0, 5, 8, 11, hourLength, minute});
                 }
             }
             return std::nullopt;

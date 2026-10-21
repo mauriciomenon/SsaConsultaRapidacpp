@@ -229,6 +229,37 @@ TEST_CASE("SSA import parses date-only source filenames") {
             "2026-07-15 00:00:00");
 }
 
+TEST_CASE("SSA import keeps the hour of ISO timestamps in source filenames") {
+    using Policy = ssa::domain::SsaImportPolicy;
+    REQUIRE(Policy::normalizeFilenameTimestamp("SSA_2026-07-15T10.00.xlsx") ==
+            "2026-07-15 10:00:00");
+    REQUIRE(Policy::normalizeFilenameTimestamp("SSA_2026-07-15T11.30.xlsx") ==
+            "2026-07-15 11:30:00");
+    REQUIRE(Policy::normalizeFilenameTimestamp("SSA_2026-07-15 09:05.xlsx") ==
+            "2026-07-15 09:05:00");
+    // An invalid hour, or digits that continue past the minutes, still fall back to the date.
+    REQUIRE(Policy::normalizeFilenameTimestamp("SSA_2026-07-15T25.00.xlsx") ==
+            "2026-07-15 00:00:00");
+    REQUIRE(Policy::normalizeFilenameTimestamp("SSAs 2026-07-15 12.3456.xlsx") ==
+            "2026-07-15 00:00:00");
+
+    // Exports of the same day, one hour apart: the later one wins without a conflict.
+    using Values = Policy::Values;
+    const Values morning{{"numero_ssa", "202600035"},
+                         {"descricao_ssa", "Morning"},
+                         {"situacao", "APV"},
+                         {"arquivo_origem", "SSA_2026-07-15T10.00.xlsx"}};
+    auto later = morning;
+    later["descricao_ssa"] = "Later";
+    later["arquivo_origem"] = "SSA_2026-07-15T11.00.xlsx";
+    const auto newerIncoming = Policy::merge(morning, later);
+    const auto olderIncoming = Policy::merge(later, morning);
+    REQUIRE_FALSE(newerIncoming.conflict);
+    REQUIRE(newerIncoming.values.at("descricao_ssa") == "Later");
+    REQUIRE_FALSE(olderIncoming.conflict);
+    REQUIRE(olderIncoming.values.at("descricao_ssa") == "Later");
+}
+
 TEST_CASE("SSA import parses a valid timestamp after numeric filename noise") {
     std::string filename(4096, '7');
     filename += "_2026-07-15.xlsx";
