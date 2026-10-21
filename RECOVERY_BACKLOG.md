@@ -20,6 +20,13 @@
 - [PENDING] Paginacao SAM acima de 200 e single-flight entre processos exigem
   contrato externo real.
 - [PENDING] Confirmar paridade intencional de hifen inicial e negacao Python.
+- [FEATURE] [SAM-LEGACY-IMPORT] Importar o relatorio SAM "SSAs Legadas"
+  (arquivos `SAAs_*.xlsx`, cerca de 2.000 SSAs de 1990 em diante). Hoje ele e
+  ignorado como familia conhecida, igual ao Python. Precisa de: numero
+  alfanumerico (`199013350A`) aceito no dominio, mapeamento proprio
+  (`Data de emissao`, `Descricao na emissao`, `Hxh esperado`/`Hxh executada`,
+  `Semana de conclusao`, `Classificacao`, `Atividade relevante`) e decisao de
+  produto sobre exibir SSAs legadas junto das atuais.
 - [P1] Impedir troca e persistencia acidental do tema pelo botao circular;
   `ssa-dark` permanece intacto e pode ser selecionado em Preferencias.
 

@@ -49,6 +49,10 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
   a planilha inteira era rejeitada, e "SSAs com Reprogramacoes" nunca
   atualizava o banco. Conflito entre planilhas diferentes do mesmo instante
   continua rejeitado.
+- Importacao: o relatorio SAM "SSAs Legadas" (`SAAs_*.xlsx`) passa a ser
+  ignorado como familia conhecida, como no Python; antes aparecia como
+  planilha rejeitada por falta de colunas. A importacao dessas SSAs fica para
+  uma versao futura.
 - Importacao que falha ou e cancelada depois de gravar linhas agora atualiza a
   tabela e o analytics, mantendo a mensagem de falha; se a recarga apos uma
   importacao bem-sucedida falhar, o erro da recarga continua visivel em vez de

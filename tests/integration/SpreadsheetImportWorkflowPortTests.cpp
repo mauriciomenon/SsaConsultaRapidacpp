@@ -7503,6 +7503,44 @@ TEST_CASE("ignored workbook summary preserves source and current global status")
     requireClassificationMessage(result);
 }
 
+TEST_CASE("incremental rescan ignores the SAM legacy SSA report") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    // "SSAs Legadas": own layout with alphanumeric numbers, not imported yet (backlog).
+    const auto workbook = inputDirectory / "SAAs_29-09-2026_1054AM.xlsx";
+    writeWorkbook(
+        workbook,
+        row(1, {inlineCell("C1", "SSAs Legadas")}) +
+            row(2, {inlineCell("A2", "Numero SSA"), inlineCell("B2", "Localizacao"),
+                    inlineCell("C2", "Data de emissao"), inlineCell("D2", "Situacao"),
+                    inlineCell("E2", "Descricao na emissao"), inlineCell("F2", "Hxh esperado"),
+                    inlineCell("G2", "Descricao da execucao"), inlineCell("H2", "Hxh executada")}) +
+            row(3, {inlineCell("A3", "199013350A"), inlineCell("B3", "Z99*00"),
+                    inlineCell("C3", "27/09/1990 00:00:00"), inlineCell("D3", "STE"),
+                    inlineCell("E3", "Legacy study"), inlineCell("F3", "1x1"),
+                    inlineCell("G3", "Legacy execution"), inlineCell("H3", "10.00")}));
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+
+    const auto result = port.rescan({ssa::ports::RescanMode::Incremental});
+
+    INFO(result.message);
+    REQUIRE(result.importSummary.has_value());
+    const auto& summary = *result.importSummary;
+    REQUIRE(summary.ignored == 1);
+    REQUIRE(summary.rejected == 0);
+    REQUIRE(summary.files.size() == 1);
+    REQUIRE(summary.files.front().status == ssa::ports::ImportFileStatus::Ignored);
+    REQUIRE(summary.files.front().reason == "header_not_recognized");
+    REQUIRE(std::filesystem::exists(workbook));
+}
+
 TEST_CASE("incremental rescan publishes valid files and preserves a later ignored workbook") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());

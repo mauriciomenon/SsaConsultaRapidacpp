@@ -206,30 +206,6 @@ namespace ssa::infra::importing {
         static_assert(!hasConflictingAliases(),
                       "normalized spreadsheet aliases must have one canonical destination");
 
-        std::string normalizedHeader(const std::string_view value) {
-            const QString text =
-                QString::fromUtf8(value.data(), static_cast<qsizetype>(value.size()))
-                    .normalized(QString::NormalizationForm_KD);
-            QString output;
-            output.reserve(text.size());
-            bool previousSpace = false;
-            for (const auto ch : text) {
-                if (ch.category() == QChar::Mark_NonSpacing) {
-                    continue;
-                }
-                if (ch.isSpace()) {
-                    if (!previousSpace) {
-                        output.push_back(' ');
-                    }
-                    previousSpace = true;
-                    continue;
-                }
-                output.push_back(ch.toLower());
-                previousSpace = false;
-            }
-            return output.trimmed().toStdString();
-        }
-
         const std::unordered_map<std::string, std::string>& headerAliases() {
             static const auto aliases = [] {
                 std::unordered_map<std::string, std::string> values;
@@ -241,8 +217,9 @@ namespace ssa::infra::importing {
                         throw std::logic_error(
                             "spreadsheet alias has an invalid canonical destination");
                     }
-                    auto [found, inserted] =
-                        values.try_emplace(normalizedHeader(alias.header), alias.canonical);
+                    auto [found, inserted] = values.try_emplace(
+                        SsaSpreadsheetHeaderCatalog::normalizedHeader(alias.header),
+                        alias.canonical);
                     if (!inserted && found->second != alias.canonical) {
                         throw std::logic_error(
                             "normalized spreadsheet alias has conflicting destinations");
@@ -254,6 +231,29 @@ namespace ssa::infra::importing {
         }
 
     } // namespace
+
+    std::string SsaSpreadsheetHeaderCatalog::normalizedHeader(const std::string_view header) {
+        const QString text = QString::fromUtf8(header.data(), static_cast<qsizetype>(header.size()))
+                                 .normalized(QString::NormalizationForm_KD);
+        QString output;
+        output.reserve(text.size());
+        bool previousSpace = false;
+        for (const auto ch : text) {
+            if (ch.category() == QChar::Mark_NonSpacing) {
+                continue;
+            }
+            if (ch.isSpace()) {
+                if (!previousSpace) {
+                    output.push_back(' ');
+                }
+                previousSpace = true;
+                continue;
+            }
+            output.push_back(ch.toLower());
+            previousSpace = false;
+        }
+        return output.trimmed().toStdString();
+    }
 
     std::optional<std::string>
     SsaSpreadsheetHeaderCatalog::canonicalColumnForHeader(const std::string& header) {

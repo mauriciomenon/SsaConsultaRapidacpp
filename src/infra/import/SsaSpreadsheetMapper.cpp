@@ -284,17 +284,19 @@ namespace ssa::infra::importing {
         }
 
         bool isRelationCategoryHeader(const std::string& header) {
-            const auto decomposed =
-                QString::fromUtf8(header.data(), static_cast<qsizetype>(header.size()))
-                    .normalized(QString::NormalizationForm_KD);
-            QString folded;
-            folded.reserve(decomposed.size());
-            for (const auto character : decomposed) {
-                if (character.category() != QChar::Mark_NonSpacing) {
-                    folded.push_back(character.toLower());
-                }
-            }
-            return folded.trimmed() == "categoria" || folded.trimmed() == "category";
+            const auto folded = SsaSpreadsheetHeaderCatalog::normalizedHeader(header);
+            return folded == "categoria" || folded == "category";
+        }
+
+        // SAM "SSAs Legadas" report: its own layout with alphanumeric SSA numbers. It is a
+        // known family that is not imported yet (RECOVERY_BACKLOG SAM-LEGACY-IMPORT).
+        bool isSamLegacyReport(const std::vector<std::string>& header) {
+            const auto hasHeader = [&header](const std::string_view wanted) {
+                return std::ranges::any_of(header, [wanted](const std::string& cell) {
+                    return SsaSpreadsheetHeaderCatalog::normalizedHeader(cell) == wanted;
+                });
+            };
+            return hasHeader("hxh esperado") && hasHeader("descricao na emissao");
         }
 
         bool isSamApiReport(const std::vector<std::string>& header) {
@@ -349,7 +351,7 @@ namespace ssa::infra::importing {
             return batch;
         }
         const auto& header = hasExternalHeader ? table.headerRow : table.rows[*headerIndex];
-        if (isSamApiReport(header)) {
+        if (isSamApiReport(header) || isSamLegacyReport(header)) {
             batch.mappingStatus = SpreadsheetMappingStatus::HeaderNotRecognized;
             batch.skippedRows =
                 hasExternalHeader ? table.rows.size() : table.rows.size() - *headerIndex - 1;
