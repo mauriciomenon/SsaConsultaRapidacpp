@@ -74,11 +74,15 @@ namespace {
             }
             ++writeCalls;
             value = days;
+            if (cancelAfterCommit != nullptr) {
+                cancelAfterCommit->request_stop();
+            }
         }
 
         mutable int readCalls{0};
         int writeCalls{0};
         std::optional<int> value;
+        std::stop_source* cancelAfterCommit{nullptr};
     };
 
     AnalyticsPeriod period() {
@@ -295,4 +299,18 @@ TEST_CASE("activity analytics service handles unavailable and canceled warning s
     CHECK_THROWS_AS(service.setWarningWindowDays(7, stopSource.get_token()), std::system_error);
     CHECK(settings->readCalls == 0);
     CHECK(settings->writeCalls == 0);
+}
+
+TEST_CASE("activity analytics service reports a warning setting committed before a late cancel") {
+    auto port = std::make_shared<RecordingAnalyticsPort>();
+    auto settings = std::make_shared<RecordingAnalyticsSettingsPort>();
+    const ssa::application::ActivityAnalyticsService service(port, settings);
+    std::stop_source stopSource;
+    settings->cancelAfterCommit = &stopSource;
+
+    CHECK_NOTHROW(service.setWarningWindowDays(7, stopSource.get_token()));
+
+    CHECK(stopSource.stop_requested());
+    CHECK(settings->writeCalls == 1);
+    CHECK(settings->value == std::optional<int>{7});
 }

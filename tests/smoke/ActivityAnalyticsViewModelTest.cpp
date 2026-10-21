@@ -518,6 +518,37 @@ namespace {
             QVERIFY(model.customSeries().isEmpty());
         }
 
+        void warningWindowSaveCommittedBeforeCancelIsPublishedNotCanceled() {
+            struct Gate final {
+                std::atomic_int saved{-1};
+            };
+            const auto gate = std::make_shared<Gate>();
+            auto settings = std::make_shared<FunctionalSettingsPort>();
+            settings->saveFunction = [gate](const int days, const std::stop_token& token) {
+                gate->saved = days;
+                // The value is committed; the cancel request only arrives afterwards.
+                while (!token.stop_requested()) {
+                    QThread::msleep(1);
+                }
+            };
+            auto port = std::make_shared<FunctionalAnalyticsPort>();
+            ssa::presentation::ActivityAnalyticsViewModel model(serviceFor(port, settings));
+            QSignalSpy canceledSpy(&model,
+                                   &ssa::presentation::ActivityAnalyticsViewModel::canceled);
+            QSignalSpy succeededSpy(&model,
+                                    &ssa::presentation::ActivityAnalyticsViewModel::succeeded);
+
+            QVERIFY(model.saveWarningWindowDays(21));
+            QTRY_COMPARE_WITH_TIMEOUT(gate->saved.load(), 21, 1000);
+            model.cancel();
+
+            QTRY_VERIFY_WITH_TIMEOUT(!model.loading(), 1000);
+            QCOMPARE(canceledSpy.count(), 0);
+            QCOMPARE(succeededSpy.count(), 1);
+            QCOMPARE(model.warningWindowDays().toInt(), 21);
+            QVERIFY(model.errorMessage().isEmpty());
+        }
+
         void terminalSignalsNeverExposeCancelableWithoutActiveWork() {
             auto port = std::make_shared<FunctionalAnalyticsPort>();
             ssa::presentation::ActivityAnalyticsViewModel model(serviceFor(port));

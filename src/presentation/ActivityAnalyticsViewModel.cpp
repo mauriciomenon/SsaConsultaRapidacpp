@@ -983,8 +983,13 @@ namespace ssa::presentation {
                                 operation.generation == generation_;
         std::optional<bool> warningWindowLoadSucceeded;
         if (mayPublish) {
-            const bool canceledOperation = operation.explicitlyCanceled || taskCanceled ||
-                                           operation.stopSource.stop_requested();
+            // A save that returned a result committed its value; a cancel arriving
+            // after the commit must publish the saved value, not report canceled.
+            const bool committedSave =
+                operation.kind == RequestKind::WarningWindowSave && result.has_value();
+            const bool canceledOperation =
+                !committedSave && (operation.explicitlyCanceled || taskCanceled ||
+                                   operation.stopSource.stop_requested());
             if (canceledOperation) {
                 setErrorMessage({});
                 setState(false, false);

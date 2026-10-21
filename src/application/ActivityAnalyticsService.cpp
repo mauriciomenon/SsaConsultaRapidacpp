@@ -114,8 +114,9 @@ namespace ssa::application {
         if (!settingsPort_) {
             throw std::logic_error("activity analytics settings port is unavailable");
         }
+        // The port returns only after its commit; a cancel arriving later must not
+        // hide a value that is already persisted.
         settingsPort_->setWarningWindowDays(days, stopToken);
-        throwIfCanceled(stopToken);
     }
 
     ActivityAnalyticsDashboard ActivityAnalyticsService::loadDashboard(

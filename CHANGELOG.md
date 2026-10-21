@@ -96,6 +96,8 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 - Importacao: selecionar de novo uma planilha depois de um fechamento inesperado
   no meio da consolidacao nao falha mais com "cannot inspect pending recovery
   source"; a recuperacao conclui a movimentacao pendente e a planilha e importada.
+- Analytics: cancelar logo depois de salvar a janela de alerta (dias) nao mostra
+  mais "cancelado" com o valor antigo; o valor ja gravado aparece como salvo.
 
 ### Alterado
 
