@@ -11,7 +11,7 @@ string(TIMESTAMP started "%s" UTC)
 execute_process(
   COMMAND
     "${CMAKE_COMMAND}" -E env QT_QPA_PLATFORM=offscreen
-    QT_QUICK_CONTROLS_STYLE=Basic "${APP}" --db
+    QT_QUICK_CONTROLS_STYLE=Basic "${APP}" --project-root "${WORK_DIR}" --db
     "${WORK_DIR}/missing-database/ssas.db" --config-dir "${WORK_DIR}/config"
     --screenshot "${screenshot}" --open-details-window
   RESULT_VARIABLE result
