@@ -2939,6 +2939,65 @@ TEST_CASE("external import does not repeat a selected source recovered from stag
                       "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600216'") == 1);
 }
 
+TEST_CASE("external import reselects a file whose journal source was already moved") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto sourceDirectory = root / "external";
+    const auto inputDirectory = root / "docs_entrada";
+    const auto processedDirectory = inputDirectory / "processadas";
+    const auto dbPath = root / "data" / "ssas.db";
+    const auto source = sourceDirectory / "selected.xlsx";
+    std::filesystem::create_directories(sourceDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    writeWorkbook(
+        source,
+        row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao")}) +
+            row(2, {inlineCell("A2", "202600219"), inlineCell("B2", "ASE"),
+                    inlineCell("C2", "Moved before crash"), inlineCell("D2", "2026-07-18")}));
+
+    const ssa::infra::importing::ImportFileStager stager(inputDirectory);
+    const auto staged = stager.stageExternalFiles({source});
+    REQUIRE(staged.files.size() == 1);
+    const ssa::infra::importing::ImportFileConsolidator consolidator(inputDirectory);
+    const auto plan = consolidator.plan({{staged.files.front().consolidationSources, true,
+                                          staged.files.front().consolidationFilename}});
+    REQUIRE(plan.error.empty());
+    REQUIRE(plan.entries.size() == 1);
+    REQUIRE(plan.entries.front().moves.size() == 1);
+
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(sqliteWriterAccess(), dbPath,
+                                                           importColumns());
+    auto session = writer.startSession(false);
+    session.recordConsolidation(plan.entries.front().moves);
+    static_cast<void>(session.finish());
+    // Crash after the move but before the journal cleanup: source is gone.
+    const auto& move = plan.entries.front().moves.front();
+    std::filesystem::create_directories(move.destination.parent_path());
+    std::filesystem::rename(move.source, move.destination);
+    REQUIRE_FALSE(std::filesystem::exists(move.source));
+
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+    const auto result = port.importExternalFiles({.files = {source}});
+
+    INFO(result.message);
+    INFO(result.diagnostic);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE_FALSE(result.warning);
+    REQUIRE(std::filesystem::exists(source));
+    REQUIRE(directWorkbookCount(inputDirectory) == 0);
+    REQUIRE(directWorkbookCount(processedDirectory) == 2);
+    REQUIRE(writer.pendingConsolidation().empty());
+    ssa::infra::sqlite::SqliteConnection verification(dbPath,
+                                                      ssa::infra::sqlite::SqliteOpenMode::ReadOnly);
+    REQUIRE(scalarText(verification.handle(), "PRAGMA integrity_check") == "ok");
+    REQUIRE(scalarInt(verification.handle(),
+                      "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600219'") == 1);
+}
+
 TEST_CASE("external import continues a changed selected source after staged journal recovery") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());

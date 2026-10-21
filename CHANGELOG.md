@@ -93,6 +93,9 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 - Analytics: trocar pessoas ou a ordenacao com uma analise customizada em
   andamento descarta o resultado antigo; antes o grafico da selecao anterior
   aparecia como se fosse o novo e o botao Analisar ficava bloqueado ate ele chegar.
+- Importacao: selecionar de novo uma planilha depois de um fechamento inesperado
+  no meio da consolidacao nao falha mais com "cannot inspect pending recovery
+  source"; a recuperacao conclui a movimentacao pendente e a planilha e importada.
 
 ### Alterado
 

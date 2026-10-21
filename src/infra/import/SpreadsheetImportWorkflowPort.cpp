@@ -83,6 +83,11 @@ namespace ssa::infra::importing {
                 return FileContentsComparison::Failed;
             }
             const auto secondSize = std::filesystem::file_size(second, error);
+            if (error == std::errc::no_such_file_or_directory) {
+                // A pending source already moved by a crashed consolidation cannot be a
+                // duplicate of the selected file; the journal resume completes that move.
+                return FileContentsComparison::Different;
+            }
             if (error) {
                 diagnostic = "cannot inspect pending recovery source";
                 return FileContentsComparison::Failed;
