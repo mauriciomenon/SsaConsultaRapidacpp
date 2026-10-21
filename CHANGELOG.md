@@ -88,6 +88,8 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
   desvios; antes a contagem real ("Numero de Desvios") era trocada por 1 (180
   SSAs no acervo real). Texto legado "Desvio #N" no banco vira vazio quando a
   SSA e reimportada.
+- CLI: falha ao escrever a listagem ou os detalhes na saida (disco cheio, erro
+  de escrita) sai com codigo 1 e "error: cannot write output"; antes saia com 0.
 - Importacao que falha ou e cancelada depois de gravar linhas agora atualiza a
   tabela e o analytics, mantendo a mensagem de falha; se a recarga apos uma
   importacao bem-sucedida falhar, o erro da recarga continua visivel em vez de

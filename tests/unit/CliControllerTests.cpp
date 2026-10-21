@@ -334,6 +334,40 @@ TEST_CASE("cli accepts --cols as alias for --columns") {
     REQUIRE(exitCode == 0);
 }
 
+TEST_CASE("cli fails when the listing cannot be written to stdout") {
+    // Like a full disk or a closed pipe: every write fails.
+    struct FailingBuffer final : std::streambuf {
+        int_type overflow(int_type) override {
+            return traits_type::eof();
+        }
+    } failing;
+    const auto browse =
+        std::make_shared<ssa::application::SsaBrowseService>(std::make_shared<UnusedBrowsePort>());
+    const auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(nullptr);
+    const ssa::app::cli::SsaCliController controller{
+        [browse](const std::filesystem::path&) { return browse; },
+        [workflows] { return workflows; },
+        [workflows](const std::filesystem::path&, const std::filesystem::path&) {
+            return workflows;
+        }};
+    const auto databasePath = existingDatabaseArgument();
+    StderrCapture stderrCapture;
+    int exitCode = 0;
+    {
+        struct StdoutSwap final {
+            std::streambuf* previous;
+            ~StdoutSwap() {
+                std::cout.rdbuf(previous);
+                std::cout.clear();
+            }
+        } swap{std::cout.rdbuf(&failing)};
+        exitCode = controller.run({"ssa", "--db", databasePath.c_str()});
+    }
+
+    CHECK(exitCode == 1);
+    CHECK(stderrCapture.text().find("cannot write output") != std::string::npos);
+}
+
 TEST_CASE("cli passes display labels explicitly to csv export") {
     const auto browse =
         std::make_shared<ssa::application::SsaBrowseService>(std::make_shared<UnusedBrowsePort>());

@@ -26,6 +26,17 @@
 
 namespace {
 
+    // Exit code of a command that printed its result: a failed write (full disk, I/O error) must
+    // not look like success. A closed pipe already ends the process with SIGPIPE.
+    int outputExitCode() {
+        std::cout.flush();
+        if (std::cout) {
+            return 0;
+        }
+        std::cerr << "error: cannot write output\n";
+        return 1;
+    }
+
     void configureParser(QCommandLineParser& parser) {
         parser.setApplicationDescription("SSA Consulta Rapida CLI");
         parser.addHelpOption();
@@ -283,7 +294,7 @@ namespace ssa::app::cli {
             return 1;
         }
         SsaCliPrinter{std::cout}.printDetails(*record);
-        return 0;
+        return outputExitCode();
     }
 
     int SsaCliController::runPage(const QCommandLineParser& parser,
@@ -294,7 +305,7 @@ namespace ssa::app::cli {
 
         const auto page = browse.page(request);
         SsaCliPrinter{std::cout}.printPage(page, outputColumns);
-        return 0;
+        return outputExitCode();
     }
 
     int SsaCliController::runWorkflow(const QCommandLineParser& parser,
