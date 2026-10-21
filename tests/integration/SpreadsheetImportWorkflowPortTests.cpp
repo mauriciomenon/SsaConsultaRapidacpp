@@ -8016,6 +8016,50 @@ TEST_CASE("import keeps and logs the first row of an SSA repeated in the same sh
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
+TEST_CASE("reprogramming report row label does not overwrite the reprogramming count") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    // An older "SSAs Executadas" export stored the real count.
+    ssa::infra::importing::ResolvedSsaImportRows seedRows;
+    seedRows.rows.push_back({{"numero_ssa", "202208352"},
+                             {"descricao_ssa", "Rescheduled"},
+                             {"data_cadastro", "2026-07-14"},
+                             {"num_reprogramacoes", "3"},
+                             {"arquivo_origem", "SSAs Executadas_19-10-2026_0900AM.xlsx"}});
+    const ssa::infra::sqlite::SqliteSsaImportWriter seedWriter(sqliteWriterAccess(), dbPath,
+                                                               importColumns());
+    REQUIRE(seedWriter.write(seedRows, 1, 0, false).rowsWritten == 1);
+    // The reprogramming report lists one row per event: "#1" carries the total, the
+    // continuation rows have no SSA number.
+    writeWorkbook(inputDirectory / "SSAscomReprogramacoes_20-10-2026_1131AM.xlsx",
+                  row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Descricao"),
+                          inlineCell("C1", "Data Cadastro"), inlineCell("D1", "Reprogramacoes"),
+                          inlineCell("E1", "Total de Reprogramacoes")}) +
+                      row(2, {inlineCell("A2", "202208352"), inlineCell("B2", "Rescheduled"),
+                              inlineCell("C2", "2026-07-14"), inlineCell("D2", "Reprogramacao #1"),
+                              inlineCell("E2", "3")}) +
+                      row(3, {inlineCell("D3", "Reprogramacao #2"), inlineCell("E3", "0")}));
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+
+    const auto result = port.rescan({ssa::ports::RescanMode::Incremental});
+
+    INFO(result.message);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarText(db, "SELECT num_reprogramacoes FROM ssa_table "
+                           "WHERE numero_ssa='202208352'") == "3");
+    REQUIRE(scalarText(db, "SELECT total_de_reprogramacoes FROM ssa_table "
+                           "WHERE numero_ssa='202208352'") == "3");
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
 TEST_CASE("full rescan names the workbook that holds a duplicate conflict") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());

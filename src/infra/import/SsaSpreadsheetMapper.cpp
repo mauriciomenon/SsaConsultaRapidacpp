@@ -42,21 +42,13 @@ namespace ssa::infra::importing {
                 }
             }
             const auto normalized = folded.trimmed().toStdString();
-            if (normalized == "final reschedule" || normalized == "reprogramacao final") {
+            // "Reprogramacao #N" and "Reprogramacao final" label one row of the reprogramming
+            // report (one row per event), not the count, which comes from "N° de
+            // Reprogramacoes"; storing the label as a count overwrote real counts with 1.
+            if (normalized == "final reschedule" || normalized == "reprogramacao final" ||
+                normalized.starts_with("reschedule #") ||
+                normalized.starts_with("reprogramacao #")) {
                 return {};
-            }
-            static constexpr std::array<std::string_view, 2> prefixes{"reschedule #",
-                                                                      "reprogramacao #"};
-            for (const auto prefix : prefixes) {
-                if (!normalized.starts_with(prefix)) {
-                    continue;
-                }
-                const auto suffix = std::string_view{normalized}.substr(prefix.size());
-                if (!suffix.empty() && std::ranges::all_of(suffix, [](const unsigned char ch) {
-                        return std::isdigit(ch) != 0;
-                    })) {
-                    return std::string{suffix};
-                }
             }
             return value;
         }

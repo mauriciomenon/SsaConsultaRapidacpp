@@ -53,6 +53,11 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
   ignorado como familia conhecida, como no Python; antes aparecia como
   planilha rejeitada por falta de colunas. A importacao dessas SSAs fica para
   uma versao futura.
+- Importacao: o rotulo "Reprogramacao #N" do relatorio "SSAs com
+  Reprogramacoes" (uma linha por reprogramacao) nao e mais gravado como numero
+  de reprogramacoes; antes a contagem real vinda de outras planilhas era
+  trocada por 1 (641 SSAs no acervo real). A contagem continua em "N° de
+  Reprogramacoes" e o total em "Total de Reprogramacoes", como no Python.
 - Importacao que falha ou e cancelada depois de gravar linhas agora atualiza a
   tabela e o analytics, mantendo a mensagem de falha; se a recarga apos uma
   importacao bem-sucedida falhar, o erro da recarga continua visivel em vez de

@@ -194,17 +194,21 @@ TEST_CASE("SSA spreadsheet mapper extracts the integer from a real deviation lab
     REQUIRE(batch.rows.front().at("numero_desvios") == "2");
 }
 
-TEST_CASE("SSA spreadsheet mapper extracts the integer from a reschedule label") {
+TEST_CASE("SSA spreadsheet mapper omits a reschedule row label") {
     ssa::infra::importing::SpreadsheetTable table;
     table.sourcePath = "SSAsRescheduled.xlsx";
     table.rows = {{"Numero SSA", "Descricao", "Data Cadastro", "Reprogramacoes"},
-                  {"202600001", "Rescheduled", "2026-07-14", "Reschedule #2"}};
+                  {"202600001", "Rescheduled", "2026-07-14", "Reschedule #2"},
+                  {"202600002", "Reprogramada", "2026-07-14", "Reprograma\u00e7\u00e3o #1"},
+                  {"202600003", "Count", "2026-07-14", "4"}};
 
     const auto batch = ssa::infra::importing::SsaSpreadsheetMapper::map(table);
 
     REQUIRE(batch.mappingStatus == ssa::infra::importing::SpreadsheetMappingStatus::Mapped);
-    REQUIRE(batch.rows.size() == 1);
-    REQUIRE(batch.rows.front().at("num_reprogramacoes") == "2");
+    REQUIRE(batch.rows.size() == 3);
+    REQUIRE_FALSE(batch.rows[0].contains("num_reprogramacoes"));
+    REQUIRE_FALSE(batch.rows[1].contains("num_reprogramacoes"));
+    REQUIRE(batch.rows[2].at("num_reprogramacoes") == "4");
 }
 
 TEST_CASE("SSA spreadsheet mapper omits a nonnumeric final reschedule label") {
