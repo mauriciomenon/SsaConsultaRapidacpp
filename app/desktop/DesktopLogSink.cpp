@@ -10,6 +10,8 @@
 #include <condition_variable>
 #include <exception>
 #include <stdexcept>
+#include <utility>
+#include <vector>
 
 namespace ssa::app::desktop {
 
@@ -31,9 +33,8 @@ namespace ssa::app::desktop {
             std::shared_ptr<HandlerState> state_;
         };
 
-        HandlerState(const std::filesystem::path& configDirectory,
-                     ssa::presentation::RecentLogModel& model)
-            : writer_(configDirectory / "logs" / "ssa.log", 1024ULL * 1024ULL, 3), model_(&model) {}
+        explicit HandlerState(const std::filesystem::path& configDirectory)
+            : writer_(configDirectory / "logs" / "ssa.log", 1024ULL * 1024ULL, 3) {}
 
         void reserveHandler() {
             const std::scoped_lock lock(handlerMutex_);
@@ -65,14 +66,37 @@ namespace ssa::app::desktop {
             try {
                 writer_.append(line.toUtf8().toStdString());
             } catch (const std::exception& exception) {
-                appendFailure(QString::fromUtf8(exception.what()));
+                publish({QStringLiteral("Error"), QStringLiteral("Log"),
+                         QStringLiteral("Failed to write rotating log"),
+                         QString::fromUtf8(exception.what())});
             }
-            append(severity, message, detail);
+            publish({severity, QStringLiteral("Qt"), message, detail});
+        }
+
+        // Startup logs before the view model exists; they reach its log list once attached.
+        void attachModel(ssa::presentation::RecentLogModel& model) {
+            std::vector<Entry> pending;
+            {
+                const std::scoped_lock lock(modelMutex_);
+                model_ = &model;
+                attached_ = true;
+                pending.swap(pending_);
+            }
+            for (auto& entry : pending) {
+                publish(std::move(entry));
+            }
         }
 
         QtMessageHandler previousHandler{nullptr};
 
       private:
+        struct Entry final {
+            QString severity;
+            QString source;
+            QString message;
+            QString detail;
+        };
+
         void releaseHandler() {
             {
                 const std::scoped_lock lock(handlerMutex_);
@@ -81,39 +105,34 @@ namespace ssa::app::desktop {
             handlerCondition_.notify_all();
         }
 
-        void appendFailure(const QString& diagnostic) const {
-            const QPointer model{model_};
+        void publish(Entry entry) {
+            QPointer<ssa::presentation::RecentLogModel> model;
+            {
+                const std::scoped_lock lock(modelMutex_);
+                if (!attached_) {
+                    pending_.push_back(std::move(entry));
+                    return;
+                }
+                model = model_;
+            }
             if (model == nullptr) {
                 return;
             }
             QMetaObject::invokeMethod(
                 model.data(),
-                [model, diagnostic] {
+                [model, entry = std::move(entry)] {
                     if (model != nullptr) {
-                        model->append(QStringLiteral("Error"), QStringLiteral("Log"),
-                                      QStringLiteral("Failed to write rotating log"), diagnostic);
-                    }
-                },
-                Qt::QueuedConnection);
-        }
-
-        void append(const QString& severity, const QString& message, const QString& detail) const {
-            const QPointer model{model_};
-            if (model == nullptr) {
-                return;
-            }
-            QMetaObject::invokeMethod(
-                model.data(),
-                [model, severity, message, detail] {
-                    if (model != nullptr) {
-                        model->append(severity, QStringLiteral("Qt"), message, detail);
+                        model->append(entry.severity, entry.source, entry.message, entry.detail);
                     }
                 },
                 Qt::QueuedConnection);
         }
 
         ssa::platform::RotatingLogWriter writer_;
+        std::mutex modelMutex_;
         QPointer<ssa::presentation::RecentLogModel> model_;
+        bool attached_{false};
+        std::vector<Entry> pending_;
         std::mutex handlerMutex_;
         std::condition_variable handlerCondition_;
         std::size_t handlersInFlight_{0};
@@ -122,15 +141,18 @@ namespace ssa::app::desktop {
     std::mutex DesktopLogSink::handlerMutex_;
     std::shared_ptr<DesktopLogSink::HandlerState> DesktopLogSink::active_;
 
-    DesktopLogSink::DesktopLogSink(const std::filesystem::path& configDirectory,
-                                   ssa::presentation::RecentLogModel& model)
-        : state_(std::make_shared<HandlerState>(configDirectory, model)) {
+    DesktopLogSink::DesktopLogSink(const std::filesystem::path& configDirectory)
+        : state_(std::make_shared<HandlerState>(configDirectory)) {
         const std::scoped_lock lock(handlerMutex_);
         if (active_) {
             throw std::logic_error("desktop log sink is already installed");
         }
         state_->previousHandler = qInstallMessageHandler(&DesktopLogSink::messageHandler);
         active_ = state_;
+    }
+
+    void DesktopLogSink::attachModel(ssa::presentation::RecentLogModel& model) {
+        state_->attachModel(model);
     }
 
     DesktopLogSink::~DesktopLogSink() {

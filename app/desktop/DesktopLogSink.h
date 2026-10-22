@@ -14,9 +14,10 @@ namespace ssa::app::desktop {
 
     class DesktopLogSink final {
       public:
-        DesktopLogSink(const std::filesystem::path& configDirectory,
-                       ssa::presentation::RecentLogModel& model);
+        explicit DesktopLogSink(const std::filesystem::path& configDirectory);
         ~DesktopLogSink();
+
+        void attachModel(ssa::presentation::RecentLogModel& model);
 
         DesktopLogSink(const DesktopLogSink&) = delete;
         DesktopLogSink& operator=(const DesktopLogSink&) = delete;

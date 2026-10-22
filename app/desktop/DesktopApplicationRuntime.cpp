@@ -17,6 +17,7 @@
 #include <QVariant>
 
 #include <cstdlib>
+#include <exception>
 
 namespace {
 
@@ -49,9 +50,16 @@ namespace ssa::app::desktop {
           paths_(options_.projectRoot, options_.configDir) {
         ssa::diagnostics::traceStartupEvent("runtime_start", "thread=gui");
         paths_.ensureConfigDirectory();
-        mainViewModel_ = DesktopMainViewModelFactory::create(options_, paths_);
-        logSink_ =
-            std::make_unique<DesktopLogSink>(paths_.configDirectoryPath(), *mainViewModel_->logs());
+        // Installed first: a GUI build or app bundle has no console, so startup failures must
+        // reach the log file.
+        logSink_ = std::make_unique<DesktopLogSink>(paths_.configDirectoryPath());
+        try {
+            mainViewModel_ = DesktopMainViewModelFactory::create(options_, paths_);
+        } catch (const std::exception& error) {
+            qCritical().noquote() << "Startup failed:" << error.what();
+            throw;
+        }
+        logSink_->attachModel(*mainViewModel_->logs());
         QObject::connect(mainViewModel_->databaseSwitch(),
                          &ssa::presentation::DatabaseSwitchViewModel::replacementStarted,
                          QCoreApplication::instance(), &QCoreApplication::quit,

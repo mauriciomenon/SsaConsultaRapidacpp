@@ -29,8 +29,9 @@ namespace ssa::app::desktop {
         ssa::platform::StartupOptions options_;
         ssa::platform::AppPaths paths_;
         ssa::platform::SystemThemeResolver systemThemeResolver_;
-        std::unique_ptr<ssa::presentation::MainViewModel> mainViewModel_;
+        // Declared before the view model so shutdown messages still reach the log file.
         std::unique_ptr<DesktopLogSink> logSink_;
+        std::unique_ptr<ssa::presentation::MainViewModel> mainViewModel_;
         DesktopSmokeController smokeController_;
     };
 

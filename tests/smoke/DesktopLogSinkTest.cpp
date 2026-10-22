@@ -3,6 +3,7 @@
 #include "presentation/RecentLogModel.h"
 
 #include <QCoreApplication>
+#include <QFile>
 #include <QTemporaryDir>
 #include <QTest>
 
@@ -93,7 +94,8 @@ namespace {
 
             {
                 auto sink = std::make_unique<ssa::app::desktop::DesktopLogSink>(
-                    temporaryDirectory.path().toStdString(), model);
+                    temporaryDirectory.path().toStdString());
+                sink->attachModel(model);
                 qWarning().noquote() << "desktop log sink first warning";
                 QTRY_COMPARE_WITH_TIMEOUT(model.rowCount(), 1, 1000);
             }
@@ -103,6 +105,23 @@ namespace {
             QCOMPARE(model.rowCount(), 1);
         }
 
+        void startupMessagesReachTheFileAndTheModelAttachedLater() {
+            QTemporaryDir temporaryDirectory;
+            QVERIFY(temporaryDirectory.isValid());
+            ssa::app::desktop::DesktopLogSink sink(temporaryDirectory.path().toStdString());
+
+            qWarning().noquote() << "desktop log sink startup warning";
+            QFile logFile(temporaryDirectory.filePath(QStringLiteral("logs/ssa.log")));
+            QVERIFY(logFile.open(QIODevice::ReadOnly));
+            QVERIFY(logFile.readAll().contains("desktop log sink startup warning"));
+
+            ssa::presentation::RecentLogModel model;
+            sink.attachModel(model);
+            QTRY_COMPARE_WITH_TIMEOUT(model.rowCount(), 1, 1000);
+            qWarning().noquote() << "desktop log sink attached warning";
+            QTRY_COMPARE_WITH_TIMEOUT(model.rowCount(), 2, 1000);
+        }
+
         void destructionWaitsForInFlightMessageHandler() {
             QTemporaryDir temporaryDirectory;
             QVERIFY(temporaryDirectory.isValid());
@@ -110,7 +129,8 @@ namespace {
             BlockingPreviousHandler blockingHandler;
             ScopedBlockingHandler installedHandler(blockingHandler);
             auto sink = std::make_unique<ssa::app::desktop::DesktopLogSink>(
-                temporaryDirectory.path().toStdString(), model);
+                temporaryDirectory.path().toStdString());
+            sink->attachModel(model);
 
             std::jthread warningThread(
                 [] { qWarning().noquote() << "desktop log sink blocking warning"; });
