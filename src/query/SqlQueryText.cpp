@@ -1,9 +1,10 @@
 #include "query/SqlQueryText.h"
 
+#include "domain/AsciiText.h"
+
 #include "domain/ColumnCatalog.h"
 
 #include <algorithm>
-#include <cctype>
 #include <ranges>
 #include <sstream>
 #include <stdexcept>
@@ -19,8 +20,7 @@ namespace ssa::query {
 
     std::string quoteTableIdentifier(const std::string& name) {
         const auto valid = !name.empty() && std::ranges::all_of(name, [](const char ch) {
-            const auto value = static_cast<unsigned char>(ch);
-            return std::isalnum(value) != 0 || ch == '_';
+            return domain::ascii::isAlnum(ch) || ch == '_';
         });
         if (!valid) {
             throw std::invalid_argument("invalid SQL table identifier: " + name);
@@ -31,9 +31,7 @@ namespace ssa::query {
     std::string uppercaseCopy(const std::string_view value) {
         std::string upper;
         upper.resize(value.size());
-        std::ranges::transform(value, upper.begin(), [](const char ch) {
-            return static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
-        });
+        std::ranges::transform(value, upper.begin(), domain::ascii::toUpper);
         return upper;
     }
 

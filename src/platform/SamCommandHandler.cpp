@@ -1,9 +1,10 @@
 #include "platform/SamCommandHandler.h"
 
+#include "domain/AsciiText.h"
+
 #include <QDesktopServices>
 
 #include <algorithm>
-#include <cctype>
 #include <string_view>
 
 #include "platform/SamUrlBuilder.h"
@@ -17,9 +18,7 @@ namespace ssa::platform {
         }
 
         bool isValidSsaNumber(const std::string_view value) {
-            return !value.empty() && std::ranges::all_of(value, [](const unsigned char character) {
-                return std::isdigit(character) != 0;
-            });
+            return !value.empty() && std::ranges::all_of(value, domain::ascii::isDigit);
         }
 
     } // namespace

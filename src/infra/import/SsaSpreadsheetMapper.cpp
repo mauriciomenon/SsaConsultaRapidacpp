@@ -1,5 +1,7 @@
 #include "infra/import/SsaSpreadsheetMapper.h"
 
+#include "domain/AsciiText.h"
+
 #include "domain/ColumnCatalog.h"
 #include "domain/SsaImportPolicy.h"
 #include "domain/WhitespaceTrim.h"
@@ -11,7 +13,6 @@
 
 #include <algorithm>
 #include <array>
-#include <cctype>
 #include <iterator>
 #include <optional>
 #include <span>
@@ -85,9 +86,7 @@ namespace ssa::infra::importing {
 
         SnapshotHeaderKind snapshotHeaderKind(const std::string& header) {
             auto normalized = domain::trimWhitespace(header);
-            std::ranges::transform(normalized, normalized.begin(), [](const unsigned char ch) {
-                return static_cast<char>(std::tolower(ch));
-            });
+            std::ranges::transform(normalized, normalized.begin(), domain::ascii::toLower);
             std::ranges::replace(normalized, '_', ' ');
             if (normalized.find("emission") != std::string::npos ||
                 normalized.find("emissao") != std::string::npos ||
@@ -254,9 +253,7 @@ namespace ssa::infra::importing {
                                       : table.originalFilename;
             auto normalizedFilename = filename;
             std::ranges::transform(normalizedFilename, normalizedFilename.begin(),
-                                   [](const unsigned char character) {
-                                       return static_cast<char>(std::tolower(character));
-                                   });
+                                   domain::ascii::toLower);
             if (normalizedFilename.find("todas as ssas") == std::string::npos ||
                 !valueFor(row, "descricao_ssa").empty() ||
                 !valueFor(row, "data_cadastro").empty() ||

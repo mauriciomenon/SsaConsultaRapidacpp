@@ -1,5 +1,7 @@
 #include "domain/ColumnValuePriorityPolicy.h"
 
+#include "domain/AsciiText.h"
+
 #include <algorithm>
 #include <array>
 #include <limits>
@@ -10,35 +12,24 @@ namespace ssa::domain {
     namespace {
         constexpr int kNoPriorityRank = 100;
         constexpr std::array<std::string_view, 2> kLegacyPriorityPrefixes{"SMIN", "SMME"};
-        constexpr char asciiUpper(const char value) {
-            return value >= 'a' && value <= 'z'
-                       ? static_cast<char>(value - static_cast<char>('a' - 'A'))
-                       : value;
-        }
-
-        constexpr bool isAsciiAlphaNumeric(const char value) {
-            return (value >= 'a' && value <= 'z') || (value >= 'A' && value <= 'Z') ||
-                   (value >= '0' && value <= '9');
-        }
-
         bool matchesAsciiCodeSegmentCaseInsensitive(const std::string_view value,
                                                     const std::string_view prefix) {
             if (value.size() < prefix.size()) {
                 return false;
             }
             for (std::size_t index = 0; index < prefix.size(); ++index) {
-                if (asciiUpper(value[index]) != asciiUpper(prefix[index])) {
+                if (ascii::toUpper(value[index]) != ascii::toUpper(prefix[index])) {
                     return false;
                 }
             }
-            return value.size() == prefix.size() || !isAsciiAlphaNumeric(value[prefix.size()]);
+            return value.size() == prefix.size() || !ascii::isAlnum(value[prefix.size()]);
         }
 
         std::string uppercaseAsciiCopy(const std::string_view value) {
             std::string result;
             result.reserve(value.size());
             for (const char ch : value) {
-                result.push_back(asciiUpper(ch));
+                result.push_back(ascii::toUpper(ch));
             }
             return result;
         }

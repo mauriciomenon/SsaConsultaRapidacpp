@@ -1,5 +1,7 @@
 #include "infra/import/SamSpreadsheetAdapter.h"
 
+#include "domain/AsciiText.h"
+
 #include "domain/WhitespaceTrim.h"
 
 #include "domain/SsaImportPolicy.h"
@@ -10,7 +12,6 @@
 
 #include <algorithm>
 #include <array>
-#include <cctype>
 #include <ranges>
 #include <string_view>
 #include <system_error>
@@ -62,9 +63,7 @@ namespace ssa::infra::importing {
         }
 
         std::string uppercase(std::string value) {
-            std::ranges::transform(value, value.begin(), [](const unsigned char ch) {
-                return static_cast<char>(std::toupper(ch));
-            });
+            std::ranges::transform(value, value.begin(), domain::ascii::toUpper);
             return value;
         }
 

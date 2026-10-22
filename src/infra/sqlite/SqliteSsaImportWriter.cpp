@@ -1,5 +1,7 @@
 #include "infra/sqlite/SqliteSsaImportWriter.h"
 
+#include "domain/AsciiText.h"
+
 #include "domain/SsaImportPolicy.h"
 #include "domain/SsaTypes.h"
 #include "domain/WhitespaceTrim.h"
@@ -125,19 +127,16 @@ namespace ssa::infra::sqlite {
             if (value.empty()) {
                 return false;
             }
-            const auto first = static_cast<unsigned char>(value.front());
-            if (std::isalpha(first) == 0 && value.front() != '_') {
+            if (!domain::ascii::isAlpha(value.front()) && value.front() != '_') {
                 return false;
             }
-            return std::ranges::all_of(value, [](const char ch) {
-                const auto byte = static_cast<unsigned char>(ch);
-                return std::isalnum(byte) != 0 || ch == '_';
-            });
+            return std::ranges::all_of(
+                value, [](const char ch) { return domain::ascii::isAlnum(ch) || ch == '_'; });
         }
 
         bool isIdColumnKey(const std::string& key) {
-            return key.size() == 2 && std::tolower(static_cast<unsigned char>(key[0])) == 'i' &&
-                   std::tolower(static_cast<unsigned char>(key[1])) == 'd';
+            return key.size() == 2 && domain::ascii::toLower(key[0]) == 'i' &&
+                   domain::ascii::toLower(key[1]) == 'd';
         }
 
         std::string createTableSql(const std::string& tableName,

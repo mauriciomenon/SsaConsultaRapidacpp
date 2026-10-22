@@ -3,10 +3,13 @@
 #include "domain/ColumnCatalog.h"
 #include "domain/ColumnValuePriorityPolicy.h"
 #include "domain/SafePattern.h"
+#include "domain/WhitespaceTrim.h"
+#include "query/SqlQueryText.h"
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <clocale>
 #include <limits>
 #include <ranges>
 #include <stdexcept>
@@ -455,4 +458,39 @@ TEST_CASE("sql query builder rejects oversized safe pattern filters") {
     request.searchText = "~" + std::string(129, 'a');
 
     REQUIRE_THROWS_AS(ssa::query::SqlQueryBuilder{}.build(request), std::invalid_argument);
+}
+
+namespace {
+    // Qt switches LC_CTYPE to UTF-8 (always on macOS); <cctype> then misreads UTF-8 bytes.
+    class Utf8CtypeLocale final {
+      public:
+        Utf8CtypeLocale() : previous_(std::setlocale(LC_CTYPE, nullptr)) {
+            for (const char* name : {"C.UTF-8", "en_US.UTF-8", ".UTF-8"}) {
+                if (std::setlocale(LC_CTYPE, name) != nullptr) {
+                    break;
+                }
+            }
+        }
+        Utf8CtypeLocale(const Utf8CtypeLocale&) = delete;
+        Utf8CtypeLocale& operator=(const Utf8CtypeLocale&) = delete;
+        ~Utf8CtypeLocale() {
+            std::setlocale(LC_CTYPE, previous_.c_str());
+        }
+
+      private:
+        std::string previous_;
+    };
+} // namespace
+
+TEST_CASE("text helpers keep UTF-8 intact under a UTF-8 LC_CTYPE") {
+    const Utf8CtypeLocale locale;
+
+    // "inspecoes" with c-cedilla and o-tilde: o-tilde is C3 B5 and toupper(0xB5) is not ASCII.
+    REQUIRE(ssa::query::uppercaseCopy("inspe\xC3\xA7\xC3\xB5"
+                                      "es") == "INSPE\xC3\xA7\xC3\xB5"
+                                               "ES");
+    // A trailing no-break space is removed whole, never leaving a lone C2 byte.
+    REQUIRE(ssa::domain::trimWhitespace("texto\xC2\xA0") == "texto");
+    REQUIRE(ssa::domain::trimWhitespace(" \xC2\xA0 manuten\xC3\xA7\xC3\xA3o\t") ==
+            "manuten\xC3\xA7\xC3\xA3o");
 }

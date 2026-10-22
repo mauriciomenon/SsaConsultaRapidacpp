@@ -1,12 +1,13 @@
 #include "infra/sqlite/SqliteDatabaseValidator.h"
 
+#include "domain/AsciiText.h"
+
 #include "domain/ColumnCatalog.h"
 #include "infra/sqlite/SqliteConnection.h"
 #include "infra/sqlite/SqliteProgressHandler.h"
 #include "ports/OperationError.h"
 
 #include <algorithm>
-#include <cctype>
 #include <filesystem>
 #include <map>
 #include <string>
@@ -23,9 +24,7 @@ namespace ssa::infra::sqlite {
         };
 
         std::string uppercase(std::string value) {
-            std::ranges::transform(value, value.begin(), [](const unsigned char character) {
-                return static_cast<char>(std::toupper(character));
-            });
+            std::ranges::transform(value, value.begin(), domain::ascii::toUpper);
             return value;
         }
 

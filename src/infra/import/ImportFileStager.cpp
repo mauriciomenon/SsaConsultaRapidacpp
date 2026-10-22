@@ -1,5 +1,7 @@
 #include "infra/import/ImportFileStager.h"
 
+#include "domain/AsciiText.h"
+
 #include "infra/import/CancelableFileCopy.h"
 #include "infra/import/ImportPathValidation.h"
 #include "qt/FilesystemPath.h"
@@ -9,7 +11,6 @@
 
 #include <algorithm>
 #include <atomic>
-#include <cctype>
 #include <cerrno>
 #include <chrono>
 #include <cstring>
@@ -41,9 +42,7 @@ namespace ssa::infra::importing {
 
         std::string lowercaseExtension(const std::filesystem::path& path) {
             auto extension = qt::toUtf8(path.extension());
-            std::ranges::transform(extension, extension.begin(), [](const char ch) {
-                return static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
-            });
+            std::ranges::transform(extension, extension.begin(), domain::ascii::toLower);
             return extension;
         }
 

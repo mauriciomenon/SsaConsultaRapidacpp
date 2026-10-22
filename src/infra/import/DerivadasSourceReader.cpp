@@ -1,5 +1,7 @@
 #include "infra/import/DerivadasSourceReader.h"
 
+#include "domain/AsciiText.h"
+
 #include "domain/SsaImportPolicy.h"
 #include "infra/import/SpreadsheetTable.h"
 #include "infra/import/XlsxWorkbookReader.h"
@@ -8,7 +10,6 @@
 
 #include <algorithm>
 #include <array>
-#include <cctype>
 #include <fstream>
 #include <optional>
 #include <ranges>
@@ -278,9 +279,7 @@ namespace ssa::infra::importing {
 
         std::string lowercaseExtension(const std::filesystem::path& source) {
             auto extension = source.extension().string();
-            std::ranges::transform(extension, extension.begin(), [](const unsigned char ch) {
-                return static_cast<char>(std::tolower(ch));
-            });
+            std::ranges::transform(extension, extension.begin(), domain::ascii::toLower);
             return extension;
         }
 

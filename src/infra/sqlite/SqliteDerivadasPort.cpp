@@ -1,5 +1,7 @@
 #include "infra/sqlite/SqliteDerivadasPort.h"
 
+#include "domain/AsciiText.h"
+
 #include "infra/import/DerivadasSourceReader.h"
 #include "infra/import/LegacySpreadsheetConverter.h"
 #include "infra/sqlite/SqliteConnection.h"
@@ -55,9 +57,7 @@ namespace ssa::infra::sqlite {
 
         std::string lowercaseExtension(const std::filesystem::path& path) {
             auto extension = path.extension().string();
-            std::ranges::transform(extension, extension.begin(), [](const unsigned char ch) {
-                return static_cast<char>(std::tolower(ch));
-            });
+            std::ranges::transform(extension, extension.begin(), domain::ascii::toLower);
             return extension;
         }
 

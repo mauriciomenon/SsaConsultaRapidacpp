@@ -119,6 +119,10 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 - Janela de progresso: as areas de saida e de avisos guardam as 4000 linhas mais
   recentes, como a versao Python, e mostram o texto sem interpretar marcacao;
   antes cresciam sem limite em importacoes grandes.
+- macOS: a busca com letras acentuadas (ex.: "inspecoes" com c cedilha e o til)
+  volta a encontrar resultados, e a importacao nao grava mais texto UTF-8
+  invalido quando uma celula termina com espaco nao separavel; esse espaco agora
+  e removido inteiro, como na versao Python.
 - Analytics: os relatorios rapidos "Prazo das pendentes por area",
   "Executadas por setor (semana)" e "Executadas por setor (mes ISO)" voltam a
   gerar a analise; antes so configuravam os filtros e nao rodavam.

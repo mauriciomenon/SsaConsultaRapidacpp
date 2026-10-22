@@ -1,7 +1,8 @@
 #include "domain/ActivityAnalyticsTypes.h"
 
+#include "domain/AsciiText.h"
+
 #include <algorithm>
-#include <cctype>
 #include <chrono>
 #include <cmath>
 #include <numeric>
@@ -84,10 +85,10 @@ namespace ssa::domain {
         }
 
         std::string trimAscii(std::string_view value) {
-            while (!value.empty() && std::isspace(static_cast<unsigned char>(value.front())) != 0) {
+            while (!value.empty() && ascii::isSpace(value.front())) {
                 value.remove_prefix(1);
             }
-            while (!value.empty() && std::isspace(static_cast<unsigned char>(value.back())) != 0) {
+            while (!value.empty() && ascii::isSpace(value.back())) {
                 value.remove_suffix(1);
             }
             return std::string{value};
@@ -97,16 +98,14 @@ namespace ssa::domain {
             std::vector<std::string_view> tokens;
             std::size_t index = 0;
             while (index < value.size()) {
-                while (index < value.size() &&
-                       std::isspace(static_cast<unsigned char>(value[index])) != 0) {
+                while (index < value.size() && ascii::isSpace(value[index])) {
                     ++index;
                 }
                 if (index >= value.size()) {
                     break;
                 }
                 const std::size_t start = index;
-                while (index < value.size() &&
-                       std::isspace(static_cast<unsigned char>(value[index])) == 0) {
+                while (index < value.size() && !ascii::isSpace(value[index])) {
                     ++index;
                 }
                 tokens.push_back(value.substr(start, index - start));
@@ -131,9 +130,7 @@ namespace ssa::domain {
                 return false;
             }
             for (std::size_t index = 0; index < left.size(); ++index) {
-                const unsigned char a = static_cast<unsigned char>(left[index]);
-                const unsigned char b = static_cast<unsigned char>(right[index]);
-                if (std::tolower(a) != std::tolower(b)) {
+                if (ascii::toLower(left[index]) != ascii::toLower(right[index])) {
                     return false;
                 }
             }

@@ -1,10 +1,11 @@
 #include "domain/SsaImportPolicy.h"
+
+#include "domain/AsciiText.h"
 #include "domain/SsaTypes.h"
 #include "domain/WhitespaceTrim.h"
 
 #include <algorithm>
 #include <array>
-#include <cctype>
 #include <charconv>
 #include <chrono>
 #include <cstdio>
@@ -22,9 +23,7 @@ namespace ssa::domain {
         }
 
         std::string uppercase(std::string value) {
-            std::ranges::transform(value, value.begin(), [](const unsigned char ch) {
-                return static_cast<char>(std::toupper(ch));
-            });
+            std::ranges::transform(value, value.begin(), ascii::toUpper);
             return value;
         }
 
@@ -67,9 +66,7 @@ namespace ssa::domain {
         }
 
         std::string lowercase(std::string value) {
-            std::ranges::transform(value, value.begin(), [](const unsigned char ch) {
-                return static_cast<char>(std::tolower(ch));
-            });
+            std::ranges::transform(value, value.begin(), ascii::toLower);
             return value;
         }
 
@@ -277,8 +274,7 @@ namespace ssa::domain {
                 const auto separator = 11 + hourLength;
                 const auto minute = separator + 1;
                 const bool minuteEnds =
-                    text.size() <= minute + 2 ||
-                    std::isdigit(static_cast<unsigned char>(text[minute + 2])) == 0;
+                    text.size() <= minute + 2 || !ascii::isDigit(text[minute + 2]);
                 if (text.size() >= minute + 2 &&
                     (text[separator] == ':' || text[separator] == '.') && minuteEnds) {
                     if (auto timestamp = parseTimestamp({0, 5, 8, 11, hourLength, minute})) {
@@ -302,7 +298,7 @@ namespace ssa::domain {
 
         std::optional<SnapshotTimestamp> filenameTimestamp(const std::string& value) {
             for (std::size_t index = 0; index < value.size(); ++index) {
-                if (std::isdigit(static_cast<unsigned char>(value[index])) != 0) {
+                if (ascii::isDigit(value[index])) {
                     if (auto timestamp =
                             filenameTimestampAt(std::string_view{value}.substr(index))) {
                         return timestamp;
@@ -457,15 +453,11 @@ namespace ssa::domain {
         if (text.ends_with(".0")) {
             text.resize(text.size() - 2);
         }
-        text.erase(std::remove_if(text.begin(), text.end(),
-                                  [](const unsigned char ch) { return std::isspace(ch) != 0; }),
-                   text.end());
+        text.erase(std::remove_if(text.begin(), text.end(), ascii::isSpace), text.end());
         if (text.size() == 10 && text[4] == '-') {
             text.erase(4, 1);
         }
-        if (text.size() != 9 || !std::ranges::all_of(text, [](const unsigned char ch) {
-                return std::isdigit(ch) != 0;
-            })) {
+        if (text.size() != 9 || !std::ranges::all_of(text, ascii::isDigit)) {
             return {};
         }
         return text;
@@ -473,15 +465,11 @@ namespace ssa::domain {
 
     std::string SsaImportPolicy::normalizeDeviationCount(const std::string& value) {
         auto normalized = trimWhitespace(value);
-        std::ranges::transform(normalized, normalized.begin(), [](const unsigned char ch) {
-            return static_cast<char>(std::tolower(ch));
-        });
+        std::ranges::transform(normalized, normalized.begin(), ascii::toLower);
         const auto integerLiteral = [](const std::string_view candidate) {
             const auto separator = candidate.find_first_of(".,");
             const auto digitsOnly = [](const std::string_view text) {
-                return !text.empty() && std::ranges::all_of(text, [](const unsigned char ch) {
-                    return std::isdigit(ch) != 0;
-                });
+                return !text.empty() && std::ranges::all_of(text, ascii::isDigit);
             };
             if (separator == std::string_view::npos) {
                 return digitsOnly(candidate) ? std::string{candidate} : std::string{};
@@ -501,7 +489,7 @@ namespace ssa::domain {
         if (normalized.starts_with("desvio") || normalized.starts_with("desvios")) {
             auto suffix =
                 std::string_view{normalized}.substr(normalized.starts_with("desvios") ? 7 : 6);
-            while (!suffix.empty() && std::isspace(static_cast<unsigned char>(suffix.front()))) {
+            while (!suffix.empty() && ascii::isSpace(suffix.front())) {
                 suffix.remove_prefix(1);
             }
             // "Desvio #N" labels one row of the deviation report (one row per deviation), it is
@@ -511,8 +499,7 @@ namespace ssa::domain {
             }
             if (!suffix.empty() && (suffix.front() == ':' || suffix.front() == '-')) {
                 suffix.remove_prefix(1);
-                while (!suffix.empty() &&
-                       std::isspace(static_cast<unsigned char>(suffix.front()))) {
+                while (!suffix.empty() && ascii::isSpace(suffix.front())) {
                     suffix.remove_prefix(1);
                 }
             }
