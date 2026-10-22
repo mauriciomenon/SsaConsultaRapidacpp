@@ -228,8 +228,9 @@ namespace ssa::presentation {
         orchestrator_.applyColumnSettings(std::move(visibleColumns), std::move(columnWidths));
     }
 
-    void BrowseViewModel::invalidateTotalRowsAll() {
+    void BrowseViewModel::invalidateDataSource() {
         orchestrator_.invalidateTotalRowsAll();
+        filters_.invalidateDataSourceOptions();
     }
 
     bool BrowseViewModel::backgroundWorkRunning() const {
@@ -253,6 +254,12 @@ namespace ssa::presentation {
 
     void BrowseViewModel::load() {
         orchestrator_.load();
+    }
+
+    void BrowseViewModel::reload() {
+        invalidateDataSource();
+        // External changes may shrink the page count, so start over like the import refresh.
+        orchestrator_.loadFirstPage();
     }
 
     void BrowseViewModel::apply() {

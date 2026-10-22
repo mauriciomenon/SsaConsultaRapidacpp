@@ -132,8 +132,7 @@ namespace ssa::presentation {
                                                                  ? workflows->lastMessage()
                                                                  : workflows->successMessage();
                         }
-                        browse_.invalidateTotalRowsAll();
-                        browse_.filters()->invalidateDataSourceOptions();
+                        browse_.invalidateDataSource();
                         browse_.apply();
                     }
                 });

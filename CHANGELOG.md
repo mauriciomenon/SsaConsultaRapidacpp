@@ -101,6 +101,9 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 - Importacao: quando a mesma selecao traz planilhas comuns e de derivadas e a de
   derivadas falha, o resumo passa a mostrar "Importacao parcial" com a falha;
   antes dizia "concluida com avisos ... nenhuma falha".
+- "Arquivo > Carregar dados" le o banco de novo (pagina, total e opcoes de
+  filtro) e volta para a primeira pagina; antes repetia a pagina guardada em
+  memoria e nao mostrava alteracoes feitas no banco por outro programa.
 
 ### Alterado
 

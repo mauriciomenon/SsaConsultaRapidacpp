@@ -79,7 +79,8 @@ namespace ssa::presentation {
         void writePreferences(ports::UserPreferencesSnapshot& snapshot) const;
         void applyColumnSettings(std::vector<std::string> visibleColumns,
                                  std::map<std::string, int> columnWidths);
-        void invalidateTotalRowsAll();
+        // Drops the cached pages, grand total and filter options read from the database.
+        void invalidateDataSource();
         [[nodiscard]] bool backgroundWorkRunning() const;
         void cancelBackgroundWork();
 
@@ -94,6 +95,8 @@ namespace ssa::presentation {
 
       public slots:
         void load();
+        // "Carregar dados": reads the database again instead of serving cached pages.
+        void reload();
         void apply();
         void clearSearchAndResetPage();
         void undoFilters();

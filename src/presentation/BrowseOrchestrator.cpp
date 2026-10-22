@@ -210,6 +210,11 @@ namespace ssa::presentation {
         requestCoordinator_.loadCurrentRequest();
     }
 
+    void BrowseOrchestrator::loadFirstPage() {
+        inputCoordinator_.apply();
+        load();
+    }
+
     void BrowseOrchestrator::apply() {
         bool historyChanged = false;
         const auto filters = currentFilters();

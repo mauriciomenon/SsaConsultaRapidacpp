@@ -2849,6 +2849,48 @@ namespace {
             QCOMPARE(model.actions()->workflows()->lastSucceeded(), true);
         }
 
+        void load_data_menu_rereads_database_instead_of_serving_cache() {
+            auto repository = std::make_shared<FakeRepository>(
+                FakeRepositoryConfig{.totalRows = std::size_t{25}, .rowCount = std::size_t{10}});
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            ssa::presentation::MainViewModel model(service, commands);
+            auto* browse = model.browse();
+            const auto firstPageRequests = [&repository] {
+                return std::ranges::count_if(repository->requests(), [](const auto& request) {
+                    return request.pageIndex == 0;
+                });
+            };
+
+            browse->setPageSize(10);
+            browse->load();
+            // Page 1 plus the two prefetched pages.
+            QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{3}, 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(browse->status()->loading(), false, 1000);
+            QCOMPARE(repository->countCalls(), std::size_t{1});
+            browse->nextPage();
+            QTRY_COMPARE_WITH_TIMEOUT(browse->pageNumber(), 2, 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(browse->status()->loading(), false, 1000);
+            const auto requestsBeforeLoad = repository->requests().size();
+
+            // An unchanged request is served from the page cache.
+            browse->load();
+            QCoreApplication::processEvents();
+            QCOMPARE(repository->requests().size(), requestsBeforeLoad);
+
+            QSignalSpy optionsResetSpy(
+                browse->filters(),
+                &ssa::presentation::FilterPanelViewModel::columnValueOptionsReset);
+            // "Carregar dados" reads the database again (page, total and filter options) and
+            // returns to the first page, since the page count may have shrunk.
+            QVERIFY(QMetaObject::invokeMethod(browse, "reload"));
+
+            QTRY_COMPARE_WITH_TIMEOUT(firstPageRequests(), 2, 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(repository->countCalls(), std::size_t{2}, 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(browse->pageNumber(), 1, 1000);
+            QCOMPARE(optionsResetSpy.size(), 1);
+        }
+
         void workflow_success_invalidates_total_rows_all_before_refresh() {
             auto repository = std::make_shared<FakeRepository>();
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);

@@ -48,7 +48,7 @@ ApplicationWindow {
             MenuItem {
                 text: "Carregar dados"
                 enabled: !root.vm.browse.status.loading
-                onTriggered: root.vm.browse.load()
+                onTriggered: root.vm.browse.reload()
             }
             MenuItem {
                 objectName: "configureDataMenuItem"

@@ -68,6 +68,7 @@ namespace ssa::presentation {
 
       public slots:
         void load();
+        void loadFirstPage();
         void apply();
         void clearSearchAndResetPage();
         void undoFilters();
