@@ -113,6 +113,9 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 - Log: falha ao pre-carregar as proximas paginas da tabela e falha do relatorio
   de SSAs executadas passam a ser registradas no log com o detalhe tecnico;
   antes a primeira sumia em silencio e a segunda so aparecia na tela.
+- CLI: um rescan que falha e nao grava nada termina a linha de contadores com
+  `committed=0`; antes os contadores da tentativa (`inserted=306`) pareciam
+  linhas gravadas.
 
 ### Alterado
 

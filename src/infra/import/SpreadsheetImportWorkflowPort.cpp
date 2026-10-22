@@ -1060,6 +1060,8 @@ namespace ssa::infra::importing {
                 auto summary =
                     candidateSummary == nullptr ? makeImportSummary(staging) : *candidateSummary;
                 markUncommitted(summary, fileStatus);
+                // The message keeps the attempt counters as a diagnostic; say nothing was written.
+                result.message += " committed=0";
                 return withSummary(std::move(result), summary);
             };
         std::error_code databaseDirectoryError;

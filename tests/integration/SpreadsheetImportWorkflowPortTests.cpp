@@ -3923,6 +3923,8 @@ TEST_CASE("failed incremental rescan reports no workbook as applied") {
     // must not claim that the readable workbook was applied.
     INFO(result.message);
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
+    // The CLI prints this line; its attempt counters must not read as committed rows.
+    REQUIRE(result.message.find(" committed=0 ignored=") != std::string::npos);
     REQUIRE(result.importSummary.has_value());
     const auto& summary = *result.importSummary;
     REQUIRE(summary.files.size() == 2);
@@ -5993,7 +5995,7 @@ TEST_CASE("full rescan honors busy wait when publication destination is locked")
     INFO(result.diagnostic);
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
     REQUIRE(result.message ==
-            "rescan database snapshot failed ignored=0 rejected=0 failed_files=1");
+            "rescan database snapshot failed committed=0 ignored=0 rejected=0 failed_files=1");
     REQUIRE(result.diagnostic.find("rc=5") != std::string::npos);
     REQUIRE(std::filesystem::exists(workbook));
     REQUIRE_FALSE(std::filesystem::exists(inputDirectory / "processadas" / workbook.filename()));
