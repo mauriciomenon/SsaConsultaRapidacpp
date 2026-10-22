@@ -107,6 +107,9 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 - Filtros avancados: gerar um relatorio de SSAs executadas nao esvazia mais a
   lista de valores ja carregada nos filtros nem refaz a consulta de setores;
   antes cada relatorio descartava essas listas como se o filtro tivesse mudado.
+- Filtros avancados: uma lista de valores aberta durante "Carregar dados" ou ao
+  fim de uma importacao busca os valores de novo; antes ficava vazia ate ser
+  fechada e reaberta.
 
 ### Alterado
 

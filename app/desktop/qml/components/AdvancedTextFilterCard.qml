@@ -25,6 +25,8 @@ FilterCard {
     signal selectedValueRequested(string value)
     signal mixedValuesReplacementRequested(var includeValues, var excludeValues)
     signal textFilterClearRequested
+    // True while the value combo or the multi-select popup shows the value list.
+    readonly property bool valueListOpen: valuePopup.visible || advancedValueSelector.popup.visible
 
     function currentOperatorText() {
         if (root.operatorIndex >= 0 && root.operatorIndex < root.operatorModes.length) {

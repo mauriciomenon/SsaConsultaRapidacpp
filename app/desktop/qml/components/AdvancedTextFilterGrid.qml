@@ -64,6 +64,12 @@ Item {
                     valueOptionsError = root.filterViewModel.columnValueOptionsErrorFor(textDelegate.key);
                 }
 
+                // A reset empties the open list; ask again so it does not stay empty until reopened.
+                function refreshOpenValueList() {
+                    if (textDelegate.valueListOpen)
+                        root.filterViewModel.refreshColumnValueOptionsFor(textDelegate.key);
+                }
+
                 cardWidth: root.gridLayout.cardWidth
                 cardHeight: root.textCellHeight - 4
                 operatorModes: root.textFilters.operatorModes
@@ -83,6 +89,7 @@ Item {
                     }
                     function onColumnValueOptionsReset() {
                         textDelegate.reloadOptionState();
+                        Qt.callLater(textDelegate.refreshOpenValueList);
                     }
                 }
 

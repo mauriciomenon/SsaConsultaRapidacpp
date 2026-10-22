@@ -157,6 +157,19 @@ namespace {
         return nullptr;
     }
 
+    // Finds a non-visual child (e.g. a Popup) declared inside a delegate anywhere under parent.
+    [[nodiscard]] QObject* findObjectInItemTree(QQuickItem* parent, const QString& objectName) {
+        for (auto* child : parent->childItems()) {
+            if (auto* match = child->findChild<QObject*>(objectName, Qt::FindDirectChildrenOnly)) {
+                return match;
+            }
+            if (auto* match = findObjectInItemTree(child, objectName)) {
+                return match;
+            }
+        }
+        return nullptr;
+    }
+
     [[nodiscard]] QPoint clickPointInWindow(const QQuickItem& item) {
         return item.mapToScene(item.boundingRect().center()).toPoint();
     }
@@ -317,6 +330,23 @@ namespace {
         }
     )QML";
 
+    constexpr auto kAdvancedGridHarness = R"QML(
+        import QtQuick
+        import SsaConsultaRapida
+
+        Item {
+            width: 1400
+            height: 700
+
+            AdvancedTextFilterGrid {
+                width: parent.width
+                filterViewModel: testFilterViewModel
+                textFilters: testFilterViewModel.advanced.text
+                advanced: testFilterViewModel.advanced
+            }
+        }
+    )QML";
+
     constexpr auto kQuickSectorHarness = R"QML(
         import QtQuick
         import SsaConsultaRapida
@@ -393,6 +423,9 @@ namespace {
             QVERIFY(qmlRegisterType(
                         QUrl::fromLocalFile(components.filePath("AdvancedWeekExecutionCard.qml")),
                         "SsaConsultaRapida", 1, 0, "AdvancedWeekExecutionCard") >= 0);
+            QVERIFY(qmlRegisterType(
+                        QUrl::fromLocalFile(components.filePath("AdvancedTextFilterGrid.qml")),
+                        "SsaConsultaRapida", 1, 0, "AdvancedTextFilterGrid") >= 0);
             const QDir analytics(root.filePath("app/desktop/qml/analytics"));
             for (const auto& [fileName, typeName] :
                  std::array<std::pair<const char*, const char*>, 6>{
@@ -682,6 +715,84 @@ namespace {
             QTRY_VERIFY_WITH_TIMEOUT(popup->property("visible").toBool(), 1000);
             QTRY_VERIFY_WITH_TIMEOUT(!popup->property("valuesLoading").toBool(), 1000);
             QCOMPARE(repository->advancedRequests(), 1);
+        }
+
+        void open_value_lists_reload_after_data_source_reset() {
+            auto repository = std::make_shared<CountingRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::FilterPanelViewModel filters(service);
+            QQmlEngine engine;
+            engine.rootContext()->setContextProperty(QStringLiteral("testFilterViewModel"),
+                                                     &filters);
+            QQmlComponent component(&engine);
+            component.setData(kAdvancedGridHarness,
+                              QUrl(QStringLiteral("inmemory:/AdvancedGridResetHarness.qml")));
+            QTRY_VERIFY_WITH_TIMEOUT(component.status() != QQmlComponent::Loading, 1000);
+            QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+
+            QQuickWindow window;
+            window.setGeometry(0, 0, 1400, 700);
+            std::unique_ptr<QObject> harness(component.create());
+            QVERIFY2(harness != nullptr, qPrintable(component.errorString()));
+            auto* harnessItem = qobject_cast<QQuickItem*>(harness.get());
+            QVERIFY(harnessItem != nullptr);
+            harnessItem->setParentItem(window.contentItem());
+            window.show();
+            QTRY_VERIFY_WITH_TIMEOUT(window.isExposed(), 1000);
+            auto* textPopup = findObjectInItemTree(
+                harnessItem, QStringLiteral("advancedTextValuePopup_situacao"));
+            auto* reprogrammingPopup =
+                findObjectInItemTree(harnessItem, QStringLiteral("reprogrammingValuePopup"));
+            QVERIFY(textPopup != nullptr);
+            QVERIFY(reprogrammingPopup != nullptr);
+
+            // A reset with every list closed does not query the database.
+            filters.invalidateDataSourceOptions();
+            QCoreApplication::processEvents();
+            QCOMPARE(repository->advancedRequests(), 0);
+
+            QVERIFY(QMetaObject::invokeMethod(textPopup, "openForCurrentFilter"));
+            const QStringList textValues{QStringLiteral("APV")};
+            QTRY_COMPARE_WITH_TIMEOUT(textPopup->property("allValues").toStringList(), textValues,
+                                      1000);
+            QCOMPARE(repository->advancedRequests(), 1);
+
+            // "Carregar dados" or an import resets the options while the popup is open.
+            filters.invalidateDataSourceOptions();
+
+            QTRY_COMPARE_WITH_TIMEOUT(repository->advancedRequests(), 2, 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(textPopup->property("allValues").toStringList(), textValues,
+                                      1000);
+            QVERIFY(textPopup->property("visible").toBool());
+            QVERIFY(QMetaObject::invokeMethod(textPopup, "close"));
+            QTRY_VERIFY_WITH_TIMEOUT(!textPopup->property("visible").toBool(), 1000);
+
+            // The single-value combo list of the same card reloads too.
+            auto* valueSelector = findQuickItemByProperty(
+                harnessItem, "objectName", QStringLiteral("advancedValueSelector_situacao"));
+            QVERIFY(valueSelector != nullptr);
+            auto* valueSelectorPopup = valueSelector->property("popup").value<QObject*>();
+            QVERIFY(valueSelectorPopup != nullptr);
+            QVERIFY(QMetaObject::invokeMethod(valueSelectorPopup, "open"));
+            QTRY_VERIFY_WITH_TIMEOUT(valueSelectorPopup->property("visible").toBool(), 1000);
+            filters.invalidateDataSourceOptions();
+            QTRY_COMPARE_WITH_TIMEOUT(repository->advancedRequests(), 3, 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(valueSelector->property("count").toInt(), 1, 1000);
+            QVERIFY(QMetaObject::invokeMethod(valueSelectorPopup, "close"));
+            QTRY_VERIFY_WITH_TIMEOUT(!valueSelectorPopup->property("visible").toBool(), 1000);
+
+            QVERIFY(QMetaObject::invokeMethod(reprogrammingPopup, "open"));
+            QTRY_COMPARE_WITH_TIMEOUT(repository->reprogrammingRequests(), 1, 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(
+                reprogrammingPopup->property("optionValues").toStringList().size(), 3, 1000);
+
+            filters.invalidateDataSourceOptions();
+
+            QTRY_COMPARE_WITH_TIMEOUT(repository->reprogrammingRequests(), 2, 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(
+                reprogrammingPopup->property("optionValues").toStringList().size(), 3, 1000);
+            // 3 text + 2 reprogramming requests: the closed text lists did not query again.
+            QCOMPARE(repository->advancedRequests(), 5);
         }
 
         void value_popup_reads_different_tokens_written_by_the_serializer() {

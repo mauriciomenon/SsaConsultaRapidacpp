@@ -37,6 +37,12 @@ FilterCard {
         reprogrammingMaxValueLength = root.filterViewModel.columnValueMaxLengthFor(reprogrammingColumnKey);
     }
 
+    // A reset empties the open list; ask again so it does not stay empty until reopened.
+    function refreshOpenValueList() {
+        if (valuesPopup.visible || valueSelector.popup.visible)
+            root.filterViewModel.refreshColumnValueOptionsFor(root.reprogrammingColumnKey);
+    }
+
     function currentValueText() {
         if (root.derivation.onlyReprogrammed)
             return root.allWithReprogLabel;
@@ -55,6 +61,7 @@ FilterCard {
         }
         function onColumnValueOptionsReset() {
             root.reloadReprogrammingOptionState();
+            Qt.callLater(root.refreshOpenValueList);
         }
     }
 
