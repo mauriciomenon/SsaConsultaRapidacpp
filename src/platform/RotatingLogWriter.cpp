@@ -73,7 +73,10 @@ namespace ssa::platform {
     }
 
     std::filesystem::path RotatingLogWriter::rotatedPath(const std::size_t index) const {
-        return std::filesystem::path{filePath_.string() + "." + std::to_string(index)};
+        // Append in native form: path::string() goes through the ANSI code page on Windows.
+        auto rotated = filePath_;
+        rotated += "." + std::to_string(index);
+        return rotated;
     }
 
     void RotatingLogWriter::rotate() {

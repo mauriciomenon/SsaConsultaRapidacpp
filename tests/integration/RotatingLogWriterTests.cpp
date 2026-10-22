@@ -30,6 +30,26 @@ TEST_CASE("rotating log writer bounds the number and size of log files") {
     REQUIRE(std::filesystem::file_size(path.string() + ".2") <= 64);
 }
 
+TEST_CASE("rotating log writer rotates inside a directory with non-ANSI characters") {
+    QTemporaryDir temporaryDirectory;
+    REQUIRE(temporaryDirectory.isValid());
+    // On Windows path::string() garbles the accent and throws on the CJK character.
+    const auto directory = std::filesystem::path{temporaryDirectory.path().toStdWString()} /
+                           std::filesystem::path{u8"logs_\u00f3\u6f22"};
+    std::filesystem::create_directories(directory);
+    const auto path = directory / "ssa.log";
+    ssa::platform::RotatingLogWriter writer(path, 64, 2);
+
+    for (int index = 0; index < 10; ++index) {
+        writer.append("event-" + std::to_string(index) + "-diagnostic");
+    }
+
+    auto rotated = path;
+    rotated += ".1";
+    REQUIRE(std::filesystem::exists(path));
+    REQUIRE(std::filesystem::exists(rotated));
+}
+
 TEST_CASE("rotating log writer serializes concurrent append and rotation") {
     QTemporaryDir temporaryDirectory;
     REQUIRE(temporaryDirectory.isValid());

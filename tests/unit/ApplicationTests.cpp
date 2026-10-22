@@ -330,7 +330,7 @@ TEST_CASE("workflow service names failed derivadas files in UTF-8") {
     // garbles the first and throws on the second.
     const ssa::ports::ImportExternalFilesRequest request{
         {"Consulta SSA - 24-07-2026_0829AM.xlsx",
-         std::filesystem::path{u8"SSAs Derivadas e Relacionadas_ó漢.xlsx"}}};
+         std::filesystem::path{u8"SSAs Derivadas e Relacionadas_\u00f3\u6f22.xlsx"}}};
 
     const auto result = workflows.importExternalFiles(request);
 
