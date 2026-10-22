@@ -1215,6 +1215,31 @@ TEST_CASE_METHOD(SqliteRepositoryFixture,
     REQUIRE(repository.count({}) == 4);
 }
 
+TEST_CASE_METHOD(SqliteRepositoryFixture,
+                 "sqlite busy wait restarts for each lock instead of expiring with the session") {
+    ssa::infra::sqlite::SqliteConnection waiting(path,
+                                                 ssa::infra::sqlite::SqliteOpenMode::ReadWrite);
+    ssa::infra::sqlite::SqliteBusyHandler busy(waiting.handle(), std::stop_token{},
+                                               std::chrono::milliseconds{300});
+    // A long import: the session outlives its busy budget before it meets the first lock.
+    std::this_thread::sleep_for(std::chrono::milliseconds{400});
+    ssa::infra::sqlite::SqliteConnection blocker(path,
+                                                 ssa::infra::sqlite::SqliteOpenMode::ReadWrite);
+    REQUIRE(sqlite3_exec(blocker.handle(), "BEGIN EXCLUSIVE", nullptr, nullptr, nullptr) ==
+            SQLITE_OK);
+    auto release = std::async(std::launch::async, [&blocker] {
+        std::this_thread::sleep_for(std::chrono::milliseconds{100});
+        return sqlite3_exec(blocker.handle(), "ROLLBACK", nullptr, nullptr, nullptr);
+    });
+
+    // The lock goes away within this wait's own 300 ms, so the statement must succeed.
+    const auto rc =
+        sqlite3_exec(waiting.handle(), "SELECT COUNT(*) FROM ssa_table", nullptr, nullptr, nullptr);
+
+    REQUIRE(release.get() == SQLITE_OK);
+    REQUIRE(rc == SQLITE_OK);
+}
+
 TEST_CASE_METHOD(SqliteRepositoryFixture, "sqlite statement separates safe and technical errors") {
     ssa::infra::sqlite::SqliteConnection connection(path);
 

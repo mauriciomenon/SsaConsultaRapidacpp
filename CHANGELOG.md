@@ -119,6 +119,10 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 - Janela de progresso: as areas de saida e de avisos guardam as 4000 linhas mais
   recentes, como a versao Python, e mostram o texto sem interpretar marcacao;
   antes cresciam sem limite em importacoes grandes.
+- Importacao: uma importacao que leva mais que o tempo de espera do SQLite
+  (padrao 3 s) volta a esperar a tabela ser liberada ao gravar; antes falhava na
+  hora e desfazia o lote inteiro se a grade estivesse lendo o banco naquele
+  instante. Vale tambem para rescan, manutencao e derivadas.
 - macOS: a busca com letras acentuadas (ex.: "inspecoes" com c cedilha e o til)
   volta a encontrar resultados, e a importacao nao grava mais texto UTF-8
   invalido quando uma celula termina com espaco nao separavel; esse espaco agora

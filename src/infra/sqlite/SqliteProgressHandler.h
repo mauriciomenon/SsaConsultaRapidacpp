@@ -27,7 +27,7 @@ namespace ssa::infra::sqlite {
             std::chrono::milliseconds maxWait = std::chrono::milliseconds{3000},
             SqliteSynchronizationSemaphore* busyEntered = nullptr,
             std::atomic_flag* externalBusyReported = nullptr)
-            : db_(db), stopToken_(std::move(stopToken)),
+            : db_(db), stopToken_(std::move(stopToken)), maxWait_(maxWait),
               deadline_(std::chrono::steady_clock::now() + maxWait), busyEntered_(busyEntered),
               externalBusyReported_(externalBusyReported) {
             sqlite3_busy_handler(db_, &SqliteBusyHandler::shouldRetry, this);
@@ -55,8 +55,13 @@ namespace ssa::infra::sqlite {
       private:
         static constexpr int kRetryDelayMs = 5;
 
-        static int shouldRetry(void* context, const int) noexcept {
+        static int shouldRetry(void* context, const int priorCalls) noexcept {
             auto* handler = static_cast<SqliteBusyHandler*>(context);
+            // SQLite passes 0 when a new lock wait starts: each wait gets the full budget, so a
+            // long import can still wait for a reader at COMMIT time.
+            if (priorCalls == 0) {
+                handler->deadline_ = std::chrono::steady_clock::now() + handler->maxWait_;
+            }
             auto& busyReported = handler->externalBusyReported_ != nullptr
                                      ? *handler->externalBusyReported_
                                      : handler->busyReported_;
@@ -88,6 +93,7 @@ namespace ssa::infra::sqlite {
 
         sqlite3* db_ = nullptr;
         std::stop_token stopToken_;
+        std::chrono::milliseconds maxWait_;
         std::chrono::steady_clock::time_point deadline_;
         SqliteSynchronizationSemaphore* busyEntered_ = nullptr;
         std::atomic_flag* externalBusyReported_ = nullptr;
