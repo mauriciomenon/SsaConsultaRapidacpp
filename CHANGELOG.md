@@ -119,6 +119,9 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 - Janela de progresso: as areas de saida e de avisos guardam as 4000 linhas mais
   recentes, como a versao Python, e mostram o texto sem interpretar marcacao;
   antes cresciam sem limite em importacoes grandes.
+- Importacao: numa selecao com planilhas SSA e de derivadas, se a parte SSA
+  falha ou e cancelada, a planilha de derivadas aparece no resumo como nao
+  importada; antes sumia da lista sem explicacao.
 - Tabela: uma importacao, rescan ou atualizacao SAM que termina sem gravar nada
   nao recarrega mais a tabela; antes voltava para a pagina 1, perdia a selecao e
   limpava as listas de valores dos filtros sem nenhum dado ter mudado.

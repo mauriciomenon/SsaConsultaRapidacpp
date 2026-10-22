@@ -142,6 +142,9 @@ namespace ssa::presentation {
             if (reason == "canceled") {
                 return QStringLiteral("operacao cancelada");
             }
+            if (reason == "derivadas_not_run") {
+                return QStringLiteral("nao importada: a importacao das SSAs nao foi concluida");
+            }
             return QStringLiteral("motivo disponivel no log tecnico");
         }
 

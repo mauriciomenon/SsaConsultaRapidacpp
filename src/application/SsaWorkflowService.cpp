@@ -31,6 +31,40 @@ namespace ssa::application {
             return result;
         }
 
+        // The summary drives the user-facing text; a derivadas file missing from it would read
+        // as if it had never been selected.
+        void appendDerivadasFiles(ports::WorkflowResult& result,
+                                  const std::vector<std::filesystem::path>& derivadasFiles,
+                                  const ports::ImportFileStatus status, const std::string& reason) {
+            if (!result.importSummary.has_value()) {
+                return;
+            }
+            auto& summary = *result.importSummary;
+            summary.discovered += derivadasFiles.size();
+            if (status == ports::ImportFileStatus::Rejected) {
+                summary.rejected += derivadasFiles.size();
+            } else if (status == ports::ImportFileStatus::Failed) {
+                summary.failed += derivadasFiles.size();
+            }
+            for (const auto& file : derivadasFiles) {
+                summary.files.push_back(
+                    {.source = utf8FileName(file), .status = status, .reason = reason});
+            }
+        }
+
+        // Derivadas edges need the SSA rows, so they are not imported when that part did not
+        // finish; they are still listed as not applied.
+        ports::WorkflowResult
+        withSkippedDerivadas(ports::WorkflowResult regularResult,
+                             const std::vector<std::filesystem::path>& derivadasFiles) {
+            const bool canceled = regularResult.status == ports::WorkflowStatus::Canceled;
+            appendDerivadasFiles(regularResult, derivadasFiles,
+                                 canceled ? ports::ImportFileStatus::Canceled
+                                          : ports::ImportFileStatus::Rejected,
+                                 canceled ? "canceled" : "derivadas_not_run");
+            return regularResult;
+        }
+
         ports::WorkflowResult
         mergeDerivadasOutcome(ports::WorkflowResult regularResult,
                               const ports::WorkflowResult& derivadasResult,
@@ -57,20 +91,12 @@ namespace ssa::application {
                 regularResult.diagnostic += "; " + derivadasResult.diagnostic;
             }
             regularResult.message += "; derivadas: " + derivadasResult.message;
-            // The summary drives the user-facing text; without these entries a failed
-            // derivadas run would be reported as "no failure".
-            if (regularResult.importSummary.has_value()) {
-                const bool rejected = derivadasResult.status == ports::WorkflowStatus::Rejected;
-                auto& summary = *regularResult.importSummary;
-                summary.discovered += derivadasFiles.size();
-                (rejected ? summary.rejected : summary.failed) += derivadasFiles.size();
-                for (const auto& file : derivadasFiles) {
-                    summary.files.push_back({.source = utf8FileName(file),
-                                             .status = rejected ? ports::ImportFileStatus::Rejected
-                                                                : ports::ImportFileStatus::Failed,
-                                             .reason = rejected ? "" : "operation_failed"});
-                }
-            }
+            // Without these entries a failed derivadas run would be reported as "no failure".
+            const bool rejected = derivadasResult.status == ports::WorkflowStatus::Rejected;
+            appendDerivadasFiles(regularResult, derivadasFiles,
+                                 rejected ? ports::ImportFileStatus::Rejected
+                                          : ports::ImportFileStatus::Failed,
+                                 rejected ? "" : "operation_failed");
             return regularResult;
         }
 
@@ -109,7 +135,10 @@ namespace ssa::application {
             auto regularRequest = request;
             regularRequest.files = std::move(regularFiles);
             auto regularResult = importPort_->importExternalFiles(regularRequest, stopToken);
-            if (!regularResult.ok() || derivadasFiles.empty()) {
+            if (!regularResult.ok()) {
+                return withSkippedDerivadas(std::move(regularResult), derivadasFiles);
+            }
+            if (derivadasFiles.empty()) {
                 return regularResult;
             }
             if (!derivadasPort_) {

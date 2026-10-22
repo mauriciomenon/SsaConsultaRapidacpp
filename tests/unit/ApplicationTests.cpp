@@ -341,6 +341,47 @@ TEST_CASE("workflow service names failed derivadas files in UTF-8") {
             "SSAs Derivadas e Relacionadas_\xc3\xb3\xe6\xbc\xa2.xlsx");
 }
 
+TEST_CASE("workflow service lists derivadas files skipped after a failed SSA import") {
+    struct FailingSummaryImportPort final : ssa::ports::IImportWorkflowPort {
+        [[nodiscard]] ssa::ports::WorkflowResult
+        importExternalFiles(const ssa::ports::ImportExternalFilesRequest&,
+                            std::stop_token = {}) override {
+            ssa::ports::ImportSummary summary;
+            summary.discovered = 1;
+            summary.failed = 1;
+            summary.files.push_back({.source = "Consulta SSA - 24-07-2026_0829AM.xlsx",
+                                     .status = ssa::ports::ImportFileStatus::Failed,
+                                     .reason = "operation_failed"});
+            return {
+                ssa::ports::WorkflowStatus::Failed, "regular import failed", false, {}, summary};
+        }
+        [[nodiscard]] ssa::ports::WorkflowResult rescan(const ssa::ports::RescanRequest&,
+                                                        std::stop_token = {}) override {
+            return {ssa::ports::WorkflowStatus::Succeeded, "rescan completed"};
+        }
+    };
+    const auto derivadas = std::make_shared<CapturingDerivadasPort>();
+    const ssa::application::SsaWorkflowService workflows(
+        std::make_shared<FailingSummaryImportPort>(), nullptr, nullptr, derivadas);
+    const ssa::ports::ImportExternalFilesRequest request{
+        {"Consulta SSA - 24-07-2026_0829AM.xlsx",
+         "SSAs Derivadas e Relacionadas_24-07-2026_0829AM.xlsx"}};
+
+    const auto result = workflows.importExternalFiles(request);
+
+    // Derivadas edges need the SSA rows, so they are not imported, but the file must not vanish.
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
+    REQUIRE(derivadas->requests.empty());
+    REQUIRE(result.importSummary.has_value());
+    REQUIRE(result.importSummary->discovered == 2);
+    REQUIRE(result.importSummary->rejected == 1);
+    REQUIRE(result.importSummary->files.size() == 2);
+    const auto& skipped = result.importSummary->files.back();
+    REQUIRE(skipped.source == "SSAs Derivadas e Relacionadas_24-07-2026_0829AM.xlsx");
+    REQUIRE(skipped.status == ssa::ports::ImportFileStatus::Rejected);
+    REQUIRE(skipped.reason == "derivadas_not_run");
+}
+
 TEST_CASE("unavailable workflow adapter reports not implemented explicitly") {
     auto unavailable = std::make_shared<ssa::application::UnavailableWorkflowPort>();
     const ssa::application::SsaWorkflowService workflows(unavailable, unavailable, unavailable,
