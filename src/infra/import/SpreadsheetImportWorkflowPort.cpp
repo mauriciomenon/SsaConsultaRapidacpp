@@ -305,6 +305,18 @@ namespace ssa::infra::importing {
                 0, (std::min)(detail.size(), kMaxWorkflowDiagnosticBytes - destination.size())));
         }
 
+        // resumePendingConsolidation reports a canceled or partial resume as Succeeded with a
+        // warning (some moves may have finished). For the operation that triggered it, the
+        // requested work never ran: report it as canceled or failed, never as completed.
+        ports::WorkflowResult incompleteResume(ports::WorkflowResult resumed,
+                                               const std::stop_token& stopToken) {
+            if (resumed.ok()) {
+                resumed.status = stopToken.stop_requested() ? ports::WorkflowStatus::Canceled
+                                                            : ports::WorkflowStatus::Failed;
+            }
+            return resumed;
+        }
+
         // Both call sites name source and destination explicitly.
         // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
         void backupDatabaseSnapshot(const std::filesystem::path& source,
@@ -903,9 +915,9 @@ namespace ssa::infra::importing {
                 if (!resumed->importSummary) {
                     auto summary = makeImportSummary(staging);
                     markUncommitted(summary, ports::ImportFileStatus::Failed);
-                    return withSummary(std::move(*resumed), summary);
+                    return withSummary(incompleteResume(std::move(*resumed), stopToken), summary);
                 }
-                return std::move(*resumed);
+                return incompleteResume(std::move(*resumed), stopToken);
             }
             ImportStagingResult pendingSelection;
             for (const auto& file : staging.files) {
@@ -971,9 +983,12 @@ namespace ssa::infra::importing {
                 return std::move(*resumed);
             }
             if (resumed->warning) {
-                resumed->status = ports::WorkflowStatus::Canceled;
-                resumed->message = "sam_import canceled_during_consolidation_resume";
-                return std::move(*resumed);
+                // A partial failure keeps its own message; only a real stop is a cancellation.
+                auto incomplete = incompleteResume(std::move(*resumed), stopToken);
+                if (incomplete.status == ports::WorkflowStatus::Canceled) {
+                    incomplete.message = "sam_import canceled_during_consolidation_resume";
+                }
+                return incomplete;
             }
         }
         auto staging = stager_.stageExternalFiles(files, stopToken);
@@ -1038,7 +1053,7 @@ namespace ssa::infra::importing {
         auto resumed = resumePendingConsolidation(stopToken, request.execution.sqliteBusyWait);
         if (resumed && (resumed->status == ports::WorkflowStatus::Canceled || !resumed->ok() ||
                         resumed->warning)) {
-            return std::move(*resumed);
+            return incompleteResume(std::move(*resumed), stopToken);
         }
         auto staging = stager_.stageInputFiles(stopToken, replaceAll);
         progress.totalFiles = staging.files.size();

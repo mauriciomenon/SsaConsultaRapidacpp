@@ -2592,7 +2592,8 @@ TEST_CASE("rescan resumes completed journal moves and keeps partial failure resu
                                                               importColumns());
     const auto partial = port.rescan({ssa::ports::RescanMode::Incremental});
 
-    REQUIRE(partial.status == ssa::ports::WorkflowStatus::Succeeded);
+    // The resume stopped short, so the rescan itself never ran: failed, but resumable.
+    REQUIRE(partial.status == ssa::ports::WorkflowStatus::Failed);
     REQUIRE(partial.warning);
     REQUIRE(std::filesystem::exists(firstDestination));
     REQUIRE_FALSE(std::filesystem::exists(firstSource));
@@ -2759,7 +2760,9 @@ TEST_CASE("canceling committed consolidation reports success and remains resumab
 
     const auto canceled = port.importExternalFiles({.files = {source}}, stopSource.get_token());
 
-    REQUIRE(canceled.status == ssa::ports::WorkflowStatus::Succeeded);
+    // The rows were committed by the earlier run; this run only had to move the file and was
+    // canceled before that, so it reports a cancellation and stays resumable.
+    REQUIRE(canceled.status == ssa::ports::WorkflowStatus::Canceled);
     REQUIRE(canceled.warning);
     REQUIRE(canceled.message.find("canceled") != std::string::npos);
     REQUIRE(std::filesystem::exists(source));
@@ -9522,6 +9525,46 @@ TEST_CASE("SAM import reports cancellation while resuming a prior journal") {
     REQUIRE(std::filesystem::exists(workbook));
     REQUIRE(std::filesystem::exists(pendingSource));
     REQUIRE_FALSE(std::filesystem::exists(pendingDestination));
+    REQUIRE(writer.pendingConsolidation().size() == 1);
+}
+
+TEST_CASE("rescan reports a partial journal resume as failed, not as completed") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    const auto movable = inputDirectory / "movable.xlsx";
+    const auto missing = inputDirectory / "missing.xlsx";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    createSparseFile(movable, 1);
+    createSparseFile(missing, 1);
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(sqliteWriterAccess(), dbPath,
+                                                           importColumns());
+    auto session = writer.startSession(false);
+    session.recordConsolidation(
+        {{{movable, inputDirectory / "processadas" / "movable.xlsx", true},
+          {missing, inputDirectory / "processadas" / "missing.xlsx", true}}});
+    static_cast<void>(session.finish());
+    // Another process removed it: the second move can never finish.
+    std::filesystem::remove(missing);
+    const auto fresh = inputDirectory / "fresh.xlsx";
+    writeWorkbook(fresh, row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Descricao"),
+                                 inlineCell("C1", "Data Cadastro")}) +
+                             row(2, {inlineCell("A2", "202600831"), inlineCell("B2", "Fresh"),
+                                     inlineCell("C2", "2026-07-14")}));
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+
+    const auto result = port.rescan({ssa::ports::RescanMode::Incremental});
+
+    // The resume stopped short and the rescan never ran: "completed with warnings" (CLI exit
+    // 0) was wrong while fresh.xlsx was left unimported.
+    INFO(result.message);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
+    REQUIRE(std::filesystem::exists(fresh));
     REQUIRE(writer.pendingConsolidation().size() == 1);
 }
 
