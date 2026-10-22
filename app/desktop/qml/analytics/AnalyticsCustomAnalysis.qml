@@ -445,15 +445,24 @@ Item {
         return values.filter(value => root.organizationalUnitLabel(value).toLocaleLowerCase().includes(normalized));
     }
 
-    onActiveChanged: {
-        if (root.active && !root.initialDimensionsRequested) {
-            root.initialDimensionsRequested = true;
-            root.refreshDimensions();
-        }
+    function ensureDimensions() {
+        if (!root.active || root.initialDimensionsRequested)
+            return;
+        root.initialDimensionsRequested = true;
+        root.refreshDimensions();
     }
+
+    onActiveChanged: root.ensureDimensions()
 
     Connections {
         target: root.analyticsViewModel
+
+        // An import cleared the lists; a closed window asks again when it opens.
+        function onInvalidated() {
+            root.initialDimensionsRequested = false;
+            if (root.Window.window !== null && root.Window.window.visible)
+                root.ensureDimensions();
+        }
 
         function onWarningWindowDaysChanged() {
             const value = root.analyticsViewModel.warningWindowDays;
@@ -461,6 +470,9 @@ Item {
         }
 
         function onDimensionValuesChanged() {
+            // Cleared lists (import, database switch) are not a result; their reload is.
+            if (Object.keys(root.analyticsViewModel.dimensionValues).length === 0)
+                return;
             root.pruneOrphanSelections();
             if (!root.quickPresetWaitingForDimensions)
                 return;

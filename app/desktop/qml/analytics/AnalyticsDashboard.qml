@@ -106,6 +106,7 @@ Item {
     readonly property real scrollPosition: dashboardFlick.contentY
     property bool waitingForWarningLoad: false
     property bool dashboardRefreshQueued: false
+    property bool reloadPending: false
 
     function warningValue() {
         if (warningField.text.trim().length === 0)
@@ -204,7 +205,9 @@ Item {
         dashboardFlick.contentY = Math.max(0, dashboardFlick.contentHeight - dashboardFlick.height);
     }
 
-    Component.onCompleted: {
+    // Loads the warning window first when it is unknown (startup, database switch).
+    function reload() {
+        root.reloadPending = false;
         const value = root.analyticsViewModel.warningWindowDays;
         if (value === undefined || value === null) {
             root.waitingForWarningLoad = true;
@@ -215,8 +218,18 @@ Item {
         }
     }
 
+    Component.onCompleted: root.reload()
+
     Connections {
         target: root.analyticsViewModel
+
+        // An import cleared the charts; a closed window reloads them when it opens again.
+        function onInvalidated() {
+            if (root.Window.window !== null && root.Window.window.visible)
+                root.reload();
+            else
+                root.reloadPending = true;
+        }
 
         function onWarningWindowDaysChanged() {
             const value = root.analyticsViewModel.warningWindowDays;

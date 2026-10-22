@@ -29,6 +29,9 @@ ApplicationWindow {
         root.show();
         root.raise();
         root.requestActivate();
+        if (dashboard.reloadPending)
+            dashboard.reload();
+        custom.ensureDimensions();
     }
 
     function selectTab(index) {
@@ -36,7 +39,14 @@ ApplicationWindow {
             analyticsTabs.currentIndex = index;
     }
 
-    onClosing: analyticsViewModel.cancel()
+    // Closing cancels what is still loading; the next open asks for it again.
+    onClosing: {
+        if (root.analyticsViewModel.loading) {
+            dashboard.reloadPending = true;
+            custom.initialDimensionsRequested = false;
+        }
+        root.analyticsViewModel.cancel();
+    }
 
     ColumnLayout {
         anchors.fill: parent
@@ -101,10 +111,14 @@ ApplicationWindow {
             currentIndex: analyticsTabs.currentIndex
 
             AnalyticsDashboard {
+                id: dashboard
+
                 analyticsViewModel: root.analyticsViewModel
             }
 
             AnalyticsCustomAnalysis {
+                id: custom
+
                 analyticsViewModel: root.analyticsViewModel
                 active: analyticsTabs.currentIndex === 1
             }

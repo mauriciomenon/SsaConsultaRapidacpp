@@ -166,6 +166,11 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
   deixa mais o painel vazio, e mudar o periodo do painel nao descarta mais as
   listas de divisao, setor e pessoa em carga; cada tipo de consulta so substitui
   a anterior do mesmo tipo. "Cancelar" interrompe todas as consultas em curso.
+- Analytics: depois de uma importacao, a janela de analises recarrega o painel
+  e as listas da analise customizada (na hora, se estiver aberta, ou ao reabrir)
+  e mantem as divisoes, setores e pessoas selecionados que ainda existem; antes
+  ficava vazia e perdia as selecoes. Fechar a janela durante uma carga e
+  reabrir pede os dados de novo.
 
 ### Alterado
 
