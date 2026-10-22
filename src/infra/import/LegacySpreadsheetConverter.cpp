@@ -106,7 +106,7 @@ namespace ssa::infra::importing {
             std::error_code error;
             const bool remains = std::filesystem::exists(conversionDirectoryPath, error);
             std::string diagnostic = "cannot remove xls conversion temporary directory path=" +
-                                     conversionDirectoryPath.string();
+                                     qt::toUtf8(conversionDirectoryPath);
             if (error) {
                 diagnostic += " error=" + error.message();
             } else if (remains) {

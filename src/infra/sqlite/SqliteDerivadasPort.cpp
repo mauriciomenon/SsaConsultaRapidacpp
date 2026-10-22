@@ -257,7 +257,7 @@ namespace ssa::infra::sqlite {
                     return importCanceled();
                 }
                 const auto currentFile = index + 1;
-                const auto fileName = source.filename().string();
+                const auto fileName = qt::toUtf8(source.filename());
                 reportProgress(request, ports::WorkflowProgressStage::ProcessingFile,
                                ports::WorkflowProgressLevel::Information, currentFile,
                                static_cast<int>(currentFile * 50 / request.files.size()), fileName,

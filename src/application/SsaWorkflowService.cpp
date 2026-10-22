@@ -2,12 +2,20 @@
 
 #include "domain/SsaImportPolicy.h"
 
+#include <filesystem>
+#include <string>
 #include <utility>
 #include <vector>
 
 namespace ssa::application {
 
     namespace {
+
+        // path::string() uses the ANSI code page on Windows (garbles or throws); keep UTF-8.
+        std::string utf8FileName(const std::filesystem::path& file) {
+            const auto name = file.filename().u8string();
+            return {reinterpret_cast<const char*>(name.data()), name.size()};
+        }
 
         ports::WorkflowResult withCleanupStatus(ports::WorkflowResult result,
                                                 const bool cleanupSucceeded) {
@@ -57,7 +65,7 @@ namespace ssa::application {
                 summary.discovered += derivadasFiles.size();
                 (rejected ? summary.rejected : summary.failed) += derivadasFiles.size();
                 for (const auto& file : derivadasFiles) {
-                    summary.files.push_back({.source = file.filename().string(),
+                    summary.files.push_back({.source = utf8FileName(file),
                                              .status = rejected ? ports::ImportFileStatus::Rejected
                                                                 : ports::ImportFileStatus::Failed,
                                              .reason = rejected ? "" : "operation_failed"});
@@ -87,7 +95,7 @@ namespace ssa::application {
         regularFiles.reserve(request.files.size());
         derivadasFiles.reserve(request.files.size());
         for (const auto& file : request.files) {
-            if (domain::SsaImportPolicy::classifySourceProfile(file.filename().string()) ==
+            if (domain::SsaImportPolicy::classifySourceProfile(utf8FileName(file)) ==
                 domain::SsaImportPolicy::SourceProfile::DerivadasRelacionadas) {
                 derivadasFiles.push_back(file);
             } else {

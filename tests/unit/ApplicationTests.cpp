@@ -306,6 +306,41 @@ TEST_CASE("workflow service preserves a successful SSA import when derivadas imp
     REQUIRE(result.diagnostic.find("self-loop") != std::string::npos);
 }
 
+TEST_CASE("workflow service names failed derivadas files in UTF-8") {
+    struct SummaryImportPort final : ssa::ports::IImportWorkflowPort {
+        [[nodiscard]] ssa::ports::WorkflowResult
+        importExternalFiles(const ssa::ports::ImportExternalFilesRequest&,
+                            std::stop_token = {}) override {
+            return {ssa::ports::WorkflowStatus::Succeeded,
+                    "regular import completed",
+                    false,
+                    {},
+                    ssa::ports::ImportSummary{}};
+        }
+        [[nodiscard]] ssa::ports::WorkflowResult rescan(const ssa::ports::RescanRequest&,
+                                                        std::stop_token = {}) override {
+            return {ssa::ports::WorkflowStatus::Succeeded, "rescan completed"};
+        }
+    };
+    const auto derivadas = std::make_shared<CapturingDerivadasPort>();
+    derivadas->nextResult = {ssa::ports::WorkflowStatus::Failed, "derivadas import failed"};
+    const ssa::application::SsaWorkflowService workflows(std::make_shared<SummaryImportPort>(),
+                                                         nullptr, nullptr, derivadas);
+    // An accented letter plus one outside every ANSI code page: on Windows path::string()
+    // garbles the first and throws on the second.
+    const ssa::ports::ImportExternalFilesRequest request{
+        {"Consulta SSA - 24-07-2026_0829AM.xlsx",
+         std::filesystem::path{u8"SSAs Derivadas e Relacionadas_ó漢.xlsx"}}};
+
+    const auto result = workflows.importExternalFiles(request);
+
+    REQUIRE(derivadas->requests.size() == 1);
+    REQUIRE(result.importSummary.has_value());
+    REQUIRE(result.importSummary->files.size() == 1);
+    REQUIRE(result.importSummary->files.front().source ==
+            "SSAs Derivadas e Relacionadas_\xc3\xb3\xe6\xbc\xa2.xlsx");
+}
+
 TEST_CASE("unavailable workflow adapter reports not implemented explicitly") {
     auto unavailable = std::make_shared<ssa::application::UnavailableWorkflowPort>();
     const ssa::application::SsaWorkflowService workflows(unavailable, unavailable, unavailable,
