@@ -38,6 +38,16 @@ TEST_CASE("column catalog exposes visible and general-search contracts") {
     REQUIRE(std::ranges::find(visible, "grau_prioridade_emissao") == visible.end());
     REQUIRE(std::ranges::find(visible, "grau_prioridade_planejamento") == visible.end());
     REQUIRE(std::ranges::find(search, "qtd_derivadas") == search.end());
+    // Python GUI parity (general_search_columns.py): technical columns stay out of the general
+    // search, and the source spreadsheet name is searchable.
+    for (const auto* technical :
+         {"execucao_parcial", "numero_desvios", "parciais", "situacao_da_parcial",
+          "equipamento_retirado", "equipamento_instalado", "desativacao_da_localizacao",
+          "instalacao_estimada", "executado", "concluido"}) {
+        INFO(technical);
+        REQUIRE(std::ranges::find(search, technical) == search.end());
+    }
+    REQUIRE(std::ranges::find(search, "arquivo_origem") != search.end());
     REQUIRE(
         std::ranges::find(ssa::domain::ColumnCatalog::orderedFilterColumnKeys(), "qtd_derivadas") ==
         ssa::domain::ColumnCatalog::orderedFilterColumnKeys().end());

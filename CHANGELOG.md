@@ -119,6 +119,11 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 - Janela de progresso: as areas de saida e de avisos guardam as 4000 linhas mais
   recentes, como a versao Python, e mostram o texto sem interpretar marcacao;
   antes cresciam sem limite em importacoes grandes.
+- Busca geral: deixa de procurar em 10 colunas tecnicas (parciais, situacao da
+  parcial, execucao parcial, desvios, equipamentos retirado/instalado,
+  desativacao, instalacao estimada, executado, concluido) e passa a procurar no
+  nome da planilha de origem, como a versao Python; antes "APV" trazia SSAs cuja
+  parcial estava APV.
 - Campos numericos (intervalo do SAM, linhas por bloco, espera do SQLite,
   tamanho da pagina, largura de coluna) aceitam digitar o valor; antes so
   mudavam pelas setas, um passo por clique.
