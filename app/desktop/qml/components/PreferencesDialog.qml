@@ -48,6 +48,12 @@ Window {
         root.viewModel.columnFlow.discardColumnSettings();
     }
 
+    // gui-behavior.md: closing without applying discards the pending column edits.
+    onVisibleChanged: {
+        if (!visible)
+            root.discardColumnChanges();
+    }
+
     Rectangle {
         anchors.fill: parent
         anchors.margins: 10

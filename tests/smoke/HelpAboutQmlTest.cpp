@@ -468,6 +468,53 @@ namespace {
             window->hide();
         }
 
+        void closing_column_editors_without_applying_discards_the_draft() {
+            auto repository = std::make_shared<ssa::tests::presentation_smoke::FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<ssa::tests::presentation_smoke::FakeCommands>();
+            auto preferences = std::make_shared<ssa::tests::presentation_smoke::FakePreferences>();
+            ssa::presentation::MainViewModel viewModel(service, commands, preferences);
+            SourceQmlUrlInterceptor sourceInterceptor;
+            QQmlEngine engine;
+            engine.addUrlInterceptor(&sourceInterceptor);
+            engine.addImportPath(QStringLiteral(SSA_BUILD_DIR));
+            QQmlComponent component(&engine, QUrl::fromLocalFile(repositoryRoot().filePath(
+                                                 QStringLiteral("app/desktop/qml/Main.qml"))));
+            QVariantMap initialProperties;
+            initialProperties.insert(QStringLiteral("mainViewModel"),
+                                     QVariant::fromValue<QObject*>(&viewModel));
+            const auto mainWindow =
+                std::unique_ptr<QObject>(component.createWithInitialProperties(initialProperties));
+            QVERIFY2(mainWindow != nullptr, qPrintable(component.errorString()));
+            auto* window = qobject_cast<QQuickWindow*>(mainWindow.get());
+            QVERIFY(window != nullptr);
+            window->resize(1180, 760);
+            window->show();
+            QTRY_VERIFY_WITH_TIMEOUT(window->isExposed(), 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(viewModel.browse()->visibleColumns().size() > 1, 1000);
+            const auto applied = viewModel.browse()->visibleColumns();
+            const auto hiddenKey = QString::fromStdString(applied.at(1));
+            auto* popup = window->findChild<QObject*>(QStringLiteral("columnSelectorPopup"));
+            auto* preferencesDialog =
+                mainWindow->findChild<QObject*>(QStringLiteral("ssaSmokePreferencesDialog"));
+            QVERIFY(popup != nullptr);
+            QVERIFY(preferencesDialog != nullptr);
+
+            // gui-behavior.md: closing without applying discards the pending column edits.
+            for (auto* editor : {popup, preferencesDialog}) {
+                QVERIFY(QMetaObject::invokeMethod(editor, "open"));
+                QTRY_VERIFY_WITH_TIMEOUT(editor->property("visible").toBool(), 1000);
+                QVERIFY(viewModel.columns()->setColumnVisibleByKey(hiddenKey, false));
+                QVERIFY(viewModel.columns()->visibleKeys() != applied);
+
+                QVERIFY(QMetaObject::invokeMethod(editor, "close"));
+
+                QTRY_VERIFY_WITH_TIMEOUT(!editor->property("visible").toBool(), 1000);
+                QTRY_VERIFY_WITH_TIMEOUT(viewModel.columns()->visibleKeys() == applied, 1000);
+                QCOMPARE(viewModel.browse()->visibleColumns(), applied);
+            }
+        }
+
         void column_selector_popup_tracks_trigger_and_clamps_to_overlay() {
             auto repository = std::make_shared<ssa::tests::presentation_smoke::FakeRepository>();
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);

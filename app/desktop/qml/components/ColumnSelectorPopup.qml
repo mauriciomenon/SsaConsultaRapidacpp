@@ -63,7 +63,11 @@ Popup {
     }
 
     onAboutToShow: updateGeometry()
-    onClosed: trigger = null
+    onClosed: {
+        trigger = null;
+        // Only "Aplicar" keeps the staged columns; closing discards them (a no-op after apply).
+        root.viewModel.columnFlow.discardColumnSettings();
+    }
 
     Connections {
         target: root.parent

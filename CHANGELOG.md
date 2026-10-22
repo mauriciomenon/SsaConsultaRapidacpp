@@ -119,6 +119,9 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 - Janela de progresso: as areas de saida e de avisos guardam as 4000 linhas mais
   recentes, como a versao Python, e mostram o texto sem interpretar marcacao;
   antes cresciam sem limite em importacoes grandes.
+- Colunas: fechar Preferencias ou o seletor de colunas sem "Aplicar" descarta as
+  mudancas de colunas pendentes; antes elas apareciam no outro editor e eram
+  aplicadas no proximo "Aplicar".
 - Importacao: quando uma consolidacao interrompida antes nao consegue terminar
   (arquivo pendente sumiu) ou e cancelada, o rescan e a importacao informam
   falha ou cancelamento; antes diziam "concluido com avisos" (CLI saia com 0)
