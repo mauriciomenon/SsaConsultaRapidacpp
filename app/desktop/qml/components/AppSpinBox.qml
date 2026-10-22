@@ -14,7 +14,7 @@ SpinBox {
     implicitWidth: Math.max(Theme.controlHeight * 2, Math.ceil(reservedDigitMetrics.width) + root.indicatorWidth + (root.horizontalTextPadding * 2))
     leftPadding: root.horizontalTextPadding
     rightPadding: root.indicatorWidth + root.horizontalTextPadding
-    editable: false
+    editable: true
     font.family: Theme.fontFamily
     font.pixelSize: Theme.fontSizeBody
     font.bold: false

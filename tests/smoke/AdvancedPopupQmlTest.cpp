@@ -795,6 +795,57 @@ namespace {
             QCOMPARE(repository->advancedRequests(), 5);
         }
 
+        void spin_box_accepts_a_typed_value() {
+            QQmlEngine engine;
+            QQmlComponent component(&engine);
+            component.setData(R"QML(
+                import QtQuick
+                import SsaConsultaRapida
+
+                Item {
+                    width: 300
+                    height: 120
+                    AppSpinBox {
+                        objectName: "typedSpinBox"
+                        x: 20
+                        y: 20
+                        from: 1
+                        to: 30000
+                        value: 30000
+                    }
+                }
+            )QML",
+                              QUrl(QStringLiteral("inmemory:/SpinBoxTypingHarness.qml")));
+            QTRY_VERIFY_WITH_TIMEOUT(component.status() != QQmlComponent::Loading, 1000);
+            QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+            QQuickWindow window;
+            window.setGeometry(0, 0, 300, 120);
+            std::unique_ptr<QObject> harness(component.create());
+            QVERIFY2(harness != nullptr, qPrintable(component.errorString()));
+            auto* harnessItem = qobject_cast<QQuickItem*>(harness.get());
+            QVERIFY(harnessItem != nullptr);
+            harnessItem->setParentItem(window.contentItem());
+            window.show();
+            QTRY_VERIFY_WITH_TIMEOUT(window.isExposed(), 1000);
+            auto* spinBox = harness->findChild<QQuickItem*>(QStringLiteral("typedSpinBox"));
+            QVERIFY(spinBox != nullptr);
+            auto* input = qvariant_cast<QQuickItem*>(spinBox->property("contentItem"));
+            QVERIFY(input != nullptr);
+
+            // A 1..30000 SAM interval must not need thousands of arrow clicks (Python: editable).
+            window.requestActivate();
+            QTRY_VERIFY_WITH_TIMEOUT(window.isActive(), 1000);
+            input->forceActiveFocus();
+            QTRY_VERIFY_WITH_TIMEOUT(input->hasActiveFocus(), 1000);
+            QVERIFY(QMetaObject::invokeMethod(input, "selectAll"));
+            for (const char digit : {'1', '2', '0'}) {
+                QTest::keyClick(&window, digit);
+            }
+            QTest::keyClick(&window, Qt::Key_Return);
+
+            QTRY_COMPARE_WITH_TIMEOUT(spinBox->property("value").toInt(), 120, 1000);
+        }
+
         void value_popup_reads_different_tokens_written_by_the_serializer() {
             auto repository = std::make_shared<CountingRepository>();
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
