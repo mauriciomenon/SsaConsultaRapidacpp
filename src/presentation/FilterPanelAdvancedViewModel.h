@@ -45,6 +45,8 @@ namespace ssa::presentation {
       signals:
         void changed();
         void stateChanged();
+        // Report work started or finished; the filter state is unchanged.
+        void backgroundActivityChanged();
         void applyRequested();
         void textFilterApplied(QString key, QString expression);
 

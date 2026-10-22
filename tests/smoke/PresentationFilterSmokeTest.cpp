@@ -531,6 +531,13 @@ namespace {
         mutable std::vector<ssa::domain::SsaPageRequest> requests_;
     };
 
+    struct StaticReportPort final : ssa::ports::IExecutadasReportPort {
+        std::vector<ssa::domain::SsaExecutadasReportRow>
+        executadasReport(const ssa::domain::SsaPageRequest&, bool, std::stop_token) const override {
+            return {{"MAM2", "202631", "BRUNO", 2}, {"MEG2", "202631", "ANA", 3}};
+        }
+    };
+
     class BlockingImportPort final : public ssa::ports::IImportWorkflowPort {
       public:
         ssa::ports::WorkflowResult
@@ -804,14 +811,51 @@ namespace {
             QCOMPARE(filterStateSpy.count(), 0);
         }
 
+        void macro_report_keeps_loaded_column_value_options() {
+            auto repository = std::make_shared<MutableDistinctRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::FilterPanelViewModel filterPanel(
+                service, std::make_shared<StaticReportPort>());
+            auto* advanced = qobject_cast<ssa::presentation::FilterPanelAdvancedViewModel*>(
+                filterPanel.advanced());
+            QVERIFY(advanced != nullptr);
+            auto* macro =
+                qobject_cast<ssa::presentation::AdvancedMacroFilterViewModel*>(advanced->macro());
+            QVERIFY(macro != nullptr);
+            const auto key = QStringLiteral("situacao");
+            const QStringList expectedValues{QStringLiteral("A"), QStringLiteral("Longest")};
+            filterPanel.refreshColumnValueOptionsFor(key);
+            QTRY_COMPARE_WITH_TIMEOUT(filterPanel.columnValueOptionsFor(key), expectedValues, 1000);
+            QSignalSpy resetSpy(&filterPanel,
+                                &ssa::presentation::FilterPanelViewModel::columnValueOptionsReset);
+            QSignalSpy activitySpy(
+                &filterPanel, &ssa::presentation::FilterPanelViewModel::backgroundActivityChanged);
+            QTRY_VERIFY_WITH_TIMEOUT(!filterPanel.backgroundWorkRunning(), 1000);
+            const auto quickSectorRequests = repository->quickSectorRequests();
+
+            macro->setSelectedMacro(QStringLiteral("ssas_executadas_setor"));
+
+            QVERIFY(filterPanel.backgroundWorkRunning());
+            QTRY_VERIFY_WITH_TIMEOUT(!macro->hasActiveOperations(), 1000);
+            QVERIFY(!macro->reportLoading());
+            QCOMPARE(macro->reportRows().size(), 2);
+            // The report only reads the filters: an open value popup keeps its options and
+            // reopening it does not query the database again.
+            QCOMPARE(resetSpy.count(), 0);
+            QVERIFY(activitySpy.count() >= 2);
+            QTRY_VERIFY_WITH_TIMEOUT(!filterPanel.backgroundWorkRunning(), 1000);
+            QCOMPARE(repository->quickSectorRequests(), quickSectorRequests);
+            filterPanel.refreshColumnValueOptionsFor(key);
+            QVERIFY(!filterPanel.columnValueOptionsLoadingFor(key));
+            QCOMPARE(filterPanel.columnValueOptionsFor(key), expectedValues);
+            QCOMPARE(repository->advancedRequests(), 1);
+
+            // Baixar changes the status filter, so the options must be refreshed.
+            macro->setSelectedMacro(QStringLiteral("ssas_para_baixar"));
+            QVERIFY(resetSpy.count() >= 1);
+        }
+
         void macro_graph_option_builds_a_weekly_chart_model() {
-            struct StaticReportPort final : ssa::ports::IExecutadasReportPort {
-                std::vector<ssa::domain::SsaExecutadasReportRow>
-                executadasReport(const ssa::domain::SsaPageRequest&, bool,
-                                 std::stop_token) const override {
-                    return {{"MAM2", "202631", "BRUNO", 2}, {"MEG2", "202631", "ANA", 3}};
-                }
-            };
             auto reportPort = std::make_shared<StaticReportPort>();
             ssa::presentation::filterpanel::FilterPanelState state;
             ssa::presentation::AdvancedMacroFilterViewModel macro(

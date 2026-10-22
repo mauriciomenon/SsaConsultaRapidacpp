@@ -25,10 +25,8 @@ namespace ssa::presentation {
             text_.refreshFromState();
             publishChanged();
         });
-        connect(&macro_, &AdvancedMacroFilterViewModel::reportChanged, this,
-                &FilterPanelAdvancedViewModel::stateChanged);
         connect(&macro_, &AdvancedMacroFilterViewModel::activeOperationsChanged, this,
-                &FilterPanelAdvancedViewModel::stateChanged);
+                &FilterPanelAdvancedViewModel::backgroundActivityChanged);
     }
 
     QObject* FilterPanelAdvancedViewModel::text() {

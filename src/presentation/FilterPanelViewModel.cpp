@@ -97,7 +97,7 @@ namespace ssa::presentation {
     void FilterPanelViewModel::configureDistinctValueRefresh() {
         connect(&distinctValues_, &FilterPanelDistinctValuesController::stateChanged, this,
                 &FilterPanelViewModel::backgroundActivityChanged);
-        connect(advanced_, &FilterPanelAdvancedViewModel::stateChanged, this,
+        connect(advanced_, &FilterPanelAdvancedViewModel::backgroundActivityChanged, this,
                 &FilterPanelViewModel::backgroundActivityChanged);
         activeFilterRefreshTimer_.setInterval(kActiveFilterRefreshDelayMs);
         activeFilterRefreshTimer_.setSingleShot(true);

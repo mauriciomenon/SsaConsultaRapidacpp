@@ -104,6 +104,9 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 - "Arquivo > Carregar dados" le o banco de novo (pagina, total e opcoes de
   filtro) e volta para a primeira pagina; antes repetia a pagina guardada em
   memoria e nao mostrava alteracoes feitas no banco por outro programa.
+- Filtros avancados: gerar um relatorio de SSAs executadas nao esvazia mais a
+  lista de valores ja carregada nos filtros nem refaz a consulta de setores;
+  antes cada relatorio descartava essas listas como se o filtro tivesse mudado.
 
 ### Alterado
 
