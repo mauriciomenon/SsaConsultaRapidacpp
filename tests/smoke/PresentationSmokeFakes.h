@@ -28,12 +28,15 @@ namespace ssa::tests::presentation_smoke {
         std::chrono::milliseconds delay{0};
         std::size_t totalRows{1};
         std::size_t rowCount{1};
+        // Page index whose query always throws (e.g. a prefetched page).
+        std::optional<std::size_t> failingPageIndex;
     };
 
     class FakeRepository final : public ssa::ports::ISsaRepository {
       public:
         explicit FakeRepository(FakeRepositoryConfig config = {})
-            : delay_(config.delay), totalRows_(config.totalRows), rowCount_(config.rowCount) {}
+            : delay_(config.delay), totalRows_(config.totalRows), rowCount_(config.rowCount),
+              failingPageIndex_(config.failingPageIndex) {}
 
         ssa::domain::SsaPageResult page(const ssa::domain::SsaPageRequest& request,
                                         std::stop_token = {}) const override {
@@ -47,7 +50,7 @@ namespace ssa::tests::presentation_smoke {
             {
                 const std::scoped_lock lock(mutex_);
                 requests_.push_back(request);
-                if (std::exchange(failPages_, false)) {
+                if (std::exchange(failPages_, false) || request.pageIndex == failingPageIndex_) {
                     throw std::runtime_error("page query failed");
                 }
             }
@@ -128,6 +131,7 @@ namespace ssa::tests::presentation_smoke {
         std::chrono::milliseconds delay_;
         std::size_t totalRows_;
         std::size_t rowCount_;
+        std::optional<std::size_t> failingPageIndex_;
         mutable std::mutex mutex_;
         mutable std::vector<ssa::domain::SsaPageRequest> startedRequests_;
         mutable std::vector<ssa::domain::SsaPageRequest> requests_;

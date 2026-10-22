@@ -308,6 +308,7 @@ namespace ssa::presentation {
             if (canceled) {
                 logAsyncOperationError("Macro report failed after cancellation:", error);
             } else if (error) {
+                logAsyncOperationError("Macro report failed:", error);
                 try {
                     std::rethrow_exception(error);
                 } catch (const std::exception& exception) {
@@ -318,6 +319,7 @@ namespace ssa::presentation {
             } else if (!canceled && result) {
                 if (!result->ok) {
                     reportError_ = QString::fromStdString(result->error);
+                    qWarning().noquote() << "Macro report failed:" << reportError_;
                 } else {
                     reportChart_ = reportChartMap(result->rows);
                     reportRows_.reserve(static_cast<int>(result->rows.size()));

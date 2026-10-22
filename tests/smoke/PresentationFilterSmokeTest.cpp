@@ -855,6 +855,28 @@ namespace {
             QVERIFY(resetSpy.count() >= 1);
         }
 
+        void macro_report_failure_is_logged_and_shown() {
+            struct FailingReportPort final : ssa::ports::IExecutadasReportPort {
+                std::vector<ssa::domain::SsaExecutadasReportRow>
+                executadasReport(const ssa::domain::SsaPageRequest&, bool,
+                                 std::stop_token) const override {
+                    throw ssa::ports::OperationError("Falha ao acessar o banco de dados",
+                                                     "executadas report rc=5");
+                }
+            };
+            ssa::presentation::filterpanel::FilterPanelState state;
+            ssa::presentation::AdvancedMacroFilterViewModel macro(
+                state.advanced(), state, std::make_shared<FailingReportPort>(), nullptr,
+                [] { return QDate(2026, 7, 31); });
+            // QTest fails the test when an expected message is never emitted.
+            QTest::ignoreMessage(QtWarningMsg, "Macro report failed: executadas report rc=5");
+
+            macro.setSelectedMacro(QStringLiteral("ssas_executadas_setor"));
+
+            QTRY_VERIFY_WITH_TIMEOUT(!macro.reportLoading(), 1000);
+            QCOMPARE(macro.reportError(), QString("Falha ao acessar o banco de dados"));
+        }
+
         void macro_graph_option_builds_a_weekly_chart_model() {
             auto reportPort = std::make_shared<StaticReportPort>();
             ssa::presentation::filterpanel::FilterPanelState state;

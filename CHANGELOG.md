@@ -110,6 +110,9 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 - Filtros avancados: uma lista de valores aberta durante "Carregar dados" ou ao
   fim de uma importacao busca os valores de novo; antes ficava vazia ate ser
   fechada e reaberta.
+- Log: falha ao pre-carregar as proximas paginas da tabela e falha do relatorio
+  de SSAs executadas passam a ser registradas no log com o detalhe tecnico;
+  antes a primeira sumia em silencio e a segunda so aparecia na tela.
 
 ### Alterado
 

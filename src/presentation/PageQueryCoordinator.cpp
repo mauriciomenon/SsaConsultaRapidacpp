@@ -271,9 +271,14 @@ namespace ssa::presentation {
         emit activeOperationsChanged();
         if (operation.prefetch) {
             std::optional<PageQueryResult> result;
+            std::exception_ptr error;
             {
                 std::scoped_lock lock(operation.resultState->mutex);
                 result = std::move(operation.resultState->result);
+                error = operation.resultState->error;
+            }
+            if (!operation.stopSource.stop_requested()) {
+                logAsyncOperationError("Page prefetch failed:", error);
             }
             if (result && operation.generation == cacheGeneration_ && !result->canceled &&
                 !operation.stopSource.stop_requested()) {

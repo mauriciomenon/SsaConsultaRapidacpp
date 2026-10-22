@@ -1808,6 +1808,28 @@ namespace {
             QCOMPARE(failedCount, 0);
         }
 
+        void page_query_logs_a_failed_prefetch() {
+            auto repository = std::make_shared<FakeRepository>(FakeRepositoryConfig{
+                .totalRows = std::size_t{25}, .failingPageIndex = std::size_t{1}});
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::PageQueryCoordinator coordinator(service);
+            QSignalSpy succeededSpy(&coordinator,
+                                    &ssa::presentation::PageQueryCoordinator::succeeded);
+            QSignalSpy failedSpy(&coordinator, &ssa::presentation::PageQueryCoordinator::failed);
+            // QTest fails the test when an expected message is never emitted.
+            QTest::ignoreMessage(QtWarningMsg, "Page prefetch failed: page query failed");
+
+            ssa::domain::SsaPageRequest first;
+            first.pageSize = 10;
+            coordinator.run(first);
+
+            QTRY_COMPARE_WITH_TIMEOUT(succeededSpy.size(), 1, 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(!coordinator.hasActiveOperations(), 1000);
+            QCOMPARE(repository->requests().size(), std::size_t{3});
+            // The prefetch is background work: the visible page stays a success.
+            QCOMPARE(failedSpy.size(), 0);
+        }
+
         void page_query_prefetches_two_pages_and_reuses_the_cache() {
             auto repository = std::make_shared<FakeRepository>(
                 FakeRepositoryConfig{.totalRows = std::size_t{25}});
