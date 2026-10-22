@@ -414,7 +414,8 @@ Item {
     function runQuickPreset(configureFn) {
         root.quickPresetWaitingForDimensions = true;
         configureFn();
-        if (root.requiresExplicitPeople)
+        // configureFn refreshes the dimensions; onDimensionValuesChanged runs the analysis.
+        if (root.requiresExplicitPeople || root.analyticsViewModel.loading)
             return true;
         root.quickPresetWaitingForDimensions = false;
         return root.runAnalysis();

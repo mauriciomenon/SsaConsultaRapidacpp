@@ -163,8 +163,10 @@ namespace {
                    QStringList{QStringLiteral("Ana"), QStringLiteral("Bruno")}},
               }) {}
 
+        // Like the real view model: a dimension request keeps loading true until its result is
+        // published, and loading turns false before the result signal.
         [[nodiscard]] bool loading() const noexcept {
-            return false;
+            return dimensionsLoading_;
         }
 
         [[nodiscard]] QString errorMessage() const {
@@ -354,7 +356,18 @@ namespace {
 
         void publishDimensionValues(const QVariantMap& values) {
             dimensionValues_ = values;
+            dimensionsLoading_ = false;
+            emit stateChanged();
             emit dimensionValuesChanged();
+        }
+
+        void publishCurrentDimensionValues() {
+            publishDimensionValues(dimensionValues_);
+        }
+
+        // Keeps later dimension requests in flight until the test publishes them.
+        void holdDimensionRequests() {
+            holdDimensionRequests_ = true;
         }
 
         void publishCustomSeries(const QVariantMap& values) {
@@ -372,6 +385,11 @@ namespace {
             ++dimensionRequestCount_;
             callOrder_.push_back(QStringLiteral("dimensions"));
             lastDimensionSelection_ = selection;
+            dimensionsLoading_ = true;
+            emit stateChanged();
+            if (!holdDimensionRequests_) {
+                QTimer::singleShot(0, this, [this] { publishCurrentDimensionValues(); });
+            }
             return true;
         }
 
@@ -499,6 +517,8 @@ namespace {
         int dashboardRequestCount_{0};
         int customRequestCount_{0};
         int dimensionRequestCount_{0};
+        bool dimensionsLoading_{false};
+        bool holdDimensionRequests_{false};
         int warningLoadCount_{0};
         int warningSaveCount_{0};
         int cancelCount_{0};
@@ -1053,6 +1073,7 @@ namespace {
             QCOMPARE(custom->property("firstWeek").toInt(), 1);
             QCOMPARE(custom->property("lastWeek").toInt(),
                      ytd.value(QStringLiteral("lastWeek")).toInt());
+            QTRY_VERIFY_WITH_TIMEOUT(!viewModel.loading(), 1000);
 
             QVERIFY(invoke(*custom, "runAnalysis"));
             QCOMPARE(viewModel.customRequestCount(), 1);
@@ -1237,6 +1258,8 @@ namespace {
             QVERIFY(invoke(*custom, "selectDivision", QStringLiteral("SMI")));
             QVERIFY(invoke(*custom, "selectSector", QStringLiteral("SMIN")));
             QVERIFY(invoke(*custom, "selectPerson", QStringLiteral("Ana")));
+            // Each selection reloads the cascading dimensions; Analisar waits for them.
+            QTRY_VERIFY_WITH_TIMEOUT(!viewModel.loading(), 1000);
             QCOMPARE(custom->property("canAnalyze").toBool(), true);
             QVERIFY(invoke(*custom, "runAnalysis"));
             QCOMPARE(viewModel.customRequestCount(), 1);
@@ -1420,6 +1443,8 @@ namespace {
                                              controls->width(),
                                      1000);
 
+            QTRY_VERIFY_WITH_TIMEOUT(!viewModel.loading(), 1000);
+            viewModel.holdDimensionRequests();
             const int requestsBefore = viewModel.customRequestCount();
             const int dimensionsBefore = viewModel.dimensionRequestCount();
             QVERIFY(QMetaObject::invokeMethod(button, "click", Qt::DirectConnection));
@@ -1698,6 +1723,7 @@ namespace {
             const int requestsBefore = viewModel.customRequestCount();
             QVERIFY(invoke(*custom, "selectAllSectors"));
             QVERIFY(invoke(*custom, "selectAllPeople"));
+            QTRY_VERIFY_WITH_TIMEOUT(!viewModel.loading(), 1000);
             QVERIFY(invoke(*custom, "runAnalysis"));
             QCOMPARE(viewModel.customRequestCount(), requestsBefore + 1);
             const QVariantMap selection = viewModel.lastCustomSelection();

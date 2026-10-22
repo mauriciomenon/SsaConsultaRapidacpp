@@ -119,6 +119,9 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 - Janela de progresso: as areas de saida e de avisos guardam as 4000 linhas mais
   recentes, como a versao Python, e mostram o texto sem interpretar marcacao;
   antes cresciam sem limite em importacoes grandes.
+- Analytics: os relatorios rapidos "Prazo das pendentes por area",
+  "Executadas por setor (semana)" e "Executadas por setor (mes ISO)" voltam a
+  gerar a analise; antes so configuravam os filtros e nao rodavam.
 - Windows: nomes de planilha de derivadas com acento ou caracteres fora da
   pagina de codigo do sistema aparecem corretos no resumo e no progresso; antes
   saiam trocados ou faziam a importacao falhar.
