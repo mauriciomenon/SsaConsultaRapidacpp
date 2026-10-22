@@ -14,6 +14,9 @@ jobs:
   macos:
     runs-on: macos-15
     timeout-minutes: 90
+    env:
+      # binaryDir of the dev preset: build/${hostSystemName}/native/dev.
+      BUILD_DIR: build/Darwin/native/dev
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -38,7 +41,7 @@ jobs:
       - name: C++ tidy
         run: |
           SDKROOT="$(xcrun --show-sdk-path)"
-          PATH="$(brew --prefix llvm)/bin:$PATH" run-clang-tidy -p build/dev -quiet \
+          PATH="$(brew --prefix llvm)/bin:$PATH" run-clang-tidy -p "$BUILD_DIR" -quiet \
             -header-filter="$PWD/(src|app|tools)/.*" \
             -extra-arg=-isysroot -extra-arg="$SDKROOT" \
             "$PWD/(src|app|tools)/.*\\.(cpp|h)$"
@@ -53,13 +56,13 @@ jobs:
           sdk="$(xcrun --sdk macosx --show-sdk-path)"
           resource="$("$(brew --prefix llvm)/bin/clang" -print-resource-dir)"
           find src app tools -type f -name '*.cpp' -print0 | xargs -0 \
-            clazy-standalone -p build/dev -checks=level0,level1 --only-qt \
+            clazy-standalone -p "$BUILD_DIR" -checks=level0,level1 --only-qt \
             --header-filter="$PWD/(src|app|tools)/.*" \
             --ignore-dirs='/(build|_deps)/' \
             --extra-arg="-resource-dir=$resource" \
             --extra-arg=-isysroot --extra-arg="$sdk" \
             --extra-arg=-isystem --extra-arg="$sdk/usr/include/c++/v1" \
-            2>&1 | tee build/dev/clazy.log
+            2>&1 | tee "$BUILD_DIR/clazy.log"
           if [[ "${EVENT_NAME}" == "pull_request" ]]; then
             reporter="github-pr-annotations"
             diff_command="git diff --no-ext-diff ${PR_BASE_SHA} ${PR_HEAD_SHA}"
@@ -78,7 +81,7 @@ jobs:
             -filter-mode=added \
             -diff="${diff_command}" \
             -fail-level=warning \
-            < build/dev/clazy.log
+            < "$BUILD_DIR/clazy.log"
       - name: Secret scan
         run: gitleaks dir . --redact --exit-code 1 --no-banner
       - name: Package macOS bundle (release + macdeployqt)
@@ -99,6 +102,7 @@ jobs:
     timeout-minutes: 60
     env:
       QT_QPA_PLATFORM: offscreen
+      BUILD_DIR: build/Linux/native/dev
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
       - uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730
@@ -122,7 +126,7 @@ jobs:
           set -euo pipefail
           trap 'rm -f /tmp/mem_fixture.db' EXIT
           sqlite3 /tmp/mem_fixture.db < tools/generate_mem_fixture.sql
-          ./build/dev/ssa_mem_stress \
+          "$BUILD_DIR/ssa_mem_stress" \
             --db /tmp/mem_fixture.db \
             --pages 40 \
             --page-size 50 \
