@@ -341,6 +341,37 @@ TEST_CASE("workflow service names failed derivadas files in UTF-8") {
             "SSAs Derivadas e Relacionadas_\xc3\xb3\xe6\xbc\xa2.xlsx");
 }
 
+TEST_CASE("workflow service reports applied derivadas over unchanged SSA workbooks as changed") {
+    const auto regular = std::make_shared<CapturingImportPort>();
+    const auto derivadas = std::make_shared<CapturingDerivadasPort>();
+    struct NoChangesPort final : ssa::ports::IImportWorkflowPort {
+        [[nodiscard]] ssa::ports::WorkflowResult
+        importExternalFiles(const ssa::ports::ImportExternalFilesRequest&,
+                            std::stop_token = {}) override {
+            return {ssa::ports::WorkflowStatus::NoChanges,
+                    "no changes",
+                    false,
+                    {},
+                    ssa::ports::ImportSummary{}};
+        }
+        [[nodiscard]] ssa::ports::WorkflowResult rescan(const ssa::ports::RescanRequest&,
+                                                        std::stop_token = {}) override {
+            return {ssa::ports::WorkflowStatus::Succeeded, "rescan completed"};
+        }
+    };
+    const ssa::application::SsaWorkflowService workflows(std::make_shared<NoChangesPort>(), nullptr,
+                                                         nullptr, derivadas);
+    const ssa::ports::ImportExternalFilesRequest request{
+        {"Consulta SSA - 24-07-2026_0829AM.xlsx",
+         "SSAs Derivadas e Relacionadas_24-07-2026_0829AM.xlsx"}};
+
+    const auto result = workflows.importExternalFiles(request);
+
+    // The GUI refreshes unless the result says NoChanges; the derivadas did change the database.
+    REQUIRE(derivadas->requests.size() == 1);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+}
+
 TEST_CASE("workflow service lists derivadas files skipped after a failed SSA import") {
     struct FailingSummaryImportPort final : ssa::ports::IImportWorkflowPort {
         [[nodiscard]] ssa::ports::WorkflowResult

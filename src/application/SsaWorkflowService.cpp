@@ -70,6 +70,10 @@ namespace ssa::application {
                               const ports::WorkflowResult& derivadasResult,
                               const std::vector<std::filesystem::path>& derivadasFiles) {
             if (derivadasResult.ok()) {
+                // Unchanged SSA workbooks plus applied derivadas still changed the database.
+                if (derivadasResult.status == ports::WorkflowStatus::Succeeded) {
+                    regularResult.status = ports::WorkflowStatus::Succeeded;
+                }
                 regularResult.warning = regularResult.warning || derivadasResult.warning;
                 if (derivadasResult.warning) {
                     if (!regularResult.diagnostic.empty()) {

@@ -654,12 +654,10 @@ namespace ssa::presentation {
                                    result.importSummary->inserts + result.importSummary->updates +
                                            result.importSummary->verified >
                                        0;
-        // A success without a summary (reset, cleanup, derivadas) may change data; NoChanges or
-        // a summary without committed rows does not, so the grid keeps its page and selection.
-        const bool dataChanged = result.ok()
-                                     ? result.status != ports::WorkflowStatus::NoChanges &&
-                                           (!result.importSummary.has_value() || committedRows)
-                                     : committedRows;
+        // Only an explicit NoChanges keeps the grid: a success may change data outside the SSA
+        // counters (derivadas, analytics snapshots, reset, cleanup).
+        const bool dataChanged =
+            result.ok() ? result.status != ports::WorkflowStatus::NoChanges : committedRows;
         if (result.status == ports::WorkflowStatus::Canceled) {
             const auto message = messagesForCurrentOperation().canceled;
             finishProgressSession(result, message, true);

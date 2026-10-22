@@ -118,24 +118,25 @@ namespace ssa::presentation {
     }
 
     void MainViewModel::connectWorkflowRefresh() {
-        connect(actions_.workflows(), &WorkflowCommandViewModel::lastResultChanged, &browse_,
-                [this] {
-                    const auto* workflows = actions_.workflows();
-                    if (workflows->lastDataChanged()) {
-                        if (analytics_) {
-                            analytics_->invalidateAfterImport();
-                        }
-                        // A failed/canceled import that committed rows reloads without touching
-                        // the failure status already published by ActionStatusCoordinator.
-                        if (workflows->lastSucceeded()) {
-                            pendingWorkflowRefreshMessage_ = workflows->lastWarning()
-                                                                 ? workflows->lastMessage()
-                                                                 : workflows->successMessage();
-                        }
-                        browse_.invalidateDataSource();
-                        browse_.apply();
+        connect(
+            actions_.workflows(), &WorkflowCommandViewModel::lastResultChanged, &browse_, [this] {
+                const auto* workflows = actions_.workflows();
+                // Analytics snapshots can change without SSA rows changing.
+                if (analytics_ && (workflows->lastSucceeded() || workflows->lastDataChanged())) {
+                    analytics_->invalidateAfterImport();
+                }
+                if (workflows->lastDataChanged()) {
+                    // A failed/canceled import that committed rows reloads without touching
+                    // the failure status already published by ActionStatusCoordinator.
+                    if (workflows->lastSucceeded()) {
+                        pendingWorkflowRefreshMessage_ = workflows->lastWarning()
+                                                             ? workflows->lastMessage()
+                                                             : workflows->successMessage();
                     }
-                });
+                    browse_.invalidateDataSource();
+                    browse_.apply();
+                }
+            });
         connect(&browse_, &BrowseViewModel::pageChanged, this, [this] {
             if (pendingWorkflowRefreshMessage_.isEmpty()) {
                 return;
