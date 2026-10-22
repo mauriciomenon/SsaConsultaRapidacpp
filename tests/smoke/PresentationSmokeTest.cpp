@@ -2913,6 +2913,38 @@ namespace {
             QCOMPARE(optionsResetSpy.size(), 1);
         }
 
+        void workflow_without_data_changes_keeps_the_grid_page() {
+            auto repository = std::make_shared<FakeRepository>(
+                FakeRepositoryConfig{.totalRows = std::size_t{25}, .rowCount = std::size_t{10}});
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            ssa::ports::ImportSummary unchanged;
+            unchanged.discovered = 1;
+            unchanged.unchangedRows = 4;
+            auto importPort = std::make_shared<CapturingImportPort>(ssa::ports::WorkflowResult{
+                ssa::ports::WorkflowStatus::NoChanges, "no changes", false, {}, unchanged});
+            auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(importPort);
+            ssa::presentation::MainViewModel model(service, commands, nullptr, nullptr, workflows);
+            auto* browse = model.browse();
+            browse->setPageSize(10);
+            browse->load();
+            QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{3}, 1000);
+            browse->nextPage();
+            QTRY_COMPARE_WITH_TIMEOUT(browse->pageNumber(), 2, 1000);
+            QSignalSpy resultSpy(model.actions()->workflows(),
+                                 &ssa::presentation::WorkflowCommandViewModel::lastResultChanged);
+
+            QVariantList selectedFiles;
+            selectedFiles.push_back(QUrl::fromLocalFile("/tmp/entrada.xlsx"));
+            model.actions()->workflows()->importExternalFiles(selectedFiles);
+
+            QTRY_COMPARE_WITH_TIMEOUT(resultSpy.size(), 1, 1000);
+            QCoreApplication::processEvents();
+            // Nothing was written: no reload, the user stays on page 2 and no COUNT runs.
+            QCOMPARE(browse->pageNumber(), 2);
+            QCOMPARE(repository->countCalls(), std::size_t{1});
+        }
+
         void workflow_success_invalidates_total_rows_all_before_refresh() {
             auto repository = std::make_shared<FakeRepository>();
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);

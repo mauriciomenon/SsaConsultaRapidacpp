@@ -121,7 +121,7 @@ namespace ssa::presentation {
         connect(actions_.workflows(), &WorkflowCommandViewModel::lastResultChanged, &browse_,
                 [this] {
                     const auto* workflows = actions_.workflows();
-                    if (workflows->lastSucceeded() || workflows->lastDataChanged()) {
+                    if (workflows->lastDataChanged()) {
                         if (analytics_) {
                             analytics_->invalidateAfterImport();
                         }
