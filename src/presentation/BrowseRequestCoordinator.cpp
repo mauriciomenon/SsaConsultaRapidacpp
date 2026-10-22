@@ -23,6 +23,7 @@ namespace ssa::presentation {
                 });
         connect(&pageQueries_, &PageQueryCoordinator::succeeded, this,
                 [this](PageQueryResult result, const domain::SsaPageRequest& request) {
+                    displayedRequest_ = request;
                     pageLifecycle_.markRequestSucceeded(std::move(result), request);
                     emit pageChanged();
                 });
@@ -38,8 +39,8 @@ namespace ssa::presentation {
         });
     }
 
-    domain::SsaPageRequest BrowseRequestCoordinator::currentRequest() const {
-        return buildRequest();
+    domain::SsaPageRequest BrowseRequestCoordinator::displayedRequest() const {
+        return displayedRequest_.has_value() ? *displayedRequest_ : buildRequest();
     }
 
     void BrowseRequestCoordinator::loadCurrentRequest() {

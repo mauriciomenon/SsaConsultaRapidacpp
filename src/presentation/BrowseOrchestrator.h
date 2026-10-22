@@ -46,7 +46,7 @@ namespace ssa::presentation {
         [[nodiscard]] bool canUndoFilters() const;
         [[nodiscard]] int filterUndoDepth() const;
         [[nodiscard]] QString filterHistoryText() const;
-        [[nodiscard]] domain::SsaPageRequest currentRequest() const;
+        [[nodiscard]] domain::SsaPageRequest displayedRequest() const;
         [[nodiscard]] const std::vector<std::string>& visibleColumns() const;
         [[nodiscard]] const std::map<std::string, int>& columnWidths() const;
 

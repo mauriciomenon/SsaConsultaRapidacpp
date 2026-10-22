@@ -13,6 +13,7 @@
 #include <QObject>
 #include <QString>
 #include <memory>
+#include <optional>
 
 namespace ssa::presentation {
 
@@ -25,7 +26,9 @@ namespace ssa::presentation {
                                           FilterPanelViewModel& filters, StatusViewModel& status,
                                           SsaTableModel& tableModel, QObject* parent = nullptr);
 
-        [[nodiscard]] domain::SsaPageRequest currentRequest() const;
+        // The request whose page the table shows; what the user typed but did not apply
+        // (search draft) is not part of it. Before the first page, the current inputs.
+        [[nodiscard]] domain::SsaPageRequest displayedRequest() const;
         void loadCurrentRequest();
         void cancelCurrentRequest();
         void invalidateTotalRowsAll();
@@ -45,6 +48,7 @@ namespace ssa::presentation {
         SsaTableModel& tableModel_;
         BrowsePageLifecycleCoordinator pageLifecycle_;
         PageQueryCoordinator pageQueries_;
+        std::optional<domain::SsaPageRequest> displayedRequest_;
     };
 
 } // namespace ssa::presentation

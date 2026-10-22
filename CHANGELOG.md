@@ -119,6 +119,9 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 - Janela de progresso: as areas de saida e de avisos guardam as 4000 linhas mais
   recentes, como a versao Python, e mostram o texto sem interpretar marcacao;
   antes cresciam sem limite em importacoes grandes.
+- Exportar resultados: o CSV segue exatamente a consulta mostrada na tabela; antes
+  usava o texto digitado na busca geral mesmo sem aplicar, e o arquivo divergia
+  da tela.
 - Colunas: fechar Preferencias ou o seletor de colunas sem "Aplicar" descarta as
   mudancas de colunas pendentes; antes elas apareciam no outro editor e eram
   aplicadas no proximo "Aplicar".

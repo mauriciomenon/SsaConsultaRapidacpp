@@ -177,8 +177,8 @@ namespace ssa::presentation {
         tableHeadersDirty_ = true;
     }
 
-    domain::SsaPageRequest BrowseViewModel::currentRequest() const {
-        return orchestrator_.currentRequest();
+    domain::SsaPageRequest BrowseViewModel::displayedRequest() const {
+        return orchestrator_.displayedRequest();
     }
 
     const std::vector<std::string>& BrowseViewModel::visibleColumns() const {

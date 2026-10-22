@@ -67,7 +67,7 @@ namespace ssa::presentation {
         [[nodiscard]] int filterUndoDepth() const;
         Q_INVOKABLE QString filterHistoryText() const;
         [[nodiscard]] QVariantList tableHeaders() const;
-        [[nodiscard]] domain::SsaPageRequest currentRequest() const;
+        [[nodiscard]] domain::SsaPageRequest displayedRequest() const;
         [[nodiscard]] const std::vector<std::string>& visibleColumns() const;
         [[nodiscard]] const std::map<std::string, int>& columnWidths() const;
         Q_INVOKABLE void setFilterPanelFocusColumn(const QString& key);

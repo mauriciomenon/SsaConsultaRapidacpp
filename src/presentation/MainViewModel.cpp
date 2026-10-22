@@ -30,7 +30,7 @@ namespace ssa::presentation {
           logs_(this),
           actions_(
               std::move(commandPort), std::move(workflowService),
-              [this] { return browse_.currentRequest(); }, *browse_.status(), preferences_, this),
+              [this] { return browse_.displayedRequest(); }, *browse_.status(), preferences_, this),
           preferencesFlow_(browse_, ui_, columns_, *actions_.workflows(), preferences_,
                            std::move(filterPresetStore), filterPresetService_),
           columnsFlow_(

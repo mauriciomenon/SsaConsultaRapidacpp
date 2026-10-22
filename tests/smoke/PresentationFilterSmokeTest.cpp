@@ -1234,6 +1234,28 @@ namespace {
             QVERIFY(viewModel.lastMessage().contains("export failed"));
         }
 
+        void export_uses_the_displayed_query_not_the_typed_search() {
+            auto repository = std::make_shared<ssa::tests::presentation_smoke::FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<ssa::tests::presentation_smoke::FakeCommands>();
+            auto exportPort = std::make_shared<CapturingExportPort>();
+            auto workflows =
+                std::make_shared<ssa::application::SsaWorkflowService>(nullptr, exportPort);
+            ssa::presentation::MainViewModel model(service, commands, nullptr, nullptr, workflows);
+            model.browse()->search()->setText(QStringLiteral("APLICADA"));
+            model.browse()->apply();
+            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->status()->loading(), false, 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(repository->requests().size(), std::size_t{1}, 1000);
+
+            // Typed in the search field but not applied: the table still shows "APLICADA".
+            model.browse()->search()->setText(QStringLiteral("RASCUNHO"));
+            model.actions()->exports()->exportFilteredList(
+                QUrl::fromLocalFile(QStringLiteral("/tmp/ssa-export-displayed.csv")));
+
+            QTRY_COMPARE_WITH_TIMEOUT(model.actions()->exports()->running(), false, 1000);
+            QCOMPARE(exportPort->request().query.searchText, std::string{"APLICADA"});
+        }
+
         void export_view_model_passes_display_labels_explicitly() {
             auto exportPort = std::make_shared<CapturingExportPort>();
             auto workflows =
@@ -2157,7 +2179,8 @@ namespace {
             QVERIFY(!browse.status()->error().contains("rc="));
 
             QCOMPARE(browse.search()->text(), QString("B"));
-            QCOMPARE(browse.currentRequest().searchText, std::string{"B"});
+            // The failed B query left the table on A, so A is what an export would use.
+            QCOMPARE(browse.displayedRequest().searchText, std::string{"A"});
             QCOMPARE(std::string(browse.tableModel()->recordAt(0)->valueOf("descricao_ssa")),
                      std::string{"A"});
             QCOMPARE(browse.status()->message(),

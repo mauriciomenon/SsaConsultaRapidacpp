@@ -150,8 +150,8 @@ namespace ssa::presentation {
         return states.join('\n');
     }
 
-    domain::SsaPageRequest BrowseOrchestrator::currentRequest() const {
-        return requestCoordinator_.currentRequest();
+    domain::SsaPageRequest BrowseOrchestrator::displayedRequest() const {
+        return requestCoordinator_.displayedRequest();
     }
 
     const std::vector<std::string>& BrowseOrchestrator::visibleColumns() const {
