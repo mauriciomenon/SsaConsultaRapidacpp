@@ -616,6 +616,15 @@ ApplicationWindow {
             // A new session starts counting from zero.
             QCOMPARE(lines(output).size(), 4000);
             QCOMPARE(lines(output).first(), QStringLiteral("nova 502"));
+
+            // Qt also breaks lines on CR and U+2028; they must count as lines too.
+            workflow.finish(true, false, QStringLiteral("Concluido"), QStringLiteral("ok"));
+            workflow.start(QStringLiteral("Importacao em andamento"));
+            for (int index = 1; index <= 2300; ++index) {
+                workflow.output(QStringLiteral("a %1\rb %1\u2028c %1").arg(index));
+            }
+            QVERIFY(lines(output).size() <= 4500);
+            QCOMPARE(lines(output).last(), QStringLiteral("c 2300"));
         }
 
         void real_view_model_routes_import_and_rescan_progress() {

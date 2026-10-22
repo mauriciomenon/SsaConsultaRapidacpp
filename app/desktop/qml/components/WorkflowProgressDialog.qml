@@ -34,9 +34,11 @@ Dialog {
     readonly property int maxLogLines: 4000
     readonly property int logTrimBatch: 500
 
-    function appendLine(area, scrollBar, line) {
-        if (line.length === 0)
+    function appendLine(area, scrollBar, rawLine) {
+        if (rawLine.length === 0)
             return;
+        // Qt breaks lines on CR and U+2028/U+2029 too; use LF so every break is counted.
+        const line = rawLine.replace(/\r\n?|[\u2028\u2029]/g, "\n");
         area.append(line);
         area.lineTotal += line.split("\n").length;
         // Trimming in batches keeps the cost of copying the text amortized.
