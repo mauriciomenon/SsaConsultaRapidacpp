@@ -156,6 +156,9 @@ Item {
     }
 
     function refreshDimensions() {
+        // Any new refresh (a manual change, a cancel and retry) ends a pending preset; the
+        // preset sets its wait only after its own refresh.
+        root.quickPresetWaitingForDimensions = false;
         return root.analyticsViewModel.requestDimensionValues(root.requestSelection());
     }
 
@@ -297,8 +300,8 @@ Item {
         root.selectedDivisions = [];
         root.selectedSectors = [];
         root.selectedPeople = [];
-        root.quickPresetWaitingForDimensions = root.usesSectorSelection || root.usesPeopleSelection;
         root.applyPeriod(root.analyticsViewModel.yearToDateSelection(), 1);
+        root.quickPresetWaitingForDimensions = root.usesSectorSelection || root.usesPeopleSelection;
         if (!root.quickPresetWaitingForDimensions)
             return;
     }
@@ -412,8 +415,8 @@ Item {
     }
 
     function runQuickPreset(configureFn) {
-        root.quickPresetWaitingForDimensions = true;
         configureFn();
+        root.quickPresetWaitingForDimensions = true;
         // configureFn refreshes the dimensions; onDimensionValuesChanged runs the analysis.
         if (root.requiresExplicitPeople || root.analyticsViewModel.loading)
             return true;
