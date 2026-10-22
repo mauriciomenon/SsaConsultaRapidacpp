@@ -116,6 +116,9 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 - CLI: um rescan que falha e nao grava nada termina a linha de contadores com
   `committed=0`; antes os contadores da tentativa (`inserted=306`) pareciam
   linhas gravadas.
+- Janela de progresso: as areas de saida e de avisos guardam as 4000 linhas mais
+  recentes, como a versao Python, e mostram o texto sem interpretar marcacao;
+  antes cresciam sem limite em importacoes grandes.
 
 ### Alterado
 

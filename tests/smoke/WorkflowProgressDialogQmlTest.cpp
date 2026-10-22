@@ -571,6 +571,53 @@ ApplicationWindow {
             QVERIFY(closeRect.left() - cancelRect.right() >= 100.0);
         }
 
+        void dialog_keeps_at_most_the_newest_progress_lines() {
+            FakeWorkflowViewModel workflow;
+            QQmlEngine engine;
+            engine.rootContext()->setContextProperty(QStringLiteral("fakeWorkflow"), &workflow);
+            engine.rootContext()->setContextProperty(QStringLiteral("testWindowWidth"), 1180);
+            engine.rootContext()->setContextProperty(QStringLiteral("testWindowHeight"), 760);
+            QQmlComponent component(&engine);
+            component.setData(kWorkflowProgressHarness,
+                              QUrl(QStringLiteral("inmemory:/WorkflowProgressLimitHarness.qml")));
+            QTRY_VERIFY_WITH_TIMEOUT(component.status() != QQmlComponent::Loading, 1000);
+            QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+            std::unique_ptr<QObject> object(component.create());
+            QVERIFY2(object != nullptr, qPrintable(component.errorString()));
+            auto* window = qobject_cast<QQuickWindow*>(object.get());
+            QVERIFY(window != nullptr);
+            auto* output = window->findChild<QObject*>(QStringLiteral("workflowProgressOutput"));
+            auto* errors = window->findChild<QObject*>(QStringLiteral("workflowProgressErrors"));
+            QVERIFY(output != nullptr);
+            QVERIFY(errors != nullptr);
+            const auto lines = [](const QObject* area) {
+                return area->property("text").toString().split(QLatin1Char('\n'));
+            };
+
+            workflow.start(QStringLiteral("Reescaneamento em andamento"));
+            // Python parity: at most 4000 lines, trimmed in batches of 500 past 4500.
+            for (int index = 1; index <= 4600; ++index) {
+                workflow.output(QStringLiteral("linha %1").arg(index));
+            }
+            workflow.error(QStringLiteral("aviso <b>literal</b>"));
+
+            const auto outputLines = lines(output);
+            QCOMPARE(outputLines.size(), 4099);
+            QCOMPARE(outputLines.first(), QStringLiteral("linha 502"));
+            QCOMPARE(outputLines.last(), QStringLiteral("linha 4600"));
+            // Log lines are plain text: markup in a file name is shown, not rendered.
+            QCOMPARE(lines(errors), QStringList{QStringLiteral("aviso <b>literal</b>")});
+
+            workflow.finish(true, false, QStringLiteral("Concluido"), QStringLiteral("ok"));
+            workflow.start(QStringLiteral("Importacao em andamento"));
+            for (int index = 1; index <= 4501; ++index) {
+                workflow.output(QStringLiteral("nova %1").arg(index));
+            }
+            // A new session starts counting from zero.
+            QCOMPARE(lines(output).size(), 4000);
+            QCOMPARE(lines(output).first(), QStringLiteral("nova 502"));
+        }
+
         void real_view_model_routes_import_and_rescan_progress() {
             auto importPort = std::make_shared<ScriptedImportWorkflowPort>();
             auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(importPort);

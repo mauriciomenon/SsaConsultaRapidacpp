@@ -30,10 +30,24 @@ Dialog {
     padding: 16
     title: (terminal ? terminalLabel : operationLabel) + (totalFiles > 0 ? " - " + currentFile + "/" + totalFiles : "")
 
+    // Python parity (rescan_progress_dialog MAX_OUTPUT_BLOCKS): keep the newest 4000 lines.
+    readonly property int maxLogLines: 4000
+    readonly property int logTrimBatch: 500
+
     function appendLine(area, scrollBar, line) {
         if (line.length === 0)
             return;
         area.append(line);
+        area.lineTotal += line.split("\n").length;
+        // Trimming in batches keeps the cost of copying the text amortized.
+        if (area.lineTotal > root.maxLogLines + root.logTrimBatch) {
+            const text = area.text;
+            let position = -1;
+            for (let index = root.maxLogLines; index < area.lineTotal; ++index)
+                position = text.indexOf("\n", position + 1);
+            area.remove(0, position + 1);
+            area.lineTotal = root.maxLogLines;
+        }
         Qt.callLater(function () {
             scrollBar.position = Math.max(0, 1 - scrollBar.size);
         });
@@ -52,7 +66,9 @@ Dialog {
         terminalCanceled = false;
         terminalLabel = "";
         outputArea.text = "";
+        outputArea.lineTotal = 0;
         errorArea.text = "";
+        errorArea.lineTotal = 0;
         open();
     }
 
@@ -129,6 +145,8 @@ Dialog {
             TextArea {
                 id: outputArea
                 objectName: "workflowProgressOutput"
+                property int lineTotal: 0
+                textFormat: TextEdit.PlainText
                 readOnly: true
                 selectByMouse: true
                 wrapMode: TextEdit.Wrap
@@ -166,6 +184,8 @@ Dialog {
             TextArea {
                 id: errorArea
                 objectName: "workflowProgressErrors"
+                property int lineTotal: 0
+                textFormat: TextEdit.PlainText
                 readOnly: true
                 selectByMouse: true
                 wrapMode: TextEdit.Wrap
