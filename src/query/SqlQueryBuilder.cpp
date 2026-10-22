@@ -321,6 +321,13 @@ namespace ssa::query {
         const int last = filteredRequest.advancedFilters.executionWeekEnd.value_or(299952);
         filteredRequest.advancedFilters.executionWeekStart = std::nullopt;
         filteredRequest.advancedFilters.executionWeekEnd = std::nullopt;
+        filteredRequest.advancedFilters.executionYear = std::nullopt;
+        // Executed membership fixes the status (STE/SES) itself; the grid's status filters
+        // ("Baixar", "Excluir SCA, SES, STE") would only empty the report. Python ignores them too.
+        const std::string statusColumn{domain::ColumnCatalog::statusColumnKey()};
+        filteredRequest.excludeScaSesSte = false;
+        filteredRequest.columnFilters.erase(statusColumn);
+        filteredRequest.advancedFilters.textFilters.erase(statusColumn);
         const auto where = whereClauseFromRequest(filteredRequest, parser_, predicateBuilder_);
         const domain::AnalyticsRequest analyticsRequest{
             .metric = domain::AnalyticsMetric::Executed,

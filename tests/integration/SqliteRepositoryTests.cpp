@@ -912,6 +912,19 @@ TEST_CASE_METHOD(SqliteRepositoryFixture,
     CHECK(filtered.front().week == "202503");
     CHECK(filtered.front().person == "Caio");
     CHECK(filtered.front().count == 1);
+
+    // The report defines executed as STE/SES itself: the grid's status filters ("Baixar",
+    // "Excluir SCA, SES, STE", a situacao column filter) would only empty it.
+    request.excludeScaSesSte = true;
+    request.columnFilters["situacao"] = "=APV";
+    request.advancedFilters.textFilters["situacao"] = "!SAD,!SCA,!SES,!STE";
+    // A saved execution year (no UI control left) must not filter raw semana_executada.
+    request.advancedFilters.executionYear = 2024;
+    const auto withStatusFilters = repository.executadasReport(request, true);
+    REQUIRE(withStatusFilters.size() == 1);
+    CHECK(withStatusFilters.front().group == "SMM");
+    CHECK(withStatusFilters.front().person == "Caio");
+    CHECK(withStatusFilters.front().count == 1);
 }
 
 TEST_CASE_METHOD(SqliteRepositoryFixture,

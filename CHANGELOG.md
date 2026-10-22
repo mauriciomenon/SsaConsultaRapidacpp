@@ -119,6 +119,10 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 - Janela de progresso: as areas de saida e de avisos guardam as 4000 linhas mais
   recentes, como a versao Python, e mostram o texto sem interpretar marcacao;
   antes cresciam sem limite em importacoes grandes.
+- Filtros avancados: o relatorio "SSA Executadas" deixa de sair vazio depois do
+  atalho "SSAs para baixar" ou com "Excluir SCA, SES, STE"; os filtros de
+  situacao e o ano de execucao salvo nao restringem mais o relatorio, que define
+  sozinho as SSAs executadas (STE/SES), como na versao Python.
 - Importacao: uma importacao que leva mais que o tempo de espera do SQLite
   (padrao 3 s) volta a esperar a tabela ser liberada ao gravar; antes falhava na
   hora e desfazia o lote inteiro se a grade estivesse lendo o banco naquele
