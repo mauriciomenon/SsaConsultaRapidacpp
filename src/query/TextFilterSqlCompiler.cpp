@@ -1,5 +1,6 @@
 #include "query/TextFilterSqlCompiler.h"
 
+#include "domain/AsciiText.h"
 #include "domain/ColumnCatalog.h"
 #include "domain/SafePattern.h"
 #include "query/SqlQueryText.h"
@@ -157,9 +158,44 @@ namespace ssa::query {
             hasCondition = true;
         }
 
+        // Python parity: a filter that looks like a date ("21/12", "12/2021") also matches the
+        // dd/mm/yyyy the grid shows for an ISO date column.
+        bool matchesDisplayedDate(const std::string& key, const std::vector<SearchTerm>& terms) {
+            const auto* column = domain::ColumnCatalog::find(key);
+            if (column == nullptr || column->type != domain::ColumnType::DateText) {
+                return false;
+            }
+            return std::ranges::any_of(terms, [](const SearchTerm& term) {
+                const auto& text = term.text;
+                for (std::size_t i = 1; i + 1 < text.size(); ++i) {
+                    if ((text[i] == '/' || text[i] == '-') && domain::ascii::isDigit(text[i - 1]) &&
+                        domain::ascii::isDigit(text[i + 1])) {
+                        return true;
+                    }
+                }
+                return false;
+            });
+        }
+
+        void appendColumnTermPredicate(std::ostringstream& where,
+                                       std::vector<std::string>& bindings, const std::string& key,
+                                       const CompiledSearchTerm& compiled,
+                                       const bool matchDisplayedDate) {
+            if (!matchDisplayedDate) {
+                appendCompiledTermForColumn(where, bindings, key, compiled);
+                return;
+            }
+            where << "(";
+            appendCompiledTermForColumn(where, bindings, key, compiled);
+            where << " OR strftime('%d/%m/%Y', substr(" << quoteColumnIdentifier(key) << ", 1, 10))"
+                  << compiled.comparator << ")";
+            bindings.push_back(compiled.pattern);
+        }
+
         void appendInclusiveColumnTerms(std::ostringstream& where,
                                         std::vector<std::string>& bindings, const std::string& key,
-                                        const std::vector<SearchTerm>& terms, bool& hasCondition) {
+                                        const std::vector<SearchTerm>& terms,
+                                        const bool matchDisplayedDate, bool& hasCondition) {
             std::ostringstream group;
             std::vector<std::string> groupBindings;
             bool hasPredicate = false;
@@ -171,7 +207,7 @@ namespace ssa::query {
                     group << " OR ";
                 }
                 const CompiledSearchTerm compiled = compileColumnSearchTerm(key, term);
-                appendCompiledTermForColumn(group, groupBindings, key, compiled);
+                appendColumnTermPredicate(group, groupBindings, key, compiled, matchDisplayedDate);
                 hasPredicate = true;
             }
             if (!hasPredicate) {
@@ -185,7 +221,8 @@ namespace ssa::query {
 
         void appendExclusiveColumnTerms(std::ostringstream& where,
                                         std::vector<std::string>& bindings, const std::string& key,
-                                        const std::vector<SearchTerm>& terms, bool& hasCondition) {
+                                        const std::vector<SearchTerm>& terms,
+                                        const bool matchDisplayedDate, bool& hasCondition) {
             std::ostringstream group;
             std::vector<std::string> groupBindings;
             bool hasPredicate = false;
@@ -197,7 +234,7 @@ namespace ssa::query {
                     group << " OR ";
                 }
                 const CompiledSearchTerm compiled = compileColumnSearchTerm(key, term);
-                appendCompiledTermForColumn(group, groupBindings, key, compiled);
+                appendColumnTermPredicate(group, groupBindings, key, compiled, matchDisplayedDate);
                 hasPredicate = true;
             }
             if (!hasPredicate) {
@@ -215,8 +252,11 @@ namespace ssa::query {
             if (domain::ColumnCatalog::isDerivedCountColumn(key)) {
                 throw std::invalid_argument("filters are not supported for derived count");
             }
-            appendInclusiveColumnTerms(where, bindings, key, terms, hasCondition);
-            appendExclusiveColumnTerms(where, bindings, key, terms, hasCondition);
+            const bool matchDisplayedDate = matchesDisplayedDate(key, terms);
+            appendInclusiveColumnTerms(where, bindings, key, terms, matchDisplayedDate,
+                                       hasCondition);
+            appendExclusiveColumnTerms(where, bindings, key, terms, matchDisplayedDate,
+                                       hasCondition);
         }
 
         void appendStatusExclusion(std::ostringstream& where, std::vector<std::string>& bindings,

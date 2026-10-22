@@ -30,6 +30,10 @@
 - Column filters do not create business aliases.
 - Safe pattern filters use full-field `LIKE` semantics. Use normal column
   filters for substring matching.
+- On a date column shown as `dd/mm/yyyy` (stored as ISO), a filter that
+  contains a digit, `/` or `-`, and a digit matches each term against the
+  stored value or the displayed date, as the Python GUI does (`21/12/2021`,
+  `12/2021`, `!21/12/2021`).
 
 ## Prohibited
 

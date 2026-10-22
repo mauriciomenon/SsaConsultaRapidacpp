@@ -433,6 +433,30 @@ TEST_CASE_METHOD(SqliteRepositoryFixture, "sqlite repository executes every type
     }
 }
 
+TEST_CASE_METHOD(SqliteRepositoryFixture,
+                 "sqlite repository matches date column filters against the displayed date") {
+    struct DateCase final {
+        std::string expression;
+        std::size_t expectedRows;
+    };
+    // The grid shows data_cadastro as dd/mm/yyyy; the stored value stays ISO.
+    const std::array cases{
+        DateCase{"02/01/2025", 1},  DateCase{"01/2025", 4},    DateCase{"!02/01/2025", 3},
+        DateCase{"=02/01/2025", 1}, DateCase{"2025-01-02", 1}, DateCase{"03/01/2025,04/01/2025", 2},
+    };
+
+    for (const auto& dateCase : cases) {
+        ssa::domain::SsaPageRequest request;
+        request.pageSize = 10;
+        request.columnFilters = {{"data_cadastro", dateCase.expression}};
+
+        const auto page = repository.page(request);
+
+        CAPTURE(dateCase.expression);
+        REQUIRE(page.totalRows == dateCase.expectedRows);
+    }
+}
+
 TEST_CASE_METHOD(SqliteRepositoryFixture, "sqlite repository returns details and distinct values") {
     const auto record = repository.recordBySsaNumber(ssa::domain::SsaNumber{"202500003"});
     REQUIRE(record.has_value());

@@ -171,6 +171,9 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
   e mantem as divisoes, setores e pessoas selecionados que ainda existem; antes
   ficava vazia e perdia as selecoes. Fechar a janela durante uma carga e
   reabrir pede os dados de novo.
+- Filtro de coluna em datas (Data de cadastro, Prazo limite e as demais exibidas
+  como dd/mm/aaaa) aceita o formato mostrado na grade: `21/12/2021`, `12/2021`
+  e `!21/12/2021` voltam a encontrar ou excluir as SSAs, como na versao Python.
 
 ### Alterado
 
