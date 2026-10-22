@@ -1467,6 +1467,36 @@ namespace {
             QCOMPARE(selection.value(QStringLiteral("people")).toStringList(), expectedPeople);
         }
 
+        void manual_sector_pick_ends_a_pending_quick_preset() {
+            QQmlEngine engine;
+            FakeAnalyticsViewModel viewModel;
+            QString error;
+            auto object = loadWindow(engine, viewModel, error);
+            QVERIFY2(object != nullptr, qPrintable(error));
+            auto* custom = object->findChild<QObject*>(QStringLiteral("analyticsCustomAnalysis"));
+            QVERIFY(custom != nullptr);
+            auto* button = object->findChild<QObject*>(QStringLiteral("analyticsExecutedByPerson"));
+            QVERIFY(button != nullptr);
+            QVERIFY(invoke(*object, "selectTab", 1));
+            QTRY_VERIFY_WITH_TIMEOUT(!viewModel.loading(), 1000);
+            viewModel.holdDimensionRequests();
+            const int requestsBefore = viewModel.customRequestCount();
+            QVERIFY(QMetaObject::invokeMethod(button, "click", Qt::DirectConnection));
+
+            // The user picks a sector while the preset still waits for its dimensions.
+            QVERIFY(invoke(*custom, "selectSector", QStringLiteral("SMM2")));
+            viewModel.publishDimensionValues(
+                {{QStringLiteral("divisions"), QStringList{QStringLiteral("SMM")}},
+                 {QStringLiteral("sectors"),
+                  QStringList{QStringLiteral("SMM1"), QStringLiteral("SMM2")}},
+                 {QStringLiteral("people"), QStringList{QStringLiteral("Ana Atual")}}});
+
+            QTest::qWait(50);
+            QCOMPARE(viewModel.customRequestCount(), requestsBefore);
+            QCOMPARE(custom->property("selectedSectors").toStringList(),
+                     QStringList{QStringLiteral("SMM2")});
+        }
+
         void executed_by_person_preset_auto_runs_custom_analysis() {
             QQmlEngine engine;
             FakeAnalyticsViewModel viewModel;
