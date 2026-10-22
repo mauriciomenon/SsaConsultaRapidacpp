@@ -162,6 +162,10 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 - Windows: nomes de planilha de derivadas com acento ou caracteres fora da
   pagina de codigo do sistema aparecem corretos no resumo e no progresso; antes
   saiam trocados ou faziam a importacao falhar.
+- Analytics: abrir a aba "Analise customizada" enquanto o painel carrega nao
+  deixa mais o painel vazio, e mudar o periodo do painel nao descarta mais as
+  listas de divisao, setor e pessoa em carga; cada tipo de consulta so substitui
+  a anterior do mesmo tipo. "Cancelar" interrompe todas as consultas em curso.
 
 ### Alterado
 

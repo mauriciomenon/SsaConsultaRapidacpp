@@ -431,6 +431,102 @@ namespace {
             QCOMPARE(succeededSpy.count(), 1);
         }
 
+        void requestsOfDifferentKindsDoNotCancelEachOther() {
+            struct Gate final {
+                std::atomic_bool dashboardStarted{false};
+                std::atomic_bool releaseDashboard{false};
+            };
+            const auto gate = std::make_shared<Gate>();
+            auto port = std::make_shared<FunctionalAnalyticsPort>();
+            port->seriesFunction = [gate](const AnalyticsRequest& request, const std::stop_token&) {
+                gate->dashboardStarted = true;
+                while (!gate->releaseDashboard.load()) {
+                    QThread::msleep(1);
+                }
+                return dashboardSeriesResult(request, 1);
+            };
+            port->dimensionFunction = [](const AnalyticsRequest&, const std::stop_token&) {
+                return AnalyticsDimensionValues{.divisions = {"DIV"}};
+            };
+            ssa::presentation::ActivityAnalyticsViewModel model(serviceFor(port));
+            QSignalSpy replacedSpy(&model,
+                                   &ssa::presentation::ActivityAnalyticsViewModel::replaced);
+
+            // Opening the custom tab while the dashboard loads asks for the dimension lists.
+            model.loadDashboard(testPeriod(), testHistoryPeriod(), 30);
+            QTRY_VERIFY_WITH_TIMEOUT(gate->dashboardStarted.load(), 1000);
+            model.loadDimensionValues(testRequest());
+            QTRY_VERIFY_WITH_TIMEOUT(!model.dimensionValues().isEmpty(), 1000);
+            const bool loadingWhileDashboardRuns = model.loading();
+            gate->releaseDashboard = true;
+
+            QTRY_VERIFY_WITH_TIMEOUT(!model.hasActiveOperations(), 2000);
+            QVERIFY(loadingWhileDashboardRuns);
+            QVERIFY(!model.loading());
+            QCOMPARE(model.dashboard().size(), 14);
+            QCOMPARE(replacedSpy.count(), 0);
+        }
+
+        void cancelStopsEveryRunningRequestKind() {
+            auto port = std::make_shared<FunctionalAnalyticsPort>();
+            const auto waitForStop = [](const std::stop_token& token) {
+                while (!token.stop_requested()) {
+                    QThread::msleep(1);
+                }
+                throw std::system_error(std::make_error_code(std::errc::operation_canceled));
+            };
+            port->seriesFunction = [waitForStop](const AnalyticsRequest&,
+                                                 const std::stop_token& token) {
+                waitForStop(token);
+                return AnalyticsSeriesResult{};
+            };
+            port->dimensionFunction = [waitForStop](const AnalyticsRequest&,
+                                                    const std::stop_token& token) {
+                waitForStop(token);
+                return AnalyticsDimensionValues{};
+            };
+            ssa::presentation::ActivityAnalyticsViewModel model(serviceFor(port));
+            QSignalSpy canceledSpy(&model,
+                                   &ssa::presentation::ActivityAnalyticsViewModel::canceled);
+
+            model.loadDashboard(testPeriod(), testHistoryPeriod(), 30);
+            model.loadDimensionValues(testRequest());
+            model.cancel();
+
+            QVERIFY(model.canceling());
+            QTRY_VERIFY_WITH_TIMEOUT(!model.hasActiveOperations(), 2000);
+            QVERIFY(!model.loading());
+            QVERIFY(!model.canceling());
+            QCOMPARE(canceledSpy.count(), 2);
+        }
+
+        void warningWindowSaveSupersedesAPendingLoad() {
+            struct Gate final {
+                std::atomic_bool loadStarted{false};
+                std::atomic_bool releaseLoad{false};
+            };
+            const auto gate = std::make_shared<Gate>();
+            auto settings = std::make_shared<FunctionalSettingsPort>();
+            settings->loadFunction = [gate](const std::stop_token&) {
+                gate->loadStarted = true;
+                while (!gate->releaseLoad.load()) {
+                    QThread::msleep(1);
+                }
+                return std::optional<int>{7};
+            };
+            auto port = std::make_shared<FunctionalAnalyticsPort>();
+            ssa::presentation::ActivityAnalyticsViewModel model(serviceFor(port, settings));
+
+            model.loadWarningWindowDays();
+            QTRY_VERIFY_WITH_TIMEOUT(gate->loadStarted.load(), 1000);
+            QVERIFY(model.saveWarningWindowDays(21));
+            QTRY_COMPARE_WITH_TIMEOUT(model.warningWindowDays().toInt(), 21, 1000);
+            gate->releaseLoad = true;
+
+            QTRY_VERIFY_WITH_TIMEOUT(!model.hasActiveOperations(), 2000);
+            QCOMPARE(model.warningWindowDays().toInt(), 21);
+        }
+
         void clearingCustomSeriesDropsThePendingCustomResult() {
             struct Gate final {
                 std::atomic_int calls{0};

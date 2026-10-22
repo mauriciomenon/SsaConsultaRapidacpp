@@ -26,6 +26,13 @@ namespace ssa::presentation {
 
     namespace {
 
+        // A save supersedes a pending load: the loaded value would overwrite the saved one.
+        constexpr std::size_t slotOf(const ActivityAnalyticsViewModel::RequestKind kind) noexcept {
+            using Kind = ActivityAnalyticsViewModel::RequestKind;
+            return static_cast<std::size_t>(
+                kind == Kind::WarningWindowSave ? Kind::WarningWindowLoad : kind);
+        }
+
         QVariant optionalInt(const std::optional<int>& value) {
             return value ? QVariant{*value} : QVariant{};
         }
@@ -805,14 +812,15 @@ namespace ssa::presentation {
     void ActivityAnalyticsViewModel::clearCustomSeries() {
         // The selection changed: a custom query still running belongs to the previous
         // selection and must not publish over the cleared chart.
-        const auto pending = std::ranges::find_if(operations_, [this](const auto& operation) {
-            return operation->id == latestOperationId_ && !operation->completed &&
-                   operation->kind == RequestKind::CustomSeries;
-        });
+        auto& latestCustom = latestOperationIds_[slotOf(RequestKind::CustomSeries)];
+        const auto pending =
+            std::ranges::find_if(operations_, [latestCustom](const auto& operation) {
+                return operation->id == latestCustom && !operation->completed;
+            });
         if (pending != operations_.end()) {
             stop(**pending);
-            latestOperationId_ = 0;
-            setState(false, false);
+            latestCustom = 0;
+            settleState();
         }
         if (customSeries_.isEmpty()) {
             return;
@@ -886,15 +894,18 @@ namespace ssa::presentation {
         if (!canCancel()) {
             return;
         }
-        const auto found = std::ranges::find_if(operations_, [this](const auto& operation) {
-            return operation->id == latestOperationId_ && !operation->completed;
-        });
-        if (found == operations_.end()) {
-            return;
+        bool stopped = false;
+        for (const auto& operation : operations_) {
+            if (!operation->completed &&
+                operation->id == latestOperationIds_[slotOf(operation->kind)]) {
+                operation->explicitlyCanceled = true;
+                stop(*operation);
+                stopped = true;
+            }
         }
-        (*found)->explicitlyCanceled = true;
-        setState(true, true);
-        stop(**found);
+        if (stopped) {
+            setState(true, true);
+        }
     }
 
     void ActivityAnalyticsViewModel::replaceService(
@@ -914,8 +925,15 @@ namespace ssa::presentation {
         if (shuttingDown_) {
             return;
         }
-        const bool replacing = hasActiveOperations();
-        stopAll();
+        // Only the same kind is replaced: opening the custom tab must not drop the dashboard.
+        const auto slot = slotOf(kind);
+        bool replacing = false;
+        for (const auto& running : operations_) {
+            if (!running->completed && slotOf(running->kind) == slot) {
+                stop(*running);
+                replacing = true;
+            }
+        }
 
         auto operation = std::make_unique<Operation>();
         operation->id = ++nextOperationId_;
@@ -928,7 +946,7 @@ namespace ssa::presentation {
         connect(&operation->watcher, &QFutureWatcher<void>::finished, this,
                 [this, operationId] { finish(operationId); });
         auto* watcher = &operation->watcher;
-        latestOperationId_ = operationId;
+        latestOperationIds_[slot] = operationId;
         operations_.push_back(std::move(operation));
         emit activeOperationsChanged();
         if (replacing) {
@@ -979,7 +997,8 @@ namespace ssa::presentation {
             taskCanceled = operation.state->canceled;
         }
 
-        const bool mayPublish = !shuttingDown_ && operation.id == latestOperationId_ &&
+        const bool mayPublish = !shuttingDown_ &&
+                                operation.id == latestOperationIds_[slotOf(operation.kind)] &&
                                 operation.generation == generation_;
         std::optional<bool> warningWindowLoadSucceeded;
         if (mayPublish) {
@@ -992,13 +1011,13 @@ namespace ssa::presentation {
                                    operation.stopSource.stop_requested());
             if (canceledOperation) {
                 setErrorMessage({});
-                setState(false, false);
+                settleState();
                 emit canceled();
             } else if (error) {
                 const auto message = exceptionMessage(error);
                 qWarning().noquote() << "Activity analytics query failed:" << message;
                 setErrorMessage(message);
-                setState(false, false);
+                settleState();
                 emit failed(message);
                 if (operation.kind == RequestKind::WarningWindowLoad) {
                     warningWindowLoadSucceeded = false;
@@ -1007,15 +1026,15 @@ namespace ssa::presentation {
                 const auto message = QStringLiteral("A consulta analitica nao retornou resultado");
                 qWarning().noquote() << message;
                 setErrorMessage(message);
-                setState(false, false);
+                settleState();
                 emit failed(message);
                 if (operation.kind == RequestKind::WarningWindowLoad) {
                     warningWindowLoadSucceeded = false;
                 }
             } else {
-                // Result signals must see loading == false: QML quick reports start
-                // the follow-up analysis from dimensionValuesChanged.
-                setState(false, false);
+                // Result signals must see loading == false when nothing else runs: QML
+                // quick reports start the follow-up analysis from dimensionValuesChanged.
+                settleState();
                 publish(operation, std::move(*result));
                 emit succeeded(operation.kind);
                 if (operation.kind == RequestKind::WarningWindowLoad) {
@@ -1040,6 +1059,19 @@ namespace ssa::presentation {
                 stop(*operation);
             }
         }
+    }
+
+    bool ActivityAnalyticsViewModel::hasPendingResults() const noexcept {
+        return std::ranges::any_of(operations_, [this](const auto& operation) {
+            return !operation->completed &&
+                   operation->id == latestOperationIds_[slotOf(operation->kind)];
+        });
+    }
+
+    // Requests of other kinds may still run; the view stays busy until each current one ends.
+    void ActivityAnalyticsViewModel::settleState() {
+        const bool pending = hasPendingResults();
+        setState(pending, pending && canceling_);
     }
 
     void ActivityAnalyticsViewModel::pruneCompleted() {
@@ -1120,7 +1152,7 @@ namespace ssa::presentation {
 
     void ActivityAnalyticsViewModel::invalidate(const bool clearSettings) {
         ++generation_;
-        latestOperationId_ = 0;
+        latestOperationIds_.fill(0);
         stopAll();
         setErrorMessage({});
         setState(false, false);

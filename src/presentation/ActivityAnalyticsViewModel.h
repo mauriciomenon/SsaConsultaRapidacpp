@@ -10,6 +10,8 @@
 #include <QVariantList>
 #include <QVariantMap>
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <exception>
 #include <functional>
@@ -158,6 +160,8 @@ namespace ssa::presentation {
         void finish(std::uint64_t operationId);
         void stop(Operation& operation);
         void stopAll();
+        [[nodiscard]] bool hasPendingResults() const noexcept;
+        void settleState();
         void pruneCompleted();
         void publish(const Operation& operation, TaskResult result);
         void clearModels(bool clearSettings);
@@ -168,7 +172,9 @@ namespace ssa::presentation {
 
         std::shared_ptr<const application::ActivityAnalyticsService> service_;
         std::vector<std::unique_ptr<Operation>> operations_;
-        std::uint64_t latestOperationId_{0};
+        // One latest-wins slot per request kind; the warning-window load and save share one.
+        static constexpr std::size_t requestSlotCount = 5;
+        std::array<std::uint64_t, requestSlotCount> latestOperationIds_{};
         std::uint64_t nextOperationId_{0};
         std::uint64_t generation_{0};
         QVariantMap dashboard_;
