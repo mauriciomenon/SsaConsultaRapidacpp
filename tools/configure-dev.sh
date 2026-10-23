@@ -203,7 +203,7 @@ detect_auto_qt_dir() {
     done
   fi
 
-  for candidate in "${candidates[@]}"; do
+  for candidate in ${candidates[@]+"${candidates[@]}"}; do
     is_qt_prefix "${candidate}" || continue
     version="$(qt_version_for_prefix "${candidate}" || true)"
     if [[ -z "${version}" ]] || ! qt_version_matches_family "${version}"; then
@@ -492,8 +492,9 @@ if [[ -f "${cache_file}" ]]; then
     cmake_fresh_args+=(--fresh)
   fi
 fi
+# ${a[@]+...}: bash 3.2 (macOS) treats an empty array as unbound under set -u.
 (cd "${repo_root}" && cmake --preset "${preset}" -B "${build_dir}" \
-  "${cmake_fresh_args[@]}" \
+  ${cmake_fresh_args[@]+"${cmake_fresh_args[@]}"} \
   '-UQt6*_DIR' \
   '-U*DEPLOYQT_EXECUTABLE' \
   -DCMAKE_PREFIX_PATH="${qt_dir}" \
