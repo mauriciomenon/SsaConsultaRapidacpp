@@ -78,9 +78,11 @@ grep -Fxq -- '-U*DEPLOYQT_EXECUTABLE' "${cmake_args}" || \
 
 fixture_repo="${fixture_root}/repo"
 fixture_configure="${fixture_repo}/tools/configure-dev.sh"
-mkdir -p "${fixture_repo}/tools" "${fixture_repo}/build/dev"
+mkdir -p "${fixture_repo}/tools" "${fixture_repo}/build/dev" "${fixture_repo}/scripts/lib"
 cp "${configure_script}" "${fixture_configure}"
 cp "${repo_root}/tools/qt-detect.conf" "${fixture_repo}/tools/qt-detect.conf"
+# configure-dev.sh refuses to run without the native host guard next to it.
+cp "${repo_root}/scripts/lib/native_host_guard.sh" "${fixture_repo}/scripts/lib/"
 cat >"${fixture_repo}/build/dev/CMakeCache.txt" <<'EOF'
 CMAKE_CACHEFILE_DIR:INTERNAL=C:/foreign/project/build/dev
 CMAKE_GENERATOR:INTERNAL=Ninja
@@ -119,7 +121,7 @@ check_output="$({
     CMAKE_PREFIX_PATH='' \
     PATH="${mock_bin}:/usr/bin:/bin" \
     "${fixture_configure}" --check dev
-} 2>&1)" || fail "dependency check must pass with the detected development tools"
+} 2>&1)" || fail "dependency check must pass with the detected development tools: ${check_output}"
 grep -Eq "^OK qt path=${fixture_root}/Qt/6\.11\.0/macos version=6\.11\.0$" <<<"${check_output}" || \
   fail "check must report the detected Qt path and version"
 grep -Eq '^OK (cmake|ninja|compiler|sqlite) path=.+ version=.+$' <<<"${check_output}" || \
@@ -172,7 +174,7 @@ if debian_output="$({
   fail "dependency check must fail when Qt is missing"
 fi
 grep -q 'sudo apt install' <<<"${debian_output}" || \
-  fail "Debian checks must print an apt installation hint"
+  fail "Debian checks must print an apt installation hint: ${debian_output}"
 cmp -s "${cache_snapshot}" "${fixture_repo}/build/dev/CMakeCache.txt" || \
   fail "all check modes must leave CMakeCache.txt unchanged"
 
