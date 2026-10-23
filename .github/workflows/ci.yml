@@ -201,16 +201,16 @@ jobs:
           foreach ($line in Get-Content -LiteralPath $failedList) {
             $name = ($line -split ':', 2)[1]
             $exe = Join-Path $buildDir "$name.exe"
-            if (-not (Test-Path -LiteralPath $exe)) { continue }
+            if (-not (Test-Path -LiteralPath $exe)) { "{0}: no executable of that name (Catch2 case), see the ctest log" -f $name; continue }
             $log = Join-Path $buildDir "$name.diagnose.txt"
-            # Bounded like ctest: a hang must still leave time to print the partial log.
+            # Bounded above the largest ctest TIMEOUT (180 s): a hang must still leave time to print the partial log.
             $process = Start-Process -FilePath $exe -ArgumentList @("-o", "$log,txt") -NoNewWindow -PassThru
             $null = $process.Handle
-            if ($process.WaitForExit(120000)) {
+            if ($process.WaitForExit(200000)) {
               "{0} exit=0x{1:X8}" -f $name, $process.ExitCode
             } else {
               $process.Kill($true)
-              "{0} still running after 120 s, killed" -f $name
+              "{0} still running after 200 s, killed" -f $name
             }
             if (Test-Path -LiteralPath $log) { Get-Content -LiteralPath $log -Tail 120 }
           }
