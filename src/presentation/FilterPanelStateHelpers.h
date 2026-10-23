@@ -2,6 +2,7 @@
 
 #include "domain/ColumnCatalog.h"
 #include "domain/SsaTypes.h"
+#include "domain/TextFilterToken.h"
 
 #include <QString>
 
@@ -45,5 +46,17 @@ namespace ssa::presentation::filterpanel {
 
     [[nodiscard]] std::string joinFilterSummary(const std::vector<std::string>& parts,
                                                 std::string_view separator = "  | ");
+
+    // A column status filter split by how the status shortcuts may treat its terms. Exact
+    // terms (=X, !=X) read the same as shortcut tokens; any other term (X contains, !X,
+    // ^X, $X, ~X) is kept exactly as typed.
+    struct StatusFilterTerms {
+        domain::TextFilterTokenSet exact;
+        std::vector<std::string> typed;
+    };
+
+    [[nodiscard]] StatusFilterTerms splitColumnStatusFilter(std::string_view text);
+
+    [[nodiscard]] std::string joinColumnStatusFilter(const StatusFilterTerms& terms);
 
 } // namespace ssa::presentation::filterpanel

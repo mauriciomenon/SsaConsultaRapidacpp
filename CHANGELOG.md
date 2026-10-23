@@ -6,6 +6,11 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 
 ### Corrigido
 
+- Atalhos de situacao: com um filtro digitado na coluna Situacao (por exemplo
+  `AP`, que busca "contem", ou `^A`), clicar num atalho ou em "Limpar atalhos"
+  nao troca mais esse termo por igualdade exata; o atalho so acrescenta ou
+  remove o proprio codigo. Antes `AP` virava `=AP` e as SSAs sumiam do
+  resultado.
 - Importacao: o resumo conta como ignoradas (`skipped`) as linhas de
   continuacao dos relatorios por evento (`Reprogramacao #2`, `Desvio #2` e
   seguintes, sem numero de SSA); antes elas sumiam da contagem.

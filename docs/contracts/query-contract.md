@@ -35,6 +35,15 @@
   stored value or the displayed date, as the Python GUI does (`21/12/2021`,
   `12/2021`, `!21/12/2021`).
 
+## Status Shortcuts
+
+- A status chip cycles its code through include (`=CODE`), exclude (`!=CODE`)
+  and off. Exact terms (`=X`, `!=X`) read the same in a column filter and in an
+  advanced filter; other column terms (`X`, `!X`, `^X`, `$X`, `~X`) do not.
+- A column status filter with only exact terms moves to the advanced filter.
+  One with any other term stays a column filter: the chips edit only its exact
+  terms and keep the rest as typed.
+
 ## Reprogramming Counts
 
 - `eq` matches any selected count; `lte` compares with the largest selected count and

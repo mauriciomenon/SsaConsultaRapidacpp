@@ -10,6 +10,7 @@
 #include "presentation/FilterPanelDistinctValuesController.h"
 #include "presentation/FilterPanelSectorViewModel.h"
 #include "presentation/FilterPanelState.h"
+#include "presentation/FilterPanelStateHelpers.h"
 
 #include <QObject>
 #include <QString>
@@ -127,6 +128,9 @@ namespace ssa::presentation {
         void syncAdvancedQuickSector();
         bool normalizeAdvancedFilterOverlap();
         void handleAdvancedTextFilterApplied(const QString& key, const QString& expression);
+        // The status filter the shortcuts act on: the advanced one, else the column one.
+        [[nodiscard]] filterpanel::StatusFilterTerms statusFilterTerms() const;
+        void applyStatusFilterTerms(const filterpanel::StatusFilterTerms& terms);
 
         filterpanel::FilterPanelState state_;
         std::shared_ptr<ports::ISsaBrowsePort> browsePort_;

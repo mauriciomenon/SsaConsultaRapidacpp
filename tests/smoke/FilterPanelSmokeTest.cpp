@@ -1437,6 +1437,41 @@ namespace {
             QVERIFY(filters.statusShortcutSelected("STE"));
         }
 
+        void status_shortcut_keeps_typed_column_terms_as_typed() {
+            auto repository = std::make_shared<FilterPanelRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::FilterPanelViewModel filters(service);
+            auto* advanced =
+                qobject_cast<ssa::presentation::FilterPanelAdvancedViewModel*>(filters.advanced());
+            QVERIFY(advanced != nullptr);
+            auto* text =
+                qobject_cast<ssa::presentation::AdvancedTextFilterViewModel*>(advanced->text());
+            QVERIFY(text != nullptr);
+            const auto statusFilter = [&filters] {
+                return QString::fromStdString(filters.columnFilters().at("situacao"));
+            };
+
+            // "AP" contains, it is not "=AP": the shortcut adds its code beside it.
+            filters.setColumnFilters({{"situacao", "AP"}});
+            filters.toggleStatusShortcut("SPG");
+            QCOMPARE(statusFilter(), QString("AP,=SPG"));
+            QCOMPARE(text->textFilter("situacao"), QString(""));
+            QCOMPARE(filters.statusShortcutState("SPG"), 1);
+
+            filters.toggleStatusShortcut("SPG");
+            QCOMPARE(statusFilter(), QString("AP,!=SPG"));
+            QCOMPARE(filters.statusShortcutState("SPG"), 2);
+
+            filters.toggleStatusShortcut("SPG");
+            QCOMPARE(statusFilter(), QString("AP"));
+            QCOMPARE(filters.statusShortcutState("SPG"), 0);
+
+            // Clearing removes only shortcut codes; the prefix term stays a prefix.
+            filters.setColumnFilters({{"situacao", "^A,!=SCA"}});
+            filters.clearStatusShortcuts();
+            QCOMPARE(statusFilter(), QString("^A"));
+        }
+
         void clear_status_shortcuts_removes_column_and_advanced_status_filters() {
             auto repository = std::make_shared<FilterPanelRepository>();
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);

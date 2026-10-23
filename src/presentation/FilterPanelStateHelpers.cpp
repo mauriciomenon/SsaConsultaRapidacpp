@@ -2,6 +2,7 @@
 
 #include "domain/ColumnCatalog.h"
 #include "domain/TextFilterToken.h"
+#include "domain/WhitespaceTrim.h"
 #include "presentation/SsaColumnDisplayCatalog.h"
 
 #include <algorithm>
@@ -300,6 +301,38 @@ namespace ssa::presentation::filterpanel {
             summary += parts[i];
         }
         return summary;
+    }
+
+    StatusFilterTerms splitColumnStatusFilter(const std::string_view text) {
+        StatusFilterTerms terms;
+        std::size_t start = 0;
+        while (start <= text.size()) {
+            const auto comma = std::min(text.find(',', start), text.size());
+            const auto term = domain::trimWhitespace(text.substr(start, comma - start));
+            start = comma + 1;
+            if (term.empty()) {
+                continue;
+            }
+            const bool negated = term.front() == '!';
+            const auto unprefixed =
+                domain::trimWhitespace(std::string_view{term}.substr(negated ? 1 : 0));
+            if (unprefixed.starts_with('=')) {
+                domain::addTextFilterValue(terms.exact, std::string_view{unprefixed}.substr(1),
+                                           negated ? domain::TextFilterOperator::Different
+                                                   : domain::TextFilterOperator::Equals);
+            } else {
+                terms.typed.push_back(term);
+            }
+        }
+        return terms;
+    }
+
+    std::string joinColumnStatusFilter(const StatusFilterTerms& terms) {
+        auto parts = terms.typed;
+        if (const auto exact = domain::joinTextFilterTokens(terms.exact); !exact.empty()) {
+            parts.push_back(exact);
+        }
+        return joinFilterSummary(parts, ",");
     }
 
 } // namespace ssa::presentation::filterpanel

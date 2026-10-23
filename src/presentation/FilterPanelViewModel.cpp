@@ -302,25 +302,47 @@ namespace ssa::presentation {
         return columnValueOptions_.errorFor(key);
     }
 
-    bool FilterPanelViewModel::statusShortcutSelected(const QString& code) const {
-        const auto normalizedCode = code.trimmed().toUpper().toStdString();
-        if (normalizedCode.empty()) {
-            return false;
-        }
+    filterpanel::StatusFilterTerms FilterPanelViewModel::statusFilterTerms() const {
         const auto statusKey = statusColumnKey();
-        const auto advancedExpression = state_.advanced().textFilter(statusKey).toStdString();
-        const auto columnFilter = state_.columnFilters().find(statusKey.toStdString());
-        const auto tokens = domain::parseTextFilterTokens(
-            advancedExpression.empty() && columnFilter != state_.columnFilters().end()
-                ? columnFilter->second
-                : advancedExpression);
-        if (tokens.ordered.empty()) {
-            return false;
+        if (const auto advancedExpression = state_.advanced().textFilter(statusKey).toStdString();
+            !advancedExpression.empty()) {
+            return {domain::parseTextFilterTokens(advancedExpression), {}};
         }
-        return std::ranges::any_of(tokens.ordered, [&normalizedCode](const auto& token) {
-            return token.filterOperator == domain::TextFilterOperator::Equals &&
-                   token.value == normalizedCode;
-        });
+        const auto columnFilter = state_.columnFilters().find(statusKey.toStdString());
+        return columnFilter == state_.columnFilters().end()
+                   ? filterpanel::StatusFilterTerms{}
+                   : filterpanel::splitColumnStatusFilter(columnFilter->second);
+    }
+
+    // Only exact terms move to the advanced filter; with typed terms the column filter keeps
+    // them and receives the exact ones, so its meaning never changes behind the user.
+    void FilterPanelViewModel::applyStatusFilterTerms(const filterpanel::StatusFilterTerms& terms) {
+        const auto statusKey = statusColumnKey();
+        bool advancedChanged = false;
+        bool columnChanged = false;
+        if (terms.typed.empty()) {
+            advancedChanged = state_.advanced().setTextFilter(
+                statusKey, QString::fromStdString(domain::joinTextFilterTokens(terms.exact)));
+            columnChanged = state_.removeColumnFilter(statusKey);
+        } else if (const auto next = filterpanel::joinColumnStatusFilter(terms);
+                   state_.columnFilters().at(statusKey.toStdString()) != next) {
+            columnChanged = state_.removeColumnFilter(statusKey) &&
+                            state_.addColumnFilter(statusKey, QString::fromStdString(next));
+        }
+        if (!advancedChanged && !columnChanged) {
+            return;
+        }
+        if (columnChanged) {
+            columns_.refreshFromState();
+        }
+        normalizeAdvancedFilterOverlap();
+        advanced_->refreshFromState();
+        synchronizeFilterState(false);
+        emit applyRequested();
+    }
+
+    bool FilterPanelViewModel::statusShortcutSelected(const QString& code) const {
+        return statusShortcutState(code) == 1;
     }
 
     int FilterPanelViewModel::statusShortcutState(const QString& code) const {
@@ -328,13 +350,7 @@ namespace ssa::presentation {
         if (normalizedCode.empty()) {
             return 0;
         }
-        const auto statusKey = statusColumnKey();
-        const auto advancedExpression = state_.advanced().textFilter(statusKey).toStdString();
-        const auto columnFilter = state_.columnFilters().find(statusKey.toStdString());
-        const auto tokens = domain::parseTextFilterTokens(
-            advancedExpression.empty() && columnFilter != state_.columnFilters().end()
-                ? columnFilter->second
-                : advancedExpression);
+        const auto tokens = statusFilterTerms().exact;
         const auto hasOperator = [&tokens, &normalizedCode](const domain::TextFilterOperator op) {
             return std::ranges::any_of(tokens.ordered, [&normalizedCode, op](const auto& token) {
                 return token.value == normalizedCode && token.filterOperator == op;
@@ -356,22 +372,17 @@ namespace ssa::presentation {
         if (normalizedCode.empty()) {
             return;
         }
-        const auto statusKey = statusColumnKey();
-        const auto advancedExpression = state_.advanced().textFilter(statusKey).toStdString();
-        const auto columnFilter = state_.columnFilters().find(statusKey.toStdString());
-        auto tokens = domain::parseTextFilterTokens(
-            advancedExpression.empty() && columnFilter != state_.columnFilters().end()
-                ? columnFilter->second
-                : advancedExpression);
-        const auto hasToken = [&tokens, &normalizedCode](const domain::TextFilterOperator op) {
-            return std::ranges::any_of(tokens.ordered, [&normalizedCode, op](const auto& token) {
-                return token.value == normalizedCode && token.filterOperator == op;
-            });
+        auto terms = statusFilterTerms();
+        const auto hasToken = [&terms, &normalizedCode](const domain::TextFilterOperator op) {
+            return std::ranges::any_of(
+                terms.exact.ordered, [&normalizedCode, op](const auto& token) {
+                    return token.value == normalizedCode && token.filterOperator == op;
+                });
         };
         const bool hasIncluded = hasToken(domain::TextFilterOperator::Equals);
         const bool hasExcluded = hasToken(domain::TextFilterOperator::Different);
         domain::TextFilterTokenSet nextTokens;
-        for (const auto& token : tokens.ordered) {
+        for (const auto& token : terms.exact.ordered) {
             if (token.value == normalizedCode) {
                 continue;
             }
@@ -384,51 +395,23 @@ namespace ssa::presentation {
             domain::addTextFilterValue(nextTokens, normalizedCode,
                                        domain::TextFilterOperator::Equals);
         }
-        tokens = std::move(nextTokens);
-
-        const auto nextExpression = QString::fromStdString(domain::joinTextFilterTokens(tokens));
-        const bool advancedChanged = state_.advanced().setTextFilter(statusKey, nextExpression);
-        const bool columnChanged = state_.removeColumnFilter(statusKey);
-        if (!advancedChanged && !columnChanged) {
-            return;
-        }
-        if (columnChanged) {
-            columns_.refreshFromState();
-        }
-        normalizeAdvancedFilterOverlap();
-        advanced_->refreshFromState();
-        synchronizeFilterState(false);
-        emit applyRequested();
+        terms.exact = std::move(nextTokens);
+        applyStatusFilterTerms(terms);
     }
 
     void FilterPanelViewModel::clearStatusShortcuts() {
-        const auto statusKey = statusColumnKey();
-        const auto advancedExpression = state_.advanced().textFilter(statusKey).toStdString();
-        const auto columnFilter = state_.columnFilters().find(statusKey.toStdString());
-        const auto tokens = domain::parseTextFilterTokens(
-            advancedExpression.empty() && columnFilter != state_.columnFilters().end()
-                ? columnFilter->second
-                : advancedExpression);
+        auto terms = statusFilterTerms();
         domain::TextFilterTokenSet remainingTokens;
-        for (const auto& token : tokens.ordered) {
-            const auto shortcutCodes = domain::ColumnCatalog::statusShortcutCodes();
+        const auto shortcutCodes = domain::ColumnCatalog::statusShortcutCodes();
+        for (const auto& token : terms.exact.ordered) {
             const bool isShortcutValue = std::ranges::any_of(
                 shortcutCodes, [&token](const auto value) { return token.value == value; });
             if (!isShortcutValue) {
                 domain::addTextFilterValue(remainingTokens, token.value, token.filterOperator);
             }
         }
-        const bool advancedChanged = state_.advanced().setTextFilter(
-            statusKey, QString::fromStdString(domain::joinTextFilterTokens(remainingTokens)));
-        const bool columnChanged = state_.removeColumnFilter(statusKey);
-        if (!advancedChanged && !columnChanged) {
-            return;
-        }
-        columns_.refreshFromState();
-        normalizeAdvancedFilterOverlap();
-        advanced_->refreshFromState();
-        synchronizeFilterState(false);
-        emit applyRequested();
+        terms.exact = std::move(remainingTokens);
+        applyStatusFilterTerms(terms);
     }
 
     void FilterPanelViewModel::requestColumnFocus(const QString& key) {
