@@ -619,7 +619,7 @@ Item {
                                 Layout.preferredWidth: 88 * root.compactControlScale
                                 from: 2000
                                 to: 2200
-                                value: root.periodYear
+                                modelValue: root.periodYear
                                 editable: true
                                 onValueModified: root.applySelectedMonth(value, root.periodMonth)
                             }
@@ -787,7 +787,7 @@ Item {
                             from: 2000
                             to: 2200
                             locale: Qt.locale("C")
-                            value: root.firstYear
+                            modelValue: root.firstYear
                             editable: true
                             onValueModified: {
                                 root.firstYear = value;
@@ -802,7 +802,7 @@ Item {
                             objectName: "analyticsCustomFirstWeek"
                             from: 1
                             to: 53
-                            value: root.firstWeek
+                            modelValue: root.firstWeek
                             editable: true
                             onValueModified: {
                                 root.firstWeek = value;
@@ -818,7 +818,7 @@ Item {
                             from: 2000
                             to: 2200
                             locale: Qt.locale("C")
-                            value: root.lastYear
+                            modelValue: root.lastYear
                             editable: true
                             onValueModified: {
                                 root.lastYear = value;
@@ -833,7 +833,7 @@ Item {
                             objectName: "analyticsCustomLastWeek"
                             from: 1
                             to: 53
-                            value: root.lastWeek
+                            modelValue: root.lastWeek
                             editable: true
                             onValueModified: {
                                 root.lastWeek = value;

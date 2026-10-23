@@ -806,15 +806,18 @@ namespace {
                 import SsaConsultaRapida
 
                 Item {
+                    id: harness
                     width: 300
                     height: 120
+                    property int interval: 30000
                     AppSpinBox {
                         objectName: "typedSpinBox"
                         x: 20
                         y: 20
                         from: 1
                         to: 30000
-                        value: 30000
+                        modelValue: harness.interval
+                        onValueModified: harness.interval = value
                     }
                 }
             )QML",
@@ -847,6 +850,81 @@ namespace {
             QTest::keyClick(&window, Qt::Key_Return);
 
             QTRY_COMPARE_WITH_TIMEOUT(spinBox->property("value").toInt(), 120, 1000);
+        }
+
+        void spin_box_shows_the_value_its_model_keeps_data() {
+            QTest::addColumn<int>("initial");
+            QTest::addColumn<QString>("typed");
+            QTest::addColumn<int>("expected");
+            // The model rounds to its step and clamps, like the preferences setters.
+            QTest::newRow("below minimum") << 10 << QStringLiteral("5") << 10;
+            QTest::newRow("rounded to the same value") << 25 << QStringLiteral("27") << 25;
+            QTest::newRow("rounded to a new value") << 25 << QStringLiteral("33") << 35;
+        }
+
+        void spin_box_shows_the_value_its_model_keeps() {
+            QFETCH(int, initial);
+            QFETCH(QString, typed);
+            QFETCH(int, expected);
+            QQmlEngine engine;
+            QQmlComponent component(&engine);
+            component.setData(R"QML(
+                import QtQuick
+                import SsaConsultaRapida
+
+                Item {
+                    id: harness
+                    width: 300
+                    height: 120
+                    property int modelValue: 10
+                    AppSpinBox {
+                        objectName: "modelSpinBox"
+                        x: 20
+                        y: 20
+                        from: 10
+                        to: 500
+                        stepSize: 5
+                        modelValue: harness.modelValue
+                        onValueModified: harness.modelValue = Math.max(10, Math.round(value / 5) * 5)
+                    }
+                }
+            )QML",
+                              QUrl(QStringLiteral("inmemory:/SpinBoxModelHarness.qml")));
+            QTRY_VERIFY_WITH_TIMEOUT(component.status() != QQmlComponent::Loading, 1000);
+            QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+            QQuickWindow window;
+            window.setGeometry(0, 0, 300, 120);
+            std::unique_ptr<QObject> harness(component.create());
+            QVERIFY2(harness != nullptr, qPrintable(component.errorString()));
+            QVERIFY(harness->setProperty("modelValue", initial));
+            auto* harnessItem = qobject_cast<QQuickItem*>(harness.get());
+            QVERIFY(harnessItem != nullptr);
+            harnessItem->setParentItem(window.contentItem());
+            window.show();
+            QTRY_VERIFY_WITH_TIMEOUT(window.isExposed(), 1000);
+            auto* spinBox = harness->findChild<QQuickItem*>(QStringLiteral("modelSpinBox"));
+            QVERIFY(spinBox != nullptr);
+            auto* input = qvariant_cast<QQuickItem*>(spinBox->property("contentItem"));
+            QVERIFY(input != nullptr);
+            window.requestActivate();
+            QTRY_VERIFY_WITH_TIMEOUT(window.isActive(), 1000);
+            input->forceActiveFocus();
+            QTRY_VERIFY_WITH_TIMEOUT(input->hasActiveFocus(), 1000);
+            QVERIFY(QMetaObject::invokeMethod(input, "selectAll"));
+            for (const QChar digit : typed) {
+                QTest::keyClick(&window, digit.toLatin1());
+            }
+            QTest::keyClick(&window, Qt::Key_Return);
+
+            // What the field shows is what the model kept (re-synced after the handler ran).
+            QTRY_COMPARE_WITH_TIMEOUT(spinBox->property("value").toInt(), expected, 1000);
+            QCOMPARE(harness->property("modelValue").toInt(), expected);
+            QCOMPARE(input->property("text").toString(), QString::number(expected));
+
+            // A later programmatic change (preferences load, reset) still reaches the field.
+            QVERIFY(harness->setProperty("modelValue", 100));
+            QCOMPARE(spinBox->property("value").toInt(), 100);
+            QCOMPARE(input->property("text").toString(), QStringLiteral("100"));
         }
 
         void value_popup_reads_different_tokens_written_by_the_serializer() {

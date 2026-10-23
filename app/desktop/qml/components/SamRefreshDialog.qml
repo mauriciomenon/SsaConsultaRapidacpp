@@ -124,7 +124,7 @@ Window {
                     objectName: "samIntervalSpinBox"
                     from: 1
                     to: 30000
-                    value: root.workflowViewModel.samIntervalMinutes
+                    modelValue: root.workflowViewModel.samIntervalMinutes
                     Layout.preferredWidth: 140
                     onValueModified: root.workflowViewModel.samIntervalMinutes = value
                 }

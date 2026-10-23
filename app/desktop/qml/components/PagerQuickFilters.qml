@@ -35,7 +35,7 @@ RowLayout {
         from: 10
         to: 500
         stepSize: 5
-        value: root.viewModel.pageSize
+        modelValue: root.viewModel.pageSize
         Layout.preferredWidth: 58
         onValueModified: {
             root.viewModel.pageSize = pageSizeSpin.value;

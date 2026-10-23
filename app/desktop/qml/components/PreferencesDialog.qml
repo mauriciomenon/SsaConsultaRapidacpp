@@ -129,7 +129,7 @@ Window {
                         id: detailsWidthInput
                         from: root.detailsWidthMin
                         to: root.detailsWidthMax
-                        value: root.detailsCurrentWidth
+                        modelValue: root.detailsCurrentWidth
                         stepSize: 5
                         Layout.preferredWidth: 120
                         onValueModified: root.viewModel.ui.detailsPanelWidth = value
@@ -149,7 +149,7 @@ Window {
                     AppSpinBox {
                         from: 1
                         to: 1000
-                        value: root.viewModel.actions.workflows.importRowsPerChunk
+                        modelValue: root.viewModel.actions.workflows.importRowsPerChunk
                         stepSize: 1
                         Layout.preferredWidth: 120
                         onValueModified: root.viewModel.actions.workflows.importRowsPerChunk = value
@@ -163,7 +163,7 @@ Window {
                     AppSpinBox {
                         from: 0
                         to: 3000
-                        value: root.viewModel.actions.workflows.importSqliteBusyWaitMs
+                        modelValue: root.viewModel.actions.workflows.importSqliteBusyWaitMs
                         stepSize: 5
                         Layout.preferredWidth: 120
                         onValueModified: root.viewModel.actions.workflows.importSqliteBusyWaitMs = value

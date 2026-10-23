@@ -148,7 +148,7 @@ Item {
                             from: root.viewModel.minColumnWidth
                             to: root.viewModel.maxColumnWidth
                             stepSize: 5
-                            value: columnDelegate.columnWidth
+                            modelValue: columnDelegate.columnWidth
                             onValueModified: root.viewModel.setColumnWidth(columnDelegate.columnKey, value)
                         }
                         ActionButton {

@@ -324,7 +324,7 @@ Item {
                                 Layout.preferredWidth: 88 * root.compactControlScale
                                 from: 2000
                                 to: 2200
-                                value: root.periodYear
+                                modelValue: root.periodYear
                                 editable: true
                                 onValueModified: root.applyCalendarMonth(value, root.periodMonth)
                             }
@@ -373,7 +373,7 @@ Item {
                             from: 2000
                             to: 2200
                             locale: Qt.locale("C")
-                            value: root.reportFirstYear
+                            modelValue: root.reportFirstYear
                             editable: true
                             onValueModified: {
                                 root.reportFirstYear = value;
@@ -389,7 +389,7 @@ Item {
                             objectName: "analyticsDashboardFirstWeek"
                             from: 1
                             to: 53
-                            value: root.reportFirstWeek
+                            modelValue: root.reportFirstWeek
                             editable: true
                             onValueModified: {
                                 root.reportFirstWeek = value;
@@ -406,7 +406,7 @@ Item {
                             from: 2000
                             to: 2200
                             locale: Qt.locale("C")
-                            value: root.reportLastYear
+                            modelValue: root.reportLastYear
                             editable: true
                             onValueModified: {
                                 root.reportLastYear = value;
@@ -422,7 +422,7 @@ Item {
                             objectName: "analyticsDashboardLastWeek"
                             from: 1
                             to: 53
-                            value: root.reportLastWeek
+                            modelValue: root.reportLastWeek
                             editable: true
                             onValueModified: {
                                 root.reportLastWeek = value;

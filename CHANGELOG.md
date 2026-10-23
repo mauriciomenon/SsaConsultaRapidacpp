@@ -176,6 +176,9 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 - Filtro de coluna em datas (Data de cadastro, Prazo limite e as demais exibidas
   como dd/mm/aaaa) aceita o formato mostrado na grade: `21/12/2021`, `12/2021`
   e `!21/12/2021` voltam a encontrar ou excluir as SSAs, como na versao Python.
+- Campos numericos: um valor digitado fora do limite ou que o programa arredonda
+  (ex.: espera do SQLite em multiplos de 5) volta a mostrar o valor realmente
+  usado; antes o campo continuava exibindo o numero digitado.
 - Importacao: quando uma importacao falha ou e cancelada depois de gravar parte
   das linhas, a grade recarrega e a barra de status continua mostrando a falha;
   antes o recarregamento apagava o erro e mostrava "Consulta concluida".

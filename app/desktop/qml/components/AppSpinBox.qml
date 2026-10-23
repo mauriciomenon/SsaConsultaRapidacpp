@@ -10,6 +10,18 @@ SpinBox {
     readonly property int indicatorWidth: 27
     readonly property string reservedDigitProbe: "888"
 
+    // The model owns the value. A typed value the model clamps or rounds (or leaves unchanged)
+    // snaps back to what the model kept once the consumer's onValueModified has run.
+    required property int modelValue
+
+    function syncToModel() {
+        if (root.value !== root.modelValue)
+            root.value = Qt.binding(() => root.modelValue);
+    }
+
+    value: modelValue
+    onValueModified: Qt.callLater(root.syncToModel)
+
     implicitHeight: Math.max(Theme.controlHeight, implicitContentHeight + topPadding + bottomPadding)
     implicitWidth: Math.max(Theme.controlHeight * 2, Math.ceil(reservedDigitMetrics.width) + root.indicatorWidth + (root.horizontalTextPadding * 2))
     leftPadding: root.horizontalTextPadding
@@ -27,7 +39,7 @@ SpinBox {
 
     contentItem: TextInput {
         z: 2
-        text: root.textFromValue(root.value, root.locale)
+        text: root.displayText
         font: root.font
         color: root.enabled ? Theme.text : Theme.mutedText
         selectionColor: Theme.accentSoft

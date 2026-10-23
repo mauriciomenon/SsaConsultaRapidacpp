@@ -108,7 +108,7 @@ ApplicationWindow {
         width: 180
         from: 0
         to: 999
-        value: 888
+        modelValue: 888
     }
 
     AppTextField {
