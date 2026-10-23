@@ -24,6 +24,7 @@
 #include <QTimer>
 
 #include <memory>
+#include <optional>
 
 namespace ssa::presentation {
 
@@ -112,7 +113,13 @@ namespace ssa::presentation {
         MainColumnFlowCoordinator columnsFlow_;
         MainSelectionFlowCoordinator selectionFlow_;
         MainRequestFlowCoordinator requestFlow_;
-        QString pendingWorkflowRefreshMessage_;
+        // Status bar text of a workflow whose data reload is still running; the reload clears
+        // the status when it starts, so this is restored once its page arrives.
+        struct WorkflowRefreshStatus final {
+            QString error;
+            QString message;
+        };
+        std::optional<WorkflowRefreshStatus> pendingWorkflowRefresh_;
         QTimer shutdownPoll_;
         QTimer forceCloseTimer_;
         bool shutdownInProgress_{false};

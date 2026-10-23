@@ -2763,6 +2763,12 @@ namespace {
                 QCOMPARE(model.actions()->workflows()->lastSucceeded(), false);
                 QCOMPARE(repository->countCalls(), inserts > 0 ? std::size_t{1} : std::size_t{0});
                 QVERIFY(!model.browse()->status()->message().startsWith("Importacao concluida"));
+                // The reload of committed rows must not erase the failure from the status bar.
+                QVERIFY2(model.browse()->status()->error().startsWith(
+                             QStringLiteral("Falha ao importar arquivos")),
+                         qPrintable(model.browse()->status()->error()));
+                QVERIFY2(!model.browse()->status()->message().startsWith("Consulta"),
+                         qPrintable(model.browse()->status()->message()));
             }
         }
 

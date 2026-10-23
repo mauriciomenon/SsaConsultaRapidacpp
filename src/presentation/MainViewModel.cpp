@@ -126,28 +126,33 @@ namespace ssa::presentation {
                     analytics_->invalidateAfterImport();
                 }
                 if (workflows->lastDataChanged()) {
-                    // A failed/canceled import that committed rows reloads without touching
-                    // the failure status already published by ActionStatusCoordinator.
                     if (workflows->lastSucceeded()) {
-                        pendingWorkflowRefreshMessage_ = workflows->lastWarning()
-                                                             ? workflows->lastMessage()
-                                                             : workflows->successMessage();
+                        pendingWorkflowRefresh_ = WorkflowRefreshStatus{
+                            {},
+                            workflows->lastWarning() ? workflows->lastMessage()
+                                                     : workflows->successMessage()};
+                    } else {
+                        // A failed/canceled import that committed rows: keep the failure that
+                        // ActionStatusCoordinator just published.
+                        pendingWorkflowRefresh_ = WorkflowRefreshStatus{
+                            browse_.status()->error(), browse_.status()->message()};
                     }
                     browse_.invalidateDataSource();
                     browse_.apply();
                 }
             });
         connect(&browse_, &BrowseViewModel::pageChanged, this, [this] {
-            if (pendingWorkflowRefreshMessage_.isEmpty()) {
+            if (!pendingWorkflowRefresh_) {
                 return;
             }
-            const auto message = std::exchange(pendingWorkflowRefreshMessage_, QString{});
-            // The workflow success cleared the error before the reload, so an error now
-            // means the reload itself failed (or was canceled): keep it visible.
+            const auto pending = *std::exchange(pendingWorkflowRefresh_, std::nullopt);
+            // The reload started with a clear error, so an error now means the reload itself
+            // failed (or was canceled): keep it visible.
             if (!browse_.status()->error().isEmpty()) {
                 return;
             }
-            browse_.status()->setMessage(message);
+            browse_.status()->setError(pending.error);
+            browse_.status()->setMessage(pending.message);
         });
     }
 
