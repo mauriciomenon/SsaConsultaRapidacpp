@@ -176,6 +176,9 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 - Filtro de coluna em datas (Data de cadastro, Prazo limite e as demais exibidas
   como dd/mm/aaaa) aceita o formato mostrado na grade: `21/12/2021`, `12/2021`
   e `!21/12/2021` voltam a encontrar ou excluir as SSAs, como na versao Python.
+- Analytics: com a janela de analises aberta de um mes para o outro, o mes que
+  acabou de fechar passa a ser alcancavel pelo ">" ao reabrir ou voltar a janela;
+  antes so "Ultimo mes completo" chegava nele.
 - Menu Exibir: o item "Ocultar detalhes" passa a se chamar "Mostrar detalhes",
   como a opcao das Preferencias; a marca indicava o contrario do rotulo.
 - Importacao: depois de "Trocar banco" com uma consolidacao pendente, voltar ao

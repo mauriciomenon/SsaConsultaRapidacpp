@@ -51,7 +51,7 @@ Item {
     readonly property var monthNames: [qsTr("Janeiro"), qsTr("Fevereiro"), qsTr("Marco"), qsTr("Abril"), qsTr("Maio"), qsTr("Junho"), qsTr("Julho"), qsTr("Agosto"), qsTr("Setembro"), qsTr("Outubro"), qsTr("Novembro"), qsTr("Dezembro")]
     readonly property var monthModel: root.periodScope === 1 ? [qsTr("Todos")] : root.monthNames
     readonly property int monthComboIndex: root.periodScope === 1 ? 0 : root.periodMonth - 1
-    readonly property var lastCompleteIsoPeriod: analyticsViewModel.currentIsoMonthSelection()
+    property var lastCompleteIsoPeriod: analyticsViewModel.currentIsoMonthSelection()
     readonly property var lastCompletePeriod: root.lastCompleteIsoPeriod
     readonly property bool canNavigateNextMonth: root.periodScope !== 1 && periodYear * 12 + periodMonth < lastCompletePeriod.year * 12 + lastCompletePeriod.month
 

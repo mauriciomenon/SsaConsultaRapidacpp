@@ -199,9 +199,17 @@ namespace {
         }
 
         Q_INVOKABLE QVariantMap currentMonthSelection() const {
+            if (lastCompleteMonth_ != 7) {
+                return isoMonthSelection(2026, lastCompleteMonth_);
+            }
             return {{QStringLiteral("year"), 2026},      {QStringLiteral("month"), 7},
                     {QStringLiteral("firstYear"), 2026}, {QStringLiteral("firstWeek"), 27},
                     {QStringLiteral("lastYear"), 2026},  {QStringLiteral("lastWeek"), 31}};
+        }
+
+        // The month turns while the window stays open.
+        void completeAnotherMonth() {
+            ++lastCompleteMonth_;
         }
 
         Q_INVOKABLE QVariantMap calendarMonthSelection(const int year, const int month) const {
@@ -260,7 +268,7 @@ namespace {
         }
 
         Q_INVOKABLE QVariantMap currentIsoMonthSelection() const {
-            return isoMonthSelection(2026, 7);
+            return isoMonthSelection(2026, lastCompleteMonth_);
         }
 
         Q_INVOKABLE QVariantMap lastTwelveIsoMonthsSelection() const {
@@ -554,6 +562,7 @@ namespace {
         int dimensionRequestCount_{0};
         bool dimensionsLoading_{false};
         bool otherKindLoading_{false};
+        int lastCompleteMonth_{7};
         bool holdDimensionRequests_{false};
         int warningLoadCount_{0};
         int warningSaveCount_{0};
@@ -1578,6 +1587,29 @@ namespace {
             QCOMPARE(selection.value(QStringLiteral("sectors")).toStringList(),
                      QStringList{QStringLiteral("SMM1")});
             QCOMPARE(selection.value(QStringLiteral("people")).toStringList(), expectedPeople);
+        }
+
+        void reopening_after_a_month_turn_lets_both_tabs_reach_the_new_month() {
+            QQmlEngine engine;
+            FakeAnalyticsViewModel viewModel;
+            QString error;
+            auto object = loadWindow(engine, viewModel, error);
+            QVERIFY2(object != nullptr, qPrintable(error));
+            auto* dashboard = object->findChild<QObject*>(QStringLiteral("analyticsDashboard"));
+            auto* custom = object->findChild<QObject*>(QStringLiteral("analyticsCustomAnalysis"));
+            QVERIFY(dashboard != nullptr);
+            QVERIFY(custom != nullptr);
+            QVERIFY(invoke(*object, "open"));
+            QVERIFY(!dashboard->property("canNavigateNextMonth").toBool());
+            QVERIFY(!custom->property("canNavigateNextMonth").toBool());
+
+            viewModel.completeAnotherMonth();
+            QVERIFY(invoke(*object, "open"));
+
+            QVERIFY(dashboard->property("canNavigateNextMonth").toBool());
+            QVERIFY(custom->property("canNavigateNextMonth").toBool());
+            QVERIFY(invoke(*dashboard, "nextMonth"));
+            QCOMPARE(dashboard->property("periodMonth").toInt(), 8);
         }
 
         void quick_preset_waits_for_another_request_kind_data() {

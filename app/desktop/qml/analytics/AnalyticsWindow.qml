@@ -25,7 +25,15 @@ ApplicationWindow {
     palette.toolTipBase: Theme.panelRaised
     palette.toolTipText: Theme.text
 
+    // The window lives for the whole session; a month can turn while it is open, so the last
+    // complete month is read again each time it is shown or activated.
+    function refreshCurrentPeriods() {
+        dashboard.lastCompletePeriod = root.analyticsViewModel.currentMonthSelection();
+        custom.lastCompleteIsoPeriod = root.analyticsViewModel.currentIsoMonthSelection();
+    }
+
     function open() {
+        root.refreshCurrentPeriods();
         root.show();
         root.raise();
         root.requestActivate();
@@ -37,6 +45,11 @@ ApplicationWindow {
     function selectTab(index) {
         if (index >= 0 && index < analyticsTabs.count)
             analyticsTabs.currentIndex = index;
+    }
+
+    onActiveChanged: {
+        if (root.active)
+            root.refreshCurrentPeriods();
     }
 
     // Closing cancels what is still loading; the next open asks for it again.
