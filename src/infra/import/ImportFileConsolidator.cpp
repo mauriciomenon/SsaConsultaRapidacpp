@@ -1,11 +1,7 @@
 #include "infra/import/ImportFileConsolidator.h"
 
 #include "infra/import/CancelableFileCopy.h"
-#include "infra/import/ImportFileStager.h"
 #include "infra/import/ImportPathValidation.h"
-#include "qt/FilesystemPath.h"
-
-#include <QDebug>
 
 #include <algorithm>
 #include <array>
@@ -644,18 +640,6 @@ namespace ssa::infra::importing {
                         ++result.noSurvivor;
                         ++entryResult.noSurvivor;
                     }
-                    continue;
-                }
-                // A staged copy is disposable: its rows are committed and the user's original
-                // stays where it was. When it is gone (the staging cleanup of another database
-                // sharing this input folder), release the move instead of blocking every import.
-                if (sourceState == DirectoryEntryState::Missing &&
-                    destinationState == DirectoryEntryState::Missing &&
-                    isOwnedStagingArtifact(move.source)) {
-                    qWarning().noquote() << "Consolidation released a staged copy already removed:"
-                                         << qt::toQString(move.source.filename());
-                    moveResult.completed = true;
-                    ++entryResult.completed;
                     continue;
                 }
                 if (sourceState != DirectoryEntryState::RegularFile ||

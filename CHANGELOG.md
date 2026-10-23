@@ -184,11 +184,6 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
   antes so "Ultimo mes completo" chegava nele.
 - Menu Exibir: o item "Ocultar detalhes" passa a se chamar "Mostrar detalhes",
   como a opcao das Preferencias; a marca indicava o contrario do rotulo.
-- Importacao: depois de "Trocar banco" com uma consolidacao pendente, voltar ao
-  banco original nao trava mais todas as importacoes com "consolidation source
-  and destination state is ambiguous"; a copia temporaria da planilha externa
-  apagada pelo outro banco e liberada (as linhas ja estao gravadas e o arquivo
-  original continua onde estava).
 - Rescan e assistente de dados: a copia do banco espera o tempo configurado
   (`--sqlite-busy-wait-ms`, padrao 3 s) quando outro programa esta gravando no
   banco de origem; antes falhava na hora com "Falha ao copiar banco".

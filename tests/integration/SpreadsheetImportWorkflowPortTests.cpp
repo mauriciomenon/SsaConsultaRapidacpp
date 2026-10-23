@@ -2833,7 +2833,7 @@ TEST_CASE("external import resumes a prior journal and imports distinct selected
                       "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600215'") == 1);
 }
 
-TEST_CASE("rescan releases a journaled staged copy removed by another database's cleanup") {
+TEST_CASE("full rescan stays blocked while a journaled staged copy is missing") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
 
@@ -2851,17 +2851,19 @@ TEST_CASE("rescan releases a journaled staged copy removed by another database's
     auto session = writer.startSession(false);
     session.recordConsolidation({{{stagedCopy, destination, true}}});
     static_cast<void>(session.finish());
-    // Another database opened on the same input folder removed it as abandoned staging.
+    // Another database opened on the same input folder removed it as abandoned staging. Its
+    // rows exist only in this database (the copy never reached processadas/), so a full rescan
+    // rebuilt from the corpus would drop them: the pending move must keep blocking it.
     REQUIRE(std::filesystem::remove(stagedCopy));
 
     ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
                                                               importColumns());
-    const auto result = port.rescan({ssa::ports::RescanMode::Incremental});
+    const auto result = port.rescan({ssa::ports::RescanMode::Full});
 
     INFO(result.message);
     INFO(result.diagnostic);
-    REQUIRE(result.ok());
-    REQUIRE(writer.pendingConsolidation().empty());
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
+    REQUIRE(writer.pendingConsolidation().size() == 1);
     REQUIRE_FALSE(std::filesystem::exists(destination));
 }
 
