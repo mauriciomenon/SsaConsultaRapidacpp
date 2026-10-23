@@ -58,9 +58,43 @@ namespace ssa::infra::importing {
             return qt::toQString(path.filename()).startsWith(QStringLiteral("~$"));
         }
 
+        // Untagged: .ssa-staged-<stem>_<batch>_<n>.xlsx; tagged: .ssa-staged@<owner>-<stem>_...
+        const QString kUntaggedStagingPrefix = QStringLiteral(".ssa-staged-");
+        const QString kTaggedStagingPrefix = QStringLiteral(".ssa-staged@");
+
+        QString stagingPrefixFor(const std::string& owner) {
+            return owner.empty()
+                       ? kUntaggedStagingPrefix
+                       : kTaggedStagingPrefix + QString::fromStdString(owner) + QStringLiteral("-");
+        }
+
+        // The part after the staging prefix (<stem>_<batch>_<n>.xlsx), or empty when the name
+        // is not a staging copy.
+        QString stagedCopyRemainder(const std::filesystem::path& path) {
+            const auto name = qt::toQString(path.filename());
+            if (name.startsWith(kUntaggedStagingPrefix)) {
+                return name.mid(kUntaggedStagingPrefix.size());
+            }
+            if (name.startsWith(kTaggedStagingPrefix)) {
+                const auto ownerEnd = name.indexOf(QLatin1Char('-'), kTaggedStagingPrefix.size());
+                return ownerEnd < 0 ? QString{} : name.mid(ownerEnd + 1);
+            }
+            return {};
+        }
+
         bool isOwnedStagingArtifact(const std::filesystem::path& path) {
-            return isXlsxFile(path) &&
-                   qt::toQString(path.filename()).startsWith(QStringLiteral(".ssa-staged-"));
+            return isXlsxFile(path) && !stagedCopyRemainder(path).isEmpty();
+        }
+
+        // A tagged copy of another database stays: its journal may still have to move it.
+        bool isRemovableStagingArtifact(const std::filesystem::path& path,
+                                        const std::string& owner) {
+            if (!isOwnedStagingArtifact(path)) {
+                return false;
+            }
+            const auto name = qt::toQString(path.filename());
+            return !name.startsWith(kTaggedStagingPrefix) ||
+                   name.startsWith(stagingPrefixFor(owner));
         }
 
         void recordDiscoveredFile(ImportStagingResult& result, const std::filesystem::path& path) {
@@ -192,10 +226,20 @@ namespace ssa::infra::importing {
 
     } // namespace
 
+    bool isStagedCopyOf(const std::filesystem::path& staged,
+                        const std::filesystem::path& original) {
+        const auto remainder = stagedCopyRemainder(staged);
+        return !remainder.isEmpty() &&
+               remainder.startsWith(qt::toQString(original.stem()) + QStringLiteral("_")) &&
+               staged.extension() == original.extension();
+    }
+
     ImportFileStager::ImportFileStager(std::filesystem::path inputFolder,
-                                       FileCopyFirstChunkWrittenHook afterFirstChunkWritten)
+                                       FileCopyFirstChunkWrittenHook afterFirstChunkWritten,
+                                       std::string stagingOwner)
         : inputFolder_(std::move(inputFolder)),
-          afterFirstChunkWritten_(std::move(afterFirstChunkWritten)) {}
+          afterFirstChunkWritten_(std::move(afterFirstChunkWritten)),
+          stagingOwner_(std::move(stagingOwner)) {}
 
     ImportStagingResult
     ImportFileStager::stageExternalFiles(const std::vector<std::filesystem::path>& files,
@@ -371,7 +415,7 @@ namespace ssa::infra::importing {
                 return result;
             }
             const auto& entry = *iterator;
-            if (!isOwnedStagingArtifact(entry.path())) {
+            if (!isRemovableStagingArtifact(entry.path(), stagingOwner_)) {
                 iterator.increment(error);
                 if (error) {
                     result.failedCopies = 1;
@@ -444,7 +488,9 @@ namespace ssa::infra::importing {
             if (entryIsSymlink) {
                 ++result.discovered;
                 ++result.unsupported;
-            } else if (entryIsRegular) {
+            } else if (entryIsRegular && !isOwnedStagingArtifact(entry.path())) {
+                // Staging copies left by the cleanup belong to another database's journal;
+                // importing them here would also move them away from it.
                 ++result.discovered;
                 candidates.push_back(entry.path());
                 recordDiscoveredFile(result, entry.path());
@@ -612,7 +658,7 @@ namespace ssa::infra::importing {
 
     std::filesystem::path
     ImportFileStager::stagedDestination(const StagedDestinationRequest& request) const {
-        std::filesystem::path candidateName = ".ssa-staged-";
+        std::filesystem::path candidateName = qt::toFileSystemPath(stagingPrefixFor(stagingOwner_));
         candidateName += request.source.stem();
         candidateName += "_";
         candidateName += request.batchPrefix;

@@ -20,6 +20,7 @@
 #include "qt/FilesystemPath.h"
 #include "query/SqlQueryBuilder.h"
 
+#include <QByteArray>
 #include <QCryptographicHash>
 #include <QDateTime>
 #include <QDir>
@@ -6943,6 +6944,96 @@ TEST_CASE("input file stager removes abandoned owned staging artifacts") {
     REQUIRE(result.files.size() == 1);
     REQUIRE(result.files.front().workbookPath == inputDirectory / "pending.xlsx");
     REQUIRE_FALSE(std::filesystem::exists(inputDirectory / ".ssa-staged-crashed_123_0.xlsx"));
+}
+
+TEST_CASE("input file stager keeps the tagged staging copies of another database") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto inputDirectory =
+        std::filesystem::path{tempDir.path().toStdString()} / "docs_entrada";
+    std::filesystem::create_directories(inputDirectory);
+    const auto own = inputDirectory / ".ssa-staged@aaaaaaaaaaaa-mine_123_0.xlsx";
+    const auto foreign = inputDirectory / ".ssa-staged@bbbbbbbbbbbb-theirs_123_0.xlsx";
+    const auto untagged = inputDirectory / ".ssa-staged-old_123_0.xlsx";
+    createSparseFile(own, 1);
+    createSparseFile(foreign, 1);
+    createSparseFile(untagged, 1);
+    createSparseFile(inputDirectory / "pending.xlsx", 1);
+
+    const ssa::infra::importing::ImportFileStager stager(inputDirectory, {}, "aaaaaaaaaaaa");
+    const auto result = stager.stageInputFiles();
+
+    // Another database sharing docs_entrada may still have to consolidate its copy, and it is
+    // not an input of this one either.
+    REQUIRE(result.rejectionReason.empty());
+    REQUIRE(result.files.size() == 1);
+    REQUIRE(result.files.front().workbookPath == inputDirectory / "pending.xlsx");
+    REQUIRE_FALSE(std::filesystem::exists(own));
+    REQUIRE_FALSE(std::filesystem::exists(untagged));
+    REQUIRE(std::filesystem::exists(foreign));
+}
+
+TEST_CASE("a second database rescan leaves the first database's journaled staging copy") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto firstDb = root / "data" / "first.db";
+    const auto secondDb = root / "data" / "second.db";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(firstDb.parent_path());
+    // Same tag the port derives for the first database.
+    const auto owner =
+        QCryptographicHash::hash(QByteArray::fromStdString(ssa::qt::toUtf8(
+                                     std::filesystem::absolute(firstDb).lexically_normal())),
+                                 QCryptographicHash::Sha256)
+            .toHex()
+            .left(12)
+            .toStdString();
+    const auto stagedCopy = inputDirectory / (".ssa-staged@" + owner + "-selected_1_0_0.xlsx");
+    const auto destination = inputDirectory / "processadas" / "selected.xlsx";
+    createSparseFile(stagedCopy, 1);
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(sqliteWriterAccess(), firstDb,
+                                                           importColumns());
+    auto session = writer.startSession(false);
+    session.recordConsolidation({{{stagedCopy, destination, true}}});
+    static_cast<void>(session.finish());
+
+    // "Trocar banco": the second database rescans the shared input folder.
+    ssa::infra::importing::SpreadsheetImportWorkflowPort second(inputDirectory, secondDb,
+                                                                importColumns());
+    static_cast<void>(second.rescan({ssa::ports::RescanMode::Incremental}));
+    REQUIRE(std::filesystem::exists(stagedCopy));
+
+    // Back on the first database, the pending move completes instead of blocking imports.
+    ssa::infra::importing::SpreadsheetImportWorkflowPort first(inputDirectory, firstDb,
+                                                               importColumns());
+    const auto firstResult = first.rescan({ssa::ports::RescanMode::Incremental});
+    INFO(firstResult.message);
+    INFO(firstResult.diagnostic);
+    REQUIRE(firstResult.ok());
+    REQUIRE(writer.pendingConsolidation().empty());
+    REQUIRE(std::filesystem::exists(destination));
+}
+
+TEST_CASE("external import tags its staging copies with the importing database") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const ssa::infra::importing::ImportFileStager stager(
+        std::filesystem::path{tempDir.path().toStdString()}, {}, "aaaaaaaaaaaa");
+    const auto source = std::filesystem::path{tempDir.path().toStdString()} / "external.xlsx";
+    createSparseFile(source, 1);
+
+    const auto staging = stager.stageExternalFiles({source});
+
+    REQUIRE(staging.files.size() == 1);
+    const auto stagedName = staging.files.front().workbookPath.filename().string();
+    REQUIRE(stagedName.starts_with(".ssa-staged@aaaaaaaaaaaa-external_"));
+    REQUIRE(ssa::infra::importing::isStagedCopyOf(staging.files.front().workbookPath, source));
+    static_cast<void>(stager.discardOwnedArtifacts(staging));
 }
 
 #ifndef _WIN32

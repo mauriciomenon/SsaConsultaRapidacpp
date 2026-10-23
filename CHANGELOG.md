@@ -176,6 +176,12 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 - Filtro de coluna em datas (Data de cadastro, Prazo limite e as demais exibidas
   como dd/mm/aaaa) aceita o formato mostrado na grade: `21/12/2021`, `12/2021`
   e `!21/12/2021` voltam a encontrar ou excluir as SSAs, como na versao Python.
+- Importacao: dois bancos usando a mesma pasta `docs_entrada` ("Trocar banco")
+  nao apagam mais a copia temporaria de planilha externa que o outro banco ainda
+  precisa consolidar; antes, voltar ao primeiro banco travava toda importacao
+  com "consolidation source and destination state is ambiguous". As copias novas
+  levam a marca do banco no nome; copias antigas, sem marca, seguem a regra
+  anterior.
 - Campos numericos: um valor digitado fora do limite ou que o programa arredonda
   (ex.: espera do SQLite em multiplos de 5) volta a mostrar o valor realmente
   usado; antes o campo continuava exibindo o numero digitado.

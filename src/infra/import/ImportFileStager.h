@@ -36,10 +36,18 @@ namespace ssa::infra::importing {
         std::string diagnostic;
     };
 
+    // True when `staged` is a private staging copy (tagged or untagged) of `original`.
+    [[nodiscard]] bool isStagedCopyOf(const std::filesystem::path& staged,
+                                      const std::filesystem::path& original);
+
     class ImportFileStager final {
       public:
+        // `stagingOwner` tags the private copies with the database whose journal moves them,
+        // so the cleanup of another database sharing this input folder leaves them alone.
+        // Empty keeps untagged names, removed by any cleanup.
         explicit ImportFileStager(std::filesystem::path inputFolder,
-                                  FileCopyFirstChunkWrittenHook afterFirstChunkWritten = {});
+                                  FileCopyFirstChunkWrittenHook afterFirstChunkWritten = {},
+                                  std::string stagingOwner = {});
 
         [[nodiscard]] ImportStagingResult
         stageExternalFiles(const std::vector<std::filesystem::path>& files,
@@ -62,6 +70,7 @@ namespace ssa::infra::importing {
 
         std::filesystem::path inputFolder_;
         FileCopyFirstChunkWrittenHook afterFirstChunkWritten_;
+        std::string stagingOwner_;
     };
 
 } // namespace ssa::infra::importing

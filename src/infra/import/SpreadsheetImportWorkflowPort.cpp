@@ -10,6 +10,8 @@
 #include "ports/OperationError.h"
 #include "qt/FilesystemPath.h"
 
+#include <QByteArray>
+#include <QCryptographicHash>
 #include <QDate>
 #include <QDebug>
 #include <QLockFile>
@@ -60,17 +62,24 @@ namespace ssa::infra::importing {
             Publication,
         };
 
+        // Stable per database file; tags its staging copies so the cleanup of another database
+        // sharing the input folder keeps the copies this database's journal still has to move.
+        [[nodiscard]] std::string stagingOwnerFor(const std::filesystem::path& databasePath) {
+            const auto key = qt::toUtf8(std::filesystem::absolute(databasePath).lexically_normal());
+            return QCryptographicHash::hash(QByteArray::fromStdString(key),
+                                            QCryptographicHash::Sha256)
+                .toHex()
+                .left(12)
+                .toStdString();
+        }
+
         [[nodiscard]] bool isRecoveryCopyCandidate(const StagedImportFile& selected,
                                                    const ImportConsolidationMove& pending) {
             const auto sourceName = qt::toQString(pending.source.filename());
             if (sourceName == qt::toQString(selected.consolidationFilename)) {
                 return true;
             }
-            const auto stagedPrefix = QStringLiteral(".ssa-staged-") +
-                                      qt::toQString(selected.consolidationFilename.stem()) +
-                                      QStringLiteral("_");
-            return sourceName.startsWith(stagedPrefix) &&
-                   pending.source.extension() == selected.consolidationFilename.extension();
+            return isStagedCopyOf(pending.source, selected.consolidationFilename);
         }
 
         [[nodiscard]] FileContentsComparison
@@ -657,14 +666,16 @@ namespace ssa::infra::importing {
         SynchronizationSignals synchronization)
         : inputFolder_(inputFolder), databasePath_(databasePath), columns_(columns),
           consolidateSources_(consolidateSources),
-          stager_(inputFolder_, synchronization.afterFirstChunkWritten),
+          stager_(inputFolder_, synchronization.afterFirstChunkWritten,
+                  stagingOwnerFor(databasePath)),
           consolidator_(inputFolder_), synchronization_(std::move(synchronization)),
           writer_(sqlite::SqliteSsaImportWriterAccess{}, databasePath, std::move(columns),
                   "ssa_table", {.busyEntered = synchronization_.writerBusyEntered}) {
         if (const auto resolved = resolvedImportFolder(inputFolder_, importLockPathDiagnostic_)) {
             inputFolder_ = *resolved;
             importLockPath_ = inputFolder_.parent_path() / ".ssa_import.lock";
-            stager_ = ImportFileStager(inputFolder_, synchronization_.afterFirstChunkWritten);
+            stager_ = ImportFileStager(inputFolder_, synchronization_.afterFirstChunkWritten,
+                                       stagingOwnerFor(databasePath_));
             consolidator_ = ImportFileConsolidator(inputFolder_);
         }
     }
