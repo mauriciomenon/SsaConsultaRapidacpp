@@ -37,6 +37,15 @@ namespace {
     using ssa::domain::AnalyticsSeriesResult;
     using ssa::domain::IsoWeek;
 
+    // A failed assertion returns from the test early; this still releases a worker that waits
+    // on the flag, so the suite never hangs on it.
+    struct ReleaseOnExit final {
+        std::atomic_bool& flag;
+        ~ReleaseOnExit() {
+            flag = true;
+        }
+    };
+
     AnalyticsPeriod testPeriod() {
         return {.first = IsoWeek{2026, 1}, .last = IsoWeek{2026, 13}};
     }
@@ -437,6 +446,7 @@ namespace {
                 std::atomic_bool releaseDashboard{false};
             };
             const auto gate = std::make_shared<Gate>();
+            const ReleaseOnExit releaseDashboard{gate->releaseDashboard};
             auto port = std::make_shared<FunctionalAnalyticsPort>();
             port->seriesFunction = [gate](const AnalyticsRequest& request, const std::stop_token&) {
                 gate->dashboardStarted = true;
@@ -506,6 +516,7 @@ namespace {
                 std::atomic_bool releaseLoad{false};
             };
             const auto gate = std::make_shared<Gate>();
+            const ReleaseOnExit releaseLoad{gate->releaseLoad};
             auto settings = std::make_shared<FunctionalSettingsPort>();
             settings->loadFunction = [gate](const std::stop_token&) {
                 gate->loadStarted = true;
