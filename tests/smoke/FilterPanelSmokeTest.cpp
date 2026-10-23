@@ -386,11 +386,15 @@ namespace {
             filters.refreshColumnValueOptionsFor("setor_executor");
             QCOMPARE(filters.columnValueOptionsLoadingFor("setor_executor"), true);
 
+            // A real filter change while the query runs (typing in the editor is not one).
+            filters.setColumnKey("situacao");
             filters.setColumnValue("APV");
+            filters.addColumnFilter();
 
+            QCOMPARE(filters.columnValueOptionsLoadingFor("setor_executor"), false);
+            // The old query finishes after 120 ms; its result belongs to the old filter.
+            QTest::qWait(400);
             QCOMPARE(filters.columnValueOptionsFor("setor_executor"), QStringList{});
-            QTRY_COMPARE_WITH_TIMEOUT(filters.columnValueOptionsLoadingFor("setor_executor"), false,
-                                      3000);
 
             filters.refreshColumnValueOptionsFor("setor_executor");
             QTRY_COMPARE_WITH_TIMEOUT(filters.columnValueOptionsLoadingFor("setor_executor"), false,
