@@ -62,17 +62,6 @@ namespace ssa::infra::importing {
             Publication,
         };
 
-        // Stable per database file; tags its staging copies so the cleanup of another database
-        // sharing the input folder keeps the copies this database's journal still has to move.
-        [[nodiscard]] std::string stagingOwnerFor(const std::filesystem::path& databasePath) {
-            const auto key = qt::toUtf8(std::filesystem::absolute(databasePath).lexically_normal());
-            return QCryptographicHash::hash(QByteArray::fromStdString(key),
-                                            QCryptographicHash::Sha256)
-                .toHex()
-                .left(12)
-                .toStdString();
-        }
-
         [[nodiscard]] bool isRecoveryCopyCandidate(const StagedImportFile& selected,
                                                    const ImportConsolidationMove& pending) {
             const auto sourceName = qt::toQString(pending.source.filename());
@@ -659,6 +648,21 @@ namespace ssa::infra::importing {
         }
 
     } // namespace
+
+    std::string stagingOwnerFor(const std::filesystem::path& databasePath) {
+        // weakly_canonical resolves symlinks and dots of the existing prefix; a path it cannot
+        // resolve (an unreadable folder) keeps its lexical form, which is still stable.
+        std::error_code error;
+        auto resolved = std::filesystem::weakly_canonical(databasePath, error);
+        if (error) {
+            resolved = std::filesystem::absolute(databasePath).lexically_normal();
+        }
+        const auto key = qt::toUtf8(resolved);
+        return QCryptographicHash::hash(QByteArray::fromStdString(key), QCryptographicHash::Sha256)
+            .toHex()
+            .left(12)
+            .toStdString();
+    }
 
     SpreadsheetImportWorkflowPort::SpreadsheetImportWorkflowPort(
         std::filesystem::path inputFolder, std::filesystem::path databasePath,

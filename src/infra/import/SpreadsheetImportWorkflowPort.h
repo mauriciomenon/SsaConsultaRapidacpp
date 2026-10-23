@@ -8,12 +8,18 @@
 #include "ports/IWorkflowPorts.h"
 
 #include <cstddef>
+#include <filesystem>
 #include <memory>
 #include <optional>
 #include <string>
 #include <vector>
 
 namespace ssa::infra::importing {
+
+    // Stable per database file, whatever path spelling opens it (a symlinked folder included):
+    // tags its staging copies so the cleanup of another database sharing the input folder
+    // keeps the copies this database's journal still has to move.
+    [[nodiscard]] std::string stagingOwnerFor(const std::filesystem::path& databasePath);
 
     class SpreadsheetImportWorkflowPort final : public ports::IImportWorkflowPort,
                                                 public ports::ISamImportPort {

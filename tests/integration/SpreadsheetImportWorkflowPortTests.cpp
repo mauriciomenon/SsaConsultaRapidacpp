@@ -7400,6 +7400,26 @@ TEST_CASE("a second database rescan leaves the first database's journaled stagin
     REQUIRE(std::filesystem::exists(destination));
 }
 
+TEST_CASE("the staging tag names a database file whatever path spelling opens it") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = ssa::qt::toFileSystemPath(tempDir.path());
+    std::filesystem::create_directories(root / "real" / "data");
+    const auto database = root / "real" / "data" / "ssas.db";
+    createSparseFile(database, 1);
+    using ssa::infra::importing::stagingOwnerFor;
+
+    REQUIRE(stagingOwnerFor(database) == stagingOwnerFor(root / "real" / "." / "data" / "ssas.db"));
+    REQUIRE(stagingOwnerFor(database) != stagingOwnerFor(root / "other" / "ssas.db"));
+    std::error_code linkError;
+    std::filesystem::create_directory_symlink(root / "real", root / "link", linkError);
+    if (linkError) {
+        SKIP("directory symlinks are unavailable: " << linkError.message());
+    }
+    REQUIRE(stagingOwnerFor(database) == stagingOwnerFor(root / "link" / "data" / "ssas.db"));
+}
+
 TEST_CASE("external import tags its staging copies with the importing database") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
