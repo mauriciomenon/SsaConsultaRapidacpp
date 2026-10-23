@@ -118,7 +118,8 @@ Rectangle {
                     ActionButton {
                         objectName: "mainApplyButton"
                         text: "⏎"
-                        implicitWidth: 32
+                        // The glyph comes from a fallback font whose width varies by platform.
+                        implicitWidth: Math.max(32, Math.ceil(implicitContentWidth + leftPadding + rightPadding))
                         Layout.minimumWidth: implicitWidth
                         implicitHeight: root.compactControlHeight - 2
                         Accessible.name: "Aplicar"
@@ -145,8 +146,11 @@ Rectangle {
                 Layout.preferredHeight: root.compactControlHeight
                 spacing: 4
 
+                // Whole-pixel widths: the layout rounds the Row up, so a fractional glyph width
+                // would shift the next control by a pixel on macOS.
                 Label {
                     objectName: "mainSsaCountLabel"
+                    width: Math.ceil(implicitWidth)
                     height: parent.height
                     text: root.ssaCountText
                     color: Theme.accent
@@ -156,6 +160,7 @@ Rectangle {
                 }
                 Label {
                     objectName: "mainSsaCountSuffixLabel"
+                    width: Math.ceil(implicitWidth)
                     height: parent.height
                     text: "SSAs"
                     color: Theme.accent
