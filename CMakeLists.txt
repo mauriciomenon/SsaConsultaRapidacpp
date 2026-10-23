@@ -51,7 +51,8 @@ endif()
 
 if(WIN32)
   get_filename_component(SSA_SQLITE_LIBRARY_DIR "${SQLite3_LIBRARY}" DIRECTORY)
-  get_filename_component(SSA_SQLITE_PREFIX "${SSA_SQLITE_LIBRARY_DIR}" DIRECTORY)
+  get_filename_component(SSA_SQLITE_PREFIX "${SSA_SQLITE_LIBRARY_DIR}"
+                         DIRECTORY)
   set(SSA_SQLITE_RUNTIME "${SSA_SQLITE_PREFIX}/bin/sqlite3.dll")
   if(NOT EXISTS "${SSA_SQLITE_RUNTIME}")
     message(FATAL_ERROR "SQLite runtime DLL not found: ${SSA_SQLITE_RUNTIME}")
@@ -477,13 +478,12 @@ target_compile_definitions(ssa_consulta_rapida_cli
 
 if(WIN32)
   foreach(SSA_WINDOWS_EXECUTABLE IN ITEMS ssa_consulta_rapida
-                                         ssa_consulta_rapida_cli)
+                                          ssa_consulta_rapida_cli)
     add_custom_command(
       TARGET ${SSA_WINDOWS_EXECUTABLE}
       POST_BUILD
-      COMMAND
-        ${CMAKE_COMMAND} -E copy_if_different "${SSA_SQLITE_RUNTIME}"
-        "$<TARGET_FILE_DIR:${SSA_WINDOWS_EXECUTABLE}>/sqlite3.dll"
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different "${SSA_SQLITE_RUNTIME}"
+              "$<TARGET_FILE_DIR:${SSA_WINDOWS_EXECUTABLE}>/sqlite3.dll"
       COMMENT "Staging SQLite runtime beside ${SSA_WINDOWS_EXECUTABLE}")
   endforeach()
 endif()
@@ -730,8 +730,7 @@ if(SSA_BUILD_TESTS)
            COMMAND ssa_qt_database_switch_tests)
   set_tests_properties(ssa_qt_database_switch_tests PROPERTIES TIMEOUT 10)
 
-  add_executable(ssa_qt_data_setup_tests
-                 tests/smoke/DataSetupViewModelTest.cpp)
+  add_executable(ssa_qt_data_setup_tests tests/smoke/DataSetupViewModelTest.cpp)
   target_link_libraries(ssa_qt_data_setup_tests PRIVATE ssa_presentation
                                                         ssa_platform Qt6::Test)
   add_test(NAME ssa_qt_data_setup_tests COMMAND ssa_qt_data_setup_tests)
@@ -787,7 +786,9 @@ if(SSA_BUILD_TESTS)
                  tests/smoke/AnalyticsChartsQmlQuickTest.cpp)
   target_compile_definitions(
     ssa_qml_analytics_charts_tests
-    PRIVATE QUICK_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/app/desktop/qml/analytics")
+    PRIVATE
+      QUICK_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/app/desktop/qml/analytics"
+  )
   target_link_libraries(
     ssa_qml_analytics_charts_tests PRIVATE Qt6::QuickTest Qt6::Qml Qt6::Quick
                                            Qt6::QuickControls2)
@@ -922,6 +923,17 @@ if(SSA_BUILD_TESTS)
       ${CMAKE_CURRENT_SOURCE_DIR}/cmake/RunDetailsTimeoutSmoke.cmake)
   set_tests_properties(ssa_qml_details_timeout PROPERTIES TIMEOUT 15 RUN_SERIAL
                                                           TRUE)
+
+  add_test(
+    NAME ssa_startup_failure_is_logged
+    COMMAND
+      ${CMAKE_COMMAND} -DAPP=$<TARGET_FILE:ssa_consulta_rapida>
+      -DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/startup-failure-smoke -P
+      ${CMAKE_CURRENT_SOURCE_DIR}/cmake/RunStartupFailureSmoke.cmake)
+  set_tests_properties(
+    ssa_startup_failure_is_logged
+    PROPERTIES TIMEOUT 15 RUN_SERIAL TRUE PASS_REGULAR_EXPRESSION
+               "STARTUP_FAILURE_SMOKE logged")
 
   if(NOT WIN32)
     add_executable(ssa_advanced_popup_memory_probe
