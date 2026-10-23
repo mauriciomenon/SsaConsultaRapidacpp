@@ -1685,10 +1685,9 @@ namespace ssa::infra::importing {
                 }
                 auto diagnostic = files.diagnostic;
                 appendWorkflowDiagnostic(diagnostic, perFileDiagnostic);
-                if (!unconsolidatedStaging.files.empty()) {
-                    appendWorkflowDiagnostic(diagnostic,
-                                             stager_.discardOwnedArtifacts(unconsolidatedStaging));
-                }
+                // Rolled back: no file of this batch is consolidated, so none of its staged
+                // copies may stay (a no-valid-rows one is not in unconsolidatedStaging).
+                appendWorkflowDiagnostic(diagnostic, stager_.discardOwnedArtifacts(files));
                 importSummary.preserved = importSummary.files.size();
                 importSummary.accepted = 0;
                 return withSummary({importSummary.failed > 0 ? ports::WorkflowStatus::Failed

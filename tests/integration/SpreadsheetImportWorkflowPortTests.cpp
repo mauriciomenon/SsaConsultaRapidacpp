@@ -3971,8 +3971,12 @@ TEST_CASE("external import leaves no staged copy of an ignored or unapplied work
     writeWorkbook(noValidRows,
                   header + row(2, {inlineCell("A2", "202600802"), inlineCell("B2", "APV"),
                                    inlineCell("C2", ""), inlineCell("D2", "2026-07-01")}));
-    writeWorkbook(missingColumns, row(1, {inlineCell("A1", "Numero SSA")}) +
-                                      row(2, {inlineCell("A2", "202600803")}));
+    // Recognized headers without the required date: rejected, not ignored.
+    writeWorkbook(missingColumns,
+                  row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                          inlineCell("C1", "Descricao da SSA")}) +
+                      row(2, {inlineCell("A2", "202600803"), inlineCell("B2", "APV"),
+                              inlineCell("C2", "No date")}));
     ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
                                                               importColumns());
 
@@ -3990,6 +3994,8 @@ TEST_CASE("external import leaves no staged copy of an ignored or unapplied work
 
         INFO(result.message);
         REQUIRE_FALSE(result.ok());
+        REQUIRE(result.importSummary->rejected == 1);
+        REQUIRE(result.importSummary->ignored == 0);
         REQUIRE(stagedCopies().empty());
     }
 }
