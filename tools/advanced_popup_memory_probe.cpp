@@ -30,6 +30,8 @@ namespace {
                                "SsaConsultaRapida", 1, 0, "AppTextField") >= 0 &&
                qmlRegisterType(QUrl::fromLocalFile(components.filePath("AppCheckBox.qml")),
                                "SsaConsultaRapida", 1, 0, "AppCheckBox") >= 0 &&
+               qmlRegisterType(QUrl::fromLocalFile(components.filePath("ValueOptionsStatus.qml")),
+                               "SsaConsultaRapida", 1, 0, "ValueOptionsStatus") >= 0 &&
                qmlRegisterType(
                    QUrl::fromLocalFile(components.filePath("AdvancedTextValuePopup.qml")),
                    "SsaConsultaRapida", 1, 0, "AdvancedTextValuePopup") >= 0;

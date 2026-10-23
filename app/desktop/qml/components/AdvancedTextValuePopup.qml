@@ -241,29 +241,14 @@ Popup {
             Layout.fillWidth: true
             Layout.fillHeight: true
 
-            Column {
+            ValueOptionsStatus {
                 anchors.centerIn: parent
                 visible: root.valuesLoading || root.valuesError.length > 0 || root.allValues.length === 0
-                spacing: 6
-
-                Label {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    text: root.valuesLoading ? "Carregando" : root.valuesError.length > 0 ? root.valuesError : "Sem valores carregados"
-                    textFormat: Text.PlainText
-                    color: root.valuesError.length > 0 ? Theme.danger : Theme.mutedText
-                    font.pixelSize: Theme.fontSizeMicro
-                    horizontalAlignment: Text.AlignHCenter
-                }
-
-                ActionButton {
-                    objectName: "advancedTextValueRetryButton_" + root.columnKey
-                    visible: root.valuesError.length > 0 && !root.valuesLoading
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    text: "Tentar novamente"
-                    implicitWidth: Theme.popupActionButtonWidth + 24
-                    Accessible.name: "Tentar carregar valores novamente"
-                    onClicked: root.optionsRetryRequested()
-                }
+                loading: root.valuesLoading
+                error: root.valuesError
+                emptyText: "Sem valores carregados"
+                retryObjectName: "advancedTextValueRetryButton_" + root.columnKey
+                onRetryRequested: root.optionsRetryRequested()
             }
 
             ListView {

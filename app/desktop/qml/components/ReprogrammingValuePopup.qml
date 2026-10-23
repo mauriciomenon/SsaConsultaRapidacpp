@@ -15,6 +15,7 @@ Popup {
     required property string allWithReprogLabel
     property var optionValues: []
     property bool optionsLoading: false
+    property string optionsError: ""
     property int maxValueLength: 0
     property var selectedValues: []
     property bool selectedOnlyReprogrammed: false
@@ -140,14 +141,13 @@ Popup {
             Layout.fillWidth: true
             Layout.fillHeight: true
 
-            Label {
+            ValueOptionsStatus {
                 anchors.centerIn: parent
-                visible: root.optionValues.length === 0
-                text: root.optionsLoading ? "Carregando" : "Sem valores"
-                textFormat: Text.PlainText
-                color: Theme.mutedText
-                font.pixelSize: Theme.fontSizeMicro
-                horizontalAlignment: Text.AlignHCenter
+                visible: root.optionValues.length === 0 || root.optionsError.length > 0
+                loading: root.optionsLoading
+                error: root.optionsError
+                retryObjectName: "reprogrammingValueRetryButton"
+                onRetryRequested: root.filterViewModel.refreshColumnValueOptionsFor(root.columnKey)
             }
 
             ListView {

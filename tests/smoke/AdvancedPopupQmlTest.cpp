@@ -401,6 +401,9 @@ namespace {
                                     "SsaConsultaRapida", 1, 0, "AppSpinBox") >= 0);
             QVERIFY(qmlRegisterType(QUrl::fromLocalFile(components.filePath("FilterCard.qml")),
                                     "SsaConsultaRapida", 1, 0, "FilterCard") >= 0);
+            QVERIFY(
+                qmlRegisterType(QUrl::fromLocalFile(components.filePath("ValueOptionsStatus.qml")),
+                                "SsaConsultaRapida", 1, 0, "ValueOptionsStatus") >= 0);
             QVERIFY(qmlRegisterType(
                         QUrl::fromLocalFile(components.filePath("AdvancedTextValuePopup.qml")),
                         "SsaConsultaRapida", 1, 0, "AdvancedTextValuePopup") >= 0);
@@ -990,6 +993,54 @@ namespace {
             QTRY_COMPARE_WITH_TIMEOUT(repository->advancedRequests(), 2, 1000);
             QTRY_COMPARE_WITH_TIMEOUT(popup->property("valuesError").toString(), QString(), 1000);
             QTRY_COMPARE_WITH_TIMEOUT(popup->property("allValues").toStringList().size(), 1, 1000);
+        }
+
+        void reprogramming_value_error_is_visible_and_retryable_in_qml() {
+            auto repository = std::make_shared<CountingRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::FilterPanelViewModel filters(service);
+
+            QQmlEngine engine;
+            engine.rootContext()->setContextProperty(QStringLiteral("testFilterViewModel"),
+                                                     &filters);
+            QQmlComponent component(&engine);
+            component.setData(kReprogrammingHarness,
+                              QUrl(QStringLiteral("inmemory:/ReprogrammingRetryHarness.qml")));
+            QTRY_VERIFY_WITH_TIMEOUT(component.status() != QQmlComponent::Loading, 1000);
+            QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+            QQuickWindow window;
+            window.setGeometry(0, 0, 600, 500);
+            std::unique_ptr<QObject> harness(component.create());
+            QVERIFY2(harness != nullptr, qPrintable(component.errorString()));
+            auto* harnessItem = qobject_cast<QQuickItem*>(harness.get());
+            QVERIFY(harnessItem != nullptr);
+            harnessItem->setParentItem(window.contentItem());
+            window.show();
+            QTRY_VERIFY_WITH_TIMEOUT(window.isExposed(), 1000);
+            auto* popup = harness->findChild<QObject*>(QStringLiteral("reprogrammingValuePopup"));
+            QVERIFY(popup != nullptr);
+            // Opening an empty list asks for the values; that query fails (locked database).
+            repository->failNextAdvancedRequest();
+            QTest::ignoreMessage(QtWarningMsg,
+                                 "Column value query failed: advanced values failed once");
+            QVERIFY(QMetaObject::invokeMethod(popup, "open"));
+            QTRY_VERIFY_WITH_TIMEOUT(repository->advancedRequests() > 0, 1000);
+            const int requestsAfterFailure = repository->advancedRequests();
+
+            // The failure reads as a failure, not as "Sem valores", and can be retried.
+            QTRY_COMPARE_WITH_TIMEOUT(popup->property("optionsError").toString(),
+                                      QString("Falha ao consultar valores"), 1000);
+            auto* retryButton = findOwnedQuickItemByProperty(
+                popup, "objectName", QStringLiteral("reprogrammingValueRetryButton"));
+            QTRY_VERIFY_WITH_TIMEOUT(retryButton != nullptr && retryButton->isVisible(), 1000);
+            QVERIFY(findOwnedQuickItemByProperty(
+                        popup, "text", QStringLiteral("Falha ao consultar valores")) != nullptr);
+            QVERIFY(QMetaObject::invokeMethod(retryButton, "click"));
+            QTRY_VERIFY_WITH_TIMEOUT(repository->advancedRequests() > requestsAfterFailure, 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(
+                filters.columnValueOptionsErrorFor(QStringLiteral("num_reprogramacoes")), QString(),
+                1000);
+            QTRY_VERIFY_WITH_TIMEOUT(!retryButton->isVisible(), 1000);
         }
 
         void quick_sector_error_is_visible_and_retryable_in_qml() {

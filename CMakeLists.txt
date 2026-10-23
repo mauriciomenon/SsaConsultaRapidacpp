@@ -315,6 +315,7 @@ qt_add_qml_module(
   app/desktop/qml/components/AdvancedReprogrammingFilterCard.qml
   app/desktop/qml/components/ReprogrammingValuePopup.qml
   app/desktop/qml/components/AdvancedTextValuePopup.qml
+  app/desktop/qml/components/ValueOptionsStatus.qml
   app/desktop/qml/components/AdvancedTextFilterCard.qml
   app/desktop/qml/components/AdvancedTextFilterGrid.qml
   app/desktop/qml/components/AdvancedWeekEmissionCard.qml

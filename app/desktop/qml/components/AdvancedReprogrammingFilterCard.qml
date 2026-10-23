@@ -28,12 +28,14 @@ FilterCard {
     readonly property string allWithReprogLabel: "Todas com Reprog."
     property var reprogrammingValueOptions: []
     property bool reprogrammingValueOptionsLoading: false
+    property string reprogrammingValueOptionsError: ""
     property int reprogrammingMaxValueLength: 0
     readonly property int reprogrammingPopupWidth: Theme.valuePopupWidth(root.reprogrammingColumnKey, root.reprogrammingMaxValueLength, Overlay.overlay !== null ? Overlay.overlay.width : 0)
 
     function reloadReprogrammingOptionState() {
         reprogrammingValueOptions = root.filterViewModel.columnValueOptionsFor(reprogrammingColumnKey);
         reprogrammingValueOptionsLoading = root.filterViewModel.columnValueOptionsLoadingFor(reprogrammingColumnKey);
+        reprogrammingValueOptionsError = root.filterViewModel.columnValueOptionsErrorFor(reprogrammingColumnKey);
         reprogrammingMaxValueLength = root.filterViewModel.columnValueMaxLengthFor(reprogrammingColumnKey);
     }
 
@@ -201,6 +203,7 @@ FilterCard {
         allWithReprogLabel: root.allWithReprogLabel
         optionValues: root.reprogrammingValueOptions
         optionsLoading: root.reprogrammingValueOptionsLoading
+        optionsError: root.reprogrammingValueOptionsError
         maxValueLength: root.reprogrammingMaxValueLength
         onOptionsRequested: root.reloadReprogrammingOptionState()
         onApplyRequested: root.applyRequested()
