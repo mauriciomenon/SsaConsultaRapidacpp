@@ -200,6 +200,27 @@ TEST_CASE("DataSetupPort creates the canonical tree and a valid empty database")
     REQUIRE(scalarText(database.handle(), "SELECT COUNT(*) FROM ssa_table") == "0");
 }
 
+TEST_CASE("DataSetupPort clears the private areas an interrupted setup left") {
+    const TemporaryDirectory temporary;
+    const auto projectRoot = temporary.path() / "project";
+    const auto oldDatabaseArea = projectRoot / "data" / ".ssa-data-setup-AbC123";
+    const auto oldInputArea = projectRoot / "docs_entrada" / ".ssa-data-setup-XyZ789";
+    std::filesystem::create_directories(oldDatabaseArea);
+    std::filesystem::create_directories(oldInputArea / "processadas");
+    std::ofstream{oldDatabaseArea / "ssas.db"} << "half";
+    std::ofstream{oldInputArea / "processadas" / "copy.xlsx"} << "copy";
+    std::filesystem::create_directories(projectRoot / "docs_entrada" / "kept-folder");
+    ssa::infra::importing::DataSetupPort port(ssa::platform::publishFileExclusively);
+
+    const auto result = port.execute(
+        {.action = ssa::ports::DataSetupAction::CreateEmpty, .projectRoot = projectRoot});
+
+    REQUIRE(result.ok);
+    REQUIRE_FALSE(std::filesystem::exists(oldDatabaseArea));
+    REQUIRE_FALSE(std::filesystem::exists(oldInputArea));
+    REQUIRE(std::filesystem::exists(projectRoot / "docs_entrada" / "kept-folder"));
+}
+
 TEST_CASE("DataSetupPort rejects an existing destination without changing its bytes") {
     const TemporaryDirectory temporary;
     const auto projectRoot = temporary.path() / "selected-root";

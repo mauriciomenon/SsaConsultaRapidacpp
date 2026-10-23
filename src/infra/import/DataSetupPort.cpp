@@ -159,6 +159,17 @@ namespace ssa::infra::importing {
             if (destinationExists) {
                 return {false, "O banco de destino ja existe", {}, databasePath};
             }
+            // An interrupted setup leaves its private areas behind, and with no database the
+            // user can only run setup again: this run clears them (the GUI runs one at a time).
+            for (const auto& folder : {dataDirectory, inputDirectory}) {
+                for (const auto& entry : std::filesystem::directory_iterator(folder)) {
+                    if (entry.is_directory() && !entry.is_symlink() &&
+                        qt::toQString(entry.path().filename())
+                            .startsWith(QLatin1StringView{".ssa-data-setup-"})) {
+                        std::filesystem::remove_all(entry.path());
+                    }
+                }
+            }
 
             const auto temporaryTemplate = databasePath.parent_path() / ".ssa-data-setup-XXXXXX";
             QTemporaryDir temporaryDirectory(qt::toQString(temporaryTemplate));
