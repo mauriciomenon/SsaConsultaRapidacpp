@@ -1124,7 +1124,31 @@ namespace ssa::infra::importing {
                                       "rescan database snapshot failed", false, diagnostic},
                                      ports::ImportFileStatus::Failed);
         }
-        QTemporaryDir workingDirectory;
+        // The full working copy lives next to the database and is named after it, so one a
+        // killed rescan left (the system temp folder kept them forever) is found and removed by
+        // the next rescan of this database, which holds its write lock here.
+        const auto workingPrefix = ".ssa-rescan-" + qt::toUtf8(databasePath_.filename()) + "-";
+        std::error_code sweepError;
+        for (std::filesystem::directory_iterator entry(databasePath_.parent_path(), sweepError),
+             end;
+             !sweepError && entry != end; entry.increment(sweepError)) {
+            if (entry->is_directory() && !entry->is_symlink() &&
+                qt::toUtf8(entry->path().filename()).starts_with(workingPrefix)) {
+                std::error_code removeError;
+                std::filesystem::remove_all(entry->path(), removeError);
+                if (removeError) {
+                    qWarning().noquote()
+                        << "Cannot remove an abandoned rescan copy:" << qt::toQString(entry->path())
+                        << QString::fromStdString(removeError.message());
+                }
+            }
+        }
+        if (sweepError) {
+            qWarning().noquote() << "Cannot scan for abandoned rescan copies:"
+                                 << QString::fromStdString(sweepError.message());
+        }
+        QTemporaryDir workingDirectory(
+            qt::toQString(databasePath_.parent_path() / (workingPrefix + "XXXXXX")));
         if (!workingDirectory.isValid()) {
             return uncommittedResult(
                 {ports::WorkflowStatus::Failed, "rescan working directory unavailable"},

@@ -2,9 +2,9 @@
 
 ## Revisao profunda e revisores externos (branch `rev`) - 2026-10-23
 
-- [OPEN] Registrar `tests/scripts/NativeHostGuard.Tests.sh`,
-  `qt-detection-tests.sh` e `BuildPackagingContracts.Tests.sh` no ctest/CI
-  (passam em macOS, Arch e Devuan; a metade de pacote exige `dpkg`).
+- [RESOLVED] `tests/scripts/NativeHostGuard.Tests.sh`, `qt-detection-tests.sh`
+  e `BuildPackagingContracts.Tests.sh` rodam no ctest em hosts POSIX como
+  `ssa_script_*` (`2ab65b8`); a metade de pacote exige `dpkg`.
 - [EXTERNAL-PENDING] Revisao GLM 5.3 do intervalo `f0638f1..HEAD`: o limite de
   uso do OpenCode Go acabou antes do relatorio.
 - [DECISION] Windows CI intermitente desde a imagem `20261021` do runner
@@ -13,8 +13,10 @@
 - [KNOWN-LIMIT] Diario de consolidacao com origem e destino ausentes para
   todas as importacoes daquele banco ate resolucao manual (ver
   `docs/contracts/ssa-import.md`).
-- [OPEN] Copias integrais do banco em `TMPDIR` deixadas por um rescan
-  interrompido nao sao limpas (as areas `.ssa-data-setup-*` ja sao).
+- [RESOLVED] A copia de trabalho do rescan fica ao lado do banco
+  (`.ssa-rescan-<banco>-*`) e a sobra de um rescan interrompido e removida pelo
+  rescan seguinte do mesmo banco; as areas `.ssa-data-setup-*` sao removidas
+  pela configuracao seguinte.
 
 ## Fonte canonica pos-v0.9.15 - 2026-07-20
 

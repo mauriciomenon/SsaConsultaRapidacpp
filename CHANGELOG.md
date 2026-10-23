@@ -6,6 +6,9 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 
 ### Corrigido
 
+- Rescan: a copia completa do banco usada durante o rescan fica ao lado do
+  banco e, se um rescan for interrompido, o seguinte a remove; antes ela ficava
+  para sempre na pasta temporaria do sistema.
 - Configuracao inicial: pastas temporarias deixadas por uma configuracao
   interrompida sao removidas na proxima tentativa. Importar ate 64 planilhas
   com o banco interrompendo a gravacao mostra o resumo e a causa, como em lotes

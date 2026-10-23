@@ -3863,6 +3863,43 @@ TEST_CASE("external import rejects a malformed related SSA through the full work
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
+TEST_CASE("full rescan removes the working copy a killed rescan left next to the database") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = ssa::qt::toFileSystemPath(tempDir.path());
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    ssa::infra::sqlite::SqliteSsaImportWriter::createEmpty(dbPath, importColumns());
+    writeWorkbook(
+        inputDirectory / "source.xlsx",
+        row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao")}) +
+            row(2, {inlineCell("A2", "202600801"), inlineCell("B2", "APV"), inlineCell("C2", "Row"),
+                    inlineCell("D2", "2026-07-01")}));
+    const auto abandoned = dbPath.parent_path() / ".ssa-rescan-ssas.db-AbC123";
+    const auto otherDatabase = dbPath.parent_path() / ".ssa-rescan-other.db-XyZ789";
+    std::filesystem::create_directories(abandoned);
+    std::filesystem::create_directories(otherDatabase);
+    std::ofstream{abandoned / "ssas.db"} << "half copy";
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+
+    const auto result = port.rescan({ssa::ports::RescanMode::Full});
+
+    INFO(result.message);
+    INFO(result.diagnostic);
+    REQUIRE(result.ok());
+    REQUIRE_FALSE(std::filesystem::exists(abandoned));
+    REQUIRE(std::filesystem::exists(otherDatabase));
+    for (const auto& entry : std::filesystem::directory_iterator(dbPath.parent_path())) {
+        INFO(entry.path().filename().string());
+        REQUIRE_FALSE(entry.path().filename().string().starts_with(".ssa-rescan-ssas.db-"));
+    }
+}
+
 TEST_CASE("rescan recovers a database whose writer died with a hot journal") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
