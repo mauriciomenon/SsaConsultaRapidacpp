@@ -1,6 +1,7 @@
 #include "infra/import/DataSetupPort.h"
 
 #include "domain/ColumnCatalog.h"
+#include "infra/import/ImportFileConsolidator.h"
 #include "infra/import/SpreadsheetImportWorkflowPort.h"
 #include "infra/sqlite/SqliteConnection.h"
 #include "infra/sqlite/SqliteDatabaseBackup.h"
@@ -58,15 +59,25 @@ namespace ssa::infra::importing {
                         return qt::toUtf8(*link) + ": the folder is a symlink";
                     }
                     std::filesystem::create_directories(target.parent_path());
-                    const auto published = publisher(copy, target);
-                    if (published.status != ports::ExclusiveFilePublishStatus::Succeeded) {
-                        return qt::toUtf8(target) + ": " +
-                               (published.status ==
-                                        ports::ExclusiveFilePublishStatus::DestinationExists
-                                    ? std::string{"a file with this name already exists"}
-                                    : published.diagnostic);
+                    // A name already in processadas (a database deleted, its files kept) takes
+                    // the next free one, as the consolidation of an import does.
+                    std::optional<std::filesystem::path> placed;
+                    for (std::size_t attempt = 0;
+                         !placed && attempt < kMaxConsolidationDestinationAttempts; ++attempt) {
+                        const auto candidate = consolidationDestinationCandidate(
+                            target.parent_path(), target.filename(), attempt);
+                        const auto published = publisher(copy, candidate);
+                        if (published.status == ports::ExclusiveFilePublishStatus::Succeeded) {
+                            placed = candidate;
+                        } else if (published.status !=
+                                   ports::ExclusiveFilePublishStatus::DestinationExists) {
+                            return qt::toUtf8(candidate) + ": " + published.diagnostic;
+                        }
                     }
-                    moved.push_back(target);
+                    if (!placed) {
+                        return qt::toUtf8(target) + ": no free consolidation name";
+                    }
+                    moved.push_back(*placed);
                 }
                 return std::nullopt;
             } catch (const std::filesystem::filesystem_error& error) {
@@ -158,18 +169,35 @@ namespace ssa::infra::importing {
             const auto temporaryPath = qt::toFileSystemPath(temporaryDirectory.path());
             temporaryDirectory.setAutoRemove(false);
             const auto stagedDatabasePath = temporaryPath / "ssas.db";
-            const auto complete = [&temporaryPath](ports::DataSetupResult result) {
-                std::error_code cleanupError;
-                std::filesystem::remove_all(temporaryPath, cleanupError);
-                if (cleanupError) {
-                    if (!result.diagnostic.empty()) {
-                        result.diagnostic += "; ";
+            std::filesystem::path stagedInputDirectory;
+            const auto complete = [&temporaryPath,
+                                   &stagedInputDirectory](ports::DataSetupResult result) {
+                for (const auto& directory : {temporaryPath, stagedInputDirectory}) {
+                    std::error_code cleanupError;
+                    if (!directory.empty()) {
+                        std::filesystem::remove_all(directory, cleanupError);
                     }
-                    result.diagnostic +=
-                        "cannot remove private data setup directory: " + cleanupError.message();
+                    if (cleanupError) {
+                        if (!result.diagnostic.empty()) {
+                            result.diagnostic += "; ";
+                        }
+                        result.diagnostic +=
+                            "cannot remove private data setup directory: " + cleanupError.message();
+                    }
                 }
                 return result;
             };
+            // The private input tree lives in docs_entrada itself, so moving the processed copies
+            // stays a rename on one volume even when docs_entrada links to another drive.
+            if (importsXlsx) {
+                QTemporaryDir inputArea(qt::toQString(inputDirectory / ".ssa-data-setup-XXXXXX"));
+                if (!inputArea.isValid()) {
+                    return complete({false, "Falha ao criar a area temporaria de configuracao",
+                                     inputArea.errorString().toStdString(), databasePath});
+                }
+                inputArea.setAutoRemove(false);
+                stagedInputDirectory = qt::toFileSystemPath(inputArea.path());
+            }
 
             try {
                 const auto columns = domain::ColumnCatalog::schemaColumns();
@@ -223,7 +251,6 @@ namespace ssa::infra::importing {
                 }
                 // Initial setup is all-or-nothing: the import runs in the private area, so a
                 // rejected workbook fails the setup and leaves the project tree untouched.
-                const auto stagedInputDirectory = temporaryPath / "docs_entrada";
                 if (importsXlsx) {
                     SpreadsheetImportWorkflowPort workflow(stagedInputDirectory, stagedDatabasePath,
                                                            columns);

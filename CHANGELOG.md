@@ -6,6 +6,10 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 
 ### Corrigido
 
+- Configuracao inicial de dados com planilhas: refazer a configuracao com as
+  planilhas ja em `docs_entrada/processadas` (banco apagado) funciona; a copia
+  nova recebe o proximo nome livre (`nome__1.xlsx`), como na importacao. Uma
+  `docs_entrada` em outro disco ou unidade de rede tambem funciona.
 - Busca e filtros de texto ignoram maiusculas e minusculas tambem em letras
   acentuadas, como a GUI Python: `MANUTENÇÃO`, `manutenção` e `Manutenção`
   encontram as mesmas SSAs (no banco de teste, 529 nas tres; antes 67 ou 462

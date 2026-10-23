@@ -28,7 +28,6 @@ namespace ssa::infra::importing {
 
     namespace {
 
-        constexpr std::size_t kMaxDestinationAttempts = 10'000;
         constexpr std::size_t kMaxDiagnosticBytes = 4'096;
 
         void appendDiagnostic(std::string& destination, const std::string_view diagnostic) {
@@ -339,18 +338,6 @@ namespace ssa::infra::importing {
         }
 #endif
 
-        std::filesystem::path destinationCandidate(const std::filesystem::path& directory,
-                                                   const std::filesystem::path& filename,
-                                                   const std::size_t attempt) {
-            if (attempt == 0) {
-                return directory / filename;
-            }
-            auto candidate = filename.stem();
-            candidate += "__" + std::to_string(attempt);
-            candidate += filename.extension();
-            return directory / candidate;
-        }
-
         bool prepareDirectory(const std::filesystem::path& directory, std::string& message) {
             std::error_code error;
             const auto status = std::filesystem::symlink_status(directory, error);
@@ -376,6 +363,18 @@ namespace ssa::infra::importing {
         }
 
     } // namespace
+
+    std::filesystem::path consolidationDestinationCandidate(const std::filesystem::path& directory,
+                                                            const std::filesystem::path& filename,
+                                                            const std::size_t attempt) {
+        if (attempt == 0) {
+            return directory / filename;
+        }
+        auto candidate = filename.stem();
+        candidate += "__" + std::to_string(attempt);
+        candidate += filename.extension();
+        return directory / candidate;
+    }
 
     ImportFileConsolidator::ImportFileConsolidator(std::filesystem::path inputFolder)
         : inputFolder_(std::move(inputFolder)) {}
@@ -440,9 +439,10 @@ namespace ssa::infra::importing {
                     return plan;
                 }
                 bool destinationSelected = false;
-                for (std::size_t attempt = 0; attempt < kMaxDestinationAttempts; ++attempt) {
-                    auto candidate =
-                        destinationCandidate(destinationDirectory, destinationFilename, attempt);
+                for (std::size_t attempt = 0; attempt < kMaxConsolidationDestinationAttempts;
+                     ++attempt) {
+                    auto candidate = consolidationDestinationCandidate(
+                        destinationDirectory, destinationFilename, attempt);
                     if (reservedDestinations.contains(candidate)) {
                         continue;
                     }

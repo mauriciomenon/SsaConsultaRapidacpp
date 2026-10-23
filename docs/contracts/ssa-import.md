@@ -118,9 +118,11 @@ Equal snapshots and repeated rows:
   applied.
 - Initial data setup with XLSX is all-or-nothing. It imports into a private
   area; a rejected workbook or a warning fails the setup and publishes neither
-  the database nor any processed copy. On success the processed copies move to
-  `docs_entrada` (never over an existing file) before the database is
-  published, and a failed publication takes them back.
+  the database nor any processed copy. The private input area lives inside
+  `docs_entrada`, so the move stays on one volume. On success the processed
+  copies move to `docs_entrada` before the database is published, never over
+  an existing file (a taken name gets the next free one, `name__1`, as the
+  import consolidation does), and a failed publication takes them back.
 - Only committed `Applied`, `NoChanges`, and validated `NoValidRows` entries can
   enter the consolidation journal.
 - A `docs_entrada` file whose identity, size or modification time changed

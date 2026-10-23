@@ -4199,18 +4199,31 @@ TEST_CASE("initial data setup publishes the database with its processed workbook
             dataFiles.push_back(entry.path().filename());
         }
         REQUIRE(dataFiles == std::vector<std::filesystem::path>{"ssas.db"});
+        // Only the processed workbook reaches docs_entrada, and no private area is left.
+        std::vector<std::string> inputEntries;
+        for (const auto& entry :
+             std::filesystem::recursive_directory_iterator(projectRoot / "docs_entrada")) {
+            inputEntries.push_back(
+                entry.path().lexically_relative(projectRoot / "docs_entrada").generic_string());
+        }
+        std::ranges::sort(inputEntries);
+        REQUIRE(inputEntries == std::vector<std::string>{"processadas",
+                                                         "processadas/A_SSA_06-07-2026_0922AM.xlsx",
+                                                         "processadas/nosurvivor"});
     }
 
-    SECTION("an existing processed workbook is kept and nothing is published") {
+    SECTION("an existing processed workbook is kept and the copy takes the next name") {
         std::filesystem::create_directories(processedCopy.parent_path());
         std::ofstream{processedCopy} << "kept";
 
         const auto result = port.execute(request);
 
-        REQUIRE_FALSE(result.ok);
-        REQUIRE(result.diagnostic.find("already exists") != std::string::npos);
+        INFO(result.diagnostic);
+        REQUIRE(result.ok);
         REQUIRE(readFile(processedCopy) == "kept");
-        REQUIRE_FALSE(std::filesystem::exists(projectRoot / "data" / "ssas.db"));
+        REQUIRE(std::filesystem::exists(processedCopy.parent_path() /
+                                        "A_SSA_06-07-2026_0922AM__1.xlsx"));
+        REQUIRE(std::filesystem::exists(projectRoot / "data" / "ssas.db"));
     }
 
     SECTION("a symlinked processadas folder is refused and nothing leaves the project") {
