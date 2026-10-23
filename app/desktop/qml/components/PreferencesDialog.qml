@@ -52,6 +52,8 @@ Window {
     onVisibleChanged: {
         if (!visible)
             root.discardColumnChanges();
+        else
+            preferencesColumnList.applyOwnFilter();
     }
 
     Rectangle {
@@ -180,6 +182,8 @@ Window {
             }
 
             ColumnConfigList {
+                id: preferencesColumnList
+
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 viewModel: root.viewModel.columns

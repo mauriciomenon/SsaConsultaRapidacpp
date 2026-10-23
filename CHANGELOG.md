@@ -178,6 +178,9 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 - Filtro de coluna em datas (Data de cadastro, Prazo limite e as demais exibidas
   como dd/mm/aaaa) aceita o formato mostrado na grade: `21/12/2021`, `12/2021`
   e `!21/12/2021` voltam a encontrar ou excluir as SSAs, como na versao Python.
+- Colunas: o filtro por nome digitado no seletor de colunas nao passa mais para
+  a lista de colunas das Preferencias (e vice-versa); antes as Preferencias
+  abriam mostrando so parte das colunas com o campo de filtro vazio.
 - Analytics: cancelar a primeira carga da janela de alerta nao deixa mais o
   painel parado; "Salvar alerta" volta a atualizar os graficos, e reabrir a
   janela recarrega o painel.

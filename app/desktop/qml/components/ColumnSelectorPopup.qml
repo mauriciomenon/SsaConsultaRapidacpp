@@ -62,7 +62,10 @@ Popup {
         root.open();
     }
 
-    onAboutToShow: updateGeometry()
+    onAboutToShow: {
+        updateGeometry();
+        popupColumnList.applyOwnFilter();
+    }
     onClosed: {
         trigger = null;
         // Only "Aplicar" keeps the staged columns; closing discards them (a no-op after apply).
@@ -116,6 +119,8 @@ Popup {
         }
 
         ColumnConfigList {
+            id: popupColumnList
+
             Layout.fillWidth: true
             Layout.fillHeight: true
             viewModel: root.viewModel.columns

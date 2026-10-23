@@ -10,6 +10,12 @@ Item {
     required property var viewModel
     property int dragSourceRow: -1
 
+    // The column selector and Preferences share one model filter; each editor calls this when
+    // it opens so the list matches its own filter field.
+    function applyOwnFilter() {
+        root.viewModel.setFilterText(columnFilter.text);
+    }
+
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: Theme.cardGap
@@ -17,6 +23,7 @@ Item {
 
         AppTextField {
             id: columnFilter
+            objectName: "columnFilterField"
             Layout.fillWidth: true
             placeholderText: "Filtrar colunas por nome ou chave"
             selectByMouse: true

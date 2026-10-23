@@ -515,6 +515,59 @@ namespace {
             }
         }
 
+        void column_name_filter_belongs_to_each_column_editor() {
+            auto repository = std::make_shared<ssa::tests::presentation_smoke::FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<ssa::tests::presentation_smoke::FakeCommands>();
+            auto preferences = std::make_shared<ssa::tests::presentation_smoke::FakePreferences>();
+            ssa::presentation::MainViewModel viewModel(service, commands, preferences);
+            SourceQmlUrlInterceptor sourceInterceptor;
+            QQmlEngine engine;
+            engine.addUrlInterceptor(&sourceInterceptor);
+            engine.addImportPath(QStringLiteral(SSA_BUILD_DIR));
+            QQmlComponent component(&engine, QUrl::fromLocalFile(repositoryRoot().filePath(
+                                                 QStringLiteral("app/desktop/qml/Main.qml"))));
+            QVariantMap initialProperties;
+            initialProperties.insert(QStringLiteral("mainViewModel"),
+                                     QVariant::fromValue<QObject*>(&viewModel));
+            const auto mainWindow =
+                std::unique_ptr<QObject>(component.createWithInitialProperties(initialProperties));
+            QVERIFY2(mainWindow != nullptr, qPrintable(component.errorString()));
+            auto* window = qobject_cast<QQuickWindow*>(mainWindow.get());
+            QVERIFY(window != nullptr);
+            window->resize(1180, 760);
+            window->show();
+            QTRY_VERIFY_WITH_TIMEOUT(window->isExposed(), 1000);
+            auto* popup = window->findChild<QObject*>(QStringLiteral("columnSelectorPopup"));
+            auto* preferencesDialog =
+                mainWindow->findChild<QObject*>(QStringLiteral("ssaSmokePreferencesDialog"));
+            QVERIFY(popup != nullptr);
+            QVERIFY(preferencesDialog != nullptr);
+            auto* columns = viewModel.columns();
+            const int allColumns = columns->rowCount();
+            QVERIFY(allColumns > 1);
+
+            QVERIFY(QMetaObject::invokeMethod(popup, "open"));
+            QTRY_VERIFY_WITH_TIMEOUT(popup->property("visible").toBool(), 1000);
+            auto* popupFilter = popup->findChild<QObject*>(QStringLiteral("columnFilterField"));
+            QVERIFY(popupFilter != nullptr);
+            QVERIFY(popupFilter->setProperty("text", QStringLiteral("data")));
+            QTRY_VERIFY_WITH_TIMEOUT(columns->rowCount() < allColumns, 1000);
+            QVERIFY(QMetaObject::invokeMethod(popup, "close"));
+            QTRY_VERIFY_WITH_TIMEOUT(!popup->property("visible").toBool(), 1000);
+
+            // Preferences shows its own (empty) filter, not the popup's "data".
+            QVERIFY(QMetaObject::invokeMethod(preferencesDialog, "open"));
+            QTRY_VERIFY_WITH_TIMEOUT(preferencesDialog->property("visible").toBool(), 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(columns->rowCount(), allColumns, 1000);
+            QVERIFY(QMetaObject::invokeMethod(preferencesDialog, "close"));
+            QTRY_VERIFY_WITH_TIMEOUT(!preferencesDialog->property("visible").toBool(), 1000);
+
+            // Reopening the popup brings its own filter back.
+            QVERIFY(QMetaObject::invokeMethod(popup, "open"));
+            QTRY_VERIFY_WITH_TIMEOUT(columns->rowCount() < allColumns, 1000);
+        }
+
         void column_selector_popup_tracks_trigger_and_clamps_to_overlay() {
             auto repository = std::make_shared<ssa::tests::presentation_smoke::FakeRepository>();
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
