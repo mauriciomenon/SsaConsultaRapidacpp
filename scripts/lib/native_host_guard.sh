@@ -50,7 +50,8 @@ ssa_native_guard_repo() {
   if [[ -r /proc/sys/kernel/osrelease ]]; then
     IFS= read -r os_release < /proc/sys/kernel/osrelease || true
   fi
-  if [[ "${os_release,,}" == *microsoft* ]]; then
+  # Patterns instead of ${var,,}: macOS ships bash 3.2.
+  if [[ "$os_release" == *[Mm]icrosoft* ]]; then
     [[ "$resolved_root" == "$expected_wsl_root" ]] || {
       ssa_native_guard_fail "clone WSL invalido: $resolved_root; esperado: $expected_wsl_root"
       return 1
@@ -97,8 +98,8 @@ ssa_native_guard_tool() {
     ssa_native_guard_fail "nao foi possivel resolver a ferramenta: $path"
     return 1
   }
-  case "${resolved,,}" in
-    /mnt/*|"${windows_link_root}"/*|*.exe|[a-z]:*)
+  case "$resolved" in
+    /mnt/*|"${windows_link_root}"/*|*.[Ee][Xx][Ee]|[A-Za-z]:*)
       ssa_native_guard_fail "ferramenta Windows proibida no POSIX: $name -> $resolved"
       return 1
       ;;
