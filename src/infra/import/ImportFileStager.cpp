@@ -74,8 +74,12 @@ namespace ssa::infra::importing {
             return {};
         }
 
+        // A staging copy, or one a crash interrupted: CancelableFileCopy writes it first as
+        // <staged name>.XXXXXX.part.
         bool isOwnedStagingArtifact(const std::filesystem::path& path) {
-            return isXlsxFile(path) && !stagedCopyRemainder(path).isEmpty();
+            const bool interruptedCopy =
+                lowercaseExtension(path) == ".part" && isXlsxFile(path.stem().stem());
+            return (isXlsxFile(path) || interruptedCopy) && !stagedCopyRemainder(path).isEmpty();
         }
 
         // A tagged copy of another database stays: its journal may still have to move it.

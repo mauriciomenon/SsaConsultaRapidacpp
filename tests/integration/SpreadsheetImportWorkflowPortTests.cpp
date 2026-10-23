@@ -7132,6 +7132,34 @@ TEST_CASE("input file stager removes abandoned owned staging artifacts") {
     REQUIRE_FALSE(std::filesystem::exists(inputDirectory / ".ssa-staged-crashed_123_0.xlsx"));
 }
 
+TEST_CASE("input file stager treats an interrupted staging copy as a staging artifact") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto inputDirectory = ssa::qt::toFileSystemPath(tempDir.path()) / "docs_entrada";
+    std::filesystem::create_directories(inputDirectory);
+    // CancelableFileCopy writes <staged name>.XXXXXX.part; a crash leaves it behind.
+    const auto own = inputDirectory / ".ssa-staged@aaaaaaaaaaaa-mine_123_0.xlsx.AbC123.part";
+    const auto foreign = inputDirectory / ".ssa-staged@bbbbbbbbbbbb-theirs_123_0.xlsx.XyZ789.part";
+    const auto untagged = inputDirectory / ".ssa-staged-old_123_0.xlsx.Qw1234.part";
+    createSparseFile(own, 1);
+    createSparseFile(foreign, 1);
+    createSparseFile(untagged, 1);
+    createSparseFile(inputDirectory / "pending.xlsx", 1);
+
+    const ssa::infra::importing::ImportFileStager stager(inputDirectory, {}, "aaaaaaaaaaaa");
+    const auto result = stager.stageInputFiles();
+
+    REQUIRE(result.rejectionReason.empty());
+    REQUIRE(result.discovered == 1);
+    REQUIRE(result.unsupported == 0);
+    REQUIRE(result.files.size() == 1);
+    REQUIRE_FALSE(std::filesystem::exists(own));
+    REQUIRE_FALSE(std::filesystem::exists(untagged));
+    // Another database may be copying right now.
+    REQUIRE(std::filesystem::exists(foreign));
+}
+
 TEST_CASE("import extension check lowercases ASCII and keeps UTF-8 intact") {
     using ssa::infra::importing::lowercaseExtension;
     REQUIRE(lowercaseExtension("Relatorio.XLSX") == ".xlsx");

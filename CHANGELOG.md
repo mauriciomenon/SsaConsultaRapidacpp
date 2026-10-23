@@ -6,6 +6,9 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 
 ### Corrigido
 
+- Rescan: a copia temporaria `.part` deixada por uma importacao interrompida
+  (queda ou encerramento forcado) e removida no rescan seguinte e nao conta mais
+  como arquivo pendente; a de outro banco que use a mesma pasta fica intacta.
 - Importar arquivos: uma planilha ignorada (cabecalho nao reconhecido) nao
   deixa mais a copia temporaria `.ssa-staged-...` em `docs_entrada`.
 - Filtros: clicar num atalho de situacao, remover um filtro ou trocar o setor
