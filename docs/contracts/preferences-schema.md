@@ -52,7 +52,10 @@ Current fields:
 
 - Code defaults are the source of fallback.
 - Runtime preferences override defaults only when valid.
-- Invalid files must fail clearly at the persistence boundary.
+- Invalid files must fail clearly at the persistence boundary. The desktop app
+  does not start with in-memory defaults over an invalid file: it writes
+  `Startup failed: <reason>` to `<config>/logs/ssa.log` and exits with code 2,
+  leaving the file untouched for the user to fix or remove.
 - Missing, non-integer, non-positive, and future schema versions are invalid.
 - Preference and filter preset JSON files are limited to 1 MiB.
 - At most 200 saved filters are accepted. Names are limited to 128 characters and filter

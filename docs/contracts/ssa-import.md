@@ -18,6 +18,12 @@
   executable alias keys mapped to 77 canonical SSA fields.
 - Repeated semantic families are resolved by documented position. An overflow,
   collision, or unresolved ambiguity rejects the file.
+- A position keeps the meaning its report gives it, as in the Python import:
+  `desde` is the Tempo Excedido start in "Pendentes de Programar" and the
+  Tempo Total start in "SSAs em Desvio" (the only `Desde` of that report).
+- Per-event reports (parcial, desvio historico, espera) carry the event's
+  responsible, description, times and justification under the SSA field
+  aliases, so the retained event row writes those SSA fields, as in Python.
 - Minimum schema is `numero_ssa`, `descricao_ssa`, and `data_cadastro`. SCC,
   ADI, and ASE may omit the date only when a valid `semana_cadastro` is
   present.
@@ -89,6 +95,11 @@ Equal snapshots and repeated rows:
 - Two different workbooks of the same instant that disagree on a business value
   are a conflict: the later workbook is rejected (`duplicate_conflict`) and the
   conflict is logged with SSA, field, both values and both files.
+- Known limit: the row takes the newest instant even when a field of that
+  workbook was empty and its older value was kept. A second workbook of that
+  instant then compares against a value that is not from that instant and may
+  be rejected as a conflict (one case in the 1588-file corpus). Recording an
+  instant per field would need a schema change, so it is not done.
 
 ## Atomicity And Results
 
