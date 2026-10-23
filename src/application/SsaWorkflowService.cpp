@@ -32,14 +32,15 @@ namespace ssa::application {
         }
 
         // The summary drives the user-facing text; a derivadas file missing from it would read
-        // as if it had never been selected.
+        // as if it had never been selected, so a result without one gets one.
         void appendDerivadasFiles(ports::WorkflowResult& result,
                                   const std::vector<std::filesystem::path>& derivadasFiles,
                                   const ports::ImportFileStatus status, const std::string& reason) {
-            if (!result.importSummary.has_value()) {
+            if (derivadasFiles.empty()) {
                 return;
             }
-            auto& summary = *result.importSummary;
+            auto& summary =
+                result.importSummary ? *result.importSummary : result.importSummary.emplace();
             summary.discovered += derivadasFiles.size();
             if (status == ports::ImportFileStatus::Rejected) {
                 summary.rejected += derivadasFiles.size();
