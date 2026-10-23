@@ -15,9 +15,9 @@
 - Testes de script (`tests/scripts`): passam em macOS (bash 5 e 3.2), Arch e
   Devuan; ainda fora do ctest/CI.
 - CI GitHub verde nos tres jobs em `f57e034`, `297bde0` e `a50e4e1`. O
-  Windows teve falhas intermitentes antes (imagem `20261021`: teste QML morre
-  sem saida sob ctest, rerun direto passa); o passo de diagnostico mostra o
-  codigo de saida na proxima ocorrencia.
+  Windows teve falhas intermitentes nas imagens `20261002` e `20261021` (teste
+  QML morre sem saida sob ctest, rerun direto passa); nao reproduz na VM
+  Windows 11 ARM64 e o job agora registra o exit code visto pelo ctest.
 - Publicado em GitHub `mauriciomenon` e GitLab; `schottge-menon` suspenso.
 
 ## Estabilizacao da importacao e GUI (branch `rev`) - 2026-10-20/21

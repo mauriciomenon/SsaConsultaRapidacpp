@@ -7,9 +7,17 @@
   `ssa_script_*` (`2ab65b8`); a metade de pacote exige `dpkg`.
 - [EXTERNAL-PENDING] Revisao GLM 5.3 do intervalo `f0638f1..HEAD`: o limite de
   uso do OpenCode Go acabou antes do relatorio.
-- [DECISION] Windows CI intermitente desde a imagem `20261021` do runner
-  (teste QML morre sem saida sob ctest; rerun direto passa): retentar uma vez
-  no CI ou investigar numa maquina Windows x64.
+- [RESOLVED] O teste `sqlite repository keeps reads available while streaming
+  export` falhava no Windows CI por prazo de 1 s ate a primeira linha; o prazo
+  passou a 10 s (retorno imediato no caso verde; um leitor bloqueado ainda
+  falha, provado com sabotagem).
+- [EXTERNAL-PENDING] Windows CI intermitente nas imagens `20261002` e
+  `20261021`: um teste QML diferente a cada vez termina sem saida sob ctest
+  (ou estoura o timeout) e o rerun direto sai com 0. Nao reproduz na VM
+  Windows 11 ARM64 (MSVC, Qt 6.11.2): suite 721/721 e 195 execucoes em loop,
+  inclusive com CPU saturada. O job windows agora roda `ctest -T Test` e o
+  passo de diagnostico mostra o exit code que o ctest viu; a proxima
+  ocorrencia diz se e crash, abort ou travamento.
 - [KNOWN-LIMIT] Diario de consolidacao com origem e destino ausentes para
   todas as importacoes daquele banco ate resolucao manual (ver
   `docs/contracts/ssa-import.md`).

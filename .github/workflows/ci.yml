@@ -185,10 +185,13 @@ jobs:
         run: cmake --build --preset dev
       - name: QML lint
         run: cmake --build --preset dev --target all_qmllint
+      # -T Test keeps each test's exit code in Testing/<tag>/Test.xml for the next step.
+      # It needs --test-dir: with --preset, ctest -T Test searches the source tree and
+      # finds no tests.
       - name: Test
-        run: ctest --preset dev --output-on-failure
-      # Failed QML tests on this runner image printed nothing through ctest. Rerun each one
-      # with a QtTest file log and show the Windows exit code (for example 0xC0000005).
+        run: ctest --test-dir build/Windows/native/dev --output-on-failure -T Test
+      # Failed QML tests on this runner printed nothing through ctest and passed on rerun.
+      # Show the exit code ctest saw, then rerun each one with a QtTest file log.
       - name: Diagnose failed tests
         if: failure()
         env:
@@ -197,8 +200,20 @@ jobs:
         run: |
           $buildDir = "build/Windows/native/dev"
           $env:QT_QPA_FONTDIR = Join-Path $env:WINDIR "Fonts"
-          $failedList = Join-Path $buildDir "Testing/Temporary/LastTestsFailed.log"
+          # Under -T Test ctest names the failed list after the run tag.
+          $tagFile = Join-Path $buildDir "Testing/TAG"
+          if (-not (Test-Path -LiteralPath $tagFile)) { "no ctest run to diagnose: the failure came before the Test step"; exit 0 }
+          $tag = Get-Content -LiteralPath $tagFile -TotalCount 1
+          $failedList = Join-Path $buildDir "Testing/Temporary/LastTestsFailed_$tag.log"
           if (-not (Test-Path -LiteralPath $failedList)) { exit 0 }
+          $results = [xml](Get-Content -Raw -LiteralPath (Join-Path $buildDir "Testing/$tag/Test.xml"))
+          foreach ($test in $results.Site.Testing.Test | Where-Object Status -eq "failed") {
+            $measured = @{}
+            foreach ($item in $test.Results.NamedMeasurement) { $measured[$item.name] = $item.Value }
+            $exitValue = $measured["Exit Value"]
+            $exitText = if ($exitValue) { "0x{0:X8}" -f ([int64]$exitValue -band 0xFFFFFFFF) } else { "none" }
+            "{0}: under ctest {1}, exit={2}" -f $test.Name, $measured["Exit Code"], $exitText
+          }
           foreach ($line in Get-Content -LiteralPath $failedList) {
             $name = ($line -split ':', 2)[1]
             $exe = Join-Path $buildDir "$name.exe"
