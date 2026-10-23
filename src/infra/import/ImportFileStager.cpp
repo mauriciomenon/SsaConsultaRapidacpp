@@ -411,7 +411,11 @@ namespace ssa::infra::importing {
                 return result;
             }
             const auto& entry = *iterator;
-            if (!isRemovableStagingArtifact(entry.path(), stagingOwner_)) {
+            // Only a regular file: a folder that happens to carry a staging name is the user's.
+            std::error_code statusError;
+            const bool regularFile =
+                std::filesystem::is_regular_file(entry.symlink_status(statusError)) && !statusError;
+            if (!regularFile || !isRemovableStagingArtifact(entry.path(), stagingOwner_)) {
                 iterator.increment(error);
                 if (error) {
                     result.failedCopies = 1;

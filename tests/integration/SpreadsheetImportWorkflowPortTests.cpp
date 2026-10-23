@@ -7311,6 +7311,24 @@ TEST_CASE("input file stager removes abandoned owned staging artifacts") {
     REQUIRE_FALSE(std::filesystem::exists(inputDirectory / ".ssa-staged-crashed_123_0.xlsx"));
 }
 
+TEST_CASE("input file stager leaves a folder that carries a staging name") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto inputDirectory = ssa::qt::toFileSystemPath(tempDir.path()) / "docs_entrada";
+    const auto folder = inputDirectory / ".ssa-staged-x_1_0.xlsx";
+    std::filesystem::create_directories(folder / "inside");
+    createSparseFile(inputDirectory / "pending.xlsx", 1);
+
+    const ssa::infra::importing::ImportFileStager stager(inputDirectory);
+    const auto result = stager.stageInputFiles();
+
+    INFO(result.diagnostic);
+    REQUIRE(result.rejectionReason.empty());
+    REQUIRE(result.files.size() == 1);
+    REQUIRE(std::filesystem::exists(folder / "inside"));
+}
+
 TEST_CASE("input file stager treats an interrupted staging copy as a staging artifact") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
