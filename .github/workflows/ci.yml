@@ -186,3 +186,24 @@ jobs:
         run: cmake --build --preset dev --target all_qmllint
       - name: Test
         run: ctest --preset dev --output-on-failure
+      # Failed QML tests on this runner image printed nothing through ctest. Rerun each one
+      # with a QtTest file log and show the Windows exit code (for example 0xC0000005).
+      - name: Diagnose failed tests
+        if: failure()
+        env:
+          QT_QUICK_CONTROLS_STYLE: Basic
+          QT_SCALE_FACTOR: "1"
+        run: |
+          $buildDir = "build/Windows/native/dev"
+          $env:QT_QPA_FONTDIR = Join-Path $env:WINDIR "Fonts"
+          $failedList = Join-Path $buildDir "Testing/Temporary/LastTestsFailed.log"
+          if (-not (Test-Path -LiteralPath $failedList)) { exit 0 }
+          foreach ($line in Get-Content -LiteralPath $failedList) {
+            $name = ($line -split ':', 2)[1]
+            $exe = Join-Path $buildDir "$name.exe"
+            if (-not (Test-Path -LiteralPath $exe)) { continue }
+            $log = Join-Path $buildDir "$name.diagnose.txt"
+            & $exe -o "$log,txt"
+            "{0} exit=0x{1:X8}" -f $name, $LASTEXITCODE
+            if (Test-Path -LiteralPath $log) { Get-Content -LiteralPath $log -Tail 120 }
+          }
