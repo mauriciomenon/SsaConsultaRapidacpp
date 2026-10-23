@@ -1065,9 +1065,13 @@ TEST_CASE_METHOD(SqliteRepositoryFixture,
             releaseNow();
         }
     } releaseGuard{mutex, releaseCondition, release};
+    // A loaded Windows runner needs over a second to reach the first row. The
+    // waits return as soon as the condition holds, and a reader blocked by
+    // the held export still times out, because the export waits for release.
+    constexpr auto kDeadline = std::chrono::seconds{10};
     {
         std::unique_lock lock(mutex);
-        REQUIRE(enteredCondition.wait_for(lock, std::chrono::seconds{1}, [&] { return entered; }));
+        REQUIRE(enteredCondition.wait_for(lock, kDeadline, [&] { return entered; }));
     }
 
     ssa::domain::DistinctValuesRequest distinctRequest;
@@ -1080,11 +1084,10 @@ TEST_CASE_METHOD(SqliteRepositoryFixture,
     auto record = std::async(std::launch::async, [&] {
         return repository.recordBySsaNumber(ssa::domain::SsaNumber{"202500003"});
     });
-    const bool pageReady = page.wait_for(std::chrono::seconds{2}) == std::future_status::ready;
-    const bool countReady = count.wait_for(std::chrono::seconds{2}) == std::future_status::ready;
-    const bool distinctReady =
-        distinct.wait_for(std::chrono::seconds{2}) == std::future_status::ready;
-    const bool recordReady = record.wait_for(std::chrono::seconds{2}) == std::future_status::ready;
+    const bool pageReady = page.wait_for(kDeadline) == std::future_status::ready;
+    const bool countReady = count.wait_for(kDeadline) == std::future_status::ready;
+    const bool distinctReady = distinct.wait_for(kDeadline) == std::future_status::ready;
+    const bool recordReady = record.wait_for(kDeadline) == std::future_status::ready;
     releaseGuard.releaseNow();
 
     const auto exportResult = exportRead.get();
