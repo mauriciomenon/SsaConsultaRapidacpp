@@ -1,5 +1,21 @@
 # Recovery Backlog
 
+## Revisao profunda e revisores externos (branch `rev`) - 2026-10-23
+
+- [OPEN] Registrar `tests/scripts/NativeHostGuard.Tests.sh`,
+  `qt-detection-tests.sh` e `BuildPackagingContracts.Tests.sh` no ctest/CI
+  (passam em macOS, Arch e Devuan; a metade de pacote exige `dpkg`).
+- [EXTERNAL-PENDING] Revisao GLM 5.3 do intervalo `f0638f1..HEAD`: o limite de
+  uso do OpenCode Go acabou antes do relatorio.
+- [DECISION] Windows CI intermitente desde a imagem `20261021` do runner
+  (teste QML morre sem saida sob ctest; rerun direto passa): retentar uma vez
+  no CI ou investigar numa maquina Windows x64.
+- [KNOWN-LIMIT] Diario de consolidacao com origem e destino ausentes para
+  todas as importacoes daquele banco ate resolucao manual (ver
+  `docs/contracts/ssa-import.md`).
+- [OPEN] Copias integrais do banco em `TMPDIR` deixadas por um rescan
+  interrompido nao sao limpas (as areas `.ssa-data-setup-*` ja sao).
+
 ## Fonte canonica pos-v0.9.15 - 2026-07-20
 
 ### P1 externo

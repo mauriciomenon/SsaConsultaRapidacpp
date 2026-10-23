@@ -2,24 +2,23 @@
 
 ## Correcoes da revisao profunda e dos revisores externos (branch `rev`) - 2026-10-22/23
 
-- **PARCIAL** no branch `rev` (macOS, Qt 6.11.2, `build/dev`): suite local
-  754/754 (as 4 falhas de layout macOS foram resolvidas em `4cac136`); testes
-  QML agora rodam no estilo Fusion de producao. Itens por area no
-  `CHANGELOG.md`; contratos em `docs/contracts/`.
+- **ENTREGUE** no branch `rev` (macOS, Qt 6.11.2, `build/dev`): suite local
+  756/756 (as 4 falhas de layout macOS foram resolvidas em `4cac136`); testes
+  QML rodam no estilo Fusion de producao. Itens por area no `CHANGELOG.md`;
+  contratos em `docs/contracts/`.
 - Decisoes aplicadas com a opcao recomendada: P9, P3/Q3, D4/Q4, D21, QRY-3,
   QRY-6; D17a, D22, D25 e RUL-4A registradas nos contratos.
 - Revisores externos sobre `f0638f1..HEAD`: Codex (9 achados, todos
-  corrigidos) e Cursor (6: 5 corrigidos, 1 rejeitado por medicao). GLM e Devin
-  pendentes nesta data.
-- Pacote macOS gerado localmente com bash 3.2 do sistema (release 751/751).
-- CI GitHub: Linux verde; macOS bloqueado ate `08999ea` por scripts bash 3.2
-  (corrigidos, run nova nao conferida nesta data); Windows intermitente desde
-  a imagem `20261021` do runner (teste QML morre sem saida sob ctest, rerun
-  direto passa). Decisao do usuario pendente: retentar no CI ou investigar.
+  corrigidos), Cursor (6: 5 corrigidos, 1 rejeitado por medicao) e Devin (4:
+  3 corrigidos, 1 registrado como limite no contrato de importacao). GLM 5.3
+  sem relatorio: limite de uso do OpenCode Go (dependencia externa).
+- Testes de script (`tests/scripts`): passam em macOS (bash 5 e 3.2), Arch e
+  Devuan; ainda fora do ctest/CI.
+- CI GitHub verde nos tres jobs em `f57e034`, `297bde0` e `a50e4e1`. O
+  Windows teve falhas intermitentes antes (imagem `20261021`: teste QML morre
+  sem saida sob ctest, rerun direto passa); o passo de diagnostico mostra o
+  codigo de saida na proxima ocorrencia.
 - Publicado em GitHub `mauriciomenon` e GitLab; `schottge-menon` suspenso.
-- Pendentes: RUL-6 (3 testes de script so rodam em Linux, conferir na VM),
-  limpeza de areas temporarias deixadas por crash (copias do banco em
-  `TMPDIR` e `.ssa-data-setup-*`).
 
 ## Estabilizacao da importacao e GUI (branch `rev`) - 2026-10-20/21
 

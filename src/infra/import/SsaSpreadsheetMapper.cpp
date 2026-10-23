@@ -44,7 +44,7 @@ namespace ssa::infra::importing {
             }
             const auto normalized = folded.trimmed().toStdString();
             // "Reprogramacao #N" and "Reprogramacao final" label one row of the reprogramming
-            // report (one row per event), not the count, which comes from "N° de
+            // report (one row per event), not the count, which comes from "No de
             // Reprogramacoes"; storing the label as a count overwrote real counts with 1.
             if (normalized == "final reschedule" || normalized == "reprogramacao final" ||
                 normalized.starts_with("reschedule #") ||

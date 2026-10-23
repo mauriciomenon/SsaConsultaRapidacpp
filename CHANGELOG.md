@@ -19,9 +19,9 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
   nova recebe o proximo nome livre (`nome__1.xlsx`), como na importacao. Uma
   `docs_entrada` em outro disco ou unidade de rede tambem funciona.
 - Busca e filtros de texto ignoram maiusculas e minusculas tambem em letras
-  acentuadas, como a GUI Python: `MANUTENÇÃO`, `manutenção` e `Manutenção`
-  encontram as mesmas SSAs (no banco de teste, 529 nas tres; antes 67 ou 462
-  conforme a caixa digitada).
+  acentuadas, como a GUI Python: `MANUTENCAO`, `manutencao` e `Manutencao`
+  escritos com cedilha e til encontram as mesmas SSAs (no banco de teste, 529
+  nas tres; antes 67 ou 462 conforme a caixa digitada).
 - Rescan: uma planilha de `docs_entrada` substituida durante o rescan (por
   exemplo pelo OneDrive ou por uma exportacao com nome fixo) faz o rescan
   falhar sem publicar nada e continua em `docs_entrada`; antes a versao nova
@@ -112,7 +112,7 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
   horario do arquivo (segundos), em vez de rejeitadas como conflito; no acervo
   real as planilhas rejeitadas cairam de 133 para 30. Cada conflito restante e
   registrado no log com SSA, campo, os dois valores e os dois arquivos.
-  Textos que diferem apenas por acento (ex.: `AQUISICAO` e `AQUISIÇÃO`) deixam
+  Textos que diferem apenas por acento (ex.: `AQUISICAO` com e sem cedilha e til) deixam
   de ser conflito e a grafia acentuada e mantida (30 -> 26 no acervo real).
 - Importacao: SSA repetida dentro da mesma planilha (o SAM exporta uma linha
   por execucao) mantem a primeira linha e registra a descartada no log; antes
