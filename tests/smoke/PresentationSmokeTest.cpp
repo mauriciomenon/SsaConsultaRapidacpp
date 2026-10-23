@@ -2841,7 +2841,11 @@ namespace {
                 QTRY_COMPARE_WITH_TIMEOUT(importPort->importRequests().size(), std::size_t{1},
                                           1000);
                 QTRY_VERIFY_WITH_TIMEOUT(!model.actions()->workflows()->running(), 1000);
-                QTest::qWait(50);
+                // The reload clears the status when it starts and restores the failure when its
+                // page arrives; wait for it to settle instead of a fixed delay (slow CI runners).
+                QTRY_COMPARE_WITH_TIMEOUT(repository->countCalls(),
+                                          inserts > 0 ? std::size_t{1} : std::size_t{0}, 5000);
+                QTRY_VERIFY_WITH_TIMEOUT(!model.browse()->backgroundWorkRunning(), 5000);
                 QCOMPARE(model.actions()->workflows()->lastSucceeded(), false);
                 QCOMPARE(repository->countCalls(), inserts > 0 ? std::size_t{1} : std::size_t{0});
                 QVERIFY(!model.browse()->status()->message().startsWith("Importacao concluida"));
