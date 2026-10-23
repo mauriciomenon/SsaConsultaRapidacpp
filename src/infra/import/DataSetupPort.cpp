@@ -23,6 +23,19 @@ namespace ssa::infra::importing {
 
     namespace {
 
+        // As the consolidator does, a symlinked folder below the input root (processadas,
+        // nosurvivor) is never followed out of the project tree.
+        std::optional<std::filesystem::path> symlinkedFolderBelow(const std::filesystem::path& root,
+                                                                  std::filesystem::path directory) {
+            for (; directory != root && directory != directory.parent_path();
+                 directory = directory.parent_path()) {
+                if (std::filesystem::is_symlink(std::filesystem::symlink_status(directory))) {
+                    return directory;
+                }
+            }
+            return std::nullopt;
+        }
+
         // Moves each file of the private input tree to the same place in the project input
         // tree, never over an existing file; `moved` lists what reached the project tree.
         std::optional<std::string> moveInputCopies(ports::ExclusiveFilePublisher& publisher,
@@ -41,6 +54,9 @@ namespace ssa::infra::importing {
                 }
                 for (const auto& copy : copies) {
                     const auto target = to / copy.lexically_relative(from);
+                    if (const auto link = symlinkedFolderBelow(to, target.parent_path())) {
+                        return qt::toUtf8(*link) + ": the folder is a symlink";
+                    }
                     std::filesystem::create_directories(target.parent_path());
                     const auto published = publisher(copy, target);
                     if (published.status != ports::ExclusiveFilePublishStatus::Succeeded) {
@@ -115,7 +131,13 @@ namespace ssa::infra::importing {
         try {
             std::filesystem::create_directories(dataDirectory);
             std::filesystem::create_directories(request.projectRoot / "config");
-            std::filesystem::create_directories(inputDirectory / "processadas" / "nosurvivor");
+            // Every later rescan refuses a symlinked processadas, so the setup does too.
+            const auto noSurvivorDirectory = inputDirectory / "processadas" / "nosurvivor";
+            if (const auto link = symlinkedFolderBelow(inputDirectory, noSurvivorDirectory)) {
+                return {false, "A pasta docs_entrada contem um atalho (symlink)",
+                        qt::toUtf8(*link) + ": the folder is a symlink", databasePath};
+            }
+            std::filesystem::create_directories(noSurvivorDirectory);
 
             std::error_code existenceError;
             const bool destinationExists = std::filesystem::exists(databasePath, existenceError);

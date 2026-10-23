@@ -4173,6 +4173,24 @@ TEST_CASE("initial data setup publishes the database with its processed workbook
         REQUIRE_FALSE(std::filesystem::exists(projectRoot / "data" / "ssas.db"));
     }
 
+    SECTION("a symlinked processadas folder is refused and nothing leaves the project") {
+        const auto outside = root / "outside";
+        std::filesystem::create_directories(outside);
+        std::filesystem::create_directories(processedCopy.parent_path().parent_path());
+        std::error_code linkError;
+        std::filesystem::create_directory_symlink(outside, processedCopy.parent_path(), linkError);
+        if (linkError) {
+            SKIP("directory symlinks are unavailable: " << linkError.message());
+        }
+
+        const auto result = port.execute(request);
+
+        REQUIRE_FALSE(result.ok);
+        REQUIRE(result.diagnostic.find("symlink") != std::string::npos);
+        REQUIRE(std::filesystem::is_empty(outside));
+        REQUIRE_FALSE(std::filesystem::exists(projectRoot / "data" / "ssas.db"));
+    }
+
     SECTION("a failed database publication takes the moved workbooks back") {
         ssa::infra::importing::DataSetupPort failingPort(publishAllButTheDatabase);
 
