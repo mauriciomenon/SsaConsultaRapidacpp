@@ -13,6 +13,22 @@ TEST_CASE("whitespace trim handles text empty and whitespace-only values") {
     REQUIRE(ssa::domain::trimWhitespace(" \t\r\n\f\v") == "");
 }
 
+TEST_CASE("whitespace trim removes what Python str.strip removes") {
+    // U+0085, U+1680, U+2000..U+200A, U+2028, U+2029, U+202F, U+205F, U+3000 and \x1c..\x1f.
+    REQUIRE(ssa::domain::trimWhitespace("\xE2\x80\xA8texto\xE3\x80\x80") == "texto");
+    REQUIRE(ssa::domain::trimWhitespace("\xC2\x85\xE1\x9A\x80texto\xE2\x80\x8A\xE2\x80\xAF") ==
+            "texto");
+    REQUIRE(ssa::domain::trimWhitespace("\x1ctexto\x1f\xE2\x81\x9F\xE2\x80\xA9") == "texto");
+    REQUIRE(ssa::domain::trimWhitespace("\xE2\x80\x80\xE2\x80\x85") == "");
+    // Inner whitespace stays; U+200B (zero width space) is not whitespace for Python.
+    REQUIRE(ssa::domain::trimWhitespace(" a\xE3\x80\x80"
+                                        "b ") == "a\xE3\x80\x80"
+                                                 "b");
+    REQUIRE(ssa::domain::trimWhitespace("\xE2\x80\x8Btexto") == "\xE2\x80\x8Btexto");
+    // A lone continuation-like byte is never treated as part of a whitespace sequence.
+    REQUIRE(ssa::domain::trimWhitespace("texto\xA0") == "texto\xA0");
+}
+
 TEST_CASE("SSA import rejects invalid calendar dates even for exempt states") {
     using Values = ssa::domain::SsaImportPolicy::Values;
 

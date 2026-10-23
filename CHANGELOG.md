@@ -154,8 +154,10 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
   instante. Vale tambem para rescan, manutencao e derivadas.
 - macOS: a busca com letras acentuadas (ex.: "inspecoes" com c cedilha e o til)
   volta a encontrar resultados, e a importacao nao grava mais texto UTF-8
-  invalido quando uma celula termina com espaco nao separavel; esse espaco agora
-  e removido inteiro, como na versao Python.
+  invalido quando uma celula termina com espaco nao separavel. Esse espaco e os
+  demais espacos Unicode que a versao Python remove das bordas da celula (ex.:
+  separador de linha U+2028, espaco ideografico U+3000) agora sao removidos
+  inteiros.
 - Analytics: os relatorios rapidos "Prazo das pendentes por area",
   "Executadas por setor (semana)" e "Executadas por setor (mes ISO)" voltam a
   gerar a analise; antes so configuravam os filtros e nao rodavam.
