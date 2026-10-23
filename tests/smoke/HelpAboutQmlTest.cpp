@@ -635,6 +635,23 @@ namespace {
             // Reopening the popup brings its own filter back.
             QVERIFY(QMetaObject::invokeMethod(popup, "open"));
             QTRY_VERIFY_WITH_TIMEOUT(columns->rowCount() < allColumns, 1000);
+            const int popupRows = columns->rowCount();
+            QVERIFY(QMetaObject::invokeMethod(popup, "close"));
+            QTRY_VERIFY_WITH_TIMEOUT(!popup->property("visible").toBool(), 1000);
+
+            // A keystroke in Preferences still inside its debounce when the dialog closes must
+            // not reach the popup that opens next.
+            QVERIFY(QMetaObject::invokeMethod(preferencesDialog, "open"));
+            QTRY_VERIFY_WITH_TIMEOUT(preferencesDialog->property("visible").toBool(), 1000);
+            auto* preferencesFilter =
+                preferencesDialog->findChild<QObject*>(QStringLiteral("columnFilterField"));
+            QVERIFY(preferencesFilter != nullptr);
+            QVERIFY(preferencesFilter->setProperty("text", QStringLiteral("zzz-no-column")));
+            QVERIFY(QMetaObject::invokeMethod(preferencesDialog, "close"));
+            QVERIFY(QMetaObject::invokeMethod(popup, "open"));
+            QTRY_VERIFY_WITH_TIMEOUT(popup->property("visible").toBool(), 1000);
+            QTest::qWait(300);
+            QCOMPARE(columns->rowCount(), popupRows);
         }
 
         void column_selector_popup_tracks_trigger_and_clamps_to_overlay() {

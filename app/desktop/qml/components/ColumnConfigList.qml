@@ -16,6 +16,12 @@ Item {
         root.viewModel.setFilterText(columnFilter.text);
     }
 
+    // Each editor calls this when it closes: a keystroke still waiting for its debounce must
+    // not filter the list of the editor that opens next.
+    function dropPendingFilter() {
+        columnFilterTimer.stop();
+    }
+
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: Theme.cardGap

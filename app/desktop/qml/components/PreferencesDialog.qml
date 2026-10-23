@@ -50,10 +50,12 @@ Window {
 
     // gui-behavior.md: closing without applying discards the pending column edits.
     onVisibleChanged: {
-        if (!visible)
+        if (!visible) {
+            preferencesColumnList.dropPendingFilter();
             root.discardColumnChanges();
-        else
+        } else {
             preferencesColumnList.applyOwnFilter();
+        }
     }
 
     Rectangle {

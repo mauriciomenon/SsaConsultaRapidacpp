@@ -68,6 +68,7 @@ Popup {
     }
     onClosed: {
         trigger = null;
+        popupColumnList.dropPendingFilter();
         // Only "Aplicar" keeps the staged columns; closing discards them (a no-op after apply).
         root.viewModel.columnFlow.discardColumnSettings();
     }
