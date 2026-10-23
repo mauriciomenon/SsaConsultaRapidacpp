@@ -136,8 +136,9 @@ jobs:
           sqlite3 /tmp/mem_fixture.db < tools/generate_mem_fixture.sql
           "$BUILD_DIR/ssa_mem_stress" \
             --db /tmp/mem_fixture.db \
-            --pages 40 \
+            --pages 120 \
             --page-size 50 \
+            --warmup-pages 40 \
             --max-footprint-delta-kb 2048
 
   windows:

@@ -71,6 +71,9 @@ int main(int argc, char** argv) {
     int totalPages = 200;
     int pageSize = 50;
     int maxFootprintDeltaKb = 0;
+    // Allocator arenas and SQLite caches grow during the first pages and then level off
+    // (glibc keeps the high-water mark resident); the budget measures growth after them.
+    int warmupPages = 0;
     auto parsePositiveInt = [](const QString& value, const char* option, int& output) -> bool {
         bool parsed = false;
         const int parsedValue = value.toInt(&parsed);
@@ -98,11 +101,19 @@ int main(int argc, char** argv) {
             if (!parsePositiveInt(args[++i], "--max-footprint-delta-kb", maxFootprintDeltaKb)) {
                 return 1;
             }
+        } else if (a == "--warmup-pages" && i + 1 < args.size()) {
+            if (!parsePositiveInt(args[++i], "--warmup-pages", warmupPages)) {
+                return 1;
+            }
         }
     }
     if (dbPath.isEmpty()) {
         std::fprintf(stderr, "usage: ssa_mem_stress --db <path> [--pages N] [--page-size N] "
-                             "[--max-footprint-delta-kb N]\n");
+                             "[--warmup-pages N] [--max-footprint-delta-kb N]\n");
+        return 1;
+    }
+    if (warmupPages >= totalPages) {
+        std::fprintf(stderr, "error: --warmup-pages must be smaller than --pages\n");
         return 1;
     }
 
@@ -168,6 +179,7 @@ int main(int argc, char** argv) {
     std::printf("startup\t0\t%zu\n", startupFootprintKb);
     std::printf("firstpage\t1\t%zu\n", currentFootprintKb());
 
+    auto baselineFootprintKb = startupFootprintKb;
     int lastPageNumber = browse.pageNumber();
     for (int i = 2; i <= totalPages; ++i) {
         const int pageCountBefore = browse.pageCount();
@@ -204,6 +216,10 @@ int main(int argc, char** argv) {
             return 1;
         }
         lastPageNumber = currentPage;
+        if (i == warmupPages) {
+            baselineFootprintKb = currentFootprintKb();
+            std::printf("warmup\t%d\t%zu\n", i, baselineFootprintKb);
+        }
         if (i % 10 == 0) {
             std::printf("nav\t%d\t%zu\n", i, currentFootprintKb());
             std::fflush(stdout);
@@ -213,12 +229,12 @@ int main(int argc, char** argv) {
     std::printf("final\t%d\t%zu\n", totalPages, finalFootprintKb);
 
     if (maxFootprintDeltaKb > 0) {
-        if (startupFootprintKb == 0 || finalFootprintKb == 0) {
+        if (baselineFootprintKb == 0 || finalFootprintKb == 0) {
             std::fprintf(stderr, "error: footprint sampling failed\n");
             return 2;
         }
         const auto footprintDeltaKb =
-            finalFootprintKb > startupFootprintKb ? finalFootprintKb - startupFootprintKb : 0;
+            finalFootprintKb > baselineFootprintKb ? finalFootprintKb - baselineFootprintKb : 0;
         std::printf("budget\t%zu\t%d\n", footprintDeltaKb, maxFootprintDeltaKb);
         if (footprintDeltaKb > static_cast<std::size_t>(maxFootprintDeltaKb)) {
             std::fprintf(stderr, "error: footprint delta %zu KB exceeds budget %d KB\n",

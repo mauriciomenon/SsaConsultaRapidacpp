@@ -995,6 +995,15 @@ if(SSA_BUILD_TESTS)
         ${CMAKE_CURRENT_SOURCE_DIR}/cmake/RunMemStressArgumentFailure.cmake)
     set_tests_properties(ssa_mem_stress_rejects_invalid_max_delta
                          PROPERTIES TIMEOUT 10)
+    add_test(
+      NAME ssa_mem_stress_rejects_warmup_without_measured_pages
+      COMMAND
+        ${CMAKE_COMMAND} -DAPP=$<TARGET_FILE:ssa_mem_stress>
+        -DOPTION=--warmup-pages -DVALUE=200
+        "-DEXPECTED=error: --warmup-pages must be smaller than --pages" -P
+        ${CMAKE_CURRENT_SOURCE_DIR}/cmake/RunMemStressArgumentFailure.cmake)
+    set_tests_properties(ssa_mem_stress_rejects_warmup_without_measured_pages
+                         PROPERTIES TIMEOUT 10)
   endif()
 
   if(APPLE)
