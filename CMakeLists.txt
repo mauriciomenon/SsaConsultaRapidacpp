@@ -1014,4 +1014,27 @@ if(SSA_BUILD_TESTS)
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/scripts/macos-smoke-core-tests.sh)
     set_tests_properties(ssa_macos_smoke_core_contract PROPERTIES TIMEOUT 15)
   endif()
+
+  # Contracts of the host guard, Qt detection and build/packaging shell scripts.
+  # The packaging half of the last one needs dpkg and says so when it is
+  # skipped.
+  if(NOT WIN32)
+    add_test(
+      NAME ssa_script_native_host_guard
+      COMMAND bash
+              ${CMAKE_CURRENT_SOURCE_DIR}/tests/scripts/NativeHostGuard.Tests.sh
+    )
+    add_test(
+      NAME ssa_script_qt_detection
+      COMMAND bash
+              ${CMAKE_CURRENT_SOURCE_DIR}/tests/scripts/qt-detection-tests.sh)
+    add_test(
+      NAME ssa_script_build_packaging
+      COMMAND
+        bash
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/scripts/BuildPackagingContracts.Tests.sh
+    )
+    set_tests_properties(ssa_script_native_host_guard ssa_script_qt_detection
+                         ssa_script_build_packaging PROPERTIES TIMEOUT 120)
+  endif()
 endif()
