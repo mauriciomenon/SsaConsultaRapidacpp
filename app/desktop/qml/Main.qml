@@ -227,7 +227,7 @@ ApplicationWindow {
             }
             MenuItem {
                 objectName: "toggleDetailsMenuItem"
-                text: "Ocultar detalhes"
+                text: "Mostrar detalhes"
                 checkable: true
                 checked: root.vm.ui.detailsVisible
                 onTriggered: root.vm.ui.detailsVisible = checked

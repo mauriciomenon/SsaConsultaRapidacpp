@@ -1045,6 +1045,10 @@ namespace {
             QTRY_COMPARE_WITH_TIMEOUT(maintenancePort->vacuumAnalyzeCalls(), std::size_t{1}, 1000);
 
             const bool initialDetailsVisible = viewModel.ui()->detailsVisible();
+            // The check mark states what the label says: checked means the panel is shown.
+            QCOMPARE(toggleDetails->property("text").toString(),
+                     QStringLiteral("Mostrar detalhes"));
+            QCOMPARE(toggleDetails->property("checked").toBool(), initialDetailsVisible);
             toggleDetails->setProperty("checked", !initialDetailsVisible);
             QVERIFY(QMetaObject::invokeMethod(toggleDetails, "triggered"));
             QTRY_COMPARE_WITH_TIMEOUT(viewModel.ui()->detailsVisible(), !initialDetailsVisible,
