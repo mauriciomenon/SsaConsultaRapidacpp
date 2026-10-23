@@ -241,6 +241,10 @@ pwsh -NoLogo -NoProfile -Command \
   "Invoke-Pester -Path 'tests/scripts/QtDetection.Tests.ps1' -CI"
 ```
 
+`tests/scripts/PackageWindows.Tests.ps1` compila ferramentas falsas com
+`Add-Type -OutputType ConsoleApplication`, que so existe no Windows PowerShell
+5.1. Rode esse arquivo com `powershell.exe` e Pester 5, nao com `pwsh`.
+
 ## Quality Toolchain
 
 The project ships a layered toolchain. Tools are grouped by status so it is clear

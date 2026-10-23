@@ -6,6 +6,9 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 
 ### Corrigido
 
+- Pacote Windows ARM64: `scripts/package-windows.ps1 -Arch arm64` gera o
+  pacote; antes ele sempre parava exigindo `VCRUNTIME140_1.dll`, uma DLL que
+  so o executavel x64 usa.
 - Rescan: a copia completa do banco usada durante o rescan fica ao lado do
   banco e, se um rescan for interrompido, o seguinte a remove; antes ela ficava
   para sempre na pasta temporaria do sistema.

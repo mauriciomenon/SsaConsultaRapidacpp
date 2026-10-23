@@ -5,8 +5,6 @@
 - [RESOLVED] `tests/scripts/NativeHostGuard.Tests.sh`, `qt-detection-tests.sh`
   e `BuildPackagingContracts.Tests.sh` rodam no ctest em hosts POSIX como
   `ssa_script_*` (`2ab65b8`); a metade de pacote exige `dpkg`.
-- [EXTERNAL-PENDING] Revisao GLM 5.3 do intervalo `f0638f1..HEAD`: o limite de
-  uso do OpenCode Go acabou antes do relatorio.
 - [RESOLVED] O teste `sqlite repository keeps reads available while streaming
   export` falhava no Windows CI por prazo de 1 s ate a primeira linha; o prazo
   passou a 10 s (retorno imediato no caso verde; um leitor bloqueado ainda
@@ -1731,9 +1729,36 @@ Matriz completa de acertos, adicoes, erros e ordem de execucao:
   13-26 ms warm. Deferir a inicializacao cold para depois do primeiro frame,
   preservando cancelamento, erros visiveis e o resultado final. Medir de novo
   antes de aceitar o ganho.
-- [PENDING] [WINDOWS-ARM64-PACKAGE] Repetir os packages MSVC/LLVM e a
-  validacao do Visual C++ runtime em host Windows arm64 real.
-- [EXTERNAL] [BITBUCKET-WORKSPACE-QUOTA] O push alerta que o workspace se
-  aproxima de 1 GiB. Este repositorio local ocupa cerca de 26 MiB e o maior
-  blob historico tem 572 KiB; tratar a quota no workspace Bitbucket sem
-  reescrever o historico deste repositorio.
+- [RESOLVED] [WINDOWS-ARM64-PACKAGE] Prova em host Windows 11 ARM64 real
+  (VM, MSVC 14.51, Qt 6.11.2 `msvc2022_arm64`, 2026-10-23): o build release
+  passava (305/305), mas `scripts/package-windows.ps1` nunca empacotava ARM64
+  porque exigia `VCRUNTIME140_1.dll` em toda arquitetura; o executavel ARM64
+  (machine `AA64`) importa so `VCRUNTIME140`, `MSVCP140` e
+  `MSVCP140_ATOMIC_WAIT` (`VCRUNTIME140_1` e o tratamento de excecao FH4 do
+  x64). A lista de imports obrigatorios agora vem de
+  `Resolve-VisualCppRuntimeDirectory` por arquitetura, e o pacote ARM64 real
+  saiu completo (zip, portable, instalador, standalone, `SHA256SUMS`). O caso
+  ARM64 do `PackageWindows.Tests.ps1` falha no script antigo e passa no novo.
+  Toolchain ARM64: so MSVC; `llvm` e `mingw` sao recusados em
+  `scripts/lib/windows_build_layout.ps1` por falta de kit Qt.
+- [PENDING] [WINDOWS-ARM64-SMOKE] Falta o smoke do pacote ARM64 (`--version`,
+  GUI viva, conferencia do `SHA256SUMS`) e trazer os artefatos ao Mac: a VM foi
+  suspensa logo apos o pacote.
+- [PENDING] [PESTER-BUILD-FAILURE-CLEANUP] O caso `aborts before cleaning a
+  previous release when the build fails` de `PackageWindows.Tests.ps1` falha
+  tambem no HEAD `8c63ce4` (espera o diretorio de build removido); nao roda
+  no CI.
+- [PENDING] [WINDOWS-MSVC-ENV] `scripts/build-windows.ps1` so inicializa o
+  Developer PowerShell quando `cl.exe` falta no PATH. Com `cl.exe` no PATH
+  sem `LIB`/`INCLUDE` (caso da VM ARM64) a inicializacao e pulada e o link
+  falha com `LNK1104 kernel32.lib`, embora o README diga que nao e preciso
+  abrir o Developer PowerShell. O teste deveria olhar o ambiente ja
+  inicializado para o alvo (`VSCMD_ARG_TGT_ARCH`), nao a presenca do `cl.exe`.
+- [PENDING] [WINDOWS-ARM64-HOST] O build MSVC sempre usa `-HostArch amd64` e
+  exige host x64, e o pacote procura `dumpbin` so em `bin\Hostx64`. Em host
+  ARM64 o compilador roda emulado, e uma instalacao do Visual Studio sem as
+  ferramentas `Hostx64` falha. O toolset `Hostarm64\arm64` nativo existe.
+- [DECISION] [WINDOWS-PACKAGE-DATABASE] `scripts/package-windows.ps1` exige
+  `data\ssas.db` no clone e o embute no pacote; `scripts/package-debian.sh`
+  nao leva banco e orienta `--db`. Os dois contratos divergem, e o do Windows
+  distribui o banco operacional dentro do artefato.

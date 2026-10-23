@@ -110,7 +110,10 @@ public static class PackageTool
             Console.WriteLine("    MSVCP140.dll");
             Console.WriteLine("    MSVCP140_ATOMIC_WAIT.dll");
             Console.WriteLine("    VCRUNTIME140.dll");
-            Console.WriteLine("    VCRUNTIME140_1.dll");
+            // ARM64 MSVC executables have no x64 FH4 import.
+            if (Environment.GetEnvironmentVariable("SSA_TEST_IMPORT_ARCH") != "arm64") {
+                Console.WriteLine("    VCRUNTIME140_1.dll");
+            }
             return 0;
         }
         if (tool == "makensis") {
@@ -239,6 +242,33 @@ exit /b 0
             }
             $llvmFailure | Should -BeNullOrEmpty
             ((Get-Content -LiteralPath (Join-Path $testRoot "llvm/amd64/llvm/current.json") -Raw | ConvertFrom-Json).compiler) | Should -Match "clang-cl.exe$"
+
+            $arm64BuildDir = Join-Path $repoRoot "build/windows/arm64/msvc/msvc2022_arm64/release"
+            $arm64QtPrefix = Join-Path $testRoot "Qt/6.11.1/msvc2022_arm64"
+            $arm64RuntimeDir = Join-Path $testRoot "Visual Studio/VC/Redist/MSVC/$toolsetVersion/arm64/Microsoft.VC145.CRT"
+            $arm64DumpbinDir = Join-Path $toolsetRoot "bin/Hostx64/arm64"
+            New-Item -ItemType Directory -Path (Join-Path $arm64BuildDir "SsaConsultaRapida"), (Join-Path $arm64QtPrefix "bin"), $arm64RuntimeDir, $arm64DumpbinDir -Force | Out-Null
+            Copy-Item -LiteralPath $fakeTool -Destination (Join-Path $arm64QtPrefix "bin/windeployqt.exe")
+            Copy-Item -LiteralPath $fakeTool -Destination (Join-Path $arm64DumpbinDir "dumpbin.exe")
+            New-Item -ItemType File -Path (Join-Path $arm64BuildDir "ssa_consulta_rapida.exe"), (Join-Path $arm64BuildDir "sqlite3.dll") -Force | Out-Null
+            foreach ($runtimeFile in @("MSVCP140.dll", "MSVCP140_ATOMIC_WAIT.dll", "VCRUNTIME140.dll", "VCRUNTIME140_1.dll")) {
+                New-Item -ItemType File -Path (Join-Path $arm64RuntimeDir $runtimeFile) -Force | Out-Null
+            }
+            @(
+                "Qt6_DIR:PATH=$((Join-Path $arm64QtPrefix 'lib/cmake/Qt6').Replace('\', '/'))"
+                "CMAKE_CXX_COMPILER:FILEPATH=$($toolsetRoot.Replace('\', '/'))/bin/Hostx64/arm64/cl.exe"
+                "CMAKE_LINKER:FILEPATH=$($toolsetRoot.Replace('\', '/'))/bin/Hostx64/arm64/link.exe"
+            ) | Set-Content -LiteralPath (Join-Path $arm64BuildDir "CMakeCache.txt") -Encoding ASCII
+            $env:SSA_TEST_IMPORT_ARCH = "arm64"
+            $arm64Failure = $null
+            try {
+                & $packageScript -ProjectRoot $repoRoot -Arch arm64 -Toolchain msvc -DistDir (Join-Path $testRoot "arm64") -Version "1.2.3" -SkipTests
+            }
+            catch {
+                $arm64Failure = $_
+            }
+            $arm64Failure | Should -BeNullOrEmpty
+            (Get-ChildItem -LiteralPath (Join-Path $testRoot "arm64/arm64/msvc/final") -Filter "VCRUNTIME140.dll" -File -Recurse).Count | Should -BeGreaterThan 0
         }
         finally {
             if ($null -eq $originalNsisHome) {
@@ -261,7 +291,7 @@ exit /b 0
             else {
                 $env:VCToolsVersion = $originalVcToolsVersion
             }
-            Remove-Item Env:SSA_TEST_BUILD_ARCH, Env:SSA_TEST_CTEST_LOG -ErrorAction SilentlyContinue
+            Remove-Item Env:SSA_TEST_BUILD_ARCH, Env:SSA_TEST_CTEST_LOG, Env:SSA_TEST_IMPORT_ARCH -ErrorAction SilentlyContinue
         }
     }
 

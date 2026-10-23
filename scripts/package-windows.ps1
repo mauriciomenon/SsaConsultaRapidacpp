@@ -146,9 +146,15 @@ function Resolve-VisualCppRuntimeDirectory {
     if (-not (Test-Path -LiteralPath $dumpbinPath -PathType Leaf)) {
         throw "dumpbin.exe for the configured Visual C++ toolset was not found: $dumpbinPath"
     }
+    # VCRUNTIME140_1 holds the x64 FH4 exception handler; ARM64 builds never import it.
+    $requiredImports = @("MSVCP140.dll", "MSVCP140_ATOMIC_WAIT.dll", "VCRUNTIME140.dll")
+    if ($Architecture -eq "amd64") {
+        $requiredImports += "VCRUNTIME140_1.dll"
+    }
     return [PSCustomObject]@{
         CrtDirectory = $crtDirectory.FullName
         DumpbinPath = $dumpbinPath
+        RequiredImports = $requiredImports
     }
 }
 
@@ -170,13 +176,7 @@ function Copy-VisualCppRuntime {
     }
     Copy-Item -LiteralPath $runtimeFiles.FullName -Destination $Destination
 
-    $requiredRuntimeFiles = @(
-        "MSVCP140.dll",
-        "MSVCP140_ATOMIC_WAIT.dll",
-        "VCRUNTIME140.dll",
-        "VCRUNTIME140_1.dll"
-    )
-    $missingRuntimeFiles = @($requiredRuntimeFiles | Where-Object {
+    $missingRuntimeFiles = @($Runtime.RequiredImports | Where-Object {
             -not (Test-Path -LiteralPath (Join-Path $Destination $_) -PathType Leaf)
         })
     if ($missingRuntimeFiles.Count -gt 0) {
@@ -205,13 +205,7 @@ function Test-VisualCppRuntimeImport {
         throw "dumpbin failed to inspect Windows runtime imports with exit code $LASTEXITCODE."
     }
     $importText = $imports -join "`n"
-    $requiredRuntimeFiles = @(
-        "MSVCP140.dll",
-        "MSVCP140_ATOMIC_WAIT.dll",
-        "VCRUNTIME140.dll",
-        "VCRUNTIME140_1.dll"
-    )
-    $missingImports = @($requiredRuntimeFiles | Where-Object {
+    $missingImports = @($Runtime.RequiredImports | Where-Object {
             $importText -notmatch "(?im)^\s*$([regex]::Escape($_))\s*$"
         })
     if ($missingImports.Count -gt 0) {

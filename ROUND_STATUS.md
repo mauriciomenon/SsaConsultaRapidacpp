@@ -10,8 +10,7 @@
   QRY-6; D17a, D22, D25 e RUL-4A registradas nos contratos.
 - Revisores externos sobre `f0638f1..HEAD`: Codex (9 achados, todos
   corrigidos), Cursor (6: 5 corrigidos, 1 rejeitado por medicao) e Devin (4:
-  3 corrigidos, 1 registrado como limite no contrato de importacao). GLM 5.3
-  sem relatorio: limite de uso do OpenCode Go (dependencia externa).
+  3 corrigidos, 1 registrado como limite no contrato de importacao).
 - Testes de script (`tests/scripts`): passam em macOS (bash 5 e 3.2), Arch e
   Devuan; rodam no ctest/CI POSIX como `ssa_script_*` desde `2ab65b8`.
 - CI GitHub verde nos tres jobs em `f57e034`, `297bde0` e `a50e4e1`. O
