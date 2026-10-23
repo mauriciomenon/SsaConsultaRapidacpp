@@ -419,12 +419,16 @@ namespace ssa::infra::importing {
                     }
                 }
             }
-            if (row.empty()) {
-                continue;
-            }
-            // A continuation row (Reprogramacao #2..N, Desvio #2..N) has values but no SSA.
+            // No SSA number and no description: a blank row counts as nothing; any other one
+            // (a continuation such as Reprogramacao #2..N, even with only its label, which maps
+            // to no value) is skipped.
             if (valueFor(row, "numero_ssa").empty() && valueFor(row, "descricao_ssa").empty()) {
-                ++batch.skippedRows;
+                if (!row.empty() ||
+                    std::ranges::any_of(table.rows[rowIndex], [](const std::string& cell) {
+                        return !domain::trimWhitespace(cell).empty();
+                    })) {
+                    ++batch.skippedRows;
+                }
                 continue;
             }
             if (isLegacyIncompleteSummaryRow(table, row)) {

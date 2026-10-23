@@ -261,13 +261,15 @@ TEST_CASE("SSA spreadsheet mapper counts continuation rows as skipped and blank 
     table.rows = {{"Numero SSA", "Descricao", "Data Cadastro", "Reprogramacoes"},
                   {"202600001", "Rescheduled", "2026-07-14", "Reprogramacao #1"},
                   {"", "", "2026-07-21", "Reprogramacao #2"},
+                  {"", "", "", "Reprogramacao #3"},
                   {"", "", "", ""}};
 
     const auto batch = ssa::infra::importing::SsaSpreadsheetMapper::map(table);
 
+    // The label alone maps to no value (it is not a count), yet the row is not blank.
     REQUIRE(batch.rows.size() == 1);
     REQUIRE(batch.invalidRows == 0);
-    REQUIRE(batch.skippedRows == 1);
+    REQUIRE(batch.skippedRows == 2);
 }
 
 TEST_CASE("SSA spreadsheet mapper ignores known incomplete legacy summary rows") {
