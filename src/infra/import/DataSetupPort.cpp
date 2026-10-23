@@ -13,11 +13,64 @@
 
 #include <exception>
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <system_error>
 #include <utility>
+#include <vector>
 
 namespace ssa::infra::importing {
+
+    namespace {
+
+        // Moves each file of the private input tree to the same place in the project input
+        // tree, never over an existing file; `moved` lists what reached the project tree.
+        std::optional<std::string> moveInputCopies(ports::ExclusiveFilePublisher& publisher,
+                                                   const std::filesystem::path& from,
+                                                   const std::filesystem::path& to,
+                                                   std::vector<std::filesystem::path>& moved) {
+            try {
+                if (!std::filesystem::exists(from)) {
+                    return std::nullopt;
+                }
+                std::vector<std::filesystem::path> copies;
+                for (const auto& entry : std::filesystem::recursive_directory_iterator(from)) {
+                    if (entry.is_regular_file()) {
+                        copies.push_back(entry.path());
+                    }
+                }
+                for (const auto& copy : copies) {
+                    const auto target = to / copy.lexically_relative(from);
+                    std::filesystem::create_directories(target.parent_path());
+                    const auto published = publisher(copy, target);
+                    if (published.status != ports::ExclusiveFilePublishStatus::Succeeded) {
+                        return qt::toUtf8(target) + ": " +
+                               (published.status ==
+                                        ports::ExclusiveFilePublishStatus::DestinationExists
+                                    ? std::string{"a file with this name already exists"}
+                                    : published.diagnostic);
+                    }
+                    moved.push_back(target);
+                }
+                return std::nullopt;
+            } catch (const std::filesystem::filesystem_error& error) {
+                return error.what();
+            }
+        }
+
+        void removeMovedCopies(const std::vector<std::filesystem::path>& moved,
+                               std::string& diagnostic) {
+            for (const auto& path : moved) {
+                std::error_code error;
+                std::filesystem::remove(path, error);
+                if (error) {
+                    diagnostic += (diagnostic.empty() ? "" : "; ") + std::string{"cannot remove "} +
+                                  qt::toUtf8(path) + ": " + error.message();
+                }
+            }
+        }
+
+    } // namespace
 
     DataSetupPort::DataSetupPort(ports::ExclusiveFilePublisher& filePublisher)
         : filePublisher_(filePublisher) {}
@@ -146,13 +199,16 @@ namespace ssa::infra::importing {
                 if (stopToken.stop_requested()) {
                     return complete({false, "Configuracao de dados cancelada", {}, databasePath});
                 }
+                // Initial setup is all-or-nothing: the import runs in the private area, so a
+                // rejected workbook fails the setup and leaves the project tree untouched.
+                const auto stagedInputDirectory = temporaryPath / "docs_entrada";
                 if (importsXlsx) {
-                    SpreadsheetImportWorkflowPort workflow(inputDirectory, stagedDatabasePath,
+                    SpreadsheetImportWorkflowPort workflow(stagedInputDirectory, stagedDatabasePath,
                                                            columns);
                     ports::ImportExternalFilesRequest importRequest;
                     importRequest.files = request.xlsxFiles;
                     const auto imported = workflow.importExternalFiles(importRequest, stopToken);
-                    if (!imported.ok()) {
+                    if (!imported.ok() || imported.warning) {
                         const auto canceled = imported.status == ports::WorkflowStatus::Canceled ||
                                               stopToken.stop_requested();
                         auto diagnostic = imported.message;
@@ -173,9 +229,20 @@ namespace ssa::infra::importing {
                     return complete({false, "Configuracao de dados cancelada", {}, databasePath});
                 }
 
+                // The processed copies reach the project tree only together with the database.
+                std::vector<std::filesystem::path> movedCopies;
+                const auto failWithoutCopies = [&](ports::DataSetupResult result) {
+                    removeMovedCopies(movedCopies, result.diagnostic);
+                    return complete(std::move(result));
+                };
+                if (const auto moveError = moveInputCopies(filePublisher_, stagedInputDirectory,
+                                                           inputDirectory, movedCopies)) {
+                    return failWithoutCopies({false, "Falha ao mover as planilhas processadas",
+                                              *moveError, databasePath});
+                }
                 const auto published = filePublisher_(stagedDatabasePath, databasePath);
                 if (published.status != ports::ExclusiveFilePublishStatus::Succeeded) {
-                    return complete(
+                    return failWithoutCopies(
                         {false,
                          published.status == ports::ExclusiveFilePublishStatus::DestinationExists
                              ? "O banco de destino ja existe"

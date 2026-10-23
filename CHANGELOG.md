@@ -6,6 +6,10 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 
 ### Corrigido
 
+- Configuracao inicial de dados com planilhas: se alguma planilha for
+  rejeitada, a configuracao falha e informa qual, sem criar banco nem copiar
+  arquivos para `docs_entrada`. Antes ela terminava como "concluida" com parte
+  das SSAs e a planilha rejeitada sumia do resultado.
 - Atualizacao pelo SAM: quando um processo cancelado ou expirado nao termina,
   nenhum novo processo e iniciado ate a aplicacao ser reiniciada, e a recusa
   informa o motivo. Antes um novo processo podia comecar ao lado do que ficou

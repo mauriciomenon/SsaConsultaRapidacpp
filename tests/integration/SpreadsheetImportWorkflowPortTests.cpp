@@ -2,6 +2,7 @@
 #include "application/SsaWorkflowService.h"
 #include "domain/ColumnCatalog.h"
 #include "infra/import/CancelableFileCopy.h"
+#include "infra/import/DataSetupPort.h"
 #include "infra/import/ImportFileConsolidator.h"
 #include "infra/import/ImportFileStager.h"
 #include "infra/import/ImportPathValidation.h"
@@ -17,6 +18,7 @@
 #include "infra/sqlite/SqliteMaintenancePort.h"
 #include "infra/sqlite/SqliteSsaImportWriter.h"
 #include "infra/sqlite/SqliteSsaRepository.h"
+#include "platform/ExclusiveFilePublisher.h"
 #include "ports/OperationError.h"
 #include "qt/FilesystemPath.h"
 #include "query/SqlQueryBuilder.h"
@@ -3895,6 +3897,132 @@ TEST_CASE("external import isolates a duplicate conflict and keeps the sibling w
     REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa = '202600802'") == 0);
     REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa = '202600803'") == 1);
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("initial data setup publishes nothing when one selected workbook is rejected") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = ssa::qt::toFileSystemPath(tempDir.path());
+    const auto sourceDirectory = root / "external";
+    const auto projectRoot = root / "project";
+    std::filesystem::create_directories(sourceDirectory);
+    const auto header =
+        row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao")});
+    // Same snapshot instant, different description: the second workbook is rejected.
+    const auto first = sourceDirectory / "A_SSA_06-07-2026_0922AM.xlsx";
+    const auto conflicting = sourceDirectory / "B_SSA_06-07-2026_0922AM.xlsx";
+    writeWorkbook(first,
+                  header + row(2, {inlineCell("A2", "202600801"), inlineCell("B2", "APV"),
+                                   inlineCell("C2", "First"), inlineCell("D2", "2026-07-01")}));
+    writeWorkbook(conflicting,
+                  header + row(2, {inlineCell("A2", "202600801"), inlineCell("B2", "APV"),
+                                   inlineCell("C2", "Second"), inlineCell("D2", "2026-07-01")}));
+    setLocalModificationTime(first, 2026, 7, 6, 9, 22);
+    setLocalModificationTime(conflicting, 2026, 7, 6, 9, 22);
+    ssa::infra::importing::DataSetupPort port(ssa::platform::publishFileExclusively);
+
+    const auto result = port.execute({.action = ssa::ports::DataSetupAction::ImportXlsx,
+                                      .projectRoot = projectRoot,
+                                      .xlsxFiles = {first, conflicting}});
+
+    INFO(result.message);
+    INFO(result.diagnostic);
+    std::vector<std::string> leftovers;
+    for (const auto& entry : std::filesystem::recursive_directory_iterator(projectRoot)) {
+        if (entry.is_regular_file()) {
+            leftovers.push_back(entry.path().lexically_relative(projectRoot).generic_string());
+        }
+    }
+    for (const auto& leftover : leftovers) {
+        UNSCOPED_INFO("left: " << leftover);
+    }
+    REQUIRE_FALSE(result.ok);
+    REQUIRE(result.diagnostic.find(conflicting.filename().string()) != std::string::npos);
+    REQUIRE_FALSE(std::filesystem::exists(projectRoot / "data" / "ssas.db"));
+    REQUIRE(leftovers.empty());
+    REQUIRE(std::filesystem::exists(first));
+    REQUIRE(std::filesystem::exists(conflicting));
+}
+
+namespace {
+
+    ssa::ports::ExclusiveFilePublishResult
+    publishAllButTheDatabase(const std::filesystem::path& source,
+                             const std::filesystem::path& destination) {
+        if (destination.filename() == "ssas.db") {
+            return {ssa::ports::ExclusiveFilePublishStatus::Failed, "injected failure"};
+        }
+        return ssa::platform::publishFileExclusively(source, destination);
+    }
+
+} // namespace
+
+TEST_CASE("initial data setup publishes the database with its processed workbooks") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = ssa::qt::toFileSystemPath(tempDir.path());
+    const auto source = root / "external" / "A_SSA_06-07-2026_0922AM.xlsx";
+    const auto projectRoot = root / "project";
+    const auto processedCopy = projectRoot / "docs_entrada" / "processadas" / source.filename();
+    std::filesystem::create_directories(source.parent_path());
+    writeWorkbook(source, row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                                  inlineCell("C1", "Descricao da SSA"),
+                                  inlineCell("D1", "Data de emissao")}) +
+                              row(2, {inlineCell("A2", "202600801"), inlineCell("B2", "APV"),
+                                      inlineCell("C2", "First"), inlineCell("D2", "2026-07-01")}));
+    ssa::infra::importing::DataSetupPort port(ssa::platform::publishFileExclusively);
+    const ssa::ports::DataSetupRequest request{.action = ssa::ports::DataSetupAction::ImportXlsx,
+                                               .projectRoot = projectRoot,
+                                               .xlsxFiles = {source}};
+
+    SECTION("an empty project root receives both") {
+        const auto result = port.execute(request);
+
+        INFO(result.message);
+        INFO(result.diagnostic);
+        REQUIRE(result.ok);
+        REQUIRE(std::filesystem::exists(processedCopy));
+        REQUIRE(std::filesystem::exists(source));
+        sqlite3* db = nullptr;
+        REQUIRE(sqlite3_open((projectRoot / "data" / "ssas.db").string().c_str(), &db) ==
+                SQLITE_OK);
+        REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 1);
+        REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_import_consolidation_journal") == 0);
+        REQUIRE(sqlite3_close(db) == SQLITE_OK);
+        std::vector<std::filesystem::path> dataFiles;
+        for (const auto& entry :
+             std::filesystem::recursive_directory_iterator(projectRoot / "data")) {
+            dataFiles.push_back(entry.path().filename());
+        }
+        REQUIRE(dataFiles == std::vector<std::filesystem::path>{"ssas.db"});
+    }
+
+    SECTION("an existing processed workbook is kept and nothing is published") {
+        std::filesystem::create_directories(processedCopy.parent_path());
+        std::ofstream{processedCopy} << "kept";
+
+        const auto result = port.execute(request);
+
+        REQUIRE_FALSE(result.ok);
+        REQUIRE(result.diagnostic.find("already exists") != std::string::npos);
+        REQUIRE(readFile(processedCopy) == "kept");
+        REQUIRE_FALSE(std::filesystem::exists(projectRoot / "data" / "ssas.db"));
+    }
+
+    SECTION("a failed database publication takes the moved workbooks back") {
+        ssa::infra::importing::DataSetupPort failingPort(publishAllButTheDatabase);
+
+        const auto result = failingPort.execute(request);
+
+        REQUIRE_FALSE(result.ok);
+        REQUIRE(result.message == "Falha ao publicar o banco de dados");
+        REQUIRE_FALSE(std::filesystem::exists(processedCopy));
+        REQUIRE_FALSE(std::filesystem::exists(projectRoot / "data" / "ssas.db"));
+        REQUIRE(std::filesystem::exists(source));
+    }
 }
 
 TEST_CASE("equal window timestamps in different formats are not a conflict") {

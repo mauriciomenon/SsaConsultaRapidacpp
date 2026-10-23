@@ -102,6 +102,11 @@ Equal snapshots and repeated rows:
   `data_planilha`); `updates` counts business value changes.
 - A failed incremental rescan publishes nothing and reports every file as not
   applied.
+- Initial data setup with XLSX is all-or-nothing. It imports into a private
+  area; a rejected workbook or a warning fails the setup and publishes neither
+  the database nor any processed copy. On success the processed copies move to
+  `docs_entrada` (never over an existing file) before the database is
+  published, and a failed publication takes them back.
 - Only committed `Applied`, `NoChanges`, and validated `NoValidRows` entries can
   enter the consolidation journal.
 
