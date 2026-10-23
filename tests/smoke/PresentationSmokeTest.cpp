@@ -3101,6 +3101,35 @@ namespace {
             QCOMPARE(callbackCount, 0);
         }
 
+        void second_export_while_one_runs_is_rejected_visibly() {
+            auto exportPort = std::make_shared<DelayedTerminalExportPort>();
+            auto workflows =
+                std::make_shared<ssa::application::SsaWorkflowService>(nullptr, exportPort);
+            ssa::presentation::ExportViewModel viewModel(
+                workflows, [] { return ssa::domain::SsaPageRequest{}; });
+            viewModel.exportFilteredList(QUrl::fromLocalFile("/tmp/ssa-export-first.csv"));
+            QTRY_VERIFY_WITH_TIMEOUT(exportPort->started(), 1000);
+            QSignalSpy resultSpy(&viewModel,
+                                 &ssa::presentation::ExportViewModel::lastResultChanged);
+
+            viewModel.exportFilteredList(QUrl::fromLocalFile("/tmp/ssa-export-second.csv"));
+            const auto resultsAfterSecond = resultSpy.count();
+            const auto statusAfterSecond = viewModel.lastStatus();
+            const bool succeededAfterSecond = viewModel.lastSucceeded();
+            const bool firstStillRunning = viewModel.running();
+            // Release the first export before asserting so a failure never blocks the worker.
+            viewModel.cancel();
+            QTRY_VERIFY_WITH_TIMEOUT(exportPort->stopObserved(), 1000);
+            exportPort->release();
+            QTRY_VERIFY_WITH_TIMEOUT(!viewModel.running(), 1000);
+
+            // The user chose a second file: say it was not written instead of returning silently.
+            QCOMPARE(resultsAfterSecond, 1);
+            QCOMPARE(statusAfterSecond, QString("rejected"));
+            QVERIFY(!succeededAfterSecond);
+            QVERIFY(firstStillRunning);
+        }
+
         void export_cancel_returnsImmediatelyAndWaitsForTheRealTerminal() {
             auto exportPort = std::make_shared<DelayedTerminalExportPort>();
             auto workflows =

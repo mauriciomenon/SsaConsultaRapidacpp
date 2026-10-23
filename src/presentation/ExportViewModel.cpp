@@ -86,6 +86,7 @@ namespace ssa::presentation {
 
     void ExportViewModel::exportFilteredList(const QUrl& outputUrl) {
         if (exportWatcher_.isRunning()) {
+            setExportState("rejected", "an export is already running", false);
             return;
         }
         if (!workflows_) {

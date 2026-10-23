@@ -178,6 +178,9 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 - Filtro de coluna em datas (Data de cadastro, Prazo limite e as demais exibidas
   como dd/mm/aaaa) aceita o formato mostrado na grade: `21/12/2021`, `12/2021`
   e `!21/12/2021` voltam a encontrar ou excluir as SSAs, como na versao Python.
+- Exportacao: enquanto uma exportacao roda, "Exportar resultados" e "Exportar
+  lista" ficam desabilitados, e um segundo pedido e recusado com aviso; antes era
+  ignorado em silencio e o segundo arquivo nunca era gravado.
 - macOS: o botao Aplicar da busca nao corta mais o simbolo de retorno, e o
   espaco entre a contagem de SSAs e "Importar XLSX" volta a ser exato.
 - Filtros avancados: um filtro de texto importado sem prefixo (ex.: `APV,ADM` no

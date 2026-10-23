@@ -65,6 +65,7 @@ ApplicationWindow {
             MenuItem {
                 objectName: "exportResultsMenuItem"
                 text: "Exportar resultados"
+                enabled: !root.vm.actions.exports.running
                 onTriggered: fileDialogs.openExportResults()
             }
             MenuSeparator {}
@@ -198,6 +199,7 @@ ApplicationWindow {
             }
             MenuItem {
                 text: "Exportar lista"
+                enabled: !root.vm.actions.exports.running
                 onTriggered: fileDialogs.openExportResults()
             }
             MenuItem {
