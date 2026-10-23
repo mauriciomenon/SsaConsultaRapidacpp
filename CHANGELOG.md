@@ -176,6 +176,9 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 - Filtro de coluna em datas (Data de cadastro, Prazo limite e as demais exibidas
   como dd/mm/aaaa) aceita o formato mostrado na grade: `21/12/2021`, `12/2021`
   e `!21/12/2021` voltam a encontrar ou excluir as SSAs, como na versao Python.
+- Rescan e assistente de dados: a copia do banco espera o tempo configurado
+  (`--sqlite-busy-wait-ms`, padrao 3 s) quando outro programa esta gravando no
+  banco de origem; antes falhava na hora com "Falha ao copiar banco".
 - Detalhes: o painel da SSA selecionada na grade mostra as relacoes "Origem" e
   "Relacionada" mesmo com essas colunas ocultas (padrao); antes so a janela de
   detalhes destacada as mostrava.

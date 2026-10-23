@@ -1,6 +1,7 @@
 #include "domain/ColumnCatalog.h"
 #include "infra/import/LegacySpreadsheetConverter.h"
 #include "infra/sqlite/SqliteConnection.h"
+#include "infra/sqlite/SqliteDatabaseBackup.h"
 #include "infra/sqlite/SqliteDatabaseWriteLock.h"
 #include "infra/sqlite/SqliteDerivadasPort.h"
 #include "infra/sqlite/SqliteMaintenancePort.h"
@@ -435,6 +436,30 @@ TEST_CASE_METHOD(SqliteRepositoryFixture, "sqlite repository executes every type
         REQUIRE(page.totalRows == operatorCase.expectedRows);
         REQUIRE(page.rows.size() == operatorCase.expectedRows);
     }
+}
+
+TEST_CASE("sqlite backup waits for a source writer within the busy wait") {
+    const SqliteFixture fixture;
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+    const auto destination = ssa::qt::toFileSystemPath(directory.filePath("snapshot.sqlite"));
+    sqlite3* writer = nullptr;
+    REQUIRE(sqlite3_open(fixture.path.string().c_str(), &writer) == SQLITE_OK);
+    // Another process (the Python app, the sqlite3 CLI) is committing when the copy starts.
+    REQUIRE(sqlite3_exec(writer, "BEGIN EXCLUSIVE", nullptr, nullptr, nullptr) == SQLITE_OK);
+    std::jthread commitLater([writer] {
+        std::this_thread::sleep_for(std::chrono::milliseconds{150});
+        sqlite3_exec(writer, "COMMIT", nullptr, nullptr, nullptr);
+    });
+
+    const ssa::infra::sqlite::SqliteBackupMessages messages{"copy failed", "backup", "init"};
+    REQUIRE_NOTHROW(ssa::infra::sqlite::backupSqliteDatabase(
+        fixture.path, destination, {}, std::chrono::milliseconds{3000}, messages));
+
+    commitLater.join();
+    sqlite3_close(writer);
+    ssa::infra::sqlite::SqliteSsaRepository copy(destination);
+    REQUIRE(copy.recordBySsaNumber(ssa::domain::SsaNumber{"202500003"}).has_value());
 }
 
 TEST_CASE_METHOD(SqliteRepositoryFixture,

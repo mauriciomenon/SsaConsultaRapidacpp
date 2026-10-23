@@ -35,6 +35,9 @@ namespace ssa::infra::sqlite {
                                           std::chrono::milliseconds{0});
         SqliteConnection destinationConnection(destination, SqliteOpenMode::ReadWriteCreate,
                                                std::chrono::milliseconds{0});
+        // backup_step takes the source read lock through the source connection, so a writer
+        // committing there (another process) is waited for like one on the destination.
+        SqliteBusyHandler sourceBusyHandler(sourceConnection.handle(), stopToken, busyWait);
         std::atomic_flag lockReported = ATOMIC_FLAG_INIT;
         SqliteBusyHandler busyHandler(destinationConnection.handle(), stopToken, busyWait,
                                       lockedSignal,
