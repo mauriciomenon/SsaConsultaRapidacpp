@@ -22,6 +22,8 @@ namespace ssa::domain {
     class SsaRelationGraph final {
       public:
         [[nodiscard]] static std::vector<SsaRelationItem> fromRecord(const SsaRecord& record);
+        // Record fields fromRecord reads besides the SSA number.
+        [[nodiscard]] static std::vector<std::string> columnKeys();
     };
 
 } // namespace ssa::domain

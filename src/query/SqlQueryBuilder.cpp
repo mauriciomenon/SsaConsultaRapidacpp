@@ -2,9 +2,11 @@
 
 #include "domain/ColumnCatalog.h"
 #include "domain/ColumnValuePriorityPolicy.h"
+#include "domain/SsaRelationGraph.h"
 #include "query/ActivityAnalyticsSqlBuilder.h"
 #include "query/SqlQueryText.h"
 
+#include <algorithm>
 #include <array>
 #include <limits>
 #include <sstream>
@@ -20,6 +22,19 @@ namespace ssa::query {
                 return ssa::domain::ColumnCatalog::visibleKeysOrDefault(request.visibleColumns);
             }
             return ssa::domain::ColumnCatalog::visibleKeysOrDefault({});
+        }
+
+        // The details panel builds Origem and Relacionada from the selected grid row, so the page
+        // always carries those columns; the table still shows only the visible ones.
+        domain::SsaPageRequest withRelationColumns(domain::SsaPageRequest request) {
+            auto columns = selectColumns(request);
+            for (auto& key : domain::SsaRelationGraph::columnKeys()) {
+                if (std::ranges::find(columns, key) == columns.end()) {
+                    columns.push_back(std::move(key));
+                }
+            }
+            request.visibleColumns = std::move(columns);
+            return request;
         }
 
         std::string qualifiedColumnIdentifier(const std::string& qualifier,
@@ -295,8 +310,8 @@ namespace ssa::query {
                                           const bool useDerivedCountSummary) const {
         const auto where = whereClauseFromRequest(request, parser_, predicateBuilder_);
 
-        SqlQuery page = buildPagedSelectQuery(request, tableName_, where.sql, where.bindings,
-                                              useDerivedCountSummary);
+        SqlQuery page = buildPagedSelectQuery(withRelationColumns(request), tableName_, where.sql,
+                                              where.bindings, useDerivedCountSummary);
 
         SqlQuery count{"SELECT COUNT(*) FROM " + quoteTableIdentifier(tableName_) +
                            (where.sql.empty() ? "" : " WHERE " + where.sql),

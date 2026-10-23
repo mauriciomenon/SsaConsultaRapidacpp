@@ -33,4 +33,10 @@ namespace ssa::domain {
         return relations;
     }
 
+    std::vector<std::string> SsaRelationGraph::columnKeys() {
+        std::vector<std::string> keys{std::string{kDerivedFromKey}};
+        keys.insert(keys.end(), kRelatedSsaKeys.begin(), kRelatedSsaKeys.end());
+        return keys;
+    }
+
 } // namespace ssa::domain

@@ -78,13 +78,17 @@ namespace {
             semana_programada INTEGER,
             semana_executada INTEGER,
             num_reprogramacoes INTEGER,
-            total_de_reprogramacoes INTEGER
+            total_de_reprogramacoes INTEGER,
+            numero_ssa_relacionada_1 TEXT,
+            numero_ssa_relacionada_2 TEXT,
+            numero_ssa_relacionada_3 TEXT
         );
         INSERT INTO ssa_table VALUES
-            ('202500003','APV','202400001','LOC-1','Casa de forca','EQ-A',202501,'2025-01-01','Trocar filtro','Executar troca','SEM','SMM','Ana','Bruno','Caio','SAM','SYS','a.xlsx','2025-01-01','A','B',202502,202503,1,1),
-            ('202500002','STE','','LOC-2','Vertedouro','EQ-B',202501,'2025-01-02','Inspecionar bomba','Inspecao','SEM','STE','Bia','Davi','Eva','SAM','SYS','b.xlsx','2025-01-02','C','D',202502,202503,0,0),
-            ('202500001','SES','','LOC-3','Patio','EQ-C',202501,'2025-01-03','Limpar painel','Limpeza','OPR','SMM','Ivo','Leo','Mia','SAM','SYS','c.xlsx','2025-01-03','E','F',202502,202503,0,0),
-            ('202500000','SCA','','LOC-4','Galeria','EQ-D',202501,'2025-01-04','Cancelar atividade','Cancelada','OPR','SMM','Noa','Lia','Rui','SAM','SYS','d.xlsx','2025-01-04','G','H',202502,202503,0,0);
+            ('202500003','APV','202400001','LOC-1','Casa de forca','EQ-A',202501,'2025-01-01','Trocar filtro','Executar troca','SEM','SMM','Ana','Bruno','Caio','SAM','SYS','a.xlsx','2025-01-01','A','B',202502,202503,1,1,NULL,NULL,NULL),
+            ('202500002','STE','','LOC-2','Vertedouro','EQ-B',202501,'2025-01-02','Inspecionar bomba','Inspecao','SEM','STE','Bia','Davi','Eva','SAM','SYS','b.xlsx','2025-01-02','C','D',202502,202503,0,0,NULL,NULL,NULL),
+            ('202500001','SES','','LOC-3','Patio','EQ-C',202501,'2025-01-03','Limpar painel','Limpeza','OPR','SMM','Ivo','Leo','Mia','SAM','SYS','c.xlsx','2025-01-03','E','F',202502,202503,0,0,NULL,NULL,NULL),
+            ('202500000','SCA','','LOC-4','Galeria','EQ-D',202501,'2025-01-04','Cancelar atividade','Cancelada','OPR','SMM','Noa','Lia','Rui','SAM','SYS','d.xlsx','2025-01-04','G','H',202502,202503,0,0,NULL,NULL,NULL);
+        UPDATE ssa_table SET numero_ssa_relacionada_1 = '202500001' WHERE numero_ssa = '202500003';
     )SQL";
         char* error = nullptr;
         const int rc = sqlite3_exec(db, sql, nullptr, nullptr, &error);
@@ -434,6 +438,21 @@ TEST_CASE_METHOD(SqliteRepositoryFixture, "sqlite repository executes every type
 }
 
 TEST_CASE_METHOD(SqliteRepositoryFixture,
+                 "sqlite repository pages carry the relation columns even when hidden") {
+    // The details panel builds Origem and Relacionada from the selected grid row.
+    ssa::domain::SsaPageRequest request;
+    request.pageSize = 10;
+    request.visibleColumns = {"numero_ssa", "situacao"};
+    request.columnFilters = {{"numero_ssa", "=202500003"}};
+
+    const auto page = repository.page(request);
+
+    REQUIRE(page.rows.size() == 1);
+    REQUIRE(page.rows[0].valueOf("derivada_de") == "202400001");
+    REQUIRE(page.rows[0].valueOf("numero_ssa_relacionada_1") == "202500001");
+}
+
+TEST_CASE_METHOD(SqliteRepositoryFixture,
                  "sqlite repository matches date column filters against the displayed date") {
     struct DateCase final {
         std::string expression;
@@ -464,16 +483,16 @@ TEST_CASE_METHOD(SqliteRepositoryFixture, "sqlite repository returns details and
 
     executeSql(path, R"SQL(
         INSERT INTO ssa_table VALUES
-            ('202500010','APV','','LOC-10','Area','EQ-X',202501,'2025-01-10','A','A','SEM','MEG2','Ana','Bruno','Caio','SAM','SYS','x.xlsx','2025-01-10','A','B',202502,202503,0,0),
-            ('202500011','APV','','LOC-11','Area','EQ-X',202501,'2025-01-11','A','A','SEM','IEE4','Ana','Bruno','Caio','SAM','SYS','x.xlsx','2025-01-11','A','B',202502,202503,0,0),
-            ('202500012','APV','','LOC-12','Area','EQ-X',202501,'2025-01-12','A','A','SEM','MEL2','Ana','Bruno','Caio','SAM','SYS','x.xlsx','2025-01-12','A','B',202502,202503,0,0),
-            ('202500013','APV','','LOC-13','Area','EQ-X',202501,'2025-01-13','A','A','SEM','IEE3','Ana','Bruno','Caio','SAM','SYS','x.xlsx','2025-01-13','A','B',202502,202503,0,0),
-            ('202500017','APV','','LOC-17','Area','EQ-X',202501,'2025-01-17','A','A','SEM','IEE2','Ana','Bruno','Caio','SAM','SYS','x.xlsx','2025-01-17','A','B',202502,202503,0,0),
-            ('202500018','APV','','LOC-18','Area','EQ-X',202501,'2025-01-18','A','A','SEM','MEL3','Ana','Bruno','Caio','SAM','SYS','x.xlsx','2025-01-18','A','B',202502,202503,0,0),
-            ('202500019','APV','','LOC-19','Area','EQ-X',202501,'2025-01-19','A','A','SEM','MEL4','Ana','Bruno','Caio','SAM','SYS','x.xlsx','2025-01-19','A','B',202502,202503,0,0),
-            ('202500014','APV','','LOC-14','Area','EQ-X',202501,'2025-01-14','A','A','SEM','AAA','Ana','Bruno','Caio','SAM','SYS','x.xlsx','2025-01-14','A','B',202502,202503,0,0),
-            ('202500015','APV','','LOC-15','Area','EQ-X',202501,'2025-01-15','A','A','SEM','MEL1','Ana','Bruno','Caio','SAM','SYS','x.xlsx','2025-01-15','A','B',202502,202503,0,0),
-            ('202500016','APV','','LOC-16','Area','EQ-X',202501,'2025-01-16','A','A','SEM','IEE1','Ana','Bruno','Caio','SAM','SYS','x.xlsx','2025-01-16','A','B',202502,202503,0,0);
+            ('202500010','APV','','LOC-10','Area','EQ-X',202501,'2025-01-10','A','A','SEM','MEG2','Ana','Bruno','Caio','SAM','SYS','x.xlsx','2025-01-10','A','B',202502,202503,0,0,NULL,NULL,NULL),
+            ('202500011','APV','','LOC-11','Area','EQ-X',202501,'2025-01-11','A','A','SEM','IEE4','Ana','Bruno','Caio','SAM','SYS','x.xlsx','2025-01-11','A','B',202502,202503,0,0,NULL,NULL,NULL),
+            ('202500012','APV','','LOC-12','Area','EQ-X',202501,'2025-01-12','A','A','SEM','MEL2','Ana','Bruno','Caio','SAM','SYS','x.xlsx','2025-01-12','A','B',202502,202503,0,0,NULL,NULL,NULL),
+            ('202500013','APV','','LOC-13','Area','EQ-X',202501,'2025-01-13','A','A','SEM','IEE3','Ana','Bruno','Caio','SAM','SYS','x.xlsx','2025-01-13','A','B',202502,202503,0,0,NULL,NULL,NULL),
+            ('202500017','APV','','LOC-17','Area','EQ-X',202501,'2025-01-17','A','A','SEM','IEE2','Ana','Bruno','Caio','SAM','SYS','x.xlsx','2025-01-17','A','B',202502,202503,0,0,NULL,NULL,NULL),
+            ('202500018','APV','','LOC-18','Area','EQ-X',202501,'2025-01-18','A','A','SEM','MEL3','Ana','Bruno','Caio','SAM','SYS','x.xlsx','2025-01-18','A','B',202502,202503,0,0,NULL,NULL,NULL),
+            ('202500019','APV','','LOC-19','Area','EQ-X',202501,'2025-01-19','A','A','SEM','MEL4','Ana','Bruno','Caio','SAM','SYS','x.xlsx','2025-01-19','A','B',202502,202503,0,0,NULL,NULL,NULL),
+            ('202500014','APV','','LOC-14','Area','EQ-X',202501,'2025-01-14','A','A','SEM','AAA','Ana','Bruno','Caio','SAM','SYS','x.xlsx','2025-01-14','A','B',202502,202503,0,0,NULL,NULL,NULL),
+            ('202500015','APV','','LOC-15','Area','EQ-X',202501,'2025-01-15','A','A','SEM','MEL1','Ana','Bruno','Caio','SAM','SYS','x.xlsx','2025-01-15','A','B',202502,202503,0,0,NULL,NULL,NULL),
+            ('202500016','APV','','LOC-16','Area','EQ-X',202501,'2025-01-16','A','A','SEM','IEE1','Ana','Bruno','Caio','SAM','SYS','x.xlsx','2025-01-16','A','B',202502,202503,0,0,NULL,NULL,NULL);
     )SQL");
 
     ssa::domain::DistinctValuesRequest request;
@@ -525,17 +544,17 @@ TEST_CASE_METHOD(SqliteRepositoryFixture,
                  "sqlite repository orders responsible and numeric distinct values for display") {
     executeSql(path, R"SQL(
         INSERT INTO ssa_table VALUES
-            ('202500020','APV','','LOC-20','Area','EQ-X',202501,'2025-01-20','A','A','SEM','IEE2','Ana','Bruno','IEE2 BRUNO','SAM','SYS','x.xlsx','2025-01-20','A','B',202502,202503,12,12),
-            ('202500021','APV','','LOC-21','Area','EQ-X',202501,'2025-01-21','A','A','SEM','MEG2','Ana','Bruno','MARIA','SAM','SYS','x.xlsx','2025-01-21','A','B',202502,202503,2,2),
-            ('202500022','APV','','LOC-22','Area','EQ-X',202501,'2025-01-22','A','A','SEM','MEG2','Ana','Bruno','IEE3 ANA','SAM','SYS','x.xlsx','2025-01-22','A','B',202502,202503,7,7),
-            ('202500023','APV','','LOC-23','Area','EQ-X',202501,'2025-01-23','A','A','SEM','MEG2','Ana','Bruno','MEL1 CAIO','SAM','SYS','x.xlsx','2025-01-23','A','B',202502,202503,3,3),
-            ('202500024','APV','','LOC-24','Area','EQ-X',202501,'2025-01-24','A','A','SEM','MEG2','Ana','Bruno','IEE1 DORA','SAM','SYS','x.xlsx','2025-01-24','A','B',202502,202503,9,9),
-            ('202500025','APV','','LOC-25','Area','EQ-X',202501,'2025-01-25','A','A','SEM','IEE3','Ana','Bruno','ZE IEE3','SAM','SYS','x.xlsx','2025-01-25','A','B',202502,202503,1,1),
-            ('202500026','APV','','LOC-26','Area','EQ-X',202501,'2025-01-26','A','A','SEM','IEE1','Ana','Bruno','ZE IEE1','SAM','SYS','x.xlsx','2025-01-26','A','B',202502,202503,0,0),
-            ('202500027','APV','','LOC-27','Area','EQ-X',202501,'2025-01-27','A','A','SEM','IEE3','Ana','Bruno','CARLOS SETOR','SAM','SYS','x.xlsx','2025-01-27','A','B',202502,202503,4,4),
-            ('202500028','APV','','LOC-28','Area','EQ-X',202501,'2025-01-28','A','A','SEM','IEE1','Ana','Bruno','ALAN SETOR','SAM','SYS','x.xlsx','2025-01-28','A','B',202502,202503,5,5),
-            ('202500029','APV','','LOC-29','Area','EQ-X',202501,'2025-01-29','A','A','SEM','MEL1','Ana','Bruno','BRUNO SETOR','SAM','SYS','x.xlsx','2025-01-29','A','B',202502,202503,6,6),
-            ('202500030','APV','','LOC-30','Area','EQ-X',202501,'2025-01-30','A','A','SEM','AAA','Ana','Bruno','AARON SETOR','SAM','SYS','x.xlsx','2025-01-30','A','B',202502,202503,8,8);
+            ('202500020','APV','','LOC-20','Area','EQ-X',202501,'2025-01-20','A','A','SEM','IEE2','Ana','Bruno','IEE2 BRUNO','SAM','SYS','x.xlsx','2025-01-20','A','B',202502,202503,12,12,NULL,NULL,NULL),
+            ('202500021','APV','','LOC-21','Area','EQ-X',202501,'2025-01-21','A','A','SEM','MEG2','Ana','Bruno','MARIA','SAM','SYS','x.xlsx','2025-01-21','A','B',202502,202503,2,2,NULL,NULL,NULL),
+            ('202500022','APV','','LOC-22','Area','EQ-X',202501,'2025-01-22','A','A','SEM','MEG2','Ana','Bruno','IEE3 ANA','SAM','SYS','x.xlsx','2025-01-22','A','B',202502,202503,7,7,NULL,NULL,NULL),
+            ('202500023','APV','','LOC-23','Area','EQ-X',202501,'2025-01-23','A','A','SEM','MEG2','Ana','Bruno','MEL1 CAIO','SAM','SYS','x.xlsx','2025-01-23','A','B',202502,202503,3,3,NULL,NULL,NULL),
+            ('202500024','APV','','LOC-24','Area','EQ-X',202501,'2025-01-24','A','A','SEM','MEG2','Ana','Bruno','IEE1 DORA','SAM','SYS','x.xlsx','2025-01-24','A','B',202502,202503,9,9,NULL,NULL,NULL),
+            ('202500025','APV','','LOC-25','Area','EQ-X',202501,'2025-01-25','A','A','SEM','IEE3','Ana','Bruno','ZE IEE3','SAM','SYS','x.xlsx','2025-01-25','A','B',202502,202503,1,1,NULL,NULL,NULL),
+            ('202500026','APV','','LOC-26','Area','EQ-X',202501,'2025-01-26','A','A','SEM','IEE1','Ana','Bruno','ZE IEE1','SAM','SYS','x.xlsx','2025-01-26','A','B',202502,202503,0,0,NULL,NULL,NULL),
+            ('202500027','APV','','LOC-27','Area','EQ-X',202501,'2025-01-27','A','A','SEM','IEE3','Ana','Bruno','CARLOS SETOR','SAM','SYS','x.xlsx','2025-01-27','A','B',202502,202503,4,4,NULL,NULL,NULL),
+            ('202500028','APV','','LOC-28','Area','EQ-X',202501,'2025-01-28','A','A','SEM','IEE1','Ana','Bruno','ALAN SETOR','SAM','SYS','x.xlsx','2025-01-28','A','B',202502,202503,5,5,NULL,NULL,NULL),
+            ('202500029','APV','','LOC-29','Area','EQ-X',202501,'2025-01-29','A','A','SEM','MEL1','Ana','Bruno','BRUNO SETOR','SAM','SYS','x.xlsx','2025-01-29','A','B',202502,202503,6,6,NULL,NULL,NULL),
+            ('202500030','APV','','LOC-30','Area','EQ-X',202501,'2025-01-30','A','A','SEM','AAA','Ana','Bruno','AARON SETOR','SAM','SYS','x.xlsx','2025-01-30','A','B',202502,202503,8,8,NULL,NULL,NULL);
     )SQL");
 
     ssa::domain::DistinctValuesRequest peopleRequest;
@@ -573,10 +592,10 @@ TEST_CASE_METHOD(SqliteRepositoryFixture,
                  "sqlite repository orders status distinct values alphabetically") {
     executeSql(path, R"SQL(
         INSERT INTO ssa_table VALUES
-            ('202500031','STE','','LOC-31','Area','EQ-X',202501,'2025-01-31','A','A','SEM','IEE3','Ana','Bruno','Caio','SAM','SYS','x.xlsx','2025-01-31','A','B',202502,202503,0,0),
-            ('202500032','AAD','','LOC-32','Area','EQ-X',202501,'2025-02-01','A','A','SEM','IEE3','Ana','Bruno','Caio','SAM','SYS','x.xlsx','2025-02-01','A','B',202502,202503,0,0),
-            ('202500033','APV','','LOC-33','Area','EQ-X',202501,'2025-02-02','A','A','SEM','IEE3','Ana','Bruno','Caio','SAM','SYS','x.xlsx','2025-02-02','A','B',202502,202503,0,0),
-            ('202500034','ADM','','LOC-34','Area','EQ-X',202501,'2025-02-03','A','A','SEM','IEE3','Ana','Bruno','Caio','SAM','SYS','x.xlsx','2025-02-03','A','B',202502,202503,0,0);
+            ('202500031','STE','','LOC-31','Area','EQ-X',202501,'2025-01-31','A','A','SEM','IEE3','Ana','Bruno','Caio','SAM','SYS','x.xlsx','2025-01-31','A','B',202502,202503,0,0,NULL,NULL,NULL),
+            ('202500032','AAD','','LOC-32','Area','EQ-X',202501,'2025-02-01','A','A','SEM','IEE3','Ana','Bruno','Caio','SAM','SYS','x.xlsx','2025-02-01','A','B',202502,202503,0,0,NULL,NULL,NULL),
+            ('202500033','APV','','LOC-33','Area','EQ-X',202501,'2025-02-02','A','A','SEM','IEE3','Ana','Bruno','Caio','SAM','SYS','x.xlsx','2025-02-02','A','B',202502,202503,0,0,NULL,NULL,NULL),
+            ('202500034','ADM','','LOC-34','Area','EQ-X',202501,'2025-02-03','A','A','SEM','IEE3','Ana','Bruno','Caio','SAM','SYS','x.xlsx','2025-02-03','A','B',202502,202503,0,0,NULL,NULL,NULL);
     )SQL");
 
     ssa::domain::DistinctValuesRequest request;
@@ -592,7 +611,7 @@ TEST_CASE_METHOD(SqliteRepositoryFixture,
                  "sqlite repository projects derived count virtual column") {
     executeSql(path, R"SQL(
         INSERT INTO ssa_table VALUES
-            ('202500004','APV','202500002','LOC-5','Tomada dagua','EQ-E',202501,'2025-01-05','Ajustar valvula','Ajuste','SEM','SMM','Ari','Beto','Clio','SAM','SYS','e.xlsx','2025-01-05','I','J',202502,202503,0,0);
+            ('202500004','APV','202500002','LOC-5','Tomada dagua','EQ-E',202501,'2025-01-05','Ajustar valvula','Ajuste','SEM','SMM','Ari','Beto','Clio','SAM','SYS','e.xlsx','2025-01-05','I','J',202502,202503,0,0,NULL,NULL,NULL);
     )SQL");
 
     ssa::domain::SsaPageRequest request;
@@ -620,7 +639,7 @@ TEST_CASE_METHOD(SqliteRepositoryFixture,
                  "sqlite repository migrates a legacy database to the derived count summary") {
     executeSql(path, R"SQL(
         INSERT INTO ssa_table VALUES
-            ('202500004','APV','202500002','LOC-5','Tomada dagua','EQ-E',202501,'2025-01-05','Ajustar valvula','Ajuste','SEM','SMM','Ari','Beto','Clio','SAM','SYS','e.xlsx','2025-01-05','I','J',202502,202503,0,0);
+            ('202500004','APV','202500002','LOC-5','Tomada dagua','EQ-E',202501,'2025-01-05','Ajustar valvula','Ajuste','SEM','SMM','Ari','Beto','Clio','SAM','SYS','e.xlsx','2025-01-05','I','J',202502,202503,0,0,NULL,NULL,NULL);
     )SQL");
 
     ssa::domain::SsaPageRequest request;
@@ -648,7 +667,7 @@ TEST_CASE_METHOD(
     "derived count initialization keeps concurrent reads and cancellation responsive") {
     executeSql(path, R"SQL(
         INSERT INTO ssa_table VALUES
-            ('202500004','APV','202500002','LOC-5','Tomada dagua','EQ-E',202501,'2025-01-05','Ajustar valvula','Ajuste','SEM','SMM','Ari','Beto','Clio','SAM','SYS','e.xlsx','2025-01-05','I','J',202502,202503,0,0);
+            ('202500004','APV','202500002','LOC-5','Tomada dagua','EQ-E',202501,'2025-01-05','Ajustar valvula','Ajuste','SEM','SMM','Ari','Beto','Clio','SAM','SYS','e.xlsx','2025-01-05','I','J',202502,202503,0,0,NULL,NULL,NULL);
     )SQL");
 
     ssa::domain::SsaPageRequest request;
@@ -728,7 +747,7 @@ TEST_CASE_METHOD(SqliteRepositoryFixture,
                  "canceled derived count initializer permits an immediate retry") {
     executeSql(path, R"SQL(
         INSERT INTO ssa_table VALUES
-            ('202500004','APV','202500002','LOC-5','Tomada dagua','EQ-E',202501,'2025-01-05','Ajustar valvula','Ajuste','SEM','SMM','Ari','Beto','Clio','SAM','SYS','e.xlsx','2025-01-05','I','J',202502,202503,0,0);
+            ('202500004','APV','202500002','LOC-5','Tomada dagua','EQ-E',202501,'2025-01-05','Ajustar valvula','Ajuste','SEM','SMM','Ari','Beto','Clio','SAM','SYS','e.xlsx','2025-01-05','I','J',202502,202503,0,0,NULL,NULL,NULL);
     )SQL");
 
     ssa::domain::SsaPageRequest request;
@@ -793,7 +812,7 @@ TEST_CASE_METHOD(SqliteRepositoryFixture,
                  "sqlite repository keeps derived count reads readonly while write lock is held") {
     executeSql(path, R"SQL(
         INSERT INTO ssa_table VALUES
-            ('202500004','APV','202500002','LOC-5','Tomada dagua','EQ-E',202501,'2025-01-05','Ajustar valvula','Ajuste','SEM','SMM','Ari','Beto','Clio','SAM','SYS','e.xlsx','2025-01-05','I','J',202502,202503,0,0);
+            ('202500004','APV','202500002','LOC-5','Tomada dagua','EQ-E',202501,'2025-01-05','Ajustar valvula','Ajuste','SEM','SMM','Ari','Beto','Clio','SAM','SYS','e.xlsx','2025-01-05','I','J',202502,202503,0,0,NULL,NULL,NULL);
     )SQL");
     ssa::domain::SsaPageRequest request;
     request.pageSize = 10;
@@ -843,7 +862,7 @@ TEST_CASE("sqlite repository reads derived counts from a legacy readonly databas
     const auto path = createFixture();
     executeSql(path, R"SQL(
         INSERT INTO ssa_table VALUES
-            ('202500004','APV','202500002','LOC-5','Tomada dagua','EQ-E',202501,'2025-01-05','Ajustar valvula','Ajuste','SEM','SMM','Ari','Beto','Clio','SAM','SYS','e.xlsx','2025-01-05','I','J',202502,202503,0,0);
+            ('202500004','APV','202500002','LOC-5','Tomada dagua','EQ-E',202501,'2025-01-05','Ajustar valvula','Ajuste','SEM','SMM','Ari','Beto','Clio','SAM','SYS','e.xlsx','2025-01-05','I','J',202502,202503,0,0,NULL,NULL,NULL);
     )SQL");
 
     std::error_code error;
@@ -897,10 +916,10 @@ TEST_CASE_METHOD(SqliteRepositoryFixture,
                  "sqlite repository executes the grouped executadas report") {
     executeSql(path, R"SQL(
         INSERT INTO ssa_table VALUES
-            ('202500003','STE','','LOC-6','Casa de forca','EQ-F',202501,'2025-01-06','A','A','SEM','SMM','Ana','Bruno','Caio','SAM','SYS','f.xlsx','2025-01-06','A','B',202502,202503,0,0),
-            ('202500005','STE','','LOC-7','Casa de forca','EQ-G',202501,'2025-01-07','A','A','SEM','SMM2','Ana','Bruno','Caio','SAM','SYS','g.xlsx','2025-01-07','A','B',202502,202503,0,0),
-            ('202500005','STE','','LOC-7','Casa de forca','EQ-G',202503,'2025-01-07','A','A','SEM','SMM2','Ana','Bruno','Caio','SAM','SYS','g-copy.xlsx','2025-01-07','A','B',202502,202503,0,0),
-            ('202500006','STE','','LOC-8','Casa de forca','EQ-H',202501,'2025-01-08','A','A','SEM','SMM2','Ana','Bruno','','SAM','SYS','h.xlsx','2025-01-08','A','B',202502,202503,0,0);
+            ('202500003','STE','','LOC-6','Casa de forca','EQ-F',202501,'2025-01-06','A','A','SEM','SMM','Ana','Bruno','Caio','SAM','SYS','f.xlsx','2025-01-06','A','B',202502,202503,0,0,NULL,NULL,NULL),
+            ('202500005','STE','','LOC-7','Casa de forca','EQ-G',202501,'2025-01-07','A','A','SEM','SMM2','Ana','Bruno','Caio','SAM','SYS','g.xlsx','2025-01-07','A','B',202502,202503,0,0,NULL,NULL,NULL),
+            ('202500005','STE','','LOC-7','Casa de forca','EQ-G',202503,'2025-01-07','A','A','SEM','SMM2','Ana','Bruno','Caio','SAM','SYS','g-copy.xlsx','2025-01-07','A','B',202502,202503,0,0,NULL,NULL,NULL),
+            ('202500006','STE','','LOC-8','Casa de forca','EQ-H',202501,'2025-01-08','A','A','SEM','SMM2','Ana','Bruno','','SAM','SYS','h.xlsx','2025-01-08','A','B',202502,202503,0,0,NULL,NULL,NULL);
     )SQL");
 
     ssa::domain::SsaPageRequest request;
