@@ -125,6 +125,12 @@ Equal snapshots and repeated rows:
   import consolidation does), and a failed publication takes them back.
 - Only committed `Applied`, `NoChanges`, and validated `NoValidRows` entries can
   enter the consolidation journal.
+- Known limit: a journal row whose staged source and destination are both
+  gone is ambiguous and stops every later import of that database until it is
+  resolved by hand; the journal never releases a move on its own. Untagged
+  staging copies (written before per-database tags) can be removed by the
+  cleanup of another database sharing `docs_entrada`, which can leave such a
+  row.
 - A `docs_entrada` file whose identity, size or modification time changed
   between discovery and the consolidation plan (a sync client or a fixed-name
   export replacing it) fails the run: nothing is published and the file stays

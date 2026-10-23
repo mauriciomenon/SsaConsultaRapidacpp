@@ -6,6 +6,11 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 
 ### Corrigido
 
+- Configuracao inicial: pastas temporarias deixadas por uma configuracao
+  interrompida sao removidas na proxima tentativa. Importar ate 64 planilhas
+  com o banco interrompendo a gravacao mostra o resumo e a causa, como em lotes
+  maiores. Uma pasta comum com nome de copia temporaria em `docs_entrada` nao
+  bloqueia mais os rescans.
 - Listas suspensas perto do rodape da janela (por exemplo nos cards de
   filtros avancados da ultima linha) abrem para cima, ancoradas no campo; antes
   abriam uma faixa de uma linha abaixo dele.
