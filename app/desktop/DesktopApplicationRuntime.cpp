@@ -78,7 +78,10 @@ namespace ssa::app::desktop {
         mainViewModel_->ui()->setSystemTheme(systemThemeResolver_.currentTheme());
     }
 
-    DesktopApplicationRuntime::~DesktopApplicationRuntime() = default;
+    DesktopApplicationRuntime::~DesktopApplicationRuntime() {
+        // The log list dies with the view model; worker threads may still be logging.
+        logSink_->detachModel();
+    }
 
     void DesktopApplicationRuntime::forceShutdown() {
         constexpr qint64 forceShutdownTimeoutMs = 5'000;

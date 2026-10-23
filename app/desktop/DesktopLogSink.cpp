@@ -5,7 +5,6 @@
 
 #include <QDateTime>
 #include <QMetaObject>
-#include <QPointer>
 
 #include <condition_variable>
 #include <exception>
@@ -73,18 +72,22 @@ namespace ssa::app::desktop {
             publish({severity, QStringLiteral("Qt"), message, detail});
         }
 
-        // Startup logs before the view model exists; they reach its log list once attached.
+        // Startup logs before the view model exists; they reach its log list once attached, in
+        // order (the replay holds the lock, so a worker entry cannot jump ahead).
         void attachModel(ssa::presentation::RecentLogModel& model) {
-            std::vector<Entry> pending;
-            {
-                const std::scoped_lock lock(modelMutex_);
-                model_ = &model;
-                attached_ = true;
-                pending.swap(pending_);
+            const std::scoped_lock lock(modelMutex_);
+            model_ = &model;
+            attached_ = true;
+            for (auto& entry : pending_) {
+                postLocked(std::move(entry));
             }
-            for (auto& entry : pending) {
-                publish(std::move(entry));
-            }
+            pending_.clear();
+        }
+
+        // Called before the model is destroyed; later entries still reach the file only.
+        void detachModel() {
+            const std::scoped_lock lock(modelMutex_);
+            model_ = nullptr;
         }
 
         QtMessageHandler previousHandler{nullptr};
@@ -106,31 +109,31 @@ namespace ssa::app::desktop {
         }
 
         void publish(Entry entry) {
-            QPointer<ssa::presentation::RecentLogModel> model;
-            {
-                const std::scoped_lock lock(modelMutex_);
-                if (!attached_) {
-                    pending_.push_back(std::move(entry));
-                    return;
-                }
-                model = model_;
+            const std::scoped_lock lock(modelMutex_);
+            if (!attached_) {
+                pending_.push_back(std::move(entry));
+                return;
             }
-            if (model == nullptr) {
+            postLocked(std::move(entry));
+        }
+
+        // Posting under modelMutex_ keeps the model alive until the event is queued: detachModel()
+        // waits for it, and Qt drops the queued events of a destroyed receiver.
+        void postLocked(Entry entry) {
+            if (model_ == nullptr) {
                 return;
             }
             QMetaObject::invokeMethod(
-                model.data(),
-                [model, entry = std::move(entry)] {
-                    if (model != nullptr) {
-                        model->append(entry.severity, entry.source, entry.message, entry.detail);
-                    }
+                model_,
+                [model = model_, entry = std::move(entry)] {
+                    model->append(entry.severity, entry.source, entry.message, entry.detail);
                 },
                 Qt::QueuedConnection);
         }
 
         ssa::platform::RotatingLogWriter writer_;
         std::mutex modelMutex_;
-        QPointer<ssa::presentation::RecentLogModel> model_;
+        ssa::presentation::RecentLogModel* model_{nullptr};
         bool attached_{false};
         std::vector<Entry> pending_;
         std::mutex handlerMutex_;
@@ -153,6 +156,10 @@ namespace ssa::app::desktop {
 
     void DesktopLogSink::attachModel(ssa::presentation::RecentLogModel& model) {
         state_->attachModel(model);
+    }
+
+    void DesktopLogSink::detachModel() {
+        state_->detachModel();
     }
 
     DesktopLogSink::~DesktopLogSink() {

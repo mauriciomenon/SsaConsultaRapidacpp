@@ -7,6 +7,7 @@
 #include <QTemporaryDir>
 #include <QTest>
 
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <future>
@@ -120,6 +121,31 @@ namespace {
             QTRY_COMPARE_WITH_TIMEOUT(model.rowCount(), 1, 1000);
             qWarning().noquote() << "desktop log sink attached warning";
             QTRY_COMPARE_WITH_TIMEOUT(model.rowCount(), 2, 1000);
+        }
+
+        void detachedModelIsSafeToDestroyWhileWorkersLog() {
+            QTemporaryDir temporaryDirectory;
+            QVERIFY(temporaryDirectory.isValid());
+            ssa::app::desktop::DesktopLogSink sink(temporaryDirectory.path().toStdString());
+            auto model = std::make_unique<ssa::presentation::RecentLogModel>();
+            sink.attachModel(*model);
+            qWarning().noquote() << "desktop log sink before detach";
+            QTRY_COMPARE_WITH_TIMEOUT(model->rowCount(), 1, 1000);
+
+            // Shutdown: a worker keeps logging while the view model (and its list) is destroyed.
+            std::atomic_bool stop{false};
+            std::jthread worker([&stop] {
+                while (!stop.load()) {
+                    qWarning().noquote() << "desktop log sink worker during shutdown";
+                }
+            });
+            sink.detachModel();
+            QCOMPARE(model->rowCount(), 1);
+            model.reset();
+            QCoreApplication::processEvents();
+            stop = true;
+            worker.join();
+            QCoreApplication::processEvents();
         }
 
         void destructionWaitsForInFlightMessageHandler() {

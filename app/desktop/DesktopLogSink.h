@@ -18,6 +18,8 @@ namespace ssa::app::desktop {
         ~DesktopLogSink();
 
         void attachModel(ssa::presentation::RecentLogModel& model);
+        // Must run before the attached model is destroyed.
+        void detachModel();
 
         DesktopLogSink(const DesktopLogSink&) = delete;
         DesktopLogSink& operator=(const DesktopLogSink&) = delete;
