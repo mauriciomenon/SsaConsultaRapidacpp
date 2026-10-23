@@ -35,7 +35,7 @@ else()
   message(FATAL_ERROR "unsupported smoke MODE '${MODE}'")
 endif()
 
-set(QT_ENVIRONMENT QT_QPA_PLATFORM=offscreen QT_QUICK_CONTROLS_STYLE=Basic)
+set(QT_ENVIRONMENT QT_QPA_PLATFORM=offscreen QT_QUICK_CONTROLS_STYLE=Fusion)
 if(WIN32)
   list(APPEND QT_ENVIRONMENT "QT_QPA_FONTDIR=$ENV{WINDIR}/Fonts")
 endif()

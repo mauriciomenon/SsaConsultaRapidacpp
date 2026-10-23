@@ -72,7 +72,7 @@ namespace {
 
 int main(int argc, char* argv[]) {
     qputenv("QT_QPA_PLATFORM", "offscreen");
-    qputenv("QT_QUICK_CONTROLS_STYLE", "Basic");
+    qputenv("QT_QUICK_CONTROLS_STYLE", "Fusion");
     QGuiApplication application(argc, argv);
     QCommandLineParser parser;
     parser.addHelpOption();

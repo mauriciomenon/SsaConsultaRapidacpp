@@ -191,7 +191,7 @@ jobs:
       - name: Diagnose failed tests
         if: failure()
         env:
-          QT_QUICK_CONTROLS_STYLE: Basic
+          QT_QUICK_CONTROLS_STYLE: Fusion
           QT_SCALE_FACTOR: "1"
         run: |
           $buildDir = "build/Windows/native/dev"

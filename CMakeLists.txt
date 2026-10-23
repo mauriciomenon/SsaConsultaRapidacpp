@@ -769,7 +769,7 @@ if(SSA_BUILD_TESTS)
   set_tests_properties(
     ssa_qml_advanced_popup_tests
     PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE ENVIRONMENT
-               "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Basic")
+               "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Fusion")
 
   add_executable(ssa_qml_activity_analytics_tests
                  tests/smoke/ActivityAnalyticsQmlTest.cpp)
@@ -781,7 +781,7 @@ if(SSA_BUILD_TESTS)
   set_tests_properties(
     ssa_qml_activity_analytics_tests
     PROPERTIES TIMEOUT 15 RUN_SERIAL TRUE ENVIRONMENT
-               "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Basic")
+               "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Fusion")
 
   add_executable(ssa_qml_analytics_charts_tests
                  tests/smoke/AnalyticsChartsQmlQuickTest.cpp)
@@ -798,7 +798,7 @@ if(SSA_BUILD_TESTS)
   set_tests_properties(
     ssa_qml_analytics_charts_tests
     PROPERTIES TIMEOUT 15 RUN_SERIAL TRUE ENVIRONMENT
-               "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Basic")
+               "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Fusion")
 
   add_executable(ssa_qt_activity_analytics_view_model_tests
                  tests/smoke/ActivityAnalyticsViewModelTest.cpp)
@@ -820,7 +820,7 @@ if(SSA_BUILD_TESTS)
   set_tests_properties(
     ssa_qml_activity_analytics_window_tests
     PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE ENVIRONMENT
-               "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Basic")
+               "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Fusion")
 
   add_executable(ssa_qml_workflow_progress_dialog_tests
                  tests/smoke/WorkflowProgressDialogQmlTest.cpp)
@@ -832,7 +832,7 @@ if(SSA_BUILD_TESTS)
   set_tests_properties(
     ssa_qml_workflow_progress_dialog_tests
     PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE ENVIRONMENT
-               "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Basic")
+               "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Fusion")
 
   add_executable(ssa_qml_theme_gallery_tests
                  tests/smoke/ThemeGallerySmokeTest.cpp)
@@ -845,7 +845,7 @@ if(SSA_BUILD_TESTS)
   set_property(
     TEST ssa_qml_theme_gallery_tests
     PROPERTY ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
-             "QT_QUICK_CONTROLS_STYLE=Basic" "QT_SCALE_FACTOR=1")
+             "QT_QUICK_CONTROLS_STYLE=Fusion" "QT_SCALE_FACTOR=1")
 
   add_executable(
     ssa_qml_help_about_tests app/desktop/DesktopSmokeObjectNames.cpp
@@ -862,7 +862,7 @@ if(SSA_BUILD_TESTS)
   set_tests_properties(
     ssa_qml_help_about_tests
     PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE ENVIRONMENT
-               "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Basic")
+               "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Fusion")
 
   if(WIN32)
     set_property(
