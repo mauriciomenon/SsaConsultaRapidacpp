@@ -804,9 +804,26 @@ namespace ssa::infra::importing {
                            request.files.size(), 100, result.message, result.diagnostic);
             return std::move(result);
         };
+        // An exception that ends a batch (a transaction the database aborted, as on a full
+        // disk) becomes a Failed batch with its files, so earlier committed batches keep their
+        // summary and the cause reaches the diagnostic.
+        const auto runBatch = [&](const ports::ImportExternalFilesRequest& batchRequest,
+                                  const ProgressContext& progress) -> ports::WorkflowResult {
+            try {
+                return importExternalFilesBatch(batchRequest, stopToken, progress);
+            } catch (const std::exception& error) {
+                const auto* operationError = dynamic_cast<const ports::OperationError*>(&error);
+                return withSummary(
+                    {ports::WorkflowStatus::Failed, "import_xlsx_to_sqlite batch_failed", false,
+                     operationError == nullptr
+                         ? std::string{error.what()}
+                         : std::string{error.what()} + ": " + operationError->diagnostic()},
+                    selectedFilesSummary(batchRequest.files, ports::ImportFileStatus::Failed));
+            }
+        };
         if (request.files.size() <= kMaxImportFilesPerBatch) {
-            return complete(importExternalFilesBatch(
-                request, stopToken, {&request.progress, 0, request.files.size(), 1, false}));
+            return complete(
+                runBatch(request, {&request.progress, 0, request.files.size(), 1, false}));
         }
 
         ports::ImportSummary totalSummary;
@@ -828,20 +845,7 @@ namespace ssa::infra::importing {
                 request.files.begin() + static_cast<std::ptrdiff_t>(batchEnd));
             const ProgressContext progress{&request.progress, batchStart, request.files.size(),
                                            batchStart / kMaxImportFilesPerBatch + 1, false};
-            ports::WorkflowResult batchResult;
-            try {
-                batchResult = importExternalFilesBatch(batchRequest, stopToken, progress);
-            } catch (const std::exception& error) {
-                // Earlier batches are committed: an exception that ends this one (a
-                // transaction the database aborted, as on a full disk) must keep their summary.
-                const auto* operationError = dynamic_cast<const ports::OperationError*>(&error);
-                batchResult = withSummary(
-                    {ports::WorkflowStatus::Failed, "import_xlsx_to_sqlite batch_failed", false,
-                     operationError == nullptr
-                         ? std::string{error.what()}
-                         : std::string{error.what()} + ": " + operationError->diagnostic()},
-                    selectedFilesSummary(batchRequest.files, ports::ImportFileStatus::Failed));
-            }
+            const auto batchResult = runBatch(batchRequest, progress);
             ++completedBatchCount;
             if (batchResult.importSummary) {
                 mergeImportSummary(totalSummary, *batchResult.importSummary);

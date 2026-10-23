@@ -35,6 +35,7 @@
 #include <QTimeZone>
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 #include <catch2/matchers/catch_matchers.hpp>
 #include <miniz.h>
 #include <sqlite3.h>
@@ -3943,10 +3944,12 @@ TEST_CASE("external import keeps the summary of committed batches when a later b
         row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
                 inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao")});
     std::vector<std::filesystem::path> files;
-    for (int index = 1; index <= 65; ++index) {
-        const auto number =
-            index == 65 ? std::string{"202600999"}
-                        : "2026001" + std::string(index < 10 ? "0" : "") + std::to_string(index);
+    // One batch (nothing committed) and two batches (the first committed).
+    const int fileCount = GENERATE(2, 65);
+    for (int index = 1; index <= fileCount; ++index) {
+        const auto number = index == fileCount ? std::string{"202600999"}
+                                               : "2026001" + std::string(index < 10 ? "0" : "") +
+                                                     std::to_string(index);
         files.push_back(sourceDirectory / ("file_" + std::to_string(index) + ".xlsx"));
         writeWorkbook(files.back(),
                       header + row(2, {inlineCell("A2", number), inlineCell("B2", "APV"),
@@ -3961,8 +3964,8 @@ TEST_CASE("external import keeps the summary of committed batches when a later b
     INFO(result.diagnostic);
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
     REQUIRE(result.importSummary.has_value());
-    REQUIRE(result.importSummary->inserts == 64);
-    REQUIRE(result.importSummary->files.size() == 65);
+    REQUIRE(result.importSummary->inserts == (fileCount > 64 ? 64U : 0U));
+    REQUIRE(result.importSummary->files.size() == static_cast<std::size_t>(fileCount));
     REQUIRE(result.importSummary->files.back().status == ssa::ports::ImportFileStatus::Failed);
     REQUIRE(result.diagnostic.find("injected abort") != std::string::npos);
     // The aborted batch was never committed: its staged copy is gone too.
