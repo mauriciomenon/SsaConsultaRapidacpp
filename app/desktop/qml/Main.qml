@@ -14,6 +14,8 @@ ApplicationWindow {
     property bool shutdownCloseAccepted: false
     readonly property int bottomPaneHeight: Theme.bottomPaneHeight(height)
     readonly property int paneMinimumHeight: height <= 820 ? 200 : 280
+    // Switching or setting up the database relaunches the app, which would cancel these.
+    readonly property bool dataOperationRunning: root.vm.actions.workflows.running || root.vm.actions.exports.running
 
     width: 1580
     height: 940
@@ -53,13 +55,13 @@ ApplicationWindow {
             MenuItem {
                 objectName: "configureDataMenuItem"
                 text: "Configurar dados..."
-                enabled: !root.vm.dataSetup.running
+                enabled: !root.vm.dataSetup.running && !root.dataOperationRunning
                 onTriggered: dataSetupWizard.openOptional()
             }
             MenuItem {
                 objectName: "openDatabaseMenuItem"
                 text: "Carregar outro banco"
-                enabled: !root.vm.databaseSwitch.running
+                enabled: !root.vm.databaseSwitch.running && !root.dataOperationRunning
                 onTriggered: fileDialogs.openDatabase()
             }
             MenuItem {

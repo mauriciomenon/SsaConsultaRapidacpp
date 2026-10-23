@@ -24,9 +24,11 @@
 #include <QQuickWindow>
 #include <QSignalSpy>
 #include <QTest>
+#include <QThread>
 #include <QWindow>
 #include <QtQml/qqml.h>
 
+#include <atomic>
 #include <memory>
 #include <stop_token>
 #include <vector>
@@ -513,6 +515,73 @@ namespace {
                 QTRY_VERIFY_WITH_TIMEOUT(viewModel.columns()->visibleKeys() == applied, 1000);
                 QCOMPARE(viewModel.browse()->visibleColumns(), applied);
             }
+        }
+
+        void database_switch_menus_wait_for_a_running_workflow() {
+            // A rescan that runs until the test releases it.
+            class HeldRescanPort final : public ssa::ports::IImportWorkflowPort {
+              public:
+                ssa::ports::WorkflowResult
+                importExternalFiles(const ssa::ports::ImportExternalFilesRequest&,
+                                    std::stop_token = {}) override {
+                    return {ssa::ports::WorkflowStatus::Succeeded, "import staged"};
+                }
+                ssa::ports::WorkflowResult rescan(const ssa::ports::RescanRequest&,
+                                                  std::stop_token = {}) override {
+                    while (!released.load()) {
+                        QThread::msleep(1);
+                    }
+                    return {ssa::ports::WorkflowStatus::NoChanges, "rescan unchanged"};
+                }
+                std::atomic_bool released{false};
+            };
+            auto port = std::make_shared<HeldRescanPort>();
+            struct ReleaseOnExit final {
+                std::atomic_bool& flag;
+                ~ReleaseOnExit() {
+                    flag = true;
+                }
+            } releaseOnExit{port->released};
+            auto repository = std::make_shared<ssa::tests::presentation_smoke::FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<ssa::tests::presentation_smoke::FakeCommands>();
+            auto preferences = std::make_shared<ssa::tests::presentation_smoke::FakePreferences>();
+            auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(port);
+            ssa::presentation::MainViewModel viewModel(service, commands, preferences, nullptr,
+                                                       workflows);
+            SourceQmlUrlInterceptor sourceInterceptor;
+            QQmlEngine engine;
+            engine.addUrlInterceptor(&sourceInterceptor);
+            engine.addImportPath(QStringLiteral(SSA_BUILD_DIR));
+            QQmlComponent component(&engine, QUrl::fromLocalFile(repositoryRoot().filePath(
+                                                 QStringLiteral("app/desktop/qml/Main.qml"))));
+            QVariantMap initialProperties;
+            initialProperties.insert(QStringLiteral("mainViewModel"),
+                                     QVariant::fromValue<QObject*>(&viewModel));
+            const auto mainWindow =
+                std::unique_ptr<QObject>(component.createWithInitialProperties(initialProperties));
+            QVERIFY2(mainWindow != nullptr, qPrintable(component.errorString()));
+            auto* openDatabase =
+                mainWindow->findChild<QObject*>(QStringLiteral("openDatabaseMenuItem"));
+            auto* configureData =
+                mainWindow->findChild<QObject*>(QStringLiteral("configureDataMenuItem"));
+            QVERIFY(openDatabase != nullptr);
+            QVERIFY(configureData != nullptr);
+            QVERIFY(openDatabase->property("enabled").toBool());
+            QVERIFY(configureData->property("enabled").toBool());
+
+            // Switching databases relaunches the app, and closing cancels the running rescan.
+            viewModel.actions()->workflows()->rescanIncremental();
+            QTRY_VERIFY_WITH_TIMEOUT(viewModel.actions()->workflows()->running(), 1000);
+            const bool openEnabledWhileRunning = openDatabase->property("enabled").toBool();
+            const bool configureEnabledWhileRunning = configureData->property("enabled").toBool();
+            port->released = true;
+            QTRY_VERIFY_WITH_TIMEOUT(!viewModel.actions()->workflows()->running(), 2000);
+
+            QVERIFY(!openEnabledWhileRunning);
+            QVERIFY(!configureEnabledWhileRunning);
+            QTRY_VERIFY_WITH_TIMEOUT(openDatabase->property("enabled").toBool(), 1000);
+            QVERIFY(configureData->property("enabled").toBool());
         }
 
         void column_name_filter_belongs_to_each_column_editor() {

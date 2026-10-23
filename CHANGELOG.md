@@ -178,6 +178,9 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 - Filtro de coluna em datas (Data de cadastro, Prazo limite e as demais exibidas
   como dd/mm/aaaa) aceita o formato mostrado na grade: `21/12/2021`, `12/2021`
   e `!21/12/2021` voltam a encontrar ou excluir as SSAs, como na versao Python.
+- Arquivo: "Carregar outro banco" e "Configurar dados..." ficam desabilitados
+  durante importacao, rescan, manutencao ou exportacao; antes a troca relancava
+  o app e cancelava a operacao em curso sem aviso.
 - Exportacao: enquanto uma exportacao roda, "Exportar resultados" e "Exportar
   lista" ficam desabilitados, e um segundo pedido e recusado com aviso; antes era
   ignorado em silencio e o segundo arquivo nunca era gravado.
