@@ -29,8 +29,8 @@ namespace ssa::presentation {
         bool previousPage();
         void applyPageResult(const domain::SsaPageResult& result,
                              const std::size_t totalRowsAllValue);
-        // A canceled or failed query leaves the table on the displayed page: page and sort go
-        // back to that request, so the pager and the header describe what is shown.
+        // A canceled or failed query leaves the table on the displayed page: page, page size
+        // and sort go back to that request, so the pager and the header describe what is shown.
         void restorePosition(const domain::SsaPageRequest& displayed);
         void sortByColumnKey(const std::string& columnKey);
         void resetSort();

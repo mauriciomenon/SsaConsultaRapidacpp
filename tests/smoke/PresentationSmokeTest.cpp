@@ -2103,6 +2103,20 @@ namespace {
             QCOMPARE(browse.pageNumber(), 2);
             QCOMPARE(browse.sortColumnKey(), sortKeyBefore);
             QCOMPARE(browse.sortAscending(), ascendingBefore);
+
+            // The same for a page size change: the displayed size comes back with its page.
+            QTRY_VERIFY_WITH_TIMEOUT(!browse.backgroundWorkRunning(), 1000);
+            repository->waiting = false;
+            repository->hold = true;
+            const auto pagesBeforeResize = pageSpy.count();
+            browse.setPageSize(500);
+            QTRY_VERIFY_WITH_TIMEOUT(repository->waiting.load(), 1000);
+            browse.cancelCurrentRequest();
+            QTRY_VERIFY_WITH_TIMEOUT(pageSpy.count() > pagesBeforeResize, 1000);
+            repository->hold = false;
+            QCOMPARE(browse.pageSize(), 50);
+            QCOMPARE(browse.pageNumber(), 2);
+            QCOMPARE(browse.pageCount(), 3);
         }
 
         void page_query_cancel_is_terminal_and_blocks_new_work() {

@@ -96,6 +96,7 @@ namespace ssa::presentation {
 
     void BrowseQueryState::restorePosition(const domain::SsaPageRequest& displayed) {
         pageIndex_ = displayed.pageIndex;
+        pageSize_ = displayed.pageSize;
         sort_ = displayed.sort;
     }
 
