@@ -60,6 +60,19 @@ cat >"${mock_bin}/cmake" <<'EOF'
 printf '%s\n' "$@" >"${QT_TEST_CMAKE_ARGS:?}"
 EOF
 chmod +x "${mock_bin}/cmake"
+# The restricted PATH hides a Homebrew pkg-config: answer for sqlite3 like a real one.
+cat >"${mock_bin}/pkg-config" <<'EOF'
+#!/usr/bin/env bash
+case "$1" in
+  --modversion) printf '%s\n' 3.45.0 ;;
+  --variable=includedir) printf '%s\n' /mock/include ;;
+esac
+exit 0
+EOF
+chmod +x "${mock_bin}/pkg-config"
+# Install hints differ by host: brew on macOS, pacman or apt on Linux.
+host_system="$(uname -s)"
+real_pacman="$(PATH=/usr/bin:/bin command -v pacman || true)"
 
 HOME="${fixture_root}" \
   QT_INSTALL_ROOT="${fixture_root}/Qt" \
@@ -158,8 +171,12 @@ if arch_output="$({
 fi
 grep -q '^MISSING qt path=- version=-$' <<<"${arch_output}" || \
   fail "package check must report missing Qt deterministically"
-grep -q 'sudo pacman -S' <<<"${arch_output}" || \
-  fail "Arch and Artix checks must print a pacman installation hint"
+if [[ "${host_system}" == Darwin ]]; then
+  grep -q 'brew install' <<<"${arch_output}" || fail "macOS checks must print a brew hint"
+else
+  grep -q 'sudo pacman -S' <<<"${arch_output}" || \
+    fail "Arch and Artix checks must print a pacman installation hint"
+fi
 rm -f "${mock_bin}/pacman"
 
 if debian_output="$({
@@ -173,8 +190,16 @@ if debian_output="$({
 } 2>&1)"; then
   fail "dependency check must fail when Qt is missing"
 fi
-grep -q 'sudo apt install' <<<"${debian_output}" || \
-  fail "Debian checks must print an apt installation hint: ${debian_output}"
+if [[ "${host_system}" == Darwin ]]; then
+  grep -q 'brew install' <<<"${debian_output}" || fail "macOS checks must print a brew hint"
+elif [[ -n "${real_pacman}" ]]; then
+  # A host pacman in /usr/bin cannot be hidden from the check: the apt case needs a host
+  # without pacman (Debian, Devuan).
+  printf 'SKIP: apt hint case on a host with pacman (%s)\n' "${real_pacman}"
+else
+  grep -q 'sudo apt install' <<<"${debian_output}" || \
+    fail "Debian checks must print an apt installation hint: ${debian_output}"
+fi
 cmp -s "${cache_snapshot}" "${fixture_repo}/build/dev/CMakeCache.txt" || \
   fail "all check modes must leave CMakeCache.txt unchanged"
 
