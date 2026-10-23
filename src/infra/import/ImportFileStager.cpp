@@ -611,11 +611,20 @@ namespace ssa::infra::importing {
                 const auto currentSummaryIndex = summaryIndex++;
                 error.clear();
                 const auto timestamp = sourceModifiedTimestamp(path, error);
-                if (error) {
+                std::optional<FileIdentitySnapshot> identity;
+                std::filesystem::file_time_type modified;
+                if (!error) {
+                    identity = inspectFileIdentity(path, error);
+                }
+                if (!error) {
+                    modified = std::filesystem::last_write_time(path, error);
+                }
+                if (error || !identity) {
                     ++result.failedCopies;
                     result.operationalFailure = true;
                     appendDiagnostic(result.diagnostic,
-                                     "cannot read source modification time: " + error.message());
+                                     "cannot read source identity or modification time: " +
+                                         error.message());
                     continue;
                 }
                 result.files.push_back({path,
@@ -625,7 +634,8 @@ namespace ssa::infra::importing {
                                         timestamp,
                                         currentSummaryIndex,
                                         sourceCreatedTimestamp(path),
-                                        path.filename()});
+                                        path.filename(),
+                                        {{identity->value, identity->size, modified}}});
                 continue;
             }
         }

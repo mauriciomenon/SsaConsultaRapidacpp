@@ -123,6 +123,10 @@ Equal snapshots and repeated rows:
   published, and a failed publication takes them back.
 - Only committed `Applied`, `NoChanges`, and validated `NoValidRows` entries can
   enter the consolidation journal.
+- A `docs_entrada` file whose identity, size or modification time changed
+  between discovery and the consolidation plan (a sync client or a fixed-name
+  export replacing it) fails the run: nothing is published and the file stays
+  in `docs_entrada` for the next rescan.
 
 ## Cancellation, Scale, And Recovery
 

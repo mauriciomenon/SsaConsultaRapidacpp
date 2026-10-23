@@ -1387,6 +1387,35 @@ TEST_CASE("import file stager rejects a symlinked input directory") {
 }
 #endif
 
+TEST_CASE("consolidation plan refuses a root file replaced after it was found") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto inputDirectory = ssa::qt::toFileSystemPath(tempDir.path()) / "docs_entrada";
+    std::filesystem::create_directories(inputDirectory);
+    const auto workbook = inputDirectory / "relatorio.xlsx";
+    writeWorkbook(workbook, row(1, {inlineCell("A1", "Numero SSA")}));
+    const ssa::infra::importing::ImportFileStager stager(inputDirectory);
+    const auto staged = stager.stageInputFiles();
+    REQUIRE(staged.files.size() == 1);
+    REQUIRE(staged.files.front().sourceSnapshots.size() == 1);
+    const ssa::infra::importing::ImportFileConsolidator consolidator(inputDirectory);
+    const auto manifest = std::vector<ssa::infra::importing::ImportManifestEntry>{
+        {staged.files.front().consolidationSources, true,
+         staged.files.front().consolidationFilename, staged.files.front().sourceSnapshots}};
+
+    REQUIRE(consolidator.plan(manifest).error.empty());
+
+    // A sync client or a fixed-name export replaces the file between the read and the plan.
+    const auto replacement = inputDirectory / "relatorio.xlsx.new";
+    writeWorkbook(replacement, row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "v2")}));
+    std::filesystem::rename(replacement, workbook);
+
+    const auto plan = consolidator.plan(manifest);
+    REQUIRE(plan.error == "consolidation source changed after it was read: relatorio.xlsx");
+    REQUIRE(std::filesystem::exists(workbook));
+}
+
 TEST_CASE("import file consolidation observes cancellation with an empty source list") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());

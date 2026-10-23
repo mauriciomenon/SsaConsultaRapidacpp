@@ -2,6 +2,7 @@
 
 #include "infra/import/CancelableFileCopy.h"
 #include "infra/import/ImportPathValidation.h"
+#include "qt/FilesystemPath.h"
 
 #include <algorithm>
 #include <array>
@@ -403,7 +404,9 @@ namespace ssa::infra::importing {
             const bool inspectExisting = !directoryError &&
                                          std::filesystem::is_directory(directoryStatus) &&
                                          !std::filesystem::is_symlink(directoryStatus);
-            for (const auto& source : manifestEntry.sources) {
+            for (std::size_t sourceIndex = 0; sourceIndex < manifestEntry.sources.size();
+                 ++sourceIndex) {
+                const auto& source = manifestEntry.sources[sourceIndex];
                 if (stopToken.stop_requested()) {
                     plan.canceled = true;
                     plan.error = "consolidation planning canceled";
@@ -416,6 +419,18 @@ namespace ssa::infra::importing {
                     plan.error =
                         "cannot inspect consolidation source identity: " + identityError.message();
                     return plan;
+                }
+                // Moving a file replaced after it was read would archive rows never imported.
+                if (sourceIndex < manifestEntry.sourceSnapshots.size()) {
+                    const auto& found = manifestEntry.sourceSnapshots[sourceIndex];
+                    const auto modified =
+                        std::filesystem::last_write_time(normalizedSource, identityError);
+                    if (identityError || sourceSnapshot->value != found.identity ||
+                        sourceSnapshot->size != found.size || modified != found.modified) {
+                        plan.error = "consolidation source changed after it was read: " +
+                                     qt::toUtf8(normalizedSource.filename());
+                        return plan;
+                    }
                 }
                 const auto destinationFilename = manifestEntry.destinationFilename.empty()
                                                      ? normalizedSource.filename()

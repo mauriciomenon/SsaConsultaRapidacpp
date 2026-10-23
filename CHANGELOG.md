@@ -6,6 +6,10 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 
 ### Corrigido
 
+- Rescan: uma planilha de `docs_entrada` substituida durante o rescan (por
+  exemplo pelo OneDrive ou por uma exportacao com nome fixo) faz o rescan
+  falhar sem publicar nada e continua em `docs_entrada`; antes a versao nova
+  ia para `processadas` sem ter sido importada.
 - Configuracao inicial: uma pasta `docs_entrada/processadas` que seja atalho
   (symlink) e recusada com mensagem clara; antes as planilhas eram copiadas
   para fora do projeto.

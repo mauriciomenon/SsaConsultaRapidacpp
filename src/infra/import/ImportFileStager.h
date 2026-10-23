@@ -1,6 +1,7 @@
 #pragma once
 
 #include "infra/import/CancelableFileCopy.h"
+#include "infra/import/ImportConsolidation.h"
 
 #include <filesystem>
 #include <stop_token>
@@ -19,6 +20,8 @@ namespace ssa::infra::importing {
         std::size_t summaryIndex = 0;
         std::string sourceCreatedTimestamp;
         std::filesystem::path consolidationFilename;
+        // Root files of docs_entrada only: their state when found, checked again by the plan.
+        std::vector<ImportSourceSnapshot> sourceSnapshots;
     };
 
     struct ImportStagingResult {

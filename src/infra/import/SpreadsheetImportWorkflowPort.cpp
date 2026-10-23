@@ -1165,8 +1165,8 @@ namespace ssa::infra::importing {
                 }
                 const bool hasValidRows = fileResult.status == ports::ImportFileStatus::Applied ||
                                           fileResult.status == ports::ImportFileStatus::NoChanges;
-                manifest.push_back(
-                    {file.consolidationSources, hasValidRows, file.consolidationFilename});
+                manifest.push_back({file.consolidationSources, hasValidRows,
+                                    file.consolidationFilename, file.sourceSnapshots});
                 consolidableFiles.push_back(&file);
             }
             const auto consolidationPlan = consolidator_.plan(manifest, stopToken);
@@ -1707,7 +1707,8 @@ namespace ssa::infra::importing {
         manifest.reserve(pendingOutcomes.size());
         for (const auto& outcome : pendingOutcomes) {
             manifest.push_back({outcome.file->consolidationSources, outcome.hasValidRows,
-                                outcome.file->consolidationFilename});
+                                outcome.file->consolidationFilename,
+                                outcome.file->sourceSnapshots});
         }
         const auto consolidationPlan = consolidator_.plan(manifest, stopToken);
         if (consolidationPlan.canceled) {
