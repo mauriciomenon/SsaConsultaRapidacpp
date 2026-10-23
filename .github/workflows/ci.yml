@@ -76,20 +76,18 @@ jobs:
             --extra-arg=-isystem --extra-arg="$sdk/usr/include/c++/v1" \
             2>&1 | tee "$BUILD_DIR/clazy.log"
           if [[ "${EVENT_NAME}" == "pull_request" ]]; then
-            reporter="github-pr-annotations"
             diff_command="git diff --no-ext-diff ${PR_BASE_SHA} ${PR_HEAD_SHA}"
+          elif [[ "${PUSH_BEFORE_SHA}" == "0000000000000000000000000000000000000000" ]]; then
+            diff_command="git show --format= --no-ext-diff ${GITHUB_SHA}"
           else
-            reporter="github-annotations"
-            if [[ "${PUSH_BEFORE_SHA}" == "0000000000000000000000000000000000000000" ]]; then
-              diff_command="git show --format= --no-ext-diff ${GITHUB_SHA}"
-            else
-              diff_command="git diff --no-ext-diff ${PUSH_BEFORE_SHA} ${GITHUB_SHA}"
-            fi
+            diff_command="git diff --no-ext-diff ${PUSH_BEFORE_SHA} ${GITHUB_SHA}"
           fi
+          # The GitHub annotation reporters need an API token and, outside a pull request,
+          # drop the added-lines filter; the local reporter filters by this diff without one.
           reviewdog \
             -efm='%f:%l:%c: %t%*[^:]: %m' \
             -name=clazy \
-            -reporter="${reporter}" \
+            -reporter=local \
             -filter-mode=added \
             -diff="${diff_command}" \
             -fail-level=warning \
