@@ -22,10 +22,10 @@ Parameters:
   --skip-tests
 
 Generated files:
-  - ssa_consulta_rapida-<version>-<arch>-macos.zip
-  - ssa_consulta_rapida-<version>-<arch>-macos.dmg
-  - dist/macos/<arch>/ssa_consulta_rapida-<version>-<arch>-macos/ (artifact root)
-  - dist/macos/<arch>/ssa_consulta_rapida-<version>-<arch>-macos/ssa_consulta_rapida.app
+  - dist/macos/<arch>/<repo>-macos-<arch>-<version>.zip and .dmg
+  - dist/macos/<arch>/<repo>-macos-<arch>-<version>/ (artifact root)
+  - dist/macos/<arch>/final/<repo>.app, .zip and .dmg
+  (<repo> is the name of the checkout folder)
 EOF
 }
 
