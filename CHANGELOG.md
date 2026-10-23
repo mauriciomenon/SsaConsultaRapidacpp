@@ -6,6 +6,10 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 
 ### Corrigido
 
+- Atualizacao pelo SAM: quando um processo cancelado ou expirado nao termina,
+  nenhum novo processo e iniciado ate a aplicacao ser reiniciada, e a recusa
+  informa o motivo. Antes um novo processo podia comecar ao lado do que ficou
+  preso.
 - Ajuda > Guia de instalacao abre o guia tambem na aplicacao instalada: os
   pacotes macOS, Windows, Debian, Arch e Linux passam a levar o `README.md`, e
   a aplicacao o procura na pasta do projeto e depois na do pacote. Antes so

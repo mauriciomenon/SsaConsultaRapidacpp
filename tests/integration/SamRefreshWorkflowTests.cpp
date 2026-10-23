@@ -853,6 +853,44 @@ namespace {
             QVERIFY2(secondProcessTerminated, "timed-out supervised process was not terminated");
         }
 
+        void timed_out_tree_that_fails_to_stop_closes_starts_until_a_verified_drain() {
+            QTemporaryDir root;
+            QVERIFY(root.isValid());
+            const auto sentinel = root.filePath(QStringLiteral("timed-out.pid"));
+            qint64 pid = -1;
+            const auto cleanup = qScopeGuard([&] {
+                ssa::platform::supervised_process_testing::setStopFailure(false);
+                static_cast<void>(ssa::platform::SupervisedProcess::forceStopAll());
+                if (processExists(pid)) {
+                    terminateProcessForTesting(pid);
+                }
+            });
+            ssa::platform::SupervisedProcessRequest timedOutRequest;
+            timedOutRequest.program = QCoreApplication::applicationFilePath();
+            timedOutRequest.arguments = {QStringLiteral("--sentinel-child"), sentinel};
+            timedOutRequest.timeout = std::chrono::milliseconds{500};
+            // Admitted, a missing program fails to start; refused, it is canceled.
+            ssa::platform::SupervisedProcessRequest probeRequest;
+            probeRequest.program = root.filePath(QStringLiteral("missing-supervised-program"));
+
+            ssa::platform::supervised_process_testing::setStopFailure(true);
+            QCOMPARE(ssa::platform::SupervisedProcess::run(timedOutRequest).status,
+                     ssa::platform::SupervisedProcessStatus::FailedToStop);
+            ssa::platform::supervised_process_testing::setStopFailure(false);
+            QFile sentinelFile(sentinel);
+            if (sentinelFile.open(QIODevice::ReadOnly)) {
+                pid = sentinelFile.readAll().trimmed().toLongLong();
+            }
+
+            const auto refused = ssa::platform::SupervisedProcess::run(probeRequest);
+            QCOMPARE(refused.status, ssa::platform::SupervisedProcessStatus::Canceled);
+            QVERIFY(!refused.diagnostic.isEmpty());
+
+            QVERIFY(ssa::platform::SupervisedProcess::forceStopAll());
+            QCOMPARE(ssa::platform::SupervisedProcess::run(probeRequest).status,
+                     ssa::platform::SupervisedProcessStatus::StartFailed);
+        }
+
         void untrackable_stop_failure_never_reports_a_verified_drain() {
             const auto cleanup = qScopeGuard([] {
                 ssa::platform::supervised_process_testing::setUntrackedStopFailure(false);

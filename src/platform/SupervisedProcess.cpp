@@ -95,8 +95,12 @@ namespace ssa::platform {
                 return entry_ != nullptr;
             }
 
+            // Only a tree that did not stop is kept, so new starts stay closed until
+            // forceStopAll verifies that every kept tree drained.
             void retain() {
                 retained_ = true;
+                const std::scoped_lock lock(processRegistryMutex);
+                forceStopFailed.store(true, std::memory_order_relaxed);
             }
 
           private:
@@ -146,8 +150,12 @@ namespace ssa::platform {
                 return entry_ != nullptr;
             }
 
+            // Only a tree that did not stop is kept, so new starts stay closed until
+            // forceStopAll verifies that every kept tree drained.
             void retain() {
                 retained_ = true;
+                const std::scoped_lock lock(processRegistryMutex);
+                forceStopFailed.store(true, std::memory_order_relaxed);
             }
 
           private:
@@ -422,7 +430,9 @@ namespace ssa::platform {
 
         ProcessStartRegistration startRegistration;
         if (!startRegistration.allowed()) {
-            return {SupervisedProcessStatus::Canceled, -1, {}};
+            return {SupervisedProcessStatus::Canceled, -1,
+                    QStringLiteral("process starts are closed until every stopped process "
+                                   "tree is verified as drained")};
         }
 
         QProcess process;

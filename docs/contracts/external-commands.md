@@ -81,5 +81,8 @@ the UI and CLI must be able to show it.
 - Force shutdown reports `Drained` only with zero starts pending and zero active
   trees. Failed termination remains fail-closed and exits with failure after
   the bounded desktop barrier; cleanup failure cannot be reported as safe.
+- A cancel or timeout whose tree does not stop returns `FailedToStop` and keeps
+  the tree registered. New starts are then refused as `Canceled`, with a
+  diagnostic, until a forced stop verifies that every kept tree drained.
 - Staged files are copied in blocks to a temporary destination. Publication is
   one rename after complete success; cancel or failure removes the temporary.
