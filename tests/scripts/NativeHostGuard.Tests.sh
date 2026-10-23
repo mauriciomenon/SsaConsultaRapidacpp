@@ -5,10 +5,18 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 # shellcheck disable=SC1091
 source "$repo_root/scripts/lib/native_host_guard.sh"
 ssa_native_guard_repo "$repo_root"
-[[ "$TMPDIR" == /tmp && "$TMP" == /tmp && "$TEMP" == /tmp ]] || {
-  printf 'native guard did not isolate WSL temporary paths\n' >&2
-  exit 1
-}
+# The repo location and temporary path rules apply only under WSL; native Linux and macOS
+# keep their own paths. The tool checks below hold on every POSIX host.
+on_wsl=false
+if [[ -r /proc/sys/kernel/osrelease ]] && grep -qi microsoft /proc/sys/kernel/osrelease; then
+  on_wsl=true
+fi
+if [[ "$on_wsl" == true ]]; then
+  [[ "${TMPDIR-}" == /tmp && "${TMP-}" == /tmp && "${TEMP-}" == /tmp ]] || {
+    printf 'native guard did not isolate WSL temporary paths\n' >&2
+    exit 1
+  }
+fi
 ssa_native_guard_tools bash chmod ln mkdir mktemp rm
 
 fixture_root="$(mktemp -d)"
@@ -22,15 +30,18 @@ expect_blocked() {
 }
 
 mkdir -p "$fixture_root/repo" "$fixture_root/fake-bin"
-expect_blocked ssa_native_guard_repo "$fixture_root/repo"
+if [[ "$on_wsl" == true ]]; then
+  expect_blocked ssa_native_guard_repo "$fixture_root/repo"
+fi
 
 printf 'MZfake executable\n' > "$fixture_root/fake-bin/cmake"
 chmod +x "$fixture_root/fake-bin/cmake"
 PATH="$fixture_root/fake-bin:$PATH"
 expect_blocked ssa_native_guard_tool cmake
 
-ln -s /mnt/c/Windows/System32/cmd.exe "$fixture_root/fake-bin/glab"
-expect_blocked ssa_native_guard_tool glab
+# A name no host installs: a real tool later in PATH must not answer for the link.
+ln -s /mnt/c/Windows/System32/cmd.exe "$fixture_root/fake-bin/ssa-test-windows-link"
+expect_blocked ssa_native_guard_tool ssa-test-windows-link
 expect_blocked ssa_native_guard_path /mnt/c/Users/example/output "$repo_root"
 
 printf '#!/mnt/c/Windows/System32/cmd.exe\n' > "$fixture_root/fake-bin/ctest"
