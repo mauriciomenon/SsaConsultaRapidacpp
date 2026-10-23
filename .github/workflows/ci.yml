@@ -203,7 +203,14 @@ jobs:
             $exe = Join-Path $buildDir "$name.exe"
             if (-not (Test-Path -LiteralPath $exe)) { continue }
             $log = Join-Path $buildDir "$name.diagnose.txt"
-            & $exe -o "$log,txt"
-            "{0} exit=0x{1:X8}" -f $name, $LASTEXITCODE
+            # Bounded like ctest: a hang must still leave time to print the partial log.
+            $process = Start-Process -FilePath $exe -ArgumentList @("-o", "$log,txt") -NoNewWindow -PassThru
+            $null = $process.Handle
+            if ($process.WaitForExit(120000)) {
+              "{0} exit=0x{1:X8}" -f $name, $process.ExitCode
+            } else {
+              $process.Kill($true)
+              "{0} still running after 120 s, killed" -f $name
+            }
             if (Test-Path -LiteralPath $log) { Get-Content -LiteralPath $log -Tail 120 }
           }
