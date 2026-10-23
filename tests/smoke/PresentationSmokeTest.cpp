@@ -2895,6 +2895,38 @@ namespace {
             }
         }
 
+        void a_later_workflow_drops_the_failure_a_stalled_reload_would_restore() {
+            auto repository = std::make_shared<FakeRepository>(
+                FakeRepositoryConfig{.delay = std::chrono::milliseconds{300}});
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            ssa::ports::WorkflowResult failed{ssa::ports::WorkflowStatus::Failed,
+                                              "import failed after the first block"};
+            ssa::ports::ImportSummary summary;
+            summary.inserts = 3;
+            failed.importSummary = summary;
+            auto importPort = std::make_shared<CapturingImportPort>(failed);
+            auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(importPort);
+            ssa::presentation::MainViewModel model(service, commands, nullptr, nullptr, workflows);
+            QTRY_VERIFY_WITH_TIMEOUT(!model.browse()->backgroundWorkRunning(), 5000);
+            QVariantList selectedFiles;
+            selectedFiles.push_back(QUrl::fromLocalFile("/tmp/entrada.xlsx"));
+
+            // A commits rows and fails; its reload is still running when B finishes clean.
+            model.actions()->workflows()->importExternalFiles(selectedFiles);
+            QTRY_VERIFY_WITH_TIMEOUT(!model.actions()->workflows()->running(), 1000);
+            QVERIFY(model.browse()->backgroundWorkRunning());
+            importPort->setNextResult({ssa::ports::WorkflowStatus::NoChanges, "nothing new"});
+            model.actions()->workflows()->importExternalFiles(selectedFiles);
+            QTRY_COMPARE_WITH_TIMEOUT(importPort->importRequests().size(), std::size_t{2}, 1000);
+            QTRY_VERIFY_WITH_TIMEOUT(!model.actions()->workflows()->running(), 1000);
+            QVERIFY(model.actions()->workflows()->lastSucceeded());
+
+            QTRY_VERIFY_WITH_TIMEOUT(!model.browse()->backgroundWorkRunning(), 5000);
+            QVERIFY2(model.browse()->status()->error().isEmpty(),
+                     qPrintable(model.browse()->status()->error()));
+        }
+
         void import_external_files_rejects_non_local_url() {
             auto repository = std::make_shared<FakeRepository>();
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);

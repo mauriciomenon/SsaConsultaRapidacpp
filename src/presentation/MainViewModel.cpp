@@ -125,21 +125,25 @@ namespace ssa::presentation {
                 if (analytics_ && (workflows->lastSucceeded() || workflows->lastDataChanged())) {
                     analytics_->invalidateAfterImport();
                 }
-                if (workflows->lastDataChanged()) {
-                    if (workflows->lastSucceeded()) {
-                        pendingWorkflowRefresh_ = WorkflowRefreshStatus{
-                            {},
-                            workflows->lastWarning() ? workflows->lastMessage()
-                                                     : workflows->successMessage()};
-                    } else {
-                        // A failed/canceled import that committed rows: keep the failure that
-                        // ActionStatusCoordinator just published.
-                        pendingWorkflowRefresh_ = WorkflowRefreshStatus{
-                            browse_.status()->error(), browse_.status()->message()};
-                    }
-                    browse_.invalidateDataSource();
-                    browse_.apply();
+                if (!workflows->lastDataChanged()) {
+                    // A newer result owns the status bar now: a reload still running for an
+                    // earlier workflow must not bring that one back.
+                    pendingWorkflowRefresh_.reset();
+                    return;
                 }
+                if (workflows->lastSucceeded()) {
+                    pendingWorkflowRefresh_ = WorkflowRefreshStatus{
+                        {},
+                        workflows->lastWarning() ? workflows->lastMessage()
+                                                 : workflows->successMessage()};
+                } else {
+                    // A failed/canceled import that committed rows: keep the failure that
+                    // ActionStatusCoordinator just published.
+                    pendingWorkflowRefresh_ = WorkflowRefreshStatus{browse_.status()->error(),
+                                                                    browse_.status()->message()};
+                }
+                browse_.invalidateDataSource();
+                browse_.apply();
             });
         connect(&browse_, &BrowseViewModel::pageChanged, this, [this] {
             if (!pendingWorkflowRefresh_) {

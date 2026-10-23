@@ -303,6 +303,11 @@ namespace ssa::tests::presentation_smoke {
             return importRequests_;
         }
 
+        void setNextResult(ssa::ports::WorkflowResult result) {
+            const std::scoped_lock lock(mutex_);
+            nextResult_ = std::move(result);
+        }
+
       private:
         mutable std::mutex mutex_;
         std::vector<ssa::ports::ImportExternalFilesRequest> importRequests_;
