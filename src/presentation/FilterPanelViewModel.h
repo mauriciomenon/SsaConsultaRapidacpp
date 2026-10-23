@@ -131,6 +131,7 @@ namespace ssa::presentation {
         // The status filter the shortcuts act on: the advanced one, else the column one.
         [[nodiscard]] filterpanel::StatusFilterTerms statusFilterTerms() const;
         void applyStatusFilterTerms(const filterpanel::StatusFilterTerms& terms);
+        void refreshAdvancedAndPublish(bool quickSectorChanged);
 
         filterpanel::FilterPanelState state_;
         std::shared_ptr<ports::ISsaBrowsePort> browsePort_;

@@ -61,6 +61,7 @@ namespace ssa::presentation {
                                        bool inferOperatorMode = false);
         void publishChanged();
         void publishChangedFor(const QString& key);
+        void refreshCard(const QString& key);
         void rebuildCardStates();
         int updateCardState(const QString& key);
         QVariantMap createCardState(const QVariantMap& baseState) const;

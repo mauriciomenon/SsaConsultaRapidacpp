@@ -75,7 +75,7 @@ namespace ssa::presentation {
             if (filterpanel::clearStatusExclusionIfStatusIncludesExcluded(state_)) {
                 sector_.refreshFromState();
             }
-            advanced_->refreshFromState();
+            refreshAdvancedAndPublish(false);
             sector_.refreshFromState();
             synchronizeFilterState(false);
         });
@@ -138,9 +138,10 @@ namespace ssa::presentation {
         connect(&sector_, &FilterPanelSectorViewModel::stateChanged, this,
                 [this](const bool quickSectorChanged) {
                     if (quickSectorChanged) {
-                        advanced_->refreshFromState();
+                        refreshAdvancedAndPublish(true);
+                    } else {
+                        publishFilterStateChange(false);
                     }
-                    publishFilterStateChange(quickSectorChanged);
                 });
     }
 
@@ -199,11 +200,13 @@ namespace ssa::presentation {
         return state_.columnKey();
     }
 
+    // The column editor key and value are UI state until the filter is added: no query uses
+    // them, so they notify the UI without dropping the loaded value lists.
     void FilterPanelViewModel::setColumnKey(const QString& value) {
         if (!state_.setColumnKey(value)) {
             return;
         }
-        publishFilterStateChange();
+        emit changed();
     }
 
     QString FilterPanelViewModel::columnValue() const {
@@ -214,7 +217,7 @@ namespace ssa::presentation {
         if (!state_.setColumnValue(value)) {
             return;
         }
-        publishFilterStateChange();
+        emit changed();
     }
 
     QStringList FilterPanelViewModel::weekColumnKeys() const {
@@ -336,7 +339,7 @@ namespace ssa::presentation {
             columns_.refreshFromState();
         }
         normalizeAdvancedFilterOverlap();
-        advanced_->refreshFromState();
+        refreshAdvancedAndPublish(false);
         synchronizeFilterState(false);
         emit applyRequested();
     }
@@ -415,9 +418,8 @@ namespace ssa::presentation {
     }
 
     void FilterPanelViewModel::requestColumnFocus(const QString& key) {
-        const bool didChange = state_.setColumnKey(key);
-        if (didChange) {
-            publishFilterStateChange();
+        if (state_.setColumnKey(key)) {
+            emit changed();
         }
         ++focusColumnRequest_;
         emit focusColumnRequestChanged();
@@ -476,8 +478,9 @@ namespace ssa::presentation {
         if (!didChange) {
             return false;
         }
-        advanced_->refreshFromState();
-        synchronizeFilterState(action == "quick_sector" || action == "executor_combined");
+        const bool quickSectorChanged = action == "quick_sector" || action == "executor_combined";
+        refreshAdvancedAndPublish(quickSectorChanged);
+        synchronizeFilterState(quickSectorChanged);
         emit applyRequested();
         return true;
     }
@@ -692,8 +695,17 @@ namespace ssa::presentation {
         sector_.refreshFromState();
         syncAdvancedQuickSector();
         normalizeAdvancedFilterOverlap();
-        advanced_->refreshFromState();
-        publishFilterStateChange(true);
+        refreshAdvancedAndPublish(true);
+    }
+
+    // Each advanced sub-model echoes stateChanged while it refreshes; the change is published
+    // once here, not once per echo (each publish drops every loaded value list).
+    void FilterPanelViewModel::refreshAdvancedAndPublish(const bool quickSectorChanged) {
+        {
+            const QScopedValueRollback replacement(stateReplacementInProgress_, true);
+            advanced_->refreshFromState();
+        }
+        publishFilterStateChange(quickSectorChanged);
     }
 
 } // namespace ssa::presentation

@@ -811,6 +811,42 @@ namespace {
             QCOMPARE(filterStateSpy.count(), 0);
         }
 
+        void one_filter_change_publishes_once_and_ui_changes_never() {
+            auto repository = std::make_shared<MutableDistinctRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::FilterPanelViewModel filterPanel(
+                service, std::make_shared<StaticReportPort>());
+            auto* advanced = qobject_cast<ssa::presentation::FilterPanelAdvancedViewModel*>(
+                filterPanel.advanced());
+            QVERIFY(advanced != nullptr);
+            auto* text =
+                qobject_cast<ssa::presentation::AdvancedTextFilterViewModel*>(advanced->text());
+            QVERIFY(text != nullptr);
+            QTRY_VERIFY_WITH_TIMEOUT(!filterPanel.backgroundWorkRunning(), 1000);
+            QSignalSpy resetSpy(&filterPanel,
+                                &ssa::presentation::FilterPanelViewModel::columnValueOptionsReset);
+            const auto quickSectorRequests = repository->quickSectorRequests();
+
+            filterPanel.toggleStatusShortcut(QStringLiteral("APV"));
+            QCOMPARE(resetSpy.count(), 1);
+            QTRY_VERIFY_WITH_TIMEOUT(!filterPanel.backgroundWorkRunning(), 1000);
+            QCOMPARE(repository->quickSectorRequests(), quickSectorRequests + 1);
+
+            // Focusing a column editor or switching a card operator does not change the query.
+            resetSpy.clear();
+            filterPanel.requestColumnFocus(QStringLiteral("solicitante"));
+            text->setOperatorMode(QStringLiteral("solicitante"), QStringLiteral("different"));
+            QCOMPARE(resetSpy.count(), 0);
+            QTRY_VERIFY_WITH_TIMEOUT(!filterPanel.backgroundWorkRunning(), 1000);
+            QCOMPARE(repository->quickSectorRequests(), quickSectorRequests + 1);
+
+            // The quick sector list never depends on the quick sector itself.
+            filterPanel.setQuickSector(QStringLiteral("MEG2"));
+            QCOMPARE(resetSpy.count(), 1);
+            QTRY_VERIFY_WITH_TIMEOUT(!filterPanel.backgroundWorkRunning(), 1000);
+            QCOMPARE(repository->quickSectorRequests(), quickSectorRequests + 1);
+        }
+
         void macro_report_keeps_loaded_column_value_options() {
             auto repository = std::make_shared<MutableDistinctRepository>();
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);

@@ -362,7 +362,11 @@ namespace {
                                       1000);
             QVERIFY(filters.columnValueOptionsFor("setor_executor").contains("MEG2"));
 
+            // Typing in the column editor is not a filter change; adding the filter is.
+            filters.setColumnKey("situacao");
             filters.setColumnValue("APV");
+            QCOMPARE(resetSpy.count(), 0);
+            filters.addColumnFilter();
 
             QCOMPARE(resetSpy.count(), 1);
             QCOMPARE(filters.columnValueOptionsFor("setor_executor"), QStringList{});

@@ -6,6 +6,10 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 
 ### Corrigido
 
+- Filtros: clicar num atalho de situacao, remover um filtro ou trocar o setor
+  rapido descarta as listas de valores ja carregadas uma vez so (antes 3 a 4
+  vezes, cada uma com nova consulta de setores); digitar no editor de coluna,
+  focar uma coluna ou trocar o operador de um card nao descarta mais nada.
 - Janela de detalhes destacada: clicar no grafo numa SSA e voltar para a SSA ja
   exibida antes de a outra carregar mantem a SSA exibida; antes a carga
   pendente terminava e a substituia.

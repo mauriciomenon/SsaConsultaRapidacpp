@@ -105,7 +105,8 @@ namespace ssa::presentation {
                                        .currentExpression = currentExpression})) {
             return;
         }
-        publishChangedFor(key);
+        // The operator only steers how the card adds values; the filter is unchanged.
+        refreshCard(key);
     }
 
     QString AdvancedTextFilterViewModel::textFilter(const QString& key) const {
@@ -204,11 +205,15 @@ namespace ssa::presentation {
     }
 
     void AdvancedTextFilterViewModel::publishChangedFor(const QString& key) {
+        refreshCard(key);
+        emit changed();
+    }
+
+    void AdvancedTextFilterViewModel::refreshCard(const QString& key) {
         const int row = updateCardState(key);
         if (row >= 0) {
             emit dataChanged(index(row, 0), index(row, 0), kDynamicRoles);
         }
-        emit changed();
     }
 
     void AdvancedTextFilterViewModel::rebuildCardStates() {
