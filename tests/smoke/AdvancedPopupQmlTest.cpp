@@ -339,6 +339,7 @@ namespace {
             height: 700
 
             AdvancedTextFilterGrid {
+                objectName: "advancedTextFilterGrid"
                 width: parent.width
                 filterViewModel: testFilterViewModel
                 textFilters: testFilterViewModel.advanced.text
@@ -718,6 +719,35 @@ namespace {
             QTRY_VERIFY_WITH_TIMEOUT(popup->property("visible").toBool(), 1000);
             QTRY_VERIFY_WITH_TIMEOUT(!popup->property("valuesLoading").toBool(), 1000);
             QCOMPARE(repository->advancedRequests(), 1);
+        }
+
+        void macro_cell_grows_while_its_report_loads() {
+            auto repository = std::make_shared<CountingRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::FilterPanelViewModel filters(service);
+            QQmlEngine engine;
+            engine.rootContext()->setContextProperty(QStringLiteral("testFilterViewModel"),
+                                                     &filters);
+            QQmlComponent component(&engine);
+            component.setData(kAdvancedGridHarness,
+                              QUrl(QStringLiteral("inmemory:/AdvancedGridMacroHarness.qml")));
+            QTRY_VERIFY_WITH_TIMEOUT(component.status() != QQmlComponent::Loading, 1000);
+            QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+            std::unique_ptr<QObject> harness(component.create());
+            QVERIFY2(harness != nullptr, qPrintable(component.errorString()));
+            auto* grid = harness->findChild<QObject*>(QStringLiteral("advancedTextFilterGrid"));
+            QVERIFY(grid != nullptr);
+            auto* macro = filters.advanced()->property("macro").value<QObject*>();
+            QVERIFY(macro != nullptr);
+            const int compactHeight = grid->property("macroCellHeight").toInt();
+
+            // The report section (header plus "Carregando relatorio") needs the tall cell before
+            // any row arrives; the compact one would draw it over the next row of cards.
+            QVERIFY(macro->setProperty("selectedMacro", QStringLiteral("ssas_executadas_setor")));
+            QVERIFY(macro->property("reportLoading").toBool());
+            QCOMPARE(grid->property("macroCellHeight").toInt(), 132);
+            QVERIFY(compactHeight < 132);
+            QTRY_VERIFY_WITH_TIMEOUT(!macro->property("reportLoading").toBool(), 2000);
         }
 
         void open_value_lists_reload_after_data_source_reset() {

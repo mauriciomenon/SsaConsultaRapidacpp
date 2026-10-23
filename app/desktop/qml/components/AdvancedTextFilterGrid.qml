@@ -20,10 +20,12 @@ Item {
     // cardWidth together so cards fill the row with no trailing empty space.
     readonly property var gridLayout: Theme.resolveGridLayout(root.width)
     // Text and reprogramming cards share the same compact height so their
-    // titles land on the same baseline. Macro grows only when its report
-    // table is visible.
+    // titles land on the same baseline. Macro grows whenever its report
+    // section is shown: rows, or the loading and error lines before any row.
     readonly property int textCellHeight: 56
-    readonly property int macroCellHeight: root.advanced.macro.reportRows.length > 0 ? 132 : textCellHeight - 4
+    readonly property var macro: root.advanced.macro
+    readonly property bool macroReportShown: root.macro.reportRows.length > 0 || (!root.macro.reportGraphOnly && (root.macro.reportLoading || root.macro.reportError.length > 0))
+    readonly property int macroCellHeight: root.macroReportShown ? 132 : textCellHeight - 4
 
     function prepareSmokeValues(columnKey, values) {
         for (var index = 0; index < gridFlow.children.length; ++index) {

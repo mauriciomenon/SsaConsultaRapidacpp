@@ -74,6 +74,8 @@ FilterCard {
             }
 
             Label {
+                id: reportSummary
+                objectName: "macroReportSummary"
                 Layout.preferredWidth: Math.min(96, Math.max(60, root.cardWidth * 0.16))
                 visible: root.macro.reportTitle.length > 0 || root.macro.reportLoading || root.macro.reportError.length > 0
                 text: root.macro.reportLoading ? "Carregando" : root.macro.reportText
@@ -82,6 +84,14 @@ FilterCard {
                 font.pixelSize: Theme.fontSizeMicro
                 horizontalAlignment: Text.AlignRight
                 elide: Text.ElideRight
+                // The graph-only macro shows its failure only here, about 9 characters wide.
+                ToolTip.visible: reportSummaryHover.hovered && reportSummary.truncated
+                ToolTip.text: reportSummary.text
+                ToolTip.delay: 0
+
+                HoverHandler {
+                    id: reportSummaryHover
+                }
             }
         }
 
