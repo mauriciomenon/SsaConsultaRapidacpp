@@ -223,6 +223,15 @@ Item {
     Connections {
         target: root.analyticsViewModel
 
+        // A cancel during the first warning-window load never finishes it: stop waiting so a
+        // later save refreshes the charts, and reload them on the next open.
+        function onCanceled() {
+            if (!root.waitingForWarningLoad)
+                return;
+            root.waitingForWarningLoad = false;
+            root.reloadPending = true;
+        }
+
         // An import cleared the charts; a closed window reloads them when it opens again.
         function onInvalidated() {
             if (root.Window.window !== null && root.Window.window.visible)

@@ -416,6 +416,7 @@ namespace {
 
         Q_INVOKABLE void loadWarningWindowDays() {
             ++warningLoadCount_;
+            warningLoadPending_ = true;
             callOrder_.push_back(QStringLiteral("warning-load"));
         }
 
@@ -431,9 +432,10 @@ namespace {
         // Like the real view model: loading turns false before canceled().
         Q_INVOKABLE void cancel() {
             ++cancelCount_;
-            if (dimensionsLoading_ || otherKindLoading_) {
+            if (dimensionsLoading_ || otherKindLoading_ || warningLoadPending_) {
                 dimensionsLoading_ = false;
                 otherKindLoading_ = false;
+                warningLoadPending_ = false;
                 emit stateChanged();
                 emit canceled();
             }
@@ -453,6 +455,7 @@ namespace {
         }
 
         void completeWarningLoad(const int days) {
+            warningLoadPending_ = false;
             warningWindowDays_ = days;
             terminalSignalActive_ = true;
             emit warningWindowDaysChanged();
@@ -462,6 +465,7 @@ namespace {
         }
 
         void completeWarningLoadWithoutValue() {
+            warningLoadPending_ = false;
             terminalSignalActive_ = true;
             emit succeeded(4);
             emit warningWindowLoadFinished(true);
@@ -563,6 +567,7 @@ namespace {
         bool dimensionsLoading_{false};
         bool otherKindLoading_{false};
         int lastCompleteMonth_{7};
+        bool warningLoadPending_{false};
         bool holdDimensionRequests_{false};
         int warningLoadCount_{0};
         int warningSaveCount_{0};
@@ -1587,6 +1592,27 @@ namespace {
             QCOMPARE(selection.value(QStringLiteral("sectors")).toStringList(),
                      QStringList{QStringLiteral("SMM1")});
             QCOMPARE(selection.value(QStringLiteral("people")).toStringList(), expectedPeople);
+        }
+
+        void canceling_the_first_warning_load_does_not_strand_the_dashboard() {
+            QQmlEngine engine;
+            FakeAnalyticsViewModel viewModel;
+            QString error;
+            auto object = loadWindow(engine, viewModel, error);
+            QVERIFY2(object != nullptr, qPrintable(error));
+            QVERIFY(invoke(*object, "open"));
+            QCOMPARE(viewModel.warningLoadCount(), 1);
+            QCOMPARE(viewModel.dashboardRequestCount(), 0);
+
+            // "Cancelar" during the first warning-window load, then "Salvar alerta".
+            viewModel.cancel();
+            QVERIFY(viewModel.saveWarningWindowDays(21));
+
+            QTRY_COMPARE_WITH_TIMEOUT(viewModel.dashboardRequestCount(), 1, 1000);
+            QCOMPARE(viewModel.lastDashboardSelection()
+                         .value(QStringLiteral("warningWindowDays"))
+                         .toInt(),
+                     21);
         }
 
         void reopening_after_a_month_turn_lets_both_tabs_reach_the_new_month() {
