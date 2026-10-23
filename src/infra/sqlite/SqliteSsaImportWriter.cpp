@@ -1188,7 +1188,10 @@ namespace ssa::infra::sqlite {
         if (!databaseExists) {
             return {};
         }
-        SqliteConnection connection(databasePath_, SqliteOpenMode::ReadOnly, sqliteBusyWait);
+        // Read-write although it only reads: this is the first access of a rescan or import,
+        // and after a writer died before COMMIT only a read-write connection can roll the hot
+        // journal back (a read-only one fails with SQLITE_READONLY_ROLLBACK every time).
+        SqliteConnection connection(databasePath_, SqliteOpenMode::ReadWrite, sqliteBusyWait);
         SqliteBusyHandler busy(connection.handle(), stopToken, sqliteBusyWait,
                                synchronization_.busyEntered.get());
         SqliteProgressHandler progress(connection.handle(), stopToken);

@@ -3833,6 +3833,62 @@ TEST_CASE("external import rejects a malformed related SSA through the full work
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
+TEST_CASE("rescan recovers a database whose writer died with a hot journal") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = ssa::qt::toFileSystemPath(tempDir.path());
+    const auto livePath = root / "live" / "ssas.db";
+    const auto crashedPath = root / "data" / "ssas.db";
+    const auto inputDirectory = root / "docs_entrada";
+    std::filesystem::create_directories(livePath.parent_path());
+    std::filesystem::create_directories(crashedPath.parent_path());
+    std::filesystem::create_directories(inputDirectory);
+    ssa::infra::sqlite::SqliteSsaImportWriter::createEmpty(livePath, importColumns());
+    // A tiny cache spills the open transaction into the database file: copying both files
+    // now is what a writer killed before COMMIT leaves behind.
+    sqlite3* writer = nullptr;
+    REQUIRE(sqlite3_open(livePath.string().c_str(), &writer) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(writer,
+                         "PRAGMA journal_mode=DELETE; "
+                         "INSERT INTO ssa_table (numero_ssa, descricao_ssa) "
+                         "VALUES ('202600001', 'committed'); "
+                         "PRAGMA cache_size=10; PRAGMA cache_spill=1; BEGIN; "
+                         "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n "
+                         "WHERE i < 30000) INSERT INTO ssa_table (numero_ssa, descricao_ssa) "
+                         "SELECT printf('2027%05d', i), hex(randomblob(200)) FROM n;",
+                         nullptr, nullptr, nullptr) == SQLITE_OK);
+    std::filesystem::copy_file(livePath, crashedPath);
+    auto liveJournal = livePath;
+    liveJournal += "-journal";
+    auto crashedJournal = crashedPath;
+    crashedJournal += "-journal";
+    std::filesystem::copy_file(liveJournal, crashedJournal);
+    REQUIRE(sqlite3_exec(writer, "ROLLBACK", nullptr, nullptr, nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_close(writer) == SQLITE_OK);
+    sqlite3* reader = nullptr;
+    REQUIRE(sqlite3_open_v2(crashedPath.string().c_str(), &reader, SQLITE_OPEN_READONLY, nullptr) ==
+            SQLITE_OK);
+    REQUIRE(sqlite3_exec(reader, "SELECT COUNT(*) FROM sqlite_schema", nullptr, nullptr, nullptr) !=
+            SQLITE_OK);
+    REQUIRE(sqlite3_extended_errcode(reader) == SQLITE_READONLY_ROLLBACK);
+    REQUIRE(sqlite3_close(reader) == SQLITE_OK);
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, crashedPath,
+                                                              importColumns());
+
+    const auto result = port.rescan({ssa::ports::RescanMode::Incremental});
+
+    INFO(result.message);
+    INFO(result.diagnostic);
+    REQUIRE(result.message.find("resume_failed") == std::string::npos);
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(crashedPath.string().c_str(), &db) == SQLITE_OK);
+    // Only the committed row survives: the rescan rolled the hot journal back.
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 1);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+    REQUIRE_FALSE(std::filesystem::exists(crashedJournal));
+}
+
 TEST_CASE("external import keeps the summary of committed batches when a later batch aborts") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());

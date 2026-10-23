@@ -6,6 +6,10 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 
 ### Corrigido
 
+- Rescan e importacao depois de uma queda no meio de uma gravacao: o banco com
+  journal pendente e recuperado na primeira operacao (volta ao ultimo estado
+  gravado); antes `--rescan` falhava sempre com `import_consolidation_resume_failed`
+  ate a GUI abrir o banco.
 - Importar arquivos (mais de 64 planilhas): quando o banco interrompe um lote
   (por exemplo disco cheio), o resultado mostra as SSAs dos lotes ja gravados,
   a grade recarrega e o diagnostico traz a causa; antes vinha uma falha
