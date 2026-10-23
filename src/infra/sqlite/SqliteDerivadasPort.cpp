@@ -1,8 +1,7 @@
 #include "infra/sqlite/SqliteDerivadasPort.h"
 
-#include "domain/AsciiText.h"
-
 #include "infra/import/DerivadasSourceReader.h"
+#include "infra/import/ImportPathValidation.h"
 #include "infra/import/LegacySpreadsheetConverter.h"
 #include "infra/sqlite/SqliteConnection.h"
 #include "infra/sqlite/SqliteDatabaseWriteLock.h"
@@ -53,12 +52,6 @@ namespace ssa::infra::sqlite {
         ports::WorkflowResult importFailed(std::string diagnostic) {
             return {ports::WorkflowStatus::Failed, "derivadas import failed", false,
                     std::move(diagnostic)};
-        }
-
-        std::string lowercaseExtension(const std::filesystem::path& path) {
-            auto extension = path.extension().string();
-            std::ranges::transform(extension, extension.begin(), domain::ascii::toLower);
-            return extension;
         }
 
         ports::WorkflowResult sourceFailure(const importing::DerivadasSourceResult& result) {
@@ -222,7 +215,7 @@ namespace ssa::infra::sqlite {
     importing::DerivadasSourceResult SqliteDerivadasPort::readSource(
         const std::filesystem::path& source, const importing::LegacySpreadsheetConverter& converter,
         const std::stop_token& stopToken, const TestCheckpoint& afterFirstParsingChunk) {
-        return lowercaseExtension(source) == ".xls"
+        return importing::lowercaseExtension(source) == ".xls"
                    ? readLegacySource(source, converter, stopToken, afterFirstParsingChunk)
                    : importing::DerivadasSourceReader::read(source, stopToken,
                                                             afterFirstParsingChunk);

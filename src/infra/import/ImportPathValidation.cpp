@@ -1,5 +1,8 @@
 #include "infra/import/ImportPathValidation.h"
 
+#include "domain/AsciiText.h"
+#include "qt/FilesystemPath.h"
+
 #include <algorithm>
 #include <string_view>
 #include <system_error>
@@ -22,6 +25,12 @@ namespace ssa::infra::importing {
         }
 
     } // namespace
+
+    std::string lowercaseExtension(const std::filesystem::path& path) {
+        auto extension = qt::toUtf8(path.extension());
+        std::ranges::transform(extension, extension.begin(), domain::ascii::toLower);
+        return extension;
+    }
 
     bool isSafeImportFilename(const std::filesystem::path& filename) {
         return !filename.empty() && filename == filename.filename() && filename != "." &&

@@ -4,6 +4,7 @@
 #include "infra/import/CancelableFileCopy.h"
 #include "infra/import/ImportFileConsolidator.h"
 #include "infra/import/ImportFileStager.h"
+#include "infra/import/ImportPathValidation.h"
 #include "infra/import/LegacySpreadsheetConverter.h"
 #include "infra/import/SpreadsheetImportWorkflowPort.h"
 #include "infra/import/SsaImportConflictResolver.h"
@@ -6944,6 +6945,16 @@ TEST_CASE("input file stager removes abandoned owned staging artifacts") {
     REQUIRE(result.files.size() == 1);
     REQUIRE(result.files.front().workbookPath == inputDirectory / "pending.xlsx");
     REQUIRE_FALSE(std::filesystem::exists(inputDirectory / ".ssa-staged-crashed_123_0.xlsx"));
+}
+
+TEST_CASE("import extension check lowercases ASCII and keeps UTF-8 intact") {
+    using ssa::infra::importing::lowercaseExtension;
+    REQUIRE(lowercaseExtension("Relatorio.XLSX") == ".xlsx");
+    REQUIRE(lowercaseExtension("relatorio.v1.Xls") == ".xls");
+    REQUIRE(lowercaseExtension("sem_extensao").empty());
+    // Outside the Windows ANSI code page: path::string() would throw there.
+    const std::filesystem::path unusual{std::u8string{u8"planilha.x\u0141S"}};
+    REQUIRE(lowercaseExtension(unusual) == ".x\xC5\x81s");
 }
 
 TEST_CASE("input file stager keeps the tagged staging copies of another database") {

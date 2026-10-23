@@ -1,7 +1,5 @@
 #include "infra/import/ImportFileStager.h"
 
-#include "domain/AsciiText.h"
-
 #include "infra/import/CancelableFileCopy.h"
 #include "infra/import/ImportPathValidation.h"
 #include "qt/FilesystemPath.h"
@@ -38,12 +36,6 @@ namespace ssa::infra::importing {
             }
             destination.append(diagnostic.substr(
                 0, (std::min)(diagnostic.size(), kMaxDiagnosticBytes - destination.size())));
-        }
-
-        std::string lowercaseExtension(const std::filesystem::path& path) {
-            auto extension = qt::toUtf8(path.extension());
-            std::ranges::transform(extension, extension.begin(), domain::ascii::toLower);
-            return extension;
         }
 
         bool isXlsxFile(const std::filesystem::path& path) {
