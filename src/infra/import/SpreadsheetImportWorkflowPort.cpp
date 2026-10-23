@@ -1367,6 +1367,22 @@ namespace ssa::infra::importing {
         ImportStagingResult unconsolidatedStaging;
         std::string perFileDiagnostic;
         std::string batchRejectionError;
+        // The database ended the transaction before the commit: nothing of this batch is
+        // written or journaled, so its staged copies must not stay in docs_entrada.
+        const auto discardAbortedBatch = [this, &files] {
+            if (const auto cleanup = stager_.discardOwnedArtifacts(files); !cleanup.empty()) {
+                qWarning().noquote()
+                    << "Import staging cleanup failed:" << QString::fromStdString(cleanup);
+            }
+        };
+        const auto commitFile = [&] {
+            try {
+                writeSession->commitFile();
+            } catch (...) {
+                discardAbortedBatch();
+                throw;
+            }
+        };
         const auto isolateFileFailure = [&](const StagedImportFile& stagedFile,
                                             const std::string_view reason,
                                             const std::string_view detail = {}) {
@@ -1375,6 +1391,7 @@ namespace ssa::infra::importing {
             } catch (const std::exception& rollbackError) {
                 // The database already ended the transaction (full disk, I/O error): keep the
                 // failure that caused it, not only the missing savepoint.
+                discardAbortedBatch();
                 const auto* operationError =
                     dynamic_cast<const ports::OperationError*>(&rollbackError);
                 throw ports::OperationError(
@@ -1606,7 +1623,7 @@ namespace ssa::infra::importing {
                                         " header_not_recognized file=" + file.originalFilename}));
             }
             if (batch.mappingStatus == SpreadsheetMappingStatus::HeaderNotRecognized) {
-                writeSession->commitFile();
+                commitFile();
                 fileResult.status = ports::ImportFileStatus::Ignored;
                 fileResult.reason = "header_not_recognized";
                 ++importSummary.ignored;
@@ -1660,7 +1677,7 @@ namespace ssa::infra::importing {
                     rollbackSession(*writeSession, {ports::WorkflowStatus::Rejected,
                                                     std::string{operation} + " no_valid_rows"}));
             }
-            writeSession->commitFile();
+            commitFile();
             pendingOutcomes.push_back({&file, validRows > 0, file.summaryIndex});
             if (validRows == 0) {
                 fileResult.status = ports::ImportFileStatus::NoValidRows;

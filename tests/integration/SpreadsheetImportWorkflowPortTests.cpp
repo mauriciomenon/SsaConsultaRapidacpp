@@ -3965,6 +3965,11 @@ TEST_CASE("external import keeps the summary of committed batches when a later b
     REQUIRE(result.importSummary->files.size() == 65);
     REQUIRE(result.importSummary->files.back().status == ssa::ports::ImportFileStatus::Failed);
     REQUIRE(result.diagnostic.find("injected abort") != std::string::npos);
+    // The aborted batch was never committed: its staged copy is gone too.
+    for (const auto& entry : std::filesystem::directory_iterator(inputDirectory)) {
+        INFO(entry.path().filename().string());
+        REQUIRE_FALSE(entry.path().filename().string().starts_with(".ssa-staged"));
+    }
 }
 
 TEST_CASE("external import leaves no staged copy of an ignored or unapplied workbook") {
