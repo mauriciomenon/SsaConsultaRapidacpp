@@ -255,6 +255,21 @@ TEST_CASE("SSA spreadsheet mapper omits a nonnumeric final reschedule label") {
     REQUIRE_FALSE(batch.rows.front().contains("num_reprogramacoes"));
 }
 
+TEST_CASE("SSA spreadsheet mapper counts continuation rows as skipped and blank rows not") {
+    ssa::infra::importing::SpreadsheetTable table;
+    table.sourcePath = "SSAsRescheduled.xlsx";
+    table.rows = {{"Numero SSA", "Descricao", "Data Cadastro", "Reprogramacoes"},
+                  {"202600001", "Rescheduled", "2026-07-14", "Reprogramacao #1"},
+                  {"", "", "2026-07-21", "Reprogramacao #2"},
+                  {"", "", "", ""}};
+
+    const auto batch = ssa::infra::importing::SsaSpreadsheetMapper::map(table);
+
+    REQUIRE(batch.rows.size() == 1);
+    REQUIRE(batch.invalidRows == 0);
+    REQUIRE(batch.skippedRows == 1);
+}
+
 TEST_CASE("SSA spreadsheet mapper ignores known incomplete legacy summary rows") {
     ssa::infra::importing::SpreadsheetTable table;
     table.sourcePath = "Todas as SSAs - 14-07-2022.xlsx";

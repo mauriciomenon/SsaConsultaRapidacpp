@@ -4332,7 +4332,8 @@ TEST_CASE("spreadsheet mapper ignores continuation-only waiting rows") {
 
     REQUIRE(result.mappingStatus == ssa::infra::importing::SpreadsheetMappingStatus::Mapped);
     REQUIRE(result.rows.size() == 1);
-    REQUIRE(result.skippedRows == 0);
+    // Not imported and not invalid, but visible in the summary as skipped.
+    REQUIRE(result.skippedRows == 1);
     REQUIRE(result.invalidRows == 0);
     REQUIRE(ssa::infra::importing::rowValue(result.rows.front(), "numero_ssa") == "202600004");
 }

@@ -31,6 +31,9 @@
   (`num_reprogramacoes`) and `Desvio #N` (`numero_desvios`) yield no value, so
   the count from the reprogramming / `Numero de Desvios` count headers is kept. Legacy
   `Desvio #N` text becomes NULL when the SSA is updated.
+- A continuation row of those reports (values, but no SSA number and no
+  description) is not imported and counts as `skipped`; a blank row counts as
+  nothing.
 - `desde`, `desde_1`, `desde_2`, `ate`, `ate_1`, `ate_2` are stored as
   `YYYY-MM-DD HH:MM:SS` (column type `DateTimeText`) and shown as stored.
 - The SAM "SSAs Legadas" report (`SAAs_*.xlsx`, alphanumeric numbers) is a

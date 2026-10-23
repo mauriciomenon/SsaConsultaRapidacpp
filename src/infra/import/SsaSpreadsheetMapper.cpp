@@ -419,8 +419,12 @@ namespace ssa::infra::importing {
                     }
                 }
             }
-            if (row.empty() ||
-                (valueFor(row, "numero_ssa").empty() && valueFor(row, "descricao_ssa").empty())) {
+            if (row.empty()) {
+                continue;
+            }
+            // A continuation row (Reprogramacao #2..N, Desvio #2..N) has values but no SSA.
+            if (valueFor(row, "numero_ssa").empty() && valueFor(row, "descricao_ssa").empty()) {
+                ++batch.skippedRows;
                 continue;
             }
             if (isLegacyIncompleteSummaryRow(table, row)) {

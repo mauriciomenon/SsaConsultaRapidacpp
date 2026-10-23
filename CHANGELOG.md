@@ -6,6 +6,9 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 
 ### Corrigido
 
+- Importacao: o resumo conta como ignoradas (`skipped`) as linhas de
+  continuacao dos relatorios por evento (`Reprogramacao #2`, `Desvio #2` e
+  seguintes, sem numero de SSA); antes elas sumiam da contagem.
 - Configuracao inicial de dados com planilhas: se alguma planilha for
   rejeitada, a configuracao falha e informa qual, sem criar banco nem copiar
   arquivos para `docs_entrada`. Antes ela terminava como "concluida" com parte
