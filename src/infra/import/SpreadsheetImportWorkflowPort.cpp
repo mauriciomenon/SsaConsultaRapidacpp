@@ -824,7 +824,20 @@ namespace ssa::infra::importing {
                 request.files.begin() + static_cast<std::ptrdiff_t>(batchEnd));
             const ProgressContext progress{&request.progress, batchStart, request.files.size(),
                                            batchStart / kMaxImportFilesPerBatch + 1, false};
-            const auto batchResult = importExternalFilesBatch(batchRequest, stopToken, progress);
+            ports::WorkflowResult batchResult;
+            try {
+                batchResult = importExternalFilesBatch(batchRequest, stopToken, progress);
+            } catch (const std::exception& error) {
+                // Earlier batches are committed: an exception that ends this one (a
+                // transaction the database aborted, as on a full disk) must keep their summary.
+                const auto* operationError = dynamic_cast<const ports::OperationError*>(&error);
+                batchResult = withSummary(
+                    {ports::WorkflowStatus::Failed, "import_xlsx_to_sqlite batch_failed", false,
+                     operationError == nullptr
+                         ? std::string{error.what()}
+                         : std::string{error.what()} + ": " + operationError->diagnostic()},
+                    selectedFilesSummary(batchRequest.files, ports::ImportFileStatus::Failed));
+            }
             ++completedBatchCount;
             if (batchResult.importSummary) {
                 mergeImportSummary(totalSummary, *batchResult.importSummary);
@@ -1353,7 +1366,20 @@ namespace ssa::infra::importing {
         const auto isolateFileFailure = [&](const StagedImportFile& stagedFile,
                                             const std::string_view reason,
                                             const std::string_view detail = {}) {
-            writeSession->rollbackFile();
+            try {
+                writeSession->rollbackFile();
+            } catch (const std::exception& rollbackError) {
+                // The database already ended the transaction (full disk, I/O error): keep the
+                // failure that caused it, not only the missing savepoint.
+                const auto* operationError =
+                    dynamic_cast<const ports::OperationError*>(&rollbackError);
+                throw ports::OperationError(
+                    "Falha ao atualizar o banco de dados",
+                    "file=" + stagedFile.originalFilename + " " + std::string{reason} + " " +
+                        std::string{detail} + "; file rollback failed: " +
+                        (operationError == nullptr ? std::string{rollbackError.what()}
+                                                   : operationError->diagnostic()));
+            }
             auto& fileResult = importSummary.files[stagedFile.summaryIndex];
             const bool operationalFailure = reason == "operation_failed";
             fileResult.status = operationalFailure ? ports::ImportFileStatus::Failed

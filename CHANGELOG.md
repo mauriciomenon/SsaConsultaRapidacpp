@@ -6,6 +6,10 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 
 ### Corrigido
 
+- Importar arquivos (mais de 64 planilhas): quando o banco interrompe um lote
+  (por exemplo disco cheio), o resultado mostra as SSAs dos lotes ja gravados,
+  a grade recarrega e o diagnostico traz a causa; antes vinha uma falha
+  generica sem resumo e com "no such savepoint" no lugar da causa.
 - Rescan: a copia temporaria `.part` deixada por uma importacao interrompida
   (queda ou encerramento forcado) e removida no rescan seguinte e nao conta mais
   como arquivo pendente; a de outro banco que use a mesma pasta fica intacta.

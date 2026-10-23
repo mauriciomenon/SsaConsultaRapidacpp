@@ -3833,6 +3833,55 @@ TEST_CASE("external import rejects a malformed related SSA through the full work
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
+TEST_CASE("external import keeps the summary of committed batches when a later batch aborts") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = ssa::qt::toFileSystemPath(tempDir.path());
+    const auto sourceDirectory = root / "external";
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(sourceDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    ssa::infra::sqlite::SqliteSsaImportWriter::createEmpty(dbPath, importColumns());
+    // RAISE(ROLLBACK) ends the whole transaction, as SQLite does on a full disk, so the
+    // file savepoint is gone when the import tries to roll the file back.
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(db,
+                         "CREATE TRIGGER abort_batch BEFORE INSERT ON ssa_table "
+                         "WHEN NEW.numero_ssa = '202600999' "
+                         "BEGIN SELECT RAISE(ROLLBACK, 'injected abort'); END;",
+                         nullptr, nullptr, nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+    const auto header =
+        row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao")});
+    std::vector<std::filesystem::path> files;
+    for (int index = 1; index <= 65; ++index) {
+        const auto number =
+            index == 65 ? std::string{"202600999"}
+                        : "2026001" + std::string(index < 10 ? "0" : "") + std::to_string(index);
+        files.push_back(sourceDirectory / ("file_" + std::to_string(index) + ".xlsx"));
+        writeWorkbook(files.back(),
+                      header + row(2, {inlineCell("A2", number), inlineCell("B2", "APV"),
+                                       inlineCell("C2", "Row"), inlineCell("D2", "2026-07-01")}));
+    }
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+
+    const auto result = port.importExternalFiles({.files = files});
+
+    INFO(result.message);
+    INFO(result.diagnostic);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
+    REQUIRE(result.importSummary.has_value());
+    REQUIRE(result.importSummary->inserts == 64);
+    REQUIRE(result.importSummary->files.size() == 65);
+    REQUIRE(result.importSummary->files.back().status == ssa::ports::ImportFileStatus::Failed);
+    REQUIRE(result.diagnostic.find("injected abort") != std::string::npos);
+}
+
 TEST_CASE("external import leaves no staged copy of an ignored or unapplied workbook") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
