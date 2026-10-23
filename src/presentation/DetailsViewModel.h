@@ -106,6 +106,7 @@ namespace ssa::presentation {
         void finishRelationQuery(std::uint64_t operationId);
         void stopRelationQueries();
         void stopRelationRecordQueries();
+        void discardPendingRecordLoad();
         void pruneCompletedQueries();
         void setCurrentRelationIndex(int index);
         void loadRelation(int index);

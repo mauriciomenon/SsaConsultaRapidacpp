@@ -371,6 +371,10 @@ namespace ssa::presentation {
         if (trimmed.isEmpty()) {
             return;
         }
+        if (trimmed == selectedSsa_) {
+            discardPendingRecordLoad();
+            return;
+        }
         startRelationQuery(trimmed, RelationQueryKind::Record);
     }
 
@@ -441,8 +445,11 @@ namespace ssa::presentation {
             startRelationQuery(ssa, RelationQueryKind::Record, true);
             return;
         }
-        // Back on the SSA already shown: a pending load of another relation must not publish
-        // over it.
+        discardPendingRecordLoad();
+    }
+
+    // Back on the SSA already shown: a pending load of another SSA must not publish over it.
+    void DetailsViewModel::discardPendingRecordLoad() {
         stopRelationRecordQueries();
         latestRecordQueryId_ = 0;
         recordRelationError_.clear();

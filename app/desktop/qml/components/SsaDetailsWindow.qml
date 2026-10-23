@@ -34,11 +34,9 @@ ApplicationWindow {
     function navigateToSsa(ssaNumber) {
         if (!root.detailsViewModel || ssaNumber.length === 0)
             return;
-        if (ssaNumber === root.currentSsaNumber()) {
-            root.graphStatusMessage = "SSA ja aberta";
-            return;
-        }
-        root.graphStatusMessage = "";
+        // Always through the view model: for the SSA already shown it drops a pending load of
+        // another SSA instead of querying again.
+        root.graphStatusMessage = ssaNumber === root.currentSsaNumber() ? "SSA ja aberta" : "";
         root.detailsViewModel.requestLoadBySsaNumber(ssaNumber);
     }
 

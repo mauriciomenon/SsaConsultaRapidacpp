@@ -6,6 +6,9 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 
 ### Corrigido
 
+- Janela de detalhes destacada: clicar no grafo numa SSA e voltar para a SSA ja
+  exibida antes de a outra carregar mantem a SSA exibida; antes a carga
+  pendente terminava e a substituia.
 - Atalhos de situacao: com um filtro digitado na coluna Situacao (por exemplo
   `AP`, que busca "contem", ou `^A`), clicar num atalho ou em "Limpar atalhos"
   nao troca mais esse termo por igualdade exata; o atalho so acrescenta ou

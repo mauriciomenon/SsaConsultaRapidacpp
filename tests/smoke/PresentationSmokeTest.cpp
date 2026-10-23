@@ -947,6 +947,29 @@ namespace {
             QCOMPARE(details.relationError(), QString());
         }
 
+        void details_request_for_the_shown_ssa_discards_a_pending_load() {
+            auto repository = std::make_shared<DetailsRelationRepository>();
+            repository->setRecord("202500001", ssa::domain::SsaRecord{{{"numero_ssa", "202500001"},
+                                                                       {"situacao", "APV"}}});
+            repository->holdRecordFor("202500001");
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::DetailsViewModel details(service);
+            details.setRecord(ssa::domain::SsaRecord{
+                {{"numero_ssa", "202500003"}, {"situacao", "APV"}, {"derivada_de", "202500001"}}});
+            QTRY_VERIFY_WITH_TIMEOUT(!details.relationLoading(), 1000);
+
+            // Detached window: graph node of another SSA, then the node of the shown one.
+            details.requestLoadBySsaNumber("202500001");
+            QTRY_VERIFY_WITH_TIMEOUT(repository->recordStarted(), 1000);
+            details.requestLoadBySsaNumber("202500003");
+            repository->releaseChildren();
+
+            QTRY_VERIFY_WITH_TIMEOUT(!details.relationLoading(), 1000);
+            QTest::qWait(50);
+            QCOMPARE(details.selectedSsa(), QString("202500003"));
+            QCOMPARE(details.relationError(), QString());
+        }
+
         void details_relation_navigation_keeps_duplicate_relation_index() {
             auto repository = std::make_shared<DetailsRelationRepository>();
             repository->setRecord("202500001", ssa::domain::SsaRecord{{{"numero_ssa", "202500001"},
