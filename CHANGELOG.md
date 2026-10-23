@@ -6,6 +6,16 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 
 ### Corrigido
 
+- Configuracao inicial: uma pasta `docs_entrada/processadas` que seja atalho
+  (symlink) e recusada com mensagem clara; antes as planilhas eram copiadas
+  para fora do projeto.
+- Grade: cancelar ou falhar a troca do tamanho de pagina volta tambem o
+  tamanho exibido; antes o paginador mostrava, por exemplo, "pagina 10 de 1".
+- Barra de status: uma importacao que terminou sem mudancas nao e mais
+  substituida pela falha de uma importacao anterior cujo recarregamento ainda
+  estava em curso.
+- Seletor de colunas e Preferencias: o filtro digitado num deles e fechado em
+  seguida nao filtra mais a lista do outro.
 - Rescan e importacao depois de uma queda no meio de uma gravacao: o banco com
   journal pendente e recuperado na primeira operacao (volta ao ultimo estado
   gravado); antes `--rescan` falhava sempre com `import_consolidation_resume_failed`
