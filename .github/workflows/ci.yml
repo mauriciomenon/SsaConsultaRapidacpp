@@ -63,7 +63,11 @@ jobs:
           set -euo pipefail
           sdk="$(xcrun --sdk macosx --show-sdk-path)"
           resource="$("$(brew --prefix llvm)/bin/clang" -print-resource-dir)"
-          find src app tools -type f -name '*.cpp' -print0 | xargs -0 \
+          # Only translation units the dev build compiles (optional Arrow tools are not in it).
+          python3 -I -c 'import json, os, sys
+          root = os.getcwd() + "/"
+          files = {e["file"] for e in json.load(open(sys.argv[1] + "/compile_commands.json"))}
+          print("\0".join(sorted(f for f in files if f.startswith(tuple(root + d + "/" for d in ("src", "app", "tools"))))), end="")' "$BUILD_DIR" | xargs -0 \
             clazy-standalone -p "$BUILD_DIR" -checks=level0,level1 --only-qt \
             --header-filter="$PWD/(src|app|tools)/.*" \
             --ignore-dirs='/(build|_deps)/' \
