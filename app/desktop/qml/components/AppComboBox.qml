@@ -128,11 +128,22 @@ ComboBox {
         const originBottomY = origin.y + root.height;
         const x = Theme.clampedPopupX(boundsWidth, originRightX, preferredWidth);
         const belowHeight = Theme.clampedPopupHeightBelow(boundsHeight, originBottomY + Theme.shortcutGap, preferredHeight, 0);
-        if (belowHeight > 0) {
+        // Height stays content-driven (minHeight 0), but below is taken only when it shows
+        // the whole list or at least three rows; a one-row sliver flips the popup up.
+        if (belowHeight > 0 && belowHeight >= Math.min(preferredHeight, Theme.controlHeight * 3)) {
             return ({
                     x: x,
                     y: originBottomY + Theme.shortcutGap,
                     h: belowHeight
+                });
+        }
+        // Otherwise open above the trigger, anchored to it, when that side has more room.
+        const aboveHeight = Math.min(preferredHeight, origin.y - Theme.shortcutGap - Theme.popupMargin);
+        if (aboveHeight > belowHeight) {
+            return ({
+                    x: x,
+                    y: origin.y - Theme.shortcutGap - aboveHeight,
+                    h: aboveHeight
                 });
         }
         return ({

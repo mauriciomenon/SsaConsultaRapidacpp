@@ -466,6 +466,55 @@ namespace {
                                     "SsaConsultaRapida", 1, 0, "FilterTabButton") >= 0);
         }
 
+        void combo_near_the_window_bottom_opens_upward() {
+            QQmlEngine engine;
+            QQmlComponent component(&engine);
+            component.setData(R"QML(
+                import QtQuick
+                import SsaConsultaRapida
+
+                Item {
+                    width: 600
+                    height: 500
+                    AppComboBox {
+                        objectName: "bottomCombo"
+                        x: 100
+                        y: 430
+                        width: 200
+                        model: 20
+                    }
+                }
+            )QML",
+                              QUrl(QStringLiteral("inmemory:/BottomComboHarness.qml")));
+            QTRY_VERIFY_WITH_TIMEOUT(component.status() != QQmlComponent::Loading, 1000);
+            QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+            QQuickWindow window;
+            window.setGeometry(0, 0, 600, 500);
+            std::unique_ptr<QObject> harness(component.create());
+            QVERIFY2(harness != nullptr, qPrintable(component.errorString()));
+            auto* harnessItem = qobject_cast<QQuickItem*>(harness.get());
+            QVERIFY(harnessItem != nullptr);
+            harnessItem->setParentItem(window.contentItem());
+            window.show();
+            QTRY_VERIFY_WITH_TIMEOUT(window.isExposed(), 1000);
+            auto* combo = harnessItem->findChild<QQuickItem*>(QStringLiteral("bottomCombo"));
+            QVERIFY(combo != nullptr);
+            auto* popup = combo->property("popup").value<QObject*>();
+            QVERIFY(popup != nullptr);
+
+            QVERIFY(QMetaObject::invokeMethod(popup, "open"));
+            QTRY_VERIFY_WITH_TIMEOUT(popup->property("opened").toBool(), 1000);
+
+            // 40 px below the combo would show a sliver of one row: flip up instead.
+            const auto comboTop = combo->mapToScene(QPointF{0, 0}).y();
+            const auto popupY = popup->property("y").toReal();
+            const auto popupHeight = popup->property("height").toReal();
+            qInfo() << "bottom combo top" << comboTop << "popup y" << popupY << "height"
+                    << popupHeight;
+            QVERIFY(popupHeight >= 3 * 30);
+            QVERIFY(popupY + popupHeight <= comboTop);
+        }
+
         void reprogramming_value_combo_loads_cold_cache_once() {
             auto repository = std::make_shared<CountingRepository>();
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);

@@ -6,6 +6,9 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 
 ### Corrigido
 
+- Listas suspensas perto do rodape da janela (por exemplo nos cards de
+  filtros avancados da ultima linha) abrem para cima, ancoradas no campo; antes
+  abriam uma faixa de uma linha abaixo dele.
 - Configuracao inicial de dados com planilhas: refazer a configuracao com as
   planilhas ja em `docs_entrada/processadas` (banco apagado) funciona; a copia
   nova recebe o proximo nome livre (`nome__1.xlsx`), como na importacao. Uma
