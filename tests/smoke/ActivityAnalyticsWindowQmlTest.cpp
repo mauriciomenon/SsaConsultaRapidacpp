@@ -1696,6 +1696,36 @@ namespace {
                      QStringList{QStringLiteral("Ana")});
         }
 
+        void manual_person_pick_ends_a_pending_quick_preset() {
+            QQmlEngine engine;
+            FakeAnalyticsViewModel viewModel;
+            QString error;
+            auto object = loadWindow(engine, viewModel, error);
+            QVERIFY2(object != nullptr, qPrintable(error));
+            auto* custom = object->findChild<QObject*>(QStringLiteral("analyticsCustomAnalysis"));
+            QVERIFY(custom != nullptr);
+            auto* button = object->findChild<QObject*>(QStringLiteral("analyticsExecutedByPerson"));
+            QVERIFY(button != nullptr);
+            QVERIFY(invoke(*object, "selectTab", 1));
+            QTRY_VERIFY_WITH_TIMEOUT(!viewModel.loading(), 1000);
+            viewModel.holdDimensionRequests();
+            const int requestsBefore = viewModel.customRequestCount();
+            QVERIFY(QMetaObject::invokeMethod(button, "click", Qt::DirectConnection));
+
+            // Picking a person only redraws the chart; it must still end the pending preset.
+            QVERIFY(invoke(*custom, "selectPerson", QStringLiteral("Bruno Atual")));
+            viewModel.publishDimensionValues(
+                {{QStringLiteral("divisions"), QStringList{QStringLiteral("SMM")}},
+                 {QStringLiteral("sectors"), QStringList{QStringLiteral("SMM1")}},
+                 {QStringLiteral("people"),
+                  QStringList{QStringLiteral("Ana Atual"), QStringLiteral("Bruno Atual")}}});
+
+            QTest::qWait(50);
+            QCOMPARE(viewModel.customRequestCount(), requestsBefore);
+            QCOMPARE(custom->property("selectedPeople").toStringList(),
+                     QStringList{QStringLiteral("Bruno Atual")});
+        }
+
         void manual_sector_pick_ends_a_pending_quick_preset() {
             QQmlEngine engine;
             FakeAnalyticsViewModel viewModel;

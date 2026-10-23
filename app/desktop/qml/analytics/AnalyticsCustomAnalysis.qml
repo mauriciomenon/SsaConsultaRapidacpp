@@ -168,7 +168,10 @@ Item {
         return root.analyticsViewModel.requestDimensionValues(root.requestSelection());
     }
 
+    // Any manual change (a person, the sort) also ends a pending quick preset, so its late
+    // dimensions neither overwrite the pick nor run an analysis the user no longer asked for.
     function invalidateCustomChart() {
+        root.endQuickPreset();
         root.analyticsViewModel.clearCustomSeries();
     }
 
