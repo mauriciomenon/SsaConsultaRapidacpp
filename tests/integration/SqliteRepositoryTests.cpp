@@ -1153,6 +1153,34 @@ TEST_CASE_METHOD(SqliteRepositoryFixture,
 }
 
 TEST_CASE_METHOD(SqliteRepositoryFixture,
+                 "sqlite repository compares reprogramming counts and leaves missing ones out") {
+    executeSql(path, R"SQL(
+        UPDATE ssa_table SET num_reprogramacoes = 2 WHERE numero_ssa = '202500001';
+        UPDATE ssa_table SET num_reprogramacoes = NULL WHERE numero_ssa = '202500000';
+    )SQL");
+    const auto numbersFor = [this](const ssa::domain::NumericComparisonMode mode,
+                                   std::vector<int> values) {
+        ssa::domain::SsaPageRequest request;
+        request.pageSize = 10;
+        request.excludeScaSesSte = false;
+        request.advancedFilters.reprogrammingComparison = mode;
+        request.advancedFilters.reprogrammingValues = std::move(values);
+        std::vector<std::string> numbers;
+        for (const auto& row : repository.page(request).rows) {
+            numbers.emplace_back(row.valueOf("numero_ssa"));
+        }
+        std::ranges::sort(numbers);
+        return numbers;
+    };
+    using Mode = ssa::domain::NumericComparisonMode;
+    using Numbers = std::vector<std::string>;
+
+    REQUIRE(numbersFor(Mode::LessOrEqual, {0, 1}) == Numbers{"202500002", "202500003"});
+    REQUIRE(numbersFor(Mode::GreaterOrEqual, {2, 1}) == Numbers{"202500001", "202500003"});
+    REQUIRE(numbersFor(Mode::Equals, {0, 2}) == Numbers{"202500001", "202500002"});
+}
+
+TEST_CASE_METHOD(SqliteRepositoryFixture,
                  "sqlite repository rejects a query with a stopped token") {
     std::stop_source stopSource;
     stopSource.request_stop();

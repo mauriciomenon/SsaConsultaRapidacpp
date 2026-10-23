@@ -35,6 +35,12 @@
   stored value or the displayed date, as the Python GUI does (`21/12/2021`,
   `12/2021`, `!21/12/2021`).
 
+## Reprogramming Counts
+
+- `eq` matches any selected count; `lte` compares with the largest selected count and
+  `gte` with the smallest, as the Python GUI does.
+- A row without a count (`NULL`) stays out of every comparison, in C++ and in Python.
+
 ## Prohibited
 
 - Fuzzy search.
