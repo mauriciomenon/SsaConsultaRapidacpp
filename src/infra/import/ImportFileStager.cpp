@@ -51,13 +51,13 @@ namespace ssa::infra::importing {
         }
 
         // Untagged: .ssa-staged-<stem>_<batch>_<n>.xlsx; tagged: .ssa-staged@<owner>-<stem>_...
-        const QString kUntaggedStagingPrefix = QStringLiteral(".ssa-staged-");
-        const QString kTaggedStagingPrefix = QStringLiteral(".ssa-staged@");
+        constexpr QLatin1StringView kUntaggedStagingPrefix{".ssa-staged-"};
+        constexpr QLatin1StringView kTaggedStagingPrefix{".ssa-staged@"};
 
         QString stagingPrefixFor(const std::string& owner) {
-            return owner.empty()
-                       ? kUntaggedStagingPrefix
-                       : kTaggedStagingPrefix + QString::fromStdString(owner) + QStringLiteral("-");
+            return owner.empty() ? QString{kUntaggedStagingPrefix}
+                                 : QString{kTaggedStagingPrefix} + QString::fromStdString(owner) +
+                                       QLatin1Char('-');
         }
 
         // The part after the staging prefix (<stem>_<batch>_<n>.xlsx), or empty when the name
