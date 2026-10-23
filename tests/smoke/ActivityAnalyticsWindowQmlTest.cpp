@@ -1616,6 +1616,33 @@ namespace {
             QCOMPARE(selection.value(QStringLiteral("people")).toStringList(), expectedPeople);
         }
 
+        void activating_the_window_after_a_month_turn_refreshes_the_last_complete_month() {
+            QQmlEngine engine;
+            FakeAnalyticsViewModel viewModel;
+            QString error;
+            auto object = loadWindow(engine, viewModel, error);
+            QVERIFY2(object != nullptr, qPrintable(error));
+            auto* window = qobject_cast<QQuickWindow*>(object.get());
+            QVERIFY(window != nullptr);
+            auto* dashboard = object->findChild<QObject*>(QStringLiteral("analyticsDashboard"));
+            QVERIFY(dashboard != nullptr);
+            QVERIFY(invoke(*object, "open"));
+            QTRY_VERIFY_WITH_TIMEOUT(window->isActive(), 1000);
+            QVERIFY(!dashboard->property("canNavigateNextMonth").toBool());
+
+            // The user works in the main window while the month turns, then comes back.
+            QQuickWindow other;
+            other.setGeometry(0, 0, 200, 100);
+            other.show();
+            other.requestActivate();
+            QTRY_VERIFY_WITH_TIMEOUT(!window->isActive(), 1000);
+            viewModel.completeAnotherMonth();
+            window->requestActivate();
+            QTRY_VERIFY_WITH_TIMEOUT(window->isActive(), 1000);
+
+            QTRY_VERIFY_WITH_TIMEOUT(dashboard->property("canNavigateNextMonth").toBool(), 1000);
+        }
+
         void canceling_the_first_warning_load_does_not_strand_the_dashboard() {
             QQmlEngine engine;
             FakeAnalyticsViewModel viewModel;
@@ -2057,15 +2084,30 @@ namespace {
             QCOMPARE(custom->property("lastWeek").toInt(),
                      isoWeek.value(QStringLiteral("lastWeek")).toInt());
 
-            const int requestsBefore = viewModel.customRequestCount();
-            QVERIFY(invoke(*custom, "selectAllSectors"));
-            QVERIFY(invoke(*custom, "selectAllPeople"));
+            // The button runs the preset on its own: it waits for the dimensions, selects every
+            // sector and person and starts the analysis without any manual step.
             QTRY_VERIFY_WITH_TIMEOUT(!viewModel.loading(), 1000);
-            QVERIFY(invoke(*custom, "runAnalysis"));
-            QCOMPARE(viewModel.customRequestCount(), requestsBefore + 1);
+            auto* button =
+                object->findChild<QObject*>(QStringLiteral("analyticsExecutedBySectorPerson"));
+            QVERIFY(button != nullptr);
+            viewModel.holdDimensionRequests();
+            const int requestsBefore = viewModel.customRequestCount();
+            QVERIFY(QMetaObject::invokeMethod(button, "click", Qt::DirectConnection));
+            QCOMPARE(viewModel.customRequestCount(), requestsBefore);
+            viewModel.publishDimensionValues(
+                {{QStringLiteral("divisions"), QStringList{QStringLiteral("SMM")}},
+                 {QStringLiteral("sectors"),
+                  QStringList{QStringLiteral("SMM1"), QStringLiteral("SMM2")}},
+                 {QStringLiteral("people"), QStringList{QStringLiteral("Ana Atual")}}});
+
+            QTRY_COMPARE_WITH_TIMEOUT(viewModel.customRequestCount(), requestsBefore + 1, 1000);
             const QVariantMap selection = viewModel.lastCustomSelection();
             QCOMPARE(selection.value(QStringLiteral("breakdown")).toInt(), 3);
             QCOMPARE(selection.value(QStringLiteral("personRole")).toInt(), 2);
+            QCOMPARE(selection.value(QStringLiteral("sectors")).toStringList(),
+                     (QStringList{QStringLiteral("SMM1"), QStringLiteral("SMM2")}));
+            QCOMPARE(selection.value(QStringLiteral("people")).toStringList(),
+                     QStringList{QStringLiteral("Ana Atual")});
         }
 
         void custom_chart_exposes_export_actions_when_data_present() {
