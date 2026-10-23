@@ -177,6 +177,9 @@ mkdir -p "${notices_dir}"
 cp "${repo_root}/THIRD_PARTY_NOTICES.md" "${notices_dir}/"
 cp "${repo_root}/third_party/tinted-themes/LICENSE" \
   "${notices_dir}/TINTED_SCHEMES_LICENSE.txt"
+# Help > Guia de instalacao opens this copy (AppPaths::installationGuidePath).
+mkdir -p "${bundle_copy}/Contents/Resources/doc"
+cp "${repo_root}/README.md" "${bundle_copy}/Contents/Resources/doc/"
 
 qml_module_dir="${build_dir}/SsaConsultaRapida"
 if [[ ! -d "${qml_module_dir}" ]]; then

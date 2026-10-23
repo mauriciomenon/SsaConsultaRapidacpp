@@ -6,6 +6,10 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 
 ### Corrigido
 
+- Ajuda > Guia de instalacao abre o guia tambem na aplicacao instalada: os
+  pacotes macOS, Windows, Debian, Arch e Linux passam a levar o `README.md`, e
+  a aplicacao o procura na pasta do projeto e depois na do pacote. Antes so
+  funcionava num clone de desenvolvimento.
 - Importacao: planilha com aba valida seguida de aba nao reconhecida e
   rejeitada inteira; antes suas linhas entravam no banco quando outro arquivo
   valido estava no mesmo lote. Conflito de duplicata no rescan completo agora

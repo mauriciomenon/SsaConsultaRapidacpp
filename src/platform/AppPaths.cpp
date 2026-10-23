@@ -36,8 +36,17 @@ namespace ssa::platform {
         return processedFolderPath() / "nosurvivor";
     }
 
-    std::filesystem::path AppPaths::installationGuidePath() const {
-        return projectRootPath() / "README.md";
+    std::filesystem::path
+    AppPaths::installationGuidePath(const std::filesystem::path& applicationDirectory) const {
+        auto projectGuide = projectRootPath() / "README.md";
+        if (std::filesystem::exists(projectGuide)) {
+            return projectGuide;
+        }
+#ifdef __APPLE__
+        return applicationDirectory.parent_path() / "Resources" / "doc" / "README.md";
+#else
+        return applicationDirectory / "doc" / "README.md";
+#endif
     }
 
     void AppPaths::ensureConfigDirectory() const {

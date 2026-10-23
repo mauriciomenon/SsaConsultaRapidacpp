@@ -240,6 +240,9 @@ cp "${packaged_binary}" \
 chmod 0755 "${install_prefix}/lib/ssa_consulta_rapida/bin/ssa_consulta_rapida"
 cp "${repo_root}/THIRD_PARTY_NOTICES.md" \
   "${install_prefix}/share/doc/ssa-consulta-rapida/"
+# Help > Guia de instalacao opens this copy (AppPaths::installationGuidePath).
+install -Dm0644 "${repo_root}/README.md" \
+  "${install_prefix}/lib/ssa_consulta_rapida/bin/doc/README.md"
 cp "${repo_root}/third_party/tinted-themes/LICENSE" \
   "${install_prefix}/share/doc/ssa-consulta-rapida/TINTED_SCHEMES_LICENSE.txt"
 package_copy_runtime_libraries "${build_binary}" \
@@ -422,6 +425,7 @@ for runtime_dir in plugins qml; do
   fi
 done
 chmod 0755 "${stage_standalone_root}/${artifact_name}"
+install -Dm0644 "${repo_root}/README.md" "${stage_standalone_root}/doc/README.md"
 cat > "${stage_standalone_root}/README.txt" <<EOF_STANDALONE
 Native Linux executable. Run:
   ./${artifact_name} --db <path-to-ssas.db>

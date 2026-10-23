@@ -156,6 +156,8 @@ mkdir -p "${artifact_root}/bin" "${artifact_root}/lib" \
 rm -f "${archive_path}"
 cp "${binary}" "${artifact_root}/bin/"
 chmod +x "${artifact_root}/bin/ssa_consulta_rapida"
+# Help > Guia de instalacao opens this copy (AppPaths::installationGuidePath).
+install -Dm0644 "${repo_root}/README.md" "${artifact_root}/bin/doc/README.md"
 cp "${repo_root}/resources/app_icon.png" \
    "${artifact_root}/share/icons/hicolor/512x512/apps/ssa-consulta-rapida.png"
 cp "${repo_root}/resources/app_icon.svg" \

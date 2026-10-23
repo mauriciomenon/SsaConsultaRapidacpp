@@ -25,6 +25,7 @@
 #include "qt/FilesystemPath.h"
 #include "query/SsaQueryService.h"
 
+#include <QCoreApplication>
 #include <QDate>
 #include <QDebug>
 #include <QUrl>
@@ -96,10 +97,13 @@ namespace ssa::app::desktop {
             commandPaths.inputFolder = paths.inputFolderPath();
             commandPaths.processedFolder = paths.processedFolderPath();
             commandPaths.redundantFolder = paths.redundantFolderPath();
-            commandPaths.installationGuide = paths.installationGuidePath();
+            commandPaths.installationGuide = paths.installationGuidePath(
+                ssa::qt::toFileSystemPath(QCoreApplication::applicationDirPath()));
+            // The guide folder holds documents only, so opening it never reaches an executable.
             return std::make_shared<ssa::platform::DesktopExternalCommandPort>(
                 QUrl{options.samBaseUrl}, commandPaths,
-                std::vector<std::filesystem::path>{paths.projectRootPath()});
+                std::vector<std::filesystem::path>{paths.projectRootPath(),
+                                                   commandPaths.installationGuide.parent_path()});
         }
 
     } // namespace

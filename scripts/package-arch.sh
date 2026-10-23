@@ -166,6 +166,7 @@ rm -rf "${pkgbuild_root}"
 mkdir -p "${pkgbuild_root}/src"
 cp "${binary}" "${pkgbuild_root}/src/ssa_consulta_rapida"
 cp "${repo_root}/THIRD_PARTY_NOTICES.md" "${pkgbuild_root}/src/"
+cp "${repo_root}/README.md" "${pkgbuild_root}/src/"
 cp "${repo_root}/third_party/tinted-themes/LICENSE" \
   "${pkgbuild_root}/src/TINTED_SCHEMES_LICENSE.txt"
 cp "${repo_root}/resources/app_icon.png" "${pkgbuild_root}/src/"
@@ -209,6 +210,7 @@ build() {
 
 package() {
   install -Dm0755 "\${srcdir}/ssa_consulta_rapida" "\${pkgdir}/usr/lib/ssa_consulta_rapida/bin/ssa_consulta_rapida"
+  install -Dm0644 "\${srcdir}/README.md" "\${pkgdir}/usr/lib/ssa_consulta_rapida/bin/doc/README.md"
   for lib in "\${srcdir}"/lib*.so* "\${srcdir}"/*.so.*; do
     [[ -e "\${lib}" ]] || continue
     install -Dm0755 "\${lib}" "\${pkgdir}/usr/lib/ssa_consulta_rapida/lib/\$(basename "\${lib}")"

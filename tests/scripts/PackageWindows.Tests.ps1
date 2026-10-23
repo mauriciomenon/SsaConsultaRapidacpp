@@ -146,7 +146,7 @@ public static class PackageTool
         $env:PATHEXT = [Environment]::GetEnvironmentVariable("PATHEXT", "Machine")
         $env:Path = "$fakeBin;$originalPath"
         New-Item -ItemType File -Path (Join-Path $buildDir "ssa_consulta_rapida.exe"), (Join-Path $buildDir "sqlite3.dll"), (Join-Path $repoRoot "data/ssas.db"),
-            (Join-Path $repoRoot "resources/app_icon.ico"), (Join-Path $repoRoot "THIRD_PARTY_NOTICES.md"),
+            (Join-Path $repoRoot "resources/app_icon.ico"), (Join-Path $repoRoot "THIRD_PARTY_NOTICES.md"), (Join-Path $repoRoot "README.md"),
             (Join-Path $repoRoot "third_party/tinted-themes/LICENSE") -Force | Out-Null
         foreach ($runtimeFile in @("MSVCP140.dll", "MSVCP140_ATOMIC_WAIT.dll", "VCRUNTIME140.dll", "VCRUNTIME140_1.dll")) {
             New-Item -ItemType File -Path (Join-Path $runtimeDir $runtimeFile) | Out-Null
@@ -304,7 +304,7 @@ public static class QtDeployMock
         $env:PATHEXT = [Environment]::GetEnvironmentVariable("PATHEXT", "Machine")
         $env:Path = "$fakeBin;$originalPath"
         New-Item -ItemType File -Path (Join-Path $buildDir "ssa_consulta_rapida.exe"), (Join-Path $buildDir "sqlite3.dll"), (Join-Path $repoRoot "data/ssas.db"),
-            (Join-Path $repoRoot "resources/app_icon.ico"), (Join-Path $repoRoot "THIRD_PARTY_NOTICES.md"),
+            (Join-Path $repoRoot "resources/app_icon.ico"), (Join-Path $repoRoot "THIRD_PARTY_NOTICES.md"), (Join-Path $repoRoot "README.md"),
             (Join-Path $repoRoot "third_party/tinted-themes/LICENSE") -Force | Out-Null
         @(
             "Qt6_DIR:PATH=$($qtCmakeDir.Replace('\', '/'))"

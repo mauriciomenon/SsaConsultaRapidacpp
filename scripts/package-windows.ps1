@@ -322,6 +322,10 @@ if (-not (Test-Path -LiteralPath $sqliteRuntime -PathType Leaf)) {
 Copy-Item $sqliteRuntime (Join-Path $artifactDir "sqlite3.dll")
 Copy-Item (Join-Path $repoRoot "resources\app_icon.ico") (Join-Path $artifactDir "app_icon.ico")
 Copy-Item (Join-Path $repoRoot "THIRD_PARTY_NOTICES.md") $artifactDir
+# Help > Guia de instalacao opens this copy (AppPaths::installationGuidePath).
+$guideDir = Join-Path $artifactDir "doc"
+New-Item -ItemType Directory -Path $guideDir -Force | Out-Null
+Copy-Item (Join-Path $repoRoot "README.md") $guideDir
 Copy-Item (Join-Path $repoRoot "third_party\tinted-themes\LICENSE") (Join-Path $artifactDir "TINTED_SCHEMES_LICENSE.txt")
 $databasePath = Join-Path $repoRoot "data\ssas.db"
 if (-not (Test-Path -LiteralPath $databasePath -PathType Leaf)) {

@@ -120,6 +120,24 @@ TEST_CASE("app paths nest the redundant folder under processed files") {
     REQUIRE(paths.redundantFolderPath() == root / "docs_entrada" / "processadas" / "nosurvivor");
 }
 
+TEST_CASE("installation guide prefers the project root and else the packaged guide") {
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+    const ssa::platform::AppPaths paths(directory.path(), directory.filePath("config"));
+    const auto root = ssa::qt::toFileSystemPath(directory.path());
+    const auto applicationDirectory = root / "app" / "bin";
+#ifdef __APPLE__
+    const auto packagedGuide = root / "app" / "Resources" / "doc" / "README.md";
+#else
+    const auto packagedGuide = applicationDirectory / "doc" / "README.md";
+#endif
+
+    REQUIRE(paths.installationGuidePath(applicationDirectory) == packagedGuide);
+
+    std::ofstream{root / "README.md"} << "guide";
+    REQUIRE(paths.installationGuidePath(applicationDirectory) == root / "README.md");
+}
+
 TEST_CASE("startup options accept configured absolute SAM URL") {
     QCommandLineParser parser;
     addStartupOptions(parser);
