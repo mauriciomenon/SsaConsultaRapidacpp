@@ -94,6 +94,11 @@ namespace ssa::presentation {
         }
     }
 
+    void BrowseQueryState::restorePosition(const domain::SsaPageRequest& displayed) {
+        pageIndex_ = displayed.pageIndex;
+        sort_ = displayed.sort;
+    }
+
     void BrowseQueryState::sortByColumnKey(const std::string& columnKey) {
         if (sort_.columnKey == columnKey && !columnKey.empty()) {
             if (sort_.ascending) {

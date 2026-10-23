@@ -22,6 +22,8 @@ namespace ssa::presentation {
                               tableModel, this) {
         connect(&requestCoordinator_, &BrowseRequestCoordinator::activeOperationsChanged, this,
                 &BrowseOrchestrator::activeOperationsChanged);
+        connect(&requestCoordinator_, &BrowseRequestCoordinator::sortChanged, this,
+                &BrowseOrchestrator::sortChanged);
         connect(&search_, &SearchViewModel::applyRequested, this, &BrowseOrchestrator::apply);
         connect(&search_, &SearchViewModel::textClearRequested, this,
                 &BrowseOrchestrator::clearSearchAndResetPage);

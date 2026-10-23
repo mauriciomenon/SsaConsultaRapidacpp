@@ -37,10 +37,12 @@ namespace ssa::presentation {
       signals:
         void pageChanged();
         void activeOperationsChanged();
+        void sortChanged();
 
       private:
         [[nodiscard]] domain::SsaPageRequest buildRequest() const;
         void runRequest(const domain::SsaPageRequest& request);
+        void restoreDisplayedPosition();
 
         BrowseQueryState& queryState_;
         SearchViewModel& search_;

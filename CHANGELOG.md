@@ -178,6 +178,9 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 - Filtro de coluna em datas (Data de cadastro, Prazo limite e as demais exibidas
   como dd/mm/aaaa) aceita o formato mostrado na grade: `21/12/2021`, `12/2021`
   e `!21/12/2021` voltam a encontrar ou excluir as SSAs, como na versao Python.
+- Grade: cancelar (ou ver falhar) uma troca de pagina ou de ordenacao devolve o
+  paginador e o indicador de ordenacao ao que a tabela mostra; antes eles ja
+  mostravam o pedido novo, e a pagina seguinte pulava uma.
 - Arquivo: "Carregar outro banco" e "Configurar dados..." ficam desabilitados
   durante importacao, rescan, manutencao ou exportacao; antes a troca relancava
   o app e cancelava a operacao em curso sem aviso.

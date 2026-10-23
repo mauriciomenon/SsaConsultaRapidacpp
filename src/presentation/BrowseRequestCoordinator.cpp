@@ -28,15 +28,30 @@ namespace ssa::presentation {
                     emit pageChanged();
                 });
         connect(&pageQueries_, &PageQueryCoordinator::canceled, this, [this] {
+            restoreDisplayedPosition();
             pageLifecycle_.markRequestCanceled();
             emit pageChanged();
         });
         connect(&pageQueries_, &PageQueryCoordinator::replaced, this,
                 [this] { pageLifecycle_.markRequestReplaced(); });
         connect(&pageQueries_, &PageQueryCoordinator::failed, this, [this](const QString& message) {
+            restoreDisplayedPosition();
             pageLifecycle_.markRequestFailed(message);
             emit pageChanged();
         });
+    }
+
+    void BrowseRequestCoordinator::restoreDisplayedPosition() {
+        if (!displayedRequest_) {
+            return;
+        }
+        const bool sortMoved =
+            queryState_.sortColumnKey().toStdString() != displayedRequest_->sort.columnKey ||
+            queryState_.sortAscending() != displayedRequest_->sort.ascending;
+        queryState_.restorePosition(*displayedRequest_);
+        if (sortMoved) {
+            emit sortChanged();
+        }
     }
 
     domain::SsaPageRequest BrowseRequestCoordinator::displayedRequest() const {

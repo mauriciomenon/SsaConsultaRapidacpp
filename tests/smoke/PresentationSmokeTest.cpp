@@ -2000,6 +2000,88 @@ namespace {
             QTRY_VERIFY_WITH_TIMEOUT(!coordinator.hasActiveOperations(), 1000);
         }
 
+        void canceled_sort_keeps_the_pager_and_sort_of_the_displayed_page() {
+            // Three pages; while `hold` is set every query waits for its stop.
+            class HoldingRepository final : public ssa::ports::ISsaRepository {
+              public:
+                ssa::domain::SsaPageResult
+                page(const ssa::domain::SsaPageRequest& request,
+                     const std::stop_token stopToken = {}) const override {
+                    if (hold.load()) {
+                        waiting = true;
+                    }
+                    while (hold.load()) {
+                        if (stopToken.stop_requested()) {
+                            throw std::system_error(
+                                std::make_error_code(std::errc::operation_canceled));
+                        }
+                        std::this_thread::yield();
+                    }
+                    return {{}, 150, request.pageIndex, request.pageSize};
+                }
+                std::size_t count(const ssa::domain::SsaPageRequest&,
+                                  std::stop_token = {}) const override {
+                    return 150;
+                }
+                std::optional<ssa::domain::SsaRecord>
+                recordBySsaNumber(const ssa::domain::SsaNumber&,
+                                  std::stop_token = {}) const override {
+                    return std::nullopt;
+                }
+                std::vector<ssa::domain::SsaDerivadaEntry>
+                derivadasDiretas(const ssa::domain::SsaNumber&,
+                                 std::stop_token = {}) const override {
+                    return {};
+                }
+                std::vector<std::string> distinctValues(const ssa::domain::DistinctValuesRequest&,
+                                                        std::stop_token = {}) const override {
+                    return {};
+                }
+                std::size_t maxValueLength(std::string_view, std::stop_token = {}) const override {
+                    return 0;
+                }
+                ssa::ports::SsaReadResult readAll(const ssa::domain::SsaPageRequest&,
+                                                  ssa::ports::SsaRecordConsumer,
+                                                  std::stop_token = {}) const override {
+                    return {};
+                }
+                mutable std::atomic_bool hold{false};
+                mutable std::atomic_bool waiting{false};
+            };
+            auto repository = std::make_shared<HoldingRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::BrowseViewModel browse(service);
+            QSignalSpy pageSpy(&browse, &ssa::presentation::BrowseViewModel::pageChanged);
+            browse.applyColumnSettings({"numero_ssa", "situacao"}, {});
+            browse.setPageSize(50);
+            browse.load();
+            QTRY_VERIFY_WITH_TIMEOUT(pageSpy.count() >= 1 && browse.pageCount() == 3, 1000);
+            browse.nextPage();
+            QTRY_COMPARE_WITH_TIMEOUT(browse.pageNumber(), 2, 1000);
+            // Let the prefetch of page 3 finish before queries start to wait.
+            QTRY_VERIFY_WITH_TIMEOUT(!browse.backgroundWorkRunning(), 1000);
+
+            // Sorting resets the page and is never served from the cache; the user cancels it.
+            repository->hold = true;
+            const auto pagesBefore = pageSpy.count();
+            const auto sortKeyBefore = browse.sortColumnKey();
+            const bool ascendingBefore = browse.sortAscending();
+            browse.sortByColumn(0);
+            const bool sortMovedWhilePending = browse.sortColumnKey() != sortKeyBefore ||
+                                               browse.sortAscending() != ascendingBefore;
+            QTRY_VERIFY_WITH_TIMEOUT(repository->waiting.load(), 1000);
+            browse.cancelCurrentRequest();
+            QTRY_VERIFY_WITH_TIMEOUT(pageSpy.count() > pagesBefore, 1000);
+            repository->hold = false;
+
+            // The table still shows page 2 in the previous order, so the pager and header must say
+            // so.
+            QVERIFY(sortMovedWhilePending);
+            QCOMPARE(browse.pageNumber(), 2);
+            QCOMPARE(browse.sortColumnKey(), sortKeyBefore);
+            QCOMPARE(browse.sortAscending(), ascendingBefore);
+        }
+
         void page_query_cancel_is_terminal_and_blocks_new_work() {
             auto repository = std::make_shared<SlowCancelableRepository>();
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
