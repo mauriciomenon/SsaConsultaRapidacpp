@@ -12,7 +12,9 @@ env:
 
 jobs:
   macos:
-    runs-on: macos-15
+    # macos-15 defaults to Xcode 16.4, whose libc++ still hides std::jthread/std::stop_token
+    # behind -fexperimental-library; Xcode 26 (default on macos-26) ships them.
+    runs-on: macos-26
     timeout-minutes: 90
     env:
       # binaryDir of the dev preset: build/${hostSystemName}/native/dev.
@@ -26,6 +28,8 @@ jobs:
           version: ${{ env.QT_VERSION }}
           arch: clang_64
           cache: true
+      - name: Toolchain
+        run: xcodebuild -version && c++ --version
       - name: Install dependencies
         run: brew install cmake ninja sqlite llvm clazy gitleaks
       # reviewdog left homebrew-core; the official setup action installs a pinned release.
