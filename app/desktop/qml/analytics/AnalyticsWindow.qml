@@ -45,8 +45,6 @@ ApplicationWindow {
             dashboard.reloadPending = true;
             custom.initialDimensionsRequested = false;
         }
-        // The cancel ends the loading; a closed window must not start the pending preset run.
-        custom.quickPresetRunPending = false;
         root.analyticsViewModel.cancel();
     }
 

@@ -156,11 +156,15 @@ Item {
         return selection;
     }
 
+    function endQuickPreset() {
+        root.quickPresetWaitingForDimensions = false;
+        root.quickPresetRunPending = false;
+    }
+
     function refreshDimensions() {
         // Any new refresh (a manual change, a cancel and retry) ends a pending preset; the
         // preset sets its wait only after its own refresh.
-        root.quickPresetWaitingForDimensions = false;
-        root.quickPresetRunPending = false;
+        root.endQuickPreset();
         return root.analyticsViewModel.requestDimensionValues(root.requestSelection());
     }
 
@@ -482,6 +486,7 @@ Item {
 
         // An import cleared the lists; a closed window asks again when it opens.
         function onInvalidated() {
+            root.endQuickPreset();
             root.initialDimensionsRequested = false;
             if (root.Window.window !== null && root.Window.window.visible)
                 root.ensureDimensions();
@@ -506,9 +511,20 @@ Item {
             root.runQuickPresetAnalysis();
         }
 
-        function onStateChanged() {
+        // The pending run resumes only when the other request ends with a result; loading also
+        // turns false on a cancel or an import invalidation, which end the preset instead.
+        function onSucceeded(kind) {
             if (root.quickPresetRunPending && !root.analyticsViewModel.loading)
                 root.runQuickPresetAnalysis();
+        }
+
+        function onFailed(message) {
+            if (root.quickPresetRunPending && !root.analyticsViewModel.loading)
+                root.runQuickPresetAnalysis();
+        }
+
+        function onCanceled() {
+            root.endQuickPreset();
         }
     }
 
