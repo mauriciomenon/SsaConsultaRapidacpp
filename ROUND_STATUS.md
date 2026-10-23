@@ -13,12 +13,14 @@
   3 corrigidos, 1 registrado como limite no contrato de importacao). GLM 5.3
   sem relatorio: limite de uso do OpenCode Go (dependencia externa).
 - Testes de script (`tests/scripts`): passam em macOS (bash 5 e 3.2), Arch e
-  Devuan; ainda fora do ctest/CI.
+  Devuan; rodam no ctest/CI POSIX como `ssa_script_*` desde `2ab65b8`.
 - CI GitHub verde nos tres jobs em `f57e034`, `297bde0` e `a50e4e1`. O
   Windows teve falhas intermitentes nas imagens `20261002` e `20261021` (teste
   QML morre sem saida sob ctest, rerun direto passa); nao reproduz na VM
   Windows 11 ARM64 e o job agora registra o exit code visto pelo ctest.
-- Publicado em GitHub `mauriciomenon` e GitLab; `schottge-menon` suspenso.
+- Publicado em GitHub `mauriciomenon` e GitLab; `schottge-menon` suspenso e
+  com a `pushurl` comentada no `origin`, de modo que `git push` nao falha mais
+  por ele. Bitbucket fora do fluxo (`master` em `5b4ce2b`).
 
 ## Estabilizacao da importacao e GUI (branch `rev`) - 2026-10-20/21
 

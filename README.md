@@ -8,40 +8,34 @@ Esta base nao e um port linha-a-linha da GUI Python. Ela preserva contratos de u
 
 Consulte [`ROUND_STATUS.md`](ROUND_STATUS.md) antes de avaliar sincronizacao,
 publicacao ou CI. `git pull` sem parametros usa GitHub. `git push` sem
-parametros publica no GitHub, GitLab e Bitbucket.
+parametros publica no GitHub e no GitLab.
 
-Configuracao Windows 11, em PowerShell nativo:
+| Remote | Busca em | Publica em |
+|---|---|---|
+| `origin` | GitHub `mauriciomenon/SsaConsultaRapidacpp` | GitHub e GitLab (duas `pushurl`) |
+| `gitlab` | GitLab `mauricio.menon/ssa_consulta_rapida_cpp` | GitLab |
+| `schottge` | GitHub `schottge-menon` (conta suspensa) | nada: a `pushurl` dele no `origin` fica comentada em `.git/config` |
 
-```powershell
-git remote remove gh 2>$null
-git remote add gh git@github.com:schottge-menon/ssa_consulta_rapida_cpp.git
-git config --unset-all remote.origin.pushurl 2>$null
-git config --add remote.origin.pushurl https://gitlab.com/mauricio.menon/ssa_consulta_rapida_cpp.git
-git config --add remote.origin.pushurl git@github.com:schottge-menon/ssa_consulta_rapida_cpp.git
-git config --add remote.origin.pushurl https://bitbucket.org/mauriciomenon81/ssa_consulta_rapida_cpp.git
-git config branch.master.remote gh
-git config branch.master.merge refs/heads/master
-git config branch.master.pushRemote origin
-git config push.default simple
-git fetch gh master --tags
-```
+Bitbucket esta fora do fluxo atual (`master` parado em `5b4ce2b`).
 
-Configuracao Debian/WSL, no clone ext4
-`$HOME/gitlab_repo/ssa_consulta_rapida_cpp`:
+Configuracao igual em macOS, Linux e Windows (no PowerShell, omitir
+`|| true`):
 
 ```bash
-git remote remove gh 2>/dev/null || true
-git remote add gh git@github.com:schottge-menon/ssa_consulta_rapida_cpp.git
+git remote set-url origin git@github.com:mauriciomenon/SsaConsultaRapidacpp.git
 git config --unset-all remote.origin.pushurl || true
-git config --add remote.origin.pushurl https://gitlab.com/mauricio.menon/ssa_consulta_rapida_cpp.git
-git config --add remote.origin.pushurl git@github.com:schottge-menon/ssa_consulta_rapida_cpp.git
-git config --add remote.origin.pushurl https://bitbucket.org/mauriciomenon81/ssa_consulta_rapida_cpp.git
-git config branch.master.remote gh
-git config branch.master.merge refs/heads/master
-git config branch.master.pushRemote origin
+git config --add remote.origin.pushurl git@github.com:mauriciomenon/SsaConsultaRapidacpp.git
+git config --add remote.origin.pushurl git@gitlab.com:mauricio.menon/ssa_consulta_rapida_cpp.git
+git remote add gitlab git@gitlab.com:mauricio.menon/ssa_consulta_rapida_cpp.git || true
+git remote add schottge git@github-schottge:schottge-menon/ssa_consulta_rapida_cpp.git || true
+git config remote.pushDefault origin
 git config push.default simple
-git fetch gh master --tags
 ```
+
+Para manter o schottge registrado mas desativado, adicionar em
+`[remote "origin"]` do `.git/config` a linha comentada
+`# pushurl = git@github-schottge:schottge-menon/ssa_consulta_rapida_cpp.git`.
+Tirar o `# ` reativa a publicacao.
 
 Versao corrente do projeto: **0.9.17** (`PROJECT_VERSION` em
 `CMakeLists.txt`).

@@ -6,15 +6,20 @@ Sem acentos/cedilha/emojis/emdash em codigo, chat e mensagens tecnicas.
 ## Estado operacional e remotes
 
 - Ler `ROUND_STATUS.md` antes de interpretar sincronizacao, CI ou falha de push.
-- `origin` busca no GitLab e publica no GitLab, GitHub e Bitbucket por tres
-  `pushurl`; `bitbucket` busca no Bitbucket e `gh` busca no GitHub.
+- `origin` busca no GitHub `mauriciomenon/SsaConsultaRapidacpp` e publica no
+  GitHub e no GitLab por duas `pushurl`; `gitlab` busca no GitLab.
+- `schottge` (GitHub `schottge-menon`, conta suspensa) continua configurado,
+  mas a `pushurl` dele no `origin` fica comentada em `.git/config`: nao
+  reativar sem pedido explicito. Uma URL suspensa ativa interrompe o push antes
+  do GitLab.
+- Bitbucket esta fora do fluxo atual (`master` parado em `5b4ce2b`).
 - O branch principal e `master`.
-- `master` acompanha `gh/master`; `git pull` sem parametros usa GitHub.
-- `branch.master.pushRemote=origin`; `git push` sem parametros publica o branch
-  no GitLab, GitHub e Bitbucket.
+- `git pull` sem parametros usa GitHub; `git push` sem parametros publica o
+  branch no GitHub e no GitLab.
 - Quando uma comparacao especifica for necessaria, usar o remote do provedor:
-  `origin/master`, `gh/master` ou `bitbucket/master`.
-- Um pedido de `commit` inclui `git push` e verificacao dos tres provedores.
+  `origin/<branch>` (GitHub) ou `gitlab/<branch>`.
+- Um pedido de `commit` inclui `git push` e verificacao dos dois provedores
+  (`git ls-remote origin` e `git ls-remote gitlab`).
 
 ## Objetivo
 
@@ -193,8 +198,8 @@ Notas:
 2. Propor plano + diff previsto antes de editar (o menor patch possivel + solucao moderada).
 3. Implementar em slice pequeno.
 4. Validar localmente: `cmake --build --preset dev` + `ctest --preset dev` focado (insistir no caso de timeout).
-5. Commit atomico (um por slice), push para `origin` e `bitbucket`, verificar os
-   dois refs remotos e checar os respectivos pipelines dentro das cotas.
+5. Commit atomico (um por slice), push para `origin` (GitHub e GitLab), verificar
+   os dois refs remotos e checar os respectivos pipelines dentro das cotas.
 6. Se houver itens nao bloqueantes: registrar em `RECOVERY_BACKLOG.md` (sem "arrumar tudo agora").
 7. Priorizar correcoes de risco real; evitar refatoracao transversal fora de escopo.
 8. Quando alterar arquivos de config (`CMakeLists.txt`, `CMakePresets.json`, `.clang-format`, `.clang-tidy`), fazer backup com timestamp.
