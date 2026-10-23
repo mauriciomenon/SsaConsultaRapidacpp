@@ -7,16 +7,20 @@ test_root="$(mktemp -d "${repo_root}/build/ssa-build-contracts.XXXXXX")"
 trap 'rm -rf "${test_root}"' EXIT
 
 fixture_repo="${test_root}/gitlab_repo/ssa_consulta_rapida_cpp"
+# shellcheck disable=SC1091
+source "${repo_root}/scripts/debian-paths.sh"
+# The build scripts pick the folder by machine architecture (amd64 or arm64).
+build_dir="$(debian_build_dir "${fixture_repo}" dev)"
 fake_bin="${test_root}/bin"
 mkdir -p "${fixture_repo}/scripts/lazy_scripts" "${fixture_repo}/scripts/lib" "${fixture_repo}/tools" \
-  "${fixture_repo}/build/debian/amd64/dev" "${fake_bin}"
+  "${build_dir}" "${fake_bin}"
 cp "${repo_root}/scripts/build-debian.sh" "${fixture_repo}/scripts/"
 cp "${repo_root}/scripts/lazy_scripts/build-debian.sh" \
   "${fixture_repo}/scripts/lazy_scripts/"
 cp "${repo_root}/scripts/debian-paths.sh" "${fixture_repo}/scripts/"
 cp "${repo_root}/scripts/lib/native_host_guard.sh" "${fixture_repo}/scripts/lib/"
 
-printf 'stale\n' > "${fixture_repo}/build/debian/amd64/dev/stale-output.txt"
+printf 'stale\n' > "${build_dir}/stale-output.txt"
 cat > "${fixture_repo}/tools/configure-dev.sh" <<'EOF_CONFIGURE'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -35,19 +39,23 @@ chmod +x "${fixture_repo}/tools/configure-dev.sh" "${fake_bin}/cmake" \
 
 HOME="${test_root}" SSA_EXPECTED_CWD="${fixture_repo}" PATH="${fake_bin}:${PATH}" \
   "${fixture_repo}/scripts/build-debian.sh"
-if [[ -e "${fixture_repo}/build/debian/amd64/dev/stale-output.txt" ]]; then
+if [[ -e "${build_dir}/stale-output.txt" ]]; then
   echo "build-debian.sh reused stale output by default." >&2
   exit 1
 fi
 
-printf 'keep\n' > "${fixture_repo}/build/debian/amd64/dev/incremental-output.txt"
+printf 'keep\n' > "${build_dir}/incremental-output.txt"
 HOME="${test_root}" SSA_EXPECTED_CWD="${fixture_repo}" PATH="${fake_bin}:${PATH}" \
   "${fixture_repo}/scripts/lazy_scripts/build-debian.sh"
-if [[ ! -e "${fixture_repo}/build/debian/amd64/dev/incremental-output.txt" ]]; then
+if [[ ! -e "${build_dir}/incremental-output.txt" ]]; then
   echo "lazy Debian build did not preserve the explicit incremental cache." >&2
   exit 1
 fi
 
+if ! command -v dpkg >/dev/null 2>&1; then
+  echo "build contracts: OK (package checks skipped: they need dpkg, a Debian host)"
+  exit 0
+fi
 native_arch="$(dpkg --print-architecture)"
 if [[ "${native_arch}" == "amd64" ]]; then
   foreign_arch="arm64"
