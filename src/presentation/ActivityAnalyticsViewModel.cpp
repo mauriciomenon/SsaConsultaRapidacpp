@@ -1061,6 +1061,23 @@ namespace ssa::presentation {
         }
     }
 
+    bool ActivityAnalyticsViewModel::hasPendingResult(const RequestKind kind) const noexcept {
+        const auto latest = latestOperationIds_[slotOf(kind)];
+        return std::ranges::any_of(operations_, [latest](const auto& operation) {
+            return !operation->completed && operation->id == latest;
+        });
+    }
+
+    // The dashboard waits for the warning window on its first load.
+    bool ActivityAnalyticsViewModel::dashboardLoading() const noexcept {
+        return hasPendingResult(RequestKind::Dashboard) ||
+               hasPendingResult(RequestKind::WarningWindowLoad);
+    }
+
+    bool ActivityAnalyticsViewModel::dimensionValuesLoading() const noexcept {
+        return hasPendingResult(RequestKind::DimensionValues);
+    }
+
     bool ActivityAnalyticsViewModel::hasPendingResults() const noexcept {
         return std::ranges::any_of(operations_, [this](const auto& operation) {
             return !operation->completed &&

@@ -429,6 +429,15 @@ namespace {
             return true;
         }
 
+        // The other request kind stands for the dashboard.
+        Q_INVOKABLE [[nodiscard]] bool dashboardLoading() const noexcept {
+            return otherKindLoading_ || warningLoadPending_;
+        }
+
+        Q_INVOKABLE [[nodiscard]] bool dimensionValuesLoading() const noexcept {
+            return dimensionsLoading_;
+        }
+
         // Like the real view model: loading turns false before canceled().
         Q_INVOKABLE void cancel() {
             ++cancelCount_;
@@ -845,15 +854,28 @@ namespace {
                                               {QStringLiteral("sectors"), QStringList{}},
                                               {QStringLiteral("people"), QStringList{}}});
 
-            // Closing cancels a running load; reopening asks again instead of showing it stale.
+            // Closing cancels a running load; reopening asks for that one again, and only that.
             QVERIFY(invoke(*custom, "refreshDimensions"));
             QVERIFY(viewModel.loading());
             window->close();
             QTRY_VERIFY_WITH_TIMEOUT(!window->isVisible() && !viewModel.loading(), 1000);
             const int dimensionsAtClose = viewModel.dimensionRequestCount();
             QVERIFY(invoke(*object, "open"));
+            QTRY_COMPARE_WITH_TIMEOUT(viewModel.dimensionRequestCount(), dimensionsAtClose + 1,
+                                      1000);
+            QTest::qWait(20);
+            QCOMPARE(viewModel.dashboardRequestCount(), 2);
+            viewModel.publishDimensionValues({{QStringLiteral("divisions"), QStringList{}},
+                                              {QStringLiteral("sectors"), QStringList{}},
+                                              {QStringLiteral("people"), QStringList{}}});
+
+            viewModel.startOtherKind();
+            window->close();
+            QTRY_VERIFY_WITH_TIMEOUT(!window->isVisible() && !viewModel.loading(), 1000);
+            const int dimensionsAtSecondClose = viewModel.dimensionRequestCount();
+            QVERIFY(invoke(*object, "open"));
             QTRY_COMPARE_WITH_TIMEOUT(viewModel.dashboardRequestCount(), 3, 1000);
-            QCOMPARE(viewModel.dimensionRequestCount(), dimensionsAtClose + 1);
+            QCOMPARE(viewModel.dimensionRequestCount(), dimensionsAtSecondClose);
         }
 
         void startup_serializes_latest_wins_requests_and_avoids_iso_week_53_default() {

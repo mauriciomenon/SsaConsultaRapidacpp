@@ -54,10 +54,10 @@ ApplicationWindow {
 
     // Closing cancels what is still loading; the next open asks for it again.
     onClosing: {
-        if (root.analyticsViewModel.loading) {
+        if (root.analyticsViewModel.dashboardLoading())
             dashboard.reloadPending = true;
+        if (root.analyticsViewModel.dimensionValuesLoading())
             custom.initialDimensionsRequested = false;
-        }
         root.analyticsViewModel.cancel();
     }
 

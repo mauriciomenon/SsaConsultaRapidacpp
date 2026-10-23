@@ -90,6 +90,9 @@ namespace ssa::presentation {
         Q_INVOKABLE void loadWarningWindowDays();
         Q_INVOKABLE bool saveWarningWindowDays(int days);
         Q_INVOKABLE void cancel();
+        // What a close would cut short, so the window reloads only that on the next open.
+        Q_INVOKABLE [[nodiscard]] bool dashboardLoading() const noexcept;
+        Q_INVOKABLE [[nodiscard]] bool dimensionValuesLoading() const noexcept;
         void replaceService(std::shared_ptr<const application::ActivityAnalyticsService> service);
         void invalidateAfterImport();
 
@@ -161,6 +164,7 @@ namespace ssa::presentation {
         void stop(Operation& operation);
         void stopAll();
         [[nodiscard]] bool hasPendingResults() const noexcept;
+        [[nodiscard]] bool hasPendingResult(RequestKind kind) const noexcept;
         void settleState();
         void pruneCompleted();
         void publish(const Operation& operation, TaskResult result);

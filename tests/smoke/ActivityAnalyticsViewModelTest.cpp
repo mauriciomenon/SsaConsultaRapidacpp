@@ -468,11 +468,16 @@ namespace {
             model.loadDimensionValues(testRequest());
             QTRY_VERIFY_WITH_TIMEOUT(!model.dimensionValues().isEmpty(), 1000);
             const bool loadingWhileDashboardRuns = model.loading();
+            const bool dashboardStillLoading = model.dashboardLoading();
+            const bool dimensionsStillLoading = model.dimensionValuesLoading();
             gate->releaseDashboard = true;
 
             QTRY_VERIFY_WITH_TIMEOUT(!model.hasActiveOperations(), 2000);
             QVERIFY(loadingWhileDashboardRuns);
+            QVERIFY(dashboardStillLoading);
+            QVERIFY(!dimensionsStillLoading);
             QVERIFY(!model.loading());
+            QVERIFY(!model.dashboardLoading());
             QCOMPARE(model.dashboard().size(), 14);
             QCOMPARE(replacedSpy.count(), 0);
         }
