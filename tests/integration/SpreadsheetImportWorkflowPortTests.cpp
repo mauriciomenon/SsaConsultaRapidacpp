@@ -3833,6 +3833,62 @@ TEST_CASE("external import rejects a malformed related SSA through the full work
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
+TEST_CASE("external import leaves no staged copy of an ignored or unapplied workbook") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = ssa::qt::toFileSystemPath(tempDir.path());
+    const auto sourceDirectory = root / "external";
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(sourceDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    const auto stagedCopies = [&inputDirectory] {
+        std::vector<std::string> names;
+        for (const auto& entry : std::filesystem::directory_iterator(inputDirectory)) {
+            if (entry.path().filename().string().starts_with(".ssa-staged")) {
+                names.push_back(entry.path().filename().string());
+            }
+        }
+        return names;
+    };
+    const auto header =
+        row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao")});
+    const auto valid = sourceDirectory / "valid.xlsx";
+    const auto unknown = sourceDirectory / "unknown-header.xlsx";
+    const auto noValidRows = sourceDirectory / "no-valid-rows.xlsx";
+    const auto missingColumns = sourceDirectory / "missing-columns.xlsx";
+    writeWorkbook(valid,
+                  header + row(2, {inlineCell("A2", "202600801"), inlineCell("B2", "APV"),
+                                   inlineCell("C2", "Valid"), inlineCell("D2", "2026-07-01")}));
+    writeWorkbook(unknown, row(1, {inlineCell("A1", "Unknown A"), inlineCell("B1", "Unknown B")}));
+    writeWorkbook(noValidRows,
+                  header + row(2, {inlineCell("A2", "202600802"), inlineCell("B2", "APV"),
+                                   inlineCell("C2", ""), inlineCell("D2", "2026-07-01")}));
+    writeWorkbook(missingColumns, row(1, {inlineCell("A1", "Numero SSA")}) +
+                                      row(2, {inlineCell("A2", "202600803")}));
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+
+    SECTION("an ignored workbook beside an applied one") {
+        const auto result = port.importExternalFiles({.files = {valid, unknown}});
+
+        INFO(result.message);
+        REQUIRE(result.ok());
+        REQUIRE(result.importSummary->ignored == 1);
+        REQUIRE(stagedCopies().empty());
+    }
+
+    SECTION("a batch rolled back with a no-valid-rows and a rejected workbook") {
+        const auto result = port.importExternalFiles({.files = {noValidRows, missingColumns}});
+
+        INFO(result.message);
+        REQUIRE_FALSE(result.ok());
+        REQUIRE(stagedCopies().empty());
+    }
+}
+
 TEST_CASE("external import isolates a duplicate conflict and keeps the sibling workbooks") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());

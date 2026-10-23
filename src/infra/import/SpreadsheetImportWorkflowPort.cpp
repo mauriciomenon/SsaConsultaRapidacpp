@@ -1347,7 +1347,7 @@ namespace ssa::infra::importing {
         pendingOutcomes.reserve(files.files.size());
         // Generic incremental imports isolate a rejected workbook inside its savepoint.
         // Full rescans and SAM snapshots are one atomic batch.
-        ImportStagingResult rejectedStaging;
+        ImportStagingResult unconsolidatedStaging;
         std::string perFileDiagnostic;
         std::string batchRejectionError;
         const auto isolateFileFailure = [&](const StagedImportFile& stagedFile,
@@ -1384,7 +1384,7 @@ namespace ssa::infra::importing {
                 diagnosticLine += " detail=" + std::string{detail};
             }
             appendWorkflowDiagnostic(perFileDiagnostic, diagnosticLine);
-            rejectedStaging.files.push_back(stagedFile);
+            unconsolidatedStaging.files.push_back(stagedFile);
         };
         for (std::size_t fileIndex = 0; fileIndex < files.files.size(); ++fileIndex) {
             const auto& file = files.files[fileIndex];
@@ -1582,6 +1582,7 @@ namespace ssa::infra::importing {
                 ++importSummary.ignored;
                 ++importSummary.preserved;
                 ignoredUnrecognizedWorkbook = true;
+                unconsolidatedStaging.files.push_back(file);
                 continue;
             }
             if (batch.mappingStatus == SpreadsheetMappingStatus::RequiredColumnsMissing) {
@@ -1658,9 +1659,9 @@ namespace ssa::infra::importing {
                 }
                 auto diagnostic = files.diagnostic;
                 appendWorkflowDiagnostic(diagnostic, perFileDiagnostic);
-                if (!rejectedStaging.files.empty()) {
+                if (!unconsolidatedStaging.files.empty()) {
                     appendWorkflowDiagnostic(diagnostic,
-                                             stager_.discardOwnedArtifacts(rejectedStaging));
+                                             stager_.discardOwnedArtifacts(unconsolidatedStaging));
                 }
                 importSummary.preserved = importSummary.files.size();
                 importSummary.accepted = 0;
@@ -1748,10 +1749,11 @@ namespace ssa::infra::importing {
         importSummary.accepted = pendingOutcomes.size();
         auto diagnostic = files.diagnostic;
         appendWorkflowDiagnostic(diagnostic, perFileDiagnostic);
-        // Rejected workbooks are never consolidated, so their staged copies would
+        // Rejected and ignored workbooks are never consolidated, so their staged copies would
         // otherwise stay behind in the corpus after a partially applied batch.
-        if (!rejectedStaging.files.empty()) {
-            appendWorkflowDiagnostic(diagnostic, stager_.discardOwnedArtifacts(rejectedStaging));
+        if (!unconsolidatedStaging.files.empty()) {
+            appendWorkflowDiagnostic(diagnostic,
+                                     stager_.discardOwnedArtifacts(unconsolidatedStaging));
         }
         const bool partialBatch = importSummary.rejected > 0;
         if (!consolidateSources_) {
