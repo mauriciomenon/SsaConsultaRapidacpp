@@ -6,6 +6,10 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 
 ### Corrigido
 
+- Busca e filtros de texto ignoram maiusculas e minusculas tambem em letras
+  acentuadas, como a GUI Python: `MANUTENÇÃO`, `manutenção` e `Manutenção`
+  encontram as mesmas SSAs (no banco de teste, 529 nas tres; antes 67 ou 462
+  conforme a caixa digitada).
 - Rescan: uma planilha de `docs_entrada` substituida durante o rescan (por
   exemplo pelo OneDrive ou por uma exportacao com nome fixo) faz o rescan
   falhar sem publicar nada e continua em `docs_entrada`; antes a versao nova

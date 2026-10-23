@@ -9,6 +9,8 @@
 #include <iterator>
 #include <sstream>
 #include <stdexcept>
+#include <string>
+#include <string_view>
 
 namespace ssa::query {
 
@@ -20,6 +22,9 @@ namespace ssa::query {
             std::string pattern;
             std::string comparator;
             bool matchAll{false};
+            // A non-ASCII letter: NOCASE folds only A-Z, so both sides go through ssa_fold (the
+            // Unicode case folding the SQLite connection registers).
+            bool foldCase{false};
         };
 
         struct ValidatedSafePattern {
@@ -83,7 +88,11 @@ namespace ssa::query {
             return "%" + escapedText + "%";
         }
 
-        std::string comparatorFor(const domain::MatchMode mode) {
+        std::string_view comparatorFor(const domain::MatchMode mode, const bool foldCase) {
+            if (foldCase) {
+                return mode == domain::MatchMode::Equals ? " = ssa_fold(?) "
+                                                         : " LIKE ssa_fold(?) ESCAPE '\\' ";
+            }
             if (mode == domain::MatchMode::Equals) {
                 return " = ? COLLATE NOCASE ";
             }
@@ -96,7 +105,10 @@ namespace ssa::query {
                 return {{}, {}, true};
             }
             const std::string upperText = uppercaseCopy(text);
-            return {patternFor(mode, upperText), comparatorFor(mode), false};
+            const bool foldCase = std::ranges::any_of(
+                text, [](const char ch) { return static_cast<unsigned char>(ch) >= 0x80; });
+            return {patternFor(mode, upperText), std::string{comparatorFor(mode, foldCase)}, false,
+                    foldCase};
         }
 
         CompiledSearchTerm compileColumnSearchTerm(const std::string& key, const SearchTerm& term) {
@@ -127,7 +139,11 @@ namespace ssa::query {
                                          std::vector<std::string>& bindings,
                                          const std::string& column,
                                          const CompiledSearchTerm& compiled) {
-            where << quoteColumnIdentifier(column);
+            if (compiled.foldCase) {
+                where << "ssa_fold(" << quoteColumnIdentifier(column) << ")";
+            } else {
+                where << quoteColumnIdentifier(column);
+            }
             where << compiled.comparator;
             bindings.push_back(compiled.pattern);
         }

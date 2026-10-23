@@ -4,6 +4,9 @@
 #include "ports/OperationError.h"
 #include "qt/FilesystemPath.h"
 
+#include <QString>
+
+#include <algorithm>
 #include <exception>
 #include <iostream>
 #include <stdexcept>
@@ -23,6 +26,27 @@ namespace ssa::infra::sqlite {
                 return SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
             }
             throw std::invalid_argument("unknown sqlite open mode");
+        }
+
+        // ssa_fold(x): Unicode case folding for search terms with non-ASCII letters, as the
+        // Python GUI's casefold (SQLite NOCASE folds only A-Z). An ASCII value is returned as
+        // is: it can never match a term that holds a non-ASCII letter, so it needs no copy.
+        void foldCase(sqlite3_context* context, const int, sqlite3_value** arguments) {
+            if (sqlite3_value_type(arguments[0]) == SQLITE_NULL) {
+                sqlite3_result_null(context);
+                return;
+            }
+            const auto* text = sqlite3_value_text(arguments[0]);
+            const int size = sqlite3_value_bytes(arguments[0]);
+            if (std::all_of(text, text + size, [](const unsigned char ch) { return ch < 0x80; })) {
+                sqlite3_result_value(context, arguments[0]);
+                return;
+            }
+            const auto folded = QString::fromUtf8(reinterpret_cast<const char*>(text), size)
+                                    .toCaseFolded()
+                                    .toUtf8();
+            sqlite3_result_text(context, folded.constData(), static_cast<int>(folded.size()),
+                                SQLITE_TRANSIENT);
         }
 
         void closeHandle(sqlite3*& db) {
@@ -93,6 +117,13 @@ namespace ssa::infra::sqlite {
             throw std::runtime_error("cannot open sqlite database: null handle");
         }
         sqlite3_busy_timeout(db_, static_cast<int>(busyTimeout.count()));
+        if (sqlite3_create_function_v2(
+                db_, "ssa_fold", 1, SQLITE_UTF8 | SQLITE_DETERMINISTIC | SQLITE_INNOCUOUS, nullptr,
+                &foldCase, nullptr, nullptr, nullptr) != SQLITE_OK) {
+            const std::string message = sqlite3_errmsg(db_);
+            closeHandle(db_);
+            throw std::runtime_error("cannot register sqlite function ssa_fold: " + message);
+        }
     }
 
     SqliteConnection::~SqliteConnection() {

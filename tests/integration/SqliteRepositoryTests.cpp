@@ -1153,6 +1153,30 @@ TEST_CASE_METHOD(SqliteRepositoryFixture,
 }
 
 TEST_CASE_METHOD(SqliteRepositoryFixture,
+                 "sqlite repository ignores the case of accented letters as Python casefold") {
+    executeSql(path, "UPDATE ssa_table SET descricao_ssa = 'manuten\xC3\xA7\xC3\xA3o preventiva' "
+                     "WHERE numero_ssa = '202500003';");
+    ssa::domain::SsaPageRequest request;
+    request.pageSize = 10;
+    request.excludeScaSesSte = false;
+
+    SECTION("general search") {
+        request.searchText = "MANUTEN\xC3\x87\xC3\x83O";
+        REQUIRE(repository.page(request).totalRows == 1);
+    }
+    SECTION("column contains and exact filters") {
+        request.columnFilters = {{"descricao_ssa", "MANUTEN\xC3\x87\xC3\x83O"}};
+        REQUIRE(repository.page(request).totalRows == 1);
+        request.columnFilters = {{"descricao_ssa", "=MANUTEN\xC3\x87\xC3\x83O PREVENTIVA"}};
+        REQUIRE(repository.page(request).totalRows == 1);
+    }
+    SECTION("negation keeps the other rows") {
+        request.searchText = "!MANUTEN\xC3\x87\xC3\x83O";
+        REQUIRE(repository.page(request).totalRows == 3);
+    }
+}
+
+TEST_CASE_METHOD(SqliteRepositoryFixture,
                  "sqlite repository compares reprogramming counts and leaves missing ones out") {
     executeSql(path, R"SQL(
         UPDATE ssa_table SET num_reprogramacoes = 2 WHERE numero_ssa = '202500001';

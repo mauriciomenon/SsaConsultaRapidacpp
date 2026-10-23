@@ -9,6 +9,11 @@
 - `term$` means ends with.
 - `$term` also means ends with and is kept as a compatibility prefix form.
 - `=term` means exact match.
+- Case is ignored, accented letters included, as the Python `casefold`: a term
+  with a non-ASCII letter compares both sides through `ssa_fold` (Unicode case
+  folding registered on every SQLite connection); ASCII terms keep
+  `COLLATE NOCASE`. Accents still count (`manutencao` does not match
+  `manutenção`). Column and advanced text filters follow the same rule.
 - Distinct value lists shown by the UI exclude SQL NULL and blank values.
 - `~expr` means safe pattern match translated to SQL `LIKE` with escaping.
 - Safe pattern uses case-insensitive full-field `LIKE` semantics. Use normal
