@@ -1,7 +1,11 @@
 #include "infra/import/ImportFileConsolidator.h"
 
 #include "infra/import/CancelableFileCopy.h"
+#include "infra/import/ImportFileStager.h"
 #include "infra/import/ImportPathValidation.h"
+#include "qt/FilesystemPath.h"
+
+#include <QDebug>
 
 #include <algorithm>
 #include <array>
@@ -468,30 +472,30 @@ namespace ssa::infra::importing {
     }
 
     ImportConsolidationResult
-    ImportFileConsolidator::consolidate(const ImportConsolidationPlan& plan,
+    ImportFileConsolidator::consolidate(const ImportConsolidationPlan& consolidationPlan,
                                         const std::stop_token& stopToken) const {
         ImportConsolidationResult result;
-        result.entries.resize(plan.entries.size());
+        result.entries.resize(consolidationPlan.entries.size());
         std::size_t moveCount = 0;
-        for (std::size_t index = 0; index < plan.entries.size(); ++index) {
-            const auto count = plan.entries[index].moves.size();
+        for (std::size_t index = 0; index < consolidationPlan.entries.size(); ++index) {
+            const auto count = consolidationPlan.entries[index].moves.size();
             moveCount += count;
             result.entries[index].moves.resize(count);
         }
-        if (plan.canceled || stopToken.stop_requested()) {
+        if (consolidationPlan.canceled || stopToken.stop_requested()) {
             result.canceled = true;
             result.error = "consolidation canceled";
             return result;
         }
-        if (!plan.error.empty()) {
-            markAllFailed(result, plan, moveCount);
-            result.error = plan.error;
+        if (!consolidationPlan.error.empty()) {
+            markAllFailed(result, consolidationPlan, moveCount);
+            result.error = consolidationPlan.error;
             return result;
         }
         std::string inputDiagnostic;
         const auto inputRejection = inputDirectoryRejectionReason(inputFolder_, inputDiagnostic);
         if (!inputRejection.empty()) {
-            markAllFailed(result, plan, moveCount);
+            markAllFailed(result, consolidationPlan, moveCount);
             result.error = inputRejection;
             appendDiagnostic(result.error, inputDiagnostic);
             return result;
@@ -499,13 +503,13 @@ namespace ssa::infra::importing {
         std::error_code inputPathError;
         const auto inputDirectory = std::filesystem::weakly_canonical(inputFolder_, inputPathError);
         if (inputPathError) {
-            markAllFailed(result, plan, moveCount);
+            markAllFailed(result, consolidationPlan, moveCount);
             result.error = "cannot resolve consolidation input root: " + inputPathError.message();
             return result;
         }
         const auto processedDirectory = inputDirectory / "processadas";
         const auto noSurvivorDirectory = processedDirectory / "nosurvivor";
-        for (const auto& entry : plan.entries) {
+        for (const auto& entry : consolidationPlan.entries) {
             for (const auto& move : entry.moves) {
                 const auto expectedDestination =
                     move.hasValidRows ? processedDirectory : noSurvivorDirectory;
@@ -516,14 +520,14 @@ namespace ssa::infra::importing {
                 const auto destinationParent = std::filesystem::weakly_canonical(
                     move.destination.parent_path(), destinationPathError);
                 if (sourcePathError || destinationPathError) {
-                    markAllFailed(result, plan, moveCount);
+                    markAllFailed(result, consolidationPlan, moveCount);
                     result.error = "cannot resolve consolidation journal paths: " +
                                    (sourcePathError ? sourcePathError.message()
                                                     : destinationPathError.message());
                     return result;
                 }
                 if (sourceParent != inputDirectory || destinationParent != expectedDestination) {
-                    markAllFailed(result, plan, moveCount);
+                    markAllFailed(result, consolidationPlan, moveCount);
                     result.error = "consolidation journal contains a path outside the input root";
                     return result;
                 }
@@ -534,7 +538,7 @@ namespace ssa::infra::importing {
         }
         if (!prepareDirectory(processedDirectory, result.error) ||
             !prepareDirectory(noSurvivorDirectory, result.error)) {
-            markAllFailed(result, plan, moveCount);
+            markAllFailed(result, consolidationPlan, moveCount);
             return result;
         }
         std::error_code inputHandleError;
@@ -560,12 +564,13 @@ namespace ssa::infra::importing {
                                      : noSurvivorHandleError  ? noSurvivorHandleError
                                      : processedRelationError ? processedRelationError
                                                               : noSurvivorRelationError;
-            markAllFailed(result, plan, moveCount);
+            markAllFailed(result, consolidationPlan, moveCount);
             result.error = "cannot anchor consolidation directories: " + handleError.message();
             return result;
         }
-        for (std::size_t entryIndex = 0; entryIndex < plan.entries.size(); ++entryIndex) {
-            const auto& entry = plan.entries[entryIndex];
+        for (std::size_t entryIndex = 0; entryIndex < consolidationPlan.entries.size();
+             ++entryIndex) {
+            const auto& entry = consolidationPlan.entries[entryIndex];
             auto& entryResult = result.entries[entryIndex];
             for (std::size_t moveIndex = 0; moveIndex < entry.moves.size(); ++moveIndex) {
                 const auto& move = entry.moves[moveIndex];
@@ -639,6 +644,18 @@ namespace ssa::infra::importing {
                         ++result.noSurvivor;
                         ++entryResult.noSurvivor;
                     }
+                    continue;
+                }
+                // A staged copy is disposable: its rows are committed and the user's original
+                // stays where it was. When it is gone (the staging cleanup of another database
+                // sharing this input folder), release the move instead of blocking every import.
+                if (sourceState == DirectoryEntryState::Missing &&
+                    destinationState == DirectoryEntryState::Missing &&
+                    isOwnedStagingArtifact(move.source)) {
+                    qWarning().noquote() << "Consolidation released a staged copy already removed:"
+                                         << qt::toQString(move.source.filename());
+                    moveResult.completed = true;
+                    ++entryResult.completed;
                     continue;
                 }
                 if (sourceState != DirectoryEntryState::RegularFile ||

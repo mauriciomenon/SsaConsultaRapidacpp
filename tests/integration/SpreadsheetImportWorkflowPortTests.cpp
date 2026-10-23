@@ -2833,6 +2833,38 @@ TEST_CASE("external import resumes a prior journal and imports distinct selected
                       "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600215'") == 1);
 }
 
+TEST_CASE("rescan releases a journaled staged copy removed by another database's cleanup") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto dbPath = root / "data" / "ssas.db";
+    const auto stagedCopy = inputDirectory / ".ssa-staged-selected_1_0_0.xlsx";
+    const auto destination = inputDirectory / "processadas" / "selected.xlsx";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    createSparseFile(stagedCopy, 1);
+
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(sqliteWriterAccess(), dbPath,
+                                                           importColumns());
+    auto session = writer.startSession(false);
+    session.recordConsolidation({{{stagedCopy, destination, true}}});
+    static_cast<void>(session.finish());
+    // Another database opened on the same input folder removed it as abandoned staging.
+    REQUIRE(std::filesystem::remove(stagedCopy));
+
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+    const auto result = port.rescan({ssa::ports::RescanMode::Incremental});
+
+    INFO(result.message);
+    INFO(result.diagnostic);
+    REQUIRE(result.ok());
+    REQUIRE(writer.pendingConsolidation().empty());
+    REQUIRE_FALSE(std::filesystem::exists(destination));
+}
+
 TEST_CASE("external import resume failure reports selected inventory and cleans staging") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());

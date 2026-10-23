@@ -176,6 +176,11 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 - Filtro de coluna em datas (Data de cadastro, Prazo limite e as demais exibidas
   como dd/mm/aaaa) aceita o formato mostrado na grade: `21/12/2021`, `12/2021`
   e `!21/12/2021` voltam a encontrar ou excluir as SSAs, como na versao Python.
+- Importacao: depois de "Trocar banco" com uma consolidacao pendente, voltar ao
+  banco original nao trava mais todas as importacoes com "consolidation source
+  and destination state is ambiguous"; a copia temporaria da planilha externa
+  apagada pelo outro banco e liberada (as linhas ja estao gravadas e o arquivo
+  original continua onde estava).
 - Rescan e assistente de dados: a copia do banco espera o tempo configurado
   (`--sqlite-busy-wait-ms`, padrao 3 s) quando outro programa esta gravando no
   banco de origem; antes falhava na hora com "Falha ao copiar banco".

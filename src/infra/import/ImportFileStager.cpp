@@ -58,11 +58,6 @@ namespace ssa::infra::importing {
             return qt::toQString(path.filename()).startsWith(QStringLiteral("~$"));
         }
 
-        bool isOwnedStagingArtifact(const std::filesystem::path& path) {
-            return isXlsxFile(path) &&
-                   qt::toQString(path.filename()).startsWith(QStringLiteral(".ssa-staged-"));
-        }
-
         void recordDiscoveredFile(ImportStagingResult& result, const std::filesystem::path& path) {
             if (isExcelLockFile(path)) {
                 ++result.unsupported;
@@ -191,6 +186,11 @@ namespace ssa::infra::importing {
         }
 
     } // namespace
+
+    bool isOwnedStagingArtifact(const std::filesystem::path& path) {
+        return isXlsxFile(path) &&
+               qt::toQString(path.filename()).startsWith(QStringLiteral(".ssa-staged-"));
+    }
 
     ImportFileStager::ImportFileStager(std::filesystem::path inputFolder,
                                        FileCopyFirstChunkWrittenHook afterFirstChunkWritten)

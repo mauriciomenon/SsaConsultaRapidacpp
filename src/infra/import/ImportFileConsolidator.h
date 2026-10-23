@@ -18,7 +18,7 @@ namespace ssa::infra::importing {
         consolidate(const std::vector<ImportManifestEntry>& manifest,
                     const std::stop_token& stopToken = {}) const;
         [[nodiscard]] ImportConsolidationResult
-        consolidate(const ImportConsolidationPlan& plan,
+        consolidate(const ImportConsolidationPlan& consolidationPlan,
                     const std::stop_token& stopToken = {}) const;
 
       private:

@@ -10,6 +10,9 @@
 
 namespace ssa::infra::importing {
 
+    // A private copy of an externally selected workbook, created in the input folder.
+    [[nodiscard]] bool isOwnedStagingArtifact(const std::filesystem::path& path);
+
     struct StagedImportFile {
         std::filesystem::path workbookPath;
         std::vector<std::filesystem::path> consolidationSources;
