@@ -170,7 +170,9 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
   e as listas da analise customizada (na hora, se estiver aberta, ou ao reabrir)
   e mantem as divisoes, setores e pessoas selecionados que ainda existem; antes
   ficava vazia e perdia as selecoes. Fechar a janela durante uma carga e
-  reabrir pede os dados de novo.
+  reabrir pede os dados de novo. Se um setor ou divisao selecionado deixou de
+  existir, as listas dependentes sao pedidas de novo antes de remover pessoas, e
+  um relatorio rapido iniciado enquanto o painel carrega roda quando ele termina.
 - Filtro de coluna em datas (Data de cadastro, Prazo limite e as demais exibidas
   como dd/mm/aaaa) aceita o formato mostrado na grade: `21/12/2021`, `12/2021`
   e `!21/12/2021` voltam a encontrar ou excluir as SSAs, como na versao Python.

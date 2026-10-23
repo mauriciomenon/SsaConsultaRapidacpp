@@ -166,7 +166,7 @@ namespace {
         // Like the real view model: a dimension request keeps loading true until its result is
         // published, and loading turns false before the result signal.
         [[nodiscard]] bool loading() const noexcept {
-            return dimensionsLoading_;
+            return dimensionsLoading_ || otherKindLoading_;
         }
 
         [[nodiscard]] QString errorMessage() const {
@@ -366,6 +366,12 @@ namespace {
         }
 
         // Keeps later dimension requests in flight until the test publishes them.
+        // The real view model stays loading while another kind (the dashboard) runs.
+        void setOtherKindLoading(const bool loading) {
+            otherKindLoading_ = loading;
+            emit stateChanged();
+        }
+
         void holdDimensionRequests() {
             holdDimensionRequests_ = true;
         }
@@ -532,6 +538,7 @@ namespace {
         int customRequestCount_{0};
         int dimensionRequestCount_{0};
         bool dimensionsLoading_{false};
+        bool otherKindLoading_{false};
         bool holdDimensionRequests_{false};
         int warningLoadCount_{0};
         int warningSaveCount_{0};
@@ -1556,6 +1563,69 @@ namespace {
             QCOMPARE(selection.value(QStringLiteral("sectors")).toStringList(),
                      QStringList{QStringLiteral("SMM1")});
             QCOMPARE(selection.value(QStringLiteral("people")).toStringList(), expectedPeople);
+        }
+
+        void quick_preset_runs_once_another_request_kind_finishes() {
+            QQmlEngine engine;
+            FakeAnalyticsViewModel viewModel;
+            QString error;
+            auto object = loadWindow(engine, viewModel, error);
+            QVERIFY2(object != nullptr, qPrintable(error));
+            auto* button = object->findChild<QObject*>(QStringLiteral("analyticsExecutedByPerson"));
+            QVERIFY(button != nullptr);
+            QVERIFY(invoke(*object, "selectTab", 1));
+            QTRY_VERIFY_WITH_TIMEOUT(!viewModel.loading(), 1000);
+            viewModel.holdDimensionRequests();
+            const int requestsBefore = viewModel.customRequestCount();
+            QVERIFY(QMetaObject::invokeMethod(button, "click", Qt::DirectConnection));
+
+            // The dashboard starts while the preset waits; the dimensions finish first.
+            viewModel.setOtherKindLoading(true);
+            viewModel.publishDimensionValues(
+                {{QStringLiteral("divisions"), QStringList{QStringLiteral("SMM")}},
+                 {QStringLiteral("sectors"), QStringList{QStringLiteral("SMM1")}},
+                 {QStringLiteral("people"), QStringList{QStringLiteral("Ana Atual")}}});
+            QTest::qWait(20);
+            QCOMPARE(viewModel.customRequestCount(), requestsBefore);
+
+            viewModel.setOtherKindLoading(false);
+            QTRY_COMPARE_WITH_TIMEOUT(viewModel.customRequestCount(), requestsBefore + 1, 1000);
+            QCOMPARE(viewModel.lastCustomSelection().value(QStringLiteral("people")).toStringList(),
+                     QStringList{QStringLiteral("Ana Atual")});
+        }
+
+        void removed_sector_refreshes_people_before_pruning_them() {
+            QQmlEngine engine;
+            FakeAnalyticsViewModel viewModel;
+            QString error;
+            auto object = loadWindow(engine, viewModel, error);
+            QVERIFY2(object != nullptr, qPrintable(error));
+            auto* custom = object->findChild<QObject*>(QStringLiteral("analyticsCustomAnalysis"));
+            QVERIFY(custom != nullptr);
+            QVERIFY(invoke(*object, "selectTab", 1));
+            QTRY_VERIFY_WITH_TIMEOUT(!viewModel.loading(), 1000);
+            QVERIFY(invoke(*custom, "selectSector", QStringLiteral("SMIN")));
+            QTRY_VERIFY_WITH_TIMEOUT(!viewModel.loading(), 1000);
+            QVERIFY(invoke(*custom, "selectPerson", QStringLiteral("Ana")));
+            viewModel.holdDimensionRequests();
+            const int dimensionsBefore = viewModel.dimensionRequestCount();
+
+            // An import moved Ana's only SSA from SMIN to SMIT; the people list still used SMIN.
+            viewModel.publishDimensionValues(
+                {{QStringLiteral("divisions"), QStringList{QStringLiteral("SMI")}},
+                 {QStringLiteral("sectors"), QStringList{QStringLiteral("SMIT")}},
+                 {QStringLiteral("people"), QStringList{}}});
+
+            QCOMPARE(viewModel.dimensionRequestCount(), dimensionsBefore + 1);
+            QCOMPARE(custom->property("selectedSectors").toStringList(), QStringList{});
+            QCOMPARE(custom->property("selectedPeople").toStringList(),
+                     QStringList{QStringLiteral("Ana")});
+            viewModel.publishDimensionValues(
+                {{QStringLiteral("divisions"), QStringList{QStringLiteral("SMI")}},
+                 {QStringLiteral("sectors"), QStringList{QStringLiteral("SMIT")}},
+                 {QStringLiteral("people"), QStringList{QStringLiteral("Ana")}}});
+            QCOMPARE(custom->property("selectedPeople").toStringList(),
+                     QStringList{QStringLiteral("Ana")});
         }
 
         void manual_sector_pick_ends_a_pending_quick_preset() {

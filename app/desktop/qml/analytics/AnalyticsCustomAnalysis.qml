@@ -32,6 +32,7 @@ Item {
     property bool initialDimensionsRequested: false
     property bool metricInitialized: false
     property bool quickPresetWaitingForDimensions: false
+    property bool quickPresetRunPending: false
 
     readonly property int metricIndex: metricCombo.currentIndex
     readonly property int grainIndex: grainCombo.currentIndex
@@ -159,6 +160,7 @@ Item {
         // Any new refresh (a manual change, a cancel and retry) ends a pending preset; the
         // preset sets its wait only after its own refresh.
         root.quickPresetWaitingForDimensions = false;
+        root.quickPresetRunPending = false;
         return root.analyticsViewModel.requestDimensionValues(root.requestSelection());
     }
 
@@ -347,13 +349,27 @@ Item {
         root.invalidateCustomChart();
     }
 
+    // Sectors are listed for the selected divisions and people for both; when a selected
+    // ancestor is gone the dependent lists are stale, so they are asked again before pruning.
+    // Returns false when it started that refresh.
     function pruneOrphanSelections() {
         const divisions = root.dimensionList("divisions");
-        root.selectedDivisions = root.selectedDivisions.filter(value => divisions.indexOf(value) >= 0);
+        const keptDivisions = root.selectedDivisions.filter(value => divisions.indexOf(value) >= 0);
+        if (keptDivisions.length !== root.selectedDivisions.length) {
+            root.selectedDivisions = keptDivisions;
+            root.refreshDimensions();
+            return false;
+        }
         const sectors = root.dimensionList("sectors");
-        root.selectedSectors = root.selectedSectors.filter(value => sectors.indexOf(value) >= 0);
+        const keptSectors = root.selectedSectors.filter(value => sectors.indexOf(value) >= 0);
+        if (keptSectors.length !== root.selectedSectors.length) {
+            root.selectedSectors = keptSectors;
+            root.refreshDimensions();
+            return false;
+        }
         const people = root.dimensionList("people");
         root.selectedPeople = root.selectedPeople.filter(value => people.indexOf(value) >= 0);
+        return true;
     }
 
     function configureOverdueByArea() {
@@ -412,6 +428,13 @@ Item {
 
     function isoWeekLabel(year, week) {
         return String(year) + String(week).padStart(2, "0");
+    }
+
+    // Another request kind (the dashboard) may still be loading; the run waits for it.
+    function runQuickPresetAnalysis() {
+        root.quickPresetRunPending = root.analyticsViewModel.loading;
+        if (!root.quickPresetRunPending)
+            root.runAnalysis();
     }
 
     function runQuickPreset(configureFn) {
@@ -473,15 +496,19 @@ Item {
             // Cleared lists (import, database switch) are not a result; their reload is.
             if (Object.keys(root.analyticsViewModel.dimensionValues).length === 0)
                 return;
-            root.pruneOrphanSelections();
-            if (!root.quickPresetWaitingForDimensions)
+            if (!root.pruneOrphanSelections() || !root.quickPresetWaitingForDimensions)
                 return;
             root.quickPresetWaitingForDimensions = false;
             if (root.usesSectorSelection)
                 root.selectedSectors = root.dimensionList("sectors").slice();
             if (root.usesPeopleSelection)
                 root.selectedPeople = root.dimensionList("people").slice();
-            root.runAnalysis();
+            root.runQuickPresetAnalysis();
+        }
+
+        function onStateChanged() {
+            if (root.quickPresetRunPending && !root.analyticsViewModel.loading)
+                root.runQuickPresetAnalysis();
         }
     }
 
