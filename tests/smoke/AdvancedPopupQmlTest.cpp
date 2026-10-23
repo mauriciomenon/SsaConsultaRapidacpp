@@ -286,6 +286,7 @@ namespace {
 
             AdvancedTextFilterCard {
                 id: card
+                objectName: "advancedTextFilterCard"
                 x: 100
                 y: 100
                 property var loadedValues: []
@@ -302,6 +303,8 @@ namespace {
                 valuesError: loadedValuesError
                 maxValueLength: loadedMaxValueLength
                 textFilter: ""
+                includeValues: []
+                excludeValues: []
                 operatorIndex: 0
                 operatorLabel: "="
                 cardWidth: 360
@@ -973,7 +976,13 @@ namespace {
             auto* popup =
                 harness->findChild<QObject*>(QStringLiteral("advancedTextValuePopup_situacao"));
             QVERIFY(popup != nullptr);
-            QVERIFY(popup->setProperty("textFilter", QStringLiteral("!=APV,=ADM,!STE")));
+            auto* card = harness->findChild<QObject*>(QStringLiteral("advancedTextFilterCard"));
+            QVERIFY(card != nullptr);
+            // The card receives the lists parsed in C++ (model roles) and the popup starts from
+            // them; it no longer parses the filter text itself.
+            QVERIFY(card->setProperty("excludeValues",
+                                      QStringList({QStringLiteral("APV"), QStringLiteral("STE")})));
+            QVERIFY(card->setProperty("includeValues", QStringList({QStringLiteral("ADM")})));
 
             QVERIFY(QMetaObject::invokeMethod(popup, "resetSelections"));
 

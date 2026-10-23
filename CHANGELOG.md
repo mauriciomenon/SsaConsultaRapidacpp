@@ -178,6 +178,9 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 - Filtro de coluna em datas (Data de cadastro, Prazo limite e as demais exibidas
   como dd/mm/aaaa) aceita o formato mostrado na grade: `21/12/2021`, `12/2021`
   e `!21/12/2021` voltam a encontrar ou excluir as SSAs, como na versao Python.
+- Filtros avancados: um filtro de texto importado sem prefixo (ex.: `APV,ADM` no
+  JSON de filtros) aparece marcado no popup de valores, como a consulta o le
+  (`=APV,=ADM`); antes nada vinha marcado e "Aplicar" apagava o filtro.
 - Filtros avancados: o cartao Macro cresce ja durante "Carregando relatorio" e
   quando o relatorio falha, sem desenhar essas linhas por cima da fileira de
   baixo; no macro so de grafico, a mensagem de erro cortada mostra o texto

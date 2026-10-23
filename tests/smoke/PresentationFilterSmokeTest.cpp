@@ -1286,11 +1286,12 @@ namespace {
             const int textFilterRole = roles.key(QByteArrayLiteral("textFilter"), -1);
             QVERIFY(keyRole >= Qt::UserRole);
             QVERIFY(textFilterRole >= Qt::UserRole);
-            QCOMPARE(roles.size(), 6);
+            QCOMPARE(roles.size(), 8);
             for (const auto& roleName :
                  {QByteArrayLiteral("key"), QByteArrayLiteral("label"),
                   QByteArrayLiteral("labelShort"), QByteArrayLiteral("textFilter"),
-                  QByteArrayLiteral("operatorIndex"), QByteArrayLiteral("operatorLabel")}) {
+                  QByteArrayLiteral("operatorIndex"), QByteArrayLiteral("operatorLabel"),
+                  QByteArrayLiteral("includeValues"), QByteArrayLiteral("excludeValues")}) {
                 QVERIFY(roles.values().contains(roleName));
             }
 

@@ -15,6 +15,9 @@ FilterCard {
     required property bool valuesLoading
     required property int maxValueLength
     required property string textFilter
+    // The filter values as the query reads them (model roles parsed in C++).
+    required property var includeValues
+    required property var excludeValues
     required property int operatorIndex
     required property string operatorLabel
     property string valuesError: ""
@@ -167,7 +170,8 @@ FilterCard {
         allValues: root.allValues
         valuesLoading: root.valuesLoading
         maxValueLength: root.maxValueLength
-        textFilter: root.textFilter
+        filterIncludeValues: root.includeValues
+        filterExcludeValues: root.excludeValues
         valuesError: root.valuesError
         onOptionsRequested: root.optionsRequested()
         onOptionsRetryRequested: root.optionsRequested()

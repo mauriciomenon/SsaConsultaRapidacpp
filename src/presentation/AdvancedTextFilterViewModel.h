@@ -50,6 +50,8 @@ namespace ssa::presentation {
             TextFilterRole,
             OperatorIndexRole,
             OperatorLabelRole,
+            IncludeValuesRole,
+            ExcludeValuesRole,
         };
 
         [[nodiscard]] QString effectiveTextFilter(const QString& key) const;
@@ -72,7 +74,8 @@ namespace ssa::presentation {
         AdvancedTextFilterColumnStore columns_;
         QString quickSector_;
         inline static const QList<int> kDynamicRoles{TextFilterRole, OperatorIndexRole,
-                                                     OperatorLabelRole};
+                                                     OperatorLabelRole, IncludeValuesRole,
+                                                     ExcludeValuesRole};
     };
 
 } // namespace ssa::presentation

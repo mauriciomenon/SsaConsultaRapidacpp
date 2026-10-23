@@ -13,7 +13,9 @@ Popup {
     required property var allValues
     required property bool valuesLoading
     required property int maxValueLength
-    required property string textFilter
+    // Values of the current filter as the query reads them, parsed in C++.
+    required property var filterIncludeValues
+    required property var filterExcludeValues
     property string valuesError: ""
 
     signal optionsRequested
@@ -37,22 +39,6 @@ Popup {
     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
     padding: 10
 
-    function tokenValues(prefix) {
-        var result = [];
-        var parts = root.textFilter.split(",");
-        for (var index = 0; index < parts.length; ++index) {
-            var token = parts[index].trim();
-            if (token.length < 2 || token.charAt(0) !== prefix)
-                continue;
-            // The C++ serializer writes exclusions as "!=value".
-            var value = token.substring(1);
-            if (prefix === "!" && value.charAt(0) === "=")
-                value = value.substring(1);
-            result.push(value.trim());
-        }
-        return result;
-    }
-
     function containsValue(values, value) {
         return values.indexOf(value) >= 0;
     }
@@ -69,8 +55,8 @@ Popup {
     }
 
     function resetSelections() {
-        root.includeValues = root.tokenValues("=");
-        root.excludeValues = root.tokenValues("!");
+        root.includeValues = root.filterIncludeValues.slice();
+        root.excludeValues = root.filterExcludeValues.slice();
     }
 
     function filterValues() {

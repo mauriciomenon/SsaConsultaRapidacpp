@@ -1,6 +1,7 @@
 #include "presentation/AdvancedTextFilterViewModel.h"
 
 #include "domain/ColumnCatalog.h"
+#include "domain/TextFilterToken.h"
 #include "presentation/AdvancedTextFilterRowModelFactory.h"
 #include "presentation/FilterPanelStateHelpers.h"
 
@@ -9,6 +10,19 @@
 namespace ssa::presentation {
 
     namespace {
+
+        // The value popup checks values as the query reads them; a bare token is an inclusion.
+        QStringList valuesWithOperator(const QString& expression,
+                                       const domain::TextFilterOperator wanted) {
+            QStringList values;
+            const auto tokens = domain::parseTextFilterTokens(expression.toStdString());
+            for (const auto& token : tokens.ordered) {
+                if (token.filterOperator == wanted) {
+                    values.push_back(QString::fromStdString(token.value));
+                }
+            }
+            return values;
+        }
 
         QString executorColumnKey() {
             const auto key = domain::ColumnCatalog::executorColumnKey();
@@ -57,6 +71,12 @@ namespace ssa::presentation {
             return state.value(QStringLiteral("operatorIndex"));
         case OperatorLabelRole:
             return state.value(QStringLiteral("operatorLabel"));
+        case IncludeValuesRole:
+            return valuesWithOperator(state.value(QStringLiteral("textFilter")).toString(),
+                                      domain::TextFilterOperator::Equals);
+        case ExcludeValuesRole:
+            return valuesWithOperator(state.value(QStringLiteral("textFilter")).toString(),
+                                      domain::TextFilterOperator::Different);
         default:
             return {};
         }
@@ -68,7 +88,9 @@ namespace ssa::presentation {
                 {LabelShortRole, "labelShort"},
                 {TextFilterRole, "textFilter"},
                 {OperatorIndexRole, "operatorIndex"},
-                {OperatorLabelRole, "operatorLabel"}};
+                {OperatorLabelRole, "operatorLabel"},
+                {IncludeValuesRole, "includeValues"},
+                {ExcludeValuesRole, "excludeValues"}};
     }
 
     QString AdvancedTextFilterViewModel::operatorModeFor(const QString& key) const {

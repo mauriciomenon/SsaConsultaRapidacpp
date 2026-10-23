@@ -128,7 +128,8 @@ int main(int argc, char* argv[]) {
                 allValues: probeValues
                 valuesLoading: false
                 maxValueLength: 10
-                textFilter: ""
+                filterIncludeValues: []
+                filterExcludeValues: []
             }
 
             Column {

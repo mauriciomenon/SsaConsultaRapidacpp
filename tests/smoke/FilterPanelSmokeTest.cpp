@@ -879,6 +879,38 @@ namespace {
                      QString("=MEG2"));
         }
 
+        void text_filter_rows_expose_values_as_the_query_reads_them() {
+            auto repository = std::make_shared<FilterPanelRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::FilterPanelViewModel filters(service);
+            auto* advanced =
+                qobject_cast<ssa::presentation::FilterPanelAdvancedViewModel*>(filters.advanced());
+            QVERIFY(advanced != nullptr);
+            auto* text =
+                qobject_cast<ssa::presentation::AdvancedTextFilterViewModel*>(advanced->text());
+            QVERIFY(text != nullptr);
+            // An imported preset may carry a bare token: the query reads it as "=APV".
+            text->setTextFilter(QStringLiteral("situacao"), QStringLiteral("APV,!=ADM,=CAN"));
+
+            const auto roles = text->roleNames();
+            const int keyRole = roles.key("key");
+            const int includeRole = roles.key("includeValues");
+            const int excludeRole = roles.key("excludeValues");
+            QVERIFY(includeRole != 0 && excludeRole != 0);
+            int situacaoRow = -1;
+            for (int row = 0; row < text->rowCount(); ++row) {
+                if (text->data(text->index(row, 0), keyRole).toString() == "situacao") {
+                    situacaoRow = row;
+                }
+            }
+            QVERIFY(situacaoRow >= 0);
+            const auto index = text->index(situacaoRow, 0);
+            QCOMPARE(text->data(index, includeRole).toStringList(),
+                     QStringList({QStringLiteral("APV"), QStringLiteral("CAN")}));
+            QCOMPARE(text->data(index, excludeRole).toStringList(),
+                     QStringList{QStringLiteral("ADM")});
+        }
+
         void quick_sector_is_visible_in_executor_advanced_filter() {
             auto repository = std::make_shared<FilterPanelRepository>();
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
