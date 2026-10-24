@@ -45,7 +45,7 @@ placeholder
         try {
             $failure = $null
             try {
-                & $packageScript -ProjectRoot $repoRoot -DistDir $distDir -Version "1.2.3" -SkipTests
+                & $packageScript -ProjectRoot $repoRoot -Arch amd64 -DistDir $distDir -Version "1.2.3" -SkipTests
             }
             catch {
                 $failure = $_

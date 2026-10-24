@@ -1751,10 +1751,13 @@ Matriz completa de acertos, adicoes, erros e ordem de execucao:
   falhou no CI macOS de `10713a9` por espera fixa de 160 ms; agora espera o
   status terminal com `QTRY_COMPARE_WITH_TIMEOUT` (3 s) e falha se o
   cancelamento sumir (provado com sabotagem).
-- [PENDING] [PESTER-BUILD-FAILURE-CLEANUP] O caso `aborts before cleaning a
-  previous release when the build fails` de `PackageWindows.Tests.ps1` falha
-  tambem no HEAD `8c63ce4` (espera o diretorio de build removido); nao roda
-  no CI.
+- [RESOLVED] [PESTER-BUILD-FAILURE-CLEANUP] O caso `aborts before cleaning a
+  previous release when the build fails` de `PackageWindows.Tests.ps1` chamava
+  o pacote sem `-Arch`, mas criava o build em `build/windows/amd64/...`. Em
+  host ARM64 a arquitetura resolvia `arm64`, o `finally` limpava a pasta arm64
+  e a amd64 do teste ficava, entao o caso so passava em host x64. O teste agora
+  passa `-Arch amd64`; os 11 casos passam na VM ARM64. O script estava
+  correto. Nao roda no CI.
 - [PENDING] [WINDOWS-MSVC-ENV] `scripts/build-windows.ps1` so inicializa o
   Developer PowerShell quando `cl.exe` falta no PATH. Com `cl.exe` no PATH
   sem `LIB`/`INCLUDE` (caso da VM ARM64) a inicializacao e pulada e o link
