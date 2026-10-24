@@ -1703,7 +1703,7 @@ Matriz completa de acertos, adicoes, erros e ordem de execucao:
 - [RESOLVED-LOCAL] [THEME-PY-AA] Fechado por foreground contextual AA em vez
   de mutar os literais Python. O contrato percorre todas as 39 paletas, inclui
   normal/hover de analytics e preserva tokens quando ja legiveis.
-- [PENDING] [GUI-CONTRACT-WEEK-DERIVATION] Decidir se a GUI deve restaurar o filtro generico de semana e o seletor de derivacao descritos em `docs/contracts/gui-behavior.md`. O runtime atual expoe apenas os cards de emissao e execucao e nao oferece controle visual para `derivationMode`. Nao alterar o layout ate uma decisao de produto explicita.
+- [DECISION] [GUI-CONTRACT-WEEK-DERIVATION] Decidir se a GUI deve restaurar o filtro generico de semana e o seletor de derivacao descritos em `docs/contracts/gui-behavior.md`. O runtime atual expoe apenas os cards de emissao e execucao e nao oferece controle visual para `derivationMode`. Nao alterar o layout ate uma decisao de produto explicita. Comparacao de 2026-10-24 com a GUI Streamlit do repo Python (`dev_env/streamlit_app.py`): semana usa so `ano_semana_emissao` e `ano_semana_execucao`, igual aos dois cards C++, entao o contrato e que esta desatualizado; derivacao existe la em dois filtros tri-estado (`tem_derivada` e `tem_derivadas`), e a GUI C++ nao tem controle, embora `AdvancedDerivationFilterViewModel` ja exponha `derivationMode` (`all`/`root`/`derived`, equivalente a `tem_derivada`). `tem_derivadas` (tem filhas) nao tem equivalente C++.
 - [PARTIAL-LOCAL] [TYPESCALE-POINTSIZE] `ActionButton`, `AppComboBox`/delegate,
   `AppSpinBox`, `AppTextField` e `AppCheckBox` ja usam a escala tipada e tem
   cobertura local. Restam filtros, cards e outros consumidores QML, alem de
@@ -1724,11 +1724,16 @@ Matriz completa de acertos, adicoes, erros e ordem de execucao:
   canonico e 100.000 linhas publicou 50 linhas com sucesso. Release Windows:
   MSVC 4208 ms cold e 1239-1343 ms warm; LLVM 3195 ms cold e 1214-1563 ms
   warm. Debian/WSL com banco no NTFS: 14359 ms cold e 2775-2892 ms warm.
-- [PENDING] [STARTUP-PRE-QML] A medicao com dados mostrou analytics em cerca
+- [DECISION] [STARTUP-PRE-QML] A medicao com dados mostrou analytics em cerca
   de 1650 ms cold no Windows e 11373 ms cold no Debian/WSL sobre NTFS, contra
-  13-26 ms warm. Deferir a inicializacao cold para depois do primeiro frame,
-  preservando cancelamento, erros visiveis e o resultado final. Medir de novo
-  antes de aceitar o ganho.
+  13-26 ms warm. Medido de novo em 2026-10-24 (macOS, snapshot de 94879
+  linhas, 3 rodadas): frio `fresh` 765-812 ms de analytics e 957-1093 ms ate o
+  primeiro frame; morno `ready` 45-58 ms e 218-315 ms. O frio so ocorre quando
+  o banco ainda nao tem as tabelas de analytics (primeira abertura) ou num
+  reparo da semana atual; semana nova com historico valido e `ready`. O WSL
+  sobre NTFS e host proibido pelo AGENTS.md. Recomendacao: nao adiar, porque o
+  ganho e uma vez por banco e o adiamento poria um escritor em segundo plano
+  disputando o lock de escrita com importacao e rescan.
 - [RESOLVED] [WINDOWS-ARM64-PACKAGE] Prova em host Windows 11 ARM64 real
   (VM, MSVC 14.51, Qt 6.11.2 `msvc2022_arm64`, 2026-10-23): o build release
   passava (305/305), mas `scripts/package-windows.ps1` nunca empacotava ARM64
