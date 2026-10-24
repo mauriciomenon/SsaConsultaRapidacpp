@@ -1764,9 +1764,10 @@ namespace {
             model.browse()->apply();
             model.browse()->cancelCurrentRequest();
 
-            QTest::qWait(160);
+            // A fixed wait raced the terminal status on a loaded CI runner.
+            QTRY_COMPARE_WITH_TIMEOUT(model.browse()->status()->message(),
+                                      QString("Consulta cancelada"), 3000);
             QCOMPARE(model.browse()->tableModel()->rowCount(), 0);
-            QCOMPARE(model.browse()->status()->message(), QString("Consulta cancelada"));
         }
 
         void cancelAfterPageWorkerCompletedBeforeTerminalDoesNotPublishSuccess() {

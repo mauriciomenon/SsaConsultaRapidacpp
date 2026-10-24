@@ -1741,9 +1741,16 @@ Matriz completa de acertos, adicoes, erros e ordem de execucao:
   ARM64 do `PackageWindows.Tests.ps1` falha no script antigo e passa no novo.
   Toolchain ARM64: so MSVC; `llvm` e `mingw` sao recusados em
   `scripts/lib/windows_build_layout.ps1` por falta de kit Qt.
-- [PENDING] [WINDOWS-ARM64-SMOKE] Falta o smoke do pacote ARM64 (`--version`,
-  GUI viva, conferencia do `SHA256SUMS`) e trazer os artefatos ao Mac: a VM foi
-  suspensa logo apos o pacote.
+- [RESOLVED] [WINDOWS-ARM64-SMOKE] Pacote ARM64 `10713a9` (banco fixture) na
+  VM: `--version` sai 0 com `SSA Consulta Rapida 0.9.17`, `--smoke-exit-ms
+  5000` sai 0, imports `MSVCP140`/`MSVCP140_ATOMIC_WAIT`/`VCRUNTIME140`
+  presentes na pasta, e os 4 artefatos conferem com `SHA256SUMS` no Mac. O
+  pacote leva so o plugin `qwindows`: smoke com `QT_QPA_PLATFORM=offscreen`
+  trava numa caixa de erro do Qt e nao prova nada.
+- [RESOLVED] `cancel_marks_current_request_as_stale` (`PresentationSmokeTest`)
+  falhou no CI macOS de `10713a9` por espera fixa de 160 ms; agora espera o
+  status terminal com `QTRY_COMPARE_WITH_TIMEOUT` (3 s) e falha se o
+  cancelamento sumir (provado com sabotagem).
 - [PENDING] [PESTER-BUILD-FAILURE-CLEANUP] O caso `aborts before cleaning a
   previous release when the build fails` de `PackageWindows.Tests.ps1` falha
   tambem no HEAD `8c63ce4` (espera o diretorio de build removido); nao roda
