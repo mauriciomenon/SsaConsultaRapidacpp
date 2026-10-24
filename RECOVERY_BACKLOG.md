@@ -1703,7 +1703,9 @@ Matriz completa de acertos, adicoes, erros e ordem de execucao:
 - [RESOLVED-LOCAL] [THEME-PY-AA] Fechado por foreground contextual AA em vez
   de mutar os literais Python. O contrato percorre todas as 39 paletas, inclui
   normal/hover de analytics e preserva tokens quando ja legiveis.
-- [DECISION] [GUI-CONTRACT-WEEK-DERIVATION] Decidir se a GUI deve restaurar o filtro generico de semana e o seletor de derivacao descritos em `docs/contracts/gui-behavior.md`. O runtime atual expoe apenas os cards de emissao e execucao e nao oferece controle visual para `derivationMode`. Nao alterar o layout ate uma decisao de produto explicita. Comparacao de 2026-10-24 com a GUI Streamlit do repo Python (`dev_env/streamlit_app.py`): semana usa so `ano_semana_emissao` e `ano_semana_execucao`, igual aos dois cards C++, entao o contrato e que esta desatualizado; derivacao existe la em dois filtros tri-estado (`tem_derivada` e `tem_derivadas`), e a GUI C++ nao tem controle, embora `AdvancedDerivationFilterViewModel` ja exponha `derivationMode` (`all`/`root`/`derived`, equivalente a `tem_derivada`). `tem_derivadas` (tem filhas) nao tem equivalente C++.
+- [RESOLVED] [GUI-CONTRACT-WEEK-DERIVATION] Decisao do usuario (2026-10-24): contrato atualizado e card proprio "Derivacao" (Todas / So raiz / So derivadas) na grade de filtros avancados, ligado a `derivationMode`. A GUI PyQt6 de referencia (`~/git/SSA_Consulta_Rapida/gui/ssa/gui_filters_advanced_ui.py`) usa os mesmos dois intervalos de semana ("Emissao (AnoSemana)" e "Execucao (AnoSemana)"), entao o contrato e que estava desatualizado. Comparadas duas variantes por screenshot: o combo dentro do card de reprogramacao reduzia o valor a "..."; a celula propria fecha a grade 4x4 em 1580 px. Teste QML novo falha sem a gravacao do modo.
+- [PENDING] [DERIVATION-PARITY] A GUI PyQt6 filtra derivadas por tres opcoes multiplas: "Possui Derivadas", "Derivadas encerradas (STE/SES/SCA/SCC)" e "Sou Derivada". O C++ cobre so "Sou Derivada" (`derived`) e acrescenta `root`; "Possui Derivadas" e "Derivadas encerradas" nao tem filtro no query C++.
+- [OBSERVED] Uma abertura do app em sequencia rapida sobre o mesmo banco falhou uma vez com `SQLITE_IOERR_LOCK` (`extended_rc=3850`, "Falha ao iniciar a operacao no banco de dados") durante screenshots offscreen; nao reproduziu em 6 execucoes seguidas.
 - [PARTIAL-LOCAL] [TYPESCALE-POINTSIZE] `ActionButton`, `AppComboBox`/delegate,
   `AppSpinBox`, `AppTextField` e `AppCheckBox` ja usam a escala tipada e tem
   cobertura local. Restam filtros, cards e outros consumidores QML, alem de
@@ -1724,7 +1726,8 @@ Matriz completa de acertos, adicoes, erros e ordem de execucao:
   canonico e 100.000 linhas publicou 50 linhas com sucesso. Release Windows:
   MSVC 4208 ms cold e 1239-1343 ms warm; LLVM 3195 ms cold e 1214-1563 ms
   warm. Debian/WSL com banco no NTFS: 14359 ms cold e 2775-2892 ms warm.
-- [DECISION] [STARTUP-PRE-QML] A medicao com dados mostrou analytics em cerca
+- [CLOSED] [STARTUP-PRE-QML] Encerrado sem adiamento por decisao do usuario
+  (2026-10-24), pela medicao abaixo. A medicao com dados mostrou analytics em cerca
   de 1650 ms cold no Windows e 11373 ms cold no Debian/WSL sobre NTFS, contra
   13-26 ms warm. Medido de novo em 2026-10-24 (macOS, snapshot de 94879
   linhas, 3 rodadas): frio `fresh` 765-812 ms de analytics e 957-1093 ms ate o

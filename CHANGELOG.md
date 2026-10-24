@@ -4,6 +4,11 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 
 ## Nao publicado
 
+### Adicionado
+
+- Filtros avancados: card "Derivacao" para ver todas as SSAs, so as raiz ou so
+  as derivadas. O filtro ja existia na consulta, mas nao tinha controle na tela.
+
 ### Corrigido
 
 - Pacote Windows: deixou de levar `data\ssas.db`. Com o banco ao lado do

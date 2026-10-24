@@ -313,6 +313,7 @@ qt_add_qml_module(
   app/desktop/qml/components/AdvancedFilterPanel.qml
   app/desktop/qml/components/AdvancedMacroFilterCard.qml
   app/desktop/qml/components/AdvancedReprogrammingFilterCard.qml
+  app/desktop/qml/components/AdvancedDerivationFilterCard.qml
   app/desktop/qml/components/ReprogrammingValuePopup.qml
   app/desktop/qml/components/AdvancedTextValuePopup.qml
   app/desktop/qml/components/ValueOptionsStatus.qml

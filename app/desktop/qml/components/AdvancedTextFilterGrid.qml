@@ -164,5 +164,18 @@ Item {
                 onApplyRequested: root.applyRequested()
             }
         }
+
+        // Derivation card (single cell, last). all / root-only / derived-only.
+        Repeater {
+            model: 1
+
+            AdvancedDerivationFilterCard {
+                required property int index
+                cardWidth: root.gridLayout.cardWidth
+                cardHeight: root.textCellHeight - 4
+                derivation: root.advanced.derivation
+                onApplyRequested: root.applyRequested()
+            }
+        }
     }
 }

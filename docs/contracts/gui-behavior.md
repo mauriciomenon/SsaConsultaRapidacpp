@@ -8,8 +8,8 @@
 - General search row with apply, clear, page navigation, and page size.
 - A simple undo action before the search input, plus a Filters menu for undoing
   multiple levels and copying the textual history.
-- Filter panel with `SCA/SES/STE` exclusion, quick executor, column filter, week/year
-  filters, derivation mode, and reprogrammed-only filter.
+- Filter panel with `SCA/SES/STE` exclusion, quick executor, column filter, emission and
+  execution week ranges, derivation mode, and reprogramming filter.
 - Table with the current SQL page only.
 - Table header labels and widths come from `ColumnCatalog`.
 - Header width edits are applied through `ColumnSettingsModel`, persisted by column key, and do not
@@ -57,9 +57,11 @@
 - Resetting filters restores the default, which shows `SCA`, `SES`, and `STE` (the
   `SCA/SES/STE` exclusion checkbox starts unchecked).
 - Advanced filters are query parameters, not QML logic:
-  week/year use one of `semana_cadastro`, `semana_programada`, or `semana_executada`;
-  derivation mode is `all`, `root`, or `derived`; reprogrammed-only checks reprogramming
-  counters.
+  the emission card is a `YYYYWW` range on `semana_cadastro` and the execution card a
+  `YYYYWW` range on `semana_executada`, as the two week ranges of the Python GUI; the
+  derivation card picks `all` (Todas), `root` (So raiz) or `derived` (So derivadas);
+  the reprogramming card filters by reprogramming count or any reprogramming. The
+  generic week/year query parameters stay in the query layer without a GUI control.
 - Details are read from the selected row and can open the selected SSA externally.
 - External actions return explicit command results: success, not implemented, rejected, or failed.
 - The GUI reports errors visibly instead of silently self-healing.

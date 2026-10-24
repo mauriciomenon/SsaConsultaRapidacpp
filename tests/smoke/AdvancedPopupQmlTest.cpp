@@ -430,6 +430,10 @@ namespace {
             QVERIFY(qmlRegisterType(
                         QUrl::fromLocalFile(components.filePath("AdvancedWeekExecutionCard.qml")),
                         "SsaConsultaRapida", 1, 0, "AdvancedWeekExecutionCard") >= 0);
+            QVERIFY(
+                qmlRegisterType(
+                    QUrl::fromLocalFile(components.filePath("AdvancedDerivationFilterCard.qml")),
+                    "SsaConsultaRapida", 1, 0, "AdvancedDerivationFilterCard") >= 0);
             QVERIFY(qmlRegisterType(
                         QUrl::fromLocalFile(components.filePath("AdvancedTextFilterGrid.qml")),
                         "SsaConsultaRapida", 1, 0, "AdvancedTextFilterGrid") >= 0);
@@ -1089,6 +1093,55 @@ namespace {
                 QCOMPARE(week->property(startKey).toString(), QStringLiteral("202602"));
                 QCOMPARE(week->property(endKey).toString(), current);
             }
+        }
+
+        void derivation_card_selects_mode_and_clears_it() {
+            auto repository = std::make_shared<CountingRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            ssa::presentation::FilterPanelViewModel filters(service);
+            auto* advanced =
+                qobject_cast<ssa::presentation::FilterPanelAdvancedViewModel*>(filters.advanced());
+            QVERIFY(advanced != nullptr);
+            auto* derivation = advanced->derivation();
+            QQmlEngine engine;
+            engine.rootContext()->setContextProperty(QStringLiteral("derivationViewModel"),
+                                                     derivation);
+            QQmlComponent component(&engine);
+            component.setData(R"QML(
+                import QtQuick
+                import SsaConsultaRapida
+                Item {
+                    AdvancedDerivationFilterCard {
+                        objectName: "derivation"; derivation: derivationViewModel
+                        cardWidth: 360; cardHeight: 52
+                    }
+                }
+            )QML",
+                              QUrl(QStringLiteral("inmemory:/DerivationCardHarness.qml")));
+            QTRY_VERIFY_WITH_TIMEOUT(component.status() != QQmlComponent::Loading, 1000);
+            QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+            std::unique_ptr<QObject> harness(component.create());
+            QVERIFY2(harness != nullptr, qPrintable(component.errorString()));
+            auto* card = harness->findChild<QObject*>(QStringLiteral("derivation"));
+            auto* selector = findOwnedQuickItemByProperty(harness.get(), "objectName",
+                                                          QStringLiteral("derivationModeSelector"));
+            auto* clearButton =
+                findOwnedQuickItemByProperty(harness.get(), "text", QStringLiteral("x"));
+            QVERIFY(card != nullptr && selector != nullptr && clearButton != nullptr);
+            QSignalSpy applied(card, SIGNAL(applyRequested()));
+            QCOMPARE(derivation->property("derivationMode").toString(), QStringLiteral("all"));
+            QCOMPARE(selector->property("displayText").toString(), QStringLiteral("Todas"));
+
+            QVERIFY(selector->setProperty("currentIndex", 2));
+            QVERIFY(QMetaObject::invokeMethod(selector, "activated", Q_ARG(int, 2)));
+            QCOMPARE(derivation->property("derivationMode").toString(), QStringLiteral("derived"));
+            QCOMPARE(selector->property("displayText").toString(), QStringLiteral("So derivadas"));
+            QCOMPARE(applied.count(), 1);
+
+            QVERIFY(QMetaObject::invokeMethod(clearButton, "click"));
+            QCOMPARE(derivation->property("derivationMode").toString(), QStringLiteral("all"));
+            QCOMPARE(selector->property("currentIndex").toInt(), 0);
+            QCOMPARE(applied.count(), 2);
         }
 
         void multiselect_stays_available_for_mixed_filters() {
