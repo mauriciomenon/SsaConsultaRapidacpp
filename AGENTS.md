@@ -39,6 +39,7 @@ Sem acentos/cedilha/emojis/emdash em codigo, chat e mensagens tecnicas.
 - O preflight de host e ferramentas deve ocorrer antes de `git status`, limpeza, configuracao, build, teste, smoke ou empacotamento.
 - Operacoes Linux sao publicadas pelo clone Linux. Depois do push, o clone Windows e atualizado com `git.exe pull --ff-only origin master` executado no Windows nativo.
 - Build e validacao Windows so podem ocorrer em `$env:USERPROFILE\gitlab\ssa_consulta_rapida_cpp`, por ferramentas Windows nativas e fora de sessao WSL.
+- Rotina do host Windows de validacao (pre-requisitos, dados, artefatos, limpeza): fonte unica em `docs/development/windows-vm.md`.
 - O mesmo isolamento se aplica ao repositorio Python canonico `$HOME/gitlab_repo/ssa_consulta_rapida_pyqt6`.
 
 ## Dados Operacionais Fora Do Git
