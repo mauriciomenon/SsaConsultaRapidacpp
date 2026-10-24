@@ -169,7 +169,10 @@ if ($cacheIsReusable) {
     }
 }
 
-if ($msvcKitSelected -and -not (Get-Command cl.exe -ErrorAction SilentlyContinue)) {
+$expectedTargetArch = if ($arch -eq 'arm64') { 'arm64' } else { 'x64' }
+# A cl.exe on PATH is not a Developer environment: LIB and INCLUDE come only from
+# VsDevCmd, which records the target it set up in VSCMD_ARG_TGT_ARCH.
+if ($msvcKitSelected -and $env:VSCMD_ARG_TGT_ARCH -ne $expectedTargetArch) {
     $devShellPattern = Join-Path $env:ProgramFiles 'Microsoft Visual Studio\*\*\Common7\Tools\Microsoft.VisualStudio.DevShell.dll'
     $devShellModule = Get-ChildItem -Path $devShellPattern -File -ErrorAction SilentlyContinue |
         Sort-Object LastWriteTime -Descending |
@@ -180,7 +183,10 @@ if ($msvcKitSelected -and -not (Get-Command cl.exe -ErrorAction SilentlyContinue
     $vsInstallPath = $devShellModule.Directory.Parent.Parent.FullName
     Import-Module $devShellModule.FullName -ErrorAction Stop
     $vsTargetArch = if ($arch -eq 'arm64') { 'arm64' } else { 'amd64' }
-    $expectedTargetArch = if ($arch -eq 'arm64') { 'arm64' } else { 'x64' }
+    # Use the native compiler: an ARM64 host would otherwise run the x64 one emulated.
+    $hostArch = Resolve-WindowsArch
+    $vsHostArch = if ($hostArch -eq 'arm64') { 'arm64' } else { 'amd64' }
+    $expectedHostArch = if ($hostArch -eq 'arm64') { 'arm64' } else { 'x64' }
     $sdkBinaryArch = if ($arch -eq 'arm64') { 'arm64' } else { 'x64' }
     $windowsKitsBin = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\bin'
     $completeSdk = Get-ChildItem -LiteralPath $windowsKitsBin -Directory -ErrorAction SilentlyContinue |
@@ -196,8 +202,8 @@ if ($msvcKitSelected -and -not (Get-Command cl.exe -ErrorAction SilentlyContinue
     }
     Write-Output "Using Windows SDK: $($completeSdk.Name)"
     Enter-VsDevShell -VsInstallPath $vsInstallPath -SkipAutomaticLocation -Arch $vsTargetArch `
-        -HostArch amd64 -DevCmdArguments "-winsdk=$($completeSdk.Name)"
-    if ($env:VSCMD_ARG_HOST_ARCH -ne 'x64' -or $env:VSCMD_ARG_TGT_ARCH -ne $expectedTargetArch -or
+        -HostArch $vsHostArch -DevCmdArguments "-winsdk=$($completeSdk.Name)"
+    if ($env:VSCMD_ARG_HOST_ARCH -ne $expectedHostArch -or $env:VSCMD_ARG_TGT_ARCH -ne $expectedTargetArch -or
         -not (Get-Command cl.exe -ErrorAction SilentlyContinue)) {
         throw "MSVC Developer environment initialization failed: host=$env:VSCMD_ARG_HOST_ARCH target=$env:VSCMD_ARG_TGT_ARCH"
     }

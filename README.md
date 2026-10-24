@@ -174,8 +174,9 @@ QT_DIR=/meu/qt ./tools/configure-dev.sh
 ### Verificacao de toolchain
 
 - No Windows, `.\scripts\build-windows.ps1` localiza o modulo do Visual Studio
-  e inicializa target x64 ou ARM64 conforme `-Arch`. Nao e necessario abrir
-  Developer PowerShell manualmente.
+  e inicializa target x64 ou ARM64 conforme `-Arch`, com o compilador nativo do
+  host. Nao e necessario abrir Developer PowerShell manualmente, mesmo com um
+  `cl.exe` ja no PATH.
 - Em caso de erro de SQLite, valide `vcpkg install sqlite3:<triplet>` e rode:
 
 ```powershell

@@ -1758,17 +1758,28 @@ Matriz completa de acertos, adicoes, erros e ordem de execucao:
   e a amd64 do teste ficava, entao o caso so passava em host x64. O teste agora
   passa `-Arch amd64`; os 11 casos passam na VM ARM64. O script estava
   correto. Nao roda no CI.
-- [PENDING] [WINDOWS-MSVC-ENV] `scripts/build-windows.ps1` so inicializa o
-  Developer PowerShell quando `cl.exe` falta no PATH. Com `cl.exe` no PATH
-  sem `LIB`/`INCLUDE` (caso da VM ARM64) a inicializacao e pulada e o link
-  falha com `LNK1104 kernel32.lib`, embora o README diga que nao e preciso
-  abrir o Developer PowerShell. O teste deveria olhar o ambiente ja
-  inicializado para o alvo (`VSCMD_ARG_TGT_ARCH`), nao a presenca do `cl.exe`.
-- [PENDING] [WINDOWS-ARM64-HOST] O build MSVC sempre usa `-HostArch amd64` e
-  exige host x64, e o pacote procura `dumpbin` so em `bin\Hostx64`. Em host
-  ARM64 o compilador roda emulado, e uma instalacao do Visual Studio sem as
-  ferramentas `Hostx64` falha. O toolset `Hostarm64\arm64` nativo existe.
+- [RESOLVED] [WINDOWS-MSVC-ENV] `scripts/build-windows.ps1` so inicializava o
+  Developer PowerShell quando `cl.exe` faltava no PATH; com `cl.exe` no PATH
+  sem `LIB`/`INCLUDE` o link falhava com `LNK1104 kernel32.lib`. Agora decide
+  por `VSCMD_ARG_TGT_ARCH`. Provado na VM ARM64 numa sessao ssh comum
+  (`cl.exe` no PATH, `LIB` vazio): build limpo, ctest focado 3/3 e pacote ARM64.
+- [RESOLVED] [WINDOWS-ARM64-HOST] O build MSVC forcava `-HostArch amd64` e o
+  pacote procurava `dumpbin` so em `bin\Hostx64`. Agora o host e o nativo
+  (`Hostarm64\arm64` no ARM64) e o pacote usa o `dumpbin` ao lado do `cl.exe`
+  do build. O CI x64 nao muda: `ilammy/msvc-dev-cmd` ja define o alvo x64.
 - [DECISION] [WINDOWS-PACKAGE-DATABASE] `scripts/package-windows.ps1` exige
   `data\ssas.db` no clone e o embute no pacote; `scripts/package-debian.sh`
   nao leva banco e orienta `--db`. Os dois contratos divergem, e o do Windows
-  distribui o banco operacional dentro do artefato.
+  distribui o banco operacional dentro do artefato. Pior: com `data\ssas.db`
+  ao lado do executavel, `StartupOptions::defaultProjectRoot` adota a pasta do
+  executavel como raiz (banco e `config\`). O portable extrai em `$PLUGINSDIR`,
+  pasta temporaria que o NSIS apaga ao fechar, entao importacoes, rescans e
+  preferencias feitos pelo portable se perdem. Provado na VM ARM64 com o
+  pacote `9b6c6c3`: durante a execucao o app usou `data\ssas.db` e gravou
+  `config\ssa.log` dentro de `%TEMP%\nsp99D1.tmp\app`; apos fechar, a pasta
+  ficou vazia. O instalador poe a raiz em `Program Files`, que exige admin para
+  gravar. Sem banco embutido, o app cai em `%USERPROFILE%\.ssaconsultarapida`,
+  o local canonico do AGENTS.md. O banco embutido e intencional
+  (`packaging/windows/README.md`: "para iniciar com os dados entregues"), entao
+  a correcao precisa escolher entre nao embutir ou semear o banco no perfil do
+  usuario so quando ainda nao existir.

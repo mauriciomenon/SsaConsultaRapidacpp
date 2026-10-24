@@ -6,6 +6,10 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 
 ### Corrigido
 
+- Build Windows: `scripts/build-windows.ps1` abre o ambiente do Visual Studio
+  mesmo quando ja ha um `cl.exe` no PATH (antes o link falhava com
+  `LNK1104 kernel32.lib`) e, em Windows ARM64, usa o compilador ARM64 nativo em
+  vez do x64 emulado.
 - Pacote Windows ARM64: `scripts/package-windows.ps1 -Arch arm64` gera o
   pacote; antes ele sempre parava exigindo `VCRUNTIME140_1.dll`, uma DLL que
   so o executavel x64 usa.

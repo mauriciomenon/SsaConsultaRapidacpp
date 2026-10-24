@@ -142,7 +142,13 @@ function Resolve-VisualCppRuntimeDirectory {
     if (-not $crtDirectory) {
         throw "Matching Visual C++ runtime for the configured toolset was not found: $runtimeDirectory"
     }
-    $dumpbinPath = Join-Path $normalizedToolset "bin\Hostx64\$runtimeArchitecture\dumpbin.exe"
+    # MSVC: the dumpbin beside the cl.exe that built the package, whatever the host.
+    $dumpbinDirectory = if ($EffectiveToolchain -eq "msvc") {
+        Split-Path $compiler.Replace('/', '\')
+    } else {
+        Join-Path $normalizedToolset "bin\Hostx64\$runtimeArchitecture"
+    }
+    $dumpbinPath = Join-Path $dumpbinDirectory "dumpbin.exe"
     if (-not (Test-Path -LiteralPath $dumpbinPath -PathType Leaf)) {
         throw "dumpbin.exe for the configured Visual C++ toolset was not found: $dumpbinPath"
     }
