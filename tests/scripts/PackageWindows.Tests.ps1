@@ -195,6 +195,8 @@ exit /b 0
                 (Get-ChildItem -LiteralPath $finalDir -Filter $runtimeFile -File -Recurse).Count | Should -BeGreaterThan 0
             }
             (Test-Path -LiteralPath (Join-Path $testRoot "dist/amd64/.staging")) | Should -BeFalse
+            # The workspace has data/ssas.db, but the package must not carry it.
+            @(Get-ChildItem -LiteralPath $finalDir -Filter "ssas.db" -File -Recurse).Count | Should -Be 0
 
             $env:VCToolsInstallDir = $toolsetRoot
             Remove-Item Env:VCToolsVersion -ErrorAction SilentlyContinue

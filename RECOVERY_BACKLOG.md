@@ -1767,19 +1767,14 @@ Matriz completa de acertos, adicoes, erros e ordem de execucao:
   pacote procurava `dumpbin` so em `bin\Hostx64`. Agora o host e o nativo
   (`Hostarm64\arm64` no ARM64) e o pacote usa o `dumpbin` ao lado do `cl.exe`
   do build. O CI x64 nao muda: `ilammy/msvc-dev-cmd` ja define o alvo x64.
-- [DECISION] [WINDOWS-PACKAGE-DATABASE] `scripts/package-windows.ps1` exige
-  `data\ssas.db` no clone e o embute no pacote; `scripts/package-debian.sh`
-  nao leva banco e orienta `--db`. Os dois contratos divergem, e o do Windows
-  distribui o banco operacional dentro do artefato. Pior: com `data\ssas.db`
-  ao lado do executavel, `StartupOptions::defaultProjectRoot` adota a pasta do
-  executavel como raiz (banco e `config\`). O portable extrai em `$PLUGINSDIR`,
-  pasta temporaria que o NSIS apaga ao fechar, entao importacoes, rescans e
-  preferencias feitos pelo portable se perdem. Provado na VM ARM64 com o
-  pacote `9b6c6c3`: durante a execucao o app usou `data\ssas.db` e gravou
-  `config\ssa.log` dentro de `%TEMP%\nsp99D1.tmp\app`; apos fechar, a pasta
-  ficou vazia. O instalador poe a raiz em `Program Files`, que exige admin para
-  gravar. Sem banco embutido, o app cai em `%USERPROFILE%\.ssaconsultarapida`,
-  o local canonico do AGENTS.md. O banco embutido e intencional
-  (`packaging/windows/README.md`: "para iniciar com os dados entregues"), entao
-  a correcao precisa escolher entre nao embutir ou semear o banco no perfil do
-  usuario so quando ainda nao existir.
+- [RESOLVED] [WINDOWS-PACKAGE-DATABASE] `scripts/package-windows.ps1` exigia
+  `data\ssas.db` no clone e o embutia no pacote, ao contrario do macOS e do
+  Debian. Com o banco ao lado do executavel, `StartupOptions::defaultProjectRoot`
+  adota a pasta do executavel como raiz (banco e `config\`): o portable extrai em
+  `$PLUGINSDIR`, que o NSIS esvazia ao fechar, e o instalador poe a raiz em
+  `Program Files`. Provado na VM ARM64 com o pacote `9b6c6c3`: o app gravou o
+  log em `%TEMP%\nsp99D1.tmp\app\config` e, apos fechar, a pasta ficou vazia.
+  Decisao do usuario: padronizar e nao embutir. O pacote nao leva mais banco
+  (teste Pester falha no script antigo e passa no novo), e o portable do novo
+  pacote gravou `config\logs\ssa.log` e `config\ssa_cpp_preferences.json` em
+  `%USERPROFILE%\.ssaconsultarapida`, que permanecem apos fechar.

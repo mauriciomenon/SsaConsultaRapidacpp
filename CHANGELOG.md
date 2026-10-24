@@ -6,6 +6,10 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 
 ### Corrigido
 
+- Pacote Windows: deixou de levar `data\ssas.db`. Com o banco ao lado do
+  executavel, o portable gravava importacoes, rescans e preferencias numa pasta
+  temporaria apagada ao fechar, e o instalador gravava em `Program Files`. Agora
+  o app usa `%USERPROFILE%\.ssaconsultarapida`, como no macOS e no Debian.
 - Build Windows: `scripts/build-windows.ps1` abre o ambiente do Visual Studio
   mesmo quando ja ha um `cl.exe` no PATH (antes o link falhava com
   `LNK1104 kernel32.lib`) e, em Windows ARM64, usa o compilador ARM64 nativo em

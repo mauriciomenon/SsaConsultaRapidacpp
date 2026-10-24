@@ -42,7 +42,9 @@ host do `AGENTS.md` continua valendo: nada de Windows a partir do WSL.
 ## Limpeza no fim da rodada
 
 - Remover `dist\`, `build\windows\<arch>\<toolchain>\<kit>\release`, o fixture em
-  `data\ssas.db`, `%TEMP%\ssa_*` e o Pester temporario.
+  `data\ssas.db`, `%TEMP%\ssa_*`, o Pester temporario e o
+  `%USERPROFILE%\.ssaconsultarapida` criado pelos smokes (no host de validacao ele
+  so tem logs e preferencias de teste).
 - Manter o clone, o build `dev` e o vcpkg do usuario. Conferir o espaco livre do
   disco.
 

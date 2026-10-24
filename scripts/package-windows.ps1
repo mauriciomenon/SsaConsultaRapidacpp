@@ -327,18 +327,9 @@ $guideDir = Join-Path $artifactDir "doc"
 New-Item -ItemType Directory -Path $guideDir -Force | Out-Null
 Copy-Item (Join-Path $repoRoot "README.md") $guideDir
 Copy-Item (Join-Path $repoRoot "third_party\tinted-themes\LICENSE") (Join-Path $artifactDir "TINTED_SCHEMES_LICENSE.txt")
-$databasePath = Join-Path $repoRoot "data\ssas.db"
-if (-not (Test-Path -LiteralPath $databasePath -PathType Leaf)) {
-    throw "Database file not found for the Windows package: $databasePath"
-}
-$artifactDataDir = Join-Path $artifactDir "data"
-New-Item -ItemType Directory -Path $artifactDataDir -Force | Out-Null
-$artifactDatabasePath = Join-Path $artifactDataDir "ssas.db"
-Copy-Item -LiteralPath $databasePath -Destination $artifactDatabasePath
-if ((Get-FileHash -LiteralPath $databasePath -Algorithm SHA256).Hash -ne
-    (Get-FileHash -LiteralPath $artifactDatabasePath -Algorithm SHA256).Hash) {
-    throw "Staged database hash mismatch."
-}
+# No database in the package, as on macOS and Debian: a data\ssas.db beside the
+# executable would make its folder the project root, and the portable EXE deletes
+# that folder on exit. The app uses %USERPROFILE%\.ssaconsultarapida instead.
 
 $cmakeCache = Join-Path $buildDir "CMakeCache.txt"
 

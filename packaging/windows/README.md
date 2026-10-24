@@ -146,5 +146,7 @@ Cada conjunto completo tagueado e preservado em
 Uma nova publicacao do mesmo identificador so e aceita quando todos os hashes
 coincidem; `final\` e `current.json` sao atualizados juntos.
 
-O pacote oficial inclui `data\ssas.db` do workspace para iniciar com os dados
-entregues. Nao inclua configuracoes locais, logs, screenshots ou segredos.
+O pacote nao leva banco, como no macOS e no Debian. Na primeira execucao o app
+usa `%USERPROFILE%\.ssaconsultarapida` e o assistente "Configurar Dados" cria o
+banco; um banco existente e aberto com `--db <caminho>`. Nao inclua banco,
+configuracoes locais, logs, screenshots ou segredos.
