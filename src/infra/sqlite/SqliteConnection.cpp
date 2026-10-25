@@ -18,6 +18,8 @@ namespace ssa::infra::sqlite {
 
         int openFlags(const SqliteOpenMode mode) {
             switch (mode) {
+            case SqliteOpenMode::QueryOnly:
+                return SQLITE_OPEN_READWRITE;
             case SqliteOpenMode::ReadOnly:
                 return SQLITE_OPEN_READONLY;
             case SqliteOpenMode::ReadWrite:
@@ -79,6 +81,7 @@ namespace ssa::infra::sqlite {
                                        const int rc) {
             return std::string{operation} + " failed: rc=" + std::to_string(rc) +
                    " extended_rc=" + std::to_string(sqlite3_extended_errcode(db)) +
+                   " errno=" + std::to_string(sqlite3_system_errno(db)) +
                    " message=" + sqlite3_errmsg(db);
         }
 
@@ -123,6 +126,12 @@ namespace ssa::infra::sqlite {
             const std::string message = sqlite3_errmsg(db_);
             closeHandle(db_);
             throw std::runtime_error("cannot register sqlite function ssa_fold: " + message);
+        }
+        if (mode == SqliteOpenMode::QueryOnly &&
+            sqlite3_exec(db_, "PRAGMA query_only=ON", nullptr, nullptr, nullptr) != SQLITE_OK) {
+            const std::string message = sqlite3_errmsg(db_);
+            closeHandle(db_);
+            throw std::runtime_error("cannot enable sqlite query_only: " + message);
         }
     }
 

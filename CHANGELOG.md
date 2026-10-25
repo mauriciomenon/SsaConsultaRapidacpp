@@ -14,6 +14,11 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 
 ### Corrigido
 
+- macOS: a tabela podia abrir vazia com "Falha ao iniciar a operacao no banco de
+  dados" logo apos iniciar o app, quando os filtros avancados carregavam ao mesmo
+  tempo. O SQLite do sistema falhava ao comecar uma escrita enquanto outras
+  leituras abriam o banco; as leituras agora abrem o banco sem permitir escrita
+  por SQL, de um jeito que o SQLite do sistema aceita.
 - Pacote Windows: deixou de levar `data\ssas.db`. Com o banco ao lado do
   executavel, o portable gravava importacoes, rescans e preferencias numa pasta
   temporaria apagada ao fechar, e o instalador gravava em `Program Files`. Agora

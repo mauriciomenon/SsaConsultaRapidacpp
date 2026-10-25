@@ -11,6 +11,11 @@
 namespace ssa::infra::sqlite {
 
     enum class SqliteOpenMode {
+        // Reads of the working database: opened read-write with PRAGMA query_only=ON.
+        // The macOS system SQLite (3.54.0) fails BEGIN IMMEDIATE with SQLITE_IOERR_LOCK
+        // (EBADF) while read-only descriptors of the same file open and close in the process.
+        QueryOnly,
+        // A file that must not be touched at all (user-selected database, backup source).
         ReadOnly,
         ReadWrite,
         ReadWriteCreate,
@@ -19,7 +24,7 @@ namespace ssa::infra::sqlite {
     class SqliteConnection final {
       public:
         explicit SqliteConnection(const std::filesystem::path& dbPath,
-                                  SqliteOpenMode mode = SqliteOpenMode::ReadOnly,
+                                  SqliteOpenMode mode = SqliteOpenMode::QueryOnly,
                                   std::chrono::milliseconds busyTimeout = std::chrono::milliseconds{
                                       3000});
         ~SqliteConnection();
