@@ -1122,6 +1122,33 @@ TEST_CASE_METHOD(SqliteRepositoryFixture, "sqlite repository applies advanced fi
     REQUIRE(page.rows[0].valueOf("numero_ssa") == "202500003");
 }
 
+TEST_CASE_METHOD(SqliteRepositoryFixture,
+                 "sqlite repository filters parents with derived and with closed derived ssas") {
+    // 202500000 is the parent of 202500002 (STE) and 202500001 (lowercase scc): all closed.
+    // 202500002 is the parent of 202500003 (APV): not all closed.
+    executeSql(path,
+               "UPDATE ssa_table SET derivada_de = ' 202500000' "
+               "WHERE numero_ssa IN ('202500002', '202500001');"
+               "UPDATE ssa_table SET situacao = 'scc' WHERE numero_ssa = '202500001';"
+               "UPDATE ssa_table SET derivada_de = '202500002' WHERE numero_ssa = '202500003';");
+    ssa::domain::SsaPageRequest request;
+    request.pageSize = 10;
+    request.excludeScaSesSte = false;
+    request.sort = {.columnKey = "numero_ssa", .ascending = true, .statusLast = false};
+
+    request.advancedFilters.derivationMode = ssa::domain::DerivationFilterMode::HasDerived;
+    const auto has = repository.page(request);
+    REQUIRE(has.totalRows == 2);
+    REQUIRE(has.rows[0].valueOf("numero_ssa") == "202500000");
+    REQUIRE(has.rows[1].valueOf("numero_ssa") == "202500002");
+
+    request.advancedFilters.derivationMode = ssa::domain::DerivationFilterMode::ClosedDerived;
+    const auto closed = repository.page(request);
+    REQUIRE(closed.totalRows == 1);
+    REQUIRE(closed.rows[0].valueOf("numero_ssa") == "202500000");
+    REQUIRE(repository.count(request) == 1);
+}
+
 TEST_CASE_METHOD(SqliteRepositoryFixture, "sqlite repository filters week without year") {
     ssa::domain::SsaPageRequest request;
     request.pageSize = 10;

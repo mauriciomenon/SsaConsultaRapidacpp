@@ -54,7 +54,7 @@ namespace ssa::presentation::filterpanel {
 
     FilterPanelAdvancedState::FilterPanelAdvancedState() {
         input_.derivationMode =
-            QString::fromStdString(derivationModeToString(domain::DerivationFilterMode::All));
+            QString::fromUtf8(domain::derivationModeKey(domain::DerivationFilterMode::All));
     }
 
     QString FilterPanelAdvancedState::textFilter(const QString& key) const {
@@ -323,7 +323,7 @@ namespace ssa::presentation::filterpanel {
             domain::parseIsoYearWeek(input_.weekRanges.executionStart.toStdString());
         filters.executionWeekEnd =
             domain::parseIsoYearWeek(input_.weekRanges.executionEnd.toStdString());
-        filters.derivationMode = derivationModeFromString(input_.derivationMode);
+        filters.derivationMode = domain::derivationModeFromKey(input_.derivationMode.toStdString());
         filters.onlyReprogrammed = input_.reprogramming.only;
         return filters;
     }
@@ -353,7 +353,7 @@ namespace ssa::presentation::filterpanel {
         }
         if (normalizedKey == domain::ColumnCatalog::derivationColumnKey() &&
             input_.derivationMode !=
-                QString::fromStdString(derivationModeToString(domain::DerivationFilterMode::All))) {
+                QString::fromUtf8(domain::derivationModeKey(domain::DerivationFilterMode::All))) {
             return true;
         }
         return domain::ColumnCatalog::isReprogrammingColumn(normalizedKey) &&
@@ -376,7 +376,7 @@ namespace ssa::presentation::filterpanel {
         input_.weekRanges.executionStart.clear();
         input_.weekRanges.executionEnd.clear();
         input_.derivationMode =
-            QString::fromStdString(derivationModeToString(domain::DerivationFilterMode::All));
+            QString::fromUtf8(domain::derivationModeKey(domain::DerivationFilterMode::All));
         input_.reprogramming.only = false;
     }
 

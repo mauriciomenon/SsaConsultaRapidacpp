@@ -104,7 +104,7 @@ TEST_CASE("json preferences store saves user preference snapshot") {
     snapshot.filters.issueWeekEnd = "202620";
     snapshot.filters.executionWeekStart = "202701";
     snapshot.filters.executionWeekEnd = "202720";
-    snapshot.filters.derivationMode = "derived";
+    snapshot.filters.derivationMode = "closed";
     snapshot.filters.onlyReprogrammed = false;
     snapshot.samRefresh.enabled = true;
     snapshot.samRefresh.autoRefreshEnabled = true;
@@ -148,7 +148,7 @@ TEST_CASE("json preferences store saves user preference snapshot") {
     REQUIRE(loaded.filters.issueWeekEnd == "202620");
     REQUIRE(loaded.filters.executionWeekStart == "202701");
     REQUIRE(loaded.filters.executionWeekEnd == "202720");
-    REQUIRE(loaded.filters.derivationMode == "derived");
+    REQUIRE(loaded.filters.derivationMode == "closed");
     REQUIRE_FALSE(loaded.filters.onlyReprogrammed);
     REQUIRE(loaded.samRefresh.enabled);
     REQUIRE(loaded.samRefresh.autoRefreshEnabled);

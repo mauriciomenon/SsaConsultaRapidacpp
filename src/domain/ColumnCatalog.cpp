@@ -27,6 +27,8 @@ namespace ssa::domain {
         }};
         constexpr std::string_view kDownloadableStatusFilterExpression = "!SAD,!SCA,!SES,!STE";
         constexpr std::array<std::string_view, 3> kExcludedStatusCodes{"SCA", "SES", "STE"};
+        // Closed statuses for the derivation filter, as in the Python GUI (SSA_ENCERRADAS).
+        constexpr std::array<std::string_view, 4> kClosedStatusCodes{"SCA", "SCC", "SES", "STE"};
         constexpr std::array<std::string_view, 3> kWeekColumnKeys{
             "semana_cadastro", "semana_programada", "semana_executada"};
         constexpr std::array<std::string_view, 2> kReprogrammingColumnKeys{
@@ -279,6 +281,10 @@ namespace ssa::domain {
 
     std::span<const std::string_view> ColumnCatalog::excludedStatusCodes() {
         return kExcludedStatusCodes;
+    }
+
+    std::span<const std::string_view> ColumnCatalog::closedStatusCodes() {
+        return kClosedStatusCodes;
     }
 
     bool ColumnCatalog::containsExcludedStatusCode(const std::string_view filterExpression) {

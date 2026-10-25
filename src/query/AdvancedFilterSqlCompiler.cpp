@@ -167,20 +167,57 @@ namespace ssa::query {
             hasCondition = true;
         }
 
-        void appendDerivationFilter(std::ostringstream& where,
+        // Parent filters use one uncorrelated IN subquery over the parent keys, so the
+        // predicate stays valid in every query that embeds the WHERE clause.
+        void appendParentFilter(std::ostringstream& where, std::vector<std::string>& bindings,
+                                const std::string_view tableName, const bool onlyClosedChildren) {
+            const auto parent =
+                "TRIM(COALESCE(" +
+                quoteColumnIdentifier(std::string{domain::ColumnCatalog::derivationColumnKey()}) +
+                ", ''))";
+            where << "TRIM(COALESCE("
+                  << quoteColumnIdentifier(std::string{domain::kSsaNumberColumnKey})
+                  << ", '')) IN (SELECT " << parent << " FROM "
+                  << quoteTableIdentifier(std::string{tableName}) << " WHERE " << parent
+                  << " <> ''";
+            if (onlyClosedChildren) {
+                where << " GROUP BY " << parent << " HAVING SUM(CASE WHEN COALESCE("
+                      << quoteColumnIdentifier(
+                             std::string{domain::ColumnCatalog::statusColumnKey()})
+                      << ", '') COLLATE NOCASE IN (";
+                const auto codes = domain::ColumnCatalog::closedStatusCodes();
+                for (std::size_t index = 0; index < codes.size(); ++index) {
+                    where << (index > 0 ? ", ?" : "?");
+                    bindings.emplace_back(codes[index]);
+                }
+                where << ") THEN 0 ELSE 1 END) = 0";
+            }
+            where << ")";
+        }
+
+        void appendDerivationFilter(std::ostringstream& where, std::vector<std::string>& bindings,
                                     const domain::AdvancedFilterSpec& advanced,
-                                    bool& hasCondition) {
+                                    const std::string_view tableName, bool& hasCondition) {
             if (advanced.derivationMode == domain::DerivationFilterMode::All) {
                 return;
             }
             const auto column =
                 quoteColumnIdentifier(std::string{domain::ColumnCatalog::derivationColumnKey()});
             appendSqlAndSeparator(where, hasCondition);
-            if (advanced.derivationMode == domain::DerivationFilterMode::RootOnly) {
+            switch (advanced.derivationMode) {
+            case domain::DerivationFilterMode::RootOnly:
                 where << "(" << column << " IS NULL OR " << column << " = '')";
-            } else if (advanced.derivationMode == domain::DerivationFilterMode::DerivedOnly) {
+                break;
+            case domain::DerivationFilterMode::DerivedOnly:
                 where << "(" << column << " IS NOT NULL AND " << column << " <> '')";
-            } else {
+                break;
+            case domain::DerivationFilterMode::HasDerived:
+                appendParentFilter(where, bindings, tableName, false);
+                break;
+            case domain::DerivationFilterMode::ClosedDerived:
+                appendParentFilter(where, bindings, tableName, true);
+                break;
+            default:
                 throw std::invalid_argument("unknown derivation filter mode");
             }
             hasCondition = true;
@@ -227,7 +264,7 @@ namespace ssa::query {
         appendWeekRangeFilter(where, bindings,
                               std::string{domain::ColumnCatalog::executionWeekColumnKey()},
                               advanced.executionWeekStart, advanced.executionWeekEnd, hasCondition);
-        appendDerivationFilter(where, advanced, hasCondition);
+        appendDerivationFilter(where, bindings, advanced, tableName_, hasCondition);
         appendReprogrammingFilter(where, advanced, hasCondition);
     }
 

@@ -5,8 +5,9 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import SsaConsultaRapida
 
-// Derivation filter: all SSAs, only root SSAs, or only derived SSAs.
-// Binds to derivation.derivationMode ("all" / "root" / "derived").
+// Derivation filter: all SSAs, only root SSAs, only derived SSAs, SSAs with derived
+// SSAs, or SSAs whose derived SSAs are all closed.
+// Binds to derivation.derivationMode ("all" / "root" / "derived" / "has" / "closed").
 FilterCard {
     id: root
     required property var derivation
@@ -23,7 +24,9 @@ FilterCard {
     readonly property var modeLabels: ({
             "all": "Todas",
             "root": "So raiz",
-            "derived": "So derivadas"
+            "derived": "So derivadas",
+            "has": "Possui derivadas",
+            "closed": "Derivadas encerradas"
         })
 
     ColumnLayout {

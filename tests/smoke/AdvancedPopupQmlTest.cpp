@@ -1138,10 +1138,23 @@ namespace {
             QCOMPARE(selector->property("displayText").toString(), QStringLiteral("So derivadas"));
             QCOMPARE(applied.count(), 1);
 
+            const std::array<std::pair<QString, QString>, 2> parentModes{
+                {{QStringLiteral("has"), QStringLiteral("Possui derivadas")},
+                 {QStringLiteral("closed"), QStringLiteral("Derivadas encerradas")}}};
+            int index = 3;
+            for (const auto& [mode, label] : parentModes) {
+                QVERIFY(selector->setProperty("currentIndex", index));
+                QVERIFY(QMetaObject::invokeMethod(selector, "activated", Q_ARG(int, index)));
+                QCOMPARE(derivation->property("derivationMode").toString(), mode);
+                QCOMPARE(selector->property("displayText").toString(), label);
+                ++index;
+            }
+            QCOMPARE(applied.count(), 3);
+
             QVERIFY(QMetaObject::invokeMethod(clearButton, "click"));
             QCOMPARE(derivation->property("derivationMode").toString(), QStringLiteral("all"));
             QCOMPARE(selector->property("currentIndex").toInt(), 0);
-            QCOMPARE(applied.count(), 2);
+            QCOMPARE(applied.count(), 4);
         }
 
         void multiselect_stays_available_for_mixed_filters() {

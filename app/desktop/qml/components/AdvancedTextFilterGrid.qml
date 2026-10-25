@@ -165,7 +165,7 @@ Item {
             }
         }
 
-        // Derivation card (single cell, last). all / root-only / derived-only.
+        // Derivation card (single cell, last). all / root / derived / has / closed.
         Repeater {
             model: 1
 

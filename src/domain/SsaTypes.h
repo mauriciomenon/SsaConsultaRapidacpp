@@ -184,6 +184,8 @@ namespace ssa::domain {
         All,
         RootOnly,
         DerivedOnly,
+        HasDerived,
+        ClosedDerived,
     };
 
     enum class NumericComparisonMode : std::uint8_t {

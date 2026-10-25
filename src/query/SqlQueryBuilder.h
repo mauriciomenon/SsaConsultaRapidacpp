@@ -48,8 +48,8 @@ namespace ssa::query {
 
       private:
         SearchParser parser_;
-        SqlPredicateBuilder predicateBuilder_;
         std::string tableName_;
+        SqlPredicateBuilder predicateBuilder_;
     };
 
 } // namespace ssa::query

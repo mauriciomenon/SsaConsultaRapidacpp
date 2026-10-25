@@ -129,26 +129,6 @@ namespace ssa::presentation::filterpanel {
         return parsed;
     }
 
-    domain::DerivationFilterMode derivationModeFromString(const QString& value) {
-        if (value == "root") {
-            return domain::DerivationFilterMode::RootOnly;
-        }
-        if (value == "derived") {
-            return domain::DerivationFilterMode::DerivedOnly;
-        }
-        return domain::DerivationFilterMode::All;
-    }
-
-    std::string derivationModeToString(domain::DerivationFilterMode mode) {
-        if (mode == domain::DerivationFilterMode::RootOnly) {
-            return "root";
-        }
-        if (mode == domain::DerivationFilterMode::DerivedOnly) {
-            return "derived";
-        }
-        return "all";
-    }
-
     std::vector<std::string>
     buildFilterSummaryParts(std::string_view quickSector,
                             const std::map<std::string, std::string>& columnFilters,
@@ -245,12 +225,16 @@ namespace ssa::presentation::filterpanel {
                                      .kind = "advanced_execution_week_range",
                                      .start = advanced.executionWeekStart,
                                      .end = advanced.executionWeekEnd});
-        if (advanced.derivationMode == domain::DerivationFilterMode::RootOnly) {
+        static const std::map<domain::DerivationFilterMode, std::string> derivationSummary{
+            {domain::DerivationFilterMode::RootOnly, "somente originais"},
+            {domain::DerivationFilterMode::DerivedOnly, "somente derivadas"},
+            {domain::DerivationFilterMode::HasDerived, "possui derivadas"},
+            {domain::DerivationFilterMode::ClosedDerived, "derivadas encerradas"},
+        };
+        if (const auto found = derivationSummary.find(advanced.derivationMode);
+            found != derivationSummary.end()) {
             entries.push_back(
-                {.text = "somente originais", .kind = "advanced_derivation_mode", .key = {}});
-        } else if (advanced.derivationMode == domain::DerivationFilterMode::DerivedOnly) {
-            entries.push_back(
-                {.text = "somente derivadas", .kind = "advanced_derivation_mode", .key = {}});
+                {.text = found->second, .kind = "advanced_derivation_mode", .key = {}});
         }
         if (advanced.onlyReprogrammed) {
             entries.push_back(

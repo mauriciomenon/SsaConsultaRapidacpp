@@ -250,6 +250,32 @@ TEST_CASE("sql query builder compiles advanced week and derivation filters") {
     REQUIRE(queries.page.bindings[queries.page.bindings.size() - 3] == "202502");
 }
 
+TEST_CASE("sql query builder compiles parent derivation filters against its own table") {
+    ssa::domain::SsaPageRequest request;
+    request.excludeScaSesSte = false;
+    request.advancedFilters.derivationMode = ssa::domain::DerivationFilterMode::HasDerived;
+
+    const ssa::query::SqlQueryBuilder builder{"other_table"};
+    const auto has = builder.build(request);
+    REQUIRE(has.count.sql.find("IN (SELECT TRIM(COALESCE(\"derivada_de\", '')) FROM "
+                               "\"other_table\"") != std::string::npos);
+    REQUIRE(has.count.sql.find("HAVING") == std::string::npos);
+    REQUIRE(has.count.bindings.empty());
+
+    request.advancedFilters.derivationMode = ssa::domain::DerivationFilterMode::ClosedDerived;
+    const auto closed = builder.build(request);
+    REQUIRE(closed.count.sql.find("HAVING SUM(CASE WHEN COALESCE(\"situacao\", '') COLLATE "
+                                  "NOCASE IN (?, ?, ?, ?)") != std::string::npos);
+    REQUIRE(closed.count.bindings == std::vector<std::string>{"SCA", "SCC", "SES", "STE"});
+
+    request.advancedFilters.issueWeekStart = 202501;
+    request.advancedFilters.issueWeekEnd = 202520;
+    const auto combined = builder.build(request);
+    REQUIRE(combined.count.bindings ==
+            std::vector<std::string>{"202501", "202520", "SCA", "SCC", "SES", "STE"});
+    REQUIRE(combined.count.sql.find("\"semana_cadastro\"") < combined.count.sql.find("HAVING"));
+}
+
 TEST_CASE("sql query builder compiles advanced text and range filters") {
     ssa::domain::SsaPageRequest request;
     request.advancedFilters.textFilters = {{"situacao", "=APV"}, {"setor_executor", "=SMM"}};

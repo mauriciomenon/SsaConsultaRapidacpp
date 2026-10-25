@@ -43,7 +43,7 @@ namespace ssa::presentation {
       private:
         filterpanel::FilterPanelAdvancedState& state_;
         const QStringList reprogrammingModeOptions_{"eq", "lte", "gte"};
-        const QStringList derivationModeOptions_{"all", "root", "derived"};
+        const QStringList derivationModeOptions_{"all", "root", "derived", "has", "closed"};
     };
 
 } // namespace ssa::presentation

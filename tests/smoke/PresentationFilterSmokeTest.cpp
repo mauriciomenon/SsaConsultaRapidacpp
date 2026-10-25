@@ -1809,6 +1809,49 @@ namespace {
                         .isEmpty());
         }
 
+        void parent_derivation_modes_reach_request_and_summary() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            ssa::presentation::MainViewModel model(service, commands);
+            auto* advanced = qobject_cast<ssa::presentation::FilterPanelAdvancedViewModel*>(
+                model.browse()->filters()->advanced());
+            QVERIFY(advanced != nullptr);
+            auto* derivation = qobject_cast<ssa::presentation::AdvancedDerivationFilterViewModel*>(
+                advanced->derivation());
+            QVERIFY(derivation != nullptr);
+
+            struct Case {
+                QString key;
+                ssa::domain::DerivationFilterMode mode;
+                QString summary;
+            };
+            const std::vector<Case> cases{
+                {"has", ssa::domain::DerivationFilterMode::HasDerived, "possui derivadas"},
+                {"closed", ssa::domain::DerivationFilterMode::ClosedDerived,
+                 "derivadas encerradas"}};
+            for (const auto& item : cases) {
+                derivation->setDerivationMode(item.key);
+                QCOMPARE(derivation->derivationMode(), item.key);
+                const auto requestsBefore = repository->requests().size();
+                model.browse()->apply();
+                QTRY_VERIFY_WITH_TIMEOUT(repository->requests().size() > requestsBefore, 1000);
+                QCOMPARE(repository->requests().back().advancedFilters.derivationMode, item.mode);
+                QTRY_COMPARE_WITH_TIMEOUT(
+                    activeFilterEntry(model.browse()->filters(), "advanced_derivation_mode")
+                        .value(QStringLiteral("text"))
+                        .toString(),
+                    item.summary, 1000);
+            }
+
+            const auto entry =
+                activeFilterEntry(model.browse()->filters(), "advanced_derivation_mode");
+            QCOMPARE(model.browse()->filters()->removeActiveFilter(entry), true);
+            QCOMPARE(derivation->derivationMode(), QStringLiteral("all"));
+            QVERIFY(
+                activeFilterEntry(model.browse()->filters(), "advanced_derivation_mode").isEmpty());
+        }
+
         void advanced_submodels_update_shared_filter_state() {
             auto repository = std::make_shared<FakeRepository>();
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);

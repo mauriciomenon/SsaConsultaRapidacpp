@@ -4,8 +4,12 @@
 #include "query/TextFilterSqlCompiler.h"
 
 #include <sstream>
+#include <utility>
 
 namespace ssa::query {
+
+    SqlPredicateBuilder::SqlPredicateBuilder(std::string tableName)
+        : tableName_(std::move(tableName)) {}
 
     SqlWhereClause SqlPredicateBuilder::build(const SearchExpression& expression,
                                               const domain::SsaFilterExpression& filter) const {
@@ -13,7 +17,7 @@ namespace ssa::query {
         std::ostringstream where;
         bool hasCondition = false;
         const TextFilterSqlCompiler textFilters;
-        const AdvancedFilterSqlCompiler advancedFilters;
+        const AdvancedFilterSqlCompiler advancedFilters{tableName_};
 
         textFilters.appendGeneralSearch(where, clause.bindings, expression, hasCondition);
         textFilters.appendColumnSearch(where, clause.bindings, filter, hasCondition);

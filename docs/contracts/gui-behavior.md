@@ -59,7 +59,12 @@
 - Advanced filters are query parameters, not QML logic:
   the emission card is a `YYYYWW` range on `semana_cadastro` and the execution card a
   `YYYYWW` range on `semana_executada`, as the two week ranges of the Python GUI; the
-  derivation card picks `all` (Todas), `root` (So raiz) or `derived` (So derivadas);
+  derivation card picks one mode: `all` (Todas), `root` (So raiz), `derived` (So derivadas),
+  `has` (Possui derivadas: the SSA is the `derivada_de` of at least one SSA) or `closed`
+  (Derivadas encerradas: the SSA has derived SSAs and all of them are in `SCA`, `SCC`, `SES`
+  or `STE`, case-insensitive). This closed set follows the Python GUI and includes `SCC`; it is
+  separate from the `SCA/SES/STE` exclusion. The Python multi-select combination of these
+  options is not preserved;
   the reprogramming card filters by reprogramming count or any reprogramming. The
   generic week/year query parameters stay in the query layer without a GUI control.
 - Details are read from the selected row and can open the selected SSA externally.

@@ -8,6 +8,9 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 
 - Filtros avancados: card "Derivacao" para ver todas as SSAs, so as raiz ou so
   as derivadas. O filtro ja existia na consulta, mas nao tinha controle na tela.
+- Card "Derivacao": opcoes "Possui derivadas" (SSAs que tem ao menos uma derivada)
+  e "Derivadas encerradas" (SSAs cujas derivadas estao todas em SCA, SCC, SES ou
+  STE), como na GUI Python.
 
 ### Corrigido
 

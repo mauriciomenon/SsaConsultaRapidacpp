@@ -1,5 +1,6 @@
 #include "domain/ColumnCatalog.h"
 #include "domain/ColumnValuePriorityPolicy.h"
+#include "domain/SsaDerivationMode.h"
 #include "domain/SsaRelationGraph.h"
 #include "domain/SsaTypes.h"
 
@@ -237,4 +238,17 @@ TEST_CASE("advanced filter year week arithmetic validates bounds before composin
     filters.week = 52;
     CHECK(*filters.exactYearWeek() == std::int64_t{299952});
     CHECK(*filters.yearEndWeek() == std::int64_t{299952});
+}
+
+TEST_CASE("derivation mode keys round trip and unknown keys mean all") {
+    using ssa::domain::DerivationFilterMode;
+    for (const auto& [mode, key] : ssa::domain::kDerivationModeKeys) {
+        CHECK(ssa::domain::derivationModeFromKey(key) == mode);
+        CHECK(ssa::domain::derivationModeKey(mode) == key);
+        CHECK(ssa::domain::normalizedDerivationMode(key) == key);
+    }
+    CHECK(ssa::domain::derivationModeFromKey("has") == DerivationFilterMode::HasDerived);
+    CHECK(ssa::domain::derivationModeFromKey("closed") == DerivationFilterMode::ClosedDerived);
+    CHECK(ssa::domain::normalizedDerivationMode("bogus") == "all");
+    CHECK(ssa::domain::normalizedDerivationMode("") == "all");
 }

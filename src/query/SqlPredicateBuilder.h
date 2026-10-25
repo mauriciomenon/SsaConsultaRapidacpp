@@ -15,8 +15,13 @@ namespace ssa::query {
 
     class SqlPredicateBuilder final {
       public:
+        explicit SqlPredicateBuilder(std::string tableName);
+
         [[nodiscard]] SqlWhereClause build(const SearchExpression& expression,
                                            const domain::SsaFilterExpression& filter) const;
+
+      private:
+        std::string tableName_;
     };
 
 } // namespace ssa::query

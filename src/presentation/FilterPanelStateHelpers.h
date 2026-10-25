@@ -24,10 +24,6 @@ namespace ssa::presentation::filterpanel {
 
     [[nodiscard]] std::optional<int> parseNonNegativeInt(const QString& value);
 
-    [[nodiscard]] domain::DerivationFilterMode derivationModeFromString(const QString& value);
-
-    [[nodiscard]] std::string derivationModeToString(domain::DerivationFilterMode mode);
-
     [[nodiscard]] std::vector<std::string>
     buildFilterSummaryParts(std::string_view quickSector,
                             const std::map<std::string, std::string>& columnFilters,

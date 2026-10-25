@@ -235,7 +235,8 @@ namespace ssa::query {
 
     } // namespace
 
-    SqlQueryBuilder::SqlQueryBuilder(std::string tableName) : tableName_(std::move(tableName)) {}
+    SqlQueryBuilder::SqlQueryBuilder(std::string tableName)
+        : tableName_(std::move(tableName)), predicateBuilder_(tableName_) {}
 
     std::string SqlQueryBuilder::tableName() const {
         return quoteTableIdentifier(tableName_);
