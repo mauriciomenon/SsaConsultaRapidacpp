@@ -51,8 +51,10 @@
   (`Data de emissao`, `Descricao na emissao`, `Hxh esperado`/`Hxh executada`,
   `Semana de conclusao`, `Classificacao`, `Atividade relevante`) e decisao de
   produto sobre exibir SSAs legadas junto das atuais.
-- [P1] Impedir troca e persistencia acidental do tema pelo botao circular;
-  `ssa-dark` permanece intacto e pode ser selecionado em Preferencias.
+- [RESOLVED] [P1] Troca e persistencia acidental do tema pelo botao circular:
+  o botao abre `ThemeDialog` (aplicar/cancelar), como o botao "Tema" do Python;
+  paletas e `ssa-dark` intactos. Teste:
+  `theme_button_opens_theme_dialog_without_changing_theme` (falhava antes).
 
 ### Evidencia GUI e longo prazo
 

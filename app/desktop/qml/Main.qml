@@ -350,13 +350,7 @@ ApplicationWindow {
             importEnabled: !root.vm.actions.workflows.running
             onImportRequested: fileDialogs.openImportData()
             onPreferencesRequested: preferencesDialog.open()
-            onThemeCycleRequested: {
-                var order = Theme.themeOptions;
-                var current = Theme.themeName;
-                var idx = order.indexOf(current);
-                var nextIdx = idx < 0 ? 0 : (idx + 1) % order.length;
-                root.vm.ui.theme = order[nextIdx];
-            }
+            onThemeDialogRequested: themeDialog.open()
             onExportRequested: fileDialogs.openExportResults()
             onSaveFiltersRequested: root.vm.preferenceFlow.savePreferences()
             onExportFiltersRequested: fileDialogs.openExportFilters()

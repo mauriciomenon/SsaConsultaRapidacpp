@@ -517,6 +517,49 @@ namespace {
             }
         }
 
+        void theme_button_opens_theme_dialog_without_changing_theme() {
+            auto repository = std::make_shared<ssa::tests::presentation_smoke::FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<ssa::tests::presentation_smoke::FakeCommands>();
+            auto preferences = std::make_shared<ssa::tests::presentation_smoke::FakePreferences>();
+            ssa::presentation::MainViewModel viewModel(service, commands, preferences);
+            SourceQmlUrlInterceptor sourceInterceptor;
+            QQmlEngine engine;
+            engine.addUrlInterceptor(&sourceInterceptor);
+            engine.addImportPath(QStringLiteral(SSA_BUILD_DIR));
+            QQmlComponent component(&engine, QUrl::fromLocalFile(repositoryRoot().filePath(
+                                                 QStringLiteral("app/desktop/qml/Main.qml"))));
+            QVariantMap initialProperties;
+            initialProperties.insert(QStringLiteral("mainViewModel"),
+                                     QVariant::fromValue<QObject*>(&viewModel));
+            const auto mainWindow =
+                std::unique_ptr<QObject>(component.createWithInitialProperties(initialProperties));
+            QVERIFY2(mainWindow != nullptr, qPrintable(component.errorString()));
+            auto* window = qobject_cast<QQuickWindow*>(mainWindow.get());
+            QVERIFY(window != nullptr);
+            window->resize(1180, 760);
+            window->show();
+            QTRY_VERIFY_WITH_TIMEOUT(window->isExposed(), 1000);
+            auto* button = window->findChild<QQuickItem*>(QStringLiteral("mainThemeButton"));
+            auto* dialog = mainWindow->findChild<QObject*>(QStringLiteral("ssaSmokeThemeDialog"));
+            QVERIFY(button != nullptr);
+            QVERIFY(dialog != nullptr);
+            QTRY_VERIFY_WITH_TIMEOUT(button->isVisible() && button->width() > 0, 1000);
+            const auto themeBefore = viewModel.ui()->theme();
+
+            // gui-behavior.md: the theme button opens the theme dialog; one click never
+            // switches or persists the theme.
+            const auto center = button->mapToItem(
+                window->contentItem(), QPointF{button->width() / 2.0, button->height() / 2.0});
+            QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, center.toPoint());
+
+            QTRY_VERIFY_WITH_TIMEOUT(dialog->property("visible").toBool(), 1000);
+            QCOMPARE(viewModel.ui()->theme(), themeBefore);
+            QVERIFY(QMetaObject::invokeMethod(dialog, "reject"));
+            QTRY_VERIFY_WITH_TIMEOUT(!dialog->property("visible").toBool(), 1000);
+            QCOMPARE(viewModel.ui()->theme(), themeBefore);
+        }
+
         void database_switch_menus_wait_for_a_running_workflow() {
             // A rescan that runs until the test releases it.
             class HeldRescanPort final : public ssa::ports::IImportWorkflowPort {

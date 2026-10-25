@@ -17,7 +17,7 @@ Rectangle {
     readonly property int compactControlHeight: Theme.densityValue(root.density, 24, 28, 32)
     signal importRequested
     signal preferencesRequested
-    signal themeCycleRequested
+    signal themeDialogRequested
     signal exportRequested
     signal saveFiltersRequested
     signal exportFiltersRequested
@@ -203,7 +203,7 @@ Rectangle {
                 leftInset: 0
                 rightInset: 0
                 text: ""
-                Accessible.name: "Alternar tema"
+                Accessible.name: "Selecionar tema"
                 ToolTip.text: qsTr("Tema")
                 ToolTip.visible: hovered
                 ToolTip.delay: 400
@@ -213,7 +213,7 @@ Rectangle {
                     border.color: Theme.border
                     border.width: 1
                 }
-                onClicked: root.themeCycleRequested()
+                onClicked: root.themeDialogRequested()
             }
         }
 

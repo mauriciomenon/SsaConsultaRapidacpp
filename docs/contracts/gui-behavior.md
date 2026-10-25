@@ -24,6 +24,8 @@
 - Preferences dialog with theme selection, visual density, visible column selection, column width
   editing, select all, defaults reset, detail panel visibility, detail panel width, local column
   filtering, apply, and close actions.
+- The round theme button beside Preferences opens the theme dialog (apply or cancel),
+  like the Python "Tema" button. A click never switches or persists the theme by itself.
 - Status bar with loading, error, and row/page information.
 - Help and About dialogs loaded only while open. About displays the runtime
   application version derived from `PROJECT_VERSION`.

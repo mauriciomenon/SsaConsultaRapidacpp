@@ -14,6 +14,9 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 
 ### Corrigido
 
+- O botao redondo de tema, ao lado de "Preferencias", abre a janela "Personalizar
+  tema", como o botao "Tema" da GUI Python. Antes um clique trocava o tema e o
+  salvava na hora, sem confirmacao.
 - macOS: a tabela podia abrir vazia com "Falha ao iniciar a operacao no banco de
   dados" logo apos iniciar o app, quando os filtros avancados carregavam ao mesmo
   tempo. O SQLite do sistema falhava ao comecar uma escrita enquanto outras
