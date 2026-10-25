@@ -21,13 +21,13 @@ namespace ssa::domain {
         }};
 
     [[nodiscard]] inline DerivationFilterMode derivationModeFromKey(const std::string_view key) {
-        const auto* found = std::ranges::find(
+        const auto found = std::ranges::find(
             kDerivationModeKeys, key, &std::pair<DerivationFilterMode, std::string_view>::second);
         return found == kDerivationModeKeys.end() ? DerivationFilterMode::All : found->first;
     }
 
     [[nodiscard]] inline std::string_view derivationModeKey(const DerivationFilterMode mode) {
-        const auto* found = std::ranges::find(
+        const auto found = std::ranges::find(
             kDerivationModeKeys, mode, &std::pair<DerivationFilterMode, std::string_view>::first);
         return found == kDerivationModeKeys.end() ? kDerivationModeKeys.front().second
                                                   : found->second;
