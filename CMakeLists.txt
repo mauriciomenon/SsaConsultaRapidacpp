@@ -88,9 +88,13 @@ qt_policy(SET QTP0004 NEW)
 
 add_library(
   ssa_domain STATIC
-  src/domain/ActivityAnalyticsTypes.cpp src/domain/ColumnCatalog.cpp
-  src/domain/ColumnValuePriorityPolicy.cpp src/domain/SsaImportPolicy.cpp
-  src/domain/SsaRelationGraph.cpp src/domain/TextFilterToken.cpp)
+  src/domain/ActivityAnalyticsTypes.cpp
+  src/domain/ColumnCatalog.cpp
+  src/domain/ColumnValuePriorityPolicy.cpp
+  src/domain/DerivationGraph.cpp
+  src/domain/SsaImportPolicy.cpp
+  src/domain/SsaRelationGraph.cpp
+  src/domain/TextFilterToken.cpp)
 target_include_directories(ssa_domain PUBLIC src)
 
 add_library(ssa_ports INTERFACE)
@@ -557,6 +561,7 @@ if(SSA_BUILD_TESTS)
     tests/unit/ActivityAnalyticsServiceTests.cpp
     tests/unit/ActivityAnalyticsSqlBuilderTests.cpp
     tests/unit/CliControllerTests.cpp
+    tests/unit/DerivationGraphTests.cpp
     tests/unit/DomainTests.cpp
     tests/unit/SsaImportPolicyTests.cpp
     tests/unit/SearchParserTests.cpp
