@@ -1237,8 +1237,13 @@ namespace {
             QTRY_COMPARE_WITH_TIMEOUT(viewModel.ui()->detailsVisible(), !initialDetailsVisible,
                                       1000);
 
+            // Toggling the panel schedules delayed saves (250 ms, then 500 ms); a slow CI
+            // runner landed them inside the wait below. Let them settle so the menu action is
+            // measured as exactly one more save.
+            QTest::qWait(1500);
+            const int savesBeforeMenu = preferences->saveCount();
             QVERIFY(QMetaObject::invokeMethod(savePreferences, "triggered"));
-            QTRY_COMPARE_WITH_TIMEOUT(preferences->saveCount(), 1, 1000);
+            QTRY_COMPARE_WITH_TIMEOUT(preferences->saveCount(), savesBeforeMenu + 1, 1000);
 
             QVERIFY(QMetaObject::invokeMethod(installationGuide, "triggered"));
             QTRY_COMPARE_WITH_TIMEOUT(commands->commands().size(), std::size_t{1}, 1000);

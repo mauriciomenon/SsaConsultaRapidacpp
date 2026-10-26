@@ -37,7 +37,7 @@ Para manter o schottge registrado mas desativado, adicionar em
 `# pushurl = git@github-schottge:schottge-menon/ssa_consulta_rapida_cpp.git`.
 Tirar o `# ` reativa a publicacao.
 
-Versao corrente do projeto: **0.9.19** (`PROJECT_VERSION` em
+Versao corrente do projeto: **0.9.20** (`PROJECT_VERSION` em
 `CMakeLists.txt`).
 
 Para transferencia de contexto da v0.9.16 (diagnostico e plano do Wizard

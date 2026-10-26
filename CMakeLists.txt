@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.24)
 
 project(
   SSAConsultaRapidaCpp
-  VERSION 0.9.19
+  VERSION 0.9.20
   LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -628,6 +628,10 @@ if(SSA_BUILD_TESTS)
       SSA_SQLITE_CRASH_PROBE_PATH="$<TARGET_FILE:ssa_sqlite_import_crash_probe>"
   )
   add_dependencies(ssa_integration_tests ssa_sqlite_import_crash_probe)
+  # SpreadsheetImportWorkflowPortTests.cpp exceeds the default COFF section
+  # limit in MSVC arm64 release builds (C1128).
+  target_compile_options(ssa_integration_tests
+                         PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/bigobj>)
   catch_discover_tests(ssa_integration_tests TEST_SPEC "~[windows-unc]"
                        PROPERTIES TIMEOUT 30)
 

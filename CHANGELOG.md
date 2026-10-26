@@ -4,6 +4,15 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 
 ## Nao publicado
 
+## 0.9.20 - 2026-10-26
+
+### Corrigido
+
+- Pacote Windows arm64: o build de release compila de novo os testes de importacao
+  (MSVC arm64 pedia `/bigobj`).
+- As tags 0.9.18 e 0.9.19 ficaram sem pacotes publicados; use 0.9.20, que tem as mesmas
+  mudancas para quem usa o app.
+
 ## 0.9.19 - 2026-10-26
 
 ### Corrigido
