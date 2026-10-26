@@ -4,6 +4,8 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 
 ## Nao publicado
 
+## 0.9.18 - 2026-10-26
+
 ### Adicionado
 
 - Filtros avancados: card "Derivacao" para ver todas as SSAs, so as raiz ou so
