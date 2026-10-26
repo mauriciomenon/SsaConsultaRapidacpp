@@ -63,6 +63,10 @@
 
 namespace {
 
+    // Waits for a worker to reach a synchronization point. The bound only detects a hang:
+    // a Windows CI runner took over 1 s to parse the workbook and lock the snapshot.
+    constexpr std::chrono::seconds kWorkerEventTimeout{30};
+
     class StaticSamPort final : public ssa::ports::ISamRefreshPort {
       public:
         ssa::ports::SamFetchResult fetch(const ssa::ports::SamRefreshRequest&,
@@ -1215,7 +1219,7 @@ TEST_CASE("workflow cancellation after staging removes the owned external copy")
     auto operation = std::async(std::launch::async, [&] {
         return port.importExternalFiles({.files = {source}}, stopSource.get_token());
     });
-    REQUIRE(writerBusyEntered->try_acquire_for(std::chrono::seconds{1}));
+    REQUIRE(writerBusyEntered->try_acquire_for(kWorkerEventTimeout));
     REQUIRE(directWorkbookCount(inputDirectory) == 1);
 
     stopSource.request_stop();
@@ -1271,7 +1275,7 @@ TEST_CASE("workflow preserves canceled status when owned staging cleanup cannot 
     auto operation = std::async(std::launch::async, [&] {
         return port.importExternalFiles({.files = {source}}, stopSource.get_token());
     });
-    REQUIRE(writerBusyEntered->try_acquire_for(std::chrono::seconds{1}));
+    REQUIRE(writerBusyEntered->try_acquire_for(kWorkerEventTimeout));
     REQUIRE(directWorkbookCount(inputDirectory) == 1);
     std::filesystem::permissions(
         inputDirectory, std::filesystem::perms::owner_read | std::filesystem::perms::owner_exec,
@@ -1694,7 +1698,7 @@ TEST_CASE("legacy converter cancellation preserves destination and removes tempo
         return converter.convertToXlsx({source, destination}, stopSource.get_token());
     });
 
-    const bool conversionStarted = conversionEntered.try_acquire_for(std::chrono::seconds{1});
+    const bool conversionStarted = conversionEntered.try_acquire_for(kWorkerEventTimeout);
     stopSource.request_stop();
     REQUIRE(conversionStarted);
     REQUIRE(operation.wait_for(std::chrono::seconds{2}) == std::future_status::ready);
@@ -2118,7 +2122,7 @@ TEST_CASE("sqlite import stops promptly while locked and remains reusable") {
         }
     });
 
-    REQUIRE(busyEntered->try_acquire_for(std::chrono::seconds{1}));
+    REQUIRE(busyEntered->try_acquire_for(kWorkerEventTimeout));
     stopSource.request_stop();
     REQUIRE(operation.wait_for(std::chrono::milliseconds{500}) == std::future_status::ready);
     REQUIRE(operation.get() == std::make_error_code(std::errc::operation_canceled));
@@ -2198,7 +2202,7 @@ TEST_CASE("sqlite import cancels a blocked commit and rolls back explicitly") {
         }
     });
 
-    REQUIRE(busyEntered->try_acquire_for(std::chrono::seconds{1}));
+    REQUIRE(busyEntered->try_acquire_for(kWorkerEventTimeout));
     stopSource.request_stop();
     REQUIRE(operation.wait_for(std::chrono::milliseconds{500}) == std::future_status::ready);
     REQUIRE(operation.get() == std::make_error_code(std::errc::operation_canceled));
@@ -2488,7 +2492,7 @@ TEST_CASE("consolidation journal cleanup is one bounded atomic batch") {
     auto cleanup = std::async(std::launch::async, [&] {
         writer.completeConsolidation(persistedMoves, std::chrono::milliseconds{1'000});
     });
-    REQUIRE(busyEntered->try_acquire_for(std::chrono::seconds{1}));
+    REQUIRE(busyEntered->try_acquire_for(kWorkerEventTimeout));
     REQUIRE(sqlite3_exec(blocker.handle(), "ROLLBACK", nullptr, nullptr, nullptr) == SQLITE_OK);
     REQUIRE(cleanup.wait_for(std::chrono::seconds{2}) == std::future_status::ready);
     cleanup.get();
@@ -6368,7 +6372,7 @@ TEST_CASE("full rescan honors configured busy wait while database preflight is l
     ssa::infra::importing::SpreadsheetImportWorkflowPort retryPort(
         inputDirectory, dbPath, importColumns(), true, synchronization);
     auto retryFuture = std::async(std::launch::async, [&] { return retryPort.rescan(request); });
-    REQUIRE(writerBusyEntered->try_acquire_for(std::chrono::seconds{1}));
+    REQUIRE(writerBusyEntered->try_acquire_for(kWorkerEventTimeout));
     REQUIRE(sqlite3_exec(blocker.handle(), "ROLLBACK", nullptr, nullptr, nullptr) == SQLITE_OK);
     REQUIRE(retryFuture.wait_for(std::chrono::seconds{4}) == std::future_status::ready);
     const auto result = retryFuture.get();
@@ -6458,7 +6462,7 @@ TEST_CASE("full rescan honors busy wait when publication destination is locked")
     ssa::infra::importing::SpreadsheetImportWorkflowPort retryPort(
         inputDirectory, dbPath, importColumns(), true, synchronization);
     auto retryFuture = std::async(std::launch::async, [&] { return retryPort.rescan(request); });
-    REQUIRE(snapshotLocked->try_acquire_for(std::chrono::seconds{1}));
+    REQUIRE(snapshotLocked->try_acquire_for(kWorkerEventTimeout));
     REQUIRE(sqlite3_finalize(statement) == SQLITE_OK);
     REQUIRE(sqlite3_exec(blocker, "ROLLBACK", nullptr, nullptr, nullptr) == SQLITE_OK);
     REQUIRE(retryFuture.wait_for(std::chrono::seconds{4}) == std::future_status::ready);
@@ -8017,7 +8021,7 @@ TEST_CASE("spreadsheet import workflow holds the corpus lock until an alternate 
 
     auto operation = std::async(std::launch::async,
                                 [&] { return port.rescan({ssa::ports::RescanMode::Incremental}); });
-    REQUIRE(writerBusyEntered->try_acquire_for(std::chrono::seconds{1}));
+    REQUIRE(writerBusyEntered->try_acquire_for(kWorkerEventTimeout));
     QLockFile contender(ssa::qt::toQString(importLockPath));
     contender.setStaleLockTime(0);
     REQUIRE_FALSE(contender.tryLock(0));
@@ -8547,7 +8551,7 @@ TEST_CASE("incremental cancellation during snapshot publication preserves the or
     std::stop_source stopSource;
     auto future = std::async(std::launch::async,
                              [&] { return port.rescan(request, stopSource.get_token()); });
-    REQUIRE(snapshotLocked->try_acquire_for(std::chrono::seconds{1}));
+    REQUIRE(snapshotLocked->try_acquire_for(kWorkerEventTimeout));
     stopSource.request_stop();
     const bool canceledPromptly =
         future.wait_for(std::chrono::milliseconds{500}) == std::future_status::ready;
@@ -8613,7 +8617,7 @@ TEST_CASE("incremental rescan cancels promptly after SQLite busy is observed") {
     auto operation = std::async(std::launch::async, [&] {
         return port.rescan({ssa::ports::RescanMode::Incremental}, stopSource.get_token());
     });
-    REQUIRE(writerBusyEntered->try_acquire_for(std::chrono::seconds{1}));
+    REQUIRE(writerBusyEntered->try_acquire_for(kWorkerEventTimeout));
 
     stopSource.request_stop();
     const bool canceledPromptly =
@@ -9070,7 +9074,7 @@ TEST_CASE("spreadsheet mapper observes cancellation during a large worksheet") {
             return error.code() == std::make_error_code(std::errc::operation_canceled);
         }
     });
-    REQUIRE(mappingEntered.try_acquire_for(std::chrono::seconds{1}));
+    REQUIRE(mappingEntered.try_acquire_for(kWorkerEventTimeout));
     stopSource.request_stop();
 
     REQUIRE(operation.wait_for(std::chrono::seconds{1}) == std::future_status::ready);
@@ -9952,7 +9956,7 @@ TEST_CASE("SAM import honors zero SQLite busy wait while writing") {
 
     auto operation =
         std::async(std::launch::async, [&] { return port.importSamArtifacts(request); });
-    REQUIRE(writerBusyEntered->try_acquire_for(std::chrono::seconds{1}));
+    REQUIRE(writerBusyEntered->try_acquire_for(kWorkerEventTimeout));
     const auto immediateStatus = operation.wait_for(std::chrono::milliseconds{500});
     REQUIRE(sqlite3_finalize(statement) == SQLITE_OK);
     REQUIRE(sqlite3_exec(blocker, "ROLLBACK", nullptr, nullptr, nullptr) == SQLITE_OK);
@@ -10022,7 +10026,7 @@ TEST_CASE("SAM import honors zero SQLite busy wait while resuming consolidation"
 
     auto operation =
         std::async(std::launch::async, [&] { return port.importSamArtifacts(request); });
-    REQUIRE(writerBusyEntered->try_acquire_for(std::chrono::seconds{1}));
+    REQUIRE(writerBusyEntered->try_acquire_for(kWorkerEventTimeout));
     const auto immediateStatus = operation.wait_for(std::chrono::milliseconds{500});
     REQUIRE(sqlite3_exec(blocker, "ROLLBACK", nullptr, nullptr, nullptr) == SQLITE_OK);
     REQUIRE(operation.wait_for(std::chrono::seconds{4}) == std::future_status::ready);
