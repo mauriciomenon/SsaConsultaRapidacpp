@@ -1,5 +1,25 @@
 # Status Da Rodada
 
+## Fechamento antes da viagem (branch `rev`) - 2026-10-24/25
+
+- **ENTREGUE** no branch `rev` (macOS, Qt 6.11.2, `build/dev`), suite local
+  768/768. Commits: `a66835b`/`85067c1` (Derivacao: possui derivadas e derivadas
+  encerradas; build MSVC), `a5e6904` (leituras `QueryOnly`, erro de banco no
+  macOS), `5a4fc21` (botao de tema abre `ThemeDialog`), `43eb86b` (macOS linka e
+  embute o SQLite do Homebrew), `68d99bd` (cppcheck `-Demit=`), `a23d7ee`
+  (`-termo` exclui, como no Python), `9d19274` (backlog).
+- CI GitHub: `5a4fc21` verde nos tres jobs (Windows apos 1 rerun por lock de
+  link no runner); `9d19274` verde nos tres jobs (run 40257762210, macOS com o SQLite do Homebrew).
+- Proxima acao no laptop Windows: `git pull` no clone de
+  `$env:USERPROFILE\gitlab\ssa_consulta_rapida_cpp`, depois
+  `./scripts/build-windows.ps1` e `ctest --preset dev --output-on-failure`.
+- Pendente local com fix proposto: `[MACOS-MACDEPLOYQT-RESOLUTION]` no backlog
+  (pacote macOS usa o macdeployqt do Homebrew; contorno
+  `CMAKE_PREFIX_PATH=$HOME/Qt/6.11.2/macos`). Demais itens da fila dependem de
+  decisao de produto ou de entrada externa (`RECOVERY_BACKLOG.md`, "Produto").
+- VM w11 do Mac: antes do proximo pull nela, `git checkout --
+  src/domain/SsaDerivationMode.h` (copia por scp).
+
 ## Correcoes da revisao profunda e dos revisores externos (branch `rev`) - 2026-10-22/23
 
 - **ENTREGUE** no branch `rev` (macOS, Qt 6.11.2, `build/dev`): suite local
