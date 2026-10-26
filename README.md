@@ -291,6 +291,10 @@ Com Homebrew:
 brew install qt cmake ninja sqlite
 ```
 
+O build usa o SQLite do Homebrew (`brew --prefix sqlite`, ou `-DSQLite3_ROOT=<prefixo>`)
+e o pacote leva esse SQLite dentro do `.app`; o SQLite do macOS nao e usado. Um build
+configurado antes desta regra para com uma mensagem pedindo `cmake --preset dev --fresh`.
+
 Se o Homebrew estiver em caminho padrao, o script usa:
 
 ```bash

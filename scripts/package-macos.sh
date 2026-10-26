@@ -224,6 +224,13 @@ if [[ -d "${frameworks_dir}" ]]; then
   )
 fi
 
+# The app must load the bundled Homebrew SQLite, never the OS library.
+bundle_executable="${bundle_copy}/Contents/MacOS/ssa_consulta_rapida"
+if ! otool -L "${bundle_executable}" | grep -q '@executable_path/../Frameworks/libsqlite3'; then
+  echo "Bundled SQLite missing: ${bundle_executable} does not load Frameworks/libsqlite3." >&2
+  exit 1
+fi
+
 codesign --force --deep --sign "${codesign_identity}" "${bundle_copy}"
 
 ditto -c -k --sequesterRsrc --keepParent "${bundle_copy}" "${staged_zip_path}"

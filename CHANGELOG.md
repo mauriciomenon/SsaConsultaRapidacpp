@@ -14,6 +14,9 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 
 ### Corrigido
 
+- macOS: o app passa a levar o proprio SQLite (o do Homebrew, dentro do `.app`) em
+  vez de usar o do sistema, que falhava ao comecar uma escrita enquanto outra parte
+  do app lia o banco, inclusive na validacao de um banco escolhido e no backup.
 - O botao redondo de tema, ao lado de "Preferencias", abre a janela "Personalizar
   tema", como o botao "Tema" da GUI Python. Antes um clique trocava o tema e o
   salvava na hora, sem confirmacao.

@@ -34,7 +34,29 @@ find_package(
 if(SSA_BUILD_TESTS)
   find_package(Qt6 6.6 REQUIRED COMPONENTS QuickTest Test)
 endif()
+# macOS links Homebrew SQLite, which macdeployqt copies into the .app: the OS
+# library (3.54.0) fails BEGIN IMMEDIATE beside read-only connections.
+if(APPLE)
+  if(NOT SQLite3_ROOT)
+    execute_process(
+      COMMAND brew --prefix sqlite
+      OUTPUT_VARIABLE SQLite3_ROOT
+      OUTPUT_STRIP_TRAILING_WHITESPACE
+      RESULT_VARIABLE ssa_brew_sqlite_result
+      ERROR_QUIET)
+    if(NOT ssa_brew_sqlite_result EQUAL 0)
+      message(FATAL_ERROR "Homebrew sqlite not found: run brew install sqlite "
+                          "or pass -DSQLite3_ROOT=<prefix>")
+    endif()
+  endif()
+endif()
 find_package(SQLite3 REQUIRED)
+if(APPLE AND NOT SQLite3_LIBRARY MATCHES "^${SQLite3_ROOT}/")
+  message(
+    FATAL_ERROR
+      "SQLite3_LIBRARY is ${SQLite3_LIBRARY}, outside ${SQLite3_ROOT}: "
+      "reconfigure with cmake --fresh")
+endif()
 
 if(TARGET SQLite3::SQLite3)
   set(SSA_SQLITE_TARGET SQLite3::SQLite3)

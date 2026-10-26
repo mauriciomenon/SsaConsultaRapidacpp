@@ -3,11 +3,13 @@
 #include <QTemporaryDir>
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 
 #include <atomic>
 #include <exception>
 #include <filesystem>
 #include <stop_token>
+#include <string_view>
 #include <system_error>
 #include <thread>
 #include <vector>
@@ -56,9 +58,18 @@ TEST_CASE("sqlite query-only connection opens a write-protected file") {
                                  std::filesystem::perm_options::replace);
 }
 
+TEST_CASE("sqlite runtime library matches the compiled header") {
+    CHECK(std::string_view{sqlite3_libversion()} == SQLITE_VERSION);
+    CHECK(std::string_view{sqlite3_sourceid()} == SQLITE_SOURCE_ID);
+}
+
 // Regression: the macOS system SQLite failed BEGIN IMMEDIATE with SQLITE_IOERR_LOCK (EBADF)
 // in about one of three attempts while read-only connections opened and closed the same file.
-TEST_CASE("sqlite write transaction begins while query-only readers open and close") {
+// ReadOnly readers (database validation, backup source) prove the linked library is not that one.
+TEST_CASE("sqlite write transaction begins while readers open and close") {
+    const auto readerMode = GENERATE(ssa::infra::sqlite::SqliteOpenMode::QueryOnly,
+                                     ssa::infra::sqlite::SqliteOpenMode::ReadOnly);
+    CAPTURE(static_cast<int>(readerMode));
     QTemporaryDir directory;
     REQUIRE(directory.isValid());
     const auto path = createDatabase(directory);
@@ -70,7 +81,7 @@ TEST_CASE("sqlite write transaction begins while query-only readers open and clo
         readers.emplace_back([&] {
             while (!stop.load()) {
                 try {
-                    const ssa::infra::sqlite::SqliteConnection reader(path);
+                    const ssa::infra::sqlite::SqliteConnection reader(path, readerMode);
                     ssa::infra::sqlite::SqliteStatement count(reader.handle(),
                                                               "SELECT COUNT(*) FROM state");
                     if (!count.step()) {
