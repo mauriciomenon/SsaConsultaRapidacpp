@@ -419,7 +419,8 @@ namespace ssa::domain::derivation {
         return result;
     }
 
-    std::string fingerprintPayload(const std::span<const MatrixEdge> edges) {
+    std::string fingerprintPayload(const std::span<const MatrixEdge> edges,
+                                   const FingerprintFormat format) {
         std::vector<const MatrixEdge*> sorted;
         sorted.reserve(edges.size());
         for (const auto& edge : edges) {
@@ -435,7 +436,11 @@ namespace ssa::domain::derivation {
             payload += edge->child;
             payload += ':';
             payload += std::to_string(edge->sourceFlags);
-            payload += ";[";
+            payload += ';';
+            if (format == FingerprintFormat::Legacy) {
+                continue;
+            }
+            payload += '[';
             payload += std::to_string(edge->relationType);
             payload += ", ";
             if (edge->label.has_value()) {

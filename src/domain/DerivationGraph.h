@@ -110,8 +110,13 @@ namespace ssa::domain::derivation {
                                            std::span<const MatrixEdge> edges,
                                            std::span<const SourceEdge> sources);
 
-    // Bytes hashed by the Python "v2:" fingerprint (SHA-256 is applied by the caller):
-    // per edge sorted by pair, `parent->child:flags;[type, label-as-JSON];`.
-    [[nodiscard]] std::string fingerprintPayload(std::span<const MatrixEdge> edges);
+    // V2 is the current Python format ("v2:" prefix); Legacy (no prefix, no relation) is what
+    // older runs stored, and the Python consistency scan still compares against it.
+    enum class FingerprintFormat : std::uint8_t { Legacy, V2 };
+
+    // Bytes hashed by the Python fingerprint (SHA-256 is applied by the caller): per edge
+    // sorted by pair, `parent->child:flags;` followed in V2 by `[type, label-as-JSON];`.
+    [[nodiscard]] std::string fingerprintPayload(std::span<const MatrixEdge> edges,
+                                                 FingerprintFormat format = FingerprintFormat::V2);
 
 } // namespace ssa::domain::derivation

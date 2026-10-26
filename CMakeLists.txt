@@ -163,6 +163,7 @@ add_library(
   src/infra/sqlite/SqliteDatabaseBackup.cpp
   src/infra/sqlite/SqliteDatabaseValidator.cpp
   src/infra/sqlite/SqliteDerivadasPort.cpp
+  src/infra/sqlite/SqliteDerivationGraphReader.cpp
   src/infra/sqlite/SqliteDerivedCountSummary.cpp
   src/infra/sqlite/SqliteMaintenancePort.cpp
   src/infra/sqlite/SqliteSsaImportWriter.cpp
@@ -605,6 +606,7 @@ if(SSA_BUILD_TESTS)
     ssa_integration_tests
     tests/integration/ExportPortTests.cpp
     tests/integration/DerivadasImportTests.cpp
+    tests/integration/DerivationGraphReaderTests.cpp
     tests/integration/ActivityAnalyticsInitializerTests.cpp
     tests/integration/ActivityAnalyticsProjectionTests.cpp
     tests/integration/DataSetupBootstrapTests.cpp
