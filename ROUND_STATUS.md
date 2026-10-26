@@ -1,5 +1,22 @@
 # Status Da Rodada
 
+## Release v0.9.20 e sincronizacao de derivadas S1-S2 (branch `rev`) - 2026-10-26
+
+- **Release publicado**: https://github.com/mauriciomenon/SsaConsultaRapidacpp/releases/tag/v0.9.20
+  com 10 pacotes e `SHA256SUMS`: macOS arm64 e x86_64 (.dmg/.zip), Windows amd64 e
+  arm64 (instalador e .zip), Debian amd64 e arm64 (.deb). Run `40326311126`, todos os
+  jobs verdes. Primeiro release publicado pelo GitHub desde v0.9.9.
+- Conferido: SHA-256 do zip Windows arm64 e do zip macOS arm64; o pacote Windows arm64
+  na VM w11 responde `--version` = "SSA Consulta Rapida 0.9.20" (exit 0) e
+  `--smoke-exit-ms 3000` (exit 0).
+- As tags `v0.9.18` e `v0.9.19` ficaram sem pacotes (o `release.yml` estava defasado);
+  0.9.20 tem as mesmas mudancas para o usuario. Arch fora do release: `[RELEASE-ARCH]`.
+- Sincronizacao de derivadas (plano S1-S6 aprovado): S1 motor de grafo (`e57e6e3`) e S2
+  leitura e impressao digital (`e1e059e`) entregues e ainda nao ligados ao app. Contra
+  uma copia do banco real o C++ reproduz o fechamento (22.038 linhas), o resumo
+  (31.459) e a impressao digital gravados pelo Python. Proxima etapa: S3 (gravacao).
+- Arquivos `docs/plans/2026-10-26-*.md` nao versionados sao de outra sessao.
+
 ## Fechamento antes da viagem (branch `rev`) - 2026-10-24/25
 
 - **ENTREGUE** no branch `rev` (macOS, Qt 6.11.2, `build/dev`), suite local
