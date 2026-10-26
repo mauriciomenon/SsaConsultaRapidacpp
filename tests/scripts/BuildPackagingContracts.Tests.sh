@@ -52,6 +52,29 @@ if [[ ! -e "${build_dir}/incremental-output.txt" ]]; then
   exit 1
 fi
 
+# macdeployqt must come from the Qt the build used, never from PATH: a Homebrew
+# macdeployqt of another Qt version produced a bundle without qt.conf.
+# shellcheck disable=SC1091
+source "${repo_root}/scripts/lib/package_common.sh"
+build_qt="${test_root}/Qt/6.11.2/macos"
+deploy_build="${test_root}/build-release"
+path_qt_bin="${test_root}/path-qt/bin"
+mkdir -p "${build_qt}/bin" "${build_qt}/lib/cmake/Qt6" "${deploy_build}" "${path_qt_bin}"
+printf '#!/usr/bin/env bash\n' > "${build_qt}/bin/macdeployqt"
+printf '#!/usr/bin/env bash\n' > "${path_qt_bin}/macdeployqt"
+chmod +x "${build_qt}/bin/macdeployqt" "${path_qt_bin}/macdeployqt"
+printf 'Qt6_DIR:PATH=%s/lib/cmake/Qt6\n' "${build_qt}" > "${deploy_build}/CMakeCache.txt"
+resolved="$(PATH="${path_qt_bin}:${PATH}" package_resolve_macdeployqt "${deploy_build}")"
+if [[ "${resolved}" != "${build_qt}/bin/macdeployqt" ]]; then
+  echo "macdeployqt resolved to ${resolved}, expected the build Qt." >&2
+  exit 1
+fi
+rm -f "${build_qt}/bin/macdeployqt"
+if PATH="${path_qt_bin}:${PATH}" package_resolve_macdeployqt "${deploy_build}" >/dev/null 2>&1; then
+  echo "macdeployqt fell back to PATH when the build Qt has none." >&2
+  exit 1
+fi
+
 if ! command -v dpkg >/dev/null 2>&1; then
   echo "build contracts: OK (package checks skipped: they need dpkg, a Debian host)"
   exit 0
@@ -73,8 +96,6 @@ if [[ "${foreign_output}" != *"does not match native architecture"* ]]; then
   exit 1
 fi
 
-# shellcheck disable=SC1091
-source "${repo_root}/scripts/lib/package_common.sh"
 dist_root="${test_root}/dist/linux/amd64/gcc"
 stage_root="${test_root}/stage"
 mkdir -p "${dist_root}/final" "${stage_root}"

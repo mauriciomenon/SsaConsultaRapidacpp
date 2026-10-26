@@ -211,7 +211,7 @@ EOF_RELEASE
     local previous_record_promoted="false"
 
     # Called indirectly by the EXIT trap below.
-    # shellcheck disable=SC2317
+    # shellcheck disable=SC2317,SC2329
     cleanup_release_publication() {
       local status=$?
       local cleanup_failed="false"
@@ -456,57 +456,23 @@ package_linux_arch() {
 }
 
 package_resolve_macdeployqt() {
-  local repo_root="${1:-${PWD}}"
-  local -a candidate_prefixes=()
-  local candidate
-
-  # PRIORIDADE: o macdeployqt (e os plugins que ele copia) devem vir da MESMA
-  # Qt usada no build. Se misturarmos (ex.: build com 6.11.0 mas macdeployqt do
-  # brew 6.11.1), o bundle fica com frameworks 6.11.0 e plugin cocoa 6.11.1 ->
-  # mismatch de versao -> crash via launchd/Finder ("Could not load platform
-  # plugin cocoa"). Por isso QT_DIR/CMAKE_PREFIX_PATH vencem o PATH generico.
-
-  if [[ -n "${QT_DIR:-}" ]]; then
-    candidate_prefixes+=("${QT_DIR}")
+  # macdeployqt (and the plugins it copies) must come from the same Qt the build
+  # used: a macdeployqt from another Qt (e.g. Homebrew) leaves the bundle without
+  # qt.conf or with mismatched plugins, and the app aborts without a platform
+  # plugin. The build's CMakeCache.txt names that Qt; there is no PATH fallback.
+  local build_dir="$1"
+  local qt_dir
+  qt_dir="$(sed -n 's/^Qt6_DIR:[A-Z]*=//p' "${build_dir}/CMakeCache.txt" 2>/dev/null | head -n 1)"
+  if [[ -z "${qt_dir}" ]]; then
+    echo "Qt6_DIR not found in ${build_dir}/CMakeCache.txt." >&2
+    return 1
   fi
-  if [[ -n "${CMAKE_PREFIX_PATH:-}" ]]; then
-    while IFS= read -r candidate; do
-      [[ -n "${candidate}" ]] && candidate_prefixes+=("${candidate}")
-    done < <(printf '%s\n' "${CMAKE_PREFIX_PATH}" | tr ':;' '\n')
+  local tool="${qt_dir%/}/../../../bin/macdeployqt"
+  if [[ ! -x "${tool}" ]]; then
+    echo "macdeployqt not found next to the build Qt: ${tool}" >&2
+    return 1
   fi
-
-  if [[ -f "${repo_root}/tools/qt-detect.conf" ]]; then
-    # shellcheck disable=SC1091
-    source "${repo_root}/tools/qt-detect.conf"
-    candidate_prefixes+=("${MACOS_QT_ONLINE_INSTALLER_DIR}")
-  fi
-  if [[ -n "${QT_VERSION:-}" ]]; then
-    candidate_prefixes+=("${HOME}/Qt/${QT_VERSION}/macos")
-  fi
-
-  for candidate in "${candidate_prefixes[@]}"; do
-    candidate="${candidate%/}/bin/macdeployqt"
-    if [[ -x "${candidate}" ]]; then
-      printf '%s\n' "${candidate}"
-      return 0
-    fi
-  done
-
-  # Fallback: qtpaths, depois macdeployqt generico do PATH (brew, etc.).
-  if command -v qtpaths >/dev/null 2>&1; then
-    candidate="$(qtpaths --binary-dir 2>/dev/null)/macdeployqt"
-    if [[ -x "${candidate}" ]]; then
-      printf '%s\n' "${candidate}"
-      return 0
-    fi
-  fi
-
-  if command -v macdeployqt >/dev/null 2>&1; then
-    printf '%s\n' "macdeployqt"
-    return 0
-  fi
-
-  return 1
+  (cd "$(dirname "${tool}")" && printf '%s/macdeployqt\n' "$(pwd)")
 }
 
 package_copy_runtime_libraries() {

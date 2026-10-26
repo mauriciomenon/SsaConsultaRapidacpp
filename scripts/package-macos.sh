@@ -187,7 +187,7 @@ if [[ ! -d "${qml_module_dir}" ]]; then
   exit 1
 fi
 
-if macdeploy_tool="$(package_resolve_macdeployqt "${repo_root}")"; then
+if macdeploy_tool="$(package_resolve_macdeployqt "${build_dir}")"; then
   if "${macdeploy_tool}" "${bundle_copy}" -qmldir="${qml_module_dir}"; then
     :
   else
@@ -196,6 +196,10 @@ if macdeploy_tool="$(package_resolve_macdeployqt "${repo_root}")"; then
   fi
 else
   echo "macdeployqt not found. Self contained macOS package cannot be generated." >&2
+  exit 1
+fi
+if [[ ! -f "${bundle_copy}/Contents/Resources/qt.conf" ]]; then
+  echo "macdeployqt left no Contents/Resources/qt.conf: the app would not find its plugins." >&2
   exit 1
 fi
 

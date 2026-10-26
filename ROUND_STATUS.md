@@ -13,10 +13,10 @@
 - Proxima acao no laptop Windows: `git pull` no clone de
   `$env:USERPROFILE\gitlab\ssa_consulta_rapida_cpp`, depois
   `./scripts/build-windows.ps1` e `ctest --preset dev --output-on-failure`.
-- Pendente local com fix proposto: `[MACOS-MACDEPLOYQT-RESOLUTION]` no backlog
-  (pacote macOS usa o macdeployqt do Homebrew; contorno
-  `CMAKE_PREFIX_PATH=$HOME/Qt/6.11.2/macos`). Demais itens da fila dependem de
-  decisao de produto ou de entrada externa (`RECOVERY_BACKLOG.md`, "Produto").
+- Pacote macOS: o script passou a usar o macdeployqt da propria Qt do build
+  (antes pegava o do Homebrew, Qt 6.12, e o app nao abria). Os itens restantes
+  da fila dependem de decisao de produto ou de entrada externa
+  (`RECOVERY_BACKLOG.md`, "Produto").
 - VM w11 do Mac: antes do proximo pull nela, `git checkout --
   src/domain/SsaDerivationMode.h` (copia por scp).
 

@@ -14,6 +14,9 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 
 ### Corrigido
 
+- Pacote macOS: o script usa o macdeployqt da mesma Qt do build. Antes podia
+  pegar o do Homebrew, de outra versao, e o app empacotado nao abria; agora o
+  script falha se o pacote sair sem `qt.conf`.
 - Busca: `-termo` exclui, como `!termo` e como na GUI Python. Um `-` sozinho
   continua buscando o proprio hifen.
 - macOS: o app passa a levar o proprio SQLite (o do Homebrew, dentro do `.app`) em
