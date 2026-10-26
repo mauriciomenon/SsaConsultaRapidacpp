@@ -37,17 +37,22 @@
 
 ### Produto
 
-- [PENDING] Sincronizacao completa de derivadas: multiparent, ciclos,
-  relacoes orfas e equivalencia do corpus.
-- [PENDING] Filtros genericos de semana e derivacao permanecem ocultos ate um
-  ciclo GUI dedicado.
-- [PENDING] Paginacao SAM acima de 200 e single-flight entre processos exigem
-  contrato externo real.
+Fila em 2026-10-25: nada local sem dependencia externa ou decisao de produto,
+exceto `[MACOS-MACDEPLOYQT-RESOLUTION]` (fix proposto abaixo, aguarda aprovacao).
+
+- [PENDING-PRODUCT] Sincronizacao completa de derivadas: multiparent, ciclos,
+  relacoes orfas e equivalencia do corpus (decisoes em `DERIVADAS-SYNC-COMPLETE`
+  e corpus sanitizado).
+- [RESOLVED] Filtros de semana e derivacao visiveis: cards "Emissao (AnoSemana)",
+  "Execucao (AnoSemana)" (`week_cards_apply_both_typed_bounds`) e "Derivacao"
+  (`49fd263`, `a66835b`) nos filtros avancados.
+- [EXTERNAL-BLOCKED] Paginacao SAM acima de 200 e single-flight entre processos
+  exigem contrato externo real.
 - [RESOLVED] Hifen inicial: decisao do usuario igualar ao Python
   (`_parse_search_chunk`): `-termo` nega quando ha texto depois; `-` sozinho e
   literal. `SearchParser` e ajuda atualizados; teste
   `search parser negates with leading hyphen like the Python GUI`.
-- [FEATURE] [SAM-LEGACY-IMPORT] Importar o relatorio SAM "SSAs Legadas"
+- [PENDING-PRODUCT] [SAM-LEGACY-IMPORT] Importar o relatorio SAM "SSAs Legadas"
   (arquivos `SAAs_*.xlsx`, cerca de 2.000 SSAs de 1990 em diante). Hoje ele e
   ignorado como familia conhecida, igual ao Python. Precisa de: numero
   alfanumerico (`199013350A`) aceito no dominio, mapeamento proprio
@@ -61,8 +66,9 @@
 
 ### Evidencia GUI e longo prazo
 
-- [PENDING] AA runtime dos consumidores restantes, Retina/HiDPI/Large Font e
-  UX de tabela somente no monitor onde o defeito for reproduzido.
+- [EXTERNAL-BLOCKED] AA runtime dos consumidores restantes, Retina/HiDPI/Large
+  Font e UX de tabela (`[UX-TABLE]`) somente no monitor onde o defeito for
+  reproduzido.
 - [DEFERRED] FTS5, cache de `roleNames()` e binding int64 LIMIT/OFFSET somente
   se medicao justificar o refactor.
 - [RESOLVED] [P3] cppcheck lia `emit sinal(arg);` como declaracao de variavel
