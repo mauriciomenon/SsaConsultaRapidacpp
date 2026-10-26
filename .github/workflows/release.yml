@@ -100,6 +100,7 @@ jobs:
             echo "version=${version}"
           } >> "${GITHUB_OUTPUT}"
 
+
   macos:
     needs: resolve
     permissions:
@@ -108,10 +109,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: macos-15
+          # std::stop_token needs Xcode 26 or newer (the macos-15 default is Xcode 16).
+          - runner: macos-26
             arch: arm64
+            artifact: arm64
           - runner: macos-15-intel
             arch: x86_64
+            artifact: amd64
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     steps:
@@ -119,6 +123,17 @@ jobs:
         with:
           ref: ${{ needs.resolve.outputs.ref }}
           persist-credentials: false
+      - name: Select the newest Xcode and check C++20 stop_token
+        run: |
+          set -euo pipefail
+          xcode="$(find /Applications -maxdepth 1 -name 'Xcode_*.app' | sort -V | tail -n 1)"
+          sudo xcode-select -s "${xcode}"
+          printf '#include <stop_token>\nint main() { std::stop_source s; return s.stop_requested(); }\n' > "${RUNNER_TEMP}/stop_token.cpp"
+          if ! c++ -std=c++20 "${RUNNER_TEMP}/stop_token.cpp" -o "${RUNNER_TEMP}/stop_token"; then
+            echo "${xcode}: std::stop_token is unavailable; the project needs Xcode 26 or newer" >&2
+            exit 1
+          fi
+          xcodebuild -version
       - uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730
         with:
           version: ${{ env.QT_VERSION }}
@@ -133,29 +148,23 @@ jobs:
           qt_prefix="$(qtpaths --query QT_INSTALL_PREFIX)"
           export CMAKE_PREFIX_PATH="${qt_prefix}"
           export PATH="${qt_prefix}/bin:${PATH}"
-          ./scripts/package-macos.sh --version "${RELEASE_VERSION}"
-      - name: Normalize arch folder to arm64/amd64
-        run: |
-          src="dist/macos/${{ matrix.arch }}"
-          dst="dist/macos/${{ matrix.arch == 'x86_64' && 'amd64' || 'arm64' }}"
-          if [[ "${src}" != "${dst}" && -d "${src}" ]]; then
-            mkdir -p "$(dirname "${dst}")"
-            rm -rf "${dst}"
-            mv "${src}" "${dst}"
-          fi
+          ./scripts/package-macos.sh --version "${RELEASE_VERSION}" --arch "${{ matrix.arch }}"
       - name: Validate macOS artifacts
         env:
           RELEASE_VERSION: ${{ needs.resolve.outputs.version }}
         run: |
           set -euo pipefail
-          test "$(find dist/macos -type f -name "ssa_consulta_rapida-${RELEASE_VERSION}-*-macos.dmg" | wc -l | tr -d ' ')" -eq 1
-          test "$(find dist/macos -type f -name "ssa_consulta_rapida-${RELEASE_VERSION}-*-macos.zip" | wc -l | tr -d ' ')" -eq 1
+          for extension in dmg zip; do
+            count="$(find "dist/macos/${{ matrix.arch }}" -maxdepth 1 -type f \
+              -name "*-macos-${{ matrix.arch }}-${RELEASE_VERSION}.${extension}" | wc -l | tr -d ' ')"
+            test "${count}" -eq 1
+          done
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: release-macos-${{ matrix.arch == 'x86_64' && 'amd64' || 'arm64' }}
+          name: release-macos-${{ matrix.artifact }}
           path: |
-            dist/macos/**/*.dmg
-            dist/macos/**/*.zip
+            dist/macos/${{ matrix.arch }}/*-macos-${{ matrix.arch }}-${{ needs.resolve.outputs.version }}.dmg
+            dist/macos/${{ matrix.arch }}/*-macos-${{ matrix.arch }}-${{ needs.resolve.outputs.version }}.zip
           if-no-files-found: error
 
   windows:
@@ -209,29 +218,31 @@ jobs:
       - name: Package Windows (.zip/.exe)
         shell: pwsh
         run: |
+          $cmakeArgs = @(
+            "-DCMAKE_PREFIX_PATH=$env:Qt6_DIR",
+            "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake",
+            "-DVCPKG_TARGET_TRIPLET=${{ matrix.vcpkg_triplet }}"
+          )
           .\scripts\package-windows.ps1 -Arch ${{ matrix.artifact }} `
             -Version "${{ needs.resolve.outputs.version }}" `
-            -CmakeExtraArgs "-DCMAKE_PREFIX_PATH=$env:Qt6_DIR" `
-            "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" `
-            "-DVCPKG_TARGET_TRIPLET=${{ matrix.vcpkg_triplet }}"
+            -CmakeExtraArgs $cmakeArgs
       - name: Validate Windows artifacts
         shell: pwsh
         run: |
-          $root = "dist/windows/${{ matrix.artifact }}/final"
-          $zip = @(Get-ChildItem -Path $root -File -Filter "ssa_consulta_rapida_cpp.zip")
-          $installer = @(Get-ChildItem -Path $root -File -Filter "ssa_consulta_rapida_cpp-installer.exe")
-          $hashes = Join-Path $root "SHA256SUMS"
-          $current = "dist/windows/${{ matrix.artifact }}/current.json"
+          $final = @(Get-ChildItem -Path "dist/windows/${{ matrix.artifact }}" -Directory -Recurse -Filter final)
+          if ($final.Count -ne 1) { throw "expected one final folder, found $($final.Count)" }
+          $zip = @(Get-ChildItem -Path $final[0].FullName -File -Filter "*-windows-${{ matrix.artifact }}-*.zip")
+          $installer = @(Get-ChildItem -Path $final[0].FullName -File -Filter "*-windows-${{ matrix.artifact }}-*-installer.exe")
           if ($zip.Count -ne 1 -or $installer.Count -ne 1 -or
-              -not (Test-Path -LiteralPath $hashes) -or -not (Test-Path -LiteralPath $current)) {
+              -not (Test-Path -LiteralPath (Join-Path $final[0].FullName "SHA256SUMS"))) {
             throw "Windows final release set is incomplete"
           }
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: release-windows-${{ matrix.artifact }}
           path: |
-            dist/windows/${{ matrix.artifact }}/final/**
-            dist/windows/${{ matrix.artifact }}/current.json
+            dist/windows/${{ matrix.artifact }}/*/final/*-windows-${{ matrix.artifact }}-*.zip
+            dist/windows/${{ matrix.artifact }}/*/final/*-windows-${{ matrix.artifact }}-*-installer.exe
           if-no-files-found: error
 
   debian:
@@ -263,77 +274,31 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build libsqlite3-dev libgl1-mesa-dev \
-            sqlite3 dpkg-dev fakeroot
+            sqlite3 dpkg-dev fakeroot zip
       - name: Package Debian (.deb)
         run: |
-          export CMAKE_PREFIX_PATH="${Qt6_DIR}"
+          # configure-dev.sh only accepts an explicit Qt prefix through QT_DIR.
+          export QT_DIR="${QT_ROOT_DIR}"
+          export CMAKE_PREFIX_PATH="${QT_ROOT_DIR}"
           ./scripts/package-debian.sh \
             --version "${{ needs.resolve.outputs.version }}" \
             --arch "${{ matrix.arch }}"
       - name: Validate Debian artifact
         run: |
-          test -f "dist/linux/${{ matrix.arch }}/ssa_consulta_rapida-${{ needs.resolve.outputs.version }}-${{ matrix.arch }}-linux.deb"
+          set -euo pipefail
+          count="$(find "dist/linux/${{ matrix.arch }}" -path '*/final/*' -type f \
+            -name "*-debian-${{ matrix.arch }}-*.deb" | wc -l | tr -d ' ')"
+          test "${count}" -eq 1
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: release-debian-${{ matrix.arch }}
-          path: dist/linux/${{ matrix.arch }}/*.deb
+          path: dist/linux/${{ matrix.arch }}/*/final/*-debian-${{ matrix.arch }}-*.deb
           if-no-files-found: error
 
-  arch:
-    needs: resolve
-    permissions:
-      contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: ubuntu-24.04
-            arch: x86_64
-          - runner: ubuntu-24.04-arm
-            arch: aarch64
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 120
-    container: archlinux@sha256:d9abf957599bddf27955a0dd82b4457dcfaace50525bb773f6c7518f8015e7e4
-    env:
-      QT_QPA_PLATFORM: offscreen
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        with:
-          ref: ${{ needs.resolve.outputs.ref }}
-          persist-credentials: false
-      - name: Install dependencies and builder user
-        run: |
-          pacman-key --init
-          pacman-key --populate archlinux
-          pacman -Syu --noconfirm --needed archlinux-keyring
-          pacman -S --noconfirm --needed base-devel cmake ninja \
-            qt6-base qt6-declarative qt6-tools qt6-shadertools sqlite zstd
-          id builder >/dev/null 2>&1 || useradd -m -G wheel -s /bin/bash builder
-          echo "builder ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/builder
-          chown -R builder:builder "${GITHUB_WORKSPACE:-$(pwd)}"
-      - uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730
-        with:
-          version: ${{ env.QT_VERSION }}
-          arch: linux_gcc_64
-          cache: true
-      - name: Validate pinned Qt version
-        run: test "$(qtpaths --qt-version)" = "${QT_VERSION}"
-      - name: Package Arch (.pkg.tar.zst)
-        run: |
-          ./scripts/package-arch.sh \
-            --version '${{ needs.resolve.outputs.version }}' \
-            --arch '${{ matrix.arch }}'
-      - name: Validate Arch artifact
-        run: |
-          test -f "dist/linux/${{ matrix.arch }}/ssa_consulta_rapida-${{ needs.resolve.outputs.version }}-${{ matrix.arch }}-linux.pkg.tar.zst"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: release-arch-${{ matrix.arch }}
-          path: dist/linux/${{ matrix.arch }}/*.pkg.tar.zst
-          if-no-files-found: error
-
+  # Arch Linux is not built here: the archlinux image has no arm64 variant and the Qt
+  # action needs apt-get. See RECOVERY_BACKLOG.md [RELEASE-ARCH].
   publish:
-    needs: [resolve, macos, windows, debian, arch]
+    needs: [resolve, macos, windows, debian]
     permissions:
       contents: write
     runs-on: ubuntu-24.04
@@ -358,18 +323,17 @@ jobs:
               exit 1
             fi
           }
-          require_count '*.dmg' 2
-          require_count '*.zip' 4
-          require_count '*-installer.exe' 2
-          require_count '*.deb' 2
-          require_count '*.pkg.tar.zst' 2
+          require_count '*-macos-*.dmg' 2
+          require_count '*-macos-*.zip' 2
+          require_count '*-windows-*-installer.exe' 2
+          require_count '*-windows-*.zip' 2
+          require_count '*-debian-*.deb' 2
 
           mkdir -p staging
-          find release-assets -type f \( \
-            -name '*.dmg' -o -name '*.zip' -o -name '*.deb' -o \
-            -name '*.pkg.tar.zst' -o -name '*-installer.exe' \) \
-            -exec cp {} staging/ \;
-          test "$(find staging -maxdepth 1 -type f | wc -l | tr -d ' ')" -eq 12
+          find release-assets -type f \( -name '*.dmg' -o -name '*.zip' -o -name '*.deb' -o \
+            -name '*-installer.exe' \) -exec cp {} staging/ \;
+          test "$(find staging -maxdepth 1 -type f | wc -l | tr -d ' ')" -eq 10
+          (cd staging && sha256sum -- * > SHA256SUMS)
       - name: Create GitHub Release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65
         with:

@@ -1799,3 +1799,4 @@ Matriz completa de acertos, adicoes, erros e ordem de execucao:
   (teste Pester falha no script antigo e passa no novo), e o portable do novo
   pacote gravou `config\logs\ssa.log` e `config\ssa_cpp_preferences.json` em
   `%USERPROFILE%\.ssaconsultarapida`, que permanecem apos fechar.
+- [PENDING] [RELEASE-ARCH] O job Arch saiu do `release.yml` em 2026-10-26: a imagem `archlinux` nao tem variante arm64 ("no matching manifest for linux/arm64/v8") e o `install-qt-action` roda `apt-get` dentro do conteiner Arch. Para voltar: x86_64 com o Qt do pacman (o script exige a familia 6.11, conferir a versao do repositorio Arch) e aarch64 por imagem Arch Linux ARM ou VM. Os pacotes Arch seguem gerados por `scripts/package-arch.sh` no host Arch.
