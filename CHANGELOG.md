@@ -14,6 +14,8 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 
 ### Corrigido
 
+- Busca: `-termo` exclui, como `!termo` e como na GUI Python. Um `-` sozinho
+  continua buscando o proprio hifen.
 - macOS: o app passa a levar o proprio SQLite (o do Homebrew, dentro do `.app`) em
   vez de usar o do sistema, que falhava ao comecar uma escrita enquanto outra parte
   do app lia o banco, inclusive na validacao de um banco escolhido e no backup.

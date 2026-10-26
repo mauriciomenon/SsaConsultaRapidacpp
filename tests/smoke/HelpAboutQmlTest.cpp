@@ -252,6 +252,7 @@ namespace {
             const QString helpText = dialog->property("helpText").toString();
             QVERIFY(helpText.contains(QStringLiteral("Virgula")));
             QVERIFY(helpText.contains(QStringLiteral("!termo")));
+            QVERIFY(helpText.contains(QStringLiteral("-termo")));
             QVERIFY(helpText.contains(QStringLiteral("=termo")));
             QVERIFY(helpText.contains(QStringLiteral("Filtros por coluna")));
             QVERIFY(helpText.contains(QStringLiteral("Filtros avancados")));

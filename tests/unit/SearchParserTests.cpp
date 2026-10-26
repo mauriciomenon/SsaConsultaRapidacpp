@@ -21,14 +21,31 @@ TEST_CASE("search parser supports modes and negation") {
     REQUIRE(expression.requiredTerms[3].mode == ssa::domain::MatchMode::SafePattern);
 }
 
-TEST_CASE("search parser reserves negation for bang and preserves hyphen") {
+TEST_CASE("search parser negates with leading hyphen like the Python GUI") {
+    // Python _parse_search_chunk: a leading '!' or '-' negates when more text follows.
+    const auto expression = ssa::query::SearchParser{}.parse("-valor,-=STE,-,!-x");
+
+    REQUIRE(expression.requiredTerms.size() == 4);
+    REQUIRE(expression.requiredTerms[0].text == "valor");
+    REQUIRE(expression.requiredTerms[0].negated);
+    REQUIRE(expression.requiredTerms[0].mode == ssa::domain::MatchMode::Contains);
+    REQUIRE(expression.requiredTerms[1].text == "STE");
+    REQUIRE(expression.requiredTerms[1].negated);
+    REQUIRE(expression.requiredTerms[1].mode == ssa::domain::MatchMode::Equals);
+    REQUIRE(expression.requiredTerms[2].text == "-");
+    REQUIRE_FALSE(expression.requiredTerms[2].negated);
+    REQUIRE(expression.requiredTerms[3].text == "-x");
+    REQUIRE(expression.requiredTerms[3].negated);
+}
+
+TEST_CASE("search parser negates with bang in every mode") {
     const auto expression =
         ssa::query::SearchParser{}.parse("-valor,!ADM,!^adm,!=STE,!$fim,!~padrao");
 
     REQUIRE(expression.requiredTerms.size() == 6);
 
-    REQUIRE(expression.requiredTerms[0].text == "-valor");
-    REQUIRE_FALSE(expression.requiredTerms[0].negated);
+    REQUIRE(expression.requiredTerms[0].text == "valor");
+    REQUIRE(expression.requiredTerms[0].negated);
     REQUIRE(expression.requiredTerms[0].mode == ssa::domain::MatchMode::Contains);
 
     REQUIRE(expression.requiredTerms[1].text == "ADM");

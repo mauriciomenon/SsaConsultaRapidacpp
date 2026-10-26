@@ -43,7 +43,10 @@
   ciclo GUI dedicado.
 - [PENDING] Paginacao SAM acima de 200 e single-flight entre processos exigem
   contrato externo real.
-- [PENDING] Confirmar paridade intencional de hifen inicial e negacao Python.
+- [RESOLVED] Hifen inicial: decisao do usuario igualar ao Python
+  (`_parse_search_chunk`): `-termo` nega quando ha texto depois; `-` sozinho e
+  literal. `SearchParser` e ajuda atualizados; teste
+  `search parser negates with leading hyphen like the Python GUI`.
 - [FEATURE] [SAM-LEGACY-IMPORT] Importar o relatorio SAM "SSAs Legadas"
   (arquivos `SAAs_*.xlsx`, cerca de 2.000 SSAs de 1990 em diante). Hoje ele e
   ignorado como familia conhecida, igual ao Python. Precisa de: numero

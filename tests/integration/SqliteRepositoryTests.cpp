@@ -418,7 +418,7 @@ TEST_CASE_METHOD(SqliteRepositoryFixture, "sqlite repository executes every type
     };
     const std::array cases{
         OperatorCase{"filtro", 1},          OperatorCase{"!filtro", 3},
-        OperatorCase{"-filtro", 0},         OperatorCase{"^Tro", 1},
+        OperatorCase{"-filtro", 3},         OperatorCase{"^Tro", 1},
         OperatorCase{"!^Tro", 3},           OperatorCase{"$bomba", 1},
         OperatorCase{"!$bomba", 3},         OperatorCase{"=Trocar filtro", 1},
         OperatorCase{"!=filtro", 4},        OperatorCase{"~Tro.ar filtro", 1},

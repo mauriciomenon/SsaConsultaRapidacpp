@@ -9,7 +9,7 @@ import SsaConsultaRapida
 Window {
     id: root
 
-    readonly property string generalSearchHelp: "Busca geral\n\nVirgula combina termos com E. Cada termo pode corresponder a qualquer coluna configurada para busca.\n!termo exclui, ^termo exige inicio, termo$ ou $termo exige final e =termo exige igualdade.\n~expressao aplica um padrao seguro ao campo inteiro; o ponto representa um caractere."
+    readonly property string generalSearchHelp: "Busca geral\n\nVirgula combina termos com E. Cada termo pode corresponder a qualquer coluna configurada para busca.\n!termo ou -termo exclui, ^termo exige inicio, termo$ ou $termo exige final e =termo exige igualdade.\n~expressao aplica um padrao seguro ao campo inteiro; o ponto representa um caractere."
     readonly property string columnFilterHelp: "Filtros por coluna\n\nVirgula combina termos positivos com OU dentro da mesma coluna. Termos negativos removem correspondencias."
     readonly property string advancedFilterHelp: "Filtros avancados\n\nUse semana e ano, derivacao, somente reprogramadas e textos avancados. A consulta e executada no banco e mostra somente a pagina atual."
     readonly property string historyHelp: "Historico\n\nDesfazer restaura apenas as condicoes de filtro. Os resultados sao consultados novamente."

@@ -10,7 +10,9 @@ namespace ssa::query {
             domain::FilterTerm term;
             term.text = domain::trimWhitespace(chunk);
 
-            if (!term.text.empty() && term.text.front() == '!') {
+            // Python GUI parity: a leading '!' negates, and so does '-' when text follows.
+            if (!term.text.empty() &&
+                (term.text.front() == '!' || (term.text.front() == '-' && term.text.size() > 1))) {
                 term.negated = true;
                 term.text = domain::trimWhitespace(std::string_view(term.text).substr(1));
             }

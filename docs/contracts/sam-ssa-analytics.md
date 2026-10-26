@@ -917,6 +917,7 @@ The current parser behavior is:
 | --- | --- | --- |
 | value | contains | equals when created by value selector |
 | !value | not-contains | legacy raw value can remain not-contains |
+| -value | not-contains (Python GUI parity; a lone - stays literal) | not-contains |
 | !=value | exact not-equal | exact not-equal |
 | =value | exact equal | exact equal |
 
