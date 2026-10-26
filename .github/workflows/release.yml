@@ -237,6 +237,7 @@ jobs:
           $global:LASTEXITCODE = 0
           .\scripts\package-windows.ps1 -Arch ${{ matrix.artifact }} `
             -Version "${{ needs.resolve.outputs.version }}" `
+            -QtDir $env:QT_ROOT_DIR `
             -CmakeExtraArgs $cmakeArgs
           if ($LASTEXITCODE -ne 0) { throw "package-windows.ps1 failed: $LASTEXITCODE" }
           robocopy (Join-Path $repo "dist") (Join-Path $env:GITHUB_WORKSPACE "dist") /E /NFL /NDL /NJH /NJS /NP
