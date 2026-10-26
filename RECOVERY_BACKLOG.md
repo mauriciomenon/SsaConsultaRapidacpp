@@ -62,9 +62,10 @@
   UX de tabela somente no monitor onde o defeito for reproduzido.
 - [DEFERRED] FTS5, cache de `roleNames()` e binding int64 LIMIT/OFFSET somente
   se medicao justificar o refactor.
-- [P3] cppcheck reporta shadowFunction nos sinais
-  `advancedPopupMetricsReady` e `layoutMetricsReady`; preexistente, fora das
-  linhas do watchdog v0.9.15.
+- [RESOLVED] [P3] cppcheck lia `emit sinal(arg);` como declaracao de variavel
+  e reportava shadowFunction. O hook passa `-Demit=`: no codigo todo os achados
+  caem de 12 para 8 (4 falsos positivos a menos, nenhum novo). `--library=qt`
+  foi testado e rejeitado: 12 para 71, bloquearia `src/presentation`.
 
 Itens antigos que dizem que as planilhas reais nao estavam no workspace ou
 que a migracao para `pointSize` estava resolvida estao SUPERSEDED. O corpus de
