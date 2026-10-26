@@ -13,6 +13,9 @@
 - CI GitHub: `5a4fc21` verde nos tres jobs (Windows apos 1 rerun por lock de
   link no runner); `9d19274` verde nos tres jobs (run 40257762210, macOS com o
   SQLite do Homebrew); `07cff95` verde nos tres jobs (run 40269562116).
+- Windows 11 ARM64 nativo (VM w11, MSVC, Qt `msvc2022_arm64`, preset `dev`) em
+  `61bafab`: build incremental e ctest 729/729, com 2 testes pulados por
+  plataforma (flush do log rotativo e copia com mesmo tamanho e mtime).
 - Proxima acao no laptop Windows: `git pull` no clone de
   `$env:USERPROFILE\gitlab\ssa_consulta_rapida_cpp`, depois
   `./scripts/build-windows.ps1` e `ctest --preset dev --output-on-failure`.
