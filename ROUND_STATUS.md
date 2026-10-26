@@ -7,9 +7,12 @@
   encerradas; build MSVC), `a5e6904` (leituras `QueryOnly`, erro de banco no
   macOS), `5a4fc21` (botao de tema abre `ThemeDialog`), `43eb86b` (macOS linka e
   embute o SQLite do Homebrew), `68d99bd` (cppcheck `-Demit=`), `a23d7ee`
-  (`-termo` exclui, como no Python), `9d19274` (backlog).
+  (`-termo` exclui, como no Python), `9d19274` (backlog), `f717e5b`
+  (macdeployqt da Qt do build), `07cff95` (esperas de 1 s para 30 s nos testes
+  de importacao; o Windows CI de `f717e5b` falhou por isso).
 - CI GitHub: `5a4fc21` verde nos tres jobs (Windows apos 1 rerun por lock de
-  link no runner); `9d19274` verde nos tres jobs (run 40257762210, macOS com o SQLite do Homebrew).
+  link no runner); `9d19274` verde nos tres jobs (run 40257762210, macOS com o
+  SQLite do Homebrew); `07cff95` verde nos tres jobs (run 40269562116).
 - Proxima acao no laptop Windows: `git pull` no clone de
   `$env:USERPROFILE\gitlab\ssa_consulta_rapida_cpp`, depois
   `./scripts/build-windows.ps1` e `ctest --preset dev --output-on-failure`.
