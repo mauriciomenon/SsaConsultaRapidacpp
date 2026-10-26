@@ -364,8 +364,8 @@ for elf_file in "${elf_files[@]}"; do
 done
 runtime_depends="$(
   cd "${stage_root}"
-  dpkg-shlibdeps -O --package=ssa-consulta-rapida \
-    -xssa-consulta-rapida "${shlib_args[@]}" |
+  # No --package: dpkg 1.22.6 (Ubuntu 24.04 runners) lacks it and -O prints the same line.
+  dpkg-shlibdeps -O -xssa-consulta-rapida "${shlib_args[@]}" |
     sed -n 's/^shlibs:Depends=//p'
 )"
 if [[ -z "${runtime_depends}" ]]; then

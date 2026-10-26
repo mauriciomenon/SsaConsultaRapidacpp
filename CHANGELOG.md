@@ -4,6 +4,15 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 
 ## Nao publicado
 
+## 0.9.19 - 2026-10-26
+
+### Corrigido
+
+- Pacotes: o release no GitHub volta a gerar macOS (arm64 e Intel), Windows (amd64 e
+  arm64) e Debian (amd64 e arm64), com SHA256SUMS. O pacote Debian deixou de usar uma
+  opcao do `dpkg-shlibdeps` que o dpkg do Ubuntu 24.04 nao tem.
+- A tag 0.9.18 ficou sem pacotes publicados; use 0.9.19, que tem as mesmas mudancas.
+
 ## 0.9.18 - 2026-10-26
 
 ### Adicionado
