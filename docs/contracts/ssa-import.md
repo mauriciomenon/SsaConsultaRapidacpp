@@ -47,25 +47,30 @@
 
 ## Snapshot And Merge Policy
 
-Snapshot precedence is:
+Snapshot precedence follows the Python tuple `(data_planilha, file date)`:
 
-1. date and time encoded in the original source name;
-2. spreadsheet date;
-3. file creation time when the filesystem exposes it;
-4. source file modification time;
-5. registration date, only as the last fallback.
+1. spreadsheet date (`data_planilha`) decides first;
+2. when both rows carry a file date and the spreadsheet dates are equal, the
+   file date breaks the tie: date and time encoded in the original source name,
+   else source file modification time, else file creation time;
+3. same-minute filename exports are then ordered by the modification time;
+4. registration date is the last fallback for a row with no other date.
 
-The source filename is the primary evidence. Creation time is auxiliary metadata
-and is currently transient because the SQLite schema is unchanged; it is not
-used to manufacture a persisted update by itself. An unparseable comparison
-fails closed. An older snapshot changes nothing. An equal snapshot preserves
-`situacao` except that a terminal `STE` may finalize a transient state, and may
-complete only empty fields or allowed operational indicators. A newer snapshot
-updates only fields present and non-empty in the input. Missing fields never
-erase stored values. `STE` (final execution) and `SCA` (approved cancellation)
-are terminal; `SCS` remains transient. A terminal record does not change to a
-different terminal or transient state, although newer indicators and snapshot
-metadata may be recorded.
+Creation time comes last because a staged copy carries a fresh one; it is
+transient metadata and never manufactures a persisted update by itself. A row
+without any date never wins over a dated one and is not a conflict; a dated row,
+or a tie without dates, updates an undated one. An older snapshot changes
+nothing. An equal snapshot preserves `situacao` except that a terminal `STE` may
+finalize a transient state, and may complete only empty fields or allowed
+operational indicators. A newer snapshot updates only fields present and
+non-empty in the input. Missing fields never erase stored values. `STE` (final
+execution) and `SCA` (approved cancellation) are terminal; `SCS` remains
+transient. A terminal record is never overwritten by a newer snapshot, not even
+its indicators or metadata; an equal snapshot still runs the conflict check, so
+two sources describing the same instant must agree. Coded fields (`situacao`,
+`setor_emissor`, `setor_executor`, `localizacao_codigo`,
+`grau_prioridade_emissao`, `grau_prioridade_planejamento`, `execucao_simples`)
+compare without case: a case-only difference is neither a change nor a conflict.
 
 Source names are classified as `Executadas`, `DerivadasRelacionadas`, `Desvios`,
 or `Geral`. Executadas is the strongest evidence for final STE rows. Derivadas

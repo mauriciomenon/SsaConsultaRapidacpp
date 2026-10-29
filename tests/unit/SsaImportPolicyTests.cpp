@@ -87,19 +87,6 @@ TEST_CASE("SSA import normalization accepts Excel integer representations") {
     REQUIRE(ssa::domain::SsaImportPolicy::normalizeDeviationCount("1.5").empty());
 }
 
-TEST_CASE("SSA import merge fails closed when neither snapshot is valid") {
-    using Values = ssa::domain::SsaImportPolicy::Values;
-    const Values existing{
-        {"numero_ssa", "202600010"}, {"descricao_ssa", "Existing"}, {"situacao", "APV"}};
-    const Values incoming{
-        {"numero_ssa", "202600010"}, {"descricao_ssa", "Incoming"}, {"situacao", "AAD"}};
-
-    const auto result = ssa::domain::SsaImportPolicy::merge(existing, incoming);
-
-    REQUIRE(result.values == existing);
-    REQUIRE_FALSE(result.changed);
-}
-
 TEST_CASE("SSA import equal snapshot preserves state and completes empty fields") {
     using Values = ssa::domain::SsaImportPolicy::Values;
     const Values existing{{"numero_ssa", "202600011"},
@@ -198,8 +185,9 @@ TEST_CASE("SSA import compares Python source timestamps within the same day") {
     REQUIRE(result.values.at("descricao_ssa") == "Later");
 }
 
-TEST_CASE("SSA import uses filename timestamp before filesystem timestamps") {
+TEST_CASE("SSA import sheet date decides before the filename timestamp") {
     using Values = ssa::domain::SsaImportPolicy::Values;
+    // Python tuple (data_planilha, file date): a newer sheet date wins over a newer filename.
     const Values existing{{"numero_ssa", "202600019"},
                           {"descricao_ssa", "Newer filename"},
                           {"situacao", "APV"},
@@ -207,17 +195,23 @@ TEST_CASE("SSA import uses filename timestamp before filesystem timestamps") {
                           {"data_planilha", "2026-07-01"},
                           {"data_arquivo_origem", "2026-07-20 10:00:00"}};
     const Values incoming{{"numero_ssa", "202600019"},
-                          {"descricao_ssa", "Older filename"},
+                          {"descricao_ssa", "Newer sheet date"},
                           {"situacao", "APV"},
                           {"arquivo_origem", "SSA_13-07-2026_0100PM.xlsx"},
                           {"data_planilha", "2026-07-30"},
                           {"data_arquivo_origem", "2026-07-31 10:00:00"},
                           {"data_criacao_arquivo", "2026-07-29 10:00:00"}};
 
-    const auto result = ssa::domain::SsaImportPolicy::merge(existing, incoming);
+    const auto newerSheet = ssa::domain::SsaImportPolicy::merge(existing, incoming);
+    REQUIRE(newerSheet.changed);
+    REQUIRE(newerSheet.values.at("descricao_ssa") == "Newer sheet date");
 
-    REQUIRE_FALSE(result.changed);
-    REQUIRE(result.values == existing);
+    // Equal sheet date: the filename date breaks the tie.
+    Values sameSheet = incoming;
+    sameSheet["data_planilha"] = "2026-07-01";
+    const auto olderFilename = ssa::domain::SsaImportPolicy::merge(existing, sameSheet);
+    REQUIRE_FALSE(olderFilename.changed);
+    REQUIRE(olderFilename.values == existing);
 }
 
 TEST_CASE("SSA import source profile cannot override a conflicting equal snapshot field") {
@@ -614,6 +608,59 @@ TEST_CASE("SSA import date text is canonical for every representation of the sam
     REQUIRE(Policy::normalizeDateText("2026-07-13T13:20:00") == "2026-07-13 13:20:00");
     REQUIRE(Policy::normalizeDateText("13/07/2026 13:20:00") == "2026-07-13 13:20:00");
     REQUIRE(Policy::normalizeDateText("invalid").empty());
+}
+
+TEST_CASE("SSA import rows without a report date never conflict") {
+    using Values = ssa::domain::SsaImportPolicy::Values;
+    const Values dated{{"numero_ssa", "202600041"},
+                       {"descricao_ssa", "Dated"},
+                       {"situacao", "APV"},
+                       {"data_planilha", "2026-07-20"}};
+    const Values undated{
+        {"numero_ssa", "202600041"}, {"descricao_ssa", "Undated"}, {"situacao", "APV"}};
+
+    const auto keep = ssa::domain::SsaImportPolicy::merge(dated, undated);
+    REQUIRE_FALSE(keep.conflict);
+    REQUIRE_FALSE(keep.changed);
+    REQUIRE(keep.values == dated);
+
+    const auto update = ssa::domain::SsaImportPolicy::merge(undated, dated);
+    REQUIRE_FALSE(update.conflict);
+    REQUIRE(update.changed);
+    REQUIRE(update.values.at("descricao_ssa") == "Dated");
+
+    const Values undatedV2{
+        {"numero_ssa", "202600041"}, {"descricao_ssa", "Undated v2"}, {"situacao", "APV"}};
+    const auto tie = ssa::domain::SsaImportPolicy::merge(undated, undatedV2);
+    REQUIRE_FALSE(tie.conflict);
+    REQUIRE(tie.values.at("descricao_ssa") == "Undated v2");
+}
+
+TEST_CASE("SSA import ignores case in coded fields but not in free text") {
+    using Values = ssa::domain::SsaImportPolicy::Values;
+    const Values existing{{"numero_ssa", "202600042"},
+                          {"descricao_ssa", "Bomba"},
+                          {"situacao", "ADM - Aguardando"},
+                          {"setor_executor", "MEC"},
+                          {"data_planilha", "2026-07-20"}};
+    Values incoming = existing;
+    incoming["situacao"] = "adm - aguardando";
+    incoming["setor_executor"] = "mec";
+
+    const auto sameDay = ssa::domain::SsaImportPolicy::merge(existing, incoming);
+    REQUIRE_FALSE(sameDay.conflict);
+    REQUIRE_FALSE(sameDay.changed);
+
+    incoming["data_planilha"] = "2026-07-21";
+    const auto newer = ssa::domain::SsaImportPolicy::merge(existing, incoming);
+    REQUIRE(newer.metadataOnly); // only the sheet date moved; the coded values are the same
+    REQUIRE(newer.values.at("situacao") == "ADM - Aguardando");
+    REQUIRE(newer.values.at("setor_executor") == "MEC");
+
+    incoming["descricao_ssa"] = "bomba";
+    const auto freeText = ssa::domain::SsaImportPolicy::merge(existing, incoming);
+    REQUIRE(freeText.changed);
+    REQUIRE(freeText.values.at("descricao_ssa") == "bomba");
 }
 
 TEST_CASE("SSA import snapshot prefers the modification time over the creation time") {

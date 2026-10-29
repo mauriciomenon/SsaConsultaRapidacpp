@@ -4674,7 +4674,7 @@ TEST_CASE("spreadsheet workflow reports invalid row causes without cell content"
     REQUIRE(result.warning);
 }
 
-TEST_CASE("sqlite incremental import merges without deleting existing fields") {
+TEST_CASE("sqlite incremental import never overwrites a terminal row") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
 
@@ -4699,7 +4699,9 @@ TEST_CASE("sqlite incremental import merges without deleting existing fields") {
 
     const auto summary = writer.write(incoming, 1, 0, false);
 
-    REQUIRE(summary.rowsWritten == 1);
+    // Python parity: a terminal row (STE/SCA) is never overwritten, not even its indicators.
+    REQUIRE(summary.rowsWritten == 0);
+    REQUIRE(summary.rowsUnchanged == 1);
     sqlite3* db = nullptr;
     REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
     REQUIRE(scalarText(db, "SELECT descricao_ssa FROM ssa_table WHERE numero_ssa='202600131'") ==
@@ -4707,8 +4709,9 @@ TEST_CASE("sqlite incremental import merges without deleting existing fields") {
     REQUIRE(scalarText(db, "SELECT setor_executor FROM ssa_table WHERE numero_ssa='202600131'") ==
             "MEL1");
     REQUIRE(scalarText(db, "SELECT situacao FROM ssa_table WHERE numero_ssa='202600131'") == "STE");
-    REQUIRE(scalarText(db, "SELECT prazo_limite FROM ssa_table WHERE numero_ssa='202600131'") ==
-            "2026-05-30");
+    REQUIRE(scalarText(db, "SELECT COALESCE(prazo_limite, '') FROM ssa_table "
+                           "WHERE numero_ssa='202600131'")
+                .empty());
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 

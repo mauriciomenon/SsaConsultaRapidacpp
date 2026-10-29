@@ -26,6 +26,12 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 - Importacao: a precedencia entre snapshots usa a data de modificacao do arquivo antes
   da data de criacao, como no Python. A copia de staging tem data de criacao nova e
   fazia um relatorio antigo vencer um mais recente.
+- Importacao, paridade com o Python na mesclagem de linhas: a data da planilha decide
+  antes da data do nome do arquivo (o nome so desempata); uma linha sem data nao vence
+  uma linha datada e nao e mais rejeitada como conflito; uma SSA terminal (STE/SCA) nunca
+  e sobrescrita por um relatorio mais novo; diferenca so de maiusculas em campos
+  codificados (situacao, setores, localizacao, prioridades, execucao simples) nao conta
+  como alteracao nem como conflito.
 - Importacao: datas em `dd/mm/aaaa`, `aaaa-mm-dd` e `aaaa-mm-dd 00:00:00` sao a mesma
   data; antes a mesma data em formatos diferentes contava como atualizacao ou conflito.
   Valores antigos gravados com hora `00:00:00` ou com `T` sao regravados uma vez na

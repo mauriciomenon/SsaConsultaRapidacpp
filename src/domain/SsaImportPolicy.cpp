@@ -46,6 +46,15 @@ namespace ssa::domain {
                    key == "data_criacao_arquivo" || key == "data_arquivo_origem";
         }
 
+        // Coded fields compare without case (Python parity): "ADM" and "adm" are one value.
+        bool isCodedField(const std::string_view key) {
+            static constexpr std::array<std::string_view, 7> coded{
+                "situacao",           "setor_emissor",           "setor_executor",
+                "localizacao_codigo", "grau_prioridade_emissao", "grau_prioridade_planejamento",
+                "execucao_simples"};
+            return std::ranges::find(coded, key) != coded.end();
+        }
+
         bool isDateField(const std::string_view key) {
             static constexpr std::array<std::string_view, 8> dateFields{
                 "data_planilha",       "data_criacao_arquivo",
@@ -357,25 +366,40 @@ namespace ssa::domain {
             });
         }
 
-        std::optional<std::string> snapshotKey(const SsaImportPolicy::Values& values) {
+        // Python file date: the date in the filename, else the modification time, else the
+        // creation time (a staged copy carries a fresh one, so it comes last).
+        std::optional<std::string> fileDateKey(const SsaImportPolicy::Values& values) {
             if (const auto filename = valueFor(values, "arquivo_origem"); !filename.empty()) {
                 if (auto key = snapshotKeyForFilename(filename)) {
                     return key;
                 }
             }
-            // Python order: filename date, sheet date, modification time, then creation time.
-            // A staged copy carries its own creation time, so it must come last.
-            static constexpr std::array<std::string_view, 3> keys{
-                "data_planilha", "data_arquivo_origem", "data_criacao_arquivo"};
-            for (const auto key : keys) {
-                const auto value = valueFor(values, key);
-                if (!value.empty()) {
-                    if (auto snapshot = snapshotKeyForField(value)) {
-                        return snapshot;
-                    }
+            for (const auto key : {"data_arquivo_origem", "data_criacao_arquivo"}) {
+                if (auto snapshot = snapshotKeyForField(valueFor(values, key))) {
+                    return snapshot;
                 }
             }
             return snapshotKeyForField(valueFor(values, "data_cadastro"));
+        }
+
+        // Python precedence tuple (data_planilha, file date): the sheet date decides; the file
+        // date breaks a tie in merge() when both rows carry one.
+        std::optional<std::string> snapshotKey(const SsaImportPolicy::Values& values) {
+            if (auto sheet = snapshotKeyForField(valueFor(values, "data_planilha"))) {
+                return sheet;
+            }
+            return fileDateKey(values);
+        }
+
+        // Tie-break of an equal snapshot: file date, then the modification time (seconds),
+        // which orders same-minute filename exports.
+        std::optional<std::string> snapshotTieKey(const SsaImportPolicy::Values& values) {
+            const auto file = fileDateKey(values);
+            if (!file) {
+                return std::nullopt;
+            }
+            return *file + "|" +
+                   snapshotKeyForField(valueFor(values, "data_arquivo_origem")).value_or("");
         }
 
         bool isIndicatorField(const std::string_view key) {
@@ -616,22 +640,28 @@ namespace ssa::domain {
         auto existingSnapshot = snapshotKey(existing);
         auto incomingSnapshot = snapshotKey(incoming);
         if (existingSnapshot && incomingSnapshot && *existingSnapshot == *incomingSnapshot) {
-            // Filename timestamps have minute resolution; same-minute exports are ordered
-            // by file modification time (seconds) when both rows carry a distinct one.
-            const auto existingFileTime =
-                snapshotKeyForField(valueFor(existing, "data_arquivo_origem"));
-            const auto incomingFileTime =
-                snapshotKeyForField(valueFor(incoming, "data_arquivo_origem"));
-            if (existingFileTime && incomingFileTime && *existingFileTime != *incomingFileTime) {
-                *existingSnapshot += *existingFileTime;
-                *incomingSnapshot += *incomingFileTime;
+            const auto existingTie = snapshotTieKey(existing);
+            const auto incomingTie = snapshotTieKey(incoming);
+            if (existingTie && incomingTie && *existingTie != *incomingTie) {
+                *existingSnapshot += *existingTie;
+                *incomingSnapshot += *incomingTie;
             }
         }
-        if (!existingSnapshot || !incomingSnapshot) {
-            const bool differs = existing != incoming;
-            return {existing, false, differs, differs ? "snapshot_missing" : ""};
+        // Python parity: a row without a report date never wins over a dated one, and a
+        // dated row (or a tie without dates) updates an undated one. Never a conflict.
+        if (!incomingSnapshot && existingSnapshot) {
+            return {existing, false};
+        }
+        if (!existingSnapshot) {
+            existingSnapshot = "";
+            incomingSnapshot = incomingSnapshot.value_or("0");
         }
         const bool existingTerminal = isTerminalStatus(valueFor(existing, "situacao"));
+        // Python: a terminal row (STE/SCA) is never overwritten. An equal snapshot still runs
+        // the conflict check below: two sources describing the same instant must agree.
+        if (existingTerminal && *incomingSnapshot != *existingSnapshot) {
+            return {existing, false};
+        }
         const bool incomingTerminal = isTerminalStatus(valueFor(incoming, "situacao"));
         const bool terminalPromotion = incomingTerminal && !existingTerminal;
         const bool olderTerminalPromotion =
@@ -663,6 +693,11 @@ namespace ssa::domain {
             if (normalized.empty()) {
                 continue;
             }
+            const bool sameCodedValue =
+                isCodedField(key) && uppercase(normalized) == uppercase(current);
+            if (sameCodedValue && !terminalStatePromotion) {
+                continue; // case-only difference in a coded field: not a change, not a conflict
+            }
             if (equalSnapshot && !current.empty() && normalized != current &&
                 !terminalStatePromotion && withoutAccents(normalized) == withoutAccents(current)) {
                 // Same text, different accents: not a conflict; keep the accented spelling.
@@ -693,6 +728,9 @@ namespace ssa::domain {
                                       valueFor(existing, "data_arquivo_origem") ==
                                           valueFor(incoming, "data_arquivo_origem");
             return {existing, false, !sameWorkbook, std::move(conflictField), sameWorkbook};
+        }
+        if (existingTerminal) {
+            return {existing, false};
         }
         const bool changed = differsInPersistedValues(merged, existing);
         return {merged, changed, conflict,
