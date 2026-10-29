@@ -1,5 +1,21 @@
 # Recovery Backlog
 
+## Relatorio de importacao e paridade com o Python (branch `rev`) - 2026-10-28
+
+- [LOCAL-PENDING] `ssa_qml_workflow_progress_dialog_tests` leva de 11 s a 43 s
+  (limite 30 s) por causa de `dialog_keeps_at_most_the_newest_progress_lines`,
+  que anexa 4600 linhas ao TextArea; A/B entre HEAD e o relatorio novo mostra a
+  mesma faixa. Reduzir a carga do teste (menos linhas ou TextArea sem layout).
+- [LOCAL-PENDING] `ssa_qt_sam_refresh_tests` falha sob `ctest -j 8` e passa
+  isolado (27/27 em duas execucoes); provavel contencao de processo/porta.
+- [LOCAL-PENDING] Paridade da importacao com o Python, itens ainda abertos
+  depois de R3 e A6: R2/R1 (snapshot ausente vira conflito; sem desempate por
+  rank de situacao; linha terminal recebe metadados), C3 (caixa em campos
+  codificados), A3/A4 (contagem por linha, nao por SSA distinta), A5/B2/B4
+  (rescan completo apaga e reinsere; sempre republica o banco), R4 (mudanca so
+  de metadados faz UPDATE e marca a operacao como alterada), B3 (`nome__N` sem
+  comparar hash), R7 (`derivada_de` invalida rejeita o arquivo).
+
 ## Revisao profunda e revisores externos (branch `rev`) - 2026-10-23
 
 - [RESOLVED] `tests/scripts/NativeHostGuard.Tests.sh`, `qt-detection-tests.sh`

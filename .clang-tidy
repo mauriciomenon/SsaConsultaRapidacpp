@@ -1,8 +1,15 @@
+# Disabled on purpose:
+# - bugprone-easily-swappable-parameters: its only remedy is a strong-type wrapper, which
+#   AGENTS.md forbids; the call sites are checked by review.
+# - clang-analyzer-optin.core.EnumCastOutOfRange: false positive on the MSVC STL bitmask
+#   enums (xfilesystem_abi.h __std_fs_stats_flags), flagged on any <filesystem> user.
 Checks: >
   bugprone-*,
   -bugprone-exception-escape,
   -bugprone-throwing-static-initialization,
+  -bugprone-easily-swappable-parameters,
   clang-analyzer-*,
+  -clang-analyzer-optin.core.EnumCastOutOfRange,
   modernize-*,
   -modernize-raw-string-literal,
   -modernize-use-ranges,
