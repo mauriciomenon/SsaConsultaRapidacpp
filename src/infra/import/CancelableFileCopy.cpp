@@ -232,6 +232,18 @@ namespace ssa::infra::importing {
             }
             return {FileCopyStatus::Failed, "source changed during staged file copy"};
         }
+        // The report date is the source mtime (snapshot fallback and report metadata), as in
+        // the Python copy; a copy carrying its own creation time would reorder reports.
+        std::filesystem::last_write_time(qt::toFileSystemPath(output.fileName()),
+                                         sourceSnapshot->modified, error);
+        if (error) {
+            const auto diagnostic = "cannot preserve staged file mtime: " + error.message();
+            const auto cleanupDiagnostic = removeTemporary();
+            if (!cleanupDiagnostic.empty()) {
+                return {FileCopyStatus::CleanupFailed, diagnostic + "; " + cleanupDiagnostic};
+            }
+            return {FileCopyStatus::Failed, diagnostic};
+        }
         if (!output.rename(request.destination)) {
             const auto diagnostic =
                 "cannot publish staged file copy: " + output.errorString().toStdString();

@@ -4,6 +4,12 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 
 ## Nao publicado
 
+### Corrigido
+
+- Importacao: a copia da planilha para `docs_entrada` preserva a data de modificacao
+  original, como no Python. Antes o reescaneamento via a data da copia, no relatorio e
+  como data de reserva do snapshot.
+
 ## 0.9.20 - 2026-10-26
 
 ### Corrigido

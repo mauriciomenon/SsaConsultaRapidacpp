@@ -955,6 +955,22 @@ TEST_CASE("import file stager cancels a copy without publishing partial files") 
     REQUIRE(std::filesystem::is_empty(inputDirectory));
 }
 
+TEST_CASE("file copy keeps the source modification time") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto source = root / "source.xlsx";
+    const auto destination = root / "docs_entrada" / "staged.xlsx";
+    createSparseFile(source, 1);
+    const auto sourceTime = std::filesystem::last_write_time(source) - std::chrono::hours{48};
+    std::filesystem::last_write_time(source, sourceTime);
+
+    const auto result = ssa::infra::importing::copyFileAtomically({source, destination});
+
+    REQUIRE(result.status == ssa::infra::importing::FileCopyStatus::Succeeded);
+    REQUIRE(std::filesystem::last_write_time(destination) == sourceTime);
+}
+
 TEST_CASE("file copy reports a first chunk callback failure and removes the temporary output") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
