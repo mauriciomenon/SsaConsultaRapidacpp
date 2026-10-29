@@ -379,26 +379,28 @@ namespace ssa::domain {
                     return snapshot;
                 }
             }
-            return snapshotKeyForField(valueFor(values, "data_cadastro"));
+            return std::nullopt;
         }
 
         // Python precedence tuple (data_planilha, file date): the sheet date decides; the file
-        // date breaks a tie in merge() when both rows carry one.
+        // date breaks a tie in merge(). The registration date is the last fallback for a row
+        // with no other date and never breaks a tie.
         std::optional<std::string> snapshotKey(const SsaImportPolicy::Values& values) {
             if (auto sheet = snapshotKeyForField(valueFor(values, "data_planilha"))) {
                 return sheet;
             }
-            return fileDateKey(values);
+            if (auto file = fileDateKey(values)) {
+                return file;
+            }
+            return snapshotKeyForField(valueFor(values, "data_cadastro"));
         }
 
         // Tie-break of an equal snapshot: file date, then the modification time (seconds),
-        // which orders same-minute filename exports.
-        std::optional<std::string> snapshotTieKey(const SsaImportPolicy::Values& values) {
-            const auto file = fileDateKey(values);
-            if (!file) {
-                return std::nullopt;
-            }
-            return *file + "|" +
+        // which orders same-minute filename exports. The separator sorts before any digit,
+        // so a missing component sorts before a present one: the order is total and the
+        // result never depends on row order.
+        std::string snapshotTieKey(const SsaImportPolicy::Values& values) {
+            return " " + fileDateKey(values).value_or("") + " " +
                    snapshotKeyForField(valueFor(values, "data_arquivo_origem")).value_or("");
         }
 
@@ -640,12 +642,8 @@ namespace ssa::domain {
         auto existingSnapshot = snapshotKey(existing);
         auto incomingSnapshot = snapshotKey(incoming);
         if (existingSnapshot && incomingSnapshot && *existingSnapshot == *incomingSnapshot) {
-            const auto existingTie = snapshotTieKey(existing);
-            const auto incomingTie = snapshotTieKey(incoming);
-            if (existingTie && incomingTie && *existingTie != *incomingTie) {
-                *existingSnapshot += *existingTie;
-                *incomingSnapshot += *incomingTie;
-            }
+            *existingSnapshot += snapshotTieKey(existing);
+            *incomingSnapshot += snapshotTieKey(incoming);
         }
         // Python parity: a row without a report date never wins over a dated one, and a
         // dated row (or a tie without dates) updates an undated one. Never a conflict.

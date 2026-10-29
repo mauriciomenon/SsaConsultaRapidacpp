@@ -50,11 +50,14 @@
 Snapshot precedence follows the Python tuple `(data_planilha, file date)`:
 
 1. spreadsheet date (`data_planilha`) decides first;
-2. when both rows carry a file date and the spreadsheet dates are equal, the
-   file date breaks the tie: date and time encoded in the original source name,
-   else source file modification time, else file creation time;
-3. same-minute filename exports are then ordered by the modification time;
-4. registration date is the last fallback for a row with no other date.
+2. equal spreadsheet dates are broken by the file date: date and time encoded
+   in the original source name, else source file modification time, else file
+   creation time; a row without a file date sorts before any row with one, so
+   the order is total and never depends on the order rows are read;
+3. same-minute filename exports are then ordered by the modification time,
+   with the same rule for a missing one;
+4. registration date is the last fallback for a row with no other date; it
+   never breaks a tie between rows that carry a spreadsheet or file date.
 
 Creation time comes last because a staged copy carries a fresh one; it is
 transient metadata and never manufactures a persisted update by itself. A row

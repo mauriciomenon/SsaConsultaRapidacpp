@@ -355,26 +355,42 @@ TEST_CASE("SSA import older terminal promotion preserves newer metadata and indi
     REQUIRE(result.values.at("data_arquivo_origem") == "2026-07-15 10:00:00");
 }
 
-TEST_CASE("SSA import metadata does not make an equal snapshot richer") {
+TEST_CASE("SSA import tie-break is total: a missing file date sorts before a present one") {
     using Values = ssa::domain::SsaImportPolicy::Values;
-    const Values existing{{"numero_ssa", "202600026"},
-                          {"descricao_ssa", "Current description"},
-                          {"situacao", "APV"},
-                          {"data_planilha", "2026-07-15"}};
-    const Values incoming{{"numero_ssa", "202600026"},
-                          {"descricao_ssa", "Conflicting description"},
-                          {"situacao", "APV"},
-                          {"data_planilha", "2026-07-15"},
-                          {"arquivo_origem", "SSA_15-07-2026.xlsx"},
-                          {"data_criacao_arquivo", "2026-07-15 11:00:00"},
-                          {"data_arquivo_origem", "2026-07-15 12:00:00"}};
+    // Same sheet date; the row with a file date is the newer one, so it updates the other
+    // instead of conflicting with it. The order of the two rows never changes the result.
+    const Values undatedFile{{"numero_ssa", "202600026"},
+                             {"descricao_ssa", "Current description"},
+                             {"situacao", "APV"},
+                             {"data_planilha", "2026-07-15"}};
+    const Values datedFile{{"numero_ssa", "202600026"},
+                           {"descricao_ssa", "Dated description"},
+                           {"situacao", "APV"},
+                           {"data_planilha", "2026-07-15"},
+                           {"arquivo_origem", "SSA_15-07-2026.xlsx"},
+                           {"data_criacao_arquivo", "2026-07-15 11:00:00"},
+                           {"data_arquivo_origem", "2026-07-15 12:00:00"}};
 
-    const auto result = ssa::domain::SsaImportPolicy::merge(existing, incoming);
+    const auto forward = ssa::domain::SsaImportPolicy::merge(undatedFile, datedFile);
+    REQUIRE_FALSE(forward.conflict);
+    REQUIRE(forward.values.at("descricao_ssa") == "Dated description");
 
-    REQUIRE(result.values.at("descricao_ssa") == "Current description");
-    REQUIRE(result.conflict);
-    REQUIRE_FALSE(result.changed);
-    REQUIRE(result.values == existing);
+    const auto backward = ssa::domain::SsaImportPolicy::merge(datedFile, undatedFile);
+    REQUIRE_FALSE(backward.conflict);
+    REQUIRE_FALSE(backward.changed);
+    REQUIRE(backward.values.at("descricao_ssa") == "Dated description");
+
+    // The registration date never breaks a tie between rows that carry a sheet date.
+    Values laterRegistration = undatedFile;
+    laterRegistration["data_cadastro"] = "2026-01-02 00:00:00";
+    laterRegistration["descricao_ssa"] = "Registered later";
+    Values earlierRegistration = undatedFile;
+    earlierRegistration["data_cadastro"] = "2026-01-01 00:00:00";
+    const auto registration =
+        ssa::domain::SsaImportPolicy::merge(earlierRegistration, laterRegistration);
+    REQUIRE(registration.conflict);
+    REQUIRE_FALSE(registration.changed);
+    REQUIRE(registration.values == earlierRegistration);
 }
 
 TEST_CASE("SSA import breaks a same-minute filename tie with the file modification time") {
