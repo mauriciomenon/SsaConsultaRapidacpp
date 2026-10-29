@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Dialogs
 import QtQuick.Layouts
 import SsaConsultaRapida
 
@@ -20,6 +21,13 @@ Dialog {
     property bool terminalSucceeded: false
     property bool terminalCanceled: false
     property string terminalLabel: ""
+    property url logFileUrl
+
+    signal copyTextRequested(string text)
+
+    function reportText() {
+        return root.title + "\n" + root.statusText + "\n\nSaida da execucao\n" + outputArea.text + "\n\n" + errorLabel.text + "\n" + errorArea.text + "\n";
+    }
 
     parent: Overlay.overlay
     anchors.centerIn: parent
@@ -81,15 +89,80 @@ Dialog {
         radius: Theme.radius
     }
 
-    header: Label {
-        objectName: "workflowProgressTitle"
-        text: root.title
-        color: Theme.text
-        font.bold: true
-        font.pixelSize: Theme.fontSizeTitle
-        padding: 16
-        bottomPadding: 8
-        elide: Text.ElideRight
+    header: RowLayout {
+        spacing: Theme.gap
+
+        Label {
+            objectName: "workflowProgressTitle"
+            Layout.fillWidth: true
+            text: root.title
+            color: Theme.text
+            font.bold: true
+            font.pixelSize: Theme.fontSizeTitle
+            padding: 16
+            rightPadding: 0
+            bottomPadding: 8
+            elide: Text.ElideRight
+        }
+
+        ToolButton {
+            id: reportMenuButton
+            objectName: "workflowProgressReportButton"
+            Layout.rightMargin: 16
+            Layout.topMargin: 8
+            Layout.alignment: Qt.AlignTop
+            implicitWidth: 22
+            implicitHeight: 22
+            text: "..."
+            padding: 0
+            font.pixelSize: Theme.fontSizeMicro
+            ToolTip.visible: hovered
+            ToolTip.text: "Relatorio e log"
+            Accessible.name: "Relatorio e log"
+            onClicked: reportMenu.open()
+
+            background: Rectangle {
+                color: reportMenuButton.hovered ? Theme.accentSoft : Theme.panelRaised
+                border.color: Theme.border
+                radius: Theme.radius
+            }
+
+            Menu {
+                id: reportMenu
+                objectName: "workflowProgressReportMenu"
+                x: reportMenuButton.width - width
+                y: reportMenuButton.height
+
+                MenuItem {
+                    objectName: "workflowProgressCopyReport"
+                    text: "Copiar relatorio"
+                    enabled: outputArea.length > 0 || errorArea.length > 0
+                    onTriggered: root.copyTextRequested(root.reportText())
+                }
+                MenuItem {
+                    objectName: "workflowProgressSaveReport"
+                    text: "Salvar relatorio (.txt)..."
+                    enabled: outputArea.length > 0 || errorArea.length > 0
+                    onTriggered: reportSaveDialog.open()
+                }
+                MenuSeparator {}
+                MenuItem {
+                    objectName: "workflowProgressOpenLog"
+                    text: "Abrir arquivo de log"
+                    enabled: root.logFileUrl.toString().length > 0
+                    onTriggered: Qt.openUrlExternally(root.logFileUrl)
+                }
+            }
+        }
+    }
+
+    FileDialog {
+        id: reportSaveDialog
+        title: "Salvar relatorio"
+        fileMode: FileDialog.SaveFile
+        defaultSuffix: "txt"
+        nameFilters: ["Texto (*.txt)"]
+        onAccepted: root.statusText = root.workflowViewModel.saveReport(selectedFile, root.reportText()) ? "Relatorio salvo" : "Falha ao salvar o relatorio"
     }
 
     contentItem: ColumnLayout {
@@ -165,6 +238,7 @@ Dialog {
         }
 
         Label {
+            id: errorLabel
             objectName: "workflowProgressErrorLabel"
             text: root.terminal && !root.terminalSucceeded && !root.terminalCanceled ? "Erros" : "Avisos"
             color: Theme.text

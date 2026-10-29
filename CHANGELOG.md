@@ -4,11 +4,30 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 
 ## Nao publicado
 
+### Adicionado
+
+- Janela de progresso da importacao: botao "..." no canto do titulo com "Copiar
+  relatorio", "Salvar relatorio (.txt)" e "Abrir arquivo de log".
+
+### Alterado
+
+- Importacao e reescaneamento: o relatorio lista cada arquivo com status (`[OK]`,
+  `[SEM ALTERACAO]`, `[IGNORADO]`, `[REJEITADO]`, `[FALHOU]`, `[CANCELADO]`,
+  `[SEM LINHAS VALIDAS]`), data de modificacao, tamanho, duracao, linhas invalidas e
+  conflitos, e termina com um resumo de todos os contadores e a duracao total.
+- O log `logs/ssa.log` (pasta de configuracao) passa a ser um diario: inicio, cada
+  arquivo, resumo e fim de cada operacao ficam registrados em nivel Info. A lista de
+  log da Ajuda continua so com avisos e erros.
+- Repeticoes de SSA descartadas (primeira linha mantida) e o diagnostico de uma
+  operacao concluida sem avisos deixam de aparecer como aviso; ficam no diario.
+
 ### Corrigido
 
 - Importacao: a copia da planilha para `docs_entrada` preserva a data de modificacao
   original, como no Python. Antes o reescaneamento via a data da copia, no relatorio e
   como data de reserva do snapshot.
+- Lote revertido: os arquivos que nao causaram o erro aparecem como "lote revertido por
+  erro em outro arquivo", e nao mais como falha operacional.
 
 ## 0.9.20 - 2026-10-26
 

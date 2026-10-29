@@ -1,8 +1,10 @@
 #include "presentation/WorkflowCommandViewModel.h"
 
+#include "presentation/TextFileWriter.h"
 #include "qt/FilesystemPath.h"
 
 #include <QLocale>
+#include <QLoggingCategory>
 #include <QStringList>
 #include <QUrl>
 
@@ -13,6 +15,9 @@
 namespace ssa::presentation {
 
     namespace {
+
+        // Activity journal: Info lines reach logs/ssa.log only (see DesktopLogSink).
+        Q_LOGGING_CATEGORY(workflowJournal, "ssa.workflow")
 
         enum class FileSelectionError { None, EmptySelection, NonLocalFile };
 
@@ -134,7 +139,7 @@ namespace ssa::presentation {
                 return QStringLiteral("arquivo rejeitado pelo SAM");
             }
             if (reason == "batch_rejected") {
-                return QStringLiteral("lote revertido por rejeicao de outro arquivo");
+                return QStringLiteral("lote revertido por erro em outro arquivo");
             }
             if (reason == "operation_failed") {
                 return QStringLiteral("falha operacional");
@@ -148,7 +153,34 @@ namespace ssa::presentation {
             return QStringLiteral("motivo disponivel no log tecnico");
         }
 
-        QString appliedFileMessage(const ports::ImportFileResult& file) {
+        QString seconds(const qint64 milliseconds) {
+            static const QLocale locale{QLocale::Portuguese, QLocale::Brazil};
+            return locale.toString(static_cast<double>(milliseconds) / 1000.0, 'f', 1) +
+                   QStringLiteral(" s");
+        }
+
+        QString fileStatusTag(const ports::ImportFileStatus status) {
+            switch (status) {
+            case ports::ImportFileStatus::Applied:
+                return QStringLiteral("[OK]");
+            case ports::ImportFileStatus::NoChanges:
+                return QStringLiteral("[SEM ALTERACAO]");
+            case ports::ImportFileStatus::NoValidRows:
+                return QStringLiteral("[SEM LINHAS VALIDAS]");
+            case ports::ImportFileStatus::Ignored:
+                return QStringLiteral("[IGNORADO]");
+            case ports::ImportFileStatus::Rejected:
+                return QStringLiteral("[REJEITADO]");
+            case ports::ImportFileStatus::Failed:
+                return QStringLiteral("[FALHOU]");
+            case ports::ImportFileStatus::Canceled:
+                return QStringLiteral("[CANCELADO]");
+            }
+            return QStringLiteral("[?]");
+        }
+
+        // One report line per file, shared by the dialog and the activity journal.
+        QString fileReportLine(const ports::ImportFileResult& file) {
             QStringList facts;
             if (file.inserts > 0) {
                 facts.push_back(counted(file.inserts, QStringLiteral("SSA nova"),
@@ -166,11 +198,86 @@ namespace ssa::presentation {
                 facts.push_back(counted(file.unchangedRows, QStringLiteral("SSA sem alteracao"),
                                         QStringLiteral("SSAs sem alteracao")));
             }
-            if (facts.empty()) {
-                facts.push_back(QStringLiteral("sem alteracoes"));
+            if (file.invalidRows > 0) {
+                facts.push_back(counted(file.invalidRows, QStringLiteral("linha invalida"),
+                                        QStringLiteral("linhas invalidas")));
             }
-            return QString::fromStdString(file.source) + QStringLiteral(": ") +
-                   facts.join(QStringLiteral("; "));
+            if (file.conflicts > 0) {
+                facts.push_back(counted(file.conflicts, QStringLiteral("conflito"),
+                                        QStringLiteral("conflitos")));
+            }
+            auto line = fileStatusTag(file.status) + QStringLiteral(" ") +
+                        QString::fromStdString(file.source);
+            const bool applied = file.status == ports::ImportFileStatus::Applied ||
+                                 file.status == ports::ImportFileStatus::NoChanges;
+            if (applied) {
+                line += QStringLiteral(": ") + (facts.empty() ? QStringLiteral("sem alteracoes")
+                                                              : facts.join(QStringLiteral("; ")));
+            } else {
+                std::string reason = file.reason;
+                if (reason.empty() && file.status == ports::ImportFileStatus::NoValidRows) {
+                    reason = "no_valid_rows";
+                } else if (reason.empty() && file.status == ports::ImportFileStatus::Canceled) {
+                    reason = "canceled";
+                }
+                line += QStringLiteral(" - ") + fileReason(reason);
+                if (!facts.empty()) {
+                    line += QStringLiteral(" (") + facts.join(QStringLiteral("; ")) +
+                            QStringLiteral(")");
+                }
+            }
+            if (!file.sourceModified.empty()) {
+                line +=
+                    QStringLiteral(" | modificado ") + QString::fromStdString(file.sourceModified);
+            }
+            if (file.sizeBytes > 0) {
+                line += QStringLiteral(" | ") +
+                        QLocale{QLocale::Portuguese, QLocale::Brazil}.formattedDataSize(
+                            static_cast<qint64>(file.sizeBytes));
+            }
+            if (file.duration.count() > 0) {
+                line += QStringLiteral(" | ") + seconds(file.duration.count());
+            }
+            return line;
+        }
+
+        // Every counter of the run, including those the status bar message leaves out.
+        QString importSummaryLine(const ports::ImportSummary& summary, const qint64 elapsedMs) {
+            const QStringList facts{
+                counted(summary.discovered, QStringLiteral("arquivo examinado"),
+                        QStringLiteral("arquivos examinados")),
+                counted(summary.accepted, QStringLiteral("aplicado"), QStringLiteral("aplicados")),
+                counted(summary.ignored, QStringLiteral("ignorado"), QStringLiteral("ignorados")),
+                counted(summary.rejected, QStringLiteral("rejeitado"),
+                        QStringLiteral("rejeitados")),
+                counted(summary.failed, QStringLiteral("falhou"), QStringLiteral("falharam")),
+                counted(summary.pending, QStringLiteral("pendente"), QStringLiteral("pendentes")),
+                counted(summary.inserts, QStringLiteral("SSA nova"), QStringLiteral("SSAs novas")),
+                counted(summary.updates, QStringLiteral("SSA atualizada"),
+                        QStringLiteral("SSAs atualizadas")),
+                counted(summary.verified, QStringLiteral("SSA verificada"),
+                        QStringLiteral("SSAs verificadas")),
+                counted(summary.unchangedRows, QStringLiteral("SSA sem alteracao"),
+                        QStringLiteral("SSAs sem alteracao")),
+                counted(summary.validRows, QStringLiteral("linha valida"),
+                        QStringLiteral("linhas validas")),
+                counted(summary.invalidRows, QStringLiteral("linha invalida"),
+                        QStringLiteral("linhas invalidas")) +
+                    QStringLiteral(" (numero ") + localizedNumber(summary.invalidNumberRows) +
+                    QStringLiteral(", descricao ") +
+                    localizedNumber(summary.invalidDescriptionRows) + QStringLiteral(", data ") +
+                    localizedNumber(summary.invalidDateRows) + QStringLiteral(")"),
+                counted(summary.skippedRows, QStringLiteral("linha pulada"),
+                        QStringLiteral("linhas puladas")),
+                counted(summary.duplicateRows, QStringLiteral("linha duplicada"),
+                        QStringLiteral("linhas duplicadas")),
+                counted(summary.conflicts, QStringLiteral("conflito"), QStringLiteral("conflitos")),
+                counted(summary.consolidated, QStringLiteral("arquivo consolidado"),
+                        QStringLiteral("arquivos consolidados")),
+                counted(summary.preserved, QStringLiteral("arquivo preservado"),
+                        QStringLiteral("arquivos preservados")),
+                QStringLiteral("duracao ") + seconds(elapsedMs)};
+            return QStringLiteral("Resumo: ") + facts.join(QStringLiteral("; "));
         }
 
     } // namespace
@@ -186,6 +293,10 @@ namespace ssa::presentation {
                 &WorkflowCommandViewModel::handleProgress);
         connect(&samRefreshTimer_, &QTimer::timeout, this,
                 &WorkflowCommandViewModel::refreshSamNow);
+    }
+
+    bool WorkflowCommandViewModel::saveReport(const QUrl& file, const QString& text) const {
+        return file.isLocalFile() && writeTextFileAtomically(file.toLocalFile(), text);
     }
 
     QString WorkflowCommandViewModel::lastMessage() const {
@@ -554,6 +665,8 @@ namespace ssa::presentation {
         progressCurrentFile_ = 0;
         progressTotalFiles_ = 0;
         progressFileName_.clear();
+        progressSessionTimer_.start();
+        qCInfo(workflowJournal).noquote() << "Inicio:" << operationLabel;
         emit progressSessionStarted(operationLabel);
     }
 
@@ -602,22 +715,21 @@ namespace ssa::presentation {
         QStringList deferredErrorLines;
         if (result.importSummary.has_value()) {
             for (const auto& file : result.importSummary->files) {
-                if (file.status == ports::ImportFileStatus::Applied ||
-                    file.status == ports::ImportFileStatus::NoChanges) {
-                    emit progressOutputLine(appliedFileMessage(file));
-                    continue;
-                }
+                const auto line = fileReportLine(file);
+                qCInfo(workflowJournal).noquote() << line;
                 if (file.status == ports::ImportFileStatus::Ignored ||
                     file.status == ports::ImportFileStatus::Rejected ||
                     file.status == ports::ImportFileStatus::Failed) {
-                    const auto reason = fileReason(file.reason);
-                    const auto line =
-                        QString::fromStdString(file.source) +
-                        (reason.isEmpty() ? QString{} : QStringLiteral(" - ") + reason);
                     deferredErrorLines.push_back(line);
                     terminalDetailEmitted = true;
+                } else {
+                    emit progressOutputLine(line);
                 }
             }
+            const auto summaryLine =
+                importSummaryLine(*result.importSummary, progressSessionTimer_.elapsed());
+            qCInfo(workflowJournal).noquote() << summaryLine;
+            emit progressOutputLine(summaryLine);
         }
         for (const auto& line : deferredErrorLines) {
             emit progressErrorLine(line);
@@ -645,6 +757,8 @@ namespace ssa::presentation {
                 title += QStringLiteral(" com avisos");
             }
         }
+        qCInfo(workflowJournal).noquote()
+            << "Fim:" << title << "-" << message << "-" << seconds(progressSessionTimer_.elapsed());
         emit progressSessionFinished(result.ok(), canceled, title, message);
     }
 

@@ -4,6 +4,7 @@
 
 #include <QDebug>
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QObject>
@@ -13,6 +14,8 @@
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QRectF>
+#include <QSignalSpy>
+#include <QTemporaryDir>
 #include <QTest>
 #include <QUrl>
 #include <QtQml/qqml.h>
@@ -679,19 +682,38 @@ ApplicationWindow {
             QVERIFY(output->property("text").toString().contains(QStringLiteral("Arquivo 64/65")));
             QVERIFY(output->property("text").toString().contains(QStringLiteral("Arquivo 65/65")));
             QVERIFY(output->property("text").toString().contains(
-                QStringLiteral("novo.xlsx: 3 SSAs novas")));
+                QStringLiteral("[OK] novo.xlsx: 3 SSAs novas")));
             QVERIFY(output->property("text").toString().contains(
-                QStringLiteral("atualizado.xlsx: 2 SSAs atualizadas; 1 SSA verificada")));
+                QStringLiteral("[OK] atualizado.xlsx: 2 SSAs atualizadas; 1 SSA verificada")));
+            QVERIFY(output->property("text").toString().contains(QStringLiteral("Resumo: ")));
             QVERIFY(errors->property("text").toString().contains(
-                QStringLiteral("rejeitado.xlsx - colunas obrigatorias ausentes")));
+                QStringLiteral("[REJEITADO] rejeitado.xlsx - colunas obrigatorias ausentes")));
             QVERIFY(errors->property("text").toString().contains(
-                QStringLiteral("falhou.xlsx - falha operacional")));
+                QStringLiteral("[FALHOU] falhou.xlsx - falha operacional")));
             QVERIFY(errors->property("text").toString().contains(
                 QStringLiteral("arquivo 65 rejeitado")));
             QVERIFY(errors->property("text").toString().contains(
                 QStringLiteral("rejeitado.xlsx - colunas obrigatorias ausentes")));
             QVERIFY(!workflowModel.lastSucceeded());
             QVERIFY(dialog->property("terminal").toBool());
+            auto* copyReport =
+                window->findChild<QObject*>(QStringLiteral("workflowProgressCopyReport"));
+            QVERIFY(copyReport != nullptr);
+            QSignalSpy copied(dialog, SIGNAL(copyTextRequested(QString)));
+            QVERIFY(QMetaObject::invokeMethod(copyReport, "triggered"));
+            QCOMPARE(copied.count(), 1);
+            const auto report = copied.at(0).at(0).toString();
+            QVERIFY2(
+                report.contains(QStringLiteral("[OK] novo.xlsx: 3 SSAs novas")) &&
+                    report.contains(QStringLiteral("[FALHOU] falhou.xlsx - falha operacional")),
+                qPrintable(report));
+            QTemporaryDir reportDir;
+            QVERIFY(reportDir.isValid());
+            const auto reportPath = reportDir.filePath(QStringLiteral("relatorio.txt"));
+            QVERIFY(workflowModel.saveReport(QUrl::fromLocalFile(reportPath), report));
+            QFile saved(reportPath);
+            QVERIFY(saved.open(QIODevice::ReadOnly));
+            QCOMPARE(QString::fromUtf8(saved.readAll()), report);
             QVERIFY(QMetaObject::invokeMethod(closeButton, "clicked"));
             QTRY_VERIFY_WITH_TIMEOUT(!dialog->property("visible").toBool(), 1000);
 

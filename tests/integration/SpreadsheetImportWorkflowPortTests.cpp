@@ -3507,6 +3507,14 @@ TEST_CASE("external import counts metadata-only changes as verified rows") {
     REQUIRE(second.importSummary->unchangedRows == 0);
     REQUIRE(second.importSummary->files.size() == 1);
     REQUIRE(second.importSummary->files.front().status == ssa::ports::ImportFileStatus::Applied);
+    // Report metadata: local "yyyy-MM-dd HH:mm:ss" modification time and the workbook size.
+    const auto& reported = second.importSummary->files.front();
+    INFO(reported.sourceModified);
+    REQUIRE(reported.sourceModified.size() == 19);
+    REQUIRE(reported.sourceModified[4] == '-');
+    REQUIRE(reported.sourceModified[10] == ' ');
+    REQUIRE(reported.sourceModified[13] == ':');
+    REQUIRE(reported.sizeBytes > 0);
     REQUIRE(second.importSummary->files.front().updates == 0);
     REQUIRE(second.importSummary->files.front().verified == 3);
     REQUIRE(second.message.find(" updated=0 verified=3 ") != std::string::npos);

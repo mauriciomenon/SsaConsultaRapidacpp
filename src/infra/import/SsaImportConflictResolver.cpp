@@ -38,9 +38,15 @@ namespace ssa::infra::importing {
                     domain::SsaImportPolicy::merge(resolved.rows[existing->second], row);
                 ++resolved.duplicateRows;
                 if (merged.conflict || merged.repeatDiscarded) {
-                    qWarning().noquote()
-                        << QString::fromStdString(domain::SsaImportPolicy::describeConflict(
-                               resolved.rows[existing->second], row, merged));
+                    const auto description =
+                        QString::fromStdString(domain::SsaImportPolicy::describeConflict(
+                            resolved.rows[existing->second], row, merged));
+                    // A discarded repeat is expected data: journal only. A conflict is a warning.
+                    if (merged.conflict) {
+                        qWarning().noquote() << description;
+                    } else {
+                        qInfo().noquote() << description;
+                    }
                 }
                 if (merged.conflict) {
                     conflictingNumbers.insert(number);

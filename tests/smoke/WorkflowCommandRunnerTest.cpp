@@ -10,6 +10,7 @@
 #include <QThread>
 #include <QTimer>
 
+#include <algorithm>
 #include <chrono>
 #include <condition_variable>
 #include <memory>
@@ -302,6 +303,9 @@ namespace {
                 applied.source = file.filename().string();
                 applied.status = ssa::ports::ImportFileStatus::Applied;
                 applied.inserts = 3;
+                applied.sourceModified = "2026-08-06 09:06:12";
+                applied.sizeBytes = 2048;
+                applied.duration = std::chrono::milliseconds{1500};
                 summary.files.push_back(std::move(applied));
             }
             return {ssa::ports::WorkflowStatus::Succeeded,
@@ -347,6 +351,8 @@ namespace {
                 &model, &ssa::presentation::WorkflowCommandViewModel::progressSessionFinished);
             QSignalSpy errors(&model,
                               &ssa::presentation::WorkflowCommandViewModel::progressErrorLine);
+            QSignalSpy outputs(&model,
+                               &ssa::presentation::WorkflowCommandViewModel::progressOutputLine);
 
             model.importExternalFiles(
                 {QUrl::fromLocalFile("/tmp/Consulta SSA - 24-07-2026_0829AM.xlsx"),
@@ -367,10 +373,32 @@ namespace {
             for (const auto& call : errors) {
                 errorLines.push_back(call.at(0).toString());
             }
-            QVERIFY2(
-                errorLines.contains(QStringLiteral(
-                    "SSAs Derivadas e Relacionadas_24-07-2026_0829AM.xlsx - falha operacional")),
-                qPrintable(errorLines.join(QStringLiteral(" | "))));
+            QVERIFY2(errorLines.contains(QStringLiteral("[FALHOU] SSAs Derivadas e "
+                                                        "Relacionadas_24-07-2026_0829AM.xlsx - "
+                                                        "falha operacional")),
+                     qPrintable(errorLines.join(QStringLiteral(" | "))));
+
+            QStringList outputLines;
+            for (const auto& call : outputs) {
+                outputLines.push_back(call.at(0).toString());
+            }
+            const auto appliedLine = std::ranges::find_if(outputLines, [](const QString& line) {
+                return line.startsWith(
+                    QStringLiteral("[OK] Consulta SSA - 24-07-2026_0829AM.xlsx: 3 SSAs novas | "
+                                   "modificado 2026-08-06 09:06:12 | "));
+            });
+            QVERIFY2(appliedLine != outputLines.end(),
+                     qPrintable(outputLines.join(QStringLiteral(" || "))));
+            QVERIFY2(appliedLine->endsWith(QStringLiteral(" | 1,5 s")), qPrintable(*appliedLine));
+            QVERIFY2(std::ranges::any_of(outputLines,
+                                         [](const QString& line) {
+                                             return line.startsWith(QStringLiteral(
+                                                        "Resumo: 2 arquivos examinados; "
+                                                        "1 aplicado; ")) &&
+                                                    line.contains(QStringLiteral("1 falhou")) &&
+                                                    line.contains(QStringLiteral("; duracao "));
+                                         }),
+                     qPrintable(outputLines.join(QStringLiteral(" || "))));
         }
 
         void destructor_requests_stop_without_callback() {

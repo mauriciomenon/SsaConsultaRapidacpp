@@ -4,6 +4,7 @@
 #include "DesktopMainViewModelFactory.h"
 #include "diagnostics/StartupTrace.h"
 #include "platform/SupervisedProcess.h"
+#include "qt/FilesystemPath.h"
 
 #include <QCommandLineParser>
 #include <QCoreApplication>
@@ -105,9 +106,12 @@ namespace ssa::app::desktop {
     }
 
     void DesktopApplicationRuntime::loadMainWindow(QQmlApplicationEngine& engine) {
-        engine.setInitialProperties({{"mainViewModel", QVariant::fromValue(mainViewModel_.get())},
-                                     {"smokeController", QVariant::fromValue(&smokeController_)},
-                                     {"buildCompiler", buildCompilerDescription()}});
+        engine.setInitialProperties(
+            {{"mainViewModel", QVariant::fromValue(mainViewModel_.get())},
+             {"smokeController", QVariant::fromValue(&smokeController_)},
+             {"buildCompiler", buildCompilerDescription()},
+             {"logFileUrl", QUrl::fromLocalFile(qt::toQString(
+                                DesktopLogSink::logFilePath(paths_.configDirectoryPath())))}});
         QObject::connect(
             &engine, &QQmlApplicationEngine::objectCreated, &engine,
             [](QObject* object, const QUrl&) {

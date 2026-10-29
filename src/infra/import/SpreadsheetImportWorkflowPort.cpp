@@ -14,6 +14,7 @@
 #include <QCryptographicHash>
 #include <QDate>
 #include <QDebug>
+#include <QFileInfo>
 #include <QLockFile>
 #include <QTemporaryDir>
 
@@ -117,8 +118,7 @@ namespace ssa::infra::importing {
                 if (firstBytes == 0) {
                     break;
                 }
-                const auto comparedBytes = static_cast<std::size_t>(firstBytes);
-                if (!std::equal(firstBuffer.begin(), firstBuffer.begin() + comparedBytes,
+                if (!std::equal(firstBuffer.begin(), firstBuffer.begin() + firstBytes,
                                 secondBuffer.begin())) {
                     return FileContentsComparison::Different;
                 }
@@ -430,6 +430,11 @@ namespace ssa::infra::importing {
             std::vector<bool> staged(summary.files.size(), false);
             for (const auto& file : files.files) {
                 staged[file.summaryIndex] = true;
+                auto& result = summary.files[file.summaryIndex];
+                result.sourceModified = file.sourceModifiedTimestamp;
+                // Report-only metadata: a missing file reports size 0.
+                result.sizeBytes =
+                    static_cast<std::uintmax_t>(QFileInfo{qt::toQString(file.workbookPath)}.size());
             }
             for (std::size_t index = 0; index < staged.size(); ++index) {
                 if (staged[index]) {
@@ -457,6 +462,12 @@ namespace ssa::infra::importing {
             summary.updates = 0;
             summary.verified = 0;
             summary.unchangedRows = 0;
+            // A file that carries its own reason caused the rollback; the others were reverted
+            // with it. Without such a file the whole operation failed.
+            const bool batchHasCause =
+                std::ranges::any_of(summary.files, [](const ports::ImportFileResult& file) {
+                    return !file.reason.empty() && file.status != ports::ImportFileStatus::Ignored;
+                });
             for (auto& file : summary.files) {
                 if (file.status != ports::ImportFileStatus::Ignored &&
                     file.status != ports::ImportFileStatus::Failed) {
@@ -481,7 +492,7 @@ namespace ssa::infra::importing {
                         file.reason = "batch_rejected";
                         break;
                     case ports::ImportFileStatus::Failed:
-                        file.reason = "operation_failed";
+                        file.reason = batchHasCause ? "batch_rejected" : "operation_failed";
                         break;
                     case ports::ImportFileStatus::Canceled:
                         file.reason = "canceled";
@@ -668,12 +679,12 @@ namespace ssa::infra::importing {
         std::filesystem::path inputFolder, std::filesystem::path databasePath,
         std::vector<domain::ColumnDef> columns, const bool consolidateSources,
         SynchronizationSignals synchronization)
-        : inputFolder_(inputFolder), databasePath_(databasePath), columns_(columns),
-          consolidateSources_(consolidateSources),
+        : inputFolder_(std::move(inputFolder)), databasePath_(std::move(databasePath)),
+          columns_(columns), consolidateSources_(consolidateSources),
           stager_(inputFolder_, synchronization.afterFirstChunkWritten,
-                  stagingOwnerFor(databasePath)),
+                  stagingOwnerFor(databasePath_)),
           consolidator_(inputFolder_), synchronization_(std::move(synchronization)),
-          writer_(sqlite::SqliteSsaImportWriterAccess{}, databasePath, std::move(columns),
+          writer_(sqlite::SqliteSsaImportWriterAccess{}, databasePath_, std::move(columns),
                   "ssa_table", {.busyEntered = synchronization_.writerBusyEntered}) {
         if (const auto resolved = resolvedImportFolder(inputFolder_, importLockPathDiagnostic_)) {
             inputFolder_ = *resolved;
@@ -1305,8 +1316,20 @@ namespace ssa::infra::importing {
         constexpr const char* operation = "import_xlsx_to_sqlite";
         const bool atomicBatch = replaceAll || samArtifacts != nullptr;
         auto importSummary = makeImportSummary(files);
-        const auto discardBeforeCommit = [this, &files,
-                                          &importSummary](ports::WorkflowResult result) {
+        // The file being imported: its duration is closed when the next file starts, when the
+        // loop ends, or when an early result is built (which copies the summary).
+        ports::ImportFileResult* timedFile = nullptr;
+        auto timedFileStarted = std::chrono::steady_clock::now();
+        const auto closeFileDuration = [&timedFile, &timedFileStarted] {
+            if (timedFile != nullptr) {
+                timedFile->duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::steady_clock::now() - timedFileStarted);
+                timedFile = nullptr;
+            }
+        };
+        const auto discardBeforeCommit = [this, &files, &importSummary,
+                                          &closeFileDuration](ports::WorkflowResult result) {
+            closeFileDuration();
             if (!files.diagnostic.empty()) {
                 if (!result.diagnostic.empty()) {
                     result.diagnostic += "; ";
@@ -1464,6 +1487,9 @@ namespace ssa::infra::importing {
         for (std::size_t fileIndex = 0; fileIndex < files.files.size(); ++fileIndex) {
             const auto& file = files.files[fileIndex];
             auto& fileResult = importSummary.files[file.summaryIndex];
+            closeFileDuration();
+            timedFile = &fileResult;
+            timedFileStarted = std::chrono::steady_clock::now();
             if (progress != nullptr) {
                 const auto currentFile = progress->fileOffset + fileIndex + 1;
                 const auto percentage =
@@ -1715,6 +1741,7 @@ namespace ssa::infra::importing {
                                     ? ports::ImportFileStatus::Applied
                                     : ports::ImportFileStatus::NoChanges;
         }
+        closeFileDuration();
         if (pendingOutcomes.empty() ||
             std::ranges::none_of(pendingOutcomes, [](const PendingImportOutcome& outcome) {
                 return outcome.hasValidRows;

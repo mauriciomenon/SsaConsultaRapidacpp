@@ -33,7 +33,7 @@ namespace ssa::app::desktop {
         };
 
         explicit HandlerState(const std::filesystem::path& configDirectory)
-            : writer_(configDirectory / "logs" / "ssa.log", 1024ULL * 1024ULL, 3) {}
+            : writer_(DesktopLogSink::logFilePath(configDirectory), 1024ULL * 1024ULL, 3) {}
 
         void reserveHandler() {
             const std::scoped_lock lock(handlerMutex_);
@@ -69,7 +69,10 @@ namespace ssa::app::desktop {
                          QStringLiteral("Failed to write rotating log"),
                          QString::fromUtf8(exception.what())});
             }
-            publish({severity, QStringLiteral("Qt"), message, detail});
+            // Info is the file-only activity journal; the in-app list keeps warnings and errors.
+            if (type != QtInfoMsg) {
+                publish({severity, QStringLiteral("Qt"), message, detail});
+            }
         }
 
         // Startup logs before the view model exists; they reach its log list once attached, in

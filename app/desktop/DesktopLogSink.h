@@ -17,6 +17,12 @@ namespace ssa::app::desktop {
         explicit DesktopLogSink(const std::filesystem::path& configDirectory);
         ~DesktopLogSink();
 
+        // The activity journal file written under the configuration directory.
+        [[nodiscard]] static std::filesystem::path
+        logFilePath(const std::filesystem::path& configDirectory) {
+            return configDirectory / "logs" / "ssa.log";
+        }
+
         void attachModel(ssa::presentation::RecentLogModel& model);
         // Must run before the attached model is destroyed.
         void detachModel();

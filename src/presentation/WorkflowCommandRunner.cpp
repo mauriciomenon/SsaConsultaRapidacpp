@@ -272,8 +272,13 @@ namespace ssa::presentation {
             emit this->finished({ports::WorkflowStatus::Failed, "workflow produced no result"});
         } else {
             if (!result->diagnostic.empty()) {
-                qWarning().noquote()
-                    << "Workflow diagnostic:" << QString::fromStdString(result->diagnostic);
+                // A clean success only goes to the activity journal (Info).
+                const auto diagnostic = QString::fromStdString(result->diagnostic);
+                if (result->ok() && !result->warning) {
+                    qInfo().noquote() << "Workflow diagnostic:" << diagnostic;
+                } else {
+                    qWarning().noquote() << "Workflow diagnostic:" << diagnostic;
+                }
             }
             emit this->finished(std::move(*result));
         }

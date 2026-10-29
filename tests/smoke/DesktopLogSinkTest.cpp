@@ -123,6 +123,27 @@ namespace {
             QTRY_COMPARE_WITH_TIMEOUT(model.rowCount(), 2, 1000);
         }
 
+        void infoMessagesReachOnlyTheFile() {
+            QTemporaryDir temporaryDirectory;
+            QVERIFY(temporaryDirectory.isValid());
+            ssa::app::desktop::DesktopLogSink sink(temporaryDirectory.path().toStdString());
+            ssa::presentation::RecentLogModel model;
+            sink.attachModel(model);
+
+            qInfo().noquote() << "desktop log sink journal info";
+            qWarning().noquote() << "desktop log sink journal warning";
+            QTRY_COMPARE_WITH_TIMEOUT(model.rowCount(), 1, 1000);
+            QCoreApplication::processEvents();
+            QCOMPARE(model.rowCount(), 1);
+
+            QFile logFile(temporaryDirectory.filePath(QStringLiteral("logs/ssa.log")));
+            QVERIFY(logFile.open(QIODevice::ReadOnly));
+            const auto contents = logFile.readAll();
+            QVERIFY2(contents.contains("[Info] desktop log sink journal info"),
+                     contents.constData());
+            QVERIFY(contents.contains("[Warning] desktop log sink journal warning"));
+        }
+
         void detachedModelIsSafeToDestroyWhileWorkersLog() {
             QTemporaryDir temporaryDirectory;
             QVERIFY(temporaryDirectory.isValid());

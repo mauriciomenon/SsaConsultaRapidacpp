@@ -10,6 +10,7 @@ ApplicationWindow {
     required property var mainViewModel
     property var smokeController: null
     property string buildCompiler: "Compilador desconhecido"
+    property url logFileUrl
     property var vm: mainViewModel
     property bool shutdownCloseAccepted: false
     readonly property int bottomPaneHeight: Theme.bottomPaneHeight(height)
@@ -598,6 +599,8 @@ ApplicationWindow {
         id: workflowProgressDialog
         objectName: "workflowProgressDialog"
         workflowViewModel: root.vm.actions.workflows
+        logFileUrl: root.logFileUrl
+        onCopyTextRequested: text => root.vm.copyTextToClipboard(text)
     }
 
     function openDetailsWindow() {

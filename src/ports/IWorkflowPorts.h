@@ -3,6 +3,7 @@
 #include "domain/SsaTypes.h"
 
 #include <chrono>
+#include <cstdint>
 #include <filesystem>
 #include <functional>
 #include <optional>
@@ -47,6 +48,10 @@ namespace ssa::ports {
         bool consolidated = false;
         bool noSurvivor = false;
         std::string reason;
+        // Local "yyyy-MM-dd HH:mm:ss" of the source file; empty when the file was not staged.
+        std::string sourceModified;
+        std::uintmax_t sizeBytes = 0;
+        std::chrono::milliseconds duration{0};
     };
 
     struct ImportSummary {

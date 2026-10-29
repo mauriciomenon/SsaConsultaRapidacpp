@@ -4,9 +4,11 @@
 #include "ports/IUserPreferencesStore.h"
 #include "presentation/WorkflowCommandRunner.h"
 
+#include <QElapsedTimer>
 #include <QObject>
 #include <QString>
 #include <QTimer>
+#include <QUrl>
 #include <QVariantList>
 
 #include <memory>
@@ -57,6 +59,8 @@ namespace ssa::presentation {
         [[nodiscard]] bool canceling() const;
         [[nodiscard]] bool canCancel() const;
         Q_INVOKABLE [[nodiscard]] bool legacyDerivadasConverterAvailable() const;
+        // Saves the progress dialog report as UTF-8 text; false when nothing was written.
+        Q_INVOKABLE [[nodiscard]] bool saveReport(const QUrl& file, const QString& text) const;
         [[nodiscard]] QString runningMessage() const;
         [[nodiscard]] QString successMessage() const;
         [[nodiscard]] QString failureMessage() const;
@@ -152,6 +156,7 @@ namespace ssa::presentation {
         bool running_{false};
         bool canceling_{false};
         bool progressSessionActive_{false};
+        QElapsedTimer progressSessionTimer_;
         int progressPercentage_{0};
         std::size_t progressCurrentFile_{0};
         std::size_t progressTotalFiles_{0};

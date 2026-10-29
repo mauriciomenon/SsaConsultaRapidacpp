@@ -2,12 +2,12 @@
 
 #include "application/ActivityAnalyticsChartModelBuilder.h"
 #include "domain/SamOrganizationalUnits.h"
+#include "presentation/TextFileWriter.h"
 
 #include <QDate>
 #include <QDebug>
 #include <QMetaObject>
 #include <QMetaType>
-#include <QSaveFile>
 #include <QStringList>
 #include <QThreadPool>
 #include <QtConcurrentRun>
@@ -839,20 +839,7 @@ namespace ssa::presentation {
 
     bool ActivityAnalyticsViewModel::writeExportFile(const QString& path,
                                                      const QString& content) const {
-        if (path.trimmed().isEmpty()) {
-            return false;
-        }
-        QSaveFile file(path);
-        file.setDirectWriteFallback(false);
-        if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-            return false;
-        }
-        const QByteArray payload = content.toUtf8();
-        if (file.write(payload) != payload.size()) {
-            file.cancelWriting();
-            return false;
-        }
-        return file.commit();
+        return writeTextFileAtomically(path, content);
     }
 
     void ActivityAnalyticsViewModel::reportExportFailure() {
