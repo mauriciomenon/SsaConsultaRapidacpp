@@ -32,6 +32,11 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
   e sobrescrita por um relatorio mais novo; diferenca so de maiusculas em campos
   codificados (situacao, setores, localizacao, prioridades, execucao simples) nao conta
   como alteracao nem como conflito.
+- Importacao: as contagens de SSAs novas, atualizadas, verificadas e sem alteracao sao
+  por SSA distinta na rodada, contra o banco anterior a ela. Uma SSA nova que reaparece
+  em outro bloco ou arquivo continua contando uma vez como nova; uma repeticao so sobe
+  a categoria (sem alteracao para atualizada), nunca soma de novo. As linhas gravadas
+  continuam sendo o numero bruto de escritas.
 - Importacao: datas em `dd/mm/aaaa`, `aaaa-mm-dd` e `aaaa-mm-dd 00:00:00` sao a mesma
   data; antes a mesma data em formatos diferentes contava como atualizacao ou conflito.
   Valores antigos gravados com hora `00:00:00` ou com `T` sao regravados uma vez na

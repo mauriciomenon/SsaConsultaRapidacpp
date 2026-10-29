@@ -27,7 +27,7 @@
 #include <stdexcept>
 #include <string_view>
 #include <system_error>
-#include <unordered_set>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -914,7 +914,9 @@ namespace ssa::infra::sqlite {
                     throw ports::OperationError("Falha ao validar identificador SSA importado",
                                                 "invalid SSA number in import batch");
                 }
-                if (!seenImportedNumbers.insert(number).second) {
+                const auto [seen, firstTouch] =
+                    seenImportedNumbers.try_emplace(number, RowCategory::Unchanged);
+                if (!firstTouch) {
                     ++summary.duplicateRows;
                     ++result.duplicateRows;
                 } else if (fileScope) {
@@ -973,8 +975,7 @@ namespace ssa::infra::sqlite {
                 }
                 if (!existing.empty() && !merged.changed && !normalizedExistingDates &&
                     !normalizedExistingDeviation) {
-                    ++summary.rowsUnchanged;
-                    ++result.rowsUnchanged;
+                    countRow(seen->second, firstTouch, RowCategory::Unchanged, result);
                     continue;
                 }
                 auto& statement = existing.empty() ? *insert : *update;
@@ -989,17 +990,12 @@ namespace ssa::infra::sqlite {
                 statement.executeAndReset();
                 ++summary.rowsWritten;
                 ++result.rowsWritten;
-                if (existing.empty()) {
-                    ++summary.rowsInserted;
-                    ++result.rowsInserted;
-                } else if (merged.metadataOnly && !normalizedExistingDates &&
-                           !normalizedExistingDeviation) {
-                    ++summary.rowsVerified;
-                    ++result.rowsVerified;
-                } else {
-                    ++summary.rowsUpdated;
-                    ++result.rowsUpdated;
-                }
+                const auto category = existing.empty() ? RowCategory::Inserted
+                                      : merged.metadataOnly && !normalizedExistingDates &&
+                                              !normalizedExistingDeviation
+                                          ? RowCategory::Verified
+                                          : RowCategory::Updated;
+                countRow(seen->second, firstTouch, category, result);
             }
             return result;
         }
@@ -1100,7 +1096,40 @@ namespace ssa::infra::sqlite {
         std::unique_ptr<SqliteStatement> insert;
         std::unique_ptr<SqliteStatement> selectExisting;
         std::unique_ptr<SqliteStatement> update;
-        std::unordered_set<std::string> seenImportedNumbers;
+        // Python parity: one final category per distinct SSA per run, against the database
+        // before the run. A repeated SSA only upgrades its category; writes stay raw.
+        enum class RowCategory : std::uint8_t { Unchanged, Verified, Updated, Inserted };
+
+        template <typename Summary>
+        static std::size_t& categoryCounter(Summary& summary, const RowCategory category) {
+            switch (category) {
+            case RowCategory::Unchanged:
+                return summary.rowsUnchanged;
+            case RowCategory::Verified:
+                return summary.rowsVerified;
+            case RowCategory::Updated:
+                return summary.rowsUpdated;
+            case RowCategory::Inserted:
+                return summary.rowsInserted;
+            }
+            return summary.rowsUnchanged;
+        }
+
+        void countRow(RowCategory& sessionCategory, const bool firstTouch,
+                      const RowCategory category, importing::SsaImportBatchWriteSummary& result) {
+            if (firstTouch) {
+                sessionCategory = category;
+            } else if (category <= sessionCategory) {
+                return; // a repeat that adds nothing: already counted as a duplicate row
+            } else {
+                --categoryCounter(summary, sessionCategory);
+                sessionCategory = category;
+            }
+            ++categoryCounter(summary, category);
+            ++categoryCounter(result, category);
+        }
+
+        std::unordered_map<std::string, RowCategory> seenImportedNumbers;
         importing::SsaImportWriteSummary summary;
         std::optional<FileScopeState> fileScope;
         State state = State::Active;

@@ -4674,6 +4674,58 @@ TEST_CASE("spreadsheet workflow reports invalid row causes without cell content"
     REQUIRE(result.warning);
 }
 
+TEST_CASE("sqlite import counts one category per distinct SSA per session") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+    const auto dbPath = std::filesystem::path{tempDir.path().toStdString()} / "ssas.db";
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(sqliteWriterAccess(), dbPath,
+                                                           importColumns());
+    const auto rowAt = [](const std::string& day, const std::string& description) {
+        return ssa::infra::importing::SsaImportRow{{"numero_ssa", "202600141"},
+                                                   {"descricao_ssa", description},
+                                                   {"situacao", "APV"},
+                                                   {"data_planilha", day}};
+    };
+    ssa::infra::importing::ResolvedSsaImportRows v1;
+    v1.rows.push_back(rowAt("2026-05-01", "v1"));
+    ssa::infra::importing::ResolvedSsaImportRows v2;
+    v2.rows.push_back(rowAt("2026-05-02", "v2"));
+
+    // Empty database: a new SSA followed by its newer version is one insert, no update.
+    {
+        auto session = writer.startSession(false);
+        REQUIRE(session.write(v1, 1, 0).rowsInserted == 1);
+        const auto second = session.write(v2, 1, 0);
+        REQUIRE(second.rowsWritten == 1);
+        REQUIRE(second.rowsUpdated == 0);
+        REQUIRE(second.duplicateRows == 1);
+        const auto total = session.finish();
+        REQUIRE(total.rowsInserted == 1);
+        REQUIRE(total.rowsUpdated == 0);
+        REQUIRE(total.rowsUnchanged == 0);
+    }
+    // Database at v2: replaying v1 then v2 writes nothing and counts one unchanged SSA.
+    {
+        auto session = writer.startSession(false);
+        REQUIRE(session.write(v1, 1, 0).rowsWritten == 0);
+        REQUIRE(session.write(v2, 1, 0).rowsWritten == 0);
+        const auto total = session.finish();
+        REQUIRE(total.rowsUnchanged == 1);
+        REQUIRE(total.rowsUpdated == 0);
+    }
+    // Database at v2: an unchanged repeat followed by a newer version upgrades to updated.
+    {
+        ssa::infra::importing::ResolvedSsaImportRows v3;
+        v3.rows.push_back(rowAt("2026-05-03", "v3"));
+        auto session = writer.startSession(false);
+        REQUIRE(session.write(v2, 1, 0).rowsUnchanged == 1);
+        REQUIRE(session.write(v3, 1, 0).rowsUpdated == 1);
+        const auto total = session.finish();
+        REQUIRE(total.rowsUpdated == 1);
+        REQUIRE(total.rowsUnchanged == 0);
+    }
+}
+
 TEST_CASE("sqlite incremental import never overwrites a terminal row") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
