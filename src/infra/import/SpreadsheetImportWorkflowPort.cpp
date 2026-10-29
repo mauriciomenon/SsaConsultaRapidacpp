@@ -452,7 +452,10 @@ namespace ssa::infra::importing {
             return summary;
         }
 
-        void markUncommitted(ports::ImportSummary& summary, const ports::ImportFileStatus status) {
+        // abortedByFile: a file of this batch caused the rollback, so the others report
+        // batch_rejected; otherwise the operation itself failed.
+        void markUncommitted(ports::ImportSummary& summary, const ports::ImportFileStatus status,
+                             const bool abortedByFile = false) {
             summary.accepted = 0;
             summary.rejected = 0;
             summary.ignored = 0;
@@ -462,12 +465,6 @@ namespace ssa::infra::importing {
             summary.updates = 0;
             summary.verified = 0;
             summary.unchangedRows = 0;
-            // A file that carries its own reason caused the rollback; the others were reverted
-            // with it. Without such a file the whole operation failed.
-            const bool batchHasCause =
-                std::ranges::any_of(summary.files, [](const ports::ImportFileResult& file) {
-                    return !file.reason.empty() && file.status != ports::ImportFileStatus::Ignored;
-                });
             for (auto& file : summary.files) {
                 if (file.status != ports::ImportFileStatus::Ignored &&
                     file.status != ports::ImportFileStatus::Failed) {
@@ -492,7 +489,7 @@ namespace ssa::infra::importing {
                         file.reason = "batch_rejected";
                         break;
                     case ports::ImportFileStatus::Failed:
-                        file.reason = batchHasCause ? "batch_rejected" : "operation_failed";
+                        file.reason = abortedByFile ? "batch_rejected" : "operation_failed";
                         break;
                     case ports::ImportFileStatus::Canceled:
                         file.reason = "canceled";
@@ -1327,8 +1324,11 @@ namespace ssa::infra::importing {
                 timedFile = nullptr;
             }
         };
-        const auto discardBeforeCommit = [this, &files, &importSummary,
+        const auto discardBeforeCommit = [this, &files, &importSummary, &timedFile,
                                           &closeFileDuration](ports::WorkflowResult result) {
+            // Inside the loop the current file is still timed; it aborted the batch when it
+            // recorded its reason. After the loop nothing is timed: the operation failed.
+            const bool abortedByFile = timedFile != nullptr && !timedFile->reason.empty();
             closeFileDuration();
             if (!files.diagnostic.empty()) {
                 if (!result.diagnostic.empty()) {
@@ -1351,7 +1351,7 @@ namespace ssa::infra::importing {
                                     : result.status == ports::WorkflowStatus::Rejected
                                         ? ports::ImportFileStatus::Rejected
                                         : ports::ImportFileStatus::Failed;
-            markUncommitted(importSummary, fileStatus);
+            markUncommitted(importSummary, fileStatus, abortedByFile);
             return withSummary(std::move(result), importSummary);
         };
         if (stopToken.stop_requested()) {

@@ -604,6 +604,14 @@ ApplicationWindow {
             }
             workflow.error(QStringLiteral("aviso <b>literal</b>"));
 
+            // The report keeps every line, even those trimmed from the view.
+            QVariant report;
+            QVERIFY(QMetaObject::invokeMethod(
+                window->findChild<QObject*>(QStringLiteral("workflowProgressDialog")), "reportText",
+                Q_RETURN_ARG(QVariant, report)));
+            QVERIFY(report.toString().contains(QStringLiteral("linha 1\nlinha 2\n")));
+            QVERIFY(report.toString().contains(QStringLiteral("linha 4600\n")));
+
             const auto outputLines = lines(output);
             QCOMPARE(outputLines.size(), 4099);
             QCOMPARE(outputLines.first(), QStringLiteral("linha 502"));

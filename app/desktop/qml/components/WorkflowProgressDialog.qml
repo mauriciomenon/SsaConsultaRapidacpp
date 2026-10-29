@@ -22,11 +22,16 @@ Dialog {
     property bool terminalCanceled: false
     property string terminalLabel: ""
     property url logFileUrl
+    // Feedback of the report menu; kept apart from statusText, which is part of the report.
+    property string reportFeedback: ""
+    // The text areas keep only the newest lines; the report keeps every line.
+    property var fullOutput: []
+    property var fullErrors: []
 
     signal copyTextRequested(string text)
 
     function reportText() {
-        return root.title + "\n" + root.statusText + "\n\nSaida da execucao\n" + outputArea.text + "\n\n" + errorLabel.text + "\n" + errorArea.text + "\n";
+        return root.title + "\n" + root.statusText + "\n\nSaida da execucao\n" + root.fullOutput.join("\n") + "\n\n" + errorLabel.text + "\n" + root.fullErrors.join("\n") + "\n";
     }
 
     parent: Overlay.overlay
@@ -79,6 +84,9 @@ Dialog {
         outputArea.lineTotal = 0;
         errorArea.text = "";
         errorArea.lineTotal = 0;
+        reportFeedback = "";
+        fullOutput = [];
+        fullErrors = [];
         open();
     }
 
@@ -162,7 +170,7 @@ Dialog {
         fileMode: FileDialog.SaveFile
         defaultSuffix: "txt"
         nameFilters: ["Texto (*.txt)"]
-        onAccepted: root.statusText = root.workflowViewModel.saveReport(selectedFile, root.reportText()) ? "Relatorio salvo" : "Falha ao salvar o relatorio"
+        onAccepted: root.reportFeedback = root.workflowViewModel.saveReport(selectedFile, root.reportText()) ? "Relatorio salvo" : "Falha ao salvar o relatorio"
     }
 
     contentItem: ColumnLayout {
@@ -172,7 +180,7 @@ Dialog {
             id: statusLabel
             objectName: "workflowProgressStatus"
             Layout.fillWidth: true
-            text: root.statusText
+            text: root.reportFeedback.length > 0 ? root.reportFeedback : root.statusText
             color: Theme.text
             font.pixelSize: Theme.fontSizeBody
             wrapMode: Text.WordWrap
@@ -334,10 +342,12 @@ Dialog {
         }
 
         function onProgressOutputLine(line) {
+            root.fullOutput.push(line);
             root.appendLine(outputArea, outputScrollBar, line);
         }
 
         function onProgressErrorLine(line) {
+            root.fullErrors.push(line);
             root.appendLine(errorArea, errorScrollBar, line);
         }
 
@@ -348,6 +358,7 @@ Dialog {
             root.terminalLabel = title;
             root.percentage = succeeded ? 100 : root.percentage;
             root.statusText = message;
+            root.reportFeedback = "";
         }
     }
 }
