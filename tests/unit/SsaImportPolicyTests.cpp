@@ -605,13 +605,37 @@ TEST_CASE("SSA import field timestamps reject surrounding text") {
                 .empty());
 }
 
-TEST_CASE("SSA import date text preserves ISO representation and normalizes legacy values") {
-    REQUIRE(ssa::domain::SsaImportPolicy::normalizeDateText(" 2026-07-13 ") == "2026-07-13");
-    REQUIRE(ssa::domain::SsaImportPolicy::normalizeDateText("2026-07-13T13:20:00") ==
-            "2026-07-13T13:20:00");
-    REQUIRE(ssa::domain::SsaImportPolicy::normalizeDateText("13/07/2026 13:20:00") ==
-            "2026-07-13 13:20:00");
-    REQUIRE(ssa::domain::SsaImportPolicy::normalizeDateText("invalid").empty());
+TEST_CASE("SSA import date text is canonical for every representation of the same date") {
+    using Policy = ssa::domain::SsaImportPolicy;
+    REQUIRE(Policy::normalizeDateText(" 2026-07-13 ") == "2026-07-13");
+    REQUIRE(Policy::normalizeDateText("13/07/2026") == "2026-07-13");
+    REQUIRE(Policy::normalizeDateText("2026-07-13 00:00:00") == "2026-07-13");
+    REQUIRE(Policy::normalizeDateText("13/07/2026 00:00:00") == "2026-07-13");
+    REQUIRE(Policy::normalizeDateText("2026-07-13T13:20:00") == "2026-07-13 13:20:00");
+    REQUIRE(Policy::normalizeDateText("13/07/2026 13:20:00") == "2026-07-13 13:20:00");
+    REQUIRE(Policy::normalizeDateText("invalid").empty());
+}
+
+TEST_CASE("SSA import snapshot prefers the modification time over the creation time") {
+    using Values = ssa::domain::SsaImportPolicy::Values;
+    // A staged copy gets a fresh creation time; the modification time is the report time.
+    const Values existing{{"numero_ssa", "202600031"},
+                          {"descricao_ssa", "Older report"},
+                          {"situacao", "APV"},
+                          {"arquivo_origem", "relatorio.xlsx"},
+                          {"data_arquivo_origem", "2026-07-20 10:00:00"},
+                          {"data_criacao_arquivo", "2026-07-29 10:00:00"}};
+    const Values incoming{{"numero_ssa", "202600031"},
+                          {"descricao_ssa", "Newer report"},
+                          {"situacao", "APV"},
+                          {"arquivo_origem", "relatorio.xlsx"},
+                          {"data_arquivo_origem", "2026-07-21 10:00:00"},
+                          {"data_criacao_arquivo", "2026-07-01 10:00:00"}};
+
+    const auto result = ssa::domain::SsaImportPolicy::merge(existing, incoming);
+
+    REQUIRE(result.changed);
+    REQUIRE(result.values.at("descricao_ssa") == "Newer report");
 }
 
 TEST_CASE("SSA import rejects cadastro timestamps with surrounding text") {

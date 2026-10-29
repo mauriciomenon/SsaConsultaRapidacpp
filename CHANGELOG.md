@@ -23,6 +23,13 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 
 ### Corrigido
 
+- Importacao: a precedencia entre snapshots usa a data de modificacao do arquivo antes
+  da data de criacao, como no Python. A copia de staging tem data de criacao nova e
+  fazia um relatorio antigo vencer um mais recente.
+- Importacao: datas em `dd/mm/aaaa`, `aaaa-mm-dd` e `aaaa-mm-dd 00:00:00` sao a mesma
+  data; antes a mesma data em formatos diferentes contava como atualizacao ou conflito.
+  Valores antigos gravados com hora `00:00:00` ou com `T` sao regravados uma vez na
+  proxima importacao que tocar a SSA.
 - Importacao: a copia da planilha para `docs_entrada` preserva a data de modificacao
   original, como no Python. Antes o reescaneamento via a data da copia, no relatorio e
   como data de reserva do snapshot.

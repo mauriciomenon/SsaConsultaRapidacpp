@@ -3408,7 +3408,7 @@ TEST_CASE("external import preserves original filename and spreadsheet timestamp
     REQUIRE(scalarText(db, "SELECT arquivo_origem FROM ssa_table WHERE numero_ssa='202600501'") ==
             source.filename().string());
     REQUIRE(scalarText(db, "SELECT data_planilha FROM ssa_table WHERE numero_ssa='202600501'") ==
-            "2026-07-13T13:20:00");
+            "2026-07-13 13:20:00");
     REQUIRE(scalarText(db, "SELECT data_arquivo_origem FROM ssa_table "
                            "WHERE numero_ssa='202600501'") == "2026-07-13 10:15:00");
     REQUIRE(sqlite3_close(db) == SQLITE_OK);

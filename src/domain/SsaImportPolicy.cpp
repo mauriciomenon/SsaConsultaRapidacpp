@@ -363,8 +363,10 @@ namespace ssa::domain {
                     return key;
                 }
             }
+            // Python order: filename date, sheet date, modification time, then creation time.
+            // A staged copy carries its own creation time, so it must come last.
             static constexpr std::array<std::string_view, 3> keys{
-                "data_planilha", "data_criacao_arquivo", "data_arquivo_origem"};
+                "data_planilha", "data_arquivo_origem", "data_criacao_arquivo"};
             for (const auto key : keys) {
                 const auto value = valueFor(values, key);
                 if (!value.empty()) {
@@ -433,17 +435,14 @@ namespace ssa::domain {
             const auto ignored = [ignoreMetadata](const std::string_view key) {
                 return isTransientField(key) || (ignoreMetadata && isMetadataField(key));
             };
-            for (const auto& [key, value] : left) {
-                if (!ignored(key) && valueFor(right, key) != trimWhitespace(value)) {
-                    return true;
-                }
-            }
-            for (const auto& [key, value] : right) {
-                if (!ignored(key) && valueFor(left, key) != trimWhitespace(value)) {
-                    return true;
-                }
-            }
-            return false;
+            const auto differs = [&ignored](const SsaImportPolicy::Values& values,
+                                            const SsaImportPolicy::Values& other) {
+                return std::ranges::any_of(values, [&](const auto& entry) {
+                    return !ignored(entry.first) &&
+                           valueFor(other, entry.first) != trimWhitespace(entry.second);
+                });
+            };
+            return differs(left, right) || differs(right, left);
         }
 
     } // namespace
@@ -516,15 +515,13 @@ namespace ssa::domain {
     }
 
     std::string SsaImportPolicy::normalizeDateText(const std::string& value) {
-        const auto text = trimWhitespace(value);
-        const auto normalized = normalizeSnapshotTimestamp(text);
-        if (normalized.empty()) {
-            return {};
+        // Canonical form, so "13/07/2026", "2026-07-13" and "2026-07-13 00:00:00" compare
+        // equal: the date alone at midnight, "YYYY-MM-DD HH:MM:SS" otherwise.
+        auto normalized = normalizeSnapshotTimestamp(value);
+        if (normalized.ends_with(" 00:00:00")) {
+            normalized.resize(10);
         }
-        const bool hasIsoDatePrefix = text.size() >= 10 && text[4] == '-' && text[7] == '-';
-        const bool isIsoDate = text.size() == 10;
-        const bool isIsoDateTime = text.size() == 19 && (text[10] == ' ' || text[10] == 'T');
-        return hasIsoDatePrefix && (isIsoDate || isIsoDateTime) ? text : normalized;
+        return normalized;
     }
 
     std::string SsaImportPolicy::normalizeDateValue(const ColumnType type,
