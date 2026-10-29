@@ -9,12 +9,16 @@
 - [LOCAL-PENDING] `ssa_qt_sam_refresh_tests` falha sob `ctest -j 8` e passa
   isolado (27/27 em duas execucoes); provavel contencao de processo/porta.
 - [LOCAL-PENDING] Paridade da importacao com o Python, itens ainda abertos
-  depois de R3 e A6: R2/R1 (snapshot ausente vira conflito; sem desempate por
-  rank de situacao; linha terminal recebe metadados), C3 (caixa em campos
-  codificados), A3/A4 (contagem por linha, nao por SSA distinta), A5/B2/B4
-  (rescan completo apaga e reinsere; sempre republica o banco), R4 (mudanca so
-  de metadados faz UPDATE e marca a operacao como alterada), B3 (`nome__N` sem
-  comparar hash), R7 (`derivada_de` invalida rejeita o arquivo).
+  depois de R3, A6, R2/R1, C3 e A3/A4: A5/B2/B4 (rescan completo apaga e
+  reinsere, conta tudo como novo e sempre republica o banco), B3 (`nome__N` sem
+  comparar hash), R7 (`derivada_de` invalida rejeita o arquivo). Da caca de
+  bugs do Codex (28/10): mais de 64 arquivos nunca devolve `NoChanges`
+  (`SpreadsheetImportWorkflowPort.cpp` ~867); journal e analytics gravados em
+  rodada sem mudanca (~1802); ordem das abas muda a aceitacao do workbook
+  (~232); `summaryIndex` reservado depois de uma consulta que pode falhar
+  (`ImportFileStager.cpp` ~646); consolidacao aceita conteudo alterado depois
+  do plano e destino Windows pode escapar da raiz por junction
+  (`ImportFileConsolidator.cpp` ~464, ~183).
 
 ## Revisao profunda e revisores externos (branch `rev`) - 2026-10-23
 
