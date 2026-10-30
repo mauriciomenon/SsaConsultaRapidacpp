@@ -768,9 +768,12 @@ namespace ssa::infra::sqlite {
 
         // Session counters and cross-file duplicate ledger observed when the current
         // file savepoint opened. Restored verbatim when that file is rolled back.
+        enum class RowCategory : std::uint8_t { Unchanged, Verified, Updated, Inserted };
+
         struct FileScopeState {
             importing::SsaImportWriteSummary summary;
-            std::vector<std::string> importedNumbers;
+            // Category of each number before this file touched it; nullopt = first touch.
+            std::vector<std::pair<std::string, std::optional<RowCategory>>> touched;
         };
 
         Storage(const std::filesystem::path& databasePath,
@@ -876,8 +879,14 @@ namespace ssa::infra::sqlite {
             }
             const auto scope = std::move(*fileScope);
             fileScope.reset();
-            for (const auto& number : scope.importedNumbers) {
-                seenImportedNumbers.erase(number);
+            // Reverse order: a number touched twice in the file ends at its pre-file category.
+            for (auto touched = scope.touched.rbegin(); touched != scope.touched.rend();
+                 ++touched) {
+                if (touched->second) {
+                    seenImportedNumbers[touched->first] = *touched->second;
+                } else {
+                    seenImportedNumbers.erase(touched->first);
+                }
             }
             summary = scope.summary;
             if (state != State::Active) {
@@ -920,7 +929,7 @@ namespace ssa::infra::sqlite {
                     ++summary.duplicateRows;
                     ++result.duplicateRows;
                 } else if (fileScope) {
-                    fileScope->importedNumbers.push_back(number);
+                    fileScope->touched.emplace_back(number, std::nullopt);
                 }
                 normalizedRow[ssaNumberKey] = number;
                 const auto deviation = normalizedRow.find("numero_desvios");
@@ -975,7 +984,7 @@ namespace ssa::infra::sqlite {
                 }
                 if (!existing.empty() && !merged.changed && !normalizedExistingDates &&
                     !normalizedExistingDeviation) {
-                    countRow(seen->second, firstTouch, RowCategory::Unchanged, result);
+                    countRow(number, seen->second, firstTouch, RowCategory::Unchanged, result);
                     continue;
                 }
                 auto& statement = existing.empty() ? *insert : *update;
@@ -995,7 +1004,7 @@ namespace ssa::infra::sqlite {
                                               !normalizedExistingDeviation
                                           ? RowCategory::Verified
                                           : RowCategory::Updated;
-                countRow(seen->second, firstTouch, category, result);
+                countRow(number, seen->second, firstTouch, category, result);
             }
             return result;
         }
@@ -1098,8 +1107,6 @@ namespace ssa::infra::sqlite {
         std::unique_ptr<SqliteStatement> update;
         // Python parity: one final category per distinct SSA per run, against the database
         // before the run. A repeated SSA only upgrades its category; writes stay raw.
-        enum class RowCategory : std::uint8_t { Unchanged, Verified, Updated, Inserted };
-
         template <typename Summary>
         static std::size_t& categoryCounter(Summary& summary, const RowCategory category) {
             switch (category) {
@@ -1115,13 +1122,17 @@ namespace ssa::infra::sqlite {
             return summary.rowsUnchanged;
         }
 
-        void countRow(RowCategory& sessionCategory, const bool firstTouch,
-                      const RowCategory category, importing::SsaImportBatchWriteSummary& result) {
+        void countRow(const std::string& number, RowCategory& sessionCategory,
+                      const bool firstTouch, const RowCategory category,
+                      importing::SsaImportBatchWriteSummary& result) {
             if (firstTouch) {
                 sessionCategory = category;
             } else if (category <= sessionCategory) {
                 return; // a repeat that adds nothing: already counted as a duplicate row
             } else {
+                if (fileScope) {
+                    fileScope->touched.emplace_back(number, sessionCategory);
+                }
                 --categoryCounter(summary, sessionCategory);
                 sessionCategory = category;
             }

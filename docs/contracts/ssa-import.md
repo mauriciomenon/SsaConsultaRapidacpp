@@ -54,10 +54,19 @@ Snapshot precedence follows the Python tuple `(data_planilha, file date)`:
    in the original source name, else source file modification time, else file
    creation time; a row without a file date sorts before any row with one, so
    the order is total and never depends on the order rows are read;
-3. same-minute filename exports are then ordered by the modification time,
-   with the same rule for a missing one;
+3. rows still equal are resolved by content, never rejected and never by read
+   order: the row with more non-empty fields wins, then the larger canonical
+   JSON serialization (sorted keys, ASCII escapes, trimmed values, numbers as
+   exact decimals, dates as `YYYY-MM-DD HH:MM:SS`, coded fields lowercased);
+   identical rows are one; the loser only fills empty fields; the repeat is
+   journaled at Info level;
 4. registration date is the last fallback for a row with no other date; it
    never breaks a tie between rows that carry a spreadsheet or file date.
+
+Value equality is canonical: the same date in another format, the same number
+in another spelling (`1.0` and `1`, compared exactly, never as floating point)
+and a case-only difference in a coded field are not changes; the stored
+spelling is kept. This is the same rule as the Python importer.
 
 Creation time comes last because a staged copy carries a fresh one; it is
 transient metadata and never manufactures a persisted update by itself. A row

@@ -877,17 +877,18 @@ TEST_CASE("SAM import rolls back prior sectors when a later sector conflicts") {
     const auto result = port.importSamArtifacts(
         {{{firstWorkbook, "IEE3", 1, 1, 0}, {conflictingWorkbook, "MEL4", 2, 2, 0}}});
 
-    REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
-    REQUIRE(result.message.find("duplicate_conflict") != std::string::npos);
+    // Python parity: two sectors describing the same instant are resolved by content, never
+    // rejected. "First sector" > "Conflict second" in the canonical serialization.
+    INFO(result.message);
+    REQUIRE(result.ok());
+    REQUIRE(result.message.find("duplicate_conflict") == std::string::npos);
     sqlite3* db = nullptr;
     REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
-    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND "
-                          "name='ssa_table'") == 0);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 2);
+    REQUIRE(scalarText(db, "SELECT descricao_ssa FROM ssa_table WHERE numero_ssa='202600717'") ==
+            "First sector");
     REQUIRE(scalarText(db, "PRAGMA integrity_check") == "ok");
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
-    REQUIRE(std::filesystem::exists(firstWorkbook));
-    REQUIRE(std::filesystem::exists(conflictingWorkbook));
-    REQUIRE_FALSE(std::filesystem::exists(inputDirectory / "processadas"));
 }
 
 TEST_CASE("import file stager rejects a stopped token before copying") {
@@ -1974,10 +1975,12 @@ TEST_CASE("spreadsheet workflow keeps chunk counters when a later worksheet fail
     const auto result = port.rescan({ssa::ports::RescanMode::Incremental});
 
     INFO(result.message);
+    // The malformed third worksheet fails the workbook; the equal-instant repeat of 304 is
+    // resolved by content (never a conflict), and every counter rolls back with the file.
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Failed);
-    REQUIRE(result.message.find("conflicts=1") != std::string::npos);
+    REQUIRE(result.message.find("conflicts=0") != std::string::npos);
     REQUIRE(result.importSummary.has_value());
-    REQUIRE(result.importSummary->conflicts == 1);
+    REQUIRE(result.importSummary->conflicts == 0);
     REQUIRE(result.importSummary->failed == 1);
     REQUIRE(result.importSummary->inserts == 0);
     REQUIRE(result.importSummary->updates == 0);
@@ -3408,7 +3411,7 @@ TEST_CASE("external import preserves original filename and spreadsheet timestamp
     REQUIRE(scalarText(db, "SELECT arquivo_origem FROM ssa_table WHERE numero_ssa='202600501'") ==
             source.filename().string());
     REQUIRE(scalarText(db, "SELECT data_planilha FROM ssa_table WHERE numero_ssa='202600501'") ==
-            "2026-07-13 13:20:00");
+            "2026-07-13T13:20:00");
     REQUIRE(scalarText(db, "SELECT data_arquivo_origem FROM ssa_table "
                            "WHERE numero_ssa='202600501'") == "2026-07-13 10:15:00");
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
@@ -3806,13 +3809,16 @@ TEST_CASE("SSA duplicate resolution rejects conflicting values at the same snaps
     const auto firstThenSecond = resolve(first, second);
     const auto secondThenFirst = resolve(second, first);
 
-    REQUIRE(firstThenSecond.rows.empty());
-    REQUIRE(secondThenFirst.rows.empty());
-    REQUIRE(firstThenSecond.conflictRows == 1);
-    REQUIRE(secondThenFirst.conflictRows == 1);
+    // Resolved by content in either order: equal field count, larger serialization wins.
+    REQUIRE(firstThenSecond.conflictRows == 0);
+    REQUIRE(secondThenFirst.conflictRows == 0);
+    REQUIRE(firstThenSecond.rows.size() == 1);
+    REQUIRE(secondThenFirst.rows.size() == 1);
+    REQUIRE(firstThenSecond.rows.front().at("descricao_ssa") == "Second");
+    REQUIRE(secondThenFirst.rows.front().at("descricao_ssa") == "Second");
 }
 
-TEST_CASE("external import keeps the first row of an SSA repeated in one workbook") {
+TEST_CASE("external import resolves an SSA repeated in one workbook by content") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
 
@@ -3849,7 +3855,7 @@ TEST_CASE("external import keeps the first row of an SSA repeated in one workboo
     REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
     REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 1);
     REQUIRE(scalarText(db, "SELECT descricao_ssa FROM ssa_table WHERE numero_ssa='202600509'") ==
-            "SECRET_FIRST");
+            "SECRET_SECOND");
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
@@ -4139,32 +4145,22 @@ TEST_CASE("external import isolates a duplicate conflict and keeps the sibling w
     const auto result = port.importExternalFiles({.files = {first, conflicting, sibling}});
 
     INFO(result.message);
+    // Python parity: the equal-instant repeat is resolved by content; no workbook is rejected.
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
-    REQUIRE(result.warning);
-    REQUIRE(result.message.find("duplicate_conflict") != std::string::npos);
-    REQUIRE(result.message.find(conflicting.filename().string()) != std::string::npos);
+    REQUIRE(result.message.find("duplicate_conflict") == std::string::npos);
     requireClassificationMessage(result);
     REQUIRE(result.importSummary.has_value());
     const auto& summary = *result.importSummary;
     REQUIRE(summary.files.size() == 3);
-    REQUIRE(summary.accepted == 2);
-    REQUIRE(summary.rejected == 1);
+    REQUIRE(summary.accepted == 3);
+    REQUIRE(summary.rejected == 0);
     REQUIRE(summary.failed == 0);
-    REQUIRE(summary.inserts == 2);
-    REQUIRE(summary.files[0].status == ssa::ports::ImportFileStatus::Applied);
-    REQUIRE(summary.files[1].status == ssa::ports::ImportFileStatus::Rejected);
-    REQUIRE(summary.files[1].reason == "duplicate_conflict");
-    REQUIRE(summary.files[1].inserts == 0);
-    REQUIRE(summary.files[1].validRows == 0);
-    REQUIRE(summary.files[2].status == ssa::ports::ImportFileStatus::Applied);
-    REQUIRE(std::filesystem::exists(conflicting));
+    REQUIRE(summary.inserts == 3); // distinct SSAs: 801 counts once as new
     sqlite3* db = nullptr;
     REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
-    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 2);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 3);
     REQUIRE(scalarText(db, "SELECT descricao_ssa FROM ssa_table WHERE numero_ssa = '202600801'") ==
-            "First");
-    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa = '202600802'") == 0);
-    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa = '202600803'") == 1);
+            "Second");
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
@@ -4179,14 +4175,14 @@ TEST_CASE("initial data setup publishes nothing when one selected workbook is re
     const auto header =
         row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
                 inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao")});
-    // Same snapshot instant, different description: the second workbook is rejected.
+    // The second workbook holds an invalid SSA number, so the setup batch is rejected.
     const auto first = sourceDirectory / "A_SSA_06-07-2026_0922AM.xlsx";
     const auto conflicting = sourceDirectory / "B_SSA_06-07-2026_0922AM.xlsx";
     writeWorkbook(first,
                   header + row(2, {inlineCell("A2", "202600801"), inlineCell("B2", "APV"),
                                    inlineCell("C2", "First"), inlineCell("D2", "2026-07-01")}));
     writeWorkbook(conflicting,
-                  header + row(2, {inlineCell("A2", "202600801"), inlineCell("B2", "APV"),
+                  header + row(2, {inlineCell("A2", "NAO_E_SSA"), inlineCell("B2", "APV"),
                                    inlineCell("C2", "Second"), inlineCell("D2", "2026-07-01")}));
     setLocalModificationTime(first, 2026, 7, 6, 9, 22);
     setLocalModificationTime(conflicting, 2026, 7, 6, 9, 22);
@@ -4208,7 +4204,7 @@ TEST_CASE("initial data setup publishes nothing when one selected workbook is re
         UNSCOPED_INFO("left: " << leftover);
     }
     REQUIRE_FALSE(result.ok);
-    REQUIRE(result.diagnostic.find(conflicting.filename().string()) != std::string::npos);
+    REQUIRE((result.message + result.diagnostic).find("invalid_number=1") != std::string::npos);
     REQUIRE_FALSE(std::filesystem::exists(projectRoot / "data" / "ssas.db"));
     REQUIRE(leftovers.empty());
     REQUIRE(std::filesystem::exists(first));
@@ -4444,25 +4440,17 @@ TEST_CASE("incremental rescan isolates a rejected workbook and applies the remai
 
     INFO(result.message);
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
-    REQUIRE(result.warning);
-    REQUIRE(result.message.find("duplicate_conflict") != std::string::npos);
+    REQUIRE(result.message.find("duplicate_conflict") == std::string::npos);
     REQUIRE(result.importSummary.has_value());
     const auto& summary = *result.importSummary;
     REQUIRE(summary.files.size() == 3);
-    REQUIRE(summary.rejected == 1);
-    REQUIRE(summary.inserts == 2);
-    REQUIRE(summary.files[0].status == ssa::ports::ImportFileStatus::Applied);
-    REQUIRE(summary.files[1].status == ssa::ports::ImportFileStatus::Rejected);
-    REQUIRE(summary.files[1].reason == "duplicate_conflict");
-    REQUIRE(summary.files[2].status == ssa::ports::ImportFileStatus::Applied);
-    // The rejected workbook is never consolidated, so the operator can fix and retry it.
-    REQUIRE(std::filesystem::exists(conflicting));
+    REQUIRE(summary.rejected == 0);
+    REQUIRE(summary.inserts == 3);
     sqlite3* db = nullptr;
     REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
-    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 2);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 3);
     REQUIRE(scalarText(db, "SELECT descricao_ssa FROM ssa_table WHERE numero_ssa = '202600811'") ==
-            "First");
-    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa = '202600812'") == 0);
+            "Second");
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
@@ -4493,25 +4481,19 @@ TEST_CASE("external import rejects only the sibling that repeats an equal snapsh
 
     const auto result = port.importExternalFiles({.files = {first, second}});
 
-    // Two workbooks claiming the same snapshot instant for the same SSA are ambiguous.
-    // The first one processed wins deterministically and only the ambiguous sibling is
-    // rejected, so unrelated workbooks of the same batch are never discarded.
+    // Two workbooks claiming the same snapshot instant are resolved by content, never by
+    // the order they were read: SECOND_FILE wins in either order and nothing is rejected.
     INFO(result.message);
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
-    REQUIRE(result.warning);
-    REQUIRE(result.message.find("duplicate_conflict") != std::string::npos);
-    REQUIRE(result.message.find(second.filename().string()) != std::string::npos);
+    REQUIRE(result.message.find("duplicate_conflict") == std::string::npos);
     REQUIRE(result.importSummary.has_value());
-    REQUIRE(result.importSummary->accepted == 1);
-    REQUIRE(result.importSummary->rejected == 1);
-    REQUIRE(result.importSummary->files[1].reason == "duplicate_conflict");
-    REQUIRE(std::filesystem::exists(first));
-    REQUIRE(std::filesystem::exists(second));
+    REQUIRE(result.importSummary->accepted == 2);
+    REQUIRE(result.importSummary->rejected == 0);
     sqlite3* db = nullptr;
     REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
     REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 1);
     REQUIRE(scalarText(db, "SELECT descricao_ssa FROM ssa_table WHERE numero_ssa = '202600510'") ==
-            "FIRST_FILE");
+            "SECOND_FILE");
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
@@ -4723,6 +4705,30 @@ TEST_CASE("sqlite import counts one category per distinct SSA per session") {
         const auto total = session.finish();
         REQUIRE(total.rowsUpdated == 1);
         REQUIRE(total.rowsUnchanged == 0);
+    }
+    // Database at v3: a rolled-back file restores the category it upgraded, so a later
+    // upgrade in another file counts once and never underflows.
+    {
+        ssa::infra::importing::ResolvedSsaImportRows v3;
+        v3.rows.push_back(rowAt("2026-05-03", "v3"));
+        ssa::infra::importing::ResolvedSsaImportRows v4;
+        v4.rows.push_back(rowAt("2026-05-04", "v4"));
+        ssa::infra::importing::ResolvedSsaImportRows v5;
+        v5.rows.push_back(rowAt("2026-05-05", "v5"));
+        auto session = writer.startSession(false);
+        session.beginFile();
+        REQUIRE(session.write(v3, 1, 0).rowsUnchanged == 1);
+        session.commitFile();
+        session.beginFile();
+        REQUIRE(session.write(v4, 1, 0).rowsUpdated == 1);
+        session.rollbackFile();
+        session.beginFile();
+        REQUIRE(session.write(v5, 1, 0).rowsUpdated == 1);
+        session.commitFile();
+        const auto total = session.finish();
+        REQUIRE(total.rowsUpdated == 1);
+        REQUIRE(total.rowsUnchanged == 0);
+        REQUIRE(total.rowsVerified == 0);
     }
 }
 
@@ -8947,13 +8953,13 @@ TEST_CASE("import keeps and logs the first row of an SSA repeated in the same sh
     REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
     REQUIRE(result.message.find("conflicts=0") != std::string::npos);
     REQUIRE(WarningCapture::lines().contains(QStringLiteral(
-        "Import repeated SSA, first row kept: ssa=202600326 field=responsavel_execucao "
+        "Import repeated SSA, resolved by content: ssa=202600326 field=responsavel_execucao "
         "existing=\"FELIPE\" incoming=\"PAULO\" existing_file=\"executors.xlsx\" "
         "incoming_file=\"executors.xlsx\"")));
     sqlite3* db = nullptr;
     REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
     REQUIRE(scalarText(db, "SELECT responsavel_execucao FROM ssa_table "
-                           "WHERE numero_ssa='202600326'") == "FELIPE");
+                           "WHERE numero_ssa='202600326'") == "PAULO");
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
@@ -9079,17 +9085,18 @@ TEST_CASE("full rescan names the workbook that holds a duplicate conflict") {
     const auto result = port.rescan({ssa::ports::RescanMode::Full});
 
     INFO(result.message);
-    REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
-    REQUIRE(result.message.find("duplicate_conflict file=B_SSA_14-07-2026_0145PM.xlsx") !=
-            std::string::npos);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE(result.message.find("duplicate_conflict") == std::string::npos);
     INFO(WarningCapture::lines().join('\n').toStdString());
-    REQUIRE(WarningCapture::lines().contains(
-        QStringLiteral("Import conflict: ssa=202600325 field=descricao_ssa existing=\"First\" "
-                       "incoming=\"Second\" existing_file=\"A_SSA_14-07-2026_0145PM.xlsx\" "
-                       "incoming_file=\"B_SSA_14-07-2026_0145PM.xlsx\"")));
+    // The full rescan journals which workbooks disagreed and which value it kept.
+    REQUIRE(WarningCapture::lines().contains(QStringLiteral(
+        "Import repeated SSA, resolved by content: ssa=202600325 field=descricao_ssa "
+        "existing=\"First\" incoming=\"Second\" "
+        "existing_file=\"A_SSA_14-07-2026_0145PM.xlsx\" "
+        "incoming_file=\"B_SSA_14-07-2026_0145PM.xlsx\"")));
 }
 
-TEST_CASE("spreadsheet workflow keeps the first row of an SSA repeated across worksheets") {
+TEST_CASE("spreadsheet workflow resolves an SSA repeated across worksheets by content") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
 
@@ -9123,8 +9130,9 @@ TEST_CASE("spreadsheet workflow keeps the first row of an SSA repeated across wo
     sqlite3* db = nullptr;
     REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
     REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 2);
+    // Resolved by content, not by worksheet order: "Second" has the larger serialization.
     REQUIRE(scalarText(db, "SELECT descricao_ssa FROM ssa_table WHERE numero_ssa='202600324'") ==
-            "First");
+            "Second");
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 

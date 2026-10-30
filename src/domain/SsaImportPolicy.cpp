@@ -9,6 +9,7 @@
 #include <charconv>
 #include <chrono>
 #include <cstdio>
+#include <map>
 #include <optional>
 #include <ranges>
 #include <string_view>
@@ -53,6 +54,153 @@ namespace ssa::domain {
                 "localizacao_codigo", "grau_prioridade_emissao", "grau_prioridade_planejamento",
                 "execucao_simples"};
             return std::ranges::find(coded, key) != coded.end();
+        }
+
+        std::string lowercase(std::string value);
+
+        // Canonical content (Python parity, _canonical_row_content): decides between rows of
+        // equal precedence by content only, never by the order they were read.
+        std::string canonicalNumber(const std::string& text) {
+            std::size_t index = 0;
+            const bool negative = !text.empty() && text[0] == '-';
+            if (negative || (!text.empty() && text[0] == '+')) {
+                ++index;
+            }
+            std::string integer;
+            std::string fraction;
+            bool dot = false;
+            bool digits = false;
+            for (; index < text.size(); ++index) {
+                const char character = text[index];
+                if (character >= '0' && character <= '9') {
+                    (dot ? fraction : integer) += character;
+                    digits = true;
+                } else if (character == '.' && !dot) {
+                    dot = true;
+                } else {
+                    return {};
+                }
+            }
+            if (!digits) {
+                return {};
+            }
+            integer.erase(0, std::min(integer.find_first_not_of('0'), integer.size()));
+            if (integer.empty()) {
+                integer = "0";
+            }
+            while (!fraction.empty() && fraction.back() == '0') {
+                fraction.pop_back();
+            }
+            const bool zero = integer == "0" && fraction.empty();
+            return (negative && !zero ? "-" : "") + integer +
+                   (fraction.empty() ? "" : "." + fraction);
+        }
+
+        std::map<std::string, std::string> canonicalRow(const SsaImportPolicy::Values& values) {
+            std::map<std::string, std::string> canonical;
+            for (const auto& [key, value] : values) {
+                const auto text = trimWhitespace(value);
+                if (key == "id" || text.empty()) {
+                    continue;
+                }
+                if (auto number = canonicalNumber(text); !number.empty()) {
+                    canonical[key] = std::move(number);
+                } else if (auto date = SsaImportPolicy::normalizeSnapshotTimestamp(text);
+                           !date.empty()) {
+                    canonical[key] = std::move(date);
+                } else {
+                    canonical[key] = isCodedField(key) ? lowercase(text) : text;
+                }
+            }
+            return canonical;
+        }
+
+        // json.dumps(sort_keys=True, ensure_ascii=True, separators=(",", ":")).
+        void appendJsonString(std::string& out, const std::string& text) {
+            static constexpr char kHex[] = "0123456789abcdef";
+            const auto escape = [&out](const std::uint32_t codePoint) {
+                out += "\\u";
+                for (int shift = 12; shift >= 0; shift -= 4) {
+                    out += kHex[(codePoint >> shift) & 0xFU];
+                }
+            };
+            out += '"';
+            for (std::size_t index = 0; index < text.size();) {
+                const auto byte = static_cast<unsigned char>(text[index]);
+                if (byte < 0x80U) {
+                    switch (byte) {
+                    case '"':
+                        out += "\\\"";
+                        break;
+                    case '\\':
+                        out += "\\\\";
+                        break;
+                    case '\n':
+                        out += "\\n";
+                        break;
+                    case '\r':
+                        out += "\\r";
+                        break;
+                    case '\t':
+                        out += "\\t";
+                        break;
+                    case '\b':
+                        out += "\\b";
+                        break;
+                    case '\f':
+                        out += "\\f";
+                        break;
+                    default:
+                        if (byte < 0x20U) {
+                            escape(byte);
+                        } else {
+                            out += static_cast<char>(byte);
+                        }
+                    }
+                    ++index;
+                    continue;
+                }
+                const std::size_t length = byte >= 0xF0U ? 4 : byte >= 0xE0U ? 3 : 2;
+                std::uint32_t codePoint = byte & (length == 4   ? 0x07U
+                                                  : length == 3 ? 0x0FU
+                                                                : 0x1FU);
+                for (std::size_t offset = 1; offset < length && index + offset < text.size();
+                     ++offset) {
+                    codePoint = (codePoint << 6) |
+                                (static_cast<unsigned char>(text[index + offset]) & 0x3FU);
+                }
+                if (codePoint > 0xFFFFU) {
+                    codePoint -= 0x10000U;
+                    escape(0xD800U | (codePoint >> 10));
+                    escape(0xDC00U | (codePoint & 0x3FFU));
+                } else {
+                    escape(codePoint);
+                }
+                index += length;
+            }
+            out += '"';
+        }
+
+        std::string canonicalJson(const std::map<std::string, std::string>& row) {
+            std::string json = "{";
+            for (const auto& [key, value] : row) {
+                if (json.size() > 1) {
+                    json += ',';
+                }
+                appendJsonString(json, key);
+                json += ':';
+                appendJsonString(json, value);
+            }
+            return json + "}";
+        }
+
+        // More non-empty fields wins; then the larger canonical serialization.
+        bool contentBeats(const std::map<std::string, std::string>& candidate,
+                          const std::map<std::string, std::string>& holder) {
+            if (candidate.size() != holder.size()) {
+                return candidate.size() > holder.size();
+            }
+            return canonicalJson(candidate) > canonicalJson(holder);
         }
 
         bool isDateField(const std::string_view key) {
@@ -395,13 +543,11 @@ namespace ssa::domain {
             return snapshotKeyForField(valueFor(values, "data_cadastro"));
         }
 
-        // Tie-break of an equal snapshot: file date, then the modification time (seconds),
-        // which orders same-minute filename exports. The separator sorts before any digit,
-        // so a missing component sorts before a present one: the order is total and the
-        // result never depends on row order.
+        // Tie-break of an equal snapshot: the file date. The separator sorts before any
+        // digit, so a missing file date sorts before a present one: the order is total and
+        // the result never depends on row order. Rows still equal are resolved by content.
         std::string snapshotTieKey(const SsaImportPolicy::Values& values) {
-            return " " + fileDateKey(values).value_or("") + " " +
-                   snapshotKeyForField(valueFor(values, "data_arquivo_origem")).value_or("");
+            return " " + fileDateKey(values).value_or("");
         }
 
         bool isIndicatorField(const std::string_view key) {
@@ -455,6 +601,31 @@ namespace ssa::domain {
             return key == "data_criacao_arquivo";
         }
 
+        // Python parity of value equality: dates compare as canonical timestamps
+        // ("01/01/2026" == "2026-01-01 00:00:00"), numbers as exact canonical decimals
+        // ("1.0" == "1", no floating point), coded fields without case.
+        bool sameValue(const std::string_view key, const std::string& left,
+                       const std::string& right) {
+            if (left == right) {
+                return true;
+            }
+            if (left.empty() || right.empty()) {
+                return false;
+            }
+            if (isCodedField(key) && uppercase(left) == uppercase(right)) {
+                return true;
+            }
+            if (const auto number = canonicalNumber(left);
+                !number.empty() && number == canonicalNumber(right)) {
+                return true;
+            }
+            if (isDateField(key)) {
+                const auto date = SsaImportPolicy::normalizeSnapshotTimestamp(left);
+                return !date.empty() && date == SsaImportPolicy::normalizeSnapshotTimestamp(right);
+            }
+            return false;
+        }
+
         bool differsInPersistedValues(const SsaImportPolicy::Values& left,
                                       const SsaImportPolicy::Values& right,
                                       const bool ignoreMetadata = false) {
@@ -465,7 +636,8 @@ namespace ssa::domain {
                                             const SsaImportPolicy::Values& other) {
                 return std::ranges::any_of(values, [&](const auto& entry) {
                     return !ignored(entry.first) &&
-                           valueFor(other, entry.first) != trimWhitespace(entry.second);
+                           !sameValue(entry.first, valueFor(other, entry.first),
+                                      trimWhitespace(entry.second));
                 });
             };
             return differs(left, right) || differs(right, left);
@@ -541,13 +713,17 @@ namespace ssa::domain {
     }
 
     std::string SsaImportPolicy::normalizeDateText(const std::string& value) {
-        // Canonical form, so "13/07/2026", "2026-07-13" and "2026-07-13 00:00:00" compare
-        // equal: the date alone at midnight, "YYYY-MM-DD HH:MM:SS" otherwise.
-        auto normalized = normalizeSnapshotTimestamp(value);
-        if (normalized.ends_with(" 00:00:00")) {
-            normalized.resize(10);
+        // Storage form: ISO input is kept as written, legacy dd/mm/yyyy becomes ISO. Equality
+        // of two dates is decided by sameValue(), which compares canonical timestamps.
+        const auto text = trimWhitespace(value);
+        const auto normalized = normalizeSnapshotTimestamp(text);
+        if (normalized.empty()) {
+            return {};
         }
-        return normalized;
+        const bool hasIsoDatePrefix = text.size() >= 10 && text[4] == '-' && text[7] == '-';
+        const bool isIsoDate = text.size() == 10;
+        const bool isIsoDateTime = text.size() == 19 && (text[10] == ' ' || text[10] == 'T');
+        return hasIsoDatePrefix && (isIsoDate || isIsoDateTime) ? text : normalized;
     }
 
     std::string SsaImportPolicy::normalizeDateValue(const ColumnType type,
@@ -669,70 +845,72 @@ namespace ssa::domain {
         }
 
         auto merged = existing;
-        const bool terminal = existingTerminal;
         const bool equalSnapshot = *incomingSnapshot == *existingSnapshot;
-        bool conflict = false;
-        std::string conflictField;
-        for (const auto& [key, value] : incoming) {
-            const auto normalized = trimWhitespace(value);
-            const auto current = valueFor(existing, key);
-            if (olderTerminalPromotion && key != "situacao") {
-                continue;
-            }
-            if (isMetadataField(key)) {
-                if (!normalized.empty() &&
-                    (!equalSnapshot || current.empty() || normalized < current)) {
+        bool repeatDiscarded = false;
+        std::string firstDifference;
+        if (equalSnapshot) {
+            // Python parity: rows of equal precedence are resolved by content, never rejected.
+            // The winner's values overwrite; the loser only fills empty fields. `situacao`
+            // changes only by terminal promotion, which also makes the incoming row win.
+            const auto existingContent = canonicalRow(existing);
+            const auto incomingContent = canonicalRow(incoming);
+            const bool identical = existingContent == incomingContent;
+            const bool incomingWins =
+                !identical && (terminalPromotion || contentBeats(incomingContent, existingContent));
+            for (const auto& [key, value] : incoming) {
+                const auto normalized = trimWhitespace(value);
+                if (normalized.empty()) {
+                    continue;
+                }
+                const auto current = valueFor(existing, key);
+                if (current.empty()) {
+                    merged[key] = normalized;
+                    continue;
+                }
+                if (key == "situacao") {
+                    if (terminalPromotion) {
+                        merged[key] = normalized;
+                    }
+                    continue;
+                }
+                if (sameValue(key, normalized, current)) {
+                    continue; // equal after canonical comparison: keep the stored spelling
+                }
+                if (withoutAccents(normalized) == withoutAccents(current)) {
+                    // Same text, different accents: keep the accented spelling.
+                    if (hasNonAscii(normalized) && !hasNonAscii(current)) {
+                        merged[key] = normalized;
+                    }
+                    continue;
+                }
+                if (!isMetadataField(key) && (firstDifference.empty() || key < firstDifference)) {
+                    firstDifference = key; // smallest key: stable across hash-map order
+                }
+                if (incomingWins) {
                     merged[key] = normalized;
                 }
-                continue;
             }
-            const bool terminalStatePromotion =
-                equalSnapshot && key == "situacao" && incomingTerminal && !terminal;
-            if (normalized.empty()) {
-                continue;
-            }
-            const bool sameCodedValue =
-                isCodedField(key) && uppercase(normalized) == uppercase(current);
-            if (sameCodedValue && !terminalStatePromotion) {
-                continue; // case-only difference in a coded field: not a change, not a conflict
-            }
-            if (equalSnapshot && !current.empty() && normalized != current &&
-                !terminalStatePromotion && withoutAccents(normalized) == withoutAccents(current)) {
-                // Same text, different accents: not a conflict; keep the accented spelling.
-                if (!terminal && hasNonAscii(normalized) && !hasNonAscii(current)) {
-                    merged[key] = normalized;
+            // Journal every repeat whose business fields differ, whichever row won.
+            repeatDiscarded = !identical && !firstDifference.empty();
+        } else {
+            for (const auto& [key, value] : incoming) {
+                const auto normalized = trimWhitespace(value);
+                if (normalized.empty() || (olderTerminalPromotion && key != "situacao")) {
+                    continue;
                 }
-                continue;
-            }
-            if (equalSnapshot && !current.empty() && normalized != current &&
-                !terminalStatePromotion) {
-                if (!conflict || key < conflictField) {
-                    conflictField = key; // smallest key: stable across hash-map order
+                if (sameValue(key, normalized, valueFor(existing, key))) {
+                    continue; // same value in another spelling: keep the stored one
                 }
-                conflict = true;
-                continue;
+                merged[key] = normalized;
             }
-            if ((terminal && !isIndicatorField(key)) ||
-                (equalSnapshot && key == "situacao" && !terminalStatePromotion) ||
-                (equalSnapshot && normalized == current)) {
-                continue;
-            }
-            merged[key] = normalized;
-        }
-        if (conflict) {
-            const auto source = valueFor(existing, "arquivo_origem");
-            const bool sameWorkbook = !source.empty() &&
-                                      source == valueFor(incoming, "arquivo_origem") &&
-                                      valueFor(existing, "data_arquivo_origem") ==
-                                          valueFor(incoming, "data_arquivo_origem");
-            return {existing, false, !sameWorkbook, std::move(conflictField), sameWorkbook};
         }
         if (existingTerminal) {
             return {existing, false};
         }
         const bool changed = differsInPersistedValues(merged, existing);
-        return {merged, changed, conflict,
-                {},     false,   changed && !differsInPersistedValues(merged, existing, true)};
+        return {merged,          changed,
+                false,           std::move(firstDifference),
+                repeatDiscarded, changed && !differsInPersistedValues(merged, existing, true)};
     }
 
     std::string SsaImportPolicy::describeConflict(const Values& existing, const Values& incoming,
@@ -749,7 +927,7 @@ namespace ssa::domain {
         };
         const auto& field = result.conflictField;
         return std::string{result.conflict ? "Import conflict: "
-                                           : "Import repeated SSA, first row kept: "} +
+                                           : "Import repeated SSA, resolved by content: "} +
                "ssa=" + valueFor(incoming, "numero_ssa") + " field=" + field +
                " existing=" + quoted(existing, field) + " incoming=" + quoted(incoming, field) +
                " existing_file=" + quoted(existing, "arquivo_origem", false) +

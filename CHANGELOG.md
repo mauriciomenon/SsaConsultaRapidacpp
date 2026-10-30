@@ -37,10 +37,15 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
   em outro bloco ou arquivo continua contando uma vez como nova; uma repeticao so sobe
   a categoria (sem alteracao para atualizada), nunca soma de novo. As linhas gravadas
   continuam sendo o numero bruto de escritas.
-- Importacao: datas em `dd/mm/aaaa`, `aaaa-mm-dd` e `aaaa-mm-dd 00:00:00` sao a mesma
-  data; antes a mesma data em formatos diferentes contava como atualizacao ou conflito.
-  Valores antigos gravados com hora `00:00:00` ou com `T` sao regravados uma vez na
-  proxima importacao que tocar a SSA.
+- Importacao: a mesma data em formatos diferentes (`dd/mm/aaaa`, `aaaa-mm-dd`,
+  `aaaa-mm-dd 00:00:00`) e o mesmo numero escrito de outro jeito (`1.0` e `1`, comparados
+  de forma exata) nao contam mais como alteracao nem regravam a linha; o valor ja gravado
+  e mantido, como no Python.
+- Importacao: duas linhas da mesma SSA com a mesma precedencia (mesmo arquivo, abas ou
+  arquivos do mesmo instante) nao rejeitam mais o arquivo como conflito. Vence a linha com
+  mais campos preenchidos e, empatando, a de maior serializacao canonica, igual ao Python;
+  o resultado nao depende da ordem de leitura e a escolha fica registrada no diario.
+  O desempate por mtime em segundos foi removido para igualar a chave do Python.
 - Importacao: a copia da planilha para `docs_entrada` preserva a data de modificacao
   original, como no Python. Antes o reescaneamento via a data da copia, no relatorio e
   como data de reserva do snapshot.

@@ -164,7 +164,8 @@ TEST_CASE("SSA import equal snapshot metadata is independent of file order") {
     const auto secondThenFirst = ssa::domain::SsaImportPolicy::merge(second, first);
 
     REQUIRE(firstThenSecond.values == secondThenFirst.values);
-    REQUIRE(firstThenSecond.values.at("arquivo_origem") == "A_SSA_14-07-2026_0145PM.xlsx");
+    // Equal content: the larger canonical serialization wins, in either order.
+    REQUIRE(firstThenSecond.values.at("arquivo_origem") == "B_SSA_14-07-2026_0145PM.xlsx");
 }
 
 TEST_CASE("SSA import compares Python source timestamps within the same day") {
@@ -214,24 +215,29 @@ TEST_CASE("SSA import sheet date decides before the filename timestamp") {
     REQUIRE(olderFilename.values == existing);
 }
 
-TEST_CASE("SSA import source profile cannot override a conflicting equal snapshot field") {
+TEST_CASE("SSA import equal snapshot with equal field count is decided by content, not order") {
     using Values = ssa::domain::SsaImportPolicy::Values;
-    const Values existing{{"numero_ssa", "202600021"},
-                          {"descricao_ssa", "General snapshot"},
-                          {"situacao", "APV"},
-                          {"arquivo_origem", "SSA_14-07-2026_0100PM.xlsx"},
-                          {"data_planilha", "2026-07-14"}};
-    const Values incoming{{"numero_ssa", "202600021"},
+    const Values general{{"numero_ssa", "202600021"},
+                         {"descricao_ssa", "General snapshot"},
+                         {"situacao", "APV"},
+                         {"arquivo_origem", "SSA_14-07-2026_0100PM.xlsx"},
+                         {"data_planilha", "2026-07-14"}};
+    const Values executed{{"numero_ssa", "202600021"},
                           {"descricao_ssa", "Executed snapshot"},
                           {"situacao", "APV"},
                           {"arquivo_origem", "SSAs executadas_14-07-2026_0100PM.xlsx"},
                           {"data_planilha", "2026-07-14"}};
 
-    const auto result = ssa::domain::SsaImportPolicy::merge(existing, incoming);
+    const auto forward = ssa::domain::SsaImportPolicy::merge(general, executed);
+    const auto backward = ssa::domain::SsaImportPolicy::merge(executed, general);
 
-    REQUIRE_FALSE(result.changed);
-    REQUIRE(result.conflict);
-    REQUIRE(result.values == existing);
+    REQUIRE_FALSE(forward.conflict);
+    REQUIRE_FALSE(backward.conflict);
+    REQUIRE(forward.values == backward.values);
+    REQUIRE(forward.values.at("descricao_ssa") == "Executed snapshot");
+    REQUIRE(forward.changed);
+    REQUIRE_FALSE(backward.changed);
+    REQUIRE(backward.repeatDiscarded);
 }
 
 TEST_CASE("SSA import parses date-only source filenames") {
@@ -388,9 +394,11 @@ TEST_CASE("SSA import tie-break is total: a missing file date sorts before a pre
     earlierRegistration["data_cadastro"] = "2026-01-01 00:00:00";
     const auto registration =
         ssa::domain::SsaImportPolicy::merge(earlierRegistration, laterRegistration);
-    REQUIRE(registration.conflict);
-    REQUIRE_FALSE(registration.changed);
-    REQUIRE(registration.values == earlierRegistration);
+    const auto reversed =
+        ssa::domain::SsaImportPolicy::merge(laterRegistration, earlierRegistration);
+    REQUIRE_FALSE(registration.conflict);
+    REQUIRE(registration.values == reversed.values);
+    REQUIRE(registration.values.at("descricao_ssa") == "Registered later");
 }
 
 TEST_CASE("SSA import breaks a same-minute filename tie with the file modification time") {
@@ -439,10 +447,12 @@ TEST_CASE("SSA import treats accent-only differences as the same value") {
     REQUIRE_FALSE(keep.conflict);
     REQUIRE_FALSE(keep.changed);
     REQUIRE(keep.values == accented);
-    REQUIRE(conflict.conflict);
+    // A different text with the same field count: content decides, never a conflict.
+    REQUIRE_FALSE(conflict.conflict);
+    REQUIRE(conflict.values == ssa::domain::SsaImportPolicy::merge(different, plain).values);
 }
 
-TEST_CASE("SSA import reports the first conflicting field") {
+TEST_CASE("SSA import reports the first differing field of a repeat resolved by content") {
     using Values = ssa::domain::SsaImportPolicy::Values;
     const Values existing{{"numero_ssa", "202600032"},
                           {"descricao_ssa", "Same"},
@@ -455,16 +465,17 @@ TEST_CASE("SSA import reports the first conflicting field") {
 
     const auto result = ssa::domain::SsaImportPolicy::merge(existing, incoming);
 
-    REQUIRE(result.conflict);
+    REQUIRE_FALSE(result.conflict);
+    REQUIRE(result.repeatDiscarded);
     REQUIRE(result.conflictField == "responsavel_execucao");
     REQUIRE(ssa::domain::SsaImportPolicy::describeConflict(existing, incoming, result) ==
-            "Import conflict: ssa=202600032 field=responsavel_execucao existing=\"FELIPE\" "
-            "incoming=\"PAULO\" "
+            "Import repeated SSA, resolved by content: ssa=202600032 "
+            "field=responsavel_execucao existing=\"FELIPE\" incoming=\"PAULO\" "
             "existing_file=\"Consulta SSA - 28-05-2026_0306PM.xlsx\" "
             "incoming_file=\"Consulta SSA - 28-05-2026_0306PM (1).xlsx\"");
 }
 
-TEST_CASE("SSA import keeps the first row of an SSA repeated in the same workbook") {
+TEST_CASE("SSA import repeated in the same workbook keeps the row with more fields") {
     using Values = ssa::domain::SsaImportPolicy::Values;
     // SAM exports one row per execution: only the execution fields differ.
     const Values first{{"numero_ssa", "202207778"},
@@ -480,22 +491,27 @@ TEST_CASE("SSA import keeps the first row of an SSA repeated in the same workboo
     second["semana_executada"] = "202642";
 
     const auto result = ssa::domain::SsaImportPolicy::merge(first, second);
+    const auto reversed = ssa::domain::SsaImportPolicy::merge(second, first);
 
+    // The second row carries one more field, so it wins in either order.
     REQUIRE_FALSE(result.conflict);
-    REQUIRE(result.repeatDiscarded);
-    REQUIRE_FALSE(result.changed);
-    REQUIRE(result.values == first);
-    REQUIRE(result.conflictField == "descricao_execucao");
+    REQUIRE(result.changed);
+    REQUIRE(result.values.at("responsavel_execucao") == "PAULO");
+    REQUIRE(result.values.at("semana_executada") == "202642");
+    REQUIRE_FALSE(reversed.changed);
+    REQUIRE(reversed.repeatDiscarded);
+    REQUIRE(reversed.conflictField == "descricao_execucao");
+    REQUIRE(result.values == reversed.values);
 
-    // Another workbook of the same instant stays an ambiguous conflict.
+    // Another workbook of the same instant follows the same content rule.
     auto siblingFile = second;
     siblingFile["arquivo_origem"] = "SSAscomReprogramacoes_20-10-2026_1131AM (1).xlsx";
     const auto sibling = ssa::domain::SsaImportPolicy::merge(first, siblingFile);
-    REQUIRE(sibling.conflict);
-    REQUIRE_FALSE(sibling.repeatDiscarded);
+    REQUIRE_FALSE(sibling.conflict);
+    REQUIRE(sibling.values.at("responsavel_execucao") == "PAULO");
 }
 
-TEST_CASE("SSA import rejects a richer row with a conflicting equal snapshot field") {
+TEST_CASE("SSA import equal snapshot keeps the richer row in either order") {
     using Values = ssa::domain::SsaImportPolicy::Values;
     const Values sparse{{"numero_ssa", "202600021"},
                         {"descricao_ssa", "Sparse"},
@@ -512,11 +528,11 @@ TEST_CASE("SSA import rejects a richer row with a conflicting equal snapshot fie
     const auto sparseThenRich = ssa::domain::SsaImportPolicy::merge(sparse, rich);
     const auto richThenSparse = ssa::domain::SsaImportPolicy::merge(rich, sparse);
 
-    REQUIRE(sparseThenRich.conflict);
-    REQUIRE(richThenSparse.conflict);
-    REQUIRE_FALSE(sparseThenRich.changed);
+    REQUIRE_FALSE(sparseThenRich.conflict);
+    REQUIRE_FALSE(richThenSparse.conflict);
+    REQUIRE(sparseThenRich.changed);
     REQUIRE_FALSE(richThenSparse.changed);
-    REQUIRE(sparseThenRich.values == sparse);
+    REQUIRE(sparseThenRich.values == rich);
     REQUIRE(richThenSparse.values == rich);
 }
 
@@ -615,15 +631,41 @@ TEST_CASE("SSA import field timestamps reject surrounding text") {
                 .empty());
 }
 
-TEST_CASE("SSA import date text is canonical for every representation of the same date") {
+TEST_CASE("SSA import date text preserves ISO representation and normalizes legacy values") {
     using Policy = ssa::domain::SsaImportPolicy;
     REQUIRE(Policy::normalizeDateText(" 2026-07-13 ") == "2026-07-13");
-    REQUIRE(Policy::normalizeDateText("13/07/2026") == "2026-07-13");
-    REQUIRE(Policy::normalizeDateText("2026-07-13 00:00:00") == "2026-07-13");
-    REQUIRE(Policy::normalizeDateText("13/07/2026 00:00:00") == "2026-07-13");
-    REQUIRE(Policy::normalizeDateText("2026-07-13T13:20:00") == "2026-07-13 13:20:00");
+    REQUIRE(Policy::normalizeDateText("2026-07-13T13:20:00") == "2026-07-13T13:20:00");
     REQUIRE(Policy::normalizeDateText("13/07/2026 13:20:00") == "2026-07-13 13:20:00");
     REQUIRE(Policy::normalizeDateText("invalid").empty());
+}
+
+TEST_CASE("SSA import compares dates, numbers and codes canonically, keeping the stored value") {
+    using Values = ssa::domain::SsaImportPolicy::Values;
+    // Python parity (A6/C2): the same value in another spelling is neither written nor counted.
+    const Values stored{{"numero_ssa", "202600043"},
+                        {"descricao_ssa", "Same"},
+                        {"situacao", "APV"},
+                        {"prazo_limite", "01/01/2026 00:00:00"},
+                        {"semana_executada", "202601"},
+                        {"data_planilha", "2026-07-20"}};
+    Values incoming = stored;
+    incoming["prazo_limite"] = "2026-01-01";
+    incoming["semana_executada"] = "202601.0";
+    incoming["data_planilha"] = "2026-07-21";
+
+    const auto result = ssa::domain::SsaImportPolicy::merge(stored, incoming);
+    REQUIRE(result.metadataOnly);
+    REQUIRE(result.values.at("prazo_limite") == "01/01/2026 00:00:00");
+    REQUIRE(result.values.at("semana_executada") == "202601");
+
+    // Exact decimals, no floating point: 2^53 and 2^53 + 1 are different values.
+    incoming["semana_executada"] = "9007199254740993";
+    Values large = stored;
+    large["semana_executada"] = "9007199254740992";
+    const auto precise = ssa::domain::SsaImportPolicy::merge(large, incoming);
+    REQUIRE(precise.changed);
+    REQUIRE_FALSE(precise.metadataOnly);
+    REQUIRE(precise.values.at("semana_executada") == "9007199254740993");
 }
 
 TEST_CASE("SSA import rows without a report date never conflict") {
@@ -715,7 +757,7 @@ TEST_CASE("SSA import rejects cadastro timestamps with surrounding text") {
     REQUIRE(ssa::domain::SsaImportPolicy::isValidRow(row("2025-10-21T11:10:36")));
 }
 
-TEST_CASE("terminal SSA advances snapshot metadata while accepting newer indicators") {
+TEST_CASE("terminal SSA is never overwritten by newer or older snapshots") {
     using Values = ssa::domain::SsaImportPolicy::Values;
     const Values terminal{{"numero_ssa", "202600017"},
                           {"descricao_ssa", "Terminal"},
@@ -739,17 +781,14 @@ TEST_CASE("terminal SSA advances snapshot metadata while accepting newer indicat
     const auto advanced = ssa::domain::SsaImportPolicy::merge(terminal, newest);
     const auto ignored = ssa::domain::SsaImportPolicy::merge(advanced.values, middle);
 
-    REQUIRE(advanced.changed);
-    REQUIRE(advanced.values.at("situacao") == "STE");
-    REQUIRE(advanced.values.at("descricao_ssa") == "Terminal");
-    REQUIRE(advanced.values.at("prazo_limite") == "2026-07-30");
-    REQUIRE(advanced.values.at("data_planilha") == "2026-07-03");
-    REQUIRE(advanced.values.at("arquivo_origem") == "SSA_03-07-2026.xlsx");
+    // Python parity: a stored STE/SCA row is never overwritten, not even indicators.
+    REQUIRE_FALSE(advanced.changed);
+    REQUIRE(advanced.values == terminal);
     REQUIRE_FALSE(ignored.changed);
-    REQUIRE(ignored.values == advanced.values);
+    REQUIRE(ignored.values == terminal);
 }
 
-TEST_CASE("terminal SSA preserves newer execution planning and description fields") {
+TEST_CASE("terminal SSA ignores newer execution planning and description fields") {
     using Values = ssa::domain::SsaImportPolicy::Values;
     const Values existing{{"numero_ssa", "202600018"},
                           {"situacao", "STE"},
@@ -769,11 +808,8 @@ TEST_CASE("terminal SSA preserves newer execution planning and description field
 
     const auto result = ssa::domain::SsaImportPolicy::merge(existing, incoming);
 
-    REQUIRE(result.values.at("semana_programada") == "202630");
-    REQUIRE(result.values.at("responsavel_programacao") == "Equipe A");
-    REQUIRE(result.values.at("responsavel_execucao") == "Equipe B");
-    REQUIRE(result.values.at("execucao_simples") == "Sim");
-    REQUIRE(result.values.at("descricao_execucao") == "Execucao parcial 2");
+    REQUIRE_FALSE(result.changed);
+    REQUIRE(result.values == existing);
 }
 
 TEST_CASE("terminal SSA never changes to another terminal state") {
@@ -793,7 +829,7 @@ TEST_CASE("terminal SSA never changes to another terminal state") {
     REQUIRE(result.values == existing);
 }
 
-TEST_CASE("equal SSA snapshot rejects conflicting indicator values in either order") {
+TEST_CASE("equal SSA snapshot never changes a terminal row in either order") {
     using Values = ssa::domain::SsaImportPolicy::Values;
     const Values existing{{"numero_ssa", "202600018"},
                           {"descricao_ssa", "Same business snapshot"},
@@ -809,8 +845,8 @@ TEST_CASE("equal SSA snapshot rejects conflicting indicator values in either ord
     const auto existingThenIncoming = ssa::domain::SsaImportPolicy::merge(existing, incoming);
     const auto incomingThenExisting = ssa::domain::SsaImportPolicy::merge(incoming, existing);
 
-    REQUIRE(existingThenIncoming.conflict);
-    REQUIRE(incomingThenExisting.conflict);
+    REQUIRE_FALSE(existingThenIncoming.conflict);
+    REQUIRE_FALSE(incomingThenExisting.conflict);
     REQUIRE_FALSE(existingThenIncoming.changed);
     REQUIRE_FALSE(incomingThenExisting.changed);
     REQUIRE(existingThenIncoming.values == existing);

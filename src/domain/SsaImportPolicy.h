@@ -31,9 +31,10 @@ namespace ssa::domain {
             Values values;
             bool changed = false;
             bool conflict = false;
-            std::string conflictField; // first field that conflicted, for diagnostics
-            // A row repeated inside the same workbook disagreed with its first row and was
-            // dropped: SAM exports one row per execution, and the first row wins.
+            std::string conflictField; // first differing field, for diagnostics
+            // Two rows of equal precedence disagreed on a business field and were resolved by
+            // content (more non-empty fields, then the larger canonical serialization), never
+            // by read order. Journaled; `conflict` is never set by merge().
             bool repeatDiscarded = false;
             // Only source metadata (arquivo_origem, data_arquivo_origem, data_criacao_arquivo,
             // data_planilha) differs: the row is rewritten but counted as verified, not updated.
