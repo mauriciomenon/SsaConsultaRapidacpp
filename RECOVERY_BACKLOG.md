@@ -33,6 +33,13 @@
   C++ contra Python (0ee77228): mesmas 46087 SSAs; `situacao`, `arquivo_origem`,
   `setor_executor`, `semana_cadastro`, `responsavel_execucao`, `derivada_de`
   sem diferenca; `descricao_ssa` so difere em espacos. O vencedor e o mesmo.
+- [LOCAL-PENDING] Memoria do lote unico: full rescan dos 437 xlsx com pico de
+  1447 MB e 1229 s (antes da otimizacao: 1786 MB). A gravacao por arquivo
+  antiga ficava em 87 MB. O peso vem dos grupos por SSA da rodada: cada campo
+  vencedor retem a chave do candidato, com o JSON canonico usado no desempate
+  por conteudo. O Python tambem guarda a rodada inteira (pico a medir). Opcoes,
+  se o pico incomodar: reter o JSON so para precedencias empatadas, ou dobrar
+  em grupos menores por intervalo de numero de SSA.
 - [DECISAO-PENDENTE] Normalizacao de valores diferente do Python (anterior ao
   lote unico; nao afeta precedencia): espacos no fim (C++ apara); datas com
   `T` x espaco e dd/mm x ISO (`executado`, `concluido`, `instalacao_estimada`);
