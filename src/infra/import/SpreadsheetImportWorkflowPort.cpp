@@ -570,6 +570,7 @@ namespace ssa::infra::importing {
                 return qt::toQString(path).toCaseFolded().toStdString();
             };
             struct Keyed {
+                bool undated = false; // Python: a file without any date goes last
                 std::string date;
                 std::string name;
                 std::string path;
@@ -578,10 +579,13 @@ namespace ssa::infra::importing {
             std::vector<Keyed> keyed;
             keyed.reserve(files.size());
             for (auto& file : files) {
-                keyed.push_back({fileDate(file), folded(file.filename()), folded(file), file});
+                auto date = fileDate(file);
+                const bool undated = date.empty();
+                keyed.push_back(
+                    {undated, std::move(date), folded(file.filename()), folded(file), file});
             }
             std::ranges::sort(keyed, {}, [](const Keyed& entry) {
-                return std::tie(entry.date, entry.name, entry.path);
+                return std::tie(entry.undated, entry.date, entry.name, entry.path);
             });
             files.clear();
             for (auto& entry : keyed) {

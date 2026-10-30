@@ -10680,3 +10680,28 @@ TEST_CASE("selection above 64 files breaks a date tie by the case-folded file na
     REQUIRE(scalarText(db, "SELECT situacao FROM ssa_table WHERE numero_ssa='202600932'") == "SCA");
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
+
+TEST_CASE("selection above 64 files puts a file without any date last") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    // A selected file that no longer exists has neither a date in its name nor a
+    // modification time: Python sorts it after every dated file.
+    std::vector<std::filesystem::path> selection{root / "aaa_missing.xlsx"};
+    for (int index = 0; index < 64; ++index) {
+        selection.push_back(root / ("SSA_15-07-2026_0900AM (" + std::to_string(index) + ").xlsx"));
+        writeSsaWorkbook(selection.back(), std::to_string(202601200 + index), "ADM", "Filler");
+    }
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(dbPath.parent_path());
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(root / "docs_entrada", dbPath,
+                                                              importColumns(), false);
+
+    const auto result = port.importExternalFiles({.files = selection});
+
+    INFO(result.message);
+    REQUIRE(result.importSummary.has_value());
+    REQUIRE(result.importSummary->files.size() == 65);
+    REQUIRE(result.importSummary->files.back().source == "aaa_missing.xlsx");
+    REQUIRE(result.importSummary->inserts == 64);
+}
