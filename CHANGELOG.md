@@ -11,6 +11,10 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 
 ### Alterado
 
+- Importacao: `num_reprogramacoes`, `total_de_reprogramacoes` e `numero_desvios` seguem a
+  conversao do Python: numero inteiro ("3.0" vira 3), texto nao numerico fica vazio e numero
+  fracionario rejeita o arquivo; `num_reprogramacoes` vazio recebe o total quando a planilha
+  tem as duas colunas.
 - Importacao: `tempo_excedido` reconhecido inteiro vira duracao ISO 8601
   ("25d 1h : 9mi" -> "P25DT1H9M"), como no Python; texto nao reconhecido fica como veio.
 - Importacao: `data_planilha` e `data_arquivo_origem` passam a ser a data do arquivo (a

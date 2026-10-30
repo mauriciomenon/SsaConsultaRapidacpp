@@ -1,6 +1,7 @@
 #include "domain/ColumnCatalog.h"
 #include "infra/import/SsaSpreadsheetHeaderCatalog.h"
 #include "infra/import/SsaSpreadsheetMapper.h"
+#include "ports/OperationError.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -384,4 +385,84 @@ TEST_CASE("SSA spreadsheet mapper rejects explicit and positional destination co
     REQUIRE(batch.mappingStatus ==
             ssa::infra::importing::SpreadsheetMappingStatus::AmbiguousHeaders);
     REQUIRE(batch.rows.empty());
+}
+
+TEST_CASE("SSA spreadsheet mapper coerces counts and backfills only a present primary column") {
+    using namespace ssa::infra::importing;
+    for (const auto& [primary, expected] :
+         std::vector<std::pair<std::string, std::string>>{{"Reprogramacao #2", "7"},
+                                                          {"0", "0"},
+                                                          {"3.0", "3"},
+                                                          {"-2", "-2"},
+                                                          {"", "7"},
+                                                          {"NaN", "7"}}) {
+        INFO(primary);
+        SpreadsheetTable table;
+        table.headerRow = {"Numero SSA", "Descricao", "Data Cadastro", "num_reprogramacoes",
+                           "total_de_reprogramacoes"};
+        table.rows = {{"202600001", "Counts", "2026-07-14", primary, "7"}};
+        const auto batch = SsaSpreadsheetMapper::map(table);
+        REQUIRE(batch.rows.size() == 1);
+        REQUIRE(batch.rows.front().at("num_reprogramacoes") == expected);
+        REQUIRE(batch.rows.front().at("total_de_reprogramacoes") == "7");
+    }
+    SpreadsheetTable table;
+    table.headerRow = {"Numero SSA", "Descricao", "Data Cadastro", "total_de_reprogramacoes"};
+    table.rows = {{"202600001", "Counts", "2026-07-14", "7"}};
+    const auto absent = SsaSpreadsheetMapper::map(table);
+    REQUIRE(absent.rows.size() == 1);
+    REQUIRE_FALSE(absent.rows.front().contains("num_reprogramacoes"));
+    REQUIRE(absent.rows.front().at("total_de_reprogramacoes") == "7");
+
+    // A short row omits the primary cell, but the header still contains the column.
+    table.headerRow.push_back("num_reprogramacoes");
+    const auto empty = SsaSpreadsheetMapper::map(table);
+    REQUIRE(empty.rows.size() == 1);
+    REQUIRE(empty.rows.front().at("num_reprogramacoes") == "7");
+    table.rows.front()[3] = "0";
+    const auto zero = SsaSpreadsheetMapper::map(table);
+    REQUIRE(zero.rows.size() == 1);
+    REQUIRE(zero.rows.front().at("num_reprogramacoes") == "0");
+}
+
+TEST_CASE("SSA spreadsheet mapper drops nonnumeric deviation text") {
+    using namespace ssa::infra::importing;
+    for (const auto* text : {"Desvio: 2", "sem desvio", "2,0", "Desvio #2"}) {
+        INFO(text);
+        SpreadsheetTable table;
+        table.headerRow = {"Numero SSA", "Descricao", "Data Cadastro", "numero_desvios"};
+        table.rows = {{"202600001", "Counts", "2026-07-14", text}};
+        const auto batch = SsaSpreadsheetMapper::map(table);
+        REQUIRE(batch.rows.size() == 1);
+        REQUIRE_FALSE(batch.rows.front().contains("numero_desvios"));
+    }
+}
+
+TEST_CASE("SSA spreadsheet mapper rejects the file for invalid integer counts") {
+    using namespace ssa::infra::importing;
+    for (const auto* key : {"num_reprogramacoes", "total_de_reprogramacoes", "numero_desvios"}) {
+        for (const auto* text : {"2.5", "inf", "9223372036854775808"}) {
+            INFO(key);
+            INFO(text);
+            SpreadsheetTable table;
+            table.headerRow = {"Numero SSA",
+                               "Descricao",
+                               "Data Cadastro",
+                               "num_reprogramacoes",
+                               "total_de_reprogramacoes",
+                               "numero_desvios"};
+            table.rows = {{"202600001", "Valid", "2026-07-14", "3", "7", "0"},
+                          {"202600002", "Invalid", "2026-07-14", "3", "7", "0"}};
+            const auto column = key == std::string_view{"num_reprogramacoes"}        ? 3
+                                : key == std::string_view{"total_de_reprogramacoes"} ? 4
+                                                                                     : 5;
+            table.rows.back()[column] = text;
+            try {
+                static_cast<void>(SsaSpreadsheetMapper::map(table));
+                FAIL("Expected InvalidInteger to reject the entire file");
+            } catch (const ssa::ports::OperationError& error) {
+                REQUIRE(error.diagnostic().find("InvalidInteger") != std::string::npos);
+            }
+        }
+    }
 }

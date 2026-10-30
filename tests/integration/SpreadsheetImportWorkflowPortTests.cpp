@@ -3308,15 +3308,15 @@ TEST_CASE("spreadsheet import normalizes real deviation formats into SQLite inte
             2);
     REQUIRE(scalarInt(db, "SELECT numero_desvios FROM ssa_table WHERE numero_ssa='202600137'") ==
             2);
-    REQUIRE(scalarInt(db, "SELECT numero_desvios FROM ssa_table WHERE numero_ssa='202600138'") ==
-            2);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600138' "
+                          "AND numero_desvios IS NULL") == 1);
     // "Desvio #4" is the row label of the deviation report, not a count.
     REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600139' "
                           "AND numero_desvios IS NULL") == 1);
-    REQUIRE(scalarInt(db, "SELECT numero_desvios FROM ssa_table WHERE numero_ssa='202600140'") ==
-            5);
-    REQUIRE(scalarInt(db, "SELECT numero_desvios FROM ssa_table WHERE numero_ssa='202600141'") ==
-            0);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600140' "
+                          "AND numero_desvios IS NULL") == 1);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600141' "
+                          "AND numero_desvios IS NULL") == 1);
     REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600142' "
                           "AND numero_desvios IS NULL") == 1);
     REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE "
@@ -3379,8 +3379,8 @@ TEST_CASE("external import updates legacy deviation text and continues with the 
                           "AND numero_desvios IS NULL") == 1);
     REQUIRE(scalarText(db, "SELECT descricao_ssa FROM ssa_table WHERE numero_ssa='202600146'") ==
             "Updated");
-    REQUIRE(scalarInt(db, "SELECT numero_desvios FROM ssa_table WHERE numero_ssa='202600147'") ==
-            0);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600147' "
+                          "AND numero_desvios IS NULL") == 1);
     REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 2);
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
@@ -10947,5 +10947,76 @@ TEST_CASE("spreadsheet mapper falls back to creation time or removes stale sourc
     } else {
         REQUIRE(mapped.at("data_planilha") == expectedSheet);
         REQUIRE(mapped.at("data_arquivo_origem") == expectedSource);
+    }
+}
+
+TEST_CASE("spreadsheet count conversion rejects the whole file before persistence") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto workbook = root / "counts.xlsx";
+    writeWorkbook(workbook,
+                  row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Descricao"),
+                          inlineCell("C1", "Data Cadastro"), inlineCell("D1", "Reprogramacoes"),
+                          inlineCell("E1", "Total de Reprogramacoes")}) +
+                      row(2, {inlineCell("A2", "202600001"), inlineCell("B2", "Valid first row"),
+                              inlineCell("C2", "2026-07-14"), inlineCell("D2", "3.0"),
+                              inlineCell("E2", "7")}) +
+                      row(3, {inlineCell("A3", "202600002"), inlineCell("B3", "Fraction"),
+                              inlineCell("C3", "2026-07-14"), inlineCell("D3", "2.5"),
+                              inlineCell("E3", "7")}));
+    const auto dbPath = root / "ssas.db";
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(root / "docs_entrada", dbPath,
+                                                              importColumns(), false);
+    const auto result = port.importExternalFiles({.files = {workbook}});
+    REQUIRE(result.importSummary.has_value());
+    REQUIRE(fileResultNamed(*result.importSummary, workbook.filename().string()).status ==
+            ssa::ports::ImportFileStatus::Failed);
+    REQUIRE(result.diagnostic.find("InvalidInteger") != std::string::npos);
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    // The only file failed: the database may not even have the table, and never a row.
+    const bool hasTable =
+        scalarInt(db, "SELECT COUNT(*) FROM sqlite_master WHERE name='ssa_table'") == 1;
+    REQUIRE((!hasTable || scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 0));
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("sqlite legacy deviation counts use the same numeric coercion") {
+    for (const auto* text : {"Desvio: 2", "sem desvio", "2,0", "Desvio #2", "3.0", "2.5"}) {
+        INFO(text);
+        QTemporaryDir tempDir;
+        REQUIRE(tempDir.isValid());
+        const auto dbPath = std::filesystem::path{tempDir.path().toStdString()} / "ssas.db";
+        const ssa::infra::sqlite::SqliteSsaImportWriter writer(sqliteWriterAccess(), dbPath,
+                                                               importColumns());
+        ssa::infra::importing::ResolvedSsaImportRows rows;
+        rows.rows.push_back({{"numero_ssa", "202600001"},
+                             {"descricao_ssa", "Existing"},
+                             {"data_cadastro", "2026-07-14"}});
+        REQUIRE(writer.write(rows, 1, 0, false).rowsWritten == 1);
+        sqlite3* db = nullptr;
+        REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+        const auto sql = std::string{"UPDATE ssa_table SET numero_desvios='"} + text + "'";
+        REQUIRE(sqlite3_exec(db, sql.c_str(), nullptr, nullptr, nullptr) == SQLITE_OK);
+        REQUIRE(sqlite3_close(db) == SQLITE_OK);
+        rows.rows.front()["descricao_ssa"] = "Updated";
+        rows.rows.front()["data_cadastro"] = "2026-07-15";
+        if (text == std::string_view{"2.5"}) {
+            REQUIRE_THROWS(writer.write(rows, 1, 0, false));
+        } else {
+            REQUIRE(writer.write(rows, 1, 0, false).rowsWritten == 1);
+        }
+        REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+        if (text == std::string_view{"2.5"}) {
+            REQUIRE(scalarText(db, "SELECT numero_desvios FROM ssa_table") == "2.5");
+            REQUIRE(scalarText(db, "SELECT descricao_ssa FROM ssa_table") == "Existing");
+        } else if (text == std::string_view{"3.0"}) {
+            REQUIRE(scalarInt(db, "SELECT numero_desvios FROM ssa_table") == 3);
+        } else {
+            REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table WHERE numero_desvios IS NULL") ==
+                    1);
+        }
+        REQUIRE(sqlite3_close(db) == SQLITE_OK);
     }
 }

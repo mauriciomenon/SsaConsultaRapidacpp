@@ -626,56 +626,93 @@ namespace ssa::domain {
         return text;
     }
 
-    std::string SsaImportPolicy::normalizeDeviationCount(const std::string& value) {
-        auto normalized = trimWhitespace(value);
-        std::ranges::transform(normalized, normalized.begin(), ascii::toLower);
-        const auto integerLiteral = [](const std::string_view candidate) {
-            const auto separator = candidate.find_first_of(".,");
-            const auto digitsOnly = [](const std::string_view text) {
-                return !text.empty() && std::ranges::all_of(text, ascii::isDigit);
-            };
-            if (separator == std::string_view::npos) {
-                return digitsOnly(candidate) ? std::string{candidate} : std::string{};
-            }
-            if (separator == 0 || separator + 1 >= candidate.size() ||
-                !digitsOnly(candidate.substr(0, separator)) ||
-                !digitsOnly(candidate.substr(separator + 1)) ||
-                !std::ranges::all_of(candidate.substr(separator + 1),
-                                     [](const unsigned char ch) { return ch == '0'; })) {
-                return std::string{};
-            }
-            return std::string{candidate.substr(0, separator)};
-        };
-        if (const auto numeric = integerLiteral(normalized); !numeric.empty()) {
-            return numeric;
+    std::optional<std::string> SsaImportPolicy::normalizeIntegerCount(const std::string& value) {
+        const auto text = trimWhitespace(value);
+        long long parsed = 0;
+        if (parseInteger(text, parsed)) {
+            return std::to_string(parsed);
         }
-        if (normalized.starts_with("desvio") || normalized.starts_with("desvios")) {
-            auto suffix =
-                std::string_view{normalized}.substr(normalized.starts_with("desvios") ? 7 : 6);
-            while (!suffix.empty() && ascii::isSpace(suffix.front())) {
-                suffix.remove_prefix(1);
+        const auto folded = lowercase(text);
+        if (folded == "inf" || folded == "+inf" || folded == "-inf" || folded == "infinity" ||
+            folded == "+infinity" || folded == "-infinity") {
+            return std::nullopt;
+        }
+        // Parse decimal text exactly: floating point rounds int64 boundaries and fractions.
+        static const std::regex numeric{
+            R"(^([+-]?)([0-9]*)(?:\.([0-9]*))?(?:[eE]([+-]?[0-9]+))?$)"};
+        std::smatch match;
+        if (!std::regex_match(text, match, numeric) ||
+            (match[2].length() == 0 && match[3].length() == 0)) {
+            return std::string{};
+        }
+        auto digits = match[2].str() + match[3].str();
+        const auto first = digits.find_first_not_of('0');
+        if (first == std::string::npos) {
+            return std::string{"0"};
+        }
+        digits.erase(0, first);
+        long long exponent = 0;
+        if (match[4].matched) {
+            auto power = match[4].str();
+            if (power.front() == '+') {
+                power.erase(0, 1);
             }
-            // "Desvio #N" labels one row of the deviation report (one row per deviation), it is
-            // not the count; storing it as a count overwrote real counts with 1.
-            if (!suffix.empty() && suffix.front() == '#') {
-                return {};
-            }
-            if (!suffix.empty() && (suffix.front() == ':' || suffix.front() == '-')) {
-                suffix.remove_prefix(1);
-                while (!suffix.empty() && ascii::isSpace(suffix.front())) {
-                    suffix.remove_prefix(1);
-                }
-            }
-            if (const auto numeric = integerLiteral(suffix); !numeric.empty()) {
-                return numeric;
+            if (!parseInteger(power, exponent)) {
+                return std::nullopt;
             }
         }
-        if (normalized == "sem desvio" || normalized == "sem desvios" || normalized == "nenhum" ||
-            normalized == "nao" || normalized == "0 sem desvio" || normalized == "0 - sem desvio" ||
-            normalized == "sem desvio (0)") {
-            return "0";
+        // Bound the exponent before subtraction, resizing or appending.
+        const auto fraction = static_cast<long long>(match[3].length());
+        if (exponent > fraction + 19 || exponent < -static_cast<long long>(digits.size())) {
+            return std::nullopt;
         }
-        return {};
+        const auto shift = exponent - fraction;
+        if (shift < 0) {
+            const auto removed = static_cast<std::size_t>(-shift);
+            if (removed >= digits.size() ||
+                digits.find_first_not_of('0', digits.size() - removed) != std::string::npos) {
+                return std::nullopt;
+            }
+            digits.resize(digits.size() - removed);
+        } else {
+            if (digits.size() + static_cast<std::size_t>(shift) > 19) {
+                return std::nullopt;
+            }
+            digits.append(static_cast<std::size_t>(shift), '0');
+        }
+        if (match[1] == "-") {
+            digits.insert(digits.begin(), '-');
+        }
+        if (!parseInteger(digits, parsed)) {
+            return std::nullopt;
+        }
+        return std::to_string(parsed);
+    }
+
+    SsaImportPolicy::ImportedRowIssue
+    SsaImportPolicy::normalizeImportedCounts(Values& row, const bool hasReprogrammingColumn) {
+        for (const auto* key :
+             {"total_de_reprogramacoes", "numero_desvios", "num_reprogramacoes"}) {
+            const auto entry = row.find(key);
+            if (entry == row.end()) {
+                continue;
+            }
+            auto count = normalizeIntegerCount(entry->second);
+            if (!count) {
+                return ImportedRowIssue::InvalidInteger;
+            }
+            if (count->empty()) {
+                row.erase(entry);
+            } else {
+                entry->second = std::move(*count);
+            }
+        }
+        if (hasReprogrammingColumn && !row.contains("num_reprogramacoes")) {
+            if (const auto total = row.find("total_de_reprogramacoes"); total != row.end()) {
+                row.emplace("num_reprogramacoes", total->second);
+            }
+        }
+        return ImportedRowIssue::None;
     }
 
     std::string SsaImportPolicy::normalizeDateText(const std::string& value) {
@@ -915,13 +952,9 @@ namespace ssa::domain {
             return ImportedRowIssue::InvalidNumber;
         }
         row[std::string{kSsaNumberColumnKey}] = std::move(number);
-        if (const auto deviation = row.find("numero_desvios"); deviation != row.end()) {
-            auto canonical = normalizeDeviationCount(deviation->second);
-            if (canonical.empty()) {
-                row.erase(deviation);
-            } else {
-                deviation->second = std::move(canonical);
-            }
+        if (const auto issue = normalizeImportedCounts(row, false);
+            issue != ImportedRowIssue::None) {
+            return issue;
         }
         for (auto& [key, value] : row) {
             if ((key != "derivada_de" && !key.starts_with("numero_ssa_relacionada_")) ||

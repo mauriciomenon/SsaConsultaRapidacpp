@@ -613,15 +613,18 @@ namespace ssa::infra::sqlite {
             if (value == row.end() || value->second.empty()) {
                 return false;
             }
-            const auto canonical = domain::SsaImportPolicy::normalizeDeviationCount(value->second);
-            if (canonical.empty()) {
+            const auto canonical = domain::SsaImportPolicy::normalizeIntegerCount(value->second);
+            if (!canonical) {
+                return false; // a stored value is never revalidated: an invalid one stays as is
+            }
+            if (canonical->empty()) {
                 row.erase(value);
                 return true;
             }
-            if (value->second == canonical) {
+            if (value->second == *canonical) {
                 return false;
             }
-            value->second = canonical;
+            value->second = *canonical;
             return true;
         }
 

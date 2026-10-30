@@ -6,10 +6,8 @@
 #include "domain/SsaImportPolicy.h"
 #include "domain/WhitespaceTrim.h"
 #include "infra/import/SsaSpreadsheetHeaderCatalog.h"
+#include "ports/OperationError.h"
 #include "qt/FilesystemPath.h"
-
-#include <QChar>
-#include <QString>
 
 #include <algorithm>
 #include <array>
@@ -29,29 +27,6 @@ namespace ssa::infra::importing {
 
         std::optional<std::string> canonicalColumn(const std::string& header) {
             return SsaSpreadsheetHeaderCatalog::canonicalColumnForHeader(header);
-        }
-
-        std::string normalizeReprogrammingNumber(const std::string& value) {
-            const auto decomposed =
-                QString::fromUtf8(value.data(), static_cast<qsizetype>(value.size()))
-                    .normalized(QString::NormalizationForm_KD);
-            QString folded;
-            folded.reserve(decomposed.size());
-            for (const auto character : decomposed) {
-                if (character.category() != QChar::Mark_NonSpacing) {
-                    folded.push_back(character.toLower());
-                }
-            }
-            const auto normalized = folded.trimmed().toStdString();
-            // "Reprogramacao #N" and "Reprogramacao final" label one row of the reprogramming
-            // report (one row per event), not the count, which comes from "No de
-            // Reprogramacoes"; storing the label as a count overwrote real counts with 1.
-            if (normalized == "final reschedule" || normalized == "reprogramacao final" ||
-                normalized.starts_with("reschedule #") ||
-                normalized.starts_with("reprogramacao #")) {
-                return {};
-            }
-            return value;
         }
 
         void throwIfMappingCanceled(const std::stop_token& stopToken) {
@@ -384,6 +359,10 @@ namespace ssa::infra::importing {
         if (!sheetTimestamp.empty()) {
             sheetTimestamp[10] = 'T';
         }
+        const bool hasReprogrammingColumn =
+            std::ranges::any_of(columnMap.columns, [](const auto& column) {
+                return column.second == "num_reprogramacoes";
+            });
         bool checkpointCalled = false;
         for (std::size_t rowIndex = firstDataRow; rowIndex < table.rows.size(); ++rowIndex) {
             throwIfMappingCanceled(stopToken);
@@ -396,6 +375,11 @@ namespace ssa::infra::importing {
             }
             // Nulls are dropped before the conversions; row validation comes after them.
             domain::SsaImportPolicy::dropNullValues(row);
+            if (domain::SsaImportPolicy::normalizeImportedCounts(row, hasReprogrammingColumn) ==
+                domain::SsaImportPolicy::ImportedRowIssue::InvalidInteger) {
+                throw ports::OperationError("Falha ao validar valor numerico importado",
+                                            "InvalidInteger: invalid integer count in spreadsheet");
+            }
             for (auto entry = row.begin(); entry != row.end();) {
                 const auto& columnKey = entry->first;
                 auto& value = entry->second;
@@ -409,12 +393,8 @@ namespace ssa::infra::importing {
                     if (!normalized.empty() || value.empty()) {
                         value = normalized;
                     }
-                } else if (columnKey == "numero_desvios") {
-                    value = domain::SsaImportPolicy::normalizeDeviationCount(value);
                 } else if (columnKey == "tempo_excedido") {
                     value = domain::SsaImportPolicy::normalizeExceededTime(value);
-                } else if (columnKey == "num_reprogramacoes") {
-                    value = normalizeReprogrammingNumber(value);
                 } else if (const auto* column = domain::ColumnCatalog::find(columnKey);
                            column != nullptr && domain::storesIsoDate(column->type)) {
                     const auto normalized =

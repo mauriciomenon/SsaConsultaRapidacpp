@@ -6,6 +6,7 @@
 
 #include <limits>
 #include <string>
+#include <utility>
 #include <vector>
 
 TEST_CASE("SSA import normalizes whole exceeded time expressions without carrying units") {
@@ -154,19 +155,62 @@ TEST_CASE("SSA import normalization trims spaces and whitespace-only values") {
     REQUIRE(ssa::domain::SsaImportPolicy::normalizeNumber("") == "");
 }
 
-TEST_CASE("SSA import normalization preserves deviation labels as counts") {
-    // "Desvio #N" labels one row of the deviation report, it is not the count.
-    REQUIRE(ssa::domain::SsaImportPolicy::normalizeDeviationCount("Desvio #1").empty());
-    REQUIRE(ssa::domain::SsaImportPolicy::normalizeDeviationCount("desvio # 2").empty());
-    REQUIRE(ssa::domain::SsaImportPolicy::normalizeDeviationCount("sem desvio") == "0");
-    REQUIRE(ssa::domain::SsaImportPolicy::normalizeDeviationCount("N/A").empty());
+TEST_CASE("SSA import integer counts coerce numeric text without semantic labels") {
+    using Policy = ssa::domain::SsaImportPolicy;
+    for (const auto* text : {"Desvio #1", "desvio # 2", "Desvio: 2", "Desvios: 3", "sem desvio",
+                             "2,0", "Reprogramacao #2", "N/A", "NaN", "", "3x"}) {
+        INFO(text);
+        REQUIRE(Policy::normalizeIntegerCount(text) == std::optional<std::string>{""});
+    }
+    for (const auto& [text, expected] : std::vector<std::pair<std::string, std::string>>{
+             {"3", "3"},
+             {"3.0", "3"},
+             {"-2", "-2"},
+             {" +003.00 ", "3"},
+             {"2e2", "200"},
+             {"20e-1", "2"},
+             {"-0.0", "0"},
+             {".0", "0"},
+             {"3.", "3"},
+             {"9223372036854775807", "9223372036854775807"},
+             {"9223372036854775807.0", "9223372036854775807"},
+             {"-9223372036854775808.0", "-9223372036854775808"}}) {
+        INFO(text);
+        REQUIRE(Policy::normalizeIntegerCount(text) == std::optional<std::string>{expected});
+    }
 }
 
-TEST_CASE("SSA import normalization accepts Excel integer representations") {
-    REQUIRE(ssa::domain::SsaImportPolicy::normalizeDeviationCount("2.0") == "2");
-    REQUIRE(ssa::domain::SsaImportPolicy::normalizeDeviationCount("2,0") == "2");
-    REQUIRE(ssa::domain::SsaImportPolicy::normalizeDeviationCount("Desvios: 3") == "3");
-    REQUIRE(ssa::domain::SsaImportPolicy::normalizeDeviationCount("1.5").empty());
+TEST_CASE("SSA import integer counts reject fractions infinity and int64 overflow") {
+    using Policy = ssa::domain::SsaImportPolicy;
+    for (const auto* text :
+         {"2.5", "-1.5", "1e-1", "Inf", "-infinity", "+INF", "9223372036854775808",
+          "-9223372036854775809", "9223372036854775808.0", "9223372036854775807.1",
+          "1e999999999999999999999", "1e-999999999999999999999"}) {
+        INFO(text);
+        REQUIRE_FALSE(Policy::normalizeIntegerCount(text).has_value());
+        for (const auto* key :
+             {"num_reprogramacoes", "total_de_reprogramacoes", "numero_desvios"}) {
+            INFO(key);
+            Policy::Values row{{"numero_ssa", "202600001"}, {key, text}};
+            REQUIRE(Policy::normalizeImportedRow(row) == Policy::ImportedRowIssue::InvalidInteger);
+        }
+    }
+}
+
+TEST_CASE("SSA import count backfill requires explicit header presence") {
+    using Policy = ssa::domain::SsaImportPolicy;
+    Policy::Values absent{{"total_de_reprogramacoes", "7"}};
+    REQUIRE(Policy::normalizeImportedCounts(absent, false) == Policy::ImportedRowIssue::None);
+    REQUIRE_FALSE(absent.contains("num_reprogramacoes"));
+    REQUIRE(Policy::normalizeImportedCounts(absent, true) == Policy::ImportedRowIssue::None);
+    REQUIRE(absent.at("num_reprogramacoes") == "7");
+
+    Policy::Values zero{{"num_reprogramacoes", "0"}, {"total_de_reprogramacoes", "7"}};
+    REQUIRE(Policy::normalizeImportedCounts(zero, true) == Policy::ImportedRowIssue::None);
+    REQUIRE(zero.at("num_reprogramacoes") == "0");
+    Policy::Values invalid{{"num_reprogramacoes", "3"}, {"total_de_reprogramacoes", "2.5"}};
+    REQUIRE(Policy::normalizeImportedCounts(invalid, true) ==
+            Policy::ImportedRowIssue::InvalidInteger);
 }
 
 TEST_CASE("SSA import equal snapshot preserves state and completes empty fields") {

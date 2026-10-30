@@ -4,6 +4,7 @@
 
 #include <compare>
 #include <cstddef>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -49,7 +50,9 @@ namespace ssa::domain {
         };
 
         [[nodiscard]] static std::string normalizeNumber(const std::string& value);
-        [[nodiscard]] static std::string normalizeDeviationCount(const std::string& value);
+        // Empty text is null; nullopt is a numeric value that cannot become int64.
+        [[nodiscard]] static std::optional<std::string>
+        normalizeIntegerCount(const std::string& value);
         [[nodiscard]] static std::string normalizeExceededTime(const std::string& value);
         [[nodiscard]] static std::string normalizeDateText(const std::string& value);
         // Stored form of a date column value: DateTimeText is always "YYYY-MM-DD HH:MM:SS"
@@ -75,6 +78,9 @@ namespace ssa::domain {
         [[nodiscard]] static SourceProfile classifySourceProfile(const std::string& filename);
         [[nodiscard]] static RowValidationIssue validateRow(const Values& row);
         enum class ImportedRowIssue { None, InvalidNumber, InvalidReference, InvalidInteger };
+        // Header presence is required: an absent row key can also mean an empty cell.
+        [[nodiscard]] static ImportedRowIssue normalizeImportedCounts(Values& row,
+                                                                      bool hasReprogrammingColumn);
         // Canonical numero_ssa, numero_desvios (dropped when not a count) and SSA references
         // (derivada_de, numero_ssa_relacionada_N) of an imported row, in place; every Integer
         // column of the catalog must then hold a 64-bit integer.
