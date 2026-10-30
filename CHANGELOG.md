@@ -11,6 +11,10 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 
 ### Alterado
 
+- Importacao: `data_planilha` e `data_arquivo_origem` passam a ser a data do arquivo (a
+  data do nome, senao a hora de modificacao, senao a de criacao), sempre sobrescrevendo o
+  que vier na planilha; `data_planilha` usa o formato com T, como no Python. Nome com data
+  sem hora nao conta como data do arquivo.
 - Importacao: todo texto gravado tem os espacos das pontas removidos, e os marcadores
   de vazio do Python ("", "NULL", "None", "nan", "N/A", "-", "<NA>") viram campo vazio
   no banco, como no importador Python.

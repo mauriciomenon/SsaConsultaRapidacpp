@@ -284,11 +284,12 @@ TEST_CASE("SSA import equal snapshot with equal field count is decided by conten
     REQUIRE(backward.repeatDiscarded);
 }
 
-TEST_CASE("SSA import parses date-only source filenames") {
-    REQUIRE(ssa::domain::SsaImportPolicy::normalizeFilenameTimestamp(
-                "SSAs executadas_14-07-2026.xlsx") == "2026-07-14 00:00:00");
-    REQUIRE(ssa::domain::SsaImportPolicy::normalizeFilenameTimestamp("SSA_2026-07-15.xlsx") ==
-            "2026-07-15 00:00:00");
+TEST_CASE("SSA import ignores date-only source filenames") {
+    REQUIRE(
+        ssa::domain::SsaImportPolicy::normalizeFilenameTimestamp("SSAs executadas_14-07-2026.xlsx")
+            .empty());
+    REQUIRE(
+        ssa::domain::SsaImportPolicy::normalizeFilenameTimestamp("SSA_2026-07-15.xlsx").empty());
 }
 
 TEST_CASE("SSA import keeps the hour of ISO timestamps in source filenames") {
@@ -299,11 +300,10 @@ TEST_CASE("SSA import keeps the hour of ISO timestamps in source filenames") {
             "2026-07-15 11:30:00");
     REQUIRE(Policy::normalizeFilenameTimestamp("SSA_2026-07-15 09:05.xlsx") ==
             "2026-07-15 09:05:00");
-    // An invalid hour, or digits that continue past the minutes, still fall back to the date.
-    REQUIRE(Policy::normalizeFilenameTimestamp("SSA_2026-07-15T25.00.xlsx") ==
-            "2026-07-15 00:00:00");
+    // Invalid datetimes are rejected; trailing digits are outside the substring match.
+    REQUIRE(Policy::normalizeFilenameTimestamp("SSA_2026-07-15T25.00.xlsx").empty());
     REQUIRE(Policy::normalizeFilenameTimestamp("SSAs 2026-07-15 12.3456.xlsx") ==
-            "2026-07-15 00:00:00");
+            "2026-07-15 12:34:00");
 
     // Exports of the same day, one hour apart: the later one wins without a conflict.
     using Values = Policy::Values;
@@ -324,10 +324,47 @@ TEST_CASE("SSA import keeps the hour of ISO timestamps in source filenames") {
 
 TEST_CASE("SSA import parses a valid timestamp after numeric filename noise") {
     std::string filename(4096, '7');
-    filename += "_2026-07-15.xlsx";
+    filename += "_2026-07-15T09.08.xlsx";
 
     REQUIRE(ssa::domain::SsaImportPolicy::normalizeFilenameTimestamp(filename) ==
-            "2026-07-15 00:00:00");
+            "2026-07-15 09:08:00");
+}
+
+TEST_CASE("SSA filename timestamps follow Python pattern order and substring semantics") {
+    using Policy = ssa::domain::SsaImportPolicy;
+    const std::vector<std::pair<std::string, std::string>> cases{
+        {"Consulta 14-07-2025_0343PM.xlsx", "2025-07-14 15:43:00"},
+        {"14-07-2025-0343pm.xlsx", "2025-07-14 15:43:00"},
+        {"14-07-2025 0343AM.xlsx", "2025-07-14 03:43:00"},
+        {"14-07-2025 3:43pm.xlsx", "2025-07-14 15:43:00"},
+        {"14-07-2025_3:43_PM.xlsx", "2025-07-14 15:43:00"},
+        {"14-07-2025 03:43 PM.xlsx", "2025-07-14 15:43:00"},
+        {"2025-07-14 15.43.xlsx", "2025-07-14 15:43:00"},
+        {"2025_07/14t3:43:59.xlsx", "2025-07-14 03:43:00"},
+        {"14-07-2025_1200AM.xlsx", "2025-07-14 00:00:00"},
+        {"14-07-2025_1200PM.xlsx", "2025-07-14 12:00:00"},
+        {"14-07-2025_0000AM.xlsx", "2025-07-14 00:00:00"},
+        {"14-07-2025_0000PM.xlsx", "2025-07-14 12:00:00"},
+        {"14-07-2025_1300AM.xlsx", "2025-07-14 13:00:00"},
+        {"14-07-2025_1300PM.xlsx", ""},
+        {"14-07-2025_2360AM.xlsx", ""},
+        {"29-02-2025_0343PM.xlsx", ""},
+        {"29-02-2024_0343PM.xlsx", "2024-02-29 15:43:00"},
+        {"14-07-0000_0343PM.xlsx", ""},
+        {"14-07-2025-3:43PM.xlsx", ""},
+        {"2025-07-14_15.43.xlsx", ""},
+        {"2025-07-14T3.43tail", "2025-07-14 03:43:00"},
+        {"2026-01-01T10.00 14-07-2025 3:43PM 15-07-2025_0343PM", "2025-07-15 15:43:00"},
+        {"2026-01-01T10.00 14-07-2025 3:43PM", "2025-07-14 15:43:00"},
+        {"31-02-2025_0343PM 14-07-2025_0343PM", ""},
+        {"31-02-2025_0343PM 14-07-2025 3:43PM", "2025-07-14 15:43:00"},
+        {"31-02-2025 3:43PM 14-07-2025 3:43PM 2024-01-02T3.04", "2024-01-02 03:04:00"},
+        {"2025-02-31T15.43 2025-07-14T15.43", ""},
+    };
+    for (const auto& [filename, expected] : cases) {
+        INFO(filename);
+        REQUIRE(Policy::normalizeFilenameTimestamp(filename) == expected);
+    }
 }
 
 TEST_CASE(

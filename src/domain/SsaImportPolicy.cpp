@@ -12,6 +12,7 @@
 #include <map>
 #include <optional>
 #include <ranges>
+#include <regex>
 #include <string_view>
 
 namespace ssa::domain {
@@ -293,29 +294,7 @@ namespace ssa::domain {
                        .ok();
         }
 
-        bool applyMeridiem(SnapshotTimestamp& timestamp, std::string marker) {
-            marker = uppercase(std::move(marker));
-            if ((marker != "AM" && marker != "PM") || timestamp.hour < 1 || timestamp.hour > 12) {
-                return false;
-            }
-            if (marker == "AM") {
-                timestamp.hour %= 12;
-            } else if (timestamp.hour != 12) {
-                timestamp.hour += 12;
-            }
-            return true;
-        }
-
         using FieldSlice = std::pair<std::size_t, std::size_t>;
-
-        struct FilenameTimestampFields {
-            std::size_t yearOffset = 0;
-            std::size_t monthOffset = 0;
-            std::size_t dayOffset = 0;
-            std::size_t hourOffset = 0;
-            std::size_t hourLength = 0;
-            std::size_t minuteOffset = 0;
-        };
 
         std::optional<SnapshotTimestamp> parseFields(const std::string_view text,
                                                      const std::array<FieldSlice, 6>& fields,
@@ -406,102 +385,42 @@ namespace ssa::domain {
             return std::nullopt;
         }
 
-        std::optional<SnapshotTimestamp> filenameTimestampAt(const std::string_view text) {
-            const auto parseTimestamp = [&](const FilenameTimestampFields& fields) {
-                const auto year = parsePart(text.substr(fields.yearOffset, 4));
-                const auto month = parsePart(text.substr(fields.monthOffset, 2));
-                const auto day = parsePart(text.substr(fields.dayOffset, 2));
-                const auto hour = parsePart(text.substr(fields.hourOffset, fields.hourLength));
-                const auto minute = parsePart(text.substr(fields.minuteOffset, 2));
-                if (!year || !month || !day || !hour || !minute) {
-                    return std::optional<SnapshotTimestamp>{};
+        std::optional<SnapshotTimestamp> filenameTimestamp(const std::string& value) {
+            // Python searches the first match of each pattern, in this order. An invalid
+            // datetime advances to the next pattern, not the next match of the same pattern.
+            static const std::array<std::regex, 3> patterns{
+                std::regex{R"((\d{2})-(\d{2})-(\d{4})[_\- ](\d{2})(\d{2})(AM|PM))",
+                           std::regex::icase},
+                std::regex{R"((\d{2})-(\d{2})-(\d{4})[ _](\d{1,2}):(\d{2})[ _]?(AM|PM))",
+                           std::regex::icase},
+                std::regex{R"((\d{4})[-_/](\d{2})[-_/](\d{2})[ T](\d{1,2})[.:](\d{2}))",
+                           std::regex::icase}};
+            for (std::size_t index = 0; index < patterns.size(); ++index) {
+                std::smatch match;
+                if (!std::regex_search(value, match, patterns[index])) {
+                    continue;
                 }
-                SnapshotTimestamp timestamp{*year, *month, *day, *hour, *minute, 0};
-                return validTimestamp(timestamp) ? std::optional{timestamp}
-                                                 : std::optional<SnapshotTimestamp>{};
-            };
-
-            if (text.size() >= 17 && text[2] == '-' && text[5] == '-' &&
-                (text[10] == '_' || text[10] == '-' || text[10] == ' ')) {
-                auto timestamp = parseTimestamp({6, 3, 0, 11, 2, 13});
-                if (timestamp && applyMeridiem(*timestamp, std::string{text.substr(15, 2)})) {
+                const bool dayFirst = index < 2;
+                SnapshotTimestamp timestamp{*parsePart(match[dayFirst ? 3 : 1].str()),
+                                            *parsePart(match[2].str()),
+                                            *parsePart(match[dayFirst ? 1 : 3].str()),
+                                            *parsePart(match[4].str()),
+                                            *parsePart(match[5].str()),
+                                            0};
+                if (dayFirst) {
+                    const auto marker = uppercase(match[6].str());
+                    if (marker == "PM" && timestamp.hour != 12) {
+                        timestamp.hour += 12;
+                    } else if (marker == "AM" && timestamp.hour == 12) {
+                        timestamp.hour = 0;
+                    }
+                }
+                if (timestamp.year >= 1 && validTimestamp(timestamp)) {
                     return timestamp;
                 }
             }
-
-            if (text.size() >= 19 && text[2] == '-' && text[5] == '-' &&
-                (text[10] == ' ' || text[10] == '_')) {
-                const std::size_t hourLength = text[12] == ':' ? 1 : 2;
-                const auto colon = 11 + hourLength;
-                const auto minute = colon + 1;
-                auto marker = minute + 2;
-                if (text.size() > marker && (text[marker] == ' ' || text[marker] == '_')) {
-                    ++marker;
-                }
-                if (text.size() >= marker + 2 && text[colon] == ':') {
-                    auto timestamp = parseTimestamp({6, 3, 0, 11, hourLength, minute});
-                    if (timestamp &&
-                        applyMeridiem(*timestamp, std::string{text.substr(marker, 2)})) {
-                        return timestamp;
-                    }
-                }
-            }
-
-            const auto dateSeparator = [](const char ch) {
-                return ch == '-' || ch == '_' || ch == '/';
-            };
-            if (text.size() >= 10 && dateSeparator(text[2]) && dateSeparator(text[5])) {
-                const auto day = parsePart(text.substr(0, 2));
-                const auto month = parsePart(text.substr(3, 2));
-                const auto year = parsePart(text.substr(6, 4));
-                if (day && month && year) {
-                    SnapshotTimestamp timestamp{*year, *month, *day, 0, 0, 0};
-                    if (validTimestamp(timestamp)) {
-                        return timestamp;
-                    }
-                }
-            }
-            // ISO date with hour before the date-only form, which would otherwise hide it.
-            if (text.size() >= 16 && dateSeparator(text[4]) && dateSeparator(text[7]) &&
-                (text[10] == ' ' || text[10] == 'T')) {
-                const std::size_t hourLength = (text[12] == ':' || text[12] == '.') ? 1 : 2;
-                const auto separator = 11 + hourLength;
-                const auto minute = separator + 1;
-                const bool minuteEnds =
-                    text.size() <= minute + 2 || !ascii::isDigit(text[minute + 2]);
-                if (text.size() >= minute + 2 &&
-                    (text[separator] == ':' || text[separator] == '.') && minuteEnds) {
-                    if (auto timestamp = parseTimestamp({0, 5, 8, 11, hourLength, minute})) {
-                        return timestamp;
-                    }
-                }
-            }
-            if (text.size() >= 10 && dateSeparator(text[4]) && dateSeparator(text[7])) {
-                const auto year = parsePart(text.substr(0, 4));
-                const auto month = parsePart(text.substr(5, 2));
-                const auto day = parsePart(text.substr(8, 2));
-                if (year && month && day) {
-                    SnapshotTimestamp timestamp{*year, *month, *day, 0, 0, 0};
-                    if (validTimestamp(timestamp)) {
-                        return timestamp;
-                    }
-                }
-            }
             return std::nullopt;
         }
-
-        std::optional<SnapshotTimestamp> filenameTimestamp(const std::string& value) {
-            for (std::size_t index = 0; index < value.size(); ++index) {
-                if (ascii::isDigit(value[index])) {
-                    if (auto timestamp =
-                            filenameTimestampAt(std::string_view{value}.substr(index))) {
-                        return timestamp;
-                    }
-                }
-            }
-            return std::nullopt;
-        }
-
         std::string timestampKey(const SnapshotTimestamp& timestamp) {
             std::array<char, 15> buffer{};
             std::snprintf(buffer.data(), buffer.size(), "%04d%02d%02d%02d%02d%02d", timestamp.year,

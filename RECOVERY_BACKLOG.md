@@ -41,6 +41,9 @@
   por conteudo. O Python tambem guarda a rodada inteira (pico a medir). Reter o
   JSON so para precedencias empatadas quebraria o determinismo (depende da ordem
   de chegada); a opcao viavel e uma representacao menor que preserve a ordem.
+- [LOCAL-PENDING] O parser de data no nome do arquivo usa `std::regex` (paridade com
+  `utils/file_metadata.py`) e roda por linha via `fileDateKey`; medir no full rescan
+  e trocar por parser manual se o tempo piorar.
 - [DECISAO-PENDENTE] Normalizacao de valores diferente do Python (anterior ao
   lote unico; nao afeta precedencia): espacos no fim (C++ apara); datas com
   `T` x espaco e dd/mm x ISO (`executado`, `concluido`, `instalacao_estimada`);

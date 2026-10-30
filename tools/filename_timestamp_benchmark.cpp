@@ -50,12 +50,12 @@ namespace {
 
     [[nodiscard]] std::vector<CorpusCase> corpus() {
         const std::string numericNoise(4'096, '7');
-        return {
-            {"iso_at_start", "2026-07-15.xlsx", "2026-07-15 00:00:00"},
-            {"numeric_noise_then_iso", numericNoise + "_2026-07-15.xlsx", "2026-07-15 00:00:00"},
-            {"numeric_noise_without_timestamp", numericNoise + "_invalid.xlsx", ""},
-            {"numeric_noise_then_day_first_ampm", numericNoise + "_15-07-2026_0100PM.xlsx",
-             "2026-07-15 13:00:00"}};
+        return {// Python parity: a date without a time in the name is not a file date.
+                {"iso_at_start", "2026-07-15.xlsx", ""},
+                {"numeric_noise_then_iso", numericNoise + "_2026-07-15.xlsx", ""},
+                {"numeric_noise_without_timestamp", numericNoise + "_invalid.xlsx", ""},
+                {"numeric_noise_then_day_first_ampm", numericNoise + "_15-07-2026_0100PM.xlsx",
+                 "2026-07-15 13:00:00"}};
     }
 
     [[nodiscard]] std::optional<WorkerSample> runWorker(const int iterations, QString& error) {

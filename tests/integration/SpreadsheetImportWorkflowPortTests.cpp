@@ -3385,7 +3385,7 @@ TEST_CASE("external import updates legacy deviation text and continues with the 
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
-TEST_CASE("external import preserves original filename and spreadsheet timestamp metadata") {
+TEST_CASE("external import overwrites spreadsheet metadata with the original file timestamp") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
 
@@ -3415,9 +3415,9 @@ TEST_CASE("external import preserves original filename and spreadsheet timestamp
     REQUIRE(scalarText(db, "SELECT arquivo_origem FROM ssa_table WHERE numero_ssa='202600501'") ==
             source.filename().string());
     REQUIRE(scalarText(db, "SELECT data_planilha FROM ssa_table WHERE numero_ssa='202600501'") ==
-            "2026-07-13T13:20:00");
+            "2026-07-13T13:30:00");
     REQUIRE(scalarText(db, "SELECT data_arquivo_origem FROM ssa_table "
-                           "WHERE numero_ssa='202600501'") == "2026-07-13 10:15:00");
+                           "WHERE numero_ssa='202600501'") == "2026-07-13 13:30:00");
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
@@ -3451,7 +3451,7 @@ TEST_CASE("external import falls back to the original source modification time")
     REQUIRE(scalarText(db, "SELECT data_arquivo_origem FROM ssa_table "
                            "WHERE numero_ssa='202600502'") == "2026-07-12 09:45:00");
     REQUIRE(scalarText(db, "SELECT COALESCE(data_planilha, '') FROM ssa_table "
-                           "WHERE numero_ssa='202600502'") == "");
+                           "WHERE numero_ssa='202600502'") == "2026-07-12T09:45:00");
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
@@ -3565,7 +3565,7 @@ TEST_CASE("external import keeps a business change counted as updated beside ver
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
-TEST_CASE("spreadsheet mapper keeps file modification time below spreadsheet time") {
+TEST_CASE("spreadsheet mapper uses file modification time for both source dates") {
     ssa::infra::importing::SpreadsheetTable table;
     table.sourcePath = "metadata.xlsx";
     table.originalFilename = "metadata.xlsx";
@@ -3576,7 +3576,8 @@ TEST_CASE("spreadsheet mapper keeps file modification time below spreadsheet tim
     const auto result = ssa::infra::importing::SsaSpreadsheetMapper::map(table);
 
     REQUIRE(result.rows.size() == 1);
-    REQUIRE(ssa::infra::importing::rowValue(result.rows.front(), "data_planilha").empty());
+    REQUIRE(ssa::infra::importing::rowValue(result.rows.front(), "data_planilha") ==
+            "2026-07-12T09:45:00");
     REQUIRE(ssa::infra::importing::rowValue(result.rows.front(), "data_arquivo_origem") ==
             "2026-07-12 09:45:00");
 }
@@ -3619,7 +3620,7 @@ TEST_CASE("external imports compare source times within the same day") {
             "Newer");
     REQUIRE(scalarText(db, "SELECT situacao FROM ssa_table WHERE numero_ssa='202600507'") == "STE");
     REQUIRE(scalarText(db, "SELECT COALESCE(data_planilha, '') FROM ssa_table "
-                           "WHERE numero_ssa='202600507'") == "");
+                           "WHERE numero_ssa='202600507'") == "2026-07-14T13:45:00");
     REQUIRE(scalarText(db, "SELECT data_arquivo_origem FROM ssa_table "
                            "WHERE numero_ssa='202600507'") == "2026-07-14 13:45:00");
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
@@ -4807,7 +4808,8 @@ TEST_CASE("incremental no-op reports a successful non-mutating outcome") {
                              {"descricao_ssa", "Unchanged"},
                              {"data_cadastro", "2026-07-01"},
                              {"arquivo_origem", "same.xlsx"},
-                             {"data_arquivo_origem", "2026-07-14 12:00:00"}});
+                             {"data_arquivo_origem", "2026-07-14 12:00:00"},
+                             {"data_planilha", "2026-07-14T12:00:00"}});
     REQUIRE(writer.write(previous, 1, 0, false).rowsWritten == 1);
     ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
                                                               importColumns());
@@ -4874,7 +4876,8 @@ TEST_CASE("incremental no-op reports success when post commit consolidation is i
                              {"descricao_ssa", "Unchanged"},
                              {"data_cadastro", "2026-07-01"},
                              {"arquivo_origem", "same.xlsx"},
-                             {"data_arquivo_origem", "2026-07-14 12:00:00"}});
+                             {"data_arquivo_origem", "2026-07-14 12:00:00"},
+                             {"data_planilha", "2026-07-14T12:00:00"}});
     REQUIRE(writer.write(previous, 1, 0, false).rowsWritten == 1);
     ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
                                                               importColumns());
@@ -4988,7 +4991,8 @@ TEST_CASE("incremental summary reports transactional legacy normalization separa
                              {"descricao_ssa", "Unchanged"},
                              {"data_cadastro", "2026-07-01"},
                              {"arquivo_origem", "same-normalized.xlsx"},
-                             {"data_arquivo_origem", "2026-07-14 12:00:00"}});
+                             {"data_arquivo_origem", "2026-07-14 12:00:00"},
+                             {"data_planilha", "2026-07-14T12:00:00"}});
     REQUIRE(writer.write(previous, 1, 0, false).rowsWritten == 1);
     sqlite3* db = nullptr;
     REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
@@ -10846,4 +10850,102 @@ TEST_CASE("spreadsheet import replay of padded business cells writes zero rows")
     REQUIRE(scalarText(db, "SELECT setor_executor FROM ssa_table WHERE numero_ssa='202601303'") ==
             "Equipe A");
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("workbook source dates overwrite sheet cells with the filename date or local mtime") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto dbPath = root / "ssas.db";
+    std::string filename;
+    std::string expectedSheet;
+    std::string expectedSource;
+    SECTION("filename wins over modification time") {
+        filename = "Consulta 14-07-2025_0343PM.xlsx";
+        expectedSheet = "2025-07-14T15:43:00";
+        expectedSource = "2025-07-14 15:43:00";
+    }
+    SECTION("undated filename uses local modification time") {
+        filename = "Consulta.xlsx";
+        expectedSheet = "2026-10-30T09:08:00";
+        expectedSource = "2026-10-30 09:08:00";
+    }
+    SECTION("date without time uses local modification time") {
+        filename = "Consulta 14-07-2025.xlsx";
+        expectedSheet = "2026-10-30T09:08:00";
+        expectedSource = "2026-10-30 09:08:00";
+    }
+    const auto workbook = root / filename;
+    writeWorkbook(
+        workbook,
+        row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao"),
+                inlineCell("E1", "data_planilha"), inlineCell("F1", "data_arquivo_origem"),
+                inlineCell("G1", "arquivo_origem")}) +
+            row(2, {inlineCell("A2", "202601401"), inlineCell("B2", "APV"),
+                    inlineCell("C2", "Metadata"), inlineCell("D2", "2025-07-01"),
+                    inlineCell("E2", "2000-01-01"), inlineCell("F2", "invalid"),
+                    inlineCell("G2", "wrong.xlsx")}) +
+            row(3, {inlineCell("A3", "202601402"), inlineCell("B3", "APV"),
+                    inlineCell("C3", "Second row"), inlineCell("D3", "2025-07-01"),
+                    inlineCell("E3", "invalid"), inlineCell("F3", "2000-01-01"),
+                    inlineCell("G3", "wrong.xlsx")}));
+    setLocalModificationTime(workbook, 2026, 10, 30, 9, 8);
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(root / "docs_entrada", dbPath,
+                                                              importColumns());
+    const auto result = port.importExternalFiles({.files = {workbook}});
+    INFO(result.message);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE(result.importSummary.has_value());
+    REQUIRE(result.importSummary->inserts == 2);
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 2);
+    for (const auto* number : {"202601401", "202601402"}) {
+        const auto where = std::string{" FROM ssa_table WHERE numero_ssa='"} + number + "'";
+        REQUIRE(scalarText(db, ("SELECT arquivo_origem" + where).c_str()) == filename);
+        REQUIRE(scalarText(db, ("SELECT data_planilha" + where).c_str()) == expectedSheet);
+        REQUIRE(scalarText(db, ("SELECT data_arquivo_origem" + where).c_str()) == expectedSource);
+    }
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("spreadsheet mapper falls back to creation time or removes stale source dates") {
+    ssa::infra::importing::SpreadsheetTable table;
+    table.sourcePath = "staged.xlsx";
+    table.originalFilename = "original.xlsx";
+    table.rows = {
+        {"Numero SSA", "Situacao", "Descricao da SSA", "Data de emissao", "data_planilha",
+         "data_arquivo_origem", "arquivo_origem"},
+        {"202601403", "APV", "Metadata", "2025-07-01", "invalid", "2000-01-01", "wrong.xlsx"}};
+    std::string expectedSource;
+    std::string expectedSheet;
+    SECTION("mtime keeps seconds and drops fractions before creation fallback") {
+        table.sourceModifiedTimestamp = "2026-10-30 09:08:07.123456";
+        table.sourceCreatedTimestamp = "2024-01-02 03:04:05";
+        expectedSource = "2026-10-30 09:08:07";
+        expectedSheet = "2026-10-30T09:08:07";
+    }
+    SECTION("creation fallback") {
+        table.sourceCreatedTimestamp = "2024-01-02 03:04:05";
+        expectedSource = "2024-01-02 03:04:05";
+        expectedSheet = "2024-01-02T03:04:05";
+    }
+    SECTION("missing timestamps erase both sheet dates") {}
+    SECTION("source basename when original filename is unavailable") {
+        table.originalFilename.clear();
+        table.sourcePath = std::filesystem::path{"folder"} / "original.xlsx";
+    }
+    const auto result = ssa::infra::importing::SsaSpreadsheetMapper::map(table);
+    REQUIRE(result.invalidRows == 0);
+    REQUIRE(result.rows.size() == 1);
+    const auto& mapped = result.rows.front();
+    REQUIRE(mapped.at("arquivo_origem") == "original.xlsx");
+    if (expectedSource.empty()) {
+        REQUIRE_FALSE(mapped.contains("data_planilha"));
+        REQUIRE_FALSE(mapped.contains("data_arquivo_origem"));
+    } else {
+        REQUIRE(mapped.at("data_planilha") == expectedSheet);
+        REQUIRE(mapped.at("data_arquivo_origem") == expectedSource);
+    }
 }

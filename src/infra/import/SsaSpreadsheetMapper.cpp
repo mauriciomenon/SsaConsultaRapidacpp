@@ -369,6 +369,21 @@ namespace ssa::infra::importing {
         batch.headerRow = header;
         batch.mappingStatus = SpreadsheetMappingStatus::Mapped;
         const std::size_t firstDataRow = hasExternalHeader ? 0 : *headerIndex + 1;
+        const auto sourceFilename = table.originalFilename.empty()
+                                        ? qt::toUtf8(table.sourcePath.filename())
+                                        : table.originalFilename;
+        auto sourceTimestamp = domain::SsaImportPolicy::normalizeFilenameTimestamp(sourceFilename);
+        for (const auto* fallback :
+             {&table.sourceModifiedTimestamp, &table.sourceCreatedTimestamp}) {
+            if (sourceTimestamp.empty()) {
+                sourceTimestamp =
+                    domain::SsaImportPolicy::normalizeSnapshotTimestamp(fallback->substr(0, 19));
+            }
+        }
+        auto sheetTimestamp = sourceTimestamp;
+        if (!sheetTimestamp.empty()) {
+            sheetTimestamp[10] = 'T';
+        }
         bool checkpointCalled = false;
         for (std::size_t rowIndex = firstDataRow; rowIndex < table.rows.size(); ++rowIndex) {
             throwIfMappingCanceled(stopToken);
@@ -443,6 +458,13 @@ namespace ssa::infra::importing {
                 ++batch.skippedRows;
                 continue;
             }
+            row["arquivo_origem"] = sourceFilename;
+            row.erase("data_planilha");
+            row.erase("data_arquivo_origem");
+            if (!sourceTimestamp.empty()) {
+                row.emplace("data_arquivo_origem", sourceTimestamp);
+                row.emplace("data_planilha", sheetTimestamp);
+            }
             const auto validation = domain::SsaImportPolicy::validateRow(row);
             if (validation != domain::SsaImportPolicy::RowValidationIssue::None) {
                 ++batch.skippedRows;
@@ -463,19 +485,6 @@ namespace ssa::infra::importing {
                     break;
                 }
                 continue;
-            }
-            if (valueFor(row, "arquivo_origem").empty()) {
-                row.emplace("arquivo_origem",
-                            domain::trimWhitespace(table.originalFilename.empty()
-                                                       ? qt::toUtf8(table.sourcePath.filename())
-                                                       : table.originalFilename));
-            }
-            if (const auto sourceTimestamp = domain::SsaImportPolicy::normalizeSnapshotTimestamp(
-                    table.sourceModifiedTimestamp);
-                !sourceTimestamp.empty()) {
-                if (valueFor(row, "data_arquivo_origem").empty()) {
-                    row.emplace("data_arquivo_origem", sourceTimestamp);
-                }
             }
             if (const auto sourceCreatedTimestamp =
                     domain::SsaImportPolicy::normalizeSnapshotTimestamp(
