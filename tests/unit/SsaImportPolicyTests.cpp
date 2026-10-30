@@ -511,6 +511,28 @@ TEST_CASE("SSA import repeated in the same workbook keeps the row with more fiel
     REQUIRE(sibling.values.at("responsavel_execucao") == "PAULO");
 }
 
+TEST_CASE("SSA import equal snapshot resolves accents and transient states symmetrically") {
+    using Values = ssa::domain::SsaImportPolicy::Values;
+    const Values a{{"numero_ssa", "202600044"},
+                   {"descricao_ssa", "caf\xC3\xA9"},
+                   {"situacao", "APV"},
+                   {"data_planilha", "2026-07-20"}};
+    Values b = a;
+    b["descricao_ssa"] = "caf\xC3\xAA";
+    b["situacao"] = "SCS";
+    const auto forward = ssa::domain::SsaImportPolicy::merge(a, b);
+    const auto backward = ssa::domain::SsaImportPolicy::merge(b, a);
+    REQUIRE(forward.values == backward.values);
+
+    // DEL is escaped like Python's ensure_ascii, so "\x7f" sorts before "a".
+    Values del = a;
+    del["descricao_ssa"] = "\x7f";
+    Values letter = a;
+    letter["descricao_ssa"] = "a";
+    REQUIRE(ssa::domain::SsaImportPolicy::merge(del, letter).values.at("descricao_ssa") == "a");
+    REQUIRE(ssa::domain::SsaImportPolicy::merge(letter, del).values.at("descricao_ssa") == "a");
+}
+
 TEST_CASE("SSA import equal snapshot keeps the richer row in either order") {
     using Values = ssa::domain::SsaImportPolicy::Values;
     const Values sparse{{"numero_ssa", "202600021"},
@@ -657,6 +679,18 @@ TEST_CASE("SSA import compares dates, numbers and codes canonically, keeping the
     REQUIRE(result.metadataOnly);
     REQUIRE(result.values.at("prazo_limite") == "01/01/2026 00:00:00");
     REQUIRE(result.values.at("semana_executada") == "202601");
+
+    // An exponent is the same number; a code with leading zeros is a different text.
+    incoming["semana_executada"] = "2.02601e5";
+    REQUIRE(ssa::domain::SsaImportPolicy::merge(stored, incoming).metadataOnly);
+    Values code = stored;
+    code["descricao_ssa"] = "007";
+    Values recode = code;
+    recode["descricao_ssa"] = "7";
+    recode["data_planilha"] = "2026-07-21";
+    const auto leading = ssa::domain::SsaImportPolicy::merge(code, recode);
+    REQUIRE_FALSE(leading.metadataOnly);
+    REQUIRE(leading.values.at("descricao_ssa") == "7");
 
     // Exact decimals, no floating point: 2^53 and 2^53 + 1 are different values.
     incoming["semana_executada"] = "9007199254740993";

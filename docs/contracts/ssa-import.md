@@ -78,8 +78,7 @@ operational indicators. A newer snapshot updates only fields present and
 non-empty in the input. Missing fields never erase stored values. `STE` (final
 execution) and `SCA` (approved cancellation) are terminal; `SCS` remains
 transient. A terminal record is never overwritten by a newer snapshot, not even
-its indicators or metadata; an equal snapshot still runs the conflict check, so
-two sources describing the same instant must agree. Coded fields (`situacao`,
+its indicators or metadata. Coded fields (`situacao`,
 `setor_emissor`, `setor_executor`, `localizacao_codigo`,
 `grau_prioridade_emissao`, `grau_prioridade_planejamento`, `execucao_simples`)
 compare without case: a case-only difference is neither a change nor a conflict.
@@ -102,21 +101,19 @@ may fill or improve them.
 Equal snapshots and repeated rows:
 
 - Filename timestamps have minute resolution; ISO names with a time
-  (`2026-07-15T10.00`) use it. Same-minute exports are ordered by the file
-  modification time in seconds when both rows carry a distinct one.
-- Values that differ only by Portuguese accents are not a conflict; the accented
-  spelling is kept.
-- An SSA repeated inside one workbook (SAM exports one row per execution) keeps
-  the first row; a later row that disagrees is discarded and logged as
-  `Import repeated SSA, first row kept`.
-- Two different workbooks of the same instant that disagree on a business value
-  are a conflict: the later workbook is rejected (`duplicate_conflict`) and the
-  conflict is logged with SSA, field, both values and both files.
-- Known limit: the row takes the newest instant even when a field of that
-  workbook was empty and its older value was kept. A second workbook of that
-  instant then compares against a value that is not from that instant and may
-  be rejected as a conflict (one case in the 1588-file corpus). Recording an
-  instant per field would need a schema change, so it is not done.
+  (`2026-07-15T10.00`) use it. There is no extra modification-time tie-break:
+  rows of the same instant are resolved by content (Snapshot precedence, item 3).
+- The same rule covers an SSA repeated inside one workbook, across worksheets
+  and across workbooks of the same instant: nothing is rejected, the winner is
+  chosen by content, its `situacao` applies (a terminal promotion always wins),
+  and the repeat is logged at Info as `Import repeated SSA, resolved by content`
+  with SSA, first differing field, both values and both files.
+- Numbers compare by exact decimal value (`1.0`, `1`, `1e0`), except codes with
+  leading zeros or an explicit sign, which stay text (`007` differs from `7`).
+- Known limits, pending an owner decision: rows are merged in read order
+  against the session state, so a terminal row of the batch and a newer open row
+  of the same SSA can end differently depending on order; a whole-run
+  consolidation per SSA (as planned in the Python importer) would remove it.
 
 ## Atomicity And Results
 

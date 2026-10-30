@@ -70,7 +70,9 @@ namespace ssa::domain {
             std::string fraction;
             bool dot = false;
             bool digits = false;
-            for (; index < text.size(); ++index) {
+            const auto exponentAt = text.find_first_of("eE", index);
+            const auto mantissaEnd = exponentAt == std::string::npos ? text.size() : exponentAt;
+            for (; index < mantissaEnd; ++index) {
                 const char character = text[index];
                 if (character >= '0' && character <= '9') {
                     (dot ? fraction : integer) += character;
@@ -83,6 +85,41 @@ namespace ssa::domain {
             }
             if (!digits) {
                 return {};
+            }
+            if (exponentAt != std::string::npos) {
+                // Decimal exponent (Python Decimal("1e3") == 1000), shifted without floating
+                // point; an extreme exponent stays text.
+                std::string_view exponentText{text};
+                exponentText.remove_prefix(exponentAt + 1);
+                const bool negativeExponent = exponentText.starts_with('-');
+                if (negativeExponent || exponentText.starts_with('+')) {
+                    exponentText.remove_prefix(1);
+                }
+                if (exponentText.empty() || exponentText.size() > 3 ||
+                    !std::ranges::all_of(exponentText,
+                                         [](const char c) { return c >= '0' && c <= '9'; })) {
+                    return {};
+                }
+                int exponent = 0;
+                for (const char c : exponentText) {
+                    exponent = exponent * 10 + (c - '0');
+                }
+                if (exponent > 308) {
+                    return {};
+                }
+                const auto all = integer + fraction;
+                const auto point = static_cast<long long>(integer.size()) +
+                                   (negativeExponent ? -exponent : exponent);
+                if (point <= 0) {
+                    integer.clear();
+                    fraction = std::string(static_cast<std::size_t>(-point), '0') + all;
+                } else if (static_cast<std::size_t>(point) >= all.size()) {
+                    integer = all + std::string(static_cast<std::size_t>(point) - all.size(), '0');
+                    fraction.clear();
+                } else {
+                    integer = all.substr(0, static_cast<std::size_t>(point));
+                    fraction = all.substr(static_cast<std::size_t>(point));
+                }
             }
             integer.erase(0, std::min(integer.find_first_not_of('0'), integer.size()));
             if (integer.empty()) {
@@ -151,7 +188,7 @@ namespace ssa::domain {
                         out += "\\f";
                         break;
                     default:
-                        if (byte < 0x20U) {
+                        if (byte < 0x20U || byte == 0x7FU) { // ensure_ascii escapes DEL too
                             escape(byte);
                         } else {
                             out += static_cast<char>(byte);
@@ -615,8 +652,17 @@ namespace ssa::domain {
             if (isCodedField(key) && uppercase(left) == uppercase(right)) {
                 return true;
             }
-            if (const auto number = canonicalNumber(left);
-                !number.empty() && number == canonicalNumber(right)) {
+            // Numeric spelling ("1.0" == "1", "1e3" == "1000") but never a code with leading
+            // zeros or an explicit sign: "007" and "7" stay different texts.
+            const auto plainNumber = [](const std::string& text) {
+                const auto digits = text.starts_with('-') ? std::string_view{text}.substr(1)
+                                                          : std::string_view{text};
+                const bool leadingZero = digits.size() > 1 && digits[0] == '0' && digits[1] != '.';
+                return !text.starts_with('+') && !leadingZero;
+            };
+            if (const auto number = canonicalNumber(left); !number.empty() && plainNumber(left) &&
+                                                           plainNumber(right) &&
+                                                           number == canonicalNumber(right)) {
                 return true;
             }
             if (isDateField(key)) {
@@ -867,18 +913,12 @@ namespace ssa::domain {
                     merged[key] = normalized;
                     continue;
                 }
-                if (key == "situacao") {
-                    if (terminalPromotion) {
-                        merged[key] = normalized;
-                    }
-                    continue;
-                }
                 if (sameValue(key, normalized, current)) {
                     continue; // equal after canonical comparison: keep the stored spelling
                 }
-                if (withoutAccents(normalized) == withoutAccents(current)) {
-                    // Same text, different accents: keep the accented spelling.
-                    if (hasNonAscii(normalized) && !hasNonAscii(current)) {
+                if (key == "situacao") {
+                    // The winning row carries its state; a terminal promotion always wins.
+                    if (terminalPromotion || incomingWins) {
                         merged[key] = normalized;
                     }
                     continue;
