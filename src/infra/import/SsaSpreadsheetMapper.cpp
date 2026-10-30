@@ -377,7 +377,13 @@ namespace ssa::infra::importing {
                 if (columnIndex >= table.rows[rowIndex].size()) {
                     continue;
                 }
-                auto value = domain::trimWhitespace(table.rows[rowIndex][columnIndex]);
+                row.emplace(columnKey, table.rows[rowIndex][columnIndex]);
+            }
+            // Nulls are dropped before the conversions; row validation comes after them.
+            domain::SsaImportPolicy::dropNullValues(row);
+            for (auto entry = row.begin(); entry != row.end();) {
+                const auto& columnKey = entry->first;
+                auto& value = entry->second;
                 if (columnKey == "numero_ssa") {
                     const auto normalized = domain::SsaImportPolicy::normalizeNumber(value);
                     if (!normalized.empty() || value.empty()) {
@@ -400,8 +406,10 @@ namespace ssa::infra::importing {
                         value = normalized;
                     }
                 }
-                if (!value.empty()) {
-                    row.emplace(columnKey, value);
+                if (value.empty()) {
+                    entry = row.erase(entry);
+                } else {
+                    ++entry;
                 }
             }
             if (!checkpointCalled && afterFirstRowMapped) {
@@ -457,9 +465,10 @@ namespace ssa::infra::importing {
                 continue;
             }
             if (valueFor(row, "arquivo_origem").empty()) {
-                row.emplace("arquivo_origem", table.originalFilename.empty()
-                                                  ? qt::toUtf8(table.sourcePath.filename())
-                                                  : table.originalFilename);
+                row.emplace("arquivo_origem",
+                            domain::trimWhitespace(table.originalFilename.empty()
+                                                       ? qt::toUtf8(table.sourcePath.filename())
+                                                       : table.originalFilename));
             }
             if (const auto sourceTimestamp = domain::SsaImportPolicy::normalizeSnapshotTimestamp(
                     table.sourceModifiedTimestamp);

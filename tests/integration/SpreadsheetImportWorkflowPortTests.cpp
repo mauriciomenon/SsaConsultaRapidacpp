@@ -10705,3 +10705,145 @@ TEST_CASE("selection above 64 files puts a file without any date last") {
     REQUIRE(result.importSummary->files.back().source == "aaa_missing.xlsx");
     REQUIRE(result.importSummary->inserts == 64);
 }
+
+TEST_CASE("spreadsheet import stores null sentinels as SQL NULL and trims business text") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto workbook = root / "SSA_15-07-2026.xlsx";
+    const auto dbPath = root / "ssas.db";
+    writeWorkbook(workbook,
+                  row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                          inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao"),
+                          inlineCell("E1", "Setor Executor"), inlineCell("F1", "Setor Emissor")}) +
+                      row(2, {inlineCell("A2", "202601300"), inlineCell("B2", "ADM"),
+                              inlineCell("C2", "Trim and null"), inlineCell("D2", "2026-07-01"),
+                              inlineCell("E2", "  Equipe A  "), inlineCell("F2", " NULL ")}));
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(root / "docs_entrada", dbPath,
+                                                              importColumns(), false);
+
+    const auto result = port.importExternalFiles({.files = {workbook}});
+
+    INFO(result.message);
+    REQUIRE(result.ok());
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarText(db, "SELECT setor_executor FROM ssa_table WHERE numero_ssa='202601300'") ==
+            "Equipe A");
+    REQUIRE(scalarText(db, "SELECT setor_emissor IS NULL FROM ssa_table "
+                           "WHERE numero_ssa='202601300'") == "1");
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("sqlite import normalizes direct rows and retained merged business values") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+    const auto dbPath = std::filesystem::path{tempDir.path().toStdString()} / "ssas.db";
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(sqliteWriterAccess(), dbPath,
+                                                           importColumns());
+    ssa::infra::importing::ResolvedSsaImportRows rows;
+    rows.rows.push_back({{"numero_ssa", "202601301"},
+                         {"descricao_ssa", "  Original  "},
+                         {"setor_emissor", " NULL "},
+                         {"arquivo_origem", "  source.xlsx  "},
+                         {"data_planilha", "2026-07-01"}});
+    REQUIRE(writer.write(rows, 1, 0, false).rowsWritten == 1);
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarText(db, "SELECT descricao_ssa || '|' || arquivo_origem FROM ssa_table") ==
+            "Original|source.xlsx");
+    REQUIRE(scalarInt(db, "SELECT setor_emissor IS NULL FROM ssa_table") == 1);
+    // A legacy value retained by merge must also be normalized at the storage boundary.
+    REQUIRE(sqlite3_exec(db, "UPDATE ssa_table SET setor_executor='  Equipe A  '", nullptr, nullptr,
+                         nullptr) == SQLITE_OK);
+
+    ssa::infra::importing::SsaImportBatch batch;
+    batch.sourcePath = "  operational path.xlsx  ";
+    // sourcePath only breaks ties between sources; resolve() retains the source index,
+    // not the path. This single-batch direct write creates no consolidation journal and
+    // does not copy sourcePath into arquivo_origem, so path trimming is not observable here.
+    batch.rows.push_back({{"numero_ssa", " 202601301 "},
+                          {"descricao_ssa", "  Updated  "},
+                          {"setor_executor", " <NA> "},
+                          {"data_planilha", "2026-07-02"}});
+    ssa::infra::importing::SsaImportRunRows run;
+    run.add(std::move(batch), 0);
+    const auto resolved = run.resolve();
+    REQUIRE(resolved.rows.front().at("descricao_ssa") == "Updated");
+    REQUIRE_FALSE(resolved.rows.front().contains("setor_executor"));
+    REQUIRE(writer.write(resolved, 1, 0, false).rowsWritten == 1);
+    REQUIRE(scalarText(db, "SELECT descricao_ssa || '|' || setor_executor FROM ssa_table") ==
+            "Updated|Equipe A");
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("sqlite import ignores legacy null sentinels when breaking a content tie") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+    const auto dbPath = std::filesystem::path{tempDir.path().toStdString()} / "ssas.db";
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(sqliteWriterAccess(), dbPath,
+                                                           importColumns());
+    ssa::infra::importing::ResolvedSsaImportRows rows;
+    rows.rows.push_back(
+        {{"numero_ssa", "202601302"}, {"descricao_ssa", "A"}, {"data_planilha", "2026-07-01"}});
+    REQUIRE(writer.write(rows, 1, 0, false).rowsWritten == 1);
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(db,
+                         "UPDATE ssa_table SET setor_executor='NULL', descricao_ssa='A', "
+                         "data_planilha='2026-07-01' WHERE numero_ssa='202601302'",
+                         nullptr, nullptr, nullptr) == SQLITE_OK);
+    REQUIRE(scalarText(db, "SELECT setor_executor FROM ssa_table") == "NULL");
+
+    rows.rows.front()["descricao_ssa"] = "Z";
+    rows.rows.front()["setor_executor"] = " NULL ";
+    REQUIRE(writer.write(rows, 1, 0, false).rowsWritten == 1);
+
+    // Dropping both sentinels gives equal field counts and dates. The larger canonical
+    // JSON wins: descricao_ssa "Z" sorts after "A"; the legacy sentinel adds no field.
+    REQUIRE(scalarText(db, "SELECT descricao_ssa FROM ssa_table") == "Z");
+    REQUIRE(scalarText(db, "SELECT setor_executor IS NULL FROM ssa_table") == "1");
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("spreadsheet import replay of padded business cells writes zero rows") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto workbook = root / "SSA_15-07-2026.xlsx";
+    const auto dbPath = root / "ssas.db";
+    writeWorkbook(workbook,
+                  row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                          inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao"),
+                          inlineCell("E1", "Setor Executor")}) +
+                      row(2, {inlineCell("A2", "202601303"), inlineCell("B2", "ADM"),
+                              inlineCell("C2", "Padded replay"), inlineCell("D2", "2026-07-01"),
+                              inlineCell("E2", "  Equipe A  ")}));
+    setLocalModificationTime(workbook, 2026, 7, 15, 9, 0);
+    // The same file again would be skipped as already imported: replay an identical copy
+    // (same name and modification time) from another folder, so it is compared row by row.
+    const auto copy = root / "again" / workbook.filename();
+    std::filesystem::create_directories(copy.parent_path());
+    std::filesystem::copy_file(workbook, copy);
+    setLocalModificationTime(copy, 2026, 7, 15, 9, 0);
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(root / "docs_entrada", dbPath,
+                                                              importColumns());
+    const auto first = port.importExternalFiles({.files = {workbook}});
+    INFO(first.message);
+    REQUIRE(first.ok());
+    REQUIRE(first.importSummary.has_value());
+    REQUIRE(first.importSummary->inserts == 1);
+
+    const auto replay = port.importExternalFiles({.files = {copy}});
+    INFO(replay.message);
+    REQUIRE(replay.ok());
+    REQUIRE(replay.importSummary.has_value());
+    const auto& summary = *replay.importSummary;
+    REQUIRE(summary.inserts + summary.updates + summary.verified == 0);
+    REQUIRE(summary.unchangedRows == 1);
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarText(db, "SELECT setor_executor FROM ssa_table WHERE numero_ssa='202601303'") ==
+            "Equipe A");
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}

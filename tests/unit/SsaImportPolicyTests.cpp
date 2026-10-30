@@ -7,6 +7,50 @@
 #include <string>
 #include <vector>
 
+TEST_CASE("SSA import removes null sentinels before validating imported values") {
+    using Policy = ssa::domain::SsaImportPolicy;
+    for (const auto* sentinel :
+         {"", " \t", " \tNuLl ", " <NA> ", " N/A ", " - ", " None ", " NaN "}) {
+        INFO(sentinel);
+        Policy::Values values{{"numero_ssa", "202600001"},
+                              {"setor_executor", sentinel},
+                              {"derivada_de", sentinel},
+                              {"num_reprogramacoes", sentinel}};
+        REQUIRE(Policy::normalizeImportedRow(values) == Policy::ImportedRowIssue::None);
+        REQUIRE(values.size() == 1);
+        REQUIRE(values.at("numero_ssa") == "202600001");
+    }
+}
+
+TEST_CASE("SSA import trims business values and preserves internal spaces and literal na") {
+    using Policy = ssa::domain::SsaImportPolicy;
+    Policy::Values values{{"numero_ssa", " 202600001 "},
+                          {"setor_executor", "  Equipe A  "},
+                          {"situacao", "\tA\r\n"},
+                          {"descricao_ssa", " A  B "},
+                          {"setor_emissor", "na"},
+                          {"localizacao_codigo", "nat"},
+                          {"arquivo_origem", "\xE2\x80\xA8source.xlsx\xE3\x80\x80"}};
+    REQUIRE(Policy::normalizeImportedRow(values) == Policy::ImportedRowIssue::None);
+    REQUIRE(values.at("numero_ssa") == "202600001");
+    REQUIRE(values.at("setor_executor") == "Equipe A");
+    REQUIRE(values.at("situacao") == "A");
+    REQUIRE(values.at("descricao_ssa") == "A  B");
+    REQUIRE(values.at("setor_emissor") == "na");
+    REQUIRE(values.at("localizacao_codigo") == "nat");
+    REQUIRE(values.at("arquivo_origem") == "source.xlsx");
+    const auto normalized = values;
+    REQUIRE(Policy::normalizeImportedRow(values) == Policy::ImportedRowIssue::None);
+    REQUIRE(values == normalized);
+}
+
+TEST_CASE("SSA import rejects a null sentinel number") {
+    using Policy = ssa::domain::SsaImportPolicy;
+    Policy::Values values{{"numero_ssa", "null"}};
+    REQUIRE(Policy::normalizeImportedRow(values) == Policy::ImportedRowIssue::InvalidNumber);
+    REQUIRE_FALSE(values.contains("numero_ssa"));
+}
+
 TEST_CASE("whitespace trim handles text empty and whitespace-only values") {
     REQUIRE(ssa::domain::trimWhitespace("  SSA  ") == "SSA");
     REQUIRE(ssa::domain::trimWhitespace("") == "");

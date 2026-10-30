@@ -11,6 +11,9 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 
 ### Alterado
 
+- Importacao: todo texto gravado tem os espacos das pontas removidos, e os marcadores
+  de vazio do Python ("", "NULL", "None", "nan", "N/A", "-", "<NA>") viram campo vazio
+  no banco, como no importador Python.
 - Importacao: a rodada inteira e consolidada por SSA antes de gravar. A ordem dos
   arquivos nao muda o banco nem as contagens; cada SSA e gravada uma vez e conta
   para o arquivo que venceu. Um arquivo com linha invalida e rejeitado sozinho, sem

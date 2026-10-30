@@ -939,10 +939,12 @@ namespace ssa::infra::sqlite {
                     }
                 }
                 selectExisting->resetAndClearBindings();
+                // A legacy sentinel or padded text must not weigh in the merge as content.
+                domain::SsaImportPolicy::dropNullValues(existing);
                 const bool normalizedExistingDates = normalizeDateValues(existing, columns);
                 const bool normalizedExistingDeviation = normalizeExistingDeviationCount(existing);
 
-                const auto merged = domain::SsaImportPolicy::merge(existing, normalizedRow);
+                auto merged = domain::SsaImportPolicy::merge(existing, normalizedRow);
                 if (merged.conflict || merged.repeatDiscarded) {
                     qWarning().noquote() << QString::fromStdString(
                         domain::SsaImportPolicy::describeConflict(existing, normalizedRow, merged));
@@ -975,6 +977,8 @@ namespace ssa::infra::sqlite {
                     continue;
                 }
                 auto& statement = existing.empty() ? *insert : *update;
+                // Stored values carried over from the database are trimmed too, never revalidated.
+                domain::SsaImportPolicy::dropNullValues(merged.values);
                 int bindIndex = 1;
                 for (const auto& column : columns) {
                     bindValue(statement, bindIndex, column, rowValuePtr(merged.values, column.key));

@@ -872,7 +872,23 @@ namespace ssa::domain {
         return RowValidationIssue::None;
     }
 
+    void SsaImportPolicy::dropNullValues(Values& row) {
+        for (auto entry = row.begin(); entry != row.end();) {
+            auto& value = entry->second;
+            value = trimWhitespace(value);
+            // Python null sentinels; none is longer than four characters.
+            const auto folded = value.size() <= 4 ? lowercase(value) : std::string{"x"};
+            if (folded.empty() || folded == "<na>" || folded == "none" || folded == "nan" ||
+                folded == "null" || folded == "n/a" || folded == "-") {
+                entry = row.erase(entry);
+            } else {
+                ++entry;
+            }
+        }
+    }
+
     SsaImportPolicy::ImportedRowIssue SsaImportPolicy::normalizeImportedRow(Values& row) {
+        dropNullValues(row);
         auto number = normalizeNumber(valueFor(row, kSsaNumberColumnKey));
         if (number.empty()) {
             return ImportedRowIssue::InvalidNumber;

@@ -78,6 +78,9 @@ namespace ssa::domain {
         // (derivada_de, numero_ssa_relacionada_N) of an imported row, in place; every Integer
         // column of the catalog must then hold a 64-bit integer.
         [[nodiscard]] static ImportedRowIssue normalizeImportedRow(Values& row);
+        // Trims every value and drops the Python null sentinels ("", "<na>", "none", "nan",
+        // "null", "n/a", "-", case-insensitive): a null is an absent key, never "".
+        static void dropNullValues(Values& row);
         // The whole value is a base-10 64-bit integer.
         [[nodiscard]] static bool parseInteger(std::string_view value, long long& parsed);
         [[nodiscard]] static bool isValidRow(const Values& row);
