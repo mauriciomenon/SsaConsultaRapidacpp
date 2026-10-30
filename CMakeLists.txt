@@ -92,6 +92,7 @@ add_library(
   src/domain/ColumnCatalog.cpp
   src/domain/ColumnValuePriorityPolicy.cpp
   src/domain/DerivationGraph.cpp
+  src/domain/SsaImportGroup.cpp
   src/domain/SsaImportPolicy.cpp
   src/domain/SsaRelationGraph.cpp
   src/domain/TextFilterToken.cpp)
@@ -564,6 +565,7 @@ if(SSA_BUILD_TESTS)
     tests/unit/CliControllerTests.cpp
     tests/unit/DerivationGraphTests.cpp
     tests/unit/DomainTests.cpp
+    tests/unit/SsaImportGroupTests.cpp
     tests/unit/SsaImportPolicyTests.cpp
     tests/unit/SearchParserTests.cpp
     tests/unit/SqlQueryBuilderTests.cpp

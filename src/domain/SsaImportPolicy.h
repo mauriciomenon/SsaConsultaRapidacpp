@@ -2,6 +2,8 @@
 
 #include "domain/ColumnCatalog.h"
 
+#include <compare>
+#include <cstddef>
 #include <string>
 #include <unordered_map>
 
@@ -55,6 +57,19 @@ namespace ssa::domain {
         [[nodiscard]] static std::string normalizeSnapshotTimestamp(const std::string& value);
         [[nodiscard]] static std::string normalizeFilenameTimestamp(const std::string& filename);
         [[nodiscard]] static bool isTerminalStatus(const std::string& status);
+        // Total precedence of a row: its snapshot, then its file date. Empty when the row
+        // has no date, so it sorts before any dated row.
+        [[nodiscard]] static std::string precedenceKey(const Values& row);
+        // Order of rows of equal precedence: more non-empty fields, then the larger
+        // canonical serialization (Python json.dumps of the canonical row).
+        struct ContentKey {
+            std::size_t fields = 0;
+            std::string json;
+            auto operator<=>(const ContentKey&) const = default;
+        };
+        [[nodiscard]] static ContentKey contentKey(const Values& row);
+        // An open row dated after a terminal (STE/SCA) one: a stale file or a wrong date.
+        [[nodiscard]] static bool isOpenAfterTerminal(const Values& open, const Values& terminal);
         [[nodiscard]] static SourceProfile classifySourceProfile(const std::string& filename);
         [[nodiscard]] static RowValidationIssue validateRow(const Values& row);
         [[nodiscard]] static bool isValidRow(const Values& row);

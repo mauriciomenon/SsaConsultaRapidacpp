@@ -806,6 +806,26 @@ namespace ssa::domain {
         return isTerminalStatusValue(status);
     }
 
+    std::string SsaImportPolicy::precedenceKey(const Values& row) {
+        const auto snapshot = snapshotKey(row);
+        return snapshot ? *snapshot + snapshotTieKey(row) : std::string{};
+    }
+
+    SsaImportPolicy::ContentKey SsaImportPolicy::contentKey(const Values& row) {
+        const auto canonical = canonicalRow(row);
+        return {canonical.size(), canonicalJson(canonical)};
+    }
+
+    bool SsaImportPolicy::isOpenAfterTerminal(const Values& open, const Values& terminal) {
+        if (isTerminalStatus(valueFor(open, "situacao")) ||
+            !isTerminalStatus(valueFor(terminal, "situacao"))) {
+            return false;
+        }
+        const auto openKey = precedenceKey(open);
+        const auto terminalKey = precedenceKey(terminal);
+        return !openKey.empty() && !terminalKey.empty() && openKey > terminalKey;
+    }
+
     SsaImportPolicy::SourceProfile
     SsaImportPolicy::classifySourceProfile(const std::string& filename) {
         const auto normalized = lowercase(filename);
@@ -869,7 +889,8 @@ namespace ssa::domain {
         }
         const bool existingTerminal = isTerminalStatus(valueFor(existing, "situacao"));
         const bool incomingTerminal = isTerminalStatus(valueFor(incoming, "situacao"));
-        const bool dated = existingSnapshot && incomingSnapshot;
+        const bool openAfterTerminal =
+            isOpenAfterTerminal(incoming, existing) || isOpenAfterTerminal(existing, incoming);
         // Python parity: a row without a report date never wins over a dated one, except a
         // terminal row over an open one; a dated row (or a tie without dates) updates an
         // undated one. Never a conflict.
@@ -883,9 +904,6 @@ namespace ssa::domain {
             existingSnapshot = "";
             incomingSnapshot = incomingSnapshot.value_or("0");
         }
-        const bool openAfterTerminal = dated && existingTerminal != incomingTerminal &&
-                                       (existingTerminal ? *incomingSnapshot > *existingSnapshot
-                                                         : *incomingSnapshot < *existingSnapshot);
         // A terminal row (STE/SCA) never reopens and wins whole over any open row, whatever the
         // dates, so the result does not depend on read order. An equal snapshot still runs
         // the content check below: two sources describing the same instant must agree.
