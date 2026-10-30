@@ -969,7 +969,8 @@ TEST_CASE("file copy keeps the source modification time") {
     const auto result = ssa::infra::importing::copyFileAtomically({source, destination});
 
     REQUIRE(result.status == ssa::infra::importing::FileCopyStatus::Succeeded);
-    REQUIRE(std::filesystem::last_write_time(destination) == sourceTime);
+    // libc++ file_time_type has an __int128 rep that Catch2 cannot print: no decomposition.
+    REQUIRE((std::filesystem::last_write_time(destination) == sourceTime));
 }
 
 TEST_CASE("file copy reports a first chunk callback failure and removes the temporary output") {
