@@ -909,6 +909,7 @@ namespace ssa::infra::sqlite {
             summary.skippedRows += batchSummary.skippedRows;
             summary.duplicateRows += rows.duplicateRows;
             summary.conflictRows += rows.conflictRows;
+            summary.openAfterTerminalRows += rows.openAfterTerminalRows;
             importing::SsaImportBatchWriteSummary result;
             result.duplicateRows = rows.duplicateRows;
             result.conflictRows = rows.conflictRows;
@@ -973,7 +974,8 @@ namespace ssa::infra::sqlite {
                 const bool normalizedExistingDeviation = normalizeExistingDeviationCount(existing);
 
                 const auto merged = domain::SsaImportPolicy::merge(existing, normalizedRow);
-                if (merged.conflict || merged.repeatDiscarded) {
+                summary.openAfterTerminalRows += merged.openAfterTerminal ? 1 : 0;
+                if (merged.conflict || merged.repeatDiscarded || merged.openAfterTerminal) {
                     qWarning().noquote() << QString::fromStdString(
                         domain::SsaImportPolicy::describeConflict(existing, normalizedRow, merged));
                 }

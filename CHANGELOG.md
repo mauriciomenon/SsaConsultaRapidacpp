@@ -11,6 +11,11 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 
 ### Alterado
 
+- Importacao: uma SSA STE/SCA nunca reabre; a linha terminal vence qualquer linha
+  aberta, mesmo mais nova ou sem data. Uma linha aberta com data posterior a uma
+  terminal indica arquivo velho ou data errada: a importacao termina "com avisos",
+  o resumo mostra "SSAs abertas mais novas que STE/SCA" e o log registra SSA,
+  arquivos e datas.
 - Importacao e reescaneamento: o relatorio lista cada arquivo com status (`[OK]`,
   `[SEM ALTERACAO]`, `[IGNORADO]`, `[REJEITADO]`, `[FALHOU]`, `[CANCELADO]`,
   `[SEM LINHAS VALIDAS]`), data de modificacao, tamanho, duracao, linhas invalidas e

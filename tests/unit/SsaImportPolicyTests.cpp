@@ -311,11 +311,12 @@ TEST_CASE("SSA import accepts final execution over a same snapshot transient sta
     REQUIRE_FALSE(result.conflict);
 }
 
-TEST_CASE("SSA import always promotes a transient state to an older terminal snapshot") {
+TEST_CASE("SSA import an older terminal row wins whole over a newer open row") {
     using Values = ssa::domain::SsaImportPolicy::Values;
     const Values existing{{"numero_ssa", "202600024"},
                           {"descricao_ssa", "Current description"},
                           {"situacao", "APV"},
+                          {"prazo_limite", "2026-07-30"},
                           {"data_planilha", "2026-07-15"},
                           {"arquivo_origem", "SSA_15-07-2026.xlsx"}};
     const Values incoming{{"numero_ssa", "202600024"},
@@ -328,37 +329,104 @@ TEST_CASE("SSA import always promotes a transient state to an older terminal sna
 
     REQUIRE(result.changed);
     REQUIRE_FALSE(result.conflict);
+    REQUIRE(result.openAfterTerminal);
     REQUIRE(result.values.at("situacao") == "STE");
-    REQUIRE(result.values.at("descricao_ssa") == "Current description");
+    REQUIRE(result.values.at("descricao_ssa") == "Older execution");
+    REQUIRE(result.values.at("data_planilha") == "2026-07-14");
+    REQUIRE(result.values.at("arquivo_origem") == "SSAs executadas_14-07-2026.xlsx");
+    // The terminal row lacks the field: the open row keeps it.
+    REQUIRE(result.values.at("prazo_limite") == "2026-07-30");
 }
 
-TEST_CASE("SSA import older terminal promotion preserves newer metadata and indicators") {
+TEST_CASE("SSA import a stored terminal row ignores a newer open row and flags it") {
     using Values = ssa::domain::SsaImportPolicy::Values;
     const Values existing{{"numero_ssa", "202600025"},
-                          {"descricao_ssa", "Current description"},
-                          {"situacao", "APV"},
-                          {"prazo_limite", "2026-07-30"},
-                          {"tempo_excedido", "02:00"},
-                          {"data_planilha", "2026-07-15"},
-                          {"arquivo_origem", "SSA_15-07-2026.xlsx"},
-                          {"data_arquivo_origem", "2026-07-15 10:00:00"}};
-    const Values incoming{{"numero_ssa", "202600025"},
-                          {"descricao_ssa", "Older execution"},
-                          {"situacao", "STE"},
-                          {"prazo_limite", "2026-07-20"},
-                          {"tempo_excedido", "01:00"},
+                          {"descricao_ssa", "Execution"},
+                          {"situacao", "SCA"},
                           {"data_planilha", "2026-07-14"},
-                          {"arquivo_origem", "SSA_14-07-2026.xlsx"},
-                          {"data_arquivo_origem", "2026-07-14 10:00:00"}};
+                          {"arquivo_origem", "SSA_14-07-2026.xlsx"}};
+    const Values incoming{{"numero_ssa", "202600025"},
+                          {"descricao_ssa", "Stale reopen"},
+                          {"situacao", "ADM"},
+                          {"data_planilha", "2026-07-15"},
+                          {"arquivo_origem", "SSA_15-07-2026.xlsx"}};
 
     const auto result = ssa::domain::SsaImportPolicy::merge(existing, incoming);
 
-    REQUIRE(result.values.at("situacao") == "STE");
-    REQUIRE(result.values.at("prazo_limite") == "2026-07-30");
-    REQUIRE(result.values.at("tempo_excedido") == "02:00");
-    REQUIRE(result.values.at("data_planilha") == "2026-07-15");
-    REQUIRE(result.values.at("arquivo_origem") == "SSA_15-07-2026.xlsx");
-    REQUIRE(result.values.at("data_arquivo_origem") == "2026-07-15 10:00:00");
+    REQUIRE_FALSE(result.changed);
+    REQUIRE(result.openAfterTerminal);
+    REQUIRE(result.values == existing);
+    const auto text = ssa::domain::SsaImportPolicy::describeConflict(existing, incoming, result);
+    REQUIRE(text == "Import open row newer than terminal: ssa=202600025 field=situacao "
+                    "existing=\"SCA\" incoming=\"ADM\" existing_file=\"SSA_14-07-2026.xlsx\" "
+                    "incoming_file=\"SSA_15-07-2026.xlsx\" existing_date=\"2026-07-14\" "
+                    "incoming_date=\"2026-07-15\"");
+}
+
+TEST_CASE("SSA import an open row older than a terminal one is normal history, not flagged") {
+    using Values = ssa::domain::SsaImportPolicy::Values;
+    const Values terminal{{"numero_ssa", "202600027"},
+                          {"descricao_ssa", "Execution"},
+                          {"situacao", "STE"},
+                          {"data_planilha", "2026-07-15"}};
+    const Values open{{"numero_ssa", "202600027"},
+                      {"descricao_ssa", "Before execution"},
+                      {"situacao", "ADM"},
+                      {"data_planilha", "2026-07-14"}};
+
+    const auto stored = ssa::domain::SsaImportPolicy::merge(terminal, open);
+    const auto promoted = ssa::domain::SsaImportPolicy::merge(open, terminal);
+
+    REQUIRE_FALSE(stored.openAfterTerminal);
+    REQUIRE_FALSE(stored.changed);
+    REQUIRE_FALSE(promoted.openAfterTerminal);
+    REQUIRE(promoted.values.at("situacao") == "STE");
+    REQUIRE(promoted.values.at("descricao_ssa") == "Execution");
+}
+
+TEST_CASE("SSA import an undated terminal row wins over a dated open row in both orders") {
+    using Values = ssa::domain::SsaImportPolicy::Values;
+    const Values open{{"numero_ssa", "202600029"},
+                      {"descricao_ssa", "Open"},
+                      {"situacao", "APV"},
+                      {"data_planilha", "2026-07-15"}};
+    const Values terminal{
+        {"numero_ssa", "202600029"}, {"descricao_ssa", "Closed"}, {"situacao", "STE"}};
+
+    const auto promoted = ssa::domain::SsaImportPolicy::merge(open, terminal);
+    const auto stored = ssa::domain::SsaImportPolicy::merge(terminal, open);
+
+    REQUIRE(promoted.changed);
+    REQUIRE(promoted.values.at("situacao") == "STE");
+    REQUIRE(promoted.values.at("descricao_ssa") == "Closed");
+    REQUIRE_FALSE(promoted.openAfterTerminal); // no date on the terminal row to compare
+    REQUIRE_FALSE(stored.changed);
+    REQUIRE(stored.values == terminal);
+}
+
+TEST_CASE("SSA import a terminal row between open rows gives the same result in any order") {
+    using Values = ssa::domain::SsaImportPolicy::Values;
+    const auto rowAt = [](const std::string& situacao, const std::string& date) {
+        return Values{{"numero_ssa", "202600028"}, {"descricao_ssa", situacao + " " + date},
+                      {"situacao", situacao},      {"prazo_limite", date},
+                      {"data_planilha", date},     {"arquivo_origem", "SSA_" + date + ".xlsx"}};
+    };
+    const auto first = rowAt("ADM", "2026-07-13");
+    const auto terminal = rowAt("STE", "2026-07-14");
+    const auto last = rowAt("ADM", "2026-07-15");
+    const auto fold = [](const std::vector<Values>& rows) {
+        Values merged;
+        for (const auto& row : rows) {
+            merged = ssa::domain::SsaImportPolicy::merge(merged, row).values;
+        }
+        return merged;
+    };
+
+    const auto forward = fold({first, terminal, last});
+    REQUIRE(forward == terminal);
+    REQUIRE(fold({last, terminal, first}) == forward);
+    REQUIRE(fold({terminal, last, first}) == forward);
+    REQUIRE(fold({first, last, terminal}) == forward);
 }
 
 TEST_CASE("SSA import tie-break is total: a missing file date sorts before a present one") {

@@ -109,6 +109,12 @@ namespace ssa::presentation {
                 facts.push_back(counted(summary.unchangedRows, QStringLiteral("SSA sem alteracao"),
                                         QStringLiteral("SSAs sem alteracao")));
             }
+            if (summary.openAfterTerminalRows > 0) {
+                facts.push_back(counted(summary.openAfterTerminalRows,
+                                        QStringLiteral("SSA aberta mais nova que STE/SCA"),
+                                        QStringLiteral("SSAs abertas mais novas que STE/SCA")) +
+                                QStringLiteral(" (arquivo suspeito, ver log)"));
+            }
             if (summary.failed == 0 && summary.rejected == 0 && summary.invalidRows == 0 &&
                 summary.conflicts == 0) {
                 facts.push_back(QStringLiteral("nenhuma falha"));

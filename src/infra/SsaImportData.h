@@ -53,6 +53,7 @@ namespace ssa::infra::importing {
         std::size_t invalidNumberRows{0};
         std::size_t invalidDescriptionRows{0};
         std::size_t invalidDateRows{0};
+        std::size_t openAfterTerminalRows{0};
     };
 
     struct SsaImportBatchWriteSummary {
@@ -69,6 +70,7 @@ namespace ssa::infra::importing {
         std::vector<SsaImportRow> rows;
         std::size_t duplicateRows{0};
         std::size_t conflictRows{0};
+        std::size_t openAfterTerminalRows{0};
     };
 
 } // namespace ssa::infra::importing

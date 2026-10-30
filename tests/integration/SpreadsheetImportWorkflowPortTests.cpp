@@ -4758,8 +4758,10 @@ TEST_CASE("sqlite incremental import never overwrites a terminal row") {
     const auto summary = writer.write(incoming, 1, 0, false);
 
     // Python parity: a terminal row (STE/SCA) is never overwritten, not even its indicators.
+    // The newer open row is reported: it points at a stale file or a wrong file date.
     REQUIRE(summary.rowsWritten == 0);
     REQUIRE(summary.rowsUnchanged == 1);
+    REQUIRE(summary.openAfterTerminalRows == 1);
     sqlite3* db = nullptr;
     REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
     REQUIRE(scalarText(db, "SELECT descricao_ssa FROM ssa_table WHERE numero_ssa='202600131'") ==

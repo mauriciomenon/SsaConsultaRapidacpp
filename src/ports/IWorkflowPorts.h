@@ -74,6 +74,8 @@ namespace ssa::ports {
         std::size_t verified = 0;
         std::size_t unchangedRows = 0;
         std::size_t conflicts = 0;
+        // Open rows dated after a terminal row of the same SSA: a stale file or a wrong date.
+        std::size_t openAfterTerminalRows = 0;
         std::size_t consolidated = 0;
         std::size_t noSurvivor = 0;
         std::vector<ImportFileResult> files;

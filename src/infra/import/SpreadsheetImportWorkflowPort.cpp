@@ -569,6 +569,7 @@ namespace ssa::infra::importing {
             total.verified += batch.verified;
             total.unchangedRows += batch.unchangedRows;
             total.conflicts += batch.conflicts;
+            total.openAfterTerminalRows += batch.openAfterTerminalRows;
             total.consolidated += batch.consolidated;
             total.noSurvivor += batch.noSurvivor;
             total.files.insert(total.files.end(), batch.files.begin(), batch.files.end());
@@ -586,6 +587,9 @@ namespace ssa::infra::importing {
                    << " invalid_number=" << summary.invalidNumberRows
                    << " invalid_description=" << summary.invalidDescriptionRows
                    << " invalid_date=" << summary.invalidDateRows;
+            if (summary.openAfterTerminalRows > 0) {
+                output << " open_after_terminal=" << summary.openAfterTerminalRows;
+            }
             return output.str();
         }
 
@@ -611,6 +615,9 @@ namespace ssa::infra::importing {
                    << " legacy_xls=" << files.legacyXls << " converted_xls=" << files.convertedXls
                    << " failed_legacy_xls=" << files.failedLegacyXls
                    << " unsupported=" << files.unsupported << " failed=" << failedFiles;
+            if (writeSummary.openAfterTerminalRows > 0) {
+                output << " open_after_terminal=" << writeSummary.openAfterTerminalRows;
+            }
             if (!failure.error.empty()) {
                 output << " error=" << failure.error;
             }
@@ -1819,6 +1826,8 @@ namespace ssa::infra::importing {
             totalSummary.rowsUnchanged = writeSummary.rowsUnchanged;
             totalSummary.skippedRows += writeSummary.skippedRows;
             totalSummary.duplicateRows = writeSummary.duplicateRows;
+            totalSummary.openAfterTerminalRows = writeSummary.openAfterTerminalRows;
+            importSummary.openAfterTerminalRows = writeSummary.openAfterTerminalRows;
             importSummary.inserts = writeSummary.rowsInserted;
             importSummary.updates = writeSummary.rowsUpdated;
             importSummary.verified = writeSummary.rowsVerified;
@@ -1944,7 +1953,8 @@ namespace ssa::infra::importing {
             files.warning || files.failedCopies > 0 || files.failedLegacyXls > 0 ||
                 consolidation.failed > 0 || consolidation.canceled || journalFailures > 0 ||
                 totalSummary.invalidRows > 0 || totalSummary.duplicateRows > 0 ||
-                ignoredUnrecognizedWorkbook || partialBatch,
+                totalSummary.openAfterTerminalRows > 0 || ignoredUnrecognizedWorkbook ||
+                partialBatch,
             std::move(diagnostic)};
         return withSummary(std::move(result), importSummary);
     }

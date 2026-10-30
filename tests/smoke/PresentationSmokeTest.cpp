@@ -2836,6 +2836,36 @@ namespace {
             QTRY_COMPARE_WITH_TIMEOUT(model.browse()->status()->error(), QString{}, 1000);
         }
 
+        void import_reports_open_rows_newer_than_terminal_as_warning() {
+            auto repository = std::make_shared<FakeRepository>();
+            auto service = std::make_shared<ssa::query::SsaQueryService>(repository);
+            auto commands = std::make_shared<FakeCommands>();
+            ssa::ports::ImportSummary summary;
+            summary.discovered = 1;
+            summary.accepted = 1;
+            summary.unchangedRows = 1;
+            summary.openAfterTerminalRows = 1;
+            auto importPort = std::make_shared<CapturingImportPort>(
+                ssa::ports::WorkflowResult{ssa::ports::WorkflowStatus::NoChanges,
+                                           "import open_after_terminal=1",
+                                           true,
+                                           {},
+                                           summary});
+            auto workflows = std::make_shared<ssa::application::SsaWorkflowService>(importPort);
+            ssa::presentation::MainViewModel model(service, commands, nullptr, nullptr, workflows);
+            QVariantList selectedFiles;
+            selectedFiles.push_back(QUrl::fromLocalFile("/tmp/entrada.xlsx"));
+
+            model.actions()->workflows()->importExternalFiles(selectedFiles);
+
+            QTRY_COMPARE_WITH_TIMEOUT(
+                model.browse()->status()->message(),
+                QString("Importacao concluida com avisos: 1 arquivo examinado; 1 aplicado; 1 SSA "
+                        "sem alteracao; 1 SSA aberta mais nova que STE/SCA (arquivo suspeito, ver "
+                        "log); nenhuma falha"),
+                1000);
+        }
+
         void workflow_success_keeps_reload_error_visible() {
             auto repository = std::make_shared<FakeRepository>();
             auto service = std::make_shared<ssa::query::SsaQueryService>(repository);

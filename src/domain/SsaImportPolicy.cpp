@@ -867,25 +867,32 @@ namespace ssa::domain {
             *existingSnapshot += snapshotTieKey(existing);
             *incomingSnapshot += snapshotTieKey(incoming);
         }
-        // Python parity: a row without a report date never wins over a dated one, and a
-        // dated row (or a tie without dates) updates an undated one. Never a conflict.
+        const bool existingTerminal = isTerminalStatus(valueFor(existing, "situacao"));
+        const bool incomingTerminal = isTerminalStatus(valueFor(incoming, "situacao"));
+        const bool dated = existingSnapshot && incomingSnapshot;
+        // Python parity: a row without a report date never wins over a dated one, except a
+        // terminal row over an open one; a dated row (or a tie without dates) updates an
+        // undated one. Never a conflict.
         if (!incomingSnapshot && existingSnapshot) {
-            return {existing, false};
+            if (!incomingTerminal || existingTerminal) {
+                return {existing, false};
+            }
+            incomingSnapshot = ""; // sorts before any date: the older-terminal path below
         }
         if (!existingSnapshot) {
             existingSnapshot = "";
             incomingSnapshot = incomingSnapshot.value_or("0");
         }
-        const bool existingTerminal = isTerminalStatus(valueFor(existing, "situacao"));
-        // Python: a terminal row (STE/SCA) is never overwritten. An equal snapshot still runs
-        // the conflict check below: two sources describing the same instant must agree.
+        const bool openAfterTerminal = dated && existingTerminal != incomingTerminal &&
+                                       (existingTerminal ? *incomingSnapshot > *existingSnapshot
+                                                         : *incomingSnapshot < *existingSnapshot);
+        // A terminal row (STE/SCA) never reopens and wins whole over any open row, whatever the
+        // dates, so the result does not depend on read order. An equal snapshot still runs
+        // the content check below: two sources describing the same instant must agree.
         if (existingTerminal && *incomingSnapshot != *existingSnapshot) {
-            return {existing, false};
+            return {.values = existing, .openAfterTerminal = openAfterTerminal};
         }
-        const bool incomingTerminal = isTerminalStatus(valueFor(incoming, "situacao"));
         const bool terminalPromotion = incomingTerminal && !existingTerminal;
-        const bool olderTerminalPromotion =
-            terminalPromotion && *incomingSnapshot < *existingSnapshot;
         if (*incomingSnapshot < *existingSnapshot && !terminalPromotion) {
             return {existing, false};
         }
@@ -935,7 +942,7 @@ namespace ssa::domain {
         } else {
             for (const auto& [key, value] : incoming) {
                 const auto normalized = trimWhitespace(value);
-                if (normalized.empty() || (olderTerminalPromotion && key != "situacao")) {
+                if (normalized.empty()) {
                     continue;
                 }
                 if (sameValue(key, normalized, valueFor(existing, key))) {
@@ -948,9 +955,13 @@ namespace ssa::domain {
             return {existing, false};
         }
         const bool changed = differsInPersistedValues(merged, existing);
-        return {merged,          changed,
-                false,           std::move(firstDifference),
-                repeatDiscarded, changed && !differsInPersistedValues(merged, existing, true)};
+        return {merged,
+                changed,
+                false,
+                std::move(firstDifference),
+                repeatDiscarded,
+                changed && !differsInPersistedValues(merged, existing, true),
+                openAfterTerminal};
     }
 
     std::string SsaImportPolicy::describeConflict(const Values& existing, const Values& incoming,
@@ -965,13 +976,20 @@ namespace ssa::domain {
             }
             return "\"" + value + "\"";
         };
-        const auto& field = result.conflictField;
-        return std::string{result.conflict ? "Import conflict: "
-                                           : "Import repeated SSA, resolved by content: "} +
-               "ssa=" + valueFor(incoming, "numero_ssa") + " field=" + field +
-               " existing=" + quoted(existing, field) + " incoming=" + quoted(incoming, field) +
-               " existing_file=" + quoted(existing, "arquivo_origem", false) +
-               " incoming_file=" + quoted(incoming, "arquivo_origem", false);
+        const std::string field = result.openAfterTerminal ? "situacao" : result.conflictField;
+        auto text = std::string{result.openAfterTerminal ? "Import open row newer than terminal: "
+                                : result.conflict ? "Import conflict: "
+                                                  : "Import repeated SSA, resolved by content: "} +
+                    "ssa=" + valueFor(incoming, "numero_ssa") + " field=" + field +
+                    " existing=" + quoted(existing, field) +
+                    " incoming=" + quoted(incoming, field) +
+                    " existing_file=" + quoted(existing, "arquivo_origem", false) +
+                    " incoming_file=" + quoted(incoming, "arquivo_origem", false);
+        if (result.openAfterTerminal) {
+            text += " existing_date=" + quoted(existing, "data_planilha", false) +
+                    " incoming_date=" + quoted(incoming, "data_planilha", false);
+        }
+        return text;
     }
 
 } // namespace ssa::domain

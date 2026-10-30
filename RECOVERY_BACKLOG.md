@@ -1,5 +1,31 @@
 # Recovery Backlog
 
+## Regra terminal e lote unico na importacao (branch `rev`) - 2026-10-30
+
+- [DECIDIDO] Decisao do usuario (vale para C++ e Python): STE/SCA nunca reabre.
+  A linha terminal vence por inteiro qualquer linha aberta, seja qual for a data.
+  Uma linha aberta com data mais nova que uma terminal gera warning no processo
+  (`open_after_terminal=N` na mensagem e `WorkflowResult.warning`) e no log
+  (`Import open row newer than terminal: ...` com arquivos e datas).
+- [MEDIDO] Censo somente leitura de `docs_entrada` (438 arquivos, 46118 SSAs,
+  39208 terminais) pela data do nome do arquivo: 0 SSAs terminais depois abertas,
+  0 alternando entre STE e SCA. O caso so surge com arquivo velho ou com data
+  errada nos metadados; o warning existe para expor esse arquivo. Banco contra
+  arquivos: 2 divergencias (202610928 e 202610929, SCS no banco e SCA em 06/08).
+  Causa: o banco nao tem os 14 arquivos de agosto; nao e conflito.
+- [LOCAL-PENDING] Slice dedicado: consolidar a rodada inteira por SSA antes de
+  comparar com o banco (decisao do usuario: sim). Fecha A->B->A = 0 escritas e
+  a independencia de ordem para campos vazios na linha vencedora e para
+  terminal contra terminal (precedencia normal dentro do lote; terminal no
+  banco congelado). Quebra o savepoint por arquivo e os lotes de 64 arquivos.
+- [LOCAL-PENDING] Residuos do aviso `open_after_terminal` (revisao Codex
+  30/10), todos com 0 ocorrencias no censo: (1) se o terminal vence, os campos
+  vazios dele dependem da ordem (STE no banco congelado contra STE no lote);
+  (2) banco STE 01/07 com lote APV 02/07 + STE 03/07 no mesmo chunk: o
+  resolver junta as linhas antes de comparar com o banco e o aviso some;
+  (3) arquivo revertido por rollback descarta o contador do resumo, mas o
+  `qWarning` fica no log. Os tres ficam para o slice de consolidacao.
+
 ## Relatorio de importacao e paridade com o Python (branch `rev`) - 2026-10-28
 
 - [LOCAL-PENDING] `ssa_qml_workflow_progress_dialog_tests` leva de 11 s a 43 s

@@ -37,12 +37,14 @@ namespace ssa::infra::importing {
                 const auto merged =
                     domain::SsaImportPolicy::merge(resolved.rows[existing->second], row);
                 ++resolved.duplicateRows;
-                if (merged.conflict || merged.repeatDiscarded) {
+                resolved.openAfterTerminalRows += merged.openAfterTerminal ? 1 : 0;
+                if (merged.conflict || merged.repeatDiscarded || merged.openAfterTerminal) {
                     const auto description =
                         QString::fromStdString(domain::SsaImportPolicy::describeConflict(
                             resolved.rows[existing->second], row, merged));
-                    // A discarded repeat is expected data: journal only. A conflict is a warning.
-                    if (merged.conflict) {
+                    // A discarded repeat is expected data: journal only. A conflict or an open
+                    // row newer than a terminal one is a warning.
+                    if (merged.conflict || merged.openAfterTerminal) {
                         qWarning().noquote() << description;
                     } else {
                         qInfo().noquote() << description;

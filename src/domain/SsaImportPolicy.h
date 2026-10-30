@@ -39,6 +39,10 @@ namespace ssa::domain {
             // Only source metadata (arquivo_origem, data_arquivo_origem, data_criacao_arquivo,
             // data_planilha) differs: the row is rewritten but counted as verified, not updated.
             bool metadataOnly = false;
+            // An open row is dated after a terminal (STE/SCA) row of the same SSA. The terminal
+            // row still wins; real data never shows this, so it flags a stale file or a wrong
+            // file date and is reported as a warning.
+            bool openAfterTerminal = false;
         };
 
         [[nodiscard]] static std::string normalizeNumber(const std::string& value);
