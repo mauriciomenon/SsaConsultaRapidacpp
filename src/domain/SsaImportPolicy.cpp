@@ -117,7 +117,7 @@ namespace ssa::domain {
 
         // json.dumps(sort_keys=True, ensure_ascii=True, separators=(",", ":")).
         void appendJsonString(std::string& out, const std::string& text) {
-            static constexpr char kHex[] = "0123456789abcdef";
+            static constexpr std::string_view kHex = "0123456789abcdef";
             const auto escape = [&out](const std::uint32_t codePoint) {
                 out += "\\u";
                 for (int shift = 12; shift >= 0; shift -= 4) {
