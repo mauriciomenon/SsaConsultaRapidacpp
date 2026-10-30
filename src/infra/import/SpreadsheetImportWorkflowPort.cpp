@@ -13,6 +13,7 @@
 #include <QByteArray>
 #include <QCryptographicHash>
 #include <QDate>
+#include <QDateTime>
 #include <QDebug>
 #include <QFileInfo>
 #include <QLockFile>
@@ -31,6 +32,7 @@
 #include <string_view>
 #include <system_error>
 #include <thread>
+#include <tuple>
 #include <utility>
 
 namespace ssa::infra::importing {
@@ -547,6 +549,47 @@ namespace ssa::infra::importing {
             total.files.insert(total.files.end(), batch.files.begin(), batch.files.end());
         }
 
+        // Python parity: a selection split into batches is imported oldest file first (date
+        // in the name, else the modification time with milliseconds, then the case-folded
+        // name and path), so the batches never depend on the selection order.
+        std::vector<std::filesystem::path>
+        oldestFileFirst(std::vector<std::filesystem::path> files) {
+            const auto fileDate = [](const std::filesystem::path& file) {
+                if (auto named = domain::SsaImportPolicy::normalizeFilenameTimestamp(
+                        qt::toUtf8(file.filename()));
+                    !named.empty()) {
+                    return named;
+                }
+                const auto modified = QFileInfo{qt::toQString(file)}.lastModified();
+                return modified.isValid()
+                           ? modified.toString(QStringLiteral("yyyy-MM-dd HH:mm:ss.zzz"))
+                                 .toStdString()
+                           : std::string{};
+            };
+            const auto folded = [](const std::filesystem::path& path) {
+                return qt::toQString(path).toCaseFolded().toStdString();
+            };
+            struct Keyed {
+                std::string date;
+                std::string name;
+                std::string path;
+                std::filesystem::path file;
+            };
+            std::vector<Keyed> keyed;
+            keyed.reserve(files.size());
+            for (auto& file : files) {
+                keyed.push_back({fileDate(file), folded(file.filename()), folded(file), file});
+            }
+            std::ranges::sort(keyed, {}, [](const Keyed& entry) {
+                return std::tie(entry.date, entry.name, entry.path);
+            });
+            files.clear();
+            for (auto& entry : keyed) {
+                files.push_back(std::move(entry.file));
+            }
+            return files;
+        }
+
         std::string batchedImportMessage(const ports::ImportSummary& summary,
                                          const std::size_t batches) {
             std::ostringstream output;
@@ -813,24 +856,24 @@ namespace ssa::infra::importing {
                 runBatch(request, {&request.progress, 0, request.files.size(), 1, false}));
         }
 
+        const auto selection = oldestFileFirst(request.files);
         ports::ImportSummary totalSummary;
-        totalSummary.files.reserve(request.files.size());
+        totalSummary.files.reserve(selection.size());
         std::string diagnostic;
         bool warning = false;
         bool anySuccess = false;
         bool hadFailure = false;
         bool hadRejection = false;
         std::size_t completedBatchCount = 0;
-        for (std::size_t batchStart = 0; batchStart < request.files.size();
+        for (std::size_t batchStart = 0; batchStart < selection.size();
              batchStart += kMaxImportFilesPerBatch) {
             const auto batchEnd =
-                (std::min)(request.files.size(), batchStart + kMaxImportFilesPerBatch);
+                (std::min)(selection.size(), batchStart + kMaxImportFilesPerBatch);
             ports::ImportExternalFilesRequest batchRequest;
             batchRequest.execution = request.execution;
-            batchRequest.files.assign(
-                request.files.begin() + static_cast<std::ptrdiff_t>(batchStart),
-                request.files.begin() + static_cast<std::ptrdiff_t>(batchEnd));
-            const ProgressContext progress{&request.progress, batchStart, request.files.size(),
+            batchRequest.files.assign(selection.begin() + static_cast<std::ptrdiff_t>(batchStart),
+                                      selection.begin() + static_cast<std::ptrdiff_t>(batchEnd));
+            const ProgressContext progress{&request.progress, batchStart, selection.size(),
                                            batchStart / kMaxImportFilesPerBatch + 1, false};
             const auto batchResult = runBatch(batchRequest, progress);
             ++completedBatchCount;
@@ -848,12 +891,11 @@ namespace ssa::infra::importing {
             hadRejection = hadRejection || batchResult.status == ports::WorkflowStatus::Rejected;
             if (batchResult.status == ports::WorkflowStatus::Canceled ||
                 stopToken.stop_requested()) {
-                for (std::size_t index = batchEnd; index < request.files.size(); ++index) {
+                for (std::size_t index = batchEnd; index < selection.size(); ++index) {
                     ++totalSummary.discovered;
                     ++totalSummary.preserved;
-                    totalSummary.files.push_back(
-                        {.source = qt::toUtf8(request.files[index].filename()),
-                         .status = ports::ImportFileStatus::Canceled});
+                    totalSummary.files.push_back({.source = qt::toUtf8(selection[index].filename()),
+                                                  .status = ports::ImportFileStatus::Canceled});
                 }
                 return complete(withSummary(
                     {ports::WorkflowStatus::Canceled,

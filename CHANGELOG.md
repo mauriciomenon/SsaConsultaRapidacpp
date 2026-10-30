@@ -16,6 +16,8 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
   para o arquivo que venceu. Um arquivo com linha invalida e rejeitado sozinho, sem
   afetar os outros. Versoes A, B e de novo A na mesma rodada gravam so a troca de
   arquivo de origem.
+- Importacao de mais de 64 arquivos selecionados: os lotes seguem a data dos
+  arquivos (do mais antigo ao mais novo), nao a ordem da selecao.
 - Importacao: uma SSA STE/SCA nunca reabre; a linha terminal vence qualquer linha
   aberta, mesmo mais nova ou sem data. Uma linha aberta com data posterior a uma
   terminal indica arquivo velho ou data errada: a importacao termina "com avisos",

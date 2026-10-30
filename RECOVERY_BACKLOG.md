@@ -25,10 +25,11 @@
   igual, o Python usa o JSON bruto antes do caminho; o C++ usa o caminho
   original e, no mesmo arquivo, a maior grafia por campo. So diverge com o
   mesmo basename em duas pastas e grafias brutas diferentes.
-- [LOCAL-PENDING] Selecao explicita acima de 64 arquivos ainda roda em lotes,
-  cada um com a propria transacao: dois terminais da mesma SSA em lotes
-  diferentes dependem da ordem dos lotes (passo 3: ordenar por data do
-  arquivo antes de dividir, como o Python).
+- [FEITO] Selecao explicita acima de 64 arquivos: ordenada por data do arquivo
+  (nome, depois mtime com milissegundos, depois nome e caminho em case folding)
+  antes de dividir em lotes, como o Python;
+  o resultado nao depende da ordem de selecao (o terminal mais antigo e gravado
+  primeiro e fica congelado).
 - [MEDIDO] Full rescan dos 437 xlsx da raiz de `docs_entrada`, banco vazio,
   C++ contra Python (0ee77228): mesmas 46087 SSAs; `situacao`, `arquivo_origem`,
   `setor_executor`, `semana_cadastro`, `responsavel_execucao`, `derivada_de`
@@ -37,9 +38,9 @@
   1447 MB e 1229 s (antes da otimizacao: 1786 MB). A gravacao por arquivo
   antiga ficava em 87 MB. O peso vem dos grupos por SSA da rodada: cada campo
   vencedor retem a chave do candidato, com o JSON canonico usado no desempate
-  por conteudo. O Python tambem guarda a rodada inteira (pico a medir). Opcoes,
-  se o pico incomodar: reter o JSON so para precedencias empatadas, ou dobrar
-  em grupos menores por intervalo de numero de SSA.
+  por conteudo. O Python tambem guarda a rodada inteira (pico a medir). Reter o
+  JSON so para precedencias empatadas quebraria o determinismo (depende da ordem
+  de chegada); a opcao viavel e uma representacao menor que preserve a ordem.
 - [DECISAO-PENDENTE] Normalizacao de valores diferente do Python (anterior ao
   lote unico; nao afeta precedencia): espacos no fim (C++ apara); datas com
   `T` x espaco e dd/mm x ISO (`executado`, `concluido`, `instalacao_estimada`);

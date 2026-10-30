@@ -4025,7 +4025,9 @@ TEST_CASE("external import keeps the summary of committed batches when a later b
         const auto number = index == fileCount ? std::string{"202600999"}
                                                : "2026001" + std::string(index < 10 ? "0" : "") +
                                                      std::to_string(index);
-        files.push_back(sourceDirectory / ("file_" + std::to_string(index) + ".xlsx"));
+        // Zero-padded: the batches go oldest file first, then by path.
+        files.push_back(sourceDirectory /
+                        ((index < 10 ? "file_0" : "file_") + std::to_string(index) + ".xlsx"));
         writeWorkbook(files.back(),
                       header + row(2, {inlineCell("A2", number), inlineCell("B2", "APV"),
                                        inlineCell("C2", "Row"), inlineCell("D2", "2026-07-01")}));
@@ -7138,6 +7140,7 @@ TEST_CASE("external import preserves a failed second block after committing the 
                           row(2, {inlineCell("A2", std::to_string(202601500 + index)),
                                   inlineCell("B2", "First block committed"),
                                   inlineCell("C2", "2026-07-14")}));
+        setLocalModificationTime(workbook, 2026, 7, 14, 9, 0);
         files.push_back(workbook);
     }
     const auto invalid = sourceDirectory / "invalid_second_block.xlsx";
@@ -7145,6 +7148,8 @@ TEST_CASE("external import preserves a failed second block after committing the 
     REQUIRE(invalidOutput.is_open());
     invalidOutput << "not a zip package";
     invalidOutput.close();
+    // The newest file: the batches go oldest file first, so it lands in the second block.
+    setLocalModificationTime(invalid, 2026, 7, 15, 9, 0);
     files.push_back(invalid);
 
     ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
@@ -10600,4 +10605,78 @@ TEST_CASE("sqlite import warns about a stored open row newer than the oldest run
     // July 3 terminal row wins it.
     REQUIRE(summary.openAfterTerminalRows == 1);
     REQUIRE(summary.rowsWritten == 1);
+}
+
+TEST_CASE("selection above 64 files is imported oldest file first, whatever its order") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto older = root / "SSA_10-07-2026_0900AM.xlsx";
+    const auto newer = root / "SSA_20-07-2026_0900AM.xlsx";
+    writeSsaWorkbook(older, "202600931", "SCA", "Canceled first");
+    writeSsaWorkbook(newer, "202600931", "STE", "Executed later");
+    std::vector<std::filesystem::path> fillers;
+    for (int index = 0; index < 64; ++index) {
+        fillers.push_back(root / ("SSA_15-07-2026_0900AM (" + std::to_string(index) + ").xlsx"));
+        writeSsaWorkbook(fillers.back(), std::to_string(202601000 + index), "ADM", "Filler");
+    }
+    const bool newerFirst = GENERATE(false, true);
+    // The two versions of SSA 202600931 land in different batches of 64 files.
+    std::vector<std::filesystem::path> selection{newerFirst ? newer : older};
+    selection.insert(selection.end(), fillers.begin(), fillers.end());
+    selection.push_back(newerFirst ? older : newer);
+    const auto dbPath = root / (newerFirst ? "newer" : "older") / "ssas.db";
+    std::filesystem::create_directories(dbPath.parent_path());
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(dbPath.parent_path() / "docs_entrada",
+                                                              dbPath, importColumns(), false);
+
+    const auto result = port.importExternalFiles({.files = selection});
+
+    INFO(result.message);
+    REQUIRE(result.ok());
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    // The oldest terminal row is committed by the first batch and stays frozen.
+    REQUIRE(scalarText(db, "SELECT situacao || '|' || descricao_ssa FROM ssa_table "
+                           "WHERE numero_ssa='202600931'") == "SCA|Canceled first");
+    REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 65);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("selection above 64 files breaks a date tie by the case-folded file name") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    // No date in either name and the same modification time: "a" sorts before "Z" once
+    // case-folded, although 'Z' < 'a' in raw bytes.
+    const auto lower = root / "a.xlsx";
+    const auto upper = root / "Z.xlsx";
+    writeSsaWorkbook(lower, "202600932", "SCA", "Lower name");
+    writeSsaWorkbook(upper, "202600932", "STE", "Upper name");
+    setLocalModificationTime(lower, 2026, 7, 10, 9, 0);
+    setLocalModificationTime(upper, 2026, 7, 10, 9, 0);
+    // 63 older fillers and one newer: the tied pair straddles the boundary of 64 files.
+    std::vector<std::filesystem::path> fillers;
+    for (int index = 0; index < 64; ++index) {
+        const auto date = index < 63 ? std::string{"05-07-2026"} : std::string{"15-07-2026"};
+        fillers.push_back(root / ("SSA_" + date + "_0900AM (" + std::to_string(index) + ").xlsx"));
+        writeSsaWorkbook(fillers.back(), std::to_string(202601100 + index), "ADM", "Filler");
+    }
+    const bool upperFirst = GENERATE(false, true);
+    std::vector<std::filesystem::path> selection{upperFirst ? upper : lower};
+    selection.insert(selection.end(), fillers.begin(), fillers.end());
+    selection.push_back(upperFirst ? lower : upper);
+    const auto dbPath = root / (upperFirst ? "upper" : "lower") / "ssas.db";
+    std::filesystem::create_directories(dbPath.parent_path());
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(dbPath.parent_path() / "docs_entrada",
+                                                              dbPath, importColumns(), false);
+
+    const auto result = port.importExternalFiles({.files = selection});
+
+    INFO(result.message);
+    REQUIRE(result.ok());
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarText(db, "SELECT situacao FROM ssa_table WHERE numero_ssa='202600932'") == "SCA");
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
