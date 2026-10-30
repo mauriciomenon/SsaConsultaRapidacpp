@@ -13,18 +13,38 @@
   errada nos metadados; o warning existe para expor esse arquivo. Banco contra
   arquivos: 2 divergencias (202610928 e 202610929, SCS no banco e SCA em 06/08).
   Causa: o banco nao tem os 14 arquivos de agosto; nao e conflito.
-- [LOCAL-PENDING] Slice dedicado: consolidar a rodada inteira por SSA antes de
-  comparar com o banco (decisao do usuario: sim). Fecha A->B->A = 0 escritas e
-  a independencia de ordem para campos vazios na linha vencedora e para
-  terminal contra terminal (precedencia normal dentro do lote; terminal no
-  banco congelado). Quebra o savepoint por arquivo e os lotes de 64 arquivos.
-- [LOCAL-PENDING] Residuos do aviso `open_after_terminal` (revisao Codex
-  30/10), todos com 0 ocorrencias no censo: (1) se o terminal vence, os campos
-  vazios dele dependem da ordem (STE no banco congelado contra STE no lote);
-  (2) banco STE 01/07 com lote APV 02/07 + STE 03/07 no mesmo chunk: o
-  resolver junta as linhas antes de comparar com o banco e o aviso some;
-  (3) arquivo revertido por rollback descarta o contador do resumo, mas o
-  `qWarning` fica no log. Os tres ficam para o slice de consolidacao.
+- [FEITO] Rodada consolidada por SSA (`SsaImportGroup`, `SsaImportRunRows`):
+  cada arquivo valida as proprias linhas e so entra na rodada quando aceito;
+  cada SSA e comparada com o banco uma unica vez no fim da rodada, na mesma
+  transacao; a contagem por arquivo vai para o arquivo vencedor. Fechou os
+  residuos (1) e (2) do aviso: o aviso compara a aberta mais nova da rodada
+  com o terminal do banco antes da consolidacao.
+- [LOCAL-PENDING] Residuo (3): arquivo revertido por rollback descarta o
+  contador do resumo; o `qWarning` fica no log.
+- [LOCAL-PENDING] Desempate final diferente do Python: com conteudo canonico
+  igual, o Python usa o JSON bruto antes do caminho; o C++ usa o caminho
+  original e, no mesmo arquivo, a maior grafia por campo. So diverge com o
+  mesmo basename em duas pastas e grafias brutas diferentes.
+- [LOCAL-PENDING] Selecao explicita acima de 64 arquivos ainda roda em lotes,
+  cada um com a propria transacao: dois terminais da mesma SSA em lotes
+  diferentes dependem da ordem dos lotes (passo 3: ordenar por data do
+  arquivo antes de dividir, como o Python).
+- [MEDIDO] Full rescan dos 437 xlsx da raiz de `docs_entrada`, banco vazio,
+  C++ contra Python (0ee77228): mesmas 46087 SSAs; `situacao`, `arquivo_origem`,
+  `setor_executor`, `semana_cadastro`, `responsavel_execucao`, `derivada_de`
+  sem diferenca; `descricao_ssa` so difere em espacos. O vencedor e o mesmo.
+- [DECISAO-PENDENTE] Normalizacao de valores diferente do Python (anterior ao
+  lote unico; nao afeta precedencia): espacos no fim (C++ apara); datas com
+  `T` x espaco e dd/mm x ISO (`executado`, `concluido`, `instalacao_estimada`);
+  `data_planilha` NULL no C++ e `data_arquivo_origem` com mtime (Python grava a
+  data do nome); `num_reprogramacoes` (Python preenche com o total);
+  `tempo_excedido` (Python converte para ISO 8601); `data_cadastro` NULL em 44
+  linhas (investigar formato); "Nao Aplica" x "Nao Se Aplica". Levar ao
+  usuario como uma decisao unica.
+- [LOCAL-PENDING] O writer manteve a promocao de categoria entre gravacoes
+  (`seenImportedNumbers`, `fileScope->touched`), sem uso no caminho do
+  workflow, que grava uma vez por rodada; os savepoints por arquivo nao
+  envolvem mais escrita de linhas. Remover num slice de limpeza.
 
 ## Relatorio de importacao e paridade com o Python (branch `rev`) - 2026-10-28
 
@@ -33,7 +53,10 @@
   que anexa 4600 linhas ao TextArea; A/B entre HEAD e o relatorio novo mostra a
   mesma faixa. Reduzir a carga do teste (menos linhas ou TextArea sem layout).
 - [LOCAL-PENDING] `ssa_qt_sam_refresh_tests` falha sob `ctest -j 8` e passa
-  isolado (27/27 em duas execucoes); provavel contencao de processo/porta.
+  isolado (27/27 em duas execucoes). Em 30/10 a falha foi um acesso invalido
+  (0xc0000005) em `ScrapReportSamRefreshPort::discardArtifacts()` chamado por
+  `fetch()`, no teste `forced_shutdown_tracks_a_tree_when_the_leader_exits_during_start`:
+  corrida real no encerramento forcado, nao so contencao. Investigar.
 - [LOCAL-PENDING] Paridade da importacao com o Python, itens ainda abertos
   depois de R3, A6, R2/R1, C3 e A3/A4: A5/B2/B4 (rescan completo apaga e
   reinsere, conta tudo como novo e sempre republica o banco), B3 (`nome__N` sem

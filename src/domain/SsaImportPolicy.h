@@ -5,6 +5,7 @@
 #include <compare>
 #include <cstddef>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 
 namespace ssa::domain {
@@ -72,6 +73,13 @@ namespace ssa::domain {
         [[nodiscard]] static bool isOpenAfterTerminal(const Values& open, const Values& terminal);
         [[nodiscard]] static SourceProfile classifySourceProfile(const std::string& filename);
         [[nodiscard]] static RowValidationIssue validateRow(const Values& row);
+        enum class ImportedRowIssue { None, InvalidNumber, InvalidReference, InvalidInteger };
+        // Canonical numero_ssa, numero_desvios (dropped when not a count) and SSA references
+        // (derivada_de, numero_ssa_relacionada_N) of an imported row, in place; every Integer
+        // column of the catalog must then hold a 64-bit integer.
+        [[nodiscard]] static ImportedRowIssue normalizeImportedRow(Values& row);
+        // The whole value is a base-10 64-bit integer.
+        [[nodiscard]] static bool parseInteger(std::string_view value, long long& parsed);
         [[nodiscard]] static bool isValidRow(const Values& row);
         [[nodiscard]] static MergeResult merge(const Values& existing, const Values& incoming);
         // One-line log text for a conflicting or discarded-repeat merge; values are clipped to

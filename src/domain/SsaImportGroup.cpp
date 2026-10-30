@@ -128,6 +128,12 @@ namespace ssa::domain {
         return rows_;
     }
 
+    const std::string& SsaImportGroup::leadingPrecedence() const noexcept {
+        static const std::string kNone;
+        const auto& top = terminal_.top ? terminal_.top : open_.top;
+        return top ? top->precedence : kNone;
+    }
+
     bool SsaImportGroup::resolvedByContent() const noexcept {
         return terminal_.top ? terminal_.resolvedByContent : open_.resolvedByContent;
     }

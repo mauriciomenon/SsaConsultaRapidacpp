@@ -335,6 +335,7 @@ namespace ssa::infra::importing {
                                         currentSummaryIndex,
                                         sourceCreatedTimestamp(source),
                                         source.filename()});
+                result.files.back().originalPath = source;
             }
         }
         if (stopToken.stop_requested()) {
@@ -640,6 +641,7 @@ namespace ssa::infra::importing {
                                         sourceCreatedTimestamp(path),
                                         path.filename(),
                                         {{identity->value, identity->size, modified}}});
+                result.files.back().originalPath = path;
                 continue;
             }
         }
@@ -657,6 +659,7 @@ namespace ssa::infra::importing {
             result.files.back().sourceCreatedTimestamp = sourceCreatedTimestamp(path);
             result.files.back().summaryIndex = summaryIndex++;
             result.files.back().consolidationFilename = path.filename();
+            result.files.back().originalPath = path;
         }
         if (stopToken.stop_requested()) {
             cancelStaging(result);

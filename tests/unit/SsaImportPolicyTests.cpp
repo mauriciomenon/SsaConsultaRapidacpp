@@ -954,3 +954,20 @@ TEST_CASE("equal SSA snapshot never changes a terminal row in either order") {
     REQUIRE(existingThenIncoming.values == existing);
     REQUIRE(incomingThenExisting.values == incoming);
 }
+
+TEST_CASE("SSA import journals a differing repeat of a frozen terminal row") {
+    using Values = ssa::domain::SsaImportPolicy::Values;
+    const Values alpha{{"numero_ssa", "202600030"},
+                       {"descricao_ssa", "Alpha"},
+                       {"situacao", "STE"},
+                       {"data_planilha", "2026-07-14"}};
+    auto zulu = alpha;
+    zulu["descricao_ssa"] = "Zulu";
+
+    const auto result = ssa::domain::SsaImportPolicy::merge(alpha, zulu);
+
+    REQUIRE_FALSE(result.changed);
+    REQUIRE(result.values == alpha);
+    REQUIRE(result.repeatDiscarded);
+    REQUIRE(result.conflictField == "descricao_ssa");
+}

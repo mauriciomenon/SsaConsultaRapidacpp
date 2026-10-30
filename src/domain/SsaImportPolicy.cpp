@@ -872,6 +872,48 @@ namespace ssa::domain {
         return RowValidationIssue::None;
     }
 
+    SsaImportPolicy::ImportedRowIssue SsaImportPolicy::normalizeImportedRow(Values& row) {
+        auto number = normalizeNumber(valueFor(row, kSsaNumberColumnKey));
+        if (number.empty()) {
+            return ImportedRowIssue::InvalidNumber;
+        }
+        row[std::string{kSsaNumberColumnKey}] = std::move(number);
+        if (const auto deviation = row.find("numero_desvios"); deviation != row.end()) {
+            auto canonical = normalizeDeviationCount(deviation->second);
+            if (canonical.empty()) {
+                row.erase(deviation);
+            } else {
+                deviation->second = std::move(canonical);
+            }
+        }
+        for (auto& [key, value] : row) {
+            if ((key != "derivada_de" && !key.starts_with("numero_ssa_relacionada_")) ||
+                value.empty()) {
+                continue;
+            }
+            auto reference = normalizeNumber(value);
+            if (reference.empty()) {
+                return ImportedRowIssue::InvalidReference;
+            }
+            value = std::move(reference);
+        }
+        long long parsed = 0;
+        for (const auto& [key, value] : row) {
+            const auto* column = ColumnCatalog::find(key);
+            if (column != nullptr && column->type == ColumnType::Integer && !value.empty() &&
+                !parseInteger(value, parsed)) {
+                return ImportedRowIssue::InvalidInteger;
+            }
+        }
+        return ImportedRowIssue::None;
+    }
+
+    bool SsaImportPolicy::parseInteger(const std::string_view value, long long& parsed) {
+        const auto* end = value.data() + value.size();
+        const auto [ptr, ec] = std::from_chars(value.data(), end, parsed);
+        return ec == std::errc{} && ptr == end;
+    }
+
     bool SsaImportPolicy::isValidRow(const Values& row) {
         return validateRow(row) == RowValidationIssue::None;
     }
@@ -970,7 +1012,8 @@ namespace ssa::domain {
             }
         }
         if (existingTerminal) {
-            return {existing, false};
+            // Frozen, but a differing repeat of the same instant is still journaled.
+            return {existing, false, false, std::move(firstDifference), repeatDiscarded};
         }
         const bool changed = differsInPersistedValues(merged, existing);
         return {merged,

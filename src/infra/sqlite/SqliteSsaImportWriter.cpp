@@ -6,6 +6,7 @@
 #include "domain/SsaTypes.h"
 #include "domain/WhitespaceTrim.h"
 #include "infra/import/CancelableFileCopy.h"
+#include "infra/import/SsaImportConflictResolver.h"
 #include "infra/sqlite/SqliteActivityAnalyticsProjection.h"
 #include "infra/sqlite/SqliteConnection.h"
 #include "infra/sqlite/SqliteDerivedCountSummary.h"
@@ -563,13 +564,6 @@ namespace ssa::infra::sqlite {
             }
         }
 
-        bool parseInteger(const std::string& value, long long& parsed) {
-            const auto* begin = value.data();
-            const auto* end = value.data() + value.size();
-            const auto [ptr, ec] = std::from_chars(begin, end, parsed);
-            return ec == std::errc{} && ptr == end;
-        }
-
         void bindValue(SqliteStatement& statement, const int index, const domain::ColumnDef& column,
                        const std::string* value) {
             if (value == nullptr) {
@@ -582,7 +576,7 @@ namespace ssa::infra::sqlite {
             }
             if (column.type == domain::ColumnType::Integer) {
                 long long parsed = 0;
-                if (parseInteger(*value, parsed)) {
+                if (domain::SsaImportPolicy::parseInteger(*value, parsed)) {
                     statement.bindInt64OneBased(index, parsed);
                     return;
                 }
@@ -915,15 +909,17 @@ namespace ssa::infra::sqlite {
             result.conflictRows = rows.conflictRows;
             const auto ssaNumberKey = std::string{domain::kSsaNumberColumnKey};
 
-            for (const auto& row : rows.rows) {
+            static const importing::SsaImportRow kNoOpenRow; // also "no terminal row"
+            for (std::size_t index = 0; index < rows.rows.size(); ++index) {
                 throwIfCanceled(stopToken);
+                const auto& row = rows.rows[index];
+                // Rows built without a resolver carry no source or newest open row.
+                const auto source = index < rows.sources.size() ? rows.sources[index] : 0;
+                const auto& newestOpen =
+                    index < rows.newestOpen.size() ? rows.newestOpen[index] : kNoOpenRow;
                 auto normalizedRow = row;
-                const auto number = domain::SsaImportPolicy::normalizeNumber(
-                    importing::rowValue(row, ssaNumberKey));
-                if (number.empty()) {
-                    throw ports::OperationError("Falha ao validar identificador SSA importado",
-                                                "invalid SSA number in import batch");
-                }
+                importing::requireValidImportedRow(normalizedRow);
+                const auto& number = normalizedRow.at(ssaNumberKey);
                 const auto [seen, firstTouch] =
                     seenImportedNumbers.try_emplace(number, RowCategory::Unchanged);
                 if (!firstTouch) {
@@ -931,33 +927,6 @@ namespace ssa::infra::sqlite {
                     ++result.duplicateRows;
                 } else if (fileScope) {
                     fileScope->touched.emplace_back(number, std::nullopt);
-                }
-                normalizedRow[ssaNumberKey] = number;
-                const auto deviation = normalizedRow.find("numero_desvios");
-                if (deviation != normalizedRow.end()) {
-                    const auto canonical =
-                        domain::SsaImportPolicy::normalizeDeviationCount(deviation->second);
-                    if (canonical.empty()) {
-                        normalizedRow.erase(deviation);
-                    } else {
-                        deviation->second = canonical;
-                    }
-                }
-                for (const auto& column : columns) {
-                    if (!isSsaReferenceColumn(column.key)) {
-                        continue;
-                    }
-                    const auto reference = normalizedRow.find(column.key);
-                    if (reference == normalizedRow.end() || reference->second.empty()) {
-                        continue;
-                    }
-                    const auto normalizedReference =
-                        domain::SsaImportPolicy::normalizeNumber(reference->second);
-                    if (normalizedReference.empty()) {
-                        throw ports::OperationError("Falha ao validar referencia SSA importada",
-                                                    "invalid SSA reference in import batch");
-                    }
-                    reference->second = normalizedReference;
                 }
                 selectExisting->bindTextOneBased(1, number);
                 domain::SsaImportPolicy::Values existing;
@@ -974,11 +943,26 @@ namespace ssa::infra::sqlite {
                 const bool normalizedExistingDeviation = normalizeExistingDeviationCount(existing);
 
                 const auto merged = domain::SsaImportPolicy::merge(existing, normalizedRow);
-                summary.openAfterTerminalRows += merged.openAfterTerminal ? 1 : 0;
-                if (merged.conflict || merged.repeatDiscarded || merged.openAfterTerminal) {
+                if (merged.conflict || merged.repeatDiscarded) {
                     qWarning().noquote() << QString::fromStdString(
                         domain::SsaImportPolicy::describeConflict(existing, normalizedRow, merged));
                 }
+                // One warning per scope: the newest open row of the run against a stored
+                // terminal row, and a stored open row against the terminal row of the run.
+                const auto& oldestTerminal =
+                    index < rows.oldestTerminal.size() ? rows.oldestTerminal[index] : kNoOpenRow;
+                const auto warnOpenAfterTerminal = [&](const importing::SsaImportRow& open,
+                                                       const importing::SsaImportRow& terminal) {
+                    if (domain::SsaImportPolicy::isOpenAfterTerminal(open, terminal)) {
+                        ++summary.openAfterTerminalRows;
+                        qWarning().noquote()
+                            << QString::fromStdString(domain::SsaImportPolicy::describeConflict(
+                                   terminal, open, {.openAfterTerminal = true}));
+                    }
+                };
+                warnOpenAfterTerminal(newestOpen.empty() ? normalizedRow : newestOpen, existing);
+                warnOpenAfterTerminal(existing,
+                                      oldestTerminal.empty() ? normalizedRow : oldestTerminal);
                 if (merged.conflict) {
                     ++summary.conflictRows;
                     ++result.conflictRows;
@@ -987,6 +971,7 @@ namespace ssa::infra::sqlite {
                 if (!existing.empty() && !merged.changed && !normalizedExistingDates &&
                     !normalizedExistingDeviation) {
                     countRow(number, seen->second, firstTouch, RowCategory::Unchanged, result);
+                    ++categoryCounter(result.bySource[source], RowCategory::Unchanged);
                     continue;
                 }
                 auto& statement = existing.empty() ? *insert : *update;
@@ -1007,6 +992,7 @@ namespace ssa::infra::sqlite {
                                           ? RowCategory::Verified
                                           : RowCategory::Updated;
                 countRow(number, seen->second, firstTouch, category, result);
+                ++categoryCounter(result.bySource[source], category);
             }
             return result;
         }

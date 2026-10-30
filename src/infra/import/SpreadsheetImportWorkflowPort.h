@@ -87,7 +87,6 @@ namespace ssa::infra::importing {
         std::string importLockPathDiagnostic_;
         ImportFileStager stager_;
         ImportFileConsolidator consolidator_;
-        SsaImportConflictResolver conflictResolver_;
         SynchronizationSignals synchronization_;
         sqlite::SqliteSsaImportWriter writer_;
     };

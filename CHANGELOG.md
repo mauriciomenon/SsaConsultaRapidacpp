@@ -11,6 +11,11 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 
 ### Alterado
 
+- Importacao: a rodada inteira e consolidada por SSA antes de gravar. A ordem dos
+  arquivos nao muda o banco nem as contagens; cada SSA e gravada uma vez e conta
+  para o arquivo que venceu. Um arquivo com linha invalida e rejeitado sozinho, sem
+  afetar os outros. Versoes A, B e de novo A na mesma rodada gravam so a troca de
+  arquivo de origem.
 - Importacao: uma SSA STE/SCA nunca reabre; a linha terminal vence qualquer linha
   aberta, mesmo mais nova ou sem data. Uma linha aberta com data posterior a uma
   terminal indica arquivo velho ou data errada: a importacao termina "com avisos",

@@ -28,6 +28,8 @@ namespace ssa::domain {
         // Source of the highest-ranked row that decided the result.
         [[nodiscard]] std::size_t winnerSource() const;
         [[nodiscard]] std::size_t rows() const noexcept;
+        // Precedence of the rows that decide the result; empty when the group has none.
+        [[nodiscard]] const std::string& leadingPrecedence() const noexcept;
         // Rows of equal precedence disagreed and were resolved by content.
         [[nodiscard]] bool resolvedByContent() const noexcept;
         // Dating fields of the newest open row and of the oldest terminal row; empty when

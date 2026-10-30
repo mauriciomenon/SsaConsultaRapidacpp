@@ -25,6 +25,7 @@
 #include <atomic>
 #include <chrono>
 #include <fstream>
+#include <iterator>
 #include <memory>
 #include <sstream>
 #include <string_view>
@@ -187,33 +188,25 @@ namespace ssa::infra::importing {
         }
 
         struct ChunkedWorkbookImportResult {
-            SsaImportBatch batch;
-            SsaImportBatchWriteSummary writeSummary;
+            SsaImportBatch batch; // every mapped row of the workbook, folded once accepted
             std::size_t validRows{0};
-            std::size_t conflictRows{0};
             bool invalidFullBatch{false};
-            bool duplicateConflict{false};
         };
 
-        void readAndImportChunkedWorkbook(const StagedImportFile& file, const bool replaceAll,
-                                          const SsaImportConflictResolver& conflictResolver,
-                                          sqlite::SqliteSsaImportWriter::WriteSession& writeSession,
-                                          const std::size_t rowsPerChunk,
-                                          const std::stop_token& stopToken,
-                                          ChunkedWorkbookImportResult& result) {
+        void readChunkedWorkbook(const StagedImportFile& file, const bool replaceAll,
+                                 const std::size_t rowsPerChunk, const std::stop_token& stopToken,
+                                 ChunkedWorkbookImportResult& result) {
             result = {};
             bool mappedWorksheet = false;
             bool ignoredWorksheet = false;
             bool invalidTrailingWorksheet = false;
             bool fatalMapping = false;
-            bool fileCountedByWriter = false;
             std::vector<std::string> headerRow;
             result.batch.sourcePath = file.workbookPath;
             XlsxWorkbookReader::readSheetChunks(
                 file.workbookPath, rowsPerChunk,
                 [&](SpreadsheetTable table, const bool firstInSheet, const bool) {
-                    if (fatalMapping || invalidTrailingWorksheet || result.invalidFullBatch ||
-                        result.duplicateConflict) {
+                    if (fatalMapping || invalidTrailingWorksheet || result.invalidFullBatch) {
                         return;
                     }
                     if (firstInSheet) {
@@ -259,28 +252,7 @@ namespace ssa::infra::importing {
                         result.invalidFullBatch = true;
                         return;
                     }
-                    if (worksheetBatch.rows.empty()) {
-                        return;
-                    }
-                    const std::vector<SsaImportBatch> chunk{std::move(worksheetBatch)};
-                    const auto resolved =
-                        conflictResolver.resolveBySsaNumberKeepingUnkeyedRows(chunk);
-                    result.conflictRows += resolved.conflictRows;
-                    if (resolved.conflictRows > 0) {
-                        result.duplicateConflict = true;
-                        return;
-                    }
-                    const auto batchWrite =
-                        writeSession.write(resolved, fileCountedByWriter ? 0 : 1, 0);
-                    fileCountedByWriter = true;
-                    result.writeSummary.rowsWritten += batchWrite.rowsWritten;
-                    result.writeSummary.rowsInserted += batchWrite.rowsInserted;
-                    result.writeSummary.rowsUpdated += batchWrite.rowsUpdated;
-                    result.writeSummary.rowsVerified += batchWrite.rowsVerified;
-                    result.writeSummary.rowsUnchanged += batchWrite.rowsUnchanged;
-                    result.writeSummary.duplicateRows += batchWrite.duplicateRows;
-                    result.writeSummary.conflictRows += batchWrite.conflictRows;
-                    result.duplicateConflict = batchWrite.conflictRows > 0;
+                    std::ranges::move(worksheetBatch.rows, std::back_inserter(result.batch.rows));
                 },
                 stopToken);
             if (invalidTrailingWorksheet) {
@@ -1420,6 +1392,8 @@ namespace ssa::infra::importing {
         std::size_t failedFiles = 0;
         std::vector<PendingImportOutcome> pendingOutcomes;
         pendingOutcomes.reserve(files.files.size());
+        // Rows of the accepted files, written once per SSA at the end of the run.
+        SsaImportRunRows runRows;
         // Generic incremental imports isolate a rejected workbook inside its savepoint.
         // Full rescans and SAM snapshots are one atomic batch.
         ImportStagingResult unconsolidatedStaging;
@@ -1515,7 +1489,6 @@ namespace ssa::infra::importing {
             SsaImportBatch batch;
             std::size_t validRows = 0;
             bool invalidFullBatch = false;
-            bool duplicateConflict = false;
             std::string samRejectionReason;
             ChunkedWorkbookImportResult chunkedWorkbookResult;
             bool hasChunkedWorkbookResult = false;
@@ -1527,21 +1500,6 @@ namespace ssa::infra::importing {
                 batch = std::move(chunkedWorkbookResult.batch);
                 validRows = chunkedWorkbookResult.validRows;
                 invalidFullBatch = chunkedWorkbookResult.invalidFullBatch;
-                duplicateConflict = chunkedWorkbookResult.duplicateConflict;
-                fileResult.conflicts += chunkedWorkbookResult.conflictRows +
-                                        chunkedWorkbookResult.writeSummary.conflictRows;
-                fileResult.inserts += chunkedWorkbookResult.writeSummary.rowsInserted;
-                fileResult.updates += chunkedWorkbookResult.writeSummary.rowsUpdated;
-                fileResult.verified += chunkedWorkbookResult.writeSummary.rowsVerified;
-                fileResult.unchangedRows += chunkedWorkbookResult.writeSummary.rowsUnchanged;
-                importSummary.conflicts += chunkedWorkbookResult.conflictRows +
-                                           chunkedWorkbookResult.writeSummary.conflictRows;
-                importSummary.inserts += chunkedWorkbookResult.writeSummary.rowsInserted;
-                importSummary.updates += chunkedWorkbookResult.writeSummary.rowsUpdated;
-                importSummary.verified += chunkedWorkbookResult.writeSummary.rowsVerified;
-                importSummary.unchangedRows += chunkedWorkbookResult.writeSummary.rowsUnchanged;
-                totalSummary.conflictRows += chunkedWorkbookResult.conflictRows +
-                                             chunkedWorkbookResult.writeSummary.conflictRows;
                 appliedChunkedWorkbookResult = true;
             };
             try {
@@ -1556,38 +1514,12 @@ namespace ssa::infra::importing {
                         validRows = batch.rows.size();
                         if (batch.invalidRows > 0) {
                             samRejectionReason = "sam_row_contract_invalid";
-                        } else if (batch.mappingStatus == SpreadsheetMappingStatus::Mapped &&
-                                   !batch.rows.empty()) {
-                            const std::vector<SsaImportBatch> mapped{batch};
-                            const auto resolved =
-                                conflictResolver_.resolveBySsaNumberKeepingUnkeyedRows(mapped);
-                            fileResult.conflicts += resolved.conflictRows;
-                            importSummary.conflicts += resolved.conflictRows;
-                            totalSummary.conflictRows += resolved.conflictRows;
-                            if (resolved.conflictRows > 0) {
-                                duplicateConflict = true;
-                            } else {
-                                const auto batchWrite = writeSession->write(resolved, 1, 0);
-                                fileResult.inserts += batchWrite.rowsInserted;
-                                fileResult.updates += batchWrite.rowsUpdated;
-                                fileResult.verified += batchWrite.rowsVerified;
-                                fileResult.unchangedRows += batchWrite.rowsUnchanged;
-                                fileResult.conflicts += batchWrite.conflictRows;
-                                importSummary.inserts += batchWrite.rowsInserted;
-                                importSummary.updates += batchWrite.rowsUpdated;
-                                importSummary.verified += batchWrite.rowsVerified;
-                                importSummary.unchangedRows += batchWrite.rowsUnchanged;
-                                importSummary.conflicts += batchWrite.conflictRows;
-                                totalSummary.conflictRows += batchWrite.conflictRows;
-                                duplicateConflict = batchWrite.conflictRows > 0;
-                            }
                         }
                     }
                 } else {
                     hasChunkedWorkbookResult = true;
-                    readAndImportChunkedWorkbook(file, replaceAll, conflictResolver_, *writeSession,
-                                                 execution.rowsPerChunk, stopToken,
-                                                 chunkedWorkbookResult);
+                    readChunkedWorkbook(file, replaceAll, execution.rowsPerChunk, stopToken,
+                                        chunkedWorkbookResult);
                     applyChunkedWorkbookResult();
                 }
             } catch (const std::system_error& error) {
@@ -1656,18 +1588,6 @@ namespace ssa::infra::importing {
                 return discardBeforeCommit(rollbackSession(
                     *writeSession, {ports::WorkflowStatus::Rejected,
                                     workflowMessage(operation, files, totalSummary, {0, cause})}));
-            }
-            if (duplicateConflict) {
-                if (!atomicBatch) {
-                    isolateFileFailure(file, "duplicate_conflict");
-                    continue;
-                }
-                fileResult.reason = "duplicate_conflict";
-                return discardBeforeCommit(rollbackSession(
-                    *writeSession,
-                    {ports::WorkflowStatus::Rejected,
-                     workflowMessage(operation, files, totalSummary,
-                                     {0, "duplicate_conflict file=" + file.originalFilename})}));
             }
             if (batch.mappingStatus == SpreadsheetMappingStatus::HeaderNotRecognized &&
                 validRows > 0) {
@@ -1738,15 +1658,32 @@ namespace ssa::infra::importing {
                     rollbackSession(*writeSession, {ports::WorkflowStatus::Rejected,
                                                     std::string{operation} + " no_valid_rows"}));
             }
+            if (validRows > 0) {
+                batch.sourcePath =
+                    file.originalPath.empty() ? file.workbookPath : file.originalPath;
+                try {
+                    runRows.add(std::move(batch), file.summaryIndex, stopToken);
+                } catch (const std::system_error&) {
+                    return discardBeforeCommit(rollbackSession(*writeSession, canceled(operation)));
+                } catch (const ports::OperationError& error) {
+                    // An invalid row rejects its own file before it joins the run.
+                    if (!atomicBatch) {
+                        isolateFileFailure(file, "operation_failed", error.diagnostic());
+                        continue;
+                    }
+                    fileResult.reason = "operation_failed";
+                    ++failedFiles;
+                    return discardBeforeCommit(rollbackSession(
+                        *writeSession,
+                        failed(operation, files, totalSummary, failedFiles,
+                               "file=" + file.originalFilename + "; " + error.diagnostic())));
+                }
+            }
             commitFile();
             pendingOutcomes.push_back({&file, validRows > 0, file.summaryIndex});
-            if (validRows == 0) {
-                fileResult.status = ports::ImportFileStatus::NoValidRows;
-                continue;
-            }
-            fileResult.status = fileResult.inserts + fileResult.updates + fileResult.verified > 0
-                                    ? ports::ImportFileStatus::Applied
-                                    : ports::ImportFileStatus::NoChanges;
+            fileResult.status = validRows == 0
+                                    ? ports::ImportFileStatus::NoValidRows
+                                    : ports::ImportFileStatus::NoChanges; // Applied once it wins
         }
         closeFileDuration();
         if (pendingOutcomes.empty() ||
@@ -1802,6 +1739,24 @@ namespace ssa::infra::importing {
                 *writeSession, failed(operation, files, totalSummary, 1, consolidationPlan.error)));
         }
         try {
+            if (progress != nullptr) {
+                reportProgress(*progress, ports::WorkflowProgressStage::Committing,
+                               ports::WorkflowProgressLevel::Information,
+                               progress->fileOffset + files.files.size(),
+                               progress->rescan ? 81 : -1, "Gravando SSAs consolidadas");
+            }
+            const auto runWrite =
+                writeSession->write(runRows.resolve(stopToken), pendingOutcomes.size(), 0);
+            for (const auto& [source, counts] : runWrite.bySource) {
+                auto& fileResult = importSummary.files[source];
+                fileResult.inserts = counts.rowsInserted;
+                fileResult.updates = counts.rowsUpdated;
+                fileResult.verified = counts.rowsVerified;
+                fileResult.unchangedRows = counts.rowsUnchanged;
+                if (counts.rowsInserted + counts.rowsUpdated + counts.rowsVerified > 0) {
+                    fileResult.status = ports::ImportFileStatus::Applied;
+                }
+            }
             std::vector<ImportConsolidationMove> journalMoves;
             for (const auto& entry : consolidationPlan.entries) {
                 journalMoves.insert(journalMoves.end(), entry.moves.begin(), entry.moves.end());
@@ -1876,7 +1831,8 @@ namespace ssa::infra::importing {
                 status, workflowMessage(operation, files, totalSummary, {0, batchRejectionError}),
                 files.warning || files.failedCopies > 0 || files.failedLegacyXls > 0 ||
                     totalSummary.invalidRows > 0 || totalSummary.duplicateRows > 0 ||
-                    ignoredUnrecognizedWorkbook || partialBatch,
+                    totalSummary.openAfterTerminalRows > 0 || ignoredUnrecognizedWorkbook ||
+                    partialBatch,
                 std::move(diagnostic)};
             return withSummary(std::move(result), importSummary);
         }

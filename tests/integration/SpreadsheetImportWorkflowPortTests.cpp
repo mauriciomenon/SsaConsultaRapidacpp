@@ -874,11 +874,14 @@ TEST_CASE("SAM import rolls back prior sectors when a later sector conflicts") {
     ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
                                                               importColumns());
 
+    const bool reversed = GENERATE(false, true);
+    const ssa::ports::SamArtifact first{firstWorkbook, "IEE3", 1, 1, 0};
+    const ssa::ports::SamArtifact conflicting{conflictingWorkbook, "MEL4", 2, 2, 0};
     const auto result = port.importSamArtifacts(
-        {{{firstWorkbook, "IEE3", 1, 1, 0}, {conflictingWorkbook, "MEL4", 2, 2, 0}}});
+        {reversed ? std::vector{conflicting, first} : std::vector{first, conflicting}});
 
-    // Python parity: two sectors describing the same instant are resolved by content, never
-    // rejected. "First sector" > "Conflict second" in the canonical serialization.
+    // Python parity: two terminal rows of the same instant are resolved by content, in any
+    // order, never rejected: the canonical row of B_SAM (larger arquivo_origem) wins.
     INFO(result.message);
     REQUIRE(result.ok());
     REQUIRE(result.message.find("duplicate_conflict") == std::string::npos);
@@ -886,7 +889,7 @@ TEST_CASE("SAM import rolls back prior sectors when a later sector conflicts") {
     REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
     REQUIRE(scalarInt(db, "SELECT COUNT(*) FROM ssa_table") == 2);
     REQUIRE(scalarText(db, "SELECT descricao_ssa FROM ssa_table WHERE numero_ssa='202600717'") ==
-            "First sector");
+            "Conflict second");
     REQUIRE(scalarText(db, "PRAGMA integrity_check") == "ok");
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
@@ -10331,3 +10334,270 @@ TEST_CASE("incremental rescan leaves legacy xls pending without conversion") {
     REQUIRE_FALSE(std::filesystem::exists(inputDirectory / "processadas"));
 }
 #endif
+
+namespace {
+
+    void writeSsaWorkbook(const std::filesystem::path& path, const std::string& number,
+                          const std::string& situacao, const std::string& description) {
+        writeWorkbook(
+            path,
+            row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                    inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao")}) +
+                row(2, {inlineCell("A2", number), inlineCell("B2", situacao),
+                        inlineCell("C2", description), inlineCell("D2", "2026-07-01")}));
+    }
+
+    std::string ssaTableDump(sqlite3* db) {
+        return scalarText(db, "SELECT group_concat(numero_ssa || '|' || situacao || '|' || "
+                              "descricao_ssa || '|' || arquivo_origem, ';') FROM "
+                              "(SELECT * FROM ssa_table ORDER BY numero_ssa)");
+    }
+
+    const ssa::ports::ImportFileResult& fileResultNamed(const ssa::ports::ImportSummary& summary,
+                                                        const std::string& name) {
+        const auto found = std::ranges::find_if(summary.files, [&](const auto& file) {
+            return std::filesystem::path{file.source}.filename() == name;
+        });
+        REQUIRE(found != summary.files.end());
+        return *found;
+    }
+
+} // namespace
+
+TEST_CASE("import run writes each SSA once and gives one result in any file order") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto older = root / "SSA_14-07-2026_0900AM.xlsx";
+    const auto newer = root / "SSA_15-07-2026_0900AM.xlsx";
+    writeSsaWorkbook(older, "202600901", "ADM", "Old version");
+    writeSsaWorkbook(newer, "202600901", "APV", "New version");
+    const bool reversed = GENERATE(false, true);
+    const auto dbPath = root / (reversed ? "reversed" : "forward") / "ssas.db";
+    std::filesystem::create_directories(dbPath.parent_path());
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(dbPath.parent_path() / "docs_entrada",
+                                                              dbPath, importColumns(), false);
+
+    const auto result = port.importExternalFiles(
+        {.files = reversed ? std::vector{newer, older} : std::vector{older, newer}});
+
+    INFO(result.message);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Succeeded);
+    REQUIRE(result.importSummary.has_value());
+    REQUIRE(result.importSummary->inserts == 1);
+    REQUIRE(result.importSummary->updates == 0);
+    // The newer file won the SSA: it carries the insert, the older one changed nothing.
+    const auto& winner = fileResultNamed(*result.importSummary, newer.filename().string());
+    const auto& loser = fileResultNamed(*result.importSummary, older.filename().string());
+    REQUIRE(winner.inserts == 1);
+    REQUIRE(winner.status == ssa::ports::ImportFileStatus::Applied);
+    REQUIRE(loser.inserts + loser.updates + loser.verified == 0);
+    REQUIRE(loser.status == ssa::ports::ImportFileStatus::NoChanges);
+    REQUIRE(result.message.find(" rows=1 ") != std::string::npos);
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(ssaTableDump(db) == "202600901|APV|New version|SSA_15-07-2026_0900AM.xlsx");
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("import run A then B then A over a database at A rewrites only metadata once") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(dbPath.parent_path());
+    const auto first = root / "SSA_13-07-2026_0900AM.xlsx";
+    const auto changed = root / "SSA_14-07-2026_0900AM.xlsx";
+    const auto again = root / "SSA_15-07-2026_0900AM.xlsx";
+    writeSsaWorkbook(first, "202600902", "ADM", "Version A");
+    writeSsaWorkbook(changed, "202600902", "ADM", "Version B");
+    writeSsaWorkbook(again, "202600902", "ADM", "Version A");
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(root / "docs_entrada", dbPath,
+                                                              importColumns(), false);
+    REQUIRE(port.importExternalFiles({.files = {first}}).status ==
+            ssa::ports::WorkflowStatus::Succeeded);
+
+    const auto result = port.importExternalFiles({.files = {changed, again}});
+
+    // One comparison against A: the business values are equal, only the source moves on.
+    INFO(result.message);
+    REQUIRE(result.importSummary.has_value());
+    REQUIRE(result.importSummary->updates == 0);
+    REQUIRE(result.importSummary->verified == 1);
+    REQUIRE(result.message.find(" rows=1 ") != std::string::npos);
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(ssaTableDump(db) == "202600902|ADM|Version A|SSA_15-07-2026_0900AM.xlsx");
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("import run warns about an open row newer than a stored terminal row") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(dbPath.parent_path());
+    const auto stored = root / "SSA_01-07-2026_0900AM.xlsx";
+    const auto reopened = root / "SSA_02-07-2026_0900AM.xlsx";
+    const auto closedAgain = root / "SSA_03-07-2026_0900AM.xlsx";
+    writeSsaWorkbook(stored, "202600903", "STE", "Closed");
+    writeSsaWorkbook(reopened, "202600903", "APV", "Stale reopen");
+    writeSsaWorkbook(closedAgain, "202600903", "STE", "Closed later");
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(root / "docs_entrada", dbPath,
+                                                              importColumns(), false);
+    REQUIRE(port.importExternalFiles({.files = {stored}}).status ==
+            ssa::ports::WorkflowStatus::Succeeded);
+
+    // The run's terminal row wins the run, but its open row is still newer than the stored
+    // terminal row: the warning must survive the consolidation.
+    const auto result = port.importExternalFiles({.files = {reopened, closedAgain}});
+
+    INFO(result.message);
+    REQUIRE(result.warning);
+    REQUIRE(result.importSummary.has_value());
+    REQUIRE(result.importSummary->openAfterTerminalRows == 1);
+    REQUIRE(result.message.find("open_after_terminal=1") != std::string::npos);
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(ssaTableDump(db) == "202600903|STE|Closed|SSA_01-07-2026_0900AM.xlsx");
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("import run rejects a file with an invalid row before it joins the run") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto broken = root / "SSA_14-07-2026_0900AM.xlsx";
+    const auto valid = root / "SSA_15-07-2026_0900AM.xlsx";
+    writeWorkbook(
+        broken,
+        row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Numero SSA"),
+                inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao")}) +
+            row(2, {inlineCell("A2", "202600911"), inlineCell("B2", "INVALID-REF"),
+                    inlineCell("C2", "Broken relation"), inlineCell("D2", "2026-07-01")}) +
+            row(3, {inlineCell("A3", "202600912"), inlineCell("B3", ""),
+                    inlineCell("C3", "Valid but in the broken file"),
+                    inlineCell("D3", "2026-07-01")}));
+    // The newer file fixes SSA 202600911: the broken row must still reject its own file.
+    writeSsaWorkbook(valid, "202600911", "ADM", "Fixed");
+    const bool reversed = GENERATE(false, true);
+    const auto dbPath = root / (reversed ? "reversed" : "forward") / "ssas.db";
+    std::filesystem::create_directories(dbPath.parent_path());
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(dbPath.parent_path() / "docs_entrada",
+                                                              dbPath, importColumns(), false);
+
+    const auto result = port.importExternalFiles(
+        {.files = reversed ? std::vector{valid, broken} : std::vector{broken, valid}});
+
+    INFO(result.message);
+    REQUIRE(result.importSummary.has_value());
+    const auto& rejected = fileResultNamed(*result.importSummary, broken.filename().string());
+    REQUIRE(rejected.status == ssa::ports::ImportFileStatus::Failed);
+    REQUIRE(rejected.reason == "operation_failed");
+    REQUIRE(fileResultNamed(*result.importSummary, valid.filename().string()).status ==
+            ssa::ports::ImportFileStatus::Applied);
+    REQUIRE(result.diagnostic.find("invalid SSA reference in import batch") != std::string::npos);
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(ssaTableDump(db) == "202600911|ADM|Fixed|SSA_15-07-2026_0900AM.xlsx");
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("import run breaks a tie between same-named files by their original path") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto first = root / "dirA" / "report.xlsx";
+    const auto second = root / "dirB" / "report.xlsx";
+    std::filesystem::create_directories(first.parent_path());
+    std::filesystem::create_directories(second.parent_path());
+    // Same canonical content in two spellings; same name and same modification time.
+    writeSsaWorkbook(first, "202600913", "ADM", "1");
+    writeSsaWorkbook(second, "202600913", "ADM", "1.0");
+    setLocalModificationTime(first, 2026, 7, 15, 9, 0);
+    setLocalModificationTime(second, 2026, 7, 15, 9, 0);
+    const bool reversed = GENERATE(false, true);
+    const auto dbPath = root / (reversed ? "reversed" : "forward") / "ssas.db";
+    std::filesystem::create_directories(dbPath.parent_path());
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(dbPath.parent_path() / "docs_entrada",
+                                                              dbPath, importColumns(), false);
+
+    const auto result = port.importExternalFiles(
+        {.files = reversed ? std::vector{second, first} : std::vector{first, second}});
+
+    INFO(result.message);
+    REQUIRE(result.ok());
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    // dirB sorts after dirA: its spelling wins whatever the selection order.
+    REQUIRE(ssaTableDump(db) == "202600913|ADM|1.0|report.xlsx");
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("import run rejects a file with an invalid integer before it joins the run") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto broken = root / "SSA_14-07-2026_0900AM.xlsx";
+    const auto valid = root / "SSA_15-07-2026_0900AM.xlsx";
+    writeWorkbook(
+        broken,
+        row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Semana Programada"),
+                inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao")}) +
+            row(2, {inlineCell("A2", "202600921"), inlineCell("B2", "ABC"),
+                    inlineCell("C2", "Broken week"), inlineCell("D2", "2026-07-01")}) +
+            row(3, {inlineCell("A3", "202600922"), inlineCell("B3", ""),
+                    inlineCell("C3", "Valid but in the broken file"),
+                    inlineCell("D3", "2026-07-01")}));
+    writeSsaWorkbook(valid, "202600921", "ADM", "Fixed");
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(dbPath.parent_path());
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(root / "docs_entrada", dbPath,
+                                                              importColumns(), false);
+
+    const auto result = port.importExternalFiles({.files = {broken, valid}});
+
+    INFO(result.message);
+    REQUIRE(result.importSummary.has_value());
+    REQUIRE(fileResultNamed(*result.importSummary, broken.filename().string()).status ==
+            ssa::ports::ImportFileStatus::Failed);
+    REQUIRE(fileResultNamed(*result.importSummary, valid.filename().string()).status ==
+            ssa::ports::ImportFileStatus::Applied);
+    REQUIRE(result.diagnostic.find("invalid integer value in import batch") != std::string::npos);
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(ssaTableDump(db) == "202600921|ADM|Fixed|SSA_15-07-2026_0900AM.xlsx");
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("sqlite import warns about a stored open row newer than the oldest run terminal") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+    const auto dbPath = std::filesystem::path{tempDir.path().toStdString()} / "ssas.db";
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(sqliteWriterAccess(), dbPath,
+                                                           importColumns());
+    ssa::infra::importing::ResolvedSsaImportRows stored;
+    stored.rows.push_back({{"numero_ssa", "202600923"},
+                           {"descricao_ssa", "Open"},
+                           {"situacao", "APV"},
+                           {"data_planilha", "2026-07-02"}});
+    REQUIRE(writer.write(stored, 1, 0, false).rowsWritten == 1);
+    const auto terminalAt = [](const std::string& date) {
+        ssa::infra::importing::SsaImportBatch batch;
+        batch.rows = {{{"numero_ssa", "202600923"},
+                       {"descricao_ssa", "Closed " + date},
+                       {"situacao", "STE"},
+                       {"data_planilha", date}}};
+        return batch;
+    };
+    const auto run =
+        ssa::infra::importing::SsaImportConflictResolver{}.resolveBySsaNumberKeepingUnkeyedRows(
+            {terminalAt("2026-07-01"), terminalAt("2026-07-03")});
+
+    const auto summary = writer.write(run, 1, 0, false);
+
+    // The stored APV of July 2 is newer than the July 1 terminal row of the run, even if the
+    // July 3 terminal row wins it.
+    REQUIRE(summary.openAfterTerminalRows == 1);
+    REQUIRE(summary.rowsWritten == 1);
+}

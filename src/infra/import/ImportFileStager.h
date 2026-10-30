@@ -22,6 +22,9 @@ namespace ssa::infra::importing {
         std::filesystem::path consolidationFilename;
         // Root files of docs_entrada only: their state when found, checked again by the plan.
         std::vector<ImportSourceSnapshot> sourceSnapshots;
+        // The file as found (selected file, docs_entrada or processadas), never the staged
+        // copy whose name carries the read order: a stable identity of the source.
+        std::filesystem::path originalPath;
     };
 
     struct ImportStagingResult {

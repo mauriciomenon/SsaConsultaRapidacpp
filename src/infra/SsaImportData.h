@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <map>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -56,7 +57,16 @@ namespace ssa::infra::importing {
         std::size_t openAfterTerminalRows{0};
     };
 
+    struct SsaImportRowCounts {
+        std::size_t rowsInserted{0};
+        std::size_t rowsUpdated{0};
+        std::size_t rowsVerified{0};
+        std::size_t rowsUnchanged{0};
+    };
+
     struct SsaImportBatchWriteSummary {
+        // Row categories by the source that won each SSA (ResolvedSsaImportRows::sources).
+        std::map<std::size_t, SsaImportRowCounts> bySource;
         std::size_t rowsWritten{0};
         std::size_t rowsInserted{0};
         std::size_t rowsUpdated{0};
@@ -68,6 +78,13 @@ namespace ssa::infra::importing {
 
     struct ResolvedSsaImportRows {
         std::vector<SsaImportRow> rows;
+        // Aligned with rows: the source that won the SSA and the dating fields of its newest
+        // open row (empty when none), compared with a terminal row stored in the database.
+        std::vector<std::size_t> sources;
+        std::vector<SsaImportRow> newestOpen;
+        // Dating fields of the oldest terminal row of the run (empty when none), compared with
+        // an open row stored in the database.
+        std::vector<SsaImportRow> oldestTerminal;
         std::size_t duplicateRows{0};
         std::size_t conflictRows{0};
         std::size_t openAfterTerminalRows{0};
