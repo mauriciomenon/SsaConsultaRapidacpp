@@ -4,8 +4,46 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <limits>
 #include <string>
 #include <vector>
+
+TEST_CASE("SSA import normalizes whole exceeded time expressions without carrying units") {
+    using Policy = ssa::domain::SsaImportPolicy;
+    REQUIRE(Policy::normalizeExceededTime("1a, 9m, 22d 5h : 47mi") == "P1Y9M22DT5H47M");
+    REQUIRE(Policy::normalizeExceededTime("1m, 2mi") == "P1MT2M");
+    REQUIRE(Policy::normalizeExceededTime("1h30m") == "PT1H30M");
+    REQUIRE(Policy::normalizeExceededTime("25d 1h : 9mi") == "P25DT1H9M");
+    REQUIRE(Policy::normalizeExceededTime("3m, 25d 21h : 20mi") == "P3M25DT21H20M");
+    REQUIRE(Policy::normalizeExceededTime("2h 2h") == "PT4H");
+    REQUIRE(Policy::normalizeExceededTime(" 60MI 24H 0D 2MO 1A ") == "P1Y2MT24H60M");
+    REQUIRE(Policy::normalizeExceededTime("1m \t, 2m : , 3mi") == "P1MT5M");
+    REQUIRE(Policy::normalizeExceededTime("1\xC2\xA0h\xE3\x80\x80"
+                                          "30m") == "PT1H30M");
+    REQUIRE(Policy::normalizeExceededTime("1m: ,2mi") == "PT3M");
+    REQUIRE(Policy::normalizeExceededTime("1mi,2mo") == "P2MT1M");
+}
+
+TEST_CASE("SSA import preserves trimmed exceeded time when incomplete invalid or zero") {
+    using Policy = ssa::domain::SsaImportPolicy;
+    REQUIRE(Policy::normalizeExceededTime(" 1h 15minutes ") == "1h 15minutes");
+    for (const auto* text : {"0h", "0a 0mo 0d 0h 0mi", "", ",:", "PT1H", "unknown", "1h!", "-1h",
+                             "1.5h", "1h 30", "1h30mx", "m", "1h x 2h"}) {
+        INFO(text);
+        REQUIRE(Policy::normalizeExceededTime(std::string{" \t"} + text + " \n") == text);
+    }
+}
+
+TEST_CASE("SSA import preserves exceeded time on numeric or accumulated overflow") {
+    using Policy = ssa::domain::SsaImportPolicy;
+    const auto maximum = std::to_string(std::numeric_limits<unsigned long long>::max());
+    REQUIRE(Policy::normalizeExceededTime(maximum + "mi") == "PT" + maximum + "M");
+    for (const auto& text :
+         {maximum + "0h", maximum + "h 1h", maximum + "m, 1mo", maximum + "mi 1m"}) {
+        INFO(text);
+        REQUIRE(Policy::normalizeExceededTime(" " + text + " ") == text);
+    }
+}
 
 TEST_CASE("SSA import removes null sentinels before validating imported values") {
     using Policy = ssa::domain::SsaImportPolicy;

@@ -9,6 +9,7 @@
 #include <charconv>
 #include <chrono>
 #include <cstdio>
+#include <limits>
 #include <map>
 #include <optional>
 #include <ranges>
@@ -689,6 +690,107 @@ namespace ssa::domain {
         const bool isIsoDate = text.size() == 10;
         const bool isIsoDateTime = text.size() == 19 && (text[10] == ' ' || text[10] == 'T');
         return hasIsoDatePrefix && (isIsoDate || isIsoDateTime) ? text : normalized;
+    }
+
+    std::string SsaImportPolicy::normalizeExceededTime(const std::string& value) {
+        const auto original = trimWhitespace(value);
+        std::string_view remaining{original};
+        std::array<unsigned long long, 5> totals{}; // Years, months, days, hours, minutes.
+        constexpr auto maximum = std::numeric_limits<unsigned long long>::max();
+        const auto skipWhitespace = [](std::string_view text) {
+            while (!text.empty()) {
+                const auto size = whitespace_detail::leadingSpace(text);
+                if (size == 0) {
+                    break;
+                }
+                text.remove_prefix(size);
+            }
+            return text;
+        };
+        while (!remaining.empty()) {
+            remaining = skipWhitespace(remaining);
+            if (remaining.empty()) {
+                break;
+            }
+            if (remaining.front() == ',' || remaining.front() == ':') {
+                remaining.remove_prefix(1);
+                continue;
+            }
+            if (!ascii::isDigit(remaining.front())) {
+                return original;
+            }
+            unsigned long long amount = 0;
+            while (!remaining.empty() && ascii::isDigit(remaining.front())) {
+                const auto digit = static_cast<unsigned int>(remaining.front() - '0');
+                if (amount > (maximum - digit) / 10) {
+                    return original;
+                }
+                amount = amount * 10 + digit;
+                remaining.remove_prefix(1);
+            }
+            remaining = skipWhitespace(remaining);
+            if (remaining.empty()) {
+                return original;
+            }
+            const auto unit = ascii::toLower(remaining.front());
+            remaining.remove_prefix(1);
+            std::size_t component = 0;
+            bool bareMinute = false;
+            switch (unit) {
+            case 'a':
+                component = 0;
+                break;
+            case 'd':
+                component = 2;
+                break;
+            case 'h':
+                component = 3;
+                break;
+            case 'm':
+                component = 4;
+                bareMinute = true;
+                if (!remaining.empty()) {
+                    const auto suffix = ascii::toLower(remaining.front());
+                    if (suffix == 'i' || suffix == 'o') {
+                        component = suffix == 'o' ? 1 : 4;
+                        bareMinute = false;
+                        remaining.remove_prefix(1);
+                    }
+                }
+                break;
+            default:
+                return original;
+            }
+            // The boundary is checked before the optional whitespace/comma capture.
+            if (!remaining.empty() && !ascii::isDigit(remaining.front()) &&
+                remaining.front() != ',' && remaining.front() != ':' &&
+                whitespace_detail::leadingSpace(remaining) == 0) {
+                return original;
+            }
+            remaining = skipWhitespace(remaining);
+            if (!remaining.empty() && remaining.front() == ',') {
+                if (bareMinute) {
+                    component = 1;
+                }
+                remaining.remove_prefix(1);
+            }
+            if (amount > maximum - totals[component]) {
+                return original;
+            }
+            totals[component] += amount;
+        }
+        std::string result{"P"};
+        constexpr std::array<char, 5> units{'Y', 'M', 'D', 'H', 'M'};
+        for (std::size_t index = 0; index < totals.size(); ++index) {
+            if (index == 3 && (totals[3] != 0 || totals[4] != 0)) {
+                result += 'T';
+            }
+            if (totals[index] != 0) {
+                result += std::to_string(totals[index]);
+                result += units[index];
+            }
+        }
+        return result == "P" ? original : result;
     }
 
     std::string SsaImportPolicy::normalizeDateValue(const ColumnType type,

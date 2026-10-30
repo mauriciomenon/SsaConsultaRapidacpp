@@ -11,6 +11,8 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 
 ### Alterado
 
+- Importacao: `tempo_excedido` reconhecido inteiro vira duracao ISO 8601
+  ("25d 1h : 9mi" -> "P25DT1H9M"), como no Python; texto nao reconhecido fica como veio.
 - Importacao: `data_planilha` e `data_arquivo_origem` passam a ser a data do arquivo (a
   data do nome, senao a hora de modificacao, senao a de criacao), sempre sobrescrevendo o
   que vier na planilha; `data_planilha` usa o formato com T, como no Python. Nome com data

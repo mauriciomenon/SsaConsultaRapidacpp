@@ -411,6 +411,8 @@ namespace ssa::infra::importing {
                     }
                 } else if (columnKey == "numero_desvios") {
                     value = domain::SsaImportPolicy::normalizeDeviationCount(value);
+                } else if (columnKey == "tempo_excedido") {
+                    value = domain::SsaImportPolicy::normalizeExceededTime(value);
                 } else if (columnKey == "num_reprogramacoes") {
                     value = normalizeReprogrammingNumber(value);
                 } else if (const auto* column = domain::ColumnCatalog::find(columnKey);
