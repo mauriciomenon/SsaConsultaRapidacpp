@@ -892,6 +892,56 @@ TEST_CASE("SSA import date text preserves ISO representation and normalizes lega
     REQUIRE(Policy::normalizeDateText("invalid").empty());
 }
 
+TEST_CASE("SSA upsert dates store whole seconds with day-first slash parsing") {
+    using Policy = ssa::domain::SsaImportPolicy;
+    for (const auto& [input, expected] : std::vector<std::pair<std::string, std::string>>{
+             {"09/10/2025", "2025-10-09 00:00:00"},
+             {"2025-07-14T15:43:12", "2025-07-14 15:43:12"},
+             {"2025-07-14", "2025-07-14 00:00:00"},
+             {"2025-07-14 15:43:12", "2025-07-14 15:43:12"},
+             {"09/10/2025 15:43", "2025-10-09 15:43:00"},
+             {"09/10/2025 15:43:12", "2025-10-09 15:43:12"},
+             {"10/14/2025", "2025-10-14 00:00:00"},
+             {"10/14/2025 15:43", "2025-10-14 15:43:00"},
+             {"10/14/2025 15:43:12", "2025-10-14 15:43:12"},
+             {"14-07-2025", "2025-07-14 00:00:00"},
+             {" 2025-07-14T15:43:12.999999 ", "2025-07-14 15:43:12"},
+             {"14/07/2025 15:43:12.123", "2025-07-14 15:43:12"}}) {
+        INFO(input);
+        REQUIRE(Policy::normalizeUpsertDate(input) == expected);
+        REQUIRE(Policy::normalizeUpsertDate(expected) == expected);
+    }
+    for (const auto* input :
+         {"", "bad-date", "31/02/2025", "2025-07-14T25:00:00", "2025-07-14T15:43:12.",
+          "2025-07-14T15:43:12.1junk", "45205.5", "1"}) {
+        INFO(input);
+        REQUIRE(Policy::normalizeUpsertDate(input).empty());
+    }
+}
+
+TEST_CASE("SSA upsert date keys cover text dates but exclude source metadata") {
+    using Policy = ssa::domain::SsaImportPolicy;
+    for (const auto* key : {"data_cadastro", "prazo_limite", "data_limite", "desde", "desde_1",
+                            "desde_2", "ate", "ate_1", "ate_2", "data_inicio_programada",
+                            "data_programacao", "data_inicio_reprogramada", "data_reprogramacao",
+                            "instalacao_estimada", "executado", "concluido"}) {
+        INFO(key);
+        REQUIRE(Policy::isUpsertDateColumn(key));
+        const Policy::Values existing{{"numero_ssa", "202600001"}, {key, "09/10/2025"}};
+        const Policy::Values incoming{{"numero_ssa", "202600001"}, {key, "2025-10-09 00:00:00"}};
+        REQUIRE_FALSE(Policy::merge(existing, incoming).changed);
+    }
+    for (const auto* key :
+         {"data_planilha", "data_arquivo_origem", "data_criacao_arquivo", "descricao_ssa"}) {
+        INFO(key);
+        REQUIRE_FALSE(Policy::isUpsertDateColumn(key));
+    }
+    for (const auto* key : {"instalacao_estimada", "executado", "concluido"}) {
+        INFO(key);
+        REQUIRE(ssa::domain::ColumnCatalog::find(key)->type == ssa::domain::ColumnType::Text);
+    }
+}
+
 TEST_CASE("SSA import compares dates, numbers and codes canonically, keeping the stored value") {
     using Values = ssa::domain::SsaImportPolicy::Values;
     // Python parity (A6/C2): the same value in another spelling is neither written nor counted.

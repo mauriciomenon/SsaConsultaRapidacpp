@@ -11,6 +11,9 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 
 ### Alterado
 
+- Importacao: as 16 colunas de data do Python (`data_cadastro`, `prazo_limite`, `desde`,
+  `ate`, `executado`, `concluido`, `data_programacao` e as demais) sao gravadas como
+  "AAAA-MM-DD HH:MM:SS"; data invalida fica vazia em vez de rejeitar a linha.
 - Importacao: `num_reprogramacoes`, `total_de_reprogramacoes` e `numero_desvios` seguem a
   conversao do Python: numero inteiro ("3.0" vira 3), texto nao numerico fica vazio e numero
   fracionario rejeita o arquivo; `num_reprogramacoes` vazio recebe o total quando a planilha

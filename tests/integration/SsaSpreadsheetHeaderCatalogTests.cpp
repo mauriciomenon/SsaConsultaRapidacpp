@@ -60,13 +60,50 @@ TEST_CASE("SSA spreadsheet mapper stores time window bounds as ISO timestamps") 
     REQUIRE(row.at("desde") == "2026-02-06 14:55:07");
     REQUIRE(row.at("ate") == "2026-02-07 08:00:00");
     REQUIRE(row.at("desde_1") == "2026-02-08 09:10:11");
-    REQUIRE(row.at("ate_1") == "sem data");
+    REQUIRE_FALSE(row.contains("ate_1"));
     REQUIRE(row.at("desde_2") == "2026-02-09 10:00:00");
     REQUIRE(row.at("ate_2") == "2026-02-10 00:00:00");
     for (const auto* key : {"desde", "desde_1", "desde_2", "ate", "ate_1", "ate_2"}) {
         INFO(key);
         REQUIRE(ssa::domain::ColumnCatalog::find(key)->type ==
                 ssa::domain::ColumnType::DateTimeText);
+    }
+}
+
+TEST_CASE("SSA spreadsheet mapper normalizes all upsert date keys and drops invalid dates") {
+    using namespace ssa::infra::importing;
+    for (const auto* key : {"data_cadastro", "prazo_limite", "data_limite", "desde", "desde_1",
+                            "desde_2", "ate", "ate_1", "ate_2", "data_inicio_programada",
+                            "data_programacao", "data_inicio_reprogramada", "data_reprogramacao",
+                            "instalacao_estimada", "executado", "concluido"}) {
+        INFO(key);
+        SpreadsheetTable table;
+        table.sourcePath = "dates.xlsx";
+        table.headerRow = {"numero_ssa", "descricao_ssa", "data_cadastro", "situacao",
+                           "semana_cadastro"};
+        table.rows = {{"202600001", "Dates", "2025-07-14", "ASE", "202529"}};
+        const std::size_t dateIndex = std::string_view{key} == "data_cadastro" ? 2 : 5;
+        if (dateIndex == 5) {
+            table.headerRow.push_back(key);
+            table.rows.front().emplace_back();
+        }
+        for (const auto& [input, expected] : std::vector<std::pair<std::string, std::string>>{
+                 {"09/10/2025", "2025-10-09 00:00:00"},
+                 {"2025-07-14T15:43:12", "2025-07-14 15:43:12"},
+                 {"2025-07-14", "2025-07-14 00:00:00"},
+                 {"11/02/2022 14:57:56", "2022-02-11 14:57:56"},
+                 {"bad-date", ""},
+                 {"45205.5", ""}}) {
+            INFO(input);
+            table.rows.front()[dateIndex] = input;
+            const auto batch = SsaSpreadsheetMapper::map(table);
+            REQUIRE(batch.rows.size() == 1);
+            if (expected.empty()) {
+                REQUIRE_FALSE(batch.rows.front().contains(key));
+            } else {
+                REQUIRE(batch.rows.front().at(key) == expected);
+            }
+        }
     }
 }
 
@@ -105,9 +142,10 @@ TEST_CASE("SSA spreadsheet mapper resolves repeated semantic header families by 
          "Ate",
          "Ate",
          "Ate"},
-        {"202600001", "202600002", "202600003", "202600004", "Familias", "2026-07-14", "RET",
-         "INS",       "EXT",       "EM0",       "EM1",       "EM2",      "APV",        "STE",
-         "SCA",       "D0",        "D1",        "D2",        "A0",       "A1",         "A2"},
+        {"202600001",  "202600002",  "202600003", "202600004",  "Familias",   "2026-07-14",
+         "RET",        "INS",        "EXT",       "EM0",        "EM1",        "EM2",
+         "APV",        "STE",        "SCA",       "2026-07-10", "2026-07-11", "2026-07-12",
+         "2026-07-20", "2026-07-21", "2026-07-22"},
     };
 
     const auto batch = ssa::infra::importing::SsaSpreadsheetMapper::map(table);
@@ -128,12 +166,13 @@ TEST_CASE("SSA spreadsheet mapper resolves repeated semantic header families by 
     REQUIRE(imported.at("situacao") == "APV");
     REQUIRE(imported.at("situacao_relacionada_1") == "STE");
     REQUIRE(imported.at("situacao_relacionada_2") == "SCA");
-    REQUIRE(imported.at("desde") == "D0");
-    REQUIRE(imported.at("desde_1") == "D1");
-    REQUIRE(imported.at("desde_2") == "D2");
-    REQUIRE(imported.at("ate") == "A0");
-    REQUIRE(imported.at("ate_1") == "A1");
-    REQUIRE(imported.at("ate_2") == "A2");
+    // Date columns: distinct valid dates prove the position, stored as date and time.
+    REQUIRE(imported.at("desde") == "2026-07-10 00:00:00");
+    REQUIRE(imported.at("desde_1") == "2026-07-11 00:00:00");
+    REQUIRE(imported.at("desde_2") == "2026-07-12 00:00:00");
+    REQUIRE(imported.at("ate") == "2026-07-20 00:00:00");
+    REQUIRE(imported.at("ate_1") == "2026-07-21 00:00:00");
+    REQUIRE(imported.at("ate_2") == "2026-07-22 00:00:00");
 }
 
 TEST_CASE("SSA spreadsheet mapper preserves a malformed related number for validation") {

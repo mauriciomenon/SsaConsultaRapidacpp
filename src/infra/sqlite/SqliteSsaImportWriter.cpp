@@ -587,10 +587,12 @@ namespace ssa::infra::sqlite {
         }
 
         bool normalizeDateValues(importing::SsaImportRow& row,
-                                 const std::vector<domain::ColumnDef>& columns) {
+                                 const std::vector<domain::ColumnDef>& columns,
+                                 const bool includeMetadata = true) {
             bool changed = false;
             for (const auto& column : columns) {
-                if (!domain::storesIsoDate(column.type)) {
+                const bool upsertDate = domain::SsaImportPolicy::isUpsertDateColumn(column.key);
+                if (!upsertDate && (!includeMetadata || !domain::storesIsoDate(column.type))) {
                     continue;
                 }
                 const auto value = row.find(column.key);
@@ -598,8 +600,13 @@ namespace ssa::infra::sqlite {
                     continue;
                 }
                 const auto normalized =
-                    domain::SsaImportPolicy::normalizeDateValue(column.type, value->second);
-                if (!normalized.empty() && normalized != value->second) {
+                    upsertDate
+                        ? domain::SsaImportPolicy::normalizeUpsertDate(value->second)
+                        : domain::SsaImportPolicy::normalizeDateValue(column.type, value->second);
+                if (upsertDate && normalized.empty()) {
+                    row.erase(value);
+                    changed = true;
+                } else if (!normalized.empty() && normalized != value->second) {
                     value->second = normalized;
                     changed = true;
                 }
@@ -921,6 +928,8 @@ namespace ssa::infra::sqlite {
                 const auto& newestOpen =
                     index < rows.newestOpen.size() ? rows.newestOpen[index] : kNoOpenRow;
                 auto normalizedRow = row;
+                // Normalize direct writer inputs too, without changing C4 metadata spelling.
+                normalizeDateValues(normalizedRow, columns, false);
                 importing::requireValidImportedRow(normalizedRow);
                 const auto& number = normalizedRow.at(ssaNumberKey);
                 const auto [seen, firstTouch] =

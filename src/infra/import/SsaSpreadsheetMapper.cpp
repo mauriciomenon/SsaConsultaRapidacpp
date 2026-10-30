@@ -395,6 +395,11 @@ namespace ssa::infra::importing {
                     }
                 } else if (columnKey == "tempo_excedido") {
                     value = domain::SsaImportPolicy::normalizeExceededTime(value);
+                } else if (domain::SsaImportPolicy::isUpsertDateColumn(columnKey)) {
+                    // SpreadsheetTable retains strings only. Styled Excel dates are already
+                    // decoded by the reader; unstyled numeric cells cannot be distinguished
+                    // from numeric text here, so do not guess an Excel serial from a string.
+                    value = domain::SsaImportPolicy::normalizeUpsertDate(value);
                 } else if (const auto* column = domain::ColumnCatalog::find(columnKey);
                            column != nullptr && domain::storesIsoDate(column->type)) {
                     const auto normalized =
@@ -417,7 +422,7 @@ namespace ssa::infra::importing {
             if (valueFor(row, "data_cadastro").empty() && columnMap.fallbackTimestampColumn) {
                 const auto fallbackColumn = *columnMap.fallbackTimestampColumn;
                 if (fallbackColumn < table.rows[rowIndex].size()) {
-                    const auto fallback = domain::SsaImportPolicy::normalizeSnapshotTimestamp(
+                    const auto fallback = domain::SsaImportPolicy::normalizeUpsertDate(
                         domain::trimWhitespace(table.rows[rowIndex][fallbackColumn]));
                     if (!fallback.empty()) {
                         row.emplace("data_cadastro", fallback);

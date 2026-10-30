@@ -3696,7 +3696,7 @@ TEST_CASE("spreadsheet mapper prefers emission timestamp over issue timestamp") 
     table.rows = {
         {"Numero SSA", "Descricao da SSA", "emission_datetime", "issue_datetime", "Situacao"},
         {"202600508", "Emission priority", "2026-07-15 10:00:00", "2026-07-01 10:00:00", "APV"},
-        {"202600509", "Issue fallback", "", "02/07/2026 10:00:00", "APV"}};
+        {"202600509", "Issue fallback", "", "02/07/2026 10:00:00.123", "APV"}};
 
     const auto result = ssa::infra::importing::SsaSpreadsheetMapper::map(table);
 
@@ -4553,11 +4553,13 @@ TEST_CASE("spreadsheet mapper rejects invalid rows and accepts date exempt state
     const auto result = ssa::infra::importing::SsaSpreadsheetMapper{}.map(table);
 
     REQUIRE(result.mappingStatus == ssa::infra::importing::SpreadsheetMappingStatus::Mapped);
-    REQUIRE(result.rows.size() == 2);
-    REQUIRE(result.skippedRows == 3);
-    REQUIRE(result.invalidDateRows == 2);
+    REQUIRE(result.rows.size() == 3);
+    REQUIRE(result.skippedRows == 2);
+    REQUIRE(result.invalidDateRows == 1);
     REQUIRE(ssa::infra::importing::rowValue(result.rows[0], "numero_ssa") == "202600003");
-    REQUIRE(ssa::infra::importing::rowValue(result.rows[1], "numero_ssa") == "202600004");
+    REQUIRE(ssa::infra::importing::rowValue(result.rows[1], "numero_ssa") == "202600005");
+    REQUIRE_FALSE(result.rows[1].contains("data_limite"));
+    REQUIRE(ssa::infra::importing::rowValue(result.rows[2], "numero_ssa") == "202600004");
 }
 
 TEST_CASE("spreadsheet workflow keeps deadline status textual and updates existing SSA") {
@@ -4603,7 +4605,7 @@ TEST_CASE("spreadsheet workflow keeps deadline status textual and updates existi
     REQUIRE(scalarText(db, "SELECT status_execucao_prazo FROM ssa_table "
                            "WHERE numero_ssa='202600777'") == "Dentro do Prazo");
     REQUIRE(scalarText(db, "SELECT data_limite FROM ssa_table "
-                           "WHERE numero_ssa='202600777'") == "2026-07-31");
+                           "WHERE numero_ssa='202600777'") == "2026-07-31 00:00:00");
     REQUIRE(scalarText(db, "SELECT prazo_limite FROM ssa_table "
                            "WHERE numero_ssa='202600777'") == "2026-06-30 00:00:00");
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
@@ -5048,6 +5050,62 @@ TEST_CASE("sqlite import normalizes legacy dates only when the SSA row is touche
     REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
     REQUIRE(scalarText(db, "SELECT data_cadastro FROM ssa_table WHERE numero_ssa='202600527'") ==
             "2025-10-21 11:10:36");
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("sqlite upsert dates normalize mapper direct and legacy values with zero-write replay") {
+    using namespace ssa::infra::importing;
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+    const auto dbPath = std::filesystem::path{tempDir.path().toStdString()} / "ssas.db";
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(sqliteWriterAccess(), dbPath,
+                                                           importColumns());
+    SpreadsheetTable table;
+    table.sourcePath = "dates.xlsx";
+    table.rows = {{"numero_ssa", "descricao_ssa", "data_cadastro", "executado",
+                   "instalacao_estimada", "concluido"},
+                  {"202600001", "Dates", "2025-07-14T15:43:12", "11/02/2022 14:57:56", "2025-07-14",
+                   "bad-date"}};
+    const auto batch = SsaSpreadsheetMapper::map(table);
+    REQUIRE(batch.rows.size() == 1);
+    ResolvedSsaImportRows incoming;
+    incoming.rows = batch.rows;
+    REQUIRE(writer.write(incoming, 1, 0, false).rowsWritten == 1);
+    REQUIRE(writer.write(incoming, 1, 0, false).rowsWritten == 0);
+
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarText(db, "SELECT data_cadastro FROM ssa_table") == "2025-07-14 15:43:12");
+    REQUIRE(scalarText(db, "SELECT executado FROM ssa_table") == "2022-02-11 14:57:56");
+    REQUIRE(scalarText(db, "SELECT instalacao_estimada FROM ssa_table") == "2025-07-14 00:00:00");
+    REQUIRE(scalarInt(db, "SELECT concluido IS NULL FROM ssa_table") == 1);
+    REQUIRE(sqlite3_exec(db,
+                         "UPDATE ssa_table SET executado='11/02/2022 14:57:56', "
+                         "instalacao_estimada='2025-07-14', concluido='bad-date'",
+                         nullptr, nullptr, nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+
+    // A touched legacy row is repaired once; equivalent direct input never rewrites it again.
+    REQUIRE(writer.write(incoming, 1, 0, false).rowsWritten == 1);
+    incoming.rows.front()["executado"] = "11/02/2022 14:57:56";
+    incoming.rows.front()["data_cadastro"] = "2025-07-14T15:43:12.999";
+    incoming.rows.front()["concluido"] = "bad-date";
+    REQUIRE(writer.write(incoming, 1, 0, false).rowsWritten == 0);
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarText(db, "SELECT executado FROM ssa_table") == "2022-02-11 14:57:56");
+    REQUIRE(scalarInt(db, "SELECT concluido IS NULL FROM ssa_table") == 1);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+
+    incoming.rows.front()["numero_ssa"] = "202600002";
+    REQUIRE(writer.write(incoming, 1, 0, false).rowsWritten == 1);
+    REQUIRE(writer.write(incoming, 1, 0, false).rowsWritten == 0);
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(scalarText(db, "SELECT data_cadastro FROM ssa_table WHERE numero_ssa='202600002'") ==
+            "2025-07-14 15:43:12");
+    REQUIRE(scalarText(db, "SELECT executado FROM ssa_table WHERE numero_ssa='202600002'") ==
+            "2022-02-11 14:57:56");
+    REQUIRE(scalarInt(db, "SELECT concluido IS NULL FROM ssa_table WHERE numero_ssa='202600002'") ==
+            1);
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 

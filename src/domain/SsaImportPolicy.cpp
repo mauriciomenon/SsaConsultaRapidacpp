@@ -344,6 +344,9 @@ namespace ssa::domain {
             static constexpr std::array<FieldSlice, 6> dayFirstMinuteFields{
                 FieldSlice{0, 2},  FieldSlice{3, 2},  FieldSlice{6, 4},
                 FieldSlice{11, 2}, FieldSlice{14, 2}, FieldSlice{0, 0}};
+            static constexpr std::array<FieldSlice, 6> monthFirstMinuteFields{
+                FieldSlice{3, 2},  FieldSlice{0, 2},  FieldSlice{6, 4},
+                FieldSlice{11, 2}, FieldSlice{14, 2}, FieldSlice{0, 0}};
             static constexpr std::array<FieldSlice, 6> dateFields{
                 FieldSlice{0, 4}, FieldSlice{5, 2}, FieldSlice{8, 2},
                 FieldSlice{0, 0}, FieldSlice{0, 0}, FieldSlice{0, 0}};
@@ -367,7 +370,10 @@ namespace ssa::domain {
             }
             if (text.size() == 16 && text[2] == '/' && text[5] == '/' && text[10] == ' ' &&
                 text[13] == ':') {
-                return parseFields(text, dayFirstMinuteFields, true);
+                if (const auto dayFirst = parseFields(text, dayFirstMinuteFields, true)) {
+                    return dayFirst;
+                }
+                return parseFields(text, monthFirstMinuteFields, true);
             }
             if (text.size() != 10) {
                 return std::nullopt;
@@ -584,6 +590,12 @@ namespace ssa::domain {
                                                            plainNumber(right) &&
                                                            number == canonicalNumber(right)) {
                 return true;
+            }
+            if (SsaImportPolicy::isUpsertDateColumn(key)) {
+                // A legacy value that is not a date falls through to the plain comparison.
+                if (const auto date = SsaImportPolicy::normalizeUpsertDate(left); !date.empty()) {
+                    return date == SsaImportPolicy::normalizeUpsertDate(right);
+                }
             }
             if (isDateField(key)) {
                 const auto date = SsaImportPolicy::normalizeSnapshotTimestamp(left);
@@ -828,6 +840,37 @@ namespace ssa::domain {
             }
         }
         return result == "P" ? original : result;
+    }
+
+    bool SsaImportPolicy::isUpsertDateColumn(const std::string_view key) {
+        static constexpr std::array<std::string_view, 16> columns{"data_cadastro",
+                                                                  "prazo_limite",
+                                                                  "data_limite",
+                                                                  "desde",
+                                                                  "desde_1",
+                                                                  "desde_2",
+                                                                  "ate",
+                                                                  "ate_1",
+                                                                  "ate_2",
+                                                                  "data_inicio_programada",
+                                                                  "data_programacao",
+                                                                  "data_inicio_reprogramada",
+                                                                  "data_reprogramacao",
+                                                                  "instalacao_estimada",
+                                                                  "executado",
+                                                                  "concluido"};
+        return std::ranges::find(columns, key) != columns.end();
+    }
+
+    std::string SsaImportPolicy::normalizeUpsertDate(const std::string& value) {
+        auto text = trimWhitespace(value);
+        // Drop fractional seconds only when the entire suffix is a fraction, never junk.
+        if (text.size() > 20 && text[19] == '.' &&
+            std::ranges::all_of(std::string_view{text}.substr(20),
+                                [](const char ch) { return ch >= '0' && ch <= '9'; })) {
+            text.resize(19);
+        }
+        return normalizeSnapshotTimestamp(text);
     }
 
     std::string SsaImportPolicy::normalizeDateValue(const ColumnType type,

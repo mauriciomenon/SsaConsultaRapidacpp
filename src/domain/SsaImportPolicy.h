@@ -55,8 +55,12 @@ namespace ssa::domain {
         normalizeIntegerCount(const std::string& value);
         [[nodiscard]] static std::string normalizeExceededTime(const std::string& value);
         [[nodiscard]] static std::string normalizeDateText(const std::string& value);
-        // Stored form of a date column value: DateTimeText is always "YYYY-MM-DD HH:MM:SS"
-        // (Python parity), DateText keeps ISO as typed. Empty when the value is not a date.
+        // Python UPSERT_DATE_COLUMNS, independent of the visual ColumnType.
+        [[nodiscard]] static bool isUpsertDateColumn(std::string_view key);
+        // Canonical storage timestamp; empty means null, including invalid non-empty text.
+        [[nodiscard]] static std::string normalizeUpsertDate(const std::string& value);
+        // Legacy type-based normalization for columns outside UPSERT_DATE_COLUMNS:
+        // DateTimeText uses whole seconds; DateText keeps ISO as typed. Empty on invalid text.
         [[nodiscard]] static std::string normalizeDateValue(ColumnType type,
                                                             const std::string& value);
         [[nodiscard]] static std::string normalizeSnapshotTimestamp(const std::string& value);
