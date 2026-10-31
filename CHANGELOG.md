@@ -14,6 +14,8 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 
 ### Alterado
 
+- Importacao: celula de duracao do Excel (formato `[h]:mm:ss`) e gravada como o Excel
+  mostra, em horas totais ("25:02:03"), como no Python.
 - Importacao: `data_cadastro` vazia recebe a primeira data entre `desde`, `desde_1`,
   `data_inicio_programada` e `data_programacao`, como no Python.
 - Importacao: as 16 colunas de data do Python (`data_cadastro`, `prazo_limite`, `desde`,

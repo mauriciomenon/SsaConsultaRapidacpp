@@ -112,6 +112,60 @@ TEST_CASE("xlsx reader converts Excel 1900 date cells and corrects the leap-day 
     REQUIRE(table.rows.at(0).at(1) == "1900-03-01T12:00:00");
 }
 
+TEST_CASE("xlsx reader stores elapsed time as total hours in display and raw cells") {
+    using ssa::infra::importing::RawCell;
+    using ssa::infra::importing::XlsxWorkbookReader;
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+    const auto path = std::filesystem::path{tempDir.path().toStdString()} / "durations.xlsx";
+    for (const auto* format : {"[h]:mm:ss", "[hh]:mm:ss", "[m]:ss", "[mm]:ss", "[s]", "[ss]",
+                               "[h]:mm", "[Red][HH]:mm:ss"}) {
+        INFO(format);
+        const std::string styles =
+            std::string{
+                R"xml(<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<numFmts count="1"><numFmt numFmtId="164" formatCode=")xml"} +
+            format + R"xml("/></numFmts>
+<cellXfs count="4"><xf numFmtId="0"/><xf numFmtId="164"/><xf numFmtId="14"/><xf numFmtId="46"/></cellXfs>
+</styleSheet>)xml";
+        writeWorkbook(path, {}, styles,
+                      R"xml(<c r="A1" s="1"><v>1.0430902777777778</v></c>
+<c r="B1" s="1" t="n"><v>0.003472222222222222</v></c>
+<c r="C1" s="1"><v>-0.0625</v></c>
+<c r="D1" s="1"><v>0.000009259259259259259</v></c>
+<c r="E1" s="1"><v>0.000005787037037037037</v></c>
+<c r="F1" s="2"><v>46217</v></c>
+<c r="G1" s="3"><v>1.0430902777777778</v></c>
+<c r="H1" s="1"><v>-0.000005787037037037037</v></c>
+<c r="I1" s="1"><v>0.0000046296296296296296</v></c>
+<c r="J1" s="1"/>)xml");
+        const std::vector<std::string> expected{
+            "25:02:03", "0:05:00",  "-1:30:00", "0:00:01", "0:00:01", "2026-07-14T00:00:00",
+            "25:02:03", "-0:00:01", "0:00:00",  ""};
+        const auto table = XlsxWorkbookReader::readFirstSheet(path);
+        REQUIRE(table.rows.at(0) == expected);
+        for (std::size_t column = 0; column < expected.size(); ++column) {
+            const auto& raw = table.rawRows.at(0).at(column);
+            if (column == 5) {
+                REQUIRE(raw.kind == RawCell::Kind::DateTime);
+                REQUIRE(raw.value == "2026-07-14 00:00:00");
+            } else {
+                REQUIRE(raw.kind == RawCell::Kind::String);
+                REQUIRE(raw.value == expected[column]);
+            }
+        }
+        REQUIRE(XlsxWorkbookReader::readSheets(path).at(0).rows == table.rows);
+        XlsxWorkbookReader::readSheetChunks(path, 1, [&](auto chunk, bool, bool) {
+            REQUIRE(chunk.rows == table.rows);
+            for (std::size_t column = 0; column < expected.size(); ++column) {
+                REQUIRE(chunk.rawRows.at(0).at(column).kind == table.rawRows.at(0).at(column).kind);
+                REQUIRE(chunk.rawRows.at(0).at(column).value ==
+                        table.rawRows.at(0).at(column).value);
+            }
+        });
+    }
+}
+
 TEST_CASE("xlsx reader bounds date serials to the Excel calendar") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());

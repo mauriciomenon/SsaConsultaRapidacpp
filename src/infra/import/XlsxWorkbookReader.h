@@ -38,7 +38,8 @@ namespace ssa::infra::importing {
                                       const std::stop_token& stopToken);
         static void parseSheetRowChunks(const std::string& xml,
                                         const std::vector<std::string>& sharedStrings,
-                                        const std::vector<bool>& dateStyles, bool date1904,
+                                        const std::vector<bool>& dateStyles,
+                                        const std::vector<bool>& durationStyles, bool date1904,
                                         std::size_t rowsPerChunk, const SheetChunkConsumer& consume,
                                         const SpreadsheetTable& metadata,
                                         const std::stop_token& stopToken);
