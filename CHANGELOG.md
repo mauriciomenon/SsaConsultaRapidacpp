@@ -14,6 +14,10 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 
 ### Alterado
 
+- Importacao: cada planilha e lida uma unica vez para a memoria e conferida antes e depois
+  (tamanho, data e identidade). Arquivo alterado durante a leitura, ou aberto com bloqueio
+  exclusivo (`source_in_use`), fica na pasta e e importado na proxima rodada; arquivo
+  aberto no Excel e lido e aceito so se duas leituras forem identicas.
 - Importacao: celula de duracao do Excel (formato `[h]:mm:ss`) e gravada como o Excel
   mostra, em horas totais ("25:02:03"), como no Python.
 - Importacao: `data_cadastro` vazia recebe a primeira data entre `desde`, `desde_1`,

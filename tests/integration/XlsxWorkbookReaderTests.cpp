@@ -1,5 +1,8 @@
+#include "infra/import/SourceFileCapture.h"
 #include "infra/import/XlsxWorkbookReader.h"
 
+#include <QDateTime>
+#include <QFileInfo>
 #include <QTemporaryDir>
 
 #include <catch2/catch_test_macros.hpp>
@@ -7,8 +10,12 @@
 #include <miniz.h>
 
 #include <filesystem>
+#include <fstream>
 #include <stdexcept>
+#include <stop_token>
 #include <string>
+#include <system_error>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -354,6 +361,138 @@ TEST_CASE("xlsx reader returns every worksheet in workbook order") {
     REQUIRE(sheets.at(0).rows.at(0).at(0) == "Cover");
     REQUIRE(sheets.at(1).rows.at(0).at(0) == "Data");
 }
+
+TEST_CASE("xlsx reader parses every sheet from one private capture") {
+    using ssa::infra::importing::SpreadsheetTable;
+    using ssa::infra::importing::XlsxWorkbookReader;
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+    const auto path = std::filesystem::path{tempDir.path().toStdString()} / "captured.xlsx";
+    writeMultiSheetWorkbook(path, {R"xml(<c r="A1" t="inlineStr"><is><t>Cover</t></is></c>)xml",
+                                   R"xml(<c r="A1" t="inlineStr"><is><t>Data</t></is></c>)xml"});
+    const auto expected = XlsxWorkbookReader::readSheets(path);
+    std::vector<SpreadsheetTable> captured;
+    std::size_t captures = 0;
+
+    XlsxWorkbookReader::readSheetChunks(
+        path, 1,
+        [&](SpreadsheetTable table, const bool first, const bool last) {
+            REQUIRE(first);
+            REQUIRE(last);
+            if (captured.empty()) {
+                std::ofstream overwritten(path, std::ios::binary | std::ios::trunc);
+                overwritten << "The live workbook is no longer a ZIP archive";
+                overwritten.close();
+                REQUIRE(overwritten.good());
+            }
+            captured.push_back(std::move(table));
+        },
+        {}, [&] { ++captures; });
+
+    REQUIRE(captures == 1);
+    REQUIRE(captured.size() == expected.size());
+    for (std::size_t sheet = 0; sheet < expected.size(); ++sheet) {
+        REQUIRE(captured[sheet].rows == expected[sheet].rows);
+        REQUIRE(captured[sheet].sourcePath == expected[sheet].sourcePath);
+        REQUIRE(captured[sheet].rawRows.size() == expected[sheet].rawRows.size());
+        for (std::size_t row = 0; row < expected[sheet].rawRows.size(); ++row) {
+            REQUIRE(captured[sheet].rawRows[row].size() == expected[sheet].rawRows[row].size());
+            for (std::size_t column = 0; column < expected[sheet].rawRows[row].size(); ++column) {
+                REQUIRE(captured[sheet].rawRows[row][column].kind ==
+                        expected[sheet].rawRows[row][column].kind);
+                REQUIRE(captured[sheet].rawRows[row][column].value ==
+                        expected[sheet].rawRows[row][column].value);
+            }
+        }
+    }
+}
+
+TEST_CASE("xlsx readers preserve local timestamp formatting from the captured handle") {
+    using ssa::infra::importing::SpreadsheetTable;
+    using ssa::infra::importing::XlsxWorkbookReader;
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+    const auto path = std::filesystem::path{tempDir.path().toStdString()} / "timestamps.xlsx";
+    writeMultiSheetWorkbook(path, {R"xml(<c r="A1"><v>42</v></c>)xml"});
+    const auto modified = std::chrono::sys_seconds{std::chrono::seconds{1'700'000'000}};
+    ssa::infra::importing::SourceFileSnapshot timestamp;
+    timestamp.modified = modified;
+    timestamp.modifiedSubseconds = std::chrono::nanoseconds{987'654'300};
+    std::filesystem::last_write_time(path, timestamp.fileModificationTime());
+    const QFileInfo information{QString::fromStdString(path.string())};
+    const auto expectedModified =
+        information.lastModified().toLocalTime().toString("yyyy-MM-dd HH:mm:ss").toStdString();
+    const auto birth = information.birthTime();
+    const auto expectedCreated =
+        birth.isValid() ? birth.toLocalTime().toString("yyyy-MM-dd HH:mm:ss").toStdString()
+                        : std::string{};
+    const auto verify = [&](const SpreadsheetTable& table) {
+        REQUIRE(table.sourceModifiedTimestamp == expectedModified);
+        REQUIRE(table.sourceCreatedTimestamp == expectedCreated);
+    };
+    verify(XlsxWorkbookReader::readFirstSheet(path));
+    const auto sheets = XlsxWorkbookReader::readSheets(path);
+    REQUIRE(sheets.size() == 1);
+    verify(sheets.front());
+    std::size_t chunks = 0;
+    XlsxWorkbookReader::readSheetChunks(path, 1, [&](SpreadsheetTable table, bool, bool) {
+        ++chunks;
+        verify(table);
+    });
+    REQUIRE(chunks == 1);
+}
+
+TEST_CASE("xlsx reader cancels during byte capture before publishing sheets") {
+    using ssa::infra::importing::XlsxWorkbookReader;
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+    const auto path = std::filesystem::path{tempDir.path().toStdString()} / "canceled.xlsx";
+    writeMultiSheetWorkbook(path, {R"xml(<c r="A1"><v>42</v></c>)xml"});
+    std::stop_source stop;
+    bool consumed = false;
+    bool canceled = false;
+    try {
+        XlsxWorkbookReader::readSheetChunks(
+            path, 1, [&](auto, bool, bool) { consumed = true; }, stop.get_token(),
+            [&] { stop.request_stop(); });
+    } catch (const std::system_error& error) {
+        canceled = error.code() == std::errc::operation_canceled;
+    }
+    REQUIRE(canceled);
+    REQUIRE_FALSE(consumed);
+    REQUIRE(XlsxWorkbookReader::readFirstSheet(path).rows.at(0).at(0) == "42");
+}
+
+#ifndef _WIN32
+TEST_CASE("xlsx reader defers a short byte capture before parsing any sheet") {
+    using ssa::infra::importing::XlsxWorkbookReader;
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+    const auto path = std::filesystem::path{tempDir.path().toStdString()} / "short.xlsx";
+    writeMultiSheetWorkbook(path, {R"xml(<c r="A1"><v>42</v></c>)xml"});
+    // Trailing bytes keep this capture larger than one block without a large XML fixture.
+    std::filesystem::resize_file(path, 2ULL * 1024ULL * 1024ULL);
+    bool consumed = false;
+    bool deferred = false;
+    try {
+        XlsxWorkbookReader::readSheetChunks(
+            path, 1, [&](auto, bool, bool) { consumed = true; }, {},
+            [&] { std::filesystem::resize_file(path, 1); });
+    } catch (const ssa::infra::importing::SourceReadDeferred& error) {
+        deferred = true;
+        REQUIRE(error.reason() == "source_changed_during_read");
+        const std::string diagnostic{error.what()};
+        for (const auto* field : {"before", "after", "size", "mtime", "identity"}) {
+            REQUIRE(diagnostic.find(field) != std::string::npos);
+        }
+        REQUIRE(diagnostic.find("2097152") != std::string::npos);
+        REQUIRE(diagnostic.find("after={size=1 ") != std::string::npos);
+        REQUIRE(diagnostic.find("copied=1048576") != std::string::npos);
+    }
+    REQUIRE(deferred);
+    REQUIRE_FALSE(consumed);
+}
+#endif
 
 TEST_CASE("xlsx reader streams worksheet rows in bounded ordered chunks") {
     QTemporaryDir tempDir;

@@ -461,6 +461,26 @@ TEST_CASE("SSA import ignores date-only source filenames") {
         ssa::domain::SsaImportPolicy::normalizeFilenameTimestamp("SSA_2026-07-15.xlsx").empty());
 }
 
+TEST_CASE("SSA filename memo preserves repeated valid and invalid results with exact keys") {
+    using Policy = ssa::domain::SsaImportPolicy;
+    std::string filename = "memo_2026-07-15T11.30.xlsx";
+    for (int repeat = 0; repeat < 16; ++repeat) {
+        REQUIRE(Policy::normalizeFilenameTimestamp(filename) == "2026-07-15 11:30:00");
+        const Policy::Values row{{"arquivo_origem", filename},
+                                 {"data_planilha", "2026-07-15 11:30:00"}};
+        REQUIRE(Policy::precedenceKey(row) == "20260715113000 20260715113000");
+    }
+    // Mutating the same string must invalidate the exact-name memo, including failed parses.
+    filename = "memo_2026-07-15T25.30.xlsx";
+    for (int repeat = 0; repeat < 16; ++repeat) {
+        REQUIRE(Policy::normalizeFilenameTimestamp(filename).empty());
+    }
+    filename.clear();
+    REQUIRE(Policy::normalizeFilenameTimestamp(filename).empty());
+    filename = "memo_2026-07-15T11.31.xlsx";
+    REQUIRE(Policy::normalizeFilenameTimestamp(filename) == "2026-07-15 11:31:00");
+}
+
 TEST_CASE("SSA import keeps the hour of ISO timestamps in source filenames") {
     using Policy = ssa::domain::SsaImportPolicy;
     REQUIRE(Policy::normalizeFilenameTimestamp("SSA_2026-07-15T10.00.xlsx") ==

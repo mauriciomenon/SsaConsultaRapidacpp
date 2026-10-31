@@ -289,6 +289,7 @@ namespace ssa::domain {
             int hour = 0;
             int minute = 0;
             int second = 0;
+            bool operator==(const SnapshotTimestamp&) const = default;
         };
 
         bool validTimestamp(const SnapshotTimestamp& timestamp) {
@@ -398,7 +399,7 @@ namespace ssa::domain {
             return std::nullopt;
         }
 
-        std::optional<SnapshotTimestamp> filenameTimestamp(const std::string& value) {
+        std::optional<SnapshotTimestamp> parseFilenameTimestamp(const std::string& value) {
             // Python searches the first match of each pattern, in this order. An invalid
             // datetime advances to the next pattern, not the next match of the same pattern.
             static const std::array<std::regex, 3> patterns{
@@ -433,6 +434,22 @@ namespace ssa::domain {
                 }
             }
             return std::nullopt;
+        }
+        std::optional<SnapshotTimestamp> filenameTimestamp(const std::string& value) {
+            struct Memo {
+                std::string filename;
+                std::optional<SnapshotTimestamp> timestamp;
+            };
+            thread_local std::optional<Memo> memo;
+            if (!memo || memo->filename != value) {
+                const auto first = parseFilenameTimestamp(value);
+                const auto second = parseFilenameTimestamp(value);
+                if (first != second) {
+                    throw std::runtime_error("Filename timestamp validation mismatch: " + value);
+                }
+                memo = Memo{value, first};
+            }
+            return memo->timestamp;
         }
         std::string timestampKey(const SnapshotTimestamp& timestamp) {
             std::array<char, 15> buffer{};
@@ -570,46 +587,6 @@ namespace ssa::domain {
             return key == "data_criacao_arquivo";
         }
 
-        // Python parity of value equality: dates compare as canonical timestamps
-        // ("01/01/2026" == "2026-01-01 00:00:00"), numbers as exact canonical decimals
-        // ("1.0" == "1", no floating point), coded fields without case.
-        bool sameValue(const std::string_view key, const std::string& left,
-                       const std::string& right) {
-            if (left == right) {
-                return true;
-            }
-            if (left.empty() || right.empty()) {
-                return false;
-            }
-            if (isCodedField(key) && uppercase(left) == uppercase(right)) {
-                return true;
-            }
-            // Numeric spelling ("1.0" == "1", "1e3" == "1000") but never a code with leading
-            // zeros or an explicit sign: "007" and "7" stay different texts.
-            const auto plainNumber = [](const std::string& text) {
-                const auto digits = text.starts_with('-') ? std::string_view{text}.substr(1)
-                                                          : std::string_view{text};
-                const bool leadingZero = digits.size() > 1 && digits[0] == '0' && digits[1] != '.';
-                return !text.starts_with('+') && !leadingZero;
-            };
-            if (const auto number = canonicalNumber(left); !number.empty() && plainNumber(left) &&
-                                                           plainNumber(right) &&
-                                                           number == canonicalNumber(right)) {
-                return true;
-            }
-            if (SsaImportPolicy::isUpsertDateColumn(key)) {
-                // A legacy value that is not a date falls through to the plain comparison.
-                if (const auto date = SsaImportPolicy::normalizeUpsertDate(left); !date.empty()) {
-                    return date == SsaImportPolicy::normalizeUpsertDate(right);
-                }
-            }
-            if (isDateField(key)) {
-                const auto date = SsaImportPolicy::normalizeSnapshotTimestamp(left);
-                return !date.empty() && date == SsaImportPolicy::normalizeSnapshotTimestamp(right);
-            }
-            return false;
-        }
-
         bool differsInPersistedValues(const SsaImportPolicy::Values& left,
                                       const SsaImportPolicy::Values& right,
                                       const bool ignoreMetadata = false) {
@@ -621,14 +598,54 @@ namespace ssa::domain {
                                             const SsaImportPolicy::Values& other) {
                 return std::ranges::any_of(values, [&](const auto& entry) {
                     return !ignored(entry.first) &&
-                           !sameValue(entry.first, valueFor(other, entry.first),
-                                      trimWhitespace(entry.second));
+                           !SsaImportPolicy::sameValue(entry.first, valueFor(other, entry.first),
+                                                       trimWhitespace(entry.second));
                 });
             };
             return differs(left, right) || differs(right, left);
         }
 
     } // namespace
+
+    // Python parity of value equality: dates compare as canonical timestamps
+    // ("01/01/2026" == "2026-01-01 00:00:00"), numbers as exact canonical decimals
+    // ("1.0" == "1", no floating point), coded fields without case.
+    bool SsaImportPolicy::sameValue(const std::string_view key, const std::string& left,
+                                    const std::string& right) {
+        if (left == right) {
+            return true;
+        }
+        if (left.empty() || right.empty()) {
+            return false;
+        }
+        if (isCodedField(key) && uppercase(left) == uppercase(right)) {
+            return true;
+        }
+        // Numeric spelling ("1.0" == "1", "1e3" == "1000") but never a code with leading
+        // zeros or an explicit sign: "007" and "7" stay different texts.
+        const auto plainNumber = [](const std::string& text) {
+            const auto digits =
+                text.starts_with('-') ? std::string_view{text}.substr(1) : std::string_view{text};
+            const bool leadingZero = digits.size() > 1 && digits[0] == '0' && digits[1] != '.';
+            return !text.starts_with('+') && !leadingZero;
+        };
+        if (const auto number = canonicalNumber(left); !number.empty() && plainNumber(left) &&
+                                                       plainNumber(right) &&
+                                                       number == canonicalNumber(right)) {
+            return true;
+        }
+        if (SsaImportPolicy::isUpsertDateColumn(key)) {
+            // A legacy value that is not a date falls through to the plain comparison.
+            if (const auto date = SsaImportPolicy::normalizeUpsertDate(left); !date.empty()) {
+                return date == SsaImportPolicy::normalizeUpsertDate(right);
+            }
+        }
+        if (isDateField(key)) {
+            const auto date = SsaImportPolicy::normalizeSnapshotTimestamp(left);
+            return !date.empty() && date == SsaImportPolicy::normalizeSnapshotTimestamp(right);
+        }
+        return false;
+    }
 
     SsaImportPolicy::OriginalValues SsaImportPolicy::originalValues(const Values& row) {
         const auto json = valueFor(row, "valores_originais");

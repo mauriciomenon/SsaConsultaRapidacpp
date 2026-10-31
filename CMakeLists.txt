@@ -144,6 +144,7 @@ add_library(
   ssa_infra STATIC
   src/infra/export/CsvExportPort.cpp
   src/infra/import/CancelableFileCopy.cpp
+  src/infra/import/SourceFileCapture.cpp
   src/infra/import/DataSetupPort.cpp
   src/infra/import/DerivadasSourceReader.cpp
   src/infra/import/ImportFileConsolidator.cpp

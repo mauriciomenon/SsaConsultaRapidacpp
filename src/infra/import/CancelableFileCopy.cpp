@@ -1,121 +1,31 @@
 #include "infra/import/CancelableFileCopy.h"
 
+#include "infra/import/SourceFileCapture.h"
 #include "qt/FilesystemPath.h"
 
 #include <QTemporaryFile>
 
-#include <cstdint>
 #include <exception>
-#include <fstream>
-#include <optional>
+#include <stdexcept>
 #include <system_error>
-#include <vector>
-
-#ifdef _WIN32
-#include <windows.h>
-#else
-#include <cerrno>
-#include <sys/stat.h>
-#endif
 
 namespace ssa::infra::importing {
-    namespace {
-
-        constexpr std::size_t kCopyBlockBytes = std::size_t{1024} * 1024;
-
-        struct SourceSnapshot {
-            std::uintmax_t size = 0;
-            std::filesystem::file_time_type modified;
-            std::string identity;
-
-            [[nodiscard]] bool operator==(const SourceSnapshot& other) const {
-                return size == other.size && modified == other.modified &&
-                       identity == other.identity;
-            }
-        };
-
-        std::optional<SourceSnapshot> snapshotSource(const std::filesystem::path& source,
-                                                     std::error_code& error) {
-            const auto modified = std::filesystem::last_write_time(source, error);
-            if (error) {
-                return std::nullopt;
-            }
-            const auto identity = inspectFileIdentity(source, error);
-            if (!identity) {
-                return std::nullopt;
-            }
-            return SourceSnapshot{identity->size, modified, identity->value};
-        }
-
-    } // namespace
 
     std::optional<FileIdentitySnapshot> inspectFileIdentity(const std::filesystem::path& path,
                                                             std::error_code& error) {
-#ifdef _WIN32
-        const auto handle =
-            CreateFileW(path.c_str(), FILE_READ_ATTRIBUTES,
-                        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
-                        OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
-        if (handle == INVALID_HANDLE_VALUE) {
-            error = {static_cast<int>(GetLastError()), std::system_category()};
+        const auto snapshot = inspectSourceFileIdentity(path, error);
+        if (!snapshot) {
             return std::nullopt;
         }
-        BY_HANDLE_FILE_INFORMATION information{};
-        const bool inspected = GetFileInformationByHandle(handle, &information) != 0;
-        const auto inspectError = inspected ? ERROR_SUCCESS : GetLastError();
-        const bool closed = CloseHandle(handle) != 0;
-        if (!inspected) {
-            error = {static_cast<int>(inspectError), std::system_category()};
-            return std::nullopt;
-        }
-        if (!closed) {
-            error = {static_cast<int>(GetLastError()), std::system_category()};
-            return std::nullopt;
-        }
-        if ((information.dwFileAttributes &
-             (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)) != 0) {
-            error = std::make_error_code(std::errc::operation_not_permitted);
-            return std::nullopt;
-        }
-        const auto fileIndex = (static_cast<std::uint64_t>(information.nFileIndexHigh) << 32) |
-                               information.nFileIndexLow;
-        const auto size = (static_cast<std::uint64_t>(information.nFileSizeHigh) << 32) |
-                          information.nFileSizeLow;
-        error.clear();
-        return FileIdentitySnapshot{std::to_string(information.dwVolumeSerialNumber) + ':' +
-                                        std::to_string(fileIndex),
-                                    size};
-#else
-        struct stat information{};
-        if (::lstat(path.c_str(), &information) != 0) {
-            error = {errno, std::generic_category()};
-            return std::nullopt;
-        }
-        if (!S_ISREG(information.st_mode)) {
-            error = std::make_error_code(std::errc::operation_not_permitted);
-            return std::nullopt;
-        }
-        error.clear();
-        return FileIdentitySnapshot{
-            std::to_string(static_cast<std::uintmax_t>(information.st_dev)) + ':' +
-                std::to_string(static_cast<std::uintmax_t>(information.st_ino)),
-            static_cast<std::uintmax_t>(information.st_size)};
-#endif
+        return FileIdentitySnapshot{snapshot->identity, snapshot->size};
     }
 
     FileCopyResult copyFileAtomically(const FileCopyRequest& request,
                                       const std::stop_token stopToken) {
-        const auto canceled = [&stopToken] { return stopToken.stop_requested(); };
-        if (canceled()) {
+        if (stopToken.stop_requested()) {
             return {FileCopyStatus::Canceled, {}};
         }
         std::error_code error;
-        const auto sourceSnapshot = snapshotSource(request.source, error);
-        if (!sourceSnapshot) {
-            return {FileCopyStatus::Failed,
-                    "cannot inspect staged file source: " + error.message()};
-        }
-        error.clear();
         std::filesystem::create_directories(request.destination.parent_path(), error);
         if (error) {
             return {FileCopyStatus::Failed, "cannot create copy destination: " + error.message()};
@@ -124,137 +34,81 @@ namespace ssa::infra::importing {
         auto temporaryTemplate = request.destination;
         temporaryTemplate += ".XXXXXX.part";
         QTemporaryFile output(qt::toQString(temporaryTemplate));
-        const auto removeTemporary = [&output]() -> std::string {
-            if (output.fileName().isEmpty() || !output.exists() || output.remove()) {
-                return {};
+        const auto failCopy = [&output](FileCopyResult result) {
+            output.close();
+            if (!output.fileName().isEmpty() && output.exists() && !output.remove()) {
+                if (!result.diagnostic.empty()) {
+                    result.diagnostic += "; ";
+                }
+                result.diagnostic +=
+                    "staging cleanup failed operation=remove_copy_temporary path=" +
+                    qt::toUtf8(qt::toFileSystemPath(output.fileName())) +
+                    " error=" + output.errorString().toStdString() + " pending=true";
+                result.status = FileCopyStatus::CleanupFailed;
             }
-            return "staging cleanup failed operation=remove_copy_temporary path=" +
-                   qt::toUtf8(qt::toFileSystemPath(output.fileName())) +
-                   " error=" + output.errorString().toStdString() + " pending=true";
+            return result;
         };
-        std::ifstream input(request.source, std::ios::binary);
-        if (!input || !output.open()) {
-            const auto cleanupDiagnostic = removeTemporary();
-            if (!cleanupDiagnostic.empty()) {
-                return {FileCopyStatus::CleanupFailed, cleanupDiagnostic};
-            }
-            return {FileCopyStatus::Failed, "cannot open staged file copy"};
+        if (!output.open()) {
+            return failCopy({FileCopyStatus::Failed, "cannot open staged file copy"});
         }
 
-        std::vector<char> buffer(kCopyBlockBytes);
-        bool firstChunkWritten = false;
-        while (input) {
-            if (canceled()) {
-                output.close();
-                const auto cleanupDiagnostic = removeTemporary();
-                if (!cleanupDiagnostic.empty()) {
-                    return {FileCopyStatus::CleanupFailed, cleanupDiagnostic};
-                }
-                return {FileCopyStatus::Canceled, {}};
-            }
-            input.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
-            const auto bytes = input.gcount();
-            if (bytes > 0 && output.write(buffer.data(), bytes) != bytes) {
-                output.close();
-                const auto cleanupDiagnostic = removeTemporary();
-                if (!cleanupDiagnostic.empty()) {
-                    return {FileCopyStatus::CleanupFailed, cleanupDiagnostic};
-                }
-                return {FileCopyStatus::Failed, "cannot write staged file copy"};
-            }
-            if (bytes > 0 && !firstChunkWritten) {
-                firstChunkWritten = true;
-                if (request.afterFirstChunkWritten) {
-                    std::string callbackDiagnostic;
+        std::filesystem::file_time_type sourceModified;
+        SourceFileSnapshot sourceSnapshot;
+        try {
+            sourceSnapshot = captureSourceFile(
+                request.source,
+                [&output](const std::span<const char> bytes) {
+                    const auto size = static_cast<qint64>(bytes.size());
+                    if (output.write(bytes.data(), size) != size) {
+                        throw std::runtime_error("cannot write staged file copy");
+                    }
+                },
+                stopToken, 128ULL * 1024ULL * 1024ULL,
+                [&request] {
+                    if (!request.afterFirstChunkWritten) {
+                        return;
+                    }
                     try {
                         request.afterFirstChunkWritten();
                     } catch (const std::exception& exception) {
-                        callbackDiagnostic =
-                            "staged file copy callback failed: " + std::string{exception.what()};
+                        throw std::runtime_error("staged file copy callback failed: " +
+                                                 std::string{exception.what()});
                     } catch (...) {
-                        callbackDiagnostic =
-                            "staged file copy callback failed with non-standard exception";
+                        throw std::runtime_error(
+                            "staged file copy callback failed with non-standard exception");
                     }
-                    if (!callbackDiagnostic.empty()) {
-                        output.close();
-                        const auto cleanupDiagnostic = removeTemporary();
-                        if (!cleanupDiagnostic.empty()) {
-                            callbackDiagnostic += "; ";
-                            callbackDiagnostic += cleanupDiagnostic;
-                            return {FileCopyStatus::CleanupFailed, std::move(callbackDiagnostic)};
-                        }
-                        return {FileCopyStatus::Failed, std::move(callbackDiagnostic)};
-                    }
-                }
+                });
+            sourceModified = sourceSnapshot.fileModificationTime();
+        } catch (const SourceReadDeferred& deferred) {
+            return failCopy({FileCopyStatus::Deferred, deferred.what(), deferred.reason()});
+        } catch (const std::system_error& exception) {
+            if (exception.code() == std::errc::operation_canceled) {
+                return failCopy({FileCopyStatus::Canceled, {}});
             }
+            return failCopy({FileCopyStatus::Failed, exception.what()});
+        } catch (const std::exception& exception) {
+            return failCopy({FileCopyStatus::Failed, exception.what()});
         }
-        if (!input.eof()) {
-            output.close();
-            const auto cleanupDiagnostic = removeTemporary();
-            if (!cleanupDiagnostic.empty()) {
-                return {FileCopyStatus::CleanupFailed, cleanupDiagnostic};
-            }
-            return {FileCopyStatus::Failed, "cannot read staged file source"};
+        if (!output.flush()) {
+            return failCopy({FileCopyStatus::Failed, "cannot flush staged file copy"});
         }
-        const auto flushed = output.flush();
         output.close();
-        if (!flushed) {
-            const auto cleanupDiagnostic = removeTemporary();
-            if (!cleanupDiagnostic.empty()) {
-                return {FileCopyStatus::CleanupFailed, cleanupDiagnostic};
-            }
-            return {FileCopyStatus::Failed, "cannot flush staged file copy"};
+        if (stopToken.stop_requested()) {
+            return failCopy({FileCopyStatus::Canceled, {}});
         }
-        if (canceled()) {
-            const auto cleanupDiagnostic = removeTemporary();
-            if (!cleanupDiagnostic.empty()) {
-                return {FileCopyStatus::CleanupFailed, cleanupDiagnostic};
-            }
-            return {FileCopyStatus::Canceled, {}};
-        }
-        const auto currentSourceSnapshot = snapshotSource(request.source, error);
-        if (!currentSourceSnapshot) {
-            const auto cleanupDiagnostic = removeTemporary();
-            const auto sourceDiagnostic =
-                error == std::errc::no_such_file_or_directory
-                    ? std::string{"source changed during staged file copy"}
-                    : "cannot verify staged file source: " + error.message();
-            if (!cleanupDiagnostic.empty()) {
-                return {FileCopyStatus::CleanupFailed, sourceDiagnostic + "; " + cleanupDiagnostic};
-            }
-            return {FileCopyStatus::Failed, sourceDiagnostic};
-        }
-        if (*currentSourceSnapshot != *sourceSnapshot) {
-            const auto cleanupDiagnostic = removeTemporary();
-            if (!cleanupDiagnostic.empty()) {
-                return {FileCopyStatus::CleanupFailed,
-                        "source changed during staged file copy; " + cleanupDiagnostic};
-            }
-            return {FileCopyStatus::Failed, "source changed during staged file copy"};
-        }
-        // The report date is the source mtime (snapshot fallback and report metadata), as in
-        // the Python copy; a copy carrying its own creation time would reorder reports.
-        std::filesystem::last_write_time(qt::toFileSystemPath(output.fileName()),
-                                         sourceSnapshot->modified, error);
+        // Preserve the source handle's mtime, not the temporary copy's creation time.
+        std::filesystem::last_write_time(qt::toFileSystemPath(output.fileName()), sourceModified,
+                                         error);
         if (error) {
-            const auto diagnostic = "cannot preserve staged file mtime: " + error.message();
-            const auto cleanupDiagnostic = removeTemporary();
-            if (!cleanupDiagnostic.empty()) {
-                return {FileCopyStatus::CleanupFailed, diagnostic + "; " + cleanupDiagnostic};
-            }
-            return {FileCopyStatus::Failed, diagnostic};
+            return failCopy(
+                {FileCopyStatus::Failed, "cannot preserve staged file mtime: " + error.message()});
         }
         if (!output.rename(request.destination)) {
-            const auto diagnostic =
-                "cannot publish staged file copy: " + output.errorString().toStdString();
-            const auto cleanupDiagnostic = removeTemporary();
-            if (!cleanupDiagnostic.empty()) {
-                return {FileCopyStatus::CleanupFailed, diagnostic + "; " + cleanupDiagnostic};
-            }
-            return {FileCopyStatus::Failed, diagnostic};
+            return failCopy({FileCopyStatus::Failed, "cannot publish staged file copy: " +
+                                                         output.errorString().toStdString()});
         }
         output.setAutoRemove(false);
-        return {FileCopyStatus::Succeeded, {}};
+        return {FileCopyStatus::Succeeded, {}, {}, std::move(sourceSnapshot)};
     }
 
 } // namespace ssa::infra::importing

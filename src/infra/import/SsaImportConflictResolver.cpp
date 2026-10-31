@@ -64,7 +64,8 @@ namespace ssa::infra::importing {
             // Journal a repeat of the same instant whose business fields differ. The text
             // follows the read order; the folded result does not.
             if (group.rows() > 0 &&
-                domain::SsaImportPolicy::precedenceKey(row) == group.leadingPrecedence()) {
+                domain::SsaImportPolicy::precedenceKey(row) == group.leadingPrecedence() &&
+                group.hasRepeatDifference(row)) {
                 const auto current = group.values();
                 const auto merged = domain::SsaImportPolicy::merge(current, row);
                 if (merged.repeatDiscarded) {

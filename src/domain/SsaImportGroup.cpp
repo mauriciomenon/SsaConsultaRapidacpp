@@ -97,13 +97,16 @@ namespace ssa::domain {
     void SsaImportGroup::keepExtreme(std::shared_ptr<const Rank>& kept, Values& dating,
                                      const std::shared_ptr<const Rank>& rank, const Values& row,
                                      const bool newest) {
-        const auto candidate = datingFields(row);
         const bool beats = !kept || (newest ? *kept < *rank : *rank < *kept);
         // An equal rank (the same row spelled twice): the larger dating fields, in any order.
         const bool tie = kept && !(*kept < *rank) && !(*rank < *kept);
+        if (!beats && !tie) {
+            return;
+        }
+        auto candidate = datingFields(row);
         if (beats || (tie && datingText(dating) < datingText(candidate))) {
             kept = rank;
-            dating = candidate;
+            dating = std::move(candidate);
         }
     }
 
@@ -164,6 +167,26 @@ namespace ssa::domain {
 
     bool SsaImportGroup::resolvedByContent() const noexcept {
         return terminal_.top ? terminal_.resolvedByContent : open_.resolvedByContent;
+    }
+
+    bool SsaImportGroup::hasRepeatDifference(const Values& row) const {
+        const auto& fields = terminal_.top ? terminal_.fields : open_.fields;
+        for (const auto& [key, raw] : row) {
+            if (key == "valores_originais" || key == "situacao" || key == "arquivo_origem" ||
+                key == "data_planilha" || key == "data_criacao_arquivo" ||
+                key == "data_arquivo_origem") {
+                continue;
+            }
+            const auto field = fields.find(key);
+            if (field == fields.end() || field->second.value.empty()) {
+                continue;
+            }
+            const auto value = trimWhitespace(raw);
+            if (!value.empty() && !SsaImportPolicy::sameValue(key, value, field->second.value)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     const SsaImportGroup::Values& SsaImportGroup::newestOpen() const noexcept {

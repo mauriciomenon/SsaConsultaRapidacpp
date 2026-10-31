@@ -299,6 +299,7 @@ namespace ssa::infra::importing {
                 ++fileIndex;
                 error.clear();
                 const auto timestamp = sourceModifiedTimestamp(source, error);
+                const auto created = sourceCreatedTimestamp(source);
                 if (error) {
                     ++result.failedCopies;
                     result.operationalFailure = true;
@@ -311,6 +312,21 @@ namespace ssa::infra::importing {
                 if (copy.status == FileCopyStatus::Canceled) {
                     cancelStaging(result);
                     return result;
+                }
+                if (copy.status == FileCopyStatus::Deferred) {
+                    // Preserve the source and route the deferral through per-file isolation.
+                    result.files.push_back({source,
+                                            {},
+                                            false,
+                                            qt::toUtf8(source.filename()),
+                                            timestamp,
+                                            currentSummaryIndex,
+                                            created});
+                    auto& deferred = result.files.back();
+                    deferred.originalPath = source;
+                    deferred.deferredReason = copy.reason;
+                    deferred.deferredDiagnostic = copy.diagnostic;
+                    continue;
                 }
                 if (!copy.ok()) {
                     ++result.failedCopies;
@@ -331,9 +347,9 @@ namespace ssa::infra::importing {
                                         {destination},
                                         true,
                                         qt::toUtf8(source.filename()),
-                                        timestamp,
+                                        copy.sourceSnapshot->modifiedTimestamp(),
                                         currentSummaryIndex,
-                                        sourceCreatedTimestamp(source),
+                                        copy.sourceSnapshot->createdTimestamp(),
                                         source.filename()});
                 result.files.back().originalPath = source;
             }
@@ -616,6 +632,7 @@ namespace ssa::infra::importing {
                 const auto currentSummaryIndex = summaryIndex++;
                 error.clear();
                 const auto timestamp = sourceModifiedTimestamp(path, error);
+                const auto created = sourceCreatedTimestamp(path);
                 std::optional<FileIdentitySnapshot> identity;
                 std::filesystem::file_time_type modified;
                 if (!error) {
@@ -638,7 +655,7 @@ namespace ssa::infra::importing {
                                         qt::toUtf8(path.filename()),
                                         timestamp,
                                         currentSummaryIndex,
-                                        sourceCreatedTimestamp(path),
+                                        created,
                                         path.filename(),
                                         {{identity->value, identity->size, modified}}});
                 result.files.back().originalPath = path;
@@ -648,6 +665,7 @@ namespace ssa::infra::importing {
         for (const auto& path : processedWorkbooks) {
             error.clear();
             const auto timestamp = sourceModifiedTimestamp(path, error);
+            const auto created = sourceCreatedTimestamp(path);
             if (error) {
                 ++result.failedCopies;
                 result.operationalFailure = true;
@@ -656,7 +674,7 @@ namespace ssa::infra::importing {
                 continue;
             }
             result.files.push_back({path, {}, false, qt::toUtf8(path.filename()), timestamp});
-            result.files.back().sourceCreatedTimestamp = sourceCreatedTimestamp(path);
+            result.files.back().sourceCreatedTimestamp = created;
             result.files.back().summaryIndex = summaryIndex++;
             result.files.back().consolidationFilename = path.filename();
             result.files.back().originalPath = path;

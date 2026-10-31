@@ -1,5 +1,7 @@
 #pragma once
 
+#include "infra/import/SourceFileCapture.h"
+
 #include <filesystem>
 #include <functional>
 #include <memory>
@@ -13,8 +15,11 @@ namespace ssa::infra::importing {
       public:
         using EntryChunkConsumer = std::function<void(std::string_view)>;
 
-        explicit XlsxPackage(const std::filesystem::path& path);
+        explicit XlsxPackage(const std::filesystem::path& path,
+                             const std::stop_token& stopToken = {},
+                             const std::function<void()>& afterFirstChunkRead = {});
         ~XlsxPackage();
+        [[nodiscard]] const SourceFileSnapshot& sourceSnapshot() const;
 
         XlsxPackage(const XlsxPackage&) = delete;
         XlsxPackage& operator=(const XlsxPackage&) = delete;

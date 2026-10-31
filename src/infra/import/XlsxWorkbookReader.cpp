@@ -727,10 +727,12 @@ namespace ssa::infra::importing {
 
     } // namespace
 
-    SpreadsheetTable XlsxWorkbookReader::readFirstSheet(const std::filesystem::path& filePath,
-                                                        const std::stop_token& stopToken) {
+    SpreadsheetTable
+    XlsxWorkbookReader::readFirstSheet(const std::filesystem::path& filePath,
+                                       const std::stop_token& stopToken,
+                                       const std::function<void()>& afterFirstChunkRead) {
         throwIfImportCanceled(stopToken);
-        XlsxPackage package(filePath);
+        XlsxPackage package(filePath, stopToken, afterFirstChunkRead);
         const auto workbook = package.textEntry("xl/workbook.xml", true, stopToken);
         const auto relationshipIds = relationshipIdsForWorkbookSheets(workbook, stopToken);
         throwIfImportCanceled(stopToken);
@@ -747,6 +749,8 @@ namespace ssa::infra::importing {
         const auto sheetXml = package.textEntry(worksheetEntry, true, stopToken);
         SpreadsheetTable table;
         table.sourcePath = filePath;
+        table.sourceModifiedTimestamp = package.sourceSnapshot().modifiedTimestamp();
+        table.sourceCreatedTimestamp = package.sourceSnapshot().createdTimestamp();
         parseSheetRowChunks(
             sheetXml, sharedStrings, dateStyles, durationStyles, date1904, kMaxWorksheetRows,
             [&](SpreadsheetTable chunk, const bool, const bool) { table = std::move(chunk); },
@@ -756,9 +760,10 @@ namespace ssa::infra::importing {
 
     std::vector<SpreadsheetTable>
     XlsxWorkbookReader::readSheets(const std::filesystem::path& filePath,
-                                   const std::stop_token& stopToken) {
+                                   const std::stop_token& stopToken,
+                                   const std::function<void()>& afterFirstChunkRead) {
         throwIfImportCanceled(stopToken);
-        XlsxPackage package(filePath);
+        XlsxPackage package(filePath, stopToken, afterFirstChunkRead);
         const auto workbook = package.textEntry("xl/workbook.xml", true, stopToken);
         const auto relationshipIds = relationshipIdsForWorkbookSheets(workbook, stopToken);
         const auto relationships = package.textEntry("xl/_rels/workbook.xml.rels", true, stopToken);
@@ -778,6 +783,8 @@ namespace ssa::infra::importing {
             const auto sheetXml = package.textEntry(worksheetEntry, true, stopToken);
             SpreadsheetTable table;
             table.sourcePath = filePath;
+            table.sourceModifiedTimestamp = package.sourceSnapshot().modifiedTimestamp();
+            table.sourceCreatedTimestamp = package.sourceSnapshot().createdTimestamp();
             parseSheetRowChunks(
                 sheetXml, sharedStrings, dateStyles, durationStyles, date1904, kMaxWorksheetRows,
                 [&](SpreadsheetTable chunk, const bool, const bool) { table = std::move(chunk); },
@@ -790,9 +797,10 @@ namespace ssa::infra::importing {
     void XlsxWorkbookReader::readSheetChunks(const std::filesystem::path& filePath,
                                              const std::size_t rowsPerChunk,
                                              const SheetChunkConsumer& consume,
-                                             const std::stop_token& stopToken) {
+                                             const std::stop_token& stopToken,
+                                             const std::function<void()>& afterFirstChunkRead) {
         throwIfImportCanceled(stopToken);
-        XlsxPackage package(filePath);
+        XlsxPackage package(filePath, stopToken, afterFirstChunkRead);
         const auto workbook = package.textEntry("xl/workbook.xml", true, stopToken);
         const auto relationshipIds = relationshipIdsForWorkbookSheets(workbook, stopToken);
         const auto relationships = package.textEntry("xl/_rels/workbook.xml.rels", true, stopToken);
@@ -808,6 +816,8 @@ namespace ssa::infra::importing {
                 worksheetEntryForRelationship({relationships, relationshipId}, stopToken);
             SpreadsheetTable metadata;
             metadata.sourcePath = filePath;
+            metadata.sourceModifiedTimestamp = package.sourceSnapshot().modifiedTimestamp();
+            metadata.sourceCreatedTimestamp = package.sourceSnapshot().createdTimestamp();
             SheetRowsParser parser{sharedStrings, dateStyles, durationStyles, date1904,
                                    rowsPerChunk,  consume,    metadata,       stopToken};
             package.streamTextEntry(

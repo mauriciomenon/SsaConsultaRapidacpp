@@ -7,6 +7,7 @@
 #include "infra/import/ImportFileStager.h"
 #include "infra/import/ImportPathValidation.h"
 #include "infra/import/LegacySpreadsheetConverter.h"
+#include "infra/import/SourceFileCapture.h"
 #include "infra/import/SpreadsheetImportWorkflowPort.h"
 #include "infra/import/SsaImportConflictResolver.h"
 #include "infra/import/SsaSpreadsheetMapper.h"
@@ -29,6 +30,7 @@
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QFileInfo>
 #include <QLockFile>
 #include <QProcess>
 #include <QTemporaryDir>
@@ -57,7 +59,9 @@
 #include <thread>
 #include <vector>
 
-#ifndef _WIN32
+#ifdef _WIN32
+#include <windows.h>
+#else
 #include <unistd.h>
 #endif
 
@@ -1021,10 +1025,13 @@ TEST_CASE("external import reports a total staged copy failure causally") {
 }
 
 TEST_CASE("file copy rejects a source changed during the staged copy") {
+#ifdef _WIN32
+    SKIP("Windows denies writers while the capture handle is open");
+#else
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
 
-    constexpr std::uintmax_t copyBytes = 128ULL * 1024ULL * 1024ULL;
+    constexpr std::uintmax_t copyBytes = 2ULL * 1024ULL * 1024ULL;
     const auto root = std::filesystem::path{tempDir.path().toStdString()};
     const auto source = root / "changing-source.xlsx";
     const auto destination = root / "docs_entrada" / "staged.xlsx";
@@ -1034,28 +1041,42 @@ TEST_CASE("file copy rejects a source changed during the staged copy") {
     std::error_code changeError;
     const auto originalTime = std::filesystem::last_write_time(source, changeError);
     REQUIRE_FALSE(changeError);
+    const auto before = ssa::infra::importing::inspectSourceFileIdentity(source, changeError);
+    REQUIRE(before.has_value());
     const auto result = ssa::infra::importing::copyFileAtomically(
         {source, destination, [&] {
              firstChunkWritten = true;
+             std::fstream changed(source, std::ios::binary | std::ios::in | std::ios::out);
+             changed.put('X');
+             changed.close();
+             REQUIRE(changed.good());
              std::filesystem::last_write_time(source, originalTime + std::chrono::seconds{1},
                                               changeError);
          }});
 
     REQUIRE(firstChunkWritten);
     REQUIRE_FALSE(changeError);
-    REQUIRE(result.status == ssa::infra::importing::FileCopyStatus::Failed);
-    REQUIRE(result.diagnostic == "source changed during staged file copy");
+    REQUIRE(result.status == ssa::infra::importing::FileCopyStatus::Deferred);
+    REQUIRE(result.reason == "source_changed_during_read");
+    const auto after = ssa::infra::importing::inspectSourceFileIdentity(source, changeError);
+    REQUIRE(after.has_value());
+    REQUIRE(before->identity == after->identity);
+    REQUIRE(before->modified != after->modified);
+    REQUIRE(result.diagnostic.find("before={" + before->diagnostic() + "}") != std::string::npos);
+    REQUIRE(result.diagnostic.find("after={" + after->diagnostic() + "}") != std::string::npos);
     REQUIRE_FALSE(std::filesystem::exists(destination));
+    REQUIRE(std::filesystem::is_empty(destination.parent_path()));
+#endif
 }
 
-TEST_CASE("file copy rejects a source replaced with the same size and mtime") {
+TEST_CASE("file copy keeps the opened source when its path is replaced") {
 #ifdef _WIN32
     SKIP("replacing an open source is not supported by this Windows fixture");
 #else
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
 
-    constexpr std::uintmax_t copyBytes = 128ULL * 1024ULL * 1024ULL;
+    constexpr std::uintmax_t copyBytes = 2ULL * 1024ULL * 1024ULL;
     const auto root = std::filesystem::path{tempDir.path().toStdString()};
     const auto source = root / "identity-source.xlsx";
     const auto replacement = root / "identity-replacement.xlsx";
@@ -1066,6 +1087,12 @@ TEST_CASE("file copy rejects a source replaced with the same size and mtime") {
     const auto originalTime = std::filesystem::last_write_time(source, error);
     REQUIRE_FALSE(error);
     createSparseFile(replacement, copyBytes);
+    {
+        std::fstream changed(replacement, std::ios::binary | std::ios::in | std::ios::out);
+        changed.seekp(static_cast<std::streamoff>(copyBytes - 1));
+        changed.put('X');
+        REQUIRE(changed.good());
+    }
     std::filesystem::last_write_time(replacement, originalTime, error);
     REQUIRE_FALSE(error);
 
@@ -1086,9 +1113,14 @@ TEST_CASE("file copy rejects a source replaced with the same size and mtime") {
     REQUIRE(firstChunkWritten);
     REQUIRE_FALSE(replaceError);
     REQUIRE(replaced);
-    REQUIRE(result.status == ssa::infra::importing::FileCopyStatus::Failed);
-    REQUIRE(result.diagnostic == "source changed during staged file copy");
-    REQUIRE_FALSE(std::filesystem::exists(destination));
+    REQUIRE(result.status == ssa::infra::importing::FileCopyStatus::Succeeded);
+    REQUIRE(std::filesystem::file_size(destination) == copyBytes);
+    std::ifstream copied(destination, std::ios::binary);
+    copied.seekg(static_cast<std::streamoff>(copyBytes - 1));
+    REQUIRE(copied.get() == 0);
+    std::ifstream replacedSource(source, std::ios::binary);
+    replacedSource.seekg(static_cast<std::streamoff>(copyBytes - 1));
+    REQUIRE(replacedSource.get() == 'X');
 #endif
 }
 
@@ -3421,6 +3453,305 @@ TEST_CASE("external import overwrites spreadsheet metadata with the original fil
     REQUIRE(sqlite3_close(db) == SQLITE_OK);
 }
 
+TEST_CASE("import defers a source changed during capture and retries it next run") {
+#ifdef _WIN32
+    SKIP("Windows denies writers while the capture handle is open");
+#else
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+    const int scenario = GENERATE(0, 1, 2);
+    INFO("0=selected staging, 1=incremental capture, 2=full rescan capture: " << scenario);
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto source = (scenario == 0 ? root : inputDirectory) / "source.xlsx";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    ssa::infra::sqlite::SqliteSsaImportWriter::createEmpty(dbPath, importColumns());
+    {
+        ssa::infra::sqlite::SqliteConnection seed(dbPath,
+                                                  ssa::infra::sqlite::SqliteOpenMode::ReadWrite);
+        REQUIRE(sqlite3_exec(seed.handle(),
+                             "INSERT INTO ssa_table(numero_ssa, descricao_ssa) "
+                             "VALUES('202600001', 'Preserved before deferred capture')",
+                             nullptr, nullptr, nullptr) == SQLITE_OK);
+    }
+    const auto rows =
+        row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Situacao"),
+                inlineCell("C1", "Descricao da SSA"), inlineCell("D1", "Data de emissao")}) +
+        row(2, {inlineCell("A2", "202600502"), inlineCell("B2", "APV"), inlineCell("C2", "Capture"),
+                inlineCell("D2", "2026-07-01")});
+    writeWorkbook(source, rows, 2ULL * 1024ULL * 1024ULL);
+    const auto originalTime = std::filesystem::last_write_time(source);
+    std::size_t captureAttempts = 0;
+    ssa::infra::importing::SpreadsheetImportWorkflowPort::SynchronizationSignals synchronization;
+    const auto changeDuringRead = [&] {
+        ++captureAttempts;
+        std::fstream changed(source, std::ios::binary | std::ios::in | std::ios::out);
+        changed.put('X');
+        changed.close();
+        REQUIRE(changed.good());
+        std::filesystem::last_write_time(source, originalTime + std::chrono::seconds{1});
+    };
+    if (scenario == 0) {
+        synchronization.afterFirstChunkWritten = changeDuringRead;
+    } else {
+        synchronization.afterFirstSourceChunkRead = changeDuringRead;
+    }
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(
+        inputDirectory, dbPath, importColumns(), true, synchronization);
+    const auto mode =
+        scenario == 2 ? ssa::ports::RescanMode::Full : ssa::ports::RescanMode::Incremental;
+    const auto result =
+        scenario == 0 ? port.importExternalFiles({.files = {source}}) : port.rescan({mode});
+
+    INFO(result.message);
+    INFO(result.diagnostic);
+    REQUIRE(captureAttempts == 1);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
+    REQUIRE(result.importSummary.has_value());
+    REQUIRE(result.importSummary->rejected == 1);
+    REQUIRE(result.importSummary->files.front().reason == "source_changed_during_read");
+    for (const auto* field : {"before", "after", "size", "mtime", "identity"}) {
+        REQUIRE(result.diagnostic.find(field) != std::string::npos);
+    }
+    REQUIRE(std::filesystem::exists(source));
+    REQUIRE(directWorkbookCount(inputDirectory) == (scenario == 0 ? 0 : 1));
+    REQUIRE_FALSE(std::filesystem::exists(inputDirectory / "processadas" / "source.xlsx"));
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(sqliteWriterAccess(), dbPath,
+                                                           importColumns());
+    REQUIRE(writer.pendingConsolidation().empty());
+    {
+        ssa::infra::sqlite::SqliteConnection verification(dbPath);
+        REQUIRE(scalarInt(verification.handle(), "SELECT COUNT(*) FROM ssa_table") == 1);
+        REQUIRE(scalarText(verification.handle(), "SELECT numero_ssa FROM ssa_table") ==
+                "202600001");
+    }
+
+    writeWorkbook(source, rows);
+    ssa::infra::importing::SpreadsheetImportWorkflowPort retry(inputDirectory, dbPath,
+                                                               importColumns());
+    const auto retried =
+        scenario == 0 ? retry.importExternalFiles({.files = {source}}) : retry.rescan({mode});
+    INFO(retried.message);
+    INFO(retried.diagnostic);
+    REQUIRE(retried.ok());
+    ssa::infra::sqlite::SqliteConnection verification(dbPath);
+    REQUIRE(scalarInt(verification.handle(),
+                      "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600502'") == 1);
+#endif
+}
+
+#ifdef _WIN32
+TEST_CASE("import defers same-size writes through an already open Windows writer") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+    const bool selected = GENERATE(false, true);
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto source = (selected ? root : inputDirectory) / "source.xlsx";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    ssa::infra::sqlite::SqliteSsaImportWriter::createEmpty(dbPath, importColumns());
+    writeWorkbook(source,
+                  row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Descricao da SSA"),
+                          inlineCell("C1", "Data de emissao")}) +
+                      row(2, {inlineCell("A2", "202600502"), inlineCell("B2", "Changing"),
+                              inlineCell("C2", "2026-07-01")}));
+    const auto closeWriter = [](void* handle) { CloseHandle(handle); };
+    std::unique_ptr<void, decltype(closeWriter)> writer(
+        CreateFileW(source.c_str(), GENERIC_WRITE,
+                    FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
+                    FILE_ATTRIBUTE_NORMAL, nullptr),
+        closeWriter);
+    REQUIRE(writer.get() != INVALID_HANDLE_VALUE);
+    // Suppress write-time updates on this handle to exercise byte comparison alone.
+    const FILETIME unchanged{MAXDWORD, MAXDWORD};
+    REQUIRE(SetFileTime(writer.get(), nullptr, nullptr, &unchanged) != 0);
+    std::error_code error;
+    const auto before = ssa::infra::importing::inspectSourceFileIdentity(source, error);
+    REQUIRE_FALSE(error);
+    REQUIRE(before.has_value());
+    std::size_t writes = 0;
+    const auto overwrite = [&] {
+        ++writes;
+        DWORD written = 0;
+        REQUIRE(WriteFile(writer.get(), "X", 1, &written, nullptr) != 0);
+        REQUIRE(written == 1);
+        REQUIRE(FlushFileBuffers(writer.get()) != 0);
+        const auto after = ssa::infra::importing::inspectSourceFileIdentity(source, error);
+        REQUIRE_FALSE(error);
+        REQUIRE(after == before);
+    };
+    ssa::infra::importing::SpreadsheetImportWorkflowPort::SynchronizationSignals synchronization;
+    if (selected) {
+        synchronization.afterFirstChunkWritten = overwrite;
+    } else {
+        synchronization.afterFirstSourceChunkRead = overwrite;
+    }
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(
+        inputDirectory, dbPath, importColumns(), true, synchronization);
+    const auto result = selected ? port.importExternalFiles({.files = {source}})
+                                 : port.rescan({ssa::ports::RescanMode::Incremental});
+    INFO(result.diagnostic);
+    REQUIRE(writes == 1);
+    REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
+    REQUIRE(result.importSummary.has_value());
+    REQUIRE(result.importSummary->files.front().reason == "source_changed_during_read");
+    REQUIRE(result.diagnostic.find("copies_identical=false") != std::string::npos);
+    for (const auto* field : {"before={", "after={", "size=", "mtime_seconds=", "identity="}) {
+        REQUIRE(result.diagnostic.find(field) != std::string::npos);
+    }
+    REQUIRE(std::filesystem::exists(source));
+    REQUIRE_FALSE(std::filesystem::exists(inputDirectory / "processadas" / "source.xlsx"));
+    ssa::infra::sqlite::SqliteConnection verification(dbPath);
+    REQUIRE(scalarInt(verification.handle(), "SELECT COUNT(*) FROM ssa_table") == 0);
+}
+
+TEST_CASE("import defers a workbook locked exclusively and imports it next run") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+    const int scenario = GENERATE(0, 1, 2);
+    INFO("0=selected staging, 1=incremental capture, 2=full rescan capture: " << scenario);
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto source = (scenario == 0 ? root : inputDirectory) / "source.xlsx";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    ssa::infra::sqlite::SqliteSsaImportWriter::createEmpty(dbPath, importColumns());
+    writeWorkbook(source,
+                  row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Descricao da SSA"),
+                          inlineCell("C1", "Data de emissao")}) +
+                      row(2, {inlineCell("A2", "202600502"), inlineCell("B2", "Locked"),
+                              inlineCell("C2", "2026-07-01")}));
+    const auto mode =
+        scenario == 2 ? ssa::ports::RescanMode::Full : ssa::ports::RescanMode::Incremental;
+    const auto run = [&] {
+        ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                                  importColumns());
+        return scenario == 0 ? port.importExternalFiles({.files = {source}}) : port.rescan({mode});
+    };
+    {
+        const auto closeWriter = [](void* handle) { CloseHandle(handle); };
+        std::unique_ptr<void, decltype(closeWriter)> writer(
+            CreateFileW(source.c_str(), GENERIC_WRITE, 0, nullptr, OPEN_EXISTING,
+                        FILE_ATTRIBUTE_NORMAL, nullptr),
+            closeWriter);
+        REQUIRE(writer.get() != INVALID_HANDLE_VALUE);
+        const auto result = run();
+        INFO(result.message);
+        INFO(result.diagnostic);
+        REQUIRE(result.status == ssa::ports::WorkflowStatus::Rejected);
+        REQUIRE(result.importSummary.has_value());
+        REQUIRE(result.importSummary->files.front().reason == "source_in_use");
+        REQUIRE(result.diagnostic.find("win32_error=32") != std::string::npos);
+    }
+    REQUIRE(std::filesystem::exists(source));
+    REQUIRE_FALSE(std::filesystem::exists(inputDirectory / "processadas" / "source.xlsx"));
+    const auto retried = run();
+    INFO(retried.message);
+    INFO(retried.diagnostic);
+    REQUIRE(retried.ok());
+    ssa::infra::sqlite::SqliteConnection verification(dbPath);
+    REQUIRE(scalarInt(verification.handle(),
+                      "SELECT COUNT(*) FROM ssa_table WHERE numero_ssa='202600502'") == 1);
+}
+
+TEST_CASE("import reads an unchanged workbook held open for writing by another process") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+    // Excel keeps an open workbook with write access: the verified copy still reads it.
+    const int scenario = GENERATE(0, 1);
+    const bool selected = scenario != 0;
+    INFO("0=rescan, 1=selected external: " << scenario);
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    const auto source = (scenario == 1 ? root : inputDirectory) / "source.xlsx";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(inputDirectory);
+    std::filesystem::create_directories(dbPath.parent_path());
+    ssa::infra::sqlite::SqliteSsaImportWriter::createEmpty(dbPath, importColumns());
+    writeWorkbook(source,
+                  row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Descricao da SSA"),
+                          inlineCell("C1", "Data de emissao")}) +
+                      row(2, {inlineCell("A2", "202600502"), inlineCell("B2", "In use"),
+                              inlineCell("C2", "2026-07-01")}));
+    const ssa::infra::sqlite::SqliteSsaImportWriter database(sqliteWriterAccess(), dbPath,
+                                                             importColumns());
+    const auto closeWriter = [](void* handle) { CloseHandle(handle); };
+    std::unique_ptr<void, decltype(closeWriter)> writer(
+        CreateFileW(source.c_str(), GENERIC_WRITE,
+                    FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
+                    FILE_ATTRIBUTE_NORMAL, nullptr),
+        closeWriter);
+    REQUIRE(writer.get() != INVALID_HANDLE_VALUE);
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns());
+
+    const auto result = selected ? port.importExternalFiles({.files = {source}})
+                                 : port.rescan({ssa::ports::RescanMode::Incremental});
+
+    INFO(result.message);
+    INFO(result.diagnostic);
+    REQUIRE(result.ok());
+    REQUIRE(result.importSummary.has_value());
+    REQUIRE(result.importSummary->inserts == 1);
+    ssa::infra::sqlite::SqliteConnection verification(dbPath);
+    REQUIRE(scalarInt(verification.handle(), "SELECT COUNT(*) FROM ssa_table") == 1);
+}
+#endif
+TEST_CASE("import uses the captured mtime when a workbook is replaced after discovery") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto inputDirectory = root / "docs_entrada";
+    // Processed files participate in a full rescan without root consolidation identity checks.
+    const auto source = inputDirectory / "processadas" / "source.xlsx";
+    const auto replacement = root / "replacement.xlsx";
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(source.parent_path());
+    std::filesystem::create_directories(dbPath.parent_path());
+    ssa::infra::sqlite::SqliteSsaImportWriter::createEmpty(dbPath, importColumns());
+    const auto rows = row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Descricao da SSA"),
+                              inlineCell("C1", "Data de emissao")}) +
+                      row(2, {inlineCell("A2", "202600502"), inlineCell("B2", "Replacement"),
+                              inlineCell("C2", "2026-07-01")});
+    writeWorkbook(source, rows);
+    writeWorkbook(replacement, rows);
+    setLocalModificationTime(source, 2026, 7, 12, 9, 45);
+    setLocalModificationTime(replacement, 2026, 7, 14, 13, 30);
+    const auto created = QFileInfo{ssa::qt::toQString(replacement)}.birthTime();
+    bool replaced = false;
+    ssa::ports::RescanRequest request{ssa::ports::RescanMode::Full};
+    request.progress = [&](const auto& update) {
+        if (update.stage == ssa::ports::WorkflowProgressStage::ProcessingFile && !replaced) {
+            std::filesystem::rename(source, root / "discovered.xlsx");
+            std::filesystem::rename(replacement, source);
+            replaced = true;
+        }
+    };
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(inputDirectory, dbPath,
+                                                              importColumns(), false);
+    const auto result = port.rescan(request);
+    INFO(result.message);
+    INFO(result.diagnostic);
+    REQUIRE(replaced);
+    REQUIRE(result.ok());
+    ssa::infra::sqlite::SqliteConnection verification(dbPath);
+    REQUIRE(scalarText(verification.handle(),
+                       "SELECT data_arquivo_origem FROM ssa_table "
+                       "WHERE numero_ssa='202600502'") == "2026-07-14 13:30:00");
+    REQUIRE(scalarText(verification.handle(),
+                       "SELECT data_planilha FROM ssa_table "
+                       "WHERE numero_ssa='202600502'") == "2026-07-14T13:30:00");
+    const auto captured = ssa::infra::importing::XlsxWorkbookReader::readFirstSheet(source);
+    REQUIRE(captured.sourceCreatedTimestamp ==
+            (created.isValid() ? created.toLocalTime().toString("yyyy-MM-dd HH:mm:ss").toStdString()
+                               : std::string{}));
+}
+
 TEST_CASE("external import falls back to the original source modification time") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
@@ -3647,6 +3978,11 @@ TEST_CASE("input staging keeps filename and local modification time separate") {
         REQUIRE(staged.files.size() == 1);
         REQUIRE(staged.files.front().originalFilename == filename);
         REQUIRE(staged.files.front().sourceModifiedTimestamp == "2000-07-02 03:04:00");
+        const auto created = QFileInfo{ssa::qt::toQString(source)}.birthTime();
+        REQUIRE(staged.files.front().sourceCreatedTimestamp ==
+                (created.isValid()
+                     ? created.toLocalTime().toString("yyyy-MM-dd HH:mm:ss").toStdString()
+                     : std::string{}));
 #ifdef __APPLE__
         REQUIRE_FALSE(staged.files.front().sourceCreatedTimestamp.empty());
 #endif

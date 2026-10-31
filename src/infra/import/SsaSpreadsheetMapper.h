@@ -11,11 +11,24 @@ namespace ssa::infra::importing {
       public:
         using MappingCheckpoint = std::function<void()>;
 
-        [[nodiscard]] static SsaImportBatch map(const SpreadsheetTable& table,
+        struct FileMetadata {
+            std::string sourceFilename;
+            std::string sourceTimestamp;
+            std::string sheetTimestamp;
+            std::string createdTimestamp;
+            bool legacySummary = false;
+        };
+
+        [[nodiscard]] static FileMetadata fileMetadata(const SpreadsheetTable& table);
+        [[nodiscard]] static SsaImportBatch map(SpreadsheetTable table,
                                                 const std::stop_token& stopToken = {});
-        [[nodiscard]] static SsaImportBatch map(const SpreadsheetTable& table,
+        [[nodiscard]] static SsaImportBatch map(SpreadsheetTable table,
                                                 const std::stop_token& stopToken,
                                                 const MappingCheckpoint& afterFirstRowMapped);
+        [[nodiscard]] static SsaImportBatch map(SpreadsheetTable table,
+                                                const FileMetadata& metadata,
+                                                const std::stop_token& stopToken,
+                                                const MappingCheckpoint& afterFirstRowMapped = {});
     };
 
 } // namespace ssa::infra::importing

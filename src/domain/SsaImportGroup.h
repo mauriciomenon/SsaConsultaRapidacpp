@@ -30,6 +30,8 @@ namespace ssa::domain {
         [[nodiscard]] std::size_t rows() const noexcept;
         // Precedence of the rows that decide the result; empty when the group has none.
         [[nodiscard]] const std::string& leadingPrecedence() const noexcept;
+        // Only overlapping, differing business fields can produce a repeat diagnostic.
+        [[nodiscard]] bool hasRepeatDifference(const Values& row) const;
         // Rows of equal precedence disagreed and were resolved by content.
         [[nodiscard]] bool resolvedByContent() const noexcept;
         // Dating fields of the newest open row and of the oldest terminal row; empty when

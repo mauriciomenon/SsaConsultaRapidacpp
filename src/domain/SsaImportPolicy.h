@@ -84,6 +84,9 @@ namespace ssa::domain {
             auto operator<=>(const ContentKey&) const = default;
         };
         [[nodiscard]] static ContentKey contentKey(const Values& row);
+        // Field equality used by merging and the repeated-row diagnostic gate.
+        [[nodiscard]] static bool sameValue(std::string_view key, const std::string& left,
+                                            const std::string& right);
         // An open row dated after a terminal (STE/SCA) one: a stale file or a wrong date.
         [[nodiscard]] static bool isOpenAfterTerminal(const Values& open, const Values& terminal);
         [[nodiscard]] static SourceProfile classifySourceProfile(const std::string& filename);

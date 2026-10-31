@@ -15,13 +15,16 @@ namespace ssa::infra::importing {
         using SheetChunkConsumer =
             std::function<void(SpreadsheetTable, bool firstInSheet, bool lastInSheet)>;
 
-        [[nodiscard]] static SpreadsheetTable readFirstSheet(const std::filesystem::path& filePath,
-                                                             const std::stop_token& stopToken = {});
+        [[nodiscard]] static SpreadsheetTable
+        readFirstSheet(const std::filesystem::path& filePath, const std::stop_token& stopToken = {},
+                       const std::function<void()>& afterFirstChunkRead = {});
         [[nodiscard]] static std::vector<SpreadsheetTable>
-        readSheets(const std::filesystem::path& filePath, const std::stop_token& stopToken = {});
+        readSheets(const std::filesystem::path& filePath, const std::stop_token& stopToken = {},
+                   const std::function<void()>& afterFirstChunkRead = {});
         static void readSheetChunks(const std::filesystem::path& filePath, std::size_t rowsPerChunk,
                                     const SheetChunkConsumer& consume,
-                                    const std::stop_token& stopToken = {});
+                                    const std::stop_token& stopToken = {},
+                                    const std::function<void()>& afterFirstChunkRead = {});
 
       private:
         struct WorksheetRelationshipRequest {

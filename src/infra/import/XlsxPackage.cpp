@@ -1,35 +1,31 @@
 #include "infra/import/XlsxPackage.h"
 
-#include "qt/FilesystemPath.h"
-
-#include <QFile>
-#include <QString>
+#include "infra/import/SourceFileCapture.h"
 
 #include <miniz.h>
 
-#include <cstring>
 #include <exception>
 #include <stdexcept>
 #include <system_error>
+#include <vector>
 
 namespace ssa::infra::importing {
 
     class XlsxPackage::Storage final {
       public:
-        explicit Storage(const std::filesystem::path& path) : file_(qt::toQString(path)) {
-            if (!file_.open(QIODevice::ReadOnly)) {
-                throw std::runtime_error("cannot open xlsx file");
-            }
-            const auto size = file_.size();
-            if (size <= 0) {
+        explicit Storage(const std::filesystem::path& path, const std::stop_token& stopToken,
+                         const std::function<void()>& afterFirstChunkRead) {
+            // Capture once before parsing any sheet; miniz never observes the live source.
+            snapshot_ = captureSourceFile(
+                path,
+                [this](const std::span<const char> chunk) {
+                    bytes_.insert(bytes_.end(), chunk.begin(), chunk.end());
+                },
+                stopToken, 128ULL * 1024ULL * 1024ULL, afterFirstChunkRead);
+            if (snapshot_.size == 0) {
                 throw std::runtime_error("xlsx file is empty");
             }
-            mapped_ = file_.map(0, static_cast<qint64>(size));
-            if (mapped_ == nullptr) {
-                throw std::runtime_error("cannot map xlsx file");
-            }
-            std::memset(&archive_, 0, sizeof(archive_));
-            if (mz_zip_reader_init_mem(&archive_, mapped_, static_cast<size_t>(size), 0) == 0) {
+            if (mz_zip_reader_init_mem(&archive_, bytes_.data(), bytes_.size(), 0) == 0) {
                 throw std::runtime_error("cannot read xlsx zip package");
             }
             open_ = true;
@@ -39,13 +35,14 @@ namespace ssa::infra::importing {
             if (open_) {
                 mz_zip_reader_end(&archive_);
             }
-            if (mapped_ != nullptr) {
-                file_.unmap(mapped_);
-            }
         }
 
         Storage(const Storage&) = delete;
         Storage& operator=(const Storage&) = delete;
+
+        [[nodiscard]] const SourceFileSnapshot& sourceSnapshot() const {
+            return snapshot_;
+        }
 
         [[nodiscard]] std::string textEntry(const std::string& entryName, const bool required,
                                             const std::stop_token& stopToken) {
@@ -133,17 +130,22 @@ namespace ssa::infra::importing {
             }
             extractedBytes_ += context.extractedBytes;
         }
-        QFile file_;
-        uchar* mapped_{nullptr};
+        std::vector<char> bytes_;
+        SourceFileSnapshot snapshot_;
         mz_zip_archive archive_{};
         mz_uint64 extractedBytes_{0};
         bool open_{false};
     };
 
-    XlsxPackage::XlsxPackage(const std::filesystem::path& path)
-        : storage_(std::make_unique<Storage>(path)) {}
+    XlsxPackage::XlsxPackage(const std::filesystem::path& path, const std::stop_token& stopToken,
+                             const std::function<void()>& afterFirstChunkRead)
+        : storage_(std::make_unique<Storage>(path, stopToken, afterFirstChunkRead)) {}
 
     XlsxPackage::~XlsxPackage() = default;
+
+    const SourceFileSnapshot& XlsxPackage::sourceSnapshot() const {
+        return storage_->sourceSnapshot();
+    }
 
     std::string XlsxPackage::textEntry(const std::string& entryName, const bool required,
                                        const std::stop_token& stopToken) {

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "infra/import/SourceFileCapture.h"
+
 #include <cstdint>
 #include <filesystem>
 #include <functional>
@@ -14,6 +16,7 @@ namespace ssa::infra::importing {
     enum class FileCopyStatus {
         Succeeded,
         Canceled,
+        Deferred,
         CleanupFailed,
         Failed,
     };
@@ -21,6 +24,8 @@ namespace ssa::infra::importing {
     struct FileCopyResult {
         FileCopyStatus status = FileCopyStatus::Failed;
         std::string diagnostic;
+        std::string reason;
+        std::optional<SourceFileSnapshot> sourceSnapshot;
 
         [[nodiscard]] bool ok() const {
             return status == FileCopyStatus::Succeeded;

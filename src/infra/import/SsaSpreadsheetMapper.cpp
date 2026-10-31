@@ -289,15 +289,8 @@ namespace ssa::infra::importing {
             return rowValue(row, key);
         }
 
-        bool isLegacyIncompleteSummaryRow(const SpreadsheetTable& table, const SsaImportRow& row) {
-            const auto filename = table.originalFilename.empty()
-                                      ? qt::toUtf8(table.sourcePath.filename())
-                                      : table.originalFilename;
-            auto normalizedFilename = filename;
-            std::ranges::transform(normalizedFilename, normalizedFilename.begin(),
-                                   domain::ascii::toLower);
-            if (normalizedFilename.find("todas as ssas") == std::string::npos ||
-                !valueFor(row, "descricao_ssa").empty() ||
+        bool isLegacyIncompleteSummaryRow(const bool legacySummary, const SsaImportRow& row) {
+            if (!legacySummary || !valueFor(row, "descricao_ssa").empty() ||
                 !valueFor(row, "data_cadastro").empty() ||
                 valueFor(row, "semana_cadastro").empty()) {
                 return false;
@@ -365,12 +358,44 @@ namespace ssa::infra::importing {
 
     } // namespace
 
-    SsaImportBatch SsaSpreadsheetMapper::map(const SpreadsheetTable& table,
+    SsaImportBatch SsaSpreadsheetMapper::map(SpreadsheetTable table,
                                              const std::stop_token& stopToken) {
-        return map(table, stopToken, {});
+        return map(std::move(table), stopToken, {});
     }
 
-    SsaImportBatch SsaSpreadsheetMapper::map(const SpreadsheetTable& table,
+    SsaImportBatch SsaSpreadsheetMapper::map(SpreadsheetTable table,
+                                             const std::stop_token& stopToken,
+                                             const MappingCheckpoint& afterFirstRowMapped) {
+        const auto metadata = fileMetadata(table);
+        return map(std::move(table), metadata, stopToken, afterFirstRowMapped);
+    }
+
+    SsaSpreadsheetMapper::FileMetadata
+    SsaSpreadsheetMapper::fileMetadata(const SpreadsheetTable& table) {
+        const auto sourceFilename = table.originalFilename.empty()
+                                        ? qt::toUtf8(table.sourcePath.filename())
+                                        : table.originalFilename;
+        auto sourceTimestamp = domain::SsaImportPolicy::normalizeFilenameTimestamp(sourceFilename);
+        for (const auto* fallback :
+             {&table.sourceModifiedTimestamp, &table.sourceCreatedTimestamp}) {
+            if (sourceTimestamp.empty()) {
+                sourceTimestamp =
+                    domain::SsaImportPolicy::normalizeSnapshotTimestamp(fallback->substr(0, 19));
+            }
+        }
+        auto sheetTimestamp = sourceTimestamp;
+        if (!sheetTimestamp.empty()) {
+            sheetTimestamp[10] = 'T';
+        }
+        auto normalizedFilename = sourceFilename;
+        std::ranges::transform(normalizedFilename, normalizedFilename.begin(),
+                               domain::ascii::toLower);
+        return {sourceFilename, sourceTimestamp, sheetTimestamp,
+                domain::SsaImportPolicy::normalizeSnapshotTimestamp(table.sourceCreatedTimestamp),
+                normalizedFilename.find("todas as ssas") != std::string::npos};
+    }
+
+    SsaImportBatch SsaSpreadsheetMapper::map(SpreadsheetTable table, const FileMetadata& metadata,
                                              const std::stop_token& stopToken,
                                              const MappingCheckpoint& afterFirstRowMapped) {
         throwIfMappingCanceled(stopToken);
@@ -414,21 +439,6 @@ namespace ssa::infra::importing {
         batch.headerRow = header;
         batch.mappingStatus = SpreadsheetMappingStatus::Mapped;
         const std::size_t firstDataRow = hasExternalHeader ? 0 : *headerIndex + 1;
-        const auto sourceFilename = table.originalFilename.empty()
-                                        ? qt::toUtf8(table.sourcePath.filename())
-                                        : table.originalFilename;
-        auto sourceTimestamp = domain::SsaImportPolicy::normalizeFilenameTimestamp(sourceFilename);
-        for (const auto* fallback :
-             {&table.sourceModifiedTimestamp, &table.sourceCreatedTimestamp}) {
-            if (sourceTimestamp.empty()) {
-                sourceTimestamp =
-                    domain::SsaImportPolicy::normalizeSnapshotTimestamp(fallback->substr(0, 19));
-            }
-        }
-        auto sheetTimestamp = sourceTimestamp;
-        if (!sheetTimestamp.empty()) {
-            sheetTimestamp[10] = 'T';
-        }
         const bool hasReprogrammingColumn =
             std::ranges::any_of(columnMap.columns, [](const auto& column) {
                 return column.second == "num_reprogramacoes";
@@ -437,13 +447,14 @@ namespace ssa::infra::importing {
         for (std::size_t rowIndex = firstDataRow; rowIndex < table.rows.size(); ++rowIndex) {
             throwIfMappingCanceled(stopToken);
             SsaImportRow row;
+            row.reserve(columnMap.columns.size() + 5);
             std::unordered_map<std::string, RawCell> raw;
             raw.reserve(columnMap.columns.size());
             for (const auto& [columnIndex, columnKey] : columnMap.columns) {
                 RawCell cell{RawCell::Kind::String, {}};
                 if (rowIndex < table.rawRows.size()) {
                     cell = columnIndex < table.rawRows[rowIndex].size()
-                               ? table.rawRows[rowIndex][columnIndex]
+                               ? std::move(table.rawRows[rowIndex][columnIndex])
                                : RawCell{RawCell::Kind::String, {}};
                 } else if (columnIndex < table.rows[rowIndex].size()) {
                     cell = {RawCell::Kind::String, table.rows[rowIndex][columnIndex]};
@@ -540,16 +551,16 @@ namespace ssa::infra::importing {
                 }
                 continue;
             }
-            if (isLegacyIncompleteSummaryRow(table, row)) {
+            if (isLegacyIncompleteSummaryRow(metadata.legacySummary, row)) {
                 ++batch.skippedRows;
                 continue;
             }
-            row["arquivo_origem"] = sourceFilename;
+            row["arquivo_origem"] = metadata.sourceFilename;
             row.erase("data_planilha");
             row.erase("data_arquivo_origem");
-            if (!sourceTimestamp.empty()) {
-                row.emplace("data_arquivo_origem", sourceTimestamp);
-                row.emplace("data_planilha", sheetTimestamp);
+            if (!metadata.sourceTimestamp.empty()) {
+                row.emplace("data_arquivo_origem", metadata.sourceTimestamp);
+                row.emplace("data_planilha", metadata.sheetTimestamp);
             }
             const auto validation = domain::SsaImportPolicy::validateRow(row);
             if (validation != domain::SsaImportPolicy::RowValidationIssue::None) {
@@ -572,11 +583,9 @@ namespace ssa::infra::importing {
                 }
                 continue;
             }
-            if (const auto sourceCreatedTimestamp =
-                    domain::SsaImportPolicy::normalizeSnapshotTimestamp(
-                        table.sourceCreatedTimestamp);
-                !sourceCreatedTimestamp.empty() && valueFor(row, "data_criacao_arquivo").empty()) {
-                row.emplace("data_criacao_arquivo", sourceCreatedTimestamp);
+            if (!metadata.createdTimestamp.empty() &&
+                valueFor(row, "data_criacao_arquivo").empty()) {
+                row.emplace("data_criacao_arquivo", metadata.createdTimestamp);
             }
             // Values synthesized without a source column have a missing original.
             for (const auto& [key, value] : row) {

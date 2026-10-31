@@ -9,6 +9,58 @@
 #include <string_view>
 #include <utility>
 
+TEST_CASE("SSA mapper reuses file metadata across consumed chunks without changing rows") {
+    using namespace ssa::infra::importing;
+    for (const auto* filename : {"Todas as SSAs_20-10-2026_1127AM.xlsx", "Todas as SSAs.xlsx"}) {
+        INFO(filename);
+        SpreadsheetTable table;
+        table.sourcePath = "staged.xlsx";
+        table.originalFilename = filename;
+        table.sourceModifiedTimestamp = "2026-10-19 09:08:07";
+        table.sourceCreatedTimestamp = "2026-10-18 06:05:04";
+        table.headerRow = {"numero_ssa", "descricao_ssa", "data_cadastro", "situacao",
+                           "semana_cadastro"};
+        table.rows = {{"202600001", " First ", "2026-07-14", "ASE", "202529"},
+                      {"202600002", "Second", "2026-07-15", "ASE", "202529"},
+                      {"202600003", "", "", "SCC", "202529"}};
+        for (const auto& values : table.rows) {
+            std::vector<RawCell> raw;
+            for (const auto& value : values) {
+                raw.push_back({RawCell::Kind::String, value});
+            }
+            table.rawRows.push_back(std::move(raw));
+        }
+        const auto expected = SsaSpreadsheetMapper::map(table);
+        const auto metadata = SsaSpreadsheetMapper::fileMetadata(table);
+        REQUIRE(metadata.legacySummary);
+        REQUIRE(metadata.createdTimestamp == "2026-10-18 06:05:04");
+        REQUIRE(metadata.sourceTimestamp ==
+                (std::string_view{filename}.find("1127AM") != std::string_view::npos
+                     ? "2026-10-20 11:27:00"
+                     : "2026-10-19 09:08:07"));
+        REQUIRE(expected.rows.size() == 2);
+        REQUIRE(expected.skippedRows == 1);
+        std::vector<SsaImportRow> rows;
+        std::size_t skipped = 0;
+        for (std::size_t index = 0; index < table.rows.size(); ++index) {
+            SpreadsheetTable chunk;
+            chunk.sourcePath = table.sourcePath;
+            chunk.headerRow = table.headerRow;
+            chunk.rows.push_back(table.rows[index]);
+            chunk.rawRows.push_back(table.rawRows[index]);
+            auto mapped = SsaSpreadsheetMapper::map(std::move(chunk), metadata, {});
+            REQUIRE(mapped.mappingStatus == expected.mappingStatus);
+            skipped += mapped.skippedRows;
+            for (auto& row : mapped.rows) {
+                rows.push_back(std::move(row));
+            }
+        }
+        REQUIRE(rows == expected.rows);
+        REQUIRE(skipped == expected.skippedRows);
+        REQUIRE(table.rawRows.front().front().value == "202600001");
+    }
+}
+
 TEST_CASE("SSA spreadsheet header catalog preserves the Python import contract") {
     using Catalog = ssa::infra::importing::SsaSpreadsheetHeaderCatalog;
     static constexpr std::array<std::pair<std::string_view, std::string_view>, 13> samples{

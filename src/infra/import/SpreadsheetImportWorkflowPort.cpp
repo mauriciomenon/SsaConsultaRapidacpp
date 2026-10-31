@@ -1,6 +1,7 @@
 #include "infra/import/SpreadsheetImportWorkflowPort.h"
 
 #include "domain/SsaTypes.h"
+#include "infra/import/SourceFileCapture.h"
 #include "infra/import/SsaSpreadsheetMapper.h"
 #include "infra/import/XlsxWorkbookReader.h"
 #include "infra/sqlite/SqliteConnection.h"
@@ -179,12 +180,17 @@ namespace ssa::infra::importing {
 
         [[nodiscard]] SamSpreadsheetAdaptResult
         readAndAdaptSamWorkbook(const StagedImportFile& file, const ports::SamArtifact& artifact,
-                                const std::stop_token& stopToken) {
-            auto sheets = XlsxWorkbookReader::readSheets(file.workbookPath, stopToken);
+                                const std::stop_token& stopToken,
+                                const std::function<void()>& afterFirstSourceChunkRead) {
+            auto sheets = XlsxWorkbookReader::readSheets(file.workbookPath, stopToken,
+                                                         afterFirstSourceChunkRead);
             for (auto& table : sheets) {
                 table.originalFilename = file.originalFilename;
-                table.sourceModifiedTimestamp = file.sourceModifiedTimestamp;
-                table.sourceCreatedTimestamp = file.sourceCreatedTimestamp;
+                if (file.ownedByStager) {
+                    // These timestamps came from the original handle during staging.
+                    table.sourceModifiedTimestamp = file.sourceModifiedTimestamp;
+                    table.sourceCreatedTimestamp = file.sourceCreatedTimestamp;
+                }
             }
             return SamSpreadsheetAdapter::adapt(sheets, artifact, stopToken);
         }
@@ -197,7 +203,8 @@ namespace ssa::infra::importing {
 
         void readChunkedWorkbook(const StagedImportFile& file, const bool replaceAll,
                                  const std::size_t rowsPerChunk, const std::stop_token& stopToken,
-                                 ChunkedWorkbookImportResult& result) {
+                                 ChunkedWorkbookImportResult& result,
+                                 const std::function<void()>& afterFirstSourceChunkRead) {
             result = {};
             bool mappedWorksheet = false;
             bool ignoredWorksheet = false;
@@ -205,9 +212,18 @@ namespace ssa::infra::importing {
             bool fatalMapping = false;
             std::vector<std::string> headerRow;
             result.batch.sourcePath = file.workbookPath;
+            std::optional<SsaSpreadsheetMapper::FileMetadata> metadata;
             XlsxWorkbookReader::readSheetChunks(
                 file.workbookPath, rowsPerChunk,
                 [&](SpreadsheetTable table, const bool firstInSheet, const bool) {
+                    if (!metadata) {
+                        table.originalFilename = file.originalFilename;
+                        if (file.ownedByStager) {
+                            table.sourceModifiedTimestamp = file.sourceModifiedTimestamp;
+                            table.sourceCreatedTimestamp = file.sourceCreatedTimestamp;
+                        }
+                        metadata = SsaSpreadsheetMapper::fileMetadata(table);
+                    }
                     if (fatalMapping || invalidTrailingWorksheet || result.invalidFullBatch) {
                         return;
                     }
@@ -220,10 +236,8 @@ namespace ssa::infra::importing {
                     } else {
                         table.headerRow = headerRow;
                     }
-                    table.originalFilename = file.originalFilename;
-                    table.sourceModifiedTimestamp = file.sourceModifiedTimestamp;
-                    table.sourceCreatedTimestamp = file.sourceCreatedTimestamp;
-                    auto worksheetBatch = SsaSpreadsheetMapper::map(table, stopToken);
+                    auto worksheetBatch =
+                        SsaSpreadsheetMapper::map(std::move(table), *metadata, stopToken);
                     if (worksheetBatch.mappingStatus ==
                         SpreadsheetMappingStatus::HeaderNotRecognized) {
                         if (mappedWorksheet) {
@@ -256,7 +270,7 @@ namespace ssa::infra::importing {
                     }
                     std::ranges::move(worksheetBatch.rows, std::back_inserter(result.batch.rows));
                 },
-                stopToken);
+                stopToken, afterFirstSourceChunkRead);
             if (invalidTrailingWorksheet) {
                 result.batch.mappingStatus = SpreadsheetMappingStatus::HeaderNotRecognized;
             } else if (!fatalMapping) {
@@ -747,6 +761,29 @@ namespace ssa::infra::importing {
         }
         if (pending.empty()) {
             return std::nullopt;
+        }
+        if (selectedStaging != nullptr &&
+            std::ranges::any_of(selectedStaging->files, [](const StagedImportFile& file) {
+                return !file.deferredReason.empty();
+            })) {
+            // Recovery must not move a selected source whose capture was deferred.
+            // Keep the existing journal intact until the next run can capture the selection.
+            auto summary = makeImportSummary(*selectedStaging);
+            std::string diagnostic;
+            for (const auto& file : selectedStaging->files) {
+                if (!file.deferredReason.empty()) {
+                    summary.files[file.summaryIndex].reason = file.deferredReason;
+                    const auto detail =
+                        "file=" + file.originalFilename + " " + file.deferredDiagnostic;
+                    qWarning().noquote() << QString::fromStdString(detail);
+                    appendWorkflowDiagnostic(diagnostic, detail);
+                }
+            }
+            markUncommitted(summary, ports::ImportFileStatus::Rejected, true);
+            return withSummary({ports::WorkflowStatus::Rejected,
+                                "import_consolidation_resume source_capture_deferred", true,
+                                std::move(diagnostic)},
+                               summary);
         }
         if (selectedStaging != nullptr && selectedPendingSummaryIndices != nullptr) {
             selectedPendingSummaryIndices->reserve(selectedStaging->files.size());
@@ -1508,6 +1545,8 @@ namespace ssa::infra::importing {
             if (!detail.empty()) {
                 diagnosticLine += " detail=" + std::string{detail};
             }
+            // The aggregate report is bounded; retain the complete per-file evidence in logs.
+            qWarning().noquote() << QString::fromStdString(diagnosticLine);
             appendWorkflowDiagnostic(perFileDiagnostic, diagnosticLine);
             unconsolidatedStaging.files.push_back(stagedFile);
         };
@@ -1550,13 +1589,17 @@ namespace ssa::infra::importing {
             };
             try {
                 writeSession->beginFile();
+                if (!file.deferredReason.empty()) {
+                    throw SourceReadDeferred(file.deferredReason, file.deferredDiagnostic);
+                }
                 if (samArtifacts != nullptr) {
                     auto adapted = readAndAdaptSamWorkbook(
-                        file, samArtifacts->at(file.summaryIndex), stopToken);
+                        file, samArtifacts->at(file.summaryIndex), stopToken,
+                        synchronization_.afterFirstSourceChunkRead);
                     if (!adapted.ok()) {
                         samRejectionReason = std::move(adapted.rejectionReason);
                     } else {
-                        batch = SsaSpreadsheetMapper::map(adapted.table, stopToken);
+                        batch = SsaSpreadsheetMapper::map(std::move(adapted.table), stopToken);
                         validRows = batch.rows.size();
                         if (batch.invalidRows > 0) {
                             samRejectionReason = "sam_row_contract_invalid";
@@ -1565,9 +1608,19 @@ namespace ssa::infra::importing {
                 } else {
                     hasChunkedWorkbookResult = true;
                     readChunkedWorkbook(file, replaceAll, execution.rowsPerChunk, stopToken,
-                                        chunkedWorkbookResult);
+                                        chunkedWorkbookResult,
+                                        synchronization_.afterFirstSourceChunkRead);
                     applyChunkedWorkbookResult();
                 }
+            } catch (const SourceReadDeferred& error) {
+                isolateFileFailure(file, error.reason(), error.what());
+                if (atomicBatch) {
+                    return discardBeforeCommit(rollbackSession(
+                        *writeSession, {ports::WorkflowStatus::Rejected,
+                                        std::string{operation} + " " + batchRejectionError, true,
+                                        perFileDiagnostic}));
+                }
+                continue;
             } catch (const std::system_error& error) {
                 applyChunkedWorkbookResult();
                 if (error.code() == std::make_error_code(std::errc::operation_canceled)) {

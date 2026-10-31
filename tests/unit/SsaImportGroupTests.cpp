@@ -55,6 +55,43 @@ namespace {
 
 } // namespace
 
+TEST_CASE("SSA repeat gate compares folded business fields without materializing the group") {
+    using Policy = ssa::domain::SsaImportPolicy;
+    auto older = rowAt("ADM", "2026-09-01");
+    older["setor_executor"] = "SETOR";
+    auto newest = rowAt("ADM", "2026-09-02");
+    SsaImportGroup group;
+    group.add(older, 0, "older");
+    group.add(newest, 1, "newest");
+    REQUIRE_FALSE(group.hasRepeatDifference(newest));
+    newest["setor_executor"] = "setor";
+    REQUIRE_FALSE(group.hasRepeatDifference(newest));
+    newest["setor_executor"] = "OTHER";
+    REQUIRE(group.hasRepeatDifference(newest));
+    const auto current = group.values();
+    const auto merged = Policy::merge(current, newest);
+    REQUIRE(merged.repeatDiscarded);
+    REQUIRE(merged.conflictField == "setor_executor");
+    REQUIRE(Policy::describeConflict(current, newest, merged) ==
+            "Import repeated SSA, resolved by content: ssa=202600100 field=setor_executor "
+            "existing=\"SETOR\" incoming=\"OTHER\" existing_file=\"SSA_2026-09-02.xlsx\" "
+            "incoming_file=\"SSA_2026-09-02.xlsx\"");
+}
+
+TEST_CASE("SSA repeat gate ignores metadata status and empty or absent fields") {
+    auto row = rowAt("ADM", "2026-09-01");
+    SsaImportGroup group;
+    group.add(row, 0, "source");
+    row["arquivo_origem"] = "other.xlsx";
+    row["situacao"] = "STE";
+    row["data_criacao_arquivo"] = "2026-08-01";
+    row["descricao_ssa"].clear();
+    row["setor_executor"] = "NEW";
+    REQUIRE_FALSE(group.hasRepeatDifference(row));
+    row["descricao_ssa"] = "Changed";
+    REQUIRE(group.hasRepeatDifference(row));
+}
+
 TEST_CASE("SSA group originals follow each field winner in every input order") {
     auto old = rowAt("ADM", "2026-09-01");
     old["setor_executor"] = "SETOR";

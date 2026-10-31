@@ -30,6 +30,7 @@ namespace ssa::infra::importing {
             std::shared_ptr<SynchronizationSemaphore> writerBusyEntered;
             std::shared_ptr<SynchronizationSemaphore> snapshotLocked;
             FileCopyFirstChunkWrittenHook afterFirstChunkWritten;
+            std::function<void()> afterFirstSourceChunkRead;
         };
 
         SpreadsheetImportWorkflowPort(std::filesystem::path inputFolder,

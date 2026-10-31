@@ -25,6 +25,8 @@ namespace ssa::infra::importing {
         // The file as found (selected file, docs_entrada or processadas), never the staged
         // copy whose name carries the read order: a stable identity of the source.
         std::filesystem::path originalPath;
+        std::string deferredReason;
+        std::string deferredDiagnostic;
     };
 
     struct ImportStagingResult {
