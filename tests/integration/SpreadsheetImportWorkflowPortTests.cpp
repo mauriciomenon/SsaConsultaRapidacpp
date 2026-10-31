@@ -11356,3 +11356,32 @@ TEST_CASE("a newer file that differs only in original spelling is verified, not 
     REQUIRE(result.importSummary->updates == 0);
     REQUIRE(result.importSummary->verified == 1);
 }
+
+TEST_CASE("an empty data_cadastro takes the first Python fallback date and keeps its original") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto workbook = root / "SSA_15-07-2026_0900AM.xlsx";
+    writeWorkbook(workbook,
+                  row(1, {inlineCell("A1", "Numero SSA"), inlineCell("B1", "Descricao da SSA"),
+                          inlineCell("C1", "Data Cadastro"), inlineCell("D1", "Desde"),
+                          inlineCell("E1", "Desde")}) +
+                      row(2, {inlineCell("A2", "202609917"), inlineCell("B2", "Fallback"),
+                              inlineCell("C2", ""), inlineCell("D2", ""),
+                              inlineCell("E2", "08/07/2026 15:50:41")}));
+    const auto dbPath = root / "ssas.db";
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(
+        root / "docs_entrada", dbPath, ssa::domain::ColumnCatalog::storageColumns(), false);
+
+    const auto result = port.importExternalFiles({.files = {workbook}});
+
+    INFO(result.message);
+    REQUIRE(result.ok());
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    // desde is empty, desde_1 (the second Desde) is the first stored fallback date.
+    REQUIRE(scalarText(db, "SELECT data_cadastro FROM ssa_table") == "2026-07-08 15:50:41");
+    REQUIRE(scalarText(db, "SELECT valores_originais FROM ssa_table") ==
+            "{\"data_cadastro\":\"\",\"desde_1\":\"08/07/2026 15:50:41\"}");
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}

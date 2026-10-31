@@ -14,6 +14,8 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 
 ### Alterado
 
+- Importacao: `data_cadastro` vazia recebe a primeira data entre `desde`, `desde_1`,
+  `data_inicio_programada` e `data_programacao`, como no Python.
 - Importacao: as 16 colunas de data do Python (`data_cadastro`, `prazo_limite`, `desde`,
   `ate`, `executado`, `concluido`, `data_programacao` e as demais) sao gravadas como
   "AAAA-MM-DD HH:MM:SS"; data invalida fica vazia em vez de rejeitar a linha.

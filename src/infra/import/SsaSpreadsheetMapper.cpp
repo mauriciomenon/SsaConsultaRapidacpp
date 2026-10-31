@@ -517,6 +517,17 @@ namespace ssa::infra::importing {
                     }
                 }
             }
+            // Python parse_datetime_series_mixed: an empty data_cadastro takes the first
+            // stored date among these columns, in this order.
+            for (const auto* source :
+                 {"desde", "desde_1", "data_inicio_programada", "data_programacao"}) {
+                if (!valueFor(row, "data_cadastro").empty()) {
+                    break;
+                }
+                if (const auto date = valueFor(row, source); !date.empty()) {
+                    row.emplace("data_cadastro", date);
+                }
+            }
             // No SSA number and no description: a blank row counts as nothing; any other one
             // (a continuation such as Reprogramacao #2..N, even with only its label, which maps
             // to no value) is skipped.
