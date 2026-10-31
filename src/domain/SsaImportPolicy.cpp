@@ -14,6 +14,7 @@
 #include <optional>
 #include <ranges>
 #include <regex>
+#include <stdexcept>
 #include <string_view>
 
 namespace ssa::domain {
@@ -62,7 +63,7 @@ namespace ssa::domain {
 
         // Canonical content (Python parity, _canonical_row_content): decides between rows of
         // equal precedence by content only, never by the order they were read.
-        std::string canonicalNumber(const std::string& text) {
+        std::string canonicalNumber(const std::string& text, const int maximumExponent = 308) {
             std::size_t index = 0;
             const bool negative = !text.empty() && text[0] == '-';
             if (negative || (!text.empty() && text[0] == '+')) {
@@ -106,7 +107,7 @@ namespace ssa::domain {
                 for (const char c : exponentText) {
                     exponent = exponent * 10 + (c - '0');
                 }
-                if (exponent > 308) {
+                if (exponent > maximumExponent) {
                     return {};
                 }
                 const auto all = integer + fraction;
@@ -139,7 +140,7 @@ namespace ssa::domain {
             std::map<std::string, std::string> canonical;
             for (const auto& [key, value] : values) {
                 const auto text = trimWhitespace(value);
-                if (key == "id" || text.empty()) {
+                if (key == "id" || key == "valores_originais" || text.empty()) {
                     continue;
                 }
                 if (auto number = canonicalNumber(text); !number.empty()) {
@@ -155,7 +156,8 @@ namespace ssa::domain {
         }
 
         // json.dumps(sort_keys=True, ensure_ascii=True, separators=(",", ":")).
-        void appendJsonString(std::string& out, const std::string& text) {
+        void appendJsonString(std::string& out, const std::string& text,
+                              const bool ensureAscii = true) {
             static constexpr std::string_view kHex = "0123456789abcdef";
             const auto escape = [&out](const std::uint32_t codePoint) {
                 out += "\\u";
@@ -190,13 +192,17 @@ namespace ssa::domain {
                         out += "\\f";
                         break;
                     default:
-                        if (byte < 0x20U || byte == 0x7FU) { // ensure_ascii escapes DEL too
+                        if (byte < 0x20U || (ensureAscii && byte == 0x7FU)) {
                             escape(byte);
                         } else {
                             out += static_cast<char>(byte);
                         }
                     }
                     ++index;
+                    continue;
+                }
+                if (!ensureAscii) {
+                    out += text[index++];
                     continue;
                 }
                 const std::size_t length = byte >= 0xF0U ? 4 : byte >= 0xE0U ? 3 : 2;
@@ -608,7 +614,8 @@ namespace ssa::domain {
                                       const SsaImportPolicy::Values& right,
                                       const bool ignoreMetadata = false) {
             const auto ignored = [ignoreMetadata](const std::string_view key) {
-                return isTransientField(key) || (ignoreMetadata && isMetadataField(key));
+                return key == "valores_originais" || isTransientField(key) ||
+                       (ignoreMetadata && isMetadataField(key));
             };
             const auto differs = [&ignored](const SsaImportPolicy::Values& values,
                                             const SsaImportPolicy::Values& other) {
@@ -622,6 +629,185 @@ namespace ssa::domain {
         }
 
     } // namespace
+
+    SsaImportPolicy::OriginalValues SsaImportPolicy::originalValues(const Values& row) {
+        const auto json = valueFor(row, "valores_originais");
+        OriginalValues originals;
+        if (json.empty()) {
+            return originals;
+        }
+        std::size_t position = 0;
+        const auto skipSpace = [&] {
+            while (position < json.size() &&
+                   std::string_view{" \t\r\n"}.find(json[position]) != std::string_view::npos) {
+                ++position;
+            }
+        };
+        const auto expect = [&](const char expected) {
+            skipSpace();
+            if (position == json.size() || json[position++] != expected) {
+                throw std::invalid_argument("invalid valores_originais JSON");
+            }
+        };
+        const auto readString = [&]() {
+            expect('"');
+            std::string decoded;
+            const auto hexCode = [&]() {
+                unsigned code = 0;
+                for (int digit = 0; digit < 4; ++digit) {
+                    if (position == json.size()) {
+                        throw std::invalid_argument("truncated original JSON escape");
+                    }
+                    const auto c = json[position++];
+                    const auto value = c >= '0' && c <= '9'   ? c - '0'
+                                       : c >= 'a' && c <= 'f' ? c - 'a' + 10
+                                       : c >= 'A' && c <= 'F' ? c - 'A' + 10
+                                                              : -1;
+                    if (value < 0) {
+                        throw std::invalid_argument("invalid original JSON escape");
+                    }
+                    code = code * 16 + static_cast<unsigned>(value);
+                }
+                return code;
+            };
+            while (position < json.size()) {
+                const auto c = json[position++];
+                if (c == '"') {
+                    return decoded;
+                }
+                if (static_cast<unsigned char>(c) < 0x20U) {
+                    throw std::invalid_argument("unescaped original JSON control character");
+                }
+                if (c != '\\') {
+                    decoded += c;
+                    continue;
+                }
+                if (position == json.size()) {
+                    break;
+                }
+                const auto escaped = json[position++];
+                switch (escaped) {
+                case '"':
+                case '\\':
+                case '/':
+                    decoded += escaped;
+                    break;
+                case 'b':
+                    decoded += '\b';
+                    break;
+                case 'f':
+                    decoded += '\f';
+                    break;
+                case 'n':
+                    decoded += '\n';
+                    break;
+                case 'r':
+                    decoded += '\r';
+                    break;
+                case 't':
+                    decoded += '\t';
+                    break;
+                case 'u': {
+                    auto code = hexCode();
+                    if (code >= 0xD800U && code <= 0xDBFFU) {
+                        if (json.compare(position, 2, "\\u") != 0) {
+                            throw std::invalid_argument("unpaired original JSON surrogate");
+                        }
+                        position += 2;
+                        const auto low = hexCode();
+                        if (low < 0xDC00U || low > 0xDFFFU) {
+                            throw std::invalid_argument("invalid original JSON surrogate");
+                        }
+                        code = 0x10000U + ((code - 0xD800U) << 10) + low - 0xDC00U;
+                    } else if (code >= 0xDC00U && code <= 0xDFFFU) {
+                        throw std::invalid_argument("unpaired original JSON surrogate");
+                    }
+                    if (code < 0x80U) {
+                        decoded += static_cast<char>(code);
+                    } else {
+                        if (code >= 0x10000U) {
+                            decoded += static_cast<char>(0xF0U | (code >> 18));
+                            decoded += static_cast<char>(0x80U | ((code >> 12) & 0x3FU));
+                        } else if (code >= 0x800U) {
+                            decoded += static_cast<char>(0xE0U | (code >> 12));
+                        } else {
+                            decoded += static_cast<char>(0xC0U | (code >> 6));
+                        }
+                        if (code >= 0x800U) {
+                            decoded += static_cast<char>(0x80U | ((code >> 6) & 0x3FU));
+                        }
+                        decoded += static_cast<char>(0x80U | (code & 0x3FU));
+                    }
+                    break;
+                }
+                default:
+                    throw std::invalid_argument("invalid original JSON escape");
+                }
+            }
+            throw std::invalid_argument("unterminated original JSON string");
+        };
+        expect('{');
+        skipSpace();
+        if (position < json.size() && json[position] != '}') {
+            for (;;) {
+                const auto key = readString();
+                expect(':');
+                skipSpace();
+                std::string scalar;
+                if (position < json.size() && json[position] == '"') {
+                    appendJsonString(scalar, readString(), false);
+                } else {
+                    const auto begin = position;
+                    while (position < json.size() && json[position] != ',' &&
+                           json[position] != '}') {
+                        ++position;
+                    }
+                    scalar = trimWhitespace(json.substr(begin, position - begin));
+                    static const std::regex number{
+                        R"(-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?)"};
+                    if (scalar != "null" && scalar != "true" && scalar != "false" &&
+                        !std::regex_match(scalar, number)) {
+                        throw std::invalid_argument("original JSON value must be a finite scalar");
+                    }
+                }
+                originals[key] = std::move(scalar);
+                skipSpace();
+                if (position == json.size() || json[position] != ',') {
+                    break;
+                }
+                ++position;
+            }
+        }
+        expect('}');
+        skipSpace();
+        if (position != json.size()) {
+            throw std::invalid_argument("trailing original JSON content");
+        }
+        return originals;
+    }
+
+    void SsaImportPolicy::setOriginalValues(Values& row, const OriginalValues& originals) {
+        if (originals.empty()) {
+            row.erase("valores_originais");
+            return;
+        }
+        std::string json = "{";
+        for (const auto& [key, scalar] : originals) {
+            if (json.size() > 1) {
+                json += ',';
+            }
+            appendJsonString(json, key, false);
+            json += ':';
+            json += scalar;
+        }
+        row["valores_originais"] = json + '}';
+    }
+
+    bool SsaImportPolicy::numericOriginalEquals(const std::string& raw, const std::string& stored) {
+        // Binary64 subnormals use exponents down to -324 in Python's str(float).
+        const auto number = canonicalNumber(trimWhitespace(raw), 324);
+        return !number.empty() && number == canonicalNumber(trimWhitespace(stored), 324);
+    }
 
     std::string SsaImportPolicy::normalizeNumber(const std::string& value) {
         auto text = trimWhitespace(value);
@@ -1072,6 +1258,7 @@ namespace ssa::domain {
 
         auto merged = existing;
         const bool equalSnapshot = *incomingSnapshot == *existingSnapshot;
+        bool incomingWins = !equalSnapshot;
         bool repeatDiscarded = false;
         std::string firstDifference;
         if (equalSnapshot) {
@@ -1081,9 +1268,12 @@ namespace ssa::domain {
             const auto existingContent = canonicalRow(existing);
             const auto incomingContent = canonicalRow(incoming);
             const bool identical = existingContent == incomingContent;
-            const bool incomingWins =
+            incomingWins =
                 !identical && (terminalPromotion || contentBeats(incomingContent, existingContent));
             for (const auto& [key, value] : incoming) {
+                if (key == "valores_originais") {
+                    continue;
+                }
                 const auto normalized = trimWhitespace(value);
                 if (normalized.empty()) {
                     continue;
@@ -1114,6 +1304,9 @@ namespace ssa::domain {
             repeatDiscarded = !identical && !firstDifference.empty();
         } else {
             for (const auto& [key, value] : incoming) {
+                if (key == "valores_originais") {
+                    continue;
+                }
                 const auto normalized = trimWhitespace(value);
                 if (normalized.empty()) {
                     continue;
@@ -1129,6 +1322,42 @@ namespace ssa::domain {
             return {existing, false, false, std::move(firstDifference), repeatDiscarded};
         }
         const bool changed = differsInPersistedValues(merged, existing);
+        if (changed) {
+            const auto existingOriginals = originalValues(existing);
+            const auto incomingOriginals = originalValues(incoming);
+            OriginalValues originals;
+            // Sources in precedence/content order; the newest matching field owns its original.
+            const std::array sources = incomingWins
+                                           ? std::array{std::pair{&incoming, &incomingOriginals},
+                                                        std::pair{&existing, &existingOriginals}}
+                                           : std::array{std::pair{&existing, &existingOriginals},
+                                                        std::pair{&incoming, &incomingOriginals}};
+            auto keys = existingOriginals;
+            keys.insert(incomingOriginals.begin(), incomingOriginals.end());
+            for (const auto& [key, ignored] : keys) {
+                if (!merged.contains(key) && !ColumnCatalog::contains(key)) {
+                    continue;
+                }
+                const auto finalValue = valueFor(merged, key);
+                for (const auto& [source, raw] : sources) {
+                    if (!source->contains(key) && !ColumnCatalog::contains(key)) {
+                        continue;
+                    }
+                    const auto original = raw->find(key);
+                    const auto sourceValue = valueFor(*source, key);
+                    const bool matches = finalValue.empty()
+                                             ? sourceValue.empty() && original != raw->end()
+                                             : sameValue(key, finalValue, sourceValue);
+                    if (matches) {
+                        if (original != raw->end()) {
+                            originals.emplace(*original);
+                        }
+                        break;
+                    }
+                }
+            }
+            setOriginalValues(merged, originals);
+        }
         return {merged,
                 changed,
                 false,

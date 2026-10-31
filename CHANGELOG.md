@@ -6,6 +6,9 @@ Mudancas relevantes deste projeto sao registradas neste arquivo.
 
 ### Adicionado
 
+- Banco: coluna interna `valores_originais` (JSON) guarda o valor original das celulas
+  cujo valor gravado foi transformado (espacos, datas, numeros, marcadores de vazio),
+  no mesmo formato do Python. Nao aparece na tela; mudanca so no original nao grava.
 - Janela de progresso da importacao: botao "..." no canto do titulo com "Copiar
   relatorio", "Salvar relatorio (.txt)" e "Abrir arquivo de log".
 

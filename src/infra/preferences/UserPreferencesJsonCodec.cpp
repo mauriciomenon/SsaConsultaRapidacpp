@@ -133,7 +133,7 @@ namespace ssa::infra::preferences {
             for (const auto& value : visibleColumns) {
                 if (value.isString()) {
                     const auto key = value.toString().toStdString();
-                    if (domain::ColumnCatalog::contains(key) &&
+                    if (key != "valores_originais" && domain::ColumnCatalog::contains(key) &&
                         (!dropLegacyColumns ||
                          (std::ranges::find(kLegacyHiddenVisibleColumns, key) ==
                               kLegacyHiddenVisibleColumns.end() &&
@@ -308,7 +308,7 @@ namespace ssa::infra::preferences {
             const QJsonObject columnWidths = root.value("column_widths").toObject();
             for (auto iterator = columnWidths.begin(); iterator != columnWidths.end(); ++iterator) {
                 const auto key = iterator.key().toStdString();
-                if (!domain::ColumnCatalog::contains(key)) {
+                if (key == "valores_originais" || !domain::ColumnCatalog::contains(key)) {
                     continue;
                 }
                 // QJsonValue has no toInt(bool* ok); skip non-numeric widths instead of
@@ -327,7 +327,8 @@ namespace ssa::infra::preferences {
             snapshot.sortColumnKey = root.value("sort_column_key")
                                          .toString(QString::fromStdString(defaultSortColumnKey))
                                          .toStdString();
-            if (!domain::ColumnCatalog::contains(snapshot.sortColumnKey)) {
+            if (snapshot.sortColumnKey == "valores_originais" ||
+                !domain::ColumnCatalog::contains(snapshot.sortColumnKey)) {
                 snapshot.sortColumnKey = defaultSortColumnKey;
             }
             snapshot.sortAscending = root.value("sort_ascending").toBool(snapshot.sortAscending);

@@ -5,9 +5,96 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <limits>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
+
+TEST_CASE("SSA originals preserve scalar types and canonical UTF8 JSON") {
+    using Policy = ssa::domain::SsaImportPolicy;
+    Policy::Values row{
+        {"valores_originais",
+         R"({"z":null,"bool":true,"int":2,"float":2.5,"text":" a\u00e7ao ","symbol":"\ud83d\ude00"})"}};
+    const auto originals = Policy::originalValues(row);
+    REQUIRE(originals.at("bool") == "true");
+    REQUIRE(originals.at("int") == "2");
+    REQUIRE(originals.at("float") == "2.5");
+    REQUIRE(originals.at("z") == "null");
+    Policy::setOriginalValues(row, originals);
+    REQUIRE(row.at("valores_originais") ==
+            "{\"bool\":true,\"float\":2.5,\"int\":2,\"symbol\":\"\xF0\x9F\x98\x80\","
+            "\"text\":\" a\xC3\xA7"
+            "ao \",\"z\":null}");
+    Policy::setOriginalValues(row, {});
+    REQUIRE_FALSE(row.contains("valores_originais"));
+}
+
+TEST_CASE("SSA originals reject invalid JSON rather than hiding errors") {
+    using Policy = ssa::domain::SsaImportPolicy;
+    for (const auto* json :
+         {"[]", "null", R"({"a":NaN})", R"({"a":Infinity})", R"({"a":{}})", R"({"a":01})",
+          R"({"a":true,})", R"({"a":"\ud800"})", R"({"a":"\q"})", "{} trailing"}) {
+        INFO(json);
+        const Policy::Values row{{"valores_originais", json}};
+        REQUIRE_THROWS_AS(Policy::originalValues(row), std::invalid_argument);
+    }
+}
+
+TEST_CASE("SSA numeric originals compare exact decimal values") {
+    using Policy = ssa::domain::SsaImportPolicy;
+    REQUIRE(Policy::numericOriginalEquals("1", "1.0"));
+    REQUIRE(Policy::numericOriginalEquals("1.0", "001"));
+    REQUIRE(Policy::numericOriginalEquals("1e3", "1000"));
+    REQUIRE(Policy::numericOriginalEquals("-0.0", "0"));
+    REQUIRE(Policy::numericOriginalEquals("5e-324", "0." + std::string(323, '0') + "5"));
+    REQUIRE(Policy::numericOriginalEquals("1e-309", "0." + std::string(308, '0') + "1"));
+    REQUIRE_FALSE(Policy::numericOriginalEquals("9007199254740993", "9007199254740992"));
+    REQUIRE_FALSE(Policy::numericOriginalEquals("2.5", "3"));
+    REQUIRE_FALSE(Policy::numericOriginalEquals("2", "text"));
+}
+
+TEST_CASE("SSA originals alone do not affect content precedence or writes") {
+    using Policy = ssa::domain::SsaImportPolicy;
+    Policy::Values old{{"numero_ssa", "202660001"},
+                       {"descricao_ssa", "texto"},
+                       {"data_planilha", "2026-09-01T08:00:00"},
+                       {"valores_originais", R"({"descricao_ssa":" texto "})"}};
+    auto incoming = old;
+    incoming["valores_originais"] = R"({"descricao_ssa":"texto "})";
+    REQUIRE(Policy::contentKey(old) == Policy::contentKey(incoming));
+    REQUIRE(Policy::precedenceKey(old) == Policy::precedenceKey(incoming));
+    const auto merged = Policy::merge(old, incoming);
+    REQUIRE_FALSE(merged.changed);
+    REQUIRE_FALSE(merged.metadataOnly);
+    REQUIRE_FALSE(merged.repeatDiscarded);
+    REQUIRE(merged.values == old);
+}
+
+TEST_CASE("SSA merge keeps originals per matching source and removes stale keys") {
+    using Policy = ssa::domain::SsaImportPolicy;
+    Policy::Values old{
+        {"numero_ssa", "202660001"},
+        {"descricao_ssa", "velho"},
+        {"setor_executor", "SETOR"},
+        {"data_planilha", "2026-09-01T08:00:00"},
+        {"valores_originais",
+         R"({"descricao_ssa":" velho ","setor_executor":" SETOR ","solicitante":"N/A","dropped":" obsolete "})"}};
+    Policy::Values incoming{{"numero_ssa", "202660001"},
+                            {"descricao_ssa", "novo"},
+                            {"data_planilha", "2026-09-02T08:00:00"},
+                            {"valores_originais", R"({"solicitante":"-"})"}};
+    auto merged = Policy::merge(old, incoming);
+    REQUIRE(merged.changed);
+    REQUIRE(merged.values.at("valores_originais") ==
+            R"({"setor_executor":" SETOR ","solicitante":"-"})");
+    incoming["setor_executor"] = "SETOR";
+    incoming.erase("valores_originais");
+    old.erase("valores_originais");
+    old["valores_originais"] = R"({"descricao_ssa":" velho ","setor_executor":" SETOR "})";
+    merged = Policy::merge(old, incoming);
+    REQUIRE(merged.changed);
+    REQUIRE_FALSE(merged.values.contains("valores_originais"));
+}
 
 TEST_CASE("SSA import normalizes whole exceeded time expressions without carrying units") {
     using Policy = ssa::domain::SsaImportPolicy;

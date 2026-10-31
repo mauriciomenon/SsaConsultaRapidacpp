@@ -86,6 +86,24 @@ TEST_CASE("column catalog exposes the shared GUI CLI SQLite schema dictionary") 
         ssa::domain::ColumnCatalog::requiredSchemaColumns().end());
 }
 
+TEST_CASE("original values belong to storage only") {
+    using Catalog = ssa::domain::ColumnCatalog;
+    const auto* original = Catalog::find("valores_originais");
+    REQUIRE(original != nullptr);
+    REQUIRE(original->type == ssa::domain::ColumnType::Text);
+    REQUIRE_FALSE(original->generalSearch);
+    REQUIRE(std::ranges::none_of(
+        Catalog::all(), [](const auto& column) { return column.key == "valores_originais"; }));
+    REQUIRE(std::ranges::any_of(Catalog::schemaColumns(), [](const auto& column) {
+        return column.key == "valores_originais";
+    }));
+    const auto& filters = Catalog::orderedFilterColumnKeys();
+    REQUIRE(std::ranges::find(filters, "valores_originais") == filters.end());
+    REQUIRE(Catalog::visibleKeysOrDefault({"valores_originais", "numero_ssa"}) ==
+            std::vector<std::string>{"numero_ssa"});
+    REQUIRE(Catalog::visibleKeysOrDefault({"valores_originais"}) == Catalog::defaultVisibleKeys());
+}
+
 TEST_CASE("column catalog identifies excluded status codes in equality filters") {
     REQUIRE(ssa::domain::ColumnCatalog::containsExcludedStatusCode("=SCA,!SES"));
     REQUIRE_FALSE(ssa::domain::ColumnCatalog::containsExcludedStatusCode("=APV"));

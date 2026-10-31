@@ -740,6 +740,11 @@ namespace ssa::infra::sqlite {
         : databasePath_(std::move(databasePath)), columns_(std::move(columns)),
           tableName_(std::move(tableName)), synchronization_(std::move(synchronization)) {
         validateWriterConfiguration(tableName_, columns_);
+        if (std::ranges::none_of(columns_, [](const domain::ColumnDef& column) {
+                return column.key == "valores_originais";
+            })) {
+            columns_.push_back(*domain::ColumnCatalog::find("valores_originais"));
+        }
     }
 
     void SqliteSsaImportWriter::createEmpty(const std::filesystem::path& databasePath,
@@ -793,6 +798,9 @@ namespace ssa::infra::sqlite {
             auto* db = connection.handle();
             transaction = std::make_unique<SqliteWriteTransaction>(db, busy.cancellationObserved());
             try {
+                std::erase_if(columns, [](const domain::ColumnDef& column) {
+                    return column.key == "valores_originais";
+                });
                 ensureSchemaTables(db, this->tableName, columns, busy.cancellationObserved());
                 bool normalizedExistingRows = false;
                 if (replaceAll) {
@@ -824,12 +832,7 @@ namespace ssa::infra::sqlite {
                         "Falha ao validar identificadores SSA existentes",
                         "dirty canonical ledger still contains rows after normalization");
                 }
-                insert = std::make_unique<SqliteStatement>(db, insertSql(this->tableName, columns),
-                                                           busy.cancellationObserved());
-                selectExisting = std::make_unique<SqliteStatement>(
-                    db, selectExistingSql(this->tableName, columns), busy.cancellationObserved());
-                update = std::make_unique<SqliteStatement>(db, updateSql(this->tableName, columns),
-                                                           busy.cancellationObserved());
+                prepareStatements();
             } catch (...) {
                 rollback();
                 throw;
@@ -850,6 +853,29 @@ namespace ssa::infra::sqlite {
             } catch (const std::exception& error) {
                 sqlite3_log(SQLITE_ERROR, "sqlite import rollback failed: %s", error.what());
             }
+        }
+
+        void prepareStatements() {
+            auto* db = connection.handle();
+            SqliteStatement info(
+                db, "PRAGMA table_info(" + query::quoteTableIdentifier(tableName) + ")",
+                busy.cancellationObserved());
+            hasOriginals = false;
+            while (info.step()) {
+                hasOriginals = hasOriginals || info.columnText(1) == "valores_originais";
+            }
+            std::erase_if(columns, [](const domain::ColumnDef& column) {
+                return column.key == "valores_originais";
+            });
+            if (hasOriginals) {
+                columns.push_back(*domain::ColumnCatalog::find("valores_originais"));
+            }
+            insert = std::make_unique<SqliteStatement>(db, insertSql(tableName, columns),
+                                                       busy.cancellationObserved());
+            selectExisting = std::make_unique<SqliteStatement>(
+                db, selectExistingSql(tableName, columns), busy.cancellationObserved());
+            update = std::make_unique<SqliteStatement>(db, updateSql(tableName, columns),
+                                                       busy.cancellationObserved());
         }
 
         void beginFileScope() {
@@ -900,6 +926,8 @@ namespace ssa::infra::sqlite {
                        busy.cancellationObserved());
             executeSql(connection.handle(), "RELEASE " + std::string{kFileSavepoint},
                        busy.cancellationObserved());
+            // Rolling back the file may also have removed its lazily added column.
+            prepareStatements();
         }
 
         [[nodiscard]] importing::SsaImportBatchWriteSummary
@@ -988,9 +1016,23 @@ namespace ssa::infra::sqlite {
                     ++categoryCounter(result.bySource[source], RowCategory::Unchanged);
                     continue;
                 }
-                auto& statement = existing.empty() ? *insert : *update;
                 // Stored values carried over from the database are trimmed too, never revalidated.
                 domain::SsaImportPolicy::dropNullValues(merged.values);
+                auto originals = domain::SsaImportPolicy::originalValues(merged.values);
+                std::erase_if(originals, [&](const auto& entry) {
+                    return std::ranges::none_of(columns, [&](const domain::ColumnDef& column) {
+                        return column.key == entry.first;
+                    });
+                });
+                domain::SsaImportPolicy::setOriginalValues(merged.values, originals);
+                if (!hasOriginals && !originals.empty()) {
+                    executeSql(connection.handle(),
+                               "ALTER TABLE " + query::quoteTableIdentifier(tableName) +
+                                   " ADD COLUMN valores_originais TEXT",
+                               busy.cancellationObserved());
+                    prepareStatements();
+                }
+                auto& statement = existing.empty() ? *insert : *update;
                 int bindIndex = 1;
                 for (const auto& column : columns) {
                     bindValue(statement, bindIndex, column, rowValuePtr(merged.values, column.key));
@@ -1105,6 +1147,7 @@ namespace ssa::infra::sqlite {
         std::stop_token stopToken;
         std::unique_ptr<SqliteWriteTransaction> transaction;
         std::vector<domain::ColumnDef> columns;
+        bool hasOriginals = false;
         std::string tableName;
         std::unique_ptr<SqliteStatement> insert;
         std::unique_ptr<SqliteStatement> selectExisting;

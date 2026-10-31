@@ -9,6 +9,10 @@
 #include "ports/OperationError.h"
 #include "qt/FilesystemPath.h"
 
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QString>
+
 #include <algorithm>
 #include <array>
 #include <iterator>
@@ -26,7 +30,58 @@ namespace ssa::infra::importing {
     namespace {
 
         std::optional<std::string> canonicalColumn(const std::string& header) {
-            return SsaSpreadsheetHeaderCatalog::canonicalColumnForHeader(header);
+            auto column = SsaSpreadsheetHeaderCatalog::canonicalColumnForHeader(header);
+            return column == "valores_originais" ? std::nullopt : column;
+        }
+
+        void retainOriginalValues(SsaImportRow& row,
+                                  const std::unordered_map<std::string, RawCell>& raw) {
+            using Policy = domain::SsaImportPolicy;
+            using Kind = RawCell::Kind;
+            Policy::OriginalValues originals;
+            for (const auto& [key, cell] : raw) {
+                if (key == "id" || key == "arquivo_origem" || key == "data_arquivo_origem" ||
+                    key == "data_planilha" || key == "data_criacao_arquivo" ||
+                    key == "valores_originais" || key == "status_execucao_prazo" ||
+                    domain::ColumnCatalog::isDerivedCountColumn(key)) {
+                    continue;
+                }
+                auto saved = rowValue(row, key);
+                // Compare the SQLite-bound representation, including INTEGER affinity.
+                if (const auto* column = domain::ColumnCatalog::find(key);
+                    column != nullptr && column->type == domain::ColumnType::Integer) {
+                    long long integer = 0;
+                    if (Policy::parseInteger(saved, integer)) {
+                        saved = std::to_string(integer);
+                    }
+                } else if (key == "derivada_de") {
+                    saved = Policy::normalizeNumber(saved);
+                }
+                const bool missing = cell.kind == Kind::Missing;
+                if (((missing || cell.value.empty()) && saved.empty()) ||
+                    (!missing && cell.value == saved)) {
+                    continue;
+                }
+                if (cell.kind == Kind::Number && Policy::numericOriginalEquals(cell.value, saved)) {
+                    continue;
+                }
+                if ((cell.kind == Kind::Date && saved == cell.value + " 00:00:00") ||
+                    (cell.kind == Kind::DateTime && saved == cell.value.substr(0, 19))) {
+                    continue;
+                }
+                if (missing) {
+                    originals[key] = "null";
+                } else if (cell.kind == Kind::Number) {
+                    originals[key] = cell.value;
+                } else if (cell.kind == Kind::Boolean) {
+                    originals[key] = cell.value == "True" ? "true" : "false";
+                } else {
+                    const auto json = QJsonDocument(QJsonArray{QString::fromStdString(cell.value)})
+                                          .toJson(QJsonDocument::Compact);
+                    originals[key] = json.mid(1, json.size() - 2).toStdString();
+                }
+            }
+            Policy::setOriginalValues(row, originals);
         }
 
         void throwIfMappingCanceled(const std::stop_token& stopToken) {
@@ -215,6 +270,18 @@ namespace ssa::infra::importing {
                 }
                 mapped.columns.emplace_back(index, destination);
             }
+            // Python also fills a missing registration date from these report columns.
+            if (!destinationIndexes.contains("data_cadastro")) {
+                for (const auto* key :
+                     {"desde", "desde_1", "data_inicio_programada", "data_programacao"}) {
+                    const auto column = std::ranges::find_if(
+                        mapped.columns, [key](const auto& entry) { return entry.second == key; });
+                    if (column != mapped.columns.end()) {
+                        mapped.fallbackTimestampColumn = column->first;
+                        break;
+                    }
+                }
+            }
             return mapped;
         }
 
@@ -239,10 +306,13 @@ namespace ssa::infra::importing {
             return status == "SCC" || status == "ADI" || status == "ASE";
         }
 
-        bool hasRequiredColumns(const HeaderColumns& columnByIndex) {
+        bool hasRequiredColumns(const HeaderColumnMap& mapped) {
             const auto hasColumn = [&](const std::string_view key) {
+                if (key == "data_cadastro" && mapped.fallbackTimestampColumn) {
+                    return true;
+                }
                 return std::ranges::any_of(
-                    columnByIndex, [key](const auto& column) { return column.second == key; });
+                    mapped.columns, [key](const auto& column) { return column.second == key; });
             };
             return std::ranges::all_of(domain::ColumnCatalog::requiredSchemaColumns(), hasColumn);
         }
@@ -335,7 +405,7 @@ namespace ssa::infra::importing {
                 hasExternalHeader ? table.rows.size() : table.rows.size() - *headerIndex - 1;
             return batch;
         }
-        if (!hasRequiredColumns(columnMap.columns)) {
+        if (!hasRequiredColumns(columnMap)) {
             batch.mappingStatus = SpreadsheetMappingStatus::RequiredColumnsMissing;
             batch.skippedRows =
                 hasExternalHeader ? table.rows.size() : table.rows.size() - *headerIndex - 1;
@@ -367,7 +437,20 @@ namespace ssa::infra::importing {
         for (std::size_t rowIndex = firstDataRow; rowIndex < table.rows.size(); ++rowIndex) {
             throwIfMappingCanceled(stopToken);
             SsaImportRow row;
+            std::unordered_map<std::string, RawCell> raw;
+            raw.reserve(columnMap.columns.size());
             for (const auto& [columnIndex, columnKey] : columnMap.columns) {
+                RawCell cell{RawCell::Kind::String, {}};
+                if (rowIndex < table.rawRows.size()) {
+                    cell = columnIndex < table.rawRows[rowIndex].size()
+                               ? table.rawRows[rowIndex][columnIndex]
+                               : RawCell{RawCell::Kind::String, {}};
+                } else if (columnIndex < table.rows[rowIndex].size()) {
+                    cell = {RawCell::Kind::String, table.rows[rowIndex][columnIndex]};
+                }
+                raw.insert_or_assign(columnKey == "status_execucao_prazo" ? "prazo_limite"
+                                                                          : columnKey,
+                                     std::move(cell));
                 if (columnIndex >= table.rows[rowIndex].size()) {
                     continue;
                 }
@@ -396,9 +479,8 @@ namespace ssa::infra::importing {
                 } else if (columnKey == "tempo_excedido") {
                     value = domain::SsaImportPolicy::normalizeExceededTime(value);
                 } else if (domain::SsaImportPolicy::isUpsertDateColumn(columnKey)) {
-                    // SpreadsheetTable retains strings only. Styled Excel dates are already
-                    // decoded by the reader; unstyled numeric cells cannot be distinguished
-                    // from numeric text here, so do not guess an Excel serial from a string.
+                    // Preserve the existing prepared-date conversion; raw types are compared
+                    // separately after every storage conversion has completed.
                     value = domain::SsaImportPolicy::normalizeUpsertDate(value);
                 } else if (const auto* column = domain::ColumnCatalog::find(columnKey);
                            column != nullptr && domain::storesIsoDate(column->type)) {
@@ -407,6 +489,12 @@ namespace ssa::infra::importing {
                     if (!normalized.empty() || value.empty()) {
                         value = normalized;
                     }
+                } else if (long long integer = 0;
+                           column != nullptr && column->type == domain::ColumnType::Integer &&
+                           domain::SsaImportPolicy::parseInteger(value, integer)) {
+                    // The stored integer, as Python prepares it ("001" -> 1): a replay of the
+                    // same cell then compares equal. An invalid value is left to validation.
+                    value = std::to_string(integer);
                 }
                 if (value.empty()) {
                     entry = row.erase(entry);
@@ -479,6 +567,11 @@ namespace ssa::infra::importing {
                 !sourceCreatedTimestamp.empty() && valueFor(row, "data_criacao_arquivo").empty()) {
                 row.emplace("data_criacao_arquivo", sourceCreatedTimestamp);
             }
+            // Values synthesized without a source column have a missing original.
+            for (const auto& [key, value] : row) {
+                raw.try_emplace(key);
+            }
+            retainOriginalValues(row, raw);
             batch.rows.push_back(std::move(row));
         }
         return batch;

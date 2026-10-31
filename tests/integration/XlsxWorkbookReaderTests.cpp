@@ -188,6 +188,105 @@ TEST_CASE("xlsx reader preserves a blank cell that only has a date style") {
     REQUIRE(table.rows.at(0).at(0).empty());
 }
 
+TEST_CASE("xlsx reader preserves Python raw scalar types separately from display text") {
+    using ssa::infra::importing::RawCell;
+    using ssa::infra::importing::XlsxWorkbookReader;
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+    const auto path = std::filesystem::path{tempDir.path().toStdString()} / "raw-types.xlsx";
+    writeWorkbook(path, {}, builtInDateStyles,
+                  R"xml(<c r="A1" t="inlineStr"><is><t xml:space="preserve"> text </t></is></c>
+<c r="B1"><v>002</v></c><c r="C1"><v>2.50</v></c>
+<c r="D1" t="b"><v>1</v></c><c r="E1" t="b"><v>0</v></c>
+<c r="F1" s="1"><v>46217</v></c><c r="G1" t="d"><v>2026-07-13</v></c>
+<c r="H1" t="d"><v>2026-07-13T08:15:00.123</v></c>
+<c r="I1" s="1"><v>0.34375</v></c><c r="K1" s="1"/>
+<c r="L1"><v>1e6</v></c><c r="M1"><v>1e-5</v></c>)xml");
+    const auto table = XlsxWorkbookReader::readFirstSheet(path);
+    const auto& raw = table.rawRows.at(0);
+    const std::vector<RawCell> expected{{RawCell::Kind::String, " text "},
+                                        {RawCell::Kind::Number, "2"},
+                                        {RawCell::Kind::Number, "2.5"},
+                                        {RawCell::Kind::Boolean, "True"},
+                                        {RawCell::Kind::Boolean, "False"},
+                                        {RawCell::Kind::DateTime, "2026-07-14 00:00:00"},
+                                        {RawCell::Kind::Date, "2026-07-13"},
+                                        {RawCell::Kind::DateTime, "2026-07-13 08:15:00.123000"},
+                                        {RawCell::Kind::Time, "08:15:00"},
+                                        // Omitted J1 and empty K1 sit inside the sheet: "" as
+                                        // pandas reads them with na_filter=False.
+                                        {RawCell::Kind::String, ""},
+                                        {RawCell::Kind::String, ""},
+                                        {RawCell::Kind::Number, "1000000.0"},
+                                        {RawCell::Kind::Number, "1e-05"}};
+    REQUIRE(raw.size() == expected.size());
+    for (std::size_t index = 0; index < raw.size(); ++index) {
+        INFO(index);
+        REQUIRE(raw[index].kind == expected[index].kind);
+        REQUIRE(raw[index].value == expected[index].value);
+    }
+    REQUIRE(table.rows.at(0).at(1) == "002");
+    REQUIRE(table.rows.at(0).at(3) == "1");
+    REQUIRE(table.rows.at(0).at(5) == "2026-07-14T00:00:00");
+}
+
+TEST_CASE("xlsx raw cells stay aligned across sparse rows and chunk boundaries") {
+    using ssa::infra::importing::RawCell;
+    using ssa::infra::importing::SpreadsheetTable;
+    using ssa::infra::importing::XlsxWorkbookReader;
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+    const auto path = std::filesystem::path{tempDir.path().toStdString()} / "raw-chunks.xlsx";
+    writeWorkbook(path, {}, builtInDateStyles,
+                  R"xml(<row r="1"><c r="B1" t="b"><v>1</v></c></row>
+<row r="3"><c r="A3"><v>2.5</v></c></row>)xml",
+                  true);
+    std::vector<SpreadsheetTable> chunks;
+    XlsxWorkbookReader::readSheetChunks(path, 1,
+                                        [&](SpreadsheetTable chunk, const bool, const bool) {
+                                            REQUIRE(chunk.rows.size() == chunk.rawRows.size());
+                                            chunks.push_back(std::move(chunk));
+                                        });
+    REQUIRE(chunks.size() == 3);
+    REQUIRE(chunks[0].rawRows[0][0].kind == RawCell::Kind::String);
+    REQUIRE(chunks[0].rawRows[0][0].value.empty());
+    REQUIRE(chunks[0].rawRows[0][1].value == "True");
+    REQUIRE(chunks[1].rawRows[0].empty());
+    REQUIRE(chunks[2].rawRows[0][0].kind == RawCell::Kind::Number);
+    REQUIRE(chunks[2].rawRows[0][0].value == "2.5");
+}
+
+TEST_CASE("xlsx raw numbers reject nonfinite and invalid JSON scalars") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+    const auto path = std::filesystem::path{tempDir.path().toStdString()} / "invalid-number.xlsx";
+    for (const auto* number : {"NaN", "Infinity", "1e999", "-"}) {
+        INFO(number);
+        writeWorkbook(path, {}, builtInDateStyles,
+                      std::string{"<c r=\"A1\"><v>"} + number + "</v></c>");
+        REQUIRE_THROWS_WITH(ssa::infra::importing::XlsxWorkbookReader::readFirstSheet(path),
+                            "invalid xlsx original number");
+    }
+}
+
+TEST_CASE("xlsx original time cells use custom formats and millisecond precision") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+    const auto path = std::filesystem::path{tempDir.path().toStdString()} / "raw-time.xlsx";
+    const std::string styles =
+        R"xml(<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<numFmts count="1"><numFmt numFmtId="164" formatCode="hh:mm:ss.000"/></numFmts>
+<cellXfs count="2"><xf numFmtId="0"/><xf numFmtId="164"/></cellXfs></styleSheet>)xml";
+    writeWorkbook(path, R"xml(<workbookPr date1904="1"/>)xml", styles,
+                  R"xml(<c r="A1" s="1"><v>0.3437514236111111</v></c>
+<c r="B1" t="d"><v>08:15:00.123</v></c>)xml");
+    const auto table = ssa::infra::importing::XlsxWorkbookReader::readFirstSheet(path);
+    for (const auto& raw : table.rawRows.at(0)) {
+        REQUIRE(raw.kind == ssa::infra::importing::RawCell::Kind::Time);
+        REQUIRE(raw.value == "08:15:00.123000");
+    }
+}
+
 TEST_CASE("xlsx reader returns every worksheet in workbook order") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
@@ -255,8 +354,8 @@ TEST_CASE("xlsx reader rejects a formula without cache in any worksheet") {
     QTemporaryDir tempDir;
     REQUIRE(tempDir.isValid());
     const auto path = std::filesystem::path{tempDir.path().toStdString()} / "formula-sheet2.xlsx";
-    writeMultiSheetWorkbook(
-        path, {R"xml(<c r="A1"><v>cover</v></c>)xml", R"xml(<c r="A1"><f>NOW()</f></c>)xml"});
+    writeMultiSheetWorkbook(path, {R"xml(<c r="A1" t="inlineStr"><is><t>cover</t></is></c>)xml",
+                                   R"xml(<c r="A1"><f>NOW()</f></c>)xml"});
 
     bool rejected = false;
     try {

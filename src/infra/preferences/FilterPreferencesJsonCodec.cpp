@@ -57,7 +57,7 @@ namespace ssa::infra::preferences {
             const QJsonObject values = root.value(keyName).toObject();
             for (auto iterator = values.begin(); iterator != values.end(); ++iterator) {
                 const auto key = iterator.key().toStdString();
-                if (domain::ColumnCatalog::contains(key)) {
+                if (key != "valores_originais" && domain::ColumnCatalog::contains(key)) {
                     filters[key] = iterator.value().toString().toStdString();
                 }
             }
@@ -67,7 +67,7 @@ namespace ssa::infra::preferences {
         QJsonObject filtersToJson(const std::map<std::string, std::string>& filters) {
             QJsonObject values;
             for (const auto& [key, value] : filters) {
-                if (domain::ColumnCatalog::contains(key)) {
+                if (key != "valores_originais" && domain::ColumnCatalog::contains(key)) {
                     values.insert(QString::fromStdString(key), QString::fromStdString(value));
                 }
             }
@@ -121,7 +121,8 @@ namespace ssa::infra::preferences {
         baseSnapshot.advancedTextFilters = readFilterMap(root, "advanced_text_filters");
         baseSnapshot.advancedWeekColumnKey =
             jsonString(root, "advanced_week_column_key", baseSnapshot.advancedWeekColumnKey);
-        if (!domain::ColumnCatalog::contains(baseSnapshot.advancedWeekColumnKey)) {
+        if (baseSnapshot.advancedWeekColumnKey == "valores_originais" ||
+            !domain::ColumnCatalog::contains(baseSnapshot.advancedWeekColumnKey)) {
             baseSnapshot.advancedWeekColumnKey =
                 std::string{domain::ColumnCatalog::defaultAdvancedWeekColumnKey()};
         }
@@ -146,7 +147,8 @@ namespace ssa::infra::preferences {
         root.insert("column_filters", filtersToJson(filters.columnFilters));
         root.insert("advanced_text_filters", filtersToJson(filters.advancedTextFilters));
         const auto advancedWeekColumnKey =
-            domain::ColumnCatalog::contains(filters.advancedWeekColumnKey)
+            filters.advancedWeekColumnKey != "valores_originais" &&
+                    domain::ColumnCatalog::contains(filters.advancedWeekColumnKey)
                 ? filters.advancedWeekColumnKey
                 : std::string{domain::ColumnCatalog::defaultAdvancedWeekColumnKey()};
         root.insert("advanced_week_column_key", QString::fromStdString(advancedWeekColumnKey));

@@ -49,6 +49,7 @@ namespace ssa::domain {
         struct Field {
             std::shared_ptr<const Rank> rank;
             std::string value;
+            std::optional<std::string> original;
         };
         struct Fold {
             std::unordered_map<std::string, Field> fields;

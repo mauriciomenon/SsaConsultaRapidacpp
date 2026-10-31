@@ -262,6 +262,34 @@ TEST_CASE("json preferences reject duplicate visible columns") {
     REQUIRE(error == "duplicate visible column: numero_ssa");
 }
 
+TEST_CASE("json preferences exclude originals from saved visible and query columns") {
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+    const auto path = std::filesystem::path{directory.path().toStdString()} / "prefs.json";
+    const ssa::infra::preferences::JsonUserPreferencesStore store(path);
+    for (const auto& visible :
+         {QJsonArray{"valores_originais", "numero_ssa"}, QJsonArray{"valores_originais"}}) {
+        writeObject(
+            path,
+            QJsonObject{{"schema_version", 14},
+                        {"visible_columns", visible},
+                        {"sort_column_key", "valores_originais"},
+                        {"advanced_week_column_key", "valores_originais"},
+                        {"column_widths", QJsonObject{{"valores_originais", 200}}},
+                        {"column_filters", QJsonObject{{"valores_originais", "secret"}}},
+                        {"advanced_text_filters", QJsonObject{{"valores_originais", "secret"}}}});
+        const auto snapshot = store.load();
+        REQUIRE(snapshot.visibleColumns == (visible.size() == 1
+                                                ? ssa::domain::ColumnCatalog::defaultVisibleKeys()
+                                                : std::vector<std::string>{"numero_ssa"}));
+        REQUIRE(snapshot.sortColumnKey != "valores_originais");
+        REQUIRE(snapshot.filters.advancedWeekColumnKey != "valores_originais");
+        REQUIRE_FALSE(snapshot.columnWidths.contains("valores_originais"));
+        REQUIRE_FALSE(snapshot.filters.columnFilters.contains("valores_originais"));
+        REQUIRE_FALSE(snapshot.filters.advancedTextFilters.contains("valores_originais"));
+    }
+}
+
 TEST_CASE("user preference snapshots and saved documents use schema 14") {
     QTemporaryDir directory;
     REQUIRE(directory.isValid());

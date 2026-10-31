@@ -44,6 +44,10 @@
 - [LOCAL-PENDING] O parser de data no nome do arquivo usa `std::regex` (paridade com
   `utils/file_metadata.py`) e roda por linha via `fileDateKey`; medir no full rescan
   e trocar por parser manual se o tempo piorar.
+- [LOCAL-PENDING] `valores_originais`, residuos da revisao Codex: (1) com conteudo
+  canonico igual, o C++ escolhe o original por campo (maior grafia) e o Python pela
+  linha inteira (JSON bruto); (2) celula com formato de duracao `[h]:mm:ss` vira data
+  no C++ e `timedelta` ("1 day, 12:00:00") no Python. Raros nas planilhas SSA.
 - [DECISAO-PENDENTE] Normalizacao de valores diferente do Python (anterior ao
   lote unico; nao afeta precedencia): espacos no fim (C++ apara); datas com
   `T` x espaco e dd/mm x ISO (`executado`, `concluido`, `instalacao_estimada`);

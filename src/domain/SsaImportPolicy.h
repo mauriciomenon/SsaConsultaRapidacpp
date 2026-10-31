@@ -4,6 +4,7 @@
 
 #include <compare>
 #include <cstddef>
+#include <map>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -14,6 +15,12 @@ namespace ssa::domain {
     class SsaImportPolicy final {
       public:
         using Values = std::unordered_map<std::string, std::string>;
+        // Scalar JSON fragments, keyed by the final storage column. No Qt in the domain.
+        using OriginalValues = std::map<std::string, std::string>;
+        [[nodiscard]] static OriginalValues originalValues(const Values& row);
+        static void setOriginalValues(Values& row, const OriginalValues& originals);
+        [[nodiscard]] static bool numericOriginalEquals(const std::string& raw,
+                                                        const std::string& stored);
 
         enum class RowValidationIssue {
             None,

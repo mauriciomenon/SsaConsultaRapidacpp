@@ -49,6 +49,7 @@ namespace ssa::domain {
     }
 
     void SsaImportGroup::Fold::add(const Values& row, const std::shared_ptr<const Rank>& rank) {
+        const auto originals = SsaImportPolicy::originalValues(row);
         // Tracks only the leading precedence: a newer one starts over.
         if (top && top->precedence == rank->precedence && top->content != rank->content) {
             resolvedByContent = true;
@@ -59,6 +60,9 @@ namespace ssa::domain {
             top = rank;
         }
         for (const auto& [key, raw] : row) {
+            if (key == "valores_originais") {
+                continue;
+            }
             auto value = trimWhitespace(raw);
             if (value.empty()) {
                 continue;
@@ -66,9 +70,26 @@ namespace ssa::domain {
             auto& field = fields[key];
             // An equal rank is the same row read twice: the larger spelling keeps the result
             // independent of the read order.
-            if (!field.rank || *field.rank < *rank ||
+            if (!field.rank || field.value.empty() || *field.rank < *rank ||
                 (!(*rank < *field.rank) && field.value < value)) {
-                field = {rank, std::move(value)};
+                const auto original = originals.find(key);
+                field = {rank, std::move(value),
+                         original == originals.end()
+                             ? std::nullopt
+                             : std::optional<std::string>{original->second}};
+            }
+        }
+        for (const auto& [key, original] : originals) {
+            if (!row.contains(key) && !ColumnCatalog::contains(key)) {
+                continue;
+            }
+            const auto source = row.find(key);
+            if (source != row.end() && !trimWhitespace(source->second).empty()) {
+                continue;
+            }
+            auto& field = fields[key];
+            if (field.value.empty() && (!field.rank || *field.rank < *rank)) {
+                field = {rank, {}, original};
             }
         }
     }
@@ -113,9 +134,16 @@ namespace ssa::domain {
     SsaImportGroup::Values SsaImportGroup::values() const {
         const auto& fold = terminal_.top ? terminal_ : open_;
         Values result;
+        SsaImportPolicy::OriginalValues originals;
         for (const auto& [key, field] : fold.fields) {
-            result.emplace(key, field.value);
+            if (!field.value.empty()) {
+                result.emplace(key, field.value);
+            }
+            if (field.original) {
+                originals.emplace(key, *field.original);
+            }
         }
+        SsaImportPolicy::setOriginalValues(result, originals);
         return result;
     }
 

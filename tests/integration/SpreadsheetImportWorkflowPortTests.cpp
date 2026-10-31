@@ -11078,3 +11078,281 @@ TEST_CASE("sqlite legacy deviation counts use the same numeric coercion") {
         REQUIRE(sqlite3_close(db) == SQLITE_OK);
     }
 }
+
+TEST_CASE("spreadsheet workflow stores exact Python originals and ignores spelling-only replay") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto workbook = root / "Consulta SSA - 01-09-2026_0800AM.xlsx";
+    const auto replayWorkbook = root / "again" / workbook.filename();
+    std::filesystem::create_directories(replayWorkbook.parent_path());
+    const auto header =
+        row(1, {inlineCell("A1", "numero_ssa"), inlineCell("B1", "situacao"),
+                inlineCell("C1", "descricao_ssa"), inlineCell("D1", "data_cadastro"),
+                inlineCell("E1", "semana_programada"), inlineCell("F1", "solicitante"),
+                inlineCell("G1", "tempo_excedido"), inlineCell("H1", "data_criacao_arquivo")});
+    for (const auto& path : {workbook, replayWorkbook}) {
+        writeWorkbook(
+            path, header + row(2, {inlineCell("A2", "202660001"), inlineCell("B2", "ADM"),
+                                   inlineCell("C2", " texto "),
+                                   inlineCell("D2", path == workbook ? "13/07/2026" : "2026-07-13"),
+                                   inlineCell("E2", "001"), inlineCell("F2", "N/A"),
+                                   inlineCell("G2", "25d 1h : 9mi"),
+                                   inlineCell("H2", "2026-09-01 08:00:00")}));
+        setLocalModificationTime(path, 2026, 9, 1, 8, 0);
+    }
+    const auto dbPath = root / "ssas.db";
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(
+        root / "docs_entrada", dbPath, ssa::domain::ColumnCatalog::storageColumns());
+    const auto first = port.importExternalFiles({.files = {workbook}});
+    INFO(first.message);
+    REQUIRE(first.ok());
+    REQUIRE(first.importSummary.has_value());
+    REQUIRE(first.importSummary->inserts == 1);
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    const std::string expected = "{\"data_cadastro\":\"13/07/2026\",\"descricao_ssa\":\" texto \","
+                                 "\"semana_programada\":\"001\",\"solicitante\":\"N/A\","
+                                 "\"tempo_excedido\":\"25d 1h : 9mi\"}";
+    REQUIRE(scalarText(db, "SELECT valores_originais FROM ssa_table") == expected);
+    REQUIRE(scalarText(db, "SELECT data_cadastro FROM ssa_table") == "2026-07-13 00:00:00");
+    REQUIRE(scalarText(db, "SELECT descricao_ssa FROM ssa_table") == "texto");
+    REQUIRE(scalarInt(db, "SELECT semana_programada FROM ssa_table") == 1);
+    REQUIRE(scalarInt(db, "SELECT solicitante IS NULL FROM ssa_table") == 1);
+    REQUIRE(scalarText(db, "SELECT tempo_excedido FROM ssa_table") == "P25DT1H9M");
+    REQUIRE(scalarText(db, "SELECT type FROM pragma_table_info('ssa_table') "
+                           "WHERE name='valores_originais'") == "TEXT");
+    const auto replay = port.importExternalFiles({.files = {replayWorkbook}});
+    INFO(replay.message);
+    REQUIRE(replay.ok());
+    REQUIRE(replay.importSummary.has_value());
+    REQUIRE(replay.importSummary->unchangedRows == 1);
+    REQUIRE(replay.importSummary->inserts + replay.importSummary->updates +
+                replay.importSummary->verified ==
+            0);
+    REQUIRE(scalarText(db, "SELECT valores_originais FROM ssa_table") == expected);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("sqlite original-only changes do not write and a new value clears its last original") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+    const auto dbPath = std::filesystem::path{tempDir.path().toStdString()} / "ssas.db";
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(db,
+                         "CREATE TABLE ssa_table (id INTEGER PRIMARY KEY, numero_ssa TEXT, "
+                         "descricao_ssa TEXT, data_cadastro TEXT, data_planilha TEXT)",
+                         nullptr, nullptr, nullptr) == SQLITE_OK);
+    const std::vector<ssa::domain::ColumnDef> columns{
+        {"id", ssa::domain::ColumnType::Integer},
+        {"numero_ssa", ssa::domain::ColumnType::Text},
+        {"descricao_ssa", ssa::domain::ColumnType::Text},
+        {"data_cadastro", ssa::domain::ColumnType::DateText},
+        {"data_planilha", ssa::domain::ColumnType::DateText},
+        {"valores_originais", ssa::domain::ColumnType::Text}};
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(sqliteWriterAccess(), dbPath, columns);
+    ssa::infra::importing::ResolvedSsaImportRows rows;
+    rows.rows.push_back(
+        {{"numero_ssa", "202660001"},
+         {"descricao_ssa", "old"},
+         {"data_cadastro", "2026-07-13 00:00:00"},
+         {"data_planilha", "2026-09-01T08:00:00"},
+         {"valores_originais", "{\"descricao_ssa\":\" old \",\"solicitante\":\"N/A\"}"}});
+    REQUIRE(writer.write(rows, 1, 0, false).rowsInserted == 1);
+    REQUIRE(scalarText(db, "SELECT type FROM pragma_table_info('ssa_table') "
+                           "WHERE name='valores_originais'") == "TEXT");
+    const auto version = scalarInt(db, "PRAGMA data_version");
+    rows.rows.front()["valores_originais"] = "{\"descricao_ssa\":\"old \"}";
+    const auto repeated = writer.write(rows, 1, 0, false);
+    REQUIRE(repeated.rowsWritten == 0);
+    REQUIRE(repeated.rowsUpdated == 0);
+    REQUIRE(repeated.rowsVerified == 0);
+    REQUIRE(repeated.rowsUnchanged == 1);
+    REQUIRE(scalarInt(db, "PRAGMA data_version") == version);
+    REQUIRE(scalarText(db, "SELECT valores_originais FROM ssa_table") ==
+            "{\"descricao_ssa\":\" old \"}");
+    rows.rows.front()["descricao_ssa"] = "new";
+    rows.rows.front()["data_planilha"] = "2026-09-02T08:00:00";
+    rows.rows.front().erase("valores_originais");
+    REQUIRE(writer.write(rows, 1, 0, false).rowsUpdated == 1);
+    REQUIRE(scalarText(db, "SELECT descricao_ssa FROM ssa_table") == "new");
+    REQUIRE(scalarInt(db, "SELECT valores_originais IS NULL FROM ssa_table") == 1);
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("sqlite replay creates originals column only on a real write") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+    const auto dbPath = std::filesystem::path{tempDir.path().toStdString()} / "ssas.db";
+    const ssa::infra::sqlite::SqliteSsaImportWriter writer(sqliteWriterAccess(), dbPath,
+                                                           importColumns());
+    ssa::infra::importing::ResolvedSsaImportRows rows;
+    rows.rows.push_back({{"numero_ssa", "202660001"},
+                         {"descricao_ssa", "text"},
+                         {"data_cadastro", "2026-07-13 00:00:00"},
+                         {"data_planilha", "2026-09-01T08:00:00"}});
+    REQUIRE(writer.write(rows, 1, 0, false).rowsInserted == 1);
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(dbPath.string().c_str(), &db) == SQLITE_OK);
+    const std::string columnCount =
+        "SELECT COUNT(*) FROM pragma_table_info('ssa_table') WHERE name='valores_originais'";
+    REQUIRE(scalarInt(db, columnCount.c_str()) == 0);
+    const auto version = scalarInt(db, "PRAGMA data_version");
+    rows.rows.front()["valores_originais"] = R"({"descricao_ssa":" text "})";
+    const auto repeated = writer.write(rows, 1, 0, false);
+    REQUIRE(repeated.rowsWritten == 0);
+    REQUIRE(repeated.rowsUnchanged == 1);
+    REQUIRE(scalarInt(db, columnCount.c_str()) == 0);
+    REQUIRE(scalarInt(db, "PRAGMA data_version") == version);
+
+    // Reprepare after ALTER and after the savepoint rolls that ALTER back.
+    auto session = writer.startSession(false);
+    session.beginFile();
+    rows.rows.front()["numero_ssa"] = "202660002";
+    REQUIRE(session.write(rows, 1, 0).rowsWritten == 1);
+    session.rollbackFile();
+    rows.rows.front()["numero_ssa"] = "202660001";
+    REQUIRE(session.write(rows, 1, 0).rowsWritten == 0);
+    rows.rows.front()["data_planilha"] = "2026-09-02T08:00:00";
+    REQUIRE(session.write(rows, 1, 0).rowsWritten == 1);
+    REQUIRE(session.finish().rowsWritten == 1);
+    REQUIRE(scalarInt(db, columnCount.c_str()) == 1);
+    REQUIRE(scalarText(db, "SELECT valores_originais FROM ssa_table") ==
+            R"({"descricao_ssa":" text "})");
+    REQUIRE(sqlite3_close(db) == SQLITE_OK);
+}
+
+TEST_CASE("spreadsheet originals compare typed raw cells with prepared values") {
+    using ssa::infra::importing::RawCell;
+    using Kind = RawCell::Kind;
+    struct OriginalCase {
+        RawCell raw;
+        std::string saved;
+        std::string json;
+    };
+    const auto sample = GENERATE(
+        OriginalCase{{Kind::String, "001"}, "001", ""},
+        OriginalCase{{Kind::Number, "1"}, "1.0", ""},
+        OriginalCase{{Kind::Number, "1.0"}, "001", ""},
+        OriginalCase{{Kind::Boolean, "True"}, "1", "true"},
+        OriginalCase{{Kind::Boolean, "False"}, "0", "false"},
+        OriginalCase{{Kind::Number, "2"}, "text", "2"},
+        OriginalCase{{Kind::Number, "2.5"}, "3", "2.5"},
+        OriginalCase{{Kind::DateTime, "2026-07-13 00:00:00"}, "2026-07-13 00:00:00", ""},
+        OriginalCase{{Kind::Date, "2026-07-13"}, "2026-07-13 00:00:00", ""},
+        OriginalCase{{Kind::DateTime, "2026-07-13 08:00:00"}, "other", "\"2026-07-13 08:00:00\""},
+        OriginalCase{{Kind::Date, "2026-07-13"}, "other", "\"2026-07-13\""},
+        OriginalCase{{Kind::Time, "08:15:00"}, "other", "\"08:15:00\""},
+        OriginalCase{{Kind::Missing, ""}, "filled", "null"},
+        OriginalCase{{Kind::String, ""}, "filled", "\"\""},
+        OriginalCase{{Kind::Missing, ""}, "", ""},
+        OriginalCase{{Kind::String, "N/A"}, "N/A", "\"N/A\""},
+        OriginalCase{{Kind::String, " a\xc3\xa7"
+                                    "ao "},
+                     "a\xc3\xa7"
+                     "ao",
+                     "\" a\xc3\xa7"
+                     "ao \""});
+    ssa::infra::importing::SpreadsheetTable table;
+    table.rows = {{"numero_ssa", "descricao_ssa", "data_cadastro", "solicitante"},
+                  {"202660001", "Description", "2026-07-13 00:00:00", sample.saved}};
+    table.rawRows = {{},
+                     {{Kind::String, "202660001"},
+                      {Kind::String, "Description"},
+                      {Kind::String, "2026-07-13 00:00:00"},
+                      sample.raw}};
+    const auto mapped = ssa::infra::importing::SsaSpreadsheetMapper::map(table);
+    REQUIRE(mapped.rows.size() == 1);
+    const auto& values = mapped.rows.front();
+    if (sample.json.empty()) {
+        REQUIRE_FALSE(values.contains("valores_originais"));
+    } else {
+        REQUIRE(values.at("valores_originais") == "{\"solicitante\":" + sample.json + "}");
+    }
+}
+
+TEST_CASE("spreadsheet deadline status keeps the original under prazo_limite") {
+    ssa::infra::importing::SpreadsheetTable table;
+    table.rows = {{"numero_ssa", "descricao_ssa", "data_cadastro", "Prazo Limite"},
+                  {"202660001", "Description", "2026-07-13 00:00:00", "Nao Aplica"}};
+    const auto mapped = ssa::infra::importing::SsaSpreadsheetMapper::map(table);
+    REQUIRE(mapped.rows.size() == 1);
+    const auto& values = mapped.rows.front();
+    REQUIRE(values.at("status_execucao_prazo") == "Nao Aplica");
+    REQUIRE_FALSE(values.contains("prazo_limite"));
+    REQUIRE(values.at("valores_originais") == "{\"prazo_limite\":\"Nao Aplica\"}");
+}
+
+TEST_CASE("xlsx date fallback distinguishes absent columns from empty and sparse cells") {
+    const auto layout = GENERATE("absent", "empty", "sparse", "trailing", "missing-canonical");
+    INFO(layout);
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+    const auto path = std::filesystem::path{tempDir.path().toStdString()} / "fallback.xlsx";
+    if (std::string_view{layout} == "missing-canonical") {
+        // Mirror test_regressao_nan_de_aba_sem_coluna_produz_json_valido in Python.
+        writeWorkbookSheets(
+            path, {row(1, {inlineCell("A1", "numero_ssa"), inlineCell("B1", "descricao_ssa"),
+                           inlineCell("C1", "data_cadastro")}) +
+                       row(2, {inlineCell("A2", "202660001"), inlineCell("B2", " a "),
+                               inlineCell("C2", "2026-01-01")}),
+                   row(1, {inlineCell("A1", "numero_ssa"), inlineCell("B1", "descricao_ssa"),
+                           inlineCell("C1", "desde")}) +
+                       row(2, {inlineCell("A2", "202660002"), inlineCell("B2", " b "),
+                               inlineCell("C2", "2026-01-02")})});
+        const auto sheets = ssa::infra::importing::XlsxWorkbookReader::readSheets(path);
+        REQUIRE(sheets.size() == 2);
+        const auto mapped = ssa::infra::importing::SsaSpreadsheetMapper::map(sheets[1]);
+        REQUIRE(mapped.rows.size() == 1);
+        REQUIRE(mapped.rows.front().at("data_cadastro") == "2026-01-02 00:00:00");
+        REQUIRE(mapped.rows.front().at("valores_originais").find(R"("data_cadastro":null)") !=
+                std::string::npos);
+        return;
+    }
+    const bool absent = std::string_view{layout} == "absent";
+    const bool trailing = std::string_view{layout} == "trailing";
+    const auto header = row(1, {inlineCell("A1", "numero_ssa"), inlineCell("B1", "descricao_ssa"),
+                                inlineCell("C1", trailing ? "Data Cadastro" : "Data de emissao"),
+                                inlineCell("D1", trailing ? "Data de emissao" : "Data Cadastro")});
+    writeWorkbook(
+        path, (absent ? row(1, {inlineCell("A1", "numero_ssa"), inlineCell("B1", "descricao_ssa"),
+                                inlineCell("D1", "Data Cadastro")})
+                      : header) +
+                  row(2, {inlineCell("A2", "202660001"), inlineCell("B2", "Description"),
+                          std::string_view{layout} == "empty" ? inlineCell("C2", "") : "",
+                          inlineCell(trailing ? "C2" : "D2", "2026-07-13 08:00:00")}));
+    const auto table = ssa::infra::importing::XlsxWorkbookReader::readFirstSheet(path);
+    const auto mapped = ssa::infra::importing::SsaSpreadsheetMapper::map(table);
+    REQUIRE(mapped.rows.size() == 1);
+    REQUIRE(mapped.rows.front().at("data_cadastro") == "2026-07-13 08:00:00");
+    if (absent) {
+        // Python canonicalizes Data Cadastro itself to data_cadastro: it is not missing.
+        REQUIRE_FALSE(mapped.rows.front().contains("valores_originais"));
+    } else {
+        REQUIRE(mapped.rows.front().at("valores_originais") == R"({"data_cadastro":""})");
+    }
+}
+
+TEST_CASE("a newer file that differs only in original spelling is verified, not updated") {
+    QTemporaryDir tempDir;
+    REQUIRE(tempDir.isValid());
+    const auto root = std::filesystem::path{tempDir.path().toStdString()};
+    const auto older = root / "SSA_14-07-2026_0900AM.xlsx";
+    const auto newer = root / "SSA_15-07-2026_0900AM.xlsx";
+    writeSsaWorkbook(older, "202600941", "ADM", "Same text");
+    // Same business value after trimming; only the original cell differs.
+    writeSsaWorkbook(newer, "202600941", "ADM", "  Same text  ");
+    const auto dbPath = root / "data" / "ssas.db";
+    std::filesystem::create_directories(dbPath.parent_path());
+    ssa::infra::importing::SpreadsheetImportWorkflowPort port(root / "docs_entrada", dbPath,
+                                                              importColumns(), false);
+    REQUIRE(port.importExternalFiles({.files = {older}}).ok());
+
+    const auto result = port.importExternalFiles({.files = {newer}});
+
+    INFO(result.message);
+    REQUIRE(result.importSummary.has_value());
+    REQUIRE(result.importSummary->updates == 0);
+    REQUIRE(result.importSummary->verified == 1);
+}

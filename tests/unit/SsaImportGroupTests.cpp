@@ -55,6 +55,34 @@ namespace {
 
 } // namespace
 
+TEST_CASE("SSA group originals follow each field winner in every input order") {
+    auto old = rowAt("ADM", "2026-09-01");
+    old["setor_executor"] = "SETOR";
+    old["valores_originais"] =
+        R"({"descricao_ssa":" old ","setor_executor":" SETOR ","solicitante":"N/A"})";
+    auto newest = rowAt("ADM", "2026-09-02");
+    newest["valores_originais"] = R"({"descricao_ssa":null,"solicitante":"-"})";
+    auto group = foldInEveryOrder({{old, "a.xlsx"}, {newest, "b.xlsx"}});
+    REQUIRE(group.values().at("valores_originais") ==
+            R"({"descricao_ssa":null,"setor_executor":" SETOR ","solicitante":"-"})");
+
+    newest["setor_executor"] = "SETOR";
+    newest.erase("valores_originais");
+    group = foldInEveryOrder({{old, "a.xlsx"}, {newest, "b.xlsx"}});
+    REQUIRE(group.values().at("valores_originais") == R"({"solicitante":"N/A"})");
+}
+
+TEST_CASE("SSA group empty originals never displace an older nonempty field") {
+    auto old = rowAt("ADM", "2026-09-01");
+    old["solicitante"] = "Pessoa";
+    old["valores_originais"] = R"({"solicitante":" Pessoa "})";
+    auto newest = rowAt("ADM", "2026-09-02");
+    newest["valores_originais"] = R"({"solicitante":"N/A","dropped":"x"})";
+    const auto group = foldInEveryOrder({{old, "a.xlsx"}, {newest, "b.xlsx"}});
+    REQUIRE(group.values().at("solicitante") == "Pessoa");
+    REQUIRE(group.values().at("valores_originais") == R"({"solicitante":" Pessoa "})");
+}
+
 TEST_CASE("SSA import group takes each field from the newest row that has it, in any order") {
     auto oldest = rowAt("ADM", "2026-07-13");
     oldest["setor_executor"] = "MEL1";

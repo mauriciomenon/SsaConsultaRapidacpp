@@ -4,15 +4,20 @@
 
 #include <QByteArray>
 #include <QDate>
+#include <QDateTime>
 #include <QDir>
 #include <QString>
+#include <QTime>
 #include <QXmlStreamReader>
 
 #include <algorithm>
+#include <array>
+#include <charconv>
 #include <cmath>
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <system_error>
 #include <unordered_set>
 #include <utility>
@@ -200,7 +205,7 @@ namespace ssa::infra::importing {
                     continue;
                 }
                 const auto lower = character.toLower();
-                if (lower == 'y' || lower == 'd') {
+                if (lower == 'y' || lower == 'd' || lower == 'h' || lower == 'm' || lower == 's') {
                     return true;
                 }
             }
@@ -322,6 +327,124 @@ namespace ssa::infra::importing {
             return rawValue.toStdString();
         }
 
+        RawCell originalCellValue(const QString& rawValue, const QStringView type,
+                                  const std::string& decoded, const bool dateStyle,
+                                  const bool date1904) {
+            using Kind = RawCell::Kind;
+            if (rawValue.isEmpty()) {
+                return {Kind::String, {}};
+            }
+            if (type == "b") {
+                return {Kind::Boolean, rawValue == "0" ? "False" : "True"};
+            }
+            if (type == "d" || (dateStyle && (type.empty() || type == "n"))) {
+                QDate date;
+                QTime time;
+                Kind kind = Kind::DateTime;
+                if (type == "d") {
+                    if (rawValue.size() == 10) {
+                        date = QDate::fromString(rawValue, Qt::ISODate);
+                        kind = Kind::Date;
+                    } else if (!rawValue.contains('T')) {
+                        time = QTime::fromString(rawValue, Qt::ISODateWithMs);
+                        kind = Kind::Time;
+                    } else {
+                        const auto datetime = QDateTime::fromString(rawValue, Qt::ISODateWithMs);
+                        date = datetime.date();
+                        time = datetime.time();
+                    }
+                } else {
+                    // openpyxl rounds serial fractions to milliseconds, including midnight.
+                    const double serial = rawValue.toDouble(); // validated by decodeCellValue
+                    auto days = static_cast<qint64>(std::floor(serial));
+                    const auto millis = static_cast<qint64>(
+                        std::nearbyint((serial - static_cast<double>(days)) * 86'400'000.0));
+                    if (serial < 1.0 && millis < 86'400'000) {
+                        kind = Kind::Time;
+                    }
+                    if (!date1904 && serial > 0.0 && serial < 60.0) {
+                        ++days;
+                    }
+                    date = (date1904 ? QDate{1904, 1, 1} : QDate{1899, 12, 30})
+                               .addDays(days + millis / 86'400'000);
+                    time = QTime::fromMSecsSinceStartOfDay(static_cast<int>(millis % 86'400'000));
+                }
+                if ((kind != Kind::Time && !date.isValid()) ||
+                    (kind != Kind::Date && !time.isValid())) {
+                    throw std::runtime_error("invalid xlsx original date or time");
+                }
+                auto value = kind == Kind::Time ? QString{} : date.toString(Qt::ISODate);
+                if (kind != Kind::Date) {
+                    if (kind == Kind::DateTime) {
+                        value += ' ';
+                    }
+                    value += time.toString(QStringLiteral("HH:mm:ss"));
+                    if (time.msec() != 0) {
+                        value += QStringLiteral(".%1").arg(time.msec() * 1000, 6, 10, QChar{'0'});
+                    }
+                }
+                return {kind, value.toStdString()};
+            }
+            if (type.empty() || type == "n") {
+                auto value = rawValue.toStdString();
+                if (value.find_first_of(".eE") == std::string::npos) {
+                    const auto digits = std::string_view{value}.substr(
+                        value.front() == '+' || value.front() == '-' ? 1 : 0);
+                    if (digits.empty() || !std::ranges::all_of(digits, [](const char character) {
+                            return character >= '0' && character <= '9';
+                        })) {
+                        throw std::runtime_error("invalid xlsx original number");
+                    }
+                    const auto first = value.find_first_not_of("+-0");
+                    value = first == std::string::npos
+                                ? "0"
+                                : (value.front() == '-' ? "-" : "") + value.substr(first);
+                } else {
+                    bool parsed = false;
+                    const double number = rawValue.toDouble(&parsed);
+                    if (!parsed || !std::isfinite(number)) {
+                        throw std::runtime_error("invalid xlsx original number");
+                    }
+                    std::array<char, 64> buffer{};
+                    const auto [end, error] =
+                        std::to_chars(buffer.data(), buffer.data() + buffer.size(), number,
+                                      std::chars_format::scientific);
+                    if (error != std::errc{}) {
+                        throw std::runtime_error("cannot format xlsx original number");
+                    }
+                    value.assign(buffer.data(), end);
+                    const auto exponentAt = value.find('e');
+                    const auto exponent =
+                        QString::fromStdString(value.substr(exponentAt + 1)).toInt();
+                    // Python repr uses fixed notation for exponents -4 through 15.
+                    if (exponent >= -4 && exponent < 16) {
+                        const bool negative = value.front() == '-';
+                        auto digits =
+                            value.substr(negative ? 1 : 0, exponentAt - (negative ? 1 : 0));
+                        std::erase(digits, '.');
+                        const int point = exponent + 1;
+                        if (point <= 0) {
+                            value =
+                                "0." + std::string(static_cast<std::size_t>(-point), '0') + digits;
+                        } else if (static_cast<std::size_t>(point) >= digits.size()) {
+                            value =
+                                digits +
+                                std::string(static_cast<std::size_t>(point) - digits.size(), '0') +
+                                ".0";
+                        } else {
+                            digits.insert(static_cast<std::size_t>(point), 1, '.');
+                            value = std::move(digits);
+                        }
+                        if (negative) {
+                            value.insert(value.begin(), '-');
+                        }
+                    }
+                }
+                return {Kind::Number, std::move(value)};
+            }
+            return {Kind::String, decoded};
+        }
+
         struct CellRawValue {
             QString text;
             bool hasFormula = false;
@@ -421,6 +544,7 @@ namespace ssa::infra::importing {
 
             void startRow() {
                 currentRow_.clear();
+                currentRawRow_.clear();
                 if (expectedColumns_ > 0) {
                     currentRow_.reserve(expectedColumns_);
                 }
@@ -472,6 +596,9 @@ namespace ssa::infra::importing {
                                        dateStyles_[cellStyleIndex_];
                 currentRow_[resolvedColumn] = decodeCellValue(cellValue_.text, cellType_,
                                                               sharedStrings_, dateStyle, date1904_);
+                currentRawRow_.resize(currentRow_.size(), RawCell{RawCell::Kind::String, {}});
+                currentRawRow_[resolvedColumn] = originalCellValue(
+                    cellValue_.text, cellType_, currentRow_[resolvedColumn], dateStyle, date1904_);
                 nextColumnIndex_ = resolvedColumn + 1;
                 ++totalCells_;
                 if (totalCells_ > kMaxWorksheetCells) {
@@ -488,17 +615,19 @@ namespace ssa::infra::importing {
                 while (nextRowIndex_ < rowIndex) {
                     appendRow({});
                 }
-                appendRow(std::move(currentRow_));
+                appendRow(std::move(currentRow_), std::move(currentRawRow_));
                 currentRow_ = {};
+                currentRawRow_ = {};
                 inRow_ = false;
                 currentRowIndex_.reset();
             }
 
-            void appendRow(std::vector<std::string> row) {
+            void appendRow(std::vector<std::string> row, std::vector<RawCell> rawRow = {}) {
                 if (pendingRows_.size() == rowsPerChunk_) {
                     flush(false);
                 }
                 pendingRows_.push_back(std::move(row));
+                pendingRawRows_.push_back(std::move(rawRow));
                 ++nextRowIndex_;
                 if (nextRowIndex_ > kMaxWorksheetRows) {
                     throw std::runtime_error("xlsx worksheet has too many rows");
@@ -511,6 +640,7 @@ namespace ssa::infra::importing {
                 }
                 auto chunk = metadata_;
                 chunk.rows.swap(pendingRows_);
+                chunk.rawRows.swap(pendingRawRows_);
                 pendingRows_.reserve(rowsPerChunk_);
                 consume_(std::move(chunk), !emittedChunk_, lastInSheet);
                 emittedChunk_ = true;
@@ -525,6 +655,8 @@ namespace ssa::infra::importing {
             SpreadsheetTable metadata_;
             std::vector<std::vector<std::string>> pendingRows_;
             std::vector<std::string> currentRow_;
+            std::vector<std::vector<RawCell>> pendingRawRows_;
+            std::vector<RawCell> currentRawRow_;
             QString cellRef_;
             QString cellType_;
             CellRawValue cellValue_;

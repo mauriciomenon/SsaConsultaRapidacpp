@@ -16,6 +16,9 @@ namespace ssa::domain {
 
         using enum ColumnType;
 
+        // Storage-only metadata: never offered by the visual/filter catalog.
+        const ColumnDef kOriginalValuesColumn{"valores_originais", Text, false};
+
         constexpr std::string_view kStatusColumnKey = "situacao";
         constexpr std::string_view kExecutorColumnKey = "setor_executor";
         constexpr std::string_view kDerivationColumnKey = "derivada_de";
@@ -176,6 +179,7 @@ namespace ssa::domain {
                         throw std::logic_error("column catalog contains a duplicate key");
                     }
                 }
+                result.emplace(kOriginalValuesColumn.key, kOriginalValuesColumn);
                 return result;
             }();
             return columns;
@@ -215,6 +219,7 @@ namespace ssa::domain {
         std::ranges::copy_if(kColumns, std::back_inserter(result), [](const ColumnDef& column) {
             return !ColumnCatalog::isDerivedCountColumn(column.key);
         });
+        result.push_back(kOriginalValuesColumn);
         return result;
     }
 
@@ -227,6 +232,7 @@ namespace ssa::domain {
     }
 
     std::vector<std::string> ColumnCatalog::visibleKeysOrDefault(std::vector<std::string> keys) {
+        std::erase(keys, kOriginalValuesColumn.key);
         if (keys.empty()) {
             keys = defaultVisibleKeys();
         }
